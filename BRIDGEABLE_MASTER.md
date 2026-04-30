@@ -7745,6 +7745,906 @@ Compose mode primitives: rule predicate primitives + parameter primitives + over
 
 ---
 
+### 3.26.17 SMS Primitive
+
+Phase W-4b Layer 1 communication-reach primitive per §3.26.6.4 sequence step 3. Email primitive (§3.26.15) + Calendar primitive (§3.26.16) ship before SMS; SMS extends Communications Layer Pattern C composition (§3.26.9) as third per-primitive widget alongside email_glance + calendar_glance.
+
+SMS primitive is **architecturally distinct from Email + Calendar** along three axes:
+
+**Tighter than Email + Calendar on entity substrate**:
+- No HTML rendering substrate (SMS body is plain text + emoji; MMS adds bounded attachment per §3.26.17.4 + §3.26.17.5)
+- No recurrence engine (SMS messages are single-events; recurring SMS campaigns are a Workshop-authored pattern, not entity-level)
+- No thread reconstruction beyond from/to + time-window (carrier handles conversation grouping; Bridgeable mirrors)
+- Provider abstraction narrower (Twilio dominant US provider; Email shipped 4 providers, Calendar shipped 4, SMS bounded narrower per §3.26.17.4)
+
+**Heavier than Email + Calendar on regulatory + cost substrate**:
+- TCPA compliance (Telephone Consumer Protection Act; opt-in tracking + revocation + audit log requirements)
+- 10DLC registration (10-Digit Long Code carrier registration; brand + campaign registration burden)
+- STOP/HELP keyword handling (carrier-mandated opt-out keywords; Bridgeable mirrors carrier-side state)
+- Per-message cost discipline (~$0.0075 outbound, ~$0.005 inbound; multiplied across operational tenant volume)
+- Customer-facing vs operational-team-facing conversation discipline (different compliance posture per orientation)
+
+**Operationally weighted toward outbound automation**:
+- Driver check-in prompts ("On-site at Hopkins for delivery 1 of 3")
+- Delivery arrival confirmations ("Vault delivered; family notified")
+- Service-day reminders ("Tomorrow: Anderson service at 10am")
+- Cross-tenant operational signals (cemetery confirms grave-dug; manufacturer's driver receives via SMS)
+
+This three-axis distinct shape — tighter substrate + heavier compliance/cost + outbound-weighted — shapes the canon.
+
+#### 3.26.17.1 SMS primitive emergence + integrate-now-make-native-later framework + compliance positioning
+
+SMS emerges as the third concrete Layer 1 communication-reach primitive after Email (§3.26.15) + Calendar (§3.26.16). Phase W-4b sequence step 3 per §3.26.6.4. Canonical-quality discipline per §3.26.7.5: build SMS primitive at canon-faithful depth from session-one; no MVP cuts that compound as debt.
+
+**Native-vs-integration deliberation**:
+
+Native SMS implementation from day one would require: SMPP (Short Message Peer-to-Peer protocol) carrier integration; direct CTIA registry participation; per-carrier 10DLC compliance attestation; per-carrier short-code or long-code provisioning; carrier-direct routing infrastructure; per-carrier deliverability monitoring; international roaming carrier negotiations (deferred indefinitely — US-only at canonical scope per §3.26.17.20 deferral); carrier-direct billing reconciliation.
+
+Operational scope: ~6-12 months engineering + ongoing per-carrier compliance maintenance + direct CTIA + TCR (The Campaign Registry) participation + brand registration (~$4 per brand) + campaign registration (~$10/month per campaign) + per-carrier annual fees. Plus regulatory exposure — Bridgeable becomes direct CTIA registrant, inherits direct compliance liability, must maintain direct opt-out registries.
+
+The **integrate-now-make-native-later commitment is canonical** — Bridgeable's SMS primitive owns its **architectural model** (entity model + UI surfaces + Intelligence integration + operational coupling + compliance discipline + cost discipline) while delegating **transport** to provider abstraction (Twilio canonical; Bandwidth + alternate providers deferred per §3.26.17.4 + concrete signal). Future native CTIA participation deferred indefinitely — Twilio's CTIA participation + 10DLC infrastructure + carrier relationships are operationally irreplaceable at canonical scale; native SMS replaces them only when Bridgeable's tenant-volume growth justifies the regulatory exposure.
+
+**Compliance positioning canonical** (distinct from Email + Calendar — neither face this):
+
+SMS primitive ships with TCPA + 10DLC compliance discipline at the primitive level. Tenant operators using SMS through Bridgeable inherit Bridgeable's compliance posture (opt-in tracking + audit log + STOP/HELP handling + revocation discipline). Tenant operators do NOT need to register their own 10DLC brand or campaigns — Bridgeable's platform brand registration + tenant-scoped campaigns under that brand provide operational coverage per §3.26.17.3 hybrid registration model.
+
+**Architectural rationale**: TCPA exposure is real (per-violation penalties $500-$1,500 each + class-action exposure). Tenant operators using SMS without compliance discipline expose themselves to legal risk. Bridgeable's primitive-level compliance discipline is operational protection — not bureaucratic burden. The discipline is canonically strategic.
+
+**Local provider canonically deferred for SMS** (distinct from Email + Calendar). SMS messages without external transport make no operational sense — SMS IS external transport. Internal Bridgeable-team messaging routes to in-platform messaging primitive (W-4b sequence step 5), not SMS primitive.
+
+#### 3.26.17.2 SMS entity model
+
+Five core entities form the SMS primitive substrate. Three primary (Conversation + Message + Participant), two supporting (Account + AccountAccess junction). Plus optional MMS attachment entity per §3.26.17.4 + §3.26.17.5 canonical scope.
+
+Tighter than Email primitive entity model (§3.26.15.2 — seven entities) and tighter than Calendar primitive entity model (§3.26.16.2 — seven entities). SMS entity model proportional to architectural simplicity — no thread reconstruction beyond carrier-side; no recurrence engine; no instance overrides.
+
+**Primary entities**:
+
+`sms_conversations` — the canonical conversation entity. Fields: `id` + `tenant_id` + `account_id` (FK SmsAccount) + `external_phone_number` (the non-tenant participant's phone in E.164 format; canonical conversation-key) + `external_display_name` + `resolved_company_entity_id` (FK CompanyEntity; nullable; auto-resolution at conversation start) + `resolved_contact_id` (FK Contact; nullable) + `external_tenant_id` (nullable; cross-tenant Bridgeable user resolution mirroring EmailParticipant.external_tenant_id pattern) + `is_cross_tenant` (Boolean) + `conversation_orientation` (`customer_facing` | `operational_team_facing` per §3.26.17.19) + `tcpa_opt_in_status` (`opted_in` | `opted_out` | `opt_in_pending` | `unknown` per §3.26.17.8) + `tcpa_opt_in_recorded_at` (DateTime tz; nullable) + `tcpa_opt_in_method` (`provider_imported` | `customer_initiated_inbound` | `manual_attestation` | `web_form` | `paper_form` | nullable) + `last_message_at` (DateTime tz) + `message_count` (Integer) + `unread_count_for_tenant` (Integer; per-tenant rather than per-user — see §3.26.17.6 for per-user discipline reasoning) + `is_archived` + `created_at` + `updated_at`.
+
+`sms_messages` — the canonical message entity. Fields: `id` + `conversation_id` (FK) + `tenant_id` + `provider_message_sid` (Twilio SID; nullable for Bridgeable-pending messages) + `direction` (`inbound` / `outbound`) + `body_text` (Text; SMS body — 1600-character provider limit; Bridgeable enforces) + `is_mms` (Boolean) + `from_phone_number` + `to_phone_number` + `sent_at` (DateTime tz) + `received_at` (DateTime tz) + `delivery_status` (`queued` / `sending` / `sent` / `delivered` / `failed` / `undelivered`) + `error_code` (provider error code; nullable) + `error_message` (provider error message; nullable) + `cost_cents` (Numeric; per-message cost in cents per §3.26.17.9) + `actor_user_id` (FK User; nullable; populated for outbound when operator-initiated) + `automation_source` (`manual` / `state_change_generated` / `workshop_template` / `intelligence_drafted`) + `created_at` + `updated_at`.
+
+`sms_participants` — per-conversation participant entity tracking participant identities + opt-in state. Distinct from EmailParticipant — SMS is structurally fewer-participant (typically 1-on-1; group SMS exists but rare in operational use). Fields: `id` + `conversation_id` (FK) + `phone_number` (E.164 format) + `display_name` + `resolved_user_id` (FK User; nullable) + `resolved_company_entity_id` (FK CompanyEntity; nullable) + `external_tenant_id` (nullable) + `is_internal` (Boolean — true when participant is Bridgeable user) + `tcpa_opt_in_status` (per-participant tracking parallel to per-conversation; canonical default mirrors conversation-level state) + `first_message_at` + `last_message_at`.
+
+**Supporting entities**:
+
+`sms_accounts` — per-tenant SMS account configuration. Fields: `id` + `tenant_id` + `account_type` (`shared` / `personal` per §3.26.17.3 hybrid model) + `display_name` + `phone_number` (E.164 format; the tenant's canonical SMS number) + `phone_number_type` (`long_code_10dlc` / `short_code` / `toll_free`) + `provider_type` (`twilio` canonical; future providers per §3.26.17.4) + `provider_config` (JSONB; account SID, etc.) + `encrypted_credentials` (Fernet via platform-wide CREDENTIAL_ENCRYPTION_KEY per §3.26.15.8 canonical encryption interpretation) + `outbound_enabled` (Boolean) + `inbound_enabled` (Boolean) + `tcr_brand_id` (Bridgeable's TCR brand registration ID — shared across all platform tenants per §3.26.17.3 hybrid registration model) + `tcr_campaign_id` (per-tenant 10DLC campaign registration; populated when tenant has registered campaign) + `is_active` + `created_at` + `updated_at`.
+
+`sms_account_access` — per-user-per-account access junction. Fields: `id` + `account_id` + `user_id` + `tenant_id` + `access_level` (`read` / `read_write` / `admin`) + `granted_at` + `granted_by_user_id` + `revoked_at` (nullable). Mirrors EmailAccountAccess + CalendarAccountAccess shape verbatim.
+
+**Optional MMS attachment entity**:
+
+`sms_message_attachments` — MMS image attachment per message. Fields: `id` + `message_id` (FK) + `tenant_id` + `media_url` (provider-side URL) + `content_type` (`image/jpeg` / `image/png` / `image/gif`) + `storage_kind` (`provider` / `r2` after fetch) + `r2_storage_key` (nullable; populated when fetched + persisted to R2 per retention discipline) + `image_size_bytes` (Integer) + `is_inline` (Boolean — typically true for MMS) + `created_at`.
+
+**MMS bounded constraints** (per Phase A refinement):
+- Single image per message canonical (multi-attachment MMS deferred per §3.26.17.20)
+- Image content-types only (image/jpeg, image/png, image/gif)
+- **Image size discipline**: soft limit 500KB per image (Workshop-overridable for stricter limits per cost optimization policies); hard limit 2MB per image (carrier-mandated). Bounds MMS storage costs across 7-year retention.
+
+**Cross-tenant pairing**: when SMS conversation occurs between two Bridgeable tenants, separate `cross_tenant_sms_pairing` junction tracks paired conversations per tenant. Each tenant has its own copy under its own ownership; operational state changes (assignment, archival) propagate per §3.26.17.6 cross-tenant state propagation discipline. Cross-tenant SMS bounded per §3.26.17.15.
+
+**Reminder semantics** (canonical default per Q7 + Phase A refinement): SMS doesn't have email/calendar-style reminders directly — outbound SMS IS the reminder. But operator-side notifications about SMS state (new inbound, opt-out events, cost overruns) follow same deduplication discipline as Calendar §3.26.16.2 reminder semantics: provider_default canonical default; passive Bridgeable-surface display distinct from notification firing; explicit operator opt-in for additional notification surfaces.
+
+#### 3.26.17.3 Per-tenant SMS account configuration
+
+SMS account model: **hybrid shared + personal model** matching §3.26.15.3 email + §3.26.16.3 calendar account hybrids.
+
+**Shared SMS accounts** are common across the verticals canon serves:
+- Manufacturing: customer-comms shared number (FH inquiries, customer-facing service); driver-comms shared number (driver check-ins, delivery confirmations)
+- Funeral home: family-comms shared number; cemetery-comms shared number
+- Cemetery: family-comms shared number; manufacturer-comms shared number
+
+Shared SMS accounts are first-class citizens with `account_type="shared"`. Multi-user access via `sms_account_access` junction with read/read_write/admin levels.
+
+**Personal SMS accounts** are per-user with `account_type="personal"`. Less common than shared SMS accounts in operational verticals — most operational SMS routes through shared numbers for continuity.
+
+**Phone number provisioning** hybrid model:
+- **Long-form 10DLC numbers** canonical for shared SMS accounts (carrier-registered 10-digit numbers; tenant-owned via Bridgeable's TCR brand registration; per-tenant campaign registration enables higher throughput + better deliverability)
+- **Short-codes** deferred per §3.26.17.20 with explicit signal threshold: sustained >50,000 outbound SMS/month per tenant + tenant willingness to fund short-code lease (~$1000/month). Bounded measurable trigger prevents re-litigation.
+- **Toll-free SMS numbers** deferred per §3.26.17.20 (lower throughput; less common in operational use)
+- **Personal SMS accounts** use long-form 10DLC numbers identical to shared
+
+**10DLC registration** hybrid model (per Phase A Q6 confirmation):
+- **Bridgeable handles brand registration** on platform's behalf — platform has single TCR brand registration covering all tenants. Reduces per-tenant compliance burden; tenant onboarding friction stays low.
+- **Tenants handle campaign registration** per-tenant — each tenant registers campaigns under Bridgeable's TCR brand. Campaign content + opt-in flows + use cases are tenant-specific; tenant ownership of campaign-content compliance is appropriate.
+- **Bridgeable provides Workshop-authored campaign-registration template** per §3.26.17.24 — tenant fills out canonical use cases (customer service, delivery notifications, appointment reminders) + opt-in flow declarations + sample message templates; Bridgeable-side automation submits campaign to TCR.
+
+**Lead-time discipline** (per Phase A refinement): TCR campaign registration has 1-2 week lead time. Workshop-authored campaign-registration template canonicalizes realistic onboarding timing — tenants must register campaign before SMS goes live operationally. Tenant onboarding flow does NOT promise instant SMS availability; campaign registration is gating step.
+
+**Default outbound account per user**: when a user sends SMS in Bridgeable surface, default outbound account resolves via cascade: (1) user's preferred default (per `User.preferences.sms_default_account_id`), (2) shared SMS account matching the conversation context (e.g., customer conversation routes to customer-comms shared number; driver conversation routes to driver-comms shared number), (3) first shared SMS account user has read_write+ on, (4) error — user must select.
+
+**Conversation-orientation routing**: shared SMS accounts can be marked with default `conversation_orientation` (`customer_facing` / `operational_team_facing`) — drives default routing on outbound + default Pulse layer assignment per §3.26.17.11.
+
+#### 3.26.17.4 Inbound SMS sync infrastructure
+
+Provider abstraction with Twilio canonical at September scope.
+
+**Provider abstraction contract**:
+```
+connect(account_config, credentials) → Connection
+register_inbound_webhook(connection, webhook_url) → WebhookHandle
+fetch_message_status(connection, provider_message_sid) → MessageStatus
+disconnect(connection) → void
+```
+
+**Twilio canonical at September scope** (per Phase A Q2 confirmation): Bandwidth + Messagebird + alternate providers deferred per §3.26.7.5 with three documented signals: international tenant; existing alternate-provider contract; regulatory framework requirement. Provider abstraction shape preserves clean retrofit.
+
+**Inbound webhook canonical (Twilio-specific at September)**:
+
+Twilio's HTTP webhook fires on every inbound SMS to a tenant's phone number. Bridgeable's webhook handler:
+1. Validates Twilio signature (TCPA audit-trail integrity)
+2. Resolves tenant + account via phone number (`To` field on webhook payload)
+3. Resolves or creates conversation (`From` phone number + account's `tenant_id` → conversation)
+4. Persists `sms_messages` row with `direction="inbound"` + `delivery_status="delivered"` (inbound messages are by definition delivered)
+5. Triggers participant resolution (CompanyEntity match via phone_number; mirrors EmailParticipant resolution)
+6. Triggers polymorphic linkage auto-resolution per §3.26.17.7
+7. Triggers TCPA opt-in evaluation (STOP/HELP/UNSUBSCRIBE keywords trigger opt-out per §3.26.17.8)
+8. Audit log per §3.26.17.8
+9. Surfaces to Pulse Communications layer
+
+**STOP/HELP keyword handling**: Twilio handles STOP/HELP keywords carrier-side automatically (Twilio sends opt-out confirmation; subsequent outbound messages to that number are blocked carrier-side). Bridgeable mirrors carrier-side state — when Twilio reports an inbound STOP/UNSUBSCRIBE/CANCEL/QUIT/END message, Bridgeable updates `sms_conversations.tcpa_opt_in_status="opted_out"` + `sms_participants.tcpa_opt_in_status="opted_out"` for the participant. Subsequent outbound attempts from Bridgeable-side check this state and reject pre-send (defensive — even if carrier-side block were to fail, Bridgeable-side check provides redundant protection).
+
+**Inbound message media (MMS)**: Twilio provides `MediaUrl0..MediaUrlN` URLs for attached media. Bridgeable-side webhook handler queues background fetch to R2 (per retention + cost discipline — Twilio media URLs expire ~30 days; Bridgeable's R2 storage maintains retention per §3.26.17.6).
+
+**MMS image size validation at fetch**: per Phase A refinement, image size soft limit 500KB Workshop-overridable + hard limit 2MB carrier-mandated. Inbound MMS exceeding hard limit logs error + skips fetch (image discarded; conversation surfaces "MMS exceeded size limit; not retained" placeholder).
+
+**Conversation reconstruction discipline**: from/to phone number pair + 30-day time-window canonical (per Phase A Q3 confirmation). Bridgeable mirrors carrier-side threading verbatim. Custom thread_id discipline structurally rejected (would conflict with recipient SMS client threading).
+
+**Provider sync state**: SMS doesn't require a sync state table parallel to EmailAccountSyncState / CalendarAccountSyncState because SMS sync is push-based (webhook) not pull-based (polling). Twilio fires webhooks; no cursor tracking; failures retry per Twilio's webhook retry discipline.
+
+**Inbound retry + missed-webhook discipline**: Twilio retries webhook delivery 8 times with exponential backoff over 4 hours. If all retries fail, message is logged Twilio-side but not delivered to Bridgeable. Bridgeable's defensive sync runs every 6 hours via APScheduler — fetches messages via Twilio's REST API to catch any missed-webhook messages. Recovery path canonical; matches Phase W-4b Email Step 2's polling-fallback discipline.
+
+#### 3.26.17.5 Outbound SMS infrastructure
+
+**Hybrid model** parallel to §3.26.15.5 + §3.26.16.5. Bridgeable composes outbound messages; sends via Twilio for per-account outbound; via system pathway for state-changes-generate-SMS (§3.26.17.18).
+
+**Path 1 — Per-account outbound** (operator-initiated SMS in Bridgeable surface):
+- Operator composes in Bridgeable surface
+- Pre-send validation pipeline (see below)
+- Outbound sent via Twilio Messages API
+- Outbound copy stored as `sms_messages` row with `direction="outbound"` + `delivery_status="queued"` initially
+- Twilio webhook fires on delivery status changes; Bridgeable updates `delivery_status` + `cost_cents` accordingly
+
+**Path 2 — System-generated SMS** (state-changes-generate-SMS per §3.26.17.18):
+- State change in operational entity triggers SMS generation
+- Same pre-send validation pipeline as Path 1
+- System actor (`actor_user_id=null`; `automation_source="state_change_generated"`)
+
+**Path 3 — Workshop-template-generated SMS** (Workshop-authored templates per §3.26.17.24):
+- Operator selects Workshop template; Bridgeable renders template against operational state
+- Operator reviews + sends (default) OR auto-sends per template's "auto-send" configuration
+- `automation_source="workshop_template"`
+
+**Pre-send validation discipline canonical**:
+
+Every outbound SMS goes through validation pipeline:
+
+1. **TCPA opt-in check**: conversation.tcpa_opt_in_status must be `opted_in` (or `opt_in_pending` for first-message which itself triggers opt-in flow). `opted_out` → reject with `tcpa_violation_attempt` audit log entry; operator surface shows "This recipient has opted out" error
+2. **Cost budget cap check**: tenant's monthly SMS budget cap remaining > $0; account's monthly cap remaining > $0. Exceeded cap → reject with `budget_cap_exceeded` audit log entry
+3. **Message length validation**: 1600 character limit (Twilio's segmented-message limit); messages exceeding limit either rejected OR auto-segmented per tenant config
+4. **MMS size validation** (when MMS attached): soft limit 500KB Workshop-overridable + hard limit 2MB carrier-mandated. Exceeding hard limit → reject. Exceeding soft limit (without Workshop override) → warning at compose time but allowed to send.
+5. **Recipient phone validation**: E.164 format
+6. **Account state validation**: account.outbound_enabled = true; account.is_active = true
+
+**Delivery receipt handling**:
+- Twilio status callback URL fires on every `delivery_status` transition
+- Bridgeable-side handler updates `sms_messages.delivery_status` + `cost_cents`
+- Failed deliveries trigger operator surface notification + retry discipline (manual retry only — automatic retry would multiply TCPA exposure)
+
+**Outbound auditing** per §3.26.15.8 discipline parallel:
+- Every outbound message + delivery receipt + failure logged per audit canon
+- Body content NEVER logged (compliance baseline + cost)
+- Cost recorded on every message — load-bearing for budget discipline per §3.26.17.9
+
+#### 3.26.17.6 Multi-tenant storage discipline + cross-tenant masking inheritance
+
+**Per-tenant isolation**: every SMS entity tenant-scoped; all queries filter by `tenant_id`; cross-tenant queries opt-in via §3.26.17.15 cross-tenant pathways.
+
+**Per-tenant unread vs per-user unread** (architectural choice — narrower than Email):
+
+Email primitive uses per-user-per-message read state. SMS primitive uses **per-tenant unread counts** at the conversation level — multiple operators in the same tenant share unread state. **Architectural rationale**: SMS conversations are typically operational (driver check-ins, delivery confirmations) where the tenant collectively owns the conversation's response responsibility. Per-user discipline would create coordination friction. Per-tenant discipline matches operational reality of shared SMS accounts.
+
+**Trade-off**: per-tenant discipline means individual operator read state isn't tracked. For most operational use cases this is acceptable; for high-volume customer-facing SMS where individual-attention tracking matters, per-user-per-message extension is deferred per §3.26.17.20.
+
+**Hybrid retention model** (per Phase A Q9 confirmation):
+- **Default 7-year cached-mirror retention** (longer than Email's 30-day default + Calendar's 365-day default). SMS messages have legal-hold pressure in regulated industries — TCPA disputes, FH compliance audits, manufacturer warranty discussions, customer-service-issue litigation. 7-year baseline appropriate.
+- Tenant-configurable shorter retention possible (down to 90 days minimum — TCPA opt-out audit log requires minimum 1-year retention; Bridgeable enforces 90-day minimum to preserve compliance audit trail)
+- Hard-delete after retention window expires (irreversible; audit log entry retained indefinitely per compliance)
+- TCPA opt-in audit log retained indefinitely separately from message retention.
+
+**Storage discipline per query patterns**:
+
+| Entity | Storage | Query patterns |
+|---|---|---|
+| SmsConversation, SmsMessage, SmsParticipant | Dedicated tables | High-volume queryable |
+| SmsAccount, SmsAccountAccess | Dedicated tables | Low-volume queryable |
+| SmsMessageAttachment | Dedicated table | Per-message rows (sparse — most SMS not MMS) |
+| MMS media bytes | R2 object storage | Provider-fetched + persisted per retention discipline |
+
+**Indexes (canonical)**:
+- `sms_conversations (tenant_id, last_message_at DESC)` — operational unified messaging surface sort
+- `sms_conversations (tenant_id, account_id, external_phone_number)` — conversation lookup
+- `sms_conversations (tenant_id, conversation_orientation)` — customer-vs-operational filter
+- `sms_conversations (tenant_id, tcpa_opt_in_status)` — opt-out compliance audit
+- `sms_messages (conversation_id, sent_at DESC)` — conversation message order
+- `sms_messages (tenant_id, automation_source)` — automation-source aggregation for cost analytics
+- `sms_messages (tenant_id, sent_at)` — cost-by-time analytics
+- `sms_participants (phone_number)` — participant lookup across conversations
+
+**Cross-tenant masking inheritance**: per §3.25.x, when conversations span tenant boundary, participant identities + bodies inherit cross-tenant masking. Bounded scope per §3.26.17.15 — cross-tenant SMS less common than cross-tenant email/calendar.
+
+#### 3.26.17.7 SMS entity polymorphic linkage
+
+**Polymorphic linkage to existing primitives** mirrors §3.26.15.7 + §3.26.16.7. Pattern-canonical match.
+
+`sms_conversation_linkages` junction (per-conversation linkage; not per-message — SMS conversations are continuous, not threaded-with-distinct-topics like email):
+
+Fields: `id` + `conversation_id` + `tenant_id` + `linked_entity_type` + `linked_entity_id` + `linkage_source` + `confidence` + `linked_at` + `linked_by_user_id` + `dismissed_at` (nullable).
+
+`linked_entity_type` canonical catalog (matching Email + Calendar with SMS-specific extensions):
+- `customer` → CRM Customer entity (CompanyEntity)
+- `fh_case` → FH Case
+- `sales_order` → Sales Order
+- `vault_item` → V-1c CRM Vault Item
+- `quote` → Quote entity (per §3.26.15.17 + §3.26.16.7)
+- `cross_tenant_event` → Cross-tenant calendar event
+- `delivery` → Delivery entity (driver SMS check-ins link to specific deliveries — SMS-specific extension)
+- `driver_route` → Driver route (driver SMS conversations link to active route — SMS-specific extension)
+
+Future linked_entity_types extend catalog as new primitives ship.
+
+**Linkage resolution** parallel to §3.26.15.7:
+- **Auto-resolution**: when participant phone_number resolves to known CompanyEntity (via Contact.phone_number lookup), conversation auto-links
+- **Auto-resolution**: when conversation is system-generated from state change (per §3.26.17.18), linkage pre-populates with linkage_source="manual_pre_link"
+- **Auto-resolution**: when SMS body contains structured entity reference, Intelligence inference resolves linkage with confidence score
+- **Manual linkage**: operator can link conversation to entity via Bridgeable SMS surface
+- **Multi-linkage**: conversation can have multiple linkages
+
+**Cross-tenant conversation architecture**: each tenant has own conversation row; both conversations have `is_cross_tenant=True`; junction table `cross_tenant_sms_pairing` connects per-tenant conversation IDs.
+
+#### 3.26.17.8 Privacy + compliance discipline
+
+**Per-conversation retention**: hybrid retention discipline per §3.26.17.6 (default 7-year; tenant-configurable to 90-day minimum; hard-delete after window).
+
+**PII handling**:
+- All SMS entities encrypted at rest; per-tenant key isolation per Step 2 canonical interpretation = per-row FK-scoped isolation under platform-wide CREDENTIAL_ENCRYPTION_KEY
+- Audit log of all read/write access to SMS entities
+- Operator behavior privacy preserved (§3.26.14.14.4)
+
+**TCPA compliance discipline canonical** (distinct from Email + Calendar — they don't face this):
+
+**Per-conversation opt-in tracking** (not per-recipient — recipients can have multiple conversations with different consent contexts).
+
+`sms_conversations.tcpa_opt_in_status` canonical values:
+- `unknown` — no opt-in record yet (default for new conversations from inbound — recipient initiated; presumed opt-in for that conversation per provider-side handling)
+- `opted_in` — explicit opt-in recorded
+- `opt_in_pending` — first outbound message generated; opt-in confirmation pending
+- `opted_out` — explicit opt-out recorded
+
+`tcpa_opt_in_method` canonical values:
+- `provider_imported` — opt-in transferred from prior SMS provider
+- `customer_initiated_inbound` — recipient sent inbound message first; canonical opt-in event
+- `manual_attestation` — operator manually attests opt-in
+- `web_form` — opt-in via web form
+- `paper_form` — opt-in via paper form
+
+**Audit log discipline**:
+- All TCPA-relevant events logged: opt-in record creation; opt-out STOP keyword received; opt-out manual action; opt-in revocation
+- Opt-in audit log retained indefinitely (compliance baseline — TCPA disputes can surface years later)
+- Audit log retains: timestamp + method + actor + IP address + user agent + opt-in language presented
+
+**STOP/HELP keyword handling** per §3.26.17.4:
+- Industry-canonical opt-out keywords: STOP, UNSUBSCRIBE, CANCEL, QUIT, END (case-insensitive; trailing whitespace tolerated)
+- Industry-canonical help keyword: HELP
+- All handled provider-side (Twilio); Bridgeable mirrors state
+- Custom emergency keywords deferred per §3.26.17.20 — tenant-specific custom keywords canonicalize via Workshop opt-in-flow templates
+
+**Compliance frameworks**:
+- TCPA — opt-in tracking + audit log + revocation discipline + STOP/HELP carrier compliance + 10DLC registration
+- 10DLC carrier compliance — brand registration (platform-level) + campaign registration (tenant-level per §3.26.17.3)
+- CTIA short-code/long-code best practices
+- HIPAA where applicable (FH cremation/burial scheduling SMS may carry HPI)
+- GDPR — DSAR + right to be forgotten
+- CCPA — California consumer privacy compliance
+
+**Right-to-be-forgotten + DSAR**: tenant admin can export all SMS data for specific Participant; export packaged as ZIP with structured manifest; right-to-be-forgotten preserves opt-in audit trail (TCPA compliance baseline) but redacts message bodies.
+
+#### 3.26.17.9 Cost discipline + budget caps + Workshop cost policies
+
+**NEW SECTION** (Email + Calendar didn't need this — neither face per-message cost like SMS).
+
+**Per-message cost reality** at September scope:
+- Outbound SMS: ~$0.0075 per message (Twilio long-code rate)
+- Outbound MMS: ~$0.020 per message (image attachment surcharge)
+- Inbound SMS: ~$0.005 per message
+- Outbound segmented (>160 char): cost multiplied by segment count
+
+Operational SMS volumes for canonical tenants:
+- Sunnycrest manufacturer: ~5000-8000 outbound SMS/month → ~$40-60/month
+- Hopkins funeral home: ~1500-2500 outbound SMS/month → ~$15-25/month
+
+Cost is bounded but NOT zero. Tenants need cost visibility + budget controls.
+
+**Cost tracking entities**:
+
+`sms_messages.cost_cents` populated via Twilio's `Price` callback parameter.
+
+`sms_account_budgets` — per-tenant per-account budget configuration. Fields: `id` + `tenant_id` + `account_id` (FK; nullable for tenant-wide budget) + `period_type` (`monthly` / `daily`) + `budget_cents` (Numeric) + `current_period_spend_cents` (Numeric) + `alert_threshold_pct` (Integer; default 80) + `is_active` + `created_at` + `updated_at`.
+
+**Pre-send budget cap enforcement** per §3.26.17.5:
+1. Tenant-wide monthly budget cap (sum of all tenant SMS spend across all accounts)
+2. Per-account monthly budget cap
+3. Per-account daily budget cap (defensive against runaway automation)
+
+Approaching budget cap (within `alert_threshold_pct`%) triggers alert. Exceeded cap rejects outbound message with `budget_cap_exceeded` audit log entry.
+
+**Workshop-authored cost policies** per §3.26.17.24:
+- Tenant authors cost policy templates: "Operational-team SMS unlimited; customer-facing SMS budget-capped at $30/month"
+- Cost policy templates apply per `conversation_orientation`
+- Budget caps inherit from cost policy at conversation creation time
+
+**Per-conversation cost visibility**:
+- Conversation surface shows per-conversation cumulative cost
+- "This conversation has cost $0.45" surface chrome (per §14.11 visual canon)
+
+**Cost analytics surface canonical**:
+- `/sms/cost-analytics` surface for tenant admins: monthly spend trend + per-account breakdown + per-conversation-orientation breakdown + per-automation-source breakdown
+- Pulse Operational layer widget surfacing current-month spend vs budget
+- Briefing structured-section surfacing cost overruns + approaching-cap alerts
+
+**Strategic positioning of cost discipline** (per Phase A refinement strengthening):
+
+> Most SMS platforms (Twilio Studio, MessageBird Flow Builder) leave cost visibility + budget enforcement as tenant problem. Tenant runs Twilio campaign that misconfigures + fires 10000 SMS/hour overnight = surprise $750 bill. Bridgeable's primitive-level cost discipline + Workshop cost policies + pre-send budget enforcement makes runaway-cost scenarios structurally impossible.
+>
+> Twilio Studio + MessageBird Flow Builder + alternate workflow tools leave cost visibility + budget enforcement as tenant problem. Tenant runs misconfigured campaign overnight = surprise bill discovered next morning. Bridgeable's primitive-level cost discipline + Workshop-authored cost policies + pre-send budget enforcement makes runaway-cost scenarios structurally impossible. Operational protection for tenants; canonical strategic differentiation that bolt-on workflow tools cannot match without their own primitive-level cost canon.
+
+#### 3.26.17.10 Unified messaging surface
+
+Per §3.26.15.9 + §3.26.16.9 unified surface precedent. **Unified messaging surface is canonical for SMS conversation management beyond per-conversation context** — operator-facing conversation list + per-conversation detail + composition surface.
+
+**Per-primitive surface canonical at September scope**: separate `/sms` route. Unified communications surface combining email + SMS + future primitives deferred per §3.26.7.5; Phase W-4b sequence step 6 (Communications layer service) canonicalizes unified surface if signal warrants. Per-primitive surfaces match Email's `/inbox` + Calendar's `/calendar` canonical pattern.
+
+**Three canonical entry paths**:
+- Direct navigation: `/sms` route
+- Command Bar summoning: ⌘K → "sms" / "messages" / "today's texts" per §3.26.17.12
+- Pulse drill-down: clicking SMS Glance widget in Pulse Communications/Operational layers
+
+**Layout**:
+- Two-pane layout (desktop) / stacked (mobile) — conversation list + conversation detail
+- Account selector (multi-account-per-tenant per §3.26.17.3)
+- Filter strip (account / conversation_orientation / linked-entity / cross-tenant / tcpa_opt_in_status / unread)
+- Compose-new-conversation affordance (with TCPA opt-in flow per §3.26.17.8)
+
+**Conversation list view** canonical:
+- Per-conversation row: external display name + tenant context + last message snippet + last_message_at + unread indicator + cross-tenant indicator + linked-entity indicator + cost cumulative indicator
+- Sort: `last_message_at DESC` default; tenant configurable
+- conversation_orientation filter: "Customer" / "Operational team" / "All"
+
+**Filter strip canonical filters**: All / Unread / Awaiting reply / Archived / Customer / Operational team / Cross-tenant / Recent (last 7 days) / Opted-out (compliance audit)
+
+#### 3.26.17.11 SMS rendering at multiple surfaces
+
+Per §3.26.15.10 + §3.26.16.10 cross-surface discipline.
+
+| Surface | Composition | Cross-references |
+|---|---|---|
+| **Pulse Communications Layer** | `sms_glance` widget for interpersonal-conversation signals (customer messages awaiting reply; new cross-tenant conversations) per Pattern C | §3.26.9 |
+| **Pulse Operational Layer** | `sms_operational_glance` widget for operational-conversation signals; existing `today_widget` extends to surface today's SMS-driven operational state | §3.26.2.4 |
+| **Customer Pulse SMS conversations** | Recent SMS conversations scoped to customer per §3.26.12.3 composition source pattern | §3.26.12.3 |
+| **Coordination Focus SMS channel** | SMS conversation as primary participant communication channel | §3.26.11.3 |
+| **Briefing structured-sections** | Morning briefing renders today's SMS-driven operational signals; evening briefing renders today's customer SMS exchanges | §3.26.10 |
+| **Activity timeline integration** | SMS conversations + key messages surface in entity activity feed | V-1c CRM |
+
+**Cross-surface discipline** parallel to §3.26.15.10 + §3.26.16.10:
+- Same canonical SmsConversation entity renders at all surfaces
+- Per-surface visual treatment varies; content shared
+- Operator actions propagate across surfaces
+- Cross-tenant masking applies uniformly per §3.25.x
+
+**Hybrid contribution pattern continuation** (per Calendar §3.26.16.10 generalization): SMS extends the canonical hybrid contribution pattern to per-primitive Communications + Operational layers + Customer Pulse. Pattern continues to lock for future §14.12 Phone + §14.13 Messaging primitives. Customer message → Communications ("who needs me?"); operational signal → Operational ("what's my work right now?"); per-customer history → Customer Pulse composition source.
+
+**Pulse Communications layer Glance widget** (`sms_glance`) per §3.26.9.7 + Pattern C:
+- Default tier: SMS icon + "Messages" eyebrow + count of customer-facing conversations awaiting reply + top awaiting-reply customer + "Open messages →" footer
+- Compact tier: icon + count + customer single-line
+- Ultra-compact tier: icon + count
+- Surfaces ONLY interpersonal-conversation signals — operational SMS routes to Operational layer separately
+
+**Pulse Operational layer Glance widget** (`sms_operational_glance`):
+- Default tier: SMS icon + "Operational" eyebrow + count of operational SMS signals + top operational signal + "View →" footer
+- Same density tier behavior
+- Surfaces operational-team conversations + state-change-generated SMS confirmations
+
+#### 3.26.17.12 Command Bar SMS summoning
+
+Per §3.26.13.2 summon types catalog.
+
+**Canonical NL summon shapes**:
+
+| Summon shape | Resolves to | Example |
+|---|---|---|
+| Time-scoped messages | Messages surface filtered to time window | "today's texts", "this week's messages" |
+| Entity-scoped conversations | SMS surface filtered to entity | "Hopkins messages", "Anderson SMS thread" |
+| Status-scoped | Filtered surface | "messages awaiting reply", "opted-out conversations" |
+| Combined | Multi-axis filter | "Hopkins this week", "driver check-ins today" |
+| Action-shaped | Compose-new-conversation | "text Hopkins about Anderson Thursday" |
+| Conversation-specific | Specific conversation tablet | "Anderson family thread" |
+| Cost-shaped | Cost analytics surface | "SMS spend this month", "approaching budget cap" |
+
+**Performance discipline**: NL summon resolution within Phase 1 Command Bar performance budget (p50 < 100ms / p99 < 300ms).
+
+**Compose-action TCPA gate canonical**: when Command Bar resolves "text X about Y", composition modal renders with TCPA opt-in status surfaced. Pre-composition gate prevents accidental TCPA violations at Command Bar resolution time.
+
+#### 3.26.17.13 SMS-typed saved views
+
+Per §3.25 saved view canon. SMS becomes new entity type `sms_conversation` for saved views.
+
+**Storage**: `vault_items.metadata_json.saved_view_config` with `entity_type: "sms_conversation"`; cross-tenant masking per §3.25.x.
+
+**Available presentation modes**:
+- **list (default)** — per-conversation row chronological by last_message_at
+- table — full-data grid (compliance audit + cost analytics)
+- kanban — per-status grouping (e.g., awaiting reply / replied / archived / opted-out)
+- chart — count-by-time aggregations
+- stat — single-scalar (conversations this week, response rate, monthly cost)
+
+**Filter dimensions**: account, conversation_orientation, last_message_at range, tcpa_opt_in_status, linked_entity, cross-tenant indicator.
+
+**Sort dimensions**: last_message_at (default), created_at, message_count, unread_count_for_tenant, cumulative_cost.
+
+**Canonical default SMS saved views** (seeded per Workshop SMS template parallel — see §3.26.17.24):
+- "Customer messages awaiting reply"
+- "Driver check-ins today"
+- "Delivery confirmations awaiting acknowledgment"
+- "Opted-out conversations" (compliance audit)
+- "Cross-tenant SMS this month"
+- "High-cost conversations"
+
+#### 3.26.17.14 SMS composition canonical authoring surface
+
+Three composition shapes canonical at September scope (tighter than Email's three or Calendar's four — SMS structurally simpler).
+
+| Shape | UX surface | Use case |
+|---|---|---|
+| **New conversation** | Modal | First message to new recipient (with TCPA opt-in flow gate) |
+| **Reply** | Inline | Reply within existing conversation |
+| **Workshop-template send** | Modal | Tenant-authored template applied to operational state |
+
+**New conversation modal**:
+- Recipient selection: phone number entry (E.164 validation) + Contact picker + cross-tenant tenant picker
+- TCPA opt-in status surface: pre-send check; if recipient is opted-out → composition rejected; if status is unknown → opt-in flow templates surface
+- conversation_orientation selection: Customer / Operational team
+- Account selection: tenant's default outbound account OR explicit selection
+- Body text composition: 1600-char limit + segment count visibility
+- MMS attachment affordance: image picker with 500KB soft limit / 2MB hard limit warning
+- Linked entity affordance per §3.26.17.7
+- Cost preview: pre-send cost surface + budget cap remaining indicator
+- Send affordance: pre-send validation per §3.26.17.5 pipeline
+
+**Inline reply composition**:
+- Within conversation detail surface
+- Body text composition + segment-count visibility + MMS affordance
+- Linked entity inheritance from conversation
+- TCPA gate inheritance (opted-out conversations show disabled composer with explanation)
+- Send affordance: pre-send validation pipeline
+
+**Workshop-template send modal**:
+- Template picker: tenant-authored templates per §3.26.17.24
+- Template parameters: template variables auto-populated from operational state
+- Recipient resolution: per template's recipient routing rules
+- Cost preview: aggregated cost across batch + budget cap remaining
+- Send affordance: per-recipient pre-send validation + opt-in checks
+
+**Pre-composition TCPA gate canonical**: every composition path goes through TCPA opt-in validation before message body composition. Recipients with `opted_out` status show clear non-composable state; recipients with `unknown` status show opt-in flow surface; recipients with `opted_in` proceed to composition.
+
+#### 3.26.17.15 Cross-tenant SMS visibility
+
+Per §3.26.17.6 cross-tenant masking + bounded scope — cross-tenant SMS less common than cross-tenant email/calendar but operationally meaningful.
+
+**Canonical cross-tenant SMS use cases**:
+- Manufacturer driver SMS to FH director ("On-site for Anderson delivery; ETA 15 min")
+- FH coordinator SMS to manufacturer ("Service moved to 11am; please adjust delivery")
+- Cemetery sexton SMS to manufacturer ("Grave dug; ready for delivery")
+
+**Cross-tenant SMS bounded scope**:
+- Operational-team-facing conversation orientation typical — both parties are organization employees with implicit consent for operational coordination
+- Customer-facing cross-tenant conversations rare — when present, require bilateral consent per §3.26.16.6 calendar bilateral consent precedent
+- Cross-tenant pairing canonical: each tenant has own SmsConversation row + paired via `cross_tenant_sms_pairing` junction
+
+**Bilateral consent for full content sharing** (matches §3.26.16.6 calendar pattern):
+- Default privacy-preserving mode: both tenants see message timestamps + counts but masked content (subject hashing optional)
+- Bilateral consent mode: both tenants explicitly opt in for full content sharing across cross-tenant SMS conversations; either tenant unilaterally revokes
+- Asymmetric disclosure power dynamics structurally prevented per §3.26.16.6 + §3.26.11.10 cross-tenant Focus consent canon
+
+**Per-tenant participant routing**: each tenant's notifications follow that tenant's role-based routing rules per §3.26.11.7. Per-side audit logs per §3.26.11.10.
+
+#### 3.26.17.16 Strategic framing — SMS as operational reach primitive
+
+Per §3.26.15.15 email strategic framing + §3.26.16.15 calendar strategic framing precedent. SMS strategic framing **completes the operational substrate trifecta** with distinct positioning.
+
+**SMS primitive's strategic role** completes the operational-reach trifecta:
+
+> **Communications + scheduling = operations.** Email primitive (§3.26.15) ships interpersonal coordination. Calendar primitive (§3.26.16) ships temporal coordination. SMS primitive (§3.26.17) ships **operational reach** — the Layer 1 primitive that bypasses surface-navigation friction and reaches operators + customers directly in their pocket.
+
+**Why SMS is operationally distinct from Email + Calendar**:
+
+Email reaches recipients but requires them to read email — which means navigating to their email client. Calendar reaches recipients but requires them to navigate to their calendar surface. SMS reaches recipients directly — phone notification arrives in their pocket; no surface navigation required. **Operational reach is the SMS-specific affordance.**
+
+For the verticals canon serves:
+- Manufacturing operational coordination: driver receives SMS with delivery confirmation request → driver replies "Confirmed" without leaving truck cab. SMS is canonically the lowest-friction operational reach mechanism.
+- FH family communication: family receives service-day reminder SMS with confirmation prompt → reply "Yes" or click magic-link to confirm. The friction is operationally meaningful when families are emotionally distressed.
+- Cemetery operational coordination: sexton receives SMS confirmation prompt for grave-dug status → confirms via SMS reply or photo (MMS). Most operationally efficient mechanism for outdoor + on-site work.
+
+**This isn't just convenience — it's operational reach mechanism**:
+
+Operational signals route through whichever primitive matches operational reach reality. Email for asynchronous interpersonal context. Calendar for scheduled temporal coordination. SMS for immediate operational reach where surface navigation friction breaks operational flow.
+
+**Concrete competitor comparison**:
+
+> Twilio Studio + MessageBird Flow Builder + Zapier SMS workflows + alternate SMS workflow tools treat SMS as standalone workflow tool — operators leave operational context (CRM / ERP / scheduling tool) to manage SMS workflows in separate tool. State coherence between SMS workflow + operational state is operator-maintained manually. Bridgeable's SMS-as-operational-reach-primitive framing eliminates this context-switch by treating SMS as platform primitive — operational state generates SMS automatically per §3.26.17.18; SMS responses propagate state changes back per §3.26.17.18 inverse coupling; operators never leave operational context to manage SMS.
+
+**Trifecta-completion strategic positioning** (per Phase B refinement):
+
+> Three Layer 1 communication primitives canonicalized: Email (interpersonal coordination), Calendar (temporal coordination), SMS (operational reach). Together they form the operational substrate trifecta — communications + scheduling + reach = operations. Each canonicalized as platform primitive at canon-faithful depth. Bolt-on workflow tools (Twilio Studio + Calendly + alternate scheduling tools) inherit fragmentation as defining limitation; Bridgeable's three-primitive operational substrate produces operational coherence structurally inaccessible to fragmented alternatives. Trifecta completion locks September Wilbert demo positioning at canon level.
+
+#### 3.26.17.17 Canonical design disciplines
+
+Per §3.26.15.16 email seven disciplines + §3.26.16.16 calendar eight disciplines precedent. Eight disciplines canonicalized at canon-faithful depth.
+
+**1. TCPA + 10DLC compliance discipline at primitive level** (per §3.26.17.8). Per-conversation opt-in tracking + indefinite audit log + STOP/HELP carrier-side handling + revocation discipline + 10DLC hybrid registration model. Compliance is operational protection, not bureaucratic burden.
+
+**2. Cost discipline at primitive level** (per §3.26.17.9). Per-tenant + per-account + per-conversation cost tracking + Workshop-authored cost policies + pre-send budget cap enforcement. Runaway-cost scenarios structurally impossible.
+
+**3. From/to + 30-day time-window canonical conversation reconstruction** (per §3.26.17.4). Bridgeable mirrors carrier-side threading verbatim.
+
+**4. Hybrid shared + personal SMS account model** (per §3.26.17.3). Long-form 10DLC numbers canonical.
+
+**5. Polymorphic entity linkage M:N** (per §3.26.17.7). SMS-specific extensions include `delivery` + `driver_route` linked_entity_types.
+
+**6. SMS primitive as operational reach primitive** (per §3.26.17.16 strategic framing). SMS bypasses surface-navigation friction.
+
+**7. Pre-send validation pipeline canonical** (per §3.26.17.5). Defense-in-depth operational protection.
+
+**8. Customer-facing vs operational-team-facing conversation discipline** (per §3.26.17.19). Single primitive with `conversation_orientation` parameter.
+
+#### 3.26.17.18 Operational-state-coupled-to-SMS
+
+Per §3.26.15.18 + §3.26.16.18 inverse coupling discipline. **More immediately operationally meaningful than email's inverse coupling** — SMS is the operational reach primitive.
+
+**Canonical state-change → SMS-message mappings**:
+
+| Operational state change | Generated SMS |
+|---|---|
+| `Delivery.status` set to "out_for_delivery" | SMS to FH coordinator: "Delivery for Anderson en route; ETA 1:30pm" |
+| `Delivery.status` set to "arrived_on_site" | SMS to FH director: "Vault delivered to Hopkins for Anderson service" |
+| `FHCase.service_date_confirmed` set to true | SMS to family with confirmation: "Anderson service confirmed for Thursday at 10am. Reply YES to confirm attendance." |
+| `WorkOrder.status` set to "ready_for_pickup" | SMS to driver with pickup details |
+| `Equipment.next_maintenance_date` <= 24 hours | SMS to maintenance crew |
+| `Driver.shift_start_time` <= 30 minutes | SMS to driver with route summary |
+| `Disinterment.scheduled_date` set | SMS to FH + cemetery + driver |
+
+**Drafted-not-auto-sent discipline** (per §3.26.14.14.5 operator agency canon):
+
+State change → SMS is **drafted automatically**; operator reviews + confirms before invitation propagation. **More important for SMS than Email or Calendar** because TCPA exposure + cost + customer perception.
+
+**Auto-confirmation exceptions** (operator agency preserved with operational pragmatism):
+- Driver SMS to internal team (operational-team-facing conversation orientation; operator pre-authorizes via Workshop policy template)
+- Critical operational signals auto-confirm per Workshop policy template
+- All auto-confirmation paths require explicit Workshop policy template registration
+
+**Inverse: SMS responses propagate state changes**:
+
+When recipient replies to operational SMS, response propagates state to operational entity:
+
+| SMS response | Operational state change |
+|---|---|
+| Driver replies "Confirmed" / "Yes" / "Y" | Delivery.driver_check_in_status = "confirmed" |
+| Family replies "Yes" to service confirmation | FHCase.attendance_confirmed = true |
+| Recipient replies "Got it" / "Received" | Delivery.status = "delivered" |
+| Driver replies with photo (MMS) confirming arrival | Delivery.arrival_photo_attached = true |
+
+**Strict keyword-reply matching canonical discipline** (per Phase B refinement):
+
+Keyword-reply matching is **strict** (case-insensitive + trailing whitespace tolerant only) at September scope. Recipients replying with exact configured keywords (YES, NO, CONFIRM, CANCEL, ARRIVED, DONE per action_type configuration) trigger action commit. Misspellings, informal variants, and natural language responses (e.g., 'yep', 'all good', 'we're set') do NOT auto-commit; conversation requires operator review at unified messaging surface.
+
+Fuzzy keyword matching via Bridgeable Intelligence (`sms.intent_classify` per §3.26.17.23) deferred per §3.26.7.5 with concrete signal documented: operator pattern signals fuzzy matching value AND operator agency discipline preserved through review-before-commit path. Strict matching at canonical scope preserves operator agency per §3.26.14.14.5 (AI classification at action commit path risks AI-decided-not-operator-decided action commits when classification confidence wrong).
+
+**Five canonical SMS action_types at September scope**:
+
+| action_type | action_target_type | Operational use case | Reply pattern |
+|---|---|---|---|
+| `customer_confirmation` | `fh_case` / `sales_order` / `quote` | Customer confirms service date / delivery time / appointment | Keyword-reply (Reply YES/NO) + magic-link variant |
+| `driver_check_in_confirmation` | `delivery` | Driver confirms arrival / departure status | Keyword-reply primarily ("Arrived"/"Done") |
+| `delivery_arrival_acknowledgment` | `delivery` | Recipient acknowledges delivery received | Keyword-reply + optional MMS photo proof |
+| `service_day_acknowledgment` | `fh_case` | Family confirms attendance for service day | Keyword-reply (Reply YES) + magic-link variant |
+| `cross_tenant_operational_acknowledgment` | `cross_tenant_event` | Cross-tenant operator acknowledges joint coordination signal | Keyword-reply primarily |
+
+**TWO action canonical patterns**:
+
+1. **Keyword-reply action_types** — recipient replies with keyword (YES / NO / CONFIRM / CANCEL / ARRIVED / DONE); Bridgeable parses inbound message for keyword match (strict matching per Phase B refinement); inbound action commits + state propagates.
+
+2. **Magic-link action_types** — recipient receives SMS with magic-link URL; clicks → contextual surface (parallel to §3.26.15.17 + §3.26.16.17 magic-link contextual surface). Reuses Step 4c email_action_tokens substrate (renamed `platform_action_tokens` per substrate consolidation direction).
+
+**Action commit auditing** per §3.26.15.8 discipline: every action commit writes audit row with action_idx + action_type + outcome + auth_method (`bridgeable` | `magic_link` | `sms_keyword_reply`) + actor_phone + commit_timestamp. Body content NEVER logged.
+
+#### 3.26.17.19 Customer-facing vs operational-team-facing conversation discipline
+
+**Single primitive with `conversation_orientation` parameter canonical** — NOT separate primitive types. Different compliance posture + visual canon + Workshop template scope + cost discipline per orientation.
+
+**`conversation_orientation` canonical values**:
+
+`customer_facing` — conversation with external recipient (FH family member, manufacturer customer, cemetery family) where Bridgeable tenant is the organizational sender:
+- TCPA strict compliance posture: explicit opt-in required; opt-in audit indefinite
+- Customer-facing visual canon: tenant branding emphasis (per §14.11.1)
+- Customer-facing Workshop templates: marketing-compliance constraints
+- Cost policy posture: budget-capped per Workshop cost policies
+
+`operational_team_facing` — conversation between Bridgeable tenant operators and operational team members:
+- TCPA softer posture: implicit consent through employment relationship
+- Operational team visual canon: internal-team chrome
+- Operational Workshop templates: automation flexibility
+- Cost policy posture: less constrained
+
+**Conversation orientation determined**:
+- At conversation creation: operator selects orientation in composition modal
+- At inbound conversation creation: orientation inferred from account context + Contact lookup
+- Operator override: orientation can be operator-changed mid-conversation if initial inference was wrong; orientation change audited
+
+**Canonical design implications**:
+
+| Aspect | Customer-facing | Operational-team-facing |
+|---|---|---|
+| TCPA opt-in burden | Strict | Lighter |
+| Visual canon | Tenant-branded | Internal-team chrome |
+| Workshop template scope | Customer-confirmation + service-day templates | Driver-check-in + delivery-confirmation templates |
+| Cost policy default | Budget-capped | Permissive |
+| Pulse layer assignment | Communications layer | Operational layer |
+| Audit retention | 7-year default | 7-year default |
+| Magic-link surface chrome | Customer-friendly tone; tenant brand emphasis | Operational-context tone |
+
+**Trade-off considered**: separate primitive types alternative would simplify per-orientation discipline but creates primitive-fragmentation. Single primitive preserves architectural elegance.
+
+#### 3.26.17.20 Strategic vision deferral catalog
+
+Comprehensive deferral catalog matching §3.26.15.21 + §3.26.16.21 deferral discipline.
+
+**Provider abstraction deferrals** (with concrete signals):
+- Bandwidth provider canonical scope — concrete signal: international tenant OR existing Bandwidth contract OR regulatory framework requirement
+- MessageBird provider canonical scope — concrete signal: international/EU tenant
+- Telnyx provider canonical scope — concrete signal: cost-optimization tenant
+- Per-carrier-direct integration — deferred indefinitely
+
+**Phone number provisioning advanced features** (with concrete signals):
+- Short-codes canonical scope — concrete signal threshold: sustained >50,000 outbound SMS/month per tenant + tenant willingness to fund short-code lease (~$1000/month)
+- Toll-free SMS canonical scope — concrete signal: tenant operational use case requiring 1-800/833/844 numbering
+- International numbering scope — deferred indefinitely; US-only at canonical scope
+
+**Compliance advanced features** (with concrete signals):
+- HIPAA-compliant SMS — concrete signal: FH tenant with HPI-carrying SMS use case + HIPAA Business Associate Agreement requirement
+- Per-state SMS opt-out registry integration — concrete signal: tenant California-resident customer base with CCPA-strict requirements
+- Custom emergency keywords — concrete signal: tenant operational use case requiring custom routing keyword
+
+**Cost discipline advanced features**:
+- Per-customer-segment budget caps — concrete signal: tenant marketing campaigns with per-segment budget allocation
+- Per-operator budget caps — concrete signal: tenant operational use case requiring per-operator cost attribution
+- Per-time-window budget caps (granular beyond per-day) — concrete signal: tenant time-window-restricted SMS use case
+- Budget cap inheritance from parent tenant — concrete signal: enterprise multi-tenant deployment
+
+**MMS advanced features**:
+- Multi-attachment MMS — concrete signal: tenant operational use case requiring multi-image-per-message
+- Document attachment via SMS — deferred per §3.26.17.1 architectural scope
+- Video MMS — deferred indefinitely
+- Audio MMS — deferred indefinitely; voice routes to phone primitive (W-4b sequence step 4)
+
+**Workshop advanced template features**:
+- Multi-language SMS templates — deferred per §3.26.15.21 multi-language deferral
+- A/B testing for SMS templates — deferred until concrete tenant signal warrants
+- Drip campaign template authoring — deferred until concrete operational signal
+
+**Cross-tenant SMS advanced patterns**:
+- N-way SMS coordination — canonical 2-tenant pairing first; N-way deferred until concrete network signal
+- Cross-tenant SMS federation across Wilbert network — deferred until network-graph emerges
+
+**SMS Intelligence advanced features**:
+- AI-drafted SMS responses — deferred per §3.26.14.14.5 operator agency discipline
+- SMS conversation sentiment analysis — deferred until concrete operational signal
+- Fuzzy keyword matching via `sms.intent_classify` — deferred per Phase B refinement; concrete signal: operator pattern signals fuzzy matching value AND operator agency discipline preserved through review-before-commit path
+
+**Recurring SMS canonical scope**:
+- Scheduled recurring SMS canonical via Workshop scheduled-template — first-class at September scope
+- Smart-skip for recurring SMS — deferred until Workshop scheduling-rule templates emerge
+
+**Phone-integrated SMS deferrals** (depend on Phone primitive — W-4b sequence step 4):
+- Phone-call-after-SMS-no-response automation — deferred until Phone primitive ships
+- Voice-mediated SMS composition — deferred indefinitely
+
+**Calendar-integrated SMS canonical scope**:
+- SMS-based calendar invitation acceptance via magic-link — first-class at September scope per §3.26.16.21 (now unblocked by SMS primitive shipping)
+- Cross-primitive SMS-calendar workflow templates — first-class at September scope
+
+Each deferred per §3.26.7.5 architectural restraint discipline.
+
+#### 3.26.17.21 SMS-triggered Decision Focus
+
+Per §3.26.11.2 Decision Focus + §3.26.11 Focus Primitive Types canon.
+
+**Canonical Decision Focus triggers**:
+
+| Trigger | Decision Focus core element | Operator decides |
+|---|---|---|
+| **Compliance triage** | triage queue | Opt-out events review (audit recent STOP keywords + manual opt-out actions); operator sequentially reviews + confirms or escalates |
+| **Cost overrun review** | triage queue | Budget cap approached/exceeded; operator decides expand cap, halt account, or absorb overrun |
+| **Cross-tenant counter-acknowledgment review** | triage queue | Cross-tenant operational SMS counter-acknowledgments arrived; operator sequentially decides escalate / accept / iterate |
+| **Stale conversation triage** | triage queue | Customer messages awaiting reply >24h; operator sequentially decides reply / archive / escalate |
+| **Fuzzy keyword reply review** | triage queue | Inbound message that didn't match canonical keywords but appears to be confirmation attempt; operator sequentially reviews + commits action OR responds with clarification |
+
+**New triage queue config types canonical at September scope**:
+- `sms_compliance_triage`
+- `sms_cost_overrun_triage`
+- `sms_cross_tenant_counter_ack_triage`
+- `sms_stale_conversation_triage`
+- `sms_fuzzy_keyword_reply_triage`
+
+**Triage core element canonical** per §3.26.11 amendment: Phase 5 task_triage + ss_cert_triage queue infrastructure is the implementation substrate.
+
+**Auto-closure per §3.26.11.11**: Decision Focus auto-closes on decision committed.
+
+**Triage queue surface integration**: SMS Decision Focus triage queues surface in Pulse Operational layer + Communications layer + dedicated `/triage/sms-*` routes via Phase 5 triage primitive infrastructure.
+
+#### 3.26.17.22 SMS-mediated Coordination Focus
+
+Per §3.26.15.23 email-mediated + §3.26.16.23 calendar-mediated Coordination Focus precedents + Step 5b investigation findings.
+
+**Canonical use cases**:
+- Joint operational coordination via SMS (Hopkins+Sunnycrest joint service-day SMS coordination)
+- Multi-driver operational SMS coordination
+- Cross-tenant emergency SMS coordination
+- Quality issue rapid-response SMS coordination
+
+**Architecture** (extends §3.26.11.3):
+- Coordination Focus instantiated with `core_element="real-time-thread"`
+- SMS conversation becomes Focus's `primary_communication_channel_thread_id` (parallel to email's primary thread + calendar's primary scheduling anchor)
+- Focus participants ↔ conversation participants
+- Future SMS messages surface in BOTH unified messaging surface AND Coordination Focus
+
+**Promotion mechanics**:
+- Trigger 1 — Manual operator promotion (canonical baseline)
+- Trigger 2 — Intelligence-suggested promotion via Workshop home Section 4
+- Auto-promotion deferred per §3.26.7.5
+
+**Cross-tenant participation patterns** (per §3.26.11.10): cross-tenant Coordination Focus common pattern; bilateral consent; per-tenant participant routing; per-side audit logs; cross-tenant masking per §3.25.x.
+
+**Magic-link participant scope** (per §3.26.11.9): external participants without Bridgeable accounts participate via Focus-magic-link (distinct from §3.26.17.18 SMS-action-magic-link — SMS-action-magic-link is single-action; Focus-magic-link is full-Focus-scope). kill-the-portal canon preserved.
+
+**Cross-references**: §3.26.17.15 cross-tenant SMS visibility; §3.26.11.6 sub-Focus hierarchy; §3.26.11.9 magic-link participant scope; §3.26.15.23 email-mediated Coordination Focus; §3.26.16.23 calendar-mediated Coordination Focus.
+
+**Deferral per §3.26.7.5 + Step 5b investigation**:
+
+SMS-mediated Coordination Focus implementation deferred until **Coordination Focus primitive domain arc** ships. Same five concrete signals from Step 5b investigation findings + §3.26.15.23 + §3.26.16.23:
+
+1. Coordination Focus primitive *domain* arc shipped
+2. Sub-Focus hierarchy shipped (per §3.26.11.6)
+3. Cross-tenant Focus consent model shipped (per §3.26.11.10)
+4. Focus-scoped magic-link participant infrastructure shipped (per §3.26.11.9)
+5. Workshop primitive shipped
+
+When Coordination Focus primitive domain arc ships, BOTH email-mediated (§3.26.15.23) AND calendar-mediated (§3.26.16.23) AND SMS-mediated (§3.26.17.22) Coordination Focus integration follow as parallel implementation work — same primitive substrate; different communication-channel anchors. Single Coordination Focus arc unblocks all three communication primitives' integration.
+
+**Symmetric deferral discipline** preserved across communication primitives — Email + Calendar + SMS all have parallel canon prose for Coordination Focus integration with parallel deferrals + parallel concrete signals.
+
+#### 3.26.17.23 SMS Intelligence integration
+
+Per Bridgeable Intelligence backbone canonical pattern + §3.26.15.24 email + §3.26.16.24 calendar Intelligence precedents.
+
+**September canonical scope: four managed prompts**:
+
+| Prompt | Model | Use | Storage |
+|---|---|---|---|
+| `sms.intent_classify` | Haiku | Inbound message classification → intent_label for routing per §3.26.11.8 SMS thread routing canon. **NOT used for action commit per Phase B Q12 strict-match discipline** | Prompt registered; classification stored on SmsMessage; routing per §3.26.11.8 |
+| `sms.priority_classification` | Haiku | Inbound message priority classification → priority_tier (`critical` / `important` / `routine`) | Prompt registered; classification stored on SmsConversation |
+| `sms.compliance_review` | Haiku | Outbound message TCPA compliance pre-send review → compliance_score + flagged concerns | Prompt registered; review logged on SmsMessage at draft time |
+| `sms.response_draft` | Sonnet | Operator-requested response drafting | Prompt registered; drafts NOT cached |
+
+**Operator agency discipline preserved per §3.26.14.14.5**: AI suggests + classifies; operator decides + commits. Canonical anti-patterns:
+- AI auto-commits action without operator approval
+- AI auto-sends drafted responses
+- AI auto-flags messages as compliance-violating without operator review
+- AI-classification driving routing without operator visibility
+
+**Intelligence-mediated routing canonical** (extends §3.26.11.8 SMS thread routing canon): Layer 2 (intent classification for ambiguous routing cases) uses `sms.intent_classify` prompt. Inbound SMS that doesn't cleanly match Layer 1 (most-recent-active-Focus default) gets Intelligence-classified intent → routed to highest-confidence Focus context. Operator surface displays classification visibly.
+
+**Compliance review canonical pattern**:
+
+`sms.compliance_review` runs at composition time (not send time) — operator drafts message; Intelligence reviews; operator sees flagged concerns BEFORE clicking send. Pre-send review preserves operator agency.
+
+**Future canonical prompts deferred per §3.26.17.20**:
+- `sms.fuzzy_keyword_match` — concrete signal: operator pattern signals fuzzy matching value
+- `sms.relationship_health`
+- `sms.cross_customer_pattern`
+- `sms.send_time_optimize`
+
+**Privacy-preserving Intelligence telemetry** (parallel to §3.26.16.24 calendar Intelligence telemetry): intent classification telemetry NEVER logs SMS body content — only classification outcome + classification position confidence. Compliance-review flagged-concern telemetry similarly content-free.
+
+#### 3.26.17.24 SMS Workshop integration
+
+Per §3.26.14.4 templates-as-data forcing function + §3.26.15.25 email + §3.26.16.25 calendar Workshop integration precedents.
+
+**Per-template-type canonical** (Phase C Q16 confirmation): five distinct template types corresponding to five distinct authoring use cases.
+
+**Meta-pattern application**: Workshop template granularity is determined by structural-overlap-of-composition-shapes. Email's three composition shapes share substantial structural overlap → single template_type. Calendar's three template shapes are structurally different → three template types. SMS's five template shapes are structurally different at higher count → five template types.
+
+**Template type 1: `sms_message_template`**
+
+Single SMS message composition reusable. Canonical use cases:
+- "Customer service confirmation" — text + variables for service-day confirmation prompts
+- "Driver delivery notification" — text + variables for driver SMS to FH on arrival
+- "Customer follow-up" — quote follow-up SMS
+
+Storage: `vault_items.metadata_json.sms_message_template_config`.
+
+Tune mode parameters: recipient routing, body template (with dynamic-data tokens; segment-count visibility), conversation_orientation default, MMS attachment slots.
+
+**Template type 2: `sms_automated_reply_template`**
+
+Rule-based response templates (predicate + response). Canonical use cases:
+- "STOP keyword response"
+- "After-hours reply"
+- "Driver check-in confirmation reply"
+
+Storage: `vault_items.metadata_json.sms_automated_reply_template_config`.
+
+Tune mode parameters: trigger predicate, response template, state change action, operator notification.
+
+**Template type 3: `sms_opt_in_flow_template`**
+
+Multi-message opt-in confirmation flow templates. Canonical use cases:
+- "Customer service opt-in flow"
+- "FH family opt-in flow"
+- "Driver operational SMS opt-in"
+
+Storage: `vault_items.metadata_json.sms_opt_in_flow_template_config`.
+
+Tune mode parameters: initial opt-in message, confirmation reply keyword, confirmation success message, decline keyword handling, multi-message orchestration timing, audit trail requirements.
+
+**Template type 4: `sms_cost_policy_template`**
+
+Declarative cost discipline policies. Canonical use cases:
+- "Operational SMS unlimited; customer SMS budget-capped"
+- "Driver SMS unlimited 6am-6pm; customer SMS unlimited 8am-8pm"
+- "Approaching budget cap alert thresholds"
+
+Storage: `vault_items.metadata_json.sms_cost_policy_template_config`.
+
+Tune mode parameters: budget cap rules, alert thresholds, cap-exceeded behavior, override conditions.
+
+**Template type 5: `sms_campaign_registration_template`**
+
+TCR campaign registration helper templates per §3.26.17.3 hybrid registration model. Canonical use cases:
+- "Customer service campaign registration"
+- "Driver operational campaign registration"
+- "Cross-tenant operational campaign registration"
+
+Storage: `vault_items.metadata_json.sms_campaign_registration_template_config`.
+
+Tune mode parameters: use-case selection, opt-in flow declarations, sample message templates, brand association, submission discipline.
+
+**Network library publishing** (per §3.26.14.10): all five template types canonicalize for network library publishing.
+
+**Cross-vertical applicability examples**:
+- FH SMS patterns: family communication templates + service-day confirmation flows + aftercare check-in templates
+- Manufacturing SMS patterns: driver check-in templates + delivery confirmation flows + customer service templates
+- Cross-vertical patterns: appointment reminder templates + emergency response auto-reply templates + cost policy templates
+
+**Workshop home surfacing** (per §3.26.14.3 5-section composition):
+- Section 1 — Your Customizations: operator-authored SMS templates
+- Section 2 — Tenant Templates: shared SMS templates within tenant
+- Section 3 — Network Library: cross-tenant SMS templates browsable for adoption
+- Section 4 — Intelligence Suggestions: per §3.26.14.14
+- Section 5 — Recent Changes: SMS template version history
+
+**Cross-references**: §3.26.14 Workshop Primitive (entire Workshop architecture applies) + §3.26.17.14 SMS composition canonical authoring surface + §3.26.17.18 operational-state-coupled-to-SMS + §3.26.17.9 cost discipline.
+
+---
+
 # Part 6 — Funeral Home Vertical
 
 ## 6.1–6.9 Existing Funeral Home Sections

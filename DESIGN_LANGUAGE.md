@@ -5706,6 +5706,269 @@ Parallel to §14.9.5 email operational-action affordance chrome canon. Calendar 
 
 ---
 
+## Section 14.11 — SMS Primitive Visual Canon (Session 4)
+
+Per-primitive visual canon for the SMS primitive — extending §14's Communications Layer foundation with SMS-specific composition surfaces. Companion to BRIDGEABLE_MASTER §3.26.17 (architectural).
+
+§14.11 extends §14 Communications Visual System canonical (per Session 4 Phase C Q15 confirmation) — SMS IS one of four Layer 1 communication primitives per §3.26.6.4 sequencing canon. Cross-primitive Pattern C composition (Communications layer Glance widgets row) requires shared visual vocabulary across all four primitives. Pattern locks continue: §14.12 Phone, §14.13 Messaging.
+
+Phase W-4b Layer 1 ships the SMS primitive as the third concrete realization of the Communications Layer (after Email §14.9 + Calendar §14.10). §14.11 locks visual canon for the five SMS-specific surfaces that compose inside Bridgeable's primitive framework — distinguished from Email + Calendar by SMS's tighter substrate (1600-char body, plain text, single-image MMS), heavier compliance chrome (TCPA opt-in state, audit trail, STOP/HELP affordances), and outbound-weighted operational reach (system-generated SMS dominant per §3.26.17.18 state-changes-generate-SMS canon).
+
+### 14.11.1 SMS conversation list visual canon
+
+SMS conversation list is the **default presentation mode** for unified messaging surface per §3.26.17.10. Chronological list ordered by `last_message_at` DESC; per-tenant `unread_count_for_tenant` indicator per conversation.
+
+**SMS-workspace-shape distinction from Space architecture** (per Session 4 Phase B refinement, parallel to §14.10.1 calendar-workspace-shape distinction): SMS workspace at `/sms` route is full-screen single-purpose surface. **NOT a Space** (Spaces are configurable contextual workspaces per §3.26.x). SMS workspace ships predetermined list + detail + filter chrome; not user-configurable Space chrome. Visual treatment differentiates: Space chrome carries Pattern 2 + sidebar pin chrome + space-specific accent; SMS workspace carries list-specific chrome + workspace-shape continuity with §14.9 Email + §14.10 Calendar workspace patterns. Prevents canon-vs-implementation drift at visual level.
+
+**SMS workspace composition** (Pattern A workspace-shape):
+
+```
+┌─ SMS Workspace ─────────────────────────────────────────────────────────┐
+│  Messages                                          [Compose new]         │
+│  [All / Customer / Operational] [Account selector ▾] [Filter] [Search]   │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ ●  Hopkins FH (Mary Hopkins)                       2 min ago       │ │
+│  │    On my way — should be there by 11:30                             │ │
+│  │ ─────────────────────────────────────────────────────────────────  │ │
+│  │ ●● Driver Mike (Sunnycrest)                        14 min ago      │ │
+│  │    Truck loaded. Heading out now.                                   │ │
+│  │ ─────────────────────────────────────────────────────────────────  │ │
+│  │    +1 (315) 555-0142                               1 hr ago        │ │
+│  │    Y                                          ↗ joint event accept │ │
+│  │ ...                                                                 │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Conversation row composition** (Pattern 5 mid-dot separator chrome):
+- Unread indicator: solid terracotta dot left-edge `●` for `unread_count_for_tenant > 0`; empty `○` for read; zero-padding when no unread distinction
+- Display name: `text-body font-medium text-content-strong` — uses `external_display_name` if populated; falls back to `external_phone_number` formatted as `+1 (315) 555-0142`; resolved CompanyEntity name takes precedence when `resolved_company_entity_id` set
+- Tenant indicator: when conversation is operational-team-facing (per §3.26.17.19), prefix with chip showing tenant context (e.g., "Sunnycrest"); customer-facing conversations omit chip
+- Last-message preview: `text-body-sm text-content-muted` truncated to 64 chars single-line; ellipsis at last-word boundary
+- Relative timestamp: `text-caption text-content-muted` right-aligned
+- Cross-tenant indicator: `↗` glyph prepended to display name for cross-tenant conversations per §3.26.17.15
+- Action affordance indicator: when last inbound message contains pending operational action (per §3.26.17.18), append affordance chip right-aligned (e.g., "↗ joint event accept" / "↗ delivery accept")
+- TCPA opt-in pending: italic display name + dashed border-bottom for conversations where `tcpa_opt_in_status == "opt_in_pending"` — visual signal that operator must NOT send outbound until opt-in resolved
+- TCPA opt-out: muted opacity 60% + crossed-through affordance chips for conversations where `tcpa_opt_in_status == "opted_out"` — visual signal that outbound is structurally blocked
+
+**Conversation orientation tab filter** (top of list per §3.26.17.19): three-state segmented control — `All / Customer-facing / Operational team`. Default landing on `All`. Filter chip persists across sessions per user preference.
+
+**Account selector** (multi-account-per-tenant per §3.26.17.3): dropdown right of orientation tabs. Single-account tenants render account name as static label. Multi-account tenants get dropdown with shared/personal grouping per §3.26.17.3 hybrid model.
+
+**Empty state**: when no conversations match filter, render Pattern 8 empty-state card with icon + "No messages" headline + "Compose new message" CTA. Composition affordance always reachable from empty state.
+
+**Search affordance**: full-text search across body_text + external_display_name + external_phone_number. Search results render in same row composition with matched substring highlighted via `bg-accent-subtle/40` inline span.
+
+### 14.11.2 SMS conversation detail rendering visual canon
+
+SMS conversation detail renders chronological message sequence with Pattern 2 sub-cards per message. Distinct from §14.9.2 email thread rendering by SMS's plain-text substrate (no HTML; no quoted-reply chains; no attachment list — single-image MMS canonical per §3.26.17.4).
+
+**Conversation detail composition** (Pattern A workspace-shape with right-aligned outbound, left-aligned inbound):
+
+```
+┌─ Hopkins FH (Mary Hopkins) ─────────────────────────────────────────────┐
+│  +1 (315) 555-0142  •  ✓ Opted in 2026-04-12  •  Customer-facing         │
+│  [Linked: Order SO-2026-0142]  [Open peek]                               │
+│  ──────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  ┌──────────────────────────────────────────┐                            │
+│  │ Hi Mary, your service is confirmed for   │  ← outbound (right-aligned)│
+│  │ Thursday at 11am. Reply Y to confirm.    │     [System-generated]     │
+│  │ 9:14 AM  •  Delivered  •  $0.0075        │                            │
+│  └──────────────────────────────────────────┘                            │
+│                                                                          │
+│  ┌──────────────────────────────────────────┐                            │
+│  │ Y                                         │  ← inbound (left-aligned) │
+│  │ 9:21 AM                                   │     [↗ Acceptance recorded]│
+│  └──────────────────────────────────────────┘                            │
+│                                                                          │
+│  ┌──────────────────────────────────────────┐                            │
+│  │ On my way — should be there by 11:30     │  ← inbound                 │
+│  │ 11:14 AM                                  │                            │
+│  └──────────────────────────────────────────┘                            │
+│                                                                          │
+│  ──────────────────────────────────────────────────────────────────────  │
+│  [Reply inline] [Send template ▾] [Add to task]                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Conversation header** (Pattern 2 chrome with internal sections):
+- Display name `text-h4 font-plex-sans font-medium`
+- Phone number `text-body-sm font-plex-mono text-content-muted` — monospace for digit alignment
+- TCPA opt-in indicator: `✓ Opted in {date}` / `Opt-in pending` (warn) / `Opted out — outbound blocked` (status-error) per `tcpa_opt_in_status`
+- Conversation orientation chip: `Customer-facing` / `Operational team` per `conversation_orientation`
+- Linked entity chips: one per `sms_message_linkages` row; click opens peek per §peek-host canon
+- Action affordances: Open-peek for resolved company entity / Open-detail for linked entity
+
+**Message bubble composition** (Pattern 2 sub-card chrome — distinct from §14.9.2 email message-as-Pattern-2-card; SMS bubble is internal sub-card within conversation Pattern 2 wrapper):
+- Outbound messages: right-aligned; `bg-surface-elevated`; max-width 70% of conversation column
+- Inbound messages: left-aligned; `bg-surface-base`; max-width 70% of conversation column
+- Body text: `text-body font-plex-sans` plain text; auto-link URLs with `text-accent underline`; emoji render at 1.2× size for readability
+- Timestamp: `text-caption text-content-muted` below body
+- Delivery status (outbound only): `Delivered` (status-success) / `Sent` (status-info) / `Failed: {error}` (status-error) inline with timestamp
+- Cost (outbound only): `$0.0075` rendered after delivery status `font-plex-mono text-caption text-content-muted` — visual signal of per-message cost discipline per §3.26.17.9
+- Automation source indicator: outbound messages with `automation_source != "manual"` render small chip below timestamp — `[System-generated]` / `[Workshop template]` / `[AI drafted]` per §3.26.17.5 path
+- Operational action result chip: when inbound message resolved keyword-reply per §3.26.17.18, append `[↗ Acceptance recorded]` / `[↗ Reschedule proposed]` chip right of timestamp `text-caption text-status-success`
+
+**Message grouping**: consecutive messages from same direction within 60-second window collapse timestamp display — only first message shows timestamp; subsequent messages tighten gap. Improves visual density without losing chronology.
+
+**Date separators**: when consecutive messages span multiple calendar dates, insert horizontal divider with date label `text-caption text-content-muted` between message groups.
+
+**Auto-scroll behavior**: conversation detail auto-scrolls to bottom on first load; preserves scroll position on subsequent navigation. New inbound message during active view triggers scroll-to-bottom only if user is within 200px of bottom (preserves scroll-up-to-history behavior).
+
+**MMS image rendering** (per §3.26.17.4 + §3.26.17.5 canonical scope, single image per message bounded):
+- Image renders inline within bubble at max-width 320px / max-height 240px (preserves aspect ratio)
+- Click image → modal lightbox at full resolution
+- Image size validation surfaces visually: dotted border + "Image processing..." overlay during upload; status-error border + "Failed to upload" message on rejection per `provider config max_size_kb` per §3.26.17.4 size discipline (1MB Twilio canonical)
+- MMS indicator: small camera glyph chip top-right of bubble distinguishing MMS from SMS
+
+### 14.11.3 SMS composition surface visual canon
+
+Three composition shapes per §3.26.17.14: new-conversation modal + inline reply within conversation detail + Workshop-template send modal. Distinct from §14.9.3 email composition (no HTML body; no subject line; tighter character budget surfaced).
+
+**New-conversation modal composition** (Pattern 6 modal chrome with `duration-arrive ease-settle` enter animation):
+
+```
+┌─ New SMS conversation ──────────────────────────── [×] ─────────────────┐
+│                                                                          │
+│  To:   [Phone number or contact ▾]    +1 (315) 555-0142  ✓ Resolved     │
+│  From: [Sunnycrest main line ▾]        +1 (315) 555-7700                │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ Hi Mary, just confirming your service is set for Thursday at 11am. │ │
+│  │ Reply Y to confirm.                                                 │ │
+│  │                                                                     │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│  73 / 1600 chars  •  1 segment  •  Estimated cost: $0.0075               │
+│                                                                          │
+│  ⚠ Recipient has not opted in. Workshop opt-in flow will start.          │
+│                                                                          │
+│  [📎 Add image] [Use template ▾]              [Cancel] [Send]            │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**To-field affordance**: typeahead resolves against tenant CompanyEntities + Contacts + raw E.164 phone input. Resolved entity surfaces with `✓ Resolved: Hopkins FH` chip; unresolved phone enters as raw with cross-tenant detection per §3.26.17.4 inbound resolution canon. TCPA opt-in status surfaces inline post-resolution: `✓ Opted in` / `Opt-in pending — flow will start` / `Opted out — cannot send`.
+
+**From-field affordance**: dropdown of tenant's `sms_accounts` per §3.26.17.3 hybrid model. Single-account tenants render as static label.
+
+**Body field composition**:
+- Plain text textarea (no HTML rich-text per §3.26.17.1 substrate canon)
+- `font-plex-sans text-body` matching message-bubble rendering
+- Character counter inline below: `73 / 1600 chars` `font-plex-mono text-caption`
+- Segment counter: `1 segment` for ≤160 chars; increments at 153-char-per-segment for multi-segment per Twilio canonical math
+- Estimated cost: `$0.0075` per segment per §3.26.17.9 cost discipline
+- Approaching limit: amber warning at 1500 chars; status-error at 1600 chars; send disabled
+
+**Compliance pre-send chrome** per §3.26.17.5 pre-send validation pipeline:
+- Opt-in pending: status-warning banner above send button — "Recipient has not opted in. Workshop opt-in flow will start." Button label changes to "Send opt-in request" instead of "Send"
+- Opt-out: status-error banner — "Recipient opted out. Outbound blocked." Send button disabled.
+- Budget cap exceeded per §3.26.17.9: status-error banner — "Tenant SMS budget cap exceeded for current period." Send button disabled.
+- Compliance keyword detected: Bridgeable Intelligence `sms.compliance_review` per §3.26.17.23 surfaces inline review prompt — "Body contains content that may violate carrier policies. Review before send."
+
+**MMS image attach affordance**: single image attachment button. File picker constrained to allowed types (PNG/JPG/GIF) + size threshold per provider config (default 1MB). Selected image preview renders inline at 80×80 thumbnail with remove `[×]` affordance. Multi-attachment deferred per §3.26.17.20.
+
+**Template picker**: dropdown of tenant-authored Workshop templates per §3.26.17.24. On selection: pre-fills body with rendered template content; preserves template_id reference for audit trail. Operator can edit pre-filled body before send (template-as-starting-point not template-as-immutable).
+
+**Inline reply composition within conversation detail**:
+- Inline composer renders persistently at bottom of conversation detail (not modal)
+- Identical body field + character counter + cost estimate composition
+- From-field static (matches conversation account); To-field static (matches conversation external party)
+- Preserves conversation context flow — operator never leaves conversation detail to send reply
+- Per Session 2 Phase B refinement parallel: discrete authoring tasks (new conversation) deserve modal; reply within thread context stays inline
+
+**Workshop-template send modal**:
+- Distinct entry point: from saved view / Pulse widget / state-change preview per §3.26.17.18
+- Composes new-conversation modal but pre-loaded with template + recipient + linked entity
+- Operator confirms before send per §3.26.14.14.5 operator agency discipline
+- Post-send: outbound message persists with `automation_source = "workshop_template"`
+
+### 14.11.4 Cross-tenant SMS conversation chrome
+
+Cross-tenant SMS visibility bounded per §3.26.17.15 — less common than cross-tenant email/calendar but operationally meaningful (Hopkins↔Sunnycrest delivery driver coordination, joint event acknowledgments). Visual chrome inherits cross-tenant masking discipline per §3.25.x.
+
+**Cross-tenant conversation list row** (extends §14.11.1 row composition):
+- `↗` glyph prepended to display name (canonical cross-tenant indicator parallel to §14.9.4 + §14.10.1)
+- Partner-tenant chip below display name: `text-caption text-content-muted bg-accent-subtle/40 rounded-sm` with partner tenant name (e.g., "Hopkins FH")
+- Bilateral consent state surfaces inline: `Both tenants accepted` (status-success) / `Awaiting Hopkins consent` (status-warning) / `Hopkins declined` (status-error)
+
+**Cross-tenant conversation detail header** (extends §14.11.2 header):
+- Bilateral consent banner pinned below conversation header — surfaces consent state for cross-tenant SMS visibility per §3.26.17.15
+- Cross-tenant masking indicator: when external participant identity is masked per §3.25.x, render as `[Hopkins FH operator]` placeholder with reveal-affordance for tenants with reveal permission
+- Cross-tenant audit chip: every cross-tenant message stamps audit row visible via `View audit trail` link in conversation header per §3.26.17.8 indefinite audit log canon
+
+**Cross-tenant message bubble composition** (extends §14.11.2 bubble):
+- Cross-tenant inbound messages: left-aligned with terracotta accent border-left (4px solid) parallel to §14.10.1 cross-tenant event chrome
+- Operator attribution: cross-tenant inbound shows `[Hopkins FH operator]` attribution above body when partner tenant has multiple operators on shared conversation per §3.26.15.15 Front-style shared inbox UX
+- Operational state propagation: cross-tenant messages that propagate state changes (per §3.26.17.18 inverse coupling) render with state-change indicator — `[State propagated: SO-2026-0142 → confirmed]` chip below bubble
+
+**MMS visual chrome in cross-tenant context**:
+- MMS images in cross-tenant conversations subject to same single-image bound per §3.26.17.4
+- Cross-tenant photo proof scenarios canonical: delivery confirmation photo from Sunnycrest driver to Hopkins FH dispatcher renders inline; Hopkins FH dispatcher peek affordance per §3.26.17.7 polymorphic linkage shows linked Delivery entity
+- Cross-tenant masking applies to image metadata (EXIF stripped server-side per §3.26.17.6 cross-tenant masking inheritance discipline)
+
+**Compliance audit chrome canonical**:
+- Audit trail surface accessible via conversation header link
+- Audit rows render Pattern 5 mid-dot separator: `{timestamp} • {actor} • {action} • {entity}` per audit log shape
+- Indefinite retention indicator: audit rows pinned with retention badge — `7-year retention default` per §3.26.17.8
+- Operator-side controls disabled (audit log is read-only for operators per §3.26.17.8 audit log canon)
+
+### 14.11.5 Operational-action affordance chrome
+
+SMS-specific operational-action affordance chrome per §3.26.17.18 state-changes-generate-SMS canon. Five canonical action_types per §3.26.17.18: customer_confirmation + driver_check_in_confirmation + delivery_arrival_acknowledgment + service_day_acknowledgment + cross_tenant_operational_acknowledgment. Two action patterns per §3.26.17.18: keyword-reply + magic-link.
+
+**Keyword-reply affordance chrome** (per §3.26.17.18 strict keyword-reply matching canon):
+- Outbound system-generated SMS includes inline directive: `Reply Y to confirm` / `Reply 1 to accept, 2 to reschedule` — directive matches strict-matching expectation per §3.26.17.18 (case-insensitive + trailing whitespace tolerant only)
+- Inbound matching reply: bubble renders with `[↗ Acceptance recorded]` / `[↗ Reschedule proposed]` chip right of timestamp per §14.11.2 chrome
+- Inbound non-matching reply: bubble renders without action chip; surfaces in operator review queue per §3.26.17.18 review-before-commit path. Status-warning chip: `[? Operator review needed]` surfaces when fuzzy-matching deferral signal accumulates per §3.26.17.18 + §3.26.17.20.
+- Operator review surface: per-conversation review affordance accessible via `[? Operator review needed]` chip — opens modal with inbound message body + candidate state-change actions + commit-or-skip controls. Operator agency preserved per §3.26.14.14.5 (AI classification at action commit path defers to operator).
+
+**Magic-link affordance chrome** (per §3.26.17.18 magic-link pattern, parallel to §3.26.15.17 + §3.26.16.10 kill-the-portal canon):
+- Outbound SMS includes magic-link: `Confirm: bridgeable.app/sms/abc123` shortened-URL format
+- Magic-link tokens reuse `platform_action_tokens` substrate per §3.26.16.17 substrate consolidation
+- Magic-link landing surface: tenant-branded single-purpose accept/decline/propose-counter form (kill-the-portal canon — no Bridgeable login required)
+- Token expiry default: 72 hours per §3.26.15.17 parallel; configurable per Workshop template per §3.26.17.24
+- Single-action scope: magic-link is single-action commit (distinct from Coordination Focus magic-link which is full-Focus-scope per §3.26.17.22)
+
+**MMS photo proof affordance**:
+- Driver delivery confirmation: outbound system request `Reply with delivery photo to confirm` triggers Workshop opt-in flow per §3.26.17.24
+- Inbound MMS image with delivery context: bubble renders with linked Delivery entity peek affordance + `[↗ Delivery photo recorded]` chip
+- Photo proof state propagation: per §3.26.17.18 inverse coupling — Delivery.status auto-transitions to `delivered` with photo evidence linked
+- Cross-tenant photo proof per §14.11.4: Hopkins FH dispatcher receives cross-tenant copy with operational state propagation chip
+
+**Pre-send action chrome on operational SMS**:
+- Outbound system-generated SMS via §3.26.17.5 Path 2 surfaces action_type indicator in compose-preview surface (when applicable per Workshop template per §3.26.17.24)
+- Operator confirm-before-send required per §3.26.14.14.5 — drafted SMS surfaces in Workshop-managed template preview; operator confirms before send
+- Drafted-not-auto-sent discipline preserved: state changes draft outbound SMS but never auto-send without operator confirm
+
+**Affordance state visibility in saved views per §3.26.17.13**:
+- SMS-typed saved view "SMS awaiting reply" surfaces conversations with outbound action_type pending matching reply — Pattern A list shape
+- SMS-typed saved view "SMS reply review queue" surfaces conversations with non-matching inbound replies awaiting operator review — Pattern A list shape with priority sort
+- SMS-typed saved view "SMS budget cap warning" surfaces conversations approaching tenant budget cap per §3.26.17.9 — Pattern A list shape
+
+### 14.11.6 Cross-references
+
+- **§14** (Communications Layer Visual Canon) — per-primitive icon canon, count typography, Pattern C composition
+- **§14.9** (Email Primitive Visual Canon) — sibling primitive canon pattern; SMS parallels structure (bubble-as-Pattern-2-sub-card distinction from email-message-as-Pattern-2-card)
+- **§14.10** (Calendar Primitive Visual Canon) — sibling primitive canon pattern; workspace-shape distinction shared
+- **§13.4.1** — density-tier opt-in canonical reference
+- **§11 Pattern A** + **§11 Pattern C** — Layer Composition Patterns
+- **§6** — overlay family canon (modal composition surface inherits this canon)
+- **BRIDGEABLE_MASTER.md §3.26.17** — SMS Primitive Architecture (architectural canon)
+- **BRIDGEABLE_MASTER.md §3.26.17.2** — SMS entity model (Conversation + Message + Participant + Account + AccountAccess)
+- **BRIDGEABLE_MASTER.md §3.26.17.4** — Twilio canonical provider + from/to + 30-day window conversation reconstruction
+- **BRIDGEABLE_MASTER.md §3.26.17.5** — outbound SMS infrastructure + pre-send validation pipeline
+- **BRIDGEABLE_MASTER.md §3.26.17.7** — polymorphic linkage canonical catalog (delivery + driver_route SMS-specific extensions)
+- **BRIDGEABLE_MASTER.md §3.26.17.8** — TCPA + 10DLC compliance discipline (4-value enum + 5-value method enum)
+- **BRIDGEABLE_MASTER.md §3.26.17.9** — cost discipline + budget caps + Workshop cost policies
+- **BRIDGEABLE_MASTER.md §3.26.17.11** — hybrid layer contribution pattern (Communications + Operational layers split)
+- **BRIDGEABLE_MASTER.md §3.26.17.16** — communications + scheduling + reach = operations strategic framing (trifecta completion)
+- **BRIDGEABLE_MASTER.md §3.26.17.18** — operational-state-coupled-to-SMS canonical action_types + 2 action patterns (keyword-reply + magic-link)
+- **BRIDGEABLE_MASTER.md §3.26.17.19** — customer-facing vs operational-team-facing conversation discipline (single primitive with conversation_orientation parameter)
+- **BRIDGEABLE_MASTER.md §3.26.17.23** — SMS Intelligence integration (4 prompts canonical scope)
+- **BRIDGEABLE_MASTER.md §3.26.17.24** — SMS Workshop integration (5 template types per per-template-type granularity)
+
+---
+
 ## Section 15 — Briefing Visual System
 
 Visual canon for morning + evening briefings — three-state machine visualization, per-state typography, per-state composition. Companion to BRIDGEABLE_MASTER §3.26.10 (architectural).
