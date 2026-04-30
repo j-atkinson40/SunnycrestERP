@@ -5969,6 +5969,407 @@ SMS-specific operational-action affordance chrome per §3.26.17.18 state-changes
 
 ---
 
+## Section 14.12 — Phone Primitive Visual Canon (Session 5)
+
+Per-primitive visual canon for the Phone primitive — extending §14's Communications Layer foundation with phone-specific composition surfaces. Companion to BRIDGEABLE_MASTER §3.26.18 (architectural).
+
+§14.12 extends §14 Communications Visual System canonical (per Session 5 Phase C Q20 confirmation) — Phone IS the fourth and final Layer 1 communication primitive per §3.26.6.4 sequencing canon. Cross-primitive Pattern C composition (Communications layer Glance widgets row) requires shared visual vocabulary across all four primitives. Pattern locks for future Layer 1 communication primitive: §14.13 Messaging (Session 6 candidate).
+
+Phase W-4b Layer 1 ships the Phone primitive as the fourth concrete realization of the Communications Layer (after Email §14.9 + Calendar §14.10 + SMS §14.11). §14.12 locks visual canon for the seven Phone-specific surfaces that compose inside Bridgeable's primitive framework — distinguished from Email + Calendar + SMS by Phone's real-time + asynchronous duality (live call surface canonical at September scope per Q11 + Q19), call-intelligence-as-primary-value framework (transcript + multi-artifact intelligence primary; raw audio compliance-only), heavier compliance chrome (multi-framework compliance — state-by-state two-party consent + HIPAA + FCC + CFPB + recording disclosure), and voice-mediated workflows substrate (Phone primitive ships voice input infrastructure consumed by other primitives).
+
+### 14.12.1 Phone call list visual canon
+
+Phone call list at canonical route `/calls` per §3.26.18.11. Default presentation mode: chronological list ordered by `started_at` DESC; per-tenant unhandled indicator (calls awaiting operator review + voicemails awaiting playback + cross-tenant calls awaiting acknowledgment).
+
+**Call-workspace-shape distinction from Space architecture** (parallel to §14.10.1 + §14.11.1 workspace-shape distinctions): call workspace at `/calls` route is full-screen single-purpose surface. **NOT a Space**. Call workspace ships predetermined list + detail + transcript + intelligence chrome; not user-configurable Space chrome. Visual treatment differentiates: Space chrome carries Pattern 2 + sidebar pin chrome + space-specific accent; call workspace carries call-specific chrome + workspace-shape continuity with §14.9 + §14.10 + §14.11 workspace patterns. Prevents canon-vs-implementation drift at visual level.
+
+**Call workspace composition** (Pattern A workspace-shape):
+
+```
+┌─ Calls Workspace ───────────────────────────────────────────────────────┐
+│  Calls                                                  [Place new]      │
+│  [All / Customer / Operational]  [Account ▾]  [Direction ▾]  [Search]   │
+│  [Outcome ▾] [Intent ▾] [Sentiment ▾] [Cost ▾] [Time range]            │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ ↗ ●  Mary Hopkins (Hopkins FH)               4:32   $0.32   2m ago │ │
+│  │      Confirmed Thursday service. Discussed casket options.          │ │
+│  │      [SO-2026-0142]  Customer  Connected  Sentiment: positive      │ │
+│  │ ─────────────────────────────────────────────────────────────────  │ │
+│  │ ●● 📞 Driver Mike (Sunnycrest)               1:47   $0.18   14m ago│ │
+│  │      Truck loaded. Heading to Hopkins now. ETA 11:30.               │ │
+│  │      [DLV-2026-0142]  Operational  Connected  Action items: 1     │ │
+│  │ ─────────────────────────────────────────────────────────────────  │ │
+│  │    🎙 +1 (315) 555-0142                       0:42   $0.05   1h ago│ │
+│  │      Voicemail: Customer requesting follow-up about Hopkins quote.  │ │
+│  │      Voicemail  Awaiting follow-up  Sentiment: neutral             │ │
+│  │ ...                                                                 │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Call row composition** (Pattern 5 mid-dot separator chrome):
+- Unhandled indicator: solid terracotta dot left-edge `●` for calls awaiting review (intelligence pipeline complete + action items pending OR voicemail awaiting playback OR cross-tenant call awaiting acknowledgment); empty `○` for handled; voicemail-icon `🎙` left-aligned for voicemail outcome
+- Direction icon: `↗` (inbound from cross-tenant) / `📞` (outbound) / no icon (standard inbound) — distinguishes call shape at glance
+- Display name: `text-body font-medium text-content-strong` — uses `external_display_name` if populated; falls back to `external_phone_number` formatted as `+1 (315) 555-0142`; resolved CompanyEntity name takes precedence when `resolved_company_entity_id` set
+- Tenant indicator: when conversation is operational-team-facing per §3.26.18.21, prefix with chip showing tenant context (e.g., "Sunnycrest")
+- Summary preview: `text-body-sm text-content-base` truncated to 96 chars; renders from `phone.call_summarize` artifact when available; falls back to "Call to {phone}" when intelligence not yet processed; "Processing..." when intelligence pipeline in flight (per §3.26.18.6)
+- Linked entity chips: small pill-style chips showing linked entities per §3.26.18.8 (e.g., `[SO-2026-0142]`); click opens peek
+- Metadata row: orientation (`Customer` / `Operational`) + outcome (`Connected` / `Voicemail` / `No answer` / `Failed`) + sentiment (rendered from `phone.call_sentiment_classify` artifact) + action items count (rendered when `phone.call_action_items_extract` artifact contains pending items)
+- Duration: `text-body-sm font-plex-mono text-content-muted` right-aligned (e.g., `4:32`)
+- Cost: `text-body-sm font-plex-mono text-content-muted` right-aligned per §3.26.18.10 (e.g., `$0.32`) — load-bearing for cost transparency discipline
+- Relative timestamp: `text-caption text-content-muted` right-aligned
+- Cross-tenant indicator: `↗` glyph prepended to display name for cross-tenant calls per §3.26.18.17
+- Compliance indicators: `🔒 HIPAA` chip (status-info) when `compliance_mode="hipaa"`; `💳 PCI` chip (status-info) when redacted; `⚠ Disclosure` chip (status-error) when recording-disclosure required-but-not-fired; `⚠ DNC` chip (status-error) when CFPB violation evidence
+
+**Real-time call indicator**: active calls (status `ringing` / `connected`) render with status-warning border-left (4px solid terracotta) + status chip in row metadata: `[RINGING]` (status-warning) / `[ACTIVE]` (status-success) / `[ENDED — PROCESSING]` (status-info) per §14.12.3 real-time call surface visual canon.
+
+**Conversation orientation tab filter** (top of list per §3.26.18.21): three-state segmented control — `All / Customer-facing / Operational team`. Default landing on `All`.
+
+**Account selector** (multi-account-per-tenant per §3.26.18.3): dropdown right of orientation tabs.
+
+**Direction filter**: dropdown — All / Inbound / Outbound.
+
+**Outcome filter**: dropdown — All / Connected / Voicemail / No answer / Failed.
+
+**Intent filter**: dropdown driven by `phone.call_intent_classify` artifact values.
+
+**Sentiment filter**: dropdown driven by `phone.call_sentiment_classify` artifact values.
+
+**Cost filter**: dropdown — All / Above tenant threshold / Above account threshold (driven by Workshop cost-policy template per §3.26.18.27).
+
+**Empty state**: when no calls match filter, render Pattern 8 empty-state card with icon + "No calls" headline + "Place a new call" CTA.
+
+**Search affordance**: full-text search across `call_transcripts.body_text` (pg_trgm GIN index) + intelligence artifact body_json + display name + phone number. Search results render with matched substring highlighted via `bg-accent-subtle/40` inline span. Phone-distinctive: search across transcript + intelligence body is canonical primary surface — operators search by content, not by raw phone digits.
+
+### 14.12.2 Call detail rendering visual canon (split-pane composition)
+
+Call detail renders **split-pane composition** per Q13 confirmed canonical — transcript pane left + intelligence pane right rail. Co-presentation discipline preserves Phone primitive's structural reality — operators reviewing transcript benefit from concurrent intelligence visibility; operators reviewing intelligence benefit from concurrent transcript reference.
+
+**Call detail composition** (Pattern A workspace-shape with split-pane composition):
+
+```
+┌─ Mary Hopkins (Hopkins FH) ─────────────────────────────────────────────┐
+│  +1 (315) 555-0142  •  Hopkins FH  •  4:32 duration  •  $0.32  •  Today│
+│  ✓ Recording disclosure fired  •  Customer-facing  •  Standard mode    │
+│  Linked: [SO-2026-0142 Hopkins service order]  [Open peek]              │
+│  [Re-run intelligence] [Re-transcribe] [Place return call] [Add to task]│
+│  ──────────────────────────────────────────────────────────────────────  │
+│  ┌─ Transcript ─────────────────────┐  ┌─ Intelligence ───────────────┐ │
+│  │                                  │  │                              │ │
+│  │ 00:00 Mary: Hi, this is Mary    │  │ Summary                       │ │
+│  │       from Hopkins Funeral.     │  │ ─────────────                 │ │
+│  │       I wanted to confirm       │  │ Customer Mary confirmed       │ │
+│  │       Thursday's service.       │  │ Thursday 11am service. Asked │ │
+│  │                                  │  │ about casket options. Sent   │ │
+│  │ 00:08 You: Hi Mary, yes —       │  │ to followup on pricing.      │ │
+│  │       service is set for        │  │                              │ │
+│  │       Thursday at 11am.         │  │ ─────────────                 │ │
+│  │                                  │  │ Action items                  │ │
+│  │ 00:14 Mary: Perfect. One        │  │ ─────────────                 │ │
+│  │       question about the        │  │ • Confirm Thursday 11am ✓    │ │
+│  │       casket option...          │  │ • Send casket pricing pkg     │ │
+│  │                                  │  │   [Commit] [Skip]             │ │
+│  │ ▮▮▮ scroll for more...           │  │                               │ │
+│  │                                  │  │ ─────────────                 │ │
+│  │                                  │  │ Intent: scheduling             │ │
+│  │                                  │  │ Sentiment: positive            │ │
+│  │                                  │  │ Compliance: clean              │ │
+│  │ ─────────────────────────────── │  │                                │ │
+│  │ [▶ Play recording 4:32]         │  │ Linked entities                │ │
+│  │                                  │  │ • SO-2026-0142 (manual)        │ │
+│  │                                  │  │ • Hopkins FH (auto-resolved)   │ │
+│  └─────────────────────────────────┘  └────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Call detail header** (Pattern 2 chrome with internal sections):
+- Display name `text-h4 font-plex-sans font-medium`
+- Phone number `text-body-sm font-plex-mono text-content-muted`
+- Resolved entity name + duration + cost + relative timestamp
+- Compliance status row: recording disclosure indicator (`✓ Recording disclosure fired` status-success / `✗ Disclosure missed` status-error) + orientation chip + compliance mode chip
+- Linked entity chips: one per `call_linkages` row; click opens peek per peek-host canon
+- Action affordances row: Re-run intelligence + Re-transcribe + Place return call + Add to task + Link entity + Escalate to Decision Focus
+
+**Transcript pane composition** (left, larger viewport):
+- Speaker-diarized transcript with speaker labels (resolved external participant name / "You" for actor user)
+- Timestamp anchors per speaker turn: `text-caption font-plex-mono text-content-muted` left-aligned
+- Speaker turn body: `text-body font-plex-sans` plain text; line breaks preserve diarization rhythm
+- Click timestamp anchor → audio playback at offset (when CallRecording exists + access permitted)
+- Confidence-based rendering: high-confidence segments rendered standard; low-confidence segments rendered with dashed underline + click-to-flag-for-correction affordance
+- Search-within-transcript: keyboard-accessible find affordance (Cmd+F equivalent) highlights matches
+- Audio playback affordance: integrated audio scrubber bottom of pane (when CallRecording exists + access permitted per §3.26.18.9)
+- HIPAA-mode access requires audit log entry per playback per §3.26.18.9 — playback button shows audit-acknowledgment dialog before playback
+
+**Intelligence pane composition** (right rail, narrower viewport):
+- Rendered intelligence artifacts in priority order — Pattern 2 sub-cards per artifact type
+- Summary card (top): from `phone.call_summarize` artifact — narrative summary `text-body font-plex-sans`
+- Action items card: from `phone.call_action_items_extract` artifact — list of action items per item with status chip + per-pending-item controls + confidence indicator
+- Intent / Sentiment / Compliance row: from respective artifacts — chip-style display
+- Linked entities card: from `call_linkages` rows + `phone.call_entity_resolve` artifact — list of linked entities with linkage_source provenance chip
+- Re-execution affordance: per-card re-run button + cost preview before re-execution
+- Audit history affordance: per-card "View prior versions" link surfaces superseded artifacts via `superseded_by_artifact_id` chain
+
+**Voicemail-distinctive call detail** per Q9: voicemails render with distinctive header chrome — voicemail-icon + `[Voicemail]` chip + return-call action affordance prominent + intelligence pane top card is voicemail-summary (`phone.voicemail_summarize` artifact); transcript pane shows shorter transcript typical for voicemail.
+
+**Mobile call detail** — split-pane collapses to stacked composition on narrow viewports: transcript pane top + intelligence pane below + action affordances row at viewport bottom (sticky).
+
+### 14.12.3 Real-time call surface visual canon
+
+Real-time call surface canonical at September scope per Q19 confirmed full depth + Q22 confirmed real-time visual canon. §14.12.3 locks visual canon for the real-time call surface — extends existing CallOverlay implementation foundation per April 2026 Call Intelligence shipped feature; canonical visual + interaction model preserves operator UX continuity while elevating to canonical Phone primitive integration.
+
+**Real-time call surface composition** (full-screen modal during active call OR minimized pill per existing CallOverlay implementation):
+
+```
+┌─ ACTIVE CALL — Mary Hopkins (Hopkins FH)         [─ minimize] [✕ end] ─┐
+│  +1 (315) 555-0142  •  03:42 elapsed  •  ● RECORDING  •  Sunnycrest x102│
+│  ✓ Recording disclosure fired  •  Customer-facing  •  Standard mode    │
+│  ──────────────────────────────────────────────────────────────────────  │
+│  ┌─ Live transcript ─────────────────┐  ┌─ Live intelligence ─────────┐ │
+│  │                                   │  │                              │ │
+│  │ 03:38 Mary: Hi, this is Mary      │  │ Intent: scheduling           │ │
+│  │       from Hopkins Funeral.       │  │ ████████████ 92% confidence  │ │
+│  │       I wanted to confirm         │  │ (refined at 60s)             │ │
+│  │       Thursday's service.         │  │                              │ │
+│  │                                   │  │ Sentiment: positive          │ │
+│  │ 03:46 You: Hi Mary, yes —         │  │ ──── ──── ●●●● Trajectory   │ │
+│  │       service is set for          │  │                              │ │
+│  │       Thursday at 11am.           │  │ Action items detected (2)    │ │
+│  │                                   │  │ ─────────────────            │ │
+│  │ 03:54 Mary: Perfect. One          │  │ • Confirm Thursday 11am      │ │
+│  │       question about the          │  │   confidence 0.94 ✓ commit │ │
+│  │       casket option...            │  │                              │ │
+│  │ ▮ (live partial)                  │  │ • Casket pricing follow-up   │ │
+│  │                                   │  │   confidence 0.78 ✓ commit │ │
+│  │                                   │  │                              │ │
+│  │                                   │  │ Compliance: ● Clean          │ │
+│  └───────────────────────────────────┘  └──────────────────────────────┘ │
+│  ──────────────────────────────────────────────────────────────────────  │
+│  Linked: [SO-2026-0142 Hopkins service order]  [+Link entity]           │
+│                                                                          │
+│  [Add note] [Hold] [Transfer] [Mute] [End call]                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Live transcript pane composition** per Phase A §3.26.18.6 architectural canon:
+- Speaker-diarized live transcript with speaker labels per resolved CallParticipant
+- Streaming partial transcripts emitted at ~250ms cadence per real-time architectural canon
+- Visual indicator for live partial: `▮` (caret marker) at end of streaming partial — animates per `duration-quick ease-gentle`
+- Auto-scroll to bottom; preserves scroll position when operator scrolls up to review history
+- Confidence-based rendering: high-confidence segments rendered standard; low-confidence segments rendered with dashed underline
+- Speaker turn timestamps: `text-caption font-plex-mono text-content-muted`
+- Real-time visual chrome: pane border has subtle pulse animation (`animate-pulse` style) signaling live state — `duration-considered` cadence; pulse stops on call end
+
+**Live intelligence pane composition** per Phase A §3.26.18.6:
+- Intent classification surface: live confidence bar (`bg-accent` filled) + classification label `text-body-sm font-medium`; updates as transcript grows (first-pass at 30s; refined at 60s; final at call end)
+- Sentiment surface: live trajectory rendered as horizontal segmented bar showing sentiment progression across call timeline
+- Action items detected list: streaming list as `phone.call_action_items_extract` extracts items from growing transcript; per-item composition with body + confidence indicator + per-item commit affordance
+- Compliance flag surface: live `phone.compliance_review` results — `● Clean` (status-success) / `⚠ PHI detected` (status-error) / `⚠ DNC violation evidence` (status-error)
+
+**Real-time call surface controls**:
+- Hold + transfer + end call (provider-side actions via existing CallOverlay implementation)
+- Mute (operator-side mute affordance)
+- Add note (real-time note attached to call; surfaces in call detail post-call)
+- Link entity (real-time linkage commit; surfaces in call detail post-call)
+- Recording toggle (when `phone_accounts.recording_default="operator_toggle"`); recording-disclosure-fired indicator
+- Per-control buttons: `text-body-sm font-medium`; large touch targets per voice-mediated workflow accessibility
+
+**Minimized call pill** (per existing MinimizedCallPill implementation foundation):
+- Floating pill at corner of viewport when call active but operator navigates elsewhere
+- Composition: caller name + duration + brass dot indicator (live) + click-to-restore-overlay affordance
+- Visual chrome: Pattern 2 chrome + brass border + status-warning pulse animation
+
+**Reconciliation discipline visualization at call end** per Phase A §3.26.18.6:
+- Call end: real-time call surface transitions to "Processing..." state with progress indicator
+- Pipeline visualization: "Reconciling transcript..." → "Re-running intelligence..." → "Complete"
+- Auto-transition to call detail per §14.12.2 once reconciliation complete
+
+**Mobile real-time call surface** — voice-mediated workflows per §14.12.7 inherit real-time call surface for mobile + driver + production-floor users. Touch-first variant (parallel to SmartPlantCommandBar precedent) renders with larger touch targets + voice-driven actions.
+
+### 14.12.4 Call composition surface visual canon
+
+Call composition surface per §3.26.18.15 — three composition shapes: operator-initiated outbound call modal + Workshop-template-generated outbound modal + scheduled outbound call composition (deferred for voicemail-drop per §3.26.18.23).
+
+**Operator-initiated outbound call modal composition** (Pattern 6 modal chrome with `duration-arrive ease-settle` enter animation):
+
+```
+┌─ Place call ──────────────────────────────────────── [×] ───────────────┐
+│                                                                          │
+│  To:    [Phone number or contact ▾]    Mary Hopkins  ✓ Resolved        │
+│         +1 (315) 555-0142  •  Hopkins FH                                 │
+│  From:  [Sunnycrest main line ▾]        ext 102 (you)                  │
+│                                                                          │
+│  Linked entity: [SO-2026-0142 — Hopkins Funeral Home  ✕]                │
+│                                                                          │
+│  ⚠ Two-party consent jurisdiction (NY → PA). Recording requires         │
+│    disclosure. Disclosure script: "This call may be recorded..."         │
+│                                                                          │
+│  Recording: [● Always record / ○ Operator toggle / ○ Disabled]          │
+│  Compliance: [● Standard / ○ HIPAA / ○ PCI-redacted]                    │
+│                                                                          │
+│  Estimated cost: $0.30 for 30-min call                                  │
+│  ┌─ Cost breakdown ─┐                                                    │
+│  │ Provider connect $0.005                                               │
+│  │ Per-minute       $0.15  (30 min × $0.005)                            │
+│  │ Transcription    $0.13  (Deepgram Nova-2)                            │
+│  │ Intelligence     $0.05  (7 prompts)                                  │
+│  └──────────────────┘                                                    │
+│                                                                          │
+│  [Use call template ▾]                          [Cancel] [Place call]   │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**To-field affordance**: typeahead resolves against tenant CompanyEntities + Contacts + raw E.164 phone input. Resolved entity surfaces with `✓ Resolved: Hopkins FH` chip; unresolved phone enters as raw with cross-tenant detection.
+
+**From-field affordance**: dropdown of tenant's `phone_accounts` per §3.26.18.3 hybrid model + accessible extensions per `phone_account_access`.
+
+**Linked entity affordance**: pre-link affordance — composition can pre-attach `call_linkages` row.
+
+**Compliance pre-send chrome** per §3.26.18.5 + §3.26.18.9:
+- Jurisdictional banner: detected jurisdiction + jurisdiction-specific recording disclosure status (status-warning when two-party consent jurisdiction)
+- Recording mode selector: 3-value enum per `phone_accounts.recording_default` with per-call override
+- Compliance mode selector: 3-value enum (Standard / HIPAA / PCI-redacted)
+- DNC list check: status-error banner if recipient on tenant DNC list — call placement disabled
+- Frequency cap check (CFPB collections): status-warning banner if recipient near per-period communication frequency cap
+- Cost preview: estimated total cost + cost breakdown card with per-dimension cost transparency per §3.26.18.10
+
+**Template picker**: dropdown of tenant-authored Workshop call templates per §3.26.18.27. On selection: pre-fills script suggestions surfaced in CallOverlay during call (NOT auto-played audio per operator agency discipline per §3.26.14.14.5).
+
+**Workshop-template-generated outbound modal**:
+- Composes operator-initiated modal with template + recipient + linked entity pre-loaded
+- Operator confirms before call placement per §3.26.14.14.5 operator agency discipline
+- Post-placement: outbound call persists with `automation_source = "workshop_template"`
+
+### 14.12.5 Cross-tenant call chrome
+
+Cross-tenant call visibility per §3.26.18.17 — bilateral consent recording + per-tenant audit trails + per-tenant intelligence pipeline + per-tenant recording copies + cross-tenant masking inheritance.
+
+**Cross-tenant call list row** (extends §14.12.1 row composition):
+- `↗` glyph prepended to display name (canonical cross-tenant indicator parallel to §14.9.4 + §14.10.1 + §14.11.4)
+- Partner-tenant chip below display name: `text-caption text-content-muted bg-accent-subtle/40 rounded-sm` with partner tenant name (e.g., "Hopkins FH")
+- Bilateral consent state surfaces inline: `Both tenants consented to recording` (status-success) / `Awaiting Hopkins consent` (status-warning) / `Hopkins declined recording` (status-info)
+
+**Cross-tenant call detail header** (extends §14.12.2 header):
+- Bilateral consent banner pinned below call header — surfaces consent state for cross-tenant call recording per §3.26.18.17
+- Cross-tenant masking indicator: when external participant identity is masked per §3.25.x, render as `[Hopkins FH operator]` placeholder with reveal-affordance for tenants with reveal permission
+- Cross-tenant audit chip: every cross-tenant call stamps audit row visible via `View audit trail` link in call header per §3.26.18.9 indefinite audit log canon
+
+**Cross-tenant transcript pane composition** (extends §14.12.2 transcript):
+- Cross-tenant participant attribution: `[Hopkins FH operator]` attribution above body when partner tenant has multiple operators participating (per Front-style shared inbox UX inherited from §3.26.15.15)
+- Cross-tenant intelligence divergence chip: when Hopkins's intelligence pipeline extracts different action items than Sunnycrest's, chip surfaces `Hopkins extracted 3 action items` for cross-reference
+
+**Cross-tenant intelligence pane composition** (extends §14.12.2 intelligence pane):
+- Per-tenant intelligence isolation: Hopkins's intelligence pipeline outputs surface in Hopkins's intelligence pane; Sunnycrest's surface in Sunnycrest's; cross-references possible but isolated per tenant
+- Cross-tenant action item propagation chip: when action item commits cross-tenant state, chip surfaces `Cross-tenant state propagated to Hopkins` per §3.26.18.20 inverse coupling
+
+**Bilateral consent recording mechanics visual chrome**:
+- Recording-engaged indicator: bilateral state visible to both tenants (RECORDING with both-tenant-consent indicator)
+- Per-tenant revocation affordance: each tenant's operator can revoke recording mid-call; revocation triggers TTS prompt + recording stop + audit log entry
+- Compliance audit chrome canonical: audit trail surface accessible via call header link with cross-tenant audit row visibility
+
+### 14.12.6 Operational-action affordance chrome
+
+Phone operational-action affordance chrome per §3.26.18.20 state-changes-generate-call-attempts canon + 5 canonical action_types. Each action_type has distinctive visual treatment for operator review surface.
+
+**`outbound_call_attempt_acknowledgment` chrome** (drafted state-change-generated call awaiting operator commit):
+- Drafted call card composition (Pattern 2 sub-card chrome): target recipient + linked entity context + state-change source (e.g., "Quote QT-2026-0089 expires in 3 days") + Workshop-template script suggestions when applicable + jurisdictional + compliance + cost preview
+- Action affordances: `[Place call now]` brass primary button + `[Schedule for later ▾]` outline button + `[Skip]` muted button
+- Skip affordance: opens reason capture (optional) + audit log entry for skip
+- Cost preview chip: `$0.30 estimated` per §3.26.18.10
+- Compliance status indicators inline: jurisdictional banner + frequency cap check + DNC list check
+
+**`inbound_call_action_item_review` chrome** (call intelligence extracted action item awaiting operator commit):
+- Action item card composition (Pattern 2 sub-card): action item body + transcript excerpt context + proposed state change (target entity + proposed mutation) + confidence score
+- Action affordances: `[Commit]` brass primary button + `[Skip]` outline button
+- Confidence indicator: confidence bar + threshold-based default selection (≥0.70 default-selected for commit)
+- Audit-log discipline preserved per §3.26.18.20 — every commit/skip audit-logged with operator attribution
+
+**`compliance_review_required` chrome** (call flagged by `phone.compliance_review` artifact):
+- Compliance flag card (Pattern 2 sub-card with status-error/status-warning border per severity):
+  - Severity chip: `[Critical]` (status-error) / `[High]` (status-error-muted) / `[Medium]` (status-warning) / `[Info]` (status-info)
+  - Flag body: PHI detection + payment data detection + DNC violation evidence + collections frequency violation + recording disclosure failure
+  - Supporting transcript excerpt with flagged content highlighted via status-error/-muted
+- Action affordances: `[Re-acknowledge consent]` / `[Suspend recipient]` / `[Add to DNC]` / `[Escalate to Decision Focus]`
+
+**`voicemail_follow_up` chrome** (voicemail received awaiting operator action):
+- Voicemail card composition (Pattern 2 sub-card with voicemail-icon prominent):
+  - Voicemail summary from `phone.voicemail_summarize` artifact
+  - Transcript excerpt
+  - Audio playback affordance
+  - Caller intent + urgency assessment
+- Action affordances: `[Return call now]` brass primary button + `[Schedule return call]` outline button + `[Status update]` outline button + `[Skip]` muted button
+
+**`cross_tenant_operational_acknowledgment` chrome** (cross-tenant call action item):
+- Cross-tenant action item card (Pattern 2 sub-card with cross-tenant accent border-left 4px solid terracotta):
+  - Action item body
+  - Cross-tenant participant identity (cross-tenant masking-aware)
+  - Cross-tenant state propagation candidate
+  - Bilateral consent state per §3.26.18.17
+- Action affordances: `[Commit with cross-tenant propagation]` brass primary button + `[Skip]` outline button + `[Discuss with partner]` outline button (initiates cross-tenant Coordination Focus when arc ships)
+
+### 14.12.7 Voice-mediated affordance chrome
+
+Voice-mediated affordance chrome per §3.26.18.16 voice-mediated workflows canon. Phone primitive ships voice input infrastructure consumed by other primitives — voice affordance chrome canonical at September scope.
+
+**Voice input affordance composition** (canonical surfaces consuming voice substrate):
+- Push-to-talk button: prominent `bg-accent` brass button with microphone icon (Lucide `Mic`); large touch target (`size-12` minimum)
+- Active state: `bg-accent` brass button with pulsing animation per `duration-considered` cadence + audio waveform visualization (Web Audio API AnalyserNode rendering)
+- Recording indicator: `● Listening...` chip with pulse animation
+- Confidence indicator (post-transcription): confidence bar + transcribed text preview before action commit
+- Action commit confirmation: voice transcription + entity resolution + action confirmation modal — operator confirms before commit per §3.26.14.14.5 operator agency discipline
+
+**Voice-mediated Command Bar chrome** per §3.26.18.13:
+- Voice button integrated in Command Bar input field — right-aligned microphone icon (Lucide `Mic`)
+- Voice activation: click-to-activate (push-to-talk) + voice → speech-to-text → query input → action commit
+- Existing pattern from Smart Plant Voice Mode (`SmartPlantCommandBar.tsx` per April 2026 implementation) — touch-first variant for plant floor terminals + driver consoles + dispatcher kiosks
+- Auto-execute on high confidence (>0.92); large touch buttons for medium confidence
+
+**Voice-mediated entity reference chrome**:
+- NL Creation overlay per Phase 4 UI/UX Arc inherits voice input substrate — voice → NL Overlay extraction → entity creation
+- Cross-primitive voice affordances: voice-driven email composition (Email primitive consumes voice) + calendar event creation (Calendar primitive consumes voice) + SMS draft (SMS primitive consumes voice) + call placement (Phone primitive consumes voice) all share voice input substrate visual chrome continuity
+
+**Hands-free operational visual chrome**:
+- Driver console (`/portal/<slug>/driver`): voice button prominent at viewport bottom; large touch target; voice activation for stop status updates ("delivered to Hopkins")
+- Production floor terminals: voice button integrated in production log entry surface; voice activation for production log entries ("poured 4 standard graveliners")
+- Dispatcher kiosks: voice button integrated in dispatcher Command Bar; voice activation for call placement + scheduling
+
+**Voice input cost attribution chrome** per §3.26.18.16 voice input cost attribution discipline:
+- Per-primitive cost attribution surfaces transparently — voice transcription cost displays in operator-facing UI of consuming primitive
+- Email composition voice → Email primitive cost UI shows transcription cost line
+- Phone primitive voice → Phone primitive cost UI shows transcription cost line
+- Cross-primitive voice substrate cost discipline preserved per Workshop cost-policy templates per primitive consuming voice substrate
+
+**Audio waveform visualization** (per existing CallOverlay implementation):
+- Web Audio API AnalyserNode rendering — real audio waveform during voice capture
+- Visual chrome: waveform bars rendered with `bg-accent` brass; height proportional to audio amplitude; updates per ~50ms cadence
+- Confidence-based color: high-confidence waveform rendered status-success; low-confidence rendered status-warning
+
+### 14.12.8 Cross-references
+
+- **§14** (Communications Layer Visual Canon) — per-primitive icon canon, count typography, Pattern C composition
+- **§14.9** (Email Primitive Visual Canon) — sibling primitive canon pattern; Phone parallels structure (split-pane composition distinction from email message-as-Pattern-2-card)
+- **§14.10** (Calendar Primitive Visual Canon) — sibling primitive canon pattern; workspace-shape distinction shared
+- **§14.11** (SMS Primitive Visual Canon) — sibling primitive canon pattern; conversation orientation discipline shared
+- **§13.4.1** — density-tier opt-in canonical reference
+- **§11 Pattern A** + **§11 Pattern C** — Layer Composition Patterns
+- **§6** — overlay family canon (modal composition surface inherits this canon)
+- **BRIDGEABLE_MASTER.md §3.26.18** — Phone Primitive Architecture (architectural canon)
+- **BRIDGEABLE_MASTER.md §3.26.18.2** — Phone entity model (Call + CallParticipant + CallRecording + CallTranscript + CallIntelligenceArtifact + PhoneAccount + PhoneAccountAccess)
+- **BRIDGEABLE_MASTER.md §3.26.18.3** — RingCentral canonical primary provider + Twilio Voice deferred alternate
+- **BRIDGEABLE_MASTER.md §3.26.18.6** — Call intelligence pipeline (primary value generator) + 7 managed prompts
+- **BRIDGEABLE_MASTER.md §3.26.18.8** — polymorphic linkage canonical catalog (delivery + driver_route + safety_program_generation Phone-specific extensions)
+- **BRIDGEABLE_MASTER.md §3.26.18.9** — multi-framework compliance discipline (state-by-state two-party consent + recording disclosure + HIPAA + FCC + CFPB + cross-primitive opt-out coordination)
+- **BRIDGEABLE_MASTER.md §3.26.18.10** — multi-dimensional cost discipline + Workshop cost policies + competitor comparison (Gong + Chorus + Fireflies + Otter)
+- **BRIDGEABLE_MASTER.md §3.26.18.12** — hybrid layer contribution pattern (Communications + Operational layers split)
+- **BRIDGEABLE_MASTER.md §3.26.18.16** — voice-mediated workflows canon + voice input as platform substrate + per-primitive cost attribution
+- **BRIDGEABLE_MASTER.md §3.26.18.18** — strategic framing (operational substrate four-part completion: communications + scheduling + reach + intelligence = operations)
+- **BRIDGEABLE_MASTER.md §3.26.18.20** — operational-state-coupled-to-calls canonical action_types + bidirectional binding + intelligence-mediated coupling
+- **BRIDGEABLE_MASTER.md §3.26.18.21** — customer-facing vs operational-team-facing conversation discipline (single primitive with conversation_orientation parameter)
+- **BRIDGEABLE_MASTER.md §3.26.18.22** — real-time call surface (live transcript + live intelligence + reconciliation discipline)
+- **BRIDGEABLE_MASTER.md §3.26.18.26** — Phone Intelligence integration (7 prompts canonical scope)
+- **BRIDGEABLE_MASTER.md §3.26.18.27** — Phone Workshop integration (7 template types per per-template-type granularity)
+
+---
+
 ## Section 15 — Briefing Visual System
 
 Visual canon for morning + evening briefings — three-state machine visualization, per-state typography, per-state composition. Companion to BRIDGEABLE_MASTER §3.26.10 (architectural).

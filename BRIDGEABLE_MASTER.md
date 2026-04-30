@@ -8645,6 +8645,649 @@ Tune mode parameters: use-case selection, opt-in flow declarations, sample messa
 
 ---
 
+### 3.26.18 Phone Primitive
+
+Phone primitive — the **fourth and final Layer 1 communication primitive** per §3.26.6.4 Phase W-4b sequencing canon. Phone canonicalizes the architectural model behind the platform's existing **Call Intelligence** feature (shipped April 2026 — RingCentral provider + Deepgram Nova-2 transcription + Claude extraction + after-call orchestrator + CallOverlay UI). Phase W-4b Layer 1 Phone primitive does NOT replace Call Intelligence; it formalizes Call Intelligence as canonical Phone-primitive architectural model + extends with multi-provider abstraction + real-time-vs-asynchronous duality canonical at architectural model + multi-framework compliance discipline at primitive level + multi-dimensional cost discipline at primitive level + integration across Pulse + Focus + Workshop + Intelligence primitives per architectural elegance discipline.
+
+**Architectural framing — Phone as four-axis-distinct primitive**: Phone is **architecturally heavier than SMS** on substrate (calls are real-time interactions PLUS asynchronous derived artifacts — recording + transcript + intelligence; SMS is discrete text), **architecturally heavier than Calendar** on derived-artifact decomposition (call → recording entity → transcript entity → intelligence-artifact entity is canonical decomposition; calendar event is single entity with attendees), **architecturally heavier than Email** on intelligence-as-primary-value (call recordings are operationally meaningless without transcription + extraction + summarization; email body is operationally complete on receipt), and **architecturally heavier on compliance complexity** (state-by-state two-party consent jurisdictional variability + recording disclosure mechanics + HIPAA recording mode + FCC outbound discipline + CFPB collections discipline — multi-framework compliance distinct from Email's CAN-SPAM and SMS's TCPA + 10DLC).
+
+**Real-time + asynchronous duality canonical at architectural model**: calls are simultaneously real-time interactions (operator-on-call live experience) AND asynchronous artifacts (post-call recording + transcript + intelligence + state-change action items). The Phone primitive captures both dimensions canonically — Call entity owns real-time identity + outcome; CallRecording + CallTranscript + CallIntelligenceArtifact entities own asynchronous derived content per §3.26.18.2 entity decomposition discipline. Real-time call surface (live transcription + intelligence during call) is canonical at September scope per Q11 + Q19.
+
+**Call intelligence as primary value framework**: raw audio recording is operationally low-value at scale (operators don't relisten to hours of calls); transcription + intent extraction + summarization + entity resolution + action item extraction is the canonical operational surface. Call Intelligence pipeline per §3.26.18.6 is the primary value generator — recording + raw audio is preserved as compliance artifact + audit substrate, NOT as primary operator-facing content. This framing distinguishes Phone primitive from Email + Calendar + SMS (where raw content IS the primary operator surface) — Phone primitive's primary value emerges from intelligence pipeline, not raw audio.
+
+#### 3.26.18.1 Phone primitive emergence + integrate-now-make-native-later framework + compliance positioning + call intelligence as primary value framework
+
+Phone primitive emergence per Phase W-4b sequence step 4 (after Email Step 1 + Calendar Step 2 + SMS Step 3 per §3.26.6.4). Builds on Email + Calendar + SMS canon foundation — primitive framework battle-tested across three communication primitives + meta-pattern application matured. Phase W-4b Phone implementation arc opens with locked canon foundation; ships at canonical-quality discipline per §3.26.7.5 ("MVP cuts compound as debt").
+
+**Existing Call Intelligence implementation as foundation**: the platform shipped Call Intelligence (April 2026 — RingCentral OAuth + extension-to-user mapping + Deepgram Nova-2 transcription + Claude extraction + after-call orchestrator with 10s delay + CallOverlay UI with 3 states + voicemail handling) as a working feature with substantial customer tuning. Phone primitive canon does NOT discard this implementation — it formalizes it as canonical Phone-primitive architectural model + extends with multi-provider abstraction + canonical entity decomposition + cross-primitive integration. The existing `ringcentral_connections` + `ringcentral_extension_mappings` + `ringcentral_call_log` + `ringcentral_call_extractions` tables map to canonical Phone primitive entity model per §3.26.18.2 — implementation arc executes provider-rename + entity-decomposition + extension migrations, not greenfield rebuild. This preserves customer-facing tuning (extraction accuracy, draft order quality, voicemail handling) while elevating Phone primitive to canonical architectural model coherent with Email + Calendar + SMS primitives.
+
+**Native-vs-integration deliberation reaffirmed verbatim** (parallel to §3.26.15.1 + §3.26.16.1 + §3.26.17.1): native phone implementation from day one would require SIP trunking carrier integration + per-carrier compliance attestation (state PUC + FCC) + RTP media handling + media server infrastructure (recording + media routing) + STIR/SHAKEN attestation infrastructure + carrier-direct routing infrastructure + DTMF + supplementary services (call transfer, conference, hold, music-on-hold) + voicemail platform + 911 emergency services compliance + international roaming carrier negotiations (deferred indefinitely — US-only at canonical scope per §3.26.18.23 deferral) + carrier-direct billing reconciliation + per-carrier number portability mechanics. The integrate-now-make-native-later commitment is canonical — Bridgeable's Phone primitive owns its **architectural model** (entity model + UI surfaces + Intelligence integration + operational coupling + compliance discipline + cost discipline + call intelligence pipeline) while delegating **transport** to provider abstraction (RingCentral canonical primary + Twilio Voice alternate per §3.26.18.3 + concrete signal). Future native carrier integration deferred indefinitely — RingCentral's CTIA participation + STIR/SHAKEN attestation + carrier relationships + 911 compliance + voicemail platform are operationally irreplaceable at canonical scale; native phone replaces them only when Bridgeable's tenant-volume growth justifies the regulatory + operational exposure.
+
+**Phone primitive ships with multi-framework compliance discipline at the primitive level**: state-by-state two-party consent enforcement (jurisdictional variability is genuine architectural concern; jurisdictional configuration canonical per §3.26.18.9); recording disclosure mechanics (operator-disclosure-on-call-start canonical default; tenant-configurable per Workshop recording-rule template per §3.26.18.27); HIPAA-compliant recording mode (PHI-touching tenants opt-in per Workshop policy; recording stored encrypted-at-rest + retention discipline); FCC-compliant outbound discipline (Telephone Robocall Abuse Criminal Enforcement Act + STIR/SHAKEN attestation inherited from provider); CFPB-compliant collections discipline (Regulation F — communication frequency + content + opt-out mechanics for collections-pattern outbound). Multi-framework compliance is distinguishing characteristic of Phone primitive — TCPA + 10DLC at SMS primitive (§3.26.17.8) is single-framework comparatively. Compliance is operational protection, not bureaucratic burden.
+
+**Call intelligence as primary value framework canonical at primitive level**: raw audio recordings are compliance + audit artifacts; transcription + summarization + intent extraction + entity resolution + action item extraction are the primary operator surfaces per §3.26.18.6. This framing shapes entity decomposition (CallRecording + CallTranscript + CallIntelligenceArtifact as distinct entities per §3.26.18.2); shapes cost discipline (per-transcription + per-intelligence-prompt as distinct cost dimensions per §3.26.18.10); shapes Pulse rendering (call intelligence summary surfaces in Pulse, NOT raw recording playback per §3.26.18.12); shapes saved view discipline (Phone-typed saved views index against intelligence artifacts, NOT raw audio per §3.26.18.14); shapes Workshop template granularity (call_intelligence_prompt_template distinct from call_template per §3.26.18.27).
+
+#### 3.26.18.2 Phone entity model
+
+Six core entities form the Phone primitive substrate. Two primary (Call + CallParticipant), three derived-artifact (CallRecording + CallTranscript + CallIntelligenceArtifact), one supporting (PhoneAccount + PhoneAccountAccess junction). Entity decomposition reflects real-time + asynchronous duality canonical at architectural model — Call entity captures real-time identity + outcome; derived-artifact entities capture asynchronous content with independent retention + cost attribution + intelligence pipeline integration.
+
+**Primary entities**:
+
+`calls` — the canonical call entity. Fields: `id` + `tenant_id` + `account_id` (FK PhoneAccount) + `direction` (`inbound` / `outbound`) + `started_at` (DateTime tz) + `connected_at` (DateTime tz; nullable for unanswered) + `ended_at` (DateTime tz; nullable while call active) + `duration_seconds` (Integer; nullable while active) + `outcome` (`connected` / `voicemail` / `no_answer` / `busy` / `failed` / `declined`) + `provider_call_sid` (RingCentral session/legacy id; provider-canonical reference) + `provider_type` (`ringcentral` canonical; future providers per §3.26.18.3) + `external_phone_number` (E.164; the non-tenant participant's phone) + `external_display_name` (resolved CallerID + provider-side identification) + `resolved_company_entity_id` (FK CompanyEntity; nullable; auto-resolution at call start) + `resolved_contact_id` (FK Contact; nullable) + `external_tenant_id` (nullable; cross-tenant Bridgeable user resolution) + `is_cross_tenant` (Boolean) + `conversation_orientation` (`customer_facing` / `operational_team_facing` per §3.26.18.21) + `actor_user_id` (FK User; nullable) + `actor_extension_id` (nullable; provider-side extension reference for operator attribution when extension mapping resolves) + `automation_source` (`manual` / `state_change_generated` / `workshop_template` / `intelligence_drafted`) + `cost_cents` (Numeric; per-call cost in cents per §3.26.18.10) + `created_at` + `updated_at`.
+
+`call_participants` — per-call participant identity tracking distinct from Call.actor_user_id. Captures multi-leg call scenarios (transfer + conference). Fields: `id` + `call_id` (FK) + `tenant_id` + `participant_type` (`tenant_user` / `tenant_extension` / `external_phone`) + `user_id` (FK User; nullable) + `external_phone_number` (nullable) + `joined_at` + `left_at` + `role` (`originator` / `receiver` / `transferee` / `conferencee` / `observer`) + `created_at`.
+
+**Derived-artifact entities** (independent retention + cost + intelligence pipeline):
+
+`call_recordings` — recording entity distinct from Call. Fields: `id` + `call_id` (FK) + `tenant_id` + `r2_storage_key` (R2 path; encrypted at rest per HIPAA mode per §3.26.18.9) + `recording_started_at` + `recording_ended_at` + `duration_seconds` + `format` (`mp3` / `wav` canonical) + `byte_size` + `sample_rate_hz` + `channels` + `recording_disclosure_acknowledged` (Boolean) + `compliance_mode` (`standard` / `hipaa` / `pci_redacted`) + `retention_policy` (`default_retention` / `legal_hold` / `tenant_extended` per §3.26.18.7) + `cost_cents` (per-recording storage + retrieval cost) + `created_at` + `updated_at` + `purged_at` (DateTime tz; nullable; populated when retention triggers hard-delete).
+
+`call_transcripts` — transcription entity distinct from CallRecording. Multiple transcripts per recording supported. Fields: `id` + `call_recording_id` (FK) + `tenant_id` + `transcript_provider` (`deepgram` canonical; alternates per §3.26.18.6 + Q4 deliberation) + `provider_model_version` + `transcribed_at` + `language_code` + `confidence_score` (Numeric) + `body_text` (full transcript text — searchable; pg_trgm index) + `body_diarized_json` (JSONB; structured speaker-turn-segmented transcript with timestamps + per-segment confidence) + `cost_cents` (per-transcription cost per §3.26.18.10) + `is_canonical` (Boolean; tenant operator can mark canonical transcript) + `superseded_by_transcript_id` (FK self-reference; nullable; populated when transcript replaced by re-transcription — explicit version chain audit history; mirrors CallIntelligenceArtifact `superseded_by_artifact_id` pattern) + `created_at` + `updated_at`.
+
+`call_intelligence_artifacts` — intelligence pipeline output entity distinct from CallTranscript. Multiple artifacts per call supported. Fields: `id` + `call_id` (FK; direct linkage to call rather than transcript so artifact persists if transcript replaced) + `call_transcript_id` (FK; nullable; references transcript that fed pipeline) + `tenant_id` + `artifact_type` (`summary` / `intent_classification` / `action_items` / `sentiment` / `entity_resolution` / `compliance_review` per §3.26.18.6 canonical scope) + `intelligence_prompt_key` (canonical prompt key from §3.26.18.26) + `intelligence_execution_id` (FK; references `intelligence_executions` audit row) + `body_json` (JSONB; structured artifact content per artifact_type schema) + `confidence_score` (Numeric; nullable) + `cost_cents` (per-intelligence-prompt cost per §3.26.18.10) + `superseded_by_artifact_id` (FK self; nullable; populated when artifact replaced by re-execution; preserves audit history) + `created_at` + `updated_at`.
+
+**Supporting entities**:
+
+`phone_accounts` — per-tenant Phone account configuration per §3.26.18.3. Fields: `id` + `tenant_id` + `account_type` (`shared` / `personal`) + `display_name` + `provider_type` (`ringcentral` canonical) + `provider_account_id` + `provider_config` (JSONB) + `encrypted_credentials` (Fernet via platform-wide CREDENTIAL_ENCRYPTION_KEY per §3.26.15.8) + `outbound_enabled` (Boolean) + `inbound_enabled` (Boolean) + `recording_default` (`always_record` / `operator_toggle` / `disabled` per §3.26.18.9) + `compliance_mode_default` (`standard` / `hipaa` / `pci_redacted`) + `conversation_orientation` (default orientation per §3.26.18.21) + `is_active` + `created_at` + `updated_at`.
+
+`phone_account_access` — junction table mapping User to PhoneAccount with extension-level identity. Fields: `id` + `phone_account_id` (FK) + `user_id` (FK User) + `tenant_id` + `provider_extension_id` + `provider_extension_number` + `is_active` + `created_at` + `updated_at`. Replaces existing `ringcentral_extension_mappings` semantically.
+
+**Cross-tenant pairing**: when call occurs between two Bridgeable tenants, separate `cross_tenant_call_pairing` junction tracks paired calls per tenant. Each tenant has its own copy under its own ownership; operational state changes propagate per §3.26.18.7 cross-tenant state propagation discipline. Cross-tenant call mechanics bounded per §3.26.18.17.
+
+**Voicemail entity treatment** per Q9: voicemail is canonical sub-state of Call (`outcome="voicemail"`) with associated CallRecording + CallTranscript + CallIntelligenceArtifact. Voicemail is NOT distinct entity.
+
+#### 3.26.18.3 Per-tenant Phone account configuration (RingCentral primary + Twilio Voice deferred alternate)
+
+**Hybrid shared + personal account model** parallel to §3.26.16.3 calendar + §3.26.17.3 SMS account model:
+- **Shared accounts**: tenant-level shared phone accounts with multi-extension routing. PhoneAccountAccess junction maps users to extensions per §3.26.18.2.
+- **Personal accounts**: per-user personal phone accounts.
+
+Multi-account-per-tenant canonical (mirrors Email + Calendar + SMS hybrid model). Account selector affordance in unified call surface per §3.26.18.11.
+
+**Provider abstraction canonical**:
+- **RingCentral canonical primary**: existing Call Intelligence implementation foundation — production-tested.
+- **Twilio Voice deferred alternate** per §3.26.18.23 with three documented signals: (1) tenant has existing Twilio Voice contract + operational call volume; (2) tenant operational pattern requires Twilio-specific feature like programmable voice routing or TwiML IVR; (3) sustained tenant signal indicating RingCentral provisioning friction.
+- **Native PBX integration** deferred indefinitely.
+- **International providers** deferred indefinitely (US-only canonical scope).
+
+Provider abstraction narrower than Email (4 providers) + Calendar (4 providers) — Phone provider concentration reflects US carrier ecosystem reality + provider-side compliance infrastructure complexity.
+
+**Bridgeable provides Workshop-authored provisioning template** per §3.26.18.27 — tenant fills out canonical inputs; Bridgeable-side automation provisions RingCentral account + extensions + users + webhook subscription.
+
+**Conversation-orientation routing**: shared phone accounts can be marked with default `conversation_orientation` (`customer_facing` / `operational_team_facing`) per §3.26.18.21.
+
+#### 3.26.18.4 Inbound call infrastructure
+
+**Real-time + asynchronous pipeline**:
+
+Inbound call lifecycle:
+1. **Real-time arrival**: provider webhook fires `call.ringing` → Bridgeable-side webhook handler creates Call row (status `ringing`) + fires SSE event to CallContext per existing CallOverlay implementation foundation
+2. **Real-time answer**: provider webhook fires `call.answered` → Call row updated (status `connected`) + actor_user_id + actor_extension_id resolved via PhoneAccountAccess + SSE event refreshed
+3. **Real-time call**: existing CallOverlay UI surface displays during active call (3 states per existing implementation: ringing / active / review) — extends to canonical real-time call surface per §3.26.18.22 + §14.12.3
+4. **Real-time end**: provider webhook fires `call.ended` → Call row updated (status `completed` + ended_at + duration_seconds + outcome)
+5. **Asynchronous pipeline trigger**: 10-second delay (matching existing after_call_service.py orchestrator) → recording fetch + transcription + intelligence pipeline (per §3.26.18.6)
+
+**Real-time call infrastructure canonical at September scope** per existing CallOverlay implementation foundation. Architectural canon:
+- **Partial-transcript streaming via Deepgram real-time API** (WebSocket connection per active call; partial transcripts emitted at ~250ms cadence; speaker diarization streaming when available)
+- **WebSocket/SSE channel for live intelligence delivery to CallOverlay** (`live_call_channel` per active call; intelligence prompts can fire mid-call with growing transcript context — `phone.call_intent_classify` first-pass at 30s; `phone.call_action_items_extract` first-pass at 60s; refined as transcript grows)
+- **Provider-side real-time webhook subscriptions** (RingCentral webhook events: call.ringing + call.answered + call.media_started + call.ended; subscribed per phone_account)
+- **Reconciliation discipline at call end**: partial transcripts converge to canonical CallTranscript via Deepgram batch API re-processing; canonical transcript supersedes accumulated partials via `superseded_by_transcript_id`; intelligence pipeline re-executes against canonical transcript per §3.26.18.6 standard pipeline; partial-transcript intelligence artifacts marked superseded via `superseded_by_artifact_id`.
+
+**Inbound call resolution** (auto-resolution at call start mirroring §3.26.17.4 SMS resolution canon):
+- `external_phone_number` resolved against tenant's `company_entities` + `contacts` (E.164 normalization + match)
+- Resolved `resolved_company_entity_id` + `resolved_contact_id` populated on Call row
+- Cross-tenant resolution: phone matches another tenant's `phone_accounts.phone_number` → `external_tenant_id` populated + `is_cross_tenant=True`
+- Polymorphic linkage auto-resolution per §3.26.18.8
+
+**Recording capture** per §3.26.18.9:
+- Recording gates on `phone_accounts.recording_default` + Workshop-policy-rule + state-by-state two-party consent jurisdictional config + `compliance_mode`
+- Always-record canonical default for tenants in single-party consent jurisdictions; operator-toggle for two-party-consent jurisdictions; HIPAA mode requires opt-in per call
+- Recording disclosure mechanic: when recording engaged, automated voice prompt fires at call start (canonical default; Workshop-template-customizable per recording-rule template per §3.26.18.27); `recording_disclosure_acknowledged=True` on CallRecording row when disclosure fired
+
+**Voicemail handling** per Q9:
+- Voicemail detected via provider webhook `call.voicemail_received`
+- Call row marked `outcome="voicemail"` + CallRecording created from voicemail audio
+- Voicemail transcription canonical via standard transcript pipeline (Deepgram primary; RingCentral provider-native transcription as fallback per existing implementation)
+- Voicemail-to-text Intelligence artifact via `phone.voicemail_summarize` prompt per §3.26.18.26
+
+**Audit log** per §3.26.18.9: every inbound call writes audit row (call.received + recording.started + recording.disclosure.fired + transcript.queued + intelligence.queued).
+
+#### 3.26.18.5 Outbound call infrastructure
+
+**Hybrid model** parallel to §3.26.15.5 + §3.26.16.5 + §3.26.17.5. Bridgeable composes outbound calls; sends via provider for per-account outbound.
+
+Three outbound call paths:
+
+**Path 1 — Operator-initiated outbound**: operator clicks "Call" affordance from CompanyEntity / Contact / Quote / Order page (peek panel + detail page); Bridgeable-side composer creates Call row (status `pending`) + actor_user_id + outbound provider call request; provider initiates call through operator's phone number / extension / RingCentral mobile app; real-time + asynchronous pipeline mirrors §3.26.18.4 inbound from `call.answered` onward.
+
+**Path 2 — System-generated outbound** (state-changes-generate-call-attempts per §3.26.18.20): state changes draft outbound call attempts; drafted-not-auto-sent discipline preserves operator agency per §3.26.14.14.5; drafted call attempts surface in operator review queue.
+
+**Path 3 — Workshop-template-generated outbound** (Workshop-authored templates per §3.26.18.27): Workshop template defines call-target population; template renders per-call call_template variables (script suggestions surfaced in CallOverlay during call; NOT auto-played audio per operator agency discipline); operator initiates calls per template; cost discipline per §3.26.18.10 enforced pre-send.
+
+**Pre-send validation pipeline** per Q7 + Q8:
+- Compliance gate: state-by-state two-party consent applies to recording (NOT call placement); call placement gate is FCC TCRA compliance + tenant-level Do-Not-Call list check + CFPB Regulation F frequency check for collections-pattern
+- Cost gate: per-tenant + per-account budget cap check per §3.26.18.10
+- Provider gate: provider account active + outbound enabled + extension mapping valid
+
+#### 3.26.18.6 Call intelligence pipeline (primary value generator)
+
+**Pipeline composition** mirrors existing implementation orchestrator (`after_call_service.py`) with canonical entity decomposition + multi-prompt scope:
+
+1. **Recording fetch**: 10-second delay after `call.ended` webhook (matches existing implementation timing) → R2 storage write → CallRecording row created
+2. **Transcription**: Deepgram Nova-2 primary canonical (matches existing implementation); Whisper alternate deferred per §3.26.18.23 with concrete signal (multi-language support requirements; on-prem deployment); speaker diarization required → CallTranscript row created with `body_text` + `body_diarized_json`
+3. **Intelligence pipeline** — multi-prompt parallel + sequential dispatch. **7 canonical prompts at September scope per §3.26.18.26**:
+   - `phone.call_summarize` (Sonnet) — narrative summary suitable for Pulse rendering + briefing inclusion
+   - `phone.call_intent_classify` (Haiku) — intent classification (sales / support / collections / scheduling / inquiry / etc) for routing + saved view filtering
+   - `phone.call_action_items_extract` (Sonnet) — action item extraction (state-change candidates + follow-up scheduling + entity references) for operational state coupling per §3.26.18.20
+   - `phone.call_entity_resolve` (Haiku) — entity reference extraction (company / contact / order / quote references in transcript) for polymorphic linkage auto-resolution per §3.26.18.8
+   - `phone.call_sentiment_classify` (Haiku) — sentiment classification (positive / neutral / negative / urgent) for triage prioritization
+   - `phone.compliance_review` (Haiku) — compliance keyword detection (PHI in non-HIPAA mode + payment card data in non-PCI-redacted mode + DNC list violation evidence) for Decision Focus triage per §3.26.18.24
+   - `phone.voicemail_summarize` (Haiku) — voicemail-specific summarization per Q9
+
+4. **CallIntelligenceArtifact rows created**: one per intelligence_prompt; references parent CallTranscript + parent Call; `intelligence_execution_id` references `intelligence_executions` audit row per Bridgeable Intelligence canon
+
+**Real-time intelligence pipeline canonical at September scope** per §3.26.18.4 architectural canon:
+- Real-time partial-transcript context: `phone.call_intent_classify` first-pass at 30s with growing transcript context; refined as transcript grows
+- Real-time partial-transcript context: `phone.call_action_items_extract` first-pass at 60s; refined as transcript grows
+- Real-time partial-transcript context: `phone.call_sentiment_classify` real-time trajectory updates per ~500ms cadence
+- Real-time partial-transcript context: `phone.compliance_review` real-time flag detection per ~1s cadence
+- Post-call canonical transcript: all 7 prompts re-execute against canonical transcript; canonical artifacts supersede partial artifacts via `superseded_by_artifact_id`
+
+**Cost discipline at pipeline level** per §3.26.18.10: each pipeline step records per-step cost (transcription cost + per-prompt cost) on respective entity. Aggregate cost per call computed across Call + CallRecording + CallTranscript + CallIntelligenceArtifact rows.
+
+**Re-execution discipline**: tenant operators can re-run intelligence pipeline against existing transcript (e.g., when newer prompt version ships). Re-execution creates new CallIntelligenceArtifact row with `superseded_by_artifact_id` populated on prior artifact — audit history preserved.
+
+**Existing extraction logic preserved**: existing `call_extraction_service.py` (Claude extraction with fuzzy company match + draft order creation) maps to canonical `phone.call_action_items_extract` prompt. Implementation arc migrates extraction logic into managed Intelligence prompt without regression — months of customer tuning preserved.
+
+#### 3.26.18.7 Multi-tenant storage discipline + retention + cross-tenant masking inheritance
+
+**Per-tenant isolation**: every Phone entity tenant-scoped; all queries filter by `tenant_id`; cross-tenant queries opt-in via §3.26.18.17 cross-tenant pathways.
+
+**Differential retention discipline** — derived-artifact entity decomposition enables independent retention per artifact type:
+- **Call**: indefinite retention (lightweight metadata; audit reference)
+- **CallRecording**: hybrid retention default — 7-year canonical baseline; HIPAA mode + tenant-extended up to legal-hold maximum; tenant-configurable to 90-day minimum where compliance permits
+- **CallTranscript**: hybrid retention default — 10-year canonical baseline (longer than recording because transcript is searchable artifact + compliance evidence + intelligence pipeline substrate); tenant-configurable to recording retention floor minimum
+- **CallIntelligenceArtifact**: indefinite retention for canonical artifacts; superseded artifacts garbage-collected after 90 days unless legal-hold
+
+**Legal-hold cascades** from Call → CallRecording → CallTranscript → CallIntelligenceArtifact. Release of hold cascades release. Hard-delete tombstones preserved for audit indefinitely (record of hard-delete event preserved; content purged).
+
+**Cross-tenant masking inheritance**: per §3.25.x, when calls span tenant boundary, participant identities + transcript content + intelligence artifacts inherit cross-tenant masking. Bounded scope per §3.26.18.17.
+
+**Recording retention with HIPAA mode**: when CallRecording.compliance_mode="hipaa", recording stored encrypted-at-rest with separate per-tenant key (deferred per §3.26.18.23 — initial implementation reuses platform-wide CREDENTIAL_ENCRYPTION_KEY per §3.26.15.8 canonical encryption interpretation); access requires HIPAA-eligible role + audit log entry per access.
+
+#### 3.26.18.8 Phone entity polymorphic linkage to Bridgeable entities
+
+Phone primitive entity polymorphic linkage parallel to §3.26.15.7 email + §3.26.16.7 calendar + §3.26.17.7 SMS:
+
+`call_linkages` — M:N junction. Fields: `id` + `tenant_id` + `call_id` (FK) + `linked_entity_type` (Literal — `fh_case` / `sales_order` / `quote` / `invoice` / `task` / `contact` / `customer` / `delivery` / `driver_route` / `safety_program_generation`) + `linked_entity_id` + `linkage_source` (`manual_pre_link` / `manual_post_link` / `auto_resolved_phone_match` / `auto_resolved_call_intelligence` / `state_change_propagated`) + `created_by_user_id` (nullable for auto) + `created_at`.
+
+**Auto-resolution**: when call is system-generated from state change (per §3.26.18.20), linkage pre-populates with `linkage_source="manual_pre_link"`. When call intelligence pipeline (`phone.call_entity_resolve` per §3.26.18.6) extracts entity references from transcript, linkage proposed with `linkage_source="auto_resolved_call_intelligence"` + operator review surface per Decision Focus per §3.26.18.24.
+
+**Phone-specific extensions**: SMS-specific extensions canonical (delivery + driver_route per §3.26.17.7) carry forward — calls naturally link to Delivery + DriverRoute. Plus Phone-distinctive: `safety_program_generation` linkage for OSHA-induced safety review calls per Sunnycrest pattern.
+
+#### 3.26.18.9 Privacy + compliance discipline (state-by-state two-party consent + recording disclosure + HIPAA + FCC + CFPB + cross-primitive opt-out coordination + audit log)
+
+Phone primitive ships with **multi-framework compliance discipline** at the primitive level — distinguishing characteristic from Email's CAN-SPAM (single framework) and SMS's TCPA + 10DLC (paired framework with federal-level uniformity). Phone compliance complexity is genuinely architectural concern.
+
+**State-by-state two-party consent enforcement**:
+- Two-party consent jurisdictions canonical at September scope: California + Connecticut + Florida + Illinois + Maryland + Massachusetts + Michigan + Montana + Nevada + New Hampshire + Oregon + Pennsylvania + Washington (13 states; jurisdictional configuration table maintained at platform level + reviewed annually per regulatory drift)
+- Single-party consent jurisdictions: remaining 37 states + DC + federal default
+- Enforcement: tenant-level + call-level jurisdictional configuration. Tenant-level config sets default jurisdiction. Call-level config inferred from external_phone_number area code + ZIP-derived state lookup; falls back to tenant default when ambiguous.
+- Recording disclosure mechanics: when recording engages, automated voice prompt fires (canonical default; tenant-customizable per Workshop recording-rule template per §3.26.18.27); CallRecording.recording_disclosure_acknowledged=True when disclosure fired
+- Two-party consent jurisdictions: recording disclosure REQUIRED before recording engages; `phone_accounts.recording_default="operator_toggle"` canonical
+- Single-party consent jurisdictions: recording disclosure recommended but not required; `phone_accounts.recording_default="always_record"` canonical
+
+**Recording disclosure mechanics canonical**:
+- Voice prompt (TTS) fires at call connect; 5-second delay before recording starts
+- Operator-side disclosure indicator surfaces in CallOverlay (visible "RECORDING" indicator)
+- Workshop recording-rule template per §3.26.18.27 customizes disclosure script + jurisdictional behavior
+
+**HIPAA-compliant recording mode**:
+- Tenant operators handling Protected Health Information (PHI) opt into HIPAA mode via Workshop policy
+- HIPAA mode mechanics: recording stored encrypted-at-rest with audit log per access; transcripts marked HIPAA-touching with redacted operator-facing display until access-grant; intelligence artifacts marked HIPAA-touching; cross-tenant sharing requires HIPAA-Business-Associate-Agreement attestation
+- HIPAA-compliant recording_default canonical: "operator_toggle" with explicit per-call confirmation prompt before recording engages
+
+**FCC compliance discipline**:
+- TCRA (Telephone Robocall Abuse Criminal Enforcement Act) compliance for outbound calls — call placement rate limits per tenant per period; auto-dialer-pattern detection
+- STIR/SHAKEN attestation inherited from RingCentral provider — Bridgeable doesn't author attestation; provider-side attestation surfaces in audit log
+- Do-Not-Call list compliance — tenant-level DNC list check per outbound call placement; provider-native DNC integration per RingCentral
+
+**CFPB Regulation F discipline** (for collections-pattern outbound):
+- Communication frequency cap: 7 attempts per 7-day period per consumer per debt
+- Communication content cap: collections-call disclosure required per call
+- Opt-out mechanics: consumer can request communication cessation per call; cessation propagates to all SMS + email + phone outbound for that consumer
+- Workshop CFPB-rule template per §3.26.18.27 enforces frequency + content + opt-out at outbound dispatch
+
+**Cross-primitive opt-out coordination canonical**: caller-side opt-out detected via call intelligence pipeline (`phone.compliance_review` prompt detects "stop calling" / "remove from list" / "do not call" phrases) propagates to all communication primitives — email + SMS + calendar + phone outbound suspension via cross-primitive opt-out registry. Pattern inherited by future Layer 1 communication primitives (in-platform messaging primitive opt-out detection contributes to same registry). Cross-primitive opt-out registry maintained at tenant level; per-recipient opt-out scope; tenant operators can review + override per-recipient through compliance triage Decision Focus per §3.26.18.24.
+
+**Audit log** per primitive level:
+- Every call writes audit rows: call.received / call.placed / recording.started / recording.disclosure.fired / transcript.queued / transcript.completed / intelligence.queued / intelligence.completed
+- Audit retention indefinite (compliance evidence)
+- Cross-tenant calls surface audit rows in both tenant copies per §3.26.18.7 cross-tenant masking inheritance
+
+**Differential compliance per call mode**:
+- Standard mode: recording disclosure required per jurisdiction; transcript + intelligence indexed for tenant operators
+- HIPAA mode: PHI redaction in operator-facing surfaces until access-grant; HIPAA-Business-Associate-Agreement attestation on access
+- PCI-redacted mode: payment card data automatically redacted from transcript + intelligence artifacts via Intelligence-side compliance review prompt; redacted bytes preserved encrypted for audit-only
+
+#### 3.26.18.10 Cost discipline + budget caps + multi-dimensional cost (per-call + per-minute + per-transcription + per-intelligence-prompt) + competitor positioning
+
+Phone primitive cost discipline ships at **multi-dimensional cost magnitudes** distinguishing characteristic from SMS's per-message scalar cost (§3.26.17.9):
+
+**Per-call cost**: provider-side connection fee (~$0.005-0.02 per call connect; RingCentral varies by destination)
+**Per-minute cost**: provider-side per-minute talk-time (~$0.005-0.015 per minute outbound; inbound typically zero-cost)
+**Per-transcription cost**: Deepgram Nova-2 (~$0.0043 per minute; ~30 minutes typical call → ~$0.13 per call)
+**Per-intelligence-prompt cost**: Bridgeable Intelligence per-prompt cost via Haiku ($0.0008/1K input + $0.004/1K output) + Sonnet ($0.003/1K input + $0.015/1K output); per-call aggregate ~$0.05-0.30 across 7 canonical prompts
+
+**Total per-call cost magnitude**: $0.20-0.50 for typical 30-minute call with full intelligence pipeline. Substantially higher than SMS's ~$0.0075 per outbound message. Budget cap enforcement structurally critical.
+
+**Cost recorded on every entity**: Call.cost_cents (provider-side connection + per-minute) + CallRecording.cost_cents (storage + retrieval) + CallTranscript.cost_cents (per-transcription) + CallIntelligenceArtifact.cost_cents (per-intelligence-prompt). Aggregate cost per call computed via SQL aggregation across entities.
+
+**Per-tenant + per-account + per-call cost tracking**:
+- Per-tenant aggregate cost per period (daily / weekly / monthly) for tenant-level budget cap enforcement
+- Per-account aggregate cost for per-account budget allocation
+- Per-call cost surface in CallOverlay (review state) + Pulse renderings + saved view filters
+
+**Workshop-authored cost policies** per §3.26.18.27:
+- Per-tenant + per-account budget caps per period (daily / weekly / monthly)
+- Per-jurisdiction outbound rate limits
+- Per-prompt-type intelligence pipeline scope (e.g., disable sentiment classification for tenants opting out of intelligence-overhead)
+- Compliance gate cost — HIPAA mode + PCI-redacted mode incur additional per-call cost (encrypted storage premium); cost surfaces transparently
+
+**Pre-send budget cap enforcement** per §3.26.18.5:
+- Outbound call placement gates on cost-cap check
+- Budget exhausted: outbound blocked; pulse-tier alert surfaces; Decision Focus triage per §3.26.18.24
+
+**Cost discipline at intelligence pipeline level** per §3.26.18.6:
+- Re-execution of intelligence pipeline incurs per-prompt cost again — re-execution surface explicit operator confirmation
+- Tenant operators can disable specific intelligence prompts per phone account via Workshop intelligence-prompt-policy template per §3.26.18.27
+
+**Audit trail of cost** indefinite — cost evidence per call preserved alongside call audit log.
+
+**Strategic positioning — competitor comparison canonical**:
+
+> Standalone call intelligence platforms (Gong + Chorus + Fireflies + Otter) charge per-seat licensing ($60-150/seat/month) and provide call recording + transcription + summarization as standalone product disconnected from operational state. Tenant operators leave operational context (CRM / ERP / scheduling tool) to manage call intelligence in separate tool. Bridgeable's Phone-as-platform-primitive framing eliminates this context-switch — call intelligence integrated into operational state per §3.26.18.20; action items propagate state changes back; operators never leave operational context. Per-primitive cost discipline replaces per-seat licensing — cost scales with operational call volume, not seat count. Strategic differentiation completes operational substrate communication primitives — Email + Calendar + SMS + Phone all canonicalized as platform primitives, structurally inaccessible to fragmented bolt-on tools.
+
+#### 3.26.18.11 Unified call surface
+
+Per-tenant unified call surface at canonical route `/calls` (parallel to §3.26.15.10 inbox + §3.26.16.9 calendar + §3.26.17.10 SMS workspace; route naming convention preserved). Phone primitive's substantively heavier content (transcript + multi-artifact intelligence + recording playback) shapes surface scope larger than SMS conversation list — call list + call detail + transcript rendering + intelligence panels are first-class surface composition.
+
+**Call-workspace-shape distinction from Space architecture** (parallel to §3.26.16.9 + §3.26.17.10 workspace-shape distinctions): call workspace at `/calls` is full-screen single-purpose surface. **NOT a Space**. Call workspace ships predetermined list + detail + transcript + intelligence chrome.
+
+**Call list composition** (Pattern A workspace-shape):
+- Chronological list ordered by `started_at` DESC; per-tenant unhandled indicator
+- Filter chrome: orientation tab + account selector + direction filter + outcome filter + time range filter + intent classification filter + sentiment filter + cost-cap filter
+- Per-call row composition: direction icon + display name + summary preview (rendered from `phone.call_summarize` artifact when available) + duration + outcome + relative timestamp + cost + linked-entity peek affordance
+- Cross-tenant indicator + compliance indicator + real-time call indicator
+
+**Call detail composition** — split-pane composition canonical per Q13: transcript pane left + intelligence pane right rail. Co-presentation discipline preserves Phone primitive's structural reality.
+
+**Real-time call surface** integrated into call workspace per §3.26.18.22.
+
+**Compose-new-call affordance**: outbound call initiation per §3.26.18.15.
+
+**Search affordance**: full-text search across `call_transcripts.body_text` (pg_trgm GIN index per existing implementation pattern) + intelligence artifact body_json + display name + phone number. Phone-distinctive: search across transcript + intelligence body is canonical primary surface.
+
+#### 3.26.18.12 Call rendering at multiple surfaces
+
+Phone primitive renders across multiple platform surfaces per §3.26.9 Communications Layer Architecture canonical pattern + Pulse fractal-Pulse architecture per §3.26.12. Call intelligence as primary value framework per §3.26.18.1 shapes rendering — summary + action items + intent classification surface in Pulse + Briefings + Activity timeline; raw audio + raw transcript surface in detail surface + saved views.
+
+**Pulse Communications layer rendering** per §3.26.9 + §3.26.18.1: phone icon + unhandled call count + cross-tenant call indicator + voicemail count.
+
+**Pulse Operational layer rendering** per §3.26.9 hybrid contribution pattern (parallel to §3.26.16.10 calendar + §3.26.17.11 SMS hybrid contribution): operational-team-facing call signals — driver dispatch calls + delivery coordination calls + production scheduling calls per `conversation_orientation="operational_team_facing"` per §3.26.18.21. Pattern continuity: Email + Calendar + SMS + Phone all use hybrid layer contribution per §3.26.9 canonical pattern.
+
+**Customer Pulse rendering** per §3.26.12 fractal Pulse + §3.26.15.10 customer email threads precedent: Customer Pulse template's `recent_calls` slot consumes recent calls for resolved CompanyEntity. Customer Pulse infrastructure deferred until scoped Pulse summoning + per-template slot mapping ships per §3.26.12.4.
+
+**Briefing rendering** per §3.26.10:
+- Morning briefing Phone-section: overnight calls + voicemails awaiting follow-up + scheduled outbound call queue + drafted state-change action items pending review + cross-tenant calls awaiting acknowledgment
+- Evening briefing Phone-section: today's calls completed (count + cost summary); intelligence-extracted action items committed + skipped; tomorrow's scheduled outbound queue; compliance review queue items per §3.26.18.24
+- Briefing context builder per `_build_call_summary` legacy pattern preserved
+
+**V-1c CRM activity feed rendering** per §3.26.15.10 V-1c CRM activity integration precedent: inbound + outbound calls auto-write activity log rows for resolved CompanyEntity.
+
+**Voicemail-distinctive rendering** per Q9: voicemails render with distinctive chrome — voicemail-icon + voicemail-summary preview (`phone.voicemail_summarize` artifact) + duration + audio-play affordance.
+
+#### 3.26.18.13 Command Bar phone summoning patterns
+
+Command Bar phone summoning per §3.26.13 universal summoning verb canonical pattern. Phone primitive integrates into Command Bar via three summoning patterns:
+
+**Phone-typed search**: `⌘K → "calls"` / `"phone"` / `"voicemails"` / `"call from {name}"` opens phone primitive search results.
+
+**Phone-typed entity summoning**: `⌘K → "{phone_number}"` / `"{contact name}"` / `"{company name}"` resolves to entity per §3.26.13 entity portal canonical pattern; entity portal includes "Place a call" affordance.
+
+**Phone-typed action summoning**: `⌘K → "call {name}"` / `"place call to {name}"` / `"voicemail {name}"` triggers entity resolution + action commit. Voice input affordance per §3.26.18.16 enables hands-free invocation.
+
+**Voice input as Command Bar primary affordance** per Q16: voice input as Command Bar input modality canonical at September scope per §3.26.18.16.
+
+**Pulse-launched call detail summoning**: clicking call indicator in Pulse summons call detail surface — Pulse-launched surface uses Focus modal-overlay rendering per §3.26.13 Phase A canon. Command-bar-summoned call detail uses spatial workspace tablet rendering per §3.26.13 Phase C canon.
+
+#### 3.26.18.14 Phone-typed saved views
+
+Phone-typed saved views per §3.25 saved view primitive canonical scope. Saved view target type `calls` registered per saved-view registry. Phone-distinctive: saved views index against intelligence artifacts in addition to raw call metadata per §3.26.18.1 call-intelligence-as-primary-value framework.
+
+**Phone-typed saved view composition shapes**: list / kanban (grouped by intent classification or sentiment) / calendar (calls plotted on calendar grid) / cards.
+
+**Canonical default phone-typed saved views** (seeded per Workshop call template parallel — see §3.26.18.27):
+- "Today's calls" — calls started today; chronological
+- "Voicemails awaiting follow-up" — voicemails not yet acted on; sorted by sentiment + age
+- "Cross-tenant calls" — `is_cross_tenant=True`; sorted by `started_at` DESC
+- "High-cost calls" — calls exceeding tenant cost threshold
+- "Compliance review queue" — calls flagged by `phone.compliance_review` artifact
+- "Action items pending" — calls with `phone.call_action_items_extract` artifacts containing items not yet committed as state changes per §3.26.18.20
+- "Recent calls — {customer entity}" — per-customer call history
+
+#### 3.26.18.15 Call composition canonical authoring surface
+
+Three composition shapes per §3.26.18.5 outbound paths:
+- **Operator-initiated outbound call**: direct call placement modal with To-field + From-field + linked entity + compliance pre-send chrome (jurisdictional banner + recording mode selector + compliance mode selector + DNC list check + frequency cap check + cost preview) + template picker
+- **Voicemail composition**: scheduled voicemail-drop functionality DEFERRED per §3.26.18.23
+- **Scheduled outbound call composition** per Path 2 + Path 3
+
+**Operator confirms before call placement** per §3.26.14.14.5 operator agency discipline. Post-placement: outbound call persists with `automation_source` per §3.26.18.2 entity model.
+
+#### 3.26.18.16 Voice-mediated workflows canon
+
+Voice-mediated workflows canon at September scope. Phone primitive is the natural primitive for voice input infrastructure — operators on calls + drivers on routes + foremen on production floors + dispatchers in noisy environments all prefer hands-free workflows. Phone primitive ships voice input infrastructure that other primitives compose into.
+
+**Voice input infrastructure**:
+- Speech-to-text via Web Speech API (browser-native; existing CallOverlay implementation foundation includes Web Audio API + Web Speech API integration) + Deepgram Nova-2 fallback
+- Voice activation: push-to-talk affordance (preferred default; operator agency discipline per §3.26.14.14.5 — voice activation is intentional, not always-listening) + wake-word affordance deferred per §3.26.18.23
+- Audio waveform visualization (per existing CallOverlay implementation foundation — Web Audio API AnalyserNode for real audio waveform)
+
+**Voice-mediated Command Bar** per §3.26.18.13 + §3.26.13:
+- Voice → speech-to-text → Command Bar query → action commit
+- Existing pattern from Smart Plant Voice Mode (`SmartPlantCommandBar.tsx` per April 2026 implementation) extends as canonical voice-mediated Command Bar primitive
+- Auto-execute on high confidence (>0.92); large touch buttons for medium confidence
+
+**Voice-mediated entity reference**:
+- Voice input resolves entity references inline ("schedule call with Mary Hopkins" → entity resolution → action commit)
+- NL Creation overlay per Phase 4 UI/UX Arc inherits voice input
+- Cross-primitive: voice-driven email composition + calendar event creation + SMS draft + call placement all share voice input substrate
+
+**Hands-free operational use cases canonical at September**:
+- Driver console (`/portal/<slug>/driver`): voice input for stop status updates + voice-mediated mileage logging
+- Production floor terminals: voice input for production log entries
+- Dispatcher kiosks: voice input for call placement + scheduling
+- FH director arrangement scribe: voice input as primary intake modality (existing pattern; preserve)
+
+**Voice-mediated workflows discipline**:
+- Operator agency preserved per §3.26.14.14.5 — voice input is intentional + bounded; auto-listen anti-pattern explicitly rejected
+- Privacy discipline — voice input audio NOT persisted by default
+- Cost discipline — voice input transcription consumes per-transcription cost
+
+**Voice input cost attribution discipline canonical**: voice input transcription cost attribution canonical: voice input consumed by primitive X attributes transcription cost to primitive X's cost discipline. Email composition voice input → Email primitive cost. Phone primitive voice input → Phone primitive cost. Command Bar voice input → summoning primitive cost (resolved at action commit time). NL Creation overlay voice input → target entity primitive cost. Cross-primitive voice input substrate preserves per-primitive cost attribution clarity; tenant cost-policy templates apply per primitive consuming voice substrate. Voice input cost surfaces transparently in primitive-level cost analytics.
+
+**Voice input is platform substrate** per architectural-elegance discipline — Phone primitive ships voice input infrastructure; other primitives compose into it. Email composition, NL Creation overlay, Command Bar, Bridgeable Assist, future Bridgeable Vision — all consume voice input via shared infrastructure.
+
+#### 3.26.18.17 Cross-tenant call visibility + bilateral consent recording
+
+Per §3.26.18.7 cross-tenant masking + bounded scope. Cross-tenant calls less common than cross-tenant email/calendar but operationally meaningful — Hopkins+Sunnycrest joint coordination calls.
+
+**Cross-tenant call detection**: when inbound or outbound call's external phone matches another tenant's `phone_accounts.phone_number` via PhoneAccountAccess junction, `external_tenant_id` populated + `is_cross_tenant=True`.
+
+**Bilateral consent recording mechanics** per §3.26.16.6 calendar bilateral consent canon precedent + Q12:
+- Cross-tenant call recording requires bilateral consent — both tenant operators must consent for recording to engage
+- Default: no recording on cross-tenant calls; bilateral consent affordance fires at call start (TTS prompt for both tenants)
+- Per-call bilateral consent state stored on Call entity; both tenants' audit logs reflect consent grants
+- Either tenant unilaterally revokes consent — recording stops mid-call; revocation propagates to both tenant copies
+
+**Per-tenant audit trails** preserved per §3.26.18.7 cross-tenant masking inheritance.
+
+**Per-tenant intelligence pipeline canonical** per Q12: each tenant runs own intelligence pipeline against own transcript copy; per-tenant Intelligence configuration + cost discipline preserved.
+
+**Per-tenant recording copies preferred over shared** per Q12: each tenant maintains own CallRecording row + own R2 storage key + own retention policy + own compliance mode + own access controls.
+
+**Cross-tenant masking inheritance** per §3.25.x: participant identities + transcript content + intelligence artifacts inherit cross-tenant masking.
+
+#### 3.26.18.18 Strategic framing — Phone as operational substrate completion (communications + scheduling + reach + intelligence = operations)
+
+Phone primitive completes operational substrate four-part composition:
+
+> **Communications + scheduling + reach + intelligence = operations.** Email primitive (§3.26.15) ships interpersonal coordination. Calendar primitive (§3.26.16) ships temporal coordination. SMS primitive (§3.26.17) ships operational reach — Layer 1 primitive that bypasses surface-navigation friction. Phone primitive (§3.26.18) ships **operational intelligence** — call recordings + transcripts + intelligence-derived artifacts feed operational state directly via call-intelligence-as-primary-value framework per §3.26.18.1. Action items extracted from call intelligence propagate state changes per §3.26.18.20; operational state changes generate outbound call drafts per §3.26.18.5 Path 2. Phone is not a separate communication island; Phone is the intelligence-bearing communication primitive that completes operational substrate four-part composition.
+
+**Three architectural justifications preserved at canon level**:
+
+1. **Phone-distinctive among Layer 1 communication primitives** — Email + SMS render raw content as primary surface; Calendar renders structured event metadata; Phone renders intelligence-derived artifacts as primary. Intelligence-as-primary-value per §3.26.18.1 is genuinely Phone-specific architectural shape.
+
+2. **Voice modality alternative is platform substrate, not Phone-specific dimension** — voice input canonicalized at §3.26.18.16 as platform substrate consumed by Email + NL Creation + Command Bar + future Bridgeable Assist + future Bridgeable Vision. Voice modality positioning would conflate Phone with voice input infrastructure.
+
+3. **Real-time + asynchronous duality alternative is architectural model concern, not operator-experiential concern** — operators experience Phone as call-intelligence-summary surface; duality construct is implementation detail beneath operator experience.
+
+**Operational substrate four-part completion sharpens September Wilbert demo positioning at canon level**: demo can demonstrate operational state coherence across all four communication primitives — single operational state with four communication primitive surfaces.
+
+**Concrete competitor comparison preserved at canon level** per §3.26.18.10 — standalone call intelligence platforms (Gong + Chorus + Fireflies + Otter) treat call intelligence as standalone product disconnected from operational state. Bridgeable's Phone-as-operational-intelligence-primitive framing eliminates this context-switch.
+
+#### 3.26.18.19 Canonical design disciplines
+
+**1. Multi-framework compliance discipline at primitive level** (per §3.26.18.9). State-by-state two-party consent + recording disclosure mechanics + HIPAA mode + FCC TCRA + CFPB Regulation F + cross-primitive opt-out coordination registry.
+
+**2. Multi-dimensional cost discipline at primitive level** (per §3.26.18.10). Per-call + per-minute + per-transcription + per-intelligence-prompt cost dimensions.
+
+**3. Real-time + asynchronous duality canonical at architectural model** (per §3.26.18.1 + §3.26.18.4 + §3.26.18.6 + §3.26.18.22).
+
+**4. Call intelligence as primary value framework** (per §3.26.18.1 + §3.26.18.6). 7 managed prompts canonical at September scope.
+
+**5. Hybrid shared + personal Phone account model** (per §3.26.18.3). RingCentral canonical primary; Twilio Voice deferred alternate.
+
+**6. Polymorphic entity linkage M:N** (per §3.26.18.8). Phone-specific extensions include `delivery` + `driver_route` + `safety_program_generation` linked_entity_types.
+
+**7. Phone primitive as operational intelligence primitive** (per §3.26.18.18 strategic framing + §3.26.18.20 state coupling).
+
+**8. Pre-send validation pipeline canonical** (per §3.26.18.5).
+
+**9. Customer-facing vs operational-team-facing conversation discipline** (per §3.26.18.21).
+
+**10. Voice input as platform substrate** (per §3.26.18.16). Phone primitive ships voice input infrastructure; other primitives compose into shared infrastructure. Per-primitive cost attribution preserves clarity.
+
+**11. Differential retention discipline by artifact type** (per §3.26.18.7). Legal-hold cascades; release of hold cascades release.
+
+#### 3.26.18.20 Operational-state-coupled-to-calls
+
+Phone primitive operational coupling discipline per §3.26.9 Communications Layer Architecture + §3.26.15.16 email + §3.26.16.18 calendar + §3.26.17.18 SMS operational coupling precedent. Phone's operational coupling is **bidirectional and intelligence-mediated** — distinguishing characteristic from prior primitives.
+
+**Inverse coupling — call intelligence extracts state changes**:
+- `phone.call_action_items_extract` (Sonnet per §3.26.18.6) extracts action items from call transcripts
+- Action items propagate to operational state via canonical state-change mappings (SalesOrder.scheduled_date / FHCase.service_date / Quote.status / CustomerPayment / Delivery.status / Task)
+- Drafted-not-auto-applied discipline per §3.26.14.14.5 — proposed state changes surface in operator review queue (Decision Focus per §3.26.18.24); operator commits or skips
+- Action item commits write `call_linkages` rows linking call to affected entities per §3.26.18.8
+
+**Forward coupling — state changes generate call attempts**:
+- Canonical state-change → call mappings (Quote-near-expiration → drafted follow-up call; Invoice-overdue threshold → drafted collections-pattern call per CFPB compliance; SalesOrder-scheduled-but-unconfirmed → drafted confirmation call; FHCase-arrangement-conference-pending → drafted intake call; Delivery-tomorrow-customer-not-confirmed → drafted day-before confirmation call)
+- Drafted call attempts surface in operator review queue per §3.26.18.5 Path 2
+- Drafted-not-auto-sent discipline preserves operator agency per §3.26.14.14.5
+
+**Five canonical action_types** (parallel to §3.26.17.18 SMS canon precedent):
+- `outbound_call_attempt_acknowledgment` — drafted state-change-generated call awaiting operator commit
+- `inbound_call_action_item_review` — call intelligence extracted action item awaiting operator commit
+- `compliance_review_required` — call flagged by `phone.compliance_review` artifact
+- `voicemail_follow_up` — voicemail received awaiting operator action
+- `cross_tenant_operational_acknowledgment` — cross-tenant call action item requiring cross-tenant operational state propagation
+
+Don't add parallel action_types matching email/calendar/SMS direct-confirmation patterns. Phone primitive's intelligence-mediated coupling is structurally different — when customer accepts quote on phone call, intelligence extracts "Customer accepted quote" as action item via `inbound_call_action_item_review` substrate; operator reviews + commits state change.
+
+**All reuse `platform_action_tokens` substrate** (renamed at implementation time per Calendar Q13 substrate consolidation direction).
+
+**Bidirectional binding canonical** — Phone primitive's coupling is more pervasive than email's inverse coupling because Phone primitive's intelligence-mediation generates structured action items at scale.
+
+#### 3.26.18.21 Customer-facing vs operational-team-facing conversation discipline
+
+Phone primitive `conversation_orientation` parameter parallel to §3.26.17.19 SMS conversation orientation discipline. Single primitive with `conversation_orientation` parameter — `customer_facing` | `operational_team_facing`. Single primitive — both orientations share entity model + provider + compliance + cost discipline + intelligence pipeline; orientation is composition parameter, not primitive split.
+
+**Orientation drives**:
+- **Default Pulse layer assignment** per §3.26.18.12 — customer-facing → Communications layer; operational-team-facing → Operational layer
+- **Default routing on outbound** — customer-facing outbound uses tenant's customer-facing phone account; operational-team-facing outbound uses operational phone account
+- **Default visual chrome surfacing** per §14.12 visual canon
+- **Compliance defaults** — customer-facing → standard recording mode + customer DNC + CFPB collections discipline; operational-team-facing → operational compliance mode (HIPAA awareness for FH directors handling PHI; PCI-redaction for accounting team)
+- **Cost discipline routing** — customer-facing cost attributes to customer-facing budget cap; operational-team-facing cost attributes to operational budget cap
+
+**Orientation determination at call placement**: operator-initiated outbound (phone account default with per-call override); inbound (phone account that received call); state-change-generated outbound (source state change); cross-tenant calls (independent per tenant).
+
+**Filter discipline**: orientation filter chip canonical in `/calls` workspace per §3.26.18.11.
+
+#### 3.26.18.22 Real-time call surface
+
+Real-time call surface canonical at September scope. Phase A §3.26.18.4 + §3.26.18.6 captured real-time architectural commitments (Deepgram real-time API + WebSocket/SSE + provider webhook subscriptions + reconciliation discipline). §3.26.18.22 surfaces canonical visual + interaction model.
+
+**Real-time call surface composition** (extends existing CallOverlay implementation foundation; visual canon at §14.12.3):
+- Live transcript pane (left): speaker-diarized live transcript with streaming partial transcripts at ~250ms cadence
+- Live intelligence pane (right): live intent classification + sentiment trajectory + action items detected + compliance flag detection
+- Real-time call surface controls: Hold + transfer + end call + mute + add note + link entity + recording toggle
+- Reconciliation discipline at call end: partial transcripts converge to canonical CallTranscript via batch API re-processing; canonical transcript supersedes accumulated partials via `superseded_by_transcript_id`; intelligence pipeline re-executes; partial-transcript intelligence artifacts marked superseded via `superseded_by_artifact_id`
+
+**Mobile real-time call surface** — voice-mediated workflows per §3.26.18.16 inherit real-time call surface for mobile + driver + production-floor users. Touch-first variant.
+
+#### 3.26.18.23 Strategic vision deferral catalog
+
+Strategic vision deferral catalog per §3.26.7.5 architectural restraint discipline.
+
+**Provider abstraction deferrals**:
+- **Twilio Voice alternate** — three documented signals: (1) tenant has existing Twilio Voice contract + operational call volume; (2) tenant operational pattern requires Twilio-specific feature like programmable voice routing or TwiML IVR; (3) sustained tenant signal indicating RingCentral provisioning friction
+- **Native PBX integration** deferred indefinitely
+- **International providers** deferred indefinitely (US-only canonical scope)
+
+**Transcription pipeline deferrals**:
+- **Whisper alternate** — concrete signal: multi-language support requirements OR on-prem deployment requirements
+- **AssemblyAI alternate** deferred indefinitely
+- **On-device transcription** deferred indefinitely
+
+**Call intelligence pipeline deferrals**:
+- **`phone.call_quality_review` (Sonnet)** — per-call quality scoring for QA programs deferred. Concrete signal: tenant operational pattern signals QA program need — operator self-evaluation surveys + supervisor review patterns + tenant explicit request for QA tooling
+
+**Voice-mediated workflows deferrals**:
+- **Wake-word voice activation** deferred — privacy + battery cost; canonical default is push-to-talk
+- **Always-listening voice input** explicitly rejected (anti-pattern per operator agency discipline §3.26.14.14.5)
+- **Voice-activated entity creation without confirmation** deferred — operator-confirmation discipline preserved
+
+**Composition deferrals**:
+- **Voicemail-drop functionality** deferred. Concrete signals: (1) sustained tenant signal indicating voicemail-drop operational need; (2) CFPB Regulation F compliance review for voicemail-drop pattern; (3) provider-side voicemail-drop infrastructure (Twilio Voice deferred per provider abstraction)
+
+**Call routing deferrals**:
+- **Complex IVR-equivalent routing tree** — three documented signals: (1) sustained tenant signal indicating multi-level menu routing operational need; (2) tenant operational pattern requiring intent-based routing — call intelligence triages incoming calls to appropriate operator; (3) tenant operational pattern requiring AI-mediated routing — real-time intent extraction routes call before answer
+- **Operator availability tracking + queue routing** deferred
+
+**Cross-tenant deferrals**:
+- **Shared cross-tenant intelligence pipeline** deferred — current canon is per-tenant pipeline
+
+**Customer Pulse rendering deferral**:
+- **Customer Pulse template `recent_calls` slot** deferred until scoped Pulse summoning + per-template slot mapping infrastructure ships per §3.26.12.4
+
+**Compliance deferrals**:
+- **Tenant-customizable jurisdictional config override** deferred
+- **HIPAA per-tenant encryption key derivation** deferred per §3.26.15.8 canonical encryption interpretation
+
+**Storage retention deferrals**:
+- **Tenant-customizable retention schedule via Workshop policy** deferred
+- **Recording archival to cold storage** (Glacier-tier R2) deferred
+
+**Real-time call surface deferrals**:
+- **Live participant presence tracking** deferred
+- **Live call coaching** deferred
+
+Each deferred per §3.26.7.5 architectural restraint discipline.
+
+#### 3.26.18.24 Phone-triggered Decision Focus
+
+Phone-triggered Decision Focus integration per §3.26.11 Focus Primitive Types canonical pattern + §3.26.10 Triage Focus Canonical Pattern composition discipline. Phone primitive contributes Decision Focus triage queues for compliance + action-item-review + outbound-attempt-review + voicemail-follow-up + cost-warning workflows.
+
+**Six canonical Phone triage queue config types at September scope** (parallel to §3.26.17.21 SMS triage queue precedent — 5 + Phone-distinctive cost warning):
+
+1. **`phone_compliance_review_triage`** — compliance flag review queue. Surfaces calls flagged by `phone.compliance_review` Intelligence artifact. Severity ordering canonical: critical → high → medium → info.
+
+2. **`phone_action_item_review_triage`** — inbound call action item review queue. Surfaces `inbound_call_action_item_review` action_type per §3.26.18.20. Confidence threshold canonical: action items <0.70 confidence surface but require explicit operator confirmation; ≥0.70 confidence default-selected for commit.
+
+3. **`phone_outbound_attempt_review_triage`** — drafted outbound call review queue. Surfaces `outbound_call_attempt_acknowledgment` action_type per §3.26.18.20. Per-period draft accumulation canonical.
+
+4. **`phone_voicemail_follow_up_triage`** — voicemail follow-up queue. Surfaces `voicemail_follow_up` action_type per §3.26.18.20.
+
+5. **`phone_cross_tenant_acknowledgment_triage`** — cross-tenant call action item queue. Surfaces `cross_tenant_operational_acknowledgment` action_type per §3.26.18.20.
+
+6. **`phone_cost_warning_triage`** — cost-cap approaching queue. Phone-distinctive among Layer 1 communication primitives — Phone's multi-dimensional cost magnitudes ($0.20-0.50 per typical call) make cost warning canonically valuable.
+
+**Phase 5 Triage primitive substrate enables implementation** when Phase W-4b Phone Step ships triage integration (no Coordination-Focus-arc dependency).
+
+**Cross-references**: §3.26.11 Focus Primitive Types canonical pattern; §3.26.10 Triage Focus Canonical Pattern; §3.26.18.20 operational-state-coupled-to-calls; §3.26.18.6 Intelligence pipeline; §3.26.18.10 multi-dimensional cost discipline.
+
+#### 3.26.18.25 Phone-mediated Coordination Focus
+
+Phone-mediated Coordination Focus deferred parallel to Email/Calendar/SMS Coordination Focus arc per §3.26.15.23 + §3.26.16.23 + §3.26.17.22 deferral pattern.
+
+**Concrete signals warranting future canonicalization**:
+1. Single-call deliberation exceeds resolution scope
+2. Multi-party call coordination across cross-tenant boundaries
+3. Long-running call series (e.g., quote negotiation across 5+ calls)
+4. Action item dependencies across calls
+5. Compliance-escalated call series
+
+**Magic-link participant scope** per §3.26.11.9: external participants without Bridgeable accounts participate via Focus-magic-link. kill-the-portal canon preserved.
+
+**When Coordination Focus primitive domain arc ships**: BOTH email-mediated (§3.26.15.23) AND calendar-mediated (§3.26.16.23) AND SMS-mediated (§3.26.17.22) AND phone-mediated (§3.26.18.25) Coordination Focus integration follow as parallel implementation work — same primitive substrate; different communication-channel anchors. Single Coordination Focus arc unblocks all four communication primitives' integration.
+
+**Cross-references**: §3.26.18.17 cross-tenant call visibility; §3.26.11.6 sub-Focus hierarchy; §3.26.11.9 magic-link participant scope.
+
+#### 3.26.18.26 Phone Intelligence integration
+
+Phone Intelligence integration per Bridgeable Intelligence canonical pattern. Phone primitive ships with **7 managed prompts at canonical September scope** per §3.26.18.6.
+
+**7 canonical Phone Intelligence prompts**:
+
+1. **`phone.call_summarize`** (Sonnet) — narrative summary suitable for Pulse rendering + Briefing inclusion + saved view list rendering
+2. **`phone.call_intent_classify`** (Haiku) — intent classification for routing + saved view filtering + Pulse layer assignment
+3. **`phone.call_action_items_extract`** (Sonnet) — action item extraction for operational state coupling per §3.26.18.20
+4. **`phone.call_entity_resolve`** (Haiku) — entity reference extraction for polymorphic linkage auto-resolution per §3.26.18.8
+5. **`phone.call_sentiment_classify`** (Haiku) — sentiment classification for triage prioritization
+6. **`phone.compliance_review`** (Haiku) — compliance flag detection — powers `phone_compliance_review_triage` per §3.26.18.24
+7. **`phone.voicemail_summarize`** (Haiku) — voicemail-specific summarization
+
+**Real-time prompt firing discipline** per §3.26.18.6 + §3.26.18.22:
+- `phone.call_intent_classify` first-pass at 30s with growing transcript context; refined as transcript grows
+- `phone.call_action_items_extract` first-pass at 60s; refined as transcript grows
+- `phone.call_sentiment_classify` real-time trajectory updates per ~500ms cadence
+- `phone.compliance_review` real-time flag detection per ~1s cadence
+- Post-call canonical transcript: all 7 prompts re-execute against canonical transcript; canonical artifacts supersede partial artifacts via `superseded_by_artifact_id`
+
+**Cost discipline integration** per §3.26.18.10: each prompt execution writes `intelligence_executions` audit row per Bridgeable Intelligence canon; per-prompt cost recorded on `call_intelligence_artifacts.cost_cents`.
+
+**Operator agency preserved via canonical anti-patterns** per §3.26.14.14.5: Intelligence proposes; operator decides — auto-commit on high confidence explicitly rejected.
+
+**Future canonical prompts deferred per §3.26.18.23**:
+- `phone.call_quality_review` (Sonnet) — per-call quality scoring for QA programs deferred per concrete signal documented
+
+**Cross-references**: §3.26.18.6 Call intelligence pipeline; §3.26.18.20 operational-state-coupled-to-calls; §3.26.18.24 Phone-triggered Decision Focus; §3.26.18.27 Phone Workshop integration.
+
+#### 3.26.18.27 Phone Workshop integration
+
+Phone Workshop integration per §3.26.14 Workshop Primitive canonical pattern. **Per-template-type granularity at 7 distinct Phone Workshop template types** per Q21 deliberation + structural-overlap-of-composition-shapes meta-pattern per §3.26.16.24 calendar precedent + §3.26.17.24 SMS precedent.
+
+**Meta-pattern application**: Phone primitive's seven template shapes are structurally different — call script template ≠ recording-rule template ≠ cost-policy template ≠ call-routing-rule template ≠ jurisdictional-config template ≠ intelligence-prompt-policy template ≠ provider-provisioning template. Per-template-type granularity appropriate.
+
+**7 canonical Phone Workshop template types**:
+
+1. **`call_template`** — call script suggestions for outbound call composition per §3.26.18.15. Tenant-authored canonical (e.g., "Hopkins quote follow-up script", "Sunnycrest delivery confirmation script"). Per-call template assignment surfaces script suggestions in CallOverlay during call (NOT auto-played audio per operator agency discipline per §3.26.14.14.5).
+
+2. **`recording_rule_template`** — compliance + disclosure script + jurisdictional behavior + recording defaults per §3.26.18.9. Per-jurisdiction recording default + per-jurisdiction disclosure script + per-call-type recording override + retention policy.
+
+3. **`cost_policy_template`** — multi-dimensional cost caps + budget enforcement per §3.26.18.10. Per-tenant + per-account budget caps + per-jurisdiction outbound rate limits + per-prompt-type intelligence pipeline scope + compliance-mode cost premium handling.
+
+4. **`call_routing_rule_template`** — extension routing + business hours rules per §3.26.18.4. Incoming call routing tree + cross-tenant routing + intent-based routing deferred per §3.26.18.23.
+
+5. **`jurisdictional_config_template`** — state-by-state two-party consent + compliance jurisdictional defaults per §3.26.18.9. Tenant default jurisdiction + per-state two-party consent enforcement + recording disclosure required behavior per jurisdiction + jurisdictional override mechanics. **Distinct from recording_rule_template** — platform-level vs tenant-level + annual vs operational + jurisdictional table vs disclosure script TTS justifies distinct types.
+
+6. **`intelligence_prompt_policy_template`** — per-tenant Intelligence prompt customization per §3.26.18.26 + Bridgeable Intelligence canonical pattern. Per-prompt enable/disable + per-prompt cost-cap + per-prompt model override + per-prompt confidence threshold for triage queue + per-prompt prompt customization.
+
+7. **`provider_provisioning_template`** — RingCentral account provisioning + extension mapping per §3.26.18.3. Account type configuration + extension count + user-to-extension mapping + recording defaults + compliance mode + business hours.
+
+**Total cross-primitive Workshop template types canonical at canon level** (post-Session-5):
+- Email: 1 template type
+- Calendar: 3 template types
+- SMS: 5 template types
+- Phone: 7 template types
+- **Total: 16 Workshop template types**
+
+Meta-pattern locks across all four communication primitives. Future Session 6 in-platform messaging primitive applies same heuristic.
+
+**Cross-references**: §3.26.14 Workshop Primitive (entire Workshop architecture applies); §3.26.18.15 call composition canonical authoring surface; §3.26.18.20 operational-state-coupled-to-calls; §3.26.18.10 cost discipline; §3.26.18.9 compliance discipline; §3.26.18.6 Intelligence pipeline; §3.26.18.4 inbound call infrastructure routing.
+
+---
+
 # Part 6 — Funeral Home Vertical
 
 ## 6.1–6.9 Existing Funeral Home Sections
