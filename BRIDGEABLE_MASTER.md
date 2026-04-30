@@ -6234,6 +6234,10 @@ disconnect(connection) → void
 
 **Initial connect backfill**: default 30-day window; tenant admin configurable; runs as background job; tenant sees progress indicator; attachments fetched lazily.
 
+**IMAP sync canonical implementation** (per Step 2 ship): polling-only via APScheduler 5-minute sweep over active IMAP accounts + per-account UIDVALIDITY+UIDNEXT cursor tracking. Polling discipline acceptable at typical inbox volumes; sync latency canonical bounded at ≤5 minutes for IMAP accounts (vs near-realtime for Gmail Pub/Sub + MS Graph subscriptions).
+
+**Long-lived IMAP IDLE connection management deferred** per §3.26.7.5 — concrete signals that warrant canonicalization: tenant operator pattern signals near-realtime sync requirement for IMAP accounts (e.g., FH director receiving urgent family communication via IMAP-only personal account; manufacturing dispatcher receiving urgent supplier communication via IMAP-only legacy account); OR Workshop Intelligence-Suggested-Customizations pattern detection signals high-frequency IMAP polling waste. Implementation: long-lived IMAP IDLE connection per account (not APScheduler-friendly; requires worker process pattern); reconnect-with-backoff on connection drop; falls back to polling on IDLE-unsupported servers.
+
 #### 3.26.15.5 Outbound email infrastructure
 
 **Hybrid model**: Bridgeable composes outbound mail; sends via account's provider for per-account outbound; via transactional service for system-generated mail.
@@ -6327,6 +6331,10 @@ disconnect(connection) → void
 - Attachments encrypted in object storage (R2 server-side encryption canonical)
 - Audit log of all read/write access to email entities
 - Operator behavior privacy preserved (§3.26.14.14.4)
+
+**"Per-tenant key isolation" canonical meaning** (per Step 2 investigation): per-row FK-scoped isolation under platform-wide encryption key (matches existing canonical patterns in `credential_service.py` for OAuth credentials + `fh/crypto.py` for SSN encryption). Single platform master key (canonical env var: `CREDENTIAL_ENCRYPTION_KEY`). Logical tenant isolation via tenant_id FK relationships rather than per-tenant cryptographic key derivation. Audit log tracking every credential operation (create / refresh / revoke / use).
+
+**Future cross-platform per-tenant key derivation arc** deferred per §3.26.7.5 — concrete signals that warrant canonicalization: regulatory tenant requires HSM-backed per-tenant keys for compliance posture (FedRAMP / HIPAA-with-stronger-controls); OR threat model evolves to require per-tenant cryptographic isolation beyond logical isolation (e.g., insider threat scenarios where platform-wide key compromise must NOT compromise individual tenant data). When concrete signal warrants, retrofit applies uniformly across SSN encryption + accounting credentials + email tokens (not email-only).
 
 **Compliance frameworks** (canonical preparedness):
 - SOC 2 Type II — encryption + audit logging + access controls
