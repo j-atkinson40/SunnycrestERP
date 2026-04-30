@@ -606,4 +606,26 @@ def ingest_provider_message(
     )
     db.flush()
 
+    # 10. V-1c CRM activity feed integration — Phase W-4b Layer 1 Step 5.
+    # Best-effort; never blocks ingestion. When the thread has known
+    # CRM linkage (explicit linkage OR auto-resolved participant), an
+    # activity row surfaces on each linked CompanyEntity's V-1c
+    # activity feed. RecentActivityWidget already maps "email"
+    # activity_type to "logged an email" verb (line 75 of the widget),
+    # so frontend rendering ships unchanged.
+    try:
+        from app.services.email.activity_feed_integration import (
+            log_email_event_for_thread,
+        )
+
+        log_email_event_for_thread(
+            db, message=message, thread=thread
+        )
+        db.flush()
+    except Exception:
+        logger.exception(
+            "Activity feed integration failed for ingested message %s",
+            message.id,
+        )
+
     return message

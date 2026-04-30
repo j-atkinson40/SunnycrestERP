@@ -223,3 +223,66 @@ def post_navigate_signal(
             detail=str(e),
         )
     return _signal_response(sig)
+
+
+# ── Phase W-4b Layer 1 Step 5 — customer email threads composition source ──
+
+
+@router.get("/email-threads-for-customer/{customer_entity_id}")
+def get_customer_email_threads(
+    customer_entity_id: str,
+    limit: int = Query(
+        default=5,
+        ge=1,
+        le=50,
+        description=(
+            "Max threads to return. Default 5 matches Customer Pulse "
+            "template default slot capacity per §3.26.12.4 Layer A. "
+            "Hard ceiling 50."
+        ),
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Recent email threads scoped to a customer (CompanyEntity).
+
+    Per §3.26.12.3 composition sources canon: Customer Pulse template
+    composes recent threads filtered to the orchestration entity.
+
+    **Step 5 ships data-layer-only**: this endpoint establishes the
+    canonical query pattern. Customer Pulse template extension (slot
+    mapping declaration) deferred until scoped Pulse infrastructure
+    ships per §3.26.12.4.
+
+    **This is the canonical resource for future scoped Pulse Customer
+    Pulse consumption** — when scoped Pulse summoning + per-template
+    slot mapping infrastructure lands, the Customer Pulse template's
+    email_threads slot consumes this endpoint rather than building
+    parallel query patterns.
+
+    **Two-source resolution**: matches threads via (1) explicit
+    EmailThreadLinkage with linked_entity_type="customer", (2)
+    EmailParticipant resolved to this CompanyEntity. Union, deduped,
+    sorted by last_message_at DESC, capped at `limit`.
+
+    **Tenant isolation**: customer_entity_id must belong to caller's
+    tenant; cross-tenant probes return existence-hiding empty payload
+    (404-shaped — `{customer_entity_id, customer_name: null,
+    threads: [], total_count: 0}`).
+
+    **Access enforcement**: only threads on accounts the caller has
+    read access on (per EmailAccountAccess) surface.
+
+    **Performance**: p50 < 300ms per Step 5 spec (matches scoped Pulse
+    composition resolution budget per §3.26.12.4 Layer B).
+    """
+    from app.services.email.customer_email_threads_service import (
+        get_threads_for_customer,
+    )
+
+    return get_threads_for_customer(
+        db,
+        customer_entity_id=customer_entity_id,
+        user=current_user,
+        limit=limit,
+    )

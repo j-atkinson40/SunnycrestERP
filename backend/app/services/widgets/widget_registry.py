@@ -1267,6 +1267,94 @@ WIDGET_DEFINITIONS: list[dict] = [
         ],
         "default_variant_id": "detail",
     },
+    # ── Phase W-4b Layer 1 Step 5 — Communications layer per-primitive widget ──
+    #
+    # `email_glance` — Email primitive Glance widget per §3.26.9.7
+    # (Communications Layer per-primitive decomposition) + §14.4-14.5
+    # visual canon. Cross-vertical foundation widget.
+    #
+    # Per §3.26.12.3: pulse_grid covers all Pulse scopes (Home Pulse +
+    # future scoped Pulses) by inheritance — no per-scope supported_
+    # surfaces extension needed. Communications layer composition
+    # (`communications_layer_service.py`) deferred to W-4b sequence
+    # step 6 per §3.26.6.4; widget renders today on home Pulse via the
+    # existing PulseSurface infrastructure when user pins it.
+    #
+    # Per §14.5: three density tiers — Default (≥121px) renders full
+    # icon + count + sender + footer; Compact (101-120px) collapses
+    # sender to single-line; Ultra-compact (80-100px) drops sender body
+    # entirely, single-row icon + label + count.
+    #
+    # Per §12.6a: view-only widget — click-through navigation to inbox,
+    # no state-flip interactions. Marking-read happens in the inbox
+    # surface; the widget surfaces signal but doesn't act on it.
+    {
+        "widget_id": "email_glance",
+        "title": "Email",
+        "description": (
+            "Email primitive Glance widget per Communications Layer "
+            "Pattern C composition (§3.26.9.7). Surfaces unread inbound "
+            "count + top sender + cross-tenant indicator + AI-priority "
+            "count across the user's accessible email accounts (per "
+            "EmailAccountAccess junction). Cross-vertical foundation "
+            "widget (every tenant with email accounts sees it). Click "
+            "navigates to /inbox?status=unread for multi-thread surface, "
+            "/inbox?thread_id={id} for single-thread surface. Per §14.4-"
+            "14.5 visual canon: three density tiers (Default ≥121px / "
+            "Compact 101-120 / Ultra-compact 80-100) — icon + mono "
+            "count + sender excerpt + 'Open inbox →' footer (Default), "
+            "icon + count + single-line sender (Compact), icon + count "
+            "only (Ultra-compact). Per §12.6a — view-only widget, no "
+            "in-place state flips. Communications layer composition "
+            "(communications_layer_service.py + LayerName 'communications' "
+            "literal) deferred to W-4b sequence step 6 per §3.26.6.4 "
+            "sequencing canon — widget renders today on home Pulse + "
+            "any future scoped Pulse via §3.26.12.3 pulse_grid surface "
+            "inheritance."
+        ),
+        "page_contexts": ["pulse", "home"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1"],
+        "category": "operations",
+        "icon": "Mail",  # §14.2 canonical Lucide icon (closed envelope)
+        "default_enabled": True,
+        "default_position": 8,
+        # Cross-vertical (every tenant with email primitive sees it).
+        # Cross-line (no per-product-line scoping). No required_extension
+        # — email is a Layer 1 platform primitive, not an extension.
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+        ],
+        "default_surfaces": ["pulse_grid"],
+        "intelligence_keywords": [
+            "email",
+            "inbox",
+            "unread",
+            "messages",
+            "communications",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 240,
+                    "height": "auto",
+                    "maxHeight": 160,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "spaces_pin",
+                    "dashboard_grid",
+                ],
+            },
+        ],
+        "default_variant_id": "glance",
+    },
 ]
 
 

@@ -480,4 +480,28 @@ def send_message(
     )
     db.flush()
 
+    # 10. V-1c CRM activity feed integration — Phase W-4b Layer 1 Step 5.
+    # Best-effort; never blocks send. When the thread has known CRM
+    # linkage (explicit OR auto-resolved participant), an activity row
+    # surfaces on each linked CompanyEntity's activity feed.
+    # Sender's User id is captured as actor for outbound (vs None for
+    # inbound — inbound has no Bridgeable actor).
+    try:
+        from app.services.email.activity_feed_integration import (
+            log_email_event_for_thread,
+        )
+
+        log_email_event_for_thread(
+            db,
+            message=message,
+            thread=thread,
+            actor_user_id=sender.id,
+        )
+        db.flush()
+    except Exception:
+        logger.exception(
+            "Activity feed integration failed for outbound message %s",
+            message.id,
+        )
+
     return message

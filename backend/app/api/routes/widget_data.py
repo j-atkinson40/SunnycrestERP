@@ -164,6 +164,37 @@ def today_widget_summary(
     return get_today_summary(db, user=current_user)
 
 
+# ── Phase W-4b Layer 1 Step 5 — `email_glance` widget ──
+
+
+@router.get("/email-glance")
+def email_glance_widget_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Email Glance widget data — Phase W-4b Layer 1 Step 5.
+
+    Per §3.26.9.7 Communications Layer per-primitive decomposition:
+    surfaces unread inbound count + top sender + cross-tenant indicator
+    + AI-priority count across the user's accessible email accounts.
+
+    Tenant-scoped via `EmailAccount.tenant_id == user.company_id`;
+    per-user via `EmailAccountAccess` junction. Cross-tenant masking
+    flows through `EmailThread.is_cross_tenant` indicator at render.
+
+    Per Step 5 spec performance budget: p50 < 200ms (matches existing
+    widget data service budget). Worst-case fan-out capped at 50
+    unread rows for sender-resolution, then precise count query if
+    capped.
+
+    See `app/services/widgets/email_glance_service.py` for full
+    signal-computation discipline + tenant-isolation helpers.
+    """
+    from app.services.widgets.email_glance_service import get_email_glance
+
+    return get_email_glance(db, user=current_user)
+
+
 # ── Phase W-3a — `anomalies` widget (real agent_anomalies data) ──
 
 

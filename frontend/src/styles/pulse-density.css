@@ -104,16 +104,19 @@
  * are hidden. Container queries below override. */
 .anomalies-widget-pulse-default,
 .line-status-widget-pulse-default,
-.today-widget-pulse-default {
+.today-widget-pulse-default,
+.email-glance-widget-pulse-default {
   display: flex;
 }
 
 .anomalies-widget-pulse-compact,
 .line-status-widget-pulse-compact,
 .today-widget-pulse-compact,
+.email-glance-widget-pulse-compact,
 .anomalies-widget-pulse-ultra-compact,
 .line-status-widget-pulse-ultra-compact,
-.today-widget-pulse-ultra-compact {
+.today-widget-pulse-ultra-compact,
+.email-glance-widget-pulse-ultra-compact {
   display: none;
 }
 
@@ -128,13 +131,15 @@
 @container piece (max-height: 117.5px) {
   .anomalies-widget-pulse-default,
   .line-status-widget-pulse-default,
-  .today-widget-pulse-default {
+  .today-widget-pulse-default,
+  .email-glance-widget-pulse-default {
     display: none;
   }
 
   .anomalies-widget-pulse-compact,
   .line-status-widget-pulse-compact,
-  .today-widget-pulse-compact {
+  .today-widget-pulse-compact,
+  .email-glance-widget-pulse-compact {
     display: flex;
   }
 }
@@ -153,13 +158,15 @@
 @container piece (max-height: 97.5px) {
   .anomalies-widget-pulse-compact,
   .line-status-widget-pulse-compact,
-  .today-widget-pulse-compact {
+  .today-widget-pulse-compact,
+  .email-glance-widget-pulse-compact {
     display: none;
   }
 
   .anomalies-widget-pulse-ultra-compact,
   .line-status-widget-pulse-ultra-compact,
-  .today-widget-pulse-ultra-compact {
+  .today-widget-pulse-ultra-compact,
+  .email-glance-widget-pulse-ultra-compact {
     display: flex;
   }
 }

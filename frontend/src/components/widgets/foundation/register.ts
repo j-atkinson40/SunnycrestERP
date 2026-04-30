@@ -24,6 +24,7 @@ import { registerWidgetRenderer } from "@/components/focus/canvas/widget-rendere
 
 import { AnomaliesWidget } from "./AnomaliesWidget"
 import { BriefingWidget } from "./BriefingWidget"
+import { EmailGlanceWidget } from "./EmailGlanceWidget"
 import { OperatorProfileWidget } from "./OperatorProfileWidget"
 import { RecentActivityWidget } from "./RecentActivityWidget"
 import { SavedViewWidget } from "./SavedViewWidget"
@@ -76,3 +77,17 @@ registerWidgetRenderer("saved_view", SavedViewWidget)
 // per-instance via `config.briefing_type`. View-only per §12.6a —
 // Mark-read + Regenerate live on the dedicated /briefing page.
 registerWidgetRenderer("briefing", BriefingWidget)
+
+
+// `email_glance` widget — Phase W-4b Layer 1 Step 5 cross-vertical
+// foundation widget. Email primitive Glance per Pattern C composition
+// (§3.26.9.7 Communications Layer per-primitive decomposition).
+// Surfaces unread inbound count + top sender + cross-tenant indicator
+// across user's accessible accounts (per EmailAccountAccess junction).
+// Three density tiers per §13.4.1 + §14.4-14.5 visual canon. Click-
+// through navigation per §12.6a — view-only widget. Communications
+// layer composition (`communications_layer_service.py`) deferred to
+// W-4b sequence step 6 per §3.26.6.4; widget renders today on home
+// Pulse + any future scoped Pulse via §3.26.12.3 pulse_grid surface
+// inheritance.
+registerWidgetRenderer("email_glance", EmailGlanceWidget)
