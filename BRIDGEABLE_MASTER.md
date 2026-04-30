@@ -6920,6 +6920,831 @@ Per §3.26.14.4 templates-as-data forcing function. Single `email_template` temp
 
 ---
 
+### 3.26.16 Calendar Primitive
+
+Phase W-4b Layer 1 communication-temporal primitive per §3.26.6.4 sequence step 2. Email primitive (§3.26.15) ships first; Calendar primitive ships in parallel or after, depending on operator-signal sequencing. Both are Layer 1 primitives — substrate for Communications Layer Pattern C composition (§3.26.9) — but Calendar's role in the layer model is itself an architectural decision (see §3.26.16.10 hybrid layer contribution discipline).
+
+Calendar primitive is **architecturally lighter than Email** on novel architecture:
+- iCalendar (RFC 5545) is a settled industry standard — the entity model + recurrence semantics + attendee response semantics + scheduling-protocol semantics (RFC 5546 iTIP) inherit from canon decades-long ratified
+- Provider abstraction is simpler than email's transport-vs-conversation split — Google Calendar API + Microsoft Graph cover ≥90% of operational tenants
+- Free/busy + attendee-status are well-understood concepts — no novel kill-the-portal pattern at the calendar primitive level (kill-the-portal applies to specific operational-action types per §3.26.16.17, not to the calendar primitive itself)
+
+Calendar primitive is **architecturally heavier than Email** on operational coupling:
+- Calendar events are state-bound to operational entities by their nature (a delivery has a scheduled date; a service has a service date; a pour has a production date). Email is incidentally state-bound; calendar is structurally state-bound.
+- State-changes-generate-calendar-events (§3.26.16.18) is more pervasive than email's inverse coupling — almost every operational state change with a date dimension produces a calendar event
+
+This dual character — lighter on novel substrate, heavier on operational coupling — shapes the canon.
+
+#### 3.26.16.1 Calendar primitive emergence + integrate-now-make-native-later framework
+
+Calendar emerges as the second concrete Layer 1 communication-temporal primitive after Email (§3.26.15). Phase W-4b sequence step 2 per §3.26.6.4. Canonical-quality discipline per §3.26.7.5: build Calendar primitive at canon-faithful depth from session-one; no MVP cuts that compound as debt.
+
+**Native-vs-integration deliberation (canonicalized verbatim per Session 2 framework)**:
+
+Native calendar implementation from day one would require: full RFC 5545 iCalendar parser/emitter; full RFC 5546 iTIP scheduling protocol implementation; CalDAV server (RFC 4791) for native calendar transport; CalDAV-Sched (RFC 6638) for invitation propagation; recurrence engine (RRULE expansion + EXDATE handling + RDATE additions + modified-instance shadowing); time zone database management (IANA tzdb) with DST transition handling; iTIP processing for METHOD=REQUEST/REPLY/CANCEL/COUNTER scheduling messages; free/busy publication (RFC 4791 §6.4 + §6.5); CalDAV scheduling inbox/outbox semantics; and ongoing operational infrastructure for federation with external CalDAV servers.
+
+Operational scope: ~3-4 months engineering + ongoing federation maintenance + interoperability testing against Google/Microsoft/Apple/Mozilla/Fastmail clients + edge-case handling around recurrence-modification semantics (one of the most bug-prone areas of any calendar implementation).
+
+The **integrate-now-make-native-later commitment is canonical** — Bridgeable's calendar primitive owns its **architectural model** (entity model + UI surfaces + Intelligence integration + operational coupling) while delegating **transport** to provider abstraction (Google Calendar API + MS Graph + CalDAV per §3.26.16.4 + local/Bridgeable-native provider for events that don't need external propagation). Future native CalDAV transport implementation lands behind provider abstraction without disturbing architectural model.
+
+**Local provider** (Bridgeable-native, no external transport) is a canonical first-class citizen — distinct from email's transactional-send-only provider. Some calendar events are purely operational (a Bridgeable-internal "this delivery is scheduled for Thursday") and don't need external propagation. The local provider stores them as canonical CalendarEvent without invitation transport. External attendees on local-provider events trigger upgrade-to-external-provider when first added.
+
+**Canonical-quality discipline per §3.26.7.5**: Calendar primitive's architectural model + UI surfaces + Intelligence integration + operational coupling are first-class platform concerns with canon-quality depth from day one. Native CalDAV transport is the deferred concern; the architectural model is not.
+
+#### 3.26.16.2 Calendar entity model
+
+Seven core entities form the Calendar primitive substrate. Three primary (CalendarEvent + CalendarEventAttendee + CalendarAccount), four supporting (CalendarAccountAccess + CalendarEventInstanceOverride + CalendarEventReminder + CalendarEventLinkage). Pattern matches §3.26.15.2 Email primitive entity model.
+
+**Primary entities**:
+
+`calendar_events` — the canonical event entity. Fields: `id` + `tenant_id` + `account_id` (FK CalendarAccount) + `provider_event_id` (provider-side identifier; nullable for Bridgeable-native events) + `subject` + `description_text` + `description_html` + `location` + `start_at` (DateTime tz) + `end_at` (DateTime tz) + `is_all_day` (Boolean) + `event_timezone` (IANA timezone identifier — distinct from start_at's tz; preserved verbatim from RFC 5545 DTSTART;TZID) + `recurrence_rule` (RFC 5545 RRULE string; nullable for non-recurring) + `recurrence_master_event_id` (FK self-reference; populated only on instance-override rows; null on master event + non-recurring) + `recurrence_instance_start_at` (DateTime tz; populated only on instance-override rows to identify which recurrence the override modifies) + `status` (`tentative` / `confirmed` / `cancelled` per RFC 5545 STATUS) + `transparency` (`opaque` / `transparent` per RFC 5545 TRANSP — drives free/busy resolution) + `is_cross_tenant` (Boolean — mirrors §3.26.15.7 EmailThread cross-tenant marker) + `is_active` + `created_at` + `updated_at`.
+
+`calendar_event_attendees` — per-event-per-attendee status + role. Fields: `id` + `event_id` (FK) + `tenant_id` + `email_address` + `display_name` + `resolved_user_id` (FK User; nullable when external) + `resolved_company_entity_id` (FK CompanyEntity; nullable; mirrors EmailParticipant.resolved_company_entity_id) + `external_tenant_id` (nullable; cross-tenant Bridgeable user resolution mirroring EmailParticipant.external_tenant_id) + `role` (`organizer` / `required_attendee` / `optional_attendee` / `chair` / `non_participant` per RFC 5545 ROLE) + `response_status` (`needs_action` / `accepted` / `declined` / `tentative` / `delegated` per RFC 5545 PARTSTAT) + `responded_at` (nullable) + `comment` (text; from response — many providers surface a comment field on accept/decline) + `is_internal` + `first_seen_at`.
+
+`calendar_accounts` — per-tenant calendar account configuration. Fields: `id` + `tenant_id` + `account_type` (`shared` / `personal` per §3.26.16.3 hybrid model) + `display_name` + `primary_email_address` (the calendar's principal address; mirrors `email_address` field on EmailAccount) + `provider_type` (`google_calendar` / `msgraph` / `caldav` / `local` per §3.26.16.4) + `provider_config` (JSONB) + `encrypted_credentials` (Fernet via platform-wide CREDENTIAL_ENCRYPTION_KEY per §3.26.15.8 canonical encryption interpretation) + `outbound_enabled` (Boolean) + `default_event_timezone` (IANA identifier) + `is_active` + `created_at` + `updated_at`.
+
+**Supporting entities**:
+
+`calendar_account_access` — per-user-per-account access junction. Fields: `id` + `account_id` + `user_id` + `tenant_id` + `access_level` (`read` / `read_write` / `admin`) + `granted_at` + `granted_by_user_id` + `revoked_at` (nullable). Mirrors EmailAccountAccess shape verbatim.
+
+`calendar_event_instance_overrides` — RFC 5545 modified-instance + cancelled-instance shadowing. When a recurring event has one instance modified (e.g., "weekly team meeting on Tuesday at 3pm, but next week's instance is moved to Wednesday at 4pm") OR cancelled (e.g., "skip next week"), the override row shadows that one instance. Fields: `id` + `master_event_id` (FK calendar_events) + `recurrence_instance_start_at` (DateTime tz — identifies which recurrence the override modifies) + `is_cancelled` (Boolean — true when the instance is cancelled rather than modified) + `override_event_id` (FK calendar_events; nullable when is_cancelled=True; populated when the instance is modified, pointing at a separate calendar_events row carrying the modified data — that row carries `recurrence_master_event_id=master_event_id` so RFC 5545 EXDATE+modified-instance shadowing applies correctly).
+
+`calendar_event_reminders` — per-attendee reminder configuration with **deduplication discipline** (per Phase A refinement). Provider fires reminders for that provider's clients; Bridgeable surfaces show events passively WITHOUT firing redundant reminders by canonical default — passive surfacing distinct from reminder firing. Operator opts in to additional Bridgeable-surface reminders explicitly per-attendee per-event. Fields: `id` + `attendee_id` (FK calendar_event_attendees) + `tenant_id` + `minutes_before_start` (Integer) + `surface` (`provider_default` canonical default | `bridgeable_pulse` | `bridgeable_email` | `bridgeable_sms`) + `fired_at` (nullable; populated when the reminder fired). Canonical default `provider_default` prevents canonical-default-double-notification (Google phone push + Bridgeable Pulse + Bridgeable email + Bridgeable SMS all firing for same event) — operator agency preserved via explicit configuration enabling additional Bridgeable-surface reminders.
+
+`calendar_event_linkages` — polymorphic linkage to Bridgeable entities. Mirrors `email_thread_linkages` shape verbatim. Fields: `id` + `event_id` + `tenant_id` + `linked_entity_type` + `linked_entity_id` + `linkage_source` (`manual_pre_link` / `manual_post_link` / `intelligence_inferred`) + `confidence` (nullable, AI-inferred confidence) + `linked_at` + `linked_by_user_id` + `dismissed_at` (nullable). Same M:N pattern; same auto-resolution + manual + multi-linkage discipline as §3.26.15.7.
+
+**Cross-tenant pairing** parallel to email's `cross_tenant_thread_pairing`: a separate `cross_tenant_event_pairing` junction tracks which `calendar_events` rows in different tenants pair to the same conceptual event. Each tenant has its own copy under its own ownership per §3.26.15.7 + §3.26.15.18 independent-per-tenant-cross-tenant-copies discipline. Operational state changes propagate to the partner per §3.26.16.20 cross-tenant state propagation discipline.
+
+#### 3.26.16.3 Per-tenant calendar account configuration
+
+Calendar account model: **hybrid shared + personal model** matching §3.26.15.3 email account hybrid.
+
+**Shared calendar accounts** are common across the verticals canon serves:
+- Manufacturing: production calendar, delivery schedule, maintenance calendar, shift calendar
+- Funeral home: service calendar, removal calendar, arrangement calendar, aftercare calendar
+- Cemetery: interment calendar, maintenance calendar
+- Crematory: cremation schedule, preparation calendar
+
+Shared calendars are first-class citizens with `account_type="shared"`. Multi-user access via `calendar_account_access` junction with read/read_write/admin levels.
+
+**Personal calendar accounts** are per-user with `account_type="personal"`. The account's `primary_email_address` is the user's email. Single-user access (the owning user always has admin); other users CANNOT be granted access on personal calendars except by the owner explicitly elevating to shared (which migrates the account to `account_type="shared"`).
+
+**Default outbound account per user**: when a user creates an event in Bridgeable surface, the default outbound account resolves via cascade: (1) user's preferred default (per `User.preferences.calendar_default_account_id`), (2) user's personal calendar if connected, (3) first shared calendar the user has read_write+ on, (4) error — user must select.
+
+#### 3.26.16.4 Inbound calendar sync infrastructure
+
+Provider abstraction with per-provider sync strategies. Universal core + provider-specific extensions parallel to §3.26.15.4.
+
+**Provider abstraction contract**:
+```
+connect(account_config, credentials) → Connection
+sync_initial(connection, backfill_window_days) → EventBatch[]
+subscribe_realtime(connection, callback) → SubscriptionHandle
+fetch_event(connection, provider_event_id) → Event
+fetch_attendee_responses(connection, event_id) → AttendeeResponseBatch[]
+fetch_freebusy(connection, calendar_id, time_range) → FreeBusyBatch[]
+disconnect(connection) → void
+```
+
+**Per-provider sync strategies**:
+
+| Provider | Sync strategy | Initial backfill | Realtime mechanism |
+|---|---|---|---|
+| Google Calendar API (`google_calendar`) | webhook | Last 90 days + next 365 days | Google Calendar Push Notifications |
+| Microsoft Graph (`msgraph`) | webhook | Last 90 days + next 365 days | MS Graph subscriptions |
+| CalDAV (`caldav`) | polling | Last 90 days + next 365 days | Polling 5-min fallback (CalDAV Push deferred per §3.26.7.5) |
+| Local (`local`) | none | none | none — Bridgeable-native events, no external transport |
+
+**Recurrence canonicalization — RRULE-as-source-of-truth (canonical)**:
+
+Bridgeable parses the RFC 5545 RRULE on every recurring event into a canonical `recurrence_rule` field stored on `calendar_events`. The recurrence engine materializes instances on demand for operational queries. Materialized instances are not persisted as separate event rows except when an instance is modified or cancelled (in which case `calendar_event_instance_overrides` row + override_event_id row both persist).
+
+This canonicalization is load-bearing for cross-tenant resolution + free/busy queries: when Hopkins FH queries Sunnycrest's free/busy for a delivery scheduling decision, the query happens against Bridgeable's canonical recurrence engine — no provider round-trip required. If Google Calendar is unreachable, free/busy queries still resolve (with last-sync staleness disclosed per §3.26.16.8 transparency discipline).
+
+**Instance materialization policy**:
+- Materialize-on-demand for query scopes ≤ 90 days into future
+- Materialize-and-persist for instances ≤ 7 days from now (writes to materialization cache; refreshed nightly per provider sync cadence)
+- Cap instance count per query at 500 (defensive against pathological recurrence rules like FREQ=SECONDLY)
+
+**EmailAccountSyncState parallel — `calendar_account_sync_state`**: `account_id` + `last_sync_at` + `last_provider_cursor` (JSONB; provider-specific) + `sync_in_progress` (mutex) + `last_sync_error` + `consecutive_error_count`.
+
+**Initial backfill window** default: last 90 days + next 365 days. Tenant admin configurable per account; runs as background job.
+
+#### 3.26.16.5 Outbound calendar infrastructure
+
+**Hybrid model** parallel to §3.26.15.5 email outbound. Bridgeable composes outbound events; sends via account's provider for per-account outbound; via system pathway for state-changes-generate-events (§3.26.16.18).
+
+**Path 1 — Per-account outbound** (user creates event in Bridgeable surface, system-generated events from operations attached to a tenant calendar account):
+- User composes in Bridgeable surface OR system creates event from state change
+- Outbound sent via account's provider (Google Calendar API events.insert / MS Graph me/events / CalDAV POST + iTIP scheduling outbox / local — no transport)
+- Outbound copy stored as CalendarEvent with `provider_event_id` populated
+- Outbound copy synced back through inbound infrastructure
+- iTIP METHOD=REQUEST sent to attendees per RFC 5546
+
+**Path 2 — Update + Cancellation propagation**:
+- Update: iTIP METHOD=REQUEST with incremented SEQUENCE per RFC 5546
+- Cancellation: iTIP METHOD=CANCEL with STATUS=CANCELLED
+- Recurrence-modification: instance override creates iTIP REQUEST scoped to RECURRENCE-ID
+- Recurrence-cancellation: instance override creates iTIP CANCEL scoped to RECURRENCE-ID
+
+**Path 3 — Attendee response handling** (inbound iTIP REPLY processing):
+- Inbound iTIP REPLY messages flow through email primitive's inbound pipeline (RFC 5546 schedules iTIP via email per canonical pattern)
+- Email primitive ingestion detects iTIP REPLY messages and routes to Calendar primitive
+- Calendar primitive updates `calendar_event_attendees.response_status` + `responded_at` + `comment`
+- Update propagates to other attendees per provider-side semantics
+
+**Reminder semantics** (per Phase A refinement deduplication discipline): canonical default is `provider_default` only. Provider fires reminders for provider's clients; Bridgeable surfaces display events passively without firing redundant reminders. Operator opts in to additional `bridgeable_pulse` / `bridgeable_email` / `bridgeable_sms` reminders explicitly per-attendee per-event via `calendar_event_reminders` table. Prevents canonical-default-double-notification risk.
+
+**Outbound discipline**:
+- Per-account outbound requires `account.outbound_enabled`
+- Update-from-Bridgeable surface always uses account that owns event
+- Outbound auditing: every outbound event + update + cancellation logged per §3.26.16.8
+- Recurrence-modification semantics canonicalized — RFC 5545 EXDATE for cancelled instances, modified-instance shadowing for time-changed instances
+
+#### 3.26.16.6 Multi-tenant storage discipline + cross-tenant masking inheritance
+
+**Per-tenant isolation**: every calendar entity tenant-scoped (`tenant_id` FK); all queries filter by `tenant_id`; cross-tenant queries opt-in via §3.26.16.14 + §3.26.16.20 dedicated cross-tenant pathways.
+
+**Hybrid retention model** parallel to §3.26.15.6:
+- Default 365-day cached-mirror retention (calendar events have longer operational relevance than email — historical service dates, completed projects, retrospective scheduling analysis all matter beyond email's 30-day default)
+- Tenant-configurable extension up to 7 years for compliance
+- Audit log of all retention configuration changes
+- Hard-delete after retention window expires
+
+**Indexes (canonical)**:
+- `calendar_events (tenant_id, start_at)` — agenda + grid view queries
+- `calendar_events (tenant_id, end_at)` — overlapping-event resolution + free/busy
+- `calendar_events (tenant_id, account_id, start_at)` — per-account agenda
+- `calendar_events (tenant_id, recurrence_master_event_id)` — recurrence override resolution
+- `calendar_event_attendees (event_id, email_address)` — attendee lookup
+- `calendar_event_attendees (resolved_company_entity_id)` — per-customer event filtering
+- `calendar_event_linkages (tenant_id, linked_entity_type, linked_entity_id)` — entity-linked event lookup
+- `calendar_events` GIN index on `subject + description_text` — full-text search
+
+**Cross-tenant masking inheritance**: per §3.25.x, when events span tenant boundary, attendee lists + descriptions + linked entities inherit cross-tenant masking.
+
+**Free/busy cross-tenant resolution** (per Phase A refinement bilateral consent): privacy-preserving by default. When Tenant A queries Tenant B's free/busy across the cross-tenant relationship, default response shape is `{start, end, status: "busy" | "free" | "tentative"}` — no event details. **Bilateral consent** (both tenants explicitly opt in; either can unilaterally revoke — matches §3.26.11.10 cross-tenant Focus consent canon) unlocks `{start, end, status, subject, location, attendee_count}`. Bilateral consent prevents asymmetric disclosure power dynamics.
+
+**Anonymization granularity for free/busy** (three-tier): subject hashing optional (some tenants prefer hashed-subject opacity); attendee counts surface coarsely (1, 2-5, 6+) by default; specific attendee identities surface only with explicit consent.
+
+#### 3.26.16.7 Calendar entity polymorphic linkage
+
+**Polymorphic linkage to existing primitives** mirrors §3.26.15.7 verbatim. Pattern-canonical match — same M:N junction table shape; same auto-resolution + manual + multi-linkage discipline; same cross-tenant pairing.
+
+`calendar_event_linkages.linked_entity_type` canonical catalog (per Phase A refinement extending Quote):
+- `customer` → CRM Customer entity (CompanyEntity)
+- `fh_case` → FH Case
+- `sales_order` → Sales Order
+- `vault_item` → V-1c CRM Vault Item
+- `quote` → Quote entity (per §3.26.15.17 + Step 4c — calendar events naturally link to Quotes: quote follow-up call scheduled, quote presentation meeting, quote signing event, quote delivery scheduling)
+- `cross_tenant_event` → Cross-tenant tenant-to-tenant event (paired via cross_tenant_event_pairing)
+
+Future linked_entity_types extend catalog as new primitives ship.
+
+**Linkage resolution** parallel to §3.26.15.7:
+- **Auto-resolution**: when attendees resolve to known entities (CompanyEntity match via email_address), event auto-links
+- **Auto-resolution**: when location text matches known cemetery / facility entity, event auto-links
+- **Auto-resolution**: when subject contains structured entity reference, Intelligence inference resolves linkage with confidence score
+- **Manual linkage**: user can link event to entity via Bridgeable calendar surface
+- **Multi-linkage**: event can have multiple linkages
+
+**State-change-generated events auto-populate linkage** (forward link from §3.26.16.18): when state change generates event, the linkage to source entity pre-populates with linkage_source="manual_pre_link".
+
+**Cross-tenant event architecture**: each tenant has own event row; both events have `is_cross_tenant=True`; junction table `cross_tenant_event_pairing` connects per-tenant event IDs; each tenant computes intelligence independently; operational state changes propagate per §3.26.16.20.
+
+#### 3.26.16.8 Privacy + compliance discipline
+
+**Per-event retention**: hybrid retention discipline per §3.26.16.6 (default 365-day; tenant-configurable extension to 7 years; hard-delete after window).
+
+**PII handling**:
+- All calendar entities encrypted at rest; per-tenant key isolation per Step 2 canonical interpretation = per-row FK-scoped isolation under platform-wide CREDENTIAL_ENCRYPTION_KEY (matches §3.26.15.8 canon refinement)
+- Audit log of all read/write access to calendar entities
+- Operator behavior privacy preserved (§3.26.14.14.4)
+
+**Free/busy publication discipline**:
+- Cross-tenant free/busy queries default to busy/free + duration only
+- Bilateral consent unlocks full-detail sharing per §3.26.16.6
+- Three-tier anonymization granularity: subject hashing + coarse attendee counts default; specific identities consent-only
+
+**Compliance frameworks**:
+- SOC 2 Type II — encryption + audit logging + access controls
+- HIPAA where applicable (FH cremation/burial scheduling may carry HPI)
+- GDPR — DSAR + right to be forgotten
+- CCPA — California consumer privacy compliance
+
+**Audit log discipline**:
+- All calendar entity reads + writes logged (`calendar_audit_log` table)
+- Audit log retained indefinitely (compliance baseline)
+- Audit log NEVER includes event subject + description content (only metadata)
+- Attendee email addresses logged in cleartext for operational visibility
+
+**Free/busy provider sync transparency**: when free/busy resolution returns staleness due to provider sync lag, response includes `last_sync_at` so operator surface can disclose staleness. Stale-but-correct preferred over wrong-because-fresh.
+
+**Data subject access requests (DSAR)**: tenant admin can export all calendar data for specific Attendee; export packaged as ZIP with structured manifest + iCalendar file (.ics); right-to-be-forgotten supported.
+
+#### 3.26.16.9 Unified calendar surface
+
+Per §3.26.9 + §3.26.15.9 unified inbox precedent: scheduling content surfaces at multiple Bridgeable surfaces. **Unified calendar surface is canonical for calendar management beyond per-event context** — full-screen workspace operators visit deliberately for grid + agenda + scheduling-decision work.
+
+**Calendar-workspace-shape distinction from Space architecture** (per Phase B refinement): calendar workspace at `/calendar` route is full-screen single-purpose surface. NOT a Space (Spaces are configurable contextual workspaces per §3.26.x). Calendar workspace ships predetermined grid + agenda + filter chrome; not user-configurable Space chrome. Visual treatment differentiates per DESIGN_LANGUAGE §14.10.1.
+
+**Three canonical entry paths** parallel to §3.26.15.9 unified inbox:
+- Direct navigation: `/calendar` route
+- Command Bar summoning: ⌘K → "calendar" / "today's schedule" / "this week" per §3.26.16.11
+- Pulse drill-down: clicking calendar Glance widget in Home Pulse OR clicking event in Operational layer
+
+**Layout**:
+- Two-pane layout (desktop) / stacked (mobile) — calendar grid + event detail
+- Account selector (multi-account-per-tenant per §3.26.16.3)
+- View selector — month / week / day / agenda
+- Filter strip (account / linked-entity / cross-tenant / response-status / recurrence-only)
+- Date picker + today affordance
+- Compose-new-event affordance + propose-time-with-attendee affordance
+
+**View canonical semantics**: month (7×N grid; events as colored bars or multi-row spans), week (7-column × 24-hour vertical grid; time-positioned blocks), day (single-column × 24-hour vertical grid), agenda (chronological list grouped by day).
+
+**Filter strip canonical filters**: All / My events / Accepted / Awaiting response / Declined / Tentative / Cross-tenant / Recurring only / Linked entity / date range.
+
+**Search**: full-text via GIN index on subject + description_text; results inline in agenda view; query persists in URL.
+
+#### 3.26.16.10 Calendar rendering at multiple surfaces
+
+Per §3.26.15.10 cross-surface discipline: calendar content surfaces at multiple Bridgeable surfaces; each renders calendar-shaped content using shared design language (§14 Communications Visual System tokens — see §14.10).
+
+| Surface | Composition | Cross-references |
+|---|---|---|
+| **Pulse Communications Layer** | `calendar_glance` widget for interpersonal-scheduling signals (responses awaiting, new invitations) per Pattern C | §3.26.9 |
+| **Pulse Operational Layer** | `today_widget` extension surfacing today's scheduled events; `calendar_summary` widget for week/period operational coordination | §3.26.2.4 |
+| **Calendar Period Pulse** (scoped Pulse) | Per §3.26.12 fractal Pulse — Period Pulse with calendar as primary composition source | §3.26.12.2 |
+| **Customer Pulse events** | Recent + upcoming events scoped to customer per §3.26.12.3 composition source pattern | §3.26.12.3 |
+| **Coordination Focus participants** | Calendar event as primary scheduling-thread channel (real-time-thread core element extension) | §3.26.11.3 |
+| **Briefing structured-sections** | Morning briefing renders today's schedule + tomorrow's preview; evening briefing renders today's completion + tomorrow's preparation | §3.26.10 |
+| **Activity timeline integration** | Calendar events surface in entity activity feed (event scheduled, event modified, event cancelled, attendee responded) | V-1c CRM |
+
+**Cross-surface discipline** parallel to §3.26.15.10:
+- Same canonical CalendarEvent entity renders at all surfaces
+- Per-surface visual treatment varies (density tier, slot composition); content shared
+- Operator actions propagate across surfaces
+- Cross-tenant masking applies uniformly per §3.25.x
+
+**Hybrid contribution pattern** (per Phase B refinement — generalization for future Layer 1 communication primitives): Calendar's split — Communications layer for interpersonal-scheduling signals + Operational layer for operational-work signals — is **canonical for future Layer 1 communication primitives**. SMS interpersonal-vs-operational signals (customer message vs driver check-in), phone call-incoming-vs-alarm signals, messaging direct-mention-vs-system-event signals all decompose along the same cognitive-question split. Hybrid contribution pattern locks here as canonical reference for §14.11 SMS + §14.12 Phone + §14.13 Messaging future canon.
+
+**Pulse Communications layer Glance widget** (`calendar_glance`) per §3.26.9.7 + Pattern C composition:
+- Default tier: Calendar icon + "Calendar" eyebrow + count of pending-response events + top awaiting-response sender + "Open calendar →" footer
+- Compact tier: icon + count + sender single-line
+- Ultra-compact tier: icon + count
+- Surfaces ONLY interpersonal-scheduling signals (responses awaiting your reply OR new cross-tenant invitations) — operational-today-scheduling signals route to Operational layer separately
+
+**Pulse Operational layer extensions**: existing `today_widget` extends to surface today's calendar events as operational signals. New `calendar_summary` widget surfaces this-week schedule for operational coordination.
+
+#### 3.26.16.11 Command Bar calendar summoning
+
+Per §3.26.13.2 summon types catalog: calendar entities + scheduling actions are canonical summon types.
+
+**Canonical NL summon shapes**:
+
+| Summon shape | Resolves to | Example |
+|---|---|---|
+| Time-scoped agenda | Agenda surface filtered to time window | "today's schedule", "this week", "tomorrow's events" |
+| Entity-scoped events | Calendar surface filtered to entity | "Hopkins schedule this week", "Anderson case events" |
+| Status-scoped | Status-filtered surface | "events awaiting my response", "tentative meetings" |
+| Combined | Multi-axis filter | "Hopkins next week", "deliveries today" |
+| Action-shaped | Compose new event | "schedule meeting with Hopkins about Anderson Thursday 3pm" |
+| Event-specific | Specific event tablet | "Anderson service Thursday" |
+| Free/busy query | Free/busy surface | "when am I free Thursday afternoon", "Hopkins available next Tuesday" |
+
+**Per §3.26.13.4 Intelligence-driven autocomplete (3-layer)**: Layer 1 recent + frequent (Phase 8e.1 affinity), Layer 2 Intelligence-suggested ("you typically schedule deliveries Thursdays"), Layer 3 Workshop-authored shortcuts.
+
+**Performance discipline**: NL summon resolution within Phase 1 Command Bar performance budget (p50 < 100ms / p99 < 300ms). Free/busy resolution may require provider round-trip; budget allows ≤200ms slowest-path with stale-cached fallback at < 50ms when fresh data unavailable.
+
+**Spatial workspace tablet rendering** per §3.26.13.5: time-scoped agenda → agenda tablet; entity-scoped → entity-filtered calendar tablet; compose-action → modal event composition tablet; free/busy → free/busy heatmap tablet.
+
+**Schedule-shaped natural language parsing** (Calendar-specific NL primitive — Phase 4 §3.26 NL Creation primitive extension): time expressions, duration expressions, recurrence expressions, attendee expressions, location expressions. Pipeline parallel to §3.26 NL Creation: structured parsers (<5ms each) → entity resolver (<30ms) → AI fallback via Intelligence (Haiku) when required fields missing.
+
+#### 3.26.16.12 Calendar-typed saved views
+
+Per §3.25 saved view canon. Calendar becomes new entity type `calendar_event` for saved views.
+
+**Storage**: `vault_items.metadata_json.saved_view_config` with `entity_type: "calendar_event"`; cross-tenant masking per §3.25.x.
+
+**Available presentation modes**:
+- **calendar (default)** — month/week/day grid view; chronological visual layout preserves temporal context
+- agenda — chronological list (alternative for narrow viewports + briefing-structured-sections)
+- list — flat list (filtering + bulk operations)
+- table — full-data grid (power users + reporting)
+- chart — count-by-time aggregations
+- stat — single-scalar (event count this week, response rate)
+
+**Filter dimensions**: account, date range, status, response_status, linked_entity, cross-tenant indicator, recurrence (recurring vs single), attendee count threshold.
+
+**Sort dimensions**: start_at (default), created_at, last_modified_at, attendee_count, response_count.
+
+**Grouping dimensions**: by account, by linked_entity, by attendee, by week/day, by response_status.
+
+**Canonical default calendar saved views** (seeded per Workshop email-template parallel — see §3.26.16.25):
+- "This week's schedule"
+- "Awaiting my response"
+- "Cross-tenant events this month"
+- "Recurring meetings"
+- "Events linked to active cases"
+- "Events without linked entities" (linkage hygiene workflow)
+
+#### 3.26.16.13 Event creation + scheduling canonical authoring surface
+
+Four composition shapes:
+
+| Shape | UX surface | Use case |
+|---|---|---|
+| **Quick event** | Inline (calendar grid click + drag) | Same-day same-week scheduling |
+| **Detailed event** | Modal | Full event composition with description + recurrence + attendees + reminders + linked entities |
+| **Event proposal** | Modal | Cross-tenant proposal with bilateral acceptance flow per §3.26.16.20 |
+| **Recurring meeting** | Modal | Recurring event with RRULE builder UI |
+
+**Quick event** affordance: click + drag on calendar grid creates event with inferred start/end times; subject prompted in inline popover; submit creates event with default attendees (organizer only) + saves immediately.
+
+**Detailed event** modal canonical composition: subject + description (rich text) + date + time + duration + timezone + all-day toggle + recurrence builder + attendees (role-based routing per §3.26.11.7 + manual entry + Workshop role-recipient resolution per §3.26.16.25) + reminders (per deduplication discipline — explicit Bridgeable-surface opt-in) + linked entities (per §3.26.16.7) + location + virtual meeting link.
+
+**Recurrence builder UI** canonical: frequency picker (Daily / Weekly / Monthly / Yearly) + interval + BYDAY/BYMONTHDAY/BYSETPOS + Until/Count + EXDATE editor.
+
+**Cross-tenant proposal** canonical: composer surfaces "Cross-tenant event with [partner tenant]" affordance; initiating tenant proposes time + attendees + linked entities; partner tenant receives notification via §3.26.16.20; bilateral acceptance flow with counter-time iteration capability.
+
+#### 3.26.16.14 Cross-tenant calendar visibility + free/busy + bilateral acceptance
+
+Per §3.26.16.6 bilateral consent + §3.26.16.20 cross-tenant native scheduling.
+
+**Free/busy resolution canonical**:
+
+```
+GET /api/v1/calendar/free-busy/cross-tenant
+  ?partner_tenant_id={uuid}
+  &start={ISO datetime}
+  &end={ISO datetime}
+  &granularity=hour|day
+```
+
+Response shape (default privacy-preserving):
+```json
+{
+  "partner_tenant_id": "...",
+  "windows": [
+    {"start": "...", "end": "...", "status": "busy"},
+    ...
+  ],
+  "consent_level": "free_busy_only" | "full_details",
+  "last_sync_at": "...",
+  "stale": false | true
+}
+```
+
+When bilateral consent extends to full details, response includes `subject + location + attendee_count_bucket` per window.
+
+**Bilateral acceptance canonical flow** parallel to §3.26.11.10 cross-tenant Focus consent:
+
+1. Initiating tenant proposes cross-tenant event
+2. Initiating tenant's calendar gets event row with `is_cross_tenant=True` + `cross_tenant_event_pairing` pending acceptance
+3. Partner tenant receives proposal via Communications layer + email-mediated calendar invitation + cross-tenant Pulse widget
+4. Partner accepts: their calendar gets paired event row; bilateral state propagates per §3.26.16.20
+5. Partner declines OR proposes counter-time: state machine handles per §3.26.16.17
+
+**Either tenant can revoke cross-tenant event participation**: revoking tenant's event marked `cross_tenant_event_pairing.revoked_at`; other tenant retains their event row + audit log; can elect to keep as internal-only OR cancel.
+
+**Per-tenant participant routing**: each tenant's attendee notifications follow that tenant's role-based routing rules per §3.26.11.7. Per-side audit logs per §3.26.11.10.
+
+#### 3.26.16.15 Strategic framing — communications + scheduling = operations
+
+Per §3.26.15.15 email strategic framing precedent. Calendar's strategic framing **integrates with email's** rather than parallels separately.
+
+**Calendar primitive's strategic role** completes the operational substrate trifecta:
+
+> **Communications + scheduling = operations.** Email primitive (§3.26.15) ships interpersonal coordination. Calendar primitive (§3.26.16) ships temporal coordination. Together, they ARE the operational substrate of the platform — the layer beneath everything tenants do operationally.
+
+**Why calendar isn't a separate vertical surface**:
+
+Most platforms treat calendars as a separate surface. Bridgeable rejects that framing. **Every operational entity has scheduling dimensions**:
+- Sales orders have scheduled delivery dates
+- FH cases have service dates + arrangement dates + removal dates
+- Pours have production dates + cure dates
+- Maintenance has scheduled dates + completion dates
+- Compliance has expiration dates + renewal dates
+
+Treating calendar as a separate surface fragments operational state. Bridgeable's calendar primitive **integrates calendar entities with operational entities at the platform layer** — calendar events polymorphically link to every operational entity (per §3.26.16.7); state changes generate calendar events automatically (per §3.26.16.18); calendar state changes propagate to operational state automatically.
+
+**Why this matters for the verticals canon serves**:
+
+For Sunnycrest manufacturer, "scheduled delivery date" on a sales order IS a calendar event — invitation goes to driver + foreman + office; state changes propagate; cross-tenant scheduling with FH for delivery service is bilateral. Operators don't context-switch between "the order" and "the calendar" — both surface the same temporal reality.
+
+For Hopkins funeral home, "service date" on a case IS a calendar event — invitation goes to family + director + officiant + cemetery; cross-tenant invitation goes to Sunnycrest for vault delivery coordination; bilateral state propagates.
+
+**This isn't innovation; it's eliminating a fragmentation that other platforms accept**:
+
+Calendar-as-separate-surface is a 1990s desktop-software artifact. Modern operational platforms treat scheduling as a dimension of operations. Bridgeable's canonical-quality discipline applies this framing at the primitive level.
+
+**Concrete competitor comparison** (per Phase B refinement — strengthens September Wilbert demo positioning at canon level):
+
+> Salesforce ships Calendly integration. HubSpot ships scheduling-link integration. Both are bolt-ons — calendar is integration, not native primitive. Operators using these platforms context-switch between operational state (in CRM) and scheduling state (in calendar tool) and back. State coherence is operator-maintained manually. Bridgeable's calendar-as-operational-substrate framing eliminates this context-switch by treating calendar as platform primitive — operators never leave operational context to manage scheduling.
+
+**Strategic positioning vs competitors**:
+
+Competitors that treat calendar as a separate surface (CRM with embedded calendar; ERP with bolt-on scheduling) inherit fragmentation as a defining limitation. Bridgeable's communications+scheduling=operations framing produces operational coherence that's structurally inaccessible to fragmented competitors. The framing is canonically strategic — fragmentation is the competitor's permanent asymmetric disadvantage.
+
+#### 3.26.16.16 Canonical design disciplines
+
+Per §3.26.15.16 email seven disciplines precedent. Eight disciplines canonicalized at canon-faithful depth.
+
+**1. RRULE-as-source-of-truth canonical recurrence** (per §3.26.16.4). Bridgeable's recurrence engine is the source-of-truth; provider is bridge.
+
+**2. Privacy-preserving free/busy default + bilateral consent extension** (per §3.26.16.6). Default response shape preserves operational privacy; bilateral consent unlocks full details when both tenants explicitly opt in. Either tenant can unilaterally revoke.
+
+**3. RFC 5545 verbatim adoption for recurrence exceptions** (per §3.26.16.5). EXDATE for cancelled instances; modified-instance shadowing via override_event_id. No novel recurrence semantics; Apple/Google/Microsoft/Mozilla interoperability preserved.
+
+**4. Dual-surface reminder mechanics with deduplication discipline** (per §3.26.16.2). Provider fires for provider's clients; Bridgeable surfaces show events passively without firing redundant reminders by canonical default. Operator opts in to additional Bridgeable-surface reminders explicitly.
+
+**5. Hybrid shared + personal calendar account model** (per §3.26.16.3). Shared calendars are first-class operational artifacts; personal calendars are per-user.
+
+**6. Polymorphic entity linkage M:N** (per §3.26.16.7). Same junction shape as email_thread_linkages; Quote entity included in canonical catalog.
+
+**7. Calendar primitive integrates with operational substrate** (per §3.26.16.15 strategic framing). Calendar isn't a separate surface; it's a dimension of operations.
+
+**8. Operational-state-coupled-to-scheduling discipline** (per §3.26.16.17 + §3.26.16.18). Calendar events carry operational-action affordances; state changes generate calendar events; calendar acceptance propagates state changes.
+
+#### 3.26.16.17 Operational-state-coupled-to-calendar (kill-the-portal action types)
+
+Per §3.26.15.17 kill-the-portal canonical case — calendar primitive ships parallel action types for operational scheduling decisions.
+
+**Canonical action types at September scope** (five — per Phase B refinement extending event_reschedule_proposal):
+
+| action_type | action_target_type | Operational use case |
+|---|---|---|
+| `service_date_acceptance` | `fh_case` | FH director accepts service date proposed by manufacturer |
+| `delivery_date_acceptance` | `sales_order` | FH or cemetery accepts delivery time |
+| `joint_event_acceptance` | `cross_tenant_event` | Bilateral cross-tenant event acceptance per §3.26.16.14 |
+| `recurring_meeting_proposal` | `cross_tenant_event` | Recurring meeting proposal with bilateral acceptance |
+| `event_reschedule_proposal` | `calendar_event` | Post-confirmation event time modification with bilateral acceptance + downstream cascade |
+
+**Why event_reschedule_proposal is distinct from joint_event_acceptance counter-proposal flow** (per Phase B refinement reasoning): post-confirmation reschedule has different semantics than counter-proposal in initial-negotiation. Counter-proposal is initial-negotiation; reschedule is post-confirmation-modification with downstream cascade effects on linked entities + paired cross-tenant events. Without `event_reschedule_proposal` canonical, reschedule falls back to ad-hoc email + phone calls — kill-the-portal anti-pattern that canon work eliminates.
+
+**Action shape canonical** (parallel to §3.26.15.17):
+
+```json
+{
+  "action_type": "service_date_acceptance",
+  "action_target_type": "fh_case",
+  "action_target_id": "<FHCase UUID>",
+  "action_metadata": {
+    "proposed_start_at": "2026-05-14T10:00:00-04:00",
+    "proposed_end_at": "2026-05-14T11:30:00-04:00",
+    "proposed_location": "Hopkins FH chapel",
+    "proposing_tenant_name": "Sunnycrest Vault",
+    "deceased_name": "Anderson"
+  },
+  "action_status": "pending",
+  "action_completed_at": null,
+  "action_completed_by": null,
+  "action_completion_metadata": null
+}
+```
+
+**Status flow**: `pending` → `accepted` | `rejected` | `counter_proposed` (terminal). Counter-proposed branches re-open with new action shape.
+
+**Magic-link contextual surface** parallel to §3.26.15.17 kill-the-portal:
+- Tenant identity + brand color
+- Sender attribution + proposed event details
+- Action affordances: Accept / Decline / Propose alternative time
+- Token = single-action authorization
+- 7-day expiry from invitation send time
+- Token consumption on action commit
+- Audit log per click + commit per §3.26.15.8
+
+**Implementation-time direction note** (per Phase B Q13 refinement substrate consolidation): when Phase W-4b Calendar Step 5+ implements magic-link substrate, default to extending `email_action_tokens` table (semantically renamed to `platform_action_tokens` or similar) rather than parallel calendar-action-tokens table. Substrate consolidation prevents architectural fragmentation across primitives. Table is canonically a platform action token ledger, not specifically email-scoped.
+
+**State propagation on action commit**:
+
+| outcome | Calendar event update | Operational state update |
+|---|---|---|
+| accepted | event status="confirmed"; attendee response_status="accepted" | FHCase.service_date set; SalesOrder.scheduled_date set; cross-tenant pairing finalized |
+| rejected | event status="cancelled" OR attendee response_status="declined" | FHCase.service_date cleared OR retained; operator follows up |
+| counter_proposed | new action created with proposed counter-time; original action terminal | Operator reviews counter-time; iteration continues |
+
+**Audit log per §3.26.15.8**: every action commit writes audit row with action_idx + action_type + outcome + auth_method (bridgeable | magic_link) + actor_email + ip_address + user_agent. Body content NEVER logged.
+
+#### 3.26.16.18 State-changes-generate-calendar-events
+
+Per §3.26.15.18 inverse coupling discipline. Calendar primitive's parallel: state changes in operational entities automatically generate calendar events. **More pervasive than email's inverse coupling** because nearly every operational state change with a date dimension produces a scheduling reality.
+
+**Canonical state-change → calendar-event mappings**:
+
+| Operational state change | Generated calendar event |
+|---|---|
+| `SalesOrder.scheduled_date` set | Calendar event with `linked_entity_type="sales_order"` + attendees from delivery role routing + reminders per tenant default |
+| `FHCase.service_date` set | Calendar event with `linked_entity_type="fh_case"` + attendees from service role routing + cross-tenant invitation to manufacturer when vault scheduled |
+| `Quote.delivery_date` set on quote acceptance | Calendar event with `linked_entity_type="quote"` + attendees from quote-context routing |
+| `WorkOrder.scheduled_date` set (production pour) | Calendar event with `linked_entity_type="vault_item"` + production team attendees |
+| `Equipment.next_maintenance_date` set | Calendar event with linked_entity → equipment + maintenance crew attendees |
+| `ComplianceRequirement.expires_at` 30 days before expiry | Calendar event with renewal reminder + admin attendees |
+| `Disinterment.scheduled_date` set | Calendar event with cross-tenant invitation to FH + cemetery + driver routing |
+
+**Drafted-not-auto-sent discipline** (per §3.26.14.14.5 operator agency canon parallel):
+
+State change → calendar event is **drafted automatically** (calendar event row with `status="tentative"` + provisional flag); operator reviews + confirms before invitation propagation to attendees. Prevents accidental cross-tenant invitation propagation when state change was data-entry mistake.
+
+**Auto-confirmation exceptions**:
+- Internal-only events (no cross-tenant attendees, no external attendees) auto-confirm
+- Recurring-meeting modifications inherit parent's confirmation state
+- System-generated reminder events auto-confirm
+
+**Inverse: calendar acceptance propagates state changes**:
+
+When attendee accepts service-date-acceptance action per §3.26.16.17, calendar event's `status="confirmed"` propagates to FHCase.service_date; cross-tenant paired event in partner tenant updates accordingly. Bidirectional binding — calendar state ↔ operational state remains coherent.
+
+**Audit trail for state-coupled events**: calendar events generated from state changes carry `generation_source="state_change"` metadata; original state-change event recorded in calendar_audit_log with FK to operational entity + timestamp + actor. Operator viewing the calendar event can drill back to "Why is this event here?" → renders state-change provenance.
+
+#### 3.26.16.19 Front-style shared calendar UX
+
+Per §3.26.15.19 front-style shared inbox precedent. Calendar primitive ships shared-calendar UX for `account_type="shared"` calendars where multiple operators jointly manage scheduling.
+
+**Canonical use cases**:
+- Sunnycrest production schedule: shared between production manager + foreman + drivers + office
+- FH service calendar: shared between director + arrangement counselors + removal staff
+- Cemetery interment calendar: shared between sexton + administrative + grounds crew
+
+**Shared calendar UX affordances**:
+- Multi-operator visibility: every operator with read access sees all events; modifications require read_write
+- Per-operator response state preserved (per-user discipline parallel to §3.26.15.13 Q1 email per-user status)
+- Internal commentary per event (parallel to §3.26.15.19 Front-style internal comments); commentary visible to all operators with shared calendar access; NOT visible to external attendees + magic-link participants
+- Assignment indicator: shared calendar events can be operator-assigned ("Mary takes this one")
+
+**Per-event presence indicator**: real-time presence indicator shows "Mike is viewing this event" (deferred implementation per §3.26.7.5 until concrete signal warrants).
+
+**Operator handoff workflow**: assigned operator can transfer ownership to another operator; assignment audit log preserves chain.
+
+#### 3.26.16.20 Cross-tenant native scheduling
+
+Per §3.26.15.20 cross-tenant native messaging precedent. Calendar primitive ships **cross-tenant native scheduling at canon-faithful depth** for September scope.
+
+**Canonical pattern**: cross-tenant calendar events between Bridgeable tenants carry structured entity references natively + bilateral state propagation.
+
+**Architectural extension** (`CalendarEvent.entity_references` JSONB, parallel to §3.26.15.20):
+
+```typescript
+interface EntityReference {
+  tenant_id: UUID
+  entity_type: EntityType  // customer | fh_case | sales_order | vault_item | quote
+  entity_id: UUID
+  role: "primary" | "secondary"
+  reference_label?: string
+  created_at: Timestamp
+}
+```
+
+**Cross-tenant entity resolution at render time**:
+- Tenant A's view: resolve all entity_references where tenant_id matches Tenant A → render as inline entity links
+- Tenant B's entity_references in same event: resolve only those Tenant B has shared with Tenant A per §3.26.9 cross-tenant consent + §3.25.x masking
+- Per-tenant masking applied at resolution time
+- Entity links resolve to per-tenant entity instances
+
+**Bilateral state propagation**:
+- Tenant A modifies event time → modification surfaces in Tenant A's event; cross-tenant pairing propagates modification proposal to Tenant B
+- Tenant B accepts modification: bilateral state synchronized; both events updated
+- Tenant B rejects: Tenant A's event marked tentative; iteration continues per §3.26.16.17 counter-proposal flow
+
+**Decision-bounded cross-tenant events**: event tied to specific bounded operational entity; auto-archives when operational entity reaches terminal state; events remain queryable (audit trail preserved); manual archive override available.
+
+**Retroactive linkage handling** (parallel to §3.26.15.20): when participant resolution upgrades existing event to cross-tenant, cross-tenant masking re-evaluated for event per §3.25.x. Per-tenant masking rules apply; pre-existing event detail visibility may change for partner tenant. Audit log captures retroactive masking application.
+
+**Retroactive linkage caveats**: redaction is one-way; operator notification on retroactive linkage; operator opt-out affordance; audit trail integrity.
+
+**Storage discipline**: entity_references stored as JSONB on CalendarEvent; typically 1-3 references per event; GIN index on `entity_references` for cross-tenant entity lookup queries.
+
+**Iterative-negotiation pattern** (counter-time proposal flow):
+
+When bilateral cross-tenant scheduling encounters disagreement, negotiation iterates via successive action proposals:
+
+1. Tenant A proposes time T1 → action_type="joint_event_acceptance" with action_metadata.proposed_start_at=T1
+2. Tenant B counter-proposes T2 → action committed with outcome="counter_proposed" + new action_metadata.proposed_counter_start_at=T2
+3. Tenant A accepts T2 OR counter-proposes T3 → iteration
+4. Eventual mutual acceptance → event finalized
+5. Eventual decline → event cancelled with audit trail of negotiation history
+
+Negotiation history preserved as ordered audit log; operators can review proposal sequence.
+
+#### 3.26.16.21 Strategic vision deferral catalog
+
+Comprehensive deferral catalog matching §3.26.15.21 email primitive deferral discipline. Future canon sessions inherit explicit deferrals.
+
+**CalDAV provider canonical scope**:
+- CalDAV provider (Apple-ecosystem tenant; Fastmail-using tenant; Nextcloud-self-hosted tenant) — ~2-3 weeks engineering when concrete signal warrants
+
+**Recurrence advanced features**:
+- Yearly-recurrence-by-day-of-year (RFC 5545 BYYEARDAY) — deferred until concrete operational signal
+- Yearly-recurrence-by-week-number (RFC 5545 BYWEEKNO) — deferred
+- Lunar/Ramadan/Easter recurrence rules — non-RFC-5545; deferred
+
+**Provider-extension features**:
+- Google Calendar attachments — deferred
+- Google Meet / MS Teams / Zoom virtual meeting links — first-class at September; advanced features (recording, transcript) deferred
+- Google Calendar room booking integration — deferred
+- MS Graph room/equipment booking — deferred
+
+**Cross-tenant advanced patterns**:
+- N-way scheduling (3+ tenant coordination) — canonical 2-tenant pairing first; N-way deferred
+- Cross-tenant calendar federation — deferred until network-graph emerges
+
+**Calendar Intelligence advanced features**:
+- Calendar conflict prediction — Phase W-4b sequence step 7-8
+- Smart-meeting-suggest — deferred
+- Calendar pattern surfacing — Tier 2 algorithms post-September
+- AI-drafted scheduling responses — deferred per §3.26.14.14.5 operator agency
+
+**Long-form scheduling deferrals**:
+- Multi-day event coordination across timezone boundaries — deferred per §3.26.7.5
+- Cross-timezone bilateral scheduling — defer until concrete cross-timezone tenant signal
+
+**Workshop calendar template advanced features deferred**:
+- Conditional event composition
+- Multi-language event subjects/descriptions
+- Scheduling-rule template advanced primitives
+
+**Recurring-meeting advanced patterns**:
+- Smart-skip — deferred until Workshop scheduling-rule templates emerge
+- Recurring-event-end-recommendations — Tier 2 algorithms
+
+**SMS calendar invitation deferral**: depends on SMS primitive (W-4b sequence step 3); deferred until SMS primitive ships.
+
+**Phone-integrated scheduling deferral**: depends on Phone primitive (W-4b sequence step 4) + Voice integration; deferred until Phone primitive ships.
+
+Each deferred per §3.26.7.5 architectural restraint discipline — concrete operator signal triggers future canonicalization.
+
+#### 3.26.16.22 Calendar-triggered Decision Focus
+
+Per §3.26.11.2 Decision Focus + §3.26.11 Focus Primitive Types canon. Calendar primitive triggers Decision Focus instances when scheduling-decision work warrants triage-shaped sequential operator processing.
+
+**Canonical Decision Focus triggers**:
+
+| Trigger | Decision Focus core element | Operator decides |
+|---|---|---|
+| **Conflict resolution** | triage queue | Multiple events overlapping; operator sequentially decides which to keep/move/cancel |
+| **Counter-time review** | triage queue | Cross-tenant counter-time proposals arrived; operator sequentially accepts/declines/proposes-counter-counter |
+| **Capacity overflow** | triage queue | Driver schedule oversaturated; operator sequentially decides which deliveries reschedule |
+| **Priority reschedule cascade** | triage queue | Event needs to move; cascade effects on linked entities need operator review |
+| **Recurring-event modification review** | triage queue | Operator modified recurring event; system surfaces modified-instance vs modify-series decision |
+
+**Triage core element canonical** per §3.26.11 amendment: Phase 5 task_triage + ss_cert_triage queue infrastructure is the implementation substrate. Calendar Decision Focus queues become new triage queue types via Phase 5 platform_defaults registration.
+
+**New triage queue config types canonical at September scope**:
+- `calendar_conflict_triage`
+- `calendar_counter_time_triage`
+- `calendar_capacity_overflow_triage`
+- `calendar_reschedule_cascade_triage`
+
+Per-queue triage actions canonical (keep / reschedule / cancel / delegate variations per queue).
+
+**Auto-closure per §3.26.11.11**: Decision Focus auto-closes on decision committed; state change persists on operational entities.
+
+**Triage queue surface integration**: calendar Decision Focus triage queues surface in Pulse Operational layer (today's queues badge) + Communications layer when cross-tenant counter-time proposals require attention + dedicated `/triage/calendar-*` routes via Phase 5 triage primitive infrastructure.
+
+#### 3.26.16.23 Calendar-mediated Coordination Focus
+
+Per §3.26.15.23 email-mediated Coordination Focus precedent + Step 5b investigation findings (canonical: Coordination Focus primitive domain implementation deferred until dedicated arc ships).
+
+**Canonical use cases** (per §3.26.11.3 Coordination Focus):
+- Joint service-day coordination (Hopkins+Sunnycrest)
+- Multi-load delivery week (Sunnycrest Job-template containing Load sub-Focuses; calendar event per Focus)
+- Mold changeover coordination (Sunnycrest production team + scheduled-coordination core element)
+- Quality issue rapid-response
+
+**Architecture** (extends §3.26.11.3 + parallels §3.26.15.23):
+- Coordination Focus instantiated with `core_element="real-time-thread"` OR `"scheduled-coordination"`
+- Calendar event becomes Focus's `primary_scheduling_anchor_event_id` (parallel to email's `primary_communication_channel_thread_id`)
+- Focus participants ↔ event attendees
+- Future calendar event modifications surface in BOTH unified calendar surface AND Coordination Focus
+- Outbound calendar modifications from Focus surface route through §3.26.16.5
+
+**Promotion mechanics** (parallel to §3.26.15.23):
+- Trigger 1 — Manual operator promotion (canonical baseline)
+- Trigger 2 — Intelligence-suggested promotion via Workshop home Section 4
+- Auto-promotion deferred per §3.26.7.5
+
+**Cross-tenant participation patterns** (per §3.26.11.10): cross-tenant Coordination Focus common pattern; bilateral consent; per-tenant participant routing; per-side audit logs; cross-tenant masking per §3.25.x.
+
+**Magic-link participant scope** (per §3.26.11.9): external attendees without Bridgeable accounts participate via Focus-magic-link (distinct from §3.26.16.17 calendar-action-magic-link — calendar-action-magic-link is single-action; Focus-magic-link is full-Focus-scope). kill-the-portal canon preserved.
+
+**Sub-Focus hierarchy** (per §3.26.11.6): Job Coordination Focus contains multiple Load Coordination Focuses; calendar event per Focus. Cross-tenant scope can differ per level.
+
+**Cross-references**: §3.26.16.20 cross-tenant native scheduling; §3.26.11.6 sub-Focus hierarchy; §3.26.11.9 magic-link participant scope; §3.26.15.23 email-mediated Coordination Focus.
+
+**Deferral per §3.26.7.5 + Step 5b investigation**:
+
+Calendar-mediated Coordination Focus implementation deferred until **Coordination Focus primitive domain arc** ships. Same five concrete signals from Step 5b investigation findings:
+
+1. Coordination Focus primitive *domain* arc shipped — instance model + template registry + participant model + lifecycle triggers + auto-closure semantics + notification routing baseline
+2. Sub-Focus hierarchy shipped (per §3.26.11.6)
+3. Cross-tenant Focus consent model shipped (per §3.26.11.10)
+4. Focus-scoped magic-link participant infrastructure shipped (per §3.26.11.9)
+5. Workshop primitive shipped (for Trigger 2 promotion)
+
+When Coordination Focus primitive domain arc ships, BOTH email-mediated (§3.26.15.23) AND calendar-mediated (§3.26.16.23) Coordination Focus integration follow as parallel implementation work — single Coordination Focus arc unblocks both communication primitives' integration.
+
+#### 3.26.16.24 Calendar Intelligence integration
+
+Per Bridgeable Intelligence backbone canonical pattern + §3.26.15.24 email Intelligence precedent.
+
+**September canonical scope: four managed prompts**:
+
+| Prompt | Model | Use | Storage |
+|---|---|---|---|
+| `calendar.conflict_detection` | Haiku | Inbound event ingestion → conflict_score | Prompt registered; threshold per-tenant config |
+| `calendar.priority_classification` | Haiku | Event classification → priority_tier (critical/important/routine) | Prompt registered; classification stored on CalendarEvent |
+| `calendar.scheduling_suggest` | Sonnet | Operator-requested scheduling suggestion (best time across attendees + linked entities + cross-tenant constraints) | Prompt registered; suggestions NOT cached |
+| `calendar.attendee_response_summarize` | Haiku | Response status synthesis for events with many attendees | Prompt registered; summary cached per-event 24h |
+
+**Operator agency discipline preserved per §3.26.14.14.5**: AI suggests + analyzes; operator decides + commits. Canonical anti-patterns:
+- AI auto-schedules events without operator approval
+- AI auto-accepts invitations on operator's behalf
+- AI auto-cancels events on conflict detection
+- AI auto-reschedules events without explicit operator commit
+
+**Future canonical prompts deferred per §3.26.16.21**:
+- `calendar.recurring_pattern_suggest`
+- `calendar.smart_skip`
+- `calendar.relationship_health`
+- `calendar.cross_customer_pattern`
+
+**Bridgeable Intelligence canonical disciplines applied**:
+- All prompts registered in managed prompt registry
+- Every invocation logs `intelligence_executions` audit row
+- Per-tenant configuration as tenant operational config
+- Operator agency preserved
+
+**Intelligence-suggested scheduling discipline canonical**: when `calendar.scheduling_suggest` returns suggestions, operator sees suggestion list + rationale + ability to accept-as-event-creation OR dismiss-without-acting. Suggestions never auto-create events. Suggestion telemetry logs accept/dismiss for Tier 2 algorithm refinement post-September.
+
+Suggestion telemetry NEVER logs the suggestion content (privacy-preserving) — only accept/dismiss outcome + suggestion-position-in-list. Tier 2 algorithm uses position telemetry to learn operator preferences without exposing scheduling content to learning pipeline.
+
+#### 3.26.16.25 Calendar Workshop integration
+
+Per §3.26.14.4 templates-as-data forcing function + §3.26.15.25 email Workshop integration precedent.
+
+**Per-template-type canonical** (Phase C Q15 confirmation): three distinct template types corresponding to three distinct authoring use cases. Each registered in Workshop with own template_type registration; storage canonical per §3.26.14.5.
+
+**Meta-pattern**: Workshop template granularity is determined by structural-overlap-of-composition-shapes, not by primitive count. Email's three composition shapes (new/reply/forward) share substantial structural overlap → single template_type appropriate (per §3.26.15.25). Calendar's three template shapes are structurally different (event composition vs RRULE construction vs declarative-rule predicate) → per-template-type appropriate. Future Workshop integrations apply same heuristic.
+
+**Template type 1: `event_template`**
+
+Single event composition reusable. Canonical use cases:
+- "Standard service event" — default attendees + location + duration + reminders for FH service events
+- "Vault delivery event" — default attendees + location-from-linked-entity + duration for Sunnycrest delivery events
+- "Quote presentation meeting" — default attendees + duration for quote follow-up
+
+Storage: `vault_items.metadata_json.calendar_event_template_config`.
+
+Tune mode parameters: recipients (role-based routing per §3.26.11.7), subject + description templates (with dynamic-data tokens), default duration + location-resolution-rule, default reminders (per deduplication discipline), linked entity inference rule.
+
+Compose mode primitives: event composition blocks + dynamic-data tokens + recipient routing primitives + conditional content + linked-entity inference rules.
+
+**Template type 2: `recurring_meeting_template`**
+
+Recurring pattern reusable. Canonical use cases:
+- "Weekly mold changeover"
+- "Monthly close coordination"
+- "Daily standup"
+
+Storage: `vault_items.metadata_json.recurring_meeting_template_config`.
+
+Tune mode parameters: recurrence rule (RFC 5545 RRULE construction UI), default duration + attendees + location, skip rules, cancellation cascading discipline.
+
+Compose mode primitives: recurrence pattern primitives + skip-rule primitives + cancellation-cascade-rule primitives.
+
+**Template type 3: `scheduling_rule_template`**
+
+Operational scheduling logic reusable. Canonical use cases:
+- "No deliveries Mondays before 10am"
+- "Drivers can't double-book within 30-minute buffer"
+- "Service date can't precede arrangement-date by less than 48 hours"
+- "Cross-tenant events require 24-hour advance notice"
+
+Storage: `vault_items.metadata_json.scheduling_rule_template_config`.
+
+Tune mode parameters: rule type (time-window-restriction / resource-buffer / sequence-constraint / advance-notice / capacity-cap), rule-specific parameters, override conditions, rule enforcement scope.
+
+Compose mode primitives: rule predicate primitives + parameter primitives + override-rule primitives.
+
+**Network library publishing** (per §3.26.14.10): all three template types canonicalize for network library publishing with anonymization per §3.26.14.11 + vertical_applicability per §3.26.14.12 + adoption-with-publish-authority workflow per §3.26.14.13.
+
+**Cross-vertical applicability examples**:
+- FH calendar patterns: service event templates, arrangement meeting templates, removal scheduling rules
+- Manufacturing calendar patterns: production scheduling rules, delivery event templates, mold changeover recurring templates
+- Cross-vertical patterns: monthly close coordination templates, quarterly review meeting templates
+
+**Workshop home surfacing** (per §3.26.14.3 5-section composition):
+- Section 1 — Your Customizations: operator-authored calendar templates
+- Section 2 — Tenant Templates: shared calendar templates within tenant
+- Section 3 — Network Library: cross-tenant calendar templates browsable for adoption
+- Section 4 — Intelligence Suggestions: per §3.26.14.14 — "you manually schedule 'service event' 8 weeks running; want to canonicalize as event_template?"
+- Section 5 — Recent Changes: calendar template version history
+
+**Cross-references**: §3.26.14 Workshop Primitive (entire Workshop architecture applies) + §3.26.16.13 event creation canonical authoring surface.
+
+---
+
 # Part 6 — Funeral Home Vertical
 
 ## 6.1–6.9 Existing Funeral Home Sections

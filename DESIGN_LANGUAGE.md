@@ -5378,6 +5378,334 @@ Per §3.26.15.16 (operational-state-coupled-to-communication) and §3.26.15.17 (
 
 ---
 
+## Section 14.10 — Calendar Primitive Visual Canon (Session 3)
+
+Per-primitive visual canon for the Calendar primitive — extending §14's Communications Layer foundation with calendar-specific composition surfaces. Companion to BRIDGEABLE_MASTER §3.26.16 (architectural).
+
+§14.10 extends §14 Communications Visual System canonical (per Session 3 Phase C Q14 confirmation) — Calendar IS one of four Layer 1 communication primitives per §3.26.6.4 sequencing canon. Cross-primitive Pattern C composition (Communications layer Glance widgets row) requires shared visual vocabulary across all four primitives. Pattern locks for future Layer 1 communication primitive visual canon: §14.11 SMS, §14.12 Phone, §14.13 Messaging.
+
+Phase W-4b Layer 1 ships the Calendar primitive as the second concrete realization of the Communications Layer (after Email §14.9). §14.10 locks visual canon for the five calendar-specific surfaces that compose inside Bridgeable's primitive framework.
+
+### 14.10.1 Calendar grid visual canon
+
+Calendar grid is the **default presentation mode** for unified calendar surface per §3.26.16.9. Three grid views canonical: month / week / day. Plus agenda view per §14.10.2.
+
+**Calendar-workspace-shape distinction from Space architecture** (per Session 3 Phase B refinement): calendar workspace at `/calendar` route is full-screen single-purpose surface. **NOT a Space** (Spaces are configurable contextual workspaces per §3.26.x). Calendar workspace ships predetermined grid + agenda + filter chrome; not user-configurable Space chrome. Visual treatment differentiates: Space chrome carries Pattern 2 + sidebar pin chrome + space-specific accent; calendar workspace carries grid-specific chrome + workspace-shape continuity with V-1c CRM workspace patterns. Prevents canon-vs-implementation drift at visual level.
+
+**Month view composition** (Pattern A workspace-shape):
+
+```
+┌─ Calendar Workspace ────────────────────────────────────────────────────┐
+│  May 2026                                  [< Prev] [Today] [Next >]    │
+│  [Month / Week / Day / Agenda] [Filter] [Compose new event]             │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ Sun     Mon     Tue     Wed     Thu     Fri     Sat             │   │
+│  │  1       2       3       4       5       6       7              │   │
+│  │  ●●     ●        ●●●    ●●      ●●      ●●●     ●               │   │
+│  │  8       9      10      11      12      13      14              │   │
+│  │  ●      ●●●●    ●●     ●●●     ●●●     ●        ●●              │   │
+│  │ ...                                                             │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Day cell composition**:
+- Date numeral top-left `text-body-sm font-medium` for current month, `text-content-muted` for adjacent months
+- Today marker: solid terracotta dot top-right OR Pattern 2 chrome border emphasis when `isToday=true`
+- Event indicators: filled colored bars (single-day events) or multi-row spans (multi-day events) within cell
+- Event count overflow: when > 4 events fit, `+N more` link last row; click expands day-detail tablet
+- Click cell → switch to day view for that date
+
+**Event chrome on grid** (canonical per §11 Pattern 5 mid-dot separator):
+- Color from calendar account: each calendar account has accent color
+- Subject truncation: 32 characters single-line; ellipsis at last word boundary
+- Time prefix: `9:30 AM` or `9:30a` per locale conventions
+- Cross-tenant indicator: `↗` glyph prepended for cross-tenant events
+- Recurrence indicator: `↻` glyph suffixed for recurring events
+- Pending response: italic + accent border for events awaiting your response
+- Tentative: 50% opacity for tentative events
+
+**Week view composition** (Pattern A workspace-shape): 7-column × 24-hour vertical grid with day headers + all-day events row + time-positioned event blocks. Multiple overlapping events render side-by-side within day column.
+
+**Day view composition**: single-column 24-hour vertical grid. Events render with full subject + location + attendee count visible inline. Sidebar (right) shows agenda summary for that day.
+
+**Cross-tenant chrome canonical** (parallel to §14.9.4 cross-tenant thread chrome):
+- Cross-tenant events render with terracotta accent border-left (4px solid)
+- Subject prefixed with partner-tenant indicator badge: small chip with tenant name (e.g., "Hopkins FH") in `text-caption text-content-muted bg-accent-subtle/40`
+- Bilateral consent state surfaces in event detail (per §14.10.3): "Both tenants accepted" / "Hopkins counter-proposed Friday"
+
+### 14.10.2 Agenda view visual canon
+
+Agenda view is canonical alternative presentation per §3.26.16.9 + §3.26.16.12. Used in:
+- Briefing structured-sections (chronological today + tomorrow agenda)
+- Mobile narrow viewport (when grid views don't fit)
+- Saved view "Awaiting my response" (filtered agenda; chronological)
+- Pulse calendar widget Detail variant (multi-day chronological)
+
+**Agenda row composition** (Pattern 2 card per row):
+
+```
+┌─ Agenda row (per-event Pattern 2 card) ────────────────────────────────┐
+│                                                                         │
+│  ●  9:30 AM - 10:30 AM                                                  │ ← Status dot + time
+│      Anderson family service                                            │ ← Subject
+│      Hopkins FH chapel                                                  │ ← Location
+│                                                                         │
+│      👥 4 attendees     🔗 Linked: case-2026-0012     ↻ Weekly          │ ← Optional metadata row
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Status dot canon** (left edge, 8px circle, single visual element per §14.9.1 status dot pattern):
+
+| State | Visual |
+|---|---|
+| Confirmed event + your response accepted | Solid `bg-status-success` 8px circle |
+| Pending your response | Solid `bg-accent` 8px circle (terracotta — escalation signal) |
+| Tentative | `border-2 border-status-warning` 8px hollow ring |
+| Declined by you | `border border-content-subtle` 8px hollow ring with strikethrough subject |
+| Cancelled event | `border border-status-error` 8px hollow ring with strikethrough subject + body opacity 50% |
+
+Cross-tenant indicator overlay: small terracotta `↗` glyph corner of status dot for cross-tenant events.
+
+**Time row composition**: `text-body-sm text-content-muted` start/end timestamps; relative format ("Today 9:30 AM" / "Tomorrow 2pm" / "Thursday 10am") for events within 7 days; absolute format ("May 14, 9:30 AM") beyond.
+
+**Subject + location** parallel to §14.9.1 inbox row composition: `text-body text-content-base font-medium` subject; `text-body-sm text-content-muted` location. Italic location reserved for "TBD" or "Location pending" placeholder strings.
+
+**Optional metadata row**: renders only when at least one signal present; `text-caption text-content-subtle font-plex-mono`. Three signal types — Lucide `Users` icon + attendee count, Lucide `Link2` icon + linked entity (clickable peek-trigger), Lucide `RotateCw` icon + recurrence pattern summary.
+
+**Density tier behavior** (§13.4.1 canonical):
+
+| Tier | Cell height range | Agenda row rendering |
+|---|---|---|
+| Default | ≥120px | Full 4-line composition (status + time + subject + location + metadata row when present) |
+| Compact | 80-120px | Status + time + subject only; location + metadata hidden |
+| Ultra-compact | <80px | Status + time + subject collapsed to single line |
+
+### 14.10.3 Event detail rendering visual canon
+
+Event detail mode renders full event information + attendee list + linked entities + operational-action affordances. Reached via agenda row click, calendar grid event click, or Command Bar event summon.
+
+**Event surface composition** (Pattern 2 card with internal sections):
+
+```
+┌─ Event Surface ───────────────────────────────────────────────────────┐
+│  Anderson family service                                              │ ← Event subject (h2)
+│  Thursday, May 14, 2026 · 9:30 AM - 10:30 AM (1h)                    │ ← Time + duration
+│  Hopkins FH chapel · 4 attendees · Linked: case-2026-0012             │ ← Metadata strip
+│                                                                       │
+│  ┌─ Recurrence ─────────────────────────────────────────────────┐    │ ← Renders only when recurring
+│  │ ↻ Weekly on Thursday · Until June 18 · 5 instances remaining │    │
+│  │ [View series] [Edit this instance only] [Edit series]        │    │
+│  └──────────────────────────────────────────────────────────────┘    │
+│                                                                       │
+│  ┌─ Attendees ──────────────────────────────────────────────────┐    │ ← Collapsible (default open)
+│  │ ✓ Mary Hopkins (Hopkins FH)        ✓ accepted                │    │
+│  │ ? Mike Driver (Sunnycrest)         ? awaiting                │    │
+│  │ ✗ Jane Office (Hopkins FH)         ✗ declined "Conflict"     │    │
+│  │ ● You                              [Accept] [Decline] [Tentative] │
+│  └──────────────────────────────────────────────────────────────┘    │
+│                                                                       │
+│  ┌─ Linked entities ────────────────────────────────────────────┐    │ ← Collapsible
+│  │ 🔗 Case 2026-0012 · Anderson family    [Open peek →]         │    │
+│  │ 📦 Order SO-2026-0445 · Bronze vault   [Open peek →]         │    │
+│  └──────────────────────────────────────────────────────────────┘    │
+│                                                                       │
+│  ┌─ Description ────────────────────────────────────────────────┐    │
+│  │ Family service for Anderson. Bronze vault delivery confirmed │    │
+│  │ for 8am Thursday. Service starts 9:30 sharp.                 │    │
+│  └──────────────────────────────────────────────────────────────┘    │
+│                                                                       │
+│  ┌─ Internal commentary ────────────────────────────────────────┐    │ ← Renders for shared calendars only
+│  │ Mike (Sunnycrest): "Bringing extra liner just in case"      │    │
+│  │ [Add internal comment]                                       │    │
+│  └──────────────────────────────────────────────────────────────┘    │
+│                                                                       │
+│  [Edit event] [Reschedule] [Cancel event] [Add to my calendar]       │ ← Action footer
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**Subject + time strip**: `text-h2 font-plex-serif font-medium text-content-strong` subject; `text-body text-content-base` time/date.
+
+**Metadata strip**: `text-body-sm text-content-muted`; participant count + location + linked-entity count rendered inline with `·` separators.
+
+**Recurrence section** (renders only when event is recurring):
+- `text-caption text-content-muted uppercase tracking-wider` eyebrow "Recurrence"
+- Recurrence summary in `text-body-sm text-content-base`
+- Three action affordances: View series / Edit this instance only / Edit series
+
+**Attendees section**:
+- `text-caption text-content-muted uppercase tracking-wider` eyebrow "Attendees"
+- Per-attendee row: 8px solid response-state status dot + name + tenant context + response-status indicator + response comment when present
+- Status dot colors: `bg-status-success` for accepted, `bg-accent` (terracotta) for awaiting, `bg-status-warning` for tentative, `bg-status-error` for declined
+- "You" rendered last with action affordances inline: Accept / Decline / Tentative buttons (per deduplication discipline — these don't fire reminders)
+
+**Linked entities section**: matches §14.9.2 thread linked-entities pattern verbatim (Lucide entity-type icon + entity display label + "Open peek →" link).
+
+**Description section**: `text-body text-content-base whitespace-pre-wrap` — preserves operator-authored whitespace.
+
+**Internal commentary section** (per §3.26.16.19 shared calendar canonical): renders only for shared calendars. Per-comment row + threaded reply chain. "Add internal comment" inline composer affordance.
+
+**Action footer**:
+- Edit event — opens modal composition surface per §14.10.4
+- Reschedule — opens reschedule flow (creates `event_reschedule_proposal` per §3.26.16.17 if cross-tenant)
+- Cancel event — opens cancellation confirmation modal with cascade-effects warning if event has linked entities or cross-tenant pairing
+- Add to my calendar — adds event to operator's primary calendar account when event is on shared calendar
+
+### 14.10.4 Event creation surface visual canon
+
+Per §3.26.16.13 four composition shapes:
+
+**Quick event** (inline composition on calendar grid):
+- Drag-create on grid: cursor drag generates event-shaped placeholder; subject prompt appears in inline popover
+- Inline popover: `bg-surface-raised border-border-subtle rounded-md shadow-level-2 p-3` with subject input + Save / Cancel buttons
+- Save creates event with operator as sole attendee + default duration matching drag length
+
+**Detailed event modal** (parallel to §14.9.3 email composition modal):
+
+```
+┌─ Detailed Event Modal ──────────────────────────────────────────────┐
+│  New event                                              [✕]          │
+│                                                                     │
+│  Subject:        [_______________________________________]           │
+│  Date:           [May 14, 2026 ▼]   Time: [9:30 AM ▼] - [10:30 AM ▼]│
+│  Duration:       [1 hour ▼]      [✓] Use default reminders          │
+│  All-day:        [ ] Yes                                            │
+│  Repeat:         [Does not repeat ▼]    (opens recurrence builder)  │
+│                                                                     │
+│  Attendees:      [Mary Hopkins, Mike Driver, John Smith     +Add]   │
+│                  Role: Required ▼ · Required ▼ · Optional ▼         │
+│                                                                     │
+│  Location:       [Hopkins FH chapel____________________] [📍 Map]   │
+│  Virtual link:   [Add Zoom / Meet / Teams meeting     ▼]            │
+│                                                                     │
+│  Linked entity:  [Anderson case (case-2026-0012) ✕] [+Add link]    │
+│                                                                     │
+│  Description:    ┌──────────────────────────────────────────────┐  │
+│                  │ [Rich text composer — bold, italic, link]    │  │
+│                  └──────────────────────────────────────────────┘  │
+│                                                                     │
+│  [Cancel]                                       [Save] [Save & Send]│
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Composition primitives**:
+- Subject + date + time + duration: standard form inputs with date picker / time picker primitives
+- Recurrence builder: opens nested recurrence-builder modal per §3.26.16.13 — frequency picker + interval + BYDAY/BYMONTHDAY/BYSETPOS + Until/Count + EXDATE editor
+- Attendees: chip-style multi-input with role selector per attendee
+- Location: text input + Map preview affordance
+- Virtual link: provider-aware (Google Workspace → "Add Google Meet"; MS 365 → "Add MS Teams")
+- Linked entity: chip-style multi-link with entity peek per chip
+- Description: rich-text composer with minimal toolbar (matches §14.9.3 email composer)
+
+**Action buttons**: Cancel / Save (without invitations — operator review) / Save & Send (sends invitations immediately).
+
+**Cross-tenant proposal modal** extends Detailed event modal with cross-tenant indicator + bilateral consent affordances:
+- "Cross-tenant event with [partner tenant]" label at top
+- Partner tenant selected via Command Bar query OR explicit picker
+- Save & Send creates initial proposal; partner tenant receives `joint_event_acceptance` action per §3.26.16.20
+
+**Recurring meeting template apply** affordance (when Workshop has recurring_meeting_template available): "Apply template" picker in modal header; selected template pre-fills recurrence + attendees + duration + reminders.
+
+### 14.10.5 Operational-action affordance chrome
+
+Parallel to §14.9.5 email operational-action affordance chrome canon. Calendar action_types canonical chrome.
+
+**Inline action affordance** (Bridgeable user, authenticated, in event detail surface):
+
+```
+┌─ Inline action bar (Bridgeable user) ──────────────────────────────┐
+│  Service date acceptance                                            │
+│  Sunnycrest proposed Thursday May 14 9:30 AM at Hopkins FH chapel  │
+│                                                                    │
+│  [✓ Accept]  [⏱ Reschedule]  [✕ Decline]                           │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Inline action chrome** (per §14.9.5 pattern):
+- Pattern 2 card with terracotta accent border-left for active action
+- Action title `text-body-sm font-medium text-content-strong`
+- Proposed details `text-caption text-content-muted`
+- Three-button action group: primary Accept (brass primary button), Reschedule (outline), Decline (text-only ghost)
+- Reschedule action: opens reschedule flow with proposed counter-time picker
+- Decline action: opens decline modal with optional comment input
+
+**Magic-link contextual surface** (non-Bridgeable recipient, token-authenticated):
+
+```
+┌─ Magic-link landing page (mobile-first; tenant-branded) ──────────┐
+│ ┌───────────────────────────────────────────────────────────────┐│
+│ │ Sunnycrest Vault                                               ││ ← Tenant brand header
+│ ├───────────────────────────────────────────────────────────────┤│
+│ │  Service date proposal                                         ││
+│ │                                                                ││
+│ │  Thursday, May 14, 2026                                        ││
+│ │  9:30 AM - 10:30 AM                                            ││
+│ │  Hopkins FH chapel                                             ││
+│ │                                                                ││
+│ │  Anderson family — vault delivery + service                    ││
+│ │                                                                ││
+│ │  Sunnycrest will deliver bronze vault at 8am Thursday;         ││
+│ │  service starts 9:30. Family confirmed yesterday.              ││
+│ │                                                                ││
+│ │  ┌─────────────────────────────────────────────────────────┐  ││
+│ │  │           [✓ Accept this date]                          │  ││ ← Brass primary button
+│ │  └─────────────────────────────────────────────────────────┘  ││
+│ │  ┌─────────────────────────────────────────────────────────┐  ││
+│ │  │           [⏱ Propose alternative time]                  │  ││ ← Outline button
+│ │  └─────────────────────────────────────────────────────────┘  ││
+│ │  ┌─────────────────────────────────────────────────────────┐  ││
+│ │  │           [✕ Decline]                                   │  ││ ← Ghost button
+│ │  └─────────────────────────────────────────────────────────┘  ││
+│ │                                                                ││
+│ │  This link expires in 6 days.                                  ││
+│ │  Your response is private to Sunnycrest + Hopkins FH.          ││
+│ └───────────────────────────────────────────────────────────────┘│
+└───────────────────────────────────────────────────────────────────┘
+```
+
+**Magic-link surface chrome** (per §14.9.5 + §3.26.15.17 kill-the-portal canon):
+- Tenant-branded h-12 header (brand color inline-styled)
+- Mobile-first max-w-md container
+- Action title `text-h3 font-plex-serif text-content-strong`
+- Proposed details rendered as readable card with Pattern 2 chrome
+- Three-button action stack: primary (Accept) + outline (Propose alternative) + ghost (Decline)
+- Footer chrome: expiry indicator + privacy assurance copy
+- NO Bridgeable navigation; NO sidebar; NO inbox; NO Bridgeable login flow — kill-the-portal discipline preserved
+
+**Counter-proposal flow** (when recipient clicks "Propose alternative time"):
+- Counter-time picker: date + time picker
+- Counter-proposal note: optional text input ("How about Friday morning instead?")
+- Submit creates new action with `outcome="counter_proposed"` per §3.26.16.20 iterative-negotiation pattern
+
+**Decline flow** (when recipient clicks "Decline"):
+- Decline reason: optional text input
+- Submit creates action commit with `outcome="rejected"` + reason in completion_metadata
+
+**Reschedule flow** (post-confirmation event_reschedule_proposal per §3.26.16.17 fifth action_type):
+- Same magic-link surface but action title "Reschedule proposal"
+- Cascade impact disclosure: "Rescheduling this event will affect: 2 linked entities, 1 paired cross-tenant event"
+- Same three actions but semantics: Accept (apply reschedule + cascade), Counter (propose alternative), Decline (keep original time)
+
+### 14.10.6 Cross-references
+
+- **§14** (Communications Layer Visual Canon) — per-primitive icon canon, count typography, Pattern C composition
+- **§14.9** (Email Primitive Visual Canon) — sibling primitive canon pattern; calendar parallels structure
+- **§13.4.1** — density-tier opt-in canonical reference
+- **§11 Pattern A** + **§11 Pattern C** — Layer Composition Patterns
+- **§6** — overlay family canon (modal composition surface inherits this canon)
+- **BRIDGEABLE_MASTER.md §3.26.16** — Calendar Primitive Architecture (architectural canon)
+- **BRIDGEABLE_MASTER.md §3.26.16.4** — RRULE-as-source-of-truth recurrence engine
+- **BRIDGEABLE_MASTER.md §3.26.16.6** — bilateral consent free/busy resolution
+- **BRIDGEABLE_MASTER.md §3.26.16.7** — polymorphic linkage canonical catalog
+- **BRIDGEABLE_MASTER.md §3.26.16.10** — hybrid layer contribution pattern (canonical for future Layer 1 primitives)
+- **BRIDGEABLE_MASTER.md §3.26.16.15** — communications + scheduling = operations strategic framing
+- **BRIDGEABLE_MASTER.md §3.26.16.17** — operational-action affordance canonical action_types (5 types including event_reschedule_proposal)
+- **BRIDGEABLE_MASTER.md §3.26.16.18** — state-changes-generate-calendar-events bidirectional binding
+- **BRIDGEABLE_MASTER.md §3.26.16.20** — cross-tenant native scheduling
+
+---
+
 ## Section 15 — Briefing Visual System
 
 Visual canon for morning + evening briefings — three-state machine visualization, per-state typography, per-state composition. Companion to BRIDGEABLE_MASTER §3.26.10 (architectural).

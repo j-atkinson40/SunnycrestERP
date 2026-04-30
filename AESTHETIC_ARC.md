@@ -1227,6 +1227,124 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 
 ---
 
+## Session 3 — Calendar Primitive Canon (canon locked, 2026-05-09)
+
+Pure architectural canon session matching Sessions 1 + 1.5 + 2 discipline pattern. NO CODE this session. Calendar primitive canonicalized as second concrete Phase W-4b Layer 1 communication-temporal primitive (after Email §3.26.15); integrate-now-make-native-later framework reaffirmed with local provider as canonical first-class citizen; communications + scheduling = operations strategic positioning locked at canon level with concrete competitor comparison (Salesforce+Calendly / HubSpot+scheduling-link bolt-on vs Bridgeable native primitive); operational-state coupling discipline doubled-down (calendar bidirectional binding more pervasive than email's inverse coupling); cross-tenant native scheduling at canon-faithful depth matching §3.26.15.20 cross-tenant native messaging precedent; 30 canon subsections across BRIDGEABLE_MASTER + DESIGN_LANGUAGE locking Calendar primitive against settled foundation. Total ~3.5 hours conversational/architectural work; canon doc batch write at session close.
+
+### Phase A — Entity Model + Storage Architecture
+
+§3.26.16 introduced as comprehensive Calendar Primitive section (25 subsections matching §3.26.15 Email primitive depth). Calendar established as **second concrete Communications layer primitive** per Phase W-4b sequence step 2 (parallel-able with email Step 1; sequencing per §3.26.6.4). Phase A locks the entity model + storage architecture + provider abstraction; Phase B locks surfacing + scheduling UX + strategic vision integration; Phase C locks Focus + Workshop + Intelligence integration.
+
+**Architectural framing — Calendar as dual-character primitive** (§3.26.16): Calendar is **architecturally lighter than Email** on novel architecture (RFC 5545 iCalendar standard; provider abstraction simpler; free/busy + attendee-status well-understood) but **architecturally heavier than Email** on operational coupling (calendar events are state-bound to operational entities by their nature; state-changes-generate-calendar-events is more pervasive than email's inverse coupling). This dual character shapes canon — entity model is straightforward; operational integration is comprehensive.
+
+**Native-vs-integration deliberation reaffirmed verbatim** (§3.26.16.1) preserving architectural rationale: ~3-4 months engineering scope for native-from-day-one (RFC 5545 iCalendar + RFC 5546 iTIP + CalDAV server RFC 4791 + CalDAV-Sched RFC 6638 + recurrence engine + IANA tzdb management + iTIP processing + free/busy publication + CalDAV scheduling inbox/outbox semantics). The integrate-now-make-native-later commitment is canonical — Bridgeable's calendar primitive owns its **architectural model** (entity model + UI surfaces + Intelligence integration + operational coupling) while delegating **transport** to provider abstraction (Google Calendar API + MS Graph + CalDAV deferred per concrete signal + local/Bridgeable-native provider as canonical first-class citizen for events that don't need external propagation). Local provider distinct from email's transactional-send-only provider — operationally meaningful events that don't need external propagation use local provider; future native CalDAV transport lands behind provider abstraction.
+
+**Entity model canonical** (§3.26.16.2): seven core entities (3 primary + 4 supporting). Primary: `calendar_events` + `calendar_event_attendees` + `calendar_accounts`. Supporting: `calendar_account_access` + `calendar_event_instance_overrides` + `calendar_event_reminders` + `calendar_event_linkages`. Plus cross-tenant pairing via `cross_tenant_event_pairing` parallel to email's `cross_tenant_thread_pairing`. Entity decomposition matches §3.26.15.2 email primitive entity model — same M:N junction pattern; same auto-resolution + manual + multi-linkage discipline; same independent-per-tenant-cross-tenant-copies discipline.
+
+**Provider abstraction canonical** (§3.26.16.4): 4-provider canonical scope (Google Calendar API + MS Graph + CalDAV deferred + local Bridgeable-native). RRULE-as-source-of-truth canonical recurrence engine — Bridgeable parses RFC 5545 RRULE → stores canonical `recurrence_rule` field → recurrence engine materializes instances on demand. Cross-tenant scheduling resolution + free/busy availability + operational-state-coupled-to-calendar functioning + Workshop scheduling-rule templates all benefit from canonical recurrence engine independent of provider availability. Provider unreachability does not degrade scheduling resolution.
+
+**Hybrid retention model** (§3.26.16.6): default 365-day cached-mirror retention (calendar events have longer operational relevance than email — historical service dates, completed projects, retrospective scheduling analysis matter beyond email's 30-day default); tenant-configurable extension up to 7 years for compliance.
+
+**Privacy + compliance** (§3.26.16.8): standard discipline + free/busy publication discipline (cross-tenant queries default to busy/free + duration only; bilateral consent unlocks full details); three-tier anonymization granularity (subject hashing optional + coarse attendee counts default + specific identities consent-only).
+
+### Phase A — Q1-Q7 deliberations
+
+Seven architectural questions surfaced + resolved:
+
+- **Q1 RRULE-as-source-of-truth canonical recurrence**: confirmed. Bridgeable owns recurrence engine; provider is bridge.
+- **Q2 free/busy cross-tenant resolution**: confirmed with refinement — privacy-preserving busy/free + duration default + **bilateral consent** opt-in to full details (both tenants explicitly opt in; either unilaterally revokes; matches §3.26.11.10 cross-tenant Focus consent canon). Bilateral consent prevents asymmetric disclosure power dynamics.
+- **Q3 calendar account model**: confirmed hybrid shared + personal. Mirrors §3.26.15.3 email account hybrid verbatim.
+- **Q4 polymorphic linkage**: confirmed pattern-parallel with extension — `linked_entity_type` catalog includes `quote` entity (from §3.26.15.17 + Step 4c — calendar events naturally link to Quotes: quote follow-up call, quote presentation meeting, quote signing event, quote delivery scheduling).
+- **Q5 calendar provider scope**: confirmed Google Calendar + MS Graph + local canonical; CalDAV deferred per §3.26.7.5 with concrete signals documented (Apple-ecosystem tenant; Fastmail-using tenant; Nextcloud-self-hosted tenant); ~2-3 weeks engineering when signal warrants.
+- **Q6 recurrence exception handling**: confirmed RFC 5545 EXDATE + modified-instance shadowing canonical verbatim adoption. Settled standard with decades implementation experience; no novel semantics.
+- **Q7 reminder/notification mechanics**: confirmed dual-surface with **deduplication discipline** — canonical default `provider_default` only; passive Bridgeable-surface display distinct from reminder firing; explicit operator opt-in for additional `bridgeable_pulse` / `bridgeable_email` / `bridgeable_sms` reminders. Prevents canonical-default-double-notification risk (Google phone push + Bridgeable Pulse + Bridgeable email + Bridgeable SMS all firing for same event).
+
+### Phase B — Surfacing + Scheduling UX + Strategic Vision Integration
+
+§3.26.16.9-§3.26.16.21 (13 subsections). Phase B locks unified calendar surface + multi-surface rendering + Command Bar summoning + saved views + event creation canonical + cross-tenant calendar visibility + strategic framing + canonical design disciplines + operational-state-coupled-to-calendar + state-changes-generate-calendar-events + Front-style shared calendar UX + cross-tenant native scheduling + strategic vision deferral catalog.
+
+**Three-shape surface decomposition** (§3.26.16.9 + §3.26.16.10 per Q8 confirmation): unified calendar surface (calendar-workspace-shape at `/calendar` distinct from Space architecture per §3.26.x — clarification prevents canon-vs-implementation drift) + Pulse calendar widget (composed across Communications + Operational layers per Q9 hybrid contribution) + Calendar Period Pulse (scoped Pulse summonable per §3.26.12 fractal Pulse). Each shape serves distinct cognitive need.
+
+**Hybrid layer contribution canonical** (§3.26.16.10 per Q9 confirmation + extension): calendar contributes to MULTIPLE Pulse layers based on signal type. Communications layer ("who needs me?" cognitive question — interpersonal-scheduling signals: invitation responses awaiting your reply, NEW cross-tenant invitations, calendar-mediated decision proposals) + Operational layer ("what's my work right now?" cognitive question — operational-scheduling signals: today's deliveries, today's services, today's pours) + scoped Period Pulse (full scheduling workspace summoned for period-scoped scheduling work). NOT a dedicated Schedule layer. **Pattern locks for future Layer 1 communication primitives** — SMS interpersonal-vs-operational signals (customer message vs driver check-in), phone call-incoming-vs-alarm signals, messaging direct-mention-vs-system-event signals all decompose along the same cognitive-question split. Hybrid contribution pattern canonicalized as reference for §14.11 SMS + §14.12 Phone + §14.13 Messaging future canon.
+
+**Five canonical action_types** (§3.26.16.17 per Q10 confirmation + extension): five action_types at September scope. `service_date_acceptance` + `delivery_date_acceptance` + `joint_event_acceptance` + `recurring_meeting_proposal` + **`event_reschedule_proposal`** (fifth action_type added per Q10 extension — post-confirmation reschedule has different semantics than counter-proposal in initial-negotiation; counter-proposal is initial-negotiation, reschedule is post-confirmation-modification with downstream cascade effects on linked entities + paired cross-tenant events; without `event_reschedule_proposal` canonical, reschedule falls back to ad-hoc email + phone calls, kill-the-portal anti-pattern). All reuse Step 4c email_action_tokens substrate; implementation-time direction note canonicalized for substrate consolidation (table semantically renamed `platform_action_tokens` to prevent architectural fragmentation across primitives).
+
+**Communications + scheduling = operations strategic framing locked** (§3.26.16.15 per Q11 confirmation + strengthening): Calendar primitive's strategic role completes the operational substrate trifecta. Email primitive (§3.26.15) ships interpersonal coordination. Calendar primitive (§3.26.16) ships temporal coordination. Together, they ARE the operational substrate of the platform — the layer beneath everything tenants do operationally. **Concrete competitor comparison canonicalized**: Salesforce ships Calendly integration; HubSpot ships scheduling-link integration; both are bolt-ons — calendar is integration, not native primitive. Operators using these platforms context-switch between operational state (in CRM) and scheduling state (in calendar tool) and back. State coherence is operator-maintained manually. Bridgeable's calendar-as-operational-substrate framing eliminates this context-switch by treating calendar as platform primitive — operators never leave operational context to manage scheduling. Sharpens September Wilbert demo positioning at canon level.
+
+**Cross-tenant native scheduling at canon-faithful depth** (§3.26.16.20 per Q12 confirmation): full depth matching §3.26.15.20 cross-tenant native messaging precedent. Joint event schema + bilateral state synchronization + entity references + retroactive linkage handling + iterative-negotiation pattern + per-tenant masking + audit logs all canonicalized at canon time. Hopkins+Sunnycrest joint service-day coordination is canonical Wilbert demo scenario; deferring depth would create implementation-time canon ambiguity.
+
+**Magic-link parallel canonical** (§3.26.16.17 per Q13 confirmation): non-Bridgeable attendee receives calendar invite with magic-link to accept/decline/propose-counter without portal login. Same kill-the-portal canon as §3.26.15.17. Token infrastructure reuses Step 4c email_action_tokens substrate. Implementation-time direction note canonicalized for substrate consolidation: when Phase W-4b Calendar Step 5+ implements magic-link substrate, default to extending `email_action_tokens` table (semantically renamed `platform_action_tokens`) rather than parallel calendar-action-tokens table.
+
+**State-changes-generate-calendar-events canonicalized at depth** (§3.26.16.18): bidirectional binding more pervasive than email's inverse coupling. Canonical state-change → calendar-event mappings: `SalesOrder.scheduled_date` set, `FHCase.service_date` set, `Quote.delivery_date` set, `WorkOrder.scheduled_date` set, `Equipment.next_maintenance_date` set, `ComplianceRequirement.expires_at` 30 days before expiry, `Disinterment.scheduled_date` set. Drafted-not-auto-sent discipline preserves operator agency per §3.26.14.14.5. Inverse: calendar acceptance propagates state changes — when attendee accepts service-date-acceptance action, calendar event's `status="confirmed"` propagates to FHCase.service_date; cross-tenant paired event in partner tenant updates accordingly.
+
+### Phase C — Focus + Workshop + Intelligence Integration + Visual Canon
+
+§3.26.16.22-§3.26.16.25 (4 BRIDGEABLE_MASTER subsections) + §14.10 (5 DESIGN_LANGUAGE subsections per Q14 confirmation extending §14 Communications Visual System rather than new §18 Calendar Visual System).
+
+**Calendar-triggered Decision Focus integration ships at canon-faithful depth** (§3.26.16.22): five canonical triage queue config types at September scope (`calendar_conflict_triage` + `calendar_counter_time_triage` + `calendar_capacity_overflow_triage` + `calendar_reschedule_cascade_triage`). Phase 5 triage primitive substrate already shipped enables implementation when Phase W-4b Calendar Step ships triage integration (no Coordination-Focus-arc dependency).
+
+**Calendar-mediated Coordination Focus deferred** (§3.26.16.23): same five concrete signals from Step 5b investigation (Coordination Focus primitive *domain* arc shipped + sub-Focus hierarchy shipped + cross-tenant Focus consent model shipped + Focus-scoped magic-link participant infrastructure shipped + Workshop primitive shipped). Deferral is **symmetric across email-mediated AND calendar-mediated Coordination Focus integration** — single Coordination Focus arc unblocks both communication primitives' integration; canon at canon time canonicalizes the integration patterns; implementation follows when substrate ships.
+
+**Calendar Intelligence at four-prompt September scope** (§3.26.16.24): `calendar.conflict_detection` (Haiku) + `calendar.priority_classification` (Haiku) + `calendar.scheduling_suggest` (Sonnet) + `calendar.attendee_response_summarize` (Haiku). Operator agency discipline preserved via canonical anti-patterns (no auto-schedule; no auto-accept; no auto-cancel; no auto-reschedule). Suggestion telemetry privacy-preserving (accept/dismiss outcomes only, never suggestion content) — Tier 2 algorithm uses position telemetry to learn operator preferences without exposing scheduling content to learning pipeline.
+
+**Calendar Workshop at three-template-type granularity** (§3.26.16.25 per Q15 confirmation): three distinct Workshop template types — `event_template` + `recurring_meeting_template` + `scheduling_rule_template`. Each registered separately with own template_type registration; storage canonical per §3.26.14.5 distributed storage pattern.
+
+**Meta-pattern canonicalized**: Workshop template granularity is determined by structural-overlap-of-composition-shapes, not by primitive count. Email's three composition shapes (new/reply/forward) share substantial structural overlap → single template_type appropriate (per §3.26.15.25). Calendar's three template shapes are structurally different (event composition vs RRULE construction vs declarative-rule predicate) → per-template-type appropriate. Future Workshop integrations (SMS, phone, messaging) apply same heuristic.
+
+**Calendar Visual Canon extends §14 Communications Visual System** (§14.10 per Q14 confirmation): Calendar IS one of four Layer 1 communication primitives per §3.26.6.4 sequencing canon. Cross-primitive Pattern C composition (Communications layer Glance widgets row) requires shared visual vocabulary. Pattern locks for future Layer 1 communication primitive visual canon: §14.11 SMS, §14.12 Phone, §14.13 Messaging.
+
+§14.10 ships five subsections matching §14.9 Email Primitive Visual Canon precedent: §14.10.1 Calendar grid visual canon (month/week/day views; calendar-workspace-shape distinct from Space architecture) + §14.10.2 Agenda view visual canon (Pattern 2 card per row; status dot canon; density tier behavior) + §14.10.3 Event detail rendering visual canon (Pattern 2 card with internal sections; recurrence section; attendees section; linked entities section; internal commentary section for shared calendars) + §14.10.4 Event creation surface visual canon (quick event inline + detailed event modal + cross-tenant proposal modal + recurring meeting template apply) + §14.10.5 Operational-action affordance chrome (parallel to §14.9.5 — inline action affordance for Bridgeable users + magic-link contextual surface for non-Bridgeable recipients + counter-proposal flow + decline flow + reschedule flow).
+
+### Phase A + B + C refinements integrated
+
+Eight refinements integrated at canon batch write time, parallel to Session 2's mid-session canon hygiene discipline. Refinements bounded as prose additions; no structural change to subsections.
+
+Phase A refinements:
+- §3.26.16.6 free/busy bilateral consent prose (Q2 refinement)
+- §3.26.16.7 `linked_entity_type` catalog extension to include `quote` (Q4 refinement)
+- §3.26.16.2 + §3.26.16.5 reminder deduplication discipline canonicalized (Q7 refinement)
+
+Phase B refinements:
+- §3.26.16.9 calendar-workspace-shape distinction from Space architecture (Q8 refinement)
+- §3.26.16.10 hybrid contribution pattern generalization sentence (Q9 extension)
+- §3.26.16.15 concrete competitor comparison prose (Q11 strengthening)
+- §3.26.16.17 fifth action_type (`event_reschedule_proposal`) + substrate consolidation direction note (Q10 extension + Q13 implementation-time direction)
+
+Phase C refinements: none beyond Q14 (§14 extension) + Q15 (per-template-type) confirmations baked into prose verbatim.
+
+### Architectural model post-Session-3
+
+5 primitives + fractal Pulse + universal Command Bar + Workshop primitive + comprehensive Email + Calendar primitive canon.
+
+- Email primitive canon comprehensive (25 subsections; Phase W-4b Layer 1 Email implementation Steps 1-5 shipped)
+- Calendar primitive canon comprehensive (25 subsections; Phase W-4b Layer 1 Calendar implementation arc opens)
+- Coordination Focus arc dependency explicitly preserved (deferred for both email-mediated AND calendar-mediated integration; single arc unblocks both when concrete signals warrant)
+- Communications + scheduling = operations trifecta strategic positioning canonical with concrete competitor comparison (Salesforce+Calendly / HubSpot+scheduling-link bolt-on vs Bridgeable native primitive)
+- Six canonical platform action_types: `quote_approval` + `service_date_acceptance` + `delivery_date_acceptance` + `joint_event_acceptance` + `recurring_meeting_proposal` + `event_reschedule_proposal`
+- Hybrid layer contribution pattern canonical for Communications + Operational layers (generalizes to future Layer 1 communication primitives)
+- Workshop template granularity meta-pattern canonical (structural-overlap-of-composition-shapes determines per-template-type vs single-template-type)
+
+**15 architectural questions Q1-Q15 deliberated and resolved across three phases.**
+
+### Forward implications
+
+Phase W-4b sequence step 3 (SMS primitive canon) opens. SMS canon will leverage:
+- Hybrid contribution pattern (interpersonal vs operational signals decomposition)
+- Operational-state-coupled-to-communication discipline
+- Cross-tenant native messaging architecture
+- §14.11 SMS Primitive Visual Canon extending §14 Communications Visual System
+
+Phase W-4b Layer 1 Calendar implementation arc opens with locked canon foundation (when timing serves). Calendar implementation arc will leverage:
+- Same arc-discipline pattern as Email Steps 1-5 (entity foundation + inbound sync + outbound + UX + cross-surface rendering)
+- Substrate consolidation direction (`platform_action_tokens` table extending Step 4c email_action_tokens)
+- Coordination Focus arc dependency tracked symmetrically across Email + Calendar
+
+**Total canon work post-Session-3**: Sessions 1 + 1.5 + 2 + 3 ≈ 16-19h dedicated canon work. Substantial; bounded; architecturally justified per §3.26.7.5 ("MVP cuts compound as debt"). Two communication primitives canonicalized at canon-faithful depth before any implementation-time canon-vs-implementation drift surfaces.
+
+**Canon doc updates this session**: BRIDGEABLE_MASTER §3.26.16 NEW (25 subsections); DESIGN_LANGUAGE §14.10 NEW (6 sub-sections including cross-references); AESTHETIC_ARC Session 3 entry; CLAUDE.md §14 entry. **No code shipped.**
+
+---
+
 ## Session 2 — Email Primitive Canon (canon locked, 2026-05-07)
 
 Pure architectural canon session. NO CODE this session. Email primitive emergence canonicalized as foundational Phase W-4b Layer 1 communication primitive; integrate-now-make-native-later framework formalized; operational-state-coupled-to-communication discipline established; cross-tenant native messaging architecture canonicalized; 25+ explicit deferrals tracked. Total ~4 hours conversational/architectural work; canon doc batch write at session close.
