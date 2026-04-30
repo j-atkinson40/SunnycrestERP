@@ -9288,6 +9288,504 @@ Meta-pattern locks across all four communication primitives. Future Session 6 in
 
 ---
 
+### 3.26.19 Messaging Primitive
+
+In-platform Messaging primitive — the **fifth and final Layer 1 communication primitive** per §3.26.6.4 Phase W-4b sequencing canon. Messaging completes the five-primitive operational substrate (after Email §3.26.15 + Calendar §3.26.16 + SMS §3.26.17 + Phone §3.26.18). Phase W-4b Layer 1 Messaging primitive ships at canonical-quality discipline per §3.26.7.5 — structurally tighter than prior four primitives (no external transport; no regulatory compliance frameworks; no cost discipline at primitive level) but architecturally meaningful via real-time WebSocket/SSE delivery + channel/DM duality + cross-primitive embedding as operational substrate connective tissue.
+
+**Architectural framing — Messaging as five-axis-distinct primitive**: Messaging is **architecturally lighter than SMS** on substrate (no provider abstraction; no carrier compliance; no per-message cost), **architecturally lighter than Email** on transport complexity (no SMTP/IMAP/MIME; no HTML body sandbox; no spam/deliverability/bounce), **architecturally lighter than Calendar** on derived-artifact decomposition (no recurrence engine; no free/busy resolution; no iTIP processing), **architecturally lighter than Phone** on intelligence-as-primary-value framing (raw text body IS the primary surface; intelligence is enrichment not primary value generator), but **architecturally heavier on cross-primitive embedding** (messages embed entity references + saved view previews + email thread excerpts + calendar event references + SMS conversation snippets + call intelligence summaries — operational substrate connective tissue). **And architecturally distinct on native-from-day-one framing** — Bridgeable owns entire message flow from composition to delivery to retention; integrate-now-make-native-later canonical inverts at Messaging primitive.
+
+**Native-from-day-one canonical at architectural model**: prior four communication primitives canonicalize integrate-now-make-native-later commitment. Messaging primitive inverts — Bridgeable controls entire message flow from operator composition through real-time delivery through retention. No external provider; no carrier integration; no transport complexity. This framing reflects Messaging's structural reality (no need for external transport because messaging is internal-tenant employment context coordination + cross-tenant Bridgeable-user coordination — both contexts are platform-internal).
+
+**Operational coordination dimension distinct from prior four communication primitives**: Email = interpersonal coordination (external + internal recipients); Calendar = temporal coordination (scheduling); SMS = operational reach (mobile/customer-facing); Phone = operational intelligence (call intelligence pipeline). Messaging adds **operational coordination** — operator-to-operator coordination dimension distinct from prior primitives. Messaging is the platform's internal coordination substrate; Email + Calendar + SMS + Phone are platform's external + customer-facing coordination substrates.
+
+**Cross-primitive embedding as operational substrate connective tissue**: messages embed cross-primitive content (entity references + saved view previews + email thread excerpts + calendar event references + SMS conversation snippets + call intelligence summaries) — Messaging primitive serves as connective tissue across other primitives. This embedding capability is distinguishing characteristic of Messaging primitive — prior primitives can reference each other via linkage entities, but Messaging primitive embeds cross-primitive content inline with chrome continuity per §14.13.5 visual canon. Operational coordination naturally flows across primitives.
+
+#### 3.26.19.1 Messaging primitive emergence + native-from-day-one framework + operational integration positioning
+
+Messaging primitive emergence per Phase W-4b sequence step 5 (after Email Step 1 + Calendar Step 2 + SMS Step 3 + Phone Step 4 per §3.26.6.4). Builds on Email + Calendar + SMS + Phone canon foundation — primitive framework battle-tested across four communication primitives + meta-pattern application matured.
+
+**Native-from-day-one framework canonical** (inverts §3.26.15.1 + §3.26.16.1 + §3.26.17.1 + §3.26.18.1 integrate-now-make-native-later canonical): Bridgeable's Messaging primitive owns entire message flow from operator composition through real-time delivery through retention. No external provider; no carrier integration; no transport complexity. Native-from-day-one is canonical default at architectural model.
+
+Architectural rationale for native-from-day-one inversion:
+1. **No external transport need**: Messaging primitive serves internal-tenant employment context coordination + cross-tenant Bridgeable-user coordination. Both contexts are platform-internal. No external recipient outside Bridgeable platform; no need for SMTP/SMS/voice/calendar transport.
+2. **No regulatory compliance frameworks**: internal-tenant employment context inherits implicit consent for platform messaging (employment relationship establishes consent baseline). No TCPA + 10DLC; no state-by-state two-party consent + HIPAA + FCC + CFPB; no CAN-SPAM + GDPR data residency complexity. Cross-tenant messaging requires bilateral consent (parallel to §3.26.16.6 + §3.26.17.15 + §3.26.18.17 cross-tenant bilateral consent precedent).
+3. **No cost discipline at primitive level**: zero per-message marginal cost. Cost reduces to storage retention only — Workshop cost-policy templates at minimal scope.
+4. **No provider ecosystem complexity**: prior primitives' provider abstractions require ongoing operational infrastructure. Messaging has no provider; no provider operational infrastructure.
+
+**Native-from-day-one framework simplifies primitive** — entity model lighter (4 entities vs SMS's 5+ vs Phone's 7); compliance discipline lighter (cross-tenant bilateral consent only); cost discipline lighter (storage retention only); provider abstraction non-existent. Canon depth proportional — Messaging canon ~20 subsections vs Phone's 27 + SMS's 24 + Email/Calendar's 25.
+
+**Operational integration positioning**: Messaging primitive completes operational substrate by adding operator-to-operator coordination dimension. Distinct from prior primitives' external coordination focus.
+
+#### 3.26.19.2 Messaging entity model
+
+Four core entities form the Messaging primitive substrate. Two primary (Thread + Message), two supporting (ThreadParticipant + ThreadType discriminator). Entity model substantially tighter than Phone's 6-entity decomposition + SMS's 5-entity model.
+
+**Primary entities**:
+
+`message_threads` — the canonical thread entity. Fields: `id` + `tenant_id` + `thread_type` (`dm` / `channel`) + `display_name` (channel name for channels; nullable for DMs) + `description` (channel topic; nullable for DMs) + `created_by_user_id` (FK User; nullable for system-created channels) + `is_archived` (Boolean) + `last_message_at` (DateTime tz) + `message_count` (Integer) + `is_cross_tenant` (Boolean) + `external_tenant_id` (nullable; populated for cross-tenant DMs/channels) + `created_at` + `updated_at`.
+
+`messages` — the canonical message entity. Fields: `id` + `thread_id` (FK) + `tenant_id` + `author_user_id` (FK User) + `body_text` (Text; plain text + lightweight markdown subset; no HTML body sandbox per §3.26.19.5 cross-primitive embedding canon) + `body_blocks_json` (JSONB; structured embeds — entity mentions + saved view embeds + cross-primitive content embeds per §3.26.19.5) + `parent_message_id` (FK self; nullable; populated for threaded replies) + `edited_at` (DateTime tz; nullable) + `deleted_at` (DateTime tz; nullable; tombstone-on-delete preserves audit + thread continuity) + `delivered_at` (DateTime tz; populated when real-time delivery completes per §3.26.19.3) + `created_at` + `updated_at`.
+
+**Supporting entities**:
+
+`thread_participants` — junction table mapping User to MessageThread with per-participant state. Fields: `id` + `thread_id` (FK) + `user_id` (FK User) + `tenant_id` + `joined_at` + `left_at` (nullable for active participants) + `last_read_message_id` (FK Message; nullable; tracks per-user read state) + `last_read_at` (DateTime tz; nullable) + `notification_level` (`all` / `mentions` / `none`) + `role` (`member` / `admin` / `owner` for channel-type threads; `member` only for DM-type) + `created_at` + `updated_at`.
+
+**ThreadType discriminator**: single `message_threads` table with `thread_type` discriminator (`dm` / `channel`). Single-entity-with-discriminator chosen over decomposed for architectural simplicity — DMs and channels share substantial entity-model overlap (participants + messages + read-state + cross-tenant pairing); per-type variation handled via discriminator + per-type rendering chrome per §14.13. Future per-type retention discipline differential handled via per-type retention policy lookup, not entity decomposition.
+
+**Cross-tenant pairing**: when DM or channel spans tenant boundary, separate `cross_tenant_thread_pairing` junction tracks paired threads per tenant. Each tenant has its own copy under its own ownership; operational state changes propagate per §3.26.19.4 cross-tenant state propagation discipline.
+
+**Per-message body composition**: `body_text` carries plain text + lightweight markdown subset (bold + italic + inline code + code blocks + bullet/numbered lists + links — no headings; no tables; no images via markdown — kept tight); `body_blocks_json` carries structured embeds per §3.26.19.5 canonical scope. Two-field composition supports both lightweight text rendering AND rich cross-primitive embedding without HTML body sandbox complexity.
+
+**Threaded replies via `parent_message_id`** support reply-in-thread pattern. DMs typically don't use threaded replies; channels commonly do.
+
+**`message_linkages` linked_entity_type catalog** (per §3.26.19.5 canon): Literal — `fh_case` / `sales_order` / `quote` / `invoice` / `task` / `contact` / `customer` / `delivery` / `driver_route` / `safety_program_generation` / `email_thread` / `calendar_event` / `sms_conversation` / `call`.
+
+#### 3.26.19.3 Real-time delivery infrastructure
+
+**WebSocket canonical primary + SSE alternate**. Real-time delivery infrastructure lighter than Phone's real-time call surface architectural canon but architecturally meaningful — message-delivery latency expectations are perceptual-immediate (sub-200ms target).
+
+**WebSocket-canonical-primary architecture**:
+- Per-tenant WebSocket gateway (existing Bridgeable WebSocket infrastructure foundation — CallContext per §3.26.18.4 + SSE for delivery confirmations)
+- Per-user persistent WebSocket connection when user-active in browser
+- Server-side message-routing per `thread_participants` junction — outbound message broadcasts to all active thread participants' WebSocket connections
+- Connection lifecycle: established on app load + reconnects on transient disconnect + closes on user-tab-close
+
+**SSE alternate** for environments where WebSocket unavailable. Provides server-to-client streaming; client-to-server messaging happens via standard HTTP POST. SSE alternate ships at September scope as fallback when WebSocket connection fails.
+
+**Provider-side push notifications** for offline operators:
+- Web push notifications canonical (browser-tab-closed; service worker subscription per active session)
+- Mobile push notifications deferred until mobile app ships per Phase W-4b roadmap
+- Email digest fallback deferred per §3.26.19.20
+
+**Real-time delivery scope at September** lighter scope:
+- **Message delivery push canonical**: outbound message broadcasts to active recipient WebSocket connections; recipients see new messages without polling
+- **Read-receipts canonical**: `thread_participants.last_read_message_id` updates broadcast to thread participants; per-user read state visible inline
+- **Lightweight presence indicator canonical**: "Active in last 5 minutes" indicator only
+- **Unread count badges canonical**: per-thread unread count surfaces in messaging surface + Pulse Communications layer
+- **Typing indicators deferred** per §3.26.19.20
+- **Full presence indicators** (available / away / busy / offline) deferred per §3.26.19.20
+
+Lighter scope at September preserves bounded implementation surface while delivering operational meaningful real-time feel.
+
+**Delivery confirmation discipline**: Message.delivered_at populated when WebSocket broadcast confirms delivery to all active recipient connections; offline recipients (no active connection) get push notification fallback + delivered_at populated when push acknowledgment returns. Audit trail preserves per-message delivery state.
+
+#### 3.26.19.4 Multi-tenant storage discipline + retention + cross-tenant masking inheritance
+
+**Per-tenant isolation**: every Messaging entity tenant-scoped; all queries filter by `tenant_id`; cross-tenant queries opt-in via §3.26.19.13 cross-tenant pathways.
+
+**Retention discipline lighter than prior primitives** — no compliance retention pressure (no HIPAA + state-by-state + CFPB + GDPR retention requirements like prior communication primitives).
+
+**Default retention canonical**:
+- **DM threads**: 1-year default (operator-to-operator coordination; lower retention pressure); tenant-configurable to 90-day minimum + 7-year maximum (legal-hold)
+- **Channel threads**: 2-year default (operationally persistent project + team coordination longer relevance horizon); tenant-configurable to 90-day minimum + 7-year maximum
+- **Threads + ThreadParticipants**: indefinite retention (lightweight metadata; thread context preserved even when individual messages purged via retention)
+
+**Hard-delete tombstones** preserve audit (record of hard-delete event preserved indefinitely; content purged). Retention triggers run async (daily sweep job per existing scheduler pattern).
+
+**Cross-tenant masking inheritance**: per §3.25.x, when DMs/channels span tenant boundary, participant identities + message bodies inherit cross-tenant masking. Bounded scope per §3.26.19.13.
+
+**Per-tenant copies for cross-tenant threads** parallel to §3.26.18.17 phone bilateral consent + cross-tenant masking precedent: each tenant maintains own MessageThread row + own message rows + own retention policy + own access controls.
+
+**Storage cost magnitude bounded**: messaging storage cost is ~bytes-per-message × message_count × retention_window. At typical operational scale, storage cost is operationally negligible. Workshop storage retention-policy template per §3.26.19.19 lets tenants tune retention vs storage cost.
+
+#### 3.26.19.5 Messaging entity polymorphic linkage to Bridgeable entities + cross-primitive embedding canon
+
+Messaging primitive entity polymorphic linkage parallel to §3.26.15.7 email + §3.26.16.7 calendar + §3.26.17.7 SMS + §3.26.18.8 phone:
+
+`message_linkages` — M:N junction. Fields: `id` + `tenant_id` + `message_id` (FK) + `linked_entity_type` (Literal — `fh_case` / `sales_order` / `quote` / `invoice` / `task` / `contact` / `customer` / `delivery` / `driver_route` / `safety_program_generation` / `email_thread` / `calendar_event` / `sms_conversation` / `call`) + `linked_entity_id` + `linkage_source` (`manual_pre_link` / `manual_post_link` / `auto_resolved_mention` / `cross_primitive_embed`) + `created_by_user_id` (nullable for auto) + `created_at`.
+
+**Auto-resolution via entity mentions**: when message body contains entity-mention syntax (`@order:SO-2026-0142` / `@case:FC-2026-0089`), Bridgeable parser resolves entity reference + creates linkage with `linkage_source="auto_resolved_mention"` + renders mention as Pattern 5 chip per §14.13.5 visual canon.
+
+**Cross-primitive embedding canonical at primitive level**: messages embed cross-primitive content via `body_blocks_json` structured embeds. **Six canonical embed types at September scope**:
+
+1. **Entity mention embed**: inline `@entity:id` reference resolves to entity peek-trigger chip
+2. **Saved view embed**: `[saved_view:uuid]` reference renders saved view preview (top N rows + chart preview when applicable per §3.25 saved view primitive)
+3. **Email thread embed**: `[email_thread:uuid]` reference renders thread preview (last message snippet + participant identities + thread subject)
+4. **Calendar event embed**: `[calendar_event:uuid]` reference renders event preview (title + time + participants + linked entities)
+5. **SMS conversation snippet embed**: `[sms_conversation:uuid]` reference renders conversation preview (recent messages + participant)
+6. **Call intelligence summary embed**: `[call:uuid]` reference renders call summary preview (`phone.call_summarize` artifact body + duration + outcome)
+
+**Cross-primitive embedding establishes Messaging primitive as operational substrate connective tissue** — messages weave cross-primitive context inline. Operator messaging another operator about an order naturally references the order entity + recent email thread about it + scheduled delivery calendar event + cross-tenant SMS conversation + recent customer phone call — all embedded inline with chrome continuity per §14.13.5 visual canon.
+
+**Embed rendering** per §14.13.5: each embed renders as Pattern 2 sub-card with primitive-specific chrome. Saved view embeds render with saved view chrome; email thread embeds render with email-list chrome; calendar event embeds render with event-card chrome; SMS conversation embeds render with conversation-preview chrome; call intelligence summary embeds render with call-summary chrome. Visual chrome continuity preserves cross-primitive cognitive coherence.
+
+**Polymorphic linkage canonical for cross-primitive embeds**: every cross-primitive embed creates `message_linkages` row with `linked_entity_type` matching embed type. Polymorphic linkage enables querying + audit + cross-references.
+
+**SMS-specific extensions canonical** (parallel to §3.26.17.7 + §3.26.18.8): Messaging linkage extends `delivery` + `driver_route` (operational coordination naturally references logistics).
+
+#### 3.26.19.6 Privacy + compliance discipline
+
+Messaging primitive ships with **lighter compliance discipline than prior communication primitives** — no regulatory frameworks (no TCPA + 10DLC + state-by-state two-party consent + HIPAA + FCC + CFPB + CAN-SPAM + GDPR data residency at primitive level). Internal-tenant employment context inherits implicit consent for platform messaging.
+
+**Internal-tenant messaging compliance**:
+- Employment relationship establishes consent baseline — employees consent to platform internal communication as condition of employment
+- No external regulatory framework applies (TCPA = SMS/phone external; 10DLC = SMS carrier; state-by-state = phone recording; HIPAA = healthcare data handling — none apply to internal employee-to-employee text messaging)
+- Workplace privacy considerations (per state employment law) inherit from tenant-level workplace policy + employee handbook (NOT primitive-level discipline)
+
+**Cross-tenant messaging compliance**:
+- **Bilateral consent canonical** parallel to §3.26.16.6 calendar + §3.26.17.15 SMS + §3.26.18.17 phone bilateral consent precedent
+- Cross-tenant DMs/channels require bilateral consent — both tenants must explicitly consent to cross-tenant messaging
+- Default: no cross-tenant messaging until bilateral consent affordance fires
+- Either tenant unilaterally revokes consent — cross-tenant thread archives + future messaging blocked
+- Per-tenant audit trails canonical
+
+**Cross-tenant masking inheritance** per §3.25.x: participant identities + message bodies + cross-primitive embeds inherit cross-tenant masking.
+
+**Audit log lighter than prior primitives**:
+- Every message writes audit row (message.sent + message.edited + message.deleted)
+- Every thread membership change writes audit row (participant.joined + participant.left + participant.archived)
+- Cross-tenant thread events surface audit rows in both tenant copies
+- Audit retention indefinite for cross-tenant events; tenant-configurable for internal-tenant events
+
+**No PHI / payment data redaction at primitive level**: tenants handling PHI have policy responsibility to keep PHI out of messaging primitive (use Email primitive HIPAA mode + Phone primitive HIPAA mode for PHI-touching communication). Optional Workshop policy template per §3.26.19.19 enables tenant-level PHI keyword detection + warning surface (not enforcement; not redaction).
+
+**Cross-primitive opt-out coordination NOT applicable** — Messaging primitive is internal coordination (no external recipient subject to opt-out registry). Cross-primitive opt-out coordination per §3.26.18.9 applies only to external-facing primitives.
+
+#### 3.26.19.7 Storage retention discipline + cost discipline reduction
+
+Storage retention discipline canonical at primitive level. **Cost discipline reduces to storage retention only** — Messaging primitive's zero per-message marginal cost inverts SMS's per-message cost discipline + Phone's multi-dimensional cost discipline.
+
+**Retention defaults canonical** (per §3.26.19.4):
+- **DM threads**: 1-year message retention default; 90-day minimum + 7-year maximum tenant-configurable
+- **Channel threads**: 2-year message retention default; 90-day minimum + 7-year maximum tenant-configurable
+- **Threads + ThreadParticipants**: indefinite retention
+
+**Per-tenant retention configuration via Workshop** per §3.26.19.19 retention-policy-template:
+- Per-thread-type retention (DM vs channel)
+- Per-channel retention override
+- Legal-hold flags (cascades from Thread → Messages; preserves messages indefinitely until release)
+
+**Cost discipline reduction from prior primitives**:
+- **No per-message marginal cost** (no provider connection fee + per-minute + per-transcription + per-intelligence-prompt cost dimensions like Phone)
+- **No per-conversation marginal cost** (no carrier campaign registration + per-conversation provider fee like SMS)
+- **No per-attachment cost**
+- **Storage retention cost** the only cost dimension — bytes-per-message × retention-window × tenant message volume
+
+**Workshop cost-policy templates apply at minimal scope** per §3.26.19.19:
+- Storage retention configuration (per-thread-type retention + per-channel retention override + legal-hold flags)
+- No budget cap enforcement at message-send (no marginal cost to gate); no rate limits
+- Cost discipline canonical at primitive level reduces to storage retention only
+
+**Strategic cost positioning**: Messaging primitive's near-zero cost discipline inverts prior communication primitives' multi-dimensional cost magnitudes. Operationally meaningful — tenant operators can use Messaging without cost-overhead concern.
+
+#### 3.26.19.8 Unified messaging surface
+
+Per-tenant unified messaging surface at canonical route `/messages` (parallel to §3.26.15.10 inbox + §3.26.16.9 calendar + §3.26.17.10 SMS + §3.26.18.11 calls workspace; route naming convention preserved). Messaging primitive's thread + DM/channel duality shapes surface composition — split-pane workspace canonical (thread list left + thread detail right rail).
+
+**Messaging-workspace-shape distinction from Space architecture** (parallel to §3.26.16.9 + §3.26.17.10 + §3.26.18.11 workspace-shape distinctions): messaging workspace at `/messages` is full-screen single-purpose surface. **NOT a Space**.
+
+**Workspace-shape distinction pattern locks finally across all five Layer 1 communication primitives** — `/inbox` + `/calendar` + `/sms` + `/calls` + `/messages` all canonical. Pattern continuity preserved across complete Layer 1 communication primitive substrate.
+
+**Thread list pane composition** (left, narrower viewport):
+- Filter chrome top: thread-type tab (`DMs / Channels / All`); per-thread filter dropdown
+- Thread row composition (Pattern 5 chrome): thread type indicator + display name + tenant indicator chip (cross-tenant) + unread count + last-message preview + relative timestamp
+- Sort: most-recent-activity DESC; unread threads pinned to top within thread-type group
+- Section grouping: CHANNELS / DMs / CROSS-TENANT separators per §14.13.1
+
+**Thread detail pane composition** (right, larger viewport):
+- Thread header (Pattern 2 chrome): thread display name + topic/description + participant count + cross-tenant indicator + bilateral consent state
+- Message stream: chronological message list with auto-scroll
+- Per-message composition: avatar + author + timestamp + body text + structured embeds + per-message actions
+- Threaded reply rendering: messages with `parent_message_id` render indented under parent
+- Composition surface (sticky bottom): inline composer per §3.26.19.12
+
+**Search affordance**: full-text search across `messages.body_text` (pg_trgm GIN index per §3.26.18.11 precedent) + structured embed body + thread display_name + participant names.
+
+**Compose-new-message affordance**: new DM or new channel creation per §3.26.19.12.
+
+#### 3.26.19.9 Messaging rendering at multiple surfaces
+
+Messaging primitive renders across multiple platform surfaces per §3.26.9 Communications Layer Architecture canonical pattern + Pulse fractal-Pulse architecture per §3.26.12.
+
+**Pulse Communications layer rendering** per §3.26.9:
+- Messaging primitive contributes to Communications layer Glance widgets row
+- Default-tier composition: messaging icon + unread DM count + cross-tenant thread indicator + mention count
+- Per §14 Communications Layer Visual Canon: Messaging icon = `MessageSquare` Lucide
+
+**Pulse Operational layer rendering** per §3.26.9 hybrid contribution pattern (parallel to §3.26.16.10 calendar + §3.26.17.11 SMS + §3.26.18.12 Phone hybrid contribution):
+- Messaging primitive contributes to Operational layer based on operational coordination signals — channel-thread activity (driver-dispatch + production-floor + delivery-coordination) + operational mention signals
+- Pattern continuity: Email + Calendar + SMS + Phone + Messaging all use hybrid layer contribution per §3.26.9 canonical pattern. **Pulse layer hybrid contribution canon canonical-quality complete with Messaging primitive canonicalization.**
+
+**Briefing rendering** per §3.26.10:
+- Morning briefing Messaging-section: overnight DM activity awaiting response + channel mentions awaiting acknowledgment + cross-tenant thread activity
+- Evening briefing Messaging-section: today's messaging activity + thread participation summary + stale threads needing attention per §3.26.19.16
+
+**V-1c CRM activity feed rendering**: messages with entity mention referencing CompanyEntity auto-write activity log rows.
+
+**Activity timeline rendering**: messages render as activity events in customer/order/case timelines when entity-mention references resolve.
+
+**Cross-primitive surfacing canonical**: messaging primitive's cross-primitive embedding canon means messaging activity surfaces alongside email + calendar + SMS + phone activity in unified timelines.
+
+#### 3.26.19.10 Command Bar messaging summoning patterns
+
+Command Bar messaging summoning per §3.26.13 universal summoning verb canonical pattern.
+
+**Messaging-typed search**: `⌘K → "messages"` / `"DMs"` / `"channels"` opens messaging primitive search results. Search executes against `messages.body_text` (pg_trgm GIN) + structured embed body + thread display_name + participant names.
+
+**Messaging-typed entity summoning**: `⌘K → "{user name}"` / `"#{channel name}"` resolves to entity per §3.26.13 entity portal canonical pattern; entity portal includes "Send DM" / "Open channel" affordance.
+
+**Messaging-typed action summoning**: `⌘K → "DM {name}"` / `"message {name}"` / `"#{channel} {message body}"` triggers entity resolution + composition surface. Voice input affordance per §3.26.18.16 enables hands-free invocation.
+
+**Pulse-launched thread detail summoning**: clicking thread indicator in Pulse summons thread detail surface — Pulse-launched surface uses Focus modal-overlay rendering per §3.26.13 Phase A canon.
+
+#### 3.26.19.11 Messaging-typed saved views
+
+Messaging-typed saved views per §3.25 saved view primitive canonical scope. Saved view target type `messages` registered per saved-view registry. Messaging-distinctive: saved views index against thread-level + message-level + cross-primitive embed content.
+
+**Messaging-typed saved view composition shapes**:
+- **List shape**: chronological threads list (matches §3.26.19.8 default thread list)
+- **Cards shape**: threads rendered as Pattern 2 cards
+
+**Canonical default messaging-typed saved views**:
+- "Unread messages" — threads with `unread_count > 0` for current user
+- "Mentions awaiting acknowledgment" — messages `@mentioning current user`
+- "Cross-tenant threads" — `is_cross_tenant=True`
+- "Stale threads" — channels + DMs without activity for >7 days
+- "Operational channels" — channels with `conversation_orientation="operational_team_facing"`
+- "DMs awaiting response" — DMs where last message authored by other participant + current user has unread
+
+**Filter discipline**: thread-type filter + participant filter + unread filter + mention filter + cross-tenant filter + time range filter + entity-mention filter.
+
+#### 3.26.19.12 Messaging composition canonical authoring surface
+
+Three composition shapes:
+- **DM composition**: 1:1 or N-way direct message thread composition + send
+- **Channel composition**: channel message composition + send (with reply-in-thread variant)
+- **Reply composition**: inline reply within existing thread
+
+**Inline composition surface** (sticky bottom of thread detail, canonical primary):
+- Plain text textarea with markdown subset rendering per §3.26.19.2
+- Markdown formatting toolbar: B + I + U + `code` (minimal toolbar)
+- Auto-grow textarea: max 8 visible rows then scrolls
+
+**Entity mention affordance** (`@` button + autocomplete on `@` keystroke):
+- Typeahead resolves against tenant CompanyEntities + Contacts + Users + tenant entities
+- Selection inserts `@entity:id` syntax + creates structured embed entry in `body_blocks_json`
+- Resolved mention renders inline as Pattern 5 chip per §14.13.5
+
+**Channel mention affordance** (`#` button + autocomplete on `#` keystroke):
+- Typeahead resolves against tenant channels current user has access to
+- Resolved channel mention renders inline as channel chip
+
+**Cross-primitive embed picker** (`embed` button → dropdown):
+- Six canonical embed types per §3.26.19.5
+- Each picker option opens primitive-specific picker UI
+- Selection inserts structured embed entry in `body_blocks_json` + renders embed preview in composition surface before send
+
+**Send affordance**:
+- Brass primary `[Send]` button right-aligned
+- Keyboard shortcut: `Cmd+Enter` / `Ctrl+Enter` sends; `Enter` adds newline
+- Pre-send validation: cross-tenant thread without bilateral consent blocks send
+
+**Reply-in-thread composition variant**: composition surface contextualizes — header shows "Replying to {author}: {body excerpt}".
+
+**New DM modal composition** (Pattern 6 modal chrome): recipient picker (typeahead User selection) + N-way DM (multi-select up to 10-participant max) + body composition + cross-tenant bilateral consent affordance.
+
+**New channel modal composition**: channel name + topic/description + initial member multi-select.
+
+**Voice-mediated composition** per §3.26.18.16: voice input affordance per §14.13.3 voice-mediated chrome. Voice transcription cost attributes to Messaging primitive per §3.26.18.16 voice input cost attribution discipline.
+
+#### 3.26.19.13 Cross-tenant messaging visibility + bilateral consent
+
+Per §3.26.19.4 cross-tenant masking + §3.26.19.6 cross-tenant compliance + §3.26.16.6 calendar bilateral consent + §3.26.17.15 SMS bilateral consent + §3.26.18.17 phone bilateral consent precedent. **Bilateral consent pattern locks across all five communication primitives** — bilateral consent canonical for cross-tenant Communications layer primitive operations.
+
+**Cross-tenant DM/channel detection**: when DM thread spans tenant boundary OR channel includes cross-tenant member, `is_cross_tenant=True` + `external_tenant_id` populated on MessageThread row.
+
+**Bilateral consent canonical**:
+- Cross-tenant DM/channel creation requires bilateral consent
+- Default: no cross-tenant messaging until bilateral consent affordance fires
+- Bilateral consent prompt: when operator initiates cross-tenant DM, system prompts → recipient tenant operator receives consent request + accepts/declines
+- Per-thread bilateral consent state stored on MessageThread; both tenants' audit logs reflect consent grants
+- Either tenant unilaterally revokes consent — cross-tenant thread archives + future messaging blocked
+
+**Per-tenant audit trails** preserved per §3.26.19.4 cross-tenant masking inheritance. Each tenant maintains independent audit log.
+
+**Per-tenant thread copies preferred over shared** parallel to §3.26.18.17 phone cross-tenant precedent: each tenant maintains own MessageThread row + own message rows + own retention policy + own access controls.
+
+**Cross-tenant masking inheritance** per §3.25.x:
+- Participant identities + message bodies + structured embed content inherit cross-tenant masking
+- Cross-primitive embeds within cross-tenant messages: each tenant sees own-side cross-primitive content
+
+**Cross-tenant operational channels canonical scope**: persistent cross-tenant channels (e.g., `#hopkins-sunnycrest-coordination`) for ongoing operational coordination. Each tenant has own copy under own ownership; bilateral consent extends across channel lifetime.
+
+**Cross-primitive opt-out coordination NOT applicable** to Messaging primitive — Messaging primitive is internal coordination.
+
+**Bounded scope** per §3.26.19.20: cross-tenant messaging mechanics canonical at September; complex cross-tenant channel governance deferred per concrete signal.
+
+#### 3.26.19.14 Strategic framing — Messaging as operational coordination primitive + operational substrate five-part completion
+
+Messaging primitive completes operational substrate five-part composition. Messaging primitive contributes operational coordination dimension.
+
+**Strategic framing prose canonical**:
+
+> **Communications + scheduling + reach + intelligence + coordination = operations.** Email primitive (§3.26.15) ships interpersonal coordination. Calendar primitive (§3.26.16) ships temporal coordination. SMS primitive (§3.26.17) ships operational reach — Layer 1 primitive that bypasses surface-navigation friction. Phone primitive (§3.26.18) ships operational intelligence — call intelligence pipeline as primary value generator. Messaging primitive (§3.26.19) ships **operational coordination** — operator-to-operator internal coordination + cross-tenant operator coordination + cross-primitive embedding as operational substrate connective tissue per §3.26.19.5. Messages weave cross-primitive context inline; operators reference orders + email threads + calendar events + SMS conversations + call summaries within messaging without leaving operational coordination context. Messaging is the operational coordination substrate that completes operational substrate five-part composition.
+
+**Three architectural justifications preserved at canon level**:
+
+1. **Coordination is genuinely Messaging-distinctive among Layer 1 communication primitives** — Email + SMS + Phone serve external-facing + customer-facing communication; Calendar serves temporal coordination across both internal + external; Messaging serves operator-to-operator internal coordination + cross-tenant operator coordination. Coordination dimension is structurally distinct from prior four primitives.
+
+2. **"Operational substrate plus internal coordination" alternative rejected** — without articulating distinctive contribution, framing reads as redundant addition rather than fifth equivalent dimension. Five-axis framing better captures equivalent peer relationship across operational substrate.
+
+3. **"Messaging as operational nervous system" alternative rejected** — operators experience Messaging as coordination primitive, not as nervous-system substrate. Nervous-system metaphor extends architectural framing without grounding in operator-experience reality. §3.26.19.5 cross-primitive embedding establishes Messaging as connective tissue at structural-mechanism level, but strategic framing articulates operator-experiential distinction not mechanism.
+
+**Concrete competitor comparison**:
+
+> Standalone team messaging platforms (Slack + Microsoft Teams + Discord) charge per-seat licensing ($7-25/seat/month) and provide messaging + channels + DMs as standalone product disconnected from operational state. Tenant operators maintain dual context — operational state in CRM/ERP/scheduling tool + coordination state in messaging platform. State coherence between messaging coordination + operational state is operator-maintained manually. Bridgeable's Messaging-as-platform-primitive framing eliminates this dual context — messaging coordination integrated into operational state per §3.26.19.5 cross-primitive embedding; entity mentions + saved view embeds + cross-primitive content embeds make operational state inline-accessible from coordination conversation; operators never leave operational context to maintain coordination state. Strategic differentiation completes operational substrate communication primitives — Email + Calendar + SMS + Phone + Messaging all canonicalized as platform primitives, structurally inaccessible to fragmented bolt-on tools.
+
+**September Wilbert demo positioning at canon level** (canonical demonstration of five-primitive + one-operational-state cumulative architectural elegance):
+
+> Demo can demonstrate operational state coherence across all five communication primitives — single operational state with five communication primitive surfaces. Sunnycrest dispatcher coordinates production with foreman via #production-floor channel; channel message embeds today's production schedule saved view; mention `@order:SO-2026-0142` resolves to Hopkins service order; embed Hopkins email thread for context; cross-tenant DM with Hopkins driver coordinates pickup time. Five primitives + one operational state — structurally inaccessible to fragmented competitor stacks (Slack + Salesforce + Calendly + Twilio + Gong) which require operators to maintain coordination state across five separate tools without primitive-level integration.
+
+#### 3.26.19.15 Canonical design disciplines
+
+**1. Native-from-day-one framework canonical at primitive level** (per §3.26.19.1, inverts §3.26.15.1 + §3.26.16.1 + §3.26.17.1 + §3.26.18.1 integrate-now-make-native-later canonical).
+
+**2. Tighter compliance discipline at primitive level** (per §3.26.19.6). No regulatory frameworks at primitive level; internal-tenant employment context inherits implicit consent; cross-tenant bilateral consent per §3.26.19.13.
+
+**3. Cost discipline reduces to storage retention only** (per §3.26.19.7 + §3.26.19.4).
+
+**4. Real-time delivery infrastructure canonical at September** (per §3.26.19.3). WebSocket canonical primary + SSE alternate; lighter scope than Phone real-time call surface.
+
+**5. Cross-primitive embedding as operational substrate connective tissue** (per §3.26.19.5 + §3.26.19.14 strategic framing). Six canonical embed types — operational substrate connective tissue.
+
+**6. Polymorphic entity linkage M:N** (per §3.26.19.5). Messaging linkage extends across all Bridgeable entities + cross-primitive references.
+
+**7. Bilateral consent for cross-tenant messaging** (per §3.26.19.13). Pattern parallel to §3.26.16.6 calendar + §3.26.17.15 SMS + §3.26.18.17 phone bilateral consent. **Pattern locks across all five communication primitives** — bilateral consent canonical for cross-tenant Communications layer primitive operations.
+
+**8. Differential retention discipline by thread type** (per §3.26.19.4 + §3.26.19.7).
+
+**9. Single-entity-with-discriminator entity model** (per §3.26.19.2). Single `message_threads` table with `thread_type` discriminator.
+
+**10. Voice input cost attribution** (per §3.26.18.16). Messaging primitive consumes voice input substrate; voice transcription cost attributes to Messaging primitive's cost discipline.
+
+**11. Operational coordination dimension** (per §3.26.19.14 strategic framing). Messaging primitive contributes operational coordination dimension to operational substrate five-part composition.
+
+#### 3.26.19.16 Messaging-triggered Decision Focus
+
+Messaging-triggered Decision Focus integration per §3.26.11 Focus Primitive Types canonical pattern + §3.26.10 Triage Focus Canonical Pattern composition discipline.
+
+**Three canonical Messaging triage queue config types at September scope** (lighter than Phone's 6 + SMS's 5 — proportional to Messaging's tighter compliance + cost discipline):
+
+1. **`messaging_stale_thread_review_triage`** — stale thread review queue. Surfaces DM + channel threads without activity for >7 days where current user is participant. Severity ordering canonical: cross-tenant stale threads first → operational channel stale threads → DM stale threads.
+
+2. **`messaging_cross_tenant_acknowledgment_triage`** — cross-tenant message acknowledgment queue. Surfaces messages in cross-tenant DMs/channels awaiting current user acknowledgment per `thread_participants.last_read_message_id` lag relative to thread `last_message_at`.
+
+3. **`messaging_mention_review_triage`** — operational mention review queue. Surfaces messages `@mentioning current user` in operational channels awaiting acknowledgment. Confidence-based prioritization: high-priority mentions (per `messaging.priority_classification` Intelligence artifact per §3.26.19.18) surface first.
+
+**Phase 5 Triage primitive substrate enables implementation** when Phase W-4b Messaging Step ships triage integration (no Coordination-Focus-arc dependency).
+
+**Cross-references**: §3.26.11 Focus Primitive Types canonical pattern; §3.26.10 Triage Focus Canonical Pattern; §3.26.19.13 cross-tenant messaging visibility; §3.26.18.24 Phone-triggered Decision Focus (sibling primitive precedent).
+
+#### 3.26.19.17 Messaging-mediated Coordination Focus
+
+Messaging-mediated Coordination Focus deferred parallel to Email/Calendar/SMS/Phone Coordination Focus arc per §3.26.15.23 + §3.26.16.23 + §3.26.17.22 + §3.26.18.25 deferral pattern.
+
+**Concrete signals warranting future canonicalization**:
+1. Single-thread deliberation exceeds resolution scope
+2. Multi-party channel coordination across cross-tenant boundaries (3+ tenants)
+3. Long-running channel coordination series
+4. Action item dependencies across messages
+5. Cross-primitive coordination escalation
+
+**Magic-link participant scope** NOT applicable — Messaging primitive is internal-tenant + cross-tenant Bridgeable-user only per §3.26.19.1; no external participants.
+
+**When Coordination Focus primitive domain arc ships**: Coordination Focus integration follows as parallel implementation work across all five communication primitives — same primitive substrate; different communication-channel anchors. Single Coordination Focus arc unblocks all five communication primitives' integration: §3.26.15.23 email-mediated + §3.26.16.23 calendar-mediated + §3.26.17.22 SMS-mediated + §3.26.18.25 phone-mediated + §3.26.19.17 messaging-mediated Coordination Focus.
+
+**Cross-references**: §3.26.19.13 cross-tenant messaging visibility; §3.26.11.6 sub-Focus hierarchy; §3.26.18.25 phone-mediated Coordination Focus.
+
+#### 3.26.19.18 Messaging Intelligence integration
+
+Messaging primitive ships with **3 managed prompts at canonical September scope**. Lighter than Phone's 7 + Email's 7 — proportional to Messaging's tighter intelligence-as-enrichment framing.
+
+**3 canonical Messaging Intelligence prompts**:
+
+1. **`messaging.priority_classification`** (Haiku) — inbound message priority detection (operational urgency vs routine). Output: priority classification (`urgent` / `high` / `normal` / `low`) + supporting reasoning. Powers `messaging_mention_review_triage` per §3.26.19.16 priority-based ordering.
+
+2. **`messaging.summarize_thread`** (Haiku) — long-thread summarization for catching-up after offline period + briefing inclusion. Output: 2-3 sentence summary + key decisions + action items extracted + outstanding questions.
+
+3. **`messaging.intent_classify`** (Haiku) — intent classification for routing + saved view filtering + Pulse layer assignment. Output: intent classification (`operational_coordination` / `customer_question` / `team_announcement` / `decision_needed` / `social_chatter` / `other`) + confidence score.
+
+**Real-time prompt firing discipline** lighter than Phone's 7-prompt real-time orchestration:
+- `messaging.priority_classification` fires per inbound message (synchronous on message-receive; <500ms latency target)
+- `messaging.summarize_thread` fires on-demand + periodically for long threads (>20 messages without summary; background sweep)
+- `messaging.intent_classify` fires per thread on first message + on thread-pattern-shift
+
+**Cost discipline integration** per §3.26.19.7: per-prompt cost recorded on `intelligence_executions` audit row.
+
+**Operator agency preserved via canonical anti-patterns** per §3.26.14.14.5: Intelligence enriches; operator decides — auto-commit on high confidence explicitly rejected.
+
+**Future canonical prompts deferred per §3.26.19.20**:
+- `messaging.action_item_extract` (Sonnet) — concrete signal: operators manually copy-paste action items from messaging into task system
+- `messaging.summarize_thread` Sonnet upgrade — concrete signal: operator complaints about Haiku summary quality
+- `messaging.sentiment_classify` — concrete signal: tenant operational pattern signals sentiment-based triage value
+
+**Cross-references**: §3.26.19.7 cost discipline reduction; §3.26.19.16 Messaging-triggered Decision Focus; §3.26.19.19 Messaging Workshop integration; Bridgeable Intelligence canonical pattern.
+
+#### 3.26.19.19 Messaging Workshop integration
+
+Messaging Workshop integration per §3.26.14 Workshop Primitive canonical pattern. **Per-template-type granularity at 3 distinct Messaging Workshop template types** + structural-overlap-of-composition-shapes meta-pattern per §3.26.16.24 calendar precedent + §3.26.17.24 SMS precedent + §3.26.18.27 Phone precedent.
+
+**Meta-pattern application**: Messaging primitive's three template shapes are structurally different — message script template ≠ automated-reply-rule template ≠ channel-rule template. Per-template-type granularity appropriate. Messaging's 3 template types matches Calendar's 3 template type count — proportional to lighter primitive complexity.
+
+**3 canonical Messaging Workshop template types**:
+
+1. **`message_template`** — message script suggestions for outbound message composition per §3.26.19.12. Tenant-authored canonical (e.g., "Daily production status update template", "Cross-tenant delivery coordination opener", "Channel weekly recap template"). Schema: target audience + message body suggestions + cross-primitive embed slots + Intelligence-prompt-customization for entity-specific personalization.
+
+2. **`automated_reply_rule_template`** — automated reply rule for incoming messages matching tenant-defined patterns. Schema: trigger condition (keyword match + entity mention pattern + sender-role pattern) + reply body + reply behavior (DM-back vs channel-reply vs forward-to-operator) + opt-out handling + business-hours-only flag. Operator review-before-commit canonical per §3.26.14.14.5.
+
+3. **`channel_rule_template`** — channel governance rules for tenant channel templates. Schema: channel naming convention + initial member roles + retention policy override + intent-based message routing rules + Intelligence-prompt configuration. Workshop template enables consistent channel creation across tenants.
+
+**Total cross-primitive Workshop template types canonical at canon level (post-Session-6)**:
+- Email: 1 template type
+- Calendar: 3 template types
+- SMS: 5 template types
+- Phone: 7 template types
+- Messaging: 3 template types
+- **Total: 19 Workshop template types**
+
+**Meta-pattern locks finally across all five Layer 1 communication primitives**. Workshop template granularity is determined by structural-overlap-of-composition-shapes per established meta-pattern. Future Layer 2+ primitive Workshop template granularity (if any) applies same heuristic.
+
+**Cross-references**: §3.26.14 Workshop Primitive (entire Workshop architecture applies); §3.26.19.12 Messaging composition canonical authoring surface; §3.26.19.18 Messaging Intelligence integration; §3.26.19.7 storage retention discipline.
+
+#### 3.26.19.20 Strategic vision deferral catalog
+
+Strategic vision deferral catalog per §3.26.7.5 architectural restraint discipline.
+
+**External messaging integration deferrals**:
+- **Slack/Teams bidirectional integration** (provider-abstraction-with-Bridgeable-as-default-provider preserving optionality for future external messaging integration) deferred per §3.26.7.5. Concrete signals: (1) sustained tenant signal indicating Slack/Teams bidirectional integration operational need; (2) multi-tenant enterprise deployment scope where customer maintains existing Slack/Teams as primary tool + Bridgeable as operational substrate; (3) bidirectional message convention + presence semantics + threading models + auth flow integration scope substantial — concrete deliberation required at activation time
+
+**Real-time delivery infrastructure deferrals**:
+- **Typing indicators** deferred per §3.26.7.5 with concrete signal: sustained tenant signal indicating operator coordination feel operational value — driver dispatch + cross-tenant joint coordination + time-sensitive operational coordination patterns
+- **Full presence indicators** (available / away / busy / offline) deferred per §3.26.7.5 with concrete signal: sustained tenant signal indicating per-status visibility operational value
+- **Mobile push notifications** deferred until mobile app ships per Phase W-4b roadmap
+- **Email digest fallback** for offline operators deferred per §3.26.7.5 with concrete signal: operators complain about missing offline messages OR mobile app shipping milestone displaces deferral
+
+**Intelligence pipeline deferrals**:
+- **`messaging.action_item_extract`** (Sonnet) — concrete signal: operators manually copy-paste action items from messaging into task system. Phone primitive's `phone.call_action_items_extract` provides architectural template
+- **`messaging.summarize_thread` Sonnet upgrade** deferred — concrete signal: operator complaints about Haiku summary quality
+- **`messaging.sentiment_classify`** deferred — concrete signal: tenant operational pattern signals sentiment-based triage value
+
+**Composition deferrals**:
+- **Channel-type variations** (read-only channels + announcement-only channels + auto-archive channels) deferred per §3.26.7.5 — initial scope ships flat channels only
+- **Voice-mediated message composition cost optimization** (cache transcription for repeated identical messages) deferred per §3.26.7.5
+
+**Cross-tenant channel deferrals**:
+- **Cross-tenant channel governance** (shared admin authority + cross-tenant channel templates + cross-tenant retention coordination) deferred per §3.26.7.5
+
+**Storage retention deferrals**:
+- **Per-channel storage cost attribution** (channel-specific budget caps for tenants with high-volume channels) deferred per §3.26.7.5 with concrete signal documented: sustained tenant signal indicating high-volume channel storage cost concern; multi-thousand-message-per-day operational coordination channels exceeding storage cost expectations
+- **Tenant-customizable retention via Workshop policy beyond canonical defaults** deferred — current canon ships canonical defaults; per-thread retention overrides + per-channel retention overrides via Workshop deferred until canonical defaults prove insufficient
+
+**Cross-primitive embedding deferrals**:
+- **Inline content rendering for cross-primitive embeds** (e.g., expand email thread embed to render full thread in messaging surface vs preview-with-link-out) deferred per §3.26.7.5
+- **Bidirectional cross-primitive content updates** (when embedded saved view updates upstream, embedded preview updates in messaging context) deferred per §3.26.7.5
+
+**Voicemail entity treatment**: NOT applicable to Messaging primitive (no voicemail concept; messaging is text-only at primitive level).
+
+Each deferred per §3.26.7.5 architectural restraint discipline. Messaging primitive ships at canonical-quality depth without speculative scope expansion.
+
+---
+
 # Part 6 — Funeral Home Vertical
 
 ## 6.1–6.9 Existing Funeral Home Sections

@@ -6370,6 +6370,367 @@ Voice-mediated affordance chrome per §3.26.18.16 voice-mediated workflows canon
 
 ---
 
+## Section 14.13 — Messaging Primitive Visual Canon (Session 6)
+
+Per-primitive visual canon for the Messaging primitive — extending §14's Communications Layer foundation with messaging-specific composition surfaces. Companion to BRIDGEABLE_MASTER §3.26.19 (architectural).
+
+§14.13 extends §14 Communications Visual System canonical (per Session 6 Phase C Q12 confirmation) — Messaging IS the fifth and final Layer 1 communication primitive per §3.26.6.4 sequencing canon. Cross-primitive Pattern C composition (Communications layer Glance widgets row) requires shared visual vocabulary across all five primitives. **Pattern locks finally across complete Layer 1 communication primitive substrate. §14.13 is the final §14 extension — no future §14.14 needed.**
+
+Phase W-4b Layer 1 ships the Messaging primitive as the fifth and final concrete realization of the Communications Layer (after Email §14.9 + Calendar §14.10 + SMS §14.11 + Phone §14.12). §14.13 locks visual canon for the five Messaging-specific surfaces that compose inside Bridgeable's primitive framework — distinguished from Email + Calendar + SMS + Phone by Messaging's split-pane workspace composition (thread list + thread detail co-presentation), DM/channel duality (single primitive with type discriminator + per-type rendering), and cross-primitive embedding visual canon (six embed types with primitive-specific chrome continuity per §14.13.5 — operational substrate connective tissue at visual level).
+
+### 14.13.1 Messaging thread list visual canon
+
+Messaging thread list at canonical route `/messages` per §3.26.19.8. Default presentation mode: split-pane workspace with thread list left + thread detail right rail; chronological thread list ordered by `last_message_at` DESC; per-tenant unread indicator (DMs with unread + channels with mentions + cross-tenant threads with bilateral consent state).
+
+**Messaging-workspace-shape distinction from Space architecture** (parallel to §14.10.1 + §14.11.1 + §14.12.1 workspace-shape distinctions): messaging workspace at `/messages` route is full-screen single-purpose surface. **NOT a Space**. Messaging workspace ships predetermined list + detail + composition chrome; not user-configurable Space chrome. Workspace-shape distinction pattern locks finally across all five Layer 1 communication primitives.
+
+**Thread list pane composition** (left, narrower viewport — typically 320px width):
+
+```
+┌─ Threads ─────────────────────────────┐
+│  [DMs / Channels / All]   [Filter ▾]  │
+│  [Search threads]                      │
+│  ──────────────────────────────────── │
+│  CHANNELS                              │
+│  ● # production-floor      3   2m ago  │
+│  ● # delivery-dispatch     1   8m ago  │
+│    # general                   1h ago  │
+│  ──────────────────────────────────── │
+│  DMs                                   │
+│  ●● Mike Driver           4   3m ago  │
+│  ↗  Mary Hopkins (FH)     1h ago      │
+│     Hopkins FH                         │
+│     James Atkinson            yesterday│
+│  ──────────────────────────────────── │
+│  CROSS-TENANT                          │
+│  ↗ # hopkins-coordination  1   30m ago│
+└────────────────────────────────────────┘
+```
+
+**Thread row composition** (Pattern 5 mid-dot separator chrome):
+- Unread indicator: solid terracotta dot left-edge `●` for unread > 0; double-dot `●●` for unread > 5
+- Thread type indicator:
+  - `#` glyph for channel threads — `text-content-muted font-plex-sans`
+  - `DM` chip OR participant avatar(s) for DM threads
+  - `↗` glyph prepended for cross-tenant threads
+- Thread display name: `text-body font-medium text-content-strong` — channels render `display_name`; DMs render participant name(s)
+- Tenant indicator chip (cross-tenant threads): partner tenant name `text-caption text-content-muted bg-accent-subtle/40 rounded-sm`
+- Unread count: `text-caption font-plex-mono text-content-muted` right-aligned; only renders when unread > 0
+- Last-message preview: NOT shown in default tier (preserves vertical density)
+- Relative timestamp: `text-caption text-content-muted` right-aligned
+- Section separators: `CHANNELS` / `DMs` / `CROSS-TENANT` `text-caption font-medium text-content-muted uppercase tracking-wider`
+
+**Thread row state visual chrome**:
+- Active thread: `bg-accent-subtle/30` background highlight; left-edge `border-l-2 border-accent`
+- Hover state: `bg-surface-elevated hover:bg-surface-raised` per §6 overlay family canon
+- Mention-pending state: terracotta accent dot prepended to display name
+
+**Thread-type tab filter** (top of list): three-state segmented control — `DMs / Channels / All`. Default landing on `All`.
+
+**Filter dropdown**: dropdown — All / Unread / Mentions / Archived / Cross-tenant.
+
+**Search affordance**: full-text search across `messages.body_text` (pg_trgm GIN index) + structured embed body + thread display_name + participant names.
+
+**Empty state**: when no threads match filter, render Pattern 8 empty-state card with icon + "No threads" headline + "Start a new message" CTA.
+
+**Compact-tier rendering** (when viewport narrows below threshold): thread list collapses to icon-only rail showing unread indicators + thread-type icons; click expands to overlay drawer.
+
+### 14.13.2 Thread detail rendering visual canon (DM + channel composition)
+
+Thread detail renders **right rail of split-pane composition** per §3.26.19.8 — co-presentation discipline preserves Messaging primitive's operational coordination reality. Per-thread-type rendering variations: DM-specific chrome vs channel-specific chrome.
+
+**Thread detail composition** (Pattern A workspace-shape with right-rail composition):
+
+```
+┌─ # production-floor ────────────────────────────────────────────┐
+│  Topic: Daily production coordination + status updates           │
+│  12 members  •  Channel created Apr 2026                         │
+│  [Pinned] [Members] [Settings]                                   │
+│  ──────────────────────────────────────────────────────────────  │
+│                                                                  │
+│  James Atkinson  •  10:42                                        │
+│  Need 4 more vault tops for tomorrow's Hopkins delivery          │
+│                                                                  │
+│  Mike  •  10:48                                                  │
+│  Got 2 ready. Pour 2 more today.                                 │
+│  [@order: SO-2026-0142 — Hopkins service order]                  │
+│                                                                  │
+│  ┌─ Saved view: Today's production schedule ──────────┐          │
+│  │ 4 vault tops • 3 vault bottoms • 2 cremation urns │          │
+│  │ ETA tomorrow 10am • Hopkins delivery               │          │
+│  └────────────────────────────────────────────────────┘          │
+│                                                                  │
+│  James Atkinson  •  11:15                                        │
+│  Confirmed. Adding to tomorrow's route schedule.                 │
+│  [📧 Email thread: Hopkins delivery coordination]                │
+│                                                                  │
+│  Read by Mike, Sarah, John  •  Active in last 5min: 3 members   │
+│  ──────────────────────────────────────────────────────────────  │
+│  [Type a message...]                                             │
+│  [@] [#] [embed ▾] [B I U `code`]  [🎤]      [Send] (Cmd+Enter) │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Thread header** (Pattern 2 chrome with internal sections):
+- Thread display name `text-h4 font-plex-sans font-medium` — channels prefixed with `#`; DMs render participant name(s)
+- Channel topic/description `text-body-sm text-content-muted` (channels only)
+- Participant count `text-caption text-content-muted`
+- Action affordances row: Pinned messages link + Members management + Settings (channels only)
+- Cross-tenant thread chrome per §14.13.4: bilateral consent indicator + per-tenant audit trail link
+
+**Message composition** (chronological message stream):
+- Author identity row: avatar (24×24) + author name `text-body font-medium text-content-strong` + relative timestamp `text-caption text-content-muted`
+- Message body: `text-body font-plex-sans` plain text + lightweight markdown rendering
+- Edited indicator: `(edited)` `text-caption text-content-muted` inline at end
+- Deleted message tombstone: `Message deleted by {author}` `text-caption text-content-muted italic`
+- Per-message hover affordances: react + reply-in-thread + edit (own messages only) + delete (own messages or admin)
+- Author grouping: consecutive messages from same author within 5-minute window collapse author identity row
+
+**Cross-primitive embed chrome** per §14.13.5: each embed type renders as Pattern 2 sub-card with primitive-specific chrome.
+
+**Threaded reply rendering**: messages with `parent_message_id` render indented under parent message with reply-thread-indicator chrome. Reply count surfaces on parent message; click to expand thread view.
+
+**Read-receipt surface**: `Read by {names}` `text-caption text-content-muted` below most recent message; click to expand per-participant read state. Lightweight presence indicator: `Active in last 5min: 3 members`.
+
+**Auto-scroll behavior**: standard scroll-to-bottom on first load + on new message arrival when user near bottom. New inbound message during user-scrolled-up state surfaces "New messages ↓" pill at bottom.
+
+**DM thread detail composition variant**: Header simplification (participant avatar prominent; no channel topic; no Members link; no Settings — DM membership immutable post-creation). Cross-tenant DM banner per §14.13.4 prominent at top.
+
+**Channel thread detail composition variant**: Header includes channel topic + member count + Settings + Pinned messages + Members management. Pinned messages strip below header. Threaded replies more common in channels than DMs.
+
+**Composition surface (sticky bottom)**: inline composer per §14.13.3.
+
+### 14.13.3 Messaging composition surface visual canon
+
+Messaging composition surface per §3.26.19.12 — three composition shapes: inline composition within thread detail (sticky bottom) + new DM modal + new channel modal.
+
+**Inline composition surface** (sticky bottom of thread detail, canonical primary):
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Got 2 ready. Pour 2 more today. [@order:SO-2026-0142]        │
+│                                                                │
+│  ┌─ Embed: SO-2026-0142 ────────────────────────────┐          │
+│  │ Hopkins service order                             │          │
+│  │ Vault top × 4 • Total $2,400 • Status confirmed   │          │
+│  └──────────────────────────────────────────────────┘          │
+│                                                                │
+│  [@] [#] [embed ▾] [B I U `code`] [🎤]    [Send] (Cmd+Enter)   │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Body composition surface composition**:
+- Plain text textarea with markdown subset rendering per §3.26.19.2 — `font-plex-sans text-body`
+- Auto-grow vertical: matches content; max 8 visible rows then scrolls
+- Markdown formatting toolbar (left of send button): B (bold) + I (italic) + U (underline) + `code` (inline code)
+- Compose-shortcut chrome: Cmd+Enter / Ctrl+Enter sends; Enter adds newline; Escape clears composition
+
+**Entity mention affordance** (`@` button + autocomplete on `@` keystroke): typeahead overlay opens with matching tenant entities. Selection inserts `@entity:id` syntax + creates structured embed entry. Resolved mention renders inline as Pattern 5 chip per §14.13.5.
+
+**Channel mention affordance** (`#` button + autocomplete on `#` keystroke): typeahead opens with matching tenant channels. Resolved channel mention renders inline as channel chip.
+
+**Cross-primitive embed picker** (`embed` button → dropdown): six canonical embed types per §3.26.19.5 + Phase A Q5 extension. Each picker option opens primitive-specific picker UI; selection inserts structured embed entry + renders embed preview in composition surface before send.
+
+**Voice input affordance** per §3.26.18.16 voice input as platform substrate (Phone primitive ships voice infrastructure consumed by Messaging primitive): push-to-talk button with microphone icon (Lucide `Mic`). Voice → speech-to-text → composition body pre-fill → operator confirms before send per §3.26.14.14.5 operator agency discipline. Voice transcription cost attributes to Messaging primitive per §3.26.18.16 voice input cost attribution discipline.
+
+**Send affordance**: brass primary `[Send]` button right-aligned. Keyboard shortcut: `Cmd+Enter`. Pre-send validation: empty body + no embeds blocks send; cross-tenant thread without bilateral consent blocks send.
+
+**Reply-in-thread composition variant** (channels only): composition surface contextualizes — header shows `Replying to {author}: {body excerpt}` `text-caption text-content-muted`. Send creates message with `parent_message_id` populated.
+
+**New DM modal composition** (Pattern 6 modal chrome with `duration-arrive ease-settle` enter animation):
+
+```
+┌─ New direct message ──────────────────────── [×] ───────────┐
+│                                                              │
+│  To: [User picker ▾]    Mary Hopkins  ✓ Hopkins FH          │
+│      Add another participant for group DM (max 10)           │
+│                                                              │
+│  ⚠ Cross-tenant DM. Bilateral consent required.              │
+│      "Send a consent request to Mary Hopkins?"               │
+│                                                              │
+│  [Type a message...]                                         │
+│  [@] [embed ▾] [B I U `code`]  [Cancel] [Send & request]    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- Recipient picker: typeahead User selection (tenant users + cross-tenant Bridgeable users when bilateral consent established)
+- N-way DM: multi-select recipient picker creates group DM thread (up to canonical 10-participant max)
+- Cross-tenant DM banner per §14.13.4
+- Pre-send: cross-tenant DM creation triggers bilateral consent affordance per §14.13.4
+
+**New channel modal composition** (Pattern 6 modal chrome): channel name + topic/description + initial member multi-select + channel template picker per §3.26.19.19.
+
+### 14.13.4 Cross-tenant messaging chrome
+
+Cross-tenant messaging visibility per §3.26.19.13 — bilateral consent + per-tenant audit trails + per-tenant message copies + cross-tenant masking inheritance. Pattern parallel to §14.10.x cross-tenant calendar + §14.11.4 cross-tenant SMS + §14.12.5 cross-tenant phone chrome canon. **Pattern locks finally across all five Layer 1 communication primitives.**
+
+**Cross-tenant thread list row** (extends §14.13.1 row composition):
+- `↗` glyph prepended to display name (canonical cross-tenant indicator)
+- Partner-tenant chip below display name: `text-caption text-content-muted bg-accent-subtle/40 rounded-sm` with partner tenant name
+- Bilateral consent state chip when consent pending: `Awaiting consent` (status-warning); `Consent declined` (status-info muted)
+- Cross-tenant section separator: `CROSS-TENANT` section heading groups cross-tenant threads
+
+**Cross-tenant thread detail header** (extends §14.13.2 header):
+- Bilateral consent banner pinned below thread header: `Both tenants consented to cross-tenant messaging` (status-success) / `Awaiting Hopkins consent — outbound messages blocked` (status-warning) / `Hopkins revoked consent — thread archived` (status-info muted)
+- Cross-tenant masking indicator: when external participant identity is masked per §3.25.x, render as `[Hopkins FH operator]` placeholder with reveal-affordance for tenants with reveal permission
+- Cross-tenant audit chip: every cross-tenant thread stamps audit row visible via `View audit trail` link in thread header per §3.26.19.6 indefinite audit log canon
+
+**Cross-tenant message composition** (extends §14.13.2 message composition):
+- Cross-tenant participant attribution: when partner tenant has multiple operators participating, attribution chip surfaces above message body: `[Hopkins FH operator]` `text-caption bg-accent-subtle/40` (per Front-style shared inbox UX inherited from §3.26.15.15)
+- Cross-tenant operational state propagation chip: when message embeds cross-primitive content that propagates state changes, chip surfaces: `Cross-tenant state propagated to Hopkins` `text-caption text-status-success`
+
+**Bilateral consent recording mechanics visual chrome**:
+- Consent prompt modal: surfaces when operator initiates cross-tenant DM or adds cross-tenant member to channel
+- Consent state visible to both tenants — bilateral consent banner state synchronized
+- Per-tenant revocation affordance: each tenant's operator can revoke consent; revocation triggers thread archive + future-message block + audit log entry
+
+**Cross-tenant operational channels visual chrome** per §3.26.19.13: persistent cross-tenant channels render with channel chrome + cross-tenant indicator + bilateral consent state at channel level.
+
+### 14.13.5 Cross-primitive embedding chrome
+
+Cross-primitive embedding chrome per §3.26.19.5 + Q11 confirmation. Six canonical embed types render with primitive-specific chrome continuity per §14.13.5 visual canon. Primitive-specific chrome continuity preserves cross-primitive cognitive coherence — operator viewing message with calendar event embed sees calendar event chrome they recognize from `/calendar` workspace.
+
+Primitive-specific chrome continuity is genuinely the canonical visual mechanism by which Messaging primitive serves as operational substrate connective tissue. Without chrome continuity, embeds become decontextualized; operators lose cognitive thread connecting messaging context to operational state. Visual chrome continuity is structural to connective-tissue strategic positioning.
+
+**1. Entity mention embed** (inline Pattern 5 chip — NOT Pattern 2 sub-card; entity mentions are inline references):
+
+```
+... vault tops for [@order: SO-2026-0142] tomorrow ...
+```
+
+- Inline chip rendering: `text-body font-medium bg-accent-subtle/30 text-content-strong px-1.5 py-0.5 rounded-sm`
+- Entity icon prefix: order = `Receipt` Lucide; case = `FileText`; quote = `FileEdit`; customer = `Building2`; contact = `User`; etc.
+- Click affordance: opens entity peek per peek-host canon
+- Hover state: chip background brightens; tooltip surfaces entity full title + status
+
+**2. Saved view embed** (Pattern 2 sub-card with saved view chrome per §3.25 saved view primitive):
+
+```
+┌─ Saved view: Today's production schedule ──────────────────────┐
+│  4 vault tops • 3 vault bottoms • 2 cremation urns             │
+│  Production line A: 78% capacity                                │
+│  Production line B: 92% capacity                                │
+│  ETA tomorrow 10am • Hopkins delivery                           │
+│  [Open full view]                                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Pattern 2 sub-card chrome: `bg-surface-elevated rounded-md shadow-level-1 p-4`
+- Saved view title at top: `text-body-sm font-medium text-content-strong` with saved view icon
+- Saved view content rendering: list/table/kanban/calendar/cards rendering per saved view primitive's `presentation_mode` config — limited to 5 rows or summary stats for inline embed
+- Footer: `[Open full view]` link to saved view detail page
+
+**3. Email thread embed** (Pattern 2 sub-card with §14.9 Email primitive chrome):
+
+```
+┌─ 📧 Email: Hopkins delivery coordination ──────────────────────┐
+│  From: Mary Hopkins • To: James • 3 messages • 2h ago          │
+│                                                                 │
+│  Latest: "Confirming delivery for Thursday at 11am. Mary will   │
+│  be on-site to receive. Please confirm pickup time..."          │
+│                                                                 │
+│  [Open thread]                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Pattern 2 sub-card chrome with email-list shape (per §14.9 Email primitive thread preview chrome)
+- Email envelope icon prefix `📧` + thread subject `text-body-sm font-medium`
+- Participant + message count + relative timestamp metadata row `text-caption text-content-muted`
+- Latest message excerpt: `text-body-sm text-content-base` truncated to 2 lines
+- Footer: `[Open thread]` link to email thread detail
+
+**4. Calendar event embed** (Pattern 2 sub-card with §14.10 Calendar primitive chrome):
+
+```
+┌─ 📅 Calendar: Hopkins delivery coordination call ──────────────┐
+│  Thu Apr 25 • 10:00am - 10:30am EDT                            │
+│  Participants: James, Mary Hopkins (Hopkins FH)                 │
+│  Linked: SO-2026-0142 Hopkins service order                     │
+│  [Open event]                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Pattern 2 sub-card chrome with event-card shape (per §14.10 Calendar primitive event detail chrome)
+- Calendar icon prefix `📅` + event title `text-body-sm font-medium`
+- Date + time row `text-body-sm font-plex-sans text-content-base`
+- Participants row + linked entities row `text-caption text-content-muted`
+- Footer: `[Open event]` link to calendar event detail
+
+**5. SMS conversation snippet embed** (Pattern 2 sub-card with §14.11 SMS primitive chrome):
+
+```
+┌─ 💬 SMS: Mary Hopkins (Hopkins FH) ────────────────────────────┐
+│  +1 (315) 555-0142 • 2 messages • 30m ago                      │
+│                                                                 │
+│  Mary: "On my way — should be there by 11:30"                   │
+│  You: "Great. We'll have everything ready."                     │
+│                                                                 │
+│  [Open conversation]                                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Pattern 2 sub-card chrome with conversation-preview shape (per §14.11 SMS primitive conversation detail chrome)
+- SMS icon prefix `💬` + participant display name `text-body-sm font-medium`
+- Phone number + message count + relative timestamp metadata row `text-caption text-content-muted`
+- Recent message bubbles (max 2 messages) rendering per §14.11.2 SMS conversation detail bubble composition
+- Footer: `[Open conversation]` link to SMS conversation detail
+
+**6. Call intelligence summary embed** (Pattern 2 sub-card with §14.12 Phone primitive chrome):
+
+```
+┌─ ☎ Call: Mary Hopkins (Hopkins FH) ────────────────────────────┐
+│  +1 (315) 555-0142 • 4:32 duration • $0.32 • Today 9:14am      │
+│  Customer-facing • Connected • Sentiment: positive              │
+│                                                                 │
+│  Customer Mary confirmed Thursday 11am service. Asked about     │
+│  casket options. Sent to followup on pricing.                   │
+│                                                                 │
+│  Action items:                                                  │
+│  • Confirm Thursday 11am ✓                                      │
+│  • Send casket pricing pkg                                      │
+│                                                                 │
+│  [Open call]                                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Pattern 2 sub-card chrome with call-summary shape (per §14.12 Phone primitive call detail intelligence pane chrome)
+- Phone icon prefix `☎` + caller display name `text-body-sm font-medium`
+- Phone number + duration + cost + timestamp metadata row `text-caption text-content-muted`
+- Orientation + outcome + sentiment chips row
+- Summary excerpt (`phone.call_summarize` artifact): `text-body-sm text-content-base`
+- Action items list (`phone.call_action_items_extract` artifact): bulleted list with status indicators
+- Footer: `[Open call]` link to call detail
+
+**Embed accessibility canon**: each embed type carries embed-source attribution (visible icon + source primitive label) to maintain cross-primitive cognitive coherence.
+
+**Embed lifecycle chrome** (deferred per §3.26.19.20 — bidirectional cross-primitive content updates not canonical at September; embedded content preview is snapshot-at-embed-time):
+- Stale-embed indicator: when underlying primitive content changes substantively after embed (deferred per §3.26.19.20), embed surfaces stale indicator chip — concrete signal triggers future canonicalization
+
+### 14.13.6 Cross-references
+
+- **§14** (Communications Layer Visual Canon) — per-primitive icon canon, count typography, Pattern C composition
+- **§14.9** (Email Primitive Visual Canon) — sibling primitive canon pattern; Messaging email thread embed inherits §14.9 thread preview chrome
+- **§14.10** (Calendar Primitive Visual Canon) — sibling primitive canon pattern; Messaging calendar event embed inherits §14.10 event card chrome
+- **§14.11** (SMS Primitive Visual Canon) — sibling primitive canon pattern; Messaging SMS conversation embed inherits §14.11 conversation preview chrome
+- **§14.12** (Phone Primitive Visual Canon) — sibling primitive canon pattern; Messaging call intelligence summary embed inherits §14.12 call summary chrome
+- **§13.4.1** — density-tier opt-in canonical reference
+- **§11 Pattern A** + **§11 Pattern C** — Layer Composition Patterns
+- **§6** — overlay family canon (modal composition surface inherits this canon)
+- **BRIDGEABLE_MASTER.md §3.26.19** — Messaging Primitive Architecture (architectural canon)
+- **BRIDGEABLE_MASTER.md §3.26.19.2** — Messaging entity model (Thread + Message + ThreadParticipant + ThreadType discriminator)
+- **BRIDGEABLE_MASTER.md §3.26.19.3** — Real-time delivery infrastructure (WebSocket canonical primary + SSE alternate + lightweight presence + web push)
+- **BRIDGEABLE_MASTER.md §3.26.19.5** — Cross-primitive embedding canon (six embed types; operational substrate connective tissue)
+- **BRIDGEABLE_MASTER.md §3.26.19.6** — Privacy + compliance discipline (lighter than prior primitives; cross-tenant bilateral consent only)
+- **BRIDGEABLE_MASTER.md §3.26.19.7** — Storage retention discipline + cost discipline reduction (cost reduces to storage retention only)
+- **BRIDGEABLE_MASTER.md §3.26.19.9** — Hybrid layer contribution pattern (Communications + Operational layers split; pattern locks finally)
+- **BRIDGEABLE_MASTER.md §3.26.19.13** — Cross-tenant messaging visibility + bilateral consent (pattern locks across all five Layer 1 communication primitives)
+- **BRIDGEABLE_MASTER.md §3.26.19.14** — Strategic framing (operational substrate five-part completion: communications + scheduling + reach + intelligence + coordination = operations)
+- **BRIDGEABLE_MASTER.md §3.26.19.18** — Messaging Intelligence integration (3 prompts canonical scope)
+- **BRIDGEABLE_MASTER.md §3.26.19.19** — Messaging Workshop integration (3 template types per per-template-type granularity)
+- **BRIDGEABLE_MASTER.md §3.26.19.20** — Strategic vision deferral catalog
+
+---
+
 ## Section 15 — Briefing Visual System
 
 Visual canon for morning + evening briefings — three-state machine visualization, per-state typography, per-state composition. Companion to BRIDGEABLE_MASTER §3.26.10 (architectural).
