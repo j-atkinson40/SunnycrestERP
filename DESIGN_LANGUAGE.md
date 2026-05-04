@@ -6917,6 +6917,208 @@ Commit affordance + draft state + bounded-output progress chrome canonical per �
 
 ---
 
+## Section 14.15 — Coordination Focus Visual Canon (Session 8)
+
+Per-Focus-type visual canon for the Coordination Focus type — extending §14's foundation with multi-participant + cross-tenant + sub-Focus parent-child Focus type chrome canon. Companion to BRIDGEABLE_MASTER §3.26.11.13 (architectural).
+
+§14.15 extends §14 Communications Visual System canonical (per Session 8 Phase C Q9 + Q16 confirmation) — Coordination Focus is the consumer Focus type with substantive multi-primitive integration scope (integrates across all five communication primitives per §3.26.15.23 + §3.26.16.23 + §3.26.17.22 + §3.26.18.25 + §3.26.19.17). **Pattern locks finally across all five Focus types at canonical-quality depth** (Decision + Coordination §14.15 + Execution + Review + Generation §14.14).
+
+§14.15 locks visual canon for the six Coordination Focus chrome subsections distinguished from existing four Focus types' visual chrome by Coordination Focus's multi-participant scope; cross-tenant common pattern (most common cross-tenant Focus type per §3.26.11.10); sub-Focus parent-child rendering (Job → Load canonical hierarchy at September).
+
+### 14.15.1 Coordination Focus chrome — modal-overlay rendering canon
+
+Coordination Focus inherits Focus primitive substrate visual chrome (full-screen modal overlay + dismissable per §3.26.14.14.5 operator agency + transient + entered intentionally + exited when bounded thing completes) with multi-participant + cross-tenant + sub-Focus distinct internal chrome.
+
+**Coordination Focus chrome composition** (Focus modal-overlay with multi-participant + cross-tenant chrome):
+
+```
+┌─ Hopkins+Sunnycrest Joint Service — Anderson Thursday  [Settings] [✕] ┐
+│                                                                          │
+│  Job  •  Active  •  ✓ Cross-tenant consent active  •  3 sub-Focuses    │
+│                                                                          │
+│  ┌─ Participants ──────────────────────────┐ ┌─ Sub-Focuses ─────────┐ │
+│  │  Hopkins FH                              │ │  Load — 8am pickup    │ │
+│  │  ●  Mary Hopkins (FH director)           │ │  ●  Active            │ │
+│  │  ●  Sarah Lin (FH office)                │ │  Driver Mike + foreman│ │
+│  │  ↗  External: Family liaison (magic-link)│ │                        │ │
+│  │                                          │ │  Load — 11am delivery │ │
+│  │  Sunnycrest                              │ │  ○  Pending           │ │
+│  │  ●  James Atkinson (office)              │ │  Driver TBD           │ │
+│  │  ●  Driver Mike (delivery)               │ │                        │ │
+│  │  ●  Foreman Bob (production)             │ │  Load — 2pm cemetery  │ │
+│  │                                          │ │  ●  Active            │ │
+│  └──────────────────────────────────────────┘ └────────────────────────┘ │
+│                                                                          │
+│  ┌─ Real-time-thread ──────────────────────────────────────────────────┐│
+│  │  Mary Hopkins (10:42)                                                ││
+│  │  Family confirmed Thursday 11am service. Casket arriving 9am.        ││
+│  │  ↗ Cross-tenant attribution                                          ││
+│  │                                                                       ││
+│  │  James Atkinson (11:15)                                              ││
+│  │  Confirmed. Adding 11am load to schedule. Driver assignment pending. ││
+│  └──────────────────────────────────────────────────────────────────────┘│
+│                                                                          │
+│  Linked: [Quote QT-2026-0089] [Calendar event Thu 11am] [Email thread]  │
+│  ──────────────────────────────────────────────────────────────────────  │
+│  [Add participant] [Add sub-Focus] [Cross-tenant settings] [Close]      │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Coordination Focus modal-overlay chrome canonical**:
+- Full-screen modal overlay with `bg-surface-base` backdrop + Focus chrome content `bg-surface-elevated rounded-lg shadow-level-3` per §6 overlay family canon
+- Chrome header: Coordination Focus instance display name + cross-tenant indicator (per §14.15.5) + sub-Focus count + state indicator + settings + close (✕) affordance
+- Chrome metadata row: template type chip + state chip (active / closing / closed) + cross-tenant consent state chip + sub-Focus count
+- Chrome content area: per-template core element rendering (real-time-thread per §14.15.2 / scheduled-coordination per §14.15.3 / threshold-watch per §14.15.4) + participant catalog + sub-Focus references when applicable
+- Chrome footer: action affordances (add participant + add sub-Focus + cross-tenant settings + close)
+
+**Coordination Focus dismissal discipline** per §3.26.14.14.5 operator agency: Close (✕) preserves Focus instance state per §3.26.11.13.3 lifecycle state machine; auto-closure per template-defined completion criteria + dormancy threshold per §3.26.11.13.7; cross-tenant consent revocation triggers Focus close with cross-tenant attribution preserved.
+
+**Multi-participant chrome scope canonical**: Coordination Focus is the canonical multi-participant Focus type. Participant catalog renders per-tenant section grouping (when cross-tenant per §14.15.5) + per-participant role + state indicator + magic-link participant chrome per §3.26.11.9. Pattern distinct from Decision Focus's single-decider chrome + Generation Focus's authoring-operator chrome.
+
+**Linked entity references chrome canonical**: linked entities surface inline via Focus attribution chip pattern per §3.26.11.13.11 (parallel to entity-mention chip per §3.26.19.5). Linked entities render as Pattern 5 chips in chrome footer; click-to-summon-entity-peek affordance.
+
+**Cross-references**: §3.26.11 Focus primitive canonical pattern; §3.26.11.13.5 promotion mechanics + closure semantics; §3.26.11.13.11 per-primitive integration chrome (Focus attribution chip pattern); §3.26.14.14.5 operator agency discipline; §14.14 Generation Focus visual canon (parallel Focus type visual canon precedent).
+
+### 14.15.2 Real-time-thread core element visual canon
+
+Real-time-thread renders chat-shaped coordination chrome with per-message Focus attribution + participant catalog with cross-tenant section grouping.
+
+**Real-time-thread chrome composition**:
+- Chat-shaped message stream within Focus chrome content area
+- Message stream rendering: chronological message list with per-message author + timestamp + body
+- Per-message Focus attribution chip when message authored from Focus context (parallel to entity-mention chip per §3.26.19.5)
+- Per-message cross-tenant attribution chip when cross-tenant per §14.15.5 (cross-tenant attribution surfaces "↗ Hopkins" chip on message)
+- Composition surface inheriting source primitive's composition chrome per §3.26.11.13.11 (Email + SMS + Phone + Messaging integration)
+
+**Per-template real-time-thread variation**:
+- `job` template: cross-tenant common scope; per-tenant participant section grouping; sub-Focus reference cards inline (Load sub-Focuses surface in Job real-time-thread context)
+- `quality-issue` template: rapid-response coordination with escalation chrome; threshold-watch escalation chrome surfaces inline when threshold-watch core element present
+
+**Message authoring chrome canonical**: inline composition surface at thread bottom (parallel to §14.13.3 Messaging primitive composition surface); composition surface adapts per source primitive integration; per-Focus participant resolution + linked entity context inheritance per §3.26.11.13.11.
+
+**Cross-references**: §3.26.11.13.5 core element catalog; §3.26.11.13.11 per-primitive integration chrome; §3.26.19.5 cross-primitive embedding; §14.13 Messaging primitive visual canon (composition surface precedent).
+
+### 14.15.3 Scheduled-coordination core element visual canon
+
+Scheduled-coordination renders calendar-anchored coordination chrome with structured agenda + meeting flow + post-event continuation.
+
+**Scheduled-coordination chrome composition**:
+- Primary calendar event reference at top of chrome (linked Calendar event from §3.26.16 calendar primitive)
+- Agenda sections rendered as Pattern 2 sub-cards within chrome (template-defined agenda structure per §3.26.11.13.4)
+- Meeting flow chrome: pre-event preparation section + during-event participation section + post-event continuation section
+- Post-event continuation: agenda items not completed during event surface as outstanding-action items within Focus chrome
+
+**Per-template scheduled-coordination variation**:
+- `pour-week` template: weekly cron-anchored coordination period; structured agenda (Monday production planning + Tuesday-Friday daily check-ins + Friday week-end summary)
+- `mold-changeover` template: changeover-anchored coordination period; structured agenda (pre-changeover preparation + changeover execution + post-changeover verification)
+
+**Calendar event reference chrome canonical**: primary calendar event reference renders as Pattern 2 sub-card with calendar event chrome (per §14.10 Calendar primitive visual canon). Click-to-summon-calendar-event-peek affordance.
+
+**Agenda section chrome canonical**: per-section Pattern 2 sub-card with section title + agenda items + completion state indicator; per-agenda-item state chrome (pending / in-progress / completed); outstanding-action-items rollup at chrome footer when post-event continuation active.
+
+**Cross-references**: §3.26.11.13.5 core element catalog; §3.26.11.13.11 per-primitive integration chrome; §14.10 Calendar primitive visual canon; §3.26.16 Calendar primitive canonical.
+
+### 14.15.4 Threshold-watch core element visual canon
+
+Threshold-watch renders metric-monitored coordination chrome with metric dashboard + threshold visualization + intervention timeline + escalation chrome.
+
+**Threshold-watch chrome composition**:
+- Metric dashboard at top of chrome — primary metric visualization (chart or single-stat) + threshold indicator (current value vs threshold value + trend direction)
+- Threshold visualization chrome: metric trajectory over time with threshold line + current state indicator
+- Intervention timeline section: chronological intervention attempts (operator interventions + automated escalations + Intelligence-suggested actions)
+- Escalation chrome: per-template escalation rules surface (current escalation level + escalation thresholds + escalation participant routing)
+
+**Per-template threshold-watch variation**:
+- `quality-issue` template (when threshold trigger present): quality metric monitoring (defect rate + customer complaint count + production reject rate); per-template escalation rules
+- `mold-changeover` template (when threshold trigger present): equipment maintenance threshold monitoring (overdue days + production utilization); per-template escalation rules
+
+**Metric dashboard chrome canonical**: primary metric visualization (chart or single-stat); threshold line visualization (dashed line at threshold value + threshold-cross indicator); current state indicator (status-success below / status-warning approaching / status-error crossed).
+
+**Intervention timeline chrome canonical**: chronological intervention list rendered as Pattern 5 mid-dot separator chrome; per-intervention type chip (operator / automated / Intelligence-suggested); per-intervention outcome indicator (resolved / escalated / pending).
+
+**Escalation chrome canonical**: current escalation level chip at chrome top; escalation threshold visualization (per-level threshold line + current trajectory); escalation participant routing surfaces escalation participant catalog.
+
+**Cross-references**: §3.26.11.13.5 core element catalog; §3.26.11.13.7 auto-closure + notification routing extensions; §3.26.11.13.14 Coordination Focus Intelligence integration (`coordination_focus.summarize_state` powers threshold-watch summary); §14.12 Phone primitive visual canon (intervention timeline chrome precedent).
+
+### 14.15.5 Cross-tenant Coordination Focus chrome + bilateral consent visualization
+
+Genuinely new visual canon scope at canon level per Q9 + Q12 strengthening. Cross-tenant Coordination Focus is most common cross-tenant Focus type per §3.26.11.10.
+
+**Cross-tenant primitive visual canon discipline canonical** (per §3.26.11.13.12 + Q12 strengthening): "Cross-tenant primitive visual canon surfaces per-tenant ownership while presenting joint primitive-level events. Each tenant's visual surface preserves per-tenant audit ownership + per-tenant masking; cross-tenant attribution surfaces joint events with per-tenant identity preservation."
+
+**Cross-tenant Coordination Focus chrome composition**:
+- Cross-tenant indicator at chrome header (canonical `↗` glyph parallel to §14.9.4 + §14.10.x + §14.11.4 + §14.12.5 + §14.13.4 cross-tenant indicators)
+- Cross-tenant consent state chip at chrome header metadata row: `✓ Cross-tenant consent active` (status-success) / `Awaiting Hopkins consent` (status-warning) / `Hopkins revoked consent — Focus closing` (status-info muted)
+- Cross-tenant audit chip: `View audit trail` link surfaces per-tenant audit log convergence
+
+**Per-tenant participant section grouping** in participant catalog:
+- Participant catalog renders per-tenant sections (Hopkins FH section + Sunnycrest section)
+- Per-section header: tenant identity + per-tenant participant count
+- Per-participant rendering: avatar + name + role chip + state indicator
+- Cross-tenant masking applied per §3.25.x: Hopkins-side operator sees Sunnycrest participant identities per Sunnycrest masking rules
+- Magic-link participant rendering with cross-tenant masking: magic-link participants render with `↗ External: {role} (magic-link)` chip; identity per masking rules
+
+**Bilateral consent state visualization at participant level**:
+- Per-cross-tenant-participant consent state chip: `Consented + active` (status-success) / `Pending + invited` (status-warning) / `Revoked + archived` (status-info muted)
+- Consent revocation visual feedback: when participant revokes consent, participant row renders with revoked indicator + Focus chrome shifts to closing state visualization
+- Consent state synchronization: both tenants' Focus chrome render same consent state (per-tenant audit log records consent grants per side)
+
+**Per-tenant audit log convergence visualization**:
+- `View audit trail` link in chrome header surfaces per-tenant audit log
+- Audit trail rendering: chronological audit events with per-event tenant attribution chip (Hopkins event + Sunnycrest event)
+- Cross-tenant joint events render with cross-tenant attribution: "Hopkins+Sunnycrest joint event: service_booked"
+
+**Per-tenant identity preservation in cross-tenant attribution**: joint events render in both tenants' Focus chrome with cross-tenant attribution; per-tenant attribution preserves per-tenant identity (Hopkins-side operator sees "Mary Hopkins (Hopkins FH) confirmed Thursday service"; Sunnycrest-side operator sees same event with "Hopkins confirmed Thursday service" attribution); cross-tenant masking inheritance applied per §3.25.x.
+
+**Cross-tenant operational state propagation chrome**: when joint event propagates state changes (e.g., joint `service_completed` triggers FH case state transition + manufacturer SalesOrder state transition), state propagation chip surfaces in both tenants' Focus chrome: `Joint state propagated: {entity references}`. Per-tenant state references resolved per-tenant masking.
+
+**Cross-references**: §3.26.11.10 cross-tenant Focus consent model substrate; §3.26.11.13.12 cross-tenant participant routing detail (canonical pattern statement); §3.26.11.9 magic-link participant scope substrate; §3.25.x cross-tenant masking canonical; §14.10.x + §14.11.4 + §14.12.5 + §14.13.4 cross-tenant primitive chrome (parallel patterns); §3.26.11.13.11 per-primitive integration chrome (Focus attribution chip pattern).
+
+### 14.15.6 Sub-Focus hierarchy visualization + cross-references
+
+Sub-Focus hierarchy visualization canonical per §3.26.11.13.13 + Q13 confirmation. Job → Load canonical hierarchy at September; embedded sub-Focus reference cards within parent Focus core element rendering.
+
+**Sub-Focus reference card composition** (Pattern 2 sub-card chrome within parent Focus chrome content area):
+- Sub-Focus title at top of card
+- Sub-Focus state indicator: `●  Active` (status-success) / `○  Pending` (status-muted) / `◐  Closing` (status-warning) / `─  Closed` (status-content-muted)
+- Sub-Focus key participant: rendered with avatar + role chip
+- Sub-Focus brief context: template-specific context (Load sub-Focus shows delivery details: "8am pickup — Driver Mike + foreman")
+- Click-to-summon-child-Focus affordance: clicking sub-Focus reference card opens child Focus modal-overlay
+
+**Sub-Focus addition affordance** (canonical for `job` template; permitted-but-explicit for other templates per §3.26.11.13.13 Q13):
+- `Add sub-Focus` button in parent Focus chrome footer
+- Click opens sub-Focus creation modal (template selector + initial participant + linked entity context inheritance from parent)
+- Per template configuration: `job` template renders Add sub-Focus affordance prominently; non-canonical templates render Add sub-Focus affordance only when Workshop Compose mode customization adds support
+
+**Cascade closure visual feedback**:
+- Parent close prompt surfaces child-cascade confirmation modal: "Closing Job will close 3 active Load Focuses; confirm?"
+- Per-child closure state visualization: children transition to closing state in parent's sub-Focus reference card rendering during cascade
+- Per-child cascade completion: child closure timestamp surfaces in audit log
+
+**Scope inheritance visualization**:
+- Parent participants render with passive child-status visibility chip when sub-Focus support active: "Job participants see all 3 Load status snapshots"
+- Child participants render scope-limited indicator in child Focus chrome (cannot navigate to parent unless template explicitly elevates)
+
+**Per-template sub-Focus visualization variation**: `job` template (canonical Job → Load): full sub-Focus reference rendering + Add sub-Focus affordance prominent + cascade closure confirmation. Non-canonical templates: sub-Focus reference rendering only when template configured for sub-Focus support via Workshop Compose mode.
+
+**Cross-references for §14.15 — Coordination Focus Visual Canon**:
+- **§14** (Communications Visual System) — sibling visual canon pattern
+- **§14.9-§14.13** (Email + Calendar + SMS + Phone + Messaging Primitive Visual Canons) — sibling visual canon patterns
+- **§14.14** (Generation Focus Visual Canon) — sibling Focus type visual canon pattern
+- **§13.4.1** — density-tier opt-in canonical reference
+- **§11 Pattern A** + **§11 Pattern C** — Layer Composition Patterns
+- **§6** — overlay family canon (Focus modal-overlay inherits this canon)
+- **BRIDGEABLE_MASTER.md §3.26.11.13** — Coordination Focus primitive domain arc canon
+- **BRIDGEABLE_MASTER.md §3.26.11.13.5** — core element catalog scoping
+- **BRIDGEABLE_MASTER.md §3.26.11.13.10** — Workshop integration mechanics
+- **BRIDGEABLE_MASTER.md §3.26.11.13.11** — per-primitive integration chrome (Focus attribution chip pattern)
+- **BRIDGEABLE_MASTER.md §3.26.11.13.12** — cross-tenant participant routing detail (cross-tenant primitive visual canon discipline)
+- **BRIDGEABLE_MASTER.md §3.26.11.13.13** — sub-Focus hierarchy detail
+- **BRIDGEABLE_MASTER.md §3.26.11.13.18** — canonical design disciplines (12 architectural disciplines)
+- **BRIDGEABLE_MASTER.md §3.26.11.13.19** — canonical anti-patterns catalog (runtime sub-Focus addition complexity rejected)
+
+---
+
 ## Section 15 — Briefing Visual System
 
 Visual canon for morning + evening briefings — three-state machine visualization, per-state typography, per-state composition. Companion to BRIDGEABLE_MASTER §3.26.10 (architectural).

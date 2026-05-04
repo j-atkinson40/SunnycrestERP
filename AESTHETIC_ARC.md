@@ -1227,6 +1227,97 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 
 ---
 
+## Session 8 — Coordination Focus Primitive Domain Arc Canon (canon locked, 2026-05-16)
+
+Architectural canon session matching Session 5 Phone primitive cadence at canonical-quality depth. Coordination Focus primitive domain arc canonicalized at new top-level §3.26.11.13 — extends existing §3.26.11.3 compact framing without superseding it; foundational infrastructure at §3.26.11.6-§3.26.11.11 already shipped. **Five Concrete Signals canonical pattern locks across Sessions 2-6 communication primitive Coordination Focus integration subsections** — Signal 1 (Coordination Focus primitive domain arc) ships post-Session-8; Signals 2-5 already shipped at canon level. Communication primitives' Coordination Focus integration unblocked at canon level; W-4b implementation arcs (Calendar/SMS/Phone/Messaging Step 1) sequenced to follow Session 8 closure per §3.26.6.4 sequencing canon.
+
+21 BRIDGEABLE_MASTER subsections + 6 DESIGN_LANGUAGE visual canon subsections locking Coordination Focus primitive domain arc against settled foundation. Total ~5 hours focused work; canon doc batch write at session close.
+
+### Phase A — Coordination Focus primitive domain arc emergence + entity model + lifecycle + template registry + promotion mechanics + cross-primitive integration architecture + auto-closure extensions + initial deferrals (8 subsections)
+
+§3.26.11.13 introduced as Coordination Focus primitive domain arc comprehensive subsection (21 sub-subsections — substantive multi-primitive integration scope proportional to Coordination Focus's integration with all five communication primitives). Coordination Focus established as **multi-primitive integration substrate** distinct from Generation Focus's producer-shape Focus type extension at §3.26.11.12.
+
+**Architectural framing — Coordination Focus as multi-primitive integration substrate**: Coordination Focus integrates across ALL five communication primitives (Email + Calendar + SMS + Phone + Messaging) + Generation Focus + sub-Focus hierarchy + cross-tenant + magic-link + Workshop authoring + Intelligence integration. Substantive integration scope warrants substantive canonicalization at primitive domain arc depth.
+
+**Extension discipline canonical** (§3.26.11.13.1): Session 8 EXTENDS existing §3.26.11.3 compact framing without superseding it. Type-level overview at §3.26.11.3 preserves canonical coherence; primitive domain arc at §3.26.11.13 canonicalizes substantive depth. Foundational infrastructure already shipped at canon level (§3.26.11.6-§3.26.11.11) — §3.26.11.13 EXTENDS this foundation rather than re-canonicalizing.
+
+**Entity model canonical** (§3.26.11.13.2): single `coordination_focus_instances` table with `template_type` discriminator + single `coordination_focus_participants` entity with `participant_type` discriminator. **Fifth canonical application of single-entity-with-discriminator meta-pattern post-Session-8** — pattern locks across substantively different primitive types (4 communication primitives + 2 Focus type extensions).
+
+### Phase A — Q1-Q9 deliberations + 2 strengthenings + 1 refinement integrated
+
+Nine architectural questions surfaced + resolved with 2 canon-defense strengthenings + 1 refinement integrated:
+
+- **Q1 single-entity-with-discriminator instance model** confirmed (5th canonical application of meta-pattern post-Session-8)
+- **Q2 single-entity-with-discriminator participant model** confirmed canon-defense direction with strengthening — canonical pattern statement added at canon level: "Single-entity-with-discriminator preserves operational query patterns across all variants over schema field concentration per type. Per-type variation via discriminator + nullable per-type fields cleaner than per-type entities when entity participates in operational query patterns spanning multiple types."
+- **Q3 lifecycle state machine** confirmed (4 trigger types + state transitions + per-trigger configuration + dispatch infrastructure)
+- **Q4 5 canonical templates** confirmed (load + job + pour-week + mold-changeover + quality-issue; cross-vertical job template canonical Wilbert demo scenario)
+- **Q5 promotion mechanics** confirmed (Trigger 1 manual + Trigger 2 Intelligence-suggested canonical at September; Trigger 3 auto-promotion deferred per concrete signal)
+- **Q6 cross-primitive integration mechanics** confirmed canon-defense direction with strengthening — canonical pattern statement added at canon level: "Generic integration substrate over per-primitive integration mechanics canonicalization. When primitive integrates with multiple existing primitives, generic integration substrate at canonical-quality depth + per-primitive variation via discriminator preserves architectural simplicity."
+- **Q7 sub-Focus declaration scope** confirmed (per-template sub-Focus declaration canonical; Job → Load canonical at September)
+- **Q8 Intelligence integration prompt scope** confirmed with refinement (5 prompts canonical at September; `coordination_focus.detect_completion` deferred — completion detection is structured-condition evaluation infrastructure, NOT Intelligence prompt)
+- **Q9 visual canon scope** confirmed (§14.15 extension canonical with 6 subsections)
+
+### Phase B — Per-template-type details + Workshop integration + per-primitive integration chrome + cross-tenant participant routing + sub-Focus hierarchy detail + Intelligence integration + audio expression + visual canon framing (8 subsections)
+
+§3.26.11.13.9-§3.26.11.13.16. Per-template-type configuration shape detail (7 canonical configuration dimensions) + Workshop integration mechanics (Tune + Compose mode canonical; **Workshop template-type catalog post-Session-8 extends to 21+**) + per-primitive integration chrome detail (5 chrome dimensions + Focus attribution chip pattern canonical) + cross-tenant participant routing detail (per-tenant participant catalog inheritance + cross-tenant participant chrome) + sub-Focus hierarchy detail (Job → Load canonical hierarchy at September) + Coordination Focus Intelligence integration (5 managed prompts) + audio expression canonical per template + visual canon framing.
+
+**Workshop authoring complexity hierarchy** (post-Session-8): Email = text + variables (lightest) → SMS → Calendar event → Phone managed prompt → Messaging → **Coordination Focus = lifecycle trigger configuration + participant resolution rules + sub-Focus declaration + auto-closure completion criteria + notification routing extensions + magic-link scope declaration + cross-tenant defaults + per-primitive integration chrome (second-richest authoring surface)** → Generation Focus (heaviest).
+
+**Cumulative cross-primitive managed Intelligence prompt count post-Session-8**: ~46-47 (post-Session-7 ~41-42 + Coordination Focus 5 prompts post-Q8 refinement).
+
+**Q10-Q15 Phase B deliberations resolved with 1 strengthening + 1 refinement integrated**:
+- **Q10 Workshop integration mechanics** confirmed (Tune + Compose mode framing sufficient; Compose+ rejected)
+- **Q11 per-primitive integration chrome** confirmed (5 chrome dimensions + Focus attribution chip pattern canonical at canon level — future primitive work inherits chip-shaped Focus reference pattern)
+- **Q12 cross-tenant participant routing detail** confirmed canonical with strengthening — canonical pattern statement added at canon level: "Cross-tenant primitive visual canon surfaces per-tenant ownership while presenting joint primitive-level events. Each tenant's visual surface preserves per-tenant audit ownership + per-tenant masking; cross-tenant attribution surfaces joint events with per-tenant identity preservation."
+- **Q13 sub-Focus hierarchy detail** confirmed (per-template sub-Focus declaration; runtime sub-Focus addition complexity rejected at September scope per anti-pattern catalog)
+- **Q14 per-template participant_resolution_rules canonical configuration shape** confirmed (3 declaration types: per-role + per-event-type + per-state-transition)
+- **Q15 audio expression canonical per Coordination Focus template** confirmed with refinement — canonical clarity added: "Voice command grammar patterns are template-level configurations declaring voice query patterns; voice grammar interpretation inherits Command Bar entity-resolution canonical pattern per §3.26.20.3 audio-surface canonical disciplines. Per-template voice command grammar configurations are NOT additional Intelligence prompts beyond §3.26.11.13.14 canonical scope."
+
+### Phase C — Visual canon + canonical design disciplines + anti-patterns catalog + deferral reconciliation + strategic vision integration (5 BRIDGEABLE_MASTER subsections + 6 DESIGN_LANGUAGE subsections)
+
+§3.26.11.13.17-§3.26.11.13.21 + §14.15. Visual canon at canon level + 12 canonical architectural disciplines (1 more than Session 7 Generation Focus 11-discipline catalog — proportional to Coordination Focus's substantive multi-primitive integration scope) + 6 canonical anti-patterns catalog + consolidated deferral catalog at §3.26.11.13.20 + strategic vision integration with long-arc Coordination Focus extensions documented (FH + cemetery + healthcare + financial-services vertical templates).
+
+**Coordination Focus Visual Canon extends §14 with §14.15** (Q9 + Q16 confirmation): six subsections — §14.15.1 Coordination Focus chrome + §14.15.2 Real-time-thread + §14.15.3 Scheduled-coordination + §14.15.4 Threshold-watch + **§14.15.5 Cross-tenant Coordination Focus chrome + bilateral consent visualization (genuinely new visual canon scope at canon level)** + §14.15.6 Sub-Focus hierarchy visualization. Pattern locks finally across all five Focus types at canonical-quality depth.
+
+**6-pattern canonical anti-patterns catalog post-Session-8**: Anti-pattern 1 auto-promotion rejected + Anti-pattern 2 runtime sub-Focus addition complexity rejected + Anti-pattern 3 per-primitive integration mechanics separate canonicalization rejected + Anti-pattern 4 decomposed participant model entity per type rejected + Anti-pattern 5 synchronous lifecycle trigger blocking dispatch rejected + Anti-pattern 6 Compose+ mode rejected (inherited from Session 7 Generation Focus).
+
+**Cumulative cross-primitive canonical anti-patterns post-Session-8**: ~13 (12 distinct + 1 inherited).
+
+**Q16-Q20 Phase C deliberations resolved cleanly** (no additional strengthenings or refinements):
+- **Q16 §14.15 extension canonical** confirmed (cross-tenant primitive visual canon discipline established at canon level for first time)
+- **Q17 dual-location framing canonical** confirmed (12-discipline catalog calibration proportional to Coordination Focus's substantive multi-primitive integration scope)
+- **Q18 consolidated deferral catalog** confirmed (canonical pattern for future canon work)
+- **Q19 strategic vision integration scope** confirmed (Reach abstraction integration scope demonstrates Coordination Focus canon framework's genuine future-extensibility)
+- **Q20 6-pattern catalog** confirmed (cross-primitive canonical anti-patterns index at single canonical location flagged for post-Session-8 documentation hygiene work; not Session 8 scope)
+
+### Phase A + B + C refinements integrated
+
+- 2 Phase A strengthenings: canonical pattern statement at §3.26.11.13.2 (operational query pattern discipline); canonical pattern statement at §3.26.11.13.6 (generic integration substrate discipline)
+- 1 Phase A refinement: §3.26.11.13.8 detect_completion deferral
+- 1 Phase B strengthening: canonical pattern statement at §3.26.11.13.12 (cross-tenant primitive visual canon discipline)
+- 1 Phase B refinement: §3.26.11.13.15 voice command grammar canonical clarity
+- 20 architectural questions Q1-Q20 deliberated and resolved across three phases
+
+**Architectural model post-Session-8**: 5 primitives + fractal Pulse + universal Command Bar + Workshop primitive + comprehensive Email + Calendar + SMS + Phone + Messaging primitive canon + 5 Focus types canonicalized at canon-faithful depth (Decision + Coordination §3.26.11.13 + Execution + Review + Generation §3.26.11.12). All five Layer 1 communication primitives + all five Focus types canonicalized at canon-faithful depth — including substantive primitive domain arc canonicalization at §3.26.11.13 for Coordination Focus.
+
+**Cross-primitive canon totals post-Session-8**:
+- 16 action_types canonical
+- **21+ Workshop template types canonical** (Email 1 + Calendar 3 + SMS 5 + Phone 7 + Messaging 3 + Generation Focus 1+ + Coordination Focus 1+)
+- **~46-47 managed Intelligence prompts canonical** across Layer 1 communication primitives + Generation Focus + Coordination Focus
+- **5 Focus types canonicalized** at canon-faithful depth
+- **~13 cumulative canonical anti-patterns** in catalog (12 distinct + 1 inherited)
+- Coordination Focus arc dependency tracked symmetrically across all five communication primitives
+- **Single-entity-with-discriminator meta-pattern locks finally** across SMS + Phone + Messaging + Generation Focus + Coordination Focus (5th canonical application post-Session-8)
+- Communication primitives' Coordination Focus integration unblocked at canon level
+
+**Total canon work post-Session-8**: Sessions 1 + 1.5 + 2 + 3 + 4 + 5 + 6 + 7 + 7.5 + 7.6 + 8 ≈ 33-37h dedicated canon work. Substantial; bounded; architecturally justified per §3.26.7.5 ("MVP cuts compound as debt"). Five communication primitives + five Focus types canonicalized at canon-faithful depth before any implementation-time canon-vs-implementation drift surfaces.
+
+**Sequencing forward**: W-4b implementation arcs (Calendar/SMS/Phone/Messaging Step 1) sequenced to follow Session 8 closure per §3.26.6.4 sequencing canon. Cross-primitive canonical anti-patterns index at single canonical location flagged for post-Session-8 documentation hygiene work (not Session 8 scope; bounded refinement worth tracking).
+
+**Canon doc updates this session**: BRIDGEABLE_MASTER §3.26.11.13 NEW (21 subsections); DESIGN_LANGUAGE §14.15 NEW (6 sub-sections including cross-references); AESTHETIC_ARC Session 8 entry; CLAUDE.md §14 entry. **No code shipped.**
+
+---
+
 ## Session 7.6 — Audio Surface Principle Short Canon Update (canon locked, 2026-05-15)
 
 Tier 1 documentation closure work. Single canon update locked at §3.26.20 preserving Audio Surface Principle at canon level. **Final Tier 1 documentation work — Tier 1 documentation arc closes post-Session-7.6.**

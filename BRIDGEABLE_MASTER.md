@@ -5434,6 +5434,338 @@ Each long-arc canonicalization preserves Generation Focus canon framework — si
 
 **Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.11.12.3 entity model; §3.26.11.12.6 per-template-type destination canon; §3.26.11.12.9 Workshop integration mechanics; §3.26.11.12.12 Intelligence layer integration; §3.26.11.12.17 final deferral catalog reconciliation.
 
+#### 3.26.11.13 Coordination Focus Primitive Domain Arc
+
+Coordination Focus primitive domain arc — substantive canonicalization of Coordination Focus instance model + lifecycle state machine + template registry + promotion mechanics + cross-primitive integration architecture + per-template extensions to existing §3.26.11.6-§3.26.11.11 foundational canon. **Session 8 EXTENDS existing §3.26.11.3 compact framing rather than canonicalizing from scratch** — type-level overview at §3.26.11.3 preserves canonical coherence; primitive domain arc at §3.26.11.13 canonicalizes substantive depth proportional to Coordination Focus's integration scope across all five communication primitives + Generation Focus + sub-Focus hierarchy + cross-tenant + magic-link + Workshop authoring + Intelligence integration.
+
+**Architectural framing — Coordination Focus as multi-primitive integration substrate**: Coordination Focus is the canonical Focus type that integrates across ALL five communication primitives (Email §3.26.15 + Calendar §3.26.16 + SMS §3.26.17 + Phone §3.26.18 + Messaging §3.26.19) + Generation Focus (§3.26.11.12) cross-primitive composition + sub-Focus hierarchy (§3.26.11.6) + cross-tenant Focus consent (§3.26.11.10) + magic-link participant scope (§3.26.11.9). Substantive integration scope warrants substantive canonicalization at primitive domain arc depth.
+
+**Domain arc canonicalization unblocks Five Concrete Signals canonical pattern** (canonicalized across §3.26.15.23 + §3.26.16.23 + §3.26.17.22 + §3.26.18.25 + §3.26.19.17 communication primitive Coordination Focus integration subsections):
+1. **Coordination Focus primitive domain arc shipped** ← Session 8 canonicalizes
+2. Sub-Focus hierarchy shipped (per §3.26.11.6) ← already shipped at canon level
+3. Cross-tenant Focus consent model shipped (per §3.26.11.10) ← already shipped at canon level
+4. Focus-scoped magic-link participant infrastructure shipped (per §3.26.11.9) ← already shipped at canon level
+5. Workshop primitive shipped (per §3.26.14) ← already shipped at canon level
+
+Single Coordination Focus arc unblocks all five communication primitives' integration per §3.26.16.23 + §3.26.17.22 + §3.26.18.25 + §3.26.19.17 canonical deferral pattern.
+
+##### 3.26.11.13.1 Coordination Focus primitive domain arc emergence + relationship to existing §3.26.11.3 compact canon
+
+Coordination Focus primitive domain arc emergence per Session 8 canon work. Existing §3.26.11.3 compact framing (~25 lines prose covering lifecycle + participants + 3-element catalog + 5-template list + cross-tenant scope note) provides type-level overview at canonical-coherence depth — suitable for §3.26.11 Focus Primitive Types canonical pattern where four consumer Focus types share consistent type-level overview shape.
+
+**Extension discipline canonical**: Session 8 EXTENDS existing §3.26.11.3 framing without superseding it. §3.26.11.3 remains canonical type-level overview reference; §3.26.11.13 canonicalizes substantive primitive domain arc depth. Operators reading canon find type-level overview at §3.26.11.3; operators needing primitive domain arc detail navigate to §3.26.11.13. Pattern preserves canonical coherence at §3.26.11 type-level + scales canonical depth at §3.26.11.13 domain-arc-level.
+
+**Foundational infrastructure already shipped at canon level** (canonicalization scope reduction): §3.26.11.6 Sub-Focus Hierarchy + §3.26.11.7 Notification Routing + §3.26.11.8 SMS Thread Routing + §3.26.11.9 Magic-Link Participant Scope + §3.26.11.10 Cross-Tenant Focus Scope + §3.26.11.11 Auto-Closure Semantics. §3.26.11.13 EXTENDS this foundation rather than re-canonicalizing.
+
+**Cross-references**: §3.26.11.3 type-level overview; §3.26.11.6-§3.26.11.11 foundational infrastructure; §3.26.15.23 + §3.26.16.23 + §3.26.17.22 + §3.26.18.25 + §3.26.19.17 communication primitive Coordination Focus integration subsections; §3.26.7.5 + §3.26.7.6 architectural restraint discipline; §3.26.11.12.1 Generation Focus emergence (sibling Focus type extension precedent).
+
+##### 3.26.11.13.2 Entity model — single-entity-with-discriminator + participant model
+
+**Single `coordination_focus_instances` table with `template_type` discriminator canonical** parallel to §3.26.17.2 SMS + §3.26.18.2 Phone + §3.26.19.2 Messaging + §3.26.11.12.3 Generation Focus single-entity-with-discriminator pattern. **Fifth canonical application of single-entity-with-discriminator meta-pattern post-Session-8** — pattern locks across substantively different primitive types.
+
+**Coordination Focus instance entity** (canonical at canon level): `coordination_focus_instances`: `id` + `tenant_id` + `template_type` (discriminator: `load` / `job` / `pour-week` / `mold-changeover` / `quality-issue` / future templates) + `core_element` (discriminator: `real-time-thread` / `scheduled-coordination` / `threshold-watch`) + `state` (`triggered` / `active` / `closing` / `closed`) + `lifecycle_trigger` (`event` / `time` / `threshold` / `manual`) + `parent_focus_id` (sub-Focus hierarchy) + `primary_communication_channel_thread_id` (promotion mechanics) + `cross_tenant_consent_state` (per §3.26.11.10) + lifecycle timestamps + `dormancy_threshold` (per-template; default 72hr) + `template_config_json`.
+
+**Participant model — single participant entity with discriminator canonical** per Q2 lean direction (canon-defense framing):
+
+`coordination_focus_participants`: `id` + `coordination_focus_id` (FK) + `tenant_id` + `participant_type` (discriminator: `standard` / `cross_tenant` / `magic_link` / `sms_only`) + `user_id` + `external_phone_number` + `external_tenant_id` + `magic_link_token` + `magic_link_expiry` + `role_in_focus` + lifecycle state + audit trail.
+
+**Q2 architectural-restraint moment** (canon-defense framing): architectural temptation toward decomposition (separate per-type entities) rejected. False granularity tradeoff — single-entity-with-discriminator preserves operational query patterns (filter participants by role; route notifications to all participants; close Focus → revoke all participants) without per-type entity joins.
+
+**Canonical pattern statement** (per Q2 strengthening): "Single-entity-with-discriminator preserves operational query patterns across all variants over schema field concentration per type. Per-type variation via discriminator + nullable per-type fields cleaner than per-type entities when entity participates in operational query patterns spanning multiple types (filter by attribute, route notifications, lifecycle transitions)." Pattern statement generalizes canon-defense rationale to canonical pattern applicable across future entity model decisions.
+
+**Cross-tenant pairing**: when Coordination Focus spans tenant boundary, separate `cross_tenant_focus_pairing` junction tracks paired Focus instances per §3.26.11.10 consent model.
+
+**Schema discipline at canon level**: canon locks template_type discriminator + 4-trigger-type lifecycle + state machine + participant model with discriminator + cross-tenant pairing + sub-Focus parent-child relationship. Detailed schema deferred to Phase W-4d Coordination Focus implementation arc per §3.26.7.5.
+
+##### 3.26.11.13.3 Lifecycle state machine — 4 trigger types + dispatch infrastructure
+
+**Canonical state transitions**: `triggered` (initial state) → `active` (first participant accepts; primary state) → `closing` (completion criteria met OR dormancy threshold OR consent revoked) → `closed` (terminal; instance retained for audit).
+
+**4 canonical trigger types** (per §3.26.11.3 existing canon):
+
+**Event trigger**: external event creates coordination need (e.g., "FH Hopkins booked Smith service"). Trigger dispatch: event source primitive fires lifecycle trigger event; Coordination Focus instantiated per template configuration matching event signature.
+
+**Time trigger**: scheduled coordination period at canonical recurrence cadence (e.g., "weekly mold-changeover Sunday 06:00"). Trigger dispatch: APScheduler cron pattern per existing Bridgeable scheduler infrastructure.
+
+**Threshold trigger**: metric crosses action threshold (e.g., "AP aging exceeded 30 days for 5 vendors"). Trigger dispatch: threshold monitoring per existing scheduler pattern; per-template threshold configuration.
+
+**Manual trigger**: operator declares coordination period. Trigger dispatch: Command Bar summoning per §3.26.13 OR Pulse-launched + workspace navigation per Generation Focus three-channel surfacing pattern §3.26.11.12.8.
+
+**Trigger dispatch infrastructure canonical**: Bridgeable scheduler (existing APScheduler pattern) handles Time + Threshold trigger dispatch. Event trigger fires per source-primitive event publication. Manual trigger fires per Command Bar / Pulse / workspace navigation invocation.
+
+**Cross-references**: §3.26.11.3 canonical trigger types; §3.26.11.11 auto-closure semantics; §10 Agent Jobs (scheduler infrastructure); §3.26.13 Command Bar (Manual trigger summoning); §3.26.11.12.8 Generation Focus three-channel surfacing pattern (inherited).
+
+##### 3.26.11.13.4 Template registry — 5 canonical templates + per-template configuration
+
+5 canonical templates per §3.26.11.3: load + job + pour-week + mold-changeover + quality-issue. Per-template-type configuration shape: lifecycle trigger configuration + participant resolution rules + sub-Focus declaration + auto-closure completion criteria + notification routing extensions + magic-link scope declaration + cross-tenant defaults + audio expression configuration + vertical scoping + product-line activation gating.
+
+**5 canonical templates at September scope**:
+1. **`load`** — single-load coordination; sub-Focus child of `job`; manufacturing + `vault` activated
+2. **`job`** — full-service coordination spanning multiple loads; parent of N `load` Focuses; cross-vertical (canonical Wilbert demo scenario for Hopkins+Sunnycrest joint coordination)
+3. **`pour-week`** — weekly production coordination; manufacturing + `vault` activated; Time trigger
+4. **`mold-changeover`** — equipment changeover coordination; manufacturing; Time OR Threshold trigger
+5. **`quality-issue`** — rapid-response war room; cross-vertical; Manual trigger primary; Threshold trigger secondary
+
+Future template-type extensions deferred per §3.26.7.5 (FH vertical + cemetery vertical + healthcare vertical + financial-services vertical templates). Each deferred per architectural restraint discipline.
+
+**Cross-references**: §3.26.11.3 canonical 5 templates; §3.26.11.6 sub-Focus hierarchy; §3.26.11.7 notification routing; §3.26.11.9 magic-link scope; §3.26.11.10 cross-tenant consent; §3.26.11.12.18 Generation Focus strategic vision integration.
+
+##### 3.26.11.13.5 Promotion mechanics — Trigger 1 (manual) + Trigger 2 (Intelligence-suggested) + Trigger 3 (auto-promotion deferred)
+
+Promotion mechanics canonical pattern: communication primitive thread (Email + SMS + Phone + Messaging + Calendar) promotes to Coordination Focus instance via three trigger types canonically. **Parent thread becomes `primary_communication_channel_thread_id`** on Coordination Focus instance per §3.26.11.13.2 entity model; thread continuity preserved post-promotion.
+
+**Trigger 1 — Manual operator promotion (canonical baseline)**: operator clicks "Promote to Coordination Focus" affordance; selects template type; Coordination Focus instantiated; thread participants → Focus participants per template `participant_resolution_rules`; thread becomes `primary_communication_channel_thread_id`.
+
+**Trigger 2 — Intelligence-suggested promotion via Workshop home Section 4 (canonical at September)**: Workshop Intelligence-suggested customizations per §3.26.14 detect thread patterns matching Coordination Focus template signatures. Operator reviews suggestion + accepts/dismisses; acceptance triggers Trigger 1 mechanics with pre-populated template selection. Operator agency preserved per §3.26.14.14 (suggestion is offering, not imposition).
+
+**Trigger 3 — Auto-promotion deferred per §3.26.7.5**: auto-promotion (Intelligence detects thread pattern → automatically promotes without operator review) explicitly deferred. Concrete signal: tenant operational pattern indicates auto-promotion operational value with high-confidence pattern matching reducing operator review overhead. Operator agency discipline canonical per §3.26.14.14.5. **Auto-promotion canonical anti-pattern guard at §3.26.11.13.19 Anti-pattern 1.**
+
+**Cross-references**: §3.26.11.13.2 entity model; §3.26.14.14 Workshop Intelligence-suggested customizations (Trigger 2 substrate); §3.26.14.14.5 operator agency discipline; §3.26.15.23 + §3.26.16.23 + §3.26.17.22 + §3.26.18.25 + §3.26.19.17 communication primitive integration subsections.
+
+##### 3.26.11.13.6 Cross-primitive integration architecture
+
+Coordination Focus integrates with all five communication primitives via canonical integration substrate. Q6 deliberation surfaces architectural-restraint moment: generic integration substrate that primitives extend (lean direction) vs per-primitive integration mechanics canonicalized separately.
+
+**Q6 architectural-restraint moment** (canon-defense framing): per-primitive integration mechanics canonicalization rejected — false granularity tradeoff. Generic integration substrate that primitives extend preserves architectural simplicity; per-primitive variation handled via discriminator + per-primitive integration chrome at template configuration level.
+
+**Canonical pattern statement** (per Q6 strengthening): "Generic integration substrate over per-primitive integration mechanics canonicalization. When primitive integrates with multiple existing primitives, generic integration substrate at canonical-quality depth + per-primitive variation via discriminator preserves architectural simplicity over per-primitive integration mechanics separate canonicalization." Pattern statement generalizes canon-defense rationale.
+
+**Generic integration substrate canonical**: Thread linkage canonical (`primary_communication_channel_thread_id` field per §3.26.11.13.2; thread entity reference resolves per source primitive at runtime) + Participant routing canonical (per §3.26.11.13.2 participant model with discriminator) + Cross-primitive composition canonical (Coordination Focus surfaces composition source for §3.26.19.5 Messaging primitive cross-primitive embedding without new embed type) + Audit log convergence canonical (per-tenant audit logs converge at Focus level via shared instance reference per §3.26.11.10) + Notification routing canonical (per §3.26.11.7 hybrid 3-layer architecture).
+
+**Per-primitive integration chrome at template configuration level**: per-template-type configuration declares per-primitive integration variation per §3.26.11.13.11.
+
+**Cross-references**: §3.26.15.23 + §3.26.16.23 + §3.26.17.22 + §3.26.18.25 + §3.26.19.17 communication primitive Coordination Focus integration subsections; §3.26.11.13.2 entity model; §3.26.11.13.5 promotion mechanics; §3.26.19.5 Messaging primitive cross-primitive embedding canon; §3.26.7.5 architectural restraint discipline.
+
+##### 3.26.11.13.7 Auto-closure + notification routing extensions beyond §3.26.11.11 + §3.26.11.7 baselines
+
+**Auto-closure extensions per template** (extends §3.26.11.11 baseline):
+- `load` template: completion = `delivery_completed AND invoiced_OR_invoicing_in_progress`; dormancy 24hr
+- `job` template: completion = `all_loads_completed AND all_invoiced AND no_quality_issues_open`; dormancy 7 days
+- `pour-week` template: completion = `week_end_reached OR all_pours_complete`; dormancy 24hr after week end
+- `mold-changeover` template: completion = `changeover_verified AND production_resumed`; dormancy 6hr
+- `quality-issue` template: completion = `issue_resolved OR escalation_to_other_focus`; dormancy configurable (default 48hr)
+
+**Notification routing extensions per template** (extends §3.26.11.7 hybrid 3-layer architecture): per-template event→role default routes layered onto Layer 1 deterministic baseline.
+
+**Per-template sub-Focus declaration** (per Q7 + §3.26.11.13.13): `job` template declares sub-Focus support for `load` template (canonical Job → Load hierarchy per §3.26.11.6). Other templates ship without default sub-Focus declaration.
+
+**Cross-references**: §3.26.11.11 auto-closure semantics canonical baseline; §3.26.11.7 notification routing canonical baseline; §3.26.11.6 sub-Focus hierarchy substrate; §3.26.11.13.4 template registry; §3.26.14 Workshop primitive.
+
+##### 3.26.11.13.8 Initial deferrals catalog (Phase A)
+
+Phase A initial deferral catalog; consolidated at Phase C closure.
+
+- **Auto-promotion deferred** per §3.26.7.5 (Trigger 3 per §3.26.11.13.5)
+- **Per-template-type retention policy variation deferred** per §3.26.7.5 (canonical default 90-day instance retention post-closure)
+- **Cross-tenant Coordination Focus mechanics extension beyond §3.26.11.10 deferred** per §3.26.7.5
+- **`coordination_focus.detect_completion` Intelligence prompt deferred** per §3.26.7.5 + Q8 refinement (default: structured-condition evaluation infrastructure handles completion detection via boolean logic)
+- **Decomposed participant model entity per type rejected (not deferred)** per Q2 canon-defense
+- **Per-primitive integration mechanics separate canonicalization rejected (not deferred)** per Q6 canon-defense
+- **Long-arc Coordination Focus templates deferred to vertical-specific canon emergence** (FH + cemetery + healthcare + financial-services vertical templates)
+
+Each deferred per §3.26.7.5 architectural restraint discipline.
+
+##### 3.26.11.13.9 Per-template-type configuration shape detail
+
+7 canonical configuration dimensions per template:
+1. **Lifecycle trigger configuration** (per-template trigger type assignment + per-trigger configuration)
+2. **Participant resolution rules** (per Q14: per-role + per-event-type + per-state-transition declaration)
+3. **Sub-Focus declaration** (per-template support flag + permitted child template types)
+4. **Auto-closure completion criteria** (boolean expression over operational metadata flags per Q8 refinement)
+5. **Notification routing extensions** (per-template event→role default routes layered onto §3.26.11.7 Layer 1)
+6. **Magic-link scope declaration** (per-template entity-types visible + internal-only marking per §3.26.11.9)
+7. **Cross-tenant defaults** (per-template cross-tenant default + per-template participant-side mapping per §3.26.11.10)
+
+**Configuration storage canonical**: `coordination_focus_templates` registry table with `template_type` PK + `template_config_json` JSONB column. Per-tenant overrides via `vault_items.metadata_json.coordination_focus_template_config` per Workshop Tune mode customization. Pattern parallel to Workshop primitive template-as-data discipline.
+
+**Cross-references**: §3.26.11.13.4 template registry; §3.26.11.13.3 lifecycle state machine; §3.26.11.13.7 auto-closure + notification routing extensions; §3.26.11.6 sub-Focus hierarchy substrate; §3.26.11.9 magic-link substrate; §3.26.11.10 cross-tenant substrate.
+
+##### 3.26.11.13.10 Workshop integration mechanics
+
+Coordination Focus templates rank as **second-richest authoring surface in Workshop primitive's template scope post-Session-8** — substantively richer than communication primitive templates + lighter than Generation Focus templates' canonical complexity.
+
+**Tune mode (lightweight customization via parameter adjustment)**: per-role participant resolution rule overrides + dormancy threshold adjustment + per-event notification routing amendment + magic-link scope tightening + cross-tenant default override. Tune mode operations: parameter overrides on existing template; cannot add/remove canonical structural elements.
+
+**Compose mode (substantial new template authoring)**: tenant authors new Coordination Focus template from scratch OR substantially modifies existing template structure including all 7 configuration dimensions + per-primitive integration chrome. Compose mode rare for structural authoring (typically performed by tenant admin OR Bridgeable customer success engineer at tenant onboarding when establishing tenant-specific Coordination Focus templates beyond canonical 5).
+
+**Operational reality preserves two-mode framing canonical** parallel to Session 7 Q9 confirmation: Tune mode dominant for routine tenant customization; Compose mode rare for structural authoring. Two-mode framing sufficient — Compose+ alternative rejected per §3.26.11.12.16 anti-pattern 7.
+
+**Workshop template-type catalog post-Session-8 (21+ template types)**: Email 1 + Calendar 3 + SMS 5 + Phone 7 + Messaging 3 + Generation Focus 1+ + **Coordination Focus 1+** per template type discriminator = **21+ Workshop template types**.
+
+**Cross-references**: §3.26.14 Workshop primitive canonical pattern; §3.26.11.13.9 per-template-type configuration shape; §3.26.11.13.4 template registry; §3.26.11.12.9 Generation Focus Workshop integration precedent.
+
+##### 3.26.11.13.11 Per-primitive integration chrome detail
+
+Per-primitive integration chrome canonical at template configuration level per §3.26.11.13.6 generic integration substrate. **5 per-primitive integration chrome dimensions** canonical:
+
+- **`integration_chrome_email`**: Email thread linkage rendering + per-Focus email composition affordances + Email-mediated Coordination Focus promotion chrome (per §3.26.15.23) + per-template email notification routing extensions
+- **`integration_chrome_calendar`**: Calendar event linkage rendering + per-Focus calendar event creation affordances + Calendar-mediated promotion chrome (per §3.26.16.23) + sub-Focus + parent Focus calendar event hierarchy
+- **`integration_chrome_sms`**: SMS thread routing per §3.26.11.8 4-layer routing + SMS-only participant chrome + per-Focus SMS composition affordances + SMS-mediated promotion chrome (per §3.26.17.22)
+- **`integration_chrome_phone`**: Call linkage rendering + call recording integration + per-Focus call composition affordances + Phone-mediated promotion chrome (per §3.26.18.25) + call series hierarchy within Coordination Focus
+- **`integration_chrome_messaging`**: Message thread linkage rendering + cross-primitive embedding per §3.26.19.5 + per-Focus messaging composition affordances + Messaging-mediated promotion chrome (per §3.26.19.17) + channel-thread coordination scope
+
+**Focus attribution chip pattern canonical at canon level** (per Q11): parallel to entity-mention chip per §3.26.19.5. Each primitive's surface renders Focus attribution chip when message/call/event/conversation linked to active Focus. Focus attribution chip carries Focus name + status indicator + click-to-summon-Focus affordance. **Future primitive work inherits chip-shaped Focus reference pattern.**
+
+**Per-primitive notification routing extension shape**: per-primitive `notification_routing` configuration declares which Focus events route through that primitive. **Per-primitive thread linkage rendering chrome**: each primitive's surface renders Focus attribution chip when linked to active Focus.
+
+**Cross-references**: §3.26.11.13.6 cross-primitive integration architecture; §3.26.15.23 + §3.26.16.23 + §3.26.17.22 + §3.26.18.25 + §3.26.19.17 communication primitive Coordination Focus integration subsections; §3.26.11.7 notification routing hybrid 3-layer architecture; §3.26.19.5 cross-primitive embedding canon.
+
+##### 3.26.11.13.12 Cross-tenant participant routing detail
+
+Cross-tenant Coordination Focus participant routing extends §3.26.11.10 cross-tenant Focus consent model + per-side participant routing canonical baseline.
+
+**Per-tenant participant catalog inheritance**: each tenant's Coordination Focus instance inherits participant resolution from that tenant's template configuration + tenant-specific user catalog. Each tenant sees own-side participant identities directly + partner-side participant identities per cross-tenant masking inheritance per §3.25.x.
+
+**Cross-tenant participant chrome** at participant catalog level: per-tenant participant section grouping + cross-tenant masking applied per §3.25.x + bilateral consent state visualization at participant level (per Q9 §14.15.5 visual canon scope).
+
+**Canonical pattern statement** (per Q12 strengthening): **"Cross-tenant primitive visual canon surfaces per-tenant ownership while presenting joint primitive-level events. Each tenant's visual surface preserves per-tenant audit ownership + per-tenant masking; cross-tenant attribution surfaces joint events with per-tenant identity preservation."** Pattern statement generalizes cross-tenant visual canon discipline to canonical pattern applicable across future cross-tenant primitive work. Bilateral consent state visualization at participant level + per-tenant audit log convergence visualization canonical at canon level.
+
+**Per-template cross-tenant participant routing rule extensions**: `job` template (canonical cross-tenant Wilbert demo scenario) — Hopkins-side participant resolution rules + Sunnycrest-side participant resolution rules; joint events propagate to both sides per §3.26.11.10. `quality-issue` template cross-tenant — manufacturer-side + customer-side liaison; bilateral consent state critical. `pour-week` + `mold-changeover` typically intra-tenant.
+
+**Magic-link participant scope** in cross-tenant Coordination Focus per §3.26.11.9 + §3.26.11.13 substrate: magic-link scope inherits cross-tenant masking from initiating tenant.
+
+**Cross-references**: §3.26.11.10 cross-tenant Focus consent model substrate; §3.26.11.9 magic-link participant scope substrate; §3.25.x cross-tenant masking canonical; §3.26.11.13.9 per-template-type configuration shape (cross-tenant defaults dimension); §14.15.5 cross-tenant chrome + bilateral consent visualization (Phase C visual canon).
+
+##### 3.26.11.13.13 Sub-Focus hierarchy detail
+
+**Per-template sub-Focus declaration shape** (per Q7 confirmation): per-template sub-Focus support flag + permitted child template types + default sub-Focus instances at parent instantiation.
+
+**Job → Load hierarchy canonical** (canonical Coordination Focus sub-Focus pattern at September): `job` template `supports_sub_focus: true`; `permitted_child_templates: [load]`; `default_sub_focus_instances: []` (loads added at runtime). Operator workflow: Job Coordination Focus instantiated → Load Coordination Focuses added at runtime → Load sub-Focuses surface in Job Focus's core element rendering per §3.26.11.6 containment model.
+
+**Other templates' runtime sub-Focus addition mechanics** (per §3.26.11.6 cross-type sub-Focus permitted-but-not-required canon): `pour-week`, `mold-changeover`, `quality-issue` templates ship with `supports_sub_focus: false` at September baseline. **Runtime sub-Focus addition complexity rejected at September scope** per §3.26.11.13.19 anti-pattern 2 — operators wanting sub-Focus in non-canonical templates require Workshop Compose mode customization.
+
+**Sub-Focus participant inheritance**: parent participants inherit passive child status visibility; child participants don't see parent unless template explicitly elevates. **Sub-Focus closure cascade per template**: cascade closure canonical per §3.26.11.6.
+
+**Cross-references**: §3.26.11.6 sub-Focus hierarchy canonical substrate; §3.26.11.13.4 template registry; §3.26.11.13.9 per-template-type configuration shape; §3.26.11.13.10 Workshop Compose mode authoring; §14.15.6 sub-Focus hierarchy visualization (Phase C visual canon); §3.26.11.13.19 anti-pattern 2.
+
+##### 3.26.11.13.14 Coordination Focus Intelligence integration
+
+**5 managed prompts canonical at September scope** (per Q8 refinement — `coordination_focus.detect_completion` deferred):
+
+1. **`coordination_focus.suggest_promotion`** (Sonnet) — Workshop Intelligence-suggested promotion based on thread pattern recognition. Powers Workshop home Section 4 + §3.26.11.13.5 Trigger 2.
+2. **`coordination_focus.classify_promotion_template`** (Haiku) — template type classification for suggested promotion.
+3. **`notification.focus.coordination.route`** (Haiku) — Layer 3 fallback routing for novel coordination events per §3.26.11.7 hybrid 3-layer architecture.
+4. **`coordination_focus.summarize_state`** (Haiku) — Coordination Focus state summarization for audio expression per §3.26.20.4 + briefing inclusion per §3.26.10.
+5. **`coordination_focus.suggest_participants`** (Haiku) — participant resolution suggestion when template participant_resolution_rules ambiguous.
+
+**Total Coordination Focus Intelligence prompt count at September scope**: 5 managed prompts canonical. **Cumulative cross-primitive managed Intelligence prompt count post-Session-8**: ~46-47.
+
+**`coordination_focus.detect_completion` deferred** per §3.26.7.5 + Q8: completion detection is structured-condition evaluation infrastructure (boolean logic over operational metadata flags), NOT Intelligence prompt at September. Concrete signal: tenant operational pattern indicates natural-language completion interpretation operational value.
+
+**Operator agency preserved via canonical anti-patterns** per §3.26.14.14.5 — Intelligence proposes; operator decides. Auto-promotion explicitly rejected per §3.26.11.13.19 anti-pattern 1.
+
+**Cross-references**: §3.26.18.6 Phone Intelligence pipeline confidence discipline (precedent); §3.26.14.14 Workshop Intelligence-suggested customizations; §3.26.11.7 notification routing hybrid 3-layer architecture; §3.26.20.4 Audio Surface Principle audio expression catalog; §3.26.10 briefings architecture.
+
+##### 3.26.11.13.15 Audio expression canonical per Coordination Focus template
+
+Per §3.26.20.4 Audio Surface Principle audio expression catalog: Coordination Focus audio = event update narration. **4 configuration dimensions per template** (per Q15):
+
+1. **Event narration patterns** — per-event narration template (e.g., `service_booked → "Hopkins booked the {decedent_name} service for {service_date}. Coordination Focus active."`)
+2. **Summary discipline** — per-template state summary shape for `coordination_focus.summarize_state` Intelligence prompt
+3. **Significant event filtering** — per-template event significance threshold for audio surface inclusion (high-significance: state transitions + completion + cross-tenant consent changes; low-significance suppressed)
+4. **Conversational interaction discipline** — per-template voice command affordances (voice query patterns + voice close intent patterns)
+
+**Canonical clarity** (per Q15 refinement): "Voice command grammar patterns are template-level configurations declaring voice query patterns; voice grammar interpretation inherits Command Bar entity-resolution canonical pattern per §3.26.20.3 audio-surface canonical disciplines. Per-template voice command grammar configurations are NOT additional Intelligence prompts beyond §3.26.11.13.14 canonical scope (5 prompts post-Q8 refinement)." Refinement preserves Intelligence prompt scope clarity — voice command grammar patterns inherit Command Bar entity-resolution canonical pattern; not additional managed prompts.
+
+**Cross-tenant audio expression** per §3.26.11.13.12 cross-tenant participant routing detail: per-tenant audio expression respects per-tenant masking; joint events surface in both tenants' audio with cross-tenant attribution.
+
+**Cross-references**: §3.26.20.4 Audio Surface Principle audio expression catalog; §3.26.20.2 Owner-Operator audio paradigm canonical framing; §3.26.20.3 audio-surface canonical disciplines; §3.26.11.13.14 Coordination Focus Intelligence integration; §3.26.13 Command Bar entity-resolution canonical pattern; §3.26.11.13.12 cross-tenant participant routing.
+
+##### 3.26.11.13.16 Visual canon framing — DESIGN_LANGUAGE §14.15
+
+§14.15 extends §14 with Focus type extension. **§14.15 scope** (6 subsections per Q9 + Q16 confirmation): §14.15.1 Coordination Focus chrome + §14.15.2 Real-time-thread + §14.15.3 Scheduled-coordination + §14.15.4 Threshold-watch + §14.15.5 Cross-tenant chrome + bilateral consent visualization (genuinely new visual canon scope) + §14.15.6 Sub-Focus hierarchy visualization.
+
+**Five Focus type visual chrome catalogs canonical at canon level post-Session-8**. Pattern locks finally across all five Focus types.
+
+**Cross-references**: §3.26.11.13.5 core element catalog; §3.26.11.13.10 Workshop integration mechanics; §3.26.11.13.11 per-primitive integration chrome (Focus attribution chip pattern); §3.26.11.13.12 cross-tenant participant routing; §3.26.11.13.13 sub-Focus hierarchy detail; DESIGN_LANGUAGE §14 + §14.14 Generation Focus Visual Canon.
+
+##### 3.26.11.13.17 Visual canon — DESIGN_LANGUAGE §14.15 Coordination Focus Visual Canon
+
+§14.15 ships six subsections matching Coordination Focus's substantive multi-primitive integration scope proportional to primitive domain arc canonicalization. Cross-tenant chrome at §14.15.5 establishes cross-tenant primitive visual canon discipline at canon level for first time — applies broadly to future cross-tenant primitive work. Sub-Focus hierarchy visualization at §14.15.6 extends §3.26.11.6 substrate at visual canon level.
+
+**Cross-references**: §3.26.11.13.5 core element catalog; §3.26.11.13.10 Workshop integration; §3.26.11.13.11 per-primitive integration chrome; §3.26.11.13.12 cross-tenant participant routing; §3.26.11.13.13 sub-Focus hierarchy detail; DESIGN_LANGUAGE §14.15 Coordination Focus Visual Canon.
+
+##### 3.26.11.13.18 Canonical design disciplines
+
+**Architectural disciplines canonical at canon level** (12 disciplines):
+
+1. **Multi-primitive integration substrate discipline** (per §3.26.11.13.6 + Q6 canon-defense). Generic integration substrate canonical. Canonical pattern statement: "Generic integration substrate over per-primitive integration mechanics canonicalization. When primitive integrates with multiple existing primitives, generic integration substrate at canonical-quality depth + per-primitive variation via discriminator preserves architectural simplicity."
+2. **Single-entity-with-discriminator participant model discipline** (per §3.26.11.13.2 + Q2 canon-defense). Canonical pattern statement: "Single-entity-with-discriminator preserves operational query patterns across all variants over schema field concentration per type."
+3. **Single-entity-with-discriminator instance model discipline** (per §3.26.11.13.2). **Fifth canonical application of meta-pattern post-Session-8**.
+4. **Lifecycle state machine discipline** (per §3.26.11.13.3). 4 trigger types canonical.
+5. **Promotion mechanics canonical pattern discipline** (per §3.26.11.13.5). Trigger 1 + Trigger 2 canonical; Trigger 3 deferred.
+6. **Operator agency discipline** (per §3.26.14.14.5 inherited canonical). Auto-promotion explicitly rejected.
+7. **Asynchronous orchestration discipline** (per §3.26.11.13.3 + §3.26.11.13.19 anti-pattern 5).
+8. **Workshop authoring complexity discipline** (per §3.26.11.13.10 + Q10). Coordination Focus templates rank as second-richest authoring surface in Workshop primitive's template scope post-Session-8.
+9. **Per-template sub-Focus declaration discipline** (per §3.26.11.13.13 + Q13 canon-defense). Job → Load canonical; runtime addition rejected per §3.26.11.13.19 anti-pattern 2.
+10. **Cross-tenant primitive visual canon discipline** (per §3.26.11.13.12 + Q12 strengthening). Canonical pattern statement: "Cross-tenant primitive visual canon surfaces per-tenant ownership while presenting joint primitive-level events."
+11. **Focus attribution chip pattern discipline** (per §3.26.11.13.11 + Q11). Future primitive work inherits chip-shaped Focus reference pattern.
+12. **Per-template configuration shape discipline** (per §3.26.11.13.9 + §3.26.11.13.15 + Q14 + Q15). 7 canonical configuration dimensions + 4 audio expression dimensions + 5 per-primitive integration chrome dimensions.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.7.6 Reach Abstraction Deferral; §3.26.14.14.5 operator agency discipline; §3.26.11 Focus primitive canonical pattern; §3.26.11.13.19 canonical anti-patterns catalog; DESIGN_LANGUAGE §14.15 Coordination Focus visual canon.
+
+##### 3.26.11.13.19 Canonical anti-patterns catalog
+
+Six canonical anti-patterns established post-Session-8 (5 Coordination Focus-specific + 1 inherited from Session 7 Generation Focus).
+
+**Anti-pattern 1: Auto-promotion on Intelligence-suggested promotion confidence rejected** (per §3.26.11.13.5 + Q5). Rationale: operator agency canonical at canon level — Intelligence proposes; operator decides. Canonical pattern: Intelligence-suggested promotion surfaces in Workshop home Section 4; operator reviews + accepts/dismisses.
+
+**Anti-pattern 2: Runtime sub-Focus addition complexity rejected at September scope** (per §3.26.11.13.13 + Q13). Rationale: speculative substrate scope without operational warrant violates architectural simplicity discipline. Canonical pattern: per-template sub-Focus declaration canonical at template configuration level; Job → Load canonical hierarchy at September; non-canonical sub-Focus support requires Workshop Compose mode.
+
+**Anti-pattern 3: Per-primitive integration mechanics separate canonicalization rejected** (per §3.26.11.13.6 + Q6 canon-defense). Rationale: false granularity tradeoff at substantive multi-primitive integration scope. Canonical pattern: generic integration substrate canonical; per-primitive variation via configuration discriminator + per-primitive integration chrome at template configuration level.
+
+**Anti-pattern 4: Decomposed participant model entity per type rejected** (per §3.26.11.13.2 + Q2 canon-defense). Rationale: false granularity tradeoff at multi-participant-type integration scope. Canonical pattern: single participant entity with discriminator preserves operational query patterns.
+
+**Anti-pattern 5: Synchronous lifecycle trigger blocking dispatch rejected** (per §3.26.11.13.3 + asynchronous orchestration discipline). Rationale: synchronous dispatch creates cascading latency + UX continuity disruption. Canonical pattern: asynchronous orchestration via existing Bridgeable scheduler + event publication infrastructure. Pattern parallel to §3.26.11.12.16 Generation Focus anti-pattern 5.
+
+**Anti-pattern 6: Compose+ mode rejected** (per §3.26.11.13.10 + Q10 — inherited from Session 7 Generation Focus anti-pattern 7). Rationale: adding third Workshop authoring mode trades architectural simplicity for false granularity. Canonical pattern: two-mode framing (Tune + Compose) sufficient.
+
+**Catalog completeness at September**: 6-pattern catalog post-Session-8 (5 new Coordination Focus + 1 inherited from Session 7). **Cumulative cross-primitive canonical anti-patterns post-Session-8: ~13** (Session 7 Generation Focus 7 + Session 8 Coordination Focus 6, with Anti-pattern 6 Compose+ mode inherited not double-counted = 12 distinct anti-patterns; or counted with inheritance = 13).
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.7.6 Reach Abstraction Deferral; §3.26.14.14.5 operator agency discipline; §3.26.11 Focus primitive canonical pattern; §3.26.11.12.16 Generation Focus canonical anti-patterns catalog (parallel pattern + Anti-pattern 6 inheritance source).
+
+##### 3.26.11.13.20 Final deferral catalog reconciliation
+
+Consolidated deferral catalog at single canonical location per Q18 + §3.26.11.12.17 Session 7 precedent.
+
+**Deferred items**:
+- **Auto-promotion** per §3.26.7.5 (Trigger 3 + canonical anti-pattern 1)
+- **Per-template-type retention policy variation** per §3.26.7.5 (canonical default 90-day post-closure; tenant-configurable bounds 30-day min + 7-year max)
+- **Cross-tenant Coordination Focus mechanics extension beyond §3.26.11.10 baseline** per §3.26.7.5
+- **Reach abstraction integration** per §3.26.7.6 (Coordination Focus's per-primitive integration chrome substrate scaffolds future Reach mechanism integration without primitive re-canonicalization at 2027-2028 timeline)
+- **Future template-type extensions** to vertical-specific canon emergence (FH + cemetery + healthcare + financial-services vertical templates)
+- **`coordination_focus.detect_completion` Intelligence prompt** per §3.26.7.5 + Q8 refinement
+- **Voice command grammar canonical specifications** per §3.26.20.4 + §3.26.11.13.15 Q15 refinement (voice command grammar patterns inherit Command Bar entity-resolution canonical pattern; NOT additional Intelligence prompts)
+
+**Rejected items (not deferred)**:
+- **Runtime sub-Focus addition** per §3.26.11.13.19 anti-pattern 2
+- **Decomposed participant model entity per type** per §3.26.11.13.19 anti-pattern 4
+- **Per-primitive integration mechanics separate canonicalization** per §3.26.11.13.19 anti-pattern 3
+- **Synchronous lifecycle trigger blocking dispatch** per §3.26.11.13.19 anti-pattern 5
+- **Compose+ mode Workshop authoring** per §3.26.11.13.19 anti-pattern 6
+
+Each deferred per §3.26.7.5 architectural restraint discipline. Coordination Focus ships at canonical-quality depth without speculative scope expansion.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.7.6 Reach Abstraction Deferral; §3.26.11.13.19 canonical anti-patterns catalog; §3.26.11.12.17 Session 7 Generation Focus consolidated deferral catalog (precedent).
+
+##### 3.26.11.13.21 Strategic vision integration — long-arc Coordination Focus template extensions + cross-tenant extension + Reach abstraction integration landing pad
+
+Phase C subsection establishing long-arc Coordination Focus extensions landing pad per §3.26.11.12.18 Session 7 precedent.
+
+**Long-arc Coordination Focus template extensions**:
+- **Funeral home vertical templates** (FH vertical activation, 2026-2027): `arrangement-coordination` + `service-day-coordination` + `post-service-coordination`
+- **Cemetery vertical templates** (cemetery vertical activation, 2027+): `interment-coordination` + `memorial-installation-coordination`
+- **Healthcare vertical templates** (healthcare long-arc, 2028+): `patient-coordination` + `multi-disciplinary-coordination`
+- **Financial-services vertical templates** (financial-services long-arc, 2028+): `deal-coordination` + `audit-coordination`
+
+**Cross-tenant Coordination Focus extension scope**: multi-tenant joint coordination beyond bilateral (3+ tenants) + cross-tenant template registry sharing + cross-tenant audit governance. Concrete signals parallel to §3.26.7.6 Reach abstraction concrete signals.
+
+**Reach abstraction integration scope**: when Reach abstraction canonicalizes per §3.26.7.6 concrete signals at 2027-2028 timeline, Coordination Focus per-primitive integration chrome substrate scaffolds Reach mechanism integration. Future Reach mechanisms (computer-use + voice agents + fax + EDI + physical mail) integrate as additional `integration_chrome_*` dimensions per template configuration when Reach abstraction canonicalizes. Architectural framework scaffolds future canonicalization without preemptive scope expansion.
+
+Each long-arc canonicalization preserves Coordination Focus canon framework — single-entity-with-discriminator entity model + 4-trigger lifecycle + per-template configuration shape + Workshop integration + Intelligence integration + per-primitive integration chrome + cross-tenant participant routing + sub-Focus hierarchy + audio expression + visual canon. Long-arc extensions extend canonical Coordination Focus framework without primitive re-canonicalization.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.7.6 Reach Abstraction Deferral; §3.26.11.13.4 template registry; §3.26.11.13.6 cross-primitive integration architecture; §3.26.11.13.11 per-primitive integration chrome detail; §3.26.11.13.20 final deferral catalog reconciliation; §3.26.11.12.18 Session 7 Generation Focus strategic vision integration (parallel pattern).
+
 ### 3.26.12 Pulse Scope Architecture
 
 #### 3.26.12.1 Pulse Scope — fractal primitive
