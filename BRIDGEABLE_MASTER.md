@@ -10371,6 +10371,70 @@ Each deferred per §3.26.7.5 architectural restraint discipline. Messaging primi
 
 ---
 
+### 3.26.20 Audio Surface Principle
+
+#### 3.26.20.1 Parallel-interface principle establishment
+
+**Audio is not a feature bolted onto a visual platform. Audio is a parallel first-class interface to canonical information substrate.** Every Bridgeable primitive (Spaces / Focuses / Pulse / Entities / Communications) has visual expression AND audio expression; both surfaces inherit canonical primitive scope. The Audio Surface Principle establishes parallel-interface discipline at canon level — primitive emergence canon sessions are not complete without addressing audio-surface expression alongside visual-surface expression as canonical scope.
+
+**Architectural canon**: every primitive has visual expression AND audio expression at canonical-quality depth. Visual surface and audio surface are parallel implementations of the same canonical primitive — neither is derivative; neither is afterthought. Audio is not "screen-reader on top of visual UI"; audio is a peer interface with its own canonical disciplines (summarization + conversational interaction + voice command grammar) per §3.26.20.3.
+
+**Future primitive emergence canon sessions inherit parallel-interface discipline**: when next primitive (Coordination Focus + future canon work) emerges, its canonicalization addresses both visual surface (chrome catalog + visual treatment + presentation modes) AND audio surface (summarization shape + conversational interaction patterns + voice command surface). Single-surface primitive emergence is incomplete canonicalization per architectural canon.
+
+**Cross-references**: §3.26.x four-primitive UI canon (Spaces + Focuses + Pulse + Entities + Communications); §3.26.7 Strategic Principles (canonical disciplines applied to Audio Surface); §3.26.11.12.1 Generation Focus emergence (sibling primitive emergence requiring parallel-interface treatment); §3.26.13 Command Bar (universal summoning verb consumed by both visual + audio interfaces).
+
+#### 3.26.20.2 Owner-Operator audio paradigm canonical framing
+
+Audio surface and visual surface serve different operator-experience contexts. **Owner-Operator ergonomic split canonical at canon level** — each surface owns a distinct cognitive bandwidth + attention context.
+
+**Audio surface for updates + decisions** (thin-bandwidth + high-frequency contexts): commute audio briefings ("3 things need attention"); kitchen + walking-around-shop-floor updates; conversational triage during operator's between-task moments. Audio is summarization + decision affordance, not raw data dump — Bridgeable Brief surfaces "3 things need attention" not "47 calendar events". Audio surface respects operator's contextual attention budget; surface what's actionable + summary-shaped.
+
+**Visual surface for authoring + exploration** (thick-bandwidth + focused-attention contexts): desk work; complex decisions requiring spatial reasoning; Generation Focus authoring (Wall Designer + Drawing Takeoff + Legacy Studio canvas + palette workflows); detailed entity exploration + cross-primitive embedding. Visual surface respects operator's focused-attention budget; surface what's authoring-shaped + exploration-shaped.
+
+**Conversational triage canonical** (audio surface decision affordance pattern): operator says "tell me more" → drill into specific item; "skip" → next item; "approve" → execute decision. Pattern parallel to Decision Focus visual triage queue but routed through conversational voice grammar per §3.26.20.3. Audio-mediated decision-making preserves operator agency — voice grammar carries equivalent decision affordances to visual button affordances; auto-commit on voice-recognition-confidence rejected per operator agency discipline (parallel to §3.26.14.14.5 + §3.26.11.12.16 anti-pattern catalog).
+
+**Cross-references**: §3.26.11 Focus Primitive Types (Decision Focus audio = conversational triage; Coordination/Execution/Review Focus types each have audio expression per §3.26.20.4 catalog); §3.26.12 Pulse Scope Architecture (Bridgeable Brief = morning briefing audio surface — Pulse audio expression); §3.26.18.16 Phone primitive voice-mediated workflows canon (voice input as platform substrate consumed by audio surface).
+
+#### 3.26.20.3 Audio-surface canonical disciplines
+
+Audio-surface canonical disciplines preserve audio-paradigm distinct shape while inheriting platform canon (operator agency + Command Bar entity-resolution + Intelligence layer integration).
+
+**Audio summarization discipline canonical**: surface what needs operator attention, not exhaustive data. Bridgeable Brief surfaces "3 things need attention" not "47 calendar events"; audio briefing structure is summarization-then-detail (operator says "tell me more" to drill). Pattern parallel to §3.26.10 Briefings architecture (visual briefing = morning briefing visual surface) — visual + audio briefings share canonical summarization substrate but audio shape respects thin-bandwidth context per §3.26.20.2.
+
+**Conversational interaction discipline canonical**: voice command grammar inherits §3.26.13 Command Bar entity-resolution canonical pattern. Voice ("place call to Mary Hopkins") → speech-to-text → Command Bar query path → entity resolution → action commit. Per-primitive voice command surface inherits Command Bar canonical pattern — primitive-specific voice grammar layered on top of universal Command Bar substrate. Voice command grammar canonical specifications (per-primitive command surface) deferred to 2027-2028 implementation arc per §3.26.20.4 deferral catalog.
+
+**Audio-visual continuity discipline canonical**: operator transitions between audio + visual surface mid-task. Operator starts Decision Focus via audio conversational triage during commute; arrives at desk + transitions to visual Focus chrome for detailed authoring; commits decision via visual surface. Cross-surface continuity preserves operator coordination state across modality transitions — Focus instance state + linked entity context + draft state per §3.26.11 Focus canonical pattern preserve across audio ↔ visual transitions.
+
+**Wake-word + smart speaker integration canonical**: Owner-Operator hardware integration scope deferred to 2027-2028 implementation arc per §3.26.20.4. Pattern: wake-word activation triggers audio surface; smart speaker hardware integrates as platform substrate consumed by audio surface (parallel to Phone primitive's voice infrastructure consumed by other primitives per §3.26.18.16).
+
+**Cross-references**: §3.26.13 Command Bar Architecture (voice command grammar inherits entity-resolution canonical pattern); §3.26.10 Briefings Architecture (audio summarization discipline parallel to visual briefing summarization); §3.26.18.16 Phone primitive voice-mediated workflows; §3.26.14.14.5 operator agency discipline (voice command auto-commit rejected).
+
+#### 3.26.20.4 Relationship to existing primitives + audio expression catalog
+
+Each primitive's audio expression inherits canonical primitive scope without separate canonicalization. Audio expression catalog locks parallel-surface discipline at canon level — every primitive's canonical scope includes both visual surface canonicalization (per §14 DESIGN_LANGUAGE visual canon sections) AND audio surface canonicalization (per per-primitive audio expression catalog below).
+
+**Audio expression catalog (post-Session-7.6)**:
+
+- **Spaces audio**: audio summary of space activity. Operator asks "what's happening in production scheduling space?" → audio summary surfaces space-scoped recent activity + pending decisions + upcoming events. Audio expression inherits Space scope canonical per §3.26.1.
+- **Focuses audio** (per Focus type variation across all five Focus types): Decision Focus audio = conversational triage (per §3.26.20.2 canonical pattern); Coordination Focus audio = event update narration; Execution Focus audio = task completion confirmation; Review Focus audio = review status narration; Generation Focus audio = bounded-output progress narration during authoring + voice-mediated parametric control adjustment ("make wall 12 feet" → parametric controls update) + commit affordance confirmation via voice. Generation Focus's distinct producer-shape preserved within Focus type per-type canonical pattern; no separate Generation Focus audio bullet required (canonical depth proportional to Generation Focus's distinct producer-shape preserved within Focuses audio bullet).
+- **Pulse audio**: Bridgeable Brief = morning briefing audio surface. Pulse audio narrates "what's happening across operational substrate" with summarization-then-detail shape per §3.26.20.3.
+- **Entities audio**: entity portal audio summary — operator says "tell me about Hopkins FH" → audio narrates entity status + recent activity + pending decisions per §3.26.13 entity portal canonical pattern.
+- **Communications audio**: voice composition (operator dictates email/SMS/message via voice) + conversational reply via voice + audio playback (read inbound email/SMS aloud during operator's commute). Each communication primitive (Email §3.26.15 + SMS §3.26.17 + Phone §3.26.18 + Messaging §3.26.19) inherits voice composition canon per §3.26.18.16 voice input as platform substrate.
+
+**Implementation canonicalization deferred per §3.26.7.5 + §3.26.7.6 architectural restraint discipline**:
+- Bridgeable Brief audio surface implementation details
+- Conversational triage UX implementation details
+- Wake-word architecture implementation details
+- Smart speaker hardware integration (Owner-Operator deployment patterns)
+- Voice command grammar canonical specifications (per-primitive command surface)
+- Audio-visual continuity transition mechanics
+
+**Concrete signals triggering implementation canonicalization**: Owner-Operator hardware integration arc opens at 2027-2028 timeline; voice agent maturity + smart speaker deployment patterns reach production maturity; concrete tenant operational pattern indicates audio surface operational value. Estimated activation timeline: 2027-2028 when voice agent maturity + smart speaker deployment patterns coincide with computer-use mechanism maturity per §3.26.7.6 Reach abstraction concrete signals.
+
+**Cross-references**: §3.26.1 Six Space Types (Spaces audio inherits Space scope); §3.26.11 Focus Primitive Types + §3.26.11.12 Generation Focus (per-Focus-type audio expression catalog including Generation Focus distinct producer-shape audio variation); §3.26.12 Pulse Scope Architecture (Bridgeable Brief = Pulse audio surface); §3.26.13 Command Bar Architecture (entity portal audio summary inherits entity portal canonical pattern); §3.26.15-19 communication primitives (per-primitive voice composition + conversational reply + audio playback canonical); §3.26.18.16 voice input as platform substrate (Phone primitive ships voice infrastructure consumed by all primitives' audio surfaces); §3.26.7.5 + §3.26.7.6 architectural restraint discipline (implementation canonicalization deferred per concrete signal).
+
+---
+
 # Part 6 — Funeral Home Vertical
 
 ## 6.1–6.9 Existing Funeral Home Sections

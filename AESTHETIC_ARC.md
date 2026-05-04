@@ -1227,6 +1227,30 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 
 ---
 
+## Session 7.6 — Audio Surface Principle Short Canon Update (canon locked, 2026-05-15)
+
+Tier 1 documentation closure work. Single canon update locked at §3.26.20 preserving Audio Surface Principle at canon level. **Final Tier 1 documentation work — Tier 1 documentation arc closes post-Session-7.6.**
+
+Audio Surface Principle establishes parallel-interface discipline at canon level — every Bridgeable primitive (Spaces / Focuses / Pulse / Entities / Communications) has visual expression AND audio expression; both surfaces inherit canonical primitive scope. Audio is not feature bolted onto visual platform; audio is parallel first-class interface to canonical information substrate.
+
+Owner-Operator ergonomic split canonical: audio surface for updates + decisions (thin-bandwidth high-frequency contexts — commute, kitchen, shop-floor); visual surface for authoring + exploration (thick-bandwidth focused-attention contexts — desk work, Generation Focus authoring).
+
+Conversational triage canonical pattern: voice command grammar inherits §3.26.13 Command Bar entity-resolution canonical pattern. Per-primitive voice command surface layered on top of universal Command Bar substrate.
+
+Audio expression catalog: Spaces audio + per-Focus-type audio (Decision conversational triage + Coordination event narration + Execution task confirmation + Review review status + Generation bounded-output progress narration + voice-mediated parametric control adjustment + commit affordance confirmation via voice — Generation Focus distinct producer-shape preserved within Focuses audio bullet without separate bullet) + Pulse Bridgeable Brief + Entities entity portal audio + Communications voice composition.
+
+Implementation canonicalization deferred per §3.26.7.5 + §3.26.7.6 architectural restraint discipline: Bridgeable Brief implementation + conversational triage UX + wake-word architecture + smart speaker hardware + voice command grammar canonical specifications. Estimated activation timeline: 2027-2028 when voice agent maturity + smart speaker deployment patterns coincide with computer-use mechanism maturity per Reach abstraction concrete signals.
+
+Future primitive emergence canon sessions inherit parallel-interface discipline — primitive emergence isn't complete without parallel visual + audio surface canon.
+
+Single top-level subsection at §3.26.20 (4 sub-subsections at canonical-quality depth). Insertion appended after §3.26.19 Messaging Primitive — top-level placement signals architectural canon parity with primitives + Command Bar.
+
+Canon doc updates: BRIDGEABLE_MASTER §3.26.20 NEW (4 subsections); AESTHETIC_ARC Session 7.6 entry; CLAUDE.md §14 entry. **No code shipped.** Total documentation closure work post-Session-7.6: ~1.5 hours single drafting session; no architectural deliberation required per architectural-deferral-entry discipline.
+
+**Tier 1 documentation arc closes post-Session-7.6.** Sessions 7 + 7.5 + 7.6 complete Tier 1 documentation work cleanly — Generation Focus canon (Session 7) + Reach Abstraction Deferral entry (Session 7.5) + Audio Surface Principle short canon update (Session 7.6). Tier 2 forward-roadmap consolidation + Tier 3 strategic framing notes + W-4b implementation arcs + Coordination Focus primitive domain arc await user direction post-Tier-1-closure.
+
+---
+
 ## Session 7.5 — Reach Abstraction Deferral Entry (canon locked, 2026-05-15)
 
 Tier 1 documentation closure work. Single deferral catalog entry locked at §3.26.7.6 preserving Reach abstraction concept at canon level without preemptive canonicalization.
