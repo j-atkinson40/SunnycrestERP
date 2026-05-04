@@ -6731,6 +6731,192 @@ Primitive-specific chrome continuity is genuinely the canonical visual mechanism
 
 ---
 
+## Section 14.14 — Generation Focus Visual Canon (Session 7)
+
+Per-Focus-type visual canon for the Generation Focus type — extending §14's foundation with producer-shape Focus type chrome canon. Companion to BRIDGEABLE_MASTER §3.26.11.12 (architectural).
+
+§14.14 extends §14 Communications Visual System canonical (per Session 7 Phase C Q14 confirmation) — Generation Focus IS the fifth Focus type extending §3.26.11 Focus primitive canonical pattern. Cross-Focus-type visual continuity preserved through shared Focus modal-overlay rendering chrome + producer-shape distinct chrome catalog. Pattern locks finally across all five Focus types (Decision + Coordination + Execution + Review + Generation §14.14) at canonical-quality depth.
+
+§14.14 locks visual canon for the six Generation Focus chrome elements that compose inside Bridgeable's Focus primitive framework — distinguished from existing four Focus types' visual chrome by Generation Focus's producer-shape (canvas + palette + AI-extraction-review + parametric controls + live preview + commit affordance vs consumer-shape kanban + single-record + triage queue + event coordination chrome).
+
+Future §14 section title rename consideration flagged for post-Session-7 documentation hygiene work (not blocking final batch write): "Communications Visual System" → broader framing covering communication primitives + Focus type extensions. Bounded refinement worth tracking for documentation hygiene; not Session 7 scope.
+
+### 14.14.1 Generation Focus chrome — modal-overlay rendering canon
+
+Generation Focus modal-overlay rendering canon per §3.26.11 Focus primitive modal-overlay rendering canonical pattern. Generation Focus inherits Focus primitive substrate visual chrome (full-screen modal overlay + dismissable per §3.26.14.14.5 operator agency + transient + entered intentionally + exited when bounded thing completes) with producer-shape distinct internal chrome.
+
+**Generation Focus chrome composition** (Focus modal-overlay with producer-shape internal chrome):
+
+```
+┌─ Wall Designer — Hopkins Job 2026-04-15 ─────────────── [Save draft] [✕] ┐
+│                                                                            │
+│  ┌─ Canvas ──────────────────────────────┐ ┌─ Palette ──────────────┐   │
+│  │                                         │ │ Block systems          │   │
+│  │  [Wall layout visualization]            │ │  ● Redi-Rock           │   │
+│  │   - 12' wall length                     │ │  ○ Verti-Block         │   │
+│  │   - 6' grade rise                       │ │                        │   │
+│  │   - 3 corners + 1 step-down             │ │ Materials              │   │
+│  │   - Base block selection                │ │  ● Standard cap        │   │
+│  │                                         │ │  ○ Premium cap         │   │
+│  │  [3D preview rendering]                 │ │                        │   │
+│  │                                         │ │ Colors                 │   │
+│  │                                         │ │  [color swatches]      │   │
+│  └─────────────────────────────────────────┘ └────────────────────────┘   │
+│                                                                            │
+│  ┌─ Parametric controls ────────────────────────────────────────────────┐ │
+│  │  Wall length [12'    ▲▼]  Grade rise [6'   ▲▼]  Soil type [Loam ▾] │ │
+│  │  Base material [Standard ▾]  Cap material [Standard ▾]              │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│                                                                            │
+│  Estimated quote: $4,250  •  47 blocks  •  12 hours labor                 │
+│  ──────────────────────────────────────────────────────────────────────  │
+│                                                                            │
+│  [Cancel]                              [Save draft]  [Add to quote] →    │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Generation Focus modal-overlay chrome canonical**:
+- Full-screen modal overlay with `bg-surface-base` backdrop + Focus chrome content `bg-surface-elevated rounded-lg shadow-level-3` per §6 overlay family canon
+- Chrome header: Generation Focus template name + linked entity context + draft state indicator (when applicable) + save-draft affordance + close (✕) affordance
+- Chrome content area: per-template-type element subset rendering per §3.26.11.12.5 element subset configuration
+- Chrome footer: cancel / save-draft / commit-affordance buttons + estimated-output preview chip (when QuotingEngine pipeline integrated)
+
+**Generation Focus dismissal discipline** per §3.26.14.14.5 operator agency:
+- Close (✕) affordance + Cancel button surface confirmation prompt for unsaved changes ("You have unsaved changes — save as draft, discard, or continue editing?")
+- Save-draft button transitions instance state `active` → `draft` per §3.26.11.12.4; Focus closes; instance preserved for resumption
+- Commit affordance (brass primary button) transitions instance state `active` → `committed`; output linkage written; Focus closes
+
+**Per-template-type chrome rendering**: each Generation Focus template renders subset of canonical chrome elements per §3.26.11.12.5 + §3.26.11.12.9 Workshop template configuration. Chrome layout adapts to per-template-type element subset — Wall Designer renders canvas + palette + parametric controls + live preview; Audit Prep generator renders AI-extraction-review + structured-output preview; etc.
+
+**Cross-references**: §3.26.11 Focus primitive canonical pattern; §3.26.11.12.4 closure semantics + draft state; §3.26.11.12.5 core element catalog scoping; §3.26.14.14.5 operator agency discipline.
+
+### 14.14.2 Canvas + palette visual canon
+
+Canvas + palette chrome canonical per §3.26.11.12.5 element catalog. Per-template-type canvas + palette rendering reflects template's authoring shape.
+
+**Canvas chrome composition**:
+- Drawing surface with layout positioning: `bg-surface-base` with `border-border-subtle` outline; positioned content rendered at canonical scale
+- Selection state visual treatment: selected canvas elements render with `border-accent` outline + `bg-accent-subtle/30` highlight per §6 selection canonical chrome
+- Drag-and-drop feedback: dragging canvas elements renders with subtle drop-shadow + ghost preview at drop target
+- Pan/zoom affordance (when canvas content exceeds viewport): scroll-pan + pinch-zoom + zoom controls bottom-right
+
+**Palette chrome composition**:
+- Selection surface: `bg-surface-raised` panel with categorized component selection
+- Per-category section: `text-caption font-medium text-content-muted uppercase tracking-wider` section headers
+- Per-component item: `text-body-sm font-plex-sans text-content-strong` with selection state radio/checkbox + per-item icon + per-item description tooltip
+- Selected component: `bg-accent-subtle/30` background highlight per §6 selection canonical chrome
+
+**Per-template-type canvas + palette variation**:
+- Wall Designer canvas: 3D wall visualization with block placement + base material rendering; palette: block systems + materials + colors + retaining options
+- Drawing Takeoff canvas: architectural drawing rendering with markup overlay + AI-extraction confidence indicators; palette: feature classification + material specification
+- Legacy Studio canvas: memorial layout with photo composition + text positioning; palette: photo selections + text styles + memorial elements + decorative options
+- Engraved urn customizer canvas: urn surface with engraving placement + font preview; palette: font selections + engraving styles + decorative motifs
+- Monument customizer canvas: monument elevation with feature composition + material selection; palette: monument types + features + materials
+
+**Cross-references**: §3.26.11.12.5 core element catalog scoping; §6 overlay family canon (selection + dismissal chrome).
+
+### 14.14.3 AI-extraction-review + confidence-scored line items visual canon
+
+AI-extraction-review + confidence-scored line items chrome canonical per §3.26.11.12.5 + §3.26.11.12.12 Intelligence layer integration.
+
+**AI-extraction-review surface composition**:
+- Vision-AI extraction surface: `bg-surface-elevated` panel with extracted line items rendered as Pattern 2 sub-cards
+- Per-line-item composition: extracted content + confidence indicator + operator-confirmable affordance + edit affordance
+- Confidence indicator chrome: confidence bar with `bg-status-success` (≥0.85) / `bg-status-warning` (0.70-0.85) / `bg-status-error` (<0.70) color coding
+- Confidence score numeric display: `text-caption font-plex-mono text-content-muted` (e.g., `0.92`)
+
+**Confidence-scored line item composition** (Pattern 2 sub-card):
+- Line item body: `text-body font-plex-sans text-content-strong` extracted content rendering
+- Confidence section: confidence bar + numeric score
+- Action affordances: Confirm + Edit + Reject + Skip buttons (per Q12 operator agency discipline)
+- Default-selected state: ≥0.70 confidence default-selected for confirm; <0.70 confidence requires explicit operator confirmation per §3.26.11.12.16 anti-pattern 1 canonical pattern
+
+**Batch operations**:
+- "Confirm all high-confidence" button confirms all line items with ≥0.85 confidence in single action; preserves operator agency per §3.26.14.14.5 (operator clicks button; not auto-applied)
+- "Reject all" button rejects all extracted line items in single action
+
+**Per-template-type AI-extraction-review variation**:
+- Drawing Takeoff: per-feature extraction review (wall section + corner + opening + endcap + cap-only-section); per-feature dimensions + classification confidence
+- Audit Prep generator: per-evidence extraction review (regulatory category + compliance gap + evidence completeness); per-evidence classification + remediation suggestion confidence
+
+**Cross-references**: §3.26.11.12.5 core element catalog scoping; §3.26.11.12.12 Intelligence layer integration; §3.26.18.6 Phone Intelligence pipeline confidence canonical pattern (precedent); §3.26.11.12.16 anti-pattern 1 canonical pattern.
+
+### 14.14.4 Parametric controls + live preview visual canon
+
+Parametric controls + live preview chrome canonical per §3.26.11.12.5 element catalog.
+
+**Parametric controls composition**:
+- Sliders: `bg-surface-raised` track with `bg-accent` filled portion + circular thumb; numeric value display right of slider
+- Dropdowns: `bg-surface-raised` with `border-border-base` + dropdown chevron right of selected value
+- Numeric inputs: `bg-surface-raised` with `border-border-base` + increment/decrement chevrons
+- Structured input affordances: per-template-type structured input chrome (color picker + dimension input + measurement input)
+
+**Live preview composition**:
+- Visual feedback as operator authors: live rendering updates per ~250ms cadence as parametric controls change
+- Visual chrome: rendered preview at canonical scale within canvas surface OR in dedicated preview pane (per-template-type configuration)
+- Loading state: subtle pulse animation during render (per `duration-considered` cadence per §6 overlay family motion canon)
+- Error state: render-failure surfaces in preview pane with retry affordance (per §3.26.11.12.10 failure handling discipline pattern)
+
+**Live preview rendering performance discipline**:
+- Sub-500ms render target for parametric control changes preserves authoring UX continuity
+- Async rendering via existing Bridgeable scheduler pattern; render output streams back to live preview
+- Preview rendering failure handling per §3.26.11.12.10 — surfaces in operator notification + activity log; operator-controlled retry; no auto-retry
+
+**Per-template-type parametric controls + live preview variation**:
+- Wall Designer parametric controls: wall length + wall height + grade slope + soil type + base material + cap material; live preview: 3D wall visualization
+- Mix Design parametric controls (future): cement ratio + aggregate composition + water-cement ratio + admixture selection; live preview: structured output preview
+- Audit Prep generator parametric controls: per-evidence-type review checklist toggles; live preview: structured-output preview of audit package
+
+**Cross-references**: §3.26.11.12.5 core element catalog scoping; §3.26.11.12.10 failure handling discipline; §6 overlay family motion canon.
+
+### 14.14.5 Commit affordance + draft state + bounded-output progress visual canon
+
+Commit affordance + draft state + bounded-output progress chrome canonical per §3.26.11.12.4 closure semantics.
+
+**Commit affordance composition**:
+- Brass primary button right-aligned in chrome footer: `bg-accent text-content-on-accent rounded-md px-4 py-2 font-medium`
+- Button label varies by destination: "Add to quote" (Wall Designer commit to Quote), "Add to order" (engraved urn customizer commit to Order), "Finalize audit package" (Audit Prep generator commit to compliance vault item), "Add to case" (Legacy Studio commit to FH case)
+- Button state: enabled when bounded output requirements met (validation per template configuration); disabled with tooltip explaining missing requirements when not ready
+
+**Draft state visual treatment**:
+- Save-draft button: outline button left of commit affordance: `border-border-base text-content-strong rounded-md px-4 py-2`
+- Draft state indicator (when instance is draft): chrome header carries "Draft saved {relative time}" `text-caption text-content-muted` indicator
+- Draft instance resumption: when operator opens draft via Pulse-launched widget OR workspace navigation, chrome header carries "Resuming draft from {relative time}" `text-caption text-content-muted` indicator
+
+**Bounded-output progress indication**:
+- Progress indicator (when applicable per template configuration): horizontal progress bar at top of chrome content area showing per-template-type completion progress
+- Wall Designer progress: per-component completion (canvas → palette selection → parametric controls → estimate review → commit ready)
+- Audit Prep generator progress: per-evidence-extraction completion (vision-AI extraction → operator review → remediation suggestion review → audit package finalization → commit ready)
+- Progress indicator chrome: `bg-surface-sunken` track with `bg-accent` filled portion; percentage label right of progress bar `text-caption font-plex-mono text-content-muted`
+
+**Estimated-output preview chip** (when QuotingEngine pipeline integrated per §3.26.11.12.10):
+- Estimated quote chip: `bg-accent-subtle text-content-strong rounded-sm px-3 py-1.5 font-medium` displaying "Estimated quote: $4,250"
+- Per-quote-line-item breakdown: hover/click expands to show per-line-item pricing breakdown
+- Real-time estimate updates as parametric controls + canvas selections change
+
+**Cross-references**: §3.26.11.12.4 closure semantics + draft state; §3.26.11.12.10 QuotingEngine integration; §3.26.14.14.5 operator agency discipline.
+
+### 14.14.6 Cross-references
+
+- **§14** (Communications Visual System) — sibling visual canon pattern; Generation Focus visual canon parallels structure
+- **§14.9** (Email Primitive Visual Canon) — sibling visual canon pattern
+- **§14.10** (Calendar Primitive Visual Canon) — sibling visual canon pattern
+- **§14.11** (SMS Primitive Visual Canon) — sibling visual canon pattern
+- **§14.12** (Phone Primitive Visual Canon) — sibling visual canon pattern; AI-extraction-review confidence indicator inherits §14.12.3 confidence visual canon precedent
+- **§14.13** (Messaging Primitive Visual Canon) — sibling visual canon pattern; cross-primitive embedding chrome continuity preserves Generation Focus output as embeddable artifact
+- **§13.4.1** — density-tier opt-in canonical reference
+- **§11 Pattern A** + **§11 Pattern C** — Layer Composition Patterns
+- **§6** — overlay family canon (Focus modal-overlay inherits this canon)
+- **BRIDGEABLE_MASTER.md §3.26.11.12** — Generation Focus architectural canon
+- **BRIDGEABLE_MASTER.md §3.26.11.12.5** — core element catalog scoping
+- **BRIDGEABLE_MASTER.md §3.26.11.12.9** — Workshop integration mechanics (per-template-type chrome configuration)
+- **BRIDGEABLE_MASTER.md §3.26.11.12.10** — QuotingEngine integration mechanics (estimated-output preview chip)
+- **BRIDGEABLE_MASTER.md §3.26.11.12.12** — Intelligence layer integration (AI-extraction-review confidence indicator)
+- **BRIDGEABLE_MASTER.md §3.26.11.12.13** — Workflow trigger transitions (commit affordance fires cascade)
+- **BRIDGEABLE_MASTER.md §3.26.11.12.16** — Canonical anti-patterns catalog (auto-commit rejected; operator agency discipline)
+
+---
+
 ## Section 15 — Briefing Visual System
 
 Visual canon for morning + evening briefings — three-state machine visualization, per-state typography, per-state composition. Companion to BRIDGEABLE_MASTER §3.26.10 (architectural).

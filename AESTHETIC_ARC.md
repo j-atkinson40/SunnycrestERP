@@ -1227,6 +1227,122 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 
 ---
 
+## Session 7 — Generation Focus Canon (canon locked, 2026-05-15)
+
+Pure architectural canon session matching Sessions 2-6 discipline pattern. NO CODE this session. Generation Focus canonicalized as **fifth Focus type** extending §3.26.11 Focus Primitive Types canonical pattern (which originally canonicalized four Focus types: Decision + Coordination + Execution + Review). Generation Focus added at §3.26.11.12 per Session 7 canon, completing five-Focus-type substrate. ALL FIVE Focus types canonicalized at canon-faithful depth. **Architectural restraint discipline preserved** — Session 7 demonstrates restraint against premature primitive count expansion (deferring sixth platform primitive "Tools" per architectural fit analysis); Generation Focus extends existing Focus primitive substrate rather than adding sixth primitive. 18 BRIDGEABLE_MASTER subsections + 6 DESIGN_LANGUAGE visual canon subsections locking Generation Focus against settled foundation. Total ~3 hours conversational/architectural work; canon doc batch write at session close.
+
+### Phase A — Emergence + Distinction + Entity Model + Closure + Core Elements + QuotingEngine Relationship + Deferrals (7 subsections)
+
+§3.26.11.12 introduced as Generation Focus comprehensive subsection (18 sub-subsections — Focus type extension proportional to fifth Focus type extension scope vs primitive emergence scope per §3.26.7.5 canonical-quality discipline preserved without padding). Generation Focus established as **producer Focus type** alongside four consumer Focus types (Decision/Coordination/Execution/Review). Phase A locks the emergence + distinction + entity model + closure semantics + core element catalog + QuotingEngine relationship + bounded scope; Phase B locks surfacing + Workshop integration + QuotingEngine integration mechanics + cross-primitive composition + Intelligence layer integration + workflow trigger transitions; Phase C locks visual canon + canonical design disciplines + anti-patterns catalog + final deferral catalog reconciliation + strategic vision integration.
+
+**Architectural framing — Generation Focus as producer Focus type** (§3.26.11.12): Generation Focus is the **producer Focus type** distinct from existing four consumer Focus types. Existing four Focus types are all consumer Focus types — they read existing vault state, surface decisions over already-created entities, coordinate around existing records, review state for compliance/quality. Generation Focus creates new vault items from scratch through rich creative tooling (canvas + palette + AI-extraction-review + parametric controls + live preview + commit affordance). Producer/consumer distinction is meaningfully different shape but Focus primitive substrate accommodates both via fifth Focus type addition.
+
+**Canon-defense discipline preserved structural integrity** (§3.26.11.12.1): conversation pattern — "we need a sixth primitive called Tools" → canon-defense discipline interrogates whether existing primitive substrate accommodates the case → "actually we just hadn't named the fifth Focus type yet". Architectural restraint preserved structural integrity by extending existing Focus primitive rather than adding sixth primitive. Canonical anti-pattern documented at canon level: when something doesn't have a clean home in nav, it almost always means architecture hasn't yet identified what kind of thing it is; the fix is rarely "make a new top-level container" and almost always "we already have the right primitive, hadn't yet seen this case fit."
+
+**Canonical architectural test** (Phase A Q1 strengthening, §3.26.11.12.2): **Focus type is determined by bounded-thing-completion semantics (what triggers Focus closure), not by sub-activity shape within Focus.** Operator activity within Focus may include consumer-shape sub-activities (per-evidence acceptance in Audit Prep, parametric adjustment iteration in Wall Designer, per-feature extraction acceptance in Drawing Takeoff) but Focus type is determined by bounded-thing-completion semantics. Producer-shape Focus types close on output commit; consumer-shape Focus types close on decision-made / coordination-event-ended / task-completed / review-signed-off.
+
+**Entity model canonical** (§3.26.11.12.3): single `generation_focus_instances` table with `template_type` discriminator. **Fourth canonical application of single-entity-with-discriminator meta-pattern post-Session-7** (after SMS §3.26.17.2 + Phone §3.26.18.2 + Messaging §3.26.19.2). Pattern locks across substantively different primitive types — communication primitives + Focus type extension. Meta-pattern generalizes correctly.
+
+**Output commit closure pattern canonical** (§3.26.11.12.4): Generation Focus closes when authored output committed to destination via explicit commit affordance per §3.26.14.14.5 operator agency discipline. Draft state lifecycle (active ↔ draft ↔ committed/abandoned) canonical with 90-day canonical retention default + tenant-configurable bounds (30-day min + 1-year max).
+
+**Core element catalog scoping canonical** (§3.26.11.12.5): seven canonical core elements distinct from existing four Focus types' element catalogs (canvas + palette + AI-extraction-review + confidence-scored line items + parametric controls + live preview + commit affordance). Per-template-type element subset configuration canonical at template configuration time.
+
+**Dual framing canon** (§3.26.11.12.6): Wall Designer + Drawing Takeoff are both Generation Focuses (operator-experience shape) AND QuotingEngine intake methods (operational pipeline shape). Two consistent framings of same surface from different architectural angles. Other Generation Focus templates carry per-template-type destination without QuotingEngine pipeline integration.
+
+### Phase A — Q1-Q7 deliberations + 2 strengthenings integrated
+
+Seven architectural questions surfaced + resolved with two strengthenings integrated:
+
+- **Q1 Audit Prep generator is Generation Focus** confirmed with strengthening — canonical architectural test added (Focus type is determined by bounded-thing-completion semantics, not by sub-activity shape within Focus); Phase A refinement integrated
+- **Q2 draft state lifecycle** confirmed (90-day canonical default with tenant-configurable bounds 30-day min + 1-year max)
+- **Q3 cross-tenant Generation Focus deferred** with three concrete signals canonicalized
+- **Q4 producer-shape core element catalog** confirmed (7 canonical elements categorically distinct from existing four Focus types' consumer-shape catalogs)
+- **Q5 Workshop authoring richness** confirmed with addition — Generation Focus templates are richest authoring surface in Workshop primitive's template scope post-Session-7; Phase A refinement integrated
+- **Q6 single-table-with-discriminator entity model** confirmed (fourth canonical application of meta-pattern post-Session-7)
+- **Q7 dual framing canon** confirmed (Generation Focus + QuotingEngine intake method); per-template-type destination canonical
+
+### Phase B — Surfacing + Workshop Integration + QuotingEngine Integration + Cross-Primitive Composition + Intelligence Integration + Workflow Trigger Transitions (6 subsections)
+
+§3.26.11.12.8-§3.26.11.12.13. Three-channel canonical surfacing pattern (Command Bar + Pulse-launched + workspace navigation per §3.26.11.12.8); Workshop integration mechanics with Tune mode + Compose mode framing (§3.26.11.12.9); QuotingEngine integration mechanics at canonical pipeline boundary (§3.26.11.12.10); cross-primitive composition via destination linkage through existing cross-primitive embedding canon (§3.26.11.12.11); per-template-type Intelligence prompt scope (§3.26.11.12.12); workflow cascade pattern Decision → Generation → Review (§3.26.11.12.13).
+
+**Workshop template authoring complexity hierarchy canonical** (§3.26.11.12.9, Phase A Q5 strengthening): Generation Focus templates are richest authoring surface in Workshop primitive's template scope post-Session-7. Email = text + variables (lightest) → SMS = text + variables → Calendar event = structured fields → Phone managed prompt = prompt configuration → Messaging = text + variables + cross-primitive embed slots → **Generation Focus = canvas + palette + parametric controls + AI-extraction-review prompts + commit affordance + per-template-type retention + product-line activation gating + output destination + element subset selection (heaviest)**.
+
+**Workshop template-type catalog post-Session-7**: Email 1 + Calendar 3 + SMS 5 + Phone 7 + Messaging 3 + Generation Focus 1+ per template type discriminator value (wall_designer + drawing_takeoff + legacy_studio + engraved_urn_customizer + monument_customizer + mix_design + audit_prep_generator + future verticals) = **20+ Workshop template types** post-Session-7.
+
+**Asynchronous orchestration canonical** (§3.26.11.12.10 + Phase B Q10 strengthening): pricing pipeline asynchronous orchestration at `quote_intake_request` pipeline boundary. **Failure handling discipline canonical**: pricing failure surfaces in Pulse Operational layer + activity log + operator notification; operator-controlled retry; no auto-retry — preserves operator agency + prevents masking systematic pricing logic issues.
+
+**Per-template-type Intelligence prompt scope canonical** (§3.26.11.12.12 + Phase B Q12 strengthening): ~14 managed prompts canonical at September scope (or ~11 if Audit Prep deferred to compliance future activation). **Cumulative cross-primitive managed Intelligence prompt count post-Session-7**: ~27-28 (post-Session-6 communication primitives) + ~14 (Generation Focus templates) = **~41-42 managed Intelligence prompts canonical across Layer 1 communication primitives + Generation Focus**. Canonical scope discipline: AI-extraction prompts canonical at September with operator-value baseline; suggestion prompts canonical at September with operator-value baseline; post-September signal-based scope adjustment per §3.26.7.5 architectural restraint discipline.
+
+**Bypassable cascade canonical** (§3.26.11.12.13 + Phase B Q13 strengthening): cascade is bypassable when bounded thing (authored output) already exists; cascade is NOT bypassable when bounded thing requires authoring. Bypass requires explicit operator decision per Decision Focus instance — not template-level configuration that auto-bypasses by default.
+
+### Phase B — Q8-Q13 deliberations + 3 strengthenings integrated
+
+Six architectural questions surfaced + resolved with three strengthenings integrated:
+
+- **Q8 three-channel surfacing pattern** confirmed (Command Bar + Pulse-launched + workspace navigation; entity portal affordance is structurally Command Bar surfacing with context-scoped chrome rendering, not fourth canonical channel)
+- **Q9 Tune mode + Compose mode framing** confirmed (two-mode framing sufficient — Compose+ alternative rejected per architectural simplicity discipline)
+- **Q10 asynchronous orchestration canonical** confirmed with strengthening — failure handling discipline added at canon level (pricing failure → Pulse Operational + activity log + notification; operator-controlled retry; no auto-retry); Phase B refinement integrated
+- **Q11 cross-primitive composition via destination linkage** confirmed (no new embed type added; architectural separation preserved)
+- **Q12 ~14 managed prompts canonical at September scope** confirmed with strengthening — canonical scope discipline added at canon level (AI-extraction + suggestion prompts canonical at September with operator-value baseline; post-September signal-based adjustment); Phase B refinement integrated
+- **Q13 canonical workflow cascade pattern** confirmed with strengthening — bypassable cascade subsection added at canon level (three operational scenarios + canonical anti-pattern guard); Phase B refinement integrated
+
+### Phase C — Visual Canon + Canonical Design Disciplines + Anti-Patterns Catalog + Deferral Reconciliation + Strategic Vision Integration (5 BRIDGEABLE_MASTER subsections + 6 DESIGN_LANGUAGE subsections)
+
+§3.26.11.12.14-§3.26.11.12.18 + §14.14. Visual canon at canon level with cross-reference to DESIGN_LANGUAGE §14.14 (§3.26.11.12.14); 11 canonical architectural disciplines (§3.26.11.12.15); seven canonical anti-patterns catalog (§3.26.11.12.16); consolidated deferral catalog (§3.26.11.12.17); strategic vision integration with five long-arc Generation Focus templates documented (§3.26.11.12.18).
+
+**Canonical anti-patterns catalog expanded from four to seven post-Session-7** (Phase C Q18 expansion):
+- Anti-pattern 1: Auto-commit on extraction confidence rejected
+- Anti-pattern 2: Auto-retry on pricing failure rejected
+- Anti-pattern 3: Auto-bypass on cascade rejected
+- Anti-pattern 4: Primitive count expansion against fifth Focus type rejected
+- **Anti-pattern 5: Synchronous QuotingEngine pricing blocking commit affordance rejected** (Phase C Q18 expansion)
+- **Anti-pattern 6: Generation Focus output as new cross-primitive embed type rejected** (Phase C Q18 expansion)
+- **Anti-pattern 7: Compose+ mode Workshop authoring rejected** (Phase C Q18 expansion)
+
+Seven-pattern catalog complete at September scope. Future canonical anti-patterns added as concrete signal accumulates across post-Session-7 implementation arcs.
+
+**11 canonical architectural disciplines** (§3.26.11.12.15): producer-shape Focus type discipline + bounded-thing-completion semantics discipline + output commit closure discipline + draft state lifecycle discipline + per-template-type destination discipline + asynchronous orchestration discipline + failure handling discipline + single-table-with-discriminator entity model discipline + operator agency discipline + Workshop authoring complexity discipline + bypassable cascade discipline.
+
+**Strategic vision integration** (§3.26.11.12.18): five long-arc Generation Focus templates documented at canon level without preemptive canonicalization — Mix Design (manufacturing future, Q3 2027) + Surgical Planning + Treatment Plan + Discharge Planning (healthcare long-arc, 2028+) + Invoice Factoring Decision Focus (financial-services long-arc, 2028+). Cross-tenant Generation Focus + supplier extension + cluster pattern long-arc preserved at strategic vision level. Generation Focus canon framework scaffolds future canonicalization without preemptive scope expansion.
+
+**Generation Focus Visual Canon extends §14 with §14.14** (Q14 confirmation): six subsections matching Generation Focus's architectural complexity proportional to fifth Focus type extension — §14.14.1 Generation Focus chrome (modal-overlay rendering) + §14.14.2 Canvas + palette + §14.14.3 AI-extraction-review + confidence-scored line items + §14.14.4 Parametric controls + live preview + §14.14.5 Commit affordance + draft state + bounded-output progress + §14.14.6 Cross-references. Pattern locks finally across all five Focus types at canonical-quality depth.
+
+### Phase C — Q14-Q18 deliberations + 1 substantive expansion integrated
+
+Five architectural questions surfaced + resolved with one substantive expansion (anti-patterns catalog expanded from four to seven):
+
+- **Q14 §14.14 extension canonical** confirmed (six subsections; cross-Focus-type visual continuity preserved; pattern locks finally across all five Focus types)
+- **Q15 dual-location framing canonical** confirmed (architectural disciplines at §3.26.11.12.15 BRIDGEABLE_MASTER; design disciplines at DESIGN_LANGUAGE §14.14; cross-references preserve canonical clarity)
+- **Q16 consolidated deferral catalog** confirmed at §3.26.11.12.17 (post-Session-7 consolidated deferral catalog pattern flagged for potential back-application to Sessions 2-6 communication primitive canons during future documentation hygiene work)
+- **Q17 strategic vision integration scope** confirmed at §3.26.11.12.18 (five long-arc Generation Focus templates + cross-tenant + supplier extension + cluster pattern long-arc)
+- **Q18 canonical anti-patterns catalog expansion** integrated — expanded from four to seven canonical anti-patterns (Anti-pattern 5: synchronous pricing rejected; Anti-pattern 6: new embed type rejected; Anti-pattern 7: Compose+ mode rejected); Phase C substantive expansion integrated
+
+### Phase A + B + C refinements integrated
+
+- 2 Phase A strengthenings: canonical architectural test (Q1); Workshop authoring complexity hierarchy (Q5)
+- 3 Phase B strengthenings: failure handling discipline (Q10); canonical scope discipline (Q12); bypassable cascade subsection with three operational scenarios (Q13)
+- 1 Phase C substantive expansion: canonical anti-patterns catalog expanded from four to seven (Q18)
+- 18 architectural questions Q1-Q18 deliberated and resolved across three phases
+
+**Architectural model post-Session-7**: 5 primitives + fractal Pulse + universal Command Bar + Workshop primitive + comprehensive Email + Calendar + SMS + Phone + Messaging primitive canon + **5 Focus types canonicalized at canon-faithful depth** (Decision + Coordination + Execution + Review + Generation). All five Layer 1 communication primitives + all five Focus types canonicalized at canon-faithful depth. Phase W-4b Layer 1 implementation arcs (Calendar + SMS + Phone + Messaging) all open with locked canon foundation. Phase W-4d Generation Focus implementation arc opens with locked canon foundation.
+
+**Architectural restraint discipline preserved**: Session 7 demonstrates restraint against premature primitive count expansion (deferring sixth platform primitive "Tools" per architectural fit analysis); Generation Focus extends existing Focus primitive substrate rather than adding sixth primitive. Canon-defense discipline + canonical anti-pattern catalog (7 anti-patterns post-Session-7) preserve architectural elegance.
+
+**Cross-primitive canon totals post-Session-7**:
+- 16 action_types canonical (Email 1 + Calendar 5 + SMS 5 + Phone 5 + Messaging 0)
+- **20+ Workshop template types canonical** (Email 1 + Calendar 3 + SMS 5 + Phone 7 + Messaging 3 + Generation Focus 1+ per template type discriminator value)
+- **~41-42 managed Intelligence prompts canonical** across Layer 1 communication primitives + Generation Focus
+- **5 Focus types canonicalized** at canon-faithful depth
+- **7 canonical anti-patterns** in catalog
+- Coordination Focus arc dependency tracked symmetrically across all five communication primitives
+- **Single-entity-with-discriminator meta-pattern locks finally** across SMS + Phone + Messaging + Generation Focus
+
+**Total canon work post-Session-7**: Sessions 1 + 1.5 + 2 + 3 + 4 + 5 + 6 + 7 ≈ 28-32h dedicated canon work. Substantial; bounded; architecturally justified per §3.26.7.5 ("MVP cuts compound as debt"). Five communication primitives + five Focus types canonicalized at canon-faithful depth before any implementation-time canon-vs-implementation drift surfaces.
+
+**Canon doc updates this session**: BRIDGEABLE_MASTER §3.26.11.12 NEW (18 subsections); DESIGN_LANGUAGE §14.14 NEW (6 sub-sections including cross-references); AESTHETIC_ARC Session 7 entry; CLAUDE.md §14 entry. **No code shipped.**
+
+---
+
 ## Session 6 — Messaging Primitive Canon (canon locked, 2026-05-14)
 
 Pure architectural canon session matching Sessions 1 + 1.5 + 2 + 3 + 4 + 5 discipline pattern. NO CODE this session. Messaging primitive canonicalized as **fifth and final Layer 1 communication primitive** completing operational substrate five-part composition (after Email §3.26.15 + Calendar §3.26.16 + SMS §3.26.17 + Phone §3.26.18); native-from-day-one framework canonical (inverts integrate-now-make-native-later canonical established by prior four primitives — Bridgeable owns entire message flow from operator composition through real-time delivery through retention; no external provider; no carrier integration; no transport complexity); **communications + scheduling + reach + intelligence + coordination = operations** strategic positioning locked at canon level completing operational substrate five-part composition; lighter compliance discipline than prior primitives (no regulatory frameworks at primitive level; cross-tenant bilateral consent only); cost discipline reduces to storage retention only at primitive level (zero per-message marginal cost; zero per-conversation marginal cost; no rate limits at message-send); cross-primitive embedding canonical at primitive level (Messaging primitive's distinguishing operational substrate connective tissue mechanism — six embed types with primitive-specific chrome continuity); 20 canon subsections in BRIDGEABLE_MASTER + 6 visual canon subsections in DESIGN_LANGUAGE locking Messaging primitive against settled foundation. Total ~3 hours conversational/architectural work; canon doc batch write at session close.

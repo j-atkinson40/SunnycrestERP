@@ -4849,6 +4849,575 @@ Per-type auto-closure trigger:
 
 **All types**: auto-closure is "soft" — Focus marked closed but instance persists for audit. Re-opening is allowed for historical reference; new contributions go to a new Focus instance per audit-log integrity.
 
+#### 3.26.11.12 Generation Focus — fifth Focus type
+
+Generation Focus — the **fifth Focus type** extending §3.26.11 Focus Primitive Types canonical pattern (which originally canonicalized four Focus types: Decision §3.26.11.2 + Coordination §3.26.11.3 + Execution §3.26.11.4 + Review §3.26.11.5; Generation Focus added at §3.26.11.12 per Session 7 canon, completing five-Focus-type substrate). Generation Focus is the architectural home for vertical-specific creative surfaces — Wall Designer + Drawing Takeoff (manufacturing) + Legacy Studio (funeral home) + engraved urn customizer (manufacturing urn extension) + monument customizer (cemetery vertical when activated) + Mix Design (manufacturing future) + Audit Prep generator (compliance future) + Surgical Planning + Treatment Plan + Discharge Planning (healthcare vertical long-arc) + Invoice Factoring Decision Focus (financial-services vertical long-arc).
+
+**Architectural framing — Generation Focus as producer Focus type**: existing four Focus types are all consumer Focus types — they read vault state, surface decisions over existing entities, coordinate around already-created records, review state for compliance/quality. Generation Focus is the **producer Focus type** — it creates new vault items from scratch through rich creative tooling (canvas, drag-and-drop, vision-AI extraction, parametric authoring). This producer/consumer distinction is meaningfully different shape but bounded-output discipline + transient + full-screen + entered intentionally + exited when output committed all hold per §3.26.11 Focus primitive canonical pattern.
+
+A Generation Focus is a bounded, full-screen creative surface in which the operator authors a structured vault item — typically a product specification, design, takeoff, memorial spec, or extracted dataset — that does not yet exist. The Focus closes when the authored output is committed to its destination (an order, quote, case, compliance vault item, or other vault context). Generation Focus templates are vertical-specific and product-line-gated; the Focus mechanism itself is universal.
+
+**Bounded-output discipline holds**: Wall Designer exits when design is committed to quote. Drawing Takeoff exits when takeoff is committed to quote. Legacy Studio exits when memorial spec is committed to FH case. Engraved urn customizer exits when engraving spec committed to order line item. Monument customizer exits when monument spec committed to quote. Audit Prep generator exits when audit package finalized to compliance vault item. The bounded thing is an output rather than a decision in strict sense, but commit semantics + transient + full-screen all preserve §3.26.11 Focus discipline.
+
+##### 3.26.11.12.1 Generation Focus emergence + canon-defense rationale
+
+Generation Focus emerged from architectural temptation to add sixth platform primitive. The conversation pattern: identify category of features (vertical-specific creative surfaces) that don't have clean home in existing nav structure → architectural temptation to introduce new top-level container ("Tools" primitive) → canon-defense discipline interrogates whether existing primitive substrate accommodates the case → conclusion: existing Focus primitive supports producer-shape Focus type alongside four consumer-shape Focus types; sixth primitive rejected; Generation Focus canonicalized as fifth Focus type.
+
+**Canon-defense discipline preserved structural integrity**. Sessions 2-6 demonstrated restraint against premature feature scope expansion within established primitives; Session 7 demonstrates restraint against premature primitive count expansion (deferring new top-level primitive per architectural fit analysis).
+
+**Canonical anti-pattern documented at canon level**: when something doesn't have a clean home in nav, it almost always means architecture hasn't yet identified what kind of thing it is; the fix is rarely "make a new top-level container" and almost always "we already have the right primitive, hadn't yet seen this case fit." Pattern preserves architectural elegance — every customizable surface unifies under existing primitive framework per §3.26.14 Workshop primitive emergence rationale; every operational coordination pattern unifies under five existing Focus type framework per §3.26.11 Focus primitive canonical pattern.
+
+**Architectural justification**: producer-shape Focus type is genuinely architecturally distinct from consumer-shape Focus types (canvas/palette/AI-extraction-review/parametric-authoring vs kanban/single-record/triage-queue), but the Focus primitive substrate (transient + full-screen + bounded-decision/output + entered intentionally + exited when bounded thing completes) accommodates producer-shape variation through fifth Focus type addition rather than sixth primitive emergence. Five Focus types vs sixth primitive — the architectural test resolves cleanly in favor of fifth Focus type extension.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline canonical; §3.26.11 Focus primitive canonical pattern; §3.26.14.5 templates-as-data discipline; §3.26.11.12.16 canonical anti-patterns catalog (Anti-pattern 4: primitive count expansion against fifth Focus type rejected).
+
+##### 3.26.11.12.2 Generation Focus distinction from existing four Focus types
+
+Existing four Focus types share structural shape — all are **consumer Focus types**. Each reads existing vault state, surfaces decisions or coordination opportunities over already-created entities, and exits when bounded decision/coordination/execution/review event completes. Consumer Focus types' core element catalogs reflect this consumer shape — kanban (Execution), single-record review (Review), triage queue (Decision), event coordination chrome (Coordination).
+
+**Generation Focus is the producer Focus type** — distinct from consumer shape:
+
+| Dimension | Consumer Focus types | Generation Focus |
+|---|---|---|
+| **Vault state at entry** | Existing entities being acted upon | New entity being authored from scratch |
+| **Operator activity** | Decide / coordinate / execute / review | Create / design / extract / specify |
+| **Bounded thing** | Decision made / coordination event ended / task completed / review signed off | Output committed to destination |
+| **Core element catalog** | Kanban + single-record + triage queue + event coordination chrome | Canvas + palette + AI-extraction-review + parametric controls + live preview + commit affordance |
+| **Cognitive shape** | Read existing state → act on it | Author new state → commit it |
+
+**Producer/consumer distinction is meaningfully different shape but Focus primitive substrate accommodates both**: bounded-output discipline + transient + full-screen + entered intentionally + exited when bounded thing completes all hold per §3.26.11 Focus canonical pattern. The bounded thing in Generation Focus is the authored output rather than the decision/coordination event — but commit semantics preserve bounded-thing-completion discipline canonically.
+
+**Canonical architectural test** (per Session 7 Phase A Q1 strengthening): **Focus type is determined by bounded-thing-completion semantics (what triggers Focus closure), not by sub-activity shape within Focus.** Operator activity within Focus may include consumer-shape sub-activities (per-evidence acceptance in Audit Prep, parametric adjustment iteration in Wall Designer, per-feature extraction acceptance in Drawing Takeoff) but Focus type is determined by bounded-thing-completion semantics — what triggers Focus closure. Producer-shape Focus types close on output commit; consumer-shape Focus types close on decision-made / coordination-event-ended / task-completed / review-signed-off.
+
+This canonicalization helps future Focus type discrimination as new Generation Focus templates emerge across verticals (Surgical Planning long-arc — bounded thing is surgical plan output, not per-step decision pattern; Treatment Plan long-arc — bounded thing is treatment plan output; Discharge Planning long-arc — bounded thing is discharge plan output).
+
+**No primitive count expansion required** — Generation Focus extends Focus primitive's existing scope from "bounded-decision" to "bounded-decision-or-output". Five Focus types total post-Session-7, complete substrate covering operator-state interactions across both consumer (read existing) and producer (author new) shapes.
+
+**Cross-references**: §3.26.11 Focus primitive canonical pattern; §3.26.11.2-5 Decision/Coordination/Execution/Review Focus types; §3.26.11.12.5 core element catalog scoping; §3.26.11.12.4 closure semantics.
+
+##### 3.26.11.12.3 Entity model — Template + instance + output linkage
+
+Generation Focus entity model decomposes into three logical layers: template configuration (vertical-specific, product-line-gated, Workshop-customizable) + instance lifecycle (active → committed → closed; draft state supported) + output linkage (committed output ties to vault item destination).
+
+**Generation Focus template configuration**:
+- Tenant-scoped + vertical-scoped + product-line-gated
+- Workshop-customizable per §3.26.14 Workshop primitive canonical pattern
+- Schema: `template_type` discriminator (`wall_designer` / `drawing_takeoff` / `legacy_studio` / `engraved_urn_customizer` / `monument_customizer` / `mix_design` / `audit_prep_generator` / future verticals); `vertical` scoping; `required_product_line` activation gating; `required_extension` gating
+
+**Generation Focus instance lifecycle**:
+- `active` — operator currently authoring within Focus
+- `draft` — operator saved instance; can resume later
+- `committed` — output committed to destination; Focus closes
+- `abandoned` — instance abandoned without commit; retention per tenant policy
+
+**Output linkage discipline canonical**: when Generation Focus commits output, output is linked to its destination via existing vault item linkage substrate. Wall Designer commit creates Quote line item; Audit Prep generator commit creates compliance vault item; engraved urn customizer commit creates order line item with engraving spec embedded.
+
+**Polymorphic output destination**: Generation Focus output destinations span existing vault item types — `quote_item` (Wall Designer + Drawing Takeoff + monument customizer outputs), `order_line_item` (engraved urn customizer outputs), `fh_case_field` (Legacy Studio outputs), `compliance_vault_item` (Audit Prep generator outputs), `safety_program_generation` (existing entity reused). Polymorphic linkage via `generation_focus_output_linkages` M:N junction parallel to communication primitive polymorphic linkage canonical pattern.
+
+**Entity decomposition discipline**: single `generation_focus_instances` table with `template_type` discriminator parallel to §3.26.17.2 SMS + §3.26.18.2 Phone + §3.26.19.2 Messaging single-entity-with-discriminator pattern. **Fourth canonical application of single-entity-with-discriminator meta-pattern post-Session-7** — pattern locks across substantively different primitive types (communication primitives + Focus type extension).
+
+**Schema discipline at canon level**: canon locks template_type discriminator + vertical scoping + product_line activation gating + Workshop customization + lifecycle states + polymorphic output linkage. Detailed schema deferred to Phase W-4d Generation Focus implementation arc per §3.26.7.5 (canon establishes architectural model; implementation arc executes schema).
+
+##### 3.26.11.12.4 Closure semantics — Output commit pattern
+
+Generation Focus closure semantics extend §3.26.11.11 Focus closure canonical pattern with output commit pattern. Each Focus type has distinct closure trigger preserving bounded-thing-completion discipline:
+
+| Focus type | Closure trigger | Bounded thing |
+|---|---|---|
+| **Decision** (§3.26.11.2) | Decision made via triage action commit / approval / rejection | Decision over existing entity |
+| **Coordination** (§3.26.11.3) | Coordination event ends (deliberation arc completes) | Coordination event |
+| **Execution** (§3.26.11.4) | Task completed | Execution task |
+| **Review** (§3.26.11.5) | Review signed off | Review event |
+| **Generation** (§3.26.11.12) | Output committed to destination | Authored output |
+
+**Output commit pattern canonical**: Generation Focus closes when operator commits authored output to destination via explicit commit affordance. Commit transitions Generation Focus instance from `active` → `committed`; output linkage written to destination vault item; Focus closes.
+
+**Draft state semantics**: operator can save Generation Focus instance as draft without committing. Draft state distinct from committed state — Focus closes on draft save (operator returns to baseline state) but instance preserved for resumption. Operator can resume draft instance later, either continuing authoring or eventually committing or abandoning. Supports multi-session authoring (Wall Designer authored across multiple sessions; Audit Prep generator authored over weeks of compliance review work).
+
+**Draft state lifecycle canonical**:
+- Operator clicks "Save draft" affordance → instance state transitions `active` → `draft`; Focus closes
+- Operator returns to draft via saved-views surface or Pulse Generation Focus widget → instance state transitions `draft` → `active`; Focus reopens
+- Operator commits draft → instance state transitions `draft` → `active` → `committed`; output linkage written; Focus closes
+- Operator abandons draft → instance state transitions `draft` → `abandoned`; retention per tenant policy
+
+**Draft state retention discipline**: per-tenant configurable canonical default (90-day draft retention; tenant-configurable to 30-day minimum + 1-year maximum). Abandoned drafts garbage-collected after retention window.
+
+**Cross-tenant Generation Focus output discipline**: deferred per architectural restraint at September scope per §3.26.11.12.17 deferral catalog. Cross-tenant Generation Focus would mean Hopkins operator authoring Sunnycrest vault item (or vice versa). Plausible scenario doesn't surface for Wilbert demo. Deferral with concrete signal preferred — bilateral consent + cross-tenant masking inheritance complexity warrants dedicated canon session when concrete need emerges.
+
+**Commit affordance discipline**: commit affordance is explicit operator action per §3.26.14.14.5 operator agency discipline — auto-commit on completion-detection rejected (anti-pattern preserves operator agency; even when AI-extraction reaches high confidence, operator commits to vault item destination explicitly per §3.26.11.12.16 anti-pattern 1).
+
+##### 3.26.11.12.5 Core element catalog scoping
+
+Generation Focus core element catalog distinct from existing four Focus types' element catalogs. Producer-shape requires distinct element catalog reflecting authoring activity:
+
+**Canonical Generation Focus core elements (7 elements)**:
+
+1. **Canvas**: drawing surface with layout positioning (Wall Designer canvas; Drawing Takeoff canvas; Legacy Studio canvas; engraved urn customizer canvas; monument customizer canvas)
+
+2. **Palette**: selection surface for components, materials, options (Wall Designer block systems + materials; Legacy Studio photo + text styles; engraved urn font selections + engraving styles)
+
+3. **AI-extraction-review**: vision AI extracts content from input artifacts; operator reviews extraction confidence (Drawing Takeoff vision-AI extraction; Audit Prep generator vision-AI evidence extraction)
+
+4. **Confidence-scored line items**: operator-reviewable AI extractions with confidence indicators (canonical for AI-extraction-heavy Generation Focuses)
+
+5. **Parametric controls**: sliders + dropdowns + structured input affecting output spec (Wall Designer wall parameters; Mix Design parameters; Audit Prep evidence-type review checklist)
+
+6. **Live preview rendering**: visual feedback as operator authors (Wall Designer 3D wall visualization; Legacy Studio memorial composition; Audit Prep structured-output preview)
+
+7. **Commit affordance**: commit button transitioning to bounded-output destination (brass primary button per §3.26.11.12.4 closure semantics)
+
+**Canonical core element catalog distinct from existing four Focus types' element catalogs**: producer-shape categorically distinct per §3.26.11.12.2 distinction discipline.
+
+**Per-template-type element subset configuration** canonical at template level:
+- Wall Designer: canvas + palette + parametric controls + live preview + commit affordance
+- Drawing Takeoff: canvas + AI-extraction-review + confidence-scored line items + parametric controls + live preview + commit affordance
+- Legacy Studio: canvas + palette + live preview + commit affordance
+- Engraved urn customizer: canvas + palette + parametric controls + live preview + commit affordance
+- Monument customizer: canvas + palette + parametric controls + live preview + commit affordance
+- Audit Prep generator: AI-extraction-review + confidence-scored line items + structured-output preview + commit affordance
+
+Element catalog is canonical superset; subset selection is template configuration via Workshop generation_focus_template per §3.26.11.12.9.
+
+##### 3.26.11.12.6 Relationship to QuotingEngine intake methods
+
+**Wall Designer + Drawing Takeoff are both Generation Focuses AND QuotingEngine intake methods** — two consistent framings of the same surface from different architectural angles. Generation Focus is the surface through which the operator drives intake; QuotingEngine remains the destination where intake outputs land as quote line items.
+
+**Two-framings canon at canon level**:
+- **Generation Focus framing**: Wall Designer + Drawing Takeoff are producer-shape Focus types where operator authors structured wall design / takeoff specification through canvas + palette + parametric controls / AI-extraction-review chrome
+- **QuotingEngine intake method framing**: Wall Designer + Drawing Takeoff are intake methods that drive structured input into quote line items via QuotingEngine pricing + composition logic
+
+Both framings are correct; the dual framing is canonical at canon level rather than competing descriptions. Generation Focus framing emphasizes the operator-experience of authoring; QuotingEngine intake method framing emphasizes the operational pipeline (input source → pricing engine → quote line item destination).
+
+**Other Generation Focus templates carry per-template-type destination without QuotingEngine pipeline integration**:
+- **Legacy Studio** → FH case field (memorial spec attached to case as structured authoring output)
+- **Engraved urn customizer** → Order line item with engraving spec embedded (existing order, not quote-derived)
+- **Monument customizer** → Quote line item via direct quote integration (not via QuotingEngine pricing pipeline at canonical scope; future canon may extend)
+- **Mix Design** → Production specification vault item (not quote/order)
+- **Audit Prep generator** → Compliance vault item / SafetyProgramGeneration vault item
+- **Surgical Planning + Treatment Plan + Discharge Planning** → Healthcare-vertical case fields (long-arc; healthcare vertical canon deferred)
+- **Invoice Factoring Decision Focus** → Financial-services vertical case fields (long-arc; deferred)
+
+**Per-template-type destination canonical at canon level** prevents ambiguity. Future Generation Focus templates declare destination at template configuration time — destination is template attribute, not runtime operator choice.
+
+##### 3.26.11.12.7 Bounded scope + initial deferrals
+
+Initial deferral list at Phase A scope; consolidated into final deferral catalog at §3.26.11.12.17:
+- Cross-tenant Generation Focus deferred per §3.26.7.5 (three concrete signals: sustained cross-tenant collaborative authoring + supplier extension scenarios + bilateral consent complexity)
+- Collaborative Generation Focus deferred (real-time collaboration infrastructure complexity)
+- AI-authored Generation Focus deferred for canonicalization (concrete signals from healthcare vertical long-arc + Audit Prep maturity)
+- Per-template-type retention policy variation deferred
+- Generation Focus version history deferred
+- Generation Focus templates as Workshop primitive's eighth template-type slot — Phase B locks integration mechanics
+- Generation Focus Pulse rendering deferred per concrete signal
+- Generation Focus Briefing integration deferred per concrete signal
+
+Each deferred per §3.26.7.5 architectural restraint discipline.
+
+##### 3.26.11.12.8 Generation Focus surfacing patterns
+
+Three-channel canonical surfacing pattern parallel to §3.26.13 universal Command Bar summoning + Pulse-launched + workspace navigation triple canonical pattern.
+
+**Channel 1 — Command Bar summoning** per §3.26.13:
+- `⌘K → "design a wall for {customer/job}"` / `"takeoff drawing for {project}"` / `"create memorial for {case}"` / `"customize urn for {order}"` / `"prep audit package for {compliance period}"` triggers entity resolution + Generation Focus template selection + new instance creation
+- Voice input affordance per §3.26.18.16 enables hands-free invocation
+
+**Channel 2 — Pulse-launched** per §3.26.12 fractal Pulse:
+- Drafted Generation Focus instance widget surfaces on Pulse Operational layer
+- Per-instance widget composition: template type icon + brief context + click-to-resume affordance
+- Pulse-launched Generation Focus uses Focus modal-overlay rendering per §3.26.13 Phase A canon
+- Per Q-deliberation §3.26.11.12.17 — Pulse rendering deferred per concrete signal until tenant operational pattern indicates value
+
+**Channel 3 — Workspace navigation** per vertical-specific surface canon:
+- Vertical-specific Generation Focus catalogs surface in workspace navigation per product-line activation gating
+- Manufacturing + `vault` activated: Wall Designer + Drawing Takeoff + Mix Design (future)
+- Manufacturing + `urn_sales`: engraved urn customizer
+- Funeral home: Legacy Studio
+- Cemetery (when activated): monument customizer
+- Compliance future: Audit Prep generator
+
+**Workspace navigation per-vertical scoping**: each Generation Focus template declares `vertical` scope + `required_product_line` + `required_extension` per §3.26.11.12.3; workspace navigation surfaces only vertical-appropriate templates.
+
+**Per-template surface affordances**: Command Bar surfacing canonical for all Generation Focus templates; workspace navigation canonical for product-line-active templates; Pulse-launched canonical for drafted instances. Three-channel surfacing pattern locks at canon level.
+
+**Cross-references**: §3.26.13 universal Command Bar summoning canonical pattern; §3.26.12 Pulse fractal Pulse architecture; §3.26.11.12.3 entity model; §3.26.11.12.17 Pulse rendering deferral.
+
+##### 3.26.11.12.9 Workshop integration mechanics
+
+Generation Focus templates extend Workshop primitive's template-type catalog from 19 (post-Session-6) to 20+ post-Session-7. Generation Focus templates are the **richest authoring surface in Workshop primitive's template scope post-Session-7**.
+
+**Workshop template authoring complexity hierarchy** (post-Session-7):
+- Email template = text + variables (lightest)
+- SMS template = text + variables
+- Calendar event template = structured fields
+- Phone managed prompt = prompt configuration
+- Messaging template = text + variables + cross-primitive embed slots
+- Generation Focus template = canvas configuration + palette configuration + parametric controls configuration + AI-extraction-review prompts + commit affordance configuration + per-template-type retention policy + per-template-type product-line activation gating + per-template-type output destination + per-template-type element subset selection (heaviest)
+
+**Tune mode + Compose mode framing for Generation Focus templates** per §3.26.14.x Workshop primitive Tune/Compose canonical pattern:
+
+**Tune mode (lightweight customization via parameter adjustment)**:
+- Operator customizes existing Generation Focus template via parameter adjustment without authoring template structure
+- Wall Designer Tune mode: tenant adjusts default block system selection + default base material + default cap material
+- Legacy Studio Tune mode: tenant adjusts default photo styles + default text fonts + default decorative motif catalog
+- Audit Prep generator Tune mode: tenant adjusts AI-extraction confidence threshold + per-evidence-type review checklist
+- Tune mode operations: parameter overrides on existing template; cannot add/remove canonical structural elements
+
+**Compose mode (substantial new template authoring)**:
+- Tenant authors new Generation Focus template from scratch OR substantially modifies existing template structure
+- Compose mode operations: full template authoring including canvas configuration + palette configuration + parametric controls configuration + AI-extraction-review prompts + commit affordance configuration + element subset selection
+- Compose mode is high-complexity authoring task — typically performed by tenant admin OR Bridgeable customer success engineer at tenant onboarding
+- Compose mode authoring tools: Workshop generation_focus_template editor with template-type-specific authoring chrome
+
+**Tune mode vs Compose mode boundary canonical**: parameter adjustment within canonical template structure = Tune mode; structural modification = Compose mode. Boundary canonical at canon level prevents ambiguous authoring patterns. Two-mode framing sufficient — Compose+ alternative rejected per §3.26.11.12.16 anti-pattern 7.
+
+**Workshop template-type catalog post-Session-7 (20+ template types)**: Email 1 + Calendar 3 + SMS 5 + Phone 7 + Messaging 3 + Generation Focus 1+ per template type discriminator value (wall_designer + drawing_takeoff + legacy_studio + engraved_urn_customizer + monument_customizer + mix_design + audit_prep_generator + future verticals). **Total: 20+ Workshop template types** post-Session-7.
+
+**Per-template-type Workshop authoring chrome**: each Generation Focus template type carries distinct Workshop authoring chrome — Wall Designer Workshop authoring includes block-system catalog editor; Legacy Studio Workshop authoring includes memorial-element catalog editor; engraved urn customizer Workshop authoring includes engraving-style catalog editor.
+
+**Cross-references**: §3.26.14 Workshop primitive canonical pattern; §3.26.11.12.3 entity model; §3.26.11.12.16 anti-pattern 7 (Compose+ mode rejected).
+
+##### 3.26.11.12.10 QuotingEngine integration mechanics
+
+Canonical pipeline boundary at `quote_intake_request` entity. Wall Designer + Drawing Takeoff Generation Focus outputs feed QuotingEngine pricing pipeline asynchronously.
+
+**Canonical pipeline boundary**:
+```
+Wall Designer / Drawing Takeoff Generation Focus
+         ↓ Output committed to destination
+quote_intake_request (canonical pipeline boundary)
+         ↓ QuotingEngine pricing logic
+quote_line_item (existing entity)
+         ↓
+Quote (existing entity)
+```
+
+**`quote_intake_request` canonical pipeline boundary entity**:
+- Carries Generation Focus output specification + linkage to source Generation Focus instance
+- Triggers QuotingEngine pricing pipeline asynchronously (queue per existing Bridgeable scheduler pattern)
+- Output: quote_line_item rows added to existing Quote OR new Quote created if not specified
+
+**Asynchronous pipeline discipline canonical**: Generation Focus commit fires `quote_intake_request` event; QuotingEngine processes asynchronously; quote_line_item creation surfaces in operator's quote workspace via existing notification + activity log + Pulse Operational layer rendering. Asynchronous pattern preserves Generation Focus commit affordance UX (commit button completes immediately + Focus closes; pricing pipeline runs in background) parallel to §3.26.18.6 Phone call intelligence pipeline asynchronous orchestration pattern. Synchronous pricing rejected per §3.26.11.12.16 anti-pattern 5.
+
+**Failure handling discipline canonical** (per Phase B Q10 strengthening): pricing failure surfaces in Pulse Operational layer + activity log + operator notification; operator can retry pricing OR adjust Wall Designer specifications via draft state restoration (re-open Generation Focus instance from committed state to retry pricing). No auto-retry — preserves operator agency + prevents masking systematic pricing logic issues. Operator decides retry strategy (immediate retry / specification adjustment / abandon). Auto-retry rejected per §3.26.11.12.16 anti-pattern 2.
+
+Failure handling rationale: pricing pipeline can fail for various reasons (QuotingEngine logic errors + missing tenant pricing configuration + invalid specification combinations + scheduler infrastructure issues). Canonical failure handling preserves operator agency by surfacing failure transparently rather than masking via auto-retry.
+
+**Other Generation Focus templates carry per-template-type destination without QuotingEngine pipeline integration** per §3.26.11.12.6:
+- Legacy Studio → FH case field (via `fh_case_field_update` event)
+- Engraved urn customizer → Order line item with engraving spec embedded (via `order_line_item_engraving_spec_update` event)
+- Monument customizer → Quote line item via direct quote integration (not via QuotingEngine pricing pipeline at canonical scope)
+- Mix Design (future) → Production specification vault item
+- Audit Prep generator → Compliance vault item / SafetyProgramGeneration vault item
+
+**Per-template-type destination canonical at template configuration time** prevents runtime ambiguity. Pipeline boundary canonical pattern preserves architectural separation: Generation Focus is producer-shape Focus type with canonical authoring + commit semantics; QuotingEngine is operational pricing pipeline with existing canonical scope.
+
+**Cross-references**: §3.26.11.12.6 dual framing canon; §3.26.11.12.4 closure semantics; §3.26.x QuotingEngine canon; §3.26.11.12.16 anti-patterns 2 + 5.
+
+##### 3.26.11.12.11 Cross-primitive composition
+
+Generation Focus outputs compose with cross-primitive embedding canon (per §3.26.19.5 Messaging primitive cross-primitive embedding) + Communications layer attachment (per §3.26.15.x Email primitive document attachment + §3.26.18.x Phone primitive call linkage) + Triage Focus input pattern (per §3.26.10 Triage Focus canonical pattern integration).
+
+**Generation Focus output as cross-primitive embed type**:
+- Generation Focus output committed to vault item destination per §3.26.11.12.6
+- Vault item destination accessible as cross-primitive embed source per existing cross-primitive embedding canon
+- Wall Designer output (committed as quote line item) embeds in Messaging via saved view embed type per §3.26.19.5
+- Audit Prep generator output (committed as compliance vault item) embeds in Email primitive via document attachment per §3.26.15.x
+- Engraved urn customizer output (committed as order line item with engraving spec) embeds in Phone primitive via call linkage per §3.26.18.x
+
+**Generation Focus output as Communications layer attachment**:
+- Email primitive attachment canon extends to Generation Focus output attachment — operator composing email can attach committed Generation Focus output as PDF/image rendering of authored content
+- Wall Designer output attaches to email as PDF wall design specification with rendered visualization
+- Audit Prep generator output attaches to email as PDF audit package
+- Legacy Studio output attaches to email as PDF memorial specification
+- Attachment rendering generated at attach time (not at commit time) — preserves single-source-of-truth discipline (output spec lives in vault item destination; PDF rendering generated on-demand)
+
+**Generation Focus output as Triage Focus input** per §3.26.10 Triage Focus canonical pattern integration:
+- Generation Focus output committed → triggers Triage Focus item if downstream review required
+- Wall Designer output committed → Triage Focus item for sales-engineer review
+- Audit Prep generator output committed → Triage Focus item for compliance officer review
+- Legacy Studio output committed → Triage Focus item for FH director review
+- Triage Focus integration discipline: Generation Focus commit fires triage queue item creation event when downstream review required per template configuration
+
+**Per-template-type cross-primitive composition** canonical at template configuration time. Composition discipline preserves architectural separation: Generation Focus produces; cross-primitive composition consumes via existing cross-primitive embedding + attachment + triage input canons. New cross-primitive embed type rejected per §3.26.11.12.16 anti-pattern 6.
+
+**Cross-references**: §3.26.19.5 Messaging primitive cross-primitive embedding; §3.26.15.x Email primitive document attachment; §3.26.18.x Phone primitive call linkage; §3.26.10 Triage Focus canonical pattern; §3.26.11.12.16 anti-pattern 6.
+
+##### 3.26.11.12.12 Intelligence layer integration
+
+Generation Focus Intelligence layer integration per Bridgeable Intelligence canonical pattern + §3.26.18.6 Phone Intelligence pipeline confidence discipline precedent.
+
+**Per-template-type Intelligence prompt scope** (canonical at September scope):
+
+**Drawing Takeoff** (AI-extraction-heavy):
+- `drawing_takeoff.extract_measurements` (Sonnet)
+- `drawing_takeoff.classify_features` (Haiku)
+- `drawing_takeoff.suggest_materials` (Haiku)
+
+**Wall Designer**:
+- `wall_designer.suggest_block_system` (Haiku)
+- `wall_designer.suggest_base_material` (Haiku)
+- `wall_designer.detect_design_anomalies` (Haiku)
+
+**Legacy Studio**:
+- `legacy_studio.suggest_layout` (Haiku)
+- `legacy_studio.suggest_text_style` (Haiku)
+
+**Engraved urn customizer**:
+- `engraved_urn.suggest_engraving_style` (Haiku)
+- `engraved_urn.detect_engraving_anomalies` (Haiku)
+
+**Monument customizer**:
+- `monument.suggest_layout` (Haiku)
+- `monument.detect_design_anomalies` (Haiku)
+
+**Audit Prep generator** (AI-extraction-heavy):
+- `audit_prep.extract_evidence` (Sonnet)
+- `audit_prep.classify_evidence` (Haiku)
+- `audit_prep.suggest_remediation` (Sonnet)
+
+**Total Generation Focus Intelligence prompt count at September scope**: ~14 managed prompts canonical (or ~11 if Audit Prep deferred to compliance future activation).
+
+**Cumulative cross-primitive managed Intelligence prompt count post-Session-7**: ~27-28 (post-Session-6 communication primitives) + ~14 (Generation Focus templates) = **~41-42 managed Intelligence prompts canonical across Layer 1 communication primitives + Generation Focus**.
+
+**Canonical scope discipline at canon level** (per Phase B Q12 strengthening): AI-extraction prompts canonical at September (Drawing Takeoff vision extraction + Audit Prep vision evidence extraction + ~6 prompts canonical-by-default). Suggestion prompts canonical at September with operator-value baseline assumption (Wall Designer block-system suggestions + Legacy Studio layout suggestions + monument layout suggestions + engraving style suggestions + design anomaly detection prompts ~8 prompts canonical-by-default). Post-September signal-based scope adjustment per §3.26.7.5 architectural restraint discipline — if concrete tenant signal indicates suggestion prompts not used by operators, deferral activates.
+
+Scope discipline rationale: AI-extraction prompts carry clear operator value (vision-AI extracts content from input artifacts; operator reviews + commits). Suggestion prompts carry softer operator value but cost discipline preserved + per-tenant cost cap via Workshop cost-policy templates + suggestion prompts surface as inline suggestions (not auto-applied) per operator agency discipline.
+
+**Confidence-scored line item discipline** per §3.26.18.6 Phone Intelligence pipeline confidence canonical pattern: ≥0.70 confidence default-selected; <0.70 confidence requires explicit operator confirmation. Per-template-type confidence threshold configurable via Workshop generation_focus_template.
+
+**Operator agency preserved via canonical anti-patterns** per §3.26.14.14.5 — Intelligence proposes; operator decides — auto-commit on high confidence explicitly rejected per §3.26.11.12.16 anti-pattern 1.
+
+**Cost discipline integration** per §3.26.18.10 Phone primitive cost discipline pattern: per-prompt cost recorded on `intelligence_executions` audit row; per-Generation-Focus-instance aggregate Intelligence cost queryable via SQL aggregation; Workshop cost-policy templates apply at Generation Focus level.
+
+**Cross-references**: §3.26.18.6 Phone Intelligence pipeline confidence discipline; §3.26.14.14.5 operator agency canonical; §3.26.18.10 cost discipline canon; §3.26.14 Workshop primitive; Bridgeable Intelligence canonical pattern.
+
+##### 3.26.11.12.13 Workflow trigger transitions Decision → Generation → Review patterns
+
+Generation Focus integration with §3.26.x Workflow Engine canonical pattern. Generation Focuses participate in workflow cascades — Decision Focus output triggers Generation Focus authoring; Generation Focus commit triggers Review Focus sign-off; Review Focus sign-off triggers next workflow stage.
+
+**Canonical workflow cascade pattern — Decision → Generation → Review**:
+
+```
+Decision Focus → triggers → Generation Focus → triggers → Review Focus → triggers → Next workflow stage
+```
+
+**Per-Generation-Focus-template canonical cascade examples**:
+- Wall Designer cascade: Decision Focus (customer quote request triage) → Generation Focus (Wall Designer authoring) → Review Focus (sales engineer review) → customer-facing email composition
+- Drawing Takeoff cascade: Decision Focus (drawing submitted triage) → Generation Focus (Drawing Takeoff authoring with vision-AI extraction) → Review Focus (sales engineer review) → customer-facing email
+- Legacy Studio cascade: Decision Focus (arrangement intake triage) → Generation Focus (Legacy Studio authoring) → Review Focus (FH director arrangement conference) → funeral service execution
+- Audit Prep generator cascade: Decision Focus (compliance period scheduled triage) → Generation Focus (Audit Prep generator authoring with vision-AI extraction) → Review Focus (compliance officer review) → regulatory submission
+
+**Workflow trigger discipline canonical**: Decision Focus → Generation Focus trigger fires Generation Focus instance creation (with template-type + linked entity context); Generation Focus → Review Focus trigger fires Review Focus item creation (with reviewed-output linkage); Review Focus → next workflow stage trigger fires downstream workflow event.
+
+**Per-template-type workflow trigger configuration** via Workshop generation_focus_template.
+
+**Bypassable cascade canonical** (per Phase B Q13 strengthening): cascade is bypassable when bounded thing (authored output) already exists; cascade is NOT bypassable when bounded thing requires authoring. Bypass affordance surfaces in Decision Focus workflow trigger configuration per Workshop generation_focus_template — operator decides cascade routing per Decision Focus instance, not auto-routing.
+
+Real operational bypass scenarios at canon level:
+1. Customer submits pre-authored CAD file → Decision Focus triages → Drawing Takeoff Generation Focus bypassed → Review Focus reviews CAD file directly
+2. Compliance period scheduled with audit package already authored from prior period → Decision Focus triages → Audit Prep generator Generation Focus bypassable → Review Focus reviews audit package directly
+3. Memorial spec template applied from existing FH case → Decision Focus triages → Legacy Studio Generation Focus bypassable → Review Focus reviews memorial spec directly
+
+**Canonical anti-pattern guard**: bypassable cascade preserves operator agency without drifting into "skip authoring stage by default" pattern that would erode Generation Focus canonical scope. Bypass requires explicit operator decision per Decision Focus instance — not template-level configuration that auto-bypasses by default. Auto-bypass rejected per §3.26.11.12.16 anti-pattern 3.
+
+**Asynchronous orchestration canonical** per §3.26.11.12.10 QuotingEngine integration pattern: workflow cascade triggers fire asynchronously via existing Bridgeable scheduler pattern.
+
+**Cross-Focus operator continuity preserved**: workflow cascade transitions can route operator into next Focus immediately if operator opts in (Generation Focus commit → "Review now" affordance opens Review Focus directly) OR route operator back to baseline workspace if operator opts to return to other work. Per §3.26.14.14.5 operator agency discipline — operator decides cascade routing, not auto-routing.
+
+**Cross-references**: §3.26.x Workflow Engine canonical pattern; §3.26.10 Triage Focus canonical pattern; §3.26.11.5 Review Focus canonical pattern; §3.26.11.12.10 QuotingEngine asynchronous orchestration canonical; §3.26.14.14.5 operator agency discipline; §3.26.11.12.16 anti-pattern 3.
+
+##### 3.26.11.12.14 Visual canon — DESIGN_LANGUAGE §14.14 Generation Focus Visual Canon
+
+Generation Focus visual canon extends DESIGN_LANGUAGE §14 with Focus type extension at §14.14. Six subsections matching Generation Focus's architectural complexity proportional to fifth Focus type extension.
+
+**§14.14 scope**:
+- §14.14.1 Generation Focus chrome (Focus modal-overlay rendering canon)
+- §14.14.2 Canvas + palette visual canon
+- §14.14.3 AI-extraction-review + confidence-scored line items visual canon
+- §14.14.4 Parametric controls + live preview visual canon
+- §14.14.5 Commit affordance + draft state + bounded-output progress visual canon
+- §14.14.6 Cross-references
+
+**Generation Focus chrome distinct from existing four Focus types' visual chrome**: producer-shape requires distinct chrome catalog reflecting authoring activity. Five Focus type visual chrome catalogs canonical at canon level post-Session-7.
+
+**Per-template-type chrome configuration**: each Generation Focus template renders subset of canonical chrome catalog matching template's authoring shape per §3.26.11.12.5 element subset configuration.
+
+**Cross-references**: §3.26.11.12.5 core element catalog scoping; §3.26.11.12.9 Workshop integration mechanics; DESIGN_LANGUAGE §14 Communications Visual System (parallel visual canon pattern).
+
+##### 3.26.11.12.15 Canonical design disciplines
+
+**Architectural disciplines canonical at canon level** (11 disciplines):
+
+1. **Producer-shape Focus type discipline** (per §3.26.11.12.2). Generation Focus is the producer Focus type alongside four consumer Focus types. No primitive count expansion required.
+
+2. **Bounded-thing-completion semantics discipline** (per §3.26.11.12.2 + Q1 strengthening). Focus type is determined by bounded-thing-completion semantics, not by sub-activity shape within Focus.
+
+3. **Output commit closure discipline** (per §3.26.11.12.4). Generation Focus closes when authored output committed to destination via explicit commit affordance per §3.26.14.14.5 operator agency discipline.
+
+4. **Draft state lifecycle discipline** (per §3.26.11.12.4). Draft state canonical (active ↔ draft ↔ committed/abandoned). 90-day canonical retention default + tenant-configurable bounds.
+
+5. **Per-template-type destination discipline** (per §3.26.11.12.6 + §3.26.11.12.10). Per-template-type destination canonical at template configuration time prevents runtime ambiguity.
+
+6. **Asynchronous orchestration discipline** (per §3.26.11.12.10 + §3.26.11.12.13). QuotingEngine pricing pipeline + workflow cascade transitions fire asynchronously.
+
+7. **Failure handling discipline** (per §3.26.11.12.10 + Q10 strengthening). Pricing failure surfaces in Pulse Operational layer + activity log + operator notification; operator-controlled retry; no auto-retry.
+
+8. **Single-table-with-discriminator entity model discipline** (per §3.26.11.12.3). Fourth canonical application of single-entity-with-discriminator meta-pattern post-Session-7.
+
+9. **Operator agency discipline** (per §3.26.14.14.5 inherited canonical). Intelligence proposes; operator decides — auto-commit + auto-retry + auto-bypass rejected.
+
+10. **Workshop authoring complexity discipline** (per §3.26.11.12.9 + Q5 strengthening). Generation Focus templates are richest authoring surface in Workshop primitive's template scope post-Session-7. Tune mode + Compose mode framing canonical.
+
+11. **Bypassable cascade discipline** (per §3.26.11.12.13 + Q13 strengthening). Cascade is bypassable when bounded thing already exists; not bypassable when bounded thing requires authoring. Bypass requires explicit operator decision per Decision Focus instance.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.14.14.5 operator agency discipline; §3.26.11 Focus primitive canonical pattern; §3.26.11.12.16 canonical anti-patterns catalog; DESIGN_LANGUAGE §14.14 Generation Focus visual canon.
+
+##### 3.26.11.12.16 Canonical anti-patterns catalog
+
+Seven canonical anti-patterns established post-Session-7 reflecting operator agency discipline + architectural restraint discipline + canonical scope preservation discipline.
+
+**Anti-pattern 1: Auto-commit on extraction confidence rejected** (per §3.26.11.12.5 + §3.26.14.14.5 + §3.26.18.6 Phone Intelligence pipeline confidence canonical precedent).
+
+Rationale: AI-extraction outputs carry per-line-item confidence score; high-confidence extractions could theoretically auto-commit without operator review. Auto-commit anti-pattern rejected because operator agency canonical at canon level — Intelligence proposes; operator decides; high-confidence extractions can still be wrong; auto-commit masks systematic AI-extraction quality issues.
+
+Canonical pattern: AI-extraction outputs surface as confidence-scored line items per §3.26.11.12.5 + operator reviews + commits per line item. ≥0.70 confidence default-selected for commit; <0.70 confidence requires explicit operator confirmation.
+
+**Anti-pattern 2: Auto-retry on pricing failure rejected** (per §3.26.11.12.10 + Q10 strengthening).
+
+Rationale: Pricing pipeline can fail for various reasons; auto-retry masks systematic pricing logic issues that operator visibility surfaces; auto-retry delays operator awareness of pricing problems.
+
+Canonical pattern: Pricing failure surfaces in Pulse Operational layer + activity log + operator notification; operator can retry pricing OR adjust Wall Designer specifications via draft state restoration.
+
+**Anti-pattern 3: Auto-bypass on cascade rejected** (per §3.26.11.12.13 + Q13 strengthening).
+
+Rationale: Workflow cascade Decision → Generation → Review patterns can theoretically auto-bypass Generation Focus stage when downstream Review Focus could process pre-existing output directly. Auto-bypass at template level would erode Generation Focus canonical scope.
+
+Canonical pattern: Cascade is bypassable when bounded thing (authored output) already exists; cascade is NOT bypassable when bounded thing requires authoring. Bypass requires explicit operator decision per Decision Focus instance — not template-level configuration that auto-bypasses by default.
+
+**Anti-pattern 4: Primitive count expansion against fifth Focus type rejected** (per §3.26.11.12.1 + Session 1 canon close).
+
+Rationale: Architectural temptation to add sixth platform primitive ("Tools" primitive) for vertical-specific creative surfaces. Existing Focus primitive substrate accommodates producer-shape Focus type alongside consumer-shape Focus types; primitive count expansion is architectural debt.
+
+Canonical pattern: when something doesn't have a clean home in nav, it almost always means architecture hasn't yet identified what kind of thing it is; the fix is rarely "make a new top-level container" and almost always "we already have the right primitive, hadn't yet seen this case fit."
+
+**Anti-pattern 5: Synchronous QuotingEngine pricing blocking commit affordance rejected** (per §3.26.11.12.10 + Q10).
+
+Rationale: Pricing pipeline can take seconds-to-minutes for complex Wall Designer specifications; blocking commit affordance until pricing completes creates perceived latency without operator value.
+
+Canonical pattern: Asynchronous orchestration canonical at `quote_intake_request` pipeline boundary. Generation Focus commit fires intake_request event; QuotingEngine processes asynchronously; quote_line_item creation surfaces via existing notification + Pulse pattern. Asynchronous orchestration preserves Generation Focus commit affordance UX (commit completes immediately + Focus closes; pricing runs in background).
+
+Cross-references: §3.26.11.12.10 QuotingEngine integration mechanics; §3.26.18.6 Phone Intelligence pipeline asynchronous orchestration canonical pattern; §3.26.14.14.5 operator agency discipline.
+
+**Anti-pattern 6: Generation Focus output as new cross-primitive embed type rejected** (per §3.26.11.12.11 + Q11).
+
+Rationale: Adding seventh embed type to §3.26.19.5 Messaging primitive embed catalog creates redundant embedding pathways without operator value. Generation Focus output already lives in destination vault item; destination vault item is already cross-primitive embeddable via existing canonical embed types.
+
+Canonical pattern: Cross-primitive composition via destination linkage canonical. Generation Focus produces output; existing primitive canons consume via destination linkage. §3.26.19.5 Messaging cross-primitive embedding (saved view embed type via destination linkage) + §3.26.15.x Email document attachment + §3.26.18.x Phone call linkage + §3.26.10 Triage Focus input pattern. Architectural separation preserved.
+
+Cross-references: §3.26.11.12.11 cross-primitive composition; §3.26.19.5 Messaging primitive cross-primitive embedding; §3.26.11.12.6 per-template-type destination canon.
+
+**Anti-pattern 7: Compose+ mode Workshop authoring rejected** (per §3.26.11.12.9 + Q9).
+
+Rationale: Adding third Workshop authoring mode beyond Tune + Compose trades architectural simplicity for false granularity. Compose mode already accommodates substantial structural authoring; complexity ceiling is high but bounded.
+
+Canonical pattern: Two-mode framing (Tune mode + Compose mode) sufficient at canonical-quality. Operational reality preserves two-mode framing canonical — Tune mode dominant for routine tenant customization; Compose mode rare for structural authoring (typically performed by tenant admin OR Bridgeable customer success engineer at tenant onboarding).
+
+Cross-references: §3.26.11.12.9 Workshop integration mechanics; §3.26.7.5 architectural restraint discipline; §3.26.14 Workshop primitive canonical pattern.
+
+**Catalog completeness at September**: seven-pattern catalog post-Session-7. Future canonical anti-patterns added as concrete signal accumulates across post-Session-7 implementation arcs.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.14.14.5 operator agency discipline; §3.26.11 Focus primitive canonical pattern; §3.26.18.6 Phone Intelligence confidence canonical precedent.
+
+##### 3.26.11.12.17 Final deferral catalog reconciliation
+
+Consolidated deferral catalog at single canonical location per Q16 lean direction.
+
+**Cross-tenant Generation Focus deferred** per §3.26.7.5. Three concrete signals:
+1. Sustained cross-tenant collaborative authoring operational pattern (Hopkins operator authoring Sunnycrest vault item OR multi-tenant joint authoring scenarios)
+2. Supplier extension cross-tenant Generation Focus scenarios (cement supplier catalog Generation Focus shared across Sunnycrest + Vitale + additional manufacturer cluster buyers — 2027+ per existing roadmap)
+3. Bilateral consent + cross-tenant masking inheritance complexity warrants dedicated canon session when concrete need emerges
+
+**Collaborative Generation Focus deferred**. Concrete signal: tenant operational pattern indicating multi-operator co-authoring need.
+
+**AI-authored Generation Focus deferred for canonicalization**. Concrete signal: concrete implementations of AI-heavy Generation Focuses surface patterns warranting canonicalization.
+
+**Per-template-type retention policy variation deferred**. Concrete signal: tenant operational pattern indicates canonical default insufficient for specific template type.
+
+**Generation Focus version history deferred**. Concrete signal: tenant operational pattern indicating draft progression visibility operational value.
+
+**Generation Focus Pulse rendering deferred**. Concrete signal: tenant operational pattern indicating drafted Generation Focus instance visibility operational value.
+
+**Generation Focus Briefing integration deferred**. Concrete signal: tenant operational pattern indicating Generation Focus visibility within briefing operational value.
+
+**Entity portal Generation Focus surfacing channel deferred**. Concrete signal: entity portal context-scoped chrome rendering proves valuable beyond Command Bar surfacing.
+
+**Compose+ mode Workshop authoring rejected (not deferred)** per §3.26.11.12.16 anti-pattern 7. Two-mode framing sufficient.
+
+**Synchronous QuotingEngine pricing rejected (not deferred)** per §3.26.11.12.16 anti-pattern 5. Asynchronous orchestration canonical.
+
+**Generation Focus output as new cross-primitive embed type rejected (not deferred)** per §3.26.11.12.16 anti-pattern 6. Cross-primitive composition via destination linkage canonical.
+
+**Suggestion prompt deferral threshold preserved** per §3.26.11.12.12 + Q12 strengthening. AI-extraction prompts canonical at September with operator-value baseline; suggestion prompts canonical at September with operator-value baseline. Post-September scope adjustment per concrete signal.
+
+**Long-arc Generation Focus templates deferred to vertical-specific canon emergence**:
+- Mix Design (manufacturing future, Q3 2027)
+- Surgical Planning (healthcare long-arc, 2028+)
+- Treatment Plan (healthcare long-arc, 2028+)
+- Discharge Planning (healthcare long-arc, 2028+)
+- Invoice Factoring Decision Focus (financial-services long-arc, 2028+)
+
+Each deferred per §3.26.7.5 architectural restraint discipline. Generation Focus ships at canonical-quality depth without speculative scope expansion. Strategic vision integration at §3.26.11.12.18 documents long-arc Generation Focus template landing pad.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.11.12.16 canonical anti-patterns catalog (rejected items distinguished from deferred items).
+
+##### 3.26.11.12.18 Strategic vision integration — long-arc Generation Focus templates landing pad
+
+Phase C subsection establishing long-arc Generation Focus template landing pad without preemptive canonicalization. Each long-arc template documented at canon level as future Generation Focus template type with concrete signal triggering canonicalization.
+
+**Long-arc Generation Focus templates (preserved at strategic vision level)**:
+
+**Mix Design (manufacturing future, Q3 2027)**:
+- Generation Focus template for production specification authoring
+- Destination: Production specification vault item
+- Workshop authoring: tenant precast manufacturer adjusts default cement supplier catalog + concrete strength specifications + admixture selection
+- Intelligence prompts: `mix_design.suggest_mix_proportions` (Sonnet) + `mix_design.detect_specification_anomalies` (Haiku)
+- Concrete signal: manufacturing tenant operational pattern indicates production specification authoring operational value
+
+**Surgical Planning (healthcare vertical long-arc, 2028+)**:
+- Generation Focus template for surgical plan authoring
+- Destination: Healthcare-vertical case fields
+- Intelligence prompts: `surgical_planning.extract_imaging_findings` (Sonnet vision) + `surgical_planning.suggest_approach` (Sonnet) + `surgical_planning.detect_planning_anomalies` (Haiku)
+- Concrete signal: healthcare vertical scope activation
+
+**Treatment Plan (healthcare vertical long-arc, 2028+)**:
+- Generation Focus template for treatment plan authoring
+- Destination: Healthcare-vertical case fields
+- Intelligence prompts: `treatment_plan.extract_diagnosis_context` (Sonnet) + `treatment_plan.suggest_treatments` (Sonnet) + `treatment_plan.detect_contraindications` (Haiku)
+- Concrete signal: healthcare vertical scope activation
+
+**Discharge Planning (healthcare vertical long-arc, 2028+)**:
+- Generation Focus template for discharge plan authoring
+- Destination: Healthcare-vertical case fields
+- Intelligence prompts: `discharge_planning.extract_discharge_context` (Sonnet) + `discharge_planning.suggest_arrangements` (Sonnet) + `discharge_planning.detect_planning_gaps` (Haiku)
+- Concrete signal: healthcare vertical scope activation
+
+**Invoice Factoring Decision Focus (financial-services vertical long-arc, 2028+)**:
+- Generation Focus template for invoice factoring authoring
+- Destination: Financial-services vertical case fields
+- Intelligence prompts: `invoice_factoring.assess_invoice_risk` (Sonnet) + `invoice_factoring.suggest_factoring_rate` (Haiku) + `invoice_factoring.detect_buyer_match` (Sonnet)
+- Concrete signal: financial-services vertical scope activation
+
+**Cross-tenant Generation Focus + supplier extension + cluster pattern long-arc preserved at strategic vision level**:
+- Cross-tenant Generation Focus (Hopkins+Sunnycrest joint authoring) — deferred per §3.26.11.12.17
+- Supplier extension Generation Focus (cement supplier catalog Generation Focus shared across cluster buyers — 2027+ per existing roadmap)
+- Cluster pattern Generation Focus (multiple manufacturer tenants sharing common Generation Focus templates with per-tenant configuration overlays)
+
+Each long-arc canonicalization preserves Generation Focus canon framework — single-table-with-discriminator entity model + bounded-thing-completion semantics + producer-shape Focus type discipline + Workshop integration + Intelligence prompt scope per-template-type configuration + per-template-type destination canon. Long-arc templates extend canonical Generation Focus framework without primitive re-canonicalization.
+
+**Strategic vision integration discipline**: long-arc templates documented at canon level for canonical reference but NOT preemptively canonicalized. Concrete signal triggers dedicated canon session at activation time. Canon framework scaffolds future canonicalization without preemptive scope expansion per §3.26.7.5 architectural restraint discipline.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline; §3.26.11.12.3 entity model; §3.26.11.12.6 per-template-type destination canon; §3.26.11.12.9 Workshop integration mechanics; §3.26.11.12.12 Intelligence layer integration; §3.26.11.12.17 final deferral catalog reconciliation.
+
 ### 3.26.12 Pulse Scope Architecture
 
 #### 3.26.12.1 Pulse Scope — fractal primitive
