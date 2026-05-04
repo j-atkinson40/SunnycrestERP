@@ -1227,6 +1227,22 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 
 ---
 
+## Session 7.5 — Reach Abstraction Deferral Entry (canon locked, 2026-05-15)
+
+Tier 1 documentation closure work. Single deferral catalog entry locked at §3.26.7.6 preserving Reach abstraction concept at canon level without preemptive canonicalization.
+
+Reach abstraction would unify external action mechanisms (Playwright + native communications + computer-use + voice agents + fax + EDI + physical mail) under canonical architectural layer with cross-mechanism orchestration + observability + audit patterns. Currently 2 mechanisms in production scope (Playwright + native communications via Sessions 2-6 primitives); abstraction deferred until 3-4 mechanisms produce mature operational patterns + cross-mechanism orchestration emerges organically.
+
+Canonical anti-pattern locked at canon level: "Premature abstraction is its own failure mode" — parallel application of §3.26.7.5 architectural restraint discipline. Pattern preserves architectural restraint while preserving conceptual clarity (operators reading canon understand Reach exists as future architectural concept, not preemptively canonicalized).
+
+Single subsection at §3.26.7.6 (~250 words prose). Insertion adjacent to §3.26.7.5 makes canonical relationship between architectural restraint disciplines explicit. Pattern creates landing spot for future cross-cutting deferrals at §3.26.7.7+.
+
+Sibling architectural restraint moment from Session 7 (Generation Focus emergence + canon-defense rationale at §3.26.11.12.1) cross-referenced — Sessions 7 + 7.5 together demonstrate bidirectional architectural restraint discipline (restraint against premature primitive count expansion + restraint against premature abstraction).
+
+Canon doc updates: BRIDGEABLE_MASTER §3.26.7.6 NEW; AESTHETIC_ARC Session 7.5 entry; CLAUDE.md §14 entry. **No code shipped.** Total documentation closure work post-Session-7.5 timeline: ~30 minutes single drafting session; no architectural deliberation required per architectural-deferral-entry discipline.
+
+---
+
 ## Session 7 — Generation Focus Canon (canon locked, 2026-05-15)
 
 Pure architectural canon session matching Sessions 2-6 discipline pattern. NO CODE this session. Generation Focus canonicalized as **fifth Focus type** extending §3.26.11 Focus Primitive Types canonical pattern (which originally canonicalized four Focus types: Decision + Coordination + Execution + Review). Generation Focus added at §3.26.11.12 per Session 7 canon, completing five-Focus-type substrate. ALL FIVE Focus types canonicalized at canon-faithful depth. **Architectural restraint discipline preserved** — Session 7 demonstrates restraint against premature primitive count expansion (deferring sixth platform primitive "Tools" per architectural fit analysis); Generation Focus extends existing Focus primitive substrate rather than adding sixth primitive. 18 BRIDGEABLE_MASTER subsections + 6 DESIGN_LANGUAGE visual canon subsections locking Generation Focus against settled foundation. Total ~3 hours conversational/architectural work; canon doc batch write at session close.

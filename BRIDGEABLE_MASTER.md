@@ -4288,6 +4288,22 @@ Three forces in tension when timelines pressure architecture:
 
 This discipline canonicalized in AESTHETIC_ARC alongside the canonical-quality material discipline from Aesthetic Arc Sessions 4+ (no shortcuts, single source of truth, mirror discipline). Same principle applied to scope sequencing: the platform's depth is the moat, and shortcuts erode it.
 
+#### 3.26.7.6 Reach Abstraction Deferral
+
+**Reach** is the conceptual abstraction layer covering external action mechanisms — parallel-mechanism abstraction unifying Playwright (browser automation) + native communications (Email + SMS + Phone outbound voice + Messaging via providers per §3.26.15-19) + future mechanisms (computer-use + voice agents + fax integration + EDI + physical mail). The Reach abstraction would establish canonical cross-mechanism orchestration + observability + audit patterns + unified treatment for external-action lifecycle (compose → dispatch → confirm → audit). **Reach is currently NOT canonicalized as architectural layer; deferred per architectural restraint discipline.**
+
+**Current state — concrete external-action mechanisms in production scope**: two mechanisms canonicalized at canonical-quality depth — Playwright (browser automation; existing scope) + native communications (Email + SMS + Phone + Messaging primitives canonicalized Sessions 2-6). At two-mechanism scope, the abstraction shape is undertested; canonicalizing now would calibrate against speculative requirements rather than operational reality.
+
+**Concrete signals triggering canonicalization**:
+1. 3-4 external-action mechanisms in production with mature operational patterns (computer-use + voice agents + fax integration maturity at minimum)
+2. Cross-mechanism orchestration patterns emerging organically (operator workflows spanning multiple mechanisms with operational coordination needs that per-mechanism patterns insufficient to address)
+3. Audit/observability requirements demanding unified treatment (per-mechanism logging insufficient; cross-mechanism correlation needed for operational state coherence + compliance audit + cost attribution)
+4. Estimated activation timeline: 2027-2028 when computer-use + voice agents + fax integration mechanisms reach production maturity
+
+**Canonical anti-pattern at canon level**: "Premature abstraction is its own failure mode" — abstraction designed before concrete implementations validate the shape produces canon calibrated against speculative requirements rather than operational reality. This is parallel application of §3.26.7.5 architectural restraint discipline ("MVP cuts compound as debt") inverted: where §3.26.7.5 restrains scope-cutting against canonical-quality, this anti-pattern restrains scope-expansion against operational-validation. The discipline applies broadly to future Bridgeable architectural work — cross-vertical abstraction + cross-primitive abstraction + cross-tenant abstraction temptations all subject to same restraint discipline. **Pattern**: name the abstraction concept at canon level; defer canonicalization with concrete signal documented; concrete signal triggers dedicated canon session at activation time.
+
+**Cross-references**: §3.26.7.5 architectural restraint discipline (parallel restraint application; "MVP cuts compound as debt" + "premature abstraction is its own failure mode" together canonicalize bidirectional restraint discipline); §3.26.11.12.1 Generation Focus emergence + canon-defense rationale (sibling architectural restraint moment from Session 7 — restraint against premature primitive count expansion parallel to restraint against premature abstraction); §3.26.15 Email primitive (Reach mechanism: email via provider); §3.26.17 SMS primitive (Reach mechanism: SMS via provider); §3.26.18 Phone primitive (Reach mechanism: outbound voice via provider); §3.26.19 Messaging primitive (Reach mechanism: messaging native delivery infrastructure). Future canonicalization triggered by concrete signal accumulation per architectural restraint discipline.
+
 ### 3.26.8 Phase W-4a Implementation Notes
 
 Phase W-4a (April 2026) shipped the Pulse infrastructure as the first concrete realization of §3.26 across six commits. The notes below capture **as-built deviations from §3.26.6.1 + the canonical contracts that downstream phases (W-4b, W-5, communication primitives, Tier 2) inherit**. Where this section disagrees with §3.26.6.1, this section reflects the actual ship and supersedes.
