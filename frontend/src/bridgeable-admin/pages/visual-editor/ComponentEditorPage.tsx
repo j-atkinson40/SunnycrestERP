@@ -1,35 +1,37 @@
 /**
- * ComponentEditorPage — Phase 3 of the Admin Visual Editor.
+ * ComponentEditorPage — preview-dominant layout (May 2026 redesign).
  *
- * Three-pane layout following Phase 2's established pattern:
+ * Three panes:
+ *   ┌─ Left (320px) ──┬─ Center (dominant) ────────┬─ Right (320px) ──┐
+ *   │ Component       │ Live preview in context    │ Property controls │
+ *   │  browser        │ (DashboardContextFrame /   │ (compact)         │
+ *   │  + tabs         │  FocusContextFrame /       │                   │
+ *   │  + search       │  DocumentContextFrame /    │                   │
+ *   │  + thumbnails   │  WorkflowCanvasContextFrame)│                  │
+ *   └─────────────────┴────────────────────────────┴───────────────────┘
  *
- *   ┌─ Top bar ─────────────────────────────────────────────┐
- *   │  Title  │  Save · Discard · History · Unsaved badge   │
- *   ├──────────┬────────────────────────┬───────────────────┤
- *   │ Left     │ Center                 │ Right             │
- *   │ Component│ Configurable props     │ Live preview      │
- *   │ browser  │ (per-prop editors)     │ (single component │
- *   │ + scope  │                        │  + show all flag) │
- *   └──────────┴────────────────────────┴───────────────────┘
+ * The right pane collapses to a thin strip so the preview can fill
+ * available width for inspection-focused work.
+ *
+ * Replaces the original Phase 3 layout where the property controls
+ * dominated the viewport. The capability is identical; only the
+ * visual hierarchy + contextual preview rendering change.
  */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertCircle,
-  ArrowLeftRight,
   ChevronDown,
   ChevronRight,
-  History,
-  Layers,
   Loader2,
   Moon,
+  PanelRightClose,
+  PanelRightOpen,
   RotateCcw,
   Save,
   Search,
   Sun,
   Undo2,
 } from "lucide-react"
-import { Link } from "react-router-dom"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -48,8 +50,8 @@ import {
   stackFromResolvedConfig,
   type ConfigStack,
   type PropOverrideMap,
+  type PropSource,
 } from "@/lib/visual-editor/components/config-resolver"
-import { PropControlDispatcher } from "@/lib/visual-editor/components/PropControls"
 import { renderComponentPreview } from "@/lib/visual-editor/components/preview-renderers"
 import {
   getAllRegistered,
@@ -60,40 +62,79 @@ import {
   TenantPicker,
   type TenantSummary,
 } from "@/bridgeable-admin/components/TenantPicker"
+import { ComponentThumbnail } from "@/bridgeable-admin/components/visual-editor/ComponentThumbnail"
+import { DashboardContextFrame } from "@/bridgeable-admin/components/visual-editor/context-frames/DashboardContextFrame"
+import { FocusContextFrame } from "@/bridgeable-admin/components/visual-editor/context-frames/FocusContextFrame"
+import { DocumentContextFrame } from "@/bridgeable-admin/components/visual-editor/context-frames/DocumentContextFrame"
+import { WorkflowCanvasContextFrame } from "@/bridgeable-admin/components/visual-editor/context-frames/WorkflowCanvasContextFrame"
+import {
+  CompactPropControl,
+  inferPropGroup,
+} from "@/bridgeable-admin/components/visual-editor/CompactPropControl"
 
 
 const VERTICALS = ["funeral_home", "manufacturing", "cemetery", "crematory"] as const
-const KIND_ORDER: ComponentKind[] = [
-  "widget",
-  "focus",
-  "focus-template",
-  "document-block",
-  "workflow-node",
+
+
+type CategoryTab = "all" | ComponentKind
+
+
+const CATEGORY_TABS: ReadonlyArray<{ id: CategoryTab; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "widget", label: "Widgets" },
+  { id: "focus", label: "Focus" },
+  { id: "focus-template", label: "Templates" },
+  { id: "document-block", label: "Doc Blocks" },
+  { id: "workflow-node", label: "Workflow Nodes" },
 ]
 
 
 type PreviewMode = "light" | "dark"
 
 
+function inferFocusType(
+  componentName: string,
+): "decision" | "coordination" | "execution" | "review" | "generation" | "unknown" {
+  const n = componentName.toLowerCase()
+  if (n.includes("decision")) return "decision"
+  if (n.includes("coordination")) return "coordination"
+  if (n.includes("execution")) return "execution"
+  if (n.includes("review")) return "review"
+  if (n.includes("generation") || n.includes("scribe")) return "generation"
+  return "unknown"
+}
+
+
+function inferDocBlockPosition(
+  componentName: string,
+): "top" | "inline" | "bottom" {
+  const n = componentName.toLowerCase()
+  if (n.includes("header")) return "top"
+  if (n.includes("signature") || n.includes("footer")) return "bottom"
+  return "inline"
+}
+
+
 export default function ComponentEditorPage() {
-  // ── Component selection ───────────────────────────────
+  // ── Component selection ──────────────────────────────────
   const [selectedKind, setSelectedKind] = useState<ComponentKind | null>(null)
   const [selectedName, setSelectedName] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<CategoryTab>("all")
   const [browserSearch, setBrowserSearch] = useState("")
   const [browserVertical, setBrowserVertical] = useState<string>("all")
-  const [collapsedKinds, setCollapsedKinds] = useState<Set<ComponentKind>>(new Set())
 
-  // ── Editing scope ─────────────────────────────────────
+  // ── Editing scope ────────────────────────────────────────
   const [scope, setScope] = useState<ConfigScope>("platform_default")
   const [vertical, setVertical] = useState<string>("funeral_home")
   const [tenantIdInput, setTenantIdInput] = useState<string>("")
   const [selectedTenant, setSelectedTenant] = useState<TenantSummary | null>(null)
 
-  // ── Preview state ─────────────────────────────────────
+  // ── Preview state ────────────────────────────────────────
   const [previewMode, setPreviewMode] = useState<PreviewMode>("light")
   const [showAllInstances, setShowAllInstances] = useState(false)
+  const [rightRailCollapsed, setRightRailCollapsed] = useState(false)
 
-  // ── Data state ────────────────────────────────────────
+  // ── Backend data state ───────────────────────────────────
   const [resolved, setResolved] = useState<ResolvedConfiguration | null>(null)
   const [activeRow, setActiveRow] = useState<ComponentConfigurationRecord | null>(null)
   const [draft, setDraft] = useState<PropOverrideMap>({})
@@ -102,16 +143,21 @@ export default function ComponentEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  // ── Center-pane filter state ──────────────────────────
+  // ── Right-pane local state ───────────────────────────────
   const [propSearch, setPropSearch] = useState("")
   const [showOnlyOverridden, setShowOnlyOverridden] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
-  // ── Browser data ──────────────────────────────────────
+  // ── Browser data ─────────────────────────────────────────
   const allComponents = useMemo(() => getAllRegistered(), [])
 
   const filteredComponents = useMemo(() => {
     const term = browserSearch.trim().toLowerCase()
     return allComponents.filter((entry) => {
+      // Tab filter
+      if (activeTab !== "all" && entry.metadata.type !== activeTab) return false
+
+      // Vertical filter
       if (browserVertical !== "all") {
         const vs = entry.metadata.verticals
         const matches =
@@ -119,23 +165,15 @@ export default function ComponentEditorPage() {
           vs.includes(browserVertical as Parameters<typeof vs.includes>[0])
         if (!matches) return false
       }
+
+      // Search filter
       if (term) {
         const haystack = `${entry.metadata.name} ${entry.metadata.displayName} ${entry.metadata.description ?? ""}`.toLowerCase()
         if (!haystack.includes(term)) return false
       }
       return true
     })
-  }, [allComponents, browserSearch, browserVertical])
-
-  const groupedComponents = useMemo(() => {
-    const map = new Map<ComponentKind, RegistryEntry[]>()
-    for (const e of filteredComponents) {
-      const list = map.get(e.metadata.type as ComponentKind) ?? []
-      list.push(e)
-      map.set(e.metadata.type as ComponentKind, list)
-    }
-    return map
-  }, [filteredComponents])
+  }, [allComponents, activeTab, browserSearch, browserVertical])
 
   const selectedEntry = useMemo<RegistryEntry | null>(() => {
     if (!selectedKind || !selectedName) return null
@@ -213,7 +251,13 @@ export default function ComponentEditorPage() {
     void resolveAndLoadActive()
   }, [resolveAndLoadActive])
 
-  // ── Effective stack ────────────────────────────────────
+  // Reset draft when component changes (no warning — selection
+  // change discards local edits intentionally).
+  useEffect(() => {
+    setDraft({})
+  }, [selectedKind, selectedName])
+
+  // ── Effective props (registration default + scope chain + draft) ──
   const stack: ConfigStack = useMemo(() => {
     const base = resolved
       ? stackFromResolvedConfig(resolved, draft)
@@ -230,23 +274,7 @@ export default function ComponentEditorPage() {
     )
   }, [selectedEntry, stack])
 
-  // ── Prop change handler ────────────────────────────────
-  const handlePropChange = useCallback(
-    (propName: string, value: unknown) => {
-      setDraft((prev) => {
-        const next = { ...prev }
-        if (value === undefined) {
-          delete next[propName]
-        } else {
-          next[propName] = value
-        }
-        return next
-      })
-    },
-    [],
-  )
-
-  // ── Save ────────────────────────────────────────────────
+  // ── Save / discard / autosave ────────────────────────────
   const persistedOverrides = useMemo(() => {
     if (!activeRow) return {}
     return { ...activeRow.prop_overrides }
@@ -261,7 +289,7 @@ export default function ComponentEditorPage() {
     for (const k of keys) {
       const before = JSON.stringify(persistedOverrides[k])
       const after = JSON.stringify(draft[k])
-      if (before !== after) count += 1
+      if (before !== after) count++
     }
     return count
   }, [draft, persistedOverrides])
@@ -336,561 +364,601 @@ export default function ComponentEditorPage() {
     setDraft({})
   }, [])
 
-  // ── Center-pane filtered prop list ────────────────────
-  const props = selectedEntry?.metadata.configurableProps ?? {}
-  const filteredPropNames = useMemo(() => {
-    const term = propSearch.trim().toLowerCase()
-    return Object.keys(props).filter((key) => {
-      const schema = props[key]
-      if (showOnlyOverridden) {
-        const source = resolvePropSource(key, stack)
-        if (
-          source === "registration-default" ||
-          source === "platform-default"
-        ) {
-          return false
+  // ── Per-prop edit handler ────────────────────────────────
+  const handlePropChange = useCallback(
+    (propName: string, next: unknown) => {
+      setDraft((d) => {
+        const out = { ...d }
+        const schemaDefault =
+          selectedEntry?.metadata.configurableProps?.[propName]?.default
+        // If next matches the registration default, remove the key
+        // (clean draft) so the prop falls back through the stack.
+        if (JSON.stringify(next) === JSON.stringify(schemaDefault)) {
+          delete out[propName]
+        } else {
+          out[propName] = next
         }
-      }
-      if (term) {
-        const hay = `${key} ${schema.displayLabel ?? ""} ${schema.description ?? ""}`.toLowerCase()
-        if (!hay.includes(term)) return false
-      }
-      return true
-    })
-  }, [props, propSearch, showOnlyOverridden, stack])
+        return out
+      })
+    },
+    [selectedEntry],
+  )
 
-  // ── Render ──────────────────────────────────────────────
-  return (
-    <div
-      className="flex h-[calc(100vh-3rem)] flex-col"
-      data-testid="component-editor-page"
-    >
-      {/* ── Top bar ─────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 border-b border-border-subtle bg-surface-elevated px-6 py-3">
-        <div>
-          <h1 className="text-h3 font-plex-serif font-medium text-content-strong">
-            Component editor
-          </h1>
-          <p className="text-caption text-content-muted">
-            Phase 3 of the Admin Visual Editor — configure registered components.
-          </p>
+  const handlePropReset = useCallback((propName: string) => {
+    setDraft((d) => {
+      const out = { ...d }
+      delete out[propName]
+      return out
+    })
+  }, [])
+
+  // ── Filtered + grouped props for the right rail ─────────
+  // configurableProps is Record<string, ConfigPropSchema> — iterate
+  // via Object.entries so we have both the prop name AND schema.
+  const groupedProps = useMemo(() => {
+    if (!selectedEntry) return new Map<string, Array<[string, ConfigPropSchema]>>()
+    const term = propSearch.trim().toLowerCase()
+    const props = selectedEntry.metadata.configurableProps ?? {}
+    const filtered: Array<[string, ConfigPropSchema]> = Object.entries(props).filter(
+      ([name, p]) => {
+        if (term) {
+          const hay = `${name} ${p.displayLabel ?? ""} ${p.description ?? ""}`.toLowerCase()
+          if (!hay.includes(term)) return false
+        }
+        if (showOnlyOverridden) {
+          const src = resolvePropSource(name, stack)
+          if (src === "registration-default") return false
+        }
+        return true
+      },
+    )
+    const grouped = new Map<string, Array<[string, ConfigPropSchema]>>()
+    for (const entry of filtered) {
+      const [name] = entry
+      const group = inferPropGroup(name)
+      const list = grouped.get(group) ?? []
+      list.push(entry)
+      grouped.set(group, list)
+    }
+    return grouped
+  }, [propSearch, selectedEntry, showOnlyOverridden, stack])
+
+  const overriddenCount = useMemo(() => {
+    if (!selectedEntry) return 0
+    let n = 0
+    const props = selectedEntry.metadata.configurableProps ?? {}
+    for (const name of Object.keys(props)) {
+      const src = resolvePropSource(name, stack)
+      if (src !== "registration-default") n++
+    }
+    return n
+  }, [selectedEntry, stack])
+
+  // ── Preview render ──────────────────────────────────────
+  const previewNode = useMemo(() => {
+    if (!selectedEntry) return null
+    const registryKey = `${selectedEntry.metadata.type}:${selectedEntry.metadata.name}`
+    return renderComponentPreview(
+      registryKey,
+      effectiveProps,
+      selectedEntry.metadata.displayName,
+    )
+  }, [selectedEntry, effectiveProps])
+
+  function renderInPreviewContext(): React.ReactNode {
+    if (!selectedEntry) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center">
+            <div className="text-h3 font-plex-serif text-content-strong">
+              Select a component to begin editing
+            </div>
+            <div className="mt-2 text-body-sm text-content-muted">
+              Choose from the browser on the left.
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/admin/themes"
-            className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
-            data-testid="nav-to-themes"
-          >
-            <ArrowLeftRight size={12} />
-            Edit theme
-          </Link>
-          <Link
-            to="/admin/workflows"
-            className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
-            data-testid="nav-to-workflows"
-          >
-            <ArrowLeftRight size={12} />
-            Edit workflows
-          </Link>
-          <Link
-            to="/admin/registry"
-            className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
-            data-testid="nav-to-registry"
-          >
-            <ArrowLeftRight size={12} />
-            Registry
-          </Link>
-          {hasUnsaved && (
-            <Badge
-              variant="warning"
-              data-testid="component-editor-unsaved-badge"
-            >
-              {unsavedChanges} unsaved
-            </Badge>
-          )}
-          {isSaving && (
-            <span className="flex items-center gap-1 text-caption text-content-muted">
-              <Loader2 size={12} className="animate-spin" />
-              Saving…
-            </span>
-          )}
-          {saveError && (
-            <span
-              className="flex items-center gap-1 text-caption text-status-error"
-              data-testid="component-editor-save-error"
-            >
-              <AlertCircle size={12} />
-              {saveError}
-            </span>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDiscard}
-            disabled={!hasUnsaved}
-            data-testid="component-editor-discard"
-          >
-            <Undo2 size={14} className="mr-1" />
-            Discard
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => void handleSave()}
-            disabled={!hasUnsaved || isSaving}
-            data-testid="component-editor-save"
-          >
-            <Save size={14} className="mr-1" />
-            Save
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            data-testid="component-editor-history"
-          >
-            <History size={14} className="mr-1" />
-            History
-          </Button>
+      )
+    }
+
+    const kind = selectedEntry.metadata.type as ComponentKind
+    const name = selectedEntry.metadata.name
+    const renderInstance = (variant: string) => {
+      // For "show all instances" we just render the same preview
+      // multiple times (the variant label is provided to the frame
+      // for chrome differentiation; the renderer itself is config-
+      // driven so different instances would require config variants
+      // — out of scope for the redesign).
+      void variant
+      return previewNode
+    }
+
+    if (kind === "widget") {
+      return (
+        <DashboardContextFrame
+          showAllInstances={showAllInstances}
+          renderInstance={renderInstance}
+        >
+          {previewNode}
+        </DashboardContextFrame>
+      )
+    }
+    if (kind === "focus" || kind === "focus-template") {
+      return (
+        <FocusContextFrame
+          focusType={inferFocusType(name)}
+          title={selectedEntry.metadata.displayName}
+          showAllInstances={showAllInstances}
+          renderInstance={renderInstance}
+        >
+          {previewNode}
+        </FocusContextFrame>
+      )
+    }
+    if (kind === "document-block") {
+      return (
+        <DocumentContextFrame
+          position={inferDocBlockPosition(name)}
+          showAllInstances={showAllInstances}
+          renderInstance={renderInstance}
+        >
+          {previewNode}
+        </DocumentContextFrame>
+      )
+    }
+    if (kind === "workflow-node") {
+      return (
+        <WorkflowCanvasContextFrame
+          nodeType={name}
+          showAllInstances={showAllInstances}
+          renderInstance={renderInstance}
+        >
+          {previewNode}
+        </WorkflowCanvasContextFrame>
+      )
+    }
+    // Fallback for layout / composite / pulse-widget kinds.
+    return (
+      <div className="flex h-full items-center justify-center bg-surface-base p-6">
+        <div className="rounded-md border border-border-subtle bg-surface-elevated p-6">
+          {previewNode}
         </div>
       </div>
+    )
+  }
 
-      {/* ── Three-pane body ─────────────────────────────── */}
-      <div className="grid flex-1 grid-cols-[300px_minmax(0,1fr)_minmax(0,1.1fr)] overflow-hidden">
-        {/* ── Left pane — component browser + scope ───── */}
+  // ── Render ───────────────────────────────────────────────
+  return (
+    <div
+      className="flex h-[calc(100vh-3rem)] w-full flex-col"
+      data-testid="component-editor-redesign"
+    >
+      <div className="flex flex-1 overflow-hidden">
+        {/* ── LEFT: Component browser ─────────────────────── */}
         <aside
-          className="flex flex-col gap-3 overflow-y-auto border-r border-border-subtle bg-surface-sunken p-4"
-          data-testid="component-editor-browser-pane"
+          className="flex w-[320px] flex-shrink-0 flex-col border-r border-border-subtle bg-surface-elevated"
+          data-testid="component-browser"
         >
-          <div>
-            <label className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted">
-              Scope
-            </label>
-            <div className="flex flex-col gap-1">
-              {(
-                [
-                  ["platform_default", "Platform default"],
-                  ["vertical_default", "Vertical default"],
-                  ["tenant_override", "Tenant override"],
-                ] as Array<[ConfigScope, string]>
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  data-testid={`scope-${key}`}
-                  onClick={() => setScope(key)}
-                  className={`rounded-sm px-2 py-1.5 text-left text-body-sm ${
-                    scope === key
-                      ? "bg-accent-subtle text-content-strong"
-                      : "text-content-base hover:bg-accent-subtle/40"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+          {/* Header: title + counts */}
+          <div className="border-b border-border-subtle px-4 py-3">
+            <div className="text-h4 font-plex-serif text-content-strong">
+              Components
+            </div>
+            <div className="text-caption text-content-muted">
+              {filteredComponents.length} of {allComponents.length} registered
             </div>
           </div>
 
-          {scope === "vertical_default" && (
-            <div>
-              <label
-                htmlFor="vertical-select"
-                className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted"
-              >
-                Vertical
-              </label>
+          {/* Search */}
+          <div className="border-b border-border-subtle px-3 py-2">
+            <div className="relative">
+              <Search
+                size={12}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-content-muted"
+              />
+              <Input
+                value={browserSearch}
+                onChange={(e) => setBrowserSearch(e.target.value)}
+                placeholder="Search components"
+                className="h-8 pl-7 text-body-sm"
+                data-testid="component-browser-search"
+              />
+            </div>
+            <div className="mt-2">
               <select
-                id="vertical-select"
-                value={vertical}
-                onChange={(e) => setVertical(e.target.value)}
-                data-testid="vertical-select"
-                className="w-full rounded-md border border-border-base bg-surface-raised px-2 py-1.5 text-body-sm text-content-strong"
+                value={browserVertical}
+                onChange={(e) => setBrowserVertical(e.target.value)}
+                className="w-full rounded-sm border border-border-base bg-surface-raised px-2 py-1 text-caption text-content-strong"
+                data-testid="component-browser-vertical"
               >
+                <option value="all">All verticals</option>
                 {VERTICALS.map((v) => (
                   <option key={v} value={v}>
-                    {v}
+                    {v.replace("_", " ")}
                   </option>
                 ))}
               </select>
             </div>
-          )}
-
-          {scope === "tenant_override" && (
-            <div>
-              <label className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted">
-                Tenant
-              </label>
-              <TenantPicker
-                selected={selectedTenant}
-                onSelect={(t) => {
-                  setSelectedTenant(t)
-                  setTenantIdInput(t?.id ?? "")
-                }}
-              />
-            </div>
-          )}
-
-          <div>
-            <label
-              htmlFor="browser-vertical"
-              className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted"
-            >
-              Browser vertical filter
-            </label>
-            <select
-              id="browser-vertical"
-              value={browserVertical}
-              onChange={(e) => setBrowserVertical(e.target.value)}
-              data-testid="browser-vertical-select"
-              className="w-full rounded-md border border-border-base bg-surface-raised px-2 py-1.5 text-body-sm text-content-strong"
-            >
-              <option value="all">All verticals</option>
-              {VERTICALS.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
           </div>
 
-          <div>
-            <label className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted">
-              Components
-            </label>
-            <div className="flex items-center gap-1 mb-2">
-              <Search size={12} className="text-content-muted" />
-              <Input
-                value={browserSearch}
-                onChange={(e) => setBrowserSearch(e.target.value)}
-                placeholder="Search components…"
-                data-testid="browser-search"
-                className="h-8 text-caption"
-              />
-            </div>
-            <div data-testid="component-browser-list">
-              {KIND_ORDER.map((kind) => {
-                const list = groupedComponents.get(kind)
-                if (!list || list.length === 0) return null
-                const isCollapsed = collapsedKinds.has(kind)
-                return (
-                  <section
-                    key={kind}
-                    className="mb-2"
-                    data-testid={`browser-kind-${kind}`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCollapsedKinds((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(kind)) next.delete(kind)
-                          else next.add(kind)
-                          return next
-                        })
-                      }
-                      className="flex w-full items-center gap-1 text-micro uppercase tracking-wider text-content-muted"
-                    >
-                      {isCollapsed ? (
-                        <ChevronRight size={10} />
-                      ) : (
-                        <ChevronDown size={10} />
-                      )}
-                      {kind} ({list.length})
-                    </button>
-                    {!isCollapsed && (
-                      <ul className="mt-1 flex flex-col">
-                        {list.map((entry) => {
-                          const isSelected =
-                            entry.metadata.type === selectedKind &&
-                            entry.metadata.name === selectedName
-                          return (
-                            <li key={`${entry.metadata.type}:${entry.metadata.name}`}>
-                              <button
-                                type="button"
-                                data-testid={`browser-item-${entry.metadata.type}-${entry.metadata.name}`}
-                                onClick={() => {
-                                  setSelectedKind(entry.metadata.type as ComponentKind)
-                                  setSelectedName(entry.metadata.name)
-                                }}
-                                className={`flex w-full items-center justify-between rounded-sm px-2 py-1 text-left text-body-sm ${
-                                  isSelected
-                                    ? "bg-accent-subtle text-content-strong"
-                                    : "text-content-base hover:bg-accent-subtle/40"
-                                }`}
-                              >
-                                <span>{entry.metadata.displayName}</span>
-                              </button>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    )}
-                  </section>
-                )
-              })}
-            </div>
+          {/* Category tabs */}
+          <div
+            className="flex flex-wrap gap-0.5 border-b border-border-subtle px-2 py-1.5"
+            data-testid="component-browser-tabs"
+          >
+            {CATEGORY_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={
+                  activeTab === tab.id
+                    ? "rounded-sm bg-accent-subtle px-2 py-1 text-caption font-medium text-accent"
+                    : "rounded-sm px-2 py-1 text-caption text-content-muted hover:bg-accent-subtle/40"
+                }
+                data-testid={`tab-${tab.id}`}
+                data-active={activeTab === tab.id ? "true" : "false"}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Component list */}
+          <div className="flex-1 overflow-y-auto px-1 py-1" data-testid="component-list">
+            {filteredComponents.map((entry) => {
+              const isSelected =
+                selectedKind === entry.metadata.type &&
+                selectedName === entry.metadata.name
+              return (
+                <button
+                  key={`${entry.metadata.type}:${entry.metadata.name}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedKind(entry.metadata.type as ComponentKind)
+                    setSelectedName(entry.metadata.name)
+                  }}
+                  className={
+                    isSelected
+                      ? "flex w-full items-center gap-2 rounded-sm bg-accent-subtle px-2 py-1.5 text-left"
+                      : "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent-subtle/30"
+                  }
+                  data-testid={`component-${entry.metadata.type}-${entry.metadata.name}`}
+                  data-selected={isSelected ? "true" : "false"}
+                >
+                  <ComponentThumbnail
+                    kind={entry.metadata.type as ComponentKind}
+                    componentName={entry.metadata.name}
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-body-sm font-medium text-content-strong">
+                      {entry.metadata.displayName}
+                    </span>
+                    <span className="truncate font-plex-mono text-caption text-content-muted">
+                      {entry.metadata.name}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+            {filteredComponents.length === 0 && (
+              <div className="px-2 py-6 text-center text-caption text-content-muted">
+                No components match your filter.
+              </div>
+            )}
           </div>
         </aside>
 
-        {/* ── Center pane — config editor ─────────────── */}
-        <div
-          className="flex flex-col overflow-hidden"
-          data-testid="component-editor-config-pane"
+        {/* ── CENTER: Live preview ────────────────────────── */}
+        <main
+          className="relative flex flex-1 flex-col overflow-hidden bg-surface-sunken"
+          data-testid="preview-pane"
         >
-          <div className="flex flex-col gap-2 border-b border-border-subtle bg-surface-elevated px-4 py-3">
-            {selectedEntry ? (
-              <>
-                <div className="flex items-baseline justify-between">
-                  <h2
-                    className="text-h4 font-plex-serif font-medium text-content-strong"
-                    data-testid="config-pane-title"
-                  >
-                    {selectedEntry.metadata.displayName}
-                  </h2>
-                  <code
-                    className="font-plex-mono text-caption text-content-muted"
-                    data-testid="config-pane-id"
-                  >
-                    {selectedEntry.metadata.type} · {selectedEntry.metadata.name}
-                  </code>
-                </div>
-                {selectedEntry.metadata.description && (
-                  <p className="text-caption text-content-muted">
-                    {selectedEntry.metadata.description}
-                  </p>
-                )}
-                <div className="flex items-center gap-2">
-                  <Search size={14} className="text-content-muted" />
-                  <Input
-                    value={propSearch}
-                    onChange={(e) => setPropSearch(e.target.value)}
-                    placeholder="Search props…"
-                    data-testid="prop-search-input"
-                    className="flex-1"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-caption text-content-muted">
-                    <input
-                      type="checkbox"
-                      checked={showOnlyOverridden}
-                      onChange={(e) => setShowOnlyOverridden(e.target.checked)}
-                      data-testid="show-only-overridden-toggle"
-                    />
-                    Show only overridden props
-                  </label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleResetAll}
-                    disabled={Object.keys(draft).length === 0}
-                    data-testid="reset-all-overrides"
-                  >
-                    Reset all
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="text-body-sm text-content-muted">
-                Select a component from the browser.
-              </div>
-            )}
-          </div>
-
-          <div
-            className="flex-1 overflow-y-auto px-4 py-3"
-            data-testid="props-list"
-          >
-            {selectedEntry &&
-              filteredPropNames.length === 0 && (
-                <p className="text-body-sm text-content-muted">
-                  No configurable props match the current filters.
-                </p>
-              )}
-            {selectedEntry &&
-              filteredPropNames.map((propName) => {
-                const schema = props[propName] as ConfigPropSchema
-                const value = effectiveProps[propName]
-                const source = resolvePropSource(propName, stack)
-                const isOverridden = propName in draft
-                return (
-                  <div
-                    key={propName}
-                    data-testid={`prop-row-${propName}`}
-                    className="mb-3 rounded-md border border-border-subtle bg-surface-elevated p-3"
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <div>
-                        <div className="text-body-sm font-medium text-content-strong">
-                          {schema.displayLabel ?? propName}
-                          {schema.required && (
-                            <Badge variant="warning" className="ml-1.5">
-                              required
-                            </Badge>
-                          )}
-                        </div>
-                        <code
-                          className="font-plex-mono text-caption text-content-muted"
-                          data-testid={`prop-row-${propName}-name`}
-                        >
-                          {propName}
-                        </code>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          data-testid={`prop-row-${propName}-source`}
-                        >
-                          {source}
-                        </Badge>
-                        {isOverridden && (
-                          <button
-                            type="button"
-                            onClick={() => handlePropChange(propName, undefined)}
-                            data-testid={`prop-row-${propName}-reset`}
-                            className="flex items-center gap-1 rounded-sm border border-border-base bg-surface-raised px-2 py-1 text-caption text-content-muted hover:bg-accent-subtle"
-                            aria-label={`Reset ${propName} to inherited`}
-                          >
-                            <RotateCcw size={11} />
-                            Reset
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {schema.description && (
-                      <p className="mt-1 text-caption text-content-muted">
-                        {schema.description}
-                      </p>
-                    )}
-                    <div className="mt-2">
-                      <PropControlDispatcher
-                        schema={schema}
-                        value={value}
-                        onChange={(next) => handlePropChange(propName, next)}
-                        data-testid={`prop-control-${propName}`}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            {isLoading && (
-              <div className="text-caption text-content-muted">
-                <Loader2 size={12} className="mr-1 inline animate-spin" />
-                Resolving…
-              </div>
-            )}
-            {loadError && (
-              <div className="text-caption text-status-error">{loadError}</div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Right pane — live preview ──────────────── */}
-        <div
-          className="flex flex-col overflow-hidden"
-          data-testid="component-editor-preview-pane"
-        >
+          {/* Preview controls */}
           <div className="flex items-center justify-between border-b border-border-subtle bg-surface-elevated px-4 py-2">
-            <div className="text-body-sm text-content-muted">
-              Live preview · single component
+            <div className="flex items-center gap-3">
+              {selectedEntry && (
+                <>
+                  <span className="text-body-sm font-medium text-content-strong">
+                    {selectedEntry.metadata.displayName}
+                  </span>
+                  <Badge variant="outline" data-testid="preview-kind-badge">
+                    {selectedEntry.metadata.type}
+                  </Badge>
+                </>
+              )}
+              {isLoading && (
+                <Loader2
+                  size={12}
+                  className="animate-spin text-content-muted"
+                />
+              )}
+              {loadError && (
+                <span className="flex items-center gap-1 text-caption text-status-error">
+                  <AlertCircle size={12} /> {loadError}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1 text-caption text-content-muted">
-                <input
-                  type="checkbox"
-                  checked={showAllInstances}
-                  onChange={(e) => setShowAllInstances(e.target.checked)}
-                  data-testid="show-all-instances-toggle"
-                />
+              <button
+                type="button"
+                onClick={() => setShowAllInstances((s) => !s)}
+                className={
+                  showAllInstances
+                    ? "rounded-sm bg-accent-subtle px-2 py-1 text-caption font-medium text-accent"
+                    : "rounded-sm px-2 py-1 text-caption text-content-muted hover:bg-accent-subtle/40"
+                }
+                data-testid="show-all-instances-toggle"
+                data-active={showAllInstances ? "true" : "false"}
+              >
                 Show all instances
-              </label>
-              <div className="flex items-center gap-1 rounded-md border border-border-subtle bg-surface-raised p-0.5">
-                <button
-                  type="button"
-                  data-testid="preview-mode-light"
-                  onClick={() => setPreviewMode("light")}
-                  className={`flex items-center gap-1 rounded-sm px-2 py-1 text-caption ${
-                    previewMode === "light"
-                      ? "bg-accent-subtle text-content-strong"
-                      : "text-content-muted hover:bg-accent-subtle/40"
-                  }`}
-                >
-                  <Sun size={12} /> Light
-                </button>
-                <button
-                  type="button"
-                  data-testid="preview-mode-dark"
-                  onClick={() => setPreviewMode("dark")}
-                  className={`flex items-center gap-1 rounded-sm px-2 py-1 text-caption ${
-                    previewMode === "dark"
-                      ? "bg-accent-subtle text-content-strong"
-                      : "text-content-muted hover:bg-accent-subtle/40"
-                  }`}
-                >
-                  <Moon size={12} /> Dark
-                </button>
-              </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewMode((m) => (m === "light" ? "dark" : "light"))}
+                className="flex items-center gap-1 rounded-sm border border-border-base px-2 py-1 text-caption text-content-strong hover:bg-accent-subtle/40"
+                aria-label={`Preview mode: ${previewMode}`}
+                data-testid="preview-mode-toggle"
+              >
+                {previewMode === "light" ? <Sun size={12} /> : <Moon size={12} />}
+                {previewMode}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightRailCollapsed((c) => !c)}
+                className="rounded-sm border border-border-base p-1 text-content-muted hover:bg-accent-subtle/40 hover:text-content-strong"
+                aria-label={rightRailCollapsed ? "Expand controls" : "Collapse controls"}
+                data-testid="right-rail-toggle"
+              >
+                {rightRailCollapsed ? (
+                  <PanelRightOpen size={14} />
+                ) : (
+                  <PanelRightClose size={14} />
+                )}
+              </button>
             </div>
           </div>
+
+          {/* Preview canvas — sandboxed mode toggle via data-mode */}
           <div
-            data-testid="component-editor-sandbox"
+            className="flex-1 overflow-hidden"
             data-mode={previewMode}
-            style={{
-              background: "var(--surface-base)",
-              color: "var(--content-base)",
-              flex: 1,
-              overflowY: "auto",
-              padding: "1.5rem",
-              display: "grid",
-              gridTemplateColumns: showAllInstances
-                ? "repeat(auto-fit, minmax(280px, 1fr))"
-                : "1fr",
-              gap: "1rem",
-              alignItems: "start",
-            }}
+            data-testid="preview-canvas"
           >
-            {selectedEntry ? (
-              showAllInstances ? (
-                // Three slight variations to demonstrate config impact
-                // across mock data variants.
-                ["instance-1", "instance-2", "instance-3"].map((tag) => (
-                  <div
-                    key={tag}
-                    data-testid={`preview-instance-${tag}`}
-                    style={{ minHeight: 0 }}
-                  >
-                    {renderComponentPreview(
-                      `${selectedEntry.metadata.type}:${selectedEntry.metadata.name}`,
-                      effectiveProps,
-                      selectedEntry.metadata.displayName,
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div data-testid="preview-instance-single">
-                  {renderComponentPreview(
-                    `${selectedEntry.metadata.type}:${selectedEntry.metadata.name}`,
-                    effectiveProps,
-                    selectedEntry.metadata.displayName,
+            <div className="h-full w-full">{renderInPreviewContext()}</div>
+          </div>
+        </main>
+
+        {/* ── RIGHT: Property controls ─────────────────────── */}
+        <aside
+          className={
+            rightRailCollapsed
+              ? "flex w-12 flex-shrink-0 flex-col border-l border-border-subtle bg-surface-elevated"
+              : "flex w-[320px] flex-shrink-0 flex-col border-l border-border-subtle bg-surface-elevated"
+          }
+          data-testid="properties-pane"
+          data-collapsed={rightRailCollapsed ? "true" : "false"}
+        >
+          {rightRailCollapsed ? (
+            <div className="flex flex-1 flex-col items-center gap-2 py-3">
+              <button
+                type="button"
+                onClick={() => setRightRailCollapsed(false)}
+                className="rounded-sm p-1 text-content-muted hover:bg-accent-subtle/40 hover:text-content-strong"
+                aria-label="Expand controls"
+              >
+                <PanelRightOpen size={14} />
+              </button>
+              <span
+                className="rotate-180 text-caption text-content-muted"
+                style={{ writingMode: "vertical-rl" }}
+              >
+                Properties
+              </span>
+            </div>
+          ) : (
+            <>
+              {/* Sticky save bar */}
+              <div className="flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-elevated px-3 py-2">
+                <div className="flex items-center gap-1.5">
+                  {hasUnsaved && (
+                    <Badge variant="warning" data-testid="unsaved-badge">
+                      {unsavedChanges} unsaved
+                    </Badge>
+                  )}
+                  {isSaving && (
+                    <Loader2 size={12} className="animate-spin text-content-muted" />
+                  )}
+                  {saveError && (
+                    <span className="text-caption text-status-error">
+                      {saveError}
+                    </span>
                   )}
                 </div>
-              )
-            ) : (
-              <p
-                style={{
-                  fontFamily: "var(--font-plex-sans)",
-                  color: "var(--content-muted)",
-                  fontSize: "var(--text-body-sm)",
-                }}
-              >
-                <Layers
-                  size={14}
-                  style={{ display: "inline", marginRight: "0.375rem" }}
-                />
-                Select a component to preview.
-              </p>
-            )}
-          </div>
-        </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDiscard}
+                    disabled={!hasUnsaved}
+                    data-testid="discard-button"
+                  >
+                    <Undo2 size={12} />
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => void handleSave()}
+                    disabled={!hasUnsaved}
+                    data-testid="save-button"
+                  >
+                    <Save size={12} className="mr-1" />
+                    Save
+                  </Button>
+                </div>
+              </div>
+
+              {/* Selected component identity */}
+              {selectedEntry ? (
+                <div className="border-b border-border-subtle px-3 py-2">
+                  <div className="text-body-sm font-medium text-content-strong">
+                    {selectedEntry.metadata.displayName}
+                  </div>
+                  <div className="mt-0.5 font-plex-mono text-caption text-content-muted">
+                    {selectedEntry.metadata.name}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 text-caption text-content-muted">
+                    <span>{selectedEntry.metadata.type}</span>
+                    <span>·</span>
+                    <span>v{selectedEntry.metadata.componentVersion}</span>
+                    <span>·</span>
+                    <span>{overriddenCount} overridden</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-3 py-6 text-center text-caption text-content-muted">
+                  No component selected.
+                </div>
+              )}
+
+              {/* Scope selector */}
+              <div className="border-b border-border-subtle px-3 py-2">
+                <label className="mb-1 block text-micro uppercase tracking-wider text-content-muted">
+                  Scope
+                </label>
+                <select
+                  value={scope}
+                  onChange={(e) => setScope(e.target.value as ConfigScope)}
+                  className="w-full rounded-sm border border-border-base bg-surface-raised px-2 py-1 text-caption text-content-strong"
+                  data-testid="scope-selector"
+                >
+                  <option value="platform_default">Platform Default</option>
+                  <option value="vertical_default">Vertical Default</option>
+                  <option value="tenant_override">Tenant Override</option>
+                </select>
+                {scope === "vertical_default" && (
+                  <select
+                    value={vertical}
+                    onChange={(e) => setVertical(e.target.value)}
+                    className="mt-1.5 w-full rounded-sm border border-border-base bg-surface-raised px-2 py-1 text-caption text-content-strong"
+                    data-testid="vertical-selector"
+                  >
+                    {VERTICALS.map((v) => (
+                      <option key={v} value={v}>
+                        {v.replace("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {scope === "tenant_override" && (
+                  <div className="mt-1.5">
+                    <TenantPicker
+                      selected={selectedTenant}
+                      onSelect={(t) => {
+                        setSelectedTenant(t)
+                        setTenantIdInput(t?.id ?? "")
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Prop list */}
+              {selectedEntry && (
+                <>
+                  <div className="border-b border-border-subtle px-3 py-2">
+                    <div className="relative">
+                      <Search
+                        size={11}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 text-content-muted"
+                      />
+                      <Input
+                        value={propSearch}
+                        onChange={(e) => setPropSearch(e.target.value)}
+                        placeholder="Filter props"
+                        className="h-7 pl-7 text-caption"
+                        data-testid="prop-search"
+                      />
+                    </div>
+                    <label className="mt-1.5 flex items-center gap-1.5 text-caption text-content-muted">
+                      <input
+                        type="checkbox"
+                        checked={showOnlyOverridden}
+                        onChange={(e) => setShowOnlyOverridden(e.target.checked)}
+                        data-testid="show-only-overridden"
+                      />
+                      Only overridden
+                    </label>
+                  </div>
+                  <div className="flex-1 overflow-y-auto" data-testid="prop-list">
+                    {Array.from(groupedProps.entries()).map(([groupName, props]) => {
+                      const collapsed = collapsedGroups.has(groupName)
+                      return (
+                        <div key={groupName}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCollapsedGroups((s) => {
+                                const next = new Set(s)
+                                if (next.has(groupName)) next.delete(groupName)
+                                else next.add(groupName)
+                                return next
+                              })
+                            }}
+                            className="flex w-full items-center gap-1 px-3 py-1 text-micro uppercase tracking-wider text-content-muted hover:bg-accent-subtle/30"
+                            data-testid={`prop-group-${groupName}`}
+                          >
+                            {collapsed ? (
+                              <ChevronRight size={10} />
+                            ) : (
+                              <ChevronDown size={10} />
+                            )}
+                            {groupName}
+                            <span className="ml-auto text-caption normal-case text-content-subtle">
+                              {props.length}
+                            </span>
+                          </button>
+                          {!collapsed &&
+                            props.map(([propName, propSchema]) => {
+                              const source = resolvePropSource(propName, stack) as PropSource
+                              const isOverriddenAtScope =
+                                (scope === "platform_default" && source !== "registration-default") ||
+                                (scope === "vertical_default" && (source === "vertical-default" || source === "draft")) ||
+                                (scope === "tenant_override" && (source === "tenant-override" || source === "draft"))
+                              return (
+                                <CompactPropControl
+                                  key={propName}
+                                  name={propName}
+                                  schema={propSchema}
+                                  value={effectiveProps[propName]}
+                                  onChange={(v) => handlePropChange(propName, v)}
+                                  source={source}
+                                  isOverriddenAtCurrentScope={isOverriddenAtScope}
+                                  onReset={() => handlePropReset(propName)}
+                                />
+                              )
+                            })}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="border-t border-border-subtle px-3 py-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleResetAll}
+                      disabled={Object.keys(draft).length === 0}
+                      className="w-full text-caption"
+                      data-testid="reset-all"
+                    >
+                      <RotateCcw size={11} className="mr-1" />
+                      Reset all to inherited
+                    </Button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </aside>
       </div>
     </div>
   )
