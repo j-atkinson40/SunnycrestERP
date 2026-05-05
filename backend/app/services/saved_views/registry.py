@@ -486,10 +486,18 @@ def _seed_default_entities() -> None:
 
     # document ──────────────────────────────────────────────────────
     def document_query(db: Session, company_id: str):
+        # Saved views over Documents are a cross-tenant-relevant read
+        # path — a tenant who has a Document shared to them via D-6
+        # `document_shares` should see that Document when building a
+        # saved view (e.g. "Documents from Hopkins this week"). Route
+        # through `Document.visible_to()` per Phase D-6 substrate
+        # consumption pattern; raw `Document.company_id == X` would
+        # silently drop shared Documents (security + UX bug). Lint
+        # gate at `tests/test_documents_d6_lint.py` enforces.
         from app.models.canonical_document import Document
 
         return db.query(Document).filter(
-            Document.company_id == company_id,
+            Document.visible_to(company_id),
         )
 
     def document_serialize(row: Any) -> dict:
