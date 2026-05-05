@@ -105,11 +105,32 @@ def _make_tenant_with_admin(vertical: str = "manufacturing"):
         non_admin_token = create_access_token(
             {"sub": non_admin.id, "company_id": co.id}, realm="tenant"
         )
+
+        # Platform admin user for visual editor endpoints (relocation phase).
+        from app.models.platform_user import PlatformUser
+        platform_admin = PlatformUser(
+            id=str(uuid.uuid4()),
+            email=f"platform-{suffix}@bridgeable.test",
+            hashed_password="x",
+            first_name="Platform",
+            last_name="Admin",
+            role="super_admin",
+            is_active=True,
+        )
+        db.add(platform_admin)
+        db.commit()
+        platform_token = create_access_token(
+            {"sub": platform_admin.id},
+            realm="platform",
+        )
+
         return {
             "company_id": co.id,
             "slug": co.slug,
             "admin_token": admin_token,
             "non_admin_token": non_admin_token,
+            "platform_id": platform_admin.id,
+            "platform_token": platform_token,
             "vertical": vertical,
         }
     finally:
@@ -117,16 +138,21 @@ def _make_tenant_with_admin(vertical: str = "manufacturing"):
 
 
 def _admin_headers(ctx: dict) -> dict:
-    return {
-        "Authorization": f"Bearer {ctx['admin_token']}",
-        "X-Company-Slug": ctx["slug"],
-    }
+    """Return platform-admin auth headers.
+
+    Visual Editor endpoints are gated by PlatformUser auth (realm=platform)
+    after the relocation phase (May 2026). The ctx fixture seeds both a
+    PlatformUser + tenant for tests that exercise tenant_override scope.
+    """
+    return {"Authorization": f"Bearer {ctx['platform_token']}"}
 
 
 def _non_admin_headers(ctx: dict) -> dict:
+    """Return tenant-admin auth headers — used to verify cross-realm
+    rejection (tenant token at platform endpoint = 401)."""
     return {
-        "Authorization": f"Bearer {ctx['non_admin_token']}",
-        "X-Company-Slug": ctx["slug"],
+        "Authorization": f"Bearer {ctx['admin_token']}",
+        "X-Company-Slug": ctx['slug'],
     }
 
 
@@ -555,23 +581,24 @@ class TestInheritance:
 
 class TestAdminGating:
     def test_anonymous_rejected(self, client):
-        resp = client.get("/api/v1/admin/component-configurations/")
+        resp = client.get("/api/platform/admin/visual-editor/components/")
         assert resp.status_code in (401, 403)
 
-    def test_non_admin_403(self, client):
+    def test_tenant_token_rejected(self, client):
+        """Tenant tokens cannot reach platform endpoints (realm mismatch → 401)."""
         ctx = _make_tenant_with_admin()
         resp = client.get(
-            "/api/v1/admin/component-configurations/",
+            "/api/platform/admin/visual-editor/components/",
             headers=_non_admin_headers(ctx),
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 class TestRegistryEndpoint:
     def test_returns_all_components(self, client):
         ctx = _make_tenant_with_admin()
         resp = client.get(
-            "/api/v1/admin/component-configurations/registry",
+            "/api/platform/admin/visual-editor/components/registry",
             headers=_admin_headers(ctx),
         )
         assert resp.status_code == 200
@@ -586,7 +613,7 @@ class TestApiCrud:
     def test_create_then_list(self, client):
         ctx = _make_tenant_with_admin()
         create_resp = client.post(
-            "/api/v1/admin/component-configurations/",
+            "/api/platform/admin/visual-editor/components/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -602,7 +629,7 @@ class TestApiCrud:
         assert body["version"] == 1
 
         list_resp = client.get(
-            "/api/v1/admin/component-configurations/?scope=platform_default",
+            "/api/platform/admin/visual-editor/components/?scope=platform_default",
             headers=_admin_headers(ctx),
         )
         assert list_resp.status_code == 200
@@ -611,7 +638,7 @@ class TestApiCrud:
     def test_create_invalid_prop_returns_400(self, client):
         ctx = _make_tenant_with_admin()
         resp = client.post(
-            "/api/v1/admin/component-configurations/",
+            "/api/platform/admin/visual-editor/components/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -625,7 +652,7 @@ class TestApiCrud:
     def test_resolve_endpoint_walks_inheritance(self, client):
         ctx = _make_tenant_with_admin(vertical="funeral_home")
         client.post(
-            "/api/v1/admin/component-configurations/",
+            "/api/platform/admin/visual-editor/components/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -635,7 +662,7 @@ class TestApiCrud:
             },
         )
         client.post(
-            "/api/v1/admin/component-configurations/",
+            "/api/platform/admin/visual-editor/components/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "vertical_default",
@@ -646,7 +673,7 @@ class TestApiCrud:
             },
         )
         resolve_resp = client.get(
-            "/api/v1/admin/component-configurations/resolve",
+            "/api/platform/admin/visual-editor/components/resolve",
             headers=_admin_headers(ctx),
             params={
                 "component_kind": "widget",
@@ -662,7 +689,7 @@ class TestApiCrud:
     def test_patch_versions(self, client):
         ctx = _make_tenant_with_admin()
         create_resp = client.post(
-            "/api/v1/admin/component-configurations/",
+            "/api/platform/admin/visual-editor/components/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -674,7 +701,7 @@ class TestApiCrud:
         first_id = create_resp.json()["id"]
 
         patch_resp = client.patch(
-            f"/api/v1/admin/component-configurations/{first_id}",
+            f"/api/platform/admin/visual-editor/components/{first_id}",
             headers=_admin_headers(ctx),
             json={"prop_overrides": {"showRowBreakdown": False}},
         )
@@ -690,7 +717,7 @@ class TestE2EClaudeApiEquivalent:
 
         # Platform default
         client.post(
-            "/api/v1/admin/component-configurations/",
+            "/api/platform/admin/visual-editor/components/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -701,7 +728,7 @@ class TestE2EClaudeApiEquivalent:
         )
         # Vertical default for funeral_home
         v_resp = client.post(
-            "/api/v1/admin/component-configurations/",
+            "/api/platform/admin/visual-editor/components/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "vertical_default",
@@ -715,7 +742,7 @@ class TestE2EClaudeApiEquivalent:
 
         # Resolve for tenant in funeral_home
         r1 = client.get(
-            "/api/v1/admin/component-configurations/resolve",
+            "/api/platform/admin/visual-editor/components/resolve",
             headers=_admin_headers(ctx),
             params={
                 "component_kind": "widget",
@@ -728,14 +755,14 @@ class TestE2EClaudeApiEquivalent:
 
         # Update vertical override
         r2_resp = client.patch(
-            f"/api/v1/admin/component-configurations/{vertical_id}",
+            f"/api/platform/admin/visual-editor/components/{vertical_id}",
             headers=_admin_headers(ctx),
             json={"prop_overrides": {"maxCategoriesShown": 10}},
         )
         assert r2_resp.status_code == 200
 
         r2 = client.get(
-            "/api/v1/admin/component-configurations/resolve",
+            "/api/platform/admin/visual-editor/components/resolve",
             headers=_admin_headers(ctx),
             params={
                 "component_kind": "widget",
@@ -748,13 +775,13 @@ class TestE2EClaudeApiEquivalent:
         # Empty overrides on the active vertical row → falls back
         new_active_id = r2_resp.json()["id"]
         client.patch(
-            f"/api/v1/admin/component-configurations/{new_active_id}",
+            f"/api/platform/admin/visual-editor/components/{new_active_id}",
             headers=_admin_headers(ctx),
             json={"prop_overrides": {}},
         )
 
         r3 = client.get(
-            "/api/v1/admin/component-configurations/resolve",
+            "/api/platform/admin/visual-editor/components/resolve",
             headers=_admin_headers(ctx),
             params={
                 "component_kind": "widget",

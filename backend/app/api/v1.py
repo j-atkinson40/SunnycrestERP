@@ -17,11 +17,8 @@ from app.api.routes import (
     spaces,
     nl_creation,
     peek,
-    component_configurations,
-    platform_themes,
     portal,
     portal_admin,
-    workflow_templates,
     email_accounts,
     email_actions,
     email_inbox,
@@ -229,35 +226,11 @@ v1_router.include_router(
 # tight (no X-Company-Slug header dependency). See
 # SPACES_ARCHITECTURE.md §10.
 v1_router.include_router(portal.router, prefix="/portal", tags=["Portal"])
-# Platform Themes — Phase 2 of the Admin Visual Editor (May 2026).
-# Token override storage with platform-default → vertical-default →
-# tenant-override inheritance. Admin-only at this phase; tenant-facing
-# Workshop UI ships in a later phase.
-v1_router.include_router(
-    platform_themes.router,
-    prefix="/admin/themes",
-    tags=["Platform Themes"],
-)
-# Component Configurations — Phase 3 of the Admin Visual Editor (May 2026).
-# Per-component prop override storage with the same three-scope
-# inheritance model as platform_themes. Admin-only.
-v1_router.include_router(
-    component_configurations.router,
-    prefix="/admin/component-configurations",
-    tags=["Component Configurations"],
-)
-# Workflow Templates — Phase 4 of the Admin Visual Editor (May 2026).
-# Vertical default workflow authoring with locked-to-fork merge
-# semantics. Coexists with the existing workflow_engine relational
-# infrastructure (Workflow + WorkflowStep tables) — Phase 4
-# templates are admin-authored canvas_state JSONB blueprints; the
-# existing engine continues to operate against its relational
-# storage. Adoption-into-engine is a Phase 5+ concern.
-v1_router.include_router(
-    workflow_templates.router,
-    prefix="/admin/workflow-templates",
-    tags=["Workflow Templates"],
-)
+# NOTE: Admin Visual Editor routes (themes, component configurations,
+# workflow templates — Phase 2/3/4) relocated to platform_router under
+# /api/platform/admin/visual-editor/* in the corrective relocation
+# phase (May 2026). They live in app/api/routes/admin/visual_editor_*.py
+# and are gated by Depends(get_current_platform_user). See platform.py.
 # Email Primitive — Phase W-4b Layer 1 Step 1 (BRIDGEABLE_MASTER §3.26.15).
 # Tenant-admin endpoints for managing EmailAccount + EmailAccountAccess.
 # Coexists with existing transactional email infrastructure (D-7 DeliveryService

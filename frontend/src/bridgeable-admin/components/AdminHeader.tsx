@@ -38,6 +38,13 @@ export function AdminHeader() {
             <Link to={adminPath("/feature-flags")} className="hover:text-amber-300">Feature Flags</Link>
             <Link to={adminPath("/deployments")} className="hover:text-amber-300">Deployments</Link>
             <Link to={adminPath("/staging")} className="hover:text-amber-300">Staging</Link>
+            <Link
+              to={adminPath("/visual-editor")}
+              className="hover:text-amber-300"
+              data-testid="admin-nav-visual-editor"
+            >
+              Visual Editor
+            </Link>
           </nav>
         </div>
 

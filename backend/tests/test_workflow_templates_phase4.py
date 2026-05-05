@@ -105,11 +105,32 @@ def _make_tenant_with_admin(vertical: str = "funeral_home"):
         non_admin_token = create_access_token(
             {"sub": non_admin.id, "company_id": co.id}, realm="tenant"
         )
+
+        # Platform admin user for visual editor endpoints (relocation phase).
+        from app.models.platform_user import PlatformUser
+        platform_admin = PlatformUser(
+            id=str(uuid.uuid4()),
+            email=f"platform-{suffix}@bridgeable.test",
+            hashed_password="x",
+            first_name="Platform",
+            last_name="Admin",
+            role="super_admin",
+            is_active=True,
+        )
+        db.add(platform_admin)
+        db.commit()
+        platform_token = create_access_token(
+            {"sub": platform_admin.id},
+            realm="platform",
+        )
+
         return {
             "company_id": co.id,
             "slug": co.slug,
             "admin_token": admin_token,
             "non_admin_token": non_admin_token,
+            "platform_id": platform_admin.id,
+            "platform_token": platform_token,
             "vertical": vertical,
         }
     finally:
@@ -117,16 +138,21 @@ def _make_tenant_with_admin(vertical: str = "funeral_home"):
 
 
 def _admin_headers(ctx: dict) -> dict:
-    return {
-        "Authorization": f"Bearer {ctx['admin_token']}",
-        "X-Company-Slug": ctx["slug"],
-    }
+    """Return platform-admin auth headers.
+
+    Visual Editor endpoints are gated by PlatformUser auth (realm=platform)
+    after the relocation phase (May 2026). The ctx fixture seeds both a
+    PlatformUser + tenant for tests that exercise tenant_override scope.
+    """
+    return {"Authorization": f"Bearer {ctx['platform_token']}"}
 
 
 def _non_admin_headers(ctx: dict) -> dict:
+    """Return tenant-admin auth headers — used to verify cross-realm
+    rejection (tenant token at platform endpoint = 401)."""
     return {
-        "Authorization": f"Bearer {ctx['non_admin_token']}",
-        "X-Company-Slug": ctx["slug"],
+        "Authorization": f"Bearer {ctx['admin_token']}",
+        "X-Company-Slug": ctx['slug'],
     }
 
 
@@ -798,23 +824,24 @@ class TestForkLifecycle:
 
 class TestAdminGating:
     def test_anonymous_rejected(self, client):
-        resp = client.get("/api/v1/admin/workflow-templates/")
+        resp = client.get("/api/platform/admin/visual-editor/workflows/")
         assert resp.status_code in (401, 403)
 
-    def test_non_admin_403(self, client):
+    def test_tenant_token_rejected(self, client):
+        """Tenant tokens cannot reach platform endpoints (realm mismatch → 401)."""
         ctx = _make_tenant_with_admin()
         resp = client.get(
-            "/api/v1/admin/workflow-templates/",
+            "/api/platform/admin/visual-editor/workflows/",
             headers=_non_admin_headers(ctx),
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 class TestApiCrud:
     def test_create_then_list(self, client):
         ctx = _make_tenant_with_admin()
         create_resp = client.post(
-            "/api/v1/admin/workflow-templates/",
+            "/api/platform/admin/visual-editor/workflows/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "vertical_default",
@@ -833,7 +860,7 @@ class TestApiCrud:
         assert "nodes" in body["canvas_state"]
 
         list_resp = client.get(
-            "/api/v1/admin/workflow-templates/?vertical=funeral_home",
+            "/api/platform/admin/visual-editor/workflows/?vertical=funeral_home",
             headers=_admin_headers(ctx),
         )
         assert list_resp.status_code == 200
@@ -847,7 +874,7 @@ class TestApiCrud:
         bad_canvas = _minimal_canvas()
         bad_canvas["edges"][0]["target"] = "n_does_not_exist"
         resp = client.post(
-            "/api/v1/admin/workflow-templates/",
+            "/api/platform/admin/visual-editor/workflows/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "vertical_default",
@@ -862,7 +889,7 @@ class TestApiCrud:
     def test_resolve_endpoint(self, client):
         ctx = _make_tenant_with_admin(vertical="funeral_home")
         client.post(
-            "/api/v1/admin/workflow-templates/",
+            "/api/platform/admin/visual-editor/workflows/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "vertical_default",
@@ -873,7 +900,7 @@ class TestApiCrud:
             },
         )
         resp = client.get(
-            "/api/v1/admin/workflow-templates/resolve",
+            "/api/platform/admin/visual-editor/workflows/resolve",
             headers=_admin_headers(ctx),
             params={"workflow_type": "test", "vertical": "funeral_home"},
         )
@@ -889,7 +916,7 @@ class TestE2EClaudeApiEquivalent:
 
         # 1. Create vertical default
         v1_resp = client.post(
-            "/api/v1/admin/workflow-templates/",
+            "/api/platform/admin/visual-editor/workflows/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "vertical_default",
@@ -903,7 +930,7 @@ class TestE2EClaudeApiEquivalent:
 
         # 2. Fork for tenant
         fork_resp = client.post(
-            f"/api/v1/admin/workflow-templates/{v1_id}/fork",
+            f"/api/platform/admin/visual-editor/workflows/{v1_id}/fork",
             headers=_admin_headers(ctx),
             json={"tenant_id": ctx["company_id"]},
         )
@@ -912,7 +939,7 @@ class TestE2EClaudeApiEquivalent:
 
         # 3. Resolve for tenant — should return fork's canvas_state
         r1 = client.get(
-            "/api/v1/admin/workflow-templates/resolve",
+            "/api/platform/admin/visual-editor/workflows/resolve",
             headers=_admin_headers(ctx),
             params={
                 "workflow_type": "test_lifecycle",
@@ -926,14 +953,14 @@ class TestE2EClaudeApiEquivalent:
 
         # 4. Update vertical default (new version) — should flag fork
         client.patch(
-            f"/api/v1/admin/workflow-templates/{v1_id}",
+            f"/api/platform/admin/visual-editor/workflows/{v1_id}",
             headers=_admin_headers(ctx),
             json={"canvas_state": _minimal_canvas("v2-new")},
         )
 
         # 5. Resolve again — fork's canvas_state still v1 (locked)
         r2 = client.get(
-            "/api/v1/admin/workflow-templates/resolve",
+            "/api/platform/admin/visual-editor/workflows/resolve",
             headers=_admin_headers(ctx),
             params={
                 "workflow_type": "test_lifecycle",
@@ -947,14 +974,14 @@ class TestE2EClaudeApiEquivalent:
 
         # 6. Accept merge programmatically
         accept_resp = client.post(
-            f"/api/v1/admin/workflow-templates/forks/{fork_id}/accept-merge",
+            f"/api/platform/admin/visual-editor/workflows/forks/{fork_id}/accept-merge",
             headers=_admin_headers(ctx),
         )
         assert accept_resp.status_code == 200, accept_resp.text
 
         # 7. Resolve again — fork now has v2-new
         r3 = client.get(
-            "/api/v1/admin/workflow-templates/resolve",
+            "/api/platform/admin/visual-editor/workflows/resolve",
             headers=_admin_headers(ctx),
             params={
                 "workflow_type": "test_lifecycle",
@@ -967,7 +994,7 @@ class TestE2EClaudeApiEquivalent:
 
         # 8. Verify fork's forked_from_version updated
         fork_resp_2 = client.get(
-            "/api/v1/admin/workflow-templates/forks/",
+            "/api/platform/admin/visual-editor/workflows/forks/",
             headers=_admin_headers(ctx),
             params={"tenant_id": ctx["company_id"]},
         )

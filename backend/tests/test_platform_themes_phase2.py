@@ -114,12 +114,31 @@ def _make_tenant_with_admin(vertical: str = "manufacturing"):
             {"sub": non_admin.id, "company_id": co.id},
             realm="tenant",
         )
+        # Platform admin user for visual editor endpoints.
+        from app.models.platform_user import PlatformUser
+        platform_admin = PlatformUser(
+            id=str(uuid.uuid4()),
+            email=f"platform-{suffix}@bridgeable.test",
+            hashed_password="x",
+            first_name="Platform",
+            last_name="Admin",
+            role="super_admin",
+            is_active=True,
+        )
+        db.add(platform_admin)
+        db.commit()
+        platform_token = create_access_token(
+            {"sub": platform_admin.id},
+            realm="platform",
+        )
         return {
             "company_id": co.id,
             "slug": co.slug,
             "admin_id": admin.id,
             "admin_token": admin_token,
             "non_admin_token": non_admin_token,
+            "platform_id": platform_admin.id,
+            "platform_token": platform_token,
             "vertical": vertical,
         }
     finally:
@@ -127,16 +146,21 @@ def _make_tenant_with_admin(vertical: str = "manufacturing"):
 
 
 def _admin_headers(ctx: dict) -> dict:
-    return {
-        "Authorization": f"Bearer {ctx['admin_token']}",
-        "X-Company-Slug": ctx["slug"],
-    }
+    """Return platform-admin auth headers.
+
+    Visual Editor endpoints are gated by PlatformUser auth (realm=platform)
+    after the relocation phase (May 2026). The ctx fixture seeds both a
+    PlatformUser + tenant for tests that exercise tenant_override scope.
+    """
+    return {"Authorization": f"Bearer {ctx['platform_token']}"}
 
 
 def _non_admin_headers(ctx: dict) -> dict:
+    """Return tenant-admin auth headers — used to verify cross-realm
+    rejection (tenant token at platform endpoint = 401)."""
     return {
-        "Authorization": f"Bearer {ctx['non_admin_token']}",
-        "X-Company-Slug": ctx["slug"],
+        "Authorization": f"Bearer {ctx['admin_token']}",
+        "X-Company-Slug": ctx['slug'],
     }
 
 
@@ -448,25 +472,30 @@ class TestInheritance:
 
 class TestAdminGating:
     def test_anonymous_403_or_401(self, client):
-        resp = client.get("/api/v1/admin/themes/")
+        resp = client.get("/api/platform/admin/visual-editor/themes/")
         # No auth → 401 (FastAPI bearer scheme returns 403 in some
         # configs; both are acceptable rejections).
         assert resp.status_code in (401, 403)
 
-    def test_non_admin_rejected_403(self, client):
+    def test_tenant_token_rejected(self, client):
+        """Tenant tokens (realm=tenant) cannot reach platform endpoints.
+
+        Cross-realm gate per app/api/deps.py::get_current_platform_user
+        — realm mismatch returns 401, not 403.
+        """
         ctx = _make_tenant_with_admin()
         resp = client.get(
-            "/api/v1/admin/themes/",
+            "/api/platform/admin/visual-editor/themes/",
             headers=_non_admin_headers(ctx),
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 class TestApiCreateAndList:
     def test_create_then_list(self, client):
         ctx = _make_tenant_with_admin()
         create_resp = client.post(
-            "/api/v1/admin/themes/",
+            "/api/platform/admin/visual-editor/themes/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -482,7 +511,7 @@ class TestApiCreateAndList:
         assert body["is_active"] is True
 
         list_resp = client.get(
-            "/api/v1/admin/themes/?scope=platform_default&mode=light",
+            "/api/platform/admin/visual-editor/themes/?scope=platform_default&mode=light",
             headers=_admin_headers(ctx),
         )
         assert list_resp.status_code == 200
@@ -493,7 +522,7 @@ class TestApiCreateAndList:
     def test_create_invalid_scope_returns_400(self, client):
         ctx = _make_tenant_with_admin()
         resp = client.post(
-            "/api/v1/admin/themes/",
+            "/api/platform/admin/visual-editor/themes/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -507,7 +536,7 @@ class TestApiCreateAndList:
     def test_patch_versions(self, client):
         ctx = _make_tenant_with_admin()
         create_resp = client.post(
-            "/api/v1/admin/themes/",
+            "/api/platform/admin/visual-editor/themes/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -518,7 +547,7 @@ class TestApiCreateAndList:
         first_id = create_resp.json()["id"]
 
         patch_resp = client.patch(
-            f"/api/v1/admin/themes/{first_id}",
+            f"/api/platform/admin/visual-editor/themes/{first_id}",
             headers=_admin_headers(ctx),
             json={"token_overrides": {"accent": "oklch(0.60 0.10 39)"}},
         )
@@ -531,7 +560,7 @@ class TestApiCreateAndList:
         ctx = _make_tenant_with_admin(vertical="funeral_home")
 
         client.post(
-            "/api/v1/admin/themes/",
+            "/api/platform/admin/visual-editor/themes/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -540,7 +569,7 @@ class TestApiCreateAndList:
             },
         )
         client.post(
-            "/api/v1/admin/themes/",
+            "/api/platform/admin/visual-editor/themes/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "vertical_default",
@@ -551,7 +580,7 @@ class TestApiCreateAndList:
         )
 
         resolve_resp = client.get(
-            "/api/v1/admin/themes/resolve",
+            "/api/platform/admin/visual-editor/themes/resolve",
             headers=_admin_headers(ctx),
             params={"mode": "light", "vertical": "funeral_home"},
         )
@@ -571,7 +600,7 @@ class TestE2EClaudeApiEquivalent:
 
         # Platform default at base
         client.post(
-            "/api/v1/admin/themes/",
+            "/api/platform/admin/visual-editor/themes/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "platform_default",
@@ -581,7 +610,7 @@ class TestE2EClaudeApiEquivalent:
         )
         # Vertical override
         create_resp = client.post(
-            "/api/v1/admin/themes/",
+            "/api/platform/admin/visual-editor/themes/",
             headers=_admin_headers(ctx),
             json={
                 "scope": "vertical_default",
@@ -594,7 +623,7 @@ class TestE2EClaudeApiEquivalent:
 
         # Resolve for a tenant in the vertical → should see overridden value
         r1 = client.get(
-            "/api/v1/admin/themes/resolve",
+            "/api/platform/admin/visual-editor/themes/resolve",
             headers=_admin_headers(ctx),
             params={
                 "mode": "light",
@@ -606,7 +635,7 @@ class TestE2EClaudeApiEquivalent:
 
         # Update the vertical override
         r2_resp = client.patch(
-            f"/api/v1/admin/themes/{vertical_id}",
+            f"/api/platform/admin/visual-editor/themes/{vertical_id}",
             headers=_admin_headers(ctx),
             json={"token_overrides": {"accent": "oklch(0.80 0.10 39)"}},
         )
@@ -614,7 +643,7 @@ class TestE2EClaudeApiEquivalent:
 
         # Resolve again → new value propagates
         r2 = client.get(
-            "/api/v1/admin/themes/resolve",
+            "/api/platform/admin/visual-editor/themes/resolve",
             headers=_admin_headers(ctx),
             params={"mode": "light", "vertical": "funeral_home"},
         ).json()
@@ -626,14 +655,14 @@ class TestE2EClaudeApiEquivalent:
         # endpoint not in this phase's scope.
         new_active_id = r2_resp.json()["id"]
         client.patch(
-            f"/api/v1/admin/themes/{new_active_id}",
+            f"/api/platform/admin/visual-editor/themes/{new_active_id}",
             headers=_admin_headers(ctx),
             json={"token_overrides": {}},
         )
 
         # Resolve falls back to platform default
         r3 = client.get(
-            "/api/v1/admin/themes/resolve",
+            "/api/platform/admin/visual-editor/themes/resolve",
             headers=_admin_headers(ctx),
             params={"mode": "light", "vertical": "funeral_home"},
         ).json()

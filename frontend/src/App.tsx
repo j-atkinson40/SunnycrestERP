@@ -34,7 +34,7 @@ import "@/components/widgets/manufacturing/register";
 // the /admin/registry debug page and (later phases) by the visual
 // editor. Side-effect-on-import; mirrors the widget-registration
 // pattern above.
-import "@/admin/registry/auto-register";
+import "@/lib/visual-editor/registry/auto-register";
 import { AffinityVisitWatcher } from "@/components/spaces/AffinityVisitWatcher";
 import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -92,10 +92,6 @@ import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
 import DataQualityPage from "@/pages/admin/data-quality";
 import AuditLogs from "@/pages/admin/audit-logs";
-import RegistryDebugPage from "@/pages/admin/registry/RegistryDebugPage";
-import ThemeEditorPage from "@/pages/admin/themes/ThemeEditorPage";
-import ComponentEditorPage from "@/pages/admin/components/ComponentEditorPage";
-import WorkflowEditorPage from "@/pages/admin/workflows/WorkflowEditorPage";
 import IntelligencePromptLibrary from "@/pages/admin/intelligence/PromptLibrary";
 import DocumentTemplateLibrary from "@/pages/admin/documents/DocumentTemplateLibrary";
 import DocumentTemplateDetail from "@/pages/admin/documents/DocumentTemplateDetail";
@@ -1411,59 +1407,17 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Component Registry debug — admin only.
-                      Phase 1 of the Admin Visual Editor (April 2026).
-                      Inspector for the in-memory component registry —
-                      developer tool for verifying coverage as more
-                      components get tagged over time. NOT the eventual
-                      visual editor. */}
-                  <Route element={<ProtectedRoute adminOnly />}>
-                    <Route
-                      path="/admin/registry"
-                      element={<RegistryDebugPage />}
-                    />
-                  </Route>
-
-                  {/* Theme editor — admin only.
-                      Phase 2 of the Admin Visual Editor (May 2026).
-                      Token-driven visual editor with full-platform
-                      live preview. Backed by the platform_themes
-                      table; consumes the Phase 1 registry for
-                      "which components consume which token" + the
-                      Phase 1 component set for the live preview. */}
-                  <Route element={<ProtectedRoute adminOnly />}>
-                    <Route
-                      path="/admin/themes"
-                      element={<ThemeEditorPage />}
-                    />
-                  </Route>
-
-                  {/* Component editor — admin only.
-                      Phase 3 of the Admin Visual Editor (May 2026).
-                      Per-component prop override editor with live
-                      single-component preview. Backed by the
-                      component_configurations table; consumes the
-                      Phase 1 registry for component metadata + the
-                      Phase 2 token catalog for tokenReference props. */}
-                  <Route element={<ProtectedRoute adminOnly />}>
-                    <Route
-                      path="/admin/components"
-                      element={<ComponentEditorPage />}
-                    />
-                  </Route>
-
-                  {/* Workflow editor — admin only.
-                      Phase 4 of the Admin Visual Editor (May 2026).
-                      Three-pane canvas editor for platform_default +
-                      vertical_default workflow templates. Backed by
-                      workflow_templates + tenant_workflow_forks tables
-                      with locked-to-fork merge semantics. */}
-                  <Route element={<ProtectedRoute adminOnly />}>
-                    <Route
-                      path="/admin/workflows"
-                      element={<WorkflowEditorPage />}
-                    />
-                  </Route>
+                  {/* Admin Visual Editor (Phase 1-4) routes RELOCATED
+                      (May 2026) to BridgeableAdminApp at
+                      /bridgeable-admin/visual-editor/* (or via the
+                      admin.* subdomain at /visual-editor/*). They are
+                      gated by PlatformUser auth — not tenant admin
+                      auth. The lib/visual-editor/registry side-effect
+                      import remains at the top of this file because
+                      registry registrations populate at module load
+                      regardless of which tree consumes them (future
+                      tenant Workshop UI will read from the same
+                      registry). */}
 
                   {/* ── Phase V-1a/b/c: Bridgeable Vault Hub ──
                       VaultHubLayout wraps every /vault/* child route.

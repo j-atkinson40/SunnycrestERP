@@ -30,6 +30,9 @@ from app.api.routes.admin import (
     migrations as admin_migrations,
     chat as admin_chat,
     arc_telemetry as admin_arc_telemetry,
+    visual_editor_themes,
+    visual_editor_components,
+    visual_editor_workflows,
 )
 
 platform_router = APIRouter()
@@ -112,4 +115,30 @@ platform_router.include_router(
     admin_arc_telemetry.router,
     prefix="/admin/arc-telemetry",
     tags=["Phase 7 Arc Telemetry"],
+)
+
+# ---------------------------------------------------------------------------
+# Admin Visual Editor (Phase 2/3/4) — relocated from v1_router (May 2026).
+# Token, component configuration, and workflow template editors gated by
+# PlatformUser auth (realm='platform'). Service layer + storage unchanged;
+# only the auth surface and route prefix moved. See:
+#   - frontend/src/bridgeable-admin/pages/visual-editor/* for the UI
+#   - backend/app/api/routes/admin/visual_editor_*.py for the routes
+#   - backend/app/services/{platform_themes,component_config,workflow_templates}/*
+#     for the unchanged service layer
+# ---------------------------------------------------------------------------
+platform_router.include_router(
+    visual_editor_themes.router,
+    prefix="/admin/visual-editor/themes",
+    tags=["Visual Editor — Themes"],
+)
+platform_router.include_router(
+    visual_editor_components.router,
+    prefix="/admin/visual-editor/components",
+    tags=["Visual Editor — Components"],
+)
+platform_router.include_router(
+    visual_editor_workflows.router,
+    prefix="/admin/visual-editor/workflows",
+    tags=["Visual Editor — Workflows"],
 )
