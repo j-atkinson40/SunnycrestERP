@@ -312,6 +312,22 @@ export default function ThemeEditorPage() {
             <ArrowLeftRight size={12} />
             Edit components
           </Link>
+          <Link
+            to="/admin/workflows"
+            className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
+            data-testid="nav-to-workflows"
+          >
+            <ArrowLeftRight size={12} />
+            Edit workflows
+          </Link>
+          <Link
+            to="/admin/registry"
+            className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
+            data-testid="nav-to-registry"
+          >
+            <ArrowLeftRight size={12} />
+            Registry
+          </Link>
           {hasUnsaved && (
             <Badge variant="warning" data-testid="theme-editor-unsaved-badge">
               {unsavedChanges} unsaved

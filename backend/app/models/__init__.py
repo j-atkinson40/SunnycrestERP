@@ -339,6 +339,10 @@ from app.models.platform_incident import PlatformIncident
 from app.models.platform_notification import PlatformNotification
 from app.models.platform_theme import PlatformTheme
 from app.models.component_configuration import ComponentConfiguration
+from app.models.workflow_template import (
+    TenantWorkflowFork,
+    WorkflowTemplate,
+)
 from app.models.tenant_health_score import TenantHealthScore
 from app.models.social_service_certificate import SocialServiceCertificate
 from app.models.urn_product import UrnProduct
@@ -711,6 +715,8 @@ __all__ = [
     "PlatformNotification",
     "PlatformTheme",
     "ComponentConfiguration",
+    "WorkflowTemplate",
+    "TenantWorkflowFork",
     "TenantHealthScore",
     "DisintermentCase",
     "DisintermentChargeType",

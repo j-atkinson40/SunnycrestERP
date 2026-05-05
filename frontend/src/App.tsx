@@ -95,6 +95,7 @@ import AuditLogs from "@/pages/admin/audit-logs";
 import RegistryDebugPage from "@/pages/admin/registry/RegistryDebugPage";
 import ThemeEditorPage from "@/pages/admin/themes/ThemeEditorPage";
 import ComponentEditorPage from "@/pages/admin/components/ComponentEditorPage";
+import WorkflowEditorPage from "@/pages/admin/workflows/WorkflowEditorPage";
 import IntelligencePromptLibrary from "@/pages/admin/intelligence/PromptLibrary";
 import DocumentTemplateLibrary from "@/pages/admin/documents/DocumentTemplateLibrary";
 import DocumentTemplateDetail from "@/pages/admin/documents/DocumentTemplateDetail";
@@ -1448,6 +1449,19 @@ export default function App() {
                     <Route
                       path="/admin/components"
                       element={<ComponentEditorPage />}
+                    />
+                  </Route>
+
+                  {/* Workflow editor — admin only.
+                      Phase 4 of the Admin Visual Editor (May 2026).
+                      Three-pane canvas editor for platform_default +
+                      vertical_default workflow templates. Backed by
+                      workflow_templates + tenant_workflow_forks tables
+                      with locked-to-fork merge semantics. */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/admin/workflows"
+                      element={<WorkflowEditorPage />}
                     />
                   </Route>
 
