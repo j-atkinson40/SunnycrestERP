@@ -91,6 +91,40 @@ hatches aren't a weakness — they acknowledge that opinions should
 earn trust. Users who prefer different organization shouldn't be
 locked in.
 
+**Structural foundation** (cross-reference added at §2.4 canon batch
+write): opinionated-but-configurable is economically tractable across
+the long arc of vertical expansion specifically because of the
+**Vertical-as-Workflow-Composition Principle** at BRIDGEABLE_MASTER.md
+§2.4. Verticals are workflow compositions of universal primitives, not
+bespoke vertical-specific code. The opinionated default at vertical N
+is a canonical workflow composition the platform ships; the
+configurable escape hatch is the same primitives recomposed into a
+tenant-authored alternative via Workshop (§3.26.14). Without the
+composition principle, "opinionated but configurable" would either
+require building bespoke per-vertical opinionated paths (compounding
+maintenance burden) or shipping a generic primitive set without
+opinionated defaults (calibration failure). The composition principle
+is the structural articulation that makes the product principle
+economically viable: opinions ship as compositions; configurations
+recompose; both surface the same primitive library; vocabulary lock
+holds at primitive-and-template level per §3.26.7.5.
+
+**Portal extension foundation** (cross-reference added at §2.5 canon
+batch write): opinionated-but-configurable extends to non-tenant-user
+identity scope per **Portal Extension Pattern** at BRIDGEABLE_MASTER.md
+§2.5. Portals are Spaces configured with portal-specific constraints,
+not net-new architectural substrate. The opinionated default for a
+non-tenant-user (family member, customer, vendor, CPA, operational
+role) is a canonical portal-Space-template the platform ships; the
+configurable escape hatch is per-tenant portal-Space-template
+configuration via SpaceConfig modifiers + canonical authentication
+mechanism declarations per portal-use-case-context + content scope +
+action vocabulary declarations. §2.4 + §2.5 together establish
+canonical-substrate-extension canon at platform-thesis-foundation
+depth — opinionated-but-configurable canonical at both tenant-user
+identity scope (vertical expansion via §2.4) and non-tenant-user
+identity scope (portal extension via §2.5).
+
 ---
 
 ## Dashboards as Universal Primitive

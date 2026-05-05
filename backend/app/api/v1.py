@@ -17,12 +17,22 @@ from app.api.routes import (
     spaces,
     nl_creation,
     peek,
+    component_configurations,
+    platform_themes,
     portal,
     portal_admin,
     email_accounts,
     email_actions,
     email_inbox,
     email_webhooks,
+    calendar_accounts,
+    calendar_actions,
+    calendar_consent,
+    calendar_events,
+    calendar_freebusy,
+    personalization_studio,
+    personalization_studio_family_portal,
+    workshop,
     tasks,
     triage,
     ai_settings,
@@ -218,6 +228,23 @@ v1_router.include_router(
 # tight (no X-Company-Slug header dependency). See
 # SPACES_ARCHITECTURE.md §10.
 v1_router.include_router(portal.router, prefix="/portal", tags=["Portal"])
+# Platform Themes — Phase 2 of the Admin Visual Editor (May 2026).
+# Token override storage with platform-default → vertical-default →
+# tenant-override inheritance. Admin-only at this phase; tenant-facing
+# Workshop UI ships in a later phase.
+v1_router.include_router(
+    platform_themes.router,
+    prefix="/admin/themes",
+    tags=["Platform Themes"],
+)
+# Component Configurations — Phase 3 of the Admin Visual Editor (May 2026).
+# Per-component prop override storage with the same three-scope
+# inheritance model as platform_themes. Admin-only.
+v1_router.include_router(
+    component_configurations.router,
+    prefix="/admin/component-configurations",
+    tags=["Component Configurations"],
+)
 # Email Primitive — Phase W-4b Layer 1 Step 1 (BRIDGEABLE_MASTER §3.26.15).
 # Tenant-admin endpoints for managing EmailAccount + EmailAccountAccess.
 # Coexists with existing transactional email infrastructure (D-7 DeliveryService
@@ -252,6 +279,89 @@ v1_router.include_router(
 # kill-the-portal canonical case (quote_approval) per §3.26.15.17.
 v1_router.include_router(
     email_actions.router, prefix="/email", tags=["Email Actions"]
+)
+# Calendar Primitive — Phase W-4b Layer 1 Calendar Step 1 (BRIDGEABLE_MASTER
+# §3.26.16). Tenant-admin endpoints for managing CalendarAccount +
+# CalendarAccountAccess + tenant CRUD for CalendarEvent. Coexists with
+# existing Vault iCal feed at /api/v1/vault/calendar.ics — different
+# architectural concern (one-way iCal export vs threaded calendar primitive
+# with provider abstraction). See app.services.calendar package.
+v1_router.include_router(
+    calendar_accounts.router,
+    prefix="/calendar-accounts",
+    tags=["Calendar Accounts"],
+)
+v1_router.include_router(
+    calendar_events.router,
+    prefix="/calendar-events",
+    tags=["Calendar Events"],
+)
+# Calendar Step 3 — Free/busy substrate (per-account + cross-tenant)
+# per §3.26.16.14 endpoint shape. Mounted at /calendar (NOT
+# /calendar-accounts) to match canonical endpoint paths
+# /api/v1/calendar/free-busy + /api/v1/calendar/free-busy/cross-tenant.
+v1_router.include_router(
+    calendar_freebusy.router,
+    prefix="/calendar",
+    tags=["Calendar Free/Busy"],
+)
+# Calendar Step 4 — operational-action affordance routes per §3.26.16.17.
+# Two surfaces:
+#   inline_router → mounted at /calendar-events (authenticated inline
+#     action commit at /{event_id}/actions/{action_idx}/commit)
+#   public_router → mounted at /calendar (public magic-link surface at
+#     /actions/{token} + /actions/{token}/commit)
+# Pattern parallels Email Step 4c email_actions.py post-Path-B
+# substrate consolidation (calendar tokens use platform_action_tokens
+# substrate via linked_entity_type='calendar_event').
+v1_router.include_router(
+    calendar_actions.inline_router,
+    prefix="/calendar-events",
+    tags=["Calendar Actions"],
+)
+v1_router.include_router(
+    calendar_actions.public_router,
+    prefix="/calendar",
+    tags=["Calendar Actions"],
+)
+# Calendar Step 4.1 — PTR consent upgrade UI write-side per §3.26.16.6
+# + §3.26.16.14 + §3.26.11.10 cross-tenant Focus consent precedent.
+# Mounted at /calendar to match canonical endpoint paths
+# /api/v1/calendar/consent + /api/v1/calendar/consent/{relationship_id}/...
+v1_router.include_router(
+    calendar_consent.router,
+    prefix="/calendar",
+    tags=["Calendar Consent"],
+)
+# Personalization Studio — Phase 1B canvas implementation.
+# Canonical Generation Focus instance lifecycle + canvas commit endpoints
+# per Phase 1A canonical-pattern-establisher service substrate +
+# Phase 1B canvas commit boundary at canonical edit-finish per Phase A
+# Session 3.8.3 canonical compositor pattern.
+v1_router.include_router(
+    personalization_studio.router,
+    prefix="/personalization-studio",
+    tags=["Personalization Studio"],
+)
+# Personalization Studio family portal — Phase 1E.
+# Magic-link contextual surface per §3.26.11.9 + Path B substrate +
+# §2.5 Portal Extension Pattern. Public token-authenticated endpoints
+# at /portal/{tenant_slug}/personalization-studio/family-approval/{token}.
+# JWT realm "portal" guard at substrate (Anti-pattern 16): no JWT
+# accepted; magic-link is sole authentication factor.
+v1_router.include_router(
+    personalization_studio_family_portal.router,
+    prefix="/portal",
+    tags=["Personalization Studio Family Portal"],
+)
+# Workshop primitive — Phase 1D template-type registration + per-tenant
+# Tune mode customization. Per BRIDGEABLE_MASTER §3.26.14 Workshop
+# primitive canon. Phase 1D registers burial_vault_personalization_studio;
+# Step 2 + future Generation Focus templates extend the registry.
+v1_router.include_router(
+    workshop.router,
+    prefix="/workshop",
+    tags=["Workshop"],
 )
 # NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
 v1_router.include_router(

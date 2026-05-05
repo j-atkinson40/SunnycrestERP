@@ -24,6 +24,9 @@ import { registerWidgetRenderer } from "@/components/focus/canvas/widget-rendere
 
 import { AnomaliesWidget } from "./AnomaliesWidget"
 import { BriefingWidget } from "./BriefingWidget"
+import { CalendarConsentPendingWidget } from "./CalendarConsentPendingWidget"
+import { CalendarGlanceWidget } from "./CalendarGlanceWidget"
+import { CalendarSummaryWidget } from "./CalendarSummaryWidget"
 import { EmailGlanceWidget } from "./EmailGlanceWidget"
 import { OperatorProfileWidget } from "./OperatorProfileWidget"
 import { RecentActivityWidget } from "./RecentActivityWidget"
@@ -91,3 +94,46 @@ registerWidgetRenderer("briefing", BriefingWidget)
 // Pulse + any future scoped Pulse via §3.26.12.3 pulse_grid surface
 // inheritance.
 registerWidgetRenderer("email_glance", EmailGlanceWidget)
+
+
+// `calendar_glance` widget — Phase W-4b Layer 1 Calendar Step 5 cross-
+// vertical foundation widget. Calendar primitive Glance per Pulse
+// Communications Layer canon (BRIDGEABLE_MASTER §3.26.16.10). Surfaces
+// interpersonal-scheduling signals (responses awaiting + cross-tenant
+// invitations) across user's accessible calendar accounts. Pattern
+// parallels `email_glance` verbatim (canonical Step 5 cross-surface
+// rendering precedent). Three density tiers per §13.4.1 + §14.4-14.5.
+// Click-through navigation per §12.6a — view-only widget. Operational
+// scheduling signals route separately to `calendar_summary` +
+// `today_widget` per §3.26.16.10 hybrid contribution.
+registerWidgetRenderer("calendar_glance", CalendarGlanceWidget)
+
+
+// `calendar_summary` widget — Phase W-4b Layer 1 Calendar Step 5 cross-
+// vertical foundation widget. Calendar primitive Operational Layer
+// extension per §3.26.16.10. Surfaces this-week schedule (next event
+// + per-day event counts + first-event-of-day subjects across the
+// configured window, default 7 days). Confirmed + opaque events only —
+// tentative drafts route to drafted-event review queue (Step 3 surface).
+// Three density tiers + spaces_pin surface. Click navigates to
+// `/calendar`; next-event row click navigates to
+// `/calendar/events/{id}`. Per-instance window via `config.days`
+// (1..31; default 7). View-only per §12.6a.
+registerWidgetRenderer("calendar_summary", CalendarSummaryWidget)
+
+
+// `calendar_consent_pending` widget — Phase W-4b Layer 1 Calendar
+// Step 5.1 cross-vertical foundation widget. Calendar primitive Pulse
+// Communications Layer canon per §3.26.16.10 (alongside calendar_glance
+// + email_glance). Surfaces pending_inbound PTR consent rows — partner
+// has opted into full_details + this side hasn't accepted yet. Three
+// density tiers + spaces_pin surface. Click navigates to
+// `/settings/calendar/freebusy-consent` (single-request surface adds
+// `?relationship_id={id}` deep-link). Cross-vertical default-ship with
+// empty state ("No pending consent requests") per Q4 confirmed
+// pre-build. View-only widget per §12.6a — accept/revoke happens on
+// the settings page, not inline on the widget.
+registerWidgetRenderer(
+  "calendar_consent_pending",
+  CalendarConsentPendingWidget,
+)

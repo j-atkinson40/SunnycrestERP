@@ -18,7 +18,11 @@ class OrderPersonalizationTask(Base):
     order_line_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     task_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    # nameplate, cover_emblem, lifes_reflections, legacy_standard, legacy_custom
+    # Canonical 4-options vocabulary per §3.26.11.12.19.2 (post-r74 substrate canonicalization):
+    # physical_nameplate, physical_emblem, vinyl, legacy_print.
+    # legacy_standard + legacy_custom are operator-facing sub-categorizations within canonical
+    # legacy_print substrate retained at task-type column for backward-compatibility with existing
+    # task-type renderers; r74 migration backfills pre-canonical values to canonical vocabulary.
 
     inscription_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     inscription_dates: Mapped[str | None] = mapped_column(Text, nullable=True)

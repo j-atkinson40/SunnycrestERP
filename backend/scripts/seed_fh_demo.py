@@ -43,6 +43,12 @@ from app.models.funeral_case import (  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.services.fh import case_service, story_thread_service  # noqa: E402
 
+# Phase 1G — Personalization Studio canonical demo seed integration.
+# Imports deferred to call sites to keep module-load latency low at
+# the existing seed shape; these are referenced only inside
+# `_seed_personalization_studio_phase1g`.
+import json  # noqa: E402  # canonical-restraint: small set of imports
+
 
 def _ensure_company(db, slug, defaults) -> Company:
     c = db.query(Company).filter(Company.slug == slug).first()
@@ -316,6 +322,838 @@ def _seed_demo_case(db, hopkins_id, director_id, mfr_id, cemetery_id, force: boo
     return case
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Phase 1G — Personalization Studio canonical demo seed integration
+#
+# Per Phase 1G build prompt + §3.26.11.12.19.1 canonical demo seed
+# scope: extends canonical Hopkins FH + Sunnycrest demo with canonical
+# Personalization Studio Generation Focus instance + canvas state +
+# Workshop catalog overrides + Q1 display label overrides + pre-shared
+# Hopkins→Sunnycrest DocumentShare.
+#
+# Idempotent canonical seed pattern — fresh→create + matched→noop +
+# differing→update + multiple→skip-with-warning per Sessions 1-7
+# precedent.
+# ─────────────────────────────────────────────────────────────────────
+
+
+# Hopkins canonical per-tenant Workshop catalog override (canonical
+# subset of canonical-default catalogs per Tune mode boundary).
+_HOPKINS_FONT_CATALOG = ["serif", "italic", "uppercase"]
+_HOPKINS_EMBLEM_CATALOG = [
+    "rose",
+    "cross",
+    "praying_hands",
+    "dove",
+    "wreath",
+    "patriotic_flag",
+]
+_HOPKINS_LEGACY_PRINT_CATALOG: list[str] | None = None  # default — full catalog
+
+
+# Sunnycrest canonical per-tenant Workshop catalog override + Q1
+# canonical "Vinyl" display label override per r74 substrate.
+_SUNNYCREST_FONT_CATALOG = ["serif", "sans"]
+_SUNNYCREST_EMBLEM_CATALOG = [
+    "rose",
+    "cross",
+    "praying_hands",
+    "dove",
+    "wreath",
+    "patriotic_flag",
+]
+
+
+# Wilbert canonical Q1 display label override per r74 substrate
+# (canonical "Life's Reflections" override on canonical ``vinyl`` option
+# type). Surfaces only when Wilbert tenant exists in seed; otherwise
+# documented for future Wilbert tenant onboarding.
+_WILBERT_VINYL_DISPLAY_LABEL = "Life's Reflections"
+
+
+# Canonical Personalization Studio canvas state pre-rendered at demo
+# seed for FC-2026-0001 (canonical post-r74 4-options vocabulary).
+def _hopkins_demo_canvas_state(case_id: str) -> dict:
+    return {
+        "schema_version": 1,
+        "template_type": "burial_vault_personalization_studio",
+        "canvas_layout": {
+            "elements": [
+                {
+                    "id": str(uuid.uuid4()),
+                    "element_type": "name_text",
+                    "x": 100,
+                    "y": 80,
+                    "config": {
+                        "name_display": "JOHN M. SMITH",
+                        "font": "uppercase",
+                    },
+                },
+                {
+                    "id": str(uuid.uuid4()),
+                    "element_type": "emblem",
+                    "x": 100,
+                    "y": 160,
+                    "config": {"emblem_key": "patriotic_flag"},
+                },
+            ],
+        },
+        "vault_product": {
+            "vault_product_id": None,
+            "vault_product_name": "Monticello Standard",
+        },
+        "emblem_key": "patriotic_flag",
+        "name_display": "JOHN M. SMITH",
+        "font": "uppercase",
+        "birth_date_display": "March 3, 1942",
+        "death_date_display": "April 9, 2026",
+        "nameplate_text": None,
+        "options": {
+            "legacy_print": None,
+            "physical_nameplate": None,
+            "physical_emblem": {},
+            "vinyl": None,
+        },
+        "family_approval_status": "approved",
+    }
+
+
+def _seed_workshop_catalog_overrides(
+    db,
+    company,
+    *,
+    font_catalog: list[str] | None,
+    emblem_catalog: list[str] | None,
+    legacy_print_catalog: list[str] | None,
+    display_labels_override: dict[str, str] | None,
+    template_type: str = "burial_vault_personalization_studio",
+):
+    """Idempotent seed of per-tenant Workshop catalog overrides at
+    ``Company.settings_json`` JSONB-as-Text substrate per Phase 1D canon.
+
+    No-op skip when override values match existing tenant override.
+    Update on differing values.
+
+    Phase 2D substrate-consumption-follower extension: ``template_type``
+    kwarg parameterizes the workshop sub-key. Phase 1G default value
+    preserves backward compatibility with Step 1 callers.
+    """
+    raw = company.settings_json or "{}"
+    try:
+        settings = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        settings = {}
+
+    workshop = settings.get("workshop") or {}
+    if not isinstance(workshop, dict):
+        workshop = {}
+    template_node = workshop.get(template_type) or {}
+    if not isinstance(template_node, dict):
+        template_node = {}
+
+    changed = False
+    if font_catalog is not None and template_node.get("font_catalog") != font_catalog:
+        template_node["font_catalog"] = font_catalog
+        changed = True
+    if (
+        emblem_catalog is not None
+        and template_node.get("emblem_catalog") != emblem_catalog
+    ):
+        template_node["emblem_catalog"] = emblem_catalog
+        changed = True
+    if (
+        legacy_print_catalog is not None
+        and template_node.get("legacy_print_catalog") != legacy_print_catalog
+    ):
+        template_node["legacy_print_catalog"] = legacy_print_catalog
+        changed = True
+
+    if changed:
+        workshop[template_type] = template_node
+        settings["workshop"] = workshop
+
+    # Display labels live at top-level ``personalization_display_labels``
+    # key per Q1 r74 substrate — shared across all template_types at
+    # category scope per §3.26.11.12.19.6 scope freeze (per-template
+    # display label override is canonically not yet a concept; Q1 canon
+    # operates at category scope).
+    if display_labels_override:
+        existing_labels = settings.get("personalization_display_labels") or {}
+        if not isinstance(existing_labels, dict):
+            existing_labels = {}
+        merged = {**existing_labels, **display_labels_override}
+        if merged != existing_labels:
+            settings["personalization_display_labels"] = merged
+            changed = True
+
+    if changed:
+        company.settings_json = json.dumps(settings)
+        db.flush()
+    return changed
+
+
+def _seed_personalization_studio_phase1g(db, hopkins, sunnycrest, case):
+    """Phase 1G canonical demo seed integration.
+
+    Creates / refreshes:
+      1. Personalization Studio managed email templates (re-runs Phase 1E
+         idempotent seed; canonical noop on second invocation)
+      2. Hopkins per-tenant Workshop catalog overrides + Q1 display label
+         resolution (canonical default — no override seeded for Hopkins)
+      3. Sunnycrest per-tenant Workshop catalog overrides + Q1 "Vinyl"
+         canonical-explicit override (canonical Sunnycrest-specific label
+         per build prompt)
+      4. Canonical Document at canonical D-9 substrate for FC-2026-0001
+         (document_type="burial_vault_personalization_studio";
+         entity_type="fh_case"; status="committed")
+      5. Canonical Generation Focus instance at canonical Phase 1A entity
+         model (lifecycle_state="committed";
+         family_approval_status="approved"; canvas state pre-rendered to
+         canonical Document substrate via canonical Phase 1A
+         commit_canvas_state path)
+      6. Canonical pre-shared DocumentShare Hopkins→Sunnycrest at
+         canonical D-6 substrate (demonstrates canonical cross-tenant
+         flow visibility; canonical seed entry at canonical
+         document_shares table)
+
+    Returns canonical summary dict for canonical seed-output stdout
+    consumption.
+    """
+    summary: dict = {
+        "email_templates": "skipped",
+        "hopkins_workshop_overrides": "skipped",
+        "sunnycrest_workshop_overrides": "skipped",
+        "wilbert_q1_label": "absent",
+        "ps_document": "skipped",
+        "ps_instance": "skipped",
+        "documentshare": "skipped",
+    }
+
+    # Step 1: canonical Phase 1E managed email templates idempotent
+    # seed (canonical Sessions 1-7 idempotent state machine).
+    try:
+        from scripts.seed_personalization_studio_phase1e_email_templates import (
+            seed_phase1e_email_templates,
+        )
+
+        counters = seed_phase1e_email_templates(db)
+        # Counters dict surfaces canonical 4-state outcome per template:
+        # created / noop_matched / platform_update / skipped_customized.
+        any_created = any(
+            c.get("created", 0) > 0 for c in counters.values()
+        )
+        any_updated = any(
+            c.get("platform_update", 0) > 0 for c in counters.values()
+        )
+        if any_created:
+            summary["email_templates"] = "created"
+        elif any_updated:
+            summary["email_templates"] = "updated"
+        else:
+            summary["email_templates"] = "noop_matched"
+    except Exception as exc:  # noqa: BLE001 — best-effort seed
+        summary["email_templates"] = f"failed: {type(exc).__name__}"
+
+    # Step 2: Hopkins per-tenant Workshop overrides (Hopkins selects
+    # canonical default Q1 label "Vinyl"; canonical Hopkins-specific
+    # canonical font + emblem subset overrides applied).
+    if _seed_workshop_catalog_overrides(
+        db,
+        hopkins,
+        font_catalog=_HOPKINS_FONT_CATALOG,
+        emblem_catalog=_HOPKINS_EMBLEM_CATALOG,
+        legacy_print_catalog=_HOPKINS_LEGACY_PRINT_CATALOG,
+        display_labels_override=None,
+    ):
+        summary["hopkins_workshop_overrides"] = "applied"
+    else:
+        summary["hopkins_workshop_overrides"] = "noop_matched"
+
+    # Step 3: Sunnycrest per-tenant Workshop overrides + canonical Q1
+    # "Vinyl" canonical-explicit override.
+    if sunnycrest is not None:
+        # Refresh canonical Sunnycrest object from canonical session for
+        # canonical settings_json mutation (canonical demo-seed
+        # canonical session-fresh instance).
+        sunnycrest_fresh = (
+            db.query(Company).filter(Company.id == sunnycrest.id).first()
+        )
+        if _seed_workshop_catalog_overrides(
+            db,
+            sunnycrest_fresh,
+            font_catalog=_SUNNYCREST_FONT_CATALOG,
+            emblem_catalog=_SUNNYCREST_EMBLEM_CATALOG,
+            legacy_print_catalog=None,
+            display_labels_override={"vinyl": "Vinyl"},
+        ):
+            summary["sunnycrest_workshop_overrides"] = "applied"
+        else:
+            summary["sunnycrest_workshop_overrides"] = "noop_matched"
+    else:
+        summary["sunnycrest_workshop_overrides"] = "tenant_absent"
+
+    # Step 4: canonical Wilbert Q1 display label override (canonical
+    # "Life's Reflections" per r74 substrate). Canonical seed no-op
+    # canonical-skip when canonical Wilbert tenant absent (documented
+    # for canonical future Wilbert tenant onboarding).
+    wilbert = db.query(Company).filter(Company.slug == "wilbert").first()
+    if wilbert is not None:
+        if _seed_workshop_catalog_overrides(
+            db,
+            wilbert,
+            font_catalog=None,
+            emblem_catalog=None,
+            legacy_print_catalog=None,
+            display_labels_override={"vinyl": _WILBERT_VINYL_DISPLAY_LABEL},
+        ):
+            summary["wilbert_q1_label"] = "applied"
+        else:
+            summary["wilbert_q1_label"] = "noop_matched"
+    else:
+        summary["wilbert_q1_label"] = "absent"
+
+    # Step 5+6: canonical Generation Focus instance + canonical Document
+    # substrate for FC-2026-0001. Use canonical Phase 1A
+    # ``open_instance`` + ``commit_canvas_state`` service path so canonical
+    # invariants canonical-hold (canonical D-9 Document + canonical
+    # DocumentVersion + canonical case_merchandise denormalization fire
+    # canonically).
+    from app.models.generation_focus_instance import GenerationFocusInstance
+
+    existing_instance = (
+        db.query(GenerationFocusInstance)
+        .filter(
+            GenerationFocusInstance.company_id == hopkins.id,
+            GenerationFocusInstance.linked_entity_type == "fh_case",
+            GenerationFocusInstance.linked_entity_id == case.id,
+            GenerationFocusInstance.template_type
+            == "burial_vault_personalization_studio",
+        )
+        .first()
+    )
+
+    if existing_instance is None:
+        from app.services.personalization_studio import instance_service
+
+        # Resolve canonical Hopkins director for canonical opened_by /
+        # committed_by attribution.
+        director = (
+            db.query(User)
+            .filter(
+                User.company_id == hopkins.id,
+                User.email == "director1@hopkinsfh.test",
+            )
+            .first()
+        )
+        director_id = director.id if director else None
+
+        ps_instance = instance_service.open_instance(
+            db,
+            company_id=hopkins.id,
+            template_type="burial_vault_personalization_studio",
+            authoring_context="funeral_home_with_family",
+            linked_entity_id=case.id,
+            opened_by_user_id=director_id,
+        )
+        instance_service.commit_canvas_state(
+            db,
+            instance_id=ps_instance.id,
+            canvas_state=_hopkins_demo_canvas_state(case.id),
+            committed_by_user_id=director_id,
+        )
+        # Canonical Phase 1F state: family approved + canonical
+        # committed lifecycle_state.
+        now = datetime.now(timezone.utc)
+        ps_instance.lifecycle_state = "committed"
+        ps_instance.family_approval_status = "approved"
+        ps_instance.committed_at = now
+        ps_instance.committed_by_user_id = director_id
+        ps_instance.family_approval_decided_at = now
+        # Canonical Phase 1E action_payload snapshot for canonical
+        # decedent_name resolution at canonical email template var.
+        ps_instance.action_payload = {
+            "actions": [
+                {
+                    "action_type": "personalization_studio_family_approval",
+                    "action_target_type": "generation_focus_instance",
+                    "action_target_id": ps_instance.id,
+                    "action_metadata": {
+                        "decedent_name": "John Michael Smith",
+                        "fh_director_name": "Michael Torres",
+                        "family_email": "mary.smith@example.com",
+                    },
+                    "action_status": "approved",
+                    "action_completed_at": now.isoformat(),
+                    "action_completed_by": "mary.smith@example.com",
+                    "action_completion_metadata": {
+                        "outcome": "approve",
+                        "auth_method": "magic_link",
+                    },
+                }
+            ]
+        }
+        db.flush()
+        summary["ps_document"] = "created"
+        summary["ps_instance"] = "created"
+    else:
+        ps_instance = existing_instance
+        summary["ps_document"] = "noop_matched"
+        summary["ps_instance"] = "noop_matched"
+
+    # Step 6: canonical pre-shared DocumentShare Hopkins→Sunnycrest at
+    # canonical D-6 substrate. Canonical existence check first +
+    # canonical idempotent re-seed.
+    if sunnycrest is not None and ps_instance.document_id is not None:
+        from app.models.document_share import DocumentShare
+        from app.services.documents import document_sharing_service
+
+        existing_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == ps_instance.document_id,
+                DocumentShare.target_company_id == sunnycrest.id,
+                DocumentShare.revoked_at.is_(None),
+            )
+            .first()
+        )
+        if existing_share is None:
+            from app.models.canonical_document import Document
+
+            document = (
+                db.query(Document)
+                .filter(Document.id == ps_instance.document_id)
+                .first()
+            )
+            if document is not None:
+                # Resolve canonical FH director attribution for
+                # canonical granted_by_user_id.
+                director = (
+                    db.query(User)
+                    .filter(
+                        User.company_id == hopkins.id,
+                        User.email == "director1@hopkinsfh.test",
+                    )
+                    .first()
+                )
+                document_sharing_service.grant_share(
+                    db,
+                    document=document,
+                    target_company_id=sunnycrest.id,
+                    granted_by_user_id=director.id if director else None,
+                    reason=(
+                        "Memorial design approved by family — shared "
+                        "for fulfillment"
+                    ),
+                    source_module=(
+                        "personalization_studio.demo_seed_phase1g"
+                    ),
+                    enforce_relationship=True,
+                )
+                summary["documentshare"] = "created"
+            else:
+                summary["documentshare"] = "document_missing"
+        else:
+            summary["documentshare"] = "noop_matched"
+    else:
+        summary["documentshare"] = "tenant_absent_or_no_document"
+
+    db.commit()
+    return summary
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 2D — Step 2 Urn Vault Personalization Studio demo seed
+# integration
+#
+# Per Phase 2D build prompt + substrate-consumption-follower discipline:
+# parallels Phase 1G ``_seed_personalization_studio_phase1g`` structure
+# verbatim with urn-specific scope (template_type=urn_vault_personalization_studio,
+# document_type=urn_vault_personalization_studio, urn-specific canvas
+# state shape per Phase 2A factory dispatch).
+#
+# Idempotent seed pattern preserved per Sessions 1-8 + Phase 1G
+# precedent — fresh→create + matched→noop + differing→update.
+#
+# Net-new substrate at Phase 2D (per substrate-consumption-follower
+# enumeration):
+#   - 1 helper function (this) parallel to Phase 1G helper structure
+#   - Hopkins + Sunnycrest per-tenant urn vault Workshop catalog overrides
+#   - Step 2 GenerationFocusInstance for cremation case (when present)
+# ─────────────────────────────────────────────────────────────────────
+
+
+# Hopkins per-tenant urn vault Workshop catalog override (subset of
+# canonical-default catalogs per Tune mode boundary). Mirrors Phase 1G
+# Hopkins burial vault subset; urn-specific subset narrower per
+# §3.26.11.12.19.6 per-template Tune mode customization scope.
+_HOPKINS_URN_FONT_CATALOG = ["serif", "italic"]
+_HOPKINS_URN_EMBLEM_CATALOG = [
+    "rose",
+    "cross",
+    "praying_hands",
+    "dove",
+]
+_HOPKINS_URN_LEGACY_PRINT_CATALOG: list[str] | None = None  # default
+
+
+# Sunnycrest per-tenant urn vault Workshop catalog override. Q1 "Vinyl"
+# display label override is shared at category scope per §3.26.11.12.19.6
+# scope freeze (already applied at Phase 1G); Phase 2D does not re-apply.
+_SUNNYCREST_URN_FONT_CATALOG = ["serif", "sans"]
+_SUNNYCREST_URN_EMBLEM_CATALOG = ["rose", "cross", "dove"]
+
+
+# Empty canvas state for the Step 2 cremation demo case. Mirrors Phase
+# 1G ``_hopkins_demo_canvas_state`` shape with urn-specific
+# ``urn_product`` slot per Phase 2A factory dispatch.
+def _hopkins_step2_demo_canvas_state(case_id: str) -> dict:
+    return {
+        "schema_version": 1,
+        "template_type": "urn_vault_personalization_studio",
+        "canvas_layout": {
+            "elements": [
+                {
+                    "id": str(uuid.uuid4()),
+                    "element_type": "name_text",
+                    "x": 100,
+                    "y": 60,
+                    "config": {
+                        "name_display": "ROBERT M. HARRIS",
+                        "font": "serif",
+                    },
+                },
+                {
+                    "id": str(uuid.uuid4()),
+                    "element_type": "emblem",
+                    "x": 100,
+                    "y": 140,
+                    "config": {"emblem_key": "dove"},
+                },
+            ],
+        },
+        "urn_product": {
+            "urn_product_id": None,
+            "urn_product_name": "Heritage Bronze Urn",
+        },
+        "emblem_key": "dove",
+        "name_display": "ROBERT M. HARRIS",
+        "font": "serif",
+        "birth_date_display": "January 12, 1945",
+        "death_date_display": "April 15, 2026",
+        "nameplate_text": None,
+        "options": {
+            "legacy_print": None,
+            "physical_nameplate": None,
+            "physical_emblem": {},
+            "vinyl": None,
+        },
+        "family_approval_status": "approved",
+    }
+
+
+def _seed_step2_cremation_case(db, hopkins_id, director_id):
+    """Phase 2D Step 2 cremation demo case.
+
+    Creates a parallel demo case to FC-2026-0001 (burial vault) — Step 2
+    cremation case for Urn Vault Personalization Studio demo path.
+    Idempotent via ``case_number`` lookup.
+
+    Returns the FuneralCase row.
+    """
+    existing = db.query(FuneralCase).filter(
+        FuneralCase.company_id == hopkins_id,
+        FuneralCase.case_number == "FC-2026-0002",
+    ).first()
+    if existing:
+        return existing
+
+    case = case_service.create_case(db, hopkins_id, director_id=director_id)
+    case.case_number = "FC-2026-0002"
+    case.current_step = "story"
+    case.completed_steps = [
+        "arrangement_conference",
+        "vital_statistics",
+        "authorization",
+        "service_planning",
+        "obituary",
+        "merchandise_urn",
+    ]
+    db.commit()
+
+    # Deceased — Robert M. Harris (Step 2 cremation demo decedent)
+    dec = db.query(CaseDeceased).filter(CaseDeceased.case_id == case.id).first()
+    dec.first_name = "Robert"
+    dec.middle_name = "Michael"
+    dec.last_name = "Harris"
+    dec.date_of_birth = date(1945, 1, 12)
+    dec.date_of_death = date(2026, 4, 15)
+    dec.sex = "male"
+    dec.religion = "Methodist"
+    dec.occupation = "Engineer (retired)"
+    dec.marital_status = "widowed"
+    dec.residence_city = "Syracuse"
+    dec.residence_state = "NY"
+
+    # Disposition — cremation
+    disp = db.query(CaseDisposition).filter(CaseDisposition.case_id == case.id).first()
+    disp.disposition_type = "cremation"
+    disp.death_certificate_status = "pending"
+
+    # Service — memorial service
+    svc = db.query(FHCaseService).filter(FHCaseService.case_id == case.id).first()
+    svc.service_type = "memorial"
+    svc.service_date = date(2026, 4, 22)
+    svc.service_time = time(10, 0)
+    svc.service_location_name = "Hopkins Memorial Chapel"
+    svc.service_location_address = "100 Hopkins Way, Syracuse, NY"
+
+    # Informant — son (primary + authorizing)
+    db.add(CaseInformant(
+        id=str(uuid.uuid4()),
+        case_id=case.id,
+        company_id=hopkins_id,
+        name="James Harris",
+        relationship="son",
+        phone="555-0287",
+        is_primary=True,
+        is_authorizing=True,
+        authorization_signed_at=datetime.now(timezone.utc),
+        authorization_method="in_person",
+    ))
+
+    # Merchandise — urn (Step 2 demo)
+    merch = db.query(CaseMerchandise).filter(CaseMerchandise.case_id == case.id).first()
+    merch.urn_name = "Heritage Bronze Urn"
+    merch.urn_price = 295.00
+    merch.urn_personalization_notes = (
+        "Family-selected dove emblem; serif name plate; "
+        "engineer occupation honored at memorial."
+    )
+
+    db.commit()
+    db.refresh(case)
+    return case
+
+
+def _seed_personalization_studio_step2(db, hopkins, sunnycrest):
+    """Phase 2D Step 2 demo seed integration.
+
+    Substrate-consumption-follower extension parallel to Phase 1G
+    ``_seed_personalization_studio_phase1g`` structure:
+
+      1. Step 2 Intelligence prompts (Phase 2B idempotent re-execution)
+      2. Hopkins per-tenant urn vault Workshop catalog overrides
+      3. Sunnycrest per-tenant urn vault Workshop catalog overrides
+      4. Step 2 cremation demo case FC-2026-0002 (Robert Harris)
+      5. Step 2 GenerationFocusInstance for FC-2026-0002 with urn canvas
+         state pre-rendered (committed lifecycle + family-approved)
+      6. Pre-shared Hopkins→Sunnycrest DocumentShare for Step 2 instance
+
+    Returns summary dict for stdout consumption.
+    """
+    summary: dict = {
+        "step2_prompts": "skipped",
+        "hopkins_urn_overrides": "skipped",
+        "sunnycrest_urn_overrides": "skipped",
+        "step2_case": "skipped",
+        "step2_ps_document": "skipped",
+        "step2_ps_instance": "skipped",
+        "step2_documentshare": "skipped",
+    }
+
+    # Step 1: Phase 2B Intelligence prompts idempotent seed.
+    try:
+        from scripts.seed_personalization_studio_step2_intelligence import (
+            seed as seed_step2_prompts,
+        )
+
+        created_p, created_v = seed_step2_prompts(db)
+        if created_p > 0 or created_v > 0:
+            summary["step2_prompts"] = (
+                f"created prompts={created_p} versions={created_v}"
+            )
+        else:
+            summary["step2_prompts"] = "noop_matched"
+    except Exception as exc:  # noqa: BLE001 — best-effort seed
+        summary["step2_prompts"] = f"failed: {type(exc).__name__}"
+
+    # Step 2: Hopkins per-tenant urn vault Workshop overrides.
+    if _seed_workshop_catalog_overrides(
+        db,
+        hopkins,
+        font_catalog=_HOPKINS_URN_FONT_CATALOG,
+        emblem_catalog=_HOPKINS_URN_EMBLEM_CATALOG,
+        legacy_print_catalog=_HOPKINS_URN_LEGACY_PRINT_CATALOG,
+        display_labels_override=None,
+        template_type="urn_vault_personalization_studio",
+    ):
+        summary["hopkins_urn_overrides"] = "applied"
+    else:
+        summary["hopkins_urn_overrides"] = "noop_matched"
+
+    # Step 3: Sunnycrest per-tenant urn vault Workshop overrides.
+    if sunnycrest is not None:
+        sunnycrest_fresh = (
+            db.query(Company).filter(Company.id == sunnycrest.id).first()
+        )
+        if _seed_workshop_catalog_overrides(
+            db,
+            sunnycrest_fresh,
+            font_catalog=_SUNNYCREST_URN_FONT_CATALOG,
+            emblem_catalog=_SUNNYCREST_URN_EMBLEM_CATALOG,
+            legacy_print_catalog=None,
+            display_labels_override=None,
+            template_type="urn_vault_personalization_studio",
+        ):
+            summary["sunnycrest_urn_overrides"] = "applied"
+        else:
+            summary["sunnycrest_urn_overrides"] = "noop_matched"
+    else:
+        summary["sunnycrest_urn_overrides"] = "tenant_absent"
+
+    # Step 4: Step 2 cremation demo case.
+    director = (
+        db.query(User)
+        .filter(
+            User.company_id == hopkins.id,
+            User.email == "director1@hopkinsfh.test",
+        )
+        .first()
+    )
+    if director is None:
+        summary["step2_case"] = "director_missing"
+        db.commit()
+        return summary
+
+    case_existed = (
+        db.query(FuneralCase)
+        .filter(
+            FuneralCase.company_id == hopkins.id,
+            FuneralCase.case_number == "FC-2026-0002",
+        )
+        .first()
+        is not None
+    )
+    case = _seed_step2_cremation_case(db, hopkins.id, director.id)
+    summary["step2_case"] = "noop_matched" if case_existed else "created"
+
+    # Step 5: GenerationFocusInstance + Document for Step 2 case.
+    from app.models.generation_focus_instance import GenerationFocusInstance
+
+    existing_instance = (
+        db.query(GenerationFocusInstance)
+        .filter(
+            GenerationFocusInstance.company_id == hopkins.id,
+            GenerationFocusInstance.linked_entity_type == "fh_case",
+            GenerationFocusInstance.linked_entity_id == case.id,
+            GenerationFocusInstance.template_type
+            == "urn_vault_personalization_studio",
+        )
+        .first()
+    )
+
+    if existing_instance is None:
+        from app.services.personalization_studio import instance_service
+
+        ps_instance = instance_service.open_instance(
+            db,
+            company_id=hopkins.id,
+            template_type="urn_vault_personalization_studio",
+            authoring_context="funeral_home_with_family",
+            linked_entity_id=case.id,
+            opened_by_user_id=director.id,
+        )
+        instance_service.commit_canvas_state(
+            db,
+            instance_id=ps_instance.id,
+            canvas_state=_hopkins_step2_demo_canvas_state(case.id),
+            committed_by_user_id=director.id,
+        )
+        # Step 2 family-approved committed state (mirrors Phase 1G).
+        now = datetime.now(timezone.utc)
+        ps_instance.lifecycle_state = "committed"
+        ps_instance.family_approval_status = "approved"
+        ps_instance.committed_at = now
+        ps_instance.committed_by_user_id = director.id
+        ps_instance.family_approval_decided_at = now
+        ps_instance.action_payload = {
+            "actions": [
+                {
+                    "action_type": "personalization_studio_family_approval",
+                    "action_target_type": "generation_focus_instance",
+                    "action_target_id": ps_instance.id,
+                    "action_metadata": {
+                        "decedent_name": "Robert Michael Harris",
+                        "fh_director_name": "Michael Torres",
+                        "family_email": "james.harris@example.com",
+                    },
+                    "action_status": "approved",
+                    "action_completed_at": now.isoformat(),
+                    "action_completed_by": "james.harris@example.com",
+                    "action_completion_metadata": {
+                        "outcome": "approve",
+                        "auth_method": "magic_link",
+                    },
+                }
+            ]
+        }
+        db.flush()
+        summary["step2_ps_document"] = "created"
+        summary["step2_ps_instance"] = "created"
+    else:
+        ps_instance = existing_instance
+        summary["step2_ps_document"] = "noop_matched"
+        summary["step2_ps_instance"] = "noop_matched"
+
+    # Step 6: pre-shared DocumentShare Hopkins → Sunnycrest for Step 2.
+    if sunnycrest is not None and ps_instance.document_id is not None:
+        from app.models.document_share import DocumentShare
+        from app.services.documents import document_sharing_service
+
+        existing_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == ps_instance.document_id,
+                DocumentShare.target_company_id == sunnycrest.id,
+                DocumentShare.revoked_at.is_(None),
+            )
+            .first()
+        )
+        if existing_share is None:
+            from app.models.canonical_document import Document
+
+            document = (
+                db.query(Document)
+                .filter(Document.id == ps_instance.document_id)
+                .first()
+            )
+            if document is not None:
+                document_sharing_service.grant_share(
+                    db,
+                    document=document,
+                    target_company_id=sunnycrest.id,
+                    granted_by_user_id=director.id,
+                    reason=(
+                        "Memorial urn design approved by family — "
+                        "shared for fulfillment (Step 2 demo)"
+                    ),
+                    source_module=(
+                        "personalization_studio.demo_seed_step2"
+                    ),
+                    enforce_relationship=True,
+                )
+                summary["step2_documentshare"] = "created"
+            else:
+                summary["step2_documentshare"] = "document_missing"
+        else:
+            summary["step2_documentshare"] = "noop_matched"
+    else:
+        summary["step2_documentshare"] = "tenant_absent_or_no_document"
+
+    db.commit()
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="Actually apply changes (default: dry-run)")
@@ -335,6 +1173,20 @@ def main():
         print("  - platform_tenant_relationships: hopkinsfh → sunnycrest (manufacturer)")
         print("  - platform_tenant_relationships: hopkinsfh → stmarys (cemetery)")
         print("  - Demo case FC-2026-0001 (John Michael Smith) at the Story step")
+        print("  - Phase 1G — Personalization Studio canonical demo seed:")
+        print("    · email.personalization_studio_share_granted +")
+        print("      email.personalization_studio_family_approval_request templates")
+        print("    · Hopkins per-tenant Workshop catalog overrides")
+        print("    · Sunnycrest per-tenant Workshop catalog overrides + Q1 'Vinyl' label")
+        print("    · Generation Focus instance for FC-2026-0001 (committed + family-approved)")
+        print("    · pre-shared DocumentShare Hopkins → Sunnycrest")
+        print("  - Phase 2D — Step 2 Urn Vault Personalization Studio demo seed:")
+        print("    · 3 Phase 2B Intelligence prompts (urn_vault_personalization.*)")
+        print("    · Hopkins per-tenant urn vault Workshop catalog overrides")
+        print("    · Sunnycrest per-tenant urn vault Workshop catalog overrides")
+        print("    · Step 2 cremation demo case FC-2026-0002 (Robert Harris)")
+        print("    · Generation Focus instance for FC-2026-0002 (committed + family-approved)")
+        print("    · pre-shared DocumentShare Hopkins → Sunnycrest (Step 2)")
         return
 
     db = SessionLocal()
@@ -400,6 +1252,36 @@ def main():
         # Demo case
         case = _seed_demo_case(db, hopkins.id, torres.id, sunnycrest.id if sunnycrest else None, stmarys.id, force=args.force)
         print(f"  ✓ Demo case: {case.case_number} (id={case.id}, step={case.current_step})")
+
+        # Phase 1G — Personalization Studio demo seed integration.
+        ps_summary = _seed_personalization_studio_phase1g(
+            db, hopkins, sunnycrest, case
+        )
+        print(
+            f"  ✓ Personalization Studio demo seed (Step 1): "
+            f"templates={ps_summary['email_templates']}, "
+            f"hopkins_overrides={ps_summary['hopkins_workshop_overrides']}, "
+            f"sunnycrest_overrides={ps_summary['sunnycrest_workshop_overrides']}, "
+            f"wilbert_q1={ps_summary['wilbert_q1_label']}, "
+            f"document={ps_summary['ps_document']}, "
+            f"instance={ps_summary['ps_instance']}, "
+            f"share={ps_summary['documentshare']}"
+        )
+
+        # Phase 2D — Step 2 Urn Vault Personalization Studio demo seed.
+        step2_summary = _seed_personalization_studio_step2(
+            db, hopkins, sunnycrest
+        )
+        print(
+            f"  ✓ Personalization Studio demo seed (Step 2 urn vault): "
+            f"prompts={step2_summary['step2_prompts']}, "
+            f"hopkins_urn_overrides={step2_summary['hopkins_urn_overrides']}, "
+            f"sunnycrest_urn_overrides={step2_summary['sunnycrest_urn_overrides']}, "
+            f"case={step2_summary['step2_case']}, "
+            f"document={step2_summary['step2_ps_document']}, "
+            f"instance={step2_summary['step2_ps_instance']}, "
+            f"share={step2_summary['step2_documentshare']}"
+        )
 
         print("\n✓ Demo scenario seeded.")
         print(f"  Login: admin@hopkinsfh.test / DemoAdmin123!")

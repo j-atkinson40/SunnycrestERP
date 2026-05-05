@@ -812,6 +812,61 @@ NAV_LABEL_TABLE: dict[str, tuple[str, str]] = {
 }
 
 
+# ── Phase 1E Personalization Studio family portal Space template ────
+#
+# Per §2.5 Portal Extension Pattern + §3.26.11.9 magic-link substrate +
+# Phase 1E build prompt: family approval is rendered through a canonical
+# Spaces configuration with portal-extension modifiers. Unlike the
+# Phase 8e.2 driver portal (where PortalUser identity persists in
+# `portal_users` and the SpaceConfig seeds into `User.preferences.spaces`),
+# the family is non-Bridgeable identity — the magic-link IS the
+# authentication factor per §3.26.11.9. The Space is rendered
+# ephemerally for the duration of the magic-link visit.
+#
+# Canonical modifiers per Phase 1E build prompt:
+#   - access_mode = "portal_external"  (non-Bridgeable identity scope)
+#   - tenant_branding = True           (FH-tenant-branded surface;
+#                                       wash, not reskin per §10.6)
+#   - write_mode = "limited"           (canvas read-only + 3-outcome
+#                                       action vocabulary)
+#   - session_timeout_minutes = 60     (one-shot family approval session
+#                                       — shorter than driver's 12h
+#                                       per portal-shape canonical)
+#   - is_default = True
+#   - pins = []                        (single-canvas focus; no nav
+#                                       affordances — matches driver
+#                                       portal's "one space, no pins"
+#                                       canonical)
+#
+# Anti-pattern guards explicit:
+#   - §2.5.4 Anti-pattern 13 (net-new portal substrate construction
+#     rejected) — family portal is canonical Spaces config, not new
+#     primitive.
+#   - §2.5.4 Anti-pattern 18 (portal-as-replacement-for-tenant-UX
+#     rejected) — narrow scope (canvas review + 3-outcome action),
+#     not a parallel tenant UX.
+
+
+FAMILY_PORTAL_SPACE_TEMPLATE: SpaceTemplate = SpaceTemplate(
+    template_id="personalization_studio_family_approval",
+    name="Memorial Approval",
+    icon="heart",
+    accent="warm",
+    is_default=True,
+    # The portal URL shape is `/portal/<slug>/personalization-studio/
+    # family-approval/<token>`. The slug + token are filled in at
+    # render time by the portal route handler; the stored route is the
+    # portal-relative suffix without the per-visit token segment.
+    default_home_route="/personalization-studio/family-approval",
+    density="comfortable",
+    access_mode="portal_external",
+    tenant_branding=True,
+    write_mode="limited",
+    session_timeout_minutes=60,
+    pins=[],  # Family portal: single canvas, no pin clutter.
+)
+
+
 # ── Public helpers ──────────────────────────────────────────────────
 
 

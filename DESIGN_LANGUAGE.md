@@ -6809,8 +6809,9 @@ Canvas + palette chrome canonical per §3.26.11.12.5 element catalog. Per-templa
 **Per-template-type canvas + palette variation**:
 - Wall Designer canvas: 3D wall visualization with block placement + base material rendering; palette: block systems + materials + colors + retaining options
 - Drawing Takeoff canvas: architectural drawing rendering with markup overlay + AI-extraction confidence indicators; palette: feature classification + material specification
-- Legacy Studio canvas: memorial layout with photo composition + text positioning; palette: photo selections + text styles + memorial elements + decorative options
-- Engraved urn customizer canvas: urn surface with engraving placement + font preview; palette: font selections + engraving styles + decorative motifs
+- Burial Vault Personalization Studio canvas (Path C canon update; replaces retired Legacy Studio canvas): burial-vault-specific dimensions; per-product-line tier rendering canonical (wilbert_standard / continental / salute / urn_vault tiers per existing personalization vocabulary per BRIDGEABLE_MASTER §3.26.11.12.19.2); palette: 4 canonical personalization options (legacy print + physical nameplate + physical emblem + vinyl) per Q-C Path C confirmation; per-tenant emblem catalog + per-tenant font catalog + per-tenant legacy print catalog selection canonical via Workshop Tune mode per BRIDGEABLE_MASTER §3.26.11.12.19.2. Canonical authoring chrome adapts per `authoring_context` discriminator: `funeral_home_with_family` surfaces family-collaboration affordances (canvas review with family present + family approval CTA); `manufacturer_without_family` surfaces standalone authoring chrome from off-platform-FH-provided source materials; `manufacturer_from_fh_share` renders read-only consume chrome (no edit affordances per canonical Document read-only state).
+- Urn Vault Personalization Studio canvas (Path C canon update; canonically distinct from Engraved urn customizer per BRIDGEABLE_MASTER §3.26.11.12.19.7): urn-vault-specific dimensions; parallel canonical structural pattern; palette: same 4 canonical personalization options across both Personalization Studio templates per Q-C; product-specific positioning constraints canonical at canvas level. Canonical authoring chrome inherits same per-`authoring_context` discriminator pattern as Burial Vault Personalization Studio.
+- Engraved urn customizer canvas (canonical urn ENGRAVING domain per BRIDGEABLE_MASTER §3.26.11.12.19.7; canonically distinct from Urn Vault Personalization Studio): urn surface with engraving placement + font preview; palette: font selections + engraving styles + decorative motifs
 - Monument customizer canvas: monument elevation with feature composition + material selection; palette: monument types + features + materials
 
 **Cross-references**: §3.26.11.12.5 core element catalog scoping; §6 overlay family canon (selection + dismissal chrome).
@@ -6875,7 +6876,11 @@ Commit affordance + draft state + bounded-output progress chrome canonical per �
 
 **Commit affordance composition**:
 - Brass primary button right-aligned in chrome footer: `bg-accent text-content-on-accent rounded-md px-4 py-2 font-medium`
-- Button label varies by destination: "Add to quote" (Wall Designer commit to Quote), "Add to order" (engraved urn customizer commit to Order), "Finalize audit package" (Audit Prep generator commit to compliance vault item), "Add to case" (Legacy Studio commit to FH case)
+- Button label varies by destination: "Add to quote" (Wall Designer + Monument customizer commit to Quote), "Add to order" (engraved urn customizer commit to Order — canonical urn ENGRAVING domain per BRIDGEABLE_MASTER §3.26.11.12.19.7), "Finalize audit package" (Audit Prep generator commit to compliance vault item)
+- **Burial Vault Personalization Studio + Urn Vault Personalization Studio per-authoring-context button labels** (Path C canon update; per BRIDGEABLE_MASTER §3.26.11.12.19.5):
+  - `funeral_home_with_family`: "Add to case" (commits to FH case via `fh_case_field_update` event per BRIDGEABLE_MASTER §3.26.11.12.6)
+  - `manufacturer_without_family`: "Add to order" (commits to order line item via `order_line_item_personalization_spec_update` event)
+  - `manufacturer_from_fh_share`: "Mark reviewed" (read-only consume; no commit affordance per canonical Document read-only state — button label canonically signals review-complete intent rather than commit-output intent)
 - Button state: enabled when bounded output requirements met (validation per template configuration); disabled with tooltip explaining missing requirements when not ready
 
 **Draft state visual treatment**:

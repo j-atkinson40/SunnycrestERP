@@ -506,7 +506,9 @@ class TestTokenIssuance:
             # Backdate expiry
             db.execute(
                 text(
-                    "UPDATE email_action_tokens SET expires_at = :past "
+                    # Substrate consolidation r70: table renamed
+                    # email_action_tokens → platform_action_tokens.
+                    "UPDATE platform_action_tokens SET expires_at = :past "
                     "WHERE token = :t"
                 ),
                 {

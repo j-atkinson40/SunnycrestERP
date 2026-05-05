@@ -1355,6 +1355,178 @@ WIDGET_DEFINITIONS: list[dict] = [
         ],
         "default_variant_id": "glance",
     },
+    # ── Phase W-4b Layer 1 Calendar Step 5 — `calendar_glance` ──
+    #
+    # Calendar primitive Glance widget per §3.26.16.10 Pulse
+    # Communications Layer Glance canon. Pattern parallels email_glance
+    # verbatim (canonical Step 5 cross-surface rendering precedent).
+    # Cross-vertical foundation widget. Surfaces interpersonal-
+    # scheduling signals only (responses awaiting + new cross-tenant
+    # invitations); operational-today-scheduling signals route to
+    # Operational layer separately (today_widget + calendar_summary).
+    {
+        "widget_id": "calendar_glance",
+        "title": "Calendar",
+        "description": (
+            "Calendar primitive Glance widget per Pulse Communications "
+            "Layer canon (§3.26.16.10). Surfaces pending response count "
+            "+ cross-tenant invitation count + top inviter across the "
+            "user's accessible calendar accounts (per "
+            "CalendarAccountAccess junction). Cross-vertical foundation "
+            "widget. Click navigates to /calendar?status=needs_action "
+            "for multi-event surface, /calendar/events/{id} for single-"
+            "event surface. Three density tiers (Default ≥121px / "
+            "Compact 101-120 / Ultra-compact 80-100). Per §12.6a — "
+            "view-only widget, no in-place state flips. Communications "
+            "layer composition (communications_layer_service.py + "
+            "LayerName 'communications' literal) deferred to W-4b "
+            "sequence step 6 per §3.26.6.4 sequencing canon."
+        ),
+        "page_contexts": ["pulse", "home"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1"],
+        "category": "operations",
+        "icon": "Calendar",  # §14.2 canonical Lucide icon
+        "default_enabled": True,
+        "default_position": 9,
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+        ],
+        "default_surfaces": ["pulse_grid"],
+        "intelligence_keywords": [
+            "calendar",
+            "schedule",
+            "meeting",
+            "events",
+            "scheduling",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 240,
+                    "height": "auto",
+                    "maxHeight": 160,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "spaces_pin",
+                    "dashboard_grid",
+                ],
+            },
+        ],
+        "default_variant_id": "glance",
+    },
+    # ── Phase W-4b Layer 1 Calendar Step 5.1 — `calendar_consent_pending` ──
+    #
+    # Cross-tenant consent-pending widget per §3.26.16.10 Pulse
+    # Communications Layer canon (alongside calendar_glance +
+    # email_glance). Pattern parallels calendar_glance Step 5 verbatim.
+    # Surfaces ``state='pending_inbound'`` PTR consent rows — partner
+    # has opted into full_details + this side hasn't accepted yet.
+    # Cross-vertical foundation widget per Q4 confirmed pre-build
+    # (default-ship with empty state). Click navigates to
+    # /settings/calendar/freebusy-consent (single-request surface adds
+    # ?relationship_id={id} deep-link). Per §12.6a — view-only widget;
+    # accept/revoke happens on the settings page, not inline on the
+    # widget surface.
+    {
+        "widget_id": "calendar_consent_pending",
+        "title": "Calendar Consent Requests",
+        "description": (
+            "Cross-tenant calendar consent upgrade requests pending "
+            "this tenant's response. Per §3.26.16.10 Pulse Communications "
+            "Layer canon. Surfaces partners who have opted into "
+            "full_details consent while this side hasn't yet accepted. "
+            "Cross-vertical foundation widget (every tenant sees it; "
+            "renders empty state when no pending requests). Click "
+            "navigates to /settings/calendar/freebusy-consent. Per "
+            "§12.6a — view-only widget."
+        ),
+        "page_contexts": ["pulse", "home"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1"],
+        "category": "operations",
+        "icon": "UserCheck",  # §14.2 — signals consent-request semantics
+        "default_enabled": True,
+        "default_position": 11,
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+        ],
+        "default_surfaces": ["pulse_grid"],
+        "intelligence_keywords": [
+            "calendar",
+            "consent",
+            "requests",
+            "freebusy",
+            "partners",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 240,
+                    "height": "auto",
+                    "maxHeight": 160,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "spaces_pin",
+                    "dashboard_grid",
+                ],
+            },
+        ],
+        "default_variant_id": "glance",
+    },
+    # ── Phase W-4b Layer 1 Calendar Step 5 — `calendar_summary` ──
+    #
+    # Calendar Operational Layer widget per §3.26.16.10 Operational
+    # Layer extension. Surfaces this-week schedule for operational
+    # coordination — NOT individual response state (that lives in
+    # calendar_glance Communications Layer widget).
+    {
+        "widget_id": "calendar_summary",
+        "title": "Week schedule",
+        "description": (
+            "Calendar Operational Layer widget per §3.26.16.10. "
+            "Surfaces next-7-days confirmed events for operational "
+            "coordination — next event + per-day event counts + first-"
+            "event-of-day subjects. Cross-vertical foundation widget. "
+            "Confirmed + opaque events only (tentative drafts route "
+            "to drafted-event review queue Step 3 surface). Click "
+            "navigates to /calendar week view."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "2x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1", "2x2"],
+        "category": "operations",
+        "icon": "CalendarDays",
+        "default_enabled": True,
+        "default_position": 10,
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+        ],
+        "default_surfaces": ["pulse_grid"],
+        "intelligence_keywords": [
+            "calendar",
+            "schedule",
+            "week",
+            "upcoming",
+        ],
+    },
 ]
 
 

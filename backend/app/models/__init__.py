@@ -85,6 +85,7 @@ from app.models.signature import (
 from app.models.employee_briefing import EmployeeBriefing
 from app.models.employee_profile import EmployeeProfile
 from app.models.focus_session import FocusLayoutDefault, FocusSession
+from app.models.generation_focus_instance import GenerationFocusInstance
 from app.models.equipment import Equipment
 from app.models.extension_activity_log import ExtensionActivityLog
 from app.models.extension_customer_onboarding import ExtensionCustomerOnboarding
@@ -322,8 +323,22 @@ from app.models.email_primitive import (
     OAuthStateNonce,
     UserMessageRead,
 )
+from app.models.calendar_primitive import (
+    CalendarAccount,
+    CalendarAccountAccess,
+    CalendarAccountSyncState,
+    CalendarAuditLog,
+    CalendarEvent,
+    CalendarEventAttendee,
+    CalendarEventInstanceOverride,
+    CalendarEventLinkage,
+    CalendarEventReminder,
+    CrossTenantEventPairing,
+)
 from app.models.platform_incident import PlatformIncident
 from app.models.platform_notification import PlatformNotification
+from app.models.platform_theme import PlatformTheme
+from app.models.component_configuration import ComponentConfiguration
 from app.models.tenant_health_score import TenantHealthScore
 from app.models.social_service_certificate import SocialServiceCertificate
 from app.models.urn_product import UrnProduct
@@ -681,8 +696,21 @@ __all__ = [
     "EmailThreadLabel",
     "EmailAuditLog",
     "OAuthStateNonce",
+    # Calendar Primitive (§3.26.16) — Phase W-4b Layer 1 Steps 1–2
+    "CalendarAccount",
+    "CalendarAccountAccess",
+    "CalendarAccountSyncState",
+    "CalendarEvent",
+    "CalendarEventAttendee",
+    "CalendarEventInstanceOverride",
+    "CalendarEventReminder",
+    "CalendarEventLinkage",
+    "CrossTenantEventPairing",
+    "CalendarAuditLog",
     "PlatformIncident",
     "PlatformNotification",
+    "PlatformTheme",
+    "ComponentConfiguration",
     "TenantHealthScore",
     "DisintermentCase",
     "DisintermentChargeType",

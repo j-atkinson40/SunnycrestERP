@@ -30,8 +30,18 @@ from app.services.email.providers import (
     get_provider_class,
 )
 
+# Side-effect import — registers ``quote_approval`` ActionTypeDescriptor
+# against the central platform action registry per substrate
+# consolidation discipline (r70). Pattern parallels
+# ``app.services.triage`` package init importing ``platform_defaults``
+# so canonical configs are populated at first import. Future Calendar
+# Step 4 + SMS Step 4 + Phone Step 4 will follow the same pattern from
+# their respective package inits.
+from app.services.email import email_action_service  # noqa: F401
+
 __all__ = [
     "account_service",
+    "email_action_service",
     "EmailProvider",
     "PROVIDER_REGISTRY",
     "get_provider_class",

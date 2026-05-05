@@ -628,4 +628,34 @@ def ingest_provider_message(
             message.id,
         )
 
+    # 11. Calendar primitive iTIP REPLY routing — Phase W-4b Layer 1
+    # Calendar Step 3. Cross-primitive entry point per §3.26.16.5 Path 3:
+    # if the inbound message is an iTIP REPLY, hand it off to the
+    # Calendar primitive's itip_inbound module for attendee state
+    # update. Best-effort — never blocks email ingestion. Email primitive
+    # owns transport + storage + iTIP detection; Calendar primitive
+    # owns iTIP semantic processing (UID match + attendee state update).
+    try:
+        from app.services.email.itip_detection import extract_itip_reply_text
+
+        vcalendar_text = extract_itip_reply_text(provider_message)
+        if vcalendar_text:
+            from app.services.calendar.itip_inbound import (
+                process_inbound_reply,
+            )
+
+            process_inbound_reply(
+                db,
+                vcalendar_text=vcalendar_text,
+                source_message_id=message.id,
+                tenant_id=account.tenant_id,
+            )
+            db.flush()
+    except Exception:
+        logger.exception(
+            "iTIP REPLY routing failed for ingested message %s — "
+            "non-blocking per cross-primitive boundary discipline",
+            message.id,
+        )
+
     return message

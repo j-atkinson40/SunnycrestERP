@@ -137,7 +137,18 @@ def _build_context(db: Session, invoice_id: str, company_id: str) -> dict[str, A
         except Exception:
             is_placer = False
 
-        # Personalization details for this line
+        # Personalization details for this line.
+        #
+        # Canonical 4-options vocabulary per \u00A73.26.11.12.19.2 (post-r74 substrate canonicalization):
+        # legacy_print + physical_nameplate + physical_emblem + vinyl. ``legacy_standard`` +
+        # ``legacy_custom`` are canonical sub-types within ``legacy_print`` substrate at
+        # PDF-rendering layer (operator-facing distinction; canonical substrate is ``legacy_print``).
+        #
+        # Default display labels apply at PDF rendering layer; per-tenant display label customization
+        # via ``Company.settings_json.personalization_display_labels`` consumed via
+        # ``personalization_config.get_display_label_for_tenant()`` when tenant context available
+        # (PDF renderer doesn't currently thread tenant context \u2014 uses canonical Wilbert default
+        # labels matching pre-r74 prose; per-tenant labels surface at frontend rendering layer).
         pers_lines = []
         pers_data = getattr(line, "personalization_data", None)
         if pers_data and isinstance(pers_data, list):
@@ -147,14 +158,29 @@ def _build_context(db: Session, invoice_id: str, company_id: str) -> dict[str, A
                     pers_lines.append(f"Legacy Series\u2122 \u2014 {p.get('print_name', '')}")
                 elif ptype == "legacy_custom":
                     pers_lines.append("Legacy Custom Series\u2122")
+                elif ptype == "legacy_print":
+                    # Canonical post-r74 vocabulary; renders as Legacy Series with print_name detail.
+                    pers_lines.append(f"Legacy Series\u2122 \u2014 {p.get('print_name', '')}")
+                elif ptype == "vinyl":
+                    pers_lines.append(f"Life's Reflections\u00AE \u2014 {p.get('symbol', '')}")
+                elif ptype == "physical_nameplate":
+                    pers_lines.append("Nameplate")
+                elif ptype == "physical_emblem":
+                    pers_lines.append("Cover Emblem (from stock)")
+                # Backward-compat for any pre-r74 cached data leaking through (defense-in-depth;
+                # r74 backfill should canonicalize all rows, but cached/in-flight data may transit
+                # post-migration window).
                 elif ptype == "lifes_reflections":
                     pers_lines.append(f"Life's Reflections\u00AE \u2014 {p.get('symbol', '')}")
                 elif ptype == "nameplate":
                     pers_lines.append("Nameplate")
                 elif ptype == "cover_emblem":
                     pers_lines.append("Cover Emblem (from stock)")
-                # Add inscription lines
-                if ptype != "cover_emblem":
+                # Add inscription lines.
+                # Canonical post-r74 + legacy: emblem types (physical_emblem + cover_emblem) skip
+                # inscription rendering because emblems carry visual representation rather than
+                # inscribed text per Wilbert canonical rendering.
+                if ptype not in {"physical_emblem", "cover_emblem"}:
                     for field in ("inscription_name", "inscription_dates", "inscription_additional"):
                         val = p.get(field)
                         if val:

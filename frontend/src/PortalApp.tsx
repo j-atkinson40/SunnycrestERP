@@ -32,6 +32,7 @@ import PortalDriverHome from "@/pages/portal/PortalDriverHome";
 import PortalDriverRoute from "@/pages/portal/PortalDriverRoute";
 import PortalStopDetail from "@/pages/portal/PortalStopDetail";
 import PortalMileage from "@/pages/portal/PortalMileage";
+import FamilyPortalApprovalView from "@/pages/portal/FamilyPortalApprovalView";
 
 function PortalShell() {
   // Grab :slug from the URL. If absent, redirect to a 404-ish landing.
@@ -75,6 +76,20 @@ function PortalShell() {
 export function PortalApp() {
   return (
     <Routes>
+      {/*
+        Phase 1E Personalization Studio family portal — magic-link
+        contextual surface per §3.26.11.9. Mounted OUTSIDE PortalShell
+        so it skips PortalAuthProvider + PortalBrandProvider entirely:
+          - Token IS the family's auth (no PortalUser identity).
+          - Branding comes from the family-approval GET response;
+            re-fetching via PortalBrandProvider would be redundant.
+        Per §2.5.4 Anti-pattern 16 (cross-realm privilege bleed
+        rejected): no JWT/auth provider context wraps this surface.
+      */}
+      <Route
+        path="/portal/:tenantSlug/personalization-studio/family-approval/:token"
+        element={<FamilyPortalApprovalView />}
+      />
       <Route path="/portal/:slug/*" element={<PortalShell />} />
       {/* Any other path under the portal detection — redirect home. */}
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -416,9 +416,16 @@ def send_email_with_template(
     caller_signature_envelope_id: str | None = None,
     caller_workflow_run_id: str | None = None,
     caller_intelligence_execution_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> DocumentDelivery:
     """Shortcut used by migrated email callers (signing notifications,
-    statement emails, etc.). Encapsulates the recipient wrap."""
+    statement emails, etc.). Encapsulates the recipient wrap.
+
+    The optional ``metadata`` kwarg threads a JSONB dict onto
+    ``DocumentDelivery.metadata_json`` for cross-primitive audit
+    linkage (e.g., Calendar Step 5.1 stores ``relationship_id`` here
+    so PTR consent emails can be filtered out of the delivery log
+    via metadata search)."""
     return send(
         db,
         SendParams(
@@ -437,6 +444,7 @@ def send_email_with_template(
             caller_signature_envelope_id=caller_signature_envelope_id,
             caller_workflow_run_id=caller_workflow_run_id,
             caller_intelligence_execution_id=caller_intelligence_execution_id,
+            metadata=metadata or {},
         ),
     )
 

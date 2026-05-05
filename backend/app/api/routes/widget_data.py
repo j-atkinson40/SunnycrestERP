@@ -195,6 +195,121 @@ def email_glance_widget_summary(
     return get_email_glance(db, user=current_user)
 
 
+# ── Phase W-4b Layer 1 Calendar Step 5 — `calendar_glance` widget ──
+
+
+@router.get("/calendar-glance")
+def calendar_glance_widget_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Calendar Glance widget data — Phase W-4b Layer 1 Calendar Step 5.
+
+    Per §3.26.16.10 Pulse Communications Layer Glance widget canon:
+    surfaces interpersonal-scheduling signals (responses awaiting +
+    new cross-tenant invitations) across the user's accessible calendar
+    accounts.
+
+    Surfaces ONLY interpersonal-scheduling signals — operational-today-
+    scheduling signals route to Operational layer (today_widget +
+    calendar_summary). Hybrid contribution canonical for future Layer 1
+    primitives per §3.26.16.10.
+
+    Tenant-scoped via `CalendarAccount.tenant_id == user.company_id`;
+    per-user via `CalendarAccountAccess` junction. Cross-tenant masking
+    flows through cross_tenant_event_pairing pending state.
+
+    Per Step 5 spec performance budget: p50 < 200ms.
+    """
+    from app.services.widgets.calendar_glance_service import (
+        get_calendar_glance,
+    )
+
+    return get_calendar_glance(db, user=current_user)
+
+
+# ── Phase W-4b Layer 1 Calendar Step 5 — `calendar_summary` widget ──
+
+
+@router.get("/calendar-summary")
+def calendar_summary_widget_data(
+    days: int = 7,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Calendar Summary widget data — Phase W-4b Layer 1 Calendar Step 5.
+
+    Per §3.26.16.10 Pulse Operational Layer extension: surfaces
+    next-N-days schedule for operational coordination. Confirmed +
+    opaque events only — tentative drafts surface in the drafted-event
+    review queue (Step 3 surface), not Operational layer.
+
+    Default window 7 days; tenant-configurable via ``days`` query
+    param. Per Step 5 spec performance budget: p50 < 200ms.
+    """
+    from app.services.widgets.calendar_summary_service import (
+        get_calendar_summary,
+    )
+
+    return get_calendar_summary(db, user=current_user, days=days)
+
+
+# ── Phase W-4b Layer 1 Calendar Step 5 — today_widget calendar extension ──
+
+
+@router.get("/today-calendar")
+def today_calendar_widget_extension(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """today_widget calendar extension — Phase W-4b Layer 1 Calendar Step 5.
+
+    Per §3.26.16.10 Pulse Operational Layer extension: extends the
+    existing today_widget rendering with today's calendar events as
+    operational-layer signals. Caller (the today_widget service or the
+    composing surface) merges this payload into its rendered widget.
+    """
+    from app.services.widgets.calendar_summary_service import (
+        get_today_calendar_extension,
+    )
+
+    return get_today_calendar_extension(db, user=current_user)
+
+
+# ── Phase W-4b Layer 1 Calendar Step 5.1 — `calendar_consent_pending` widget ──
+
+
+@router.get("/calendar-consent-pending")
+def calendar_consent_pending_widget_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Calendar consent-pending widget — Phase W-4b Layer 1 Calendar Step 5.1.
+
+    Per §3.26.16.10 Pulse Communications Layer canon: surfaces cross-
+    tenant calendar consent upgrade requests pending this tenant's
+    response (``state='pending_inbound'`` PTR consent rows — partner
+    has opted into full_details, this side hasn't accepted yet).
+
+    Cross-vertical foundation widget per Q4 confirmed pre-build —
+    default-ships for every tenant with empty state when no pending
+    requests exist. Click navigates to
+    ``/settings/calendar/freebusy-consent`` (single-request surface
+    adds ``?relationship_id={id}`` deep-link via the widget data's
+    ``target_relationship_id`` field).
+
+    Tenant-scoped via ``ptr_consent_service.list_partner_consent_states``
+    (``PlatformTenantRelationship.tenant_id == user.company_id``).
+
+    Per Step 5 spec performance budget: p50 < 200ms.
+    """
+    from app.services.widgets.calendar_consent_pending_service import (
+        get_calendar_consent_pending,
+    )
+
+    return get_calendar_consent_pending(db, user=current_user)
+
+
 # ── Phase W-3a — `anomalies` widget (real agent_anomalies data) ──
 
 

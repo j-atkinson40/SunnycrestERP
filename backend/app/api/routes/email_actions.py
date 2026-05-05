@@ -240,30 +240,36 @@ def get_magic_link_action(
         )
         consumed = False
     except ActionTokenAlreadyConsumed:
-        # Re-fetch row directly to render terminal state
-        from sqlalchemy import text as _sql_text
-
-        row = db.execute(
-            _sql_text(
-                "SELECT token, tenant_id, message_id, action_idx, "
-                "action_type, recipient_email, expires_at, "
-                "consumed_at, revoked_at FROM email_action_tokens "
-                "WHERE token = :t"
-            ),
-            {"t": token},
-        ).mappings().first()
-        if not row:
+        # Re-fetch row to render terminal "already consumed" state
+        # via the substrate's bypass-validation helper (r70 substrate
+        # consolidation — replaces inline raw SQL against the renamed
+        # platform_action_tokens table).
+        token_row = email_action_service.lookup_token_row_raw(
+            db, token=token
+        )
+        if token_row is None:
             raise _translate(
                 ActionTokenInvalid("Token not found.")
             ) from None
-        token_row = dict(row)
         consumed = True
     except (ActionTokenInvalid, ActionTokenExpired) as exc:
         raise _translate(exc) from exc
 
+    # Token row carries linked_entity_type + linked_entity_id post-r70.
+    # Email primitive paths only honor email_message linkage; reject
+    # cross-primitive token-and-route mismatch defensively.
+    if token_row.get("linked_entity_type") not in (None, "email_message"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This token is not for an email action. "
+                "Use the appropriate primitive's surface to act on it."
+            ),
+        )
+
     message = (
         db.query(EmailMessage)
-        .filter(EmailMessage.id == token_row["message_id"])
+        .filter(EmailMessage.id == token_row["linked_entity_id"])
         .first()
     )
     if not message:
@@ -360,7 +366,7 @@ def commit_magic_link_action(
 
     message = (
         db.query(EmailMessage)
-        .filter(EmailMessage.id == token_row["message_id"])
+        .filter(EmailMessage.id == token_row["linked_entity_id"])
         .first()
     )
     if not message:

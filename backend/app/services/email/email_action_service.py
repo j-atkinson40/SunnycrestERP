@@ -1,13 +1,34 @@
-"""Operational-action affordance service —
-Phase W-4b Layer 1 Step 4c.
+"""Email primitive action-token facade —
+Phase W-4b Layer 1 Step 4c (post-substrate-consolidation).
 
-Per BRIDGEABLE_MASTER §3.26.15.17 + DESIGN_LANGUAGE §14.9.5: emails
-carry **operational-action affordances** that bind email content to
-platform operations. The canonical case shipping in Step 4c is
-``quote_approval`` — a non-Bridgeable customer (funeral home recipient
-of a manufacturer-sent quote) approves/rejects/requests-changes on a
-quote without ever leaving the email surface or being asked to sign
-into a Bridgeable portal.
+Per Calendar Step 1 discovery Q3 confirmation: this module remains
+the canonical import surface for Email primitive callers (Step 4c
+routes, outbound_service, tests, demo seed). Internally it re-exports
+the generic substrate from ``app.services.platform.action_service``
++ retains email-specific helpers (``build_quote_approval_action``,
+Quote state propagation handler, ``ACTION_OUTCOMES_QUOTE_APPROVAL``
+constant).
+
+**Pre-substrate-consolidation behavior preserved verbatim**:
+  - ``commit_action(db, *, message, action_idx, outcome, ...)`` —
+    same signature; quote_approval state propagation unchanged
+  - ``issue_action_token(db, *, tenant_id, message_id, action_idx,
+    action_type, recipient_email, ttl_days)`` — keeps message_id
+    kwarg; internally maps to linked_entity_type='email_message' +
+    linked_entity_id=message_id
+  - ``lookup_action_token`` / ``consume_action_token`` /
+    ``generate_action_token`` — re-exported from substrate
+  - ``ACTION_TYPES`` / ``TOKEN_TTL_DAYS`` /
+    ``ACTION_OUTCOMES_QUOTE_APPROVAL`` / ``ACTION_STATUSES`` —
+    constants preserved
+
+**Per BRIDGEABLE_MASTER §3.26.15.17 + DESIGN_LANGUAGE §14.9.5**:
+emails carry **operational-action affordances** that bind email
+content to platform operations. The canonical case shipping in Step 4c
+is ``quote_approval`` — a non-Bridgeable customer (funeral home
+recipient of a manufacturer-sent quote) approves/rejects/requests-
+changes on a quote without ever leaving the email surface or being
+asked to sign into a Bridgeable portal.
 
 **kill-the-portal canonical pattern:**
   - Bridgeable recipient → inline action affordance directly in the
@@ -17,7 +38,8 @@ into a Bridgeable portal.
   - **Both paths** commit through this single service so the audit
     log + Quote state propagation logic stays canonical.
 
-**Action shape (canonical per §3.26.15.17):**
+**Action shape (canonical per §3.26.15.17)** lives in
+``email_messages.message_payload.actions[]``:
 
 .. code-block:: json
 
@@ -25,11 +47,7 @@ into a Bridgeable portal.
      "action_type": "quote_approval",
      "action_target_type": "quote",
      "action_target_id": "<quote UUID>",
-     "action_metadata": {
-       "quote_amount": 12500.00,
-       "quote_line_items": [...],
-       "expires_at": "2026-05-15T17:00:00Z"
-     },
+     "action_metadata": {...},
      "action_status": "pending",
      "action_completed_at": null,
      "action_completed_by": null,
@@ -39,54 +57,61 @@ into a Bridgeable portal.
 Status flow: ``pending`` → ``approved`` | ``rejected`` |
 ``changes_requested`` (terminal). Re-commit on a terminal action
 returns 409 — actions are single-shot per §3.26.15.17 discipline.
-
-**Token canon (§3.26.15.17 + §14.9.5):**
-  - 7-day expiry from email send time
-  - 256-bit URL-safe via ``secrets.token_urlsafe(32)`` (matches
-    ``signing/token_service.py`` precedent)
-  - Single-action authorization (token unlocks one action_idx in one
-    message; cannot navigate beyond contextual surface)
-  - Token consumption on action commit (``consumed_at`` stamped)
-  - Audit log entry per click + commit (kill-the-portal discipline)
-
-**State propagation:**
-  - approve → Quote.status = "accepted"
-  - reject → Quote.status = "rejected"
-  - request_changes → Quote.status retained as "sent" (no terminal
-    state change; commits the action with completion_metadata
-    capturing the requested-changes note for operator visibility,
-    intelligence stream synthesis later)
 """
 
 from __future__ import annotations
 
 import logging
-import secrets
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models.email_primitive import EmailMessage
 from app.models.quote import Quote
-from app.services.email.account_service import (
-    EmailAccountError,
-    _audit,
+from app.services.email.account_service import _audit
+from app.services.platform.action_registry import (
+    ActionTypeDescriptor,
+    register_action_type,
+)
+from app.services.platform.action_service import (
+    # Generic errors re-exported for backwards compat with Step 4c
+    # imports (route handlers + outbound_service + test fixtures).
+    ActionAlreadyCompleted,
+    ActionError,
+    ActionNotFound,
+    ActionTokenAlreadyConsumed,
+    ActionTokenExpired,
+    ActionTokenInvalid,
+    CrossPrimitiveTokenMismatch,
+    PlatformActionError,
+    # Generic substrate functions re-exported.
+    TOKEN_TTL_DAYS,
+    build_magic_link_url,
+    consume_action_token,
+    generate_action_token,
+    lookup_action_token,
+    lookup_token_row_raw,
+)
+from app.services.platform.action_service import (
+    issue_action_token as _platform_issue_action_token,
+)
+from app.services.platform.action_service import (
+    commit_action as _platform_commit_action,
+)
+from app.services.platform.action_service import (
+    _INSERT_ACTION_TOKEN_SQL,  # re-export for Step 4c outbound_service
 )
 
 logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Canonical vocabulary
+# Email-specific canonical vocabulary (preserved from r66 / Step 4c)
 # ─────────────────────────────────────────────────────────────────────
 
-
-# Currently shipping ``quote_approval`` — the canonical kill-the-portal
-# case. Future actions (cremation_authorization, vault_dispatch, etc.)
-# extend this set per §3.26.15.17 — Step 4c locks the schema by
-# building all infrastructure against this single action_type so the
-# extension path stays narrow.
+# Per §3.26.15.17: ``quote_approval`` is the September scope canonical
+# action_type; future actions deferred per §3.26.7.5 architectural
+# restraint discipline.
 ACTION_TYPES = ("quote_approval",)
 
 ACTION_OUTCOMES_QUOTE_APPROVAL = (
@@ -96,7 +121,7 @@ ACTION_OUTCOMES_QUOTE_APPROVAL = (
 )
 
 # action_status values stored on the action object inside
-# ``email_messages.message_payload.actions[]``
+# email_messages.message_payload.actions[]
 ACTION_STATUSES = (
     "pending",
     "approved",
@@ -104,196 +129,9 @@ ACTION_STATUSES = (
     "changes_requested",
 )
 
-# Token canonical expiry per §3.26.15.17
-TOKEN_TTL_DAYS = 7
-
 
 # ─────────────────────────────────────────────────────────────────────
-# Errors
-# ─────────────────────────────────────────────────────────────────────
-
-
-class ActionError(EmailAccountError):
-    http_status = 400
-
-
-class ActionNotFound(EmailAccountError):
-    http_status = 404
-
-
-class ActionAlreadyCompleted(EmailAccountError):
-    http_status = 409
-
-
-class ActionTokenInvalid(EmailAccountError):
-    http_status = 401
-
-
-class ActionTokenExpired(EmailAccountError):
-    http_status = 410
-
-
-class ActionTokenAlreadyConsumed(EmailAccountError):
-    http_status = 409
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Token storage — uses ``email_action_tokens`` table from r66
-# ─────────────────────────────────────────────────────────────────────
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def generate_action_token() -> str:
-    """Generate a 256-bit URL-safe token.
-
-    Same shape as ``signing.token_service.generate_signer_token`` —
-    ``secrets.token_urlsafe(32)`` produces 43-char base64, URL-safe,
-    no padding/slashes. Cryptographically resistant to brute-force.
-    """
-    return secrets.token_urlsafe(32)
-
-
-def issue_action_token(
-    db: Session,
-    *,
-    tenant_id: str,
-    message_id: str,
-    action_idx: int,
-    action_type: str,
-    recipient_email: str,
-    ttl_days: int = TOKEN_TTL_DAYS,
-) -> str:
-    """Insert an ``email_action_tokens`` row + return the raw token.
-
-    Called from outbound_service when a message with operational
-    actions is sent to non-Bridgeable recipients. Token embeds in the
-    rendered email body as the magic-link URL.
-
-    The DB row is the source of truth — we don't sign the token JWT-
-    style because we want a server-side revocation surface (operator
-    can void a token via ``revoked_at`` if recipient claims compromise).
-    """
-    if action_type not in ACTION_TYPES:
-        raise ActionError(f"Unknown action_type: {action_type}")
-
-    token = generate_action_token()
-    expires_at = _now() + timedelta(days=ttl_days)
-
-    # Use raw SQL to avoid coupling to a model class — we keep the
-    # token table thin per §3.26.15.17 (single-purpose, no business
-    # logic stored on the row beyond the trace fields).
-    db.execute(
-        _INSERT_ACTION_TOKEN_SQL,
-        {
-            "token": token,
-            "tenant_id": tenant_id,
-            "message_id": message_id,
-            "action_idx": action_idx,
-            "action_type": action_type,
-            "recipient_email": recipient_email.lower().strip(),
-            "expires_at": expires_at,
-        },
-    )
-    db.flush()
-    return token
-
-
-def lookup_action_token(
-    db: Session, *, token: str
-) -> dict[str, Any]:
-    """Return the action-token row for the given raw token.
-
-    Raises ``ActionTokenInvalid`` if not found, ``ActionTokenExpired``
-    if past TTL, ``ActionTokenAlreadyConsumed`` if previously consumed
-    or revoked. Stamps ``last_clicked_at`` + increments
-    ``click_count`` on every successful lookup so we have audit
-    visibility into multi-click patterns.
-
-    Returns dict shape: ``{token, tenant_id, message_id, action_idx,
-    action_type, recipient_email, expires_at, consumed_at, revoked_at,
-    click_count}``.
-    """
-    row = db.execute(
-        _SELECT_ACTION_TOKEN_SQL, {"token": token}
-    ).mappings().first()
-
-    if not row:
-        raise ActionTokenInvalid("Token not found.")
-    if row["revoked_at"] is not None:
-        raise ActionTokenAlreadyConsumed("Token has been revoked.")
-    if row["consumed_at"] is not None:
-        raise ActionTokenAlreadyConsumed("Token already consumed.")
-    if row["expires_at"] < _now():
-        raise ActionTokenExpired("Token has expired.")
-
-    # Stamp click — visibility into clicked-but-not-acted patterns
-    db.execute(
-        _UPDATE_ACTION_TOKEN_CLICK_SQL,
-        {"token": token, "now": _now()},
-    )
-    db.flush()
-    return dict(row)
-
-
-def consume_action_token(db: Session, *, token: str) -> None:
-    """Mark token as consumed. Called atomically with action commit."""
-    db.execute(
-        _UPDATE_ACTION_TOKEN_CONSUME_SQL,
-        {"token": token, "now": _now()},
-    )
-    db.flush()
-
-
-# Raw SQL avoids creating a dedicated SQLAlchemy model just for a
-# server-side ledger table that has no relationships outside the
-# service. Pattern matches signing/token_service which similarly avoids
-# a model-layer bloat.
-from sqlalchemy import text  # noqa: E402
-
-_INSERT_ACTION_TOKEN_SQL = text(
-    """
-    INSERT INTO email_action_tokens (
-        token, tenant_id, message_id, action_idx, action_type,
-        recipient_email, expires_at, click_count
-    ) VALUES (
-        :token, :tenant_id, :message_id, :action_idx, :action_type,
-        :recipient_email, :expires_at, 0
-    )
-    """
-)
-
-_SELECT_ACTION_TOKEN_SQL = text(
-    """
-    SELECT token, tenant_id, message_id, action_idx, action_type,
-           recipient_email, expires_at, consumed_at, revoked_at,
-           click_count, last_clicked_at, created_at
-    FROM email_action_tokens
-    WHERE token = :token
-    """
-)
-
-_UPDATE_ACTION_TOKEN_CLICK_SQL = text(
-    """
-    UPDATE email_action_tokens
-    SET click_count = click_count + 1, last_clicked_at = :now
-    WHERE token = :token
-    """
-)
-
-_UPDATE_ACTION_TOKEN_CONSUME_SQL = text(
-    """
-    UPDATE email_action_tokens
-    SET consumed_at = :now
-    WHERE token = :token
-    """
-)
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Action shape helpers
+# Action shape helpers (Email primitive scope)
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -364,7 +202,46 @@ def get_action_at_index(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Action commit — single canonical entry point
+# Email-specific token issuance facade — preserves r66 signature
+# (message_id kwarg) while routing through the generic substrate.
+# ─────────────────────────────────────────────────────────────────────
+
+
+def issue_action_token(
+    db: Session,
+    *,
+    tenant_id: str,
+    message_id: str,
+    action_idx: int,
+    action_type: str,
+    recipient_email: str,
+    ttl_days: int = TOKEN_TTL_DAYS,
+) -> str:
+    """Issue an action token for an email message.
+
+    Backwards-compat shim — keeps the r66 signature with ``message_id``
+    kwarg. Internally maps to ``linked_entity_type='email_message'`` +
+    ``linked_entity_id=message_id`` against the generic substrate.
+
+    Existing callers (outbound_service, tests, demo seed) continue
+    invoking ``issue_action_token(db, tenant_id=..., message_id=...,
+    ...)`` unchanged.
+    """
+    return _platform_issue_action_token(
+        db,
+        tenant_id=tenant_id,
+        linked_entity_type="email_message",
+        linked_entity_id=message_id,
+        action_idx=action_idx,
+        action_type=action_type,
+        recipient_email=recipient_email,
+        ttl_days=ttl_days,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Email-specific commit facade — Quote state propagation handler
+# registered against ``quote_approval`` action_type.
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -381,54 +258,84 @@ def commit_action(
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> dict[str, Any]:
-    """Commit an action outcome — atomic.
+    """Commit an Email primitive action outcome — atomic.
 
-    Both the inline-action endpoint (Bridgeable user) AND the magic-
-    link surface (token-authenticated non-Bridgeable user) call this.
+    Backwards-compat facade preserving r66 / Step 4c signature.
+    Resolves the action from ``message.message_payload.actions[idx]``
+    + dispatches through the generic substrate's
+    ``commit_action`` to the registered ``quote_approval`` handler.
 
     Args:
-      message: The EmailMessage containing the action in message_payload.
+      message: EmailMessage carrying the action in message_payload.
       action_idx: Index into message_payload.actions[].
-      outcome: One of ACTION_OUTCOMES_QUOTE_APPROVAL — "approve" /
-        "reject" / "request_changes".
-      actor_user_id: Bridgeable user id when auth_method="bridgeable",
-        else None.
-      actor_email: Recipient email when auth_method="magic_link",
-        else None (user_id captures Bridgeable identity).
+      outcome: One of ACTION_OUTCOMES_QUOTE_APPROVAL.
+      actor_user_id: Bridgeable user id when auth_method="bridgeable".
+      actor_email: Recipient email when auth_method="magic_link".
       completion_note: Free-text note (required for "request_changes").
-      auth_method: "bridgeable" | "magic_link" — drives audit log
-        attribution.
+      auth_method: "bridgeable" | "magic_link".
 
-    Returns the updated action object (with stamped completion fields).
+    Returns the updated action object with stamped completion fields.
 
     Raises:
-      ActionAlreadyCompleted (409) if action.action_status is terminal.
+      ActionAlreadyCompleted (409) if action already terminal.
       ActionError (400) on outcome/note validation issues.
     """
     action = get_action_at_index(message, action_idx)
+    return _platform_commit_action(
+        db,
+        action=action,
+        outcome=outcome,
+        actor_user_id=actor_user_id,
+        actor_email=actor_email,
+        auth_method=auth_method,
+        completion_note=completion_note,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        # Email-specific kwargs forwarded to the registered
+        # quote_approval handler:
+        message=message,
+        action_idx=action_idx,
+    )
 
-    if action["action_status"] != "pending":
-        raise ActionAlreadyCompleted(
-            f"Action already in terminal state '{action['action_status']}'."
-        )
 
-    if action["action_type"] != "quote_approval":
-        raise ActionError(
-            f"Unsupported action_type for commit: {action['action_type']}"
-        )
+# ─────────────────────────────────────────────────────────────────────
+# quote_approval commit handler — registered against the central
+# registry. Reproduces r66 / Step 4c state propagation verbatim:
+#   approve → Quote.status = "accepted"
+#   reject → Quote.status = "rejected"
+#   request_changes → Quote.status retained as "sent"; commits the
+#     action with completion_metadata capturing the requested-changes
+#     note for operator visibility.
+# ─────────────────────────────────────────────────────────────────────
 
-    if outcome not in ACTION_OUTCOMES_QUOTE_APPROVAL:
-        raise ActionError(
-            f"Unknown outcome '{outcome}'. "
-            f"Expected one of {ACTION_OUTCOMES_QUOTE_APPROVAL}."
-        )
 
-    if outcome == "request_changes" and not (completion_note or "").strip():
-        raise ActionError(
-            "completion_note is required when outcome is 'request_changes'."
-        )
+def _commit_handler_quote_approval(
+    db: Session,
+    *,
+    action: dict[str, Any],
+    outcome: str,
+    descriptor: ActionTypeDescriptor,
+    actor_user_id: str | None,
+    actor_email: str | None,
+    auth_method: str,
+    completion_metadata: dict[str, Any],
+    completion_note: str | None,
+    ip_address: str | None,
+    user_agent: str | None,
+    # Email-specific kwargs forwarded by facade.
+    message: EmailMessage,
+    action_idx: int,
+    **_: Any,
+) -> dict[str, Any]:
+    """quote_approval commit handler — Quote state propagation + audit log.
 
-    # 1. Resolve target Quote — must belong to message tenant.
+    Reproduces r66 / Step 4c behavior verbatim. Registered against
+    the central registry via ``register_action_type``; dispatched by
+    the generic substrate's ``commit_action``.
+    """
+    from datetime import datetime, timezone
+
+    # 1. Resolve target Quote — must belong to message's tenant.
     target_id = action.get("action_target_id")
     if not target_id:
         raise ActionError("Action is missing action_target_id.")
@@ -446,19 +353,6 @@ def commit_action(
         )
 
     # 2. Map outcome → action_status + Quote.status propagation.
-    completion_metadata: dict[str, Any] = {
-        "outcome": outcome,
-        "auth_method": auth_method,
-    }
-    if completion_note:
-        completion_metadata["note"] = completion_note
-    if actor_email:
-        completion_metadata["actor_email"] = actor_email.lower().strip()
-    if ip_address:
-        completion_metadata["ip_address"] = ip_address
-    if user_agent:
-        completion_metadata["user_agent"] = user_agent[:512]
-
     if outcome == "approve":
         new_action_status = "approved"
         quote.status = "accepted"
@@ -473,7 +367,7 @@ def commit_action(
     else:
         raise ActionError(f"Unhandled outcome: {outcome}")
 
-    now = _now()
+    now = datetime.now(timezone.utc)
 
     # 3. Update the action object inside message_payload.actions[].
     # JSONB columns require explicit replacement of the dict; mutating
@@ -490,14 +384,14 @@ def commit_action(
     payload["actions"] = actions
     message.message_payload = payload
 
-    # Quote audit fields
+    # 4. Quote audit fields.
     quote.modified_at = now
     if actor_user_id:
         quote.modified_by = actor_user_id
 
     db.flush()
 
-    # 4. Audit log per §3.26.15.8 — metadata only, never body content.
+    # 5. Audit log per §3.26.15.8 — metadata only, never body content.
     _audit(
         db,
         tenant_id=message.tenant_id,
@@ -534,16 +428,60 @@ def commit_action(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Magic-link URL building
+# Side-effect registration — runs at module import time so the central
+# registry is populated when Email package imports this module via
+# its __init__. Idempotent per registry semantics.
 # ─────────────────────────────────────────────────────────────────────
 
+register_action_type(
+    ActionTypeDescriptor(
+        action_type="quote_approval",
+        primitive="email",
+        target_entity_type="quote",
+        outcomes=ACTION_OUTCOMES_QUOTE_APPROVAL,
+        # request_changes is terminal at the action level (action_status
+        # transitions to "changes_requested"); operator follows up
+        # with a fresh action token.
+        terminal_outcomes=ACTION_OUTCOMES_QUOTE_APPROVAL,
+        requires_completion_note=("request_changes",),
+        commit_handler=_commit_handler_quote_approval,
+    )
+)
 
-def build_magic_link_url(*, base_url: str, token: str) -> str:
-    """Compose the public magic-link URL embedded in outbound email.
 
-    Public route ``/email/actions/{token}`` resolves to a tenant-
-    branded contextual surface (frontend handles routing). Caller
-    supplies ``base_url`` from tenant config or platform default.
-    """
-    base = base_url.rstrip("/")
-    return f"{base}/email/actions/{token}"
+# ─────────────────────────────────────────────────────────────────────
+# Public exports — preserved verbatim for Step 4c backwards compat.
+# ─────────────────────────────────────────────────────────────────────
+
+__all__ = [
+    # Email-specific canonical vocabulary
+    "ACTION_TYPES",
+    "ACTION_OUTCOMES_QUOTE_APPROVAL",
+    "ACTION_STATUSES",
+    "TOKEN_TTL_DAYS",
+    # Email-specific helpers
+    "build_quote_approval_action",
+    "get_message_actions",
+    "get_action_at_index",
+    # Token CRUD facade
+    "issue_action_token",
+    "lookup_action_token",
+    "consume_action_token",
+    "lookup_token_row_raw",
+    "generate_action_token",
+    # Commit facade
+    "commit_action",
+    # Magic-link URL helper
+    "build_magic_link_url",
+    # Errors (re-exported from substrate)
+    "PlatformActionError",
+    "ActionError",
+    "ActionNotFound",
+    "ActionAlreadyCompleted",
+    "ActionTokenInvalid",
+    "ActionTokenExpired",
+    "ActionTokenAlreadyConsumed",
+    "CrossPrimitiveTokenMismatch",
+    # Raw SQL constant — preserved for outbound_service caller backwards compat
+    "_INSERT_ACTION_TOKEN_SQL",
+]

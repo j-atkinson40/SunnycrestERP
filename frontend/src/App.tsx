@@ -29,6 +29,12 @@ import "@/components/widgets/foundation/register";
 // import pattern as foundation; widgets are registered at app
 // bootstrap before any surface consumer.
 import "@/components/widgets/manufacturing/register";
+// Phase 1 of the Admin Visual Editor — populate the component
+// registry with Phase 1 tagged components. The registry is read by
+// the /admin/registry debug page and (later phases) by the visual
+// editor. Side-effect-on-import; mirrors the widget-registration
+// pattern above.
+import "@/admin/registry/auto-register";
 import { AffinityVisitWatcher } from "@/components/spaces/AffinityVisitWatcher";
 import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -70,10 +76,15 @@ import TriageIndex from "@/pages/triage/TriageIndex";
 import TriagePage from "@/pages/triage/TriagePage";
 import BriefingPage from "@/pages/briefings/BriefingPage";
 import BriefingPreferencesPage from "@/pages/settings/BriefingPreferences";
+import ManufacturerPersonalizationStudioFromShareView from "@/pages/personalization-studio/ManufacturerPersonalizationStudioFromShareView";
 import SpacesSettings from "@/pages/settings/SpacesSettings";
 import PortalUsersSettings from "@/pages/settings/PortalUsersSettings";
 import PortalBrandingSettings from "@/pages/settings/PortalBrandingSettings";
 import EmailAccountsPage from "@/pages/settings/EmailAccountsPage";
+import CalendarAccountsPage from "@/pages/settings/CalendarAccountsPage";
+import CalendarConsentPage from "@/pages/settings/CalendarConsentPage";
+import CalendarDraftsPage from "@/pages/settings/CalendarDraftsPage";
+import CalendarOAuthCallback from "@/pages/settings/CalendarOAuthCallback";
 import EmailOAuthCallback from "@/pages/settings/EmailOAuthCallback";
 import InboxPage from "@/pages/email/InboxPage";
 import SavedOrdersPage from "@/pages/settings/SavedOrders";
@@ -81,6 +92,9 @@ import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
 import DataQualityPage from "@/pages/admin/data-quality";
 import AuditLogs from "@/pages/admin/audit-logs";
+import RegistryDebugPage from "@/pages/admin/registry/RegistryDebugPage";
+import ThemeEditorPage from "@/pages/admin/themes/ThemeEditorPage";
+import ComponentEditorPage from "@/pages/admin/components/ComponentEditorPage";
 import IntelligencePromptLibrary from "@/pages/admin/intelligence/PromptLibrary";
 import DocumentTemplateLibrary from "@/pages/admin/documents/DocumentTemplateLibrary";
 import DocumentTemplateDetail from "@/pages/admin/documents/DocumentTemplateDetail";
@@ -94,6 +108,8 @@ import SigningEnvelopeDetail from "@/pages/admin/signing/SigningEnvelopeDetail";
 import CreateEnvelopeWizard from "@/pages/admin/signing/CreateEnvelopeWizard";
 import SignerLandingPage from "@/pages/sign/SignerLandingPage";
 import MagicLinkActionPage from "@/pages/email/MagicLinkActionPage";
+import CalendarMagicLinkActionPage from "@/pages/calendar/MagicLinkActionPage";
+import EventDetailPage from "@/pages/calendar/EventDetailPage";
 import IntelligencePromptDetail from "@/pages/admin/intelligence/PromptDetail";
 import IntelligenceExecutionLog from "@/pages/admin/intelligence/ExecutionLog";
 import IntelligenceExecutionDetail from "@/pages/admin/intelligence/ExecutionDetail";
@@ -725,6 +741,19 @@ export default function App() {
                       coexist strategy. */}
                   <Route path="/briefing" element={<BriefingPage />} />
                   <Route path="/briefing/:id" element={<BriefingPage />} />
+                  {/*
+                    Phase 1F — Mfg-tenant from-share entry point at
+                    canonical `manufacturer_from_fh_share` authoring
+                    context. Linked from canonical
+                    `email.personalization_studio_share_granted`
+                    template's `canvas_url` variable.
+                  */}
+                  <Route
+                    path="/personalization-studio/from-share/:documentShareId"
+                    element={
+                      <ManufacturerPersonalizationStudioFromShareView />
+                    }
+                  />
                   <Route
                     path="/settings/briefings"
                     element={<BriefingPreferencesPage />}
@@ -762,6 +791,38 @@ export default function App() {
                       path="/settings/email/oauth-callback"
                       element={<EmailOAuthCallback />}
                     />
+                    {/* Phase W-4b Layer 1 Calendar Step 1 (§3.26.16).
+                       Tenant-admin calendar account management. Coexists
+                       with the existing Vault iCal feed at
+                       /api/v1/vault/calendar.ics (different concerns:
+                       one-way iCal export vs. canonical primitive with
+                       provider abstraction + bidirectional sync). */}
+                    <Route
+                      path="/settings/calendar"
+                      element={<CalendarAccountsPage />}
+                    />
+                    <Route
+                      path="/settings/calendar/oauth-callback"
+                      element={<CalendarOAuthCallback />}
+                    />
+                    {/* Phase W-4b Calendar Step 3 — drafted-event review
+                       queue per §3.26.16.18. State-change-generated
+                       events with status="tentative" surface here for
+                       explicit Send (commit + iTIP REQUEST) or Cancel
+                       (iTIP CANCEL) per drafted-not-auto-sent discipline. */}
+                    <Route
+                      path="/settings/calendar/drafts"
+                      element={<CalendarDraftsPage />}
+                    />
+                    {/* Phase W-4b Calendar Step 4.1 — PTR consent upgrade
+                       UI write-side per §3.26.16.6 + §3.26.16.14 +
+                       §3.26.11.10 cross-tenant Focus consent precedent.
+                       Bilateral consent state machine; either tenant can
+                       unilaterally revoke. */}
+                    <Route
+                      path="/settings/calendar/freebusy-consent"
+                      element={<CalendarConsentPage />}
+                    />
                   </Route>
 
                   {/* Phase W-4b Layer 1 Step 4a — unified email inbox.
@@ -771,6 +832,17 @@ export default function App() {
                      Tenant-scoped via current_user; per-account access
                      enforced server-side via EmailAccountAccess. */}
                   <Route path="/inbox" element={<InboxPage />} />
+
+                  {/* Phase W-4b Layer 1 Calendar Step 5 — native event
+                     detail page (§14.10.3). Surfaced from Pulse calendar_
+                     glance, calendar_summary, V-1c CRM activity feed,
+                     and V-1d in-app notifications. View-only with
+                     attendee response + send/cancel actions; full edit
+                     + reschedule wizards live on the calendar workspace. */}
+                  <Route
+                    path="/calendar/events/:eventId"
+                    element={<EventDetailPage />}
+                  />
 
                   {/* Products — core feature, no module gate */}
                   <Route
@@ -1338,6 +1410,47 @@ export default function App() {
                     />
                   </Route>
 
+                  {/* Component Registry debug — admin only.
+                      Phase 1 of the Admin Visual Editor (April 2026).
+                      Inspector for the in-memory component registry —
+                      developer tool for verifying coverage as more
+                      components get tagged over time. NOT the eventual
+                      visual editor. */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/admin/registry"
+                      element={<RegistryDebugPage />}
+                    />
+                  </Route>
+
+                  {/* Theme editor — admin only.
+                      Phase 2 of the Admin Visual Editor (May 2026).
+                      Token-driven visual editor with full-platform
+                      live preview. Backed by the platform_themes
+                      table; consumes the Phase 1 registry for
+                      "which components consume which token" + the
+                      Phase 1 component set for the live preview. */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/admin/themes"
+                      element={<ThemeEditorPage />}
+                    />
+                  </Route>
+
+                  {/* Component editor — admin only.
+                      Phase 3 of the Admin Visual Editor (May 2026).
+                      Per-component prop override editor with live
+                      single-component preview. Backed by the
+                      component_configurations table; consumes the
+                      Phase 1 registry for component metadata + the
+                      Phase 2 token catalog for tokenReference props. */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/admin/components"
+                      element={<ComponentEditorPage />}
+                    />
+                  </Route>
+
                   {/* ── Phase V-1a/b/c: Bridgeable Vault Hub ──
                       VaultHubLayout wraps every /vault/* child route.
                       Per-subtree gating: Documents + Intelligence are
@@ -1743,6 +1856,11 @@ export default function App() {
                   authenticated kill-the-portal contextual surface per
                   §3.26.15.17 + §14.9.5 (Phase W-4b Layer 1 Step 4c). */}
               <Route path="/email/actions/:token" element={<MagicLinkActionPage />} />
+
+              {/* Calendar operational-action magic-link surface — public, token-
+                  authenticated kill-the-portal contextual surface per
+                  §3.26.16.17 + §14.10.5 (Phase W-4b Layer 1 Step 4). */}
+              <Route path="/calendar/actions/:token" element={<CalendarMagicLinkActionPage />} />
 
               {/* Family portal — no auth required, standalone page */}
               <Route path="/portal/:token" element={<FHPortalPage />} />

@@ -381,6 +381,14 @@ def send_message(
                     raise OutboundError(
                         f"Unknown action_type: {action_type}"
                     )
+                # Substrate consolidation (r70): platform_action_tokens
+                # ships polymorphic linked_entity_(type, id) columns;
+                # Email primitive callers stamp linked_entity_type=
+                # 'email_message' explicitly. Raw SQL preserved here
+                # because outbound_service has pre-generated tokens
+                # passed in from the caller — issue_action_token would
+                # generate fresh tokens that don't match the embedded
+                # magic-link URLs already in body_html.
                 from app.services.email.email_action_service import (
                     _INSERT_ACTION_TOKEN_SQL,
                     TOKEN_TTL_DAYS,
@@ -394,7 +402,8 @@ def send_message(
                     {
                         "token": token,
                         "tenant_id": account.tenant_id,
-                        "message_id": message.id,
+                        "linked_entity_type": "email_message",
+                        "linked_entity_id": message.id,
                         "action_idx": action_idx,
                         "action_type": action_type,
                         "recipient_email": primary_recipient.lower().strip(),

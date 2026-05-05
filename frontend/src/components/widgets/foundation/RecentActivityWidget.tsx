@@ -71,6 +71,11 @@ function activityVerb(activity_type: string): string {
     note: "added a note",
     call: "logged a call",
     email: "logged an email",
+    // Phase W-4b Calendar Step 5 — V-1c CRM activity feed integration.
+    // Title carries the lifecycle-aware shape ("Scheduled / Modified /
+    // Cancelled / Responded to · {subject}"); the verb here just
+    // anchors the activity_type kind.
+    calendar: "updated a calendar event",
     meeting: "logged a meeting",
     document: "uploaded a document",
     follow_up: "scheduled a follow-up",
@@ -428,7 +433,10 @@ function categoryFor(activity_type: string): FilterCategory {
     activity_type === "note" ||
     activity_type === "call" ||
     activity_type === "email" ||
-    activity_type === "meeting"
+    activity_type === "meeting" ||
+    // Phase W-4b Calendar Step 5 — calendar events are coordination/
+    // comms signals per §3.26.16.10 (Communications Layer extension).
+    activity_type === "calendar"
   )
     return "comms"
   if (
@@ -620,10 +628,19 @@ export function RecentActivityWidget(props: RecentActivityWidgetProps) {
 /** Resolve navigation target for a clicked activity row. The V-1c
  *  endpoint returns `company_id` as the owning CompanyEntity; the
  *  canonical CRM detail page lives at `/vault/crm/companies/{id}`
- *  per V-1c lift-and-shift. Future enhancement: route per
- *  `activity_type` to the relevant entity (e.g. order → /orders/{id})
- *  when the V-1c response is extended with typed entity links. */
+ *  per V-1c lift-and-shift. Calendar Step 5: when activity_type is
+ *  "calendar" and the body carries an `event_id={uuid}` token, route
+ *  directly to the native event detail page (§14.10.3). Future
+ *  enhancement: route per `activity_type` to the relevant entity
+ *  (e.g. order → /orders/{id}) when the V-1c response is extended
+ *  with typed entity links. */
 function resolveActivityTarget(item: ActivityItem): string {
+  if (item.activity_type === "calendar" && item.body) {
+    const m = item.body.match(/event_id=([0-9a-f-]{36})/i)
+    if (m) {
+      return `/calendar/events/${m[1]}`
+    }
+  }
   return `/vault/crm/companies/${item.company_id}`
 }
 

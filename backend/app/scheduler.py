@@ -762,6 +762,32 @@ def register_all_jobs():
         misfire_grace_time=300,
     )
 
+    # ── Calendar Primitive Phase W-4b Layer 1 Calendar Step 2 sweeps ──
+    # Token refresh + subscription renewal. No polling sweep (CalDAV
+    # provider deferred per Q3 architectural decision; OAuth providers
+    # use webhook-driven realtime in Step 2.1, not polling).
+    from app.services.calendar.sweeps import (
+        calendar_subscription_renewal_sweep,
+        calendar_token_refresh_sweep,
+    )
+
+    scheduler.add_job(
+        calendar_token_refresh_sweep,
+        CronTrigger(minute=11),  # hourly at :11 (offset from email at :07)
+        id="calendar_token_refresh_sweep",
+        name="calendar_token_refresh_sweep",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        calendar_subscription_renewal_sweep,
+        CronTrigger(minute=27),  # hourly at :27 (offset from email at :23)
+        id="calendar_subscription_renewal_sweep",
+        name="calendar_subscription_renewal_sweep",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     logger.info(f"Registered {len(scheduler.get_jobs())} scheduled jobs")
 
 
