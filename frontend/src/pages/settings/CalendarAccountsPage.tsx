@@ -327,11 +327,13 @@ export default function CalendarAccountsPage() {
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          }
+                        />
                         <DropdownMenuContent align="end">
                           {acc.is_active && (
                             <DropdownMenuItem
