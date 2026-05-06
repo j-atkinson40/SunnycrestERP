@@ -1,7 +1,17 @@
+import { lazy, Suspense } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
 import { AdminAuthProvider } from "./lib/admin-auth-context"
 import { AdminLayout } from "./components/AdminLayout"
 import { VisualEditorLayout } from "./components/VisualEditorLayout"
+
+// Phase R-0 — runtime-host-test page is lazy-loaded so the tenant
+// route tree chunk only ships when an admin actually visits the
+// runtime host. Vite splits at the dynamic-import boundary; admin
+// pages that don't visit /_runtime-host-test/* never pull the
+// tenant chunk into their bundle.
+const RuntimeHostTestPage = lazy(
+  () => import("./pages/RuntimeHostTestPage"),
+)
 import { AdminLogin } from "./pages/AdminLogin"
 import { HealthDashboard } from "./pages/HealthDashboard"
 import { TenantKanban } from "./pages/TenantKanban"
@@ -77,12 +87,45 @@ export function BridgeableAdminApp() {
     </VisualEditorLayout>
   )
 
+  // Phase R-0 — Runtime Host Test routes (super_admin gated, hidden
+  // from VisualEditorIndex). Mount before any layouts so the route
+  // bypasses both AdminLayout and VisualEditorLayout — RuntimeHostTestPage
+  // owns its own chrome (the warning ribbon at top + the tenant
+  // content beneath). Lazy-loaded; loading state renders the
+  // <Suspense> fallback.
+  const runtimeHostRoute = (
+    <Suspense
+      fallback={
+        <div
+          className="flex h-screen items-center justify-center bg-surface-base text-content-muted"
+          data-testid="runtime-host-test-suspense"
+        >
+          <span>Loading runtime host…</span>
+        </div>
+      }
+    >
+      <RuntimeHostTestPage />
+    </Suspense>
+  )
+
   return (
     <AdminAuthProvider>
       <Routes>
         {/* Login is unauthenticated — handled before either layout. */}
         <Route path="/bridgeable-admin/login" element={<AdminLogin />} />
         <Route path="/login" element={<AdminLogin />} />
+
+        {/* Phase R-0 runtime-host-test surface — lazy-loaded; super_admin
+            gate enforced inside the page. Path-based + subdomain-based
+            entry parallel to visual editor's pattern. */}
+        <Route
+          path="/bridgeable-admin/_runtime-host-test/*"
+          element={runtimeHostRoute}
+        />
+        <Route
+          path="/_runtime-host-test/*"
+          element={runtimeHostRoute}
+        />
 
         {/* Path-based entry: /bridgeable-admin/visual-editor/* — visual editor */}
         <Route

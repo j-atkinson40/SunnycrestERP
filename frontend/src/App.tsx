@@ -1,19 +1,19 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import VoiceMemoButton from "@/components/ai/VoiceMemoButton";
-import { CommandBarProvider } from "@/core/CommandBarProvider";
 import { KeyboardHelpOverlay } from "@/components/core/KeyboardHelpOverlay";
 import { OfflineBanner } from "@/components/core/OfflineBanner";
-import { ExtensionProvider } from "@/contexts/extension-context";
-import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
-import { DeviceProvider } from "@/contexts/device-context";
-import { LayoutProvider } from "@/contexts/layout-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
 import { SpaceProvider } from "@/contexts/space-context";
 import { PeekProvider } from "@/contexts/peek-context";
-import { FocusProvider } from "@/contexts/focus-context";
 import { Focus } from "@/components/focus/Focus";
 import { ReturnPill } from "@/components/focus/ReturnPill";
+// Phase R-0 — shared-bundle refactor (Runtime-Aware Editor foundation).
+// `TenantProviders` is the 9-deep tenant context chain extracted into
+// a shared module; the admin tree's `/_runtime-host-test/*` route
+// mounts the same chain to render tenant content under PlatformUser
+// auth + an impersonation token. Behavior of the tenant boot path is
+// unchanged — the contexts are constructed identically.
+import { TenantProviders } from "@/lib/runtime-host/TenantProviders";
 // Phase B Session 4 Phase 4.2 — side-effect import registers the
 // funeral-scheduling Focus. Must run before any surface attempts to
 // open it (Cmd+K action, Monitor button). At app bootstrap is the
@@ -41,7 +41,6 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { ImpersonationBanner } from "@/components/platform/impersonation-banner";
 import { getCompanySlug } from "@/lib/tenant";
 import { isPlatformAdmin } from "@/lib/platform";
@@ -341,8 +340,6 @@ import FhVitalStatistics from "@/fh/pages/VitalStatistics";
 import FhStoryStep from "@/fh/pages/StoryStep";
 import FhCemeteryStep from "@/fh/pages/CemeteryStep";
 import FhNetworkSettings from "@/fh/pages/NetworkSettings";
-import { LocationProvider } from "@/contexts/location-context";
-import { CallContextProvider } from "@/contexts/call-context";
 import { CallOverlay } from "@/components/call/CallOverlay";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
@@ -388,11 +385,10 @@ class ErrorBoundary extends Component<
   }
 }
 
-/** Bridges auth context → DeviceProvider so userId is available */
-function AuthDeviceProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth()
-  return <DeviceProvider userId={user?.id ?? null}>{children}</DeviceProvider>
-}
+// Phase R-0: AuthDeviceProvider was extracted into TenantProviders
+// (frontend/src/lib/runtime-host/TenantProviders.tsx) so the same
+// chain renders for the admin runtime-host-test surface. Removed
+// here to keep a single source of truth.
 
 /**
  * V-1a redirect helper — preserves the last URL segment when
@@ -465,37 +461,7 @@ export default function App() {
   return (
     <ErrorBoundary>
     <BrowserRouter>
-      <AuthProvider>
-      <FeatureFlagProvider>
-      <ExtensionProvider>
-      <LocationProvider>
-      <LayoutProvider>
-      <AuthDeviceProvider>
-      <FocusProvider>
-      <CommandBarProvider>
-      <CallContextProvider>
-      {/* Aesthetic Arc Session 3 — TooltipProvider mounted once at
-          the tenant-route root. Sets the 150 ms delay from
-          DESIGN_LANGUAGE §6 (prevents drive-by tooltips on cursor
-          transit). Phase B Session 1 Phase 3.1+3.2 is the first
-          dense consumer (Funeral Schedule card icon+tooltip row);
-          delivery-focused platform surfaces inherit the provider.
-
-          Phase B Session 4 Phase 4.2.5 — `timeout={0}` disables
-          base-ui/floating-ui's FloatingDelayGroup grouping behavior.
-          Pre-4.2.5 the default timeout=400ms let adjacent tooltips
-          open instantly within 400ms of a prior close. In practice
-          this caused an erratic state race: hovering between the
-          four card-status icons (User / MapPin / StickyNote /
-          MessageCircle) in quick succession, some tooltips would
-          "stick closed" until the user cycled through a different
-          icon. The group-state tracked the "current open" tooltip
-          across instances in a way that occasionally left stale
-          references. Disabling grouping makes each Tooltip root
-          fully independent — every hover pays the 150ms delay,
-          every close fully resets state. Trades a small amount of
-          snappiness for reliability. */}
-      <TooltipProvider timeout={0}>
+      <TenantProviders>
         <ImpersonationBanner />
         <OfflineBanner />
         <KeyboardHelpOverlay />
@@ -508,8 +474,42 @@ export default function App() {
         <Focus />
         <ReturnPill />
         <Routes>
-          {slug ? (
+          {slug ? renderTenantSlugRoutes() : (
             <>
+              {/* Root domain routes — landing page + company registration */}
+              <Route path="/" element={<LandingPage />} />
+              <Route
+                path="/register-company"
+                element={<CompanyRegisterPage />}
+              />
+              <Route path="/platform-admin" element={<PlatformAdminEntry />} />
+              <Route path="*" element={<NotFound />} />
+            </>
+          )}
+        </Routes>
+        <Toaster />
+        {/* Global floating voice memo button */}
+        <div className="fixed bottom-6 right-6 z-40 sm:hidden">
+          <VoiceMemoButton compact />
+        </div>
+      </TenantProviders>
+    </BrowserRouter>
+    </ErrorBoundary>
+  );
+}
+
+
+/** Phase R-0 — exported for the admin runtime-host-test surface to
+ *  mount via `<Routes>{renderTenantSlugRoutes()}</Routes>` (re-exported
+ *  as `TenantRouteTree` from `lib/runtime-host/TenantRouteTree.tsx`).
+ *
+ *  Returns the slug-set tenant Routes JSX fragment. Children must be
+ *  inside a `<Routes>` parent (per react-router contract). The fragment
+ *  is the same content the tenant boot path renders today, just lifted
+ *  into a function so it's importable. */
+export function renderTenantSlugRoutes() {
+  return (
+    <>
               {/* Tenant routes — accessed via subdomain or company slug */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
@@ -1839,36 +1839,6 @@ export default function App() {
               {/* Root redirect */}
               <Route path="/" element={<RootRedirect />} />
               <Route path="*" element={<NotFound />} />
-            </>
-          ) : (
-            <>
-              {/* Root domain routes — landing page + company registration */}
-              <Route path="/" element={<LandingPage />} />
-              <Route
-                path="/register-company"
-                element={<CompanyRegisterPage />}
-              />
-              <Route path="/platform-admin" element={<PlatformAdminEntry />} />
-              <Route path="*" element={<NotFound />} />
-            </>
-          )}
-        </Routes>
-        <Toaster />
-        {/* Global floating voice memo button */}
-        <div className="fixed bottom-6 right-6 z-40 sm:hidden">
-          <VoiceMemoButton compact />
-        </div>
-      </TooltipProvider>
-      </CallContextProvider>
-      </CommandBarProvider>
-      </FocusProvider>
-      </AuthDeviceProvider>
-      </LayoutProvider>
-      </LocationProvider>
-      </ExtensionProvider>
-      </FeatureFlagProvider>
-      </AuthProvider>
-    </BrowserRouter>
-    </ErrorBoundary>
+    </>
   );
 }

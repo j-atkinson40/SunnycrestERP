@@ -246,13 +246,72 @@ def get_widgets_for_surface(
 # ── Layout CRUD ───────────────────────────────────────────────
 
 
+def _resolve_default_layout_config(
+    db: Session,
+    tenant_id: str,
+    page_context: str,
+    available: list[dict],
+) -> list[dict]:
+    """Compute the default layout for a tenant + page_context by
+    walking the 3-tier inheritance chain shipped Phase R-0.
+
+    Resolution chain:
+        platform_default
+            ← vertical_default(tenant.vertical)
+                ← tenant_default(tenant_id)
+
+    Returns the deepest non-empty resolved layout, or — if no row
+    exists at any scope — falls back to the in-code WIDGET_DEFINITIONS
+    `default_position` defaults (the pre-R-0 behavior).
+    """
+    # Lazy import — dashboard_layouts service is a sibling, but this
+    # keeps the dependency direction clean.
+    from app.services.dashboard_layouts import resolve_layout
+
+    tenant_vertical = _get_tenant_vertical(db, tenant_id)
+
+    resolved = resolve_layout(
+        db,
+        page_context=page_context,
+        vertical=tenant_vertical,
+        tenant_id=tenant_id,
+    )
+    layout_config = resolved.get("layout_config") or []
+    if layout_config:
+        return list(layout_config)
+
+    # No row at any scope — pre-R-0 fallback to in-code defaults.
+    fallback = [
+        {
+            "widget_id": w["widget_id"],
+            "enabled": True,
+            "position": w["default_position"],
+            "size": w["default_size"],
+            "config": {},
+        }
+        for w in available
+        if w["is_available"] and w["default_enabled"]
+    ]
+    fallback.sort(key=lambda x: x["position"])
+    return fallback
+
+
 def get_user_layout(
     db: Session,
     tenant_id: str,
     user: "User",
     page_context: str,
 ) -> dict:
-    """Load (or generate default) user layout for a page context."""
+    """Load (or generate default) user layout for a page context.
+
+    Phase R-0 of the Runtime-Aware Editor extends default-layout
+    generation to consume the new `dashboard_layouts` 3-tier
+    inheritance chain (`platform_default → vertical_default →
+    tenant_default`) before falling back to in-code WIDGET_DEFINITIONS
+    defaults. Per-user overrides via `user_widget_layouts` continue to
+    win when present — this method is the user-override tier of the
+    resolution chain.
+    """
     layout = (
         db.query(UserWidgetLayout)
         .filter(
@@ -267,19 +326,12 @@ def get_user_layout(
     available_map = {w["widget_id"]: w for w in available if w["is_available"]}
 
     if layout is None:
-        # Generate default layout from available + default_enabled widgets
-        default_config = [
-            {
-                "widget_id": w["widget_id"],
-                "enabled": True,
-                "position": w["default_position"],
-                "size": w["default_size"],
-                "config": {},
-            }
-            for w in available
-            if w["is_available"] and w["default_enabled"]
-        ]
-        default_config.sort(key=lambda x: x["position"])
+        # Generate default layout — walks dashboard_layouts inheritance
+        # chain (Phase R-0), falls back to in-code defaults if no row
+        # exists at any scope.
+        default_config = _resolve_default_layout_config(
+            db, tenant_id, page_context, available
+        )
 
         layout = UserWidgetLayout(
             id=str(uuid.uuid4()),
