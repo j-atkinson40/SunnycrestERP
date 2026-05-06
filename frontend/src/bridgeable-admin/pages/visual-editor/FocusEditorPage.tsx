@@ -99,6 +99,12 @@ import {
   TenantPicker,
   type TenantSummary,
 } from "@/bridgeable-admin/components/TenantPicker"
+import {
+  FuneralSchedulingPreviewHarness,
+  SampleScenarioPicker,
+  compositionDraftAsResolved,
+} from "./focus-editor/FuneralSchedulingPreviewHarness"
+import type { SampleScenario } from "./focus-editor/mock-data/funeralSchedulingMockData"
 
 
 type FocusType = "decision" | "coordination" | "execution" | "review" | "generation"
@@ -133,6 +139,135 @@ function nextPlacementId(existing: Placement[]): string {
 }
 
 
+// ─── Composition draft state (lifted from CompositionTab) ─────
+// Lifted to FocusEditorPage so the preview pane can read the
+// in-progress draft directly. CompositionTab unmounts on tab
+// switch, so its state can't live inside that component if the
+// preview needs to track it across tab changes.
+
+interface CompositionDraftState {
+  draftPlacements: Placement[]
+  setDraftPlacements: React.Dispatch<React.SetStateAction<Placement[]>>
+  draftCanvasConfig: CompositionRecord["canvas_config"]
+  setDraftCanvasConfig: React.Dispatch<
+    React.SetStateAction<CompositionRecord["canvas_config"]>
+  >
+  activeRow: CompositionRecord | null
+  setActiveRow: React.Dispatch<React.SetStateAction<CompositionRecord | null>>
+  resolved: ResolvedComposition | null
+  isLoading: boolean
+  loadError: string | null
+  isSaving: boolean
+  setIsSaving: React.Dispatch<React.SetStateAction<boolean>>
+  saveError: string | null
+  setSaveError: React.Dispatch<React.SetStateAction<string | null>>
+  hasUnsaved: boolean
+}
+
+
+function useCompositionDraft(
+  compositionFocusType: string | null,
+  scope: Scope,
+  vertical: string,
+  tenantId: string,
+): CompositionDraftState {
+  const [resolved, setResolved] = useState<ResolvedComposition | null>(null)
+  const [activeRow, setActiveRow] = useState<CompositionRecord | null>(null)
+  const [draftPlacements, setDraftPlacements] = useState<Placement[]>([])
+  const [draftCanvasConfig, setDraftCanvasConfig] = useState<
+    CompositionRecord["canvas_config"]
+  >(defaultCanvasConfig())
+  const [isLoading, setIsLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!compositionFocusType) {
+      setResolved(null)
+      setActiveRow(null)
+      setDraftPlacements([])
+      setDraftCanvasConfig(defaultCanvasConfig())
+      return
+    }
+    let cancelled = false
+    setIsLoading(true)
+    setLoadError(null)
+    const resolveParams: Parameters<typeof focusCompositionsService.resolve>[0] = {
+      focus_type: compositionFocusType,
+    }
+    if (scope === "vertical_default") resolveParams.vertical = vertical
+    if (scope === "tenant_override") resolveParams.tenant_id = tenantId
+
+    Promise.all([
+      focusCompositionsService.resolve(resolveParams),
+      focusCompositionsService.list({
+        scope,
+        focus_type: compositionFocusType,
+        ...(scope === "vertical_default" ? { vertical } : {}),
+        ...(scope === "tenant_override" ? { tenant_id: tenantId } : {}),
+      }),
+    ])
+      .then(([res, rows]) => {
+        if (cancelled) return
+        setResolved(res)
+        const active = rows.find((r) => r.is_active) ?? null
+        setActiveRow(active)
+        if (active) {
+          setDraftPlacements([...active.placements])
+          setDraftCanvasConfig({ ...active.canvas_config })
+        } else {
+          setDraftPlacements([])
+          setDraftCanvasConfig(defaultCanvasConfig())
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return
+        // eslint-disable-next-line no-console
+        console.error("[focus-editor] composition load failed", err)
+        setLoadError(err instanceof Error ? err.message : "Failed to load")
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [compositionFocusType, scope, vertical, tenantId])
+
+  const persistedSnapshot = useMemo(
+    () =>
+      activeRow
+        ? JSON.stringify([activeRow.placements, activeRow.canvas_config])
+        : JSON.stringify([[], defaultCanvasConfig()]),
+    [activeRow],
+  )
+  const draftSnapshot = useMemo(
+    () => JSON.stringify([draftPlacements, draftCanvasConfig]),
+    [draftPlacements, draftCanvasConfig],
+  )
+  const hasUnsaved = persistedSnapshot !== draftSnapshot
+
+  return {
+    draftPlacements,
+    setDraftPlacements,
+    draftCanvasConfig,
+    setDraftCanvasConfig,
+    activeRow,
+    setActiveRow,
+    resolved,
+    isLoading,
+    loadError,
+    isSaving,
+    setIsSaving,
+    saveError,
+    setSaveError,
+    hasUnsaved,
+  }
+}
+
+
 export default function FocusEditorPage() {
   // ── Selection ────────────────────────────────────────────
   const [search, setSearch] = useState("")
@@ -154,6 +289,7 @@ export default function FocusEditorPage() {
 
   // ── Preview state ────────────────────────────────────────
   const [previewMode, setPreviewMode] = useState<PreviewMode>("light")
+  const [scenario, setScenario] = useState<SampleScenario>("default")
 
   // Browser data — hierarchical categories (Focus types) + templates
   // (focus-template registry entries with extensions.focusType).
@@ -209,6 +345,14 @@ export default function FocusEditorPage() {
       | undefined
     return (ext?.compositionFocusType as string | undefined) ?? null
   }, [selectedTemplateEntry])
+
+  // ── Composition draft state (lifted; preview reads it directly) ──
+  const compositionDraft = useCompositionDraft(
+    compositionFocusType,
+    scope,
+    vertical,
+    tenantId,
+  )
 
   return (
     <div
@@ -299,9 +443,9 @@ export default function FocusEditorPage() {
                 vertical={
                   scope === "vertical_default" ? vertical : null
                 }
-                tenantId={
-                  scope === "tenant_override" ? tenantId : null
-                }
+                draftPlacements={compositionDraft.draftPlacements}
+                draftCanvasConfig={compositionDraft.draftCanvasConfig}
+                scenario={scenario}
               />
             ) : (
               <CategoryPreview
@@ -405,6 +549,7 @@ export default function FocusEditorPage() {
                   scope={scope}
                   vertical={vertical}
                   tenantId={tenantId}
+                  state={compositionDraft}
                 />
               ) : (
                 <PreviewSettingsTab
@@ -412,6 +557,9 @@ export default function FocusEditorPage() {
                   setPreviewMode={setPreviewMode}
                   vertical={vertical}
                   setVertical={setVertical}
+                  scenario={scenario}
+                  setScenario={setScenario}
+                  templateName={selectedTemplateEntry.metadata.name}
                 />
               )
             ) : selectedCategoryId ? (
@@ -476,45 +624,63 @@ function FocusTemplatePreview({
   template,
   compositionFocusType,
   vertical,
-  tenantId,
+  draftPlacements,
+  draftCanvasConfig,
+  scenario,
 }: {
   template: RegistryEntry
   compositionFocusType: string | null
   vertical: string | null
-  tenantId: string | null
+  draftPlacements: Placement[]
+  draftCanvasConfig: CompositionRecord["canvas_config"]
+  scenario: SampleScenario
 }) {
   const focusType = String(
     (template.metadata.extensions as Record<string, unknown> | undefined)
       ?.focusType ?? "decision",
   ) as FocusType
 
-  const [composition, setComposition] = useState<ResolvedComposition | null>(null)
-  useEffect(() => {
-    if (!compositionFocusType) {
-      setComposition(null)
-      return
-    }
-    let cancelled = false
-    const params: Parameters<typeof focusCompositionsService.resolve>[0] = {
-      focus_type: compositionFocusType,
-    }
-    if (vertical) params.vertical = vertical
-    if (tenantId) params.tenant_id = tenantId
-    focusCompositionsService
-      .resolve(params)
-      .then((res) => {
-        if (!cancelled) setComposition(res)
-      })
-      .catch((err) => {
-        // eslint-disable-next-line no-console
-        console.warn("[focus-editor] composition resolve failed", err)
-        if (!cancelled) setComposition(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [compositionFocusType, vertical, tenantId])
+  // Synthesize a ResolvedComposition from the editor's in-progress
+  // draft. The preview renders the draft directly — saves don't have
+  // to round-trip through the API for the preview to update.
+  const draftComposition = useMemo<ResolvedComposition | null>(() => {
+    if (!compositionFocusType) return null
+    return compositionDraftAsResolved(
+      draftPlacements,
+      draftCanvasConfig,
+      vertical,
+    )
+  }, [compositionFocusType, draftPlacements, draftCanvasConfig, vertical])
 
+  // ── Funeral-scheduling: faithful preview via harness ─────────
+  // The funeral-scheduling Focus has a real production core
+  // (SchedulingKanbanCore) and an accessory composition layer. The
+  // harness renders structurally-faithful kanban using REAL
+  // DeliveryCard + DateBox sub-components fed by mock data — same
+  // visual fidelity as production at the atomic level, without
+  // mounting the 1,714-LOC orchestrator with its provider tree.
+  if (template.metadata.name === "funeral-scheduling") {
+    return (
+      <FocusContextFrame focusType={focusType}>
+        <div
+          className="h-full p-4"
+          data-testid={`focus-template-preview-${template.metadata.name}`}
+        >
+          <FuneralSchedulingPreviewHarness
+            scenario={scenario}
+            compositionDraft={draftComposition}
+          />
+        </div>
+      </FocusContextFrame>
+    )
+  }
+
+  // ── Other templates: generic placeholder ─────────────────────
+  // Triage + Arrangement Scribe + future Focus templates stay on
+  // the generic placeholder until their cores are built. When a
+  // new template ships, replicate the funeral-scheduling pattern:
+  // build a per-template harness in `focus-editor/`, dispatch on
+  // template.metadata.name above.
   return (
     <FocusContextFrame focusType={focusType}>
       <div
@@ -535,18 +701,23 @@ function FocusTemplatePreview({
               decision commit — lives in the production component, not in
               the composition.
             </div>
+            <div className="mt-2 text-caption text-content-subtle">
+              Faithful editor preview will land when this Focus core
+              ships; until then, the placeholder above represents where
+              the bespoke surface renders at runtime.
+            </div>
           </div>
         </div>
-        {composition && composition.placements.length > 0 && (
+        {draftComposition && draftComposition.placements.length > 0 && (
           <aside
             className="w-72 flex-shrink-0 overflow-y-auto rounded-md border border-border-subtle bg-surface-elevated"
             data-testid="focus-preview-accessory-region"
           >
             <div className="border-b border-border-subtle bg-surface-sunken px-3 py-1.5 text-caption font-medium text-content-strong">
-              Accessory layer ({composition.placements.length} widgets)
+              Accessory layer ({draftComposition.placements.length} widgets)
             </div>
             <div className="p-2">
-              {composition.placements.map((p) => (
+              {draftComposition.placements.map((p) => (
                 <div
                   key={p.placement_id}
                   className="mb-2 rounded-sm border border-border-subtle bg-surface-base p-2 text-caption"
@@ -754,95 +925,41 @@ function CompositionTab({
   scope,
   vertical,
   tenantId,
+  state,
 }: {
   compositionFocusType: string | null
   scope: Scope
   vertical: string
   tenantId: string
+  state: CompositionDraftState
 }) {
-  // Composition state
-  const [resolved, setResolved] = useState<ResolvedComposition | null>(null)
-  const [activeRow, setActiveRow] = useState<CompositionRecord | null>(null)
-  const [draftPlacements, setDraftPlacements] = useState<Placement[]>([])
-  const [draftCanvasConfig, setDraftCanvasConfig] = useState<
-    CompositionRecord["canvas_config"]
-  >(defaultCanvasConfig())
+  // State lifted to FocusEditorPage; this component is now purely
+  // presentational + handles save/palette/canvas interactions.
+  const {
+    draftPlacements,
+    setDraftPlacements,
+    draftCanvasConfig,
+    activeRow,
+    setActiveRow,
+    resolved,
+    isLoading,
+    loadError,
+    isSaving,
+    setIsSaving,
+    saveError,
+    setSaveError,
+    hasUnsaved,
+  } = state
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [isLoading, setIsLoading] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
 
   // Component palette
   const palette = useMemo(() => getCanvasPlaceableComponents(), [])
 
-  // Resolve composition when scope/template changes.
-  useEffect(() => {
-    if (!compositionFocusType) {
-      setResolved(null)
-      setActiveRow(null)
-      setDraftPlacements([])
-      setDraftCanvasConfig(defaultCanvasConfig())
-      return
-    }
-    let cancelled = false
-    setIsLoading(true)
-    setLoadError(null)
-    const resolveParams: Parameters<typeof focusCompositionsService.resolve>[0] = {
-      focus_type: compositionFocusType,
-    }
-    if (scope === "vertical_default") resolveParams.vertical = vertical
-    if (scope === "tenant_override") resolveParams.tenant_id = tenantId
-
-    Promise.all([
-      focusCompositionsService.resolve(resolveParams),
-      focusCompositionsService.list({
-        scope,
-        focus_type: compositionFocusType,
-        ...(scope === "vertical_default" ? { vertical } : {}),
-        ...(scope === "tenant_override" ? { tenant_id: tenantId } : {}),
-      }),
-    ])
-      .then(([res, rows]) => {
-        if (cancelled) return
-        setResolved(res)
-        const active = rows.find((r) => r.is_active) ?? null
-        setActiveRow(active)
-        if (active) {
-          setDraftPlacements([...active.placements])
-          setDraftCanvasConfig({ ...active.canvas_config })
-        } else {
-          setDraftPlacements([])
-          setDraftCanvasConfig(defaultCanvasConfig())
-        }
-      })
-      .catch((err) => {
-        if (cancelled) return
-        // eslint-disable-next-line no-console
-        console.error("[focus-editor] composition load failed", err)
-        setLoadError(err instanceof Error ? err.message : "Failed to load")
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [compositionFocusType, scope, vertical, tenantId])
-
-  const persistedSnapshot = useMemo(
-    () =>
-      activeRow
-        ? JSON.stringify([activeRow.placements, activeRow.canvas_config])
-        : JSON.stringify([[], defaultCanvasConfig()]),
-    [activeRow],
-  )
   const draftSnapshot = useMemo(
     () => JSON.stringify([draftPlacements, draftCanvasConfig]),
     [draftPlacements, draftCanvasConfig],
   )
-  const hasUnsaved = persistedSnapshot !== draftSnapshot
 
   const handleSave = useCallback(async () => {
     if (!compositionFocusType || !hasUnsaved) return
@@ -1069,12 +1186,22 @@ function PreviewSettingsTab({
   setPreviewMode,
   vertical,
   setVertical,
+  scenario,
+  setScenario,
+  templateName,
 }: {
   previewMode: PreviewMode
   setPreviewMode: (m: PreviewMode) => void
   vertical: string
   setVertical: (v: string) => void
+  scenario: SampleScenario
+  setScenario: (s: SampleScenario) => void
+  templateName: string
 }) {
+  // Sample scenario picker is currently funeral-scheduling-specific —
+  // other Focus templates render the generic placeholder which doesn't
+  // consume mock data. Future per-template harnesses extend this gate.
+  const supportsScenarios = templateName === "funeral-scheduling"
   return (
     <div className="px-3 py-2" data-testid="focus-preview-settings-tab">
       <div className="text-caption text-content-muted">
@@ -1114,6 +1241,17 @@ function PreviewSettingsTab({
           </option>
         ))}
       </select>
+      {supportsScenarios && (
+        <>
+          <label className="mt-3 mb-1 block text-micro uppercase tracking-wider text-content-muted">
+            Sample data scenario
+          </label>
+          <SampleScenarioPicker scenario={scenario} onChange={setScenario} />
+          <p className="mt-1.5 text-[10px] text-content-subtle">
+            Mock data feeds the preview only. Edits don't persist.
+          </p>
+        </>
+      )}
     </div>
   )
 }
