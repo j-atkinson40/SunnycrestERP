@@ -31,6 +31,18 @@
  * matches the shell route. `runtime-editor-shell` test-id appears
  * within the page-mount window. Assertion passes.
  *
+ * **R-1.6.2 tightening**: Asserts BOTH that the shell wrapper mounts
+ * (route resolution) AND that tenant content renders inside (auth +
+ * impersonation flow). Catches both R-1.6.1's route-specificity bug
+ * class (shell never mounts) and R-1.6.2's URL-routing bug class
+ * (shell mounts but tenant tree fails to render content because
+ * /auth/me hits the wrong backend). Pre-R-1.6.2 this spec asserted
+ * only on the outer `runtime-editor-shell` test-id, which renders
+ * even when the shell body shows "No active impersonation". Now the
+ * spec walks into the shell and confirms at least one element with
+ * `[data-component-name]` rendered — the canonical signal that the
+ * tenant route tree mounted AND its registered widgets rendered.
+ *
  * **Implementation note** (CLAUDE.md §12 Spec-Override Discipline):
  * the prompt called for "Asserts the impersonation banner is visible
  * (existing test-id from R-1's ImpersonationBanner integration)."
@@ -134,6 +146,20 @@ test.describe("Gate 1a — picker click drives full flow to shell @r-1.6.1", () 
     await expect(page.getByTestId("runtime-editor-shell")).toBeVisible({
       timeout: 30_000,
     })
+
+    // Step 9a: tenant content actually renders inside the shell.
+    // Bug from R-1.6.2 investigation: shell wrapper can mount with
+    // empty body when tenant API calls hit the wrong backend (e.g.
+    // VITE_API_URL baked at compile time pointing at production
+    // while running on staging). The outer `runtime-editor-shell`
+    // test-id renders regardless; only walking INTO the shell and
+    // finding a `[data-component-name]` element proves the tenant
+    // route tree mounted AND its registered widgets rendered.
+    // See /tmp/shell_empty_state_bug.md for the originating
+    // investigation.
+    const shellElement = page.getByTestId("runtime-editor-shell")
+    const componentInShell = shellElement.locator("[data-component-name]").first()
+    await expect(componentInShell).toBeVisible({ timeout: 15_000 })
 
     // Step 10: ribbon visible — the runtime editor's "impersonation
     // context shown" surface (per Spec-Override note in the file

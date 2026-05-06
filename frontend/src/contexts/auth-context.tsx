@@ -96,9 +96,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setCompany(data.company);
           }
         })
-        .catch(() => {
-          localStorage.removeItem("access_token");
-          localStorage.removeItem("refresh_token");
+        // R-1.6.2: Discriminate by status. Only 401 ("token genuinely
+        // invalid") destroys the access + refresh tokens. Every other
+        // error (404 from wrong backend, 5xx server error, network
+        // failure) leaves the token in place — better to surface an
+        // unauthenticated UI state than to silently log the user out
+        // on a transient or routing issue. The next request that
+        // returns 401 will trigger the destroy path correctly.
+        // See /tmp/shell_empty_state_bug.md for the originating
+        // investigation: a wrong-backend 404 was sweeping valid
+        // staging-realm impersonation tokens before R-1.6.2.
+        .catch((err) => {
+          const status = err?.response?.status;
+          if (status === 401) {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+          }
         })
         .finally(() => setIsLoading(false));
     } else {
