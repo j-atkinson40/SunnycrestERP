@@ -846,7 +846,7 @@ def _seed_orders(db: Session, customer_ids: dict, cemetery_ids: dict,
                     status = :status, order_date = :odate, deceased_name = :deceased,
                     order_type = 'funeral', subtotal = :sub, total = :total,
                     scheduled_date = :sched, delivered_at = :delivered,
-                    updated_at = :now
+                    modified_at = :now
                 WHERE id = :id
             """), {
                 "id": oid, "custid": customer_ids[cust_name],
@@ -929,7 +929,7 @@ def _seed_invoices(db: Session, customer_ids: dict, product_map: dict, admin_id:
                     invoice_date = :inv_date, due_date = :due_date,
                     subtotal = :sub, total = :total, amount_paid = :paid,
                     paid_at = :paid_at, deceased_name = :deceased,
-                    updated_at = :now
+                    modified_at = :now
                 WHERE id = :id
             """), {
                 "id": inv_id, "custid": customer_ids[cust_name],
@@ -979,7 +979,7 @@ def _seed_invoices(db: Session, customer_ids: dict, product_map: dict, admin_id:
                 db.execute(text("""
                     UPDATE customer_payments SET customer_id = :custid,
                         payment_date = :pdate, total_amount = :amt,
-                        payment_method = 'check', updated_at = :now
+                        payment_method = 'check', modified_at = :now
                     WHERE id = :id
                 """), {"id": pay_id, "custid": customer_ids[cust_name],
                        "pdate": paid_at, "amt": price, "now": NOW})

@@ -1042,6 +1042,18 @@ These are the **correct** table names (corrected from old incorrect names):
 - JSONB used extensively for flexible fields (settings, config, metadata)
 - `company_id` or `tenant_id` FK on all tenant-scoped tables
 
+### Timestamp column convention — two conventions in active use
+
+The codebase has two conventions for "last modified" timestamps. **Verify the actual column name on the target table before writing raw SQL UPDATE statements.** Don't assume `updated_at` exists everywhere.
+
+- **`updated_at`** — newer tables (post-FH-1 ish; most tables added 2025-2026): companies, users, roles, customers, company_entities, contacts, cemeteries, products, product_categories, kb_documents, kb_categories, price_list_items, company_modules. SQLAlchemy `mapped_column(... onupdate=lambda: datetime.now(timezone.utc))` auto-bumps on ORM update. Raw SQL has to set it explicitly.
+- **`modified_at`** — older tables that follow the original four-field audit convention (`created_at` / `modified_at` / `created_by` / `modified_by`) from CLAUDE.md §16: sales_orders, invoices, customer_payments, and other pre-FH-1 financial tables. The corresponding `created_at` column is also present.
+- **Neither** — a few tables expose only `created_at` (e.g., `price_list_versions` has `created_at` + `activated_at` but no rolling-update timestamp). Don't try to set an update timestamp that doesn't exist.
+
+**R-1.6.4 → R-1.6.5 historical context**: R-1.6.4 added existing-row + UPDATE patterns to seed_staging.py assuming `updated_at` was universal. Three crashes surfaced on first staging deploy (sales_orders, invoices, customer_payments). R-1.6.5 fixed each + added the seed-idempotency CI gate. Future migration to unify the convention is plausible but out of scope; for now, verify per-table.
+
+**Class-of-bug prevention**: `.github/workflows/seed-idempotency.yml` runs `alembic upgrade head + test_seed_idempotency.sh` against a fresh Postgres on every PR or push touching `backend/scripts/seed_*.py` or `backend/alembic/versions/**`. Catches raw-SQL column drift, idempotency regressions, and migration-vs-seed drift in one ~60-90s gate.
+
 ## 6. Project Structure
 
 ```

@@ -1,0 +1,108 @@
+# R-1.6.5 — Seed idempotency gate.
+#
+# Why this exists: R-1.6.4 shipped three regressions where raw-SQL UPDATE
+# statements referenced `updated_at` on tables that have `modified_at`
+# instead. tsc + vitest can't catch raw-SQL column drift; only running
+# the seeds against a real schema does. Pre-R-1.6.5 the validation was
+# a local script (`backend/scripts/test_seed_idempotency.sh`) which
+# nobody ran reliably — we forgot in R-1.6.4 and shipped the bug.
+#
+# This workflow promotes that script to a CI gate. Triggers on:
+#   - push to main when seed scripts or migrations change.
+#   - pull_request touching seed scripts or migrations.
+#
+# Path filter scopes the workflow narrowly to avoid burning CI minutes
+# on commits that don't touch seeds. The contract is: any commit that
+# could plausibly break seed idempotency (seed code, migrations, or
+# the script itself) runs the gate.
+#
+# Catches:
+#   - Raw-SQL column drift against schema (the R-1.6.5 bug class).
+#   - Idempotency regressions (the R-1.6.4 motivation).
+#   - Migration-vs-seed drift (alembic upgrade head succeeds but the
+#     seeds reference dropped/renamed columns).
+#
+# Workflow timing: ~60-90s including Postgres warmup + alembic upgrade
+# + double-run of both seeds.
+name: Seed Idempotency Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/seed_*.py'
+      - 'backend/scripts/test_seed_idempotency.sh'
+      - 'backend/alembic/versions/**'
+      - '.github/workflows/seed-idempotency.yml'
+  pull_request:
+    paths:
+      - 'backend/scripts/seed_*.py'
+      - 'backend/scripts/test_seed_idempotency.sh'
+      - 'backend/alembic/versions/**'
+      - '.github/workflows/seed-idempotency.yml'
+
+# Don't race back-to-back pushes — last one wins.
+concurrency:
+  group: seed-idempotency-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  seed-idempotency:
+    name: Seed double-run against fresh Postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bridgeable_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bridgeable_test
+      # Required by seed_fh_demo.py's BRIDGEABLE_ENCRYPTION_KEY default —
+      # the script generates a Fernet key if unset, but explicit is clearer.
+      # Stub value; staging+production seed scripts both refuse to run with
+      # ENVIRONMENT=production, so this is safe.
+      ENVIRONMENT: ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U postgres; then
+              echo "Postgres ready."
+              break
+            fi
+            echo "Waiting for Postgres ($i/30)..."
+            sleep 2
+          done
+
+      - name: Run alembic migrations
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Run seed idempotency double-run
+        working-directory: backend
+        run: bash scripts/test_seed_idempotency.sh
