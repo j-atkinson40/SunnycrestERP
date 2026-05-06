@@ -35,7 +35,10 @@
  * widget surfaces; the Focus owns decision moments.
  */
 
+// R-1.5: handlers gated behind _editMode for runtime editor safety.
+// Defense-in-depth over SelectionOverlay's capture-phase click suppression.
 import { useNavigate } from "react-router-dom"
+import { useEditMode } from "@/lib/runtime-host/edit-mode-context"
 import {
   Truck,
   AlertTriangle,
@@ -145,9 +148,11 @@ function formatScheduleDateShort(isoDate: string): string {
 function VaultScheduleGlance({
   data,
   isLoading,
+  editModeActive,
 }: {
   data: VaultScheduleData | null
   isLoading: boolean
+  editModeActive?: boolean
 }) {
   const navigate = useNavigate()
   const total = computeTotalCount(data)
@@ -155,9 +160,10 @@ function VaultScheduleGlance({
   return (
     <button
       type="button"
-      onClick={() =>
+      onClick={() => {
+        if (editModeActive) return
         navigate(data?.primary_navigation_target || "/dispatch")
-      }
+      }}
       data-slot="vault-schedule-widget"
       data-variant="glance"
       data-mode={data?.operating_mode ?? "unknown"}
@@ -206,7 +212,7 @@ function computeTotalCount(data: VaultScheduleData | null): number {
 // ── Brief variant (Pattern 2 grid card) ────────────────────────────
 
 
-function VaultScheduleBrief({ data, isLoading, error }: VariantProps) {
+function VaultScheduleBrief({ data, isLoading, error, editModeActive }: VariantProps) {
   const navigate = useNavigate()
 
   if (isLoading) {
@@ -246,6 +252,7 @@ function VaultScheduleBrief({ data, isLoading, error }: VariantProps) {
         cta="Manage product lines"
         ctaTarget="/settings/product-lines"
         variant="brief"
+        editModeActive={editModeActive}
       />
     )
   }
@@ -254,7 +261,13 @@ function VaultScheduleBrief({ data, isLoading, error }: VariantProps) {
   if (total === 0) {
     // Per DESIGN_LANGUAGE §13 amendment: workspace-core widgets
     // preserve workspace shape in empty data states.
-    return <VaultScheduleEmptyKanbanFrame data={data} variant="brief" />
+    return (
+      <VaultScheduleEmptyKanbanFrame
+        data={data}
+        variant="brief"
+        editModeActive={editModeActive}
+      />
+    )
   }
 
   return (
@@ -297,9 +310,10 @@ function VaultScheduleBrief({ data, isLoading, error }: VariantProps) {
 
       <button
         type="button"
-        onClick={() =>
+        onClick={() => {
+          if (editModeActive) return
           navigate(data.primary_navigation_target || "/dispatch")
-        }
+        }}
         className={cn(
           "inline-flex items-center gap-1",
           "text-caption text-accent font-sans",
@@ -444,6 +458,7 @@ function VaultScheduleEmptyState({
   ctaTarget,
   variant,
   date: _date,
+  editModeActive,
 }: {
   title: string
   body: string
@@ -451,6 +466,7 @@ function VaultScheduleEmptyState({
   ctaTarget: string
   variant: "brief" | "detail" | "deep"
   date?: string
+  editModeActive?: boolean
 }) {
   const navigate = useNavigate()
   const Icon = title === "Vault not enabled" ? Inbox : CalendarIcon
@@ -469,7 +485,10 @@ function VaultScheduleEmptyState({
       </p>
       <button
         type="button"
-        onClick={() => navigate(ctaTarget)}
+        onClick={() => {
+          if (editModeActive) return
+          navigate(ctaTarget)
+        }}
         className={cn(
           "mt-1 text-caption text-accent font-sans",
           "hover:text-accent-hover",
@@ -501,9 +520,11 @@ function VaultScheduleEmptyState({
 function VaultScheduleEmptyKanbanFrame({
   data,
   variant,
+  editModeActive,
 }: {
   data: VaultScheduleData
   variant: "brief" | "detail"
+  editModeActive?: boolean
 }) {
   const navigate = useNavigate()
   const isPurchase = data.operating_mode === "purchase"
@@ -607,9 +628,10 @@ function VaultScheduleEmptyKanbanFrame({
 
       <button
         type="button"
-        onClick={() =>
+        onClick={() => {
+          if (editModeActive) return
           navigate(data.primary_navigation_target || "/dispatch")
-        }
+        }}
         className={cn(
           "inline-flex items-center gap-1 mt-auto",
           "text-caption text-accent font-sans",
@@ -629,7 +651,7 @@ function VaultScheduleEmptyKanbanFrame({
 // ── Detail variant (rich card with full per-driver breakdown) ──────
 
 
-function VaultScheduleDetail({ data, isLoading, error }: VariantProps) {
+function VaultScheduleDetail({ data, isLoading, error, editModeActive }: VariantProps) {
   const navigate = useNavigate()
 
   if (isLoading) {
@@ -669,6 +691,7 @@ function VaultScheduleDetail({ data, isLoading, error }: VariantProps) {
         cta="Manage product lines"
         ctaTarget="/settings/product-lines"
         variant="detail"
+        editModeActive={editModeActive}
       />
     )
   }
@@ -678,7 +701,13 @@ function VaultScheduleDetail({ data, isLoading, error }: VariantProps) {
     // Per DESIGN_LANGUAGE §13 amendment: workspace-core widgets
     // preserve workspace shape in empty data states. The kanban
     // shape IS the cognitive affordance.
-    return <VaultScheduleEmptyKanbanFrame data={data} variant="detail" />
+    return (
+      <VaultScheduleEmptyKanbanFrame
+        data={data}
+        variant="detail"
+        editModeActive={editModeActive}
+      />
+    )
   }
 
   return (
@@ -711,9 +740,10 @@ function VaultScheduleDetail({ data, isLoading, error }: VariantProps) {
 
       <button
         type="button"
-        onClick={() =>
+        onClick={() => {
+          if (editModeActive) return
           navigate(data.primary_navigation_target || "/dispatch")
-        }
+        }}
         className={cn(
           "inline-flex items-center gap-1 mt-auto",
           "text-caption text-accent font-sans",
@@ -910,6 +940,8 @@ interface VariantProps {
   data: VaultScheduleData | null
   isLoading: boolean
   error: string | null
+  /** R-1.5: when true, navigate handlers in child onClick / CTAs no-op. */
+  editModeActive?: boolean
 }
 
 
@@ -926,6 +958,8 @@ export interface VaultScheduleWidgetProps {
     | "pulse_grid"
     | "dashboard_grid"
   config?: Record<string, unknown>
+  /** R-1.5: handlers gated behind _editMode for runtime editor safety. */
+  _editMode?: boolean
 }
 
 
@@ -942,20 +976,49 @@ export function VaultScheduleWidget(props: VaultScheduleWidgetProps) {
   const { data, isLoading, error } = useWidgetData<VaultScheduleData>(url, {
     refreshInterval: 5 * 60 * 1000, // 5 min
   })
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || props._editMode === true
 
   const variant = props.variant_id ?? "brief"
 
   if (variant === "glance") {
-    return <VaultScheduleGlance data={data} isLoading={isLoading} />
+    return (
+      <VaultScheduleGlance
+        data={data}
+        isLoading={isLoading}
+        editModeActive={editModeActive}
+      />
+    )
   }
   if (variant === "detail") {
-    return <VaultScheduleDetail data={data} isLoading={isLoading} error={error} />
+    return (
+      <VaultScheduleDetail
+        data={data}
+        isLoading={isLoading}
+        error={error}
+        editModeActive={editModeActive}
+      />
+    )
   }
   if (variant === "deep") {
-    return <VaultScheduleDeep data={data} isLoading={isLoading} error={error} />
+    return (
+      <VaultScheduleDeep
+        data={data}
+        isLoading={isLoading}
+        error={error}
+        editModeActive={editModeActive}
+      />
+    )
   }
   // Default + brief
-  return <VaultScheduleBrief data={data} isLoading={isLoading} error={error} />
+  return (
+    <VaultScheduleBrief
+      data={data}
+      isLoading={isLoading}
+      error={error}
+      editModeActive={editModeActive}
+    />
+  )
 }
 
 

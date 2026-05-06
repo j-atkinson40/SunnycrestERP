@@ -28,7 +28,10 @@
  */
 
 import { useMemo, useState } from "react"
+// R-1.5: handlers gated behind _editMode for runtime editor safety.
+// Defense-in-depth over SelectionOverlay's capture-phase click suppression.
 import { useNavigate } from "react-router-dom"
+import { useEditMode } from "@/lib/runtime-host/edit-mode-context"
 import { CheckCircle2, AlertTriangle, AlertCircle, Info, Check } from "lucide-react"
 
 import { useWidgetData } from "../useWidgetData"
@@ -737,6 +740,8 @@ export interface AnomaliesWidgetProps {
   widgetId?: string
   variant_id?: VariantId
   surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
+  /** R-1.5: handlers gated behind _editMode for runtime editor safety. */
+  _editMode?: boolean
 }
 
 
@@ -747,14 +752,21 @@ export interface AnomaliesWidgetProps {
  */
 export function AnomaliesWidget(props: AnomaliesWidgetProps) {
   if (props.variant_id === "detail") {
-    return <AnomaliesDetailVariant />
+    return <AnomaliesDetailVariant _editMode={props._editMode} />
   }
-  return <AnomaliesBriefVariant surface={props.surface} />
+  return (
+    <AnomaliesBriefVariant
+      surface={props.surface}
+      _editMode={props._editMode}
+    />
+  )
 }
 
 
-function useAnomaliesController() {
+function useAnomaliesController(propEditMode?: boolean) {
   const navigate = useNavigate()
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || propEditMode === true
   const { data, isLoading, error, refresh } =
     useWidgetData<AnomaliesResponse>("/widget-data/anomalies?limit=20", {
       refreshInterval: 2 * 60 * 1000, // 2 min — anomalies are higher-urgency
@@ -764,6 +776,7 @@ function useAnomaliesController() {
   )
 
   async function handleAcknowledge(anomaly: Anomaly) {
+    if (editModeActive) return
     setAcknowledgingIds((prev) => new Set(prev).add(anomaly.id))
     try {
       await apiClient.post(
@@ -788,10 +801,12 @@ function useAnomaliesController() {
   }
 
   function handleInvestigate(anomaly: Anomaly) {
+    if (editModeActive) return
     navigate(resolveAnomalyTarget(anomaly))
   }
 
   function handleViewAll() {
+    if (editModeActive) return
     navigate("/admin/agents")
   }
 
@@ -809,10 +824,12 @@ function useAnomaliesController() {
 
 function AnomaliesBriefVariant({
   surface,
+  _editMode: propEditMode,
 }: {
   surface?: AnomaliesWidgetProps["surface"]
+  _editMode?: boolean
 }) {
-  const ctl = useAnomaliesController()
+  const ctl = useAnomaliesController(propEditMode)
   return (
     <AnomaliesBriefCard
       data={ctl.data}
@@ -828,8 +845,12 @@ function AnomaliesBriefVariant({
 }
 
 
-function AnomaliesDetailVariant() {
-  const ctl = useAnomaliesController()
+function AnomaliesDetailVariant({
+  _editMode: propEditMode,
+}: {
+  _editMode?: boolean
+}) {
+  const ctl = useAnomaliesController(propEditMode)
   return (
     <AnomaliesDetailCard
       data={ctl.data}

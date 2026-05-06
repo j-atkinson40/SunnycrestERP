@@ -1,4 +1,7 @@
 /**
+ * R-1.5: handlers gated behind _editMode for runtime editor safety.
+ * Defense-in-depth over SelectionOverlay's capture-phase click suppression.
+ *
  * OperatorProfileWidget — Phase W-3a cross-vertical foundation widget.
  *
  * Shows the current user's identity + role + active space. Cross-
@@ -28,6 +31,7 @@
  */
 
 import { useNavigate } from "react-router-dom"
+import { useEditMode } from "@/lib/runtime-host/edit-mode-context"
 
 import { useAuth } from "@/contexts/auth-context"
 import { useSpacesOptional } from "@/contexts/space-context"
@@ -353,6 +357,8 @@ export interface OperatorProfileWidgetProps {
   widgetId?: string
   variant_id?: VariantId
   surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
+  /** R-1.5: handlers gated behind _editMode for runtime editor safety. */
+  _editMode?: boolean
 }
 
 
@@ -360,24 +366,36 @@ export function OperatorProfileWidget(props: OperatorProfileWidgetProps) {
   const isGlance =
     props.surface === "spaces_pin" || props.variant_id === "glance"
   if (isGlance) {
-    return <OperatorProfileGlanceVariant />
+    return <OperatorProfileGlanceVariant _editMode={props._editMode} />
   }
-  return <OperatorProfileBriefVariant />
+  return <OperatorProfileBriefVariant _editMode={props._editMode} />
 }
 
 
 /** Glance dispatcher — pulls user from auth context. Returns null
  * when unauthenticated (defensive: every consumer surface is gated by
  * ProtectedRoute, but the dispatcher must not crash if mounted in a
- * non-auth context like Storybook or test scaffolding). */
-function OperatorProfileGlanceVariant() {
+ * non-auth context like Storybook or test scaffolding).
+ *
+ * R-1.5: onSummon handler no-ops when _editMode is true (defense-in-
+ * depth over SelectionOverlay's capture-phase click suppression). */
+function OperatorProfileGlanceVariant({
+  _editMode: propEditMode,
+}: {
+  _editMode?: boolean
+}) {
   const navigate = useNavigate()
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || propEditMode === true
   const { user } = useAuth()
   if (!user) return null
   return (
     <OperatorProfileGlanceTablet
       user={user}
-      onSummon={() => navigate("/settings/profile")}
+      onSummon={() => {
+        if (editModeActive) return
+        navigate("/settings/profile")
+      }}
     />
   )
 }
@@ -386,8 +404,14 @@ function OperatorProfileGlanceVariant() {
 /** Brief dispatcher — pulls user from auth context + active space
  * from spaces context (optional, may not be present outside the
  * tenant app shell). */
-function OperatorProfileBriefVariant() {
+function OperatorProfileBriefVariant({
+  _editMode: propEditMode,
+}: {
+  _editMode?: boolean
+}) {
   const navigate = useNavigate()
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || propEditMode === true
   const { user } = useAuth()
   const spacesCtx = useSpacesOptional()
   if (!user) return null
@@ -396,7 +420,10 @@ function OperatorProfileBriefVariant() {
     <OperatorProfileBriefCard
       user={user}
       activeSpaceName={activeSpaceName}
-      onNavigate={() => navigate("/settings/profile")}
+      onNavigate={() => {
+        if (editModeActive) return
+        navigate("/settings/profile")
+      }}
     />
   )
 }

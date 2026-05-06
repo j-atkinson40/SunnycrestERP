@@ -24,7 +24,10 @@
  * Three-component shape per established Phase W-3a/W-3b precedent.
  */
 
+// R-1.5: handlers gated behind _editMode for runtime editor safety.
+// Defense-in-depth over SelectionOverlay's capture-phase click suppression.
 import { useNavigate } from "react-router-dom"
+import { useEditMode } from "@/lib/runtime-host/edit-mode-context"
 import {
   Activity,
   AlertTriangle,
@@ -155,6 +158,7 @@ function LineStatusBrief({
   isLoading,
   error,
   surface,
+  editModeActive,
 }: VariantProps) {
   const navigate = useNavigate()
 
@@ -263,9 +267,10 @@ function LineStatusBrief({
                 {ln.navigation_target ? (
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      if (editModeActive) return
                       navigate(ln.navigation_target as string)
-                    }
+                    }}
                     className={cn(
                       "text-caption text-accent font-sans flex-shrink-0",
                       "hover:text-accent-hover",
@@ -320,6 +325,7 @@ function LineStatusBrief({
         <button
           type="button"
           onClick={() => {
+            if (editModeActive) return
             const target = data.lines.find((ln) => ln.navigation_target)
             if (target?.navigation_target) {
               navigate(target.navigation_target as string)
@@ -395,9 +401,10 @@ function LineStatusBrief({
             {ln.navigation_target ? (
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  if (editModeActive) return
                   navigate(ln.navigation_target as string)
-                }
+                }}
                 className={cn(
                   "text-caption text-accent font-sans flex-shrink-0",
                   "hover:text-accent-hover",
@@ -445,6 +452,7 @@ function LineStatusDetail({
   data,
   isLoading,
   error,
+  editModeActive,
 }: VariantProps) {
   const navigate = useNavigate()
 
@@ -538,9 +546,10 @@ function LineStatusDetail({
             {ln.navigation_target ? (
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  if (editModeActive) return
                   navigate(ln.navigation_target as string)
-                }
+                }}
                 className={cn(
                   "mt-1.5 inline-flex items-center gap-1",
                   "text-caption text-accent font-sans",
@@ -616,6 +625,8 @@ interface VariantProps {
   isLoading: boolean
   error: string | null
   surface?: LineStatusWidgetProps["surface"]
+  /** R-1.5: when true, navigate handlers no-op. */
+  editModeActive?: boolean
 }
 
 
@@ -632,6 +643,8 @@ export interface LineStatusWidgetProps {
     | "pulse_grid"
     | "dashboard_grid"
   config?: Record<string, unknown>
+  /** R-1.5: handlers gated behind _editMode for runtime editor safety. */
+  _editMode?: boolean
 }
 
 
@@ -640,12 +653,19 @@ export function LineStatusWidget(props: LineStatusWidgetProps) {
     "/widget-data/line-status",
     { refreshInterval: 5 * 60 * 1000 },
   )
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || props._editMode === true
 
   const variant = props.variant_id ?? "brief"
 
   if (variant === "detail") {
     return (
-      <LineStatusDetail data={data} isLoading={isLoading} error={error} />
+      <LineStatusDetail
+        data={data}
+        isLoading={isLoading}
+        error={error}
+        editModeActive={editModeActive}
+      />
     )
   }
   // Default + glance/deep fallback: Brief. line_status doesn't
@@ -657,6 +677,7 @@ export function LineStatusWidget(props: LineStatusWidgetProps) {
       isLoading={isLoading}
       error={error}
       surface={props.surface}
+      editModeActive={editModeActive}
     />
   )
 }

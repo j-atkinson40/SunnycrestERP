@@ -22,7 +22,10 @@
  */
 
 import { useMemo, useState } from "react"
+// R-1.5: handlers gated behind _editMode for runtime editor safety.
+// Defense-in-depth over SelectionOverlay's capture-phase click suppression.
 import { useNavigate } from "react-router-dom"
+import { useEditMode } from "@/lib/runtime-host/edit-mode-context"
 import { Activity } from "lucide-react"
 
 import { useWidgetData } from "../useWidgetData"
@@ -613,15 +616,18 @@ export interface RecentActivityWidgetProps {
   widgetId?: string
   variant_id?: VariantId
   surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
+  /** R-1.5: handlers gated behind _editMode for runtime editor safety. */
+  _editMode?: boolean
 }
 
 
 export function RecentActivityWidget(props: RecentActivityWidgetProps) {
   const isGlance =
     props.surface === "spaces_pin" || props.variant_id === "glance"
-  if (isGlance) return <RecentActivityGlanceVariant />
-  if (props.variant_id === "detail") return <RecentActivityDetailVariant />
-  return <RecentActivityBriefVariant />
+  if (isGlance) return <RecentActivityGlanceVariant _editMode={props._editMode} />
+  if (props.variant_id === "detail")
+    return <RecentActivityDetailVariant _editMode={props._editMode} />
+  return <RecentActivityBriefVariant _editMode={props._editMode} />
 }
 
 
@@ -645,8 +651,14 @@ function resolveActivityTarget(item: ActivityItem): string {
 }
 
 
-function RecentActivityGlanceVariant() {
+function RecentActivityGlanceVariant({
+  _editMode: propEditMode,
+}: {
+  _editMode?: boolean
+}) {
   const navigate = useNavigate()
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || propEditMode === true
   const { data, isLoading } = useWidgetData<RecentActivityResponse>(
     "/vault/activity/recent?limit=10",
     { refreshInterval: 5 * 60 * 1000 },
@@ -655,14 +667,23 @@ function RecentActivityGlanceVariant() {
     <RecentActivityGlanceTablet
       data={data}
       isLoading={isLoading}
-      onSummon={() => navigate("/vault/crm")}
+      onSummon={() => {
+        if (editModeActive) return
+        navigate("/vault/crm")
+      }}
     />
   )
 }
 
 
-function RecentActivityBriefVariant() {
+function RecentActivityBriefVariant({
+  _editMode: propEditMode,
+}: {
+  _editMode?: boolean
+}) {
   const navigate = useNavigate()
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || propEditMode === true
   const { data, isLoading, error } = useWidgetData<RecentActivityResponse>(
     "/vault/activity/recent?limit=10",
     { refreshInterval: 5 * 60 * 1000 },
@@ -672,15 +693,27 @@ function RecentActivityBriefVariant() {
       data={data}
       isLoading={isLoading}
       error={error}
-      onRowClick={(item) => navigate(resolveActivityTarget(item))}
-      onViewAll={() => navigate("/vault/crm")}
+      onRowClick={(item) => {
+        if (editModeActive) return
+        navigate(resolveActivityTarget(item))
+      }}
+      onViewAll={() => {
+        if (editModeActive) return
+        navigate("/vault/crm")
+      }}
     />
   )
 }
 
 
-function RecentActivityDetailVariant() {
+function RecentActivityDetailVariant({
+  _editMode: propEditMode,
+}: {
+  _editMode?: boolean
+}) {
   const navigate = useNavigate()
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || propEditMode === true
   // Detail variant pulls more rows.
   const { data, isLoading, error } = useWidgetData<RecentActivityResponse>(
     "/vault/activity/recent?limit=50",
@@ -691,7 +724,10 @@ function RecentActivityDetailVariant() {
       data={data}
       isLoading={isLoading}
       error={error}
-      onRowClick={(item) => navigate(resolveActivityTarget(item))}
+      onRowClick={(item) => {
+        if (editModeActive) return
+        navigate(resolveActivityTarget(item))
+      }}
     />
   )
 }

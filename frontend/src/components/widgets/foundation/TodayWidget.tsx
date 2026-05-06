@@ -1,3 +1,8 @@
+// R-1.5: handlers gated behind _editMode for runtime editor safety.
+// Defense-in-depth layer over SelectionOverlay's capture-phase click
+// suppression. Reads `useEditMode().isEditing` and the legacy
+// `_editMode` prop; navigate/click handlers no-op when either is true.
+
 /**
  * TodayWidget — Phase W-3a cross-vertical foundation widget.
  *
@@ -40,6 +45,7 @@ import { Calendar, CalendarDays } from "lucide-react"
 import { useWidgetData } from "../useWidgetData"
 import { cn } from "@/lib/utils"
 import type { VariantId } from "@/components/widgets/types"
+import { useEditMode } from "@/lib/runtime-host/edit-mode-context"
 
 
 // ── Data shape (mirrors backend `get_today_summary` response) ───────
@@ -530,6 +536,10 @@ export interface TodayWidgetProps {
   widgetId?: string
   variant_id?: VariantId
   surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
+  /** R-1.5: when true, operational handlers no-op. Defense-in-depth
+   *  for runtime editor edit mode (in addition to SelectionOverlay's
+   *  capture-phase click suppression). */
+  _editMode?: boolean
 }
 
 
@@ -555,9 +565,14 @@ export function TodayWidget(props: TodayWidgetProps) {
   const isGlance =
     props.surface === "spaces_pin" || props.variant_id === "glance"
   if (isGlance) {
-    return <TodayGlanceVariant surface={props.surface} />
+    return (
+      <TodayGlanceVariant
+        surface={props.surface}
+        _editMode={props._editMode}
+      />
+    )
   }
-  return <TodayBriefVariant />
+  return <TodayBriefVariant _editMode={props._editMode} />
 }
 
 
@@ -566,10 +581,14 @@ export function TodayWidget(props: TodayWidgetProps) {
  *  Pulse-grid 3-density-tier render for Pulse). */
 function TodayGlanceVariant({
   surface,
+  _editMode: propEditMode,
 }: {
   surface?: TodayWidgetProps["surface"]
+  _editMode?: boolean
 }) {
   const navigate = useNavigate()
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || propEditMode === true
   // 5-minute auto-refresh — long enough not to thrash, short enough
   // that the surface reflects fresh state on next browser idle.
   const { data, isLoading } = useWidgetData<TodayWidgetData>(
@@ -577,6 +596,7 @@ function TodayGlanceVariant({
     { refreshInterval: 5 * 60 * 1000 },
   )
   const onSummon = () => {
+    if (editModeActive) return
     const target = data?.primary_navigation_target ?? "/dashboard"
     navigate(target)
   }
@@ -600,8 +620,14 @@ function TodayGlanceVariant({
 
 
 /** Variant wrapper — fetches data + handles per-row navigation. */
-function TodayBriefVariant() {
+function TodayBriefVariant({
+  _editMode: propEditMode,
+}: {
+  _editMode?: boolean
+}) {
   const navigate = useNavigate()
+  const { isEditing } = useEditMode()
+  const editModeActive = isEditing || propEditMode === true
   const { data, isLoading, error } = useWidgetData<TodayWidgetData>(
     "/widget-data/today",
     { refreshInterval: 5 * 60 * 1000 },
@@ -612,6 +638,7 @@ function TodayBriefVariant() {
       isLoading={isLoading}
       error={error}
       onNavigate={(target) => {
+        if (editModeActive) return
         if (target) navigate(target)
       }}
     />
