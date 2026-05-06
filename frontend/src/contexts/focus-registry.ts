@@ -207,6 +207,22 @@ export interface FocusConfig {
     focusId: string
     config: FocusConfig
   }>
+  /** Optional decoupling between the registered Focus id and the
+   *  composition lookup key. May 2026 (composition runtime
+   *  integration phase): the canvas-based Focus composition layer
+   *  (focus_compositions table) keys compositions by `focus_type`
+   *  string. The registered Focus id (e.g. `"funeral-scheduling"`)
+   *  is descriptive; the composition's `focus_type` (e.g.
+   *  `"scheduling"`) is the categorization the visual editor
+   *  authors against. When this field is set, runtime composition
+   *  resolution uses it as the lookup key; when unset, callers
+   *  fall back to the registered id.
+   *
+   *  Example: `funeral-scheduling` registers with
+   *  `compositionFocusType: "scheduling"` so the seeded scheduling
+   *  composition's `focus_type="scheduling"` row resolves
+   *  regardless of the descriptive id. */
+  compositionFocusType?: string
 }
 
 

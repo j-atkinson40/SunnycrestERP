@@ -171,6 +171,12 @@ describe("CompositionRenderer", () => {
   })
 
   it("respects show_header=false on placements", () => {
+    // Use editor mode so the body renders the preview stand-in
+    // (deterministic + doesn't reference component_kind="widget"
+    // in copy). The test's intent is to verify the header element
+    // is absent when show_header=false; we assert directly on
+    // header presence via the .border-b class signature the header
+    // div carries.
     const composition = makeResolved([
       {
         placement_id: "no-header",
@@ -181,10 +187,12 @@ describe("CompositionRenderer", () => {
         display_config: { show_header: false },
       },
     ])
-    render(<CompositionRenderer composition={composition} />)
+    render(<CompositionRenderer composition={composition} editorMode={true} />)
     const card = screen.getByTestId("composition-placement-no-header")
-    // Header element shows component_name when show_header !== false; absent here.
-    expect(card.textContent ?? "").not.toContain("widget")
+    // The header div is the immediate child with `border-b` — absent
+    // when show_header=false. Querying by class signature is
+    // resilient to body-text changes (runtime vs editor preview).
+    expect(card.querySelector(".border-b")).toBeNull()
   })
 })
 

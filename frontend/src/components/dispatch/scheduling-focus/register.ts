@@ -43,7 +43,7 @@ import { registerFocus } from "@/contexts/focus-registry"
 import { registerWidgetRenderer } from "@/components/focus/canvas/widget-renderers"
 
 import { AncillaryPoolPin } from "./AncillaryPoolPin"
-import { SchedulingKanbanCore } from "./SchedulingKanbanCore"
+import { SchedulingFocusWithAccessories } from "./SchedulingFocusWithAccessories"
 
 
 // Phase 4.3b.3 — register the AncillaryPoolPin component before the
@@ -75,7 +75,15 @@ registerFocus({
   id: "funeral-scheduling",
   mode: "kanban",
   displayName: "Funeral Scheduling",
-  coreComponent: SchedulingKanbanCore,
+  coreComponent: SchedulingFocusWithAccessories,
+  // May 2026 — composition runtime integration phase. The seeded
+  // scheduling composition is keyed by `focus_type="scheduling"`
+  // (categorization) while the registered Focus id is the
+  // descriptive `"funeral-scheduling"`. The accessory layer wrapper
+  // (introduced this phase) resolves compositions via this field
+  // rather than the registered id. See focus-registry.ts
+  // `compositionFocusType` field doc for full rationale.
+  compositionFocusType: "scheduling",
   // Phase 4.3b.3 seed, refined through Aesthetic Arc Session 1
   // (Commit C: width narrowed 260 → 180 so the pin fits in canvas
   // tier and kanban centers via computeCoreRect's canvas-tier
