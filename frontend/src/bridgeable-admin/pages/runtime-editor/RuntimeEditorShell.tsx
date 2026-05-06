@@ -37,6 +37,11 @@ import {
   buildRuntimeWriters,
   type RuntimeWriteContext,
 } from "@/lib/runtime-host/runtime-writers"
+// R-1.6.1 — picker is rendered as a child of this shell when
+// impersonation params are absent, NOT a sibling route. See the
+// header comment block in BridgeableAdminApp.tsx for the route-
+// specificity-conflict rationale.
+import TenantUserPicker from "./TenantUserPicker"
 
 
 /** Inner shell component — runs INSIDE TenantProviders so it can
@@ -193,20 +198,23 @@ export default function RuntimeEditorShell() {
   }
 
   if (!tenantSlug || !userQuery) {
+    // R-1.6.1 — render the picker as a child instead of an
+    // empty-state. The picker drives the impersonation flow + calls
+    // navigate("/runtime-editor/?tenant=...&user=..."); since this
+    // shell handles the splat route exclusively, the navigate
+    // resolves cleanly to the same route + this branch falls through
+    // to the editor body when params are present.
+    //
+    // Wrapped in `data-testid="runtime-editor-missing-params"` for
+    // R-1.5 spec contract preservation — specs that asserted the
+    // missing-params state continue to find the test-id (now on the
+    // picker's surrounding shell instead of an empty-state).
     return (
       <div
-        className="flex h-screen items-center justify-center bg-surface-base text-content-strong"
+        className="min-h-screen bg-surface-base"
         data-testid="runtime-editor-missing-params"
       >
-        <div className="max-w-md text-center">
-          <div className="text-h3 font-plex-serif">
-            Pick a tenant first
-          </div>
-          <p className="mt-2 text-content-muted">
-            Open the runtime editor's entry surface to select a tenant
-            + user before mounting the editor shell.
-          </p>
-        </div>
+        <TenantUserPicker />
       </div>
     )
   }

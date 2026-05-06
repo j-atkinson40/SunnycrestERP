@@ -13,14 +13,27 @@ import { VisualEditorLayout } from "./components/VisualEditorLayout"
 // R-0 path `/_runtime-host-test/*` is preserved as an alias for the
 // R-1 RuntimeEditorShell — existing test references continue to
 // resolve. The canonical path going forward is `/runtime-editor/*`.
+//
+// R-1.6.1 (picker-route-conflict fix): TenantUserPicker is rendered
+// as a CHILD of RuntimeEditorShell when impersonation params are
+// missing — NOT as a sibling route. Two reasons:
+//   1. React Router v7 score-ranks routes; an exact path beats a
+//      splat path. With both `/runtime-editor` (picker) and
+//      `/runtime-editor/*` (shell) registered, the picker silently
+//      won the navigate-from-picker-to-shell handoff because the
+//      target URL `/runtime-editor/?tenant=...` resolves to the
+//      same exact-path route after trailing-slash normalization.
+//   2. Structurally, the shell IS the editor surface. A "missing
+//      params" state is a render of the picker, not a different
+//      route. Collapsing fixes the conflict + simplifies the URL
+//      contract (picker and shell share `/runtime-editor/*`).
+// Bug history + fix rationale: see
+// /tmp/picker_navigation_bug.md (R-1.6.1 investigation report).
 const RuntimeHostTestPage = lazy(
   () => import("./pages/RuntimeHostTestPage"),
 )
 const RuntimeEditorShell = lazy(
   () => import("./pages/runtime-editor/RuntimeEditorShell"),
-)
-const TenantUserPicker = lazy(
-  () => import("./pages/runtime-editor/TenantUserPicker"),
 )
 import { AdminLogin } from "./pages/AdminLogin"
 import { HealthDashboard } from "./pages/HealthDashboard"
@@ -118,25 +131,15 @@ export function BridgeableAdminApp() {
     </Suspense>
   )
 
-  // Phase R-1 — Runtime Editor (canonical path). Tenant + user
-  // picker is the entry; the shell is the editor proper. Both
-  // lazy-loaded; both bypass admin/visual-editor layouts and own
-  // their own chrome. Auth gate (platform_admin/support/super_admin)
-  // is enforced inside RuntimeEditorShell + the impersonation API.
-  const runtimeEditorPickerRoute = (
-    <Suspense
-      fallback={
-        <div
-          className="flex h-screen items-center justify-center bg-surface-base text-content-muted"
-          data-testid="runtime-editor-picker-suspense"
-        >
-          <span>Loading runtime editor…</span>
-        </div>
-      }
-    >
-      <TenantUserPicker />
-    </Suspense>
-  )
+  // Phase R-1 — Runtime Editor (canonical path). The shell handles
+  // both entry states: when impersonation params are absent, the
+  // shell renders the picker as a child (R-1.6.1 Fix 2 — collapse
+  // exact + splat routes to splat-only, eliminating the route
+  // specificity conflict that silently bounced picker→shell
+  // navigations back to the picker route). Lazy-loaded; bypasses
+  // admin/visual-editor layouts. Auth gate (platform_admin/support/
+  // super_admin) enforced inside RuntimeEditorShell + impersonation
+  // API.
   const runtimeEditorShellRoute = (
     <Suspense
       fallback={
@@ -172,17 +175,11 @@ export function BridgeableAdminApp() {
           element={runtimeHostRoute}
         />
 
-        {/* Phase R-1 — canonical runtime editor entry. The picker at
-            /runtime-editor renders an empty entry surface; the shell
-            mounts when /runtime-editor/?tenant=...&user=... arrives. */}
-        <Route
-          path="/bridgeable-admin/runtime-editor"
-          element={runtimeEditorPickerRoute}
-        />
-        <Route
-          path="/runtime-editor"
-          element={runtimeEditorPickerRoute}
-        />
+        {/* Phase R-1 — canonical runtime editor entry. R-1.6.1 fix:
+            collapse to splat-only routes. RuntimeEditorShell renders
+            the picker as a child component when tenant/user params
+            are absent. Single route handles both states; React
+            Router has no specificity conflict. */}
         <Route
           path="/bridgeable-admin/runtime-editor/*"
           element={runtimeEditorShellRoute}
