@@ -70,6 +70,7 @@ from app.models.document_template import (
     DocumentTemplateAuditLog,
     DocumentTemplateVersion,
 )
+from app.models.document_template_block import DocumentTemplateBlock
 from app.models.document_share import (
     DocumentShare,
     DocumentShareEvent,
@@ -500,6 +501,7 @@ __all__ = [
     "DocumentShareRead",
     "DocumentTemplate",
     "DocumentTemplateAuditLog",
+    "DocumentTemplateBlock",
     "DocumentTemplateVersion",
     "DocumentVersion",
     "SignatureEnvelope",

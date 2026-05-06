@@ -348,3 +348,78 @@ class DeliveryAdHocSendRequest(BaseModel):
     body: str | None = None
     body_html: str | None = None
     reply_to: str | None = None
+
+
+# ─── Phase D-10 — Block-based template authoring ────────────────
+
+
+class TemplateBlockResponse(BaseModel):
+    """One block within a template version."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    template_version_id: str
+    block_kind: str
+    position: int
+    config: dict[str, Any]
+    condition: str | None = None
+    parent_block_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TemplateBlockCreateRequest(BaseModel):
+    block_kind: str = Field(..., min_length=1, max_length=64)
+    position: int | None = None
+    config: dict[str, Any] | None = None
+    condition: str | None = None
+    parent_block_id: str | None = None
+
+
+class TemplateBlockUpdateRequest(BaseModel):
+    config: dict[str, Any] | None = None
+    condition: str | None = None
+
+
+class TemplateBlockReorderRequest(BaseModel):
+    block_id_order: list[str]
+    parent_block_id: str | None = None
+
+
+class BlockKindResponse(BaseModel):
+    """Block kind metadata for the editor's block-kind picker."""
+
+    kind: str
+    display_name: str
+    description: str
+    config_schema: dict[str, Any]
+    accepts_children: bool
+
+
+# ─── Phase D-10 — Document type catalog ─────────────────────────
+
+
+class DocumentTypeStarterBlockResponse(BaseModel):
+    block_kind: str
+    config: dict[str, Any]
+    condition: str | None = None
+
+
+class DocumentTypeResponse(BaseModel):
+    type_id: str
+    display_name: str
+    category: str
+    description: str
+    starter_blocks: list[DocumentTypeStarterBlockResponse]
+    recommended_variables: list[str]
+
+
+class DocumentTypeCategoryResponse(BaseModel):
+    category_id: str
+    display_name: str
+
+
+class DocumentTypeCatalogResponse(BaseModel):
+    categories: list[DocumentTypeCategoryResponse]
+    types: list[DocumentTypeResponse]

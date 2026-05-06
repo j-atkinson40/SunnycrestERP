@@ -73,6 +73,16 @@ from app.schemas.document_template import (
     TemplateTestRenderRequest,
     TemplateTestRenderResponse,
     ValidationIssueResponse,
+    # Phase D-10 — block authoring + document type catalog
+    BlockKindResponse,
+    DocumentTypeCatalogResponse,
+    DocumentTypeCategoryResponse,
+    DocumentTypeResponse,
+    DocumentTypeStarterBlockResponse,
+    TemplateBlockCreateRequest,
+    TemplateBlockReorderRequest,
+    TemplateBlockResponse,
+    TemplateBlockUpdateRequest,
 )
 from app.services.documents import document_renderer, document_sharing_service
 from app.services.documents import template_service
@@ -80,6 +90,19 @@ from app.services.documents.document_sharing_service import SharingError
 from app.services.documents.template_service import TemplateEditError
 from app.services.documents.template_validator import (
     validate_template_content,
+)
+from app.services.documents.block_registry import list_block_kinds
+from app.services.documents.block_service import (
+    BlockServiceError,
+    add_block,
+    delete_block,
+    list_blocks,
+    reorder_blocks,
+    update_block,
+)
+from app.services.documents.document_types import (
+    list_categories,
+    list_document_types,
 )
 
 router = APIRouter()
@@ -1357,3 +1380,215 @@ def ad_hoc_send(
     db.commit()
     db.refresh(delivery)
     return delivery
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase D-10 — Block-based template authoring
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _raise_block_error(exc: BlockServiceError) -> None:
+    raise HTTPException(exc.http_status, str(exc))
+
+
+@router.get(
+    "/admin/templates/{template_id}/versions/{version_id}/blocks",
+    response_model=list[TemplateBlockResponse],
+)
+def list_template_blocks(
+    template_id: str,
+    version_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """List all blocks for a version, ordered by position. Top-level
+    blocks appear first (parent_block_id NULL), then nested blocks."""
+    t = _get_visible_template_or_404(
+        db, template_id, current_user.company_id
+    )
+    version = _get_version_on_template(db, t.id, version_id)
+    blocks = list_blocks(db, version.id)
+    return blocks
+
+
+@router.post(
+    "/admin/templates/{template_id}/versions/{version_id}/blocks",
+    response_model=TemplateBlockResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_template_block(
+    template_id: str,
+    version_id: str,
+    body: TemplateBlockCreateRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Add a block to a draft version. Returns the created block."""
+    t = _get_visible_template_or_404(
+        db, template_id, current_user.company_id
+    )
+    _enforce_edit_permission(current_user, t)
+    version = _get_version_on_template(db, t.id, version_id)
+    try:
+        block = add_block(
+            db,
+            version_id=version.id,
+            block_kind=body.block_kind,
+            position=body.position,
+            config=body.config,
+            condition=body.condition,
+            parent_block_id=body.parent_block_id,
+        )
+    except BlockServiceError as exc:
+        _raise_block_error(exc)
+    db.commit()
+    db.refresh(block)
+    return block
+
+
+@router.patch(
+    "/admin/templates/{template_id}/versions/{version_id}/blocks/{block_id}",
+    response_model=TemplateBlockResponse,
+)
+def update_template_block(
+    template_id: str,
+    version_id: str,
+    block_id: str,
+    body: TemplateBlockUpdateRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update a block's config and/or condition."""
+    t = _get_visible_template_or_404(
+        db, template_id, current_user.company_id
+    )
+    _enforce_edit_permission(current_user, t)
+    _get_version_on_template(db, t.id, version_id)
+    try:
+        block = update_block(
+            db,
+            block_id=block_id,
+            config=body.config,
+            condition=body.condition,
+        )
+    except BlockServiceError as exc:
+        _raise_block_error(exc)
+    db.commit()
+    db.refresh(block)
+    return block
+
+
+@router.delete(
+    "/admin/templates/{template_id}/versions/{version_id}/blocks/{block_id}",
+)
+def delete_template_block(
+    template_id: str,
+    version_id: str,
+    block_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Delete a block. CASCADE handles children of conditional_wrapper."""
+    t = _get_visible_template_or_404(
+        db, template_id, current_user.company_id
+    )
+    _enforce_edit_permission(current_user, t)
+    _get_version_on_template(db, t.id, version_id)
+    try:
+        delete_block(db, block_id=block_id)
+    except BlockServiceError as exc:
+        _raise_block_error(exc)
+    db.commit()
+    return {"deleted": True, "block_id": block_id}
+
+
+@router.post(
+    "/admin/templates/{template_id}/versions/{version_id}/blocks/reorder",
+    response_model=list[TemplateBlockResponse],
+)
+def reorder_template_blocks(
+    template_id: str,
+    version_id: str,
+    body: TemplateBlockReorderRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Reorder blocks within one parent context (top-level OR within a
+    single conditional_wrapper). Atomic — either all reorder or none."""
+    t = _get_visible_template_or_404(
+        db, template_id, current_user.company_id
+    )
+    _enforce_edit_permission(current_user, t)
+    version = _get_version_on_template(db, t.id, version_id)
+    try:
+        blocks = reorder_blocks(
+            db,
+            version_id=version.id,
+            block_id_order=body.block_id_order,
+            parent_block_id=body.parent_block_id,
+        )
+    except BlockServiceError as exc:
+        _raise_block_error(exc)
+    db.commit()
+    return blocks
+
+
+# ─── Block kind picker (read-only catalog) ──────────────────────
+
+
+@router.get(
+    "/admin/block-kinds",
+    response_model=list[BlockKindResponse],
+)
+def list_block_kinds_endpoint(
+    current_user: User = Depends(require_admin),
+):
+    """Return all registered block kinds with their config schemas.
+    Powers the block-kind picker in the editor."""
+    return [
+        BlockKindResponse(
+            kind=k.kind,
+            display_name=k.display_name,
+            description=k.description,
+            config_schema=k.config_schema,
+            accepts_children=k.accepts_children,
+        )
+        for k in list_block_kinds()
+    ]
+
+
+# ─── Document type catalog ──────────────────────────────────────
+
+
+@router.get(
+    "/admin/document-types",
+    response_model=DocumentTypeCatalogResponse,
+)
+def list_document_types_endpoint(
+    current_user: User = Depends(require_admin),
+):
+    """Return the curated document type catalog for the editor's
+    create-template flow + browser categorization."""
+    types = [
+        DocumentTypeResponse(
+            type_id=t.type_id,
+            display_name=t.display_name,
+            category=t.category,
+            description=t.description,
+            starter_blocks=[
+                DocumentTypeStarterBlockResponse(
+                    block_kind=b.block_kind,
+                    config=b.config,
+                    condition=b.condition,
+                )
+                for b in t.starter_blocks
+            ],
+            recommended_variables=t.recommended_variables,
+        )
+        for t in list_document_types()
+    ]
+    categories = [
+        DocumentTypeCategoryResponse(category_id=cid, display_name=cname)
+        for cid, cname in list_categories()
+    ]
+    return DocumentTypeCatalogResponse(categories=categories, types=types)

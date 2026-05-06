@@ -60,6 +60,12 @@ class DocumentTemplate(Base):
 
     template_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     document_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Phase D-11 (June 2026) — three-tier scope. NULL on platform_default
+    # AND tenant_override rows; set on vertical_default rows. CHECK
+    # constraint at the migration level enforces `vertical IS NULL OR
+    # company_id IS NULL` so vertical-scoped templates are platform-level
+    # only (tenants inherit through their vertical at resolution time).
+    vertical: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # "pdf" | "html" | "text"
     output_format: Mapped[str] = mapped_column(String(16), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

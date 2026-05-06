@@ -68,11 +68,40 @@ _TEMPLATES_ROOT = Path(__file__).resolve().parent.parent.parent / "templates"
 
 
 def _resolve_version(
-    db: Session, template_key: str, company_id: str | None
+    db: Session,
+    template_key: str,
+    company_id: str | None,
+    vertical: str | None = None,
 ) -> Optional[tuple[DocumentTemplate, DocumentTemplateVersion]]:
     """Return the (template, active_version) pair for the effective
-    template — tenant-specific first, platform fallback."""
-    # 1. Try tenant-specific
+    template.
+
+    Phase D-11 (June 2026): three-tier resolution:
+      1. tenant_override (company_id=X, vertical NULL)
+      2. vertical_default (company_id NULL, vertical=X) — only if
+         `vertical` is provided
+      3. platform_default (company_id NULL, vertical NULL)
+
+    First match wins. The vertical tier slots between tenant and
+    platform — a tenant in vertical X without their own override
+    inherits vertical_default; falls through to platform if no
+    vertical_default exists.
+
+    The `vertical` parameter is optional. Callers that don't know the
+    tenant's vertical (admin tooling, etc.) get the two-tier
+    behavior — same semantics as before D-11.
+    """
+
+    def _load_active_version(t: DocumentTemplate) -> DocumentTemplateVersion | None:
+        if not t.current_version_id:
+            return None
+        return (
+            db.query(DocumentTemplateVersion)
+            .filter(DocumentTemplateVersion.id == t.current_version_id)
+            .first()
+        )
+
+    # 1. Tenant-specific override
     if company_id is not None:
         tenant_template = (
             db.query(DocumentTemplate)
@@ -83,32 +112,42 @@ def _resolve_version(
             )
             .first()
         )
-        if tenant_template is not None and tenant_template.current_version_id:
-            version = (
-                db.query(DocumentTemplateVersion)
-                .filter(DocumentTemplateVersion.id == tenant_template.current_version_id)
-                .first()
-            )
+        if tenant_template is not None:
+            version = _load_active_version(tenant_template)
             if version is not None:
                 return tenant_template, version
 
-    # 2. Platform fallback
+    # 2. Vertical default — slots between tenant and platform.
+    if vertical is not None:
+        vertical_template = (
+            db.query(DocumentTemplate)
+            .filter(
+                DocumentTemplate.template_key == template_key,
+                DocumentTemplate.company_id.is_(None),
+                DocumentTemplate.vertical == vertical,
+                DocumentTemplate.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if vertical_template is not None:
+            version = _load_active_version(vertical_template)
+            if version is not None:
+                return vertical_template, version
+
+    # 3. Platform default
     platform_template = (
         db.query(DocumentTemplate)
         .filter(
             DocumentTemplate.template_key == template_key,
             DocumentTemplate.company_id.is_(None),
+            DocumentTemplate.vertical.is_(None),
             DocumentTemplate.deleted_at.is_(None),
         )
         .first()
     )
-    if platform_template is None or not platform_template.current_version_id:
+    if platform_template is None:
         return None
-    version = (
-        db.query(DocumentTemplateVersion)
-        .filter(DocumentTemplateVersion.id == platform_template.current_version_id)
-        .first()
-    )
+    version = _load_active_version(platform_template)
     if version is None:
         return None
     return platform_template, version
@@ -118,10 +157,17 @@ def load(
     template_key: str,
     company_id: str | None = None,
     db: Session | None = None,
+    *,
+    vertical: str | None = None,
 ) -> LoadedTemplate:
-    """Resolve a template by key, preferring tenant-specific, falling back
-    to platform. Raises TemplateNotFoundError if neither exists or the
-    resolved template has no active version.
+    """Resolve a template by key with three-tier inheritance.
+
+    Phase D-11: resolution chain is tenant → vertical → platform.
+    Pass `vertical` (the tenant's vertical) to enable the vertical
+    tier; omit for two-tier (back-compat with pre-D-11 callers).
+
+    Raises TemplateNotFoundError if no tier resolves a template with
+    an active version.
 
     If `db` is None, opens a short-lived session. Callers inside a request
     context should always pass their own session for efficiency.
@@ -134,7 +180,7 @@ def load(
         close_db = True
 
     try:
-        pair = _resolve_version(db, template_key, company_id)
+        pair = _resolve_version(db, template_key, company_id, vertical)
         if pair is None:
             raise TemplateNotFoundError(
                 f"No template registered for key {template_key!r} "
