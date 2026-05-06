@@ -40,8 +40,10 @@ from app.models.funeral_case import (  # noqa: E402
     CaseVeteran,
     FuneralCase,
 )
+from app.models.role import Role  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.services.fh import case_service, story_thread_service  # noqa: E402
+from app.services.role_service import seed_default_roles  # noqa: E402
 
 # Phase 1G — Personalization Studio canonical demo seed integration.
 # Imports deferred to call sites to keep module-load latency low at
@@ -53,10 +55,20 @@ import json  # noqa: E402  # canonical-restraint: small set of imports
 def _ensure_company(db, slug, defaults) -> Company:
     c = db.query(Company).filter(Company.slug == slug).first()
     if c:
+        # R-1.6.3: ensure tenant role catalog exists even on existing
+        # Hopkins rows pre-dating the seed fix. Idempotent — no-op
+        # if the catalog is already present.
+        seed_default_roles(db, c.id)
         return c
     c = Company(id=str(uuid.uuid4()), slug=slug, is_active=True, **defaults)
     db.add(c)
     db.commit()
+    # R-1.6.3: Hopkins-tenant default role catalog. Pre-R-1.6.3 the
+    # seed never called this; users couldn't be created (TypeError on
+    # `User(role="admin", ...)`) AND impersonation couldn't find an
+    # admin user even if creation had worked. Both pre-conditions
+    # are repaired by seeding canonical tenant roles here.
+    seed_default_roles(db, c.id)
     return c
 
 
@@ -64,12 +76,47 @@ def _ensure_user(db, company_id, email, defaults) -> User:
     u = db.query(User).filter(User.email == email).first()
     if u:
         return u
+
+    # R-1.6.3: Pre-R-1.6.3 the seed passed `role` (string) into
+    # `User(**defaults)`. The User model has `role_id` (UUID FK to
+    # roles, NOT NULL) — `role` is not a mapped attribute. SQLAlchemy
+    # raised TypeError on every `_ensure_user` call after the first
+    # `_ensure_company` commit, leaving Hopkins partially seeded
+    # (company exists, no users). Six R-* phases shipped on this
+    # broken state because railway-start.sh swallowed the error
+    # (also fixed in this patch — Part 2).
+    #
+    # Fix: pop the role slug from defaults, resolve it to a real
+    # Role row scoped to this tenant, pass `role_id=role.id` to the
+    # User constructor.
+    role_slug = defaults.pop("role", "employee")
+    role = (
+        db.query(Role)
+        .filter(
+            Role.company_id == company_id,
+            Role.slug == role_slug,
+            Role.is_system == True,
+        )
+        .first()
+    )
+    if role is None:
+        # Explicit failure — silent fallback to None role_id would
+        # make the same bug return (FK violation at flush time, but
+        # harder to diagnose than this loud error here).
+        raise RuntimeError(
+            f"Role {role_slug!r} not found for company {company_id}. "
+            "Did seed_default_roles run on _ensure_company? "
+            "_ensure_company is responsible for tenant role-catalog "
+            "seeding before any _ensure_user calls."
+        )
+
     u = User(
         id=str(uuid.uuid4()),
         company_id=company_id,
         email=email,
         is_active=True,
         hashed_password=hash_password(defaults.pop("password", "demo123")),
+        role_id=role.id,
         **defaults,
     )
     db.add(u)

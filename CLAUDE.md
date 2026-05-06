@@ -1166,7 +1166,7 @@ Staging auto-deploys from `main` via `.github/workflows/deploy.yml` → `railway
 
 Both seed scripts are idempotent (the `--idempotent` flag is the explicit-intent alias for the default ensure-or-skip behavior). Re-running on existing data is a no-op for `seed_fh_demo`; `seed_staging` cleans + re-seeds for end-state consistency. Both refuse to run if `ENVIRONMENT=production` — production has no test seed.
 
-If a seed step fails, the start script logs a warning and continues — server boot must complete even if seeding hits a transient issue.
+**R-1.6.3: seed failures FAIL the deploy.** Pre-R-1.6.3 the start script logged a warning and continued on seed errors. That swallowed a TypeError in `seed_fh_demo._ensure_user` (passing `role` string into a `User` model that has only `role_id` FK) for six R-* phases — Hopkins FH was half-seeded (company row exists, no users) and the deploy went green anyway. The CI bot investigation in R-1.6.3 surfaced the cascade. New contract: any seed failure exits the start script non-zero, Railway dashboard goes red, ops sees the failure immediately. Half-seeded tenants are not acceptable. Production still skips all staging seeds via the `ENVIRONMENT` guard.
 
 `/api/health` includes a `commit` field sourced from Railway's `RAILWAY_GIT_COMMIT_SHA` env var. CI workflows poll the health endpoint to verify staging deployed the just-pushed SHA before running Playwright specs (closes the deploy-timing race).
 

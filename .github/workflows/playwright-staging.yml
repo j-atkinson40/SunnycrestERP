@@ -72,6 +72,14 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
+      # R-1.6.3: Build the frontend so spec 11 (bundle-delta) actually
+      # runs. Pre-R-1.6.3 the spec hit its `test.skip(!distExists)`
+      # guard because no build step ran in CI — the +5% bundle ceiling
+      # was a no-op gate. Adds 30-60s to workflow runtime; well within
+      # the 12-min budget. Spec 11 now produces a real pass/fail per push.
+      - name: Build frontend (gates spec 11 — bundle-delta)
+        run: npx vite build
+
       - name: Deploy gate — wait for staging to match ${{ github.sha }}
         # Polls /api/health until the deployed commit matches the
         # just-pushed SHA. The /api/health response includes a `commit`

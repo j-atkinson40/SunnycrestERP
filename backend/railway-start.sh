@@ -32,24 +32,37 @@ alembic current 2>&1 || echo "(could not read revision)"
 # guard. Staging has ENVIRONMENT=dev (per /api/health output). Production
 # Railway env should set ENVIRONMENT=production explicitly.
 #
-# Failures in either seed log a warning but do NOT block server start.
-# The platform must come up even if seed scripting hits a transient
-# issue (the auth endpoint must answer for incident reporting).
+# R-1.6.3: Fail-loud on seed errors.
+#
+# Pre-R-1.6.3 these blocks swallowed seed failures with "non-blocking;
+# server will start". This is how seed_fh_demo was broken from b04f071
+# (March 2026) through six R-* phases — TypeError from a half-fixed
+# _ensure_user crashed the script, the warning logged, the deploy went
+# green anyway, Hopkins FH was half-seeded for months. The CI bot
+# investigation in R-1.6.3 surfaced the root cause; this fixes the
+# class of bug.
+#
+# New contract: seed failures fail the deploy. Railway dashboard goes
+# red, ops sees the failure immediately, the next deploy must repair
+# the seed before continuing. Documented in CLAUDE.md staging section.
+#
+# Production still skips all staging seeds via the ENVIRONMENT guard.
 if [ "${ENVIRONMENT:-dev}" != "production" ]; then
     echo ""
     echo "Running staging seed scripts (R-1.6 — auto-seed on every deploy)..."
+    echo "Seed failures FAIL the deploy (R-1.6.3). Half-seeded tenants are not acceptable."
 
-    if python -m scripts.seed_staging --idempotent 2>&1; then
-        echo "  ✓ seed_staging.py completed."
-    else
-        echo "  ⚠ seed_staging.py failed (non-blocking; server will start)."
+    if ! python -m scripts.seed_staging --idempotent 2>&1; then
+        echo "  ✗ seed_staging.py FAILED — deploy aborted."
+        exit 1
     fi
+    echo "  ✓ seed_staging.py completed."
 
-    if python -m scripts.seed_fh_demo --apply --idempotent 2>&1; then
-        echo "  ✓ seed_fh_demo.py completed."
-    else
-        echo "  ⚠ seed_fh_demo.py failed (non-blocking; server will start)."
+    if ! python -m scripts.seed_fh_demo --apply --idempotent 2>&1; then
+        echo "  ✗ seed_fh_demo.py FAILED — deploy aborted."
+        exit 1
     fi
+    echo "  ✓ seed_fh_demo.py completed."
 else
     echo ""
     echo "ENVIRONMENT=production — skipping staging seed scripts."

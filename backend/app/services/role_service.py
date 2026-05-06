@@ -27,9 +27,20 @@ ROLE_FUNCTIONAL_AREAS: dict[str, list[str]] = {
     "admin": ["full_admin"],
     "manager": ["full_admin"],
     "office_staff": ["customer_management", "funeral_scheduling", "invoicing_ar"],
+    # R-1.6.3: 'office' (no _staff suffix) is the canonical slug used
+    # by saved_views/seed.py + spaces/registry.py for FH office roles.
+    # Functionally identical to office_staff at September scope.
+    "office": ["customer_management", "funeral_scheduling", "invoicing_ar"],
     "dispatcher": ["delivery_dispatch", "driver_management"],
     "driver": [],
     "production": ["production_log", "safety_compliance"],
+    # R-1.6.3: 'director' is the canonical FH role slug used by Phase 8e
+    # space templates ((funeral_home, 'director') in spaces/registry.py)
+    # and saved_views seed templates. Pre-R-1.6.3 the slug was referenced
+    # by Phase 8e but never seeded canonically — Hopkins FH director users
+    # had no role to bind to. Permissions match manager (broad operational
+    # + customer + financial access; FH directors run the funeral home).
+    "director": ["full_admin"],
     "legacy_designer": ["customer_management"],
     "accounting": ["invoicing_ar", "customer_management"],
     "employee": [],
@@ -55,6 +66,26 @@ _SYSTEM_ROLES = [
         "slug": "office_staff",
         "description": "Operations and CRM access, no financials by default",
         "permissions": OFFICE_STAFF_DEFAULT_PERMISSIONS,
+    },
+    {
+        # R-1.6.3: canonical slug 'office' (no _staff suffix) — matches
+        # the slug Phase 8e spaces/registry.py + saved_views/seed.py
+        # already reference. Permissions match office_staff exactly.
+        "name": "Office",
+        "slug": "office",
+        "description": "Operations and CRM access, no financials by default",
+        "permissions": OFFICE_STAFF_DEFAULT_PERMISSIONS,
+    },
+    {
+        # R-1.6.3: canonical FH role. Pre-R-1.6.3 Phase 8e referenced
+        # (funeral_home, 'director') in space templates but the slug
+        # was never seeded canonically. seed_fh_demo passed role='director'
+        # as a string into User(**defaults), which crashed on TypeError
+        # before R-1.6.3's _ensure_user fix. Now canonical.
+        "name": "Director",
+        "slug": "director",
+        "description": "Funeral director — full operational + customer + financial access",
+        "permissions": MANAGER_DEFAULT_PERMISSIONS,
     },
     {
         "name": "Accountant",
