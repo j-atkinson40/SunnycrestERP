@@ -461,7 +461,20 @@ def _seed_permission_overrides(db: Session, admin_id: str):
 
 
 def _seed_funeral_homes(db: Session, admin_id: str):
-    """Create company_entities (CRM) + linked customers."""
+    """Create company_entities (CRM) + linked customers.
+
+    R-1.6.4: idempotent. Existing rows looked up by natural key,
+    UPDATE mutable fields, INSERT only on miss. Account numbers are
+    derived from the loop index (enumerate, 1-based) NOT a per-run
+    counter — same FH always maps to the same FH-NNN account number
+    across runs.
+
+    Load-bearing for the cleanup-ordering bug in _run_cleanup_deletes:
+    customers FK chain (sales_orders.customer_id, invoices.customer_id)
+    means alphabetical-order DELETE leaves residual customer rows. The
+    UPDATE-on-conflict path here finds those residuals + heals them in
+    place. DO NOT remove the existing-row check — it's load-bearing.
+    """
     fhs = [
         ("Johnson Funeral Home", "315-555-0101", "orders@johnsonfh.com", "Auburn", "NY"),
         ("Smith & Sons Funeral Home", "315-555-0102", "smith@smithfh.com", "Syracuse", "NY"),
@@ -471,45 +484,87 @@ def _seed_funeral_homes(db: Session, admin_id: str):
     ]
     entity_ids = {}
     customer_ids = {}
-    for name, phone, email, city, state in fhs:
-        # Company entity (CRM)
-        eid = uid()
-        db.execute(text("""
-            INSERT INTO company_entities (id, company_id, name, phone, email, city, state,
-                is_customer, is_funeral_home, is_active, is_active_customer,
-                customer_type, classification_source,
-                created_by, created_at, updated_at)
-            VALUES (:id, :cid, :name, :phone, :email, :city, :state,
-                true, true, true, true,
-                'funeral_home', 'manual',
-                :admin, :now, :now)
-        """), {"id": eid, "cid": CFG["company_id"], "name": name, "phone": phone,
-               "email": email, "city": city, "state": state, "admin": admin_id, "now": NOW})
+    # 1-based loop index → stable account_number derivation. Replaces the
+    # pre-R-1.6.4 `counts['customers']+1` pattern which reset per run.
+    for idx, (name, phone, email, city, state) in enumerate(fhs, start=1):
+        # Company entity (CRM) — natural key: (company_id, name).
+        existing_e = db.execute(text("""
+            SELECT id FROM company_entities WHERE company_id = :cid AND name = :name
+        """), {"cid": CFG["company_id"], "name": name}).fetchone()
+        if existing_e:
+            eid = existing_e[0]
+            db.execute(text("""
+                UPDATE company_entities SET phone = :phone, email = :email,
+                    city = :city, state = :state, is_customer = true,
+                    is_funeral_home = true, is_active = true, is_active_customer = true,
+                    customer_type = 'funeral_home', classification_source = 'manual',
+                    updated_at = :now
+                WHERE id = :id
+            """), {"id": eid, "phone": phone, "email": email,
+                   "city": city, "state": state, "now": NOW})
+            print(f"    -> Company entity '{name}' already exists (fields updated)")
+        else:
+            eid = uid()
+            db.execute(text("""
+                INSERT INTO company_entities (id, company_id, name, phone, email, city, state,
+                    is_customer, is_funeral_home, is_active, is_active_customer,
+                    customer_type, classification_source,
+                    created_by, created_at, updated_at)
+                VALUES (:id, :cid, :name, :phone, :email, :city, :state,
+                    true, true, true, true,
+                    'funeral_home', 'manual',
+                    :admin, :now, :now)
+            """), {"id": eid, "cid": CFG["company_id"], "name": name, "phone": phone,
+                   "email": email, "city": city, "state": state, "admin": admin_id, "now": NOW})
+            counts["company_entities"] += 1
         entity_ids[name] = eid
-        counts["company_entities"] += 1
 
-        # Linked customer record
-        cid = uid()
-        acct = f"FH-{counts['customers'] + 1:03d}"
-        db.execute(text("""
-            INSERT INTO customers (id, company_id, name, account_number, email, phone,
-                city, state, customer_type, payment_terms, is_active,
-                master_company_id, created_at, updated_at)
-            VALUES (:id, :cid, :name, :acct, :email, :phone,
-                :city, :state, 'funeral_home', 'net_30', true,
-                :eid, :now, :now)
-        """), {"id": cid, "cid": CFG["company_id"], "name": name, "acct": acct,
-               "email": email, "phone": phone, "city": city, "state": state,
-               "eid": eid, "now": NOW})
+        # Linked customer record — natural key: (company_id, account_number).
+        # account_number is name-position-derived, NOT counter-derived, so a
+        # re-run finds the same FH-001 row that the prior run created.
+        acct = f"FH-{idx:03d}"
+        existing_c = db.execute(text("""
+            SELECT id FROM customers WHERE company_id = :cid AND account_number = :acct
+        """), {"cid": CFG["company_id"], "acct": acct}).fetchone()
+        if existing_c:
+            cid = existing_c[0]
+            db.execute(text("""
+                UPDATE customers SET name = :name, email = :email, phone = :phone,
+                    city = :city, state = :state, customer_type = 'funeral_home',
+                    payment_terms = 'net_30', is_active = true,
+                    master_company_id = :eid, updated_at = :now
+                WHERE id = :id
+            """), {"id": cid, "name": name, "email": email, "phone": phone,
+                   "city": city, "state": state, "eid": eid, "now": NOW})
+            print(f"    -> Customer '{acct}' already exists (fields updated)")
+        else:
+            cid = uid()
+            db.execute(text("""
+                INSERT INTO customers (id, company_id, name, account_number, email, phone,
+                    city, state, customer_type, payment_terms, is_active,
+                    master_company_id, created_at, updated_at)
+                VALUES (:id, :cid, :name, :acct, :email, :phone,
+                    :city, :state, 'funeral_home', 'net_30', true,
+                    :eid, :now, :now)
+            """), {"id": cid, "cid": CFG["company_id"], "name": name, "acct": acct,
+                   "email": email, "phone": phone, "city": city, "state": state,
+                   "eid": eid, "now": NOW})
+            counts["customers"] += 1
         customer_ids[name] = cid
-        counts["customers"] += 1
 
     db.flush()
     return entity_ids, customer_ids
 
 
 def _seed_contacts(db: Session, fh_entities: dict):
-    """Create 2 contacts per funeral home."""
+    """Create 2 contacts per funeral home.
+
+    R-1.6.4: idempotent. Natural key: (company_id, master_company_id, email)
+    — email is the natural identifier per FH staff member. UPDATE on
+    conflict; INSERT on miss. contacts has no DB-enforced UNIQUE today,
+    but the natural-key check prevents duplicate-row accumulation across
+    re-seed runs.
+    """
     contact_data = {
         "Johnson Funeral Home": [
             ("Jane Director", "Director", "jane@johnsonfh.com", "315-555-1001", True),
@@ -537,22 +592,41 @@ def _seed_contacts(db: Session, fh_entities: dict):
         if not eid:
             continue
         for name, title, email, phone, is_primary in contacts:
-            db.execute(text("""
-                INSERT INTO contacts (id, company_id, master_company_id, name, title,
-                    email, phone, is_primary, is_active, receives_invoices,
-                    created_at, updated_at)
-                VALUES (:id, :cid, :eid, :name, :title,
-                    :email, :phone, :primary, true, :recv_inv,
-                    :now, :now)
-            """), {"id": uid(), "cid": CFG["company_id"], "eid": eid, "name": name,
-                   "title": title, "email": email, "phone": phone,
-                   "primary": is_primary, "recv_inv": is_primary, "now": NOW})
-            counts["contacts"] += 1
+            existing = db.execute(text("""
+                SELECT id FROM contacts
+                WHERE company_id = :cid AND master_company_id = :eid AND email = :email
+            """), {"cid": CFG["company_id"], "eid": eid, "email": email}).fetchone()
+            if existing:
+                db.execute(text("""
+                    UPDATE contacts SET name = :name, title = :title, phone = :phone,
+                        is_primary = :primary, is_active = true, receives_invoices = :recv_inv,
+                        updated_at = :now
+                    WHERE id = :id
+                """), {"id": existing[0], "name": name, "title": title, "phone": phone,
+                       "primary": is_primary, "recv_inv": is_primary, "now": NOW})
+            else:
+                db.execute(text("""
+                    INSERT INTO contacts (id, company_id, master_company_id, name, title,
+                        email, phone, is_primary, is_active, receives_invoices,
+                        created_at, updated_at)
+                    VALUES (:id, :cid, :eid, :name, :title,
+                        :email, :phone, :primary, true, :recv_inv,
+                        :now, :now)
+                """), {"id": uid(), "cid": CFG["company_id"], "eid": eid, "name": name,
+                       "title": title, "email": email, "phone": phone,
+                       "primary": is_primary, "recv_inv": is_primary, "now": NOW})
+                counts["contacts"] += 1
     db.flush()
 
 
 def _seed_cemeteries(db: Session):
-    """Create cemetery company_entities + cemetery records."""
+    """Create cemetery company_entities + cemetery records.
+
+    R-1.6.4: idempotent. cemeteries has UniqueConstraint(company_id, name)
+    per app/models/cemetery.py — would crash on re-seed without a lookup
+    pattern. company_entities has no DB UNIQUE; natural key (company_id,
+    name) used for both.
+    """
     cems = [
         ("Oakwood Cemetery", "Auburn", "NY", False, False, False),
         ("St. Mary's Cemetery", "Skaneateles", "NY", True, True, True),
@@ -560,32 +634,63 @@ def _seed_cemeteries(db: Session):
     ]
     cemetery_ids = {}
     for name, city, state, ld, grass, tent in cems:
-        # Company entity
-        eid = uid()
-        db.execute(text("""
-            INSERT INTO company_entities (id, company_id, name, city, state,
-                is_cemetery, is_active, customer_type, classification_source,
-                created_at, updated_at)
-            VALUES (:id, :cid, :name, :city, :state, true, true,
-                'cemetery', 'manual', :now, :now)
-        """), {"id": eid, "cid": CFG["company_id"], "name": name, "city": city,
-               "state": state, "now": NOW})
-        counts["company_entities"] += 1
+        # Company entity — natural key (company_id, name).
+        existing_e = db.execute(text("""
+            SELECT id FROM company_entities WHERE company_id = :cid AND name = :name
+        """), {"cid": CFG["company_id"], "name": name}).fetchone()
+        if existing_e:
+            eid = existing_e[0]
+            db.execute(text("""
+                UPDATE company_entities SET city = :city, state = :state,
+                    is_cemetery = true, is_active = true,
+                    customer_type = 'cemetery', classification_source = 'manual',
+                    updated_at = :now
+                WHERE id = :id
+            """), {"id": eid, "city": city, "state": state, "now": NOW})
+        else:
+            eid = uid()
+            db.execute(text("""
+                INSERT INTO company_entities (id, company_id, name, city, state,
+                    is_cemetery, is_active, customer_type, classification_source,
+                    created_at, updated_at)
+                VALUES (:id, :cid, :name, :city, :state, true, true,
+                    'cemetery', 'manual', :now, :now)
+            """), {"id": eid, "cid": CFG["company_id"], "name": name, "city": city,
+                   "state": state, "now": NOW})
+            counts["company_entities"] += 1
 
-        # Cemetery record
-        cid = uid()
-        db.execute(text("""
-            INSERT INTO cemeteries (id, company_id, name, city, state,
-                cemetery_provides_lowering_device, cemetery_provides_grass,
-                cemetery_provides_tent, master_company_id, is_active,
-                created_at, updated_at)
-            VALUES (:id, :cid, :name, :city, :state, :ld, :grass, :tent,
-                :eid, true, :now, :now)
-        """), {"id": cid, "cid": CFG["company_id"], "name": name, "city": city,
-               "state": state, "ld": ld, "grass": grass, "tent": tent,
-               "eid": eid, "now": NOW})
+        # Cemetery record — UniqueConstraint(company_id, name).
+        existing_c = db.execute(text("""
+            SELECT id FROM cemeteries WHERE company_id = :cid AND name = :name
+        """), {"cid": CFG["company_id"], "name": name}).fetchone()
+        if existing_c:
+            cid = existing_c[0]
+            db.execute(text("""
+                UPDATE cemeteries SET city = :city, state = :state,
+                    cemetery_provides_lowering_device = :ld,
+                    cemetery_provides_grass = :grass,
+                    cemetery_provides_tent = :tent,
+                    master_company_id = :eid, is_active = true,
+                    updated_at = :now
+                WHERE id = :id
+            """), {"id": cid, "city": city, "state": state,
+                   "ld": ld, "grass": grass, "tent": tent,
+                   "eid": eid, "now": NOW})
+            print(f"    -> Cemetery '{name}' already exists (fields updated)")
+        else:
+            cid = uid()
+            db.execute(text("""
+                INSERT INTO cemeteries (id, company_id, name, city, state,
+                    cemetery_provides_lowering_device, cemetery_provides_grass,
+                    cemetery_provides_tent, master_company_id, is_active,
+                    created_at, updated_at)
+                VALUES (:id, :cid, :name, :city, :state, :ld, :grass, :tent,
+                    :eid, true, :now, :now)
+            """), {"id": cid, "cid": CFG["company_id"], "name": name, "city": city,
+                   "state": state, "ld": ld, "grass": grass, "tent": tent,
+                   "eid": eid, "now": NOW})
+            counts["cemeteries"] += 1
         cemetery_ids[name] = cid
-        counts["cemeteries"] += 1
     db.flush()
     return cemetery_ids
 
@@ -634,28 +739,58 @@ def _seed_products(db: Session, admin_id: str):
 
     product_map = {}  # name -> (id, price, sku)
 
+    # R-1.6.4: idempotent. product_categories has UniqueConstraint(name,
+    # company_id, parent_id) and products has UniqueConstraint(sku,
+    # company_id) — both would crash on re-seed without lookup. SKUs are
+    # already deterministic (hardcoded in the categories dict above), so
+    # natural-key lookup cleanly resolves to the same row across runs.
     for cat_name, products in categories.items():
-        cat_id = uid()
-        db.execute(text("""
-            INSERT INTO product_categories (id, company_id, name, is_active,
-                created_at, updated_at, created_by)
-            VALUES (:id, :cid, :name, true, :now, :now, :admin)
-        """), {"id": cat_id, "cid": CFG["company_id"], "name": cat_name,
-               "now": NOW, "admin": admin_id})
-        counts["categories"] += 1
+        # parent_id IS NULL for all categories here. Use IS NULL in the
+        # natural-key lookup so the UNIQUE-with-NULL semantics line up.
+        existing_cat = db.execute(text("""
+            SELECT id FROM product_categories
+            WHERE company_id = :cid AND name = :name AND parent_id IS NULL
+        """), {"cid": CFG["company_id"], "name": cat_name}).fetchone()
+        if existing_cat:
+            cat_id = existing_cat[0]
+            db.execute(text("""
+                UPDATE product_categories SET is_active = true, updated_at = :now
+                WHERE id = :id
+            """), {"id": cat_id, "now": NOW})
+        else:
+            cat_id = uid()
+            db.execute(text("""
+                INSERT INTO product_categories (id, company_id, name, is_active,
+                    created_at, updated_at, created_by)
+                VALUES (:id, :cid, :name, true, :now, :now, :admin)
+            """), {"id": cat_id, "cid": CFG["company_id"], "name": cat_name,
+                   "now": NOW, "admin": admin_id})
+            counts["categories"] += 1
 
         for pname, sku, price in products:
-            pid = uid()
-            db.execute(text("""
-                INSERT INTO products (id, company_id, category_id, name, sku, price,
-                    is_active, created_at, updated_at, created_by)
-                VALUES (:id, :cid, :catid, :name, :sku, :price,
-                    true, :now, :now, :admin)
-            """), {"id": pid, "cid": CFG["company_id"], "catid": cat_id,
-                   "name": pname, "sku": sku, "price": price,
-                   "now": NOW, "admin": admin_id})
+            existing_p = db.execute(text("""
+                SELECT id FROM products WHERE company_id = :cid AND sku = :sku
+            """), {"cid": CFG["company_id"], "sku": sku}).fetchone()
+            if existing_p:
+                pid = existing_p[0]
+                db.execute(text("""
+                    UPDATE products SET category_id = :catid, name = :name,
+                        price = :price, is_active = true, updated_at = :now
+                    WHERE id = :id
+                """), {"id": pid, "catid": cat_id, "name": pname,
+                       "price": price, "now": NOW})
+            else:
+                pid = uid()
+                db.execute(text("""
+                    INSERT INTO products (id, company_id, category_id, name, sku, price,
+                        is_active, created_at, updated_at, created_by)
+                    VALUES (:id, :cid, :catid, :name, :sku, :price,
+                        true, :now, :now, :admin)
+                """), {"id": pid, "cid": CFG["company_id"], "catid": cat_id,
+                       "name": pname, "sku": sku, "price": price,
+                       "now": NOW, "admin": admin_id})
+                counts["products"] += 1
             product_map[pname] = (pid, Decimal(str(price)), sku)
-            counts["products"] += 1
 
     db.flush()
     return product_map
@@ -679,9 +814,14 @@ def _seed_orders(db: Session, customer_ids: dict, cemetery_ids: dict,
         ("Smith & Sons Funeral Home", "St. Mary's Cemetery", "Charles Brown", "Veteran Triune", "Lowering Device & Grass (with)", "completed", 28, False),
     ]
 
+    # R-1.6.4: idempotent. sales_orders has no DB UNIQUE on number, but the
+    # natural key (company_id, number) cleanly identifies seeded rows
+    # since SO numbers are deterministic from the loop index.
+    # sales_order_lines: cleanup-then-insert per order — line counts
+    # are small (2 per order) so a delete + 2-row reinsert is cheaper
+    # than a per-line natural-key lookup.
     order_ids = []
     for i, (cust_name, cem_name, deceased, vault, equip, status, days_ago, sched_today) in enumerate(orders_spec, 1):
-        oid = uid()
         order_date = NOW - timedelta(days=days_ago)
         so_number = f"SO-2026-{i:04d}"
         vault_pid, vault_price, _ = product_map[vault]
@@ -696,23 +836,46 @@ def _seed_orders(db: Session, customer_ids: dict, cemetery_ids: dict,
         else:
             scheduled = None
 
-        db.execute(text("""
-            INSERT INTO sales_orders (id, company_id, number, customer_id, cemetery_id,
-                status, order_date, deceased_name, order_type, subtotal, total,
-                scheduled_date, delivered_at, created_by, created_at)
-            VALUES (:id, :cid, :num, :custid, :cemid,
-                :status, :odate, :deceased, 'funeral', :sub, :total,
-                :sched, :delivered, :admin, :odate)
-        """), {
-            "id": oid, "cid": CFG["company_id"], "num": so_number,
-            "custid": customer_ids[cust_name], "cemid": cemetery_ids[cem_name],
-            "status": status, "odate": order_date, "deceased": deceased,
-            "sub": subtotal, "total": subtotal, "sched": scheduled,
-            "delivered": delivered_at, "admin": admin_id,
-        })
-        counts["orders"] += 1
+        existing = db.execute(text("""
+            SELECT id FROM sales_orders WHERE company_id = :cid AND number = :num
+        """), {"cid": CFG["company_id"], "num": so_number}).fetchone()
+        if existing:
+            oid = existing[0]
+            db.execute(text("""
+                UPDATE sales_orders SET customer_id = :custid, cemetery_id = :cemid,
+                    status = :status, order_date = :odate, deceased_name = :deceased,
+                    order_type = 'funeral', subtotal = :sub, total = :total,
+                    scheduled_date = :sched, delivered_at = :delivered,
+                    updated_at = :now
+                WHERE id = :id
+            """), {
+                "id": oid, "custid": customer_ids[cust_name],
+                "cemid": cemetery_ids[cem_name], "status": status,
+                "odate": order_date, "deceased": deceased,
+                "sub": subtotal, "total": subtotal, "sched": scheduled,
+                "delivered": delivered_at, "now": NOW,
+            })
+        else:
+            oid = uid()
+            db.execute(text("""
+                INSERT INTO sales_orders (id, company_id, number, customer_id, cemetery_id,
+                    status, order_date, deceased_name, order_type, subtotal, total,
+                    scheduled_date, delivered_at, created_by, created_at)
+                VALUES (:id, :cid, :num, :custid, :cemid,
+                    :status, :odate, :deceased, 'funeral', :sub, :total,
+                    :sched, :delivered, :admin, :odate)
+            """), {
+                "id": oid, "cid": CFG["company_id"], "num": so_number,
+                "custid": customer_ids[cust_name], "cemid": cemetery_ids[cem_name],
+                "status": status, "odate": order_date, "deceased": deceased,
+                "sub": subtotal, "total": subtotal, "sched": scheduled,
+                "delivered": delivered_at, "admin": admin_id,
+            })
+            counts["orders"] += 1
 
-        # Order lines — vault + equipment
+        # Order lines — cleanup-then-insert. Always exactly 2 lines per order.
+        db.execute(text("DELETE FROM sales_order_lines WHERE sales_order_id = :oid"),
+                   {"oid": oid})
         for sort_idx, (prod_id, prod_price, desc) in enumerate([
             (vault_pid, vault_price, vault),
             (equip_pid, equip_price, equip),
@@ -741,34 +904,62 @@ def _seed_invoices(db: Session, customer_ids: dict, product_map: dict, admin_id:
         ("Memorial Chapel", "Venetian", "overdue", 60, False),
     ]
 
+    # R-1.6.4: idempotent. invoices has no DB UNIQUE but natural key
+    # (company_id, number) is deterministic from the loop index.
+    # customer_payments has no DB UNIQUE but reference_number CHK-NNNN
+    # is deterministic too. invoice_lines + customer_payment_applications:
+    # cleanup-then-insert (single line + single application per invoice).
     for i, (cust_name, prod_name, status, days_ago, is_paid) in enumerate(invoices, 1):
-        inv_id = uid()
         inv_date = NOW - timedelta(days=days_ago)
         due_date = inv_date + timedelta(days=30)
         prod_id, price, _ = product_map[prod_name]
         inv_number = f"INV-2026-{i:04d}"
+        ref_number = f"CHK-{1000 + i}"
 
         amount_paid = price if is_paid else Decimal("0.00")
         paid_at = inv_date + timedelta(days=15) if is_paid else None
 
-        db.execute(text("""
-            INSERT INTO invoices (id, company_id, number, customer_id, status,
-                invoice_date, due_date, subtotal, total, amount_paid, paid_at,
-                deceased_name, created_by, created_at)
-            VALUES (:id, :cid, :num, :custid, :status,
-                :inv_date, :due_date, :sub, :total, :paid, :paid_at,
-                :deceased, :admin, :inv_date)
-        """), {
-            "id": inv_id, "cid": CFG["company_id"], "num": inv_number,
-            "custid": customer_ids[cust_name], "status": status,
-            "inv_date": inv_date, "due_date": due_date,
-            "sub": price, "total": price, "paid": amount_paid,
-            "paid_at": paid_at, "deceased": f"Estate of Client {i}",
-            "admin": admin_id,
-        })
-        counts["invoices"] += 1
+        existing_inv = db.execute(text("""
+            SELECT id FROM invoices WHERE company_id = :cid AND number = :num
+        """), {"cid": CFG["company_id"], "num": inv_number}).fetchone()
+        if existing_inv:
+            inv_id = existing_inv[0]
+            db.execute(text("""
+                UPDATE invoices SET customer_id = :custid, status = :status,
+                    invoice_date = :inv_date, due_date = :due_date,
+                    subtotal = :sub, total = :total, amount_paid = :paid,
+                    paid_at = :paid_at, deceased_name = :deceased,
+                    updated_at = :now
+                WHERE id = :id
+            """), {
+                "id": inv_id, "custid": customer_ids[cust_name],
+                "status": status, "inv_date": inv_date, "due_date": due_date,
+                "sub": price, "total": price, "paid": amount_paid,
+                "paid_at": paid_at, "deceased": f"Estate of Client {i}",
+                "now": NOW,
+            })
+        else:
+            inv_id = uid()
+            db.execute(text("""
+                INSERT INTO invoices (id, company_id, number, customer_id, status,
+                    invoice_date, due_date, subtotal, total, amount_paid, paid_at,
+                    deceased_name, created_by, created_at)
+                VALUES (:id, :cid, :num, :custid, :status,
+                    :inv_date, :due_date, :sub, :total, :paid, :paid_at,
+                    :deceased, :admin, :inv_date)
+            """), {
+                "id": inv_id, "cid": CFG["company_id"], "num": inv_number,
+                "custid": customer_ids[cust_name], "status": status,
+                "inv_date": inv_date, "due_date": due_date,
+                "sub": price, "total": price, "paid": amount_paid,
+                "paid_at": paid_at, "deceased": f"Estate of Client {i}",
+                "admin": admin_id,
+            })
+            counts["invoices"] += 1
 
-        # Invoice line
+        # Invoice line — cleanup-then-insert (1 line per invoice).
+        db.execute(text("DELETE FROM invoice_lines WHERE invoice_id = :iid"),
+                   {"iid": inv_id})
         db.execute(text("""
             INSERT INTO invoice_lines (id, invoice_id, product_id,
                 description, quantity, unit_price, line_total, sort_order)
@@ -777,44 +968,87 @@ def _seed_invoices(db: Session, customer_ids: dict, product_map: dict, admin_id:
                "desc": prod_name, "price": price})
         counts["invoice_lines"] += 1
 
-        # Payment for paid invoice
+        # Payment for paid invoice — natural key (company_id, reference_number).
         if is_paid:
-            pay_id = uid()
+            existing_pay = db.execute(text("""
+                SELECT id FROM customer_payments
+                WHERE company_id = :cid AND reference_number = :ref
+            """), {"cid": CFG["company_id"], "ref": ref_number}).fetchone()
+            if existing_pay:
+                pay_id = existing_pay[0]
+                db.execute(text("""
+                    UPDATE customer_payments SET customer_id = :custid,
+                        payment_date = :pdate, total_amount = :amt,
+                        payment_method = 'check', updated_at = :now
+                    WHERE id = :id
+                """), {"id": pay_id, "custid": customer_ids[cust_name],
+                       "pdate": paid_at, "amt": price, "now": NOW})
+            else:
+                pay_id = uid()
+                db.execute(text("""
+                    INSERT INTO customer_payments (id, company_id, customer_id,
+                        payment_date, total_amount, payment_method, reference_number,
+                        created_by, created_at)
+                    VALUES (:id, :cid, :custid, :pdate, :amt, 'check', :ref,
+                        :admin, :pdate)
+                """), {
+                    "id": pay_id, "cid": CFG["company_id"],
+                    "custid": customer_ids[cust_name],
+                    "pdate": paid_at, "amt": price,
+                    "ref": ref_number, "admin": admin_id,
+                })
+                counts["payments"] += 1
+
+            # Payment application — cleanup-then-insert (1 application per
+            # payment in this seed). Keyed on payment_id to bound the delete.
             db.execute(text("""
-                INSERT INTO customer_payments (id, company_id, customer_id,
-                    payment_date, total_amount, payment_method, reference_number,
-                    created_by, created_at)
-                VALUES (:id, :cid, :custid, :pdate, :amt, 'check', :ref,
-                    :admin, :pdate)
-            """), {
-                "id": pay_id, "cid": CFG["company_id"],
-                "custid": customer_ids[cust_name],
-                "pdate": paid_at, "amt": price,
-                "ref": f"CHK-{1000 + i}", "admin": admin_id,
-            })
-            # Payment application
+                DELETE FROM customer_payment_applications WHERE payment_id = :payid
+            """), {"payid": pay_id})
             db.execute(text("""
                 INSERT INTO customer_payment_applications (id, payment_id,
                     invoice_id, amount_applied)
                 VALUES (:id, :payid, :invid, :amt)
             """), {"id": uid(), "payid": pay_id,
                    "invid": inv_id, "amt": price})
-            counts["payments"] += 1
 
     db.flush()
 
 
 def _seed_price_list(db: Session, product_map: dict, admin_id: str):
-    """Create one active price list version with items for all products."""
-    ver_id = uid()
+    """Create one active price list version with items for all products.
+
+    R-1.6.4: idempotent. price_list_versions has UniqueConstraint
+    (tenant_id, version_number) per app/models/price_list_version.py —
+    would crash on re-seed without lookup. price_list_items: cleanup-
+    then-insert (deterministic 1:1 with active products, ~26 rows).
+    """
     today = date.today()
 
+    existing_ver = db.execute(text("""
+        SELECT id FROM price_list_versions WHERE tenant_id = :tid AND version_number = 1
+    """), {"tid": CFG["company_id"]}).fetchone()
+    if existing_ver:
+        ver_id = existing_ver[0]
+        db.execute(text("""
+            UPDATE price_list_versions SET label = :label, status = 'active',
+                effective_date = :eff, activated_at = :now
+            WHERE id = :id
+        """), {"id": ver_id, "label": "2026 Test Price List",
+               "eff": today, "now": NOW})
+    else:
+        ver_id = uid()
+        db.execute(text("""
+            INSERT INTO price_list_versions (id, tenant_id, version_number, label,
+                status, effective_date, activated_at, created_by_user_id, created_at)
+            VALUES (:id, :tid, 1, :label, 'active', :eff, :now, :admin, :now)
+        """), {"id": ver_id, "tid": CFG["company_id"], "label": "2026 Test Price List",
+               "eff": today, "now": NOW, "admin": admin_id})
+
+    # Price list items — cleanup-then-insert. Bounded delete (this version
+    # only) so other tenants' price lists are untouched.
     db.execute(text("""
-        INSERT INTO price_list_versions (id, tenant_id, version_number, label,
-            status, effective_date, activated_at, created_by_user_id, created_at)
-        VALUES (:id, :tid, 1, :label, 'active', :eff, :now, :admin, :now)
-    """), {"id": ver_id, "tid": CFG["company_id"], "label": "2026 Test Price List",
-           "eff": today, "now": NOW, "admin": admin_id})
+        DELETE FROM price_list_items WHERE tenant_id = :tid AND version_id = :vid
+    """), {"tid": CFG["company_id"], "vid": ver_id})
 
     # Build category lookup for display ordering
     category_order = {
@@ -915,22 +1149,43 @@ def _seed_kb(db: Session, admin_id: str, product_map: dict):
         _, price, _ = product_map[name]
         pricing_content += f"- {name}: ${price:,.2f}\n"
 
-    doc_id = uid()
-    db.execute(text("""
-        INSERT INTO kb_documents (id, tenant_id, category_id, title, description,
-            raw_content, parsed_content, parsing_status, chunk_count,
-            uploaded_by_user_id, is_active, created_at, updated_at)
-        VALUES (:id, :tid, :catid, :title, :desc,
-            :raw, :parsed, 'complete', 1,
-            :admin, true, :now, :now)
-    """), {
-        "id": doc_id, "tid": CFG["company_id"], "catid": cat_ids["Product Pricing"],
-        "title": "Standard Vault Pricing 2026",
-        "desc": "Complete pricing for all burial vaults and services",
-        "raw": pricing_content, "parsed": pricing_content,
-        "admin": admin_id, "now": NOW,
-    })
-    counts["kb_documents"] += 1
+    # R-1.6.4: idempotent. kb_documents has no DB UNIQUE; natural key
+    # (tenant_id, title) used for the seeded "Standard Vault Pricing 2026".
+    doc_title = "Standard Vault Pricing 2026"
+    existing_doc = db.execute(text("""
+        SELECT id FROM kb_documents WHERE tenant_id = :tid AND title = :title
+    """), {"tid": CFG["company_id"], "title": doc_title}).fetchone()
+    if existing_doc:
+        db.execute(text("""
+            UPDATE kb_documents SET category_id = :catid, description = :desc,
+                raw_content = :raw, parsed_content = :parsed,
+                parsing_status = 'complete', chunk_count = 1,
+                is_active = true, updated_at = :now
+            WHERE id = :id
+        """), {
+            "id": existing_doc[0],
+            "catid": cat_ids["Product Pricing"],
+            "desc": "Complete pricing for all burial vaults and services",
+            "raw": pricing_content, "parsed": pricing_content,
+            "now": NOW,
+        })
+    else:
+        doc_id = uid()
+        db.execute(text("""
+            INSERT INTO kb_documents (id, tenant_id, category_id, title, description,
+                raw_content, parsed_content, parsing_status, chunk_count,
+                uploaded_by_user_id, is_active, created_at, updated_at)
+            VALUES (:id, :tid, :catid, :title, :desc,
+                :raw, :parsed, 'complete', 1,
+                :admin, true, :now, :now)
+        """), {
+            "id": doc_id, "tid": CFG["company_id"], "catid": cat_ids["Product Pricing"],
+            "title": doc_title,
+            "desc": "Complete pricing for all burial vaults and services",
+            "raw": pricing_content, "parsed": pricing_content,
+            "admin": admin_id, "now": NOW,
+        })
+        counts["kb_documents"] += 1
     db.flush()
 
 
