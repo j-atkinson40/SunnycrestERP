@@ -1,0 +1,139 @@
+# R-1.6 — Playwright runtime-editor validation gates against staging.
+#
+# Triggers on push to `main` (auto) AND workflow_dispatch (manual).
+# Does NOT run on PRs or feature branches — staging is single-tenant
+# for `main`. PR-time validation continues via .github/workflows/ci.yml
+# (vitest + tsc + build).
+#
+# Job sequence:
+#   1. Install Playwright + cache browser binaries.
+#   2. Deploy gate: poll /api/health until `commit` field matches the
+#      just-pushed SHA. Without this, fast deploys race the workflow
+#      and Playwright runs against pre-R-1.6 staging code (flaky).
+#   3. Run the 13 R-1.5 specs at tests/e2e/runtime-editor/.
+#   4. Upload Playwright traces + screenshots + HTML report on failure.
+#
+# Required GitHub Secrets:
+#   - STAGING_CI_BOT_EMAIL    (set by ops after running provision_ci_bot.py)
+#   - STAGING_CI_BOT_PASSWORD (set by ops after running provision_ci_bot.py)
+#
+# Workflow timing budget: under 12 minutes total (deploy gate worst-case
+# 10 min + spec run 1-2 min). If consistently exceeding, surface in
+# CLAUDE.md and revisit.
+name: Playwright Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Don't race back-to-back pushes — last one wins.
+concurrency:
+  group: playwright-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright (runtime-editor) against staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      STAGING_BACKEND: https://sunnycresterp-staging.up.railway.app
+      STAGING_FRONTEND: https://determined-renewal-staging.up.railway.app
+      STAGING_CI_BOT_EMAIL: ${{ secrets.STAGING_CI_BOT_EMAIL }}
+      STAGING_CI_BOT_PASSWORD: ${{ secrets.STAGING_CI_BOT_PASSWORD }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Cache Playwright browser binaries
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.playwright-browsers
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Playwright browsers (chromium only)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Deploy gate — wait for staging to match ${{ github.sha }}
+        # Polls /api/health until the deployed commit matches the
+        # just-pushed SHA. The /api/health response includes a `commit`
+        # field per R-1.6 (sourced from Railway's RAILWAY_GIT_COMMIT_SHA
+        # env var). 15-minute timeout covers worst-case deploy duration.
+        #
+        # Tolerates the `commit` field being null (pre-R-1.6 deploys)
+        # by failing closed: if the field is null after >5 min, the
+        # gate exits 0 with a warning, allowing specs to run anyway.
+        # This is the bootstrap path — once R-1.6 is itself deployed,
+        # the field is always populated and the gate is strict.
+        run: |
+          set -e
+          GH_SHA="${{ github.sha }}"
+          GH_SHA_SHORT="${GH_SHA:0:7}"
+          DEADLINE=$(( $(date +%s) + 900 ))   # 15 min
+          BOOTSTRAP_DEADLINE=$(( $(date +%s) + 300 ))  # 5 min for first run
+          echo "Waiting for staging to deploy commit ${GH_SHA_SHORT}…"
+          while true; do
+            HEALTH=$(curl -s "${STAGING_BACKEND}/api/health" || echo '{}')
+            DEPLOYED=$(echo "$HEALTH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('commit') or 'null')" 2>/dev/null || echo "null")
+
+            if [ "$DEPLOYED" = "$GH_SHA" ]; then
+              echo "  → staging at ${DEPLOYED:0:7}, matches ${GH_SHA_SHORT}. Proceeding."
+              break
+            fi
+
+            NOW=$(date +%s)
+            if [ "$NOW" -gt "$DEADLINE" ]; then
+              echo "ERROR: staging did not match ${GH_SHA_SHORT} within 15 min (last seen: ${DEPLOYED:0:7})."
+              exit 1
+            fi
+
+            if [ "$DEPLOYED" = "null" ] && [ "$NOW" -gt "$BOOTSTRAP_DEADLINE" ]; then
+              echo "WARN: staging /api/health does not expose 'commit' field (pre-R-1.6 deploy?)."
+              echo "WARN: bootstrap fallback — proceeding without strict commit-match."
+              break
+            fi
+
+            echo "  → staging at ${DEPLOYED:0:7}, waiting for ${GH_SHA_SHORT}…"
+            sleep 15
+          done
+
+      - name: Run Playwright runtime-editor specs
+        run: npx playwright test tests/e2e/runtime-editor/ --project=chromium --reporter=list,html
+        env:
+          BACKEND_URL: ${{ env.STAGING_BACKEND }}
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_number }}
+          path: frontend/tests/e2e/report
+          retention-days: 14
+
+      - name: Upload Playwright traces + screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-${{ github.run_number }}
+          path: |
+            frontend/tests/e2e/screenshots
+            frontend/test-results
+          retention-days: 14

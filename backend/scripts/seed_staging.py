@@ -2,11 +2,19 @@
 """Seed staging database directly via SQLAlchemy ORM.
 
 Run:  DATABASE_URL=postgresql://... python scripts/seed_staging.py
+      DATABASE_URL=... python scripts/seed_staging.py --idempotent
 
 Creates a complete test tenant with users, customers, contacts,
 cemeteries, products, orders, invoices, price list, and KB data.
+
+R-1.6: --idempotent flag (default behavior is also idempotent — the
+flag adds explicit verbose-skip output and is the canonical mode for
+railway-start.sh post-migration invocation. When data already exists
+at the canonical company_id OR slug, the seeder cleans + re-seeds for
+end-state consistency).
 """
 
+import argparse
 import os
 import sys
 import uuid
@@ -75,8 +83,27 @@ counts = {
 
 
 def main():
+    # R-1.6: --idempotent flag for verbose-skip mode + safety guard
+    # against accidental production runs.
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--idempotent",
+        action="store_true",
+        help=(
+            "Verbose-skip mode. Re-runs against existing data clean + "
+            "re-seed for end-state consistency. Safe for railway-start.sh."
+        ),
+    )
+    args = parser.parse_args()
+
+    if os.getenv("ENVIRONMENT", "").lower() == "production":
+        print("SAFETY: Refusing to run seed_staging.py in production.")
+        sys.exit(2)
+
     engine = create_engine(DATABASE_URL, echo=False)
     print(f"=== Staging DB Seed ===")
+    if args.idempotent:
+        print("Mode:     idempotent (re-run is safe; existing data is cleaned + reseeded)")
     print(f"Database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else '(local)'}")
     print(f"Tenant:   {CFG['company_id']} ({COMPANY_NAME})")
     print()

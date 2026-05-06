@@ -1,41 +1,39 @@
 /**
- * Gate 1: Pick Hopkins FH + director1 in picker → land at runtime
- * editor with /dashboard rendered.
+ * Gate 1: Pick Hopkins FH + director in picker → land at runtime
+ * editor with the impersonated tenant's dashboard rendered.
+ *
+ * R-1.6 behavioral: drives the full flow — platform admin login,
+ * tenant lookup via picker, impersonation API call, redirect into
+ * the editor shell with active impersonation session.
  */
 import { test, expect } from "@playwright/test"
 import {
-  HOPKINS_DIRECTOR_USERNAME,
   HOPKINS_FH_SLUG,
   loginAsPlatformAdmin,
+  openEditorForHopkins,
 } from "./_shared"
 
 
 test.describe("Gate 1 — picker lands on dashboard", () => {
-  test("picker → impersonate → editor shell mounts", async ({ page }) => {
-    await loginAsPlatformAdmin(page)
-    await page.goto("/bridgeable-admin/runtime-editor")
-    // Picker form renders.
-    await expect(page.getByTestId("runtime-editor-picker")).toBeVisible({
+  test("picker → impersonate → editor shell mounts impersonated tenant", async ({
+    page,
+  }) => {
+    // Drive the canonical flow end-to-end: platform admin auth,
+    // tenant resolution, impersonation, shell mount.
+    const sess = await openEditorForHopkins(page)
+
+    // URL carries the canonical query params.
+    expect(page.url()).toContain(`tenant=${HOPKINS_FH_SLUG}`)
+    expect(page.url()).toContain(`user=${encodeURIComponent(sess.impersonatedUserId)}`)
+
+    // Editor shell mounted (NOT missing-params, NOT unauth).
+    await expect(page.getByTestId("runtime-editor-shell")).toBeVisible({
       timeout: 30_000,
     })
-    // Without driving the full flow against staging (which depends on
-    // a deploy + seeded tenant), assert the picker form renders +
-    // exposes the canonical Tenant + user + reason inputs. End-to-end
-    // assertion (impersonation → /dashboard mount with director1's
-    // view) runs once the tenant + impersonation API are exercised
-    // against the post-R-1.5 staging deploy.
-    await expect(
-      page.getByTestId("runtime-editor-picker-user-id"),
-    ).toBeVisible()
-    await expect(
-      page.getByTestId("runtime-editor-picker-reason"),
-    ).toBeVisible()
-    await expect(
-      page.getByTestId("runtime-editor-picker-start"),
-    ).toBeVisible()
-    // Slug + director_username fixtures present for the staging-integration
-    // run that drives the picker fields.
-    expect(HOPKINS_FH_SLUG).toBeTruthy()
-    expect(HOPKINS_DIRECTOR_USERNAME).toBeTruthy()
+    await expect(page.getByTestId("runtime-editor-ribbon")).toBeVisible()
+    // Ribbon carries the tenant slug + impersonated user.
+    await expect(page.getByTestId("runtime-editor-tenant")).toHaveText(
+      HOPKINS_FH_SLUG,
+    )
   })
 })

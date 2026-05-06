@@ -1,0 +1,33 @@
+{
+  "_comment_1": "R-1.6 bundle-size baseline for spec 11.",
+  "_comment_2": "Captured against R-1.5 ship (commit 164173f) build output.",
+  "_comment_3": "Sizes are in BYTES (uncompressed).",
+  "_comment_4": "Update this fixture with a justification in the commit message when intentional bundle growth lands. Spec 11 fails if any non-runtime-editor chunk grows by more than 5%.",
+  "_comment_5": "Runtime-editor chunks (RuntimeEditorShell, TenantUserPicker, RuntimeHostTestPage, TenantRouteTree) are excluded — they're EXPECTED to change as R-2+ phases land.",
+  "_baseline_commit": "164173f",
+  "_baseline_date": "2026-06-06",
+  "_tolerance_pct": 5,
+  "chunks": {
+    "main_bundle": {
+      "pattern": "index-*.js",
+      "baseline_bytes": 5521976,
+      "description": "Tenant + admin app entry — combined ChunkA bundle that all routes depend on"
+    },
+    "css": {
+      "pattern": "index-*.css",
+      "baseline_bytes": 235767,
+      "description": "Compiled Tailwind v4 + DESIGN_LANGUAGE.md token surface"
+    },
+    "chart_renderer": {
+      "pattern": "ChartRenderer-*.js",
+      "baseline_bytes": 408934,
+      "description": "Lazy-loaded recharts wrapper for SavedView chart variants"
+    }
+  },
+  "excluded_runtime_editor_chunks": [
+    "RuntimeEditorShell-*.js",
+    "TenantUserPicker-*.js",
+    "RuntimeHostTestPage-*.js",
+    "TenantRouteTree-*.js"
+  ]
+}

@@ -331,11 +331,28 @@ def stop_job_scheduler():
 
 @app.get("/api/health", tags=["System"])
 def health_check():
-    """Health check endpoint — used by Railway, load balancers, and CI."""
+    """Health check endpoint — used by Railway, load balancers, and CI.
+
+    R-1.6: response includes the deployed commit hash so CI Playwright
+    workflows can poll until staging matches the just-pushed commit
+    before running specs (closes the deploy-gate timing race per
+    .github/workflows/playwright-staging.yml).
+
+    The `commit` field is read from `RAILWAY_GIT_COMMIT_SHA` (Railway
+    injects this on every deploy). When the env var is missing (local
+    dev, non-Railway hosts), the field is `null` — consumers must
+    tolerate `null` for non-staging contexts. Existing health-check
+    consumers see only additive fields; the response shape remains
+    backward-compatible.
+    """
     health: dict = {
         "status": "healthy",
         "api_version": "v1",
         "environment": settings.ENVIRONMENT,
+        # R-1.6 deploy-gate field. Railway sets RAILWAY_GIT_COMMIT_SHA
+        # on every deploy; non-Railway hosts see the env var absent and
+        # the field becomes None.
+        "commit": os.getenv("RAILWAY_GIT_COMMIT_SHA"),
     }
 
     # Quick DB check

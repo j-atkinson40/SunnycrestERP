@@ -1158,7 +1158,28 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="Actually apply changes (default: dry-run)")
     parser.add_argument("--force", action="store_true", help="Recreate the demo case even if one exists")
+    # R-1.6: --idempotent is the explicit-intent alias for the default
+    # ensure-or-skip behavior (no --force). The flag is a verbose marker
+    # for railway-start.sh + CI invocations: "I expect this to be safe
+    # to re-run on every deploy." If --force is passed alongside
+    # --idempotent, --force takes precedence (caller wanted explicit
+    # recreation) and the script logs a warning.
+    parser.add_argument(
+        "--idempotent",
+        action="store_true",
+        help=(
+            "Verbose-skip mode: re-run on existing data is a no-op. "
+            "Same end-state as default behavior. Logs each ensure/skip "
+            "decision. Safe for railway-start.sh re-invocation."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.force and args.idempotent:
+        print(
+            "WARNING: --force overrides --idempotent. The demo case will "
+            "be deleted + recreated."
+        )
 
     if os.getenv("ENVIRONMENT", "").lower() == "production":
         print("SAFETY: Refusing to run in production.")
@@ -1167,11 +1188,11 @@ def main():
     if not args.apply:
         print("DRY-RUN — pass --apply to execute.")
         print("Would create/ensure:")
-        print("  - hopkinsfh tenant + admin + 2 directors + office")
-        print("  - stmarys cemetery tenant + admin")
+        print("  - hopkins-fh tenant + admin + 2 directors + office")
+        print("  - st-marys cemetery tenant + admin")
         print("  - 40 plots in 4 sections with map config")
-        print("  - platform_tenant_relationships: hopkinsfh → sunnycrest (manufacturer)")
-        print("  - platform_tenant_relationships: hopkinsfh → stmarys (cemetery)")
+        print("  - platform_tenant_relationships: hopkins-fh → sunnycrest (manufacturer)")
+        print("  - platform_tenant_relationships: hopkins-fh → st-marys (cemetery)")
         print("  - Demo case FC-2026-0001 (John Michael Smith) at the Story step")
         print("  - Phase 1G — Personalization Studio canonical demo seed:")
         print("    · email.personalization_studio_share_granted +")
@@ -1192,7 +1213,9 @@ def main():
     db = SessionLocal()
     try:
         # Hopkins FH
-        hopkins = _ensure_company(db, "hopkinsfh", {
+        # R-1.6: slug aligned to canonical CLAUDE.md docs ("hopkins-fh" not "hopkinsfh").
+        # Email domain stays @hopkinsfh.test (separate from tenant slug).
+        hopkins = _ensure_company(db, "hopkins-fh", {
             "name": "Hopkins Funeral Home",
             "vertical": "funeral_home",
         })
@@ -1222,7 +1245,8 @@ def main():
         })
 
         # St Mary's Cemetery
-        stmarys = _ensure_company(db, "stmarys", {
+        # R-1.6: slug aligned to canonical CLAUDE.md docs ("st-marys" not "stmarys").
+        stmarys = _ensure_company(db, "st-marys", {
             "name": "St. Mary's Cemetery",
             "vertical": "cemetery",
         })

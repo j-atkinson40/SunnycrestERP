@@ -1,37 +1,113 @@
 /**
- * Gate 11: Bundle delta within +5% of R-0 baseline for non-runtime-
- * editor admin pages.
+ * Gate 11: Bundle delta within +5% of R-1.5 baseline for non-runtime-
+ * editor chunks.
  *
- * R-1 ship build report (commit 618fcda):
- *   index-Bsave0kM.js                   5,516.80 kB │ gzip: 1,315.32 kB
- *   ChartRenderer-BnkLSl2Q.js             399.35 kB │ gzip:   115.08 kB
- *   RuntimeEditorShell-nQ1r68Uu.js         29.01 kB │ gzip:     8.68 kB
- *   TenantUserPicker-WjSRC-Ek.js            3.46 kB │ gzip:     1.34 kB
- *   RuntimeHostTestPage-dxvUuq8Q.js         2.41 kB │ gzip:     0.84 kB
+ * R-1.6 reads `tests/e2e/runtime-editor/fixtures/bundle-baseline.json`
+ * + scans the local `dist/` directory for matching chunks. For each
+ * chunk: assert size is within tolerance.
  *
- * R-1.5 adds: 6 widget-edit-mode gates (~50 LOC each in widget
- * source) + ESLint rule (no bundle impact, dev-only) + 7 vitest
- * specs (no bundle impact, test-only) + 13 Playwright specs (no
- * bundle impact, test-only). The widget gates add < 1 KB each
- * gzipped to the main bundle, well under +5%.
+ * Runtime-editor chunks (RuntimeEditorShell, TenantUserPicker, etc.)
+ * are excluded — they're EXPECTED to change as R-2+ ships. The
+ * baseline fixture's `excluded_runtime_editor_chunks` field
+ * documents the exclusion list.
  *
- * Spec validates against `vite build` artifact metadata — runs in
- * the build pipeline alongside vite-bundle-visualizer.
+ * The spec runs locally against `frontend/dist/` (post `vite build`).
+ * In the CI workflow, this spec gates on the build artifact existing.
  */
 import { test, expect } from "@playwright/test"
+import { readFileSync, readdirSync, statSync } from "node:fs"
+import { join, resolve, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 
 
-test.describe("Gate 11 — bundle delta", () => {
-  test("R-1.5 ship within +5% of R-1 baseline non-runtime-editor chunks", async () => {
-    // R-1 baseline main bundle: 5,516.80 kB. +5% ceiling: 5,792.64 kB.
-    const R_1_MAIN_BUNDLE_KB = 5_516.80
-    const TOLERANCE = 0.05
-    const ceiling = R_1_MAIN_BUNDLE_KB * (1 + TOLERANCE)
-    expect(ceiling).toBeGreaterThan(R_1_MAIN_BUNDLE_KB)
-    // Actual measurement happens in the build pipeline reading
-    // dist/ artifact sizes. Encoded as a pure assertion here so the
-    // contract is committed alongside the rest of the gate suite.
-    // CI hook: `vite build && node scripts/check-bundle-size.mjs`
-    // (script is a follow-up — test contract committed now).
+// Playwright runs specs as ESM modules; __dirname is undefined.
+// Derive it from import.meta.url.
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+
+interface BaselineChunk {
+  pattern: string
+  baseline_bytes: number
+  description: string
+}
+
+interface BaselineFixture {
+  _tolerance_pct: number
+  _baseline_commit: string
+  chunks: Record<string, BaselineChunk>
+  excluded_runtime_editor_chunks: string[]
+}
+
+
+function loadBaseline(): BaselineFixture {
+  const fixturePath = resolve(
+    __dirname,
+    "fixtures",
+    "bundle-baseline.json",
+  )
+  return JSON.parse(readFileSync(fixturePath, "utf-8"))
+}
+
+
+function findChunkSize(distDir: string, pattern: string): number | null {
+  // Pattern is like "index-*.js" — strip the wildcard and find the
+  // first file in dist/assets/ whose name starts with the prefix
+  // and ends with the suffix.
+  const [prefix, suffix] = pattern.split("*")
+  const assetsDir = join(distDir, "assets")
+  let files: string[]
+  try {
+    files = readdirSync(assetsDir)
+  } catch {
+    return null
+  }
+  const match = files.find(
+    (f) => f.startsWith(prefix) && f.endsWith(suffix),
+  )
+  if (!match) return null
+  return statSync(join(assetsDir, match)).size
+}
+
+
+test.describe("Gate 11 — bundle delta within +5%", () => {
+  test("each non-runtime-editor chunk size is within tolerance", async () => {
+    const baseline = loadBaseline()
+    const distDir = resolve(__dirname, "..", "..", "..", "dist")
+    const tolerance = baseline._tolerance_pct / 100
+
+    let distExists = true
+    try {
+      statSync(distDir)
+    } catch {
+      distExists = false
+    }
+    test.skip(
+      !distExists,
+      `Skipping bundle-delta gate — ${distDir} not present. ` +
+        `Run "npx vite build" before this spec.`,
+    )
+
+    const failures: string[] = []
+    for (const [name, chunk] of Object.entries(baseline.chunks)) {
+      const size = findChunkSize(distDir, chunk.pattern)
+      if (size === null) {
+        failures.push(
+          `Chunk '${name}' (${chunk.pattern}) not found in dist/assets/`,
+        )
+        continue
+      }
+      const delta = (size - chunk.baseline_bytes) / chunk.baseline_bytes
+      const ceiling = chunk.baseline_bytes * (1 + tolerance)
+      if (size > ceiling) {
+        failures.push(
+          `Chunk '${name}' grew ${(delta * 100).toFixed(2)}% — ${size} bytes ` +
+            `vs baseline ${chunk.baseline_bytes} (ceiling ${Math.floor(ceiling)}). ` +
+            `If intentional: update fixtures/bundle-baseline.json + add ` +
+            `justification to commit message.`,
+        )
+      }
+    }
+    expect(failures).toEqual([])
   })
 })
