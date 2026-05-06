@@ -108,10 +108,21 @@ describe("registerComponent — validation", () => {
 describe("registerComponent — storage + retrieval", () => {
   beforeEach(() => _internal_clear())
 
-  it("returns the same component reference (purely additive)", () => {
+  it("returns a wrapped component that injects data-component-name", () => {
+    // Phase R-1 contract change: the HOC no longer returns the
+    // original component reference. It returns a thin wrapper that
+    // adds `data-component-name` + `data-component-type` to a
+    // `display: contents` boundary so the runtime editor's click-
+    // to-edit gesture can resolve the nearest registered component
+    // from any pointer event. The wrapper's displayName is
+    // `Registered(<original>)` for React DevTools clarity.
     const Cmp = dummyComponent("X")
+    Cmp.displayName = "MyCmp"
     const Wrapped = registerComponent(baseMeta())(Cmp)
-    expect(Wrapped).toBe(Cmp)
+    expect(Wrapped).not.toBe(Cmp)
+    expect((Wrapped as { displayName?: string }).displayName).toBe(
+      "Registered(MyCmp)",
+    )
   })
 
   it("populates the registry on registration", () => {

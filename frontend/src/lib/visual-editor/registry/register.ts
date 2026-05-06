@@ -29,7 +29,7 @@
  * callbacks) remain free-form.
  */
 
-import type { ComponentType } from "react"
+import { createElement, type ComponentType } from "react"
 
 import {
   _internal_register,
@@ -182,13 +182,58 @@ export function registerComponent<M extends RegistrationMetadata>(
   const frozenMeta = _freezeMetadata(metadata)
 
   return <P>(Component: ComponentType<P>): ComponentType<P> => {
+    // Phase R-1 — wrap with a `data-component-name` boundary so the
+    // runtime editor's click-to-edit gesture can walk up the DOM
+    // from any pointer event and resolve the nearest registered
+    // component. The wrapper uses `display: contents` so it does
+    // NOT participate in layout — child elements appear to the
+    // parent's box-formation as if the wrapper weren't there. The
+    // attributes are queryable via
+    // `document.querySelectorAll('[data-component-name]')` from the
+    // editor's selection overlay.
+    //
+    // Tenant operators see these attributes too; they're harmless
+    // metadata. This avoids the "edit mode injects different
+    // markup" anti-pattern that would create rendering inconsistency
+    // between view + edit contexts.
+    //
+    // Display name + componentVersion preserved so React DevTools
+    // shows a meaningful component name; the wrapper's displayName
+    // is `Registered(<original>)`.
+    const Wrapped: ComponentType<P> = (props: P) =>
+      createElement(
+        "div",
+        {
+          "data-component-name": frozenMeta.name,
+          "data-component-type": frozenMeta.type,
+          "data-component-version": frozenMeta.componentVersion,
+          // `display: contents` removes this box from the visual
+          // formatting context, so the wrapped child renders as
+          // if the wrapper weren't here. WCAG: modern browsers
+          // (Chromium, Firefox 63+, Safari 11.1+) properly
+          // expose accessibility info for `display: contents`.
+          style: { display: "contents" },
+        },
+        createElement(Component as ComponentType<unknown>, props as unknown as object),
+      )
+
+    Wrapped.displayName = `Registered(${
+      (Component as { displayName?: string }).displayName ||
+      (Component as { name?: string }).name ||
+      frozenMeta.name
+    })`
+
     const entry: RegistryEntry = {
       metadata: frozenMeta,
-      component: Component as ComponentType<unknown>,
+      // Store the WRAPPED component so introspection consumers
+      // (preview canvas, editor) see the same DOM the runtime
+      // does. Drift between runtime + editor would defeat the
+      // purpose of the wrapper.
+      component: Wrapped as ComponentType<unknown>,
       registeredAt: Date.now(),
     }
     _internal_register(entry)
-    return Component
+    return Wrapped
   }
 }
 

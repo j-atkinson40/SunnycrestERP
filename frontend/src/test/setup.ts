@@ -46,6 +46,19 @@ if (typeof window !== "undefined" && !window.matchMedia) {
 // message) can leave it in a broken state where `.getItem` is
 // undefined. This installs an always-working in-memory Storage
 // implementation if the current one is missing any method.
+// `ResizeObserver` isn't provided by jsdom. Phase R-1's
+// SelectionOverlay observes the selected widget's bounding rect, and
+// any other component using ResizeObserver in tests needs this stub.
+if (typeof globalThis !== "undefined" && !(globalThis as { ResizeObserver?: unknown }).ResizeObserver) {
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver =
+    ResizeObserverStub
+}
+
 if (
   typeof window !== "undefined" &&
   (typeof window.localStorage?.getItem !== "function" ||

@@ -20,6 +20,7 @@ import {
   GitBranch,
   Layers,
   LayoutDashboard,
+  MousePointerClick,
   Palette,
 } from "lucide-react"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
@@ -137,6 +138,13 @@ export default function VisualEditorIndex() {
           title="Registry inspector"
           description="In-memory component registry browser. Verify metadata coverage + reverse-lookup tokens to consumers."
           testId="ve-card-registry"
+        />
+        <EditorCard
+          to="/runtime-editor"
+          icon={MousePointerClick}
+          title="Edit live tenant pages"
+          description="Open the runtime editor on an impersonated tenant route. Click any registered widget to edit theme tokens, class defaults, or per-component prop overrides — live preview against the tenant's actual data."
+          testId="ve-card-runtime-editor"
         />
       </div>
     </div>

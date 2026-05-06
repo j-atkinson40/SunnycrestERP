@@ -4,13 +4,23 @@ import { AdminAuthProvider } from "./lib/admin-auth-context"
 import { AdminLayout } from "./components/AdminLayout"
 import { VisualEditorLayout } from "./components/VisualEditorLayout"
 
-// Phase R-0 — runtime-host-test page is lazy-loaded so the tenant
-// route tree chunk only ships when an admin actually visits the
-// runtime host. Vite splits at the dynamic-import boundary; admin
-// pages that don't visit /_runtime-host-test/* never pull the
-// tenant chunk into their bundle.
+// Phase R-0 + R-1 — runtime editor pages are lazy-loaded so the
+// tenant route tree chunk only ships when an admin actually visits
+// the editor. Vite splits at the dynamic-import boundary; admin
+// pages that don't visit the runtime editor never pull the tenant
+// chunk into their bundle.
+//
+// R-0 path `/_runtime-host-test/*` is preserved as an alias for the
+// R-1 RuntimeEditorShell — existing test references continue to
+// resolve. The canonical path going forward is `/runtime-editor/*`.
 const RuntimeHostTestPage = lazy(
   () => import("./pages/RuntimeHostTestPage"),
+)
+const RuntimeEditorShell = lazy(
+  () => import("./pages/runtime-editor/RuntimeEditorShell"),
+)
+const TenantUserPicker = lazy(
+  () => import("./pages/runtime-editor/TenantUserPicker"),
 )
 import { AdminLogin } from "./pages/AdminLogin"
 import { HealthDashboard } from "./pages/HealthDashboard"
@@ -108,6 +118,40 @@ export function BridgeableAdminApp() {
     </Suspense>
   )
 
+  // Phase R-1 — Runtime Editor (canonical path). Tenant + user
+  // picker is the entry; the shell is the editor proper. Both
+  // lazy-loaded; both bypass admin/visual-editor layouts and own
+  // their own chrome. Auth gate (platform_admin/support/super_admin)
+  // is enforced inside RuntimeEditorShell + the impersonation API.
+  const runtimeEditorPickerRoute = (
+    <Suspense
+      fallback={
+        <div
+          className="flex h-screen items-center justify-center bg-surface-base text-content-muted"
+          data-testid="runtime-editor-picker-suspense"
+        >
+          <span>Loading runtime editor…</span>
+        </div>
+      }
+    >
+      <TenantUserPicker />
+    </Suspense>
+  )
+  const runtimeEditorShellRoute = (
+    <Suspense
+      fallback={
+        <div
+          className="flex h-screen items-center justify-center bg-surface-base text-content-muted"
+          data-testid="runtime-editor-shell-suspense"
+        >
+          <span>Loading runtime editor…</span>
+        </div>
+      }
+    >
+      <RuntimeEditorShell />
+    </Suspense>
+  )
+
   return (
     <AdminAuthProvider>
       <Routes>
@@ -117,7 +161,8 @@ export function BridgeableAdminApp() {
 
         {/* Phase R-0 runtime-host-test surface — lazy-loaded; super_admin
             gate enforced inside the page. Path-based + subdomain-based
-            entry parallel to visual editor's pattern. */}
+            entry parallel to visual editor's pattern. Preserved as
+            R-1 alias so existing test references resolve. */}
         <Route
           path="/bridgeable-admin/_runtime-host-test/*"
           element={runtimeHostRoute}
@@ -125,6 +170,26 @@ export function BridgeableAdminApp() {
         <Route
           path="/_runtime-host-test/*"
           element={runtimeHostRoute}
+        />
+
+        {/* Phase R-1 — canonical runtime editor entry. The picker at
+            /runtime-editor renders an empty entry surface; the shell
+            mounts when /runtime-editor/?tenant=...&user=... arrives. */}
+        <Route
+          path="/bridgeable-admin/runtime-editor"
+          element={runtimeEditorPickerRoute}
+        />
+        <Route
+          path="/runtime-editor"
+          element={runtimeEditorPickerRoute}
+        />
+        <Route
+          path="/bridgeable-admin/runtime-editor/*"
+          element={runtimeEditorShellRoute}
+        />
+        <Route
+          path="/runtime-editor/*"
+          element={runtimeEditorShellRoute}
         />
 
         {/* Path-based entry: /bridgeable-admin/visual-editor/* — visual editor */}
