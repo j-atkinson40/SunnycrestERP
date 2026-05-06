@@ -111,6 +111,11 @@ def _validate_kind(kind: str) -> None:
         "workflow-node",
         "layout",
         "composite",
+        # Class-configuration phase (May 2026):
+        "entity-card",
+        "button",
+        "form-input",
+        "surface-card",
     }
     if kind not in valid:
         raise InvalidConfigShape(
@@ -455,7 +460,61 @@ def resolve_configuration(
     orphaned: list[str] = []
 
     snapshot = lookup_component(component_kind, component_name)
-    known_keys: set[str] = set(snapshot.keys()) if snapshot else set()
+    component_known_keys: set[str] = set(snapshot.keys()) if snapshot else set()
+
+    # ── Class layer (May 2026) ──────────────────────────────────
+    # Walk the component's class memberships and apply class
+    # defaults BEFORE platform_default. v1: each component belongs
+    # to exactly one class (its ComponentKind), so this loop fires
+    # once per resolution. Multi-class extension drops in here
+    # without changing per-component layer semantics.
+    from app.services.component_class_config import (  # avoid circular imports
+        lookup_class,
+        resolve_class_config,
+        UnknownClass,
+    )
+    from app.services.component_config.registry_snapshot import (
+        lookup_component_classes,
+    )
+
+    classes = lookup_component_classes(component_kind, component_name)
+    # Class-known-keys is the union of the component's own snapshot
+    # keys + every class's registry-snapshot keys. Component props
+    # CAN override class-level shared props (e.g., a widget overrides
+    # `shadowToken` for its specific instance), so the class layer's
+    # known-keys must be applied to its OWN orphan check, not the
+    # component's.
+    for class_name in classes:
+        class_schema = lookup_class(class_name)
+        if class_schema is None:
+            continue
+        try:
+            class_resolved = resolve_class_config(
+                db, component_class=class_name
+            )
+        except UnknownClass:
+            continue
+        class_props = class_resolved.get("props") or {}
+        if not class_props:
+            continue
+        # Class props apply to the merged map. Class layer's own
+        # orphan check already happened in resolve_class_config.
+        merged.update(class_props)
+        sources.append(
+            {
+                "scope": "class_default",
+                "component_class": class_name,
+                "id": class_resolved["source"]["id"] if class_resolved["source"] else None,
+                "version": class_resolved["source"]["version"]
+                if class_resolved["source"]
+                else None,
+                "applied_keys": list(class_props.keys()),
+            }
+        )
+
+    # Per-component layers below override class defaults at
+    # matching keys.
+    known_keys: set[str] = component_known_keys
 
     # Walk the inheritance chain. At each layer, drop orphaned
     # keys silently but record them so the admin UI can flag for

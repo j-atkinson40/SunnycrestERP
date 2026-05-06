@@ -21,6 +21,11 @@ export type PropOverrideMap = Record<string, unknown>
 
 
 export interface ConfigStack {
+  /** Class-level defaults (May 2026 — applied first). */
+  classLayer: PropOverrideMap
+  /** Class names whose entries contributed to the class layer.
+   * Empty when no class default is in play. */
+  classNames: string[]
   platform: PropOverrideMap
   vertical: PropOverrideMap
   tenant: PropOverrideMap
@@ -30,14 +35,22 @@ export interface ConfigStack {
 
 
 export function emptyConfigStack(): ConfigStack {
-  return { platform: {}, vertical: {}, tenant: {}, draft: {} }
+  return {
+    classLayer: {},
+    classNames: [],
+    platform: {},
+    vertical: {},
+    tenant: {},
+    draft: {},
+  }
 }
 
 
-/** Merge in canonical order: platform → vertical → tenant → draft.
+/** Merge in canonical order: class → platform → vertical → tenant → draft.
  * Last-wins per key. Returns a fresh object — never mutates inputs. */
 export function mergeConfigStack(stack: ConfigStack): PropOverrideMap {
   return {
+    ...stack.classLayer,
     ...stack.platform,
     ...stack.vertical,
     ...stack.tenant,
@@ -86,6 +99,7 @@ export function composeEffectiveProps(
 
 export type PropSource =
   | "registration-default"
+  | "class-default"
   | "platform-default"
   | "vertical-default"
   | "tenant-override"
@@ -100,6 +114,7 @@ export function resolvePropSource(
   if (propName in stack.tenant) return "tenant-override"
   if (propName in stack.vertical) return "vertical-default"
   if (propName in stack.platform) return "platform-default"
+  if (propName in stack.classLayer) return "class-default"
   return "registration-default"
 }
 
@@ -114,16 +129,33 @@ export function stackFromResolvedConfig(
   const out = emptyConfigStack()
   out.draft = { ...draft }
 
+  // Class layer is the union of every class_default source's
+  // applied keys. v1: at most one class per component, so a single
+  // entry here. Multi-class extension iterates the same way.
+  const classLayer: PropOverrideMap = {}
+  const classNames = new Set<string>()
+
   for (const src of resolved.sources) {
     const layer: PropOverrideMap = {}
     for (const k of src.applied_keys) {
       if (k in resolved.props) layer[k] = resolved.props[k]
     }
-    if (src.scope === "platform_default") out.platform = layer
-    else if (src.scope === "vertical_default") out.vertical = layer
-    else if (src.scope === "tenant_override") out.tenant = layer
+    // The class_default scope is added by the May 2026 class layer;
+    // backend may emit it alongside the existing per-component
+    // scopes. Cast to broaden the discriminator without redeclaring
+    // the ResolvedConfiguration type at the type-import boundary.
+    const scope = src.scope as string
+    if (scope === "class_default") {
+      Object.assign(classLayer, layer)
+      const cls = (src as { component_class?: string }).component_class
+      if (cls) classNames.add(cls)
+    } else if (scope === "platform_default") out.platform = layer
+    else if (scope === "vertical_default") out.vertical = layer
+    else if (scope === "tenant_override") out.tenant = layer
   }
 
+  out.classLayer = classLayer
+  out.classNames = Array.from(classNames)
   return out
 }
 

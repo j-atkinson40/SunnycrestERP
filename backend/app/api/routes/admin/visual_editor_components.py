@@ -54,6 +54,11 @@ ComponentKind = Literal[
     "workflow-node",
     "layout",
     "composite",
+    # Class-configuration phase (May 2026):
+    "entity-card",
+    "button",
+    "form-input",
+    "surface-card",
 ]
 
 

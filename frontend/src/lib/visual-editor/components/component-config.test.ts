@@ -171,6 +171,8 @@ describe("Phase 3 backfill validation", () => {
 describe("config-resolver merge order", () => {
   it("merges in canonical order — draft wins over tenant wins over vertical wins over platform", () => {
     const stack: ConfigStack = {
+      classLayer: {},
+      classNames: [],
       platform: { x: "p", common: "platform" },
       vertical: { x: "v", common: "vertical" },
       tenant: { x: "t", common: "tenant" },
@@ -183,6 +185,8 @@ describe("config-resolver merge order", () => {
 
   it("composeEffectiveProps applies registration defaults as floor", () => {
     const stack: ConfigStack = {
+      classLayer: {},
+      classNames: [],
       platform: { showRowBreakdown: false }, // override default true
       vertical: {},
       tenant: {},
@@ -202,6 +206,8 @@ describe("config-resolver merge order", () => {
 
   it("resolvePropSource returns the deepest scope that supplies the prop", () => {
     const stack: ConfigStack = {
+      classLayer: {},
+      classNames: [],
       platform: { p: 1 },
       vertical: { v: 2 },
       tenant: { t: 3 },

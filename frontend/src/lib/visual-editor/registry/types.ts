@@ -34,6 +34,15 @@ export type ComponentKind =
   | "workflow-node"
   | "layout"
   | "composite"
+  // ── Class-configuration phase (May 2026) ──────────────────
+  // The four kinds below were added to make cross-cutting
+  // patterns classifiable + class-configurable. See
+  // `lib/visual-editor/registry/class-registrations.ts` for the
+  // class-level configurable props each ComponentKind exposes.
+  | "entity-card"
+  | "button"
+  | "form-input"
+  | "surface-card"
 
 
 // ─── Scope dimensions ────────────────────────────────────────────
@@ -208,6 +217,15 @@ export interface RegistrationMetadata {
    * these in the visual editor; runtime applies them via
    * style overrides (Phase 2+). */
   tokenOverrides?: TokenOverrideMap
+
+  // Class membership ────
+  /** Component classes this registration belongs to. v1 ships with
+   * exactly one entry per array; v2+ may extend to multi-class.
+   * When omitted, defaults to `[type]` so existing registrations
+   * automatically inherit class membership from their ComponentKind.
+   * See `lib/visual-editor/registry/class-registrations.ts` for the
+   * canonical list of classes + their class-level configurable props. */
+  componentClasses?: string[]
 
   // Configuration schema ────
   configurableProps?: Record<string, ConfigPropSchema>

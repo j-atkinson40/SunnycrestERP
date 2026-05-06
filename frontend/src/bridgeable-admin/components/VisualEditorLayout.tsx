@@ -17,6 +17,7 @@ import type { ReactNode } from "react"
 import { Link, Navigate, useLocation } from "react-router-dom"
 import {
   ArrowLeft,
+  Boxes,
   Component,
   GitBranch,
   Library,
@@ -40,6 +41,7 @@ const EDITOR_TABS: EditorTab[] = [
   { to: "/visual-editor", label: "Overview", icon: Library, testId: "ve-tab-overview" },
   { to: "/visual-editor/themes", label: "Themes", icon: Palette, testId: "ve-tab-themes" },
   { to: "/visual-editor/components", label: "Components", icon: Component, testId: "ve-tab-components" },
+  { to: "/visual-editor/classes", label: "Classes", icon: Boxes, testId: "ve-tab-classes" },
   { to: "/visual-editor/workflows", label: "Workflows", icon: GitBranch, testId: "ve-tab-workflows" },
   { to: "/visual-editor/registry", label: "Registry", icon: Layers, testId: "ve-tab-registry" },
 ]

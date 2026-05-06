@@ -7,7 +7,7 @@
  */
 import { useMemo } from "react"
 import { Link } from "react-router-dom"
-import { Component, GitBranch, Layers, Palette } from "lucide-react"
+import { Boxes, Component, GitBranch, Layers, Palette } from "lucide-react"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import { getAllRegistered, getKnownTokens } from "@/lib/visual-editor/registry"
 
@@ -76,6 +76,13 @@ export default function VisualEditorIndex() {
           title="Component editor"
           description="Per-component prop override editor. Auto-generated controls per ConfigPropSchema type backed by component_configurations."
           testId="ve-card-components"
+        />
+        <EditorCard
+          to="/visual-editor/classes"
+          icon={Boxes}
+          title="Class editor"
+          description="Class-level configuration affecting every component in a class — shared shadow elevations, density, accent treatment, etc. Inherits to per-component scopes."
+          testId="ve-card-classes"
         />
         <EditorCard
           to="/visual-editor/workflows"

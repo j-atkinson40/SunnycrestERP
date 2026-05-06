@@ -16,6 +16,7 @@ import RegistryDebugPage from "./pages/visual-editor/RegistryDebugPage"
 import ThemeEditorPage from "./pages/visual-editor/themes/ThemeEditorPage"
 import ComponentEditorPage from "./pages/visual-editor/ComponentEditorPage"
 import WorkflowEditorPage from "./pages/visual-editor/WorkflowEditorPage"
+import ClassEditorPage from "./pages/visual-editor/ClassEditorPage"
 
 /**
  * Accessed via either:
@@ -57,6 +58,7 @@ export function BridgeableAdminApp() {
         <Route index element={<VisualEditorIndex />} />
         <Route path="themes" element={<ThemeEditorPage />} />
         <Route path="components" element={<ComponentEditorPage />} />
+        <Route path="classes" element={<ClassEditorPage />} />
         <Route path="workflows" element={<WorkflowEditorPage />} />
         <Route path="registry" element={<RegistryDebugPage />} />
       </Routes>

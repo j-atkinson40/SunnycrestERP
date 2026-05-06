@@ -359,3 +359,30 @@ def all_components() -> list[tuple[str, str]]:
     """Return every (kind, name) tuple known to the backend snapshot.
     Used by the registry-list endpoint."""
     return list(REGISTRY_SNAPSHOT.keys())
+
+
+# ─── Class membership snapshot (May 2026) ────────────────────────
+#
+# Maps (kind, name) → list of class names the component belongs to.
+# v1 invariant: class == kind. The map is sparse — components not
+# listed here default to `[kind]` via lookup_component_classes().
+# When the frontend declares an explicit `componentClasses` array
+# that differs from `[kind]`, mirror that here so backend resolution
+# applies class-default layers correctly.
+COMPONENT_CLASSES_SNAPSHOT: dict[tuple[str, str], list[str]] = {
+    # No explicit overrides at v1 — every component falls through
+    # to the [kind] default. Future entries land here when a
+    # component's `componentClasses` differs from `[type]`.
+}
+
+
+def lookup_component_classes(kind: str, name: str) -> list[str]:
+    """Return the class memberships for a component.
+
+    v1 invariant: returns `[kind]` unless an explicit override is
+    registered in `COMPONENT_CLASSES_SNAPSHOT`.
+    """
+    explicit = COMPONENT_CLASSES_SNAPSHOT.get((kind, name))
+    if explicit:
+        return list(explicit)
+    return [kind]

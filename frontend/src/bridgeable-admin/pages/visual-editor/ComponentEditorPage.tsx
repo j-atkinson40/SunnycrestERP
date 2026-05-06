@@ -18,6 +18,8 @@
  * visual hierarchy + contextual preview rendering change.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Link } from "react-router-dom"
+import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import {
   AlertCircle,
   ChevronDown,
@@ -813,6 +815,32 @@ export default function ComponentEditorPage() {
                     <span>·</span>
                     <span>{overriddenCount} overridden</span>
                   </div>
+                  {/* Class membership + link to class editor */}
+                  {(() => {
+                    const declared = selectedEntry.metadata.componentClasses
+                    const classes =
+                      declared && declared.length > 0
+                        ? declared
+                        : [selectedEntry.metadata.type]
+                    return (
+                      <div
+                        className="mt-2 flex items-center gap-1.5 rounded-sm bg-surface-sunken px-2 py-1 text-caption"
+                        data-testid="component-class-membership"
+                      >
+                        <span className="text-content-muted">Class:</span>
+                        <span className="font-medium text-content-strong">
+                          {classes.join(" · ")}
+                        </span>
+                        <Link
+                          to={adminPath("/visual-editor/classes")}
+                          className="ml-auto text-accent hover:underline"
+                          data-testid="link-to-class-editor"
+                        >
+                          Edit class defaults →
+                        </Link>
+                      </div>
+                    )
+                  })()}
                 </div>
               ) : (
                 <div className="px-3 py-6 text-center text-caption text-content-muted">

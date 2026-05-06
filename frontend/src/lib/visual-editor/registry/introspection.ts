@@ -164,3 +164,29 @@ export function getCoverageByVertical(): Record<VerticalScope, number> {
 export function getKnownTokens(): readonly string[] {
   return Array.from(_internal_listKnownTokens()).sort()
 }
+
+
+/** Effective class memberships for a registration: explicit
+ * `componentClasses` if declared, else `[type]`. v1 invariant:
+ * every component has exactly one class. The array shape exists
+ * for future multi-class extensibility — see CLAUDE.md §4 class
+ * configuration architecture subsection. */
+export function getEffectiveComponentClasses(
+  entry: RegistryEntry,
+): readonly string[] {
+  const declared = entry.metadata.componentClasses
+  if (declared && declared.length > 0) return declared
+  return [entry.metadata.type]
+}
+
+
+/** All components registered in a given class. Walks every
+ * registration and includes those whose effective class membership
+ * contains `className`. */
+export function getComponentsInClass(
+  className: string,
+): readonly RegistryEntry[] {
+  return getAllRegistered().filter((e) =>
+    getEffectiveComponentClasses(e).includes(className),
+  )
+}

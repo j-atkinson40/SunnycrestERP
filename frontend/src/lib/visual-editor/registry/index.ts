@@ -26,6 +26,8 @@ export {
   getCountByType,
   getCoverageByVertical,
   getKnownTokens,
+  getEffectiveComponentClasses,
+  getComponentsInClass,
 } from "./introspection"
 
 export type {
@@ -46,3 +48,12 @@ export type {
 } from "./types"
 
 export { REGISTRY_SCHEMA_VERSION } from "./types"
+
+// ── Component class layer (May 2026) ─────────────────────────
+export {
+  CLASS_REGISTRATIONS,
+  getAllClassNames,
+  getClassRegistration,
+  getClassProp,
+} from "./class-registrations"
+export type { ClassRegistration } from "./class-registrations"

@@ -24,6 +24,7 @@ import type { ConfigPropSchema } from "@/lib/visual-editor/registry"
 
 export type PropSource =
   | "registration-default"
+  | "class-default"
   | "platform-default"
   | "vertical-default"
   | "tenant-override"
@@ -49,6 +50,7 @@ interface Props {
 function SourceBadge({ source }: { source: PropSource }) {
   const labels: Record<PropSource, { letter: string; tone: string; title: string }> = {
     "registration-default": { letter: "D", tone: "text-content-subtle", title: "Default (registration)" },
+    "class-default": { letter: "C", tone: "text-content-muted", title: "Inherited from class default" },
     "platform-default": { letter: "P", tone: "text-content-muted", title: "Platform default" },
     "vertical-default": { letter: "V", tone: "text-content-muted", title: "Vertical default" },
     "tenant-override": { letter: "T", tone: "text-accent", title: "Tenant override" },

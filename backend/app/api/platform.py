@@ -33,6 +33,7 @@ from app.api.routes.admin import (
     visual_editor_themes,
     visual_editor_components,
     visual_editor_workflows,
+    visual_editor_classes,
 )
 
 platform_router = APIRouter()
@@ -141,4 +142,9 @@ platform_router.include_router(
     visual_editor_workflows.router,
     prefix="/admin/visual-editor/workflows",
     tags=["Visual Editor — Workflows"],
+)
+platform_router.include_router(
+    visual_editor_classes.router,
+    prefix="/admin/visual-editor/classes",
+    tags=["Visual Editor — Component Classes"],
 )
