@@ -264,3 +264,87 @@ registerComponent({
     extractionPromptKey: "scribe.extract_first_call",
   },
 })(makePlaceholder("Arrangement Scribe Generation Focus Template"))
+
+
+// ─── Production Focus templates ────────────────────────────────
+// Templates that map to actual registered Focus instances in the
+// runtime registry (frontend/src/contexts/focus-registry.ts). When
+// the editor renders a preview for these templates, it shows the
+// real production surface (e.g. SchedulingKanbanCore) wrapped in
+// the accessory layer rendered from a focus_compositions row.
+//
+// `compositionFocusType` carries the lookup key the runtime uses
+// per the May 2026 composition runtime integration phase
+// (decoupling descriptive Focus id from composition focus_type).
+
+
+registerComponent({
+  type: "focus-template",
+  name: "funeral-scheduling",
+  displayName: "Funeral Scheduling",
+  description:
+    "Decision Focus for the funeral home dispatcher's daily planning workspace. Bespoke kanban core (SchedulingKanbanCore) handles drag-drop, finalize, ancillary pin; composition layer authors accessory widgets (today, recent_activity, anomalies) in a sidebar rail.",
+  category: "decision-templates",
+  verticals: ["funeral_home"],
+  userParadigms: ["operator-power-user", "focused-executor"],
+  consumedTokens: [
+    "surface-base",
+    "surface-elevated",
+    "surface-raised",
+    "border-base",
+    "border-subtle",
+    "accent",
+    "accent-subtle",
+    "status-success",
+    "status-warning",
+    "shadow-level-2",
+    "radius-base",
+    "text-h3",
+    "text-body",
+  ],
+  configurableProps: {
+    showAccessoryRail: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show accessory rail",
+      description:
+        "When false, the kanban core renders at full width with no composition-authored sidebar. Useful for narrow viewports or kiosk-mode scheduling stations.",
+    },
+    accessoryRailWidth: {
+      type: "number",
+      default: 288,
+      bounds: [240, 480],
+      displayLabel: "Accessory rail width (px)",
+      description:
+        "Width of the right-side accessory region. Cap is 480px so the kanban core retains usable lane width on standard monitors.",
+    },
+    showFinalizeAction: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show Finalize action",
+      description:
+        "Render the Finalize button above the kanban. When false, schedule finalization happens via API only (e.g., for read-only preview tenants).",
+    },
+    daySelectorStyle: {
+      type: "enum",
+      default: "popover-with-flanking-boxes",
+      bounds: ["popover-with-flanking-boxes", "popover-only", "minimal"],
+      displayLabel: "Day selector style",
+      description:
+        "Header treatment — flanking date boxes + popover (canonical), popover trigger only, or minimal arrow buttons.",
+    },
+    showAncillaryPin: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show ancillary pool pin",
+      description: "Render the right-side ancillary pool pin widget.",
+    },
+  },
+  schemaVersion: 1,
+  componentVersion: 1,
+  extensions: {
+    focusType: "decision",
+    compositionFocusType: "scheduling",
+    productionRegistryId: "funeral-scheduling",
+  },
+})(makePlaceholder("Funeral Scheduling Decision Focus Template"))

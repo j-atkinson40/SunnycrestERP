@@ -38,6 +38,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
+  HierarchicalEditorBrowser,
+  type HierarchicalCategory,
+  type HierarchicalTemplate,
+} from "@/bridgeable-admin/components/visual-editor/HierarchicalEditorBrowser"
+import {
   EMPTY_CANVAS,
   workflowTemplatesService,
   type CanvasNode,
@@ -123,6 +128,7 @@ export default function WorkflowEditorPage() {
   // ── Form state for new template ──────────────────────
   const [creatingNewType, setCreatingNewType] = useState(false)
   const [newTypeInput, setNewTypeInput] = useState<string>("")
+  const [browserSearch, setBrowserSearch] = useState("")
 
   // ── Load available templates for current scope/vertical ──
   const refreshTemplateList = useCallback(async () => {
@@ -663,22 +669,41 @@ export default function WorkflowEditorPage() {
               </div>
             ) : (
               <>
-                <select
-                  value={workflowType}
-                  onChange={(e) => setWorkflowType(e.target.value)}
-                  data-testid="workflow-type-select"
-                  className="w-full rounded-md border border-border-base bg-surface-raised px-2 py-1.5 text-body-sm text-content-strong"
+                {/* May 2026 reorganization — flat <select workflow-type-select>
+                    replaced with HierarchicalEditorBrowser. Categories are
+                    workflow types; "templates" mirror the active row per type
+                    (the model has at most one active workflow_template per
+                    (workflow_type, scope, vertical) tuple). Selecting either
+                    sets the active workflowType and loads its template. The
+                    canvas behavior in the center pane is preserved exactly. */}
+                <div
+                  className="-mx-4 mb-1 h-72 overflow-hidden border-y border-border-subtle bg-surface-elevated"
+                  data-testid="workflow-hierarchical-browser-container"
                 >
-                  {availableTemplates.length === 0 ? (
-                    <option value="">— no workflows yet —</option>
-                  ) : (
-                    availableTemplates.map((t) => (
-                      <option key={t.workflow_type} value={t.workflow_type}>
-                        {t.display_name}
-                      </option>
-                    ))
-                  )}
-                </select>
+                  <HierarchicalEditorBrowser
+                    categories={
+                      availableTemplates.map((t) => ({
+                        id: t.workflow_type,
+                        label: t.display_name,
+                        description: t.description ?? undefined,
+                        badge: `v${t.version}`,
+                      })) as HierarchicalCategory[]
+                    }
+                    templates={[] as HierarchicalTemplate[]}
+                    selectedCategoryId={workflowType || null}
+                    selectedTemplateId={null}
+                    search={browserSearch}
+                    onSearchChange={setBrowserSearch}
+                    onSelectCategory={setWorkflowType}
+                    onSelectTemplate={() => {}}
+                    searchPlaceholder="Filter workflow types"
+                    emptyStateForCategory={() => (
+                      <span className="text-content-muted">
+                        Active version on canvas.
+                      </span>
+                    )}
+                  />
+                </div>
                 <Button
                   size="sm"
                   variant="ghost"

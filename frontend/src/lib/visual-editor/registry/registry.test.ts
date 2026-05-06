@@ -408,10 +408,15 @@ describe("Phase 1 auto-register population", () => {
     /* leave registry populated across cases in this block */
   })
 
-  it("populates 13-17 components across the canonical 5 types", () => {
+  it("populates 13-20 components across the canonical 5 types", () => {
+    // May 2026 visual-editor reorganization added `funeral-scheduling`
+    // as a focus-template registration so the editor's hierarchical
+    // browser surfaces it under Decision Focus. Bump the upper bound
+    // accordingly; future production Focus templates registered in the
+    // registry will continue to fall in this range.
     const total = getTotalCount()
     expect(total).toBeGreaterThanOrEqual(13)
-    expect(total).toBeLessThanOrEqual(17)
+    expect(total).toBeLessThanOrEqual(20)
   })
 
   it("includes at least 4 widgets across funeral_home + manufacturing", () => {
@@ -439,9 +444,13 @@ describe("Phase 1 auto-register population", () => {
     ])
   })
 
-  it("includes 2 Focus templates with extensions.focusType set", () => {
+  it("includes Focus templates with extensions.focusType set", () => {
+    // Phase 1 seeded 2 templates (triage-decision + arrangement-scribe).
+    // May 2026 reorganization added funeral-scheduling. Future
+    // production Focus templates continue to register under this
+    // pattern.
     const templates = getByType("focus-template")
-    expect(templates).toHaveLength(2)
+    expect(templates.length).toBeGreaterThanOrEqual(2)
     for (const t of templates) {
       expect(t.metadata.extensions?.focusType).toBeDefined()
     }

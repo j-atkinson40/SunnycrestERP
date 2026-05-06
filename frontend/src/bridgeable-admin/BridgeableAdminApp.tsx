@@ -14,10 +14,11 @@ import { ArcTelemetry } from "./pages/ArcTelemetry"
 import VisualEditorIndex from "./pages/visual-editor/VisualEditorIndex"
 import RegistryDebugPage from "./pages/visual-editor/RegistryDebugPage"
 import ThemeEditorPage from "./pages/visual-editor/themes/ThemeEditorPage"
-import ComponentEditorPage from "./pages/visual-editor/ComponentEditorPage"
 import WorkflowEditorPage from "./pages/visual-editor/WorkflowEditorPage"
 import ClassEditorPage from "./pages/visual-editor/ClassEditorPage"
-import CompositionEditorPage from "./pages/visual-editor/CompositionEditorPage"
+import FocusEditorPage from "./pages/visual-editor/FocusEditorPage"
+import WidgetEditorPage from "./pages/visual-editor/WidgetEditorPage"
+import DocumentsEditorPage from "./pages/visual-editor/DocumentsEditorPage"
 
 /**
  * Accessed via either:
@@ -58,11 +59,20 @@ export function BridgeableAdminApp() {
       <Routes>
         <Route index element={<VisualEditorIndex />} />
         <Route path="themes" element={<ThemeEditorPage />} />
-        <Route path="components" element={<ComponentEditorPage />} />
+        {/* New top-level editors (May 2026 reorganization). */}
+        <Route path="focuses" element={<FocusEditorPage />} />
+        <Route path="widgets" element={<WidgetEditorPage />} />
+        <Route path="documents" element={<DocumentsEditorPage />} />
         <Route path="classes" element={<ClassEditorPage />} />
-        <Route path="compositions" element={<CompositionEditorPage />} />
         <Route path="workflows" element={<WorkflowEditorPage />} />
         <Route path="registry" element={<RegistryDebugPage />} />
+        {/* Legacy redirects — May 2026 reorganization dismantled the
+            standalone Component Editor + Compositions page. Their
+            functionality is redistributed across Widget Editor + Focus
+            Editor. Existing bookmarks land on the editor index where
+            the new structure is discoverable. */}
+        <Route path="components" element={<Navigate to="../" replace />} />
+        <Route path="compositions" element={<Navigate to="../focuses" replace />} />
       </Routes>
     </VisualEditorLayout>
   )

@@ -18,12 +18,13 @@ import { Link, Navigate, useLocation } from "react-router-dom"
 import {
   ArrowLeft,
   Boxes,
-  Component,
+  FileText,
+  Focus as FocusIcon,
   GitBranch,
-  Grid3x3,
+  Layers,
+  LayoutDashboard,
   Library,
   Palette,
-  Layers,
 } from "lucide-react"
 import { useAdminAuth } from "../lib/admin-auth-context"
 import { adminPath } from "../lib/admin-routes"
@@ -41,9 +42,10 @@ type EditorTab = {
 const EDITOR_TABS: EditorTab[] = [
   { to: "/visual-editor", label: "Overview", icon: Library, testId: "ve-tab-overview" },
   { to: "/visual-editor/themes", label: "Themes", icon: Palette, testId: "ve-tab-themes" },
-  { to: "/visual-editor/components", label: "Components", icon: Component, testId: "ve-tab-components" },
+  { to: "/visual-editor/focuses", label: "Focus Editor", icon: FocusIcon, testId: "ve-tab-focuses" },
+  { to: "/visual-editor/widgets", label: "Widget Editor", icon: LayoutDashboard, testId: "ve-tab-widgets" },
+  { to: "/visual-editor/documents", label: "Documents", icon: FileText, testId: "ve-tab-documents" },
   { to: "/visual-editor/classes", label: "Classes", icon: Boxes, testId: "ve-tab-classes" },
-  { to: "/visual-editor/compositions", label: "Compositions", icon: Grid3x3, testId: "ve-tab-compositions" },
   { to: "/visual-editor/workflows", label: "Workflows", icon: GitBranch, testId: "ve-tab-workflows" },
   { to: "/visual-editor/registry", label: "Registry", icon: Layers, testId: "ve-tab-registry" },
 ]
