@@ -1,37 +1,38 @@
 /**
  * CompositionEditorPage — canvas-based Focus composition editor
- * (May 2026 composition layer).
+ * (May 2026 composition layer + drag-drop interaction layer).
  *
- * v1 layout: three-pane preview-dominant matching the redesigned
+ * v2 layout: three-pane preview-dominant matching the redesigned
  * component editor:
  *
  *   ┌─ Left (260px) ──┬─ Center (canvas) ──────┬─ Right (320px) ──┐
- *   │ Component       │ CompositionRenderer in │ Placement controls│
- *   │  palette        │ editorMode=true        │ + canvas config   │
- *   │  (canvas-       │ (CSS grid + selection  │ + scope selector  │
- *   │   placeable)    │  affordances)           │                   │
+ *   │ Component       │ InteractivePlacement   │ Placement controls│
+ *   │  palette        │   Canvas (drag/resize/ │ + canvas config   │
+ *   │  (canvas-       │    multi-select/       │ + scope selector  │
+ *   │   placeable)    │    marquee)            │ + multi-select bulk│
  *   └─────────────────┴─────────────────────────┴───────────────────┘
  *
- * v1 interaction model: form-based placement positioning. Click to
- * select a placement, then edit its grid coords + display config in
- * the right rail. Add new placements via the palette's "+ Add" button
- * (drops the component at the next-available grid cell). Drag-drop
- * positioning + resize handles are deferred to a follow-up — they
- * require non-trivial gesture infrastructure that this phase scopes
- * out per the "ship the foundation" approach. The data model + grid
- * positioning + renderer are all in place; the editor just uses
- * form-based controls for v1.
+ * Interaction model: drag placements to reposition (grid snap), grab
+ * 8 corner/edge resize handles when single-selected, click to select,
+ * shift-click to add to selection, marquee-select on canvas
+ * background. Undo/redo via Cmd+Z / Cmd+Shift+Z (capped at 50
+ * entries). Keyboard shortcuts: Delete (remove selected), arrow keys
+ * (nudge by one cell), Cmd+D (duplicate). The form-based grid editor
+ * stays in the right rail as a fallback for single-selected
+ * placements — power users can drag, precise users can type.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import {
   AlertCircle,
   ArrowLeftRight,
+  Grid3x3,
   Loader2,
   Moon,
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Redo2,
   Save,
   Search,
   Sun,
@@ -51,7 +52,6 @@ import type {
   Placement,
   ResolvedComposition,
 } from "@/lib/visual-editor/compositions/types"
-import { CompositionRenderer } from "@/lib/visual-editor/compositions/CompositionRenderer"
 import {
   getCanvasMetadata,
   getCanvasPlaceableComponents,
@@ -63,6 +63,7 @@ import {
   TenantPicker,
   type TenantSummary,
 } from "@/bridgeable-admin/components/TenantPicker"
+import { InteractivePlacementCanvas } from "@/bridgeable-admin/components/visual-editor/composition-canvas/InteractivePlacementCanvas"
 
 
 type Scope = "platform_default" | "vertical_default" | "tenant_override"
@@ -81,7 +82,19 @@ const FOCUS_TYPES = [
 type PreviewMode = "light" | "dark"
 
 
-function defaultCanvasConfig() {
+type CanvasConfig = CompositionRecord["canvas_config"]
+
+
+interface DraftSnapshot {
+  placements: Placement[]
+  canvasConfig: CanvasConfig
+}
+
+
+const UNDO_STACK_LIMIT = 50
+
+
+function defaultCanvasConfig(): CanvasConfig {
   return {
     total_columns: 12,
     row_height: 64,
@@ -104,8 +117,6 @@ function findEmptyGridSlot(
   totalColumns: number,
 ): { column_start: number; column_span: number; row_start: number; row_span: number } {
   const span = Math.min(defaultDims.columns, totalColumns)
-  // Place at the first row where there's room; fall through to a
-  // new row past every existing placement's bottom edge if needed.
   let row = 1
   for (let attempt = 0; attempt < 24; attempt++) {
     let col = 1
@@ -131,7 +142,6 @@ function findEmptyGridSlot(
     }
     row += 1
   }
-  // Fallback — place below everything.
   const maxBottom = existing.reduce(
     (m, p) => Math.max(m, p.grid.row_start + p.grid.row_span),
     1,
@@ -157,12 +167,10 @@ export default function CompositionEditorPage() {
   const [resolved, setResolved] = useState<ResolvedComposition | null>(null)
   const [activeRow, setActiveRow] = useState<CompositionRecord | null>(null)
   const [draftPlacements, setDraftPlacements] = useState<Placement[]>([])
-  const [draftCanvasConfig, setDraftCanvasConfig] = useState<
-    CompositionRecord["canvas_config"]
-  >(defaultCanvasConfig())
-  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(
-    null,
+  const [draftCanvasConfig, setDraftCanvasConfig] = useState<CanvasConfig>(
+    defaultCanvasConfig(),
   )
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -173,6 +181,68 @@ export default function CompositionEditorPage() {
   const [previewMode, setPreviewMode] = useState<PreviewMode>("light")
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false)
   const [paletteSearch, setPaletteSearch] = useState("")
+  const [showGrid, setShowGrid] = useState(true)
+
+  // ── Undo / redo stack ─────────────────────────────────────
+  // Stack of historical snapshots; pointer = current position.
+  // Push on every commit (drag, resize, add, delete, nudge).
+  // Replay snapshot on undo/redo.
+  const undoStack = useRef<DraftSnapshot[]>([])
+  const undoPointer = useRef<number>(-1)
+  const isReplayingRef = useRef(false)
+
+  const pushSnapshot = useCallback(
+    (placements: Placement[], canvasConfig: CanvasConfig) => {
+      if (isReplayingRef.current) return
+      // Drop any "redo" tail past the current pointer.
+      undoStack.current = undoStack.current.slice(0, undoPointer.current + 1)
+      undoStack.current.push({
+        placements: placements.map((p) => ({
+          ...p,
+          grid: { ...p.grid },
+          prop_overrides: { ...p.prop_overrides },
+          display_config: p.display_config ? { ...p.display_config } : {},
+        })),
+        canvasConfig: { ...canvasConfig },
+      })
+      // Cap the stack.
+      if (undoStack.current.length > UNDO_STACK_LIMIT) {
+        const overflow = undoStack.current.length - UNDO_STACK_LIMIT
+        undoStack.current = undoStack.current.slice(overflow)
+      }
+      undoPointer.current = undoStack.current.length - 1
+    },
+    [],
+  )
+
+  const replaySnapshot = useCallback((snap: DraftSnapshot) => {
+    isReplayingRef.current = true
+    setDraftPlacements(snap.placements.map((p) => ({ ...p, grid: { ...p.grid } })))
+    setDraftCanvasConfig({ ...snap.canvasConfig })
+    // Allow next commit to push fresh.
+    queueMicrotask(() => {
+      isReplayingRef.current = false
+    })
+  }, [])
+
+  const handleUndo = useCallback(() => {
+    if (undoPointer.current <= 0) return
+    undoPointer.current -= 1
+    const snap = undoStack.current[undoPointer.current]
+    if (snap) replaySnapshot(snap)
+  }, [replaySnapshot])
+
+  const handleRedo = useCallback(() => {
+    if (undoPointer.current >= undoStack.current.length - 1) return
+    undoPointer.current += 1
+    const snap = undoStack.current[undoPointer.current]
+    if (snap) replaySnapshot(snap)
+  }, [replaySnapshot])
+
+  const canUndo = undoPointer.current > 0
+  const canRedo =
+    undoPointer.current >= 0 &&
+    undoPointer.current < undoStack.current.length - 1
 
   // ── Component palette ────────────────────────────────────
   const palette = useMemo(() => getCanvasPlaceableComponents(), [])
@@ -207,6 +277,11 @@ export default function CompositionEditorPage() {
       const rows = await focusCompositionsService.list(listParams)
       const active = rows.find((r) => r.is_active) ?? null
       setActiveRow(active)
+
+      // Reset undo stack when loading a different active row.
+      undoStack.current = []
+      undoPointer.current = -1
+      isReplayingRef.current = true
       if (active) {
         setDraftPlacements([...active.placements])
         setDraftCanvasConfig({ ...active.canvas_config })
@@ -214,6 +289,14 @@ export default function CompositionEditorPage() {
         setDraftPlacements([])
         setDraftCanvasConfig(defaultCanvasConfig())
       }
+      // Push initial snapshot once the state settles.
+      queueMicrotask(() => {
+        isReplayingRef.current = false
+        pushSnapshot(
+          active ? [...active.placements] : [],
+          active ? { ...active.canvas_config } : defaultCanvasConfig(),
+        )
+      })
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[composition-editor] resolve failed", err)
@@ -221,7 +304,7 @@ export default function CompositionEditorPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [scope, vertical, tenantIdInput, focusType])
+  }, [scope, vertical, tenantIdInput, focusType, pushSnapshot])
 
   useEffect(() => {
     void resolveAndLoadActive()
@@ -229,7 +312,7 @@ export default function CompositionEditorPage() {
 
   // Reset selection when scope / focus changes.
   useEffect(() => {
-    setSelectedPlacementId(null)
+    setSelectedIds(new Set())
   }, [scope, focusType])
 
   // ── Save / discard / autosave ────────────────────────────
@@ -305,6 +388,7 @@ export default function CompositionEditorPage() {
   }, [draftSnapshot, hasUnsaved, handleSave])
 
   const handleDiscard = useCallback(() => {
+    isReplayingRef.current = true
     if (activeRow) {
       setDraftPlacements([...activeRow.placements])
       setDraftCanvasConfig({ ...activeRow.canvas_config })
@@ -312,9 +396,13 @@ export default function CompositionEditorPage() {
       setDraftPlacements([])
       setDraftCanvasConfig(defaultCanvasConfig())
     }
+    setSelectedIds(new Set())
+    queueMicrotask(() => {
+      isReplayingRef.current = false
+    })
   }, [activeRow])
 
-  // ── Placement operations ────────────────────────────────
+  // ── Placement operations (each pushes an undo snapshot) ──
   const handleAddPlacement = useCallback(
     (entry: RegistryEntry) => {
       const meta = getCanvasMetadata(entry)
@@ -331,66 +419,263 @@ export default function CompositionEditorPage() {
         prop_overrides: {},
         display_config: { show_header: true, show_border: true },
       }
-      setDraftPlacements((p) => [...p, newPlacement])
-      setSelectedPlacementId(newPlacement.placement_id)
+      const next = [...draftPlacements, newPlacement]
+      setDraftPlacements(next)
+      setSelectedIds(new Set([newPlacement.placement_id]))
+      pushSnapshot(next, draftCanvasConfig)
     },
-    [draftPlacements, draftCanvasConfig.total_columns],
+    [draftPlacements, draftCanvasConfig, pushSnapshot],
   )
 
-  const handleDeletePlacement = useCallback((placementId: string) => {
-    setDraftPlacements((p) =>
-      p.filter((x) => x.placement_id !== placementId),
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return
+    const next = draftPlacements.filter(
+      (x) => !selectedIds.has(x.placement_id),
     )
-    setSelectedPlacementId(null)
-  }, [])
+    setDraftPlacements(next)
+    setSelectedIds(new Set())
+    pushSnapshot(next, draftCanvasConfig)
+  }, [draftPlacements, draftCanvasConfig, selectedIds, pushSnapshot])
+
+  const handleDuplicateSelected = useCallback(() => {
+    if (selectedIds.size === 0) return
+    const additions: Placement[] = []
+    let working = [...draftPlacements]
+    for (const id of selectedIds) {
+      const src = working.find((p) => p.placement_id === id)
+      if (!src) continue
+      // Copy metadata; offset by one row, find empty slot.
+      const entry = palette.find(
+        (e) =>
+          e.metadata.type === src.component_kind &&
+          e.metadata.name === src.component_name,
+      )
+      const meta = entry
+        ? getCanvasMetadata(entry)
+        : { defaultDimensions: { columns: src.grid.column_span, rows: src.grid.row_span } }
+      const grid = findEmptyGridSlot(
+        working,
+        { columns: src.grid.column_span, rows: meta.defaultDimensions.rows },
+        draftCanvasConfig.total_columns ?? 12,
+      )
+      const dup: Placement = {
+        placement_id: nextPlacementId(working),
+        component_kind: src.component_kind,
+        component_name: src.component_name,
+        grid,
+        prop_overrides: { ...src.prop_overrides },
+        display_config: src.display_config ? { ...src.display_config } : {},
+      }
+      working = [...working, dup]
+      additions.push(dup)
+    }
+    if (additions.length === 0) return
+    setDraftPlacements(working)
+    setSelectedIds(new Set(additions.map((p) => p.placement_id)))
+    pushSnapshot(working, draftCanvasConfig)
+  }, [draftPlacements, draftCanvasConfig, selectedIds, palette, pushSnapshot])
+
+  const handleNudgeSelected = useCallback(
+    (dx: number, dy: number) => {
+      if (selectedIds.size === 0) return
+      const totalCols = draftCanvasConfig.total_columns ?? 12
+      const next = draftPlacements.map((p) => {
+        if (!selectedIds.has(p.placement_id)) return p
+        const newColStart = Math.max(
+          1,
+          Math.min(totalCols - p.grid.column_span + 1, p.grid.column_start + dx),
+        )
+        const newRowStart = Math.max(1, p.grid.row_start + dy)
+        return {
+          ...p,
+          grid: {
+            ...p.grid,
+            column_start: newColStart,
+            row_start: newRowStart,
+          },
+        }
+      })
+      setDraftPlacements(next)
+      pushSnapshot(next, draftCanvasConfig)
+    },
+    [draftPlacements, draftCanvasConfig, selectedIds, pushSnapshot],
+  )
 
   const handleUpdateGrid = useCallback(
-    (
-      placementId: string,
-      patch: Partial<Placement["grid"]>,
-    ) => {
-      setDraftPlacements((p) =>
-        p.map((x) =>
-          x.placement_id === placementId
-            ? { ...x, grid: { ...x.grid, ...patch } }
-            : x,
-        ),
+    (placementId: string, patch: Partial<Placement["grid"]>) => {
+      const next = draftPlacements.map((x) =>
+        x.placement_id === placementId
+          ? { ...x, grid: { ...x.grid, ...patch } }
+          : x,
       )
+      setDraftPlacements(next)
+      pushSnapshot(next, draftCanvasConfig)
+    },
+    [draftPlacements, draftCanvasConfig, pushSnapshot],
+  )
+
+  // ── Canvas drag/resize commits ───────────────────────────
+  const handlePlacementsChange = useCallback(
+    (next: Placement[]) => {
+      setDraftPlacements(next)
+    },
+    [],
+  )
+  const handleCommitDrag = useCallback(
+    (
+      _updates: Array<{ placementId: string; newGrid: Placement["grid"] }>,
+    ) => {
+      // The component already applied the updates via
+      // onPlacementsChange before calling onCommitDrag; we just push
+      // the snapshot using the latest state via a microtask so
+      // setDraftPlacements has settled.
+      queueMicrotask(() => {
+        setDraftPlacements((current) => {
+          pushSnapshot(current, draftCanvasConfig)
+          return current
+        })
+      })
+    },
+    [draftCanvasConfig, pushSnapshot],
+  )
+  const handleCommitResize = useCallback(
+    (_placementId: string, _newGrid: Placement["grid"]) => {
+      queueMicrotask(() => {
+        setDraftPlacements((current) => {
+          pushSnapshot(current, draftCanvasConfig)
+          return current
+        })
+      })
+    },
+    [draftCanvasConfig, pushSnapshot],
+  )
+
+  // ── Selection ────────────────────────────────────────────
+  const handleSelect = useCallback(
+    (id: string, opts: { shift: boolean }) => {
+      setSelectedIds((prev) => {
+        if (opts.shift) {
+          const next = new Set(prev)
+          if (next.has(id)) next.delete(id)
+          else next.add(id)
+          return next
+        }
+        return new Set([id])
+      })
+    },
+    [],
+  )
+  const handleDeselectAll = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+  const handleMarqueeSelect = useCallback(
+    (ids: string[], opts: { shift: boolean }) => {
+      setSelectedIds((prev) => {
+        if (opts.shift) {
+          const next = new Set(prev)
+          for (const id of ids) next.add(id)
+          return next
+        }
+        return new Set(ids)
+      })
     },
     [],
   )
 
   const selectedPlacement = useMemo(
     () =>
-      selectedPlacementId
-        ? draftPlacements.find((p) => p.placement_id === selectedPlacementId) ??
-          null
+      selectedIds.size === 1
+        ? draftPlacements.find((p) =>
+            selectedIds.has(p.placement_id),
+          ) ?? null
         : null,
-    [draftPlacements, selectedPlacementId],
+    [draftPlacements, selectedIds],
   )
 
-  // ── Synthesize a ResolvedComposition for the renderer ───
-  const draftComposition: ResolvedComposition = useMemo(
-    () => ({
-      focus_type: focusType,
-      vertical: scope === "platform_default" ? null : vertical,
-      tenant_id: scope === "tenant_override" ? tenantIdInput : null,
-      source: resolved?.source ?? null,
-      source_id: resolved?.source_id ?? null,
-      source_version: resolved?.source_version ?? null,
-      placements: draftPlacements,
-      canvas_config: draftCanvasConfig,
-    }),
-    [
-      draftCanvasConfig,
-      draftPlacements,
-      focusType,
-      resolved,
-      scope,
-      tenantIdInput,
-      vertical,
-    ],
-  )
+  // ── Keyboard shortcuts ───────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Don't intercept while user is typing in an input/textarea/etc.
+      const target = e.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return
+        }
+      }
+
+      const meta = e.metaKey || e.ctrlKey
+
+      // Undo / redo
+      if (meta && e.key.toLowerCase() === "z") {
+        e.preventDefault()
+        if (e.shiftKey) handleRedo()
+        else handleUndo()
+        return
+      }
+      if (meta && e.key.toLowerCase() === "y") {
+        e.preventDefault()
+        handleRedo()
+        return
+      }
+
+      // Duplicate
+      if (meta && e.key.toLowerCase() === "d") {
+        e.preventDefault()
+        handleDuplicateSelected()
+        return
+      }
+
+      // Delete selected
+      if ((e.key === "Backspace" || e.key === "Delete") && !meta) {
+        if (selectedIds.size > 0) {
+          e.preventDefault()
+          handleDeleteSelected()
+        }
+        return
+      }
+
+      // Arrow nudge
+      if (e.key.startsWith("Arrow") && !meta) {
+        if (selectedIds.size === 0) return
+        e.preventDefault()
+        const step = e.shiftKey ? 3 : 1
+        switch (e.key) {
+          case "ArrowLeft":
+            handleNudgeSelected(-step, 0)
+            break
+          case "ArrowRight":
+            handleNudgeSelected(step, 0)
+            break
+          case "ArrowUp":
+            handleNudgeSelected(0, -step)
+            break
+          case "ArrowDown":
+            handleNudgeSelected(0, step)
+            break
+        }
+      }
+
+      // Escape clears selection
+      if (e.key === "Escape") {
+        setSelectedIds(new Set())
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [
+    handleUndo,
+    handleRedo,
+    handleDuplicateSelected,
+    handleDeleteSelected,
+    handleNudgeSelected,
+    selectedIds.size,
+  ])
 
   // ── Render ───────────────────────────────────────────────
   return (
@@ -462,7 +747,7 @@ export default function CompositionEditorPage() {
           </div>
         </aside>
 
-        {/* ── CENTER: Canvas (composition preview in editor mode) ── */}
+        {/* ── CENTER: Interactive canvas ─────────────────── */}
         <main
           className="relative flex flex-1 flex-col overflow-hidden bg-surface-sunken"
           data-testid="canvas-pane"
@@ -472,15 +757,16 @@ export default function CompositionEditorPage() {
               <span className="text-body-sm font-medium text-content-strong">
                 {focusType}
               </span>
-              <Badge variant="outline">
-                {scope.replace("_", " ")}
-              </Badge>
+              <Badge variant="outline">{scope.replace("_", " ")}</Badge>
               {scope === "vertical_default" && (
                 <Badge variant="outline">{vertical}</Badge>
               )}
               {resolved?.source && (
-                <Badge variant="outline">
-                  source: {resolved.source}
+                <Badge variant="outline">source: {resolved.source}</Badge>
+              )}
+              {selectedIds.size > 0 && (
+                <Badge variant="info" data-testid="selection-count-badge">
+                  {selectedIds.size} selected
                 </Badge>
               )}
               {isLoading && (
@@ -495,7 +781,39 @@ export default function CompositionEditorPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setPreviewMode((m) => (m === "light" ? "dark" : "light"))}
+                onClick={handleUndo}
+                disabled={!canUndo}
+                aria-label="Undo (Cmd+Z)"
+                className="rounded-sm border border-border-base p-1 text-content-muted hover:bg-accent-subtle/40 hover:text-content-strong disabled:opacity-30"
+                data-testid="composition-undo-button"
+              >
+                <Undo2 size={12} />
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={!canRedo}
+                aria-label="Redo (Cmd+Shift+Z)"
+                className="rounded-sm border border-border-base p-1 text-content-muted hover:bg-accent-subtle/40 hover:text-content-strong disabled:opacity-30"
+                data-testid="composition-redo-button"
+              >
+                <Redo2 size={12} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowGrid((g) => !g)}
+                aria-pressed={showGrid}
+                aria-label="Toggle grid overlay"
+                className={`rounded-sm border border-border-base p-1 hover:bg-accent-subtle/40 ${showGrid ? "bg-accent-subtle/60 text-content-strong" : "text-content-muted hover:text-content-strong"}`}
+                data-testid="composition-grid-toggle"
+              >
+                <Grid3x3 size={12} />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPreviewMode((m) => (m === "light" ? "dark" : "light"))
+                }
                 className="flex items-center gap-1 rounded-sm border border-border-base px-2 py-1 text-caption text-content-strong hover:bg-accent-subtle/40"
                 aria-label={`Preview mode: ${previewMode}`}
                 data-testid="composition-preview-mode-toggle"
@@ -525,11 +843,25 @@ export default function CompositionEditorPage() {
             data-mode={previewMode}
             data-testid="composition-canvas-area"
           >
-            <CompositionRenderer
-              composition={draftComposition}
-              editorMode={true}
-              selectedPlacementId={selectedPlacementId}
-              onPlacementClick={(id) => setSelectedPlacementId(id)}
+            <InteractivePlacementCanvas
+              placements={draftPlacements}
+              totalColumns={draftCanvasConfig.total_columns ?? 12}
+              rowHeight={
+                typeof draftCanvasConfig.row_height === "number"
+                  ? draftCanvasConfig.row_height
+                  : 64
+              }
+              gapSize={draftCanvasConfig.gap_size ?? 12}
+              backgroundTreatment={draftCanvasConfig.background_treatment}
+              selectedIds={selectedIds}
+              showGrid={showGrid}
+              interactionsEnabled={!isSaving}
+              onSelect={handleSelect}
+              onDeselectAll={handleDeselectAll}
+              onPlacementsChange={handlePlacementsChange}
+              onCommitDrag={handleCommitDrag}
+              onCommitResize={handleCommitResize}
+              onMarqueeSelect={handleMarqueeSelect}
             />
           </div>
         </main>
@@ -670,12 +1002,14 @@ export default function CompositionEditorPage() {
                     min={1}
                     max={12}
                     value={draftCanvasConfig.total_columns ?? 12}
-                    onChange={(e) =>
-                      setDraftCanvasConfig({
+                    onChange={(e) => {
+                      const next = {
                         ...draftCanvasConfig,
                         total_columns: Number(e.target.value),
-                      })
-                    }
+                      }
+                      setDraftCanvasConfig(next)
+                      pushSnapshot(draftPlacements, next)
+                    }}
                     className="w-14 rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono"
                     data-testid="canvas-cols-input"
                   />
@@ -685,12 +1019,14 @@ export default function CompositionEditorPage() {
                     min={0}
                     max={48}
                     value={draftCanvasConfig.gap_size ?? 12}
-                    onChange={(e) =>
-                      setDraftCanvasConfig({
+                    onChange={(e) => {
+                      const next = {
                         ...draftCanvasConfig,
                         gap_size: Number(e.target.value),
-                      })
-                    }
+                      }
+                      setDraftCanvasConfig(next)
+                      pushSnapshot(draftPlacements, next)
+                    }}
                     className="w-14 rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono"
                   />
                 </div>
@@ -699,13 +1035,17 @@ export default function CompositionEditorPage() {
                     Background
                   </label>
                   <select
-                    value={draftCanvasConfig.background_treatment ?? "surface-base"}
-                    onChange={(e) =>
-                      setDraftCanvasConfig({
+                    value={
+                      draftCanvasConfig.background_treatment ?? "surface-base"
+                    }
+                    onChange={(e) => {
+                      const next = {
                         ...draftCanvasConfig,
                         background_treatment: e.target.value,
-                      })
-                    }
+                      }
+                      setDraftCanvasConfig(next)
+                      pushSnapshot(draftPlacements, next)
+                    }}
                     className="mt-0.5 w-full rounded-sm border border-border-base bg-surface-raised px-2 py-1 text-caption text-content-strong"
                   >
                     <option value="surface-base">surface-base</option>
@@ -715,8 +1055,43 @@ export default function CompositionEditorPage() {
                 </div>
               </div>
 
-              {/* Selected placement controls */}
-              {selectedPlacement ? (
+              {/* Selected placement controls (single-select) OR
+                  multi-select bulk actions. */}
+              {selectedIds.size > 1 ? (
+                <div
+                  className="flex-1 overflow-y-auto px-3 py-2"
+                  data-testid="multi-select-controls"
+                >
+                  <div className="text-body-sm font-medium text-content-strong">
+                    {selectedIds.size} placements selected
+                  </div>
+                  <div className="mt-2 text-caption text-content-muted">
+                    Drag any selected placement to move all together.
+                    Arrow keys nudge by one cell. Shift+arrow nudges
+                    by three cells.
+                  </div>
+                  <div className="mt-3 flex flex-col gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDuplicateSelected}
+                      data-testid="bulk-duplicate"
+                    >
+                      Duplicate ({selectedIds.size})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDeleteSelected}
+                      className="text-status-error"
+                      data-testid="bulk-delete"
+                    >
+                      <Trash2 size={11} className="mr-1" />
+                      Delete ({selectedIds.size})
+                    </Button>
+                  </div>
+                </div>
+              ) : selectedPlacement ? (
                 <div className="flex-1 overflow-y-auto" data-testid="placement-controls">
                   <div className="border-b border-border-subtle px-3 py-2">
                     <div className="text-body-sm font-medium text-content-strong">
@@ -731,34 +1106,40 @@ export default function CompositionEditorPage() {
                       Grid position
                     </div>
                     <div className="mt-1.5 grid grid-cols-2 gap-2 text-caption">
-                      {(["column_start", "column_span", "row_start", "row_span"] as const).map(
-                        (k) => (
-                          <label key={k} className="flex flex-col">
-                            <span className="text-content-muted">{k}</span>
-                            <input
-                              type="number"
-                              min={1}
-                              value={selectedPlacement.grid[k]}
-                              onChange={(e) =>
-                                handleUpdateGrid(selectedPlacement.placement_id, {
+                      {(
+                        [
+                          "column_start",
+                          "column_span",
+                          "row_start",
+                          "row_span",
+                        ] as const
+                      ).map((k) => (
+                        <label key={k} className="flex flex-col">
+                          <span className="text-content-muted">{k}</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={selectedPlacement.grid[k]}
+                            onChange={(e) =>
+                              handleUpdateGrid(
+                                selectedPlacement.placement_id,
+                                {
                                   [k]: Number(e.target.value),
-                                })
-                              }
-                              className="rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono text-content-strong"
-                              data-testid={`placement-grid-${k}`}
-                            />
-                          </label>
-                        ),
-                      )}
+                                },
+                              )
+                            }
+                            className="rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono text-content-strong"
+                            data-testid={`placement-grid-${k}`}
+                          />
+                        </label>
+                      ))}
                     </div>
                   </div>
                   <div className="border-t border-border-subtle px-3 py-2">
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() =>
-                        handleDeletePlacement(selectedPlacement.placement_id)
-                      }
+                      onClick={handleDeleteSelected}
                       className="w-full text-status-error"
                       data-testid="delete-placement"
                     >
@@ -769,7 +1150,9 @@ export default function CompositionEditorPage() {
                 </div>
               ) : (
                 <div className="px-3 py-6 text-center text-caption text-content-muted">
-                  Click a placement on the canvas to edit its position.
+                  Click a placement on the canvas to edit. Shift-click
+                  to multi-select. Drag the canvas background to
+                  marquee-select.
                 </div>
               )}
 
