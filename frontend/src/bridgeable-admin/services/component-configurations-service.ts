@@ -24,6 +24,11 @@ export type ComponentKind =
   | "workflow-node"
   | "layout"
   | "composite"
+  // Class-configuration phase additions (May 2026):
+  | "entity-card"
+  | "button"
+  | "form-input"
+  | "surface-card"
 
 
 export interface ComponentConfigurationRecord {

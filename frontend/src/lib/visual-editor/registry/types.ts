@@ -227,6 +227,39 @@ export interface RegistrationMetadata {
    * canonical list of classes + their class-level configurable props. */
   componentClasses?: string[]
 
+  // Canvas placement (May 2026 composition layer) ────
+  /** Whether this component can be placed on a Focus composition
+   * canvas. When omitted, defaults to TRUE for `widget`/`focus`/
+   * `focus-template` kinds and FALSE for `document-block`/
+   * `workflow-node`/`pulse-widget`/`layout`/`composite`/
+   * `entity-card`/`button`/`form-input`/`surface-card` kinds (the
+   * latter group has its own composition surfaces or is a primitive
+   * that composes inside other components). Components that override
+   * this default declare the field explicitly. */
+  canvasPlaceable?: boolean
+
+  /** Layout metadata for canvas placement. Only meaningful when
+   * `canvasPlaceable` is (effectively) true. Drives the composition
+   * editor's drag-and-resize bounds + the renderer's grid placement
+   * defaults. */
+  canvasMetadata?: {
+    /** Smallest grid size (in 12-column-grid cells) the component
+     * can render at. */
+    minDimensions: { columns: number; rows: number }
+    /** Default grid size when first dropped onto a canvas. */
+    defaultDimensions: { columns: number; rows: number }
+    /** Optional max cap. */
+    maxDimensions?: { columns: number; rows: number }
+    /** Optional fixed aspect-ratio constraint (width/height). */
+    aspectRatio?: number
+    /** When false, the component must use defaultDimensions exactly
+     * — the editor disables resize. */
+    resizable?: boolean
+    /** Human-readable hint for the editor (e.g., "Wider is better;
+     * minimum 6 columns for usability"). */
+    layoutNotes?: string
+  }
+
   // Configuration schema ────
   configurableProps?: Record<string, ConfigPropSchema>
 

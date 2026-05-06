@@ -17,6 +17,7 @@ import ThemeEditorPage from "./pages/visual-editor/themes/ThemeEditorPage"
 import ComponentEditorPage from "./pages/visual-editor/ComponentEditorPage"
 import WorkflowEditorPage from "./pages/visual-editor/WorkflowEditorPage"
 import ClassEditorPage from "./pages/visual-editor/ClassEditorPage"
+import CompositionEditorPage from "./pages/visual-editor/CompositionEditorPage"
 
 /**
  * Accessed via either:
@@ -59,6 +60,7 @@ export function BridgeableAdminApp() {
         <Route path="themes" element={<ThemeEditorPage />} />
         <Route path="components" element={<ComponentEditorPage />} />
         <Route path="classes" element={<ClassEditorPage />} />
+        <Route path="compositions" element={<CompositionEditorPage />} />
         <Route path="workflows" element={<WorkflowEditorPage />} />
         <Route path="registry" element={<RegistryDebugPage />} />
       </Routes>

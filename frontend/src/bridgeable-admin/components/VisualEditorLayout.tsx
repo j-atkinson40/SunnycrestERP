@@ -20,6 +20,7 @@ import {
   Boxes,
   Component,
   GitBranch,
+  Grid3x3,
   Library,
   Palette,
   Layers,
@@ -42,6 +43,7 @@ const EDITOR_TABS: EditorTab[] = [
   { to: "/visual-editor/themes", label: "Themes", icon: Palette, testId: "ve-tab-themes" },
   { to: "/visual-editor/components", label: "Components", icon: Component, testId: "ve-tab-components" },
   { to: "/visual-editor/classes", label: "Classes", icon: Boxes, testId: "ve-tab-classes" },
+  { to: "/visual-editor/compositions", label: "Compositions", icon: Grid3x3, testId: "ve-tab-compositions" },
   { to: "/visual-editor/workflows", label: "Workflows", icon: GitBranch, testId: "ve-tab-workflows" },
   { to: "/visual-editor/registry", label: "Registry", icon: Layers, testId: "ve-tab-registry" },
 ]

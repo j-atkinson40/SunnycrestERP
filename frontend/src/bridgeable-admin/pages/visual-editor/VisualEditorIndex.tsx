@@ -7,7 +7,7 @@
  */
 import { useMemo } from "react"
 import { Link } from "react-router-dom"
-import { Boxes, Component, GitBranch, Layers, Palette } from "lucide-react"
+import { Boxes, Component, GitBranch, Grid3x3, Layers, Palette } from "lucide-react"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import { getAllRegistered, getKnownTokens } from "@/lib/visual-editor/registry"
 
@@ -83,6 +83,13 @@ export default function VisualEditorIndex() {
           title="Class editor"
           description="Class-level configuration affecting every component in a class — shared shadow elevations, density, accent treatment, etc. Inherits to per-component scopes."
           testId="ve-card-classes"
+        />
+        <EditorCard
+          to="/visual-editor/compositions"
+          icon={Grid3x3}
+          title="Composition editor"
+          description="Canvas-based Focus layouts. Place widgets and Focus shells on a 12-column grid; same Focus type renders distinctly per vertical."
+          testId="ve-card-compositions"
         />
         <EditorCard
           to="/visual-editor/workflows"

@@ -28,6 +28,9 @@ export {
   getKnownTokens,
   getEffectiveComponentClasses,
   getComponentsInClass,
+  isCanvasPlaceable,
+  getCanvasMetadata,
+  getCanvasPlaceableComponents,
 } from "./introspection"
 
 export type {

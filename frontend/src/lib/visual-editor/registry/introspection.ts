@@ -190,3 +190,78 @@ export function getComponentsInClass(
     getEffectiveComponentClasses(e).includes(className),
   )
 }
+
+
+// ── Canvas placement helpers (May 2026 composition layer) ──────
+
+
+const _CANVAS_PLACEABLE_KINDS_BY_DEFAULT = new Set([
+  "widget",
+  "focus",
+  "focus-template",
+])
+
+
+/** Whether a component is canvas-placeable. Honors explicit
+ * `canvasPlaceable` declaration; otherwise defaults per ComponentKind:
+ *   - widget / focus / focus-template → true
+ *   - everything else → false (primitives, document blocks, workflow
+ *     nodes have their own composition surfaces)
+ */
+export function isCanvasPlaceable(entry: RegistryEntry): boolean {
+  const explicit = entry.metadata.canvasPlaceable
+  if (typeof explicit === "boolean") return explicit
+  return _CANVAS_PLACEABLE_KINDS_BY_DEFAULT.has(entry.metadata.type)
+}
+
+
+/** Default canvas metadata when a registration declares it
+ * canvas-placeable but doesn't supply explicit metadata. Sized to
+ * the typical "moderately useful widget" footprint on a 12-column
+ * grid: 4 columns × 3 rows. */
+const _DEFAULT_CANVAS_METADATA = {
+  minDimensions: { columns: 2, rows: 2 },
+  defaultDimensions: { columns: 4, rows: 3 },
+  resizable: true,
+} as const
+
+
+export function getCanvasMetadata(
+  entry: RegistryEntry,
+): {
+  minDimensions: { columns: number; rows: number }
+  defaultDimensions: { columns: number; rows: number }
+  maxDimensions?: { columns: number; rows: number }
+  aspectRatio?: number
+  resizable: boolean
+  layoutNotes?: string
+} {
+  const declared = entry.metadata.canvasMetadata
+  if (declared) {
+    return {
+      ...declared,
+      resizable: declared.resizable ?? true,
+    }
+  }
+  // Focus types and templates are full-shell renderings; default
+  // them to fill the canvas.
+  if (
+    entry.metadata.type === "focus" ||
+    entry.metadata.type === "focus-template"
+  ) {
+    return {
+      minDimensions: { columns: 8, rows: 6 },
+      defaultDimensions: { columns: 12, rows: 8 },
+      resizable: true,
+    }
+  }
+  return { ..._DEFAULT_CANVAS_METADATA }
+}
+
+
+/** All canvas-placeable components — used by the composition
+ * editor's component palette to filter what the operator can drag
+ * onto a canvas. */
+export function getCanvasPlaceableComponents(): readonly RegistryEntry[] {
+  return getAllRegistered().filter(isCanvasPlaceable)
+}
