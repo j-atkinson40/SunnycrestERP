@@ -15,6 +15,7 @@ from app.api.routes import (
     command_bar,
     saved_views,
     spaces,
+    themes_tenant,
     nl_creation,
     peek,
     portal,
@@ -213,6 +214,15 @@ v1_router.include_router(
 )
 # Spaces — Phase 3 of UI/UX Arc. Per-user workspace contexts.
 v1_router.include_router(spaces.router, prefix="/spaces", tags=["Spaces"])
+# R-2.5 — tenant-realm theme resolve. Tenant operators read the active
+# theme inheritance walk for their own (vertical, tenant_id) context
+# on production routes (PresetThemeProvider mount). Distinct from the
+# admin-realm endpoint at /api/platform/admin/visual-editor/themes/
+# resolve which permits arbitrary scope arguments; this tenant
+# endpoint infers vertical + tenant_id from `current_user.company`.
+v1_router.include_router(
+    themes_tenant.router, prefix="/themes", tags=["Themes (tenant)"]
+)
 # Phase 8e.2.1 — tenant-admin portal user + branding management.
 # TENANT realm (require_admin), mounted at /api/v1/portal/admin/*.
 # Registered BEFORE the public /portal router so the /{tenant_slug}/…
