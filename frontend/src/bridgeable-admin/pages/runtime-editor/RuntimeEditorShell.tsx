@@ -26,6 +26,7 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 
 import { useAdminAuth } from "@/bridgeable-admin/lib/admin-auth-context"
+import { themesService } from "@/bridgeable-admin/services/themes-service"
 import { useAuth } from "@/contexts/auth-context"
 import { TenantProviders } from "@/lib/runtime-host/TenantProviders"
 import TenantRouteTree from "@/lib/runtime-host/TenantRouteTree"
@@ -37,6 +38,11 @@ import {
   buildRuntimeWriters,
   type RuntimeWriteContext,
 } from "@/lib/runtime-host/runtime-writers"
+import {
+  applyThemeToElement,
+  composeEffective,
+  stackFromResolved,
+} from "@/lib/visual-editor/themes/theme-resolver"
 // R-1.6.1 — picker is rendered as a child of this shell when
 // impersonation params are absent, NOT a sibling route. See the
 // header comment block in BridgeableAdminApp.tsx for the route-
@@ -70,6 +76,51 @@ function ShellWithTenantContext({
     }
     return buildRuntimeWriters(ctx)
   }, [company?.vertical, company?.id, impersonatedUserId, themeMode])
+
+  // R-1.6.14 — resolve + apply the active theme on shell mount so
+  // committed vertical_default / tenant_override token overrides
+  // (written via `runtime-writers/theme` to `platform_themes`) take
+  // effect on reload, not only when the operator opens the inspector
+  // Theme tab. Pre-R-1.6.14, `applyThemeToElement` only fired from
+  // `ThemeTab.tsx:130-137` which mounts only when inspector is open
+  // AND Theme tab selected AND `editMode.isEditing` is true. Spec 7's
+  // "commit → reload → readback `--accent`" flow asserted before any
+  // of those gates fired, so the read returned the static `tokens.css`
+  // default. Mirrors `ThemeTab`'s resolve+apply chain verbatim,
+  // unconditionally on shell mount.
+  //
+  // Scope discipline: this hook is mounted ONLY inside the runtime
+  // editor shell. Production tenant boot (PresetThemeProvider on
+  // `/home`, `/dashboard`, etc.) is unchanged — the question of
+  // whether regular operators see vertical_default theme overrides
+  // applied is a separate architectural concern (post-arc).
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    if (!company?.vertical) return
+    let cancelled = false
+    themesService
+      .resolve({
+        mode: themeMode,
+        vertical: company.vertical,
+        tenant_id: company.id ?? undefined,
+      })
+      .then((resolved) => {
+        if (cancelled) return
+        const stack = stackFromResolved(resolved, {})
+        const effective = composeEffective(themeMode, stack)
+        applyThemeToElement(effective, document.documentElement)
+      })
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[runtime-editor-shell] theme resolve failed; falling back to tokens.css defaults",
+          err,
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [company?.vertical, company?.id, themeMode])
 
   if (isLoading) {
     return (
