@@ -688,7 +688,7 @@ def _seed_personalization_studio_phase1g(db, hopkins, sunnycrest, case):
             db.query(User)
             .filter(
                 User.company_id == hopkins.id,
-                User.email == "director1@hopkinsfh.test",
+                User.email == "director1@hopkinsfh.example.com",
             )
             .first()
         )
@@ -778,7 +778,7 @@ def _seed_personalization_studio_phase1g(db, hopkins, sunnycrest, case):
                     db.query(User)
                     .filter(
                         User.company_id == hopkins.id,
-                        User.email == "director1@hopkinsfh.test",
+                        User.email == "director1@hopkinsfh.example.com",
                     )
                     .first()
                 )
@@ -1063,7 +1063,7 @@ def _seed_personalization_studio_step2(db, hopkins, sunnycrest):
         db.query(User)
         .filter(
             User.company_id == hopkins.id,
-            User.email == "director1@hopkinsfh.test",
+            User.email == "director1@hopkinsfh.example.com",
         )
         .first()
     )
@@ -1261,30 +1261,33 @@ def main():
     try:
         # Hopkins FH
         # R-1.6: slug aligned to canonical CLAUDE.md docs ("hopkins-fh" not "hopkinsfh").
-        # Email domain stays @hopkinsfh.test (separate from tenant slug).
+        # R-1.6.10: email domain @hopkinsfh.example.com (RFC 2606 reserved-for-documentation).
+        # Pre-R-1.6.10 used @hopkinsfh.test which Pydantic's EmailStr (via email-validator)
+        # rejects as RFC 6761 reserved-for-testing — broke direct login flows. Migration
+        # r48_fh_demo_email_tld_fix updates any pre-existing rows.
         hopkins = _ensure_company(db, "hopkins-fh", {
             "name": "Hopkins Funeral Home",
             "vertical": "funeral_home",
         })
-        admin = _ensure_user(db, hopkins.id, "admin@hopkinsfh.test", {
+        admin = _ensure_user(db, hopkins.id, "admin@hopkinsfh.example.com", {
             "first_name": "James",
             "last_name": "Hopkins",
             "role": "admin",
             "password": "DemoAdmin123!",
         })
-        torres = _ensure_user(db, hopkins.id, "director1@hopkinsfh.test", {
+        torres = _ensure_user(db, hopkins.id, "director1@hopkinsfh.example.com", {
             "first_name": "Michael",
             "last_name": "Torres",
             "role": "director",
             "password": "DemoDirector123!",
         })
-        chen = _ensure_user(db, hopkins.id, "director2@hopkinsfh.test", {
+        chen = _ensure_user(db, hopkins.id, "director2@hopkinsfh.example.com", {
             "first_name": "Sarah",
             "last_name": "Chen",
             "role": "director",
             "password": "DemoDirector123!",
         })
-        _ensure_user(db, hopkins.id, "office@hopkinsfh.test", {
+        _ensure_user(db, hopkins.id, "office@hopkinsfh.example.com", {
             "first_name": "Lisa",
             "last_name": "Johnson",
             "role": "office",
@@ -1293,11 +1296,12 @@ def main():
 
         # St Mary's Cemetery
         # R-1.6: slug aligned to canonical CLAUDE.md docs ("st-marys" not "stmarys").
+        # R-1.6.10: email domain @stmarys.example.com (see Hopkins note above).
         stmarys = _ensure_company(db, "st-marys", {
             "name": "St. Mary's Cemetery",
             "vertical": "cemetery",
         })
-        _ensure_user(db, stmarys.id, "admin@stmarys.test", {
+        _ensure_user(db, stmarys.id, "admin@stmarys.example.com", {
             "first_name": "Cemetery",
             "last_name": "Admin",
             "role": "admin",
@@ -1355,8 +1359,8 @@ def main():
         )
 
         print("\n✓ Demo scenario seeded.")
-        print(f"  Login: admin@hopkinsfh.test / DemoAdmin123!")
-        print(f"  Director: director1@hopkinsfh.test / DemoDirector123!")
+        print(f"  Login: admin@hopkinsfh.example.com / DemoAdmin123!")
+        print(f"  Director: director1@hopkinsfh.example.com / DemoDirector123!")
         print(f"  Open {case.case_number} and click 'Continue: The Story →' to demo the Approve All flow.")
     finally:
         db.close()

@@ -39,8 +39,11 @@ export const PLATFORM_ADMIN_PASSWORD =
 
 export const HOPKINS_FH_SLUG = "hopkins-fh"
 export const HOPKINS_FH_NAME = "Hopkins Funeral Home"
-export const HOPKINS_DIRECTOR_EMAIL = "director1@hopkinsfh.test"
-export const HOPKINS_ADMIN_EMAIL = "admin@hopkinsfh.test"
+// R-1.6.10: TLD changed from .test → .example.com. Pydantic's EmailStr
+// (via email-validator) rejects RFC 6761 reserved TLDs; .example.com is
+// RFC 2606 reserved-for-documentation and accepted. Mirrors seed_fh_demo.py.
+export const HOPKINS_DIRECTOR_EMAIL = "director1@hopkinsfh.example.com"
+export const HOPKINS_ADMIN_EMAIL = "admin@hopkinsfh.example.com"
 export const HOPKINS_DIRECTOR_PASSWORD = "DemoDirector123!"
 export const HOPKINS_ADMIN_PASSWORD = "DemoAdmin123!"
 
@@ -178,7 +181,7 @@ export async function impersonateHopkinsDirector(
   // Call impersonate. user_id null → API picks tenant's first admin;
   // we'll replace it with director1's id post-resolution if the
   // first-admin choice doesn't match. For R-1.6 Hopkins, the seeded
-  // first admin is admin@hopkinsfh.test, NOT director1@. The R-1.5
+  // first admin is admin@hopkinsfh.example.com, NOT director1@. The R-1.5
   // specs reference director1; pass null to accept the first admin
   // for the picker flow (the spec's URL param is informational, not
   // a hard requirement on which user is impersonated).
