@@ -290,6 +290,21 @@ export async function loginAsHopkinsDirector(page: Page): Promise<void> {
   const password = page.locator("#password")
   await password.waitFor({ state: "visible", timeout: 5_000 })
   await password.fill(HOPKINS_DIRECTOR_PASSWORD)
-  await page.getByRole("button", { name: /sign\s*in/i }).click()
-  await page.waitForLoadState("networkidle")
+  // R-1.6.11: waitForLoadState("networkidle") here was racy — it would
+  // resolve in the microtask gap between click() and fetch dispatch,
+  // causing the spec to assert before login completed. Replaced with
+  // explicit waitForResponse + waitForURL to guarantee the login flow
+  // fully completes before returning.
+  await Promise.all([
+    page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/api/v1/auth/login") &&
+        resp.request().method() === "POST",
+      { timeout: 10_000 },
+    ),
+    page.getByRole("button", { name: /sign\s*in/i }).click(),
+  ])
+  await page.waitForURL((url) => !url.pathname.includes("/login"), {
+    timeout: 10_000,
+  })
 }
