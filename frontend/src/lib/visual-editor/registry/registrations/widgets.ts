@@ -16,21 +16,31 @@
  * Phase 3 keeps registrations in shim files (this directory) so
  * existing component files stay untouched. Phase 4+ may migrate
  * to in-file `registerComponent(...)` wrapping.
+ *
+ * R-1.6.12 — capture each `registerComponent(meta)(RawWidget)` return
+ * value and export it. The wrapped versions carry the `data-component-name`
+ * boundary div (per `register.ts:185` HOC). The canvas widget-renderer
+ * registries at `components/widgets/{foundation,manufacturing}/register.ts`
+ * import these wrapped versions and pass them to `registerWidgetRenderer`,
+ * so the runtime DOM (Pulse, dashboards, pinned sections) emits
+ * `data-component-name` — which the runtime editor's SelectionOverlay
+ * walks up to resolve a clicked widget. Pre-R-1.6.12 the return
+ * values were discarded, leaving runtime widgets unwrapped.
  */
 
-import { TodayWidget } from "@/components/widgets/foundation/TodayWidget"
-import { OperatorProfileWidget } from "@/components/widgets/foundation/OperatorProfileWidget"
-import { RecentActivityWidget } from "@/components/widgets/foundation/RecentActivityWidget"
-import { AnomaliesWidget } from "@/components/widgets/foundation/AnomaliesWidget"
-import { VaultScheduleWidget } from "@/components/widgets/manufacturing/VaultScheduleWidget"
-import { LineStatusWidget } from "@/components/widgets/manufacturing/LineStatusWidget"
+import { TodayWidget as TodayWidgetRaw } from "@/components/widgets/foundation/TodayWidget"
+import { OperatorProfileWidget as OperatorProfileWidgetRaw } from "@/components/widgets/foundation/OperatorProfileWidget"
+import { RecentActivityWidget as RecentActivityWidgetRaw } from "@/components/widgets/foundation/RecentActivityWidget"
+import { AnomaliesWidget as AnomaliesWidgetRaw } from "@/components/widgets/foundation/AnomaliesWidget"
+import { VaultScheduleWidget as VaultScheduleWidgetRaw } from "@/components/widgets/manufacturing/VaultScheduleWidget"
+import { LineStatusWidget as LineStatusWidgetRaw } from "@/components/widgets/manufacturing/LineStatusWidget"
 
 import { registerComponent } from "../register"
 
 
 // ─── today (cross-vertical foundation) ───────────────────────────
 
-registerComponent({
+export const TodayWidget = registerComponent({
   type: "widget",
   name: "today",
   displayName: "Today",
@@ -123,12 +133,12 @@ registerComponent({
   ],
   schemaVersion: 1,
   componentVersion: 2,
-})(TodayWidget)
+})(TodayWidgetRaw)
 
 
 // ─── operator_profile (cross-vertical foundation) ────────────────
 
-registerComponent({
+export const OperatorProfileWidget = registerComponent({
   type: "widget",
   name: "operator-profile",
   displayName: "Operator Profile",
@@ -207,12 +217,12 @@ registerComponent({
   ],
   schemaVersion: 1,
   componentVersion: 2,
-})(OperatorProfileWidget)
+})(OperatorProfileWidgetRaw)
 
 
 // ─── recent_activity (cross-vertical foundation) ─────────────────
 
-registerComponent({
+export const RecentActivityWidget = registerComponent({
   type: "widget",
   name: "recent-activity",
   displayName: "Recent Activity",
@@ -297,12 +307,12 @@ registerComponent({
   ],
   schemaVersion: 1,
   componentVersion: 2,
-})(RecentActivityWidget)
+})(RecentActivityWidgetRaw)
 
 
 // ─── anomalies (cross-vertical foundation) ───────────────────────
 
-registerComponent({
+export const AnomaliesWidget = registerComponent({
   type: "widget",
   name: "anomalies",
   displayName: "Anomalies",
@@ -395,12 +405,12 @@ registerComponent({
   ],
   schemaVersion: 1,
   componentVersion: 2,
-})(AnomaliesWidget)
+})(AnomaliesWidgetRaw)
 
 
 // ─── vault_schedule (manufacturing) ──────────────────────────────
 
-registerComponent({
+export const VaultScheduleWidget = registerComponent({
   type: "widget",
   name: "vault-schedule",
   displayName: "Vault Schedule",
@@ -507,12 +517,12 @@ registerComponent({
   ],
   schemaVersion: 1,
   componentVersion: 2,
-})(VaultScheduleWidget)
+})(VaultScheduleWidgetRaw)
 
 
 // ─── line_status (manufacturing) ─────────────────────────────────
 
-registerComponent({
+export const LineStatusWidget = registerComponent({
   type: "widget",
   name: "line-status",
   displayName: "Line Status",
@@ -593,4 +603,4 @@ registerComponent({
   ],
   schemaVersion: 1,
   componentVersion: 2,
-})(LineStatusWidget)
+})(LineStatusWidgetRaw)

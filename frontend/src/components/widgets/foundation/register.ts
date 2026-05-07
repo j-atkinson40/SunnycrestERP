@@ -18,20 +18,65 @@
  *
  * Imported once at app bootstrap (see App.tsx) alongside other
  * registries that follow the side-effect-on-import pattern.
+ *
+ * R-1.6.12 — for widgets that have a visual-editor metadata
+ * registration (today, operator_profile, recent_activity, anomalies),
+ * import the WRAPPED component from the visual-editor registration
+ * shim. The wrapped version carries the `data-component-name`
+ * boundary div from `registerComponent`'s HOC, which the runtime
+ * editor's SelectionOverlay walks up the DOM to identify a clicked
+ * widget. Pre-R-1.6.12 the canvas registry stored unwrapped
+ * components → DOM lacked the attribute on tenant pages → click-
+ * to-edit could never select a widget on Pulse home / dashboards /
+ * pinned sections (only the scheduling Focus accessory rail emitted
+ * it via `CompositionRenderer`).
+ *
+ * Widgets without visual-editor metadata (briefing, saved_view,
+ * email_glance, calendar_glance, calendar_summary,
+ * calendar_consent_pending) continue to render unwrapped — they're
+ * not yet click-to-editable. Promoting them is a separate phase.
  */
 
-import { registerWidgetRenderer } from "@/components/focus/canvas/widget-renderers"
+import type { ComponentType } from "react"
 
-import { AnomaliesWidget } from "./AnomaliesWidget"
+import {
+  registerWidgetRenderer,
+  type WidgetRendererProps,
+} from "@/components/focus/canvas/widget-renderers"
+
+// R-1.6.12: wrapped versions (carry data-component-name boundary div).
+//
+// Cast through `unknown` is required because each wrapped component
+// preserves its original prop type (e.g. `TodayWidgetProps` declares
+// `widgetId?` optional + a wider `surface` literal). React's
+// `ComponentType` exposes `defaultProps` which is invariant on prop
+// type, so structural assignment fails despite contravariant
+// function-arg compatibility. Same runtime contract as pre-R-1.6.12 —
+// the widget accepts the narrower `WidgetRendererProps` at runtime.
+import {
+  TodayWidget as TodayWidgetWrapped,
+  OperatorProfileWidget as OperatorProfileWidgetWrapped,
+  RecentActivityWidget as RecentActivityWidgetWrapped,
+  AnomaliesWidget as AnomaliesWidgetWrapped,
+} from "@/lib/visual-editor/registry/registrations/widgets"
+
+// Unwrapped — not yet in visual-editor metadata registry.
 import { BriefingWidget } from "./BriefingWidget"
 import { CalendarConsentPendingWidget } from "./CalendarConsentPendingWidget"
 import { CalendarGlanceWidget } from "./CalendarGlanceWidget"
 import { CalendarSummaryWidget } from "./CalendarSummaryWidget"
 import { EmailGlanceWidget } from "./EmailGlanceWidget"
-import { OperatorProfileWidget } from "./OperatorProfileWidget"
-import { RecentActivityWidget } from "./RecentActivityWidget"
 import { SavedViewWidget } from "./SavedViewWidget"
-import { TodayWidget } from "./TodayWidget"
+
+
+const TodayWidget =
+  TodayWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const OperatorProfileWidget =
+  OperatorProfileWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const RecentActivityWidget =
+  RecentActivityWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const AnomaliesWidget =
+  AnomaliesWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
 
 
 // `today` widget — cross-vertical foundation. Visible to every tenant
