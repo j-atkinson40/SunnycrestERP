@@ -91,7 +91,18 @@ export function makeThemeWriter(ctx: RuntimeWriteContext): OverrideWriter {
       [tokenName]: value,
     }
     if (activeRow) {
-      await themesService.update(activeRow.id, { token_overrides: merged })
+      // R-1.6.15 — `themesService.update`'s second arg is the raw
+      // token_overrides map (the service wraps it into
+      // `{ token_overrides }` before POSTing). Pre-R-1.6.15 this call
+      // double-wrapped (`{ token_overrides: merged }`) producing
+      // `{token_overrides: {token_overrides: merged}}` over the wire.
+      // Backend Pydantic accepted the nested object as a valid value
+      // of `Dict[str, Any]`, so commits silently stored junk and the
+      // resolver returned defaults — spec 7's commit-and-reload
+      // persistence assertion failed against the static default. The
+      // canonical caller (`ThemeEditorPage.tsx:235`) passes the raw
+      // map directly; matching that shape closes the bug.
+      await themesService.update(activeRow.id, merged)
     } else {
       await themesService.create({
         scope: "vertical_default",
