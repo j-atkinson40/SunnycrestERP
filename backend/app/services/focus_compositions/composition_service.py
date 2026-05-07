@@ -439,9 +439,6 @@ def create_composition(
         tenant_id=tenant_id,
         focus_type=focus_type,
         rows=rows_list,
-        # `placements` is no longer authoritative; persist empty list
-        # for column-not-null safety. R-3.2 drops the column.
-        placements=[],
         canvas_config=dict(canvas_config or {}),
         version=_next_version(
             db,
@@ -499,7 +496,6 @@ def update_composition(
         tenant_id=row.tenant_id,
         focus_type=row.focus_type,
         rows=new_rows,
-        placements=[],
         canvas_config=new_canvas,
         version=_next_version(
             db,

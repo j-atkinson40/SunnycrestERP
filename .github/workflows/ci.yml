@@ -53,18 +53,27 @@ jobs:
       - name: Check imports (app loads without errors)
         run: python -c "from app.main import app; print('Backend imports OK')"
 
-      - name: Run Alembic migrations
-        run: alembic upgrade head
-
+      # R-3.1.4: heads check runs BEFORE `alembic upgrade head` so it
+      # remains actionable even when migration *content* is broken. The
+      # heads check reads alembic version files only — it doesn't need
+      # a populated DB. Pre-R-3.1.4 this step ran AFTER the upgrade
+      # step, which meant a multi-head situation (e.g. R-3.1.2's
+      # r48+r88 collision) was swallowed under whatever upgrade error
+      # surfaced first. Reordered so multi-heads fail loud at PR time.
       - name: Verify migration heads
         run: |
           HEAD_COUNT=$(alembic heads | wc -l)
           if [ "$HEAD_COUNT" -ne 1 ]; then
             echo "ERROR: Multiple Alembic heads detected — please merge migrations"
             alembic heads
+            echo ""
+            echo "Run 'alembic merge -m \"...\" <head1> <head2>' to unify."
             exit 1
           fi
           echo "Single migration head confirmed"
+
+      - name: Run Alembic migrations
+        run: alembic upgrade head
 
   # ---------------------------------------------------------------------------
   # Frontend: typecheck + build

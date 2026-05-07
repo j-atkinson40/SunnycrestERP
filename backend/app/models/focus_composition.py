@@ -36,20 +36,19 @@ Row record shape (within `rows` JSONB array):
         ]
     }
 
-Pre-R-3.0 columns retained for one-release grace:
-    `placements` (flat array; old uniform-grid model)
-    `canvas_config` (carries gap_size, background_treatment, padding)
+R-3.2 (May 2026) dropped the legacy `placements` JSONB column via
+r90_drop_legacy_composition_columns. The pre-R-3.0 flat-placements
+shape was migrated to `rows` via r88's backfill helper before being
+removed; rows-shape is the only canonical form post-R-3.2.
 
-Both are NOT authoritative post-R-3.0. R-3.2 drops them after the
-migration window stabilizes (separate arc).
+`canvas_config` JSONB column is retained — still actively used for
+cosmetic settings.
 
-Canvas config shape (still consumed in R-3.0 for cosmetic config):
+Canvas config shape:
     {
         "gap_size": int,
         "background_treatment": str?,
         "padding": dict?,
-        # Deprecated: total_columns + row_height + responsive_breakpoints
-        # — rows declare their own. Retained for downgrade safety.
     }
 """
 
@@ -100,12 +99,12 @@ class FocusComposition(Base):
     )
     focus_type: Mapped[str] = mapped_column(String(96), nullable=False)
 
-    # R-3.0: `rows` is the source of truth post-migration. Each row
-    # declares its own column_count + carries its own placements with
-    # 0-indexed starting_column + column_span. `placements` and
-    # `canvas_config` retained for one-release grace (R-3.2 drops them).
+    # R-3.0 introduced `rows` as the source of truth; R-3.2 dropped
+    # the legacy `placements` flat-array column. Each row declares
+    # its own column_count + carries its own placements (0-indexed
+    # starting_column + column_span). `canvas_config` carries cosmetic
+    # settings only (gap_size, background_treatment, padding).
     rows: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    placements: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     canvas_config: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict
     )

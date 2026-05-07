@@ -75,23 +75,19 @@ export interface CompositionRow {
 /** Canvas-level cosmetic settings — gap between rows, background
  * treatment, padding. Per-row column_count + row_height live on each
  * row record post-R-3.0.
+ *
+ * R-3.2 removed the deprecated `total_columns`, `row_height`
+ * (canvas-level), and `responsive_breakpoints` optional fields. They
+ * had no consumers and existed in no seeded DB row; declaring them
+ * caused future code to typo `canvas_config.row_height` when it meant
+ * the canonical per-row `row.row_height`. Drop is type-only —
+ * removing them surfaces typos as TS errors.
  */
 export interface CanvasConfig {
   /** Pixels between rows. */
   gap_size?: number
   background_treatment?: string
   padding?: { token?: string }
-  /** Deprecated in R-3.0 — retained for backwards compatibility with
-   * legacy DB rows that still carry these in canvas_config. The
-   * renderer ignores them; rows declare their own column_count +
-   * row_height. */
-  total_columns?: number
-  row_height?: "auto" | number
-  responsive_breakpoints?: {
-    mobile?: { columns: number }
-    tablet?: { columns: number }
-    desktop?: { columns: number }
-  }
 }
 
 
