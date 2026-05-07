@@ -68,8 +68,12 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bridgeable_test
-      # Required by seed_fh_demo.py's BRIDGEABLE_ENCRYPTION_KEY default —
-      # the script generates a Fernet key if unset, but explicit is clearer.
+      # R-1.6.6: SECRET_KEY is required by app/config.py Settings (no default).
+      # Without it, alembic upgrade head fails before running a single
+      # migration — env.py loads `from app.database import Base` which
+      # imports app.config which instantiates Settings(). Test value;
+      # never used to sign real tokens.
+      SECRET_KEY: ci-test-secret-key-not-for-production
       # Stub value; staging+production seed scripts both refuse to run with
       # ENVIRONMENT=production, so this is safe.
       ENVIRONMENT: ci
