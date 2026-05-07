@@ -499,6 +499,26 @@ export default function App() {
 }
 
 
+export interface RenderTenantSlugRoutesOpts {
+  /**
+   * R-1.6.9: When true, replace the root `<RootRedirect />` and the
+   * catch-all `<NotFound />` routes with a direct `<HomePage />` mount
+   * at both `/` and `*`. Used by `<TenantRouteTree />` (the runtime
+   * editor's tenant route tree) to prevent `<Navigate to="/home" />`
+   * from bouncing the URL out of the `/runtime-editor/*` parent route.
+   *
+   * Production tenant operator flow leaves this false (default) so
+   * `<RootRedirect />` continues to dispatch role-based landing
+   * (driver → /driver, production → /console, else → /home). The
+   * production behavior is unchanged.
+   *
+   * See `/tmp/picker_navigation_bug.md` for the originating
+   * investigation.
+   */
+  excludeRootRedirect?: boolean;
+}
+
+
 /** Phase R-0 — exported for the admin runtime-host-test surface to
  *  mount via `<Routes>{renderTenantSlugRoutes()}</Routes>` (re-exported
  *  as `TenantRouteTree` from `lib/runtime-host/TenantRouteTree.tsx`).
@@ -506,8 +526,14 @@ export default function App() {
  *  Returns the slug-set tenant Routes JSX fragment. Children must be
  *  inside a `<Routes>` parent (per react-router contract). The fragment
  *  is the same content the tenant boot path renders today, just lifted
- *  into a function so it's importable. */
-export function renderTenantSlugRoutes() {
+ *  into a function so it's importable.
+ *
+ *  R-1.6.9: opts.excludeRootRedirect parameterizes the `/` and `*`
+ *  routes for the runtime editor consumer — see RenderTenantSlugRoutesOpts. */
+export function renderTenantSlugRoutes(
+  opts: RenderTenantSlugRoutesOpts = {},
+) {
+  const { excludeRootRedirect = false } = opts;
   return (
     <>
               {/* Tenant routes — accessed via subdomain or company slug */}
@@ -1836,9 +1862,37 @@ export function renderTenantSlugRoutes() {
               {/* Platform admin entry (for non-subdomain setups) */}
               <Route path="/platform-admin" element={<PlatformAdminEntry />} />
 
-              {/* Root redirect */}
-              <Route path="/" element={<RootRedirect />} />
-              <Route path="*" element={<NotFound />} />
+              {/* Root redirect — R-1.6.9 parameterized.
+               *
+               *  Production tenant operator flow (default): RootRedirect
+               *  dispatches role-based landing (driver → /driver,
+               *  production → /console, else → /home). Catch-all renders
+               *  NotFound for unmatched URLs — surfaces a 404 page so
+               *  invalid tenant URLs are visible.
+               *
+               *  Runtime editor flow (excludeRootRedirect=true): both `/`
+               *  and `*` mount HomePage directly. Skips the
+               *  `<Navigate to="/home" replace />` inside RootRedirect,
+               *  which would have absolute-navigated out of the
+               *  `/runtime-editor/*` parent route and bounced the user
+               *  to `admin.<domain>/home`. Catch-all also renders
+               *  HomePage so the runtime editor never falls through to
+               *  a 404 — under impersonation we always show tenant-shaped
+               *  content.
+               *
+               *  See /tmp/picker_navigation_bug.md for the originating
+               *  investigation. */}
+              {excludeRootRedirect ? (
+                <>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="*" element={<HomePage />} />
+                </>
+              ) : (
+                <>
+                  <Route path="/" element={<RootRedirect />} />
+                  <Route path="*" element={<NotFound />} />
+                </>
+              )}
     </>
   );
 }

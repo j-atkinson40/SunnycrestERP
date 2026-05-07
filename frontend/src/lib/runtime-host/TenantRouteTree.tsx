@@ -34,8 +34,22 @@ import { Routes } from "react-router-dom"
 import { renderTenantSlugRoutes } from "@/App"
 
 
+/**
+ * R-1.6.9: Pass `excludeRootRedirect: true` so the inner Routes mount
+ * `<HomePage />` at `/` instead of `<RootRedirect />`. Pre-R-1.6.9, the
+ * runtime editor mounted at `/runtime-editor/?tenant=...&user=...` would
+ * see the inner Routes match its splat-empty path against `<Route path="/"
+ * element={<RootRedirect />} />`, and RootRedirect's
+ * `<Navigate to="/home" replace />` would absolute-navigate the URL out
+ * of the `/runtime-editor/*` parent route — bouncing the user to
+ * `admin.<domain>/home` (empty Bridgeable Admin chrome). With
+ * excludeRootRedirect, HomePage renders inline inside the shell and the
+ * URL stays put. See /tmp/picker_navigation_bug.md.
+ */
 export function TenantRouteTree() {
-  return <Routes>{renderTenantSlugRoutes()}</Routes>
+  return (
+    <Routes>{renderTenantSlugRoutes({ excludeRootRedirect: true })}</Routes>
+  )
 }
 
 
