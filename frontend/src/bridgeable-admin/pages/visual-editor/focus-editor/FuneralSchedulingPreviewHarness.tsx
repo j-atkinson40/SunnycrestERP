@@ -49,10 +49,14 @@ import {
   formatFullLabel,
 } from "@/components/dispatch/scheduling-focus/DateBox"
 import { CompositionRenderer } from "@/lib/visual-editor/compositions/CompositionRenderer"
-import type {
-  Placement,
-  ResolvedComposition,
-} from "@/lib/visual-editor/compositions/types"
+import type { ResolvedComposition } from "@/lib/visual-editor/compositions/types"
+// R-3.0: harness consumes legacy flat-placements draft state from
+// FocusEditorPage's editor; wraps to rows shape via the legacy-types
+// helpers so the renderer's rows-based input contract is honored.
+import {
+  wrapLegacyAsRows,
+  type LegacyPlacement,
+} from "@/bridgeable-admin/pages/visual-editor/composition-editor-legacy-types"
 import type { DeliveryDTO, DriverDTO } from "@/services/dispatch-service"
 
 import {
@@ -125,10 +129,14 @@ export function FuneralSchedulingPreviewHarness({
     return { kanbanByDriver: byDriver, unassignedKanban: unassigned }
   }, [deliveries])
 
+  // R-3.0: count placements across all rows; gate the accessory rail
+  // on having at least one placement to render.
+  const draftPlacementCount =
+    compositionDraft?.rows.reduce((acc, r) => acc + r.placements.length, 0) ?? 0
   const showAccessory =
     !!compositionDraft &&
-    compositionDraft.placements.length > 0 &&
-    (compositionDraft.placements.length > 0 || !hideAccessoryWhenEmpty)
+    draftPlacementCount > 0 &&
+    (draftPlacementCount > 0 || !hideAccessoryWhenEmpty)
 
   return (
     <DndContext
@@ -403,13 +411,19 @@ export function SampleScenarioPicker({
 }
 
 
-/** Convert raw editor draft state (placements + canvas_config) into a
- *  ResolvedComposition shape suitable for CompositionRenderer. The
- *  editor's draft state lives outside the resolved-from-API shape
- *  — synthesize a ResolvedComposition with `source="draft"` so the
- *  renderer treats it the same as a runtime resolution. */
+/** Convert raw editor draft state (legacy flat-placements + canvas_config)
+ *  into a R-3.0 rows-shaped ResolvedComposition suitable for the renderer.
+ *  The editor's draft state lives outside the resolved-from-API shape;
+ *  synthesize a ResolvedComposition with `source="vertical_default"`
+ *  when placements exist so the renderer treats it the same as a runtime
+ *  resolution.
+ *
+ *  R-3.0 single-row constraint: legacy placements wrap into a single
+ *  row at column_count = canvas_config.total_columns (matching the
+ *  editor's authoring constraint). Multi-row visual layouts authored
+ *  in the legacy editor collapse to a single row in the renderer. */
 export function compositionDraftAsResolved(
-  placements: Placement[],
+  placements: LegacyPlacement[],
   canvasConfig: ResolvedComposition["canvas_config"],
   vertical: string | null,
 ): ResolvedComposition {
@@ -420,7 +434,7 @@ export function compositionDraftAsResolved(
     source: placements.length > 0 ? "vertical_default" : null,
     source_id: null,
     source_version: null,
-    placements,
+    rows: wrapLegacyAsRows(placements, canvasConfig),
     canvas_config: canvasConfig,
   }
 }

@@ -29,7 +29,10 @@ import {
   getByName,
   type ComponentKind,
 } from "@/lib/visual-editor/registry"
-import type { Placement } from "@/lib/visual-editor/compositions/types"
+// R-3.0: composition data model is now rows-shaped. The legacy editor
+// canvas keeps its flat-placements + 1-indexed grid coords internal
+// model — translation happens at IO boundary in CompositionEditorPage.
+import type { LegacyPlacement as Placement } from "@/bridgeable-admin/pages/visual-editor/composition-editor-legacy-types"
 import {
   useCanvasInteractions,
   type ResizeHandle,

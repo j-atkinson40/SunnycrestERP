@@ -1,7 +1,8 @@
 /**
- * Focus compositions service client (May 2026 composition layer).
+ * Focus compositions service client.
  *
- * Wraps `/api/platform/admin/visual-editor/compositions/*` endpoints.
+ * R-3.0 — payloads now carry `rows` instead of `placements`. The
+ * backend rejects pre-R-3.0 flat-placements payloads with HTTP 400.
  */
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
 import type {
@@ -49,7 +50,7 @@ export const focusCompositionsService = {
     focus_type: string
     vertical?: string | null
     tenant_id?: string | null
-    placements: CompositionRecord["placements"]
+    rows: CompositionRecord["rows"]
     canvas_config: CompositionRecord["canvas_config"]
   }): Promise<CompositionRecord> {
     const response = await adminApi.post<CompositionRecord>(
@@ -62,7 +63,7 @@ export const focusCompositionsService = {
   async update(
     id: string,
     patch: {
-      placements?: CompositionRecord["placements"]
+      rows?: CompositionRecord["rows"]
       canvas_config?: CompositionRecord["canvas_config"]
     },
   ): Promise<CompositionRecord> {

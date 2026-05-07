@@ -1,4 +1,4 @@
-"""Focus composition service — CRUD + resolution.
+"""Focus composition service — CRUD + resolution (R-3.0 rows shape).
 
 Mirrors the architectural pattern of theme_service / config_service /
 template_service: write-side versioning (each save deactivates the
@@ -6,16 +6,46 @@ prior active row + inserts a new active row at version+1), READ-time
 resolution (walks platform_default → vertical_default →
 tenant_override; first match wins per Focus type).
 
+R-3.0 schema — composition is a sequence of rows. Each row declares its
+own column_count and carries its own placements:
+
+    rows: list[Row]
+    Row = {
+        "row_id": str,                # UUID; stable across edits
+        "column_count": int 1..12,
+        "row_height": "auto" | int,
+        "column_widths": list[float] | None,   # extension point; null today
+        "nested_rows": list[Row] | None,       # extension point; null today
+        "placements": list[Placement],
+    }
+    Placement = {
+        "placement_id": str,
+        "component_kind": str,
+        "component_name": str,
+        "starting_column": int 0..(column_count-1),
+        "column_span": int 1..(column_count - starting_column),
+        "prop_overrides": dict,
+        "display_config": {"show_header": bool?, "show_border": bool?, "z_index": int?},
+        "nested_rows": list[Row] | None,       # extension point; null today
+    }
+
 Validation:
-    - placements MUST be a list of placement records
-    - each placement has a unique placement_id, valid component_kind +
-      component_name, well-formed grid coords
-    - grid: column_start in [1,12], column_span in [1,12],
-      column_start + column_span <= 13
-    - row_start + row_span >= 1; rows are auto-sized so we don't
-      enforce a hard row ceiling
-    - overlapping placements are PERMITTED (z_index handles intentional
-      overlap) but trigger a warning in the response
+    - rows must be a list (may be empty)
+    - each row has unique row_id; column_count in [1,12]; row_height
+      either positive int or "auto"
+    - placements within a row fit within column_count: starting_column
+      in [0, column_count-1] AND starting_column + column_span <= column_count
+    - placement_ids unique across the entire composition (prevents
+      editor drag-drop reuse confusion)
+    - nested_rows + column_widths accepted as null OR validated lists
+      (logged warning when non-null in R-3.0 — extension points are
+      schema-permitted but application logic ignores them)
+
+Pre-R-3.0 flat-placements payload (no `rows` key, has top-level
+`placements` array) is rejected at the API boundary with a clear
+error directing the caller to the rows-shaped payload. The DB columns
+remain (one-release grace) but the service layer authors via `rows`
+exclusively.
 """
 
 from __future__ import annotations
@@ -40,6 +70,10 @@ from app.services.component_config.registry_snapshot import (
 logger = logging.getLogger(__name__)
 
 
+_MIN_COLUMN_COUNT = 1
+_MAX_COLUMN_COUNT = 12
+
+
 # ─── Exceptions ──────────────────────────────────────────────────
 
 
@@ -60,6 +94,18 @@ class InvalidCompositionShape(CompositionError):
 
 
 class CompositionScopeMismatch(CompositionError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, http_status=400)
+
+
+class LegacyPayloadRejected(CompositionError):
+    """Rejects pre-R-3.0 flat-placements payloads.
+
+    Callers must now send `rows`. This helps the API surface a clear
+    error rather than silently dropping the legacy payload during the
+    R-3.0 → R-3.2 deprecation window.
+    """
+
     def __init__(self, message: str) -> None:
         super().__init__(message, http_status=400)
 
@@ -99,94 +145,211 @@ def _validate_scope(
         raise InvalidCompositionShape(f"Unknown scope: {scope}")
 
 
-def _validate_placements(placements: list) -> list[str]:
-    """Validate placements + return a list of warnings (overlap notes).
+def _validate_rows(rows: list) -> list[str]:
+    """Validate rows shape + return a list of warnings.
 
     Raises InvalidCompositionShape on hard errors (malformed records,
-    out-of-bounds grid, duplicate placement_ids, references to
+    out-of-bounds column_count or starting_column/column_span,
+    duplicate row_ids OR duplicate placement_ids, references to
     unknown components).
     """
-    if not isinstance(placements, list):
-        raise InvalidCompositionShape("placements must be a list")
+    if not isinstance(rows, list):
+        raise InvalidCompositionShape("rows must be a list")
 
     warnings: list[str] = []
-    seen_ids: set[str] = set()
+    seen_row_ids: set[str] = set()
+    seen_placement_ids: set[str] = set()
 
-    for idx, p in enumerate(placements):
-        if not isinstance(p, dict):
+    for r_idx, row in enumerate(rows):
+        if not isinstance(row, dict):
             raise InvalidCompositionShape(
-                f"placements[{idx}] must be an object"
+                f"rows[{r_idx}] must be an object"
             )
-        pid = p.get("placement_id")
-        if not isinstance(pid, str) or not pid:
+        row_id = row.get("row_id")
+        if not isinstance(row_id, str) or not row_id:
             raise InvalidCompositionShape(
-                f"placements[{idx}].placement_id must be a non-empty string"
+                f"rows[{r_idx}].row_id must be a non-empty string"
             )
-        if pid in seen_ids:
+        if row_id in seen_row_ids:
             raise InvalidCompositionShape(
-                f"placements[{idx}].placement_id '{pid}' is duplicated"
+                f"rows[{r_idx}].row_id '{row_id}' is duplicated"
             )
-        seen_ids.add(pid)
+        seen_row_ids.add(row_id)
 
-        kind = p.get("component_kind")
-        name = p.get("component_name")
-        if not isinstance(kind, str) or not isinstance(name, str):
+        column_count = row.get("column_count")
+        if (
+            not isinstance(column_count, int)
+            or column_count < _MIN_COLUMN_COUNT
+            or column_count > _MAX_COLUMN_COUNT
+        ):
             raise InvalidCompositionShape(
-                f"placements[{idx}] must have string component_kind + component_name"
+                f"rows[{r_idx}].column_count must be an integer in "
+                f"[{_MIN_COLUMN_COUNT}, {_MAX_COLUMN_COUNT}] (got {column_count!r})"
             )
-        # Reference-integrity check: the (kind, name) tuple must be a
-        # registered component. Use the existing registry_snapshot.
-        if (kind, name) not in REGISTRY_SNAPSHOT:
-            # Only warn, don't reject — the registry may evolve and
-            # we don't want to block writes when a component is added
-            # in the same release as a composition referencing it.
+
+        row_height = row.get("row_height", "auto")
+        if not (
+            row_height == "auto"
+            or (isinstance(row_height, int) and row_height > 0)
+        ):
+            raise InvalidCompositionShape(
+                f"rows[{r_idx}].row_height must be 'auto' or a positive integer "
+                f"(got {row_height!r})"
+            )
+
+        # Variant B + nesting extension points — accept null OR valid
+        # shape; in R-3.0 we warn when non-null (application ignores).
+        column_widths = row.get("column_widths")
+        if column_widths is not None and not isinstance(column_widths, list):
+            raise InvalidCompositionShape(
+                f"rows[{r_idx}].column_widths must be null or a list of numbers"
+            )
+        if column_widths is not None:
             warnings.append(
-                f"placements[{idx}] references unknown component '{kind}:{name}'"
+                f"rows[{r_idx}].column_widths is set but ignored in R-3.0 "
+                f"(Variant B extension reserved for future activation)"
             )
 
-        grid = p.get("grid")
-        if not isinstance(grid, dict):
+        nested_rows = row.get("nested_rows")
+        if nested_rows is not None and not isinstance(nested_rows, list):
             raise InvalidCompositionShape(
-                f"placements[{idx}].grid must be an object"
+                f"rows[{r_idx}].nested_rows must be null or a list"
             )
-        cs = grid.get("column_start")
-        cspan = grid.get("column_span")
-        rs = grid.get("row_start")
-        rspan = grid.get("row_span")
-        for fld, val in [
-            ("column_start", cs),
-            ("column_span", cspan),
-            ("row_start", rs),
-            ("row_span", rspan),
-        ]:
-            if not isinstance(val, int) or val < 1:
+        if nested_rows is not None:
+            warnings.append(
+                f"rows[{r_idx}].nested_rows is set but ignored in R-3.0 "
+                f"(bounded-nesting extension reserved for future activation)"
+            )
+
+        placements = row.get("placements")
+        if not isinstance(placements, list):
+            raise InvalidCompositionShape(
+                f"rows[{r_idx}].placements must be a list"
+            )
+
+        for p_idx, p in enumerate(placements):
+            if not isinstance(p, dict):
                 raise InvalidCompositionShape(
-                    f"placements[{idx}].grid.{fld} must be a positive integer"
+                    f"rows[{r_idx}].placements[{p_idx}] must be an object"
                 )
-        if cs > 12 or cspan > 12 or cs + cspan > 13:
-            raise InvalidCompositionShape(
-                f"placements[{idx}].grid: column_start + column_span must be <= 13 "
-                f"(got {cs} + {cspan})"
-            )
+            pid = p.get("placement_id")
+            if not isinstance(pid, str) or not pid:
+                raise InvalidCompositionShape(
+                    f"rows[{r_idx}].placements[{p_idx}].placement_id "
+                    f"must be a non-empty string"
+                )
+            if pid in seen_placement_ids:
+                raise InvalidCompositionShape(
+                    f"rows[{r_idx}].placements[{p_idx}].placement_id "
+                    f"'{pid}' is duplicated within composition"
+                )
+            seen_placement_ids.add(pid)
 
-    # Overlap detection — warn-only.
-    for i, a in enumerate(placements):
-        for j, b in enumerate(placements[i + 1:], start=i + 1):
-            if _grids_overlap(a["grid"], b["grid"]):
-                warnings.append(
-                    f"placements[{i}] and placements[{j}] overlap"
+            kind = p.get("component_kind")
+            name = p.get("component_name")
+            if not isinstance(kind, str) or not isinstance(name, str):
+                raise InvalidCompositionShape(
+                    f"rows[{r_idx}].placements[{p_idx}] must have string "
+                    f"component_kind + component_name"
                 )
-                break
+            if (kind, name) not in REGISTRY_SNAPSHOT:
+                # Warn-only: registry can evolve in step with composition
+                # writes; we don't want to block.
+                warnings.append(
+                    f"rows[{r_idx}].placements[{p_idx}] references unknown "
+                    f"component '{kind}:{name}'"
+                )
+
+            sc = p.get("starting_column")
+            cspan = p.get("column_span")
+            if not isinstance(sc, int) or sc < 0:
+                raise InvalidCompositionShape(
+                    f"rows[{r_idx}].placements[{p_idx}].starting_column "
+                    f"must be a non-negative integer (0-indexed)"
+                )
+            if not isinstance(cspan, int) or cspan < 1:
+                raise InvalidCompositionShape(
+                    f"rows[{r_idx}].placements[{p_idx}].column_span "
+                    f"must be a positive integer"
+                )
+            if sc + cspan > column_count:
+                raise InvalidCompositionShape(
+                    f"rows[{r_idx}].placements[{p_idx}]: starting_column "
+                    f"+ column_span must be <= row.column_count "
+                    f"({sc} + {cspan} > {column_count})"
+                )
+
+            # Per-placement nested_rows extension point — accept null only.
+            p_nested = p.get("nested_rows")
+            if p_nested is not None and not isinstance(p_nested, list):
+                raise InvalidCompositionShape(
+                    f"rows[{r_idx}].placements[{p_idx}].nested_rows "
+                    f"must be null or a list"
+                )
+            if p_nested is not None:
+                warnings.append(
+                    f"rows[{r_idx}].placements[{p_idx}].nested_rows is set "
+                    f"but ignored in R-3.0 (bounded-nesting extension)"
+                )
 
     return warnings
 
 
-def _grids_overlap(a: dict, b: dict) -> bool:
-    a_c0, a_c1 = a["column_start"], a["column_start"] + a["column_span"]
-    b_c0, b_c1 = b["column_start"], b["column_start"] + b["column_span"]
-    a_r0, a_r1 = a["row_start"], a["row_start"] + a["row_span"]
-    b_r0, b_r1 = b["row_start"], b["row_start"] + b["row_span"]
-    return not (a_c1 <= b_c0 or b_c1 <= a_c0 or a_r1 <= b_r0 or b_r1 <= a_r0)
+def _normalize_rows(rows: list) -> list[dict]:
+    """Defensive normalization — copy each row + each placement so the
+    DB row never aliases the caller's mutable list. Auto-generates
+    row_id when caller omits it (editor convenience). Auto-fills
+    extension-point fields with null.
+    """
+    normalized: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        new_row: dict[str, Any] = {
+            "row_id": row.get("row_id") or str(uuid.uuid4()),
+            "column_count": row.get("column_count"),
+            "row_height": row.get("row_height", "auto"),
+            "column_widths": row.get("column_widths"),
+            "nested_rows": row.get("nested_rows"),
+            "placements": [],
+        }
+        for p in row.get("placements") or []:
+            if not isinstance(p, dict):
+                continue
+            new_row["placements"].append(
+                {
+                    "placement_id": p.get("placement_id"),
+                    "component_kind": p.get("component_kind"),
+                    "component_name": p.get("component_name"),
+                    "starting_column": p.get("starting_column"),
+                    "column_span": p.get("column_span"),
+                    "prop_overrides": dict(p.get("prop_overrides") or {}),
+                    "display_config": dict(p.get("display_config") or {}),
+                    "nested_rows": p.get("nested_rows"),
+                }
+            )
+        normalized.append(new_row)
+    return normalized
+
+
+def reject_legacy_placements_payload(body: Any) -> None:
+    """API-boundary helper — rejects pre-R-3.0 flat-placements payloads
+    with a clear error pointing at the rows-shaped contract.
+
+    A legacy payload is one that:
+      - has a top-level `placements` key AND
+      - does NOT have a top-level `rows` key.
+
+    Bare `placements` array is non-canonical post-R-3.0 even if non-empty.
+    """
+    if not isinstance(body, dict):
+        return
+    if "rows" not in body and "placements" in body:
+        raise LegacyPayloadRejected(
+            "Pre-R-3.0 flat-placements payload is no longer accepted. "
+            "Send a `rows` array instead. See R-3.0 architectural notes for "
+            "the rows-based contract."
+        )
 
 
 # ─── CRUD ────────────────────────────────────────────────────────
@@ -249,13 +412,13 @@ def create_composition(
     focus_type: str,
     vertical: str | None = None,
     tenant_id: str | None = None,
-    placements: list | None = None,
+    rows: list | None = None,
     canvas_config: dict | None = None,
     actor_user_id: str | None = None,
 ) -> FocusComposition:
     _validate_scope(scope, vertical=vertical, tenant_id=tenant_id)
-    placements_list = list(placements or [])
-    warnings = _validate_placements(placements_list)
+    rows_list = _normalize_rows(list(rows or []))
+    warnings = _validate_rows(rows_list)
     for w in warnings:
         logger.warning("[composition] %s", w)
 
@@ -275,7 +438,10 @@ def create_composition(
         vertical=vertical,
         tenant_id=tenant_id,
         focus_type=focus_type,
-        placements=placements_list,
+        rows=rows_list,
+        # `placements` is no longer authoritative; persist empty list
+        # for column-not-null safety. R-3.2 drops the column.
+        placements=[],
         canvas_config=dict(canvas_config or {}),
         version=_next_version(
             db,
@@ -298,7 +464,7 @@ def update_composition(
     db: Session,
     *,
     composition_id: str,
-    placements: list | None = None,
+    rows: list | None = None,
     canvas_config: dict | None = None,
     actor_user_id: str | None = None,
 ) -> FocusComposition:
@@ -310,15 +476,16 @@ def update_composition(
     if row is None:
         raise CompositionNotFound()
 
-    new_placements = (
-        list(placements) if placements is not None else list(row.placements or [])
-    )
+    if rows is not None:
+        new_rows = _normalize_rows(list(rows))
+    else:
+        new_rows = list(row.rows or [])
     new_canvas = (
         dict(canvas_config)
         if canvas_config is not None
         else dict(row.canvas_config or {})
     )
-    warnings = _validate_placements(new_placements)
+    warnings = _validate_rows(new_rows)
     for w in warnings:
         logger.warning("[composition] %s", w)
 
@@ -331,7 +498,8 @@ def update_composition(
         vertical=row.vertical,
         tenant_id=row.tenant_id,
         focus_type=row.focus_type,
-        placements=new_placements,
+        rows=new_rows,
+        placements=[],
         canvas_config=new_canvas,
         version=_next_version(
             db,
@@ -414,16 +582,14 @@ def resolve_composition(
                       "tenant_override" | None,
             "source_id": ... | None,
             "source_version": ... | None,
-            "placements": [...],
+            "rows": [...],
             "canvas_config": {...},
         }
 
     When no composition exists at any tier, source is None and
-    placements/canvas_config are empty — caller falls back to the
-    Focus's hard-coded layout.
+    rows/canvas_config are empty — caller falls back to the Focus's
+    hard-coded layout.
     """
-    # Tenant override wins outright if it exists (it's the most
-    # specific scope). If not, vertical_default; if not, platform.
     if tenant_id is not None:
         row = _find_active(
             db,
@@ -463,7 +629,7 @@ def resolve_composition(
         "source": None,
         "source_id": None,
         "source_version": None,
-        "placements": [],
+        "rows": [],
         "canvas_config": {},
     }
 
@@ -476,6 +642,6 @@ def _serialize_resolution(row: FocusComposition, source: str) -> dict:
         "source": source,
         "source_id": row.id,
         "source_version": row.version,
-        "placements": list(row.placements or []),
+        "rows": list(row.rows or []),
         "canvas_config": dict(row.canvas_config or {}),
     }

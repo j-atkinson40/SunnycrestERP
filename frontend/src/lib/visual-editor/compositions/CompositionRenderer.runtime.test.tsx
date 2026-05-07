@@ -1,6 +1,5 @@
 /**
- * CompositionRenderer runtime-mode tests — May 2026 composition runtime
- * integration phase.
+ * CompositionRenderer runtime-mode tests (R-3.0 rows shape).
  *
  * The runtime path (editorMode={false}) dispatches widget-kind
  * placements via `getWidgetRenderer(component_name)` from the canvas
@@ -19,7 +18,7 @@ import type { ResolvedComposition } from "./types"
 
 
 function makeResolved(
-  placements: ResolvedComposition["placements"] = [],
+  rows: ResolvedComposition["rows"] = [],
 ): ResolvedComposition {
   return {
     focus_type: "scheduling",
@@ -28,10 +27,8 @@ function makeResolved(
     source: "vertical_default",
     source_id: "test-id",
     source_version: 1,
-    placements,
+    rows,
     canvas_config: {
-      total_columns: 1,
-      row_height: 64,
       gap_size: 12,
       background_treatment: "surface-base",
     },
@@ -39,23 +36,35 @@ function makeResolved(
 }
 
 
-function makeWidgetPlacement(
+function makeWidgetRow(
+  row_id: string,
   placement_id: string,
   component_name: string,
   prop_overrides: Record<string, unknown> = {},
-): ResolvedComposition["placements"][number] {
+): ResolvedComposition["rows"][number] {
   return {
-    placement_id,
-    component_kind: "widget",
-    component_name,
-    grid: { column_start: 1, column_span: 1, row_start: 1, row_span: 3 },
-    prop_overrides,
-    display_config: { show_header: true, show_border: true },
+    row_id,
+    column_count: 1,
+    row_height: "auto",
+    column_widths: null,
+    nested_rows: null,
+    placements: [
+      {
+        placement_id,
+        component_kind: "widget",
+        component_name,
+        starting_column: 0,
+        column_span: 1,
+        prop_overrides,
+        display_config: { show_header: true, show_border: true },
+        nested_rows: null,
+      },
+    ],
   }
 }
 
 
-describe("CompositionRenderer runtime widget dispatch", () => {
+describe("CompositionRenderer runtime widget dispatch (R-3.0)", () => {
   it("dispatches widget-kind placements via getWidgetRenderer in runtime mode", () => {
     _resetWidgetRendererRegistryForTests()
     function MockToday(props: {
@@ -78,7 +87,7 @@ describe("CompositionRenderer runtime widget dispatch", () => {
 
     render(
       <CompositionRenderer
-        composition={makeResolved([makeWidgetPlacement("p1", "today")])}
+        composition={makeResolved([makeWidgetRow("r1", "p1", "today")])}
         editorMode={false}
       />,
     )
@@ -112,7 +121,7 @@ describe("CompositionRenderer runtime widget dispatch", () => {
     render(
       <CompositionRenderer
         composition={makeResolved([
-          makeWidgetPlacement("p1", "saved_view", {
+          makeWidgetRow("r1", "p1", "saved_view", {
             variant_id: "brief",
             view_id: "abc-123",
             extra: "passed-through",
@@ -134,17 +143,12 @@ describe("CompositionRenderer runtime widget dispatch", () => {
     render(
       <CompositionRenderer
         composition={makeResolved([
-          makeWidgetPlacement("p1", "no-such-widget"),
+          makeWidgetRow("r1", "p1", "no-such-widget"),
         ])}
         editorMode={false}
       />,
     )
-    // MissingWidgetEmptyState renders an honest empty state — verify
-    // by checking that no widget content appears + the placement
-    // container is still rendered.
     expect(screen.getByTestId("composition-placement-p1")).toBeTruthy()
-    // The empty state renders its own data-testid, but we only need
-    // to confirm we did NOT render a misleading mock stand-in:
     expect(screen.queryByTestId("mock-today-widget")).toBeNull()
   })
 
@@ -157,15 +161,11 @@ describe("CompositionRenderer runtime widget dispatch", () => {
 
     render(
       <CompositionRenderer
-        composition={makeResolved([makeWidgetPlacement("p1", "today")])}
+        composition={makeResolved([makeWidgetRow("r1", "p1", "today")])}
         editorMode={true}
       />,
     )
-
-    // Editor mode uses renderComponentPreview, NOT getWidgetRenderer.
-    // The mock production widget must NOT appear.
     expect(screen.queryByTestId("should-not-render-in-editor-mode")).toBeNull()
-    // The placement container itself does render in both modes.
     expect(screen.getByTestId("composition-placement-p1")).toBeTruthy()
   })
 
@@ -175,17 +175,23 @@ describe("CompositionRenderer runtime widget dispatch", () => {
       <CompositionRenderer
         composition={makeResolved([
           {
-            placement_id: "p1",
-            component_kind: "focus",
-            component_name: "decision",
-            grid: {
-              column_start: 1,
-              column_span: 1,
-              row_start: 1,
-              row_span: 3,
-            },
-            prop_overrides: {},
-            display_config: { show_header: true, show_border: true },
+            row_id: "r1",
+            column_count: 1,
+            row_height: "auto",
+            column_widths: null,
+            nested_rows: null,
+            placements: [
+              {
+                placement_id: "p1",
+                component_kind: "focus",
+                component_name: "decision",
+                starting_column: 0,
+                column_span: 1,
+                prop_overrides: {},
+                display_config: { show_header: true, show_border: true },
+                nested_rows: null,
+              },
+            ],
           },
         ])}
         editorMode={false}
@@ -203,7 +209,7 @@ describe("CompositionRenderer runtime widget dispatch", () => {
 
     render(
       <CompositionRenderer
-        composition={makeResolved([makeWidgetPlacement("p1", "today")])}
+        composition={makeResolved([makeWidgetRow("r1", "p1", "today")])}
         editorMode={false}
         renderPlacement={(p) => (
           <div data-testid="custom-render">custom: {p.component_name}</div>

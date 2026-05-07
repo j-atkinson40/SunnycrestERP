@@ -1,6 +1,10 @@
 /**
  * CompositionRenderer — runtime + editor renderer for canvas-based
- * Focus compositions (May 2026 composition layer).
+ * Focus compositions.
+ *
+ * R-3.0 — composition is a sequence of rows. Each row declares its
+ * own column_count (1-12) and renders as an inner CSS Grid. Outer
+ * container is flex-col with consistent gap between rows.
  *
  * Two render paths split on `editorMode`:
  *
@@ -37,7 +41,12 @@ import {
   getWidgetRenderer,
   type WidgetRendererProps,
 } from "@/components/focus/canvas/widget-renderers"
-import type { CanvasConfig, Placement, ResolvedComposition } from "./types"
+import type {
+  CanvasConfig,
+  CompositionRow,
+  Placement,
+  ResolvedComposition,
+} from "./types"
 
 
 interface Props {
@@ -56,42 +65,18 @@ interface Props {
 }
 
 
-function defaultCanvasConfig(): Required<
-  Pick<CanvasConfig, "total_columns" | "row_height" | "gap_size">
-> {
-  return {
-    total_columns: 12,
-    row_height: 64,
-    gap_size: 12,
-  }
+function defaultGapSize(canvasConfig: CanvasConfig): number {
+  return canvasConfig.gap_size ?? 12
 }
 
 
 /** Runtime placement renderer — dispatches widget-kind placements via
  *  `getWidgetRenderer(component_name)` from the canvas widget registry.
  *
- *  Convention: a placement's `component_kind` is the registry's
- *  ComponentKind discriminator (`widget`, `focus`, etc.) and its
- *  `component_name` is the canonical widget_id used in the canvas
- *  widget registry (e.g. `today`, `recent_activity`, `anomalies`,
- *  `vault_schedule`).
- *
  *  For non-widget kinds (focus / focus-template / document-block /
- *  workflow-node), the runtime path returns a graceful empty state
- *  pointing at the missing component_kind. Production runtime today
- *  composes widget-kind placements only; richer kinds activate as
- *  their corresponding production primitives ship.
- *
- *  Per-instance prop overrides flow through:
- *    - `widgetId`: placement's `component_name` (canonical id)
- *    - `surface`: `"focus_canvas"` (composition lives in Focus
- *      canvas; renderers may inspect this to adjust internal density)
- *    - `variant_id`: read from `prop_overrides.variant_id` if set,
- *      else undefined (component picks canvas-tier default per
- *      §12.10)
- *    - `config`: the rest of `prop_overrides` (excluding variant_id)
- *      passed transparently — same shape as Pulse + sidebar-pin
- *      dispatch.
+ *  workflow-node), returns a graceful empty state pointing at the
+ *  missing component_kind. Production runtime today composes
+ *  widget-kind placements only.
  */
 function renderRuntimePlacement(p: Placement): ReactNode {
   if (p.component_kind !== "widget") {
@@ -139,6 +124,77 @@ function backgroundClassFor(treatment?: string): string {
 }
 
 
+function rowGridStyle(row: CompositionRow): CSSProperties {
+  const rowHeight = row.row_height ?? "auto"
+  return {
+    display: "grid",
+    gridTemplateColumns: `repeat(${row.column_count}, minmax(0, 1fr))`,
+    gridAutoRows: typeof rowHeight === "number" ? `${rowHeight}px` : "auto",
+    minHeight: typeof rowHeight === "number" ? `${rowHeight}px` : undefined,
+    gap: "var(--composition-row-gap, 12px)",
+  }
+}
+
+
+function placementCellStyle(p: Placement): CSSProperties {
+  // CSS Grid is 1-indexed; our placements carry 0-indexed
+  // starting_column. Translate at render time.
+  return {
+    gridColumn: `${p.starting_column + 1} / span ${p.column_span}`,
+    zIndex: p.display_config?.z_index ?? "auto",
+  }
+}
+
+
+/** Render a single placement card chrome. Body content is the
+ * editor preview OR runtime widget (or caller-supplied override). */
+function PlacementCard({
+  placement,
+  isSelected,
+  editorMode,
+  onClick,
+  body,
+}: {
+  placement: Placement
+  isSelected: boolean
+  editorMode: boolean
+  onClick?: () => void
+  body: ReactNode
+}) {
+  const showBorder = placement.display_config?.show_border !== false
+  const baseRingClass = isSelected
+    ? "ring-2 ring-accent ring-offset-2 ring-offset-surface-base"
+    : showBorder
+      ? "border border-border-subtle"
+      : ""
+  const cursorClass = editorMode ? "cursor-pointer" : ""
+
+  return (
+    <div
+      style={placementCellStyle(placement)}
+      data-testid={`composition-placement-${placement.placement_id}`}
+      data-component-kind={placement.component_kind}
+      data-component-name={placement.component_name}
+      data-selected={isSelected ? "true" : "false"}
+      onClick={onClick}
+      className={`overflow-hidden rounded-md bg-surface-elevated shadow-level-1 ${baseRingClass} ${cursorClass}`}
+    >
+      {placement.display_config?.show_header !== false && (
+        <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5 text-caption">
+          <span className="font-medium text-content-strong">
+            {placement.component_name}
+          </span>
+          <span className="text-content-subtle">
+            {placement.component_kind}
+          </span>
+        </div>
+      )}
+      <div className="h-full p-2">{body}</div>
+    </div>
+  )
+}
+
+
 export function CompositionRenderer({
   composition,
   editorMode = false,
@@ -146,33 +202,33 @@ export function CompositionRenderer({
   onPlacementClick,
   renderPlacement,
 }: Props) {
-  const cfg = { ...defaultCanvasConfig(), ...composition.canvas_config }
-  const totalColumns = cfg.total_columns ?? 12
-  const rowHeight = cfg.row_height ?? 64
-  const gapSize = cfg.gap_size ?? 12
+  const cfg = composition.canvas_config ?? {}
+  const gapSize = defaultGapSize(cfg)
 
-  const gridStyle: CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: `repeat(${totalColumns}, minmax(0, 1fr))`,
-    gridAutoRows: typeof rowHeight === "number" ? `${rowHeight}px` : "auto",
+  const outerStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
     gap: `${gapSize}px`,
     padding: editorMode ? "1rem" : "0.5rem",
     minHeight: "100%",
-    position: "relative",
+    // Per-row inner grid reads gap from the CSS variable; setting it
+    // here keeps row + column gaps in step.
+    ["--composition-row-gap" as never]: `${gapSize}px`,
   }
 
-  // Editor-mode grid line overlay (subtle dotted background).
-  const editorChrome: CSSProperties = editorMode
-    ? {
-        backgroundImage: `linear-gradient(to right, var(--border-subtle) 1px, transparent 1px), linear-gradient(to bottom, var(--border-subtle) 1px, transparent 1px)`,
-        backgroundSize: `calc((100% - ${(totalColumns - 1) * gapSize}px) / ${totalColumns} + ${gapSize}px) ${
-          typeof rowHeight === "number" ? `${rowHeight + gapSize}px` : "32px"
-        }`,
-        backgroundPosition: `0 0`,
-      }
-    : {}
+  const isEmpty = composition.rows.length === 0
 
-  const isEmpty = composition.placements.length === 0
+  function renderBody(p: Placement): ReactNode {
+    if (renderPlacement) return renderPlacement(p)
+    if (editorMode) {
+      return renderComponentPreview(
+        `${p.component_kind}:${p.component_name}`,
+        p.prop_overrides ?? {},
+        `${p.component_name}`,
+      )
+    }
+    return renderRuntimePlacement(p)
+  }
 
   return (
     <div
@@ -180,73 +236,46 @@ export function CompositionRenderer({
       data-testid="composition-renderer"
       data-source={composition.source ?? "none"}
     >
-      <div style={{ ...gridStyle, ...editorChrome }} data-testid="composition-grid">
+      <div style={outerStyle} data-testid="composition-grid">
         {isEmpty && editorMode && (
           <div
-            className="col-span-full flex items-center justify-center py-8 text-content-subtle"
+            className="flex items-center justify-center py-8 text-content-subtle"
             data-testid="composition-empty"
           >
             <span className="text-caption">
-              No placements yet — drag a component from the palette to start
-              composing.
+              No rows yet — add a row to start composing.
             </span>
           </div>
         )}
 
-        {composition.placements.map((p) => {
-          const isSelected = editorMode && selectedPlacementId === p.placement_id
-          const cellStyle: CSSProperties = {
-            gridColumn: `${p.grid.column_start} / span ${p.grid.column_span}`,
-            gridRow: `${p.grid.row_start} / span ${p.grid.row_span}`,
-            zIndex: p.display_config?.z_index ?? "auto",
-          }
-          const showBorder = p.display_config?.show_border !== false
-          const baseRingClass = isSelected
-            ? "ring-2 ring-accent ring-offset-2 ring-offset-surface-base"
-            : showBorder
-              ? "border border-border-subtle"
-              : ""
-          const cursorClass = editorMode ? "cursor-pointer" : ""
-
-          return (
-            <div
-              key={p.placement_id}
-              style={cellStyle}
-              data-testid={`composition-placement-${p.placement_id}`}
-              data-component-kind={p.component_kind}
-              data-component-name={p.component_name}
-              data-selected={isSelected ? "true" : "false"}
-              onClick={
-                editorMode && onPlacementClick
-                  ? () => onPlacementClick(p.placement_id)
-                  : undefined
-              }
-              className={`overflow-hidden rounded-md bg-surface-elevated shadow-level-1 ${baseRingClass} ${cursorClass}`}
-            >
-              {p.display_config?.show_header !== false && (
-                <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5 text-caption">
-                  <span className="font-medium text-content-strong">
-                    {p.component_name}
-                  </span>
-                  <span className="text-content-subtle">
-                    {p.component_kind}
-                  </span>
-                </div>
-              )}
-              <div className="h-full p-2">
-                {renderPlacement
-                  ? renderPlacement(p)
-                  : editorMode
-                    ? renderComponentPreview(
-                        `${p.component_kind}:${p.component_name}`,
-                        p.prop_overrides ?? {},
-                        `${p.component_name}`,
-                      )
-                    : renderRuntimePlacement(p)}
-              </div>
-            </div>
-          )
-        })}
+        {composition.rows.map((row, rowIdx) => (
+          <div
+            key={row.row_id}
+            style={rowGridStyle(row)}
+            data-testid={`composition-row-${row.row_id}`}
+            data-row-index={rowIdx}
+            data-column-count={row.column_count}
+          >
+            {row.placements.map((p) => {
+              const isSelected =
+                editorMode && selectedPlacementId === p.placement_id
+              return (
+                <PlacementCard
+                  key={p.placement_id}
+                  placement={p}
+                  isSelected={isSelected}
+                  editorMode={editorMode}
+                  onClick={
+                    editorMode && onPlacementClick
+                      ? () => onPlacementClick(p.placement_id)
+                      : undefined
+                  }
+                  body={renderBody(p)}
+                />
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )

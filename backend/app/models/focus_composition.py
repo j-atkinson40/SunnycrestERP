@@ -1,10 +1,10 @@
 """Focus Composition model — canvas-based Focus layout composition
-for the Admin Visual Editor (May 2026 composition layer).
+for the Admin Visual Editor (May 2026 composition layer; R-3.0
+rows model June 2026).
 
-A composition record specifies WHAT'S ON THE CANVAS (`placements`
-array) and CANVAS-LEVEL CONFIGURATION (`canvas_config` dict).
-Component implementations stay in TS/React; the composition layer
-is purely about arrangement.
+A composition record specifies WHAT'S ON THE CANVAS via the `rows`
+array, where each row declares its own column_count (1-12) and
+contains its own placements.
 
 Inheritance chain:
     platform_default
@@ -15,33 +15,41 @@ Resolution at READ time. Each Focus type has at most one active
 composition per scope; absence falls back to the Focus's
 hard-coded layout.
 
-Placement record shape (within `placements` JSONB array):
+Row record shape (within `rows` JSONB array):
     {
-        "placement_id": str,         # unique within composition
-        "component_kind": str,       # ComponentKind
-        "component_name": str,
-        "grid": {
-            "column_start": int 1..12,
-            "column_span": int 1..12,
-            "row_start": int 1..N,
-            "row_span": int 1..N,
-        },
-        "prop_overrides": dict,      # layered on top of normal inheritance
-        "display_config": {
-            "show_header": bool?,
-            "show_border": bool?,
-            "z_index": int?,
-        },
+        "row_id": str,               # UUID; stable across edits
+        "column_count": int 1..12,
+        "row_height": "auto" | int,  # pixels OR "auto" for content-driven
+        "column_widths": list[float] | None,  # Variant B; null = equal-width
+        "nested_rows": list[Row] | None,      # bounded-nesting extension; ignored in R-3.0
+        "placements": [
+            {
+                "placement_id": str, # unique within composition
+                "component_kind": str,
+                "component_name": str,
+                "starting_column": int 0-indexed,
+                "column_span": int 1..column_count,
+                "prop_overrides": dict,
+                "display_config": {"show_header": bool?, "show_border": bool?, "z_index": int?},
+                "nested_rows": list[Row] | None,  # bounded-nesting extension
+            }
+        ]
     }
 
-Canvas config shape:
+Pre-R-3.0 columns retained for one-release grace:
+    `placements` (flat array; old uniform-grid model)
+    `canvas_config` (carries gap_size, background_treatment, padding)
+
+Both are NOT authoritative post-R-3.0. R-3.2 drops them after the
+migration window stabilizes (separate arc).
+
+Canvas config shape (still consumed in R-3.0 for cosmetic config):
     {
-        "total_columns": int (default 12),
-        "row_height": "auto" | int,
         "gap_size": int,
-        "responsive_breakpoints": dict?,
         "background_treatment": str?,
         "padding": dict?,
+        # Deprecated: total_columns + row_height + responsive_breakpoints
+        # — rows declare their own. Retained for downgrade safety.
     }
 """
 
@@ -92,6 +100,11 @@ class FocusComposition(Base):
     )
     focus_type: Mapped[str] = mapped_column(String(96), nullable=False)
 
+    # R-3.0: `rows` is the source of truth post-migration. Each row
+    # declares its own column_count + carries its own placements with
+    # 0-indexed starting_column + column_span. `placements` and
+    # `canvas_config` retained for one-release grace (R-3.2 drops them).
+    rows: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     placements: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     canvas_config: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict

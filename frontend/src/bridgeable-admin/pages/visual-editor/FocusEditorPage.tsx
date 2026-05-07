@@ -72,9 +72,17 @@ import {
 } from "@/bridgeable-admin/services/component-configurations-service"
 import type {
   CompositionRecord,
-  Placement,
   ResolvedComposition,
 } from "@/lib/visual-editor/compositions/types"
+// R-3.0: composition data model is now rows-shaped. The legacy editor
+// canvas (shared with CompositionEditorPage) keeps its flat-placements
+// + 1-indexed grid coords internal model — translation to/from rows
+// happens at IO boundary in this page's load + save handlers.
+import {
+  flattenRowsToLegacy,
+  wrapLegacyAsRows,
+  type LegacyPlacement as Placement,
+} from "./composition-editor-legacy-types"
 import {
   composeEffectiveProps,
   emptyConfigStack,
@@ -213,9 +221,18 @@ function useCompositionDraft(
         setResolved(res)
         const active = rows.find((r) => r.is_active) ?? null
         setActiveRow(active)
+        // R-3.0: API returns rows-shape; legacy editor uses
+        // flat-placements + grid coords. Translate at IO.
         if (active) {
-          setDraftPlacements([...active.placements])
-          setDraftCanvasConfig({ ...active.canvas_config })
+          const flat = flattenRowsToLegacy(
+            active.rows ?? [],
+            active.canvas_config ?? {},
+          )
+          setDraftPlacements([...flat.placements])
+          setDraftCanvasConfig({
+            ...active.canvas_config,
+            total_columns: flat.total_columns,
+          })
         } else {
           setDraftPlacements([])
           setDraftCanvasConfig(defaultCanvasConfig())
@@ -236,13 +253,20 @@ function useCompositionDraft(
     }
   }, [compositionFocusType, scope, vertical, tenantId])
 
-  const persistedSnapshot = useMemo(
-    () =>
-      activeRow
-        ? JSON.stringify([activeRow.placements, activeRow.canvas_config])
-        : JSON.stringify([[], defaultCanvasConfig()]),
-    [activeRow],
-  )
+  // R-3.0: persistedSnapshot is computed against the flattened view
+  // of the rows shape so the hasUnsaved check compares apples-to-apples
+  // with draftSnapshot (also flat-placements).
+  const persistedSnapshot = useMemo(() => {
+    if (!activeRow) return JSON.stringify([[], defaultCanvasConfig()])
+    const flat = flattenRowsToLegacy(
+      activeRow.rows ?? [],
+      activeRow.canvas_config ?? {},
+    )
+    return JSON.stringify([
+      flat.placements,
+      { ...activeRow.canvas_config, total_columns: flat.total_columns },
+    ])
+  }, [activeRow])
   const draftSnapshot = useMemo(
     () => JSON.stringify([draftPlacements, draftCanvasConfig]),
     [draftPlacements, draftCanvasConfig],
@@ -708,33 +732,53 @@ function FocusTemplatePreview({
             </div>
           </div>
         </div>
-        {draftComposition && draftComposition.placements.length > 0 && (
-          <aside
-            className="w-72 flex-shrink-0 overflow-y-auto rounded-md border border-border-subtle bg-surface-elevated"
-            data-testid="focus-preview-accessory-region"
-          >
-            <div className="border-b border-border-subtle bg-surface-sunken px-3 py-1.5 text-caption font-medium text-content-strong">
-              Accessory layer ({draftComposition.placements.length} widgets)
-            </div>
-            <div className="p-2">
-              {draftComposition.placements.map((p) => (
-                <div
-                  key={p.placement_id}
-                  className="mb-2 rounded-sm border border-border-subtle bg-surface-base p-2 text-caption"
-                  data-testid={`focus-preview-placement-${p.placement_id}`}
-                >
-                  <div className="font-medium text-content-strong">
-                    {p.component_name}
+        {(() => {
+          // R-3.0: count placements across all rows in the rows-shape
+          // composition; the placeholder rail summarizes accessory
+          // widgets without grid coords (rows model is row-implicit).
+          const allPlacements =
+            draftComposition?.rows.flatMap((r) => r.placements) ?? []
+          if (allPlacements.length === 0) return null
+          return (
+            <aside
+              className="w-72 flex-shrink-0 overflow-y-auto rounded-md border border-border-subtle bg-surface-elevated"
+              data-testid="focus-preview-accessory-region"
+            >
+              <div className="border-b border-border-subtle bg-surface-sunken px-3 py-1.5 text-caption font-medium text-content-strong">
+                Accessory layer ({allPlacements.length} widgets)
+              </div>
+              <div className="p-2">
+                {draftComposition?.rows.map((row, rowIdx) => (
+                  <div
+                    key={row.row_id}
+                    className="mb-3"
+                    data-testid={`focus-preview-row-${row.row_id}`}
+                  >
+                    <div className="mb-1 text-micro uppercase tracking-wider text-content-subtle">
+                      Row {rowIdx + 1} ({row.column_count}-col)
+                    </div>
+                    {row.placements.map((p) => (
+                      <div
+                        key={p.placement_id}
+                        className="mb-2 rounded-sm border border-border-subtle bg-surface-base p-2 text-caption"
+                        data-testid={`focus-preview-placement-${p.placement_id}`}
+                      >
+                        <div className="font-medium text-content-strong">
+                          {p.component_name}
+                        </div>
+                        <div className="text-content-muted">
+                          {p.component_kind} · col{" "}
+                          {p.starting_column + 1}–
+                          {p.starting_column + p.column_span}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-content-muted">
-                    {p.component_kind} · row {p.grid.row_start}-
-                    {p.grid.row_start + p.grid.row_span}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </aside>
-        )}
+                ))}
+              </div>
+            </aside>
+          )
+        })()}
       </div>
     </FocusContextFrame>
   )
@@ -966,9 +1010,13 @@ function CompositionTab({
     setIsSaving(true)
     setSaveError(null)
     try {
+      // R-3.0: editor's flat-placements internal model translates to
+      // canonical rows shape on save. Single-row authoring per the
+      // R-3.0 patch contract — R-3.1 retires this constraint.
+      const wrappedRows = wrapLegacyAsRows(draftPlacements, draftCanvasConfig)
       if (activeRow) {
         const updated = await focusCompositionsService.update(activeRow.id, {
-          placements: draftPlacements,
+          rows: wrappedRows,
           canvas_config: draftCanvasConfig,
         })
         setActiveRow(updated)
@@ -978,7 +1026,7 @@ function CompositionTab({
           focus_type: compositionFocusType,
           vertical: scope === "vertical_default" ? vertical : null,
           tenant_id: scope === "tenant_override" ? tenantId : null,
-          placements: draftPlacements,
+          rows: wrappedRows,
           canvas_config: draftCanvasConfig,
         })
         setActiveRow(created)

@@ -1,73 +1,34 @@
-"""Seed Focus compositions for the September Wilbert demo (May 2026).
+"""Seed Focus compositions for the September Wilbert demo.
 
-Creates two `vertical_default` compositions for the `scheduling`
-focus type, one each for funeral_home and manufacturing verticals:
+Creates two `vertical_default` compositions for the `scheduling` focus
+type, one each for funeral_home and manufacturing verticals. Each is the
+**accessory layer** that renders alongside the bespoke
+`SchedulingKanbanCore.tsx` (1,714 LOC) inside the scheduling Focus —
+the kanban core itself is rendered by code, NOT a composition placement.
 
-  - funeral_home_scheduling: 3 accessory widgets (today, recent_activity,
-    anomalies) stacked vertically as a sidebar
-  - manufacturing_scheduling: same 3 accessory widgets in the same
-    arrangement (verticals can differentiate via the visual editor
-    when concrete operator signal warrants)
-
-These produce the **accessory layer** for the scheduling Focus in
-each vertical. The bespoke kanban core (`SchedulingKanbanCore.tsx`,
-1,714 LOC) renders the dispatcher's planning workspace itself —
-the kanban surface, drag-drop, finalize workflow, ancillary pin —
-and is **NOT** part of the composition. The composition only authors
-the accessory widgets that render alongside the kanban in the Focus's
-right-side accessory region.
-
-Architectural pattern (May 2026 composition runtime integration phase):
-
-  ┌── Focus surface ───────────────────────────────────────────┐
-  │ ┌── kanban region (75% width) ──┐ ┌── accessory region ──┐ │
-  │ │                                │ │ rendered from        │ │
-  │ │   SchedulingKanbanCore         │ │ this composition     │ │
-  │ │   (bespoke, code-rendered;     │ │ (visual-editor-      │ │
-  │ │    NOT a composition placement)│ │  authored)            │ │
-  │ │                                │ │                       │ │
-  │ │                                │ │ • today              │ │
-  │ │                                │ │ • recent_activity    │ │
-  │ │                                │ │ • anomalies           │ │
-  │ │                                │ │                       │ │
-  │ └────────────────────────────────┘ └───────────────────────┘ │
-  └────────────────────────────────────────────────────────────┘
-
-Why this shape (vs. composition-as-full-Focus-layout):
-
-The previous shipped seed included a `widget:vault-schedule` placement
-intended to render the kanban-shaped Pulse widget at column 1-8.
-That conflated two surfaces: the Pulse-shaped abridged kanban widget
-and the dispatcher's bespoke `SchedulingKanbanCore`. They render
-the same data but with substantively different interaction surfaces;
-the kanban core is too tightly-coupled to decompose into widget-shaped
-pieces without a regression-prone rewrite. The accessory-layer pattern
-preserves operational behavior of the bespoke surface and lets the
-composition author the periphery.
-
-Naming convention: placement `component_name` is the canonical
-widget_id snake_case used in the canvas widget registry
-(`registerWidgetRenderer("today", TodayWidget)` etc. at
-`frontend/src/components/widgets/foundation/register.ts`). The
-runtime path in `CompositionRenderer.tsx` dispatches via
-`getWidgetRenderer(component_name)` → real production widgets with
-operational data.
+R-3.0 — composition data model is now a sequence of rows. Each row
+declares its own column_count (1-12) and carries its own placements
+with 0-indexed `starting_column` + `column_span`. Architectural
+shape unchanged from R-2.x: the seeded compositions describe a
+single-column accessory rail with three widgets stacked vertically;
+each widget gets its own row at column_count=1. This produces the
+same visual output as the prior R-2.x seed (uniform-grid stacking)
+while structurally adopting the new rows shape so future per-row
+column_count differentiation lands cleanly.
 
 Idempotent: re-running deactivates the prior active row + inserts a
 new active row at version+1 (per service-layer versioning semantics
-in `composition_service.create_composition`). The seed always
-represents the current canonical baseline.
+in `composition_service.create_composition`).
 
 Usage:
     PYTHONPATH=. python backend/scripts/seed_focus_compositions.py
-
-Run from the backend/ directory or with PYTHONPATH=. as appropriate.
 """
 
 from __future__ import annotations
 
 import logging
 import sys
+import uuid
 from pathlib import Path
 
 # Ensure `backend` is on sys.path so this script runs from any cwd.
@@ -82,75 +43,69 @@ from app.services.focus_compositions import create_composition  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
-# ─── Accessory layer placements ────────────────────────────────
-#
-# The composition canvas is intentionally a single-column layout
-# (total_columns=1 below) so each placement fills the accessory
-# region's full width. The accessory region itself is a narrow
-# right-side sidebar in the scheduling Focus (~25% of viewport
-# width); the composition describes its INTERNAL stacking. When a
-# vertical wants to differentiate (e.g., FH adds a calendar widget,
-# MFG adds line-status), it forks the composition via the visual
-# editor.
-#
-# Row sizing: row_start increments by row_span, so widgets stack
-# tightly without gaps. The frontend accessory region scrolls
-# vertically when content exceeds viewport height.
+def _accessory_row(
+    *,
+    placement_id: str,
+    component_name: str,
+    row_height: int,
+) -> dict:
+    """Single-placement row at column_count=1; widget fills the row.
+
+    Each widget gets its own row so they stack vertically in the
+    accessory rail. The R-3.0 model declares column_count + the
+    placement's starting_column (0-indexed) + column_span so the
+    widget spans the row's full width.
+    """
+    return {
+        "row_id": str(uuid.uuid4()),
+        "column_count": 1,
+        "row_height": row_height,
+        "column_widths": None,
+        "nested_rows": None,
+        "placements": [
+            {
+                "placement_id": placement_id,
+                "component_kind": "widget",
+                "component_name": component_name,
+                "starting_column": 0,
+                "column_span": 1,
+                "prop_overrides": {},
+                "display_config": {"show_header": True, "show_border": True},
+                "nested_rows": None,
+            }
+        ],
+    }
 
 
-def _accessory_placements() -> list[dict]:
-    """3 accessory widgets stacked vertically in a single-column canvas."""
+def _accessory_rows() -> list[dict]:
+    """3 accessory widgets, each in its own single-column row.
+
+    Row heights mirror the prior R-2.x seed (3 × 64 / 4 × 64 / 3 × 64
+    pixels). Verticals can override per-row row_height + column_count
+    via the visual editor when concrete operator signal warrants.
+    """
     return [
-        {
-            "placement_id": "today",
-            "component_kind": "widget",
-            "component_name": "today",
-            "grid": {
-                "column_start": 1,
-                "column_span": 1,
-                "row_start": 1,
-                "row_span": 3,
-            },
-            "prop_overrides": {},
-            "display_config": {"show_header": True, "show_border": True},
-        },
-        {
-            "placement_id": "recent-activity",
-            "component_kind": "widget",
-            "component_name": "recent_activity",
-            "grid": {
-                "column_start": 1,
-                "column_span": 1,
-                "row_start": 4,
-                "row_span": 4,
-            },
-            "prop_overrides": {},
-            "display_config": {"show_header": True, "show_border": True},
-        },
-        {
-            "placement_id": "anomalies",
-            "component_kind": "widget",
-            "component_name": "anomalies",
-            "grid": {
-                "column_start": 1,
-                "column_span": 1,
-                "row_start": 8,
-                "row_span": 3,
-            },
-            "prop_overrides": {},
-            "display_config": {"show_header": True, "show_border": True},
-        },
+        _accessory_row(
+            placement_id="today",
+            component_name="today",
+            row_height=192,  # 3 × 64
+        ),
+        _accessory_row(
+            placement_id="recent-activity",
+            component_name="recent_activity",
+            row_height=256,  # 4 × 64
+        ),
+        _accessory_row(
+            placement_id="anomalies",
+            component_name="anomalies",
+            row_height=192,  # 3 × 64
+        ),
     ]
 
 
+# canvas_config carries cosmetic settings only post-R-3.0. Per-row
+# column_count + row_height live on each row.
 CANVAS_CONFIG = {
-    # Single-column canvas — accessory region is narrow; widgets stack
-    # vertically and fill its full width. Verticals can override via
-    # the visual editor (add columns, multi-column arrangements).
-    "total_columns": 1,
-    # 64px row height matches the editor canvas default. Each widget's
-    # row_span × 64px = its target visual height in the accessory rail.
-    "row_height": 64,
     "gap_size": 12,
     "background_treatment": "surface-base",
 }
@@ -166,15 +121,15 @@ def main() -> None:
                 scope="vertical_default",
                 focus_type="scheduling",
                 vertical=vertical,
-                placements=_accessory_placements(),
+                rows=_accessory_rows(),
                 canvas_config=CANVAS_CONFIG,
             )
             logger.info(
-                "Seeded %s scheduling composition (id=%s, version=%d, %d placements)",
+                "Seeded %s scheduling composition (id=%s, version=%d, %d rows)",
                 vertical,
                 row.id,
                 row.version,
-                len(row.placements),
+                len(row.rows),
             )
     finally:
         db.close()

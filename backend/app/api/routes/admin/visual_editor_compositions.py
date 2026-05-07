@@ -1,10 +1,16 @@
-"""Focus Compositions API — admin endpoints (May 2026 composition layer).
+"""Focus Compositions API — admin endpoints.
+
+R-3.0 — composition data model gains rows with per-row column count.
+The endpoint surface is unchanged structurally; payload shapes now
+carry `rows` instead of `placements`. Pre-R-3.0 flat-placements
+payloads are rejected at the boundary with a clear error pointing
+at the rows-based contract.
 
 Endpoints mounted at `/api/platform/admin/visual-editor/compositions`:
 
     GET    /              — list compositions matching filters
     POST   /              — create / version a composition
-    PATCH  /{id}          — replace placements / canvas_config
+    PATCH  /{id}          — replace rows / canvas_config
     GET    /resolve       — resolved composition (inheritance walk)
     GET    /{id}          — single row
 
@@ -15,7 +21,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -24,11 +30,10 @@ from app.database import get_db
 from app.models.platform_user import PlatformUser
 from app.services.focus_compositions import (
     CompositionError,
-    CompositionNotFound,
-    InvalidCompositionShape,
     create_composition,
     get_composition,
     list_compositions,
+    reject_legacy_placements_payload,
     resolve_composition,
     update_composition,
 )
@@ -44,7 +49,7 @@ class _CompositionResponse(BaseModel):
     vertical: str | None
     tenant_id: str | None
     focus_type: str
-    placements: list
+    rows: list
     canvas_config: dict
     version: int
     is_active: bool
@@ -59,12 +64,12 @@ class _CreateRequest(BaseModel):
     focus_type: str
     vertical: str | None = None
     tenant_id: str | None = None
-    placements: list = Field(default_factory=list)
+    rows: list = Field(default_factory=list)
     canvas_config: dict = Field(default_factory=dict)
 
 
 class _UpdateRequest(BaseModel):
-    placements: list | None = None
+    rows: list | None = None
     canvas_config: dict | None = None
 
 
@@ -75,7 +80,7 @@ class _ResolveResponse(BaseModel):
     source: str | None
     source_id: str | None
     source_version: int | None
-    placements: list
+    rows: list
     canvas_config: dict
 
 
@@ -86,7 +91,7 @@ def _serialize(row) -> _CompositionResponse:
         vertical=row.vertical,
         tenant_id=row.tenant_id,
         focus_type=row.focus_type,
-        placements=list(row.placements or []),
+        rows=list(row.rows or []),
         canvas_config=dict(row.canvas_config or {}),
         version=row.version,
         is_active=row.is_active,
@@ -99,6 +104,21 @@ def _serialize(row) -> _CompositionResponse:
 
 def _translate_error(err: CompositionError) -> HTTPException:
     return HTTPException(status_code=err.http_status, detail=str(err))
+
+
+async def _read_raw_body_for_legacy_check(request: Request) -> dict | None:
+    """Read the raw JSON body once + cache on request.state so we can
+    inspect for the legacy `placements` shape WITHOUT consuming the
+    body before Pydantic gets to it. Pydantic re-parses from the same
+    cached body via FastAPI's internal mechanism.
+    """
+    try:
+        body_bytes = await request.body()
+        import json
+
+        return json.loads(body_bytes) if body_bytes else None
+    except (ValueError, TypeError):
+        return None
 
 
 @router.get("/", response_model=list[_CompositionResponse])
@@ -150,11 +170,25 @@ def get_endpoint(
 
 
 @router.post("/", response_model=_CompositionResponse, status_code=201)
-def create_endpoint(
-    body: _CreateRequest,
+async def create_endpoint(
+    request: Request,
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ) -> _CompositionResponse:
+    raw_body = await _read_raw_body_for_legacy_check(request)
+    try:
+        # Pre-flight check: pre-R-3.0 flat-placements payloads
+        # surface a clear error pointing at the rows-based contract
+        # before Pydantic complains about extra fields.
+        reject_legacy_placements_payload(raw_body)
+    except CompositionError as err:
+        raise _translate_error(err)
+
+    try:
+        body = _CreateRequest.model_validate(raw_body or {})
+    except Exception as err:
+        raise HTTPException(status_code=422, detail=str(err))
+
     try:
         row = create_composition(
             db,
@@ -162,7 +196,7 @@ def create_endpoint(
             focus_type=body.focus_type,
             vertical=body.vertical,
             tenant_id=body.tenant_id,
-            placements=body.placements,
+            rows=body.rows,
             canvas_config=body.canvas_config,
             # NOTE: PlatformUser id cannot satisfy users.id FK; same
             # carry-forward limitation flagged in CLAUDE.md §4.
@@ -174,17 +208,28 @@ def create_endpoint(
 
 
 @router.patch("/{composition_id}", response_model=_CompositionResponse)
-def update_endpoint(
+async def update_endpoint(
     composition_id: str,
-    body: _UpdateRequest,
+    request: Request,
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ) -> _CompositionResponse:
+    raw_body = await _read_raw_body_for_legacy_check(request)
+    try:
+        reject_legacy_placements_payload(raw_body)
+    except CompositionError as err:
+        raise _translate_error(err)
+
+    try:
+        body = _UpdateRequest.model_validate(raw_body or {})
+    except Exception as err:
+        raise HTTPException(status_code=422, detail=str(err))
+
     try:
         row = update_composition(
             db,
             composition_id=composition_id,
-            placements=body.placements,
+            rows=body.rows,
             canvas_config=body.canvas_config,
             actor_user_id=None,
         )

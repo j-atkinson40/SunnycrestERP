@@ -69,12 +69,20 @@ export function SchedulingFocusWithAccessories({
   })
 
   // Show accessory rail only when a composition resolved AND has
-  // placements. Loading state intentionally renders kanban-only so
-  // the rail doesn't appear-then-disappear if no composition resolves.
+  // at least one placement across its rows. Loading state intentionally
+  // renders kanban-only so the rail doesn't appear-then-disappear if
+  // no composition resolves. R-3.0 — count placements across all rows
+  // (post-rows-shape; empty rows.length OR every row.placements empty
+  // means no meaningful content to render).
+  const totalPlacements =
+    composition.composition?.rows.reduce(
+      (acc, row) => acc + row.placements.length,
+      0,
+    ) ?? 0
   const showAccessories =
     composition.hasComposition &&
     !!composition.composition &&
-    composition.composition.placements.length > 0
+    totalPlacements > 0
 
   if (!showAccessories) {
     return (

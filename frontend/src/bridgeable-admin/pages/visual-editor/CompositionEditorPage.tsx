@@ -1,6 +1,5 @@
 /**
- * CompositionEditorPage — canvas-based Focus composition editor
- * (May 2026 composition layer + drag-drop interaction layer).
+ * CompositionEditorPage — canvas-based Focus composition editor.
  *
  * v2 layout: three-pane preview-dominant matching the redesigned
  * component editor:
@@ -20,6 +19,17 @@
  * (nudge by one cell), Cmd+D (duplicate). The form-based grid editor
  * stays in the right rail as a fallback for single-selected
  * placements — power users can drag, precise users can type.
+ *
+ * **R-3.0 compatibility note**: this editor's internal state is the
+ * legacy flat-placements + grid-coords model (column_start /
+ * column_span / row_start / row_span). R-3.0 introduces a new
+ * rows-shaped composition model end-to-end (data + API + renderer).
+ * This editor STAYS AS-IS in R-3.0 — it reads multi-row layouts via
+ * `flattenRowsToLegacy` + writes single-row layouts via
+ * `wrapLegacyAsRows`. R-3.1 retires this editor by teaching it to
+ * author multi-row layouts natively. Until then, admins authoring
+ * compositions via this surface produce single-row outputs. (See
+ * `composition-editor-legacy-types.ts` for the translation helpers.)
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom"
@@ -49,9 +59,13 @@ import {
 } from "@/bridgeable-admin/services/focus-compositions-service"
 import type {
   CompositionRecord,
-  Placement,
   ResolvedComposition,
 } from "@/lib/visual-editor/compositions/types"
+import {
+  flattenRowsToLegacy,
+  wrapLegacyAsRows,
+  type LegacyPlacement as Placement,
+} from "./composition-editor-legacy-types"
 import {
   getCanvasMetadata,
   getCanvasPlaceableComponents,
@@ -282,9 +296,21 @@ export default function CompositionEditorPage() {
       undoStack.current = []
       undoPointer.current = -1
       isReplayingRef.current = true
-      if (active) {
-        setDraftPlacements([...active.placements])
-        setDraftCanvasConfig({ ...active.canvas_config })
+      // R-3.0: API returns rows-shaped composition. The legacy editor
+      // works with flat placements + grid coords — translate at IO.
+      const flattened = active
+        ? flattenRowsToLegacy(active.rows ?? [], active.canvas_config ?? {})
+        : null
+      if (flattened) {
+        setDraftPlacements([...flattened.placements])
+        // Preserve total_columns from the flattening result so the
+        // editor's grid math (which reads canvas_config.total_columns)
+        // continues to work even though the new model puts column_count
+        // on each row.
+        setDraftCanvasConfig({
+          ...active!.canvas_config,
+          total_columns: flattened.total_columns,
+        })
       } else {
         setDraftPlacements([])
         setDraftCanvasConfig(defaultCanvasConfig())
@@ -293,8 +319,13 @@ export default function CompositionEditorPage() {
       queueMicrotask(() => {
         isReplayingRef.current = false
         pushSnapshot(
-          active ? [...active.placements] : [],
-          active ? { ...active.canvas_config } : defaultCanvasConfig(),
+          flattened ? [...flattened.placements] : [],
+          flattened
+            ? {
+                ...active!.canvas_config,
+                total_columns: flattened.total_columns,
+              }
+            : defaultCanvasConfig(),
         )
       })
     } catch (err) {
@@ -316,13 +347,24 @@ export default function CompositionEditorPage() {
   }, [scope, focusType])
 
   // ── Save / discard / autosave ────────────────────────────
-  const persistedSnapshot = useMemo(
-    () =>
-      activeRow
-        ? JSON.stringify([activeRow.placements, activeRow.canvas_config])
-        : JSON.stringify([[], defaultCanvasConfig()]),
-    [activeRow],
-  )
+  // R-3.0: persistedSnapshot is computed against the editor's local
+  // flat-placements view of the canonical rows shape so the
+  // hasUnsaved check compares apples-to-apples with draftSnapshot
+  // (also flat-placements). flattenRowsToLegacy is deterministic on
+  // the same input so the snapshot is stable.
+  const persistedSnapshot = useMemo(() => {
+    if (!activeRow) {
+      return JSON.stringify([[], defaultCanvasConfig()])
+    }
+    const flat = flattenRowsToLegacy(
+      activeRow.rows ?? [],
+      activeRow.canvas_config ?? {},
+    )
+    return JSON.stringify([
+      flat.placements,
+      { ...activeRow.canvas_config, total_columns: flat.total_columns },
+    ])
+  }, [activeRow])
   const draftSnapshot = useMemo(
     () => JSON.stringify([draftPlacements, draftCanvasConfig]),
     [draftPlacements, draftCanvasConfig],
@@ -334,9 +376,13 @@ export default function CompositionEditorPage() {
     setIsSaving(true)
     setSaveError(null)
     try {
+      // R-3.0: editor's internal flat-placements model translates to
+      // the canonical rows shape on save. Single-row authoring per
+      // the R-3.0 patch contract — R-3.1 retires this constraint.
+      const wrappedRows = wrapLegacyAsRows(draftPlacements, draftCanvasConfig)
       if (activeRow) {
         const updated = await focusCompositionsService.update(activeRow.id, {
-          placements: draftPlacements,
+          rows: wrappedRows,
           canvas_config: draftCanvasConfig,
         })
         setActiveRow(updated)
@@ -346,7 +392,7 @@ export default function CompositionEditorPage() {
           focus_type: focusType,
           vertical: scope === "vertical_default" ? vertical : null,
           tenant_id: scope === "tenant_override" ? tenantIdInput : null,
-          placements: draftPlacements,
+          rows: wrappedRows,
           canvas_config: draftCanvasConfig,
         })
         setActiveRow(created)
@@ -390,8 +436,17 @@ export default function CompositionEditorPage() {
   const handleDiscard = useCallback(() => {
     isReplayingRef.current = true
     if (activeRow) {
-      setDraftPlacements([...activeRow.placements])
-      setDraftCanvasConfig({ ...activeRow.canvas_config })
+      // R-3.0: re-flatten from rows shape on discard so the editor
+      // returns to the persisted state (post-flatten).
+      const flat = flattenRowsToLegacy(
+        activeRow.rows ?? [],
+        activeRow.canvas_config ?? {},
+      )
+      setDraftPlacements([...flat.placements])
+      setDraftCanvasConfig({
+        ...activeRow.canvas_config,
+        total_columns: flat.total_columns,
+      })
     } else {
       setDraftPlacements([])
       setDraftCanvasConfig(defaultCanvasConfig())

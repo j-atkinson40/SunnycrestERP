@@ -25,7 +25,11 @@
  * simultaneously.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { Placement } from "@/lib/visual-editor/compositions/types"
+// R-3.0: composition data model is now rows-shaped. The legacy editor
+// canvas interaction state retains flat-placements + 1-indexed grid
+// coords for drag/resize math — translation to rows happens at IO
+// boundary in CompositionEditorPage.
+import type { LegacyPlacement as Placement } from "@/bridgeable-admin/pages/visual-editor/composition-editor-legacy-types"
 
 
 export type CanvasGesture =

@@ -176,18 +176,26 @@ describe("compositionDraftAsResolved", () => {
     expect(result.focus_type).toBe("scheduling")
     expect(result.vertical).toBe("funeral_home")
     expect(result.tenant_id).toBeNull()
-    expect(result.placements).toEqual(placements)
+    // R-3.0: helper now wraps legacy flat placements into the rows
+    // shape. Verify the rows-shape output preserves placement
+    // identity + translates 1-indexed column_start → 0-indexed
+    // starting_column.
+    expect(result.rows.length).toBe(1)
+    expect(result.rows[0].placements.length).toBe(1)
+    expect(result.rows[0].placements[0].placement_id).toBe("p1")
+    expect(result.rows[0].placements[0].starting_column).toBe(0)
+    expect(result.rows[0].placements[0].column_span).toBe(1)
     expect(result.canvas_config).toEqual(canvas)
     // Source is set when there are placements (so the renderer can
     // distinguish from an empty resolution).
     expect(result.source).toBe("vertical_default")
   })
 
-  it("returns null source when placements list is empty", () => {
+  it("returns null source + empty rows when placements list is empty", () => {
     const canvas = { total_columns: 1, row_height: 64, gap_size: 12 }
     const result = compositionDraftAsResolved([], canvas, "funeral_home")
     expect(result.source).toBeNull()
-    expect(result.placements).toHaveLength(0)
+    expect(result.rows).toHaveLength(0)
   })
 })
 

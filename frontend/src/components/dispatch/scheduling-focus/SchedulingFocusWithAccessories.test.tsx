@@ -35,7 +35,9 @@ vi.mock("@/contexts/auth-context", () => ({
 }))
 
 // Mock useResolvedComposition so each test controls the resolution
-// outcome.
+// outcome. R-3.0 — composition is a sequence of rows; each row has its
+// own column_count and placements with 0-indexed starting_column +
+// column_span.
 const mockResolution = vi.hoisted(() => ({
   current: {
     composition: null as
@@ -47,18 +49,22 @@ const mockResolution = vi.hoisted(() => ({
           source: string | null
           source_id: string | null
           source_version: number | null
-          placements: Array<{
-            placement_id: string
-            component_kind: string
-            component_name: string
-            grid: {
-              column_start: number
+          rows: Array<{
+            row_id: string
+            column_count: number
+            row_height: number | "auto"
+            column_widths: number[] | null
+            nested_rows: unknown[] | null
+            placements: Array<{
+              placement_id: string
+              component_kind: string
+              component_name: string
+              starting_column: number
               column_span: number
-              row_start: number
-              row_span: number
-            }
-            prop_overrides: Record<string, unknown>
-            display_config: Record<string, unknown>
+              prop_overrides: Record<string, unknown>
+              display_config: Record<string, unknown>
+              nested_rows: unknown[] | null
+            }>
           }>
           canvas_config: Record<string, unknown>
         },
@@ -90,6 +96,27 @@ function makeConfig(overrides: Partial<FocusConfig> = {}): FocusConfig {
 function makeComposition(
   placementCount: number,
 ): NonNullable<typeof mockResolution.current.composition> {
+  // R-3.0 — each placement gets its own single-column row (mirrors the
+  // post-R-3.0 seeded shape from seed_focus_compositions.py).
+  const rows = Array.from({ length: placementCount }).map((_, i) => ({
+    row_id: `row-${i + 1}`,
+    column_count: 1,
+    row_height: 64,
+    column_widths: null,
+    nested_rows: null,
+    placements: [
+      {
+        placement_id: `p${i + 1}`,
+        component_kind: "widget",
+        component_name: ["today", "recent_activity", "anomalies"][i] ?? "today",
+        starting_column: 0,
+        column_span: 1,
+        prop_overrides: {},
+        display_config: { show_header: true, show_border: true },
+        nested_rows: null,
+      },
+    ],
+  }))
   return {
     focus_type: "scheduling",
     vertical: "funeral_home",
@@ -97,20 +124,8 @@ function makeComposition(
     source: "vertical_default",
     source_id: "test-row",
     source_version: 1,
-    placements: Array.from({ length: placementCount }).map((_, i) => ({
-      placement_id: `p${i + 1}`,
-      component_kind: "widget",
-      component_name: ["today", "recent_activity", "anomalies"][i] ?? "today",
-      grid: {
-        column_start: 1,
-        column_span: 1,
-        row_start: i * 3 + 1,
-        row_span: 3,
-      },
-      prop_overrides: {},
-      display_config: { show_header: true, show_border: true },
-    })),
-    canvas_config: { total_columns: 1, row_height: 64, gap_size: 12 },
+    rows,
+    canvas_config: { gap_size: 12 },
   }
 }
 

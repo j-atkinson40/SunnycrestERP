@@ -1,18 +1,20 @@
 /**
  * Focus composition types — frontend mirror of the backend's
- * `focus_compositions` table shape (May 2026 composition layer).
+ * `focus_compositions.rows` shape (R-3.0).
+ *
+ * R-3.0 — composition is a sequence of rows. Each row declares its
+ * own column_count (1-12) and carries its own placements with
+ * 0-indexed `starting_column` + `column_span`.
+ *
+ * Pre-R-3.0 flat-`placements` shape is removed from the TypeScript
+ * surface. The DB columns remain temporarily (one-release grace);
+ * R-3.2 drops them. Application code post-R-3.0 reads/writes only
+ * `rows`.
  */
 import type { ComponentKind } from "@/lib/visual-editor/registry"
 
 
-export interface PlacementGrid {
-  column_start: number
-  column_span: number
-  row_start: number
-  row_span: number
-}
-
-
+/** Display affordances per placement (cosmetic — render-time only). */
 export interface PlacementDisplayConfig {
   show_header?: boolean
   show_border?: boolean
@@ -20,30 +22,76 @@ export interface PlacementDisplayConfig {
 }
 
 
+/** A single placement within a row.
+ *
+ * `starting_column` is **0-indexed** (R-3.0 API change from R-2.x's
+ * 1-indexed `column_start`). `column_span` is in cells.
+ *
+ * `nested_rows` is the bounded-nesting extension point — null in
+ * R-3.0; future activation lands without schema migration.
+ */
 export interface Placement {
   placement_id: string
   component_kind: ComponentKind
   component_name: string
-  grid: PlacementGrid
+  /** 0-indexed; in [0, row.column_count - 1]. */
+  starting_column: number
+  /** In cells; starting_column + column_span <= row.column_count. */
+  column_span: number
   prop_overrides: Record<string, unknown>
   display_config: PlacementDisplayConfig
+  /** Bounded-nesting extension point. Null in R-3.0. */
+  nested_rows: CompositionRow[] | null
 }
 
 
-export interface ResponsiveBreakpoints {
-  mobile?: { columns: number }
-  tablet?: { columns: number }
-  desktop?: { columns: number }
+/** A single row within a composition.
+ *
+ * `column_count` is the row-local grid (1-12). Placements within
+ * this row are positioned via 0-indexed `starting_column` and span
+ * up to `column_count` cells.
+ *
+ * `column_widths` is the Variant B extension point — null in R-3.0;
+ * future activation enables non-equal-width column distributions.
+ *
+ * `nested_rows` is the bounded-nesting extension point — null in
+ * R-3.0; future activation lets a row contain sub-rows.
+ *
+ * `row_height` content-driven default ("auto") OR explicit pixel
+ * height. The renderer respects either; gestures clamp accordingly.
+ */
+export interface CompositionRow {
+  row_id: string
+  column_count: number
+  row_height: "auto" | number
+  /** Variant B extension point. Null in R-3.0. */
+  column_widths: number[] | null
+  /** Bounded-nesting extension point. Null in R-3.0. */
+  nested_rows: CompositionRow[] | null
+  placements: Placement[]
 }
 
 
+/** Canvas-level cosmetic settings — gap between rows, background
+ * treatment, padding. Per-row column_count + row_height live on each
+ * row record post-R-3.0.
+ */
 export interface CanvasConfig {
-  total_columns?: number
-  row_height?: "auto" | number
+  /** Pixels between rows. */
   gap_size?: number
-  responsive_breakpoints?: ResponsiveBreakpoints
   background_treatment?: string
   padding?: { token?: string }
+  /** Deprecated in R-3.0 — retained for backwards compatibility with
+   * legacy DB rows that still carry these in canvas_config. The
+   * renderer ignores them; rows declare their own column_count +
+   * row_height. */
+  total_columns?: number
+  row_height?: "auto" | number
+  responsive_breakpoints?: {
+    mobile?: { columns: number }
+    tablet?: { columns: number }
+    desktop?: { columns: number }
+  }
 }
 
 
@@ -54,7 +102,7 @@ export interface ResolvedComposition {
   source: "platform_default" | "vertical_default" | "tenant_override" | null
   source_id: string | null
   source_version: number | null
-  placements: Placement[]
+  rows: CompositionRow[]
   canvas_config: CanvasConfig
 }
 
@@ -65,7 +113,7 @@ export interface CompositionRecord {
   vertical: string | null
   tenant_id: string | null
   focus_type: string
-  placements: Placement[]
+  rows: CompositionRow[]
   canvas_config: CanvasConfig
   version: number
   is_active: boolean
