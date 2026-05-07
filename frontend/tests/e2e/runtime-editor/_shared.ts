@@ -48,6 +48,22 @@ export const HOPKINS_DIRECTOR_PASSWORD = "DemoDirector123!"
 export const HOPKINS_ADMIN_PASSWORD = "DemoAdmin123!"
 
 
+// R-1.6.16 — testco is the canonical manufacturing-vertical dev tenant.
+// Synthetic, seeded by seed_staging.py + seed_dispatch_demo.py on every
+// staging deploy via railway-start.sh. Mirrors the Hopkins FH constants
+// for the FH vertical. See CLAUDE.md "Canonical development tenants"
+// for the full mental model. testco is NOT Sunnycrest Precast (the real
+// company that owns Bridgeable); Sunnycrest is production-only.
+export const TESTCO_SLUG = "testco"
+export const TESTCO_NAME = "Test Vault Co"
+export const TESTCO_ADMIN_EMAIL = "admin@testco.com"
+export const TESTCO_ADMIN_PASSWORD = "TestAdmin123!"
+// Dispatcher user seeded by seed_dispatch_demo.py — owns the daily
+// kanban surface where DeliveryCard / AncillaryCard render.
+export const TESTCO_DISPATCHER_EMAIL = "dispatcher@testco.com"
+export const TESTCO_DISPATCHER_PASSWORD = "TestDispatch123!"
+
+
 // Storage keys mirror frontend canonical keys (admin-api.ts).
 const ADMIN_TOKEN_KEY = "bridgeable-admin-token-staging"
 const ADMIN_ENV_KEY = "bridgeable-admin-env"
@@ -313,6 +329,177 @@ export async function loginAsHopkinsDirector(page: Page): Promise<void> {
   // (post-R-1.6.12 Pulse home renders today / operator-profile /
   // recent-activity with `data-component-name` boundary divs) to
   // attach as the strongest signal that the dashboard rendered.
+  await page
+    .locator("[data-component-name]")
+    .first()
+    .waitFor({ state: "attached", timeout: 10_000 })
+}
+
+
+/** R-1.6.16 — start an impersonation session for testco's admin.
+ *  Mirrors `impersonateHopkinsDirector` exactly; targets the
+ *  manufacturing-vertical dev tenant. Used by R-2 entity-card specs
+ *  (DeliveryCard / AncillaryCard / OrderCard) which render on the
+ *  manufacturer dispatcher's daily kanban surface.
+ *
+ *  testco is seeded on every staging deploy via railway-start.sh →
+ *  seed_staging.py + seed_dispatch_demo.py. seed_dispatch_demo
+ *  populates ~20 deliveries (kanban + ancillary + direct-ship) +
+ *  drivers + dispatcher across today through +3 days. */
+export async function impersonateTestcoAdmin(
+  page: Page,
+  adminToken: string,
+): Promise<{
+  tenantSlug: string
+  impersonatedUserId: string
+  sessionId: string
+}> {
+  const lookup = await page.request.get(
+    `${STAGING_BACKEND}/api/platform/admin/tenants/lookup?q=${encodeURIComponent(
+      TESTCO_SLUG,
+    )}`,
+    {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    },
+  )
+  if (!lookup.ok()) {
+    throw new Error(
+      `Tenant lookup failed: ${lookup.status()} ${await lookup.text()}. ` +
+        "testco may not be seeded — verify railway-start.sh ran " +
+        "seed_staging successfully.",
+    )
+  }
+  const tenants: Array<{ id: string; slug: string; name: string }> =
+    await lookup.json()
+  const testco = tenants.find((t) => t.slug === TESTCO_SLUG)
+  if (!testco) {
+    throw new Error(
+      `testco not found in tenant lookup. Available slugs: ${tenants
+        .map((t) => t.slug)
+        .join(", ")}. testco seeding may have failed on staging.`,
+    )
+  }
+
+  // user_id null → API picks tenant's first admin (admin@testco.com per
+  // seed_staging.py:391). Pre-R-1.6 + R-2 specs that need a specific
+  // role (dispatcher for kanban surfaces) can pass user_id explicitly
+  // post-resolution; R-1.6.16 shipping default-admin to mirror the
+  // Hopkins helper shape.
+  const impersonate = await page.request.post(
+    `${STAGING_BACKEND}/api/platform/impersonation/impersonate`,
+    {
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        tenant_id: testco.id,
+        user_id: null,
+        reason: "playwright runtime-editor entity-card validation",
+      },
+    },
+  )
+  if (!impersonate.ok()) {
+    throw new Error(
+      `Impersonation failed: ${impersonate.status()} ${await impersonate.text()}`,
+    )
+  }
+  const data: {
+    access_token: string
+    tenant_slug: string
+    impersonated_user_id: string
+    session_id: string
+  } = await impersonate.json()
+
+  await page.evaluate(
+    ({ token, slug, sessionId, userId }) => {
+      localStorage.setItem("access_token", token)
+      localStorage.setItem("company_slug", slug)
+      localStorage.setItem(
+        "runtime_editor_session",
+        JSON.stringify({
+          session_id: sessionId,
+          tenant_slug: slug,
+          impersonated_user_id: userId,
+        }),
+      )
+    },
+    {
+      token: data.access_token,
+      slug: data.tenant_slug,
+      sessionId: data.session_id,
+      userId: data.impersonated_user_id,
+    },
+  )
+
+  return {
+    tenantSlug: data.tenant_slug,
+    impersonatedUserId: data.impersonated_user_id,
+    sessionId: data.session_id,
+  }
+}
+
+
+/** R-1.6.16 — convenience: platform admin login + testco
+ *  impersonation + navigate to the runtime editor shell. Mirrors
+ *  `openEditorForHopkins`. R-2 entity-card specs use this to land on
+ *  the editor under testco; the spec then drives Cmd+K → scheduling
+ *  Focus (or direct nav to `/dispatch/funeral-schedule`) to find
+ *  DeliveryCard + AncillaryCard. The runtime-editor route doesn't
+ *  currently support a `path=` param to land on a specific tenant
+ *  surface; specs handle the post-mount navigation themselves. */
+export async function openEditorForTestco(page: Page): Promise<{
+  tenantSlug: string
+  impersonatedUserId: string
+}> {
+  const token = await loginAsPlatformAdmin(page)
+  const sess = await impersonateTestcoAdmin(page, token)
+  await page.goto(
+    `/bridgeable-admin/runtime-editor/?tenant=${encodeURIComponent(
+      sess.tenantSlug,
+    )}&user=${encodeURIComponent(sess.impersonatedUserId)}`,
+  )
+  await page.waitForLoadState("networkidle")
+  return sess
+}
+
+
+/** R-1.6.16 — direct testco admin login (no impersonation). Mirrors
+ *  `loginAsHopkinsDirector`. Tenant-operator regression checks that
+ *  R-2 entity-card wrapping doesn't break the manufacturer-side daily
+ *  use surfaces. */
+export async function loginAsTestcoAdmin(page: Page): Promise<void> {
+  await setupPage(page)
+  await page.goto(STAGING_FRONTEND, { waitUntil: "commit" })
+  await page.evaluate((slug) => {
+    localStorage.setItem("company_slug", slug)
+  }, TESTCO_SLUG)
+  await page.goto("/login")
+  await page.waitForLoadState("networkidle")
+
+  const identifier = page.locator("#identifier")
+  await identifier.waitFor({ state: "visible", timeout: 10_000 })
+  await identifier.fill(TESTCO_ADMIN_EMAIL)
+  const password = page.locator("#password")
+  await password.waitFor({ state: "visible", timeout: 5_000 })
+  await password.fill(TESTCO_ADMIN_PASSWORD)
+  // R-1.6.11 racy-networkidle pattern preserved.
+  await Promise.all([
+    page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/api/v1/auth/login") &&
+        resp.request().method() === "POST",
+      { timeout: 10_000 },
+    ),
+    page.getByRole("button", { name: /sign\s*in/i }).click(),
+  ])
+  await page.waitForURL((url) => !url.pathname.includes("/login"), {
+    timeout: 10_000,
+  })
+  // Mirrors loginAsHopkinsDirector — wait for at least one widget
+  // boundary div to attach as the dashboard-rendered signal. Post-
+  // R-1.6.12 testco's admin Pulse home renders today / operator-
+  // profile / recent-activity with data-component-name.
   await page
     .locator("[data-component-name]")
     .first()

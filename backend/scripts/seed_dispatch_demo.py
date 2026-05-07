@@ -45,6 +45,7 @@ unrelated deliveries.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
@@ -717,6 +718,15 @@ def _create_delivery(
 
 
 def run() -> None:
+    # R-1.6.16: production safety guard mirroring seed_staging.py +
+    # seed_fh_demo.py. testco is the canonical manufacturing dev tenant
+    # (synthetic, staging-only). Refuse to run in production where a
+    # tenant matching `staging-test-001` would represent a real customer
+    # operation, not a synthetic fixture.
+    if os.getenv("ENVIRONMENT", "").lower() == "production":
+        print("SAFETY: Refusing to run seed_dispatch_demo.py in production.")
+        sys.exit(0)
+
     db = SessionLocal()
     try:
         # Sanity-check tenant exists

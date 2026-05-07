@@ -63,6 +63,25 @@ if [ "${ENVIRONMENT:-dev}" != "production" ]; then
         exit 1
     fi
     echo "  ✓ seed_fh_demo.py completed."
+
+    # R-1.6.16 — Auto-seed dispatch demo data on testco. Pre-R-1.6.16,
+    # testco's `/dispatch/funeral-schedule` rendered empty (zero
+    # Delivery rows, no DeliverySchedule rows for any date). The
+    # dispatch demo populates ~20 deliveries (kanban + ancillary +
+    # direct-ship) + 4 drivers + dispatcher user across today through
+    # +3 days. The dispatcher's daily surface (DeliveryCard +
+    # AncillaryCard render here) becomes test-fixture-ready for R-2
+    # entity-card click-to-edit specs. Idempotent via the
+    # [dispatch-demo] tag in Delivery.special_instructions — re-runs
+    # cleanly delete + rebuild demo rows without touching unrelated
+    # data. Production guard inside the script
+    # (ENVIRONMENT=production refusal) parallels seed_staging +
+    # seed_fh_demo.
+    if ! python -m scripts.seed_dispatch_demo 2>&1; then
+        echo "  ✗ seed_dispatch_demo.py FAILED — deploy aborted."
+        exit 1
+    fi
+    echo "  ✓ seed_dispatch_demo.py completed."
 else
     echo ""
     echo "ENVIRONMENT=production — skipping staging seed scripts."
