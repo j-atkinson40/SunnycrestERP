@@ -78,7 +78,24 @@ logger = logging.getLogger("seed_dispatch_demo")
 
 # ── Constants ──────────────────────────────────────────────────────────
 
-TENANT_ID = "staging-test-001"
+# R-2.5.1 — slug-based lookup at run() entry. Pre-R-2.5.1 the script
+# hardcoded TENANT_ID = "staging-test-001" — that string is the
+# identifier label in seed_staging.py's summary header (line 50:
+# `CFG = {"company_id": "staging-test-001"}` — "mutable so we can
+# adopt existing company"), NOT a real `companies.id` value. On
+# staging the actual testco UUID is something like
+# `f60ef8de-941a-45c0-a421-ef9fa0360956`. Filter-by-id with the label
+# returned None, raised "Tenant not found", aborted every R-1.6.16
+# deploy via R-1.6.3 fail-loud. Bug was latent until R-1.6.16 wired
+# this script into railway-start.sh — never run on staging before.
+#
+# Fix: TENANT_SLUG is the canonical lookup key (matches
+# `seed_staging.py::COMPANY_SLUG`); TENANT_ID is resolved from the
+# slug at run() entry via a `global TENANT_ID` mutation. All 26
+# downstream references continue to use TENANT_ID — the variable
+# now carries the real UUID.
+TENANT_SLUG = "testco"
+TENANT_ID: str = ""  # populated at run() entry from TENANT_SLUG lookup
 DEMO_TAG = "[dispatch-demo]"  # Prefix marker for idempotent cleanup
 
 # Dispatcher user credentials
@@ -729,12 +746,28 @@ def run() -> None:
 
     db = SessionLocal()
     try:
-        # Sanity-check tenant exists
-        company = db.query(Company).filter(Company.id == TENANT_ID).first()
+        # R-2.5.1 — resolve tenant by slug at run() entry. Mutates the
+        # module-level TENANT_ID so all 26 downstream helper references
+        # (Cemetery / CompanyEntity / Customer / Delivery / SalesOrder /
+        # DeliverySchedule / Driver / Role / User company_id filters,
+        # plus schedule_svc.ensure_schedule(tenant_id=...) calls)
+        # receive the real UUID. seed_staging.py's adopt-by-slug pattern
+        # means the actual UUID is whatever the existing testco company
+        # row carries — not the "staging-test-001" label.
+        company = (
+            db.query(Company).filter(Company.slug == TENANT_SLUG).first()
+        )
         if company is None:
             raise RuntimeError(
-                f"Tenant {TENANT_ID} not found. Run seed_staging.py first."
+                f"Tenant slug={TENANT_SLUG!r} not found. "
+                "Run seed_staging.py first to create or adopt the testco "
+                "tenant; then re-run seed_dispatch_demo."
             )
+        global TENANT_ID
+        TENANT_ID = str(company.id)
+        logger.info(
+            f"resolved tenant {TENANT_SLUG!r} → id={TENANT_ID}"
+        )
 
         # 1. Clean previous demo data
         _cleanup(db)
