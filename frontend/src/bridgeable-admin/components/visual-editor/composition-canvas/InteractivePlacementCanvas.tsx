@@ -1,26 +1,21 @@
 /**
- * InteractivePlacementCanvas — composition editor canvas with drag,
- * resize, click/shift-click multi-select.
+ * InteractivePlacementCanvas — row-aware composition editor canvas.
  *
- * Distinct from `CompositionRenderer` (which is the runtime renderer
- * + non-interactive editor preview): this component adds the
- * interaction layer the composition editor needs while reusing the
- * same grid math + token-based styling.
+ * R-3.1 — outer flex-col container; each row renders as inner CSS Grid
+ * with its own per-row column_count. Row controls strip (left edge),
+ * empty-row placeholder when no placements, drop preview during cross-
+ * row drag and row reorder.
  *
- * Renders:
- *   - A 12-column CSS grid with subtle dotted background showing
- *     cell boundaries (toggleable via showGrid)
- *   - Each placement positioned at its declared grid coords
- *   - Placements draggable: click + drag to move (grid snap)
- *   - Selected placement(s) show resize handles at corners + edges
- *   - Click placement → select (single); shift-click → toggle in
- *     multi-select
- *   - Click background → deselect all
- *   - Empty canvas state when placements list is empty
+ * Distinct from `CompositionRenderer` (runtime renderer + non-interactive
+ * editor preview): this component adds:
+ *   - drag/resize/cross-row-drop interactions via use-canvas-interactions
+ *   - row controls strip per row (add/delete/reorder/column-count)
+ *   - drop preview affordance during gestures
+ *   - selection state (placements via shift-click; rows via strip click)
  *
- * Performance: drag updates use CSS `transform` on the dragged
- * elements (cheap, GPU-accelerated). The actual grid coord update
- * commits on pointer-up via the parent's onPlacementsChange.
+ * Performance: drag updates use CSS `transform` on dragged elements
+ * (cheap, GPU-accelerated). Grid coord commits on pointer-up via
+ * onCommitPlacementMove / onCommitPlacementResize / onCommitRowReorder.
  */
 import { useMemo, useRef, type CSSProperties, type ReactNode } from "react"
 import { renderComponentPreview } from "@/lib/visual-editor/components/preview-renderers"
@@ -29,38 +24,64 @@ import {
   getByName,
   type ComponentKind,
 } from "@/lib/visual-editor/registry"
-// R-3.0: composition data model is now rows-shaped. The legacy editor
-// canvas keeps its flat-placements + 1-indexed grid coords internal
-// model — translation happens at IO boundary in CompositionEditorPage.
-import type { LegacyPlacement as Placement } from "@/bridgeable-admin/pages/visual-editor/composition-editor-legacy-types"
+import type {
+  CompositionRow,
+  Placement,
+} from "@/lib/visual-editor/compositions/types"
 import {
   useCanvasInteractions,
   type ResizeHandle,
 } from "./use-canvas-interactions"
+import { RowControlsStrip } from "./RowControlsStrip"
+import { RowDropPreview } from "./RowDropPreview"
+import { EmptyRowPlaceholder } from "./EmptyRowPlaceholder"
+
+
+export interface Selection {
+  kind: "none" | "placement" | "placements-multi" | "row"
+  /** Set when kind === "row". */
+  rowId?: string
+  /** Set when kind === "placement" or "placements-multi". */
+  placementIds?: Set<string>
+}
 
 
 export interface InteractivePlacementCanvasProps {
-  placements: Placement[]
-  totalColumns: number
-  rowHeight: number
+  rows: CompositionRow[]
   gapSize: number
   backgroundTreatment?: string
-  selectedIds: Set<string>
+  selection: Selection
   showGrid?: boolean
-  /** When false, drag/resize don't apply (e.g., during a save in
-   * progress). */
+  /** When false, drag/resize/row-reorder don't apply (e.g., during a save). */
   interactionsEnabled?: boolean
-  onSelect: (id: string, opts: { shift: boolean }) => void
+  onSelectPlacement: (id: string, opts: { shift: boolean }) => void
+  onSelectRow: (rowId: string) => void
   onDeselectAll: () => void
-  onPlacementsChange: (next: Placement[]) => void
-  /** Called when one or more placements get bulk-moved by the
-   * interactions layer. The parent integrates with undo history. */
-  onCommitDrag?: (
-    updates: Array<{ placementId: string; newGrid: Placement["grid"] }>,
-  ) => void
-  onCommitResize?: (placementId: string, newGrid: Placement["grid"]) => void
-  /** Called by marquee selection commit. */
-  onMarqueeSelect?: (ids: string[], opts: { shift: boolean }) => void
+  /** Cross-row OR within-row placement move commit. */
+  onCommitPlacementMove: (input: {
+    placementId: string
+    sourceRowId: string
+    targetRowId: string
+    newStartingColumn: number
+    siblingMoves: Array<{ placementId: string; newStartingColumn: number }>
+  }) => void
+  /** Resize commit. Stays within source row in R-3.1. */
+  onCommitPlacementResize: (input: {
+    placementId: string
+    rowId: string
+    newStartingColumn: number
+    newColumnSpan: number
+  }) => void
+  /** Row reorder commit. */
+  onCommitRowReorder: (input: { fromIndex: number; toIndex: number }) => void
+  /** Marquee commit emits placement IDs inside the rect. */
+  onMarqueeSelect?: (placementIds: string[]) => void
+  /** Row management. */
+  onAddRowAbove: (rowIndex: number) => void
+  onAddRowBelow: (rowIndex: number) => void
+  onDeleteRow: (rowId: string) => void
+  /** Column count picker change. */
+  onChangeRowColumnCount: (rowId: string, newColumnCount: number) => void
 }
 
 
@@ -78,10 +99,10 @@ function backgroundClassFor(treatment?: string): string {
 }
 
 
-const RESIZE_HANDLES: ResizeHandle[] = ["n", "e", "s", "w", "ne", "nw", "se", "sw"]
+const RESIZE_HANDLES_HORIZONTAL: ResizeHandle[] = ["e", "w"]
 
 
-function handleStyle(handle: ResizeHandle): CSSProperties {
+function resizeHandleStyle(handle: ResizeHandle): CSSProperties {
   const size = 8
   const offset = -size / 2
   const style: CSSProperties = {
@@ -94,29 +115,21 @@ function handleStyle(handle: ResizeHandle): CSSProperties {
     zIndex: 10,
   }
   switch (handle) {
-    case "n":
-      Object.assign(style, { top: offset, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" })
-      break
-    case "s":
-      Object.assign(style, { bottom: offset, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" })
-      break
     case "e":
-      Object.assign(style, { top: "50%", right: offset, transform: "translateY(-50%)", cursor: "ew-resize" })
+      Object.assign(style, {
+        top: "50%",
+        right: offset,
+        transform: "translateY(-50%)",
+        cursor: "ew-resize",
+      })
       break
     case "w":
-      Object.assign(style, { top: "50%", left: offset, transform: "translateY(-50%)", cursor: "ew-resize" })
-      break
-    case "ne":
-      Object.assign(style, { top: offset, right: offset, cursor: "nesw-resize" })
-      break
-    case "nw":
-      Object.assign(style, { top: offset, left: offset, cursor: "nwse-resize" })
-      break
-    case "se":
-      Object.assign(style, { bottom: offset, right: offset, cursor: "nwse-resize" })
-      break
-    case "sw":
-      Object.assign(style, { bottom: offset, left: offset, cursor: "nesw-resize" })
+      Object.assign(style, {
+        top: "50%",
+        left: offset,
+        transform: "translateY(-50%)",
+        cursor: "ew-resize",
+      })
       break
   }
   return style
@@ -124,122 +137,80 @@ function handleStyle(handle: ResizeHandle): CSSProperties {
 
 
 export function InteractivePlacementCanvas({
-  placements,
-  totalColumns,
-  rowHeight,
+  rows,
   gapSize,
   backgroundTreatment,
-  selectedIds,
+  selection,
   showGrid = true,
   interactionsEnabled = true,
-  onSelect,
+  onSelectPlacement,
+  onSelectRow,
   onDeselectAll,
-  onPlacementsChange,
-  onCommitDrag,
-  onCommitResize,
+  onCommitPlacementMove,
+  onCommitPlacementResize,
+  onCommitRowReorder,
   onMarqueeSelect,
+  onAddRowAbove,
+  onAddRowBelow,
+  onDeleteRow,
+  onChangeRowColumnCount,
 }: InteractivePlacementCanvasProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const rowElsRef = useRef<Map<string, HTMLElement>>(new Map())
 
-  // Cell-size measurement: we measure the rendered grid container and
-  // derive cell width from the canvas's actual width. This guarantees
-  // grid snap is accurate at the rendered scale.
-  const [cellDims, setCellDims] = useMemo<
-    [{ cellWidth: number; cellHeight: number }, never]
-  >(() => {
-    // We compute on-the-fly inside a callback to avoid a re-render
-    // loop. Real measurement happens via canvasRef in the layout
-    // commit phase below.
-    return [{ cellWidth: 0, cellHeight: rowHeight }, undefined as never]
-  }, [rowHeight])
-  void setCellDims // type-pleaser; we use a ref-based approach
+  const getRowElement = useMemo(
+    () => (rowId: string) => rowElsRef.current.get(rowId) ?? null,
+    [],
+  )
 
-  // We'll compute cellWidth from the canvas's clientWidth at
-  // interaction time. For TypeScript we ignore the unused setter.
-  const cellWidth =
-    canvasRef.current && totalColumns > 0
-      ? (canvasRef.current.clientWidth -
-          gapSize * (totalColumns - 1) -
-          32) /
-        totalColumns
-      : Math.max(60, cellDims.cellWidth)
-  const cellHeight = rowHeight
+  // Selected placement ids — flat set used by the hook for multi-drag.
+  const selectedPlacementIds = useMemo(() => {
+    return selection.placementIds ?? new Set<string>()
+  }, [selection])
 
   const interactions = useCanvasInteractions({
-    placements,
-    selectedIds,
-    cellWidth,
-    cellHeight,
-    totalColumns,
-    onDragCommit: (updates) => {
-      // Apply updates to placements + emit to parent.
-      const next = placements.map((p) => {
-        const u = updates.find((x) => x.placementId === p.placement_id)
-        return u ? { ...p, grid: u.newGrid } : p
-      })
-      onPlacementsChange(next)
-      onCommitDrag?.(updates)
-    },
-    onResizeCommit: (placementId, newGrid) => {
-      const next = placements.map((p) =>
-        p.placement_id === placementId ? { ...p, grid: newGrid } : p,
-      )
-      onPlacementsChange(next)
-      onCommitResize?.(placementId, newGrid)
-    },
-    getBounds: (placementId) => {
-      const p = placements.find((x) => x.placement_id === placementId)
+    rows,
+    selectedPlacementIds,
+    getRowElement,
+    gapSize,
+    onCommitPlacementMove,
+    onCommitPlacementResize,
+    onCommitRowReorder,
+    onMarqueeSelect,
+    getPlacementBounds: (placementId) => {
+      const allP = rows.flatMap((r) => r.placements)
+      const p = allP.find((x) => x.placement_id === placementId)
       if (!p) return undefined
       const entry = getByName(p.component_kind, p.component_name)
       if (!entry) return undefined
       const meta = getCanvasMetadata(entry)
       return {
         minColumns: meta.minDimensions.columns,
-        minRows: meta.minDimensions.rows,
         maxColumns: meta.maxDimensions?.columns,
-        maxRows: meta.maxDimensions?.rows,
       }
-    },
-    onDragSelect: (ids) => {
-      onMarqueeSelect?.(ids, { shift: false })
     },
   })
-
-  const gridStyle: CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: `repeat(${totalColumns}, minmax(0, 1fr))`,
-    gridAutoRows: `${rowHeight}px`,
-    gap: `${gapSize}px`,
-    padding: "1rem",
-    minHeight: "100%",
-    position: "relative",
-  }
-
-  const editorChrome: CSSProperties = showGrid
-    ? {
-        backgroundImage: `linear-gradient(to right, var(--border-subtle) 1px, transparent 1px), linear-gradient(to bottom, var(--border-subtle) 1px, transparent 1px)`,
-        backgroundSize: `calc((100% - ${(totalColumns - 1) * gapSize}px - 2rem) / ${totalColumns} + ${gapSize}px) ${rowHeight + gapSize}px`,
-        backgroundPosition: `1rem 1rem`,
-      }
-    : {}
 
   return (
     <div
       ref={canvasRef}
-      className={`${backgroundClassFor(backgroundTreatment)} h-full w-full overflow-auto`}
+      className={`${backgroundClassFor(backgroundTreatment)} relative h-full w-full overflow-auto`}
       data-testid="interactive-canvas"
+      data-row-count={rows.length}
       onClick={(e) => {
-        // Clicking the canvas (not a placement) deselects all.
-        if (e.target === e.currentTarget) {
-          onDeselectAll()
-        }
+        if (e.target === e.currentTarget) onDeselectAll()
       }}
     >
       <div
-        style={{ ...gridStyle, ...editorChrome }}
-        data-testid="interactive-canvas-grid"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: `${gapSize}px`,
+          padding: "1rem",
+          minHeight: "100%",
+        }}
+        data-testid="interactive-canvas-rows-container"
         onPointerDown={(e) => {
-          // Marquee select: pointer-down on the grid background.
           if (
             interactionsEnabled &&
             e.target === e.currentTarget &&
@@ -250,127 +221,52 @@ export function InteractivePlacementCanvas({
           }
         }}
       >
-        {placements.length === 0 && (
+        {rows.length === 0 && (
           <div
-            className="col-span-full flex items-center justify-center py-8 text-content-subtle"
+            className="flex items-center justify-center py-12 text-content-subtle"
             data-testid="interactive-canvas-empty"
           >
             <span className="text-caption">
-              Drag a component from the palette to start composing.
+              No rows yet. Click "+ Add row" to start composing.
             </span>
           </div>
         )}
 
-        {placements.map((p) => {
-          const isSelected = selectedIds.has(p.placement_id)
-          const offset = interactions.liveOffset.get(p.placement_id)
-          const liveResize =
-            interactions.liveResize?.placementId === p.placement_id
-              ? interactions.liveResize.delta
-              : null
-
-          // Apply live drag offset via transform; live resize via
-          // grid coord adjustment for visual feedback.
-          let liveGrid = p.grid
-          if (liveResize) {
-            liveGrid = {
-              column_start: Math.max(
-                1,
-                p.grid.column_start + liveResize.dCol,
-              ),
-              column_span: Math.max(
-                1,
-                p.grid.column_span + liveResize.dColSpan,
-              ),
-              row_start: Math.max(1, p.grid.row_start + liveResize.dRow),
-              row_span: Math.max(1, p.grid.row_span + liveResize.dRowSpan),
+        {rows.map((row, rowIndex) => (
+          <RowEditor
+            key={row.row_id}
+            row={row}
+            rowIndex={rowIndex}
+            isSelectedRow={
+              selection.kind === "row" && selection.rowId === row.row_id
             }
-          }
+            selectedPlacementIds={selectedPlacementIds}
+            interactionsEnabled={interactionsEnabled}
+            gapSize={gapSize}
+            showGrid={showGrid}
+            interactions={interactions}
+            registerRowEl={(el) => {
+              if (el) rowElsRef.current.set(row.row_id, el)
+              else rowElsRef.current.delete(row.row_id)
+            }}
+            onSelectPlacement={onSelectPlacement}
+            onSelectRow={() => onSelectRow(row.row_id)}
+            onAddRowAbove={() => onAddRowAbove(rowIndex)}
+            onAddRowBelow={() => onAddRowBelow(rowIndex)}
+            onDeleteRow={() => onDeleteRow(row.row_id)}
+            onChangeColumnCount={(n) => onChangeRowColumnCount(row.row_id, n)}
+          />
+        ))}
 
-          const cellStyle: CSSProperties = {
-            gridColumn: `${liveGrid.column_start} / span ${liveGrid.column_span}`,
-            gridRow: `${liveGrid.row_start} / span ${liveGrid.row_span}`,
-            zIndex: p.display_config?.z_index ?? (isSelected ? 5 : 1),
-            transform: offset
-              ? `translate(${offset.dxPx}px, ${offset.dyPx}px)`
-              : undefined,
-            position: "relative",
-            cursor: interactionsEnabled ? "move" : "default",
-            transition: offset || liveResize ? "none" : "box-shadow 120ms",
-          }
-          const showBorder = p.display_config?.show_border !== false
-          const baseRingClass = isSelected
-            ? "ring-2 ring-accent ring-offset-2 ring-offset-surface-base"
-            : showBorder
-              ? "border border-border-subtle"
-              : ""
+        {/* Drop preview during cross-row drag or row reorder */}
+        <RowDropPreview
+          preview={interactions.dropPreview}
+          getRowElement={getRowElement}
+          canvasElement={canvasRef.current}
+          gapSize={gapSize}
+        />
 
-          let placementContent: ReactNode = null
-          try {
-            placementContent = renderComponentPreview(
-              `${p.component_kind}:${p.component_name}`,
-              p.prop_overrides ?? {},
-              p.component_name,
-            )
-          } catch {
-            placementContent = (
-              <div className="p-2 text-caption text-content-muted">
-                Preview unavailable
-              </div>
-            )
-          }
-
-          return (
-            <div
-              key={p.placement_id}
-              style={cellStyle}
-              data-testid={`interactive-placement-${p.placement_id}`}
-              data-component-kind={p.component_kind}
-              data-component-name={p.component_name}
-              data-selected={isSelected ? "true" : "false"}
-              className={`overflow-hidden rounded-md bg-surface-elevated shadow-level-1 ${baseRingClass}`}
-              onPointerDown={(e) => {
-                if (!interactionsEnabled) return
-                // Stop the marquee from triggering when starting a
-                // placement drag/click.
-                e.stopPropagation()
-                onSelect(p.placement_id, { shift: e.shiftKey })
-                interactions.startPlacementDrag(p.placement_id, e)
-              }}
-            >
-              {p.display_config?.show_header !== false && (
-                <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5 text-caption">
-                  <span className="font-medium text-content-strong">
-                    {p.component_name}
-                  </span>
-                  <span className="font-plex-mono text-content-subtle">
-                    {p.component_kind}
-                  </span>
-                </div>
-              )}
-              <div className="h-full overflow-hidden p-2">
-                {placementContent}
-              </div>
-
-              {/* Resize handles — shown only when this placement is
-                  the sole selected one (multi-select disables resize
-                  to keep gestures unambiguous). */}
-              {isSelected &&
-                selectedIds.size === 1 &&
-                interactionsEnabled &&
-                RESIZE_HANDLES.map((h) => (
-                  <div
-                    key={h}
-                    style={handleStyle(h)}
-                    data-testid={`resize-handle-${p.placement_id}-${h}`}
-                    onPointerDown={(e) => interactions.startResize(p.placement_id, h, e)}
-                  />
-                ))}
-            </div>
-          )
-        })}
-
-        {/* Marquee rectangle — visualizes the drag-select rect. */}
+        {/* Marquee rectangle during drag-select. */}
         {interactions.marqueeRect && (
           <div
             data-testid="canvas-marquee"
@@ -380,7 +276,8 @@ export function InteractivePlacementCanvas({
               top: interactions.marqueeRect.y,
               width: interactions.marqueeRect.w,
               height: interactions.marqueeRect.h,
-              background: "color-mix(in oklch, var(--accent) 8%, transparent)",
+              background:
+                "color-mix(in oklch, var(--accent) 8%, transparent)",
               border: "1px dashed var(--accent)",
               pointerEvents: "none",
               zIndex: 100,
@@ -388,6 +285,248 @@ export function InteractivePlacementCanvas({
           />
         )}
       </div>
+    </div>
+  )
+}
+
+
+// ─── Per-row editor ─────────────────────────────────────────────
+
+
+interface RowEditorProps {
+  row: CompositionRow
+  rowIndex: number
+  isSelectedRow: boolean
+  selectedPlacementIds: Set<string>
+  interactionsEnabled: boolean
+  gapSize: number
+  showGrid: boolean
+  interactions: ReturnType<typeof useCanvasInteractions>
+  registerRowEl: (el: HTMLDivElement | null) => void
+  onSelectPlacement: (id: string, opts: { shift: boolean }) => void
+  onSelectRow: () => void
+  onAddRowAbove: () => void
+  onAddRowBelow: () => void
+  onDeleteRow: () => void
+  onChangeColumnCount: (newColumnCount: number) => void
+}
+
+
+function RowEditor({
+  row,
+  rowIndex,
+  isSelectedRow,
+  selectedPlacementIds,
+  interactionsEnabled,
+  gapSize,
+  showGrid,
+  interactions,
+  registerRowEl,
+  onSelectPlacement,
+  onSelectRow,
+  onAddRowAbove,
+  onAddRowBelow,
+  onDeleteRow,
+  onChangeColumnCount,
+}: RowEditorProps) {
+  const isDraggingRow =
+    interactions.gesture.kind === "dragging-row" &&
+    interactions.gesture.rowId === row.row_id
+
+  const rowHeight =
+    typeof row.row_height === "number" ? `${row.row_height}px` : "auto"
+
+  const rowGridStyle: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: `repeat(${row.column_count}, minmax(0, 1fr))`,
+    gridAutoRows: typeof row.row_height === "number" ? rowHeight : "auto",
+    minHeight: typeof row.row_height === "number" ? rowHeight : "120px",
+    gap: `${gapSize}px`,
+    paddingLeft: "2.5rem", // 40px to leave room for RowControlsStrip
+    paddingRight: "0.5rem",
+    paddingTop: "0.5rem",
+    paddingBottom: "0.5rem",
+    position: "relative",
+  }
+
+  const editorChrome: CSSProperties = showGrid
+    ? {
+        backgroundImage: `linear-gradient(to right, var(--border-subtle) 1px, transparent 1px)`,
+        backgroundSize: `calc((100% - ${(row.column_count - 1) * gapSize}px - 2.5rem - 0.5rem) / ${row.column_count} + ${gapSize}px) 100%`,
+        backgroundPosition: `2.5rem 0`,
+      }
+    : {}
+
+  const liveRowOffsetStyle: CSSProperties = isDraggingRow
+    ? {
+        transform: `translateY(${interactions.gesture.kind === "dragging-row" ? interactions.gesture.dy : 0}px)`,
+        opacity: 0.7,
+        transition: "none",
+      }
+    : { transition: "transform 100ms" }
+
+  return (
+    <div
+      ref={registerRowEl}
+      data-testid={`row-editor-${row.row_id}`}
+      data-row-id={row.row_id}
+      data-row-index={rowIndex}
+      data-column-count={row.column_count}
+      data-selected-row={isSelectedRow ? "true" : "false"}
+      className={[
+        "group relative rounded-md border",
+        isSelectedRow
+          ? "border-accent ring-1 ring-accent"
+          : "border-border-subtle/50 hover:border-border-subtle",
+      ].join(" ")}
+      style={liveRowOffsetStyle}
+    >
+      <RowControlsStrip
+        row={row}
+        rowIndex={rowIndex}
+        isSelected={isSelectedRow}
+        onAddRowAbove={onAddRowAbove}
+        onAddRowBelow={onAddRowBelow}
+        onDeleteRow={onDeleteRow}
+        onSelectRow={onSelectRow}
+        onChangeColumnCount={onChangeColumnCount}
+        onStartRowDrag={(e) => {
+          if (!interactionsEnabled) return
+          interactions.startRowDrag(row.row_id, rowIndex, e)
+        }}
+      />
+
+      <div style={{ ...rowGridStyle, ...editorChrome }}>
+        {row.placements.length === 0 && (
+          <EmptyRowPlaceholder
+            rowId={row.row_id}
+            columnCount={row.column_count}
+          />
+        )}
+
+        {row.placements.map((p) =>
+          renderPlacement(
+            p,
+            row,
+            rowIndex,
+            selectedPlacementIds,
+            interactionsEnabled,
+            interactions,
+            onSelectPlacement,
+          ),
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function renderPlacement(
+  p: Placement,
+  row: CompositionRow,
+  _rowIndex: number,
+  selectedPlacementIds: Set<string>,
+  interactionsEnabled: boolean,
+  interactions: ReturnType<typeof useCanvasInteractions>,
+  onSelectPlacement: (id: string, opts: { shift: boolean }) => void,
+): ReactNode {
+  const isSelected = selectedPlacementIds.has(p.placement_id)
+  const offset = interactions.liveOffset.get(p.placement_id)
+  const liveResize =
+    interactions.liveResize?.placementId === p.placement_id
+      ? interactions.liveResize.delta
+      : null
+
+  // Apply live resize via grid coord adjustment for visual feedback.
+  let liveStartingColumn = p.starting_column
+  let liveColumnSpan = p.column_span
+  if (liveResize) {
+    liveColumnSpan = Math.max(1, p.column_span + liveResize.dColSpan)
+    liveStartingColumn = Math.max(
+      0,
+      Math.min(
+        row.column_count - liveColumnSpan,
+        p.starting_column + liveResize.dCol,
+      ),
+    )
+  }
+
+  const cellStyle: CSSProperties = {
+    gridColumn: `${liveStartingColumn + 1} / span ${liveColumnSpan}`,
+    zIndex: p.display_config?.z_index ?? (isSelected ? 5 : 1),
+    transform: offset
+      ? `translate(${offset.dxPx}px, ${offset.dyPx}px)`
+      : undefined,
+    position: "relative",
+    cursor: interactionsEnabled ? "move" : "default",
+    transition: offset || liveResize ? "none" : "box-shadow 120ms",
+  }
+  const showBorder = p.display_config?.show_border !== false
+  const baseRingClass = isSelected
+    ? "ring-2 ring-accent ring-offset-2 ring-offset-surface-base"
+    : showBorder
+      ? "border border-border-subtle"
+      : ""
+
+  let placementContent: ReactNode = null
+  try {
+    placementContent = renderComponentPreview(
+      `${p.component_kind}:${p.component_name}`,
+      p.prop_overrides ?? {},
+      p.component_name,
+    )
+  } catch {
+    placementContent = (
+      <div className="p-2 text-caption text-content-muted">
+        Preview unavailable
+      </div>
+    )
+  }
+
+  return (
+    <div
+      key={p.placement_id}
+      style={cellStyle}
+      data-testid={`interactive-placement-${p.placement_id}`}
+      data-component-kind={p.component_kind}
+      data-component-name={p.component_name}
+      data-selected={isSelected ? "true" : "false"}
+      data-row-id={row.row_id}
+      className={`overflow-hidden rounded-md bg-surface-elevated shadow-level-1 ${baseRingClass}`}
+      onPointerDown={(e) => {
+        if (!interactionsEnabled) return
+        e.stopPropagation()
+        onSelectPlacement(p.placement_id, { shift: e.shiftKey })
+        interactions.startPlacementDrag(p.placement_id, row.row_id, e)
+      }}
+    >
+      {p.display_config?.show_header !== false && (
+        <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5 text-caption">
+          <span className="font-medium text-content-strong">
+            {p.component_name}
+          </span>
+          <span className="font-plex-mono text-content-subtle">
+            {p.component_kind}
+          </span>
+        </div>
+      )}
+      <div className="h-full overflow-hidden p-2">{placementContent}</div>
+
+      {/* Resize handles — column-axis only in R-3.1 (row-axis resize
+          via right-rail row_height inspector). Single-select only. */}
+      {isSelected &&
+        selectedPlacementIds.size === 1 &&
+        interactionsEnabled &&
+        RESIZE_HANDLES_HORIZONTAL.map((h) => (
+          <div
+            key={h}
+            style={resizeHandleStyle(h)}
+            data-testid={`resize-handle-${p.placement_id}-${h}`}
+            onPointerDown={(e) =>
+              interactions.startResize(p.placement_id, row.row_id, h, e)
+            }
+          />
+        ))}
     </div>
   )
 }

@@ -49,14 +49,10 @@ import {
   formatFullLabel,
 } from "@/components/dispatch/scheduling-focus/DateBox"
 import { CompositionRenderer } from "@/lib/visual-editor/compositions/CompositionRenderer"
-import type { ResolvedComposition } from "@/lib/visual-editor/compositions/types"
-// R-3.0: harness consumes legacy flat-placements draft state from
-// FocusEditorPage's editor; wraps to rows shape via the legacy-types
-// helpers so the renderer's rows-based input contract is honored.
-import {
-  wrapLegacyAsRows,
-  type LegacyPlacement,
-} from "@/bridgeable-admin/pages/visual-editor/composition-editor-legacy-types"
+import type {
+  CompositionRow,
+  ResolvedComposition,
+} from "@/lib/visual-editor/compositions/types"
 import type { DeliveryDTO, DriverDTO } from "@/services/dispatch-service"
 
 import {
@@ -411,30 +407,30 @@ export function SampleScenarioPicker({
 }
 
 
-/** Convert raw editor draft state (legacy flat-placements + canvas_config)
- *  into a R-3.0 rows-shaped ResolvedComposition suitable for the renderer.
- *  The editor's draft state lives outside the resolved-from-API shape;
- *  synthesize a ResolvedComposition with `source="vertical_default"`
- *  when placements exist so the renderer treats it the same as a runtime
- *  resolution.
+/** Convert raw editor draft state (rows + canvas_config) into a
+ *  ResolvedComposition suitable for the renderer.
  *
- *  R-3.0 single-row constraint: legacy placements wrap into a single
- *  row at column_count = canvas_config.total_columns (matching the
- *  editor's authoring constraint). Multi-row visual layouts authored
- *  in the legacy editor collapse to a single row in the renderer. */
+ *  R-3.1: editor authors rows directly. The harness just synthesizes
+ *  a ResolvedComposition shape with `source="vertical_default"` when
+ *  any placements exist (across all rows) so the renderer treats it
+ *  the same as a runtime resolution. */
 export function compositionDraftAsResolved(
-  placements: LegacyPlacement[],
+  rows: CompositionRow[],
   canvasConfig: ResolvedComposition["canvas_config"],
   vertical: string | null,
 ): ResolvedComposition {
+  const totalPlacements = rows.reduce(
+    (acc, r) => acc + r.placements.length,
+    0,
+  )
   return {
     focus_type: "scheduling",
     vertical,
     tenant_id: null,
-    source: placements.length > 0 ? "vertical_default" : null,
+    source: totalPlacements > 0 ? "vertical_default" : null,
     source_id: null,
     source_version: null,
-    rows: wrapLegacyAsRows(placements, canvasConfig),
+    rows,
     canvas_config: canvasConfig,
   }
 }

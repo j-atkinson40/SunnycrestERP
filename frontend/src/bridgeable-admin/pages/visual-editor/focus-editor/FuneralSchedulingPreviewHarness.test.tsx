@@ -59,23 +59,30 @@ describe("FuneralSchedulingPreviewHarness", () => {
   })
 
   it("renders accessory rail when composition draft has placements", () => {
+    // R-3.1: helper takes rows directly.
     const draft = compositionDraftAsResolved(
       [
         {
-          placement_id: "p1",
-          component_kind: "widget",
-          component_name: "today",
-          grid: {
-            column_start: 1,
-            column_span: 1,
-            row_start: 1,
-            row_span: 2,
-          },
-          prop_overrides: {},
-          display_config: { show_header: true, show_border: true },
+          row_id: "r1",
+          column_count: 1,
+          row_height: 128,
+          column_widths: null,
+          nested_rows: null,
+          placements: [
+            {
+              placement_id: "p1",
+              component_kind: "widget",
+              component_name: "today",
+              starting_column: 0,
+              column_span: 1,
+              prop_overrides: {},
+              display_config: { show_header: true, show_border: true },
+              nested_rows: null,
+            },
+          ],
         },
       ],
-      { total_columns: 1, row_height: 64, gap_size: 12 },
+      { gap_size: 12 },
       "funeral_home",
     )
     render(
@@ -100,11 +107,7 @@ describe("FuneralSchedulingPreviewHarness", () => {
   })
 
   it("hides accessory rail when composition draft has zero placements", () => {
-    const draft = compositionDraftAsResolved(
-      [],
-      { total_columns: 1, row_height: 64, gap_size: 12 },
-      "funeral_home",
-    )
+    const draft = compositionDraftAsResolved([], { gap_size: 12 }, "funeral_home")
     render(
       <FuneralSchedulingPreviewHarness
         scenario="default"
@@ -156,43 +159,42 @@ describe("SampleScenarioPicker", () => {
 
 describe("compositionDraftAsResolved", () => {
   it("synthesizes a ResolvedComposition from editor draft state", () => {
-    const placements = [
+    // R-3.1: helper takes rows directly (no shim).
+    const rows = [
       {
-        placement_id: "p1",
-        component_kind: "widget" as const,
-        component_name: "today",
-        grid: {
-          column_start: 1,
-          column_span: 1,
-          row_start: 1,
-          row_span: 2,
-        },
-        prop_overrides: {},
-        display_config: { show_header: true, show_border: true },
+        row_id: "r1",
+        column_count: 1,
+        row_height: 128 as const,
+        column_widths: null,
+        nested_rows: null,
+        placements: [
+          {
+            placement_id: "p1",
+            component_kind: "widget" as const,
+            component_name: "today",
+            starting_column: 0,
+            column_span: 1,
+            prop_overrides: {},
+            display_config: { show_header: true, show_border: true },
+            nested_rows: null,
+          },
+        ],
       },
     ]
-    const canvas = { total_columns: 1, row_height: 64, gap_size: 12 }
-    const result = compositionDraftAsResolved(placements, canvas, "funeral_home")
+    const canvas = { gap_size: 12 }
+    const result = compositionDraftAsResolved(rows, canvas, "funeral_home")
     expect(result.focus_type).toBe("scheduling")
     expect(result.vertical).toBe("funeral_home")
     expect(result.tenant_id).toBeNull()
-    // R-3.0: helper now wraps legacy flat placements into the rows
-    // shape. Verify the rows-shape output preserves placement
-    // identity + translates 1-indexed column_start → 0-indexed
-    // starting_column.
-    expect(result.rows.length).toBe(1)
-    expect(result.rows[0].placements.length).toBe(1)
+    // Rows pass through verbatim (no translation).
+    expect(result.rows).toBe(rows)
     expect(result.rows[0].placements[0].placement_id).toBe("p1")
-    expect(result.rows[0].placements[0].starting_column).toBe(0)
-    expect(result.rows[0].placements[0].column_span).toBe(1)
     expect(result.canvas_config).toEqual(canvas)
-    // Source is set when there are placements (so the renderer can
-    // distinguish from an empty resolution).
     expect(result.source).toBe("vertical_default")
   })
 
-  it("returns null source + empty rows when placements list is empty", () => {
-    const canvas = { total_columns: 1, row_height: 64, gap_size: 12 }
+  it("returns null source + empty rows when rows is empty", () => {
+    const canvas = { gap_size: 12 }
     const result = compositionDraftAsResolved([], canvas, "funeral_home")
     expect(result.source).toBeNull()
     expect(result.rows).toHaveLength(0)

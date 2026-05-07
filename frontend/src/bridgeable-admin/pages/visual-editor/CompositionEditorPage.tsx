@@ -1,37 +1,40 @@
 /**
- * CompositionEditorPage — canvas-based Focus composition editor.
+ * CompositionEditorPage — row-aware composition editor (R-3.1).
  *
- * v2 layout: three-pane preview-dominant matching the redesigned
- * component editor:
+ * Three-pane preview-dominant layout:
  *
  *   ┌─ Left (260px) ──┬─ Center (canvas) ──────┬─ Right (320px) ──┐
- *   │ Component       │ InteractivePlacement   │ Placement controls│
- *   │  palette        │   Canvas (drag/resize/ │ + canvas config   │
- *   │  (canvas-       │    multi-select/       │ + scope selector  │
- *   │   placeable)    │    marquee)            │ + multi-select bulk│
+ *   │ Component       │ InteractivePlacement   │ Selection-driven  │
+ *   │  palette        │   Canvas (row-aware)   │ inspector:        │
+ *   │  (canvas-       │  with RowControlsStrip │  - none → hint    │
+ *   │   placeable)    │  per row               │  - placement → grid│
+ *   │                 │                        │  - multi → bulk   │
+ *   │                 │                        │  - row → row ctrls│
  *   └─────────────────┴─────────────────────────┴───────────────────┘
  *
- * Interaction model: drag placements to reposition (grid snap), grab
- * 8 corner/edge resize handles when single-selected, click to select,
- * shift-click to add to selection, marquee-select on canvas
- * background. Undo/redo via Cmd+Z / Cmd+Shift+Z (capped at 50
- * entries). Keyboard shortcuts: Delete (remove selected), arrow keys
- * (nudge by one cell), Cmd+D (duplicate). The form-based grid editor
- * stays in the right rail as a fallback for single-selected
- * placements — power users can drag, precise users can type.
+ * R-3.1 changes from R-3.0:
+ *   - Internal state shifts from legacy `Placement[]` (flat) to canonical
+ *     `CompositionRow[]` (nested). Legacy shim retired.
+ *   - Selection generalizes from `Set<string>` to `Selection` discriminated
+ *     union with row-mode added.
+ *   - New row handlers: handleAddRow, handleDeleteRow, handleReorderRow,
+ *     handleChangeRowColumnCount.
+ *   - Delete row prompts confirmation when row has placements; instant
+ *     delete for empty rows.
+ *   - Cross-row drag-drop with stay-in-place source + line preview.
+ *   - Column-count picker rejects decreases that would clip placements.
  *
- * **R-3.0 compatibility note**: this editor's internal state is the
- * legacy flat-placements + grid-coords model (column_start /
- * column_span / row_start / row_span). R-3.0 introduces a new
- * rows-shaped composition model end-to-end (data + API + renderer).
- * This editor STAYS AS-IS in R-3.0 — it reads multi-row layouts via
- * `flattenRowsToLegacy` + writes single-row layouts via
- * `wrapLegacyAsRows`. R-3.1 retires this editor by teaching it to
- * author multi-row layouts natively. Until then, admins authoring
- * compositions via this surface produce single-row outputs. (See
- * `composition-editor-legacy-types.ts` for the translation helpers.)
+ * Undo stack: whole-state snapshot model preserved verbatim from R-3.0;
+ * just the field name changes (`placements` → `rows`).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { Link } from "react-router-dom"
 import {
   AlertCircle,
@@ -58,14 +61,12 @@ import {
   focusCompositionsService,
 } from "@/bridgeable-admin/services/focus-compositions-service"
 import type {
+  CanvasConfig,
   CompositionRecord,
+  CompositionRow,
+  Placement,
   ResolvedComposition,
 } from "@/lib/visual-editor/compositions/types"
-import {
-  flattenRowsToLegacy,
-  wrapLegacyAsRows,
-  type LegacyPlacement as Placement,
-} from "./composition-editor-legacy-types"
 import {
   getCanvasMetadata,
   getCanvasPlaceableComponents,
@@ -77,7 +78,11 @@ import {
   TenantPicker,
   type TenantSummary,
 } from "@/bridgeable-admin/components/TenantPicker"
-import { InteractivePlacementCanvas } from "@/bridgeable-admin/components/visual-editor/composition-canvas/InteractivePlacementCanvas"
+import {
+  InteractivePlacementCanvas,
+  type Selection,
+} from "@/bridgeable-admin/components/visual-editor/composition-canvas/InteractivePlacementCanvas"
+import { ColumnCountPopover } from "@/bridgeable-admin/components/visual-editor/composition-canvas/ColumnCountPopover"
 
 
 type Scope = "platform_default" | "vertical_default" | "tenant_override"
@@ -96,11 +101,8 @@ const FOCUS_TYPES = [
 type PreviewMode = "light" | "dark"
 
 
-type CanvasConfig = CompositionRecord["canvas_config"]
-
-
 interface DraftSnapshot {
-  placements: Placement[]
+  rows: CompositionRow[]
   canvasConfig: CanvasConfig
 }
 
@@ -110,61 +112,67 @@ const UNDO_STACK_LIMIT = 50
 
 function defaultCanvasConfig(): CanvasConfig {
   return {
-    total_columns: 12,
-    row_height: 64,
     gap_size: 12,
     background_treatment: "surface-base",
   }
 }
 
 
-function nextPlacementId(existing: Placement[]): string {
-  let i = existing.length + 1
-  while (existing.some((p) => p.placement_id === `p${i}`)) i += 1
+function newRowId(): string {
+  // Stable enough for editor session; backend assigns canonical UUIDs
+  // on save via service-layer normalization.
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID()
+  }
+  return `row-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`
+}
+
+
+function newPlacementId(allRows: CompositionRow[]): string {
+  let i = allRows.flatMap((r) => r.placements).length + 1
+  const existingIds = new Set(
+    allRows.flatMap((r) => r.placements.map((p) => p.placement_id)),
+  )
+  while (existingIds.has(`p${i}`)) i += 1
   return `p${i}`
 }
 
 
-function findEmptyGridSlot(
-  existing: Placement[],
-  defaultDims: { columns: number; rows: number },
-  totalColumns: number,
-): { column_start: number; column_span: number; row_start: number; row_span: number } {
-  const span = Math.min(defaultDims.columns, totalColumns)
-  let row = 1
-  for (let attempt = 0; attempt < 24; attempt++) {
-    let col = 1
-    while (col + span <= totalColumns + 1) {
-      const overlap = existing.some((p) => {
-        const pc0 = p.grid.column_start
-        const pc1 = pc0 + p.grid.column_span
-        const pr0 = p.grid.row_start
-        const pr1 = pr0 + p.grid.row_span
-        const newR1 = row + defaultDims.rows
-        const newC1 = col + span
-        return !(newC1 <= pc0 || pc1 <= col || newR1 <= pr0 || pr1 <= row)
-      })
-      if (!overlap) {
-        return {
-          column_start: col,
-          column_span: span,
-          row_start: row,
-          row_span: defaultDims.rows,
-        }
-      }
-      col += 1
-    }
-    row += 1
-  }
-  const maxBottom = existing.reduce(
-    (m, p) => Math.max(m, p.grid.row_start + p.grid.row_span),
-    1,
+/** Find first available starting_column in a row that fits a placement
+ * of given column_span. Returns the leftmost gap; returns 0 if the row
+ * is empty. Returns -1 if no gap fits the span (caller decides what
+ * to do — typically: add to a new row OR reject). */
+function findAvailableStartingColumn(
+  row: CompositionRow,
+  span: number,
+): number {
+  // Sort placements by starting_column to walk gaps left-to-right.
+  const sorted = [...row.placements].sort(
+    (a, b) => a.starting_column - b.starting_column,
   )
+  let cursor = 0
+  for (const p of sorted) {
+    if (p.starting_column - cursor >= span) {
+      return cursor
+    }
+    cursor = Math.max(cursor, p.starting_column + p.column_span)
+  }
+  // Try fitting after the last placement.
+  if (row.column_count - cursor >= span) {
+    return cursor
+  }
+  return -1
+}
+
+
+function makeRow(columnCount = 12): CompositionRow {
   return {
-    column_start: 1,
-    column_span: span,
-    row_start: maxBottom,
-    row_span: defaultDims.rows,
+    row_id: newRowId(),
+    column_count: columnCount,
+    row_height: "auto",
+    column_widths: null,
+    nested_rows: null,
+    placements: [],
   }
 }
 
@@ -180,11 +188,11 @@ export default function CompositionEditorPage() {
   // ── Editor state ─────────────────────────────────────────
   const [resolved, setResolved] = useState<ResolvedComposition | null>(null)
   const [activeRow, setActiveRow] = useState<CompositionRecord | null>(null)
-  const [draftPlacements, setDraftPlacements] = useState<Placement[]>([])
+  const [draftRows, setDraftRows] = useState<CompositionRow[]>([])
   const [draftCanvasConfig, setDraftCanvasConfig] = useState<CanvasConfig>(
     defaultCanvasConfig(),
   )
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selection, setSelection] = useState<Selection>({ kind: "none" })
 
   const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -197,29 +205,32 @@ export default function CompositionEditorPage() {
   const [paletteSearch, setPaletteSearch] = useState("")
   const [showGrid, setShowGrid] = useState(true)
 
+  // ── Delete-row confirmation modal ────────────────────────
+  const [deleteRowConfirm, setDeleteRowConfirm] = useState<{
+    rowId: string
+    placementCount: number
+  } | null>(null)
+
   // ── Undo / redo stack ─────────────────────────────────────
-  // Stack of historical snapshots; pointer = current position.
-  // Push on every commit (drag, resize, add, delete, nudge).
-  // Replay snapshot on undo/redo.
   const undoStack = useRef<DraftSnapshot[]>([])
   const undoPointer = useRef<number>(-1)
   const isReplayingRef = useRef(false)
 
   const pushSnapshot = useCallback(
-    (placements: Placement[], canvasConfig: CanvasConfig) => {
+    (rows: CompositionRow[], canvasConfig: CanvasConfig) => {
       if (isReplayingRef.current) return
-      // Drop any "redo" tail past the current pointer.
       undoStack.current = undoStack.current.slice(0, undoPointer.current + 1)
       undoStack.current.push({
-        placements: placements.map((p) => ({
-          ...p,
-          grid: { ...p.grid },
-          prop_overrides: { ...p.prop_overrides },
-          display_config: p.display_config ? { ...p.display_config } : {},
+        rows: rows.map((r) => ({
+          ...r,
+          placements: r.placements.map((p) => ({
+            ...p,
+            prop_overrides: { ...p.prop_overrides },
+            display_config: p.display_config ? { ...p.display_config } : {},
+          })),
         })),
         canvasConfig: { ...canvasConfig },
       })
-      // Cap the stack.
       if (undoStack.current.length > UNDO_STACK_LIMIT) {
         const overflow = undoStack.current.length - UNDO_STACK_LIMIT
         undoStack.current = undoStack.current.slice(overflow)
@@ -231,9 +242,13 @@ export default function CompositionEditorPage() {
 
   const replaySnapshot = useCallback((snap: DraftSnapshot) => {
     isReplayingRef.current = true
-    setDraftPlacements(snap.placements.map((p) => ({ ...p, grid: { ...p.grid } })))
+    setDraftRows(
+      snap.rows.map((r) => ({
+        ...r,
+        placements: r.placements.map((p) => ({ ...p })),
+      })),
+    )
     setDraftCanvasConfig({ ...snap.canvasConfig })
-    // Allow next commit to push fresh.
     queueMicrotask(() => {
       isReplayingRef.current = false
     })
@@ -292,40 +307,21 @@ export default function CompositionEditorPage() {
       const active = rows.find((r) => r.is_active) ?? null
       setActiveRow(active)
 
-      // Reset undo stack when loading a different active row.
       undoStack.current = []
       undoPointer.current = -1
       isReplayingRef.current = true
-      // R-3.0: API returns rows-shaped composition. The legacy editor
-      // works with flat placements + grid coords — translate at IO.
-      const flattened = active
-        ? flattenRowsToLegacy(active.rows ?? [], active.canvas_config ?? {})
-        : null
-      if (flattened) {
-        setDraftPlacements([...flattened.placements])
-        // Preserve total_columns from the flattening result so the
-        // editor's grid math (which reads canvas_config.total_columns)
-        // continues to work even though the new model puts column_count
-        // on each row.
-        setDraftCanvasConfig({
-          ...active!.canvas_config,
-          total_columns: flattened.total_columns,
-        })
+      if (active) {
+        setDraftRows(active.rows ?? [])
+        setDraftCanvasConfig({ ...(active.canvas_config ?? {}) })
       } else {
-        setDraftPlacements([])
+        setDraftRows([])
         setDraftCanvasConfig(defaultCanvasConfig())
       }
-      // Push initial snapshot once the state settles.
       queueMicrotask(() => {
         isReplayingRef.current = false
         pushSnapshot(
-          flattened ? [...flattened.placements] : [],
-          flattened
-            ? {
-                ...active!.canvas_config,
-                total_columns: flattened.total_columns,
-              }
-            : defaultCanvasConfig(),
+          active ? (active.rows ?? []) : [],
+          active ? { ...(active.canvas_config ?? {}) } : defaultCanvasConfig(),
         )
       })
     } catch (err) {
@@ -341,33 +337,20 @@ export default function CompositionEditorPage() {
     void resolveAndLoadActive()
   }, [resolveAndLoadActive])
 
-  // Reset selection when scope / focus changes.
   useEffect(() => {
-    setSelectedIds(new Set())
+    setSelection({ kind: "none" })
   }, [scope, focusType])
 
   // ── Save / discard / autosave ────────────────────────────
-  // R-3.0: persistedSnapshot is computed against the editor's local
-  // flat-placements view of the canonical rows shape so the
-  // hasUnsaved check compares apples-to-apples with draftSnapshot
-  // (also flat-placements). flattenRowsToLegacy is deterministic on
-  // the same input so the snapshot is stable.
   const persistedSnapshot = useMemo(() => {
     if (!activeRow) {
       return JSON.stringify([[], defaultCanvasConfig()])
     }
-    const flat = flattenRowsToLegacy(
-      activeRow.rows ?? [],
-      activeRow.canvas_config ?? {},
-    )
-    return JSON.stringify([
-      flat.placements,
-      { ...activeRow.canvas_config, total_columns: flat.total_columns },
-    ])
+    return JSON.stringify([activeRow.rows ?? [], activeRow.canvas_config ?? {}])
   }, [activeRow])
   const draftSnapshot = useMemo(
-    () => JSON.stringify([draftPlacements, draftCanvasConfig]),
-    [draftPlacements, draftCanvasConfig],
+    () => JSON.stringify([draftRows, draftCanvasConfig]),
+    [draftRows, draftCanvasConfig],
   )
   const hasUnsaved = draftSnapshot !== persistedSnapshot
 
@@ -376,13 +359,9 @@ export default function CompositionEditorPage() {
     setIsSaving(true)
     setSaveError(null)
     try {
-      // R-3.0: editor's internal flat-placements model translates to
-      // the canonical rows shape on save. Single-row authoring per
-      // the R-3.0 patch contract — R-3.1 retires this constraint.
-      const wrappedRows = wrapLegacyAsRows(draftPlacements, draftCanvasConfig)
       if (activeRow) {
         const updated = await focusCompositionsService.update(activeRow.id, {
-          rows: wrappedRows,
+          rows: draftRows,
           canvas_config: draftCanvasConfig,
         })
         setActiveRow(updated)
@@ -392,7 +371,7 @@ export default function CompositionEditorPage() {
           focus_type: focusType,
           vertical: scope === "vertical_default" ? vertical : null,
           tenant_id: scope === "tenant_override" ? tenantIdInput : null,
-          rows: wrappedRows,
+          rows: draftRows,
           canvas_config: draftCanvasConfig,
         })
         setActiveRow(created)
@@ -408,7 +387,7 @@ export default function CompositionEditorPage() {
   }, [
     activeRow,
     draftCanvasConfig,
-    draftPlacements,
+    draftRows,
     focusType,
     hasUnsaved,
     resolveAndLoadActive,
@@ -436,221 +415,419 @@ export default function CompositionEditorPage() {
   const handleDiscard = useCallback(() => {
     isReplayingRef.current = true
     if (activeRow) {
-      // R-3.0: re-flatten from rows shape on discard so the editor
-      // returns to the persisted state (post-flatten).
-      const flat = flattenRowsToLegacy(
-        activeRow.rows ?? [],
-        activeRow.canvas_config ?? {},
-      )
-      setDraftPlacements([...flat.placements])
-      setDraftCanvasConfig({
-        ...activeRow.canvas_config,
-        total_columns: flat.total_columns,
-      })
+      setDraftRows(activeRow.rows ?? [])
+      setDraftCanvasConfig({ ...(activeRow.canvas_config ?? {}) })
     } else {
-      setDraftPlacements([])
+      setDraftRows([])
       setDraftCanvasConfig(defaultCanvasConfig())
     }
-    setSelectedIds(new Set())
+    setSelection({ kind: "none" })
     queueMicrotask(() => {
       isReplayingRef.current = false
     })
   }, [activeRow])
 
-  // ── Placement operations (each pushes an undo snapshot) ──
+  // ── Selected placement(s) helper ─────────────────────────
+  const selectedPlacementIds = useMemo(
+    () => selection.placementIds ?? new Set<string>(),
+    [selection],
+  )
+  const selectedPlacement = useMemo<Placement | null>(() => {
+    if (selection.kind !== "placement" || !selection.placementIds) return null
+    const id = Array.from(selection.placementIds)[0]
+    if (!id) return null
+    for (const r of draftRows) {
+      for (const p of r.placements) {
+        if (p.placement_id === id) return p
+      }
+    }
+    return null
+  }, [draftRows, selection])
+
+  const selectedRow = useMemo<CompositionRow | null>(() => {
+    if (selection.kind !== "row" || !selection.rowId) return null
+    return draftRows.find((r) => r.row_id === selection.rowId) ?? null
+  }, [draftRows, selection])
+
+  // ── Row management handlers ──────────────────────────────
+  const handleAddRow = useCallback(
+    (insertIndex: number, columnCount = 12) => {
+      const next = [...draftRows]
+      const newRow = makeRow(columnCount)
+      next.splice(insertIndex, 0, newRow)
+      setDraftRows(next)
+      setSelection({ kind: "row", rowId: newRow.row_id })
+      pushSnapshot(next, draftCanvasConfig)
+    },
+    [draftRows, draftCanvasConfig, pushSnapshot],
+  )
+
+  const handleAddRowAbove = useCallback(
+    (rowIndex: number) => handleAddRow(rowIndex),
+    [handleAddRow],
+  )
+  const handleAddRowBelow = useCallback(
+    (rowIndex: number) => handleAddRow(rowIndex + 1),
+    [handleAddRow],
+  )
+
+  const handleRequestDeleteRow = useCallback(
+    (rowId: string) => {
+      const row = draftRows.find((r) => r.row_id === rowId)
+      if (!row) return
+      if (row.placements.length === 0) {
+        // Instant delete for empty rows.
+        const next = draftRows.filter((r) => r.row_id !== rowId)
+        setDraftRows(next)
+        setSelection({ kind: "none" })
+        pushSnapshot(next, draftCanvasConfig)
+      } else {
+        // Confirmation modal for rows with placements.
+        setDeleteRowConfirm({
+          rowId,
+          placementCount: row.placements.length,
+        })
+      }
+    },
+    [draftRows, draftCanvasConfig, pushSnapshot],
+  )
+
+  const handleConfirmDeleteRow = useCallback(() => {
+    if (!deleteRowConfirm) return
+    const next = draftRows.filter((r) => r.row_id !== deleteRowConfirm.rowId)
+    setDraftRows(next)
+    setSelection({ kind: "none" })
+    pushSnapshot(next, draftCanvasConfig)
+    setDeleteRowConfirm(null)
+  }, [deleteRowConfirm, draftRows, draftCanvasConfig, pushSnapshot])
+
+  const handleCancelDeleteRow = useCallback(() => {
+    setDeleteRowConfirm(null)
+  }, [])
+
+  const handleReorderRow = useCallback(
+    ({ fromIndex, toIndex }: { fromIndex: number; toIndex: number }) => {
+      if (fromIndex === toIndex) return
+      const next = [...draftRows]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      setDraftRows(next)
+      pushSnapshot(next, draftCanvasConfig)
+    },
+    [draftRows, draftCanvasConfig, pushSnapshot],
+  )
+
+  const handleChangeRowColumnCount = useCallback(
+    (rowId: string, newColumnCount: number) => {
+      const next = draftRows.map((r) =>
+        r.row_id === rowId ? { ...r, column_count: newColumnCount } : r,
+      )
+      setDraftRows(next)
+      pushSnapshot(next, draftCanvasConfig)
+    },
+    [draftRows, draftCanvasConfig, pushSnapshot],
+  )
+
+  // ── Placement operations ─────────────────────────────────
   const handleAddPlacement = useCallback(
     (entry: RegistryEntry) => {
       const meta = getCanvasMetadata(entry)
-      const grid = findEmptyGridSlot(
-        draftPlacements,
-        meta.defaultDimensions,
-        draftCanvasConfig.total_columns ?? 12,
-      )
+      // Place into the selected row if one is selected; else last row;
+      // else create a new row (auto-create on empty composition).
+      let rows = [...draftRows]
+      let targetRowId: string
+      if (selection.kind === "row" && selection.rowId) {
+        targetRowId = selection.rowId
+      } else if (rows.length > 0) {
+        targetRowId = rows[rows.length - 1].row_id
+      } else {
+        const newRow = makeRow(12)
+        rows = [newRow]
+        targetRowId = newRow.row_id
+      }
+      const targetIdx = rows.findIndex((r) => r.row_id === targetRowId)
+      const targetRow = rows[targetIdx]
+      const span = Math.min(meta.defaultDimensions.columns, targetRow.column_count)
+      let startingColumn = findAvailableStartingColumn(targetRow, span)
+      // If no slot fits, append to a fresh row beneath this one.
+      if (startingColumn < 0) {
+        const newRow = makeRow(targetRow.column_count)
+        rows = [
+          ...rows.slice(0, targetIdx + 1),
+          newRow,
+          ...rows.slice(targetIdx + 1),
+        ]
+        targetRowId = newRow.row_id
+        startingColumn = 0
+      }
       const newPlacement: Placement = {
-        placement_id: nextPlacementId(draftPlacements),
+        placement_id: newPlacementId(rows),
         component_kind: entry.metadata.type as ComponentKind,
         component_name: entry.metadata.name,
-        grid,
+        starting_column: startingColumn,
+        column_span: span,
         prop_overrides: {},
         display_config: { show_header: true, show_border: true },
+        nested_rows: null,
       }
-      const next = [...draftPlacements, newPlacement]
-      setDraftPlacements(next)
-      setSelectedIds(new Set([newPlacement.placement_id]))
-      pushSnapshot(next, draftCanvasConfig)
+      rows = rows.map((r) =>
+        r.row_id === targetRowId
+          ? { ...r, placements: [...r.placements, newPlacement] }
+          : r,
+      )
+      setDraftRows(rows)
+      setSelection({
+        kind: "placement",
+        placementIds: new Set([newPlacement.placement_id]),
+      })
+      pushSnapshot(rows, draftCanvasConfig)
     },
-    [draftPlacements, draftCanvasConfig, pushSnapshot],
+    [draftRows, draftCanvasConfig, selection, pushSnapshot],
   )
 
-  const handleDeleteSelected = useCallback(() => {
-    if (selectedIds.size === 0) return
-    const next = draftPlacements.filter(
-      (x) => !selectedIds.has(x.placement_id),
-    )
-    setDraftPlacements(next)
-    setSelectedIds(new Set())
+  const handleDeleteSelectedPlacements = useCallback(() => {
+    const ids = selectedPlacementIds
+    if (ids.size === 0) return
+    const next = draftRows.map((r) => ({
+      ...r,
+      placements: r.placements.filter((p) => !ids.has(p.placement_id)),
+    }))
+    setDraftRows(next)
+    setSelection({ kind: "none" })
     pushSnapshot(next, draftCanvasConfig)
-  }, [draftPlacements, draftCanvasConfig, selectedIds, pushSnapshot])
+  }, [draftRows, draftCanvasConfig, selectedPlacementIds, pushSnapshot])
 
-  const handleDuplicateSelected = useCallback(() => {
-    if (selectedIds.size === 0) return
-    const additions: Placement[] = []
-    let working = [...draftPlacements]
-    for (const id of selectedIds) {
-      const src = working.find((p) => p.placement_id === id)
-      if (!src) continue
-      // Copy metadata; offset by one row, find empty slot.
-      const entry = palette.find(
-        (e) =>
-          e.metadata.type === src.component_kind &&
-          e.metadata.name === src.component_name,
+  const handleDuplicateSelectedPlacements = useCallback(() => {
+    const ids = selectedPlacementIds
+    if (ids.size === 0) return
+    let working: CompositionRow[] = draftRows.map((r) => ({
+      ...r,
+      placements: [...r.placements],
+    }))
+    const newIds: string[] = []
+    for (const id of ids) {
+      // Find which row contains the source.
+      let srcRowIdx = -1
+      let src: Placement | null = null
+      for (let i = 0; i < working.length; i++) {
+        const found = working[i].placements.find((p) => p.placement_id === id)
+        if (found) {
+          srcRowIdx = i
+          src = found
+          break
+        }
+      }
+      if (!src || srcRowIdx < 0) continue
+      const targetRow = working[srcRowIdx]
+      const startingColumn = findAvailableStartingColumn(
+        targetRow,
+        src.column_span,
       )
-      const meta = entry
-        ? getCanvasMetadata(entry)
-        : { defaultDimensions: { columns: src.grid.column_span, rows: src.grid.row_span } }
-      const grid = findEmptyGridSlot(
-        working,
-        { columns: src.grid.column_span, rows: meta.defaultDimensions.rows },
-        draftCanvasConfig.total_columns ?? 12,
-      )
+      if (startingColumn < 0) continue
       const dup: Placement = {
-        placement_id: nextPlacementId(working),
-        component_kind: src.component_kind,
-        component_name: src.component_name,
-        grid,
+        ...src,
+        placement_id: newPlacementId(working),
+        starting_column: startingColumn,
         prop_overrides: { ...src.prop_overrides },
         display_config: src.display_config ? { ...src.display_config } : {},
       }
-      working = [...working, dup]
-      additions.push(dup)
+      newIds.push(dup.placement_id)
+      working = working.map((r, i) =>
+        i === srcRowIdx ? { ...r, placements: [...r.placements, dup] } : r,
+      )
     }
-    if (additions.length === 0) return
-    setDraftPlacements(working)
-    setSelectedIds(new Set(additions.map((p) => p.placement_id)))
+    if (newIds.length === 0) return
+    setDraftRows(working)
+    setSelection({
+      kind: newIds.length === 1 ? "placement" : "placements-multi",
+      placementIds: new Set(newIds),
+    })
     pushSnapshot(working, draftCanvasConfig)
-  }, [draftPlacements, draftCanvasConfig, selectedIds, palette, pushSnapshot])
+  }, [draftRows, draftCanvasConfig, selectedPlacementIds, pushSnapshot])
 
   const handleNudgeSelected = useCallback(
-    (dx: number, dy: number) => {
-      if (selectedIds.size === 0) return
-      const totalCols = draftCanvasConfig.total_columns ?? 12
-      const next = draftPlacements.map((p) => {
-        if (!selectedIds.has(p.placement_id)) return p
-        const newColStart = Math.max(
-          1,
-          Math.min(totalCols - p.grid.column_span + 1, p.grid.column_start + dx),
-        )
-        const newRowStart = Math.max(1, p.grid.row_start + dy)
+    (dx: number) => {
+      const ids = selectedPlacementIds
+      if (ids.size === 0) return
+      // R-3.1 constraint: in-row arrow nudge only. Cross-row keyboard
+      // nav deferred to R-3.2 polish.
+      const next = draftRows.map((r) => ({
+        ...r,
+        placements: r.placements.map((p) => {
+          if (!ids.has(p.placement_id)) return p
+          const newStart = Math.max(
+            0,
+            Math.min(r.column_count - p.column_span, p.starting_column + dx),
+          )
+          return { ...p, starting_column: newStart }
+        }),
+      }))
+      setDraftRows(next)
+      pushSnapshot(next, draftCanvasConfig)
+    },
+    [draftRows, draftCanvasConfig, selectedPlacementIds, pushSnapshot],
+  )
+
+  const handleUpdatePlacementGrid = useCallback(
+    (
+      placementId: string,
+      patch: { starting_column?: number; column_span?: number },
+    ) => {
+      const next = draftRows.map((r) => ({
+        ...r,
+        placements: r.placements.map((p) => {
+          if (p.placement_id !== placementId) return p
+          const newCol = patch.starting_column ?? p.starting_column
+          const newSpan = patch.column_span ?? p.column_span
+          // Clamp into row's column_count.
+          const span = Math.max(1, Math.min(r.column_count, newSpan))
+          const start = Math.max(0, Math.min(r.column_count - span, newCol))
+          return { ...p, starting_column: start, column_span: span }
+        }),
+      }))
+      setDraftRows(next)
+      pushSnapshot(next, draftCanvasConfig)
+    },
+    [draftRows, draftCanvasConfig, pushSnapshot],
+  )
+
+  // ── Canvas drag/resize commit ────────────────────────────
+  const handleCommitPlacementMove = useCallback(
+    (input: {
+      placementId: string
+      sourceRowId: string
+      targetRowId: string
+      newStartingColumn: number
+      siblingMoves: Array<{
+        placementId: string
+        newStartingColumn: number
+      }>
+    }) => {
+      const { placementId, sourceRowId, targetRowId, newStartingColumn, siblingMoves } =
+        input
+      let next: CompositionRow[]
+      if (sourceRowId === targetRowId) {
+        // Within-row move (anchor + siblings).
+        next = draftRows.map((r) => {
+          if (r.row_id !== sourceRowId) return r
+          return {
+            ...r,
+            placements: r.placements.map((p) => {
+              if (p.placement_id === placementId) {
+                return { ...p, starting_column: newStartingColumn }
+              }
+              const sib = siblingMoves.find(
+                (m) => m.placementId === p.placement_id,
+              )
+              if (sib) {
+                return { ...p, starting_column: sib.newStartingColumn }
+              }
+              return p
+            }),
+          }
+        })
+      } else {
+        // Cross-row move: only the dragged placement moves.
+        const moved = draftRows
+          .find((r) => r.row_id === sourceRowId)
+          ?.placements.find((p) => p.placement_id === placementId)
+        if (!moved) return
+        next = draftRows.map((r) => {
+          if (r.row_id === sourceRowId) {
+            return {
+              ...r,
+              placements: r.placements.filter(
+                (p) => p.placement_id !== placementId,
+              ),
+            }
+          }
+          if (r.row_id === targetRowId) {
+            return {
+              ...r,
+              placements: [
+                ...r.placements,
+                { ...moved, starting_column: newStartingColumn },
+              ],
+            }
+          }
+          return r
+        })
+      }
+      setDraftRows(next)
+      pushSnapshot(next, draftCanvasConfig)
+    },
+    [draftRows, draftCanvasConfig, pushSnapshot],
+  )
+
+  const handleCommitPlacementResize = useCallback(
+    (input: {
+      placementId: string
+      rowId: string
+      newStartingColumn: number
+      newColumnSpan: number
+    }) => {
+      const next = draftRows.map((r) => {
+        if (r.row_id !== input.rowId) return r
         return {
-          ...p,
-          grid: {
-            ...p.grid,
-            column_start: newColStart,
-            row_start: newRowStart,
-          },
+          ...r,
+          placements: r.placements.map((p) =>
+            p.placement_id === input.placementId
+              ? {
+                  ...p,
+                  starting_column: input.newStartingColumn,
+                  column_span: input.newColumnSpan,
+                }
+              : p,
+          ),
         }
       })
-      setDraftPlacements(next)
+      setDraftRows(next)
       pushSnapshot(next, draftCanvasConfig)
     },
-    [draftPlacements, draftCanvasConfig, selectedIds, pushSnapshot],
+    [draftRows, draftCanvasConfig, pushSnapshot],
   )
 
-  const handleUpdateGrid = useCallback(
-    (placementId: string, patch: Partial<Placement["grid"]>) => {
-      const next = draftPlacements.map((x) =>
-        x.placement_id === placementId
-          ? { ...x, grid: { ...x.grid, ...patch } }
-          : x,
-      )
-      setDraftPlacements(next)
-      pushSnapshot(next, draftCanvasConfig)
-    },
-    [draftPlacements, draftCanvasConfig, pushSnapshot],
-  )
-
-  // ── Canvas drag/resize commits ───────────────────────────
-  const handlePlacementsChange = useCallback(
-    (next: Placement[]) => {
-      setDraftPlacements(next)
-    },
-    [],
-  )
-  const handleCommitDrag = useCallback(
-    (
-      _updates: Array<{ placementId: string; newGrid: Placement["grid"] }>,
-    ) => {
-      // The component already applied the updates via
-      // onPlacementsChange before calling onCommitDrag; we just push
-      // the snapshot using the latest state via a microtask so
-      // setDraftPlacements has settled.
-      queueMicrotask(() => {
-        setDraftPlacements((current) => {
-          pushSnapshot(current, draftCanvasConfig)
-          return current
-        })
-      })
-    },
-    [draftCanvasConfig, pushSnapshot],
-  )
-  const handleCommitResize = useCallback(
-    (_placementId: string, _newGrid: Placement["grid"]) => {
-      queueMicrotask(() => {
-        setDraftPlacements((current) => {
-          pushSnapshot(current, draftCanvasConfig)
-          return current
-        })
-      })
-    },
-    [draftCanvasConfig, pushSnapshot],
-  )
-
-  // ── Selection ────────────────────────────────────────────
-  const handleSelect = useCallback(
+  // ── Selection handlers ──────────────────────────────────
+  const handleSelectPlacement = useCallback(
     (id: string, opts: { shift: boolean }) => {
-      setSelectedIds((prev) => {
+      setSelection((prev) => {
+        const prevIds = prev.placementIds ?? new Set<string>()
         if (opts.shift) {
-          const next = new Set(prev)
+          const next = new Set(prevIds)
           if (next.has(id)) next.delete(id)
           else next.add(id)
-          return next
+          if (next.size === 0) return { kind: "none" }
+          if (next.size === 1)
+            return { kind: "placement", placementIds: next }
+          return { kind: "placements-multi", placementIds: next }
         }
-        return new Set([id])
-      })
-    },
-    [],
-  )
-  const handleDeselectAll = useCallback(() => {
-    setSelectedIds(new Set())
-  }, [])
-  const handleMarqueeSelect = useCallback(
-    (ids: string[], opts: { shift: boolean }) => {
-      setSelectedIds((prev) => {
-        if (opts.shift) {
-          const next = new Set(prev)
-          for (const id of ids) next.add(id)
-          return next
-        }
-        return new Set(ids)
+        return { kind: "placement", placementIds: new Set([id]) }
       })
     },
     [],
   )
 
-  const selectedPlacement = useMemo(
-    () =>
-      selectedIds.size === 1
-        ? draftPlacements.find((p) =>
-            selectedIds.has(p.placement_id),
-          ) ?? null
-        : null,
-    [draftPlacements, selectedIds],
-  )
+  const handleSelectRow = useCallback((rowId: string) => {
+    setSelection({ kind: "row", rowId })
+  }, [])
+
+  const handleDeselectAll = useCallback(() => {
+    setSelection({ kind: "none" })
+  }, [])
+
+  const handleMarqueeSelect = useCallback((ids: string[]) => {
+    if (ids.length === 0) {
+      setSelection({ kind: "none" })
+    } else if (ids.length === 1) {
+      setSelection({ kind: "placement", placementIds: new Set(ids) })
+    } else {
+      setSelection({ kind: "placements-multi", placementIds: new Set(ids) })
+    }
+  }, [])
 
   // ── Keyboard shortcuts ───────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Don't intercept while user is typing in an input/textarea/etc.
       const target = e.target as HTMLElement | null
       if (target) {
         const tag = target.tagName
@@ -663,10 +840,7 @@ export default function CompositionEditorPage() {
           return
         }
       }
-
       const meta = e.metaKey || e.ctrlKey
-
-      // Undo / redo
       if (meta && e.key.toLowerCase() === "z") {
         e.preventDefault()
         if (e.shiftKey) handleRedo()
@@ -678,47 +852,32 @@ export default function CompositionEditorPage() {
         handleRedo()
         return
       }
-
-      // Duplicate
       if (meta && e.key.toLowerCase() === "d") {
         e.preventDefault()
-        handleDuplicateSelected()
+        handleDuplicateSelectedPlacements()
         return
       }
-
-      // Delete selected
       if ((e.key === "Backspace" || e.key === "Delete") && !meta) {
-        if (selectedIds.size > 0) {
+        if (selectedPlacementIds.size > 0) {
           e.preventDefault()
-          handleDeleteSelected()
+          handleDeleteSelectedPlacements()
         }
         return
       }
-
-      // Arrow nudge
-      if (e.key.startsWith("Arrow") && !meta) {
-        if (selectedIds.size === 0) return
+      // R-3.1: arrow nudge is in-row only (column axis); ArrowUp/Down
+      // do nothing in R-3.1 (cross-row nav deferred to R-3.2 polish).
+      if (e.key === "ArrowLeft" && !meta && selectedPlacementIds.size > 0) {
         e.preventDefault()
-        const step = e.shiftKey ? 3 : 1
-        switch (e.key) {
-          case "ArrowLeft":
-            handleNudgeSelected(-step, 0)
-            break
-          case "ArrowRight":
-            handleNudgeSelected(step, 0)
-            break
-          case "ArrowUp":
-            handleNudgeSelected(0, -step)
-            break
-          case "ArrowDown":
-            handleNudgeSelected(0, step)
-            break
-        }
+        handleNudgeSelected(e.shiftKey ? -3 : -1)
+        return
       }
-
-      // Escape clears selection
+      if (e.key === "ArrowRight" && !meta && selectedPlacementIds.size > 0) {
+        e.preventDefault()
+        handleNudgeSelected(e.shiftKey ? 3 : 1)
+        return
+      }
       if (e.key === "Escape") {
-        setSelectedIds(new Set())
+        setSelection({ kind: "none" })
       }
     }
     window.addEventListener("keydown", onKey)
@@ -726,10 +885,10 @@ export default function CompositionEditorPage() {
   }, [
     handleUndo,
     handleRedo,
-    handleDuplicateSelected,
-    handleDeleteSelected,
+    handleDuplicateSelectedPlacements,
+    handleDeleteSelectedPlacements,
     handleNudgeSelected,
-    selectedIds.size,
+    selectedPlacementIds.size,
   ])
 
   // ── Render ───────────────────────────────────────────────
@@ -807,6 +966,7 @@ export default function CompositionEditorPage() {
           className="relative flex flex-1 flex-col overflow-hidden bg-surface-sunken"
           data-testid="canvas-pane"
         >
+          {/* Top toolbar */}
           <div className="flex items-center justify-between border-b border-border-subtle bg-surface-elevated px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-body-sm font-medium text-content-strong">
@@ -819,9 +979,14 @@ export default function CompositionEditorPage() {
               {resolved?.source && (
                 <Badge variant="outline">source: {resolved.source}</Badge>
               )}
-              {selectedIds.size > 0 && (
+              {selectedPlacementIds.size > 0 && (
                 <Badge variant="info" data-testid="selection-count-badge">
-                  {selectedIds.size} selected
+                  {selectedPlacementIds.size} selected
+                </Badge>
+              )}
+              {selection.kind === "row" && selection.rowId && (
+                <Badge variant="info" data-testid="row-selection-badge">
+                  row selected
                 </Badge>
               )}
               {isLoading && (
@@ -834,6 +999,15 @@ export default function CompositionEditorPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleAddRow(draftRows.length, 12)}
+                data-testid="composition-add-row-button"
+              >
+                <Plus size={11} className="mr-1" />
+                Add row
+              </Button>
               <button
                 type="button"
                 onClick={handleUndo}
@@ -899,24 +1073,23 @@ export default function CompositionEditorPage() {
             data-testid="composition-canvas-area"
           >
             <InteractivePlacementCanvas
-              placements={draftPlacements}
-              totalColumns={draftCanvasConfig.total_columns ?? 12}
-              rowHeight={
-                typeof draftCanvasConfig.row_height === "number"
-                  ? draftCanvasConfig.row_height
-                  : 64
-              }
+              rows={draftRows}
               gapSize={draftCanvasConfig.gap_size ?? 12}
               backgroundTreatment={draftCanvasConfig.background_treatment}
-              selectedIds={selectedIds}
+              selection={selection}
               showGrid={showGrid}
               interactionsEnabled={!isSaving}
-              onSelect={handleSelect}
+              onSelectPlacement={handleSelectPlacement}
+              onSelectRow={handleSelectRow}
               onDeselectAll={handleDeselectAll}
-              onPlacementsChange={handlePlacementsChange}
-              onCommitDrag={handleCommitDrag}
-              onCommitResize={handleCommitResize}
+              onCommitPlacementMove={handleCommitPlacementMove}
+              onCommitPlacementResize={handleCommitPlacementResize}
+              onCommitRowReorder={handleReorderRow}
               onMarqueeSelect={handleMarqueeSelect}
+              onAddRowAbove={handleAddRowAbove}
+              onAddRowBelow={handleAddRowBelow}
+              onDeleteRow={handleRequestDeleteRow}
+              onChangeRowColumnCount={handleChangeRowColumnCount}
             />
           </div>
         </main>
@@ -979,8 +1152,8 @@ export default function CompositionEditorPage() {
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => void handleSave()}
-                    disabled={!hasUnsaved}
+                    onClick={handleSave}
+                    disabled={!hasUnsaved || isSaving}
                     data-testid="composition-save-button"
                   >
                     <Save size={12} className="mr-1" />
@@ -989,7 +1162,7 @@ export default function CompositionEditorPage() {
                 </div>
               </div>
 
-              {/* Scope + focus selectors */}
+              {/* Scope picker */}
               <div className="border-b border-border-subtle px-3 py-2">
                 <label className="mb-1 block text-micro uppercase tracking-wider text-content-muted">
                   Focus type
@@ -1045,29 +1218,13 @@ export default function CompositionEditorPage() {
                 )}
               </div>
 
-              {/* Canvas config */}
+              {/* Canvas config (gap + background only; per-row column_count
+                  is on each row's own picker now). */}
               <div className="border-b border-border-subtle px-3 py-2">
                 <div className="text-micro uppercase tracking-wider text-content-muted">
                   Canvas
                 </div>
                 <div className="mt-1.5 flex items-center gap-2 text-caption">
-                  <span className="text-content-muted">Cols:</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={draftCanvasConfig.total_columns ?? 12}
-                    onChange={(e) => {
-                      const next = {
-                        ...draftCanvasConfig,
-                        total_columns: Number(e.target.value),
-                      }
-                      setDraftCanvasConfig(next)
-                      pushSnapshot(draftPlacements, next)
-                    }}
-                    className="w-14 rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono"
-                    data-testid="canvas-cols-input"
-                  />
                   <span className="text-content-muted">Gap:</span>
                   <input
                     type="number"
@@ -1080,9 +1237,10 @@ export default function CompositionEditorPage() {
                         gap_size: Number(e.target.value),
                       }
                       setDraftCanvasConfig(next)
-                      pushSnapshot(draftPlacements, next)
+                      pushSnapshot(draftRows, next)
                     }}
                     className="w-14 rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono"
+                    data-testid="canvas-gap-input"
                   />
                 </div>
                 <div className="mt-1.5">
@@ -1099,7 +1257,7 @@ export default function CompositionEditorPage() {
                         background_treatment: e.target.value,
                       }
                       setDraftCanvasConfig(next)
-                      pushSnapshot(draftPlacements, next)
+                      pushSnapshot(draftRows, next)
                     }}
                     className="mt-0.5 w-full rounded-sm border border-border-base bg-surface-raised px-2 py-1 text-caption text-content-strong"
                   >
@@ -1110,106 +1268,29 @@ export default function CompositionEditorPage() {
                 </div>
               </div>
 
-              {/* Selected placement controls (single-select) OR
-                  multi-select bulk actions. */}
-              {selectedIds.size > 1 ? (
-                <div
-                  className="flex-1 overflow-y-auto px-3 py-2"
-                  data-testid="multi-select-controls"
-                >
-                  <div className="text-body-sm font-medium text-content-strong">
-                    {selectedIds.size} placements selected
-                  </div>
-                  <div className="mt-2 text-caption text-content-muted">
-                    Drag any selected placement to move all together.
-                    Arrow keys nudge by one cell. Shift+arrow nudges
-                    by three cells.
-                  </div>
-                  <div className="mt-3 flex flex-col gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleDuplicateSelected}
-                      data-testid="bulk-duplicate"
-                    >
-                      Duplicate ({selectedIds.size})
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleDeleteSelected}
-                      className="text-status-error"
-                      data-testid="bulk-delete"
-                    >
-                      <Trash2 size={11} className="mr-1" />
-                      Delete ({selectedIds.size})
-                    </Button>
-                  </div>
-                </div>
-              ) : selectedPlacement ? (
-                <div className="flex-1 overflow-y-auto" data-testid="placement-controls">
-                  <div className="border-b border-border-subtle px-3 py-2">
-                    <div className="text-body-sm font-medium text-content-strong">
-                      {selectedPlacement.component_name}
-                    </div>
-                    <div className="font-plex-mono text-caption text-content-muted">
-                      {selectedPlacement.component_kind} · {selectedPlacement.placement_id}
-                    </div>
-                  </div>
-                  <div className="px-3 py-2">
-                    <div className="text-micro uppercase tracking-wider text-content-muted">
-                      Grid position
-                    </div>
-                    <div className="mt-1.5 grid grid-cols-2 gap-2 text-caption">
-                      {(
-                        [
-                          "column_start",
-                          "column_span",
-                          "row_start",
-                          "row_span",
-                        ] as const
-                      ).map((k) => (
-                        <label key={k} className="flex flex-col">
-                          <span className="text-content-muted">{k}</span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={selectedPlacement.grid[k]}
-                            onChange={(e) =>
-                              handleUpdateGrid(
-                                selectedPlacement.placement_id,
-                                {
-                                  [k]: Number(e.target.value),
-                                },
-                              )
-                            }
-                            className="rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono text-content-strong"
-                            data-testid={`placement-grid-${k}`}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="border-t border-border-subtle px-3 py-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleDeleteSelected}
-                      className="w-full text-status-error"
-                      data-testid="delete-placement"
-                    >
-                      <Trash2 size={11} className="mr-1" />
-                      Delete placement
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="px-3 py-6 text-center text-caption text-content-muted">
-                  Click a placement on the canvas to edit. Shift-click
-                  to multi-select. Drag the canvas background to
-                  marquee-select.
-                </div>
-              )}
+              {/* Selection-driven inspector — 4 modes. */}
+              <SelectionInspector
+                selection={selection}
+                draftRows={draftRows}
+                selectedPlacement={selectedPlacement}
+                selectedRow={selectedRow}
+                onUpdatePlacementGrid={handleUpdatePlacementGrid}
+                onDeleteSelectedPlacements={handleDeleteSelectedPlacements}
+                onDuplicateSelectedPlacements={handleDuplicateSelectedPlacements}
+                onChangeRowColumnCount={(n) => {
+                  if (selection.kind === "row" && selection.rowId) {
+                    handleChangeRowColumnCount(selection.rowId, n)
+                  }
+                }}
+                onChangeRowHeight={(rowId, value) => {
+                  const next = draftRows.map((r) =>
+                    r.row_id === rowId ? { ...r, row_height: value } : r,
+                  )
+                  setDraftRows(next)
+                  pushSnapshot(next, draftCanvasConfig)
+                }}
+                onDeleteRow={handleRequestDeleteRow}
+              />
 
               <div className="border-t border-border-subtle px-3 py-2">
                 <Link
@@ -1224,6 +1305,295 @@ export default function CompositionEditorPage() {
             </>
           )}
         </aside>
+      </div>
+
+      {/* Delete row confirmation modal */}
+      {deleteRowConfirm && (
+        <DeleteRowConfirmModal
+          placementCount={deleteRowConfirm.placementCount}
+          onConfirm={handleConfirmDeleteRow}
+          onCancel={handleCancelDeleteRow}
+        />
+      )}
+    </div>
+  )
+}
+
+
+// ─── Selection-driven right-rail inspector ──────────────────────
+
+
+function SelectionInspector({
+  selection,
+  draftRows,
+  selectedPlacement,
+  selectedRow,
+  onUpdatePlacementGrid,
+  onDeleteSelectedPlacements,
+  onDuplicateSelectedPlacements,
+  onChangeRowColumnCount,
+  onChangeRowHeight,
+  onDeleteRow,
+}: {
+  selection: Selection
+  draftRows: CompositionRow[]
+  selectedPlacement: Placement | null
+  selectedRow: CompositionRow | null
+  onUpdatePlacementGrid: (
+    id: string,
+    patch: { starting_column?: number; column_span?: number },
+  ) => void
+  onDeleteSelectedPlacements: () => void
+  onDuplicateSelectedPlacements: () => void
+  onChangeRowColumnCount: (n: number) => void
+  onChangeRowHeight: (rowId: string, value: "auto" | number) => void
+  onDeleteRow: (rowId: string) => void
+}): ReactNode {
+  void draftRows
+
+  if (selection.kind === "placements-multi") {
+    const count = selection.placementIds?.size ?? 0
+    return (
+      <div
+        className="flex-1 overflow-y-auto px-3 py-2"
+        data-testid="multi-select-controls"
+      >
+        <div className="text-body-sm font-medium text-content-strong">
+          {count} placements selected
+        </div>
+        <div className="mt-2 text-caption text-content-muted">
+          Drag any selected placement to move all together within the same row.
+          Arrow keys nudge by one cell. Shift+arrow nudges by three cells.
+          Cross-row drag moves only the dragged placement (R-3.1 constraint).
+        </div>
+        <div className="mt-3 flex flex-col gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onDuplicateSelectedPlacements}
+            data-testid="bulk-duplicate"
+          >
+            Duplicate ({count})
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onDeleteSelectedPlacements}
+            className="text-status-error"
+            data-testid="bulk-delete"
+          >
+            <Trash2 size={11} className="mr-1" />
+            Delete ({count})
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (selection.kind === "placement" && selectedPlacement) {
+    return (
+      <div className="flex-1 overflow-y-auto" data-testid="placement-controls">
+        <div className="border-b border-border-subtle px-3 py-2">
+          <div className="text-body-sm font-medium text-content-strong">
+            {selectedPlacement.component_name}
+          </div>
+          <div className="font-plex-mono text-caption text-content-muted">
+            {selectedPlacement.component_kind} · {selectedPlacement.placement_id}
+          </div>
+        </div>
+        <div className="px-3 py-2">
+          <div className="text-micro uppercase tracking-wider text-content-muted">
+            Position within row
+          </div>
+          <div className="mt-1.5 grid grid-cols-2 gap-2 text-caption">
+            <label className="flex flex-col">
+              <span className="text-content-muted">starting_column</span>
+              <input
+                type="number"
+                min={0}
+                value={selectedPlacement.starting_column}
+                onChange={(e) =>
+                  onUpdatePlacementGrid(selectedPlacement.placement_id, {
+                    starting_column: Number(e.target.value),
+                  })
+                }
+                className="rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono text-content-strong"
+                data-testid="placement-grid-starting-column"
+              />
+            </label>
+            <label className="flex flex-col">
+              <span className="text-content-muted">column_span</span>
+              <input
+                type="number"
+                min={1}
+                value={selectedPlacement.column_span}
+                onChange={(e) =>
+                  onUpdatePlacementGrid(selectedPlacement.placement_id, {
+                    column_span: Number(e.target.value),
+                  })
+                }
+                className="rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono text-content-strong"
+                data-testid="placement-grid-column-span"
+              />
+            </label>
+          </div>
+        </div>
+        <div className="border-t border-border-subtle px-3 py-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onDeleteSelectedPlacements}
+            className="w-full text-status-error"
+            data-testid="delete-placement"
+          >
+            <Trash2 size={11} className="mr-1" />
+            Delete placement
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (selection.kind === "row" && selectedRow) {
+    const isAuto = selectedRow.row_height === "auto"
+    return (
+      <div className="flex-1 overflow-y-auto" data-testid="row-controls">
+        <div className="border-b border-border-subtle px-3 py-2">
+          <div className="text-body-sm font-medium text-content-strong">
+            Row
+          </div>
+          <div className="font-plex-mono text-caption text-content-muted">
+            {selectedRow.row_id.slice(0, 8)} · {selectedRow.placements.length}{" "}
+            placement{selectedRow.placements.length === 1 ? "" : "s"}
+          </div>
+        </div>
+        <div className="px-3 py-2">
+          <div className="mb-1.5 text-micro uppercase tracking-wider text-content-muted">
+            Column count
+          </div>
+          <ColumnCountPopover
+            row={selectedRow}
+            onChange={onChangeRowColumnCount}
+            triggerTestId="inspector-column-count-trigger"
+            triggerClassName="inline-flex h-7 items-center gap-1 rounded-sm border border-border-base bg-surface-raised px-2 font-plex-mono text-caption text-content-strong hover:bg-accent-subtle/40"
+          />
+        </div>
+        <div className="px-3 py-2">
+          <div className="mb-1.5 text-micro uppercase tracking-wider text-content-muted">
+            Row height
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onChangeRowHeight(selectedRow.row_id, "auto")}
+              data-testid="row-height-auto"
+              data-active={isAuto ? "true" : "false"}
+              className={[
+                "rounded-sm px-2 py-1 text-caption",
+                isAuto
+                  ? "bg-accent text-content-on-accent"
+                  : "border border-border-base bg-surface-raised text-content-strong hover:bg-accent-subtle/40",
+              ].join(" ")}
+            >
+              auto
+            </button>
+            <input
+              type="number"
+              min={48}
+              max={1200}
+              value={typeof selectedRow.row_height === "number" ? selectedRow.row_height : ""}
+              placeholder="px"
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === "") {
+                  onChangeRowHeight(selectedRow.row_id, "auto")
+                } else {
+                  const n = Number(v)
+                  if (!Number.isNaN(n) && n > 0) {
+                    onChangeRowHeight(selectedRow.row_id, n)
+                  }
+                }
+              }}
+              className="w-20 rounded-sm border border-border-base bg-surface-raised px-1 py-0.5 font-plex-mono text-caption text-content-strong"
+              data-testid="row-height-px-input"
+            />
+          </div>
+        </div>
+        <div className="border-t border-border-subtle px-3 py-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onDeleteRow(selectedRow.row_id)}
+            className="w-full text-status-error"
+            data-testid="row-inspector-delete"
+          >
+            <Trash2 size={11} className="mr-1" />
+            Delete row
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-3 py-6 text-center text-caption text-content-muted">
+      Click a placement to edit its position within the row. Click a row's
+      controls strip to edit the row. Shift-click multiple placements to
+      multi-select.
+    </div>
+  )
+}
+
+
+// ─── Delete row confirmation modal ──────────────────────────────
+
+
+function DeleteRowConfirmModal({
+  placementCount,
+  onConfirm,
+  onCancel,
+}: {
+  placementCount: number
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[var(--z-modal,80)] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      data-testid="delete-row-confirm-modal"
+      onClick={onCancel}
+    >
+      <div
+        className="w-[420px] max-w-[90vw] rounded-lg border border-border-subtle bg-surface-raised p-5 shadow-level-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-h4 font-plex-serif font-medium text-content-strong">
+          Delete row?
+        </div>
+        <div className="mt-2 text-caption text-content-muted">
+          This row contains {placementCount} placement
+          {placementCount === 1 ? "" : "s"}. Deleting the row will remove{" "}
+          {placementCount === 1 ? "it" : "them"}. Cmd+Z reverses this.
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onCancel}
+            data-testid="delete-row-cancel"
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={onConfirm}
+            data-testid="delete-row-confirm"
+          >
+            <Trash2 size={11} className="mr-1" />
+            Delete
+          </Button>
+        </div>
       </div>
     </div>
   )
