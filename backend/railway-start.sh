@@ -6,12 +6,29 @@ alembic current 2>&1 || echo "(could not read current revision)"
 
 echo ""
 echo "Running database migrations..."
-if alembic upgrade head 2>&1; then
-    echo "Migrations completed successfully."
-else
-    echo "WARNING: Migration failed — server will start anyway."
-    echo "Check migration errors and resolve manually."
+# R-3.1.3: Fail-loud on migration errors (matching R-1.6.3 seed discipline).
+#
+# Pre-R-3.1.3 this block swallowed `alembic upgrade head` failures with a
+# WARNING and continued. That's how R-3.0's r88_focus_compositions_rows
+# migration silently failed to apply on staging — two alembic heads
+# (r48_fh_demo_email_tld_fix + r88_focus_compositions_rows) made
+# `alembic upgrade head` refuse with "Multiple head revisions"; the
+# deploy continued with stale schema; R-3.1's Playwright specs 17-20
+# surfaced the drift via 7 failing valid-payload POSTs that hit a
+# missing column and 500'd. R-3.1.2 shipped the merge migration; this
+# block is R-3.1.3 — same class of fix as R-1.6.3, applied to migrations
+# instead of seeds.
+#
+# New contract: migration failures fail the deploy. Railway dashboard
+# goes red, ops sees the failure immediately, the next deploy must
+# repair the migration chain before continuing.
+if ! alembic upgrade head 2>&1; then
+    echo "  ✗ alembic upgrade head FAILED — deploy aborted (R-3.1.3 fail-loud discipline)."
+    echo "    Common causes: multiple alembic heads (run \`alembic heads\` to verify),"
+    echo "    schema drift, missing parent revisions. Resolve manually before re-deploy."
+    exit 1
 fi
+echo "Migrations completed successfully."
 
 echo ""
 echo "Post-migration alembic revision:"
