@@ -91,11 +91,23 @@ export function EditModeToggle() {
         />
       )}
 
-      {/* Toggle button — fixed top-right, brass when active. */}
+      {/* Toggle button — fixed top-right, brass when active.
+       *
+       *  R-1.6.13 — when the inspector panel is mounted (edit mode +
+       *  selected component), the panel covers the right 380px of
+       *  the viewport at z-95. Toggle at right-3 + z-91 sits inside
+       *  that footprint and gets click-intercepted. Slide the toggle
+       *  to right-[396px] (380px panel + 16px gap) so it stays
+       *  reachable. Smooth `transition-[right]` makes the slide feel
+       *  intentional.
+       *
+       *  Page label below also slides to keep visual co-location. */}
       <button
         type="button"
         onClick={handleToggle}
-        className={`fixed right-3 top-2 z-[91] flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-caption font-medium shadow-level-1 transition-colors ${
+        className={`fixed top-2 z-[91] flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-caption font-medium shadow-level-1 transition-[right,colors] duration-arrive ease-settle ${
+          editMode.selectedComponentName ? "right-[396px]" : "right-3"
+        } ${
           editMode.isEditing
             ? "border-accent bg-accent text-content-on-accent hover:bg-accent-hover"
             : "border-border-base bg-surface-raised text-content-strong hover:bg-accent-subtle/40"
@@ -133,7 +145,9 @@ export function EditModeToggle() {
       {/* Page label — below toggle, brass-tinted in edit mode for
           contextual feedback. */}
       <div
-        className="fixed right-3 top-12 z-[91] rounded-sm bg-surface-raised/90 px-2 py-0.5 text-[10px] text-content-muted shadow-level-1 backdrop-blur"
+        className={`fixed top-12 z-[91] rounded-sm bg-surface-raised/90 px-2 py-0.5 text-[10px] text-content-muted shadow-level-1 backdrop-blur transition-[right] duration-arrive ease-settle ${
+          editMode.selectedComponentName ? "right-[396px]" : "right-3"
+        }`}
         style={{ zIndex: 91 }}
         data-testid="runtime-editor-page-label"
       >

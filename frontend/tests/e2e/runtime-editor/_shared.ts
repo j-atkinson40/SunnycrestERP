@@ -307,4 +307,14 @@ export async function loginAsHopkinsDirector(page: Page): Promise<void> {
   await page.waitForURL((url) => !url.pathname.includes("/login"), {
     timeout: 10_000,
   })
+  // R-1.6.13: waitForURL resolves on URL change but the destination
+  // page's body content isn't necessarily painted yet — the assertion
+  // would race against React mount. Wait for at least one widget
+  // (post-R-1.6.12 Pulse home renders today / operator-profile /
+  // recent-activity with `data-component-name` boundary divs) to
+  // attach as the strongest signal that the dashboard rendered.
+  await page
+    .locator("[data-component-name]")
+    .first()
+    .waitFor({ state: "attached", timeout: 10_000 })
 }

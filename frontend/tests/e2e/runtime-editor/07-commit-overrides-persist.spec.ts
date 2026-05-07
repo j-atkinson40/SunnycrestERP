@@ -28,10 +28,19 @@ test.describe("Gate 7 — commit + reload persistence", () => {
     await expect(page.getByTestId("runtime-inspector-panel")).toBeVisible()
     await page.getByTestId("runtime-inspector-tab-theme").click()
 
-    // Stage a deterministic value so the assertion is unambiguous.
-    // The exact value is the contract — readRootCssVariable post-
-    // commit + reload must return this string.
-    const STAGED_ACCENT = "oklch(0.52 0.11 41)"
+    // Stage a value clearly different from the canonical accent
+    // default `oklch(0.46 0.10 39)` (DESIGN_LANGUAGE.md §3 Aesthetic
+    // Arc Session 2 — deepened terracotta). A blue is unambiguously
+    // distinct so the assertion reads as "override applied" not
+    // "near-default".
+    //
+    // R-1.6.13: browsers normalize oklch CSS variable values when
+    // resolving via getComputedStyle (`0.55 0.13 240` → `55% .13 240`,
+    // leading-zero stripped). Pre-R-1.6.13 the spec asserted
+    // `toContain("oklch(0.52 0.11 41)")` which fails against the
+    // normalized form. Assertion below uses a regex tolerant of
+    // either canonical or normalized format.
+    const STAGED_ACCENT = "oklch(0.55 0.13 240)"
     const accentInput = page.getByTestId("runtime-inspector-token-input-accent")
     await accentInput.fill(STAGED_ACCENT)
     await accentInput.blur()
@@ -69,7 +78,14 @@ test.describe("Gate 7 — commit + reload persistence", () => {
     // `applyThemeToElement` runs on every effective tokens change
     // including the initial mount; the resolved theme post-commit
     // includes the staged token at vertical_default scope.
+    //
+    // R-1.6.13: assertion is tolerant of browser normalization —
+    // Chromium returns `oklch(55% .13 240)` for a stored value of
+    // `oklch(0.55 0.13 240)` (lightness → percentage, leading-zero
+    // stripped on chroma). Regex matches either form.
     const reloaded = await readRootCssVariable(page, "accent")
-    expect(reloaded).toContain("oklch(0.52 0.11 41)")
+    expect(reloaded).toMatch(
+      /oklch\(\s*(0\.55|55%)\s+(0\.13|\.13)\s+240\s*\)/i,
+    )
   })
 })

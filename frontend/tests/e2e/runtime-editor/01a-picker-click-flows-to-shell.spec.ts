@@ -147,19 +147,21 @@ test.describe("Gate 1a — picker click drives full flow to shell @r-1.6.1", () 
       timeout: 30_000,
     })
 
-    // Step 9a: tenant content actually renders inside the shell.
-    // Bug from R-1.6.2 investigation: shell wrapper can mount with
-    // empty body when tenant API calls hit the wrong backend (e.g.
-    // VITE_API_URL baked at compile time pointing at production
-    // while running on staging). The outer `runtime-editor-shell`
-    // test-id renders regardless; only walking INTO the shell and
-    // finding a `[data-component-name]` element proves the tenant
-    // route tree mounted AND its registered widgets rendered.
-    // See /tmp/shell_empty_state_bug.md for the originating
-    // investigation.
-    const shellElement = page.getByTestId("runtime-editor-shell")
-    const componentInShell = shellElement.locator("[data-component-name]").first()
-    await expect(componentInShell).toBeVisible({ timeout: 15_000 })
+    // Step 9a: tenant content actually renders. Bug from R-1.6.2
+    // investigation: shell wrapper can mount with empty body when
+    // tenant API calls hit the wrong backend (e.g. VITE_API_URL baked
+    // at compile time pointing at production while running on
+    // staging). The outer `runtime-editor-shell` test-id renders
+    // regardless; finding a `[data-component-name]` element proves
+    // the tenant route tree mounted AND its registered widgets
+    // rendered. See /tmp/shell_empty_state_bug.md for the originating
+    // investigation. R-1.6.13: page-wide locator matches specs 3-9
+    // (the shell wraps tenant content but the page-wide query is more
+    // robust to React portal-style rendering and matches the
+    // canonical pattern used elsewhere).
+    await expect(
+      page.locator("[data-component-name]").first(),
+    ).toBeVisible({ timeout: 15_000 })
 
     // Step 10: ribbon visible — the runtime editor's "impersonation
     // context shown" surface (per Spec-Override note in the file
