@@ -22,3 +22,8 @@ import "./registrations/focus-types"
 import "./registrations/focus-templates"
 import "./registrations/document-blocks"
 import "./registrations/workflow-nodes"
+// R-2.0 — entity-card registrations (DeliveryCard / AncillaryCard /
+// OrderCard). Path 1 wrapping per R-1.6.12 convention; render sites
+// import wrapped versions from the registrations barrel, not from
+// the underlying component files (eslint rule enforces).
+import "./registrations/entity-cards"

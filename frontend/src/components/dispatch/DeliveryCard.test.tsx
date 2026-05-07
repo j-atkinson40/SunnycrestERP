@@ -22,7 +22,14 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 
 import type { DeliveryDTO } from "@/services/dispatch-service"
 
-import { DeliveryCard, nextHoleDugStatus } from "./DeliveryCard"
+// R-2.0: test imports `DeliveryCardRaw` directly (aliased back to
+// `DeliveryCard` for unchanged JSX in test bodies) to assert behavior
+// on the unwrapped component without pulling the visual-editor
+// registry barrel into vitest.
+import {
+  DeliveryCardRaw as DeliveryCard,
+  nextHoleDugStatus,
+} from "./DeliveryCard"
 
 
 // ── Fixtures ──────────────────────────────────────────────────────────

@@ -22,7 +22,10 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { DeliveryDTO } from "@/services/dispatch-service"
 
-import { AncillaryCard } from "./AncillaryCard"
+// R-2.0: test imports `AncillaryCardRaw` directly to assert behavior
+// on the unwrapped component. The registrations barrel would also
+// work but pulls the entire visual-editor registry into the test.
+import { AncillaryCardRaw as AncillaryCard } from "./AncillaryCard"
 
 
 function makeAncillary(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {

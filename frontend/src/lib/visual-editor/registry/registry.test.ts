@@ -419,15 +419,19 @@ describe("Phase 1 auto-register population", () => {
     /* leave registry populated across cases in this block */
   })
 
-  it("populates 13-20 components across the canonical 5 types", () => {
+  it("populates 13-25 components across the canonical kinds", () => {
     // May 2026 visual-editor reorganization added `funeral-scheduling`
     // as a focus-template registration so the editor's hierarchical
-    // browser surfaces it under Decision Focus. Bump the upper bound
-    // accordingly; future production Focus templates registered in the
-    // registry will continue to fall in this range.
+    // browser surfaces it under Decision Focus. R-2.0 (2026-05-07)
+    // added 3 entity-card registrations (DeliveryCard / AncillaryCard /
+    // OrderCard) bringing the total to 21. Upper bound bumped to 25 so
+    // R-2.1+ entity-card sub-section registrations + future Focus
+    // templates continue to fit without further test churn. The lower
+    // bound (13) preserves the original Phase 1 minimum so accidental
+    // de-registrations still fail loudly.
     const total = getTotalCount()
     expect(total).toBeGreaterThanOrEqual(13)
-    expect(total).toBeLessThanOrEqual(20)
+    expect(total).toBeLessThanOrEqual(25)
   })
 
   it("includes at least 4 widgets across funeral_home + manufacturing", () => {

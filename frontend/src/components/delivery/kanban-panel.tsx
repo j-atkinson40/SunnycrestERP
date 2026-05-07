@@ -9,20 +9,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DragDropContext,
   Droppable,
-  Draggable,
   type DropResult,
 } from "@hello-pangea/dnd";
-import {
-  Box,
-  ChevronRight,
-  Church,
-  Landmark,
-  MapPin,
-} from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { InlineError } from "@/components/ui/inline-error";
+// R-2.0 — OrderCard imported from the visual-editor entity-card
+// registration shim. Pre-R-2.0 OrderCard was a nested function
+// declaration in this file; extracting + importing the WRAPPED version
+// gives the runtime editor a `data-component-name` boundary div around
+// each rendered card so click-to-edit can resolve the kanban-panel
+// OrderCard alongside the other entity cards. Direct import of
+// `OrderCardRaw` from "@/components/delivery/OrderCard" is forbidden
+// by the eslint rule registered in R-2.0 — bypasses runtime
+// registration.
+import { OrderCard } from "@/lib/visual-editor/registry/registrations/entity-cards";
 import { deliveryService } from "@/services/delivery-service";
 import type {
   KanbanCard,
@@ -67,178 +70,6 @@ function formatDisplayDate(dateStr: string): string {
   });
 }
 
-// ---------------------------------------------------------------------------
-// OrderCard — individual delivery card (Draggable)
-// ---------------------------------------------------------------------------
-
-interface OrderCardProps {
-  card: KanbanCard;
-  config: KanbanConfig;
-  index: number;
-  panelPrefix: string;
-}
-
-function cemeteryWithLocation(card: KanbanCard): string {
-  const name = card.cemetery_name || "TBD"
-  const city = card.cemetery_city
-  const state = card.cemetery_state
-  const county = card.cemetery_county
-  let loc = ""
-  if (city && state) loc = `${city}, ${state}`
-  else if (city) loc = city
-  else if (county && state) loc = `${county}, ${state}`
-  else if (state) loc = state
-  return loc ? `${name} · ${loc}` : name
-}
-
-function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
-  return (
-    <Draggable
-      draggableId={`${panelPrefix}-${card.delivery_id}`}
-      index={index}
-    >
-      {(provided, snapshot) => (
-        <div
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          className={cn(
-            "rounded-lg border bg-surface-elevated p-3 shadow-sm transition-shadow",
-            snapshot.isDragging && "shadow-lg ring-2 ring-accent",
-            card.is_critical && "border-status-error bg-status-error-muted",
-            card.is_warning &&
-              !card.is_critical &&
-              "border-status-warning bg-status-warning-muted",
-          )}
-        >
-          {/* Funeral home name */}
-          {config.card_show_funeral_home && card.funeral_home_name && (
-            <div className="text-sm font-semibold text-content-strong leading-tight">
-              {card.funeral_home_name}
-            </div>
-          )}
-
-          {/* Deceased name */}
-          {card.deceased_name && (
-            <div className="text-xs text-content-muted mt-0.5">
-              RE: {card.deceased_name}
-            </div>
-          )}
-
-          {/* Vault · Equipment */}
-          {(card.vault_type || card.equipment_summary) && (
-            <div className="mt-1.5 text-xs text-content-base">
-              {[card.vault_type, card.equipment_summary].filter(Boolean).join(" · ")}
-              {card.vault_personalization && (
-                <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
-                  Custom
-                </Badge>
-              )}
-            </div>
-          )}
-
-          {/* Service location → Cemetery + times
-              Phase II Batch 1b — 4 raw unicode emoji replaced with
-              Lucide icons: ⛪→Church, 🏛→Landmark, ⚰→Box (with
-              aria-label for graveside semantics; no direct Lucide
-              coffin/casket match), 📍→MapPin. Icon text color cascades
-              from the parent `text-content-muted` line. */}
-          <div className="mt-1.5 text-xs text-content-muted space-y-0.5">
-            {/* Location line */}
-            {(card.service_location || card.cemetery_name) && (
-              <div className="flex items-center gap-1">
-                <span
-                  className="text-content-subtle"
-                  aria-label={
-                    card.service_location === "church"
-                      ? "Church"
-                      : card.service_location === "funeral_home"
-                        ? "Funeral home"
-                        : card.service_location === "graveside"
-                          ? "Graveside"
-                          : "Location"
-                  }
-                >
-                  {card.service_location === "church" ? (
-                    <Church className="h-3.5 w-3.5" aria-hidden="true" />
-                  ) : card.service_location === "funeral_home" ? (
-                    <Landmark className="h-3.5 w-3.5" aria-hidden="true" />
-                  ) : card.service_location === "graveside" ? (
-                    <Box className="h-3.5 w-3.5" aria-hidden="true" />
-                  ) : (
-                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                  )}
-                </span>
-                {card.service_location === "graveside" ? (
-                  <span>Graveside · {cemeteryWithLocation(card)}</span>
-                ) : (
-                  <span>
-                    {card.service_location === "church" ? "Church" :
-                     card.service_location === "funeral_home" ? "Funeral Home" :
-                     card.service_location_other || "Service"}
-                    {card.cemetery_name ? ` \u2192 ${cemeteryWithLocation(card)}` : ""}
-                  </span>
-                )}
-              </div>
-            )}
-            {!card.service_location && card.cemetery_name && (
-              <div className="truncate">{cemeteryWithLocation(card)}</div>
-            )}
-
-            {/* Time line */}
-            {card.service_location === "graveside" ? (
-              card.service_time_display ? (
-                <div className="font-medium">{card.service_time_display}</div>
-              ) : (
-                <div className="text-status-warning">Time TBD</div>
-              )
-            ) : card.service_time_display ? (
-              <div>
-                Service: {card.service_time_display}
-                {card.eta_display ? (
-                  <span className="font-medium ml-2">ETA: {card.eta_display}</span>
-                ) : (
-                  <span className="text-status-warning ml-2">ETA: TBD</span>
-                )}
-              </div>
-            ) : (
-              <div className="text-status-warning">Time TBD</div>
-            )}
-          </div>
-
-          {/* Hours countdown — critical pulses with error-family,
-              warning is warning-family, otherwise subtle outline. */}
-          {card.hours_until_service !== null &&
-            card.hours_until_service > 0 && (
-              <div className="mt-1.5">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-[10px]",
-                    card.is_critical
-                      ? "border-status-error text-status-error animate-pulse"
-                      : card.is_warning
-                        ? "border-status-warning text-status-warning"
-                        : "border-border-subtle text-content-muted",
-                  )}
-                >
-                  {card.hours_until_service < 1
-                    ? `${Math.round(card.hours_until_service * 60)}m until service`
-                    : `${card.hours_until_service}h until service`}
-                </Badge>
-              </div>
-            )}
-
-          {card.notes && (
-            <div className="mt-1.5 truncate text-[11px] italic text-content-subtle">
-              {card.notes}
-            </div>
-          )}
-        </div>
-      )}
-    </Draggable>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // KanbanPanel — exported component

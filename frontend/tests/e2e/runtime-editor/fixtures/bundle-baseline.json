@@ -1,27 +1,35 @@
 {
-  "_comment_1": "R-1.6 bundle-size baseline for spec 11.",
-  "_comment_2": "Captured against R-1.5 ship (commit 164173f) build output.",
+  "_comment_1": "R-2.0 bundle-size baseline for spec 11.",
+  "_comment_2": "Captured against R-2.0 ship build output. Pre-R-2.0 baseline at R-1.5 commit 164173f preserved as _previous_baseline below for delta tracking.",
   "_comment_3": "Sizes are in BYTES (uncompressed).",
   "_comment_4": "Update this fixture with a justification in the commit message when intentional bundle growth lands. Spec 11 fails if any non-runtime-editor chunk grows by more than 5%.",
   "_comment_5": "Runtime-editor chunks (RuntimeEditorShell, TenantUserPicker, RuntimeHostTestPage, TenantRouteTree) are excluded — they're EXPECTED to change as R-2+ phases land.",
-  "_baseline_commit": "164173f",
-  "_baseline_date": "2026-06-06",
+  "_comment_6": "R-2.0 growth: entity-card click-to-edit (DeliveryCard / AncillaryCard / OrderCard registrations + Path 1 wrapping at registrations/entity-cards.ts) increases the main bundle by ~7.3 KB (5,521,976 → 5,529,237 bytes, +0.13%). Intentional architectural growth, not regression. Subsequent R-N work that registers further entity types (R-2.1 entity-card sub-sections, R-3+ widgets, R-4 buttons) will continue to grow this baseline proportionally; reset the fixture each phase that crosses the +5% tolerance.",
+  "_baseline_commit": "R-2.0",
+  "_baseline_date": "2026-05-07",
+  "_previous_baseline": {
+    "main_bundle_bytes": 5521976,
+    "css_bytes": 235767,
+    "chart_renderer_bytes": 408934,
+    "commit": "164173f",
+    "date": "2026-06-06"
+  },
   "_tolerance_pct": 5,
   "chunks": {
     "main_bundle": {
       "pattern": "index-*.js",
-      "baseline_bytes": 5521976,
-      "description": "Tenant + admin app entry — combined ChunkA bundle that all routes depend on"
+      "baseline_bytes": 5529237,
+      "description": "Tenant + admin app entry — combined ChunkA bundle that all routes depend on. R-2.0 +0.13% over R-1.5 baseline (entity-card registrations)."
     },
     "css": {
       "pattern": "index-*.css",
-      "baseline_bytes": 235767,
-      "description": "Compiled Tailwind v4 + DESIGN_LANGUAGE.md token surface"
+      "baseline_bytes": 230709,
+      "description": "Compiled Tailwind v4 + DESIGN_LANGUAGE.md token surface. R-2.0 -2.15% from R-1.5 baseline (Tailwind purge produces smaller output post-render-site rewrites)."
     },
     "chart_renderer": {
       "pattern": "ChartRenderer-*.js",
-      "baseline_bytes": 408934,
-      "description": "Lazy-loaded recharts wrapper for SavedView chart variants"
+      "baseline_bytes": 399346,
+      "description": "Lazy-loaded recharts wrapper for SavedView chart variants. R-2.0 -2.34% from R-1.5 baseline (unrelated to entity-cards; recharts internal optimization or tree-shake improvement)."
     }
   },
   "excluded_runtime_editor_chunks": [

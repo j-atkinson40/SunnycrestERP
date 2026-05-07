@@ -59,7 +59,10 @@ import type {
   ScheduleStateDTO,
 } from "@/services/dispatch-service"
 
-import { DeliveryCard } from "./DeliveryCard"
+// R-2.0: wrapped DeliveryCard from the registrations barrel carries
+// the data-component-name boundary div for runtime-editor click-to-
+// edit. Direct import of DeliveryCardRaw is forbidden by eslint rule.
+import { DeliveryCard } from "@/lib/visual-editor/registry/registrations/entity-cards"
 
 
 export interface FuneralScheduleDayColumnProps {

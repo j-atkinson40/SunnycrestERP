@@ -169,7 +169,14 @@ function formatStartTime(raw: string | null | undefined): string | null {
 }
 
 
-export function DeliveryCard({
+/** R-2.0 — exported as `DeliveryCardRaw`; the wrapped version (carrying
+ *  `data-component-name="delivery-card"` for runtime-editor click-to-
+ *  edit) is the default export from
+ *  `@/lib/visual-editor/registry/registrations/entity-cards`. The raw
+ *  reference stays exported so the registration shim can wrap it; new
+ *  call sites should import the wrapped `DeliveryCard` from the
+ *  registrations barrel. */
+export function DeliveryCardRaw({
   delivery,
   scheduleFinalized,
   ancillaryCount = 0,

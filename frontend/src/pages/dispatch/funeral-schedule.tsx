@@ -99,7 +99,9 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
+// R-2.0: wrapped DeliveryCard from entity-card registrations barrel.
+// Direct import of DeliveryCardRaw is forbidden by eslint rule.
+import { DeliveryCard } from "@/lib/visual-editor/registry/registrations/entity-cards"
 import { FuneralScheduleDayColumn } from "@/components/dispatch/FuneralScheduleDayColumn"
 import {
   QuickEditDialog,

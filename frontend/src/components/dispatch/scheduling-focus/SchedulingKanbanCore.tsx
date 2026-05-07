@@ -71,8 +71,14 @@ import {
 import { createPortal } from "react-dom"
 import { useSearchParams } from "react-router-dom"
 
-import { AncillaryCard } from "@/components/dispatch/AncillaryCard"
-import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
+// R-2.0: wrapped DeliveryCard + AncillaryCard from entity-card
+// registrations barrel — carry data-component-name boundary div for
+// runtime-editor click-to-edit. Direct import of *Raw is forbidden
+// by eslint rule.
+import {
+  AncillaryCard,
+  DeliveryCard,
+} from "@/lib/visual-editor/registry/registrations/entity-cards"
 import { ANCILLARY_POOL_DROPPABLE_ID } from "@/components/dispatch/scheduling-focus/AncillaryPoolPin"
 import { DateBox } from "@/components/dispatch/scheduling-focus/DateBox"
 import {

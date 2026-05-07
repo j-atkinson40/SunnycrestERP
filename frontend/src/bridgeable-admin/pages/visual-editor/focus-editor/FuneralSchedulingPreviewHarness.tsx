@@ -39,7 +39,11 @@ import { useMemo } from "react"
 import { DndContext } from "@dnd-kit/core"
 import { CheckCircle2Icon } from "lucide-react"
 
-import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
+// R-2.0: wrapped DeliveryCard from entity-card registrations barrel.
+// Visual-editor preview surfaces consume the same wrapped version as
+// production (display:contents wrapper is invisible in preview;
+// keeping the import path uniform avoids editor-vs-runtime drift).
+import { DeliveryCard } from "@/lib/visual-editor/registry/registrations/entity-cards"
 import {
   DateBox,
   formatFullLabel,

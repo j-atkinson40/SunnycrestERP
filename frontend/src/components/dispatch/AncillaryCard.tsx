@@ -92,7 +92,14 @@ function resolveAncillaryLabel(d: DeliveryDTO): string {
 }
 
 
-export function AncillaryCard({
+/** R-2.0 — exported as `AncillaryCardRaw`; the wrapped version
+ *  (carrying `data-component-name="ancillary-card"` for runtime-editor
+ *  click-to-edit) is the default export from
+ *  `@/lib/visual-editor/registry/registrations/entity-cards`. The raw
+ *  reference stays exported so the registration shim can wrap it; new
+ *  call sites should import the wrapped `AncillaryCard` from the
+ *  registrations barrel. */
+export function AncillaryCardRaw({
   delivery,
   onOpenEdit,
   ariaLabel,
