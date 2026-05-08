@@ -99,6 +99,20 @@ if [ "${ENVIRONMENT:-dev}" != "production" ]; then
         exit 1
     fi
     echo "  ✓ seed_dispatch_demo.py completed."
+
+    # R-5.0.1 — seed default edge panel composition. Without this
+    # seed, the runtime resolver returns has_panel=false (pages=[]) for
+    # every tenant + the EdgePanel never renders content (handle visible
+    # but no buttons inside). Specs 26/27/28 fail under this state. The
+    # seed creates a `platform_default` kind=edge_panel composition with
+    # 2 pages of R-4 button placements; idempotent (skips when active
+    # row matches expected content; replaces when content drifts).
+    # Production guard inside the script.
+    if ! python -m scripts.seed_edge_panel 2>&1; then
+        echo "  ✗ seed_edge_panel.py FAILED — deploy aborted."
+        exit 1
+    fi
+    echo "  ✓ seed_edge_panel.py completed."
 else
     echo ""
     echo "ENVIRONMENT=production — skipping staging seed scripts."
