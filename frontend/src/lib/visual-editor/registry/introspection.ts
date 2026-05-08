@@ -265,3 +265,34 @@ export function getCanvasMetadata(
 export function getCanvasPlaceableComponents(): readonly RegistryEntry[] {
   return getAllRegistered().filter(isCanvasPlaceable)
 }
+
+
+// ── R-2.1 — entity-card sub-section helpers (May 2026) ──────────
+
+
+/** Return every `entity-card-section` registration whose
+ * `extensions.entityCardSection.{parentKind, parentName}` matches the
+ * provided parent. Used by the inspector's outer-tabs strip + by
+ * registry walkers that reconstruct the parent → sub-section tree.
+ *
+ * The slug-string convention (`<parent>.<child>`) is convenient but
+ * NOT canonical — this helper consults the extension shape so future
+ * naming changes (or parents whose slugs themselves contain dots)
+ * stay parseable through metadata, not string manipulation.
+ *
+ * Order is registry-insertion order. Consumers that need a specific
+ * order (e.g. header → body → actions → custom) should sort by
+ * `metadata.extensions.entityCardSection.sectionRole` after.
+ */
+export function getSubSectionsFor(
+  parentKind: ComponentKind,
+  parentName: string,
+): readonly RegistryEntry[] {
+  return _internal_listByType("entity-card-section").filter((entry) => {
+    const ext = entry.metadata.extensions?.entityCardSection as
+      | { parentKind?: string; parentName?: string }
+      | undefined
+    if (!ext) return false
+    return ext.parentKind === parentKind && ext.parentName === parentName
+  })
+}

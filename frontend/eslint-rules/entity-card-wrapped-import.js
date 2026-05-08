@@ -39,20 +39,51 @@
  */
 
 const FORBIDDEN_BARE_NAMES = new Set([
+  // R-2.0 entity cards
   "DeliveryCard",
   "AncillaryCard",
   "OrderCard",
+  // R-2.1 entity-card sub-sections
+  "DeliveryCardHeader",
+  "DeliveryCardBody",
+  "DeliveryCardActions",
+  "DeliveryCardHoleDugBadge",
+  "AncillaryCardHeader",
+  "AncillaryCardBody",
+  "AncillaryCardActions",
+  "OrderCardHeader",
+  "OrderCardBody",
+  "OrderCardActions",
 ])
 
 const SOURCE_PATH_TAILS = [
+  // R-2.0 entity cards
   "components/dispatch/DeliveryCard",
   "components/dispatch/AncillaryCard",
   "components/delivery/OrderCard",
+  // R-2.1 entity-card sub-sections
+  "components/dispatch/DeliveryCardHeader",
+  "components/dispatch/DeliveryCardBody",
+  "components/dispatch/DeliveryCardActions",
+  "components/dispatch/DeliveryCardHoleDugBadge",
+  "components/dispatch/AncillaryCardHeader",
+  "components/dispatch/AncillaryCardBody",
+  "components/dispatch/AncillaryCardActions",
+  "components/delivery/OrderCardHeader",
+  "components/delivery/OrderCardBody",
+  "components/delivery/OrderCardActions",
 ]
 
 const ALLOW_FILE_TAILS = [
-  // The registration shim itself imports the *Raw exports.
+  // The registration shims import the *Raw exports.
   "lib/visual-editor/registry/registrations/entity-cards.ts",
+  // R-2.1 — entity-card-sections shim imports each sub-section's *Raw export.
+  "lib/visual-editor/registry/registrations/entity-card-sections.ts",
+  // R-2.1 — DeliveryCardActions imports HoleDugBadgeRaw directly (the
+  // sub-section internally composes the badge — admin can author the
+  // section's chrome separately from the badge's chrome via separate
+  // registrations). This is intentional internal composition.
+  "components/dispatch/DeliveryCardActions.tsx",
   // Tests are allowed to import the *Raw exports for direct unit
   // testing of the unwrapped component (avoids registry side effects).
   ".test.tsx",

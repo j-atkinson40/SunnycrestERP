@@ -29,6 +29,8 @@ export type ComponentKind =
   | "button"
   | "form-input"
   | "surface-card"
+  // R-2.1 — entity-card sub-section additions (May 2026):
+  | "entity-card-section"
 
 
 export interface ComponentConfigurationRecord {

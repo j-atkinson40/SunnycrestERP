@@ -41,33 +41,23 @@ import { useState } from "react"
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { useFocusDndActiveId } from "@/components/focus/FocusDndProvider"
-import {
-  CheckIcon,
-  HelpCircleIcon,
-  MessageCircleIcon,
-  MinusIcon,
-  PaperclipIcon,
-  StickyNoteIcon,
-  MapPinIcon,
-  UserIcon,
-  UsersIcon,
-} from "lucide-react"
 
 import type {
   DeliveryDTO,
   HoleDugStatus,
 } from "@/services/dispatch-service"
 import { cn } from "@/lib/utils"
+
+// R-2.1 — sub-section wrapped components imported from the
+// registrations barrel. Each emits a data-component-name boundary
+// div so SelectionOverlay can resolve clicks to the sub-section.
+// Path 1 wrapping pattern parallels R-1.6.12 widget wrapping +
+// R-2.0 entity-card wrapping.
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-// Phase 4.3.3 — IconTooltip extracted to `_shared.tsx` so
-// AncillaryCard reuses the same icon+tooltip composition. Local
-// definition retained below as a deprecation comment for one
-// release, then removed.
-import { IconTooltip as _SharedIconTooltip } from "./_shared"
+  DeliveryCardHeader,
+  DeliveryCardBody,
+  DeliveryCardActions,
+} from "@/lib/visual-editor/registry/registrations/entity-card-sections"
 
 
 export interface DeliveryCardProps {
@@ -445,7 +435,12 @@ export function DeliveryCardRaw({
           the card wrapper from double-handling (e.g. if we later
           add a wrapper-level onClick). @dnd-kit suppresses the
           `click` event when a drag has activated, so the onOpenEdit
-          callback never fires after a completed drag. */}
+          callback never fires after a completed drag.
+
+          R-2.1 — header + body sub-components render INSIDE this
+          click-button (per /tmp/r2_1_subsection_scope.md Section 6
+          option 1: minimum disruption + leverages SelectionOverlay's
+          capture-phase preventDefault for view-vs-edit mode dispatch). */}
       <button
         type="button"
         data-slot="dispatch-card-body"
@@ -456,375 +451,58 @@ export function DeliveryCardRaw({
         }}
         className={cn(
           "block w-full text-left",
-          // Phase 4.2.1 — density-driven padding. Compact tightens
-          // horizontal + vertical rhythm without hiding any content.
+          // Phase 4.2.1 — density-driven padding.
           isCompact ? "px-2.5 py-1.5" : "px-3 py-2",
-          // Aesthetic Arc Session 4.8 — inner body button corner
-          // rounded-md → rounded-[2px] for consistency with outer
-          // card 2px corners (Pattern 2 canonical). Focus-ring
-          // outline now shares the same architectural register as
-          // the card itself.
+          // Aesthetic Arc Session 4.8 — rounded-[2px] consistency with outer card.
           "focus-ring-accent outline-none rounded-[2px]",
         )}
         aria-label={`Edit ${family || "unnamed"} family delivery`}
       >
-        {/* Phase 4.3.3 eyebrow — driver start time when set. Tiny
-            uppercase muted label sits above the FH headline so the
-            primary text hierarchy is unchanged. NULL value =
-            implicit tenant default (07:00 from DeliverySettings) =
-            not displayed. Per DL §4 type scale: text-micro
-            uppercase tracking-wider content-muted is the canonical
-            eyebrow treatment. font-mono on digits for tabular
-            alignment with the service-time line below. */}
-        {startTime && (
-          <div
-            data-slot="dispatch-card-start-time"
-            className={cn(
-              "text-micro uppercase tracking-wider text-content-muted",
-              "font-mono leading-tight",
-            )}
-            aria-label={`Driver start time ${startTime.replace(/^Start /, "")}`}
-          >
-            {startTime}
-          </div>
-        )}
+        {/* R-2.1 — header sub-section (eyebrow + FH + cemetery). */}
+        <DeliveryCardHeader
+          startTime={startTime}
+          fh={fh}
+          cemetery={cemetery}
+          city={city}
+        />
 
-        {/* Line 1 — funeral home (the headline; identifies the job).
-            Aesthetic Arc Session 4 — Pattern 2 card material treatment
-            + DL §4 typeface roles: proper nouns (people, businesses,
-            places) carry the engraving register via font-display
-            (Fraunces). FH name is THE identifying word on the card,
-            seen first, repeated thousands of times across a season.
-            Fraunces' humanist-serif modulation gives proper nouns
-            the engraved-stone weight that distinguishes them from
-            the body content (Geist sans) flowing below. Weight 500
-            (font-medium) — Fraunces' display register reads heavy
-            at 500; pushing to 600 would over-engrave at this 14px
-            size. */}
-        <div
-          className={cn(
-            "truncate text-body-sm font-medium leading-tight text-content-strong",
-            "font-display",
-          )}
-          data-slot="dispatch-card-fh"
-          title={fh}
-        >
-          {fh}
-        </div>
-
-        {/* Line 2 — cemetery · city */}
-        {cemetery && (
-          <div
-            className="mt-0.5 truncate text-body-sm text-content-base"
-            data-slot="dispatch-card-cemetery"
-          >
-            {cemetery}
-            {city && (
-              <span className="text-content-muted">
-                {" · "}
-                {city}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Line 3 — service time · location · ETA (compact, mono for
-            numeric anchor). Omitted for ancillary / direct_ship. */}
-        {timeLine && (
-          <div
-            className="mt-0.5 truncate text-body-sm text-content-base"
-            data-slot="dispatch-card-timeline"
-          >
-            <span className="font-mono tabular-nums">{timeLine}</span>
-            {showEta && (
-              <span className="text-content-muted">
-                {" · ETA "}
-                <span className="font-mono tabular-nums">{eta}</span>
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Line 4 — Product · Equipment bundle (caption, muted).
-            Product = vault_type (Monticello / Graveliner / Salute /
-            etc). Equipment = equipment_type bundle name (Full
-            Equipment / Full w/ Placer / Device / etc). Distinct
-            fields; the "Church procession" / "Graveside setup"
-            descriptors were service_type hints mismapped as
-            equipment in Phase 3.1 — service_type is the service
-            LOCATION and lives in line 3 only. */}
-        {(vaultType || equipmentType) && (
-          <div
-            className="mt-0.5 truncate text-caption text-content-muted"
-            data-slot="dispatch-card-product"
-          >
-            {vaultType && <span>{vaultType}</span>}
-            {vaultType && equipmentType && <span>{" · "}</span>}
-            {equipmentType && <span>{equipmentType}</span>}
-          </div>
-        )}
+        {/* R-2.1 — body sub-section (timeline + product). */}
+        <DeliveryCardBody
+          timeLine={timeLine}
+          eta={eta}
+          showEta={showEta}
+          vaultType={vaultType}
+          equipmentType={equipmentType}
+        />
       </button>
 
-      {/* Status + icons row — same visual weight. Ancillary +
-          hole-dug are status indicators; family / note / chat /
-          section are icon+tooltip affordances. Single horizontal
-          rail at the card's bottom edge. */}
-      <div
-        data-slot="dispatch-card-icon-row"
-        className={cn(
-          "flex items-center justify-between gap-1.5",
-          "border-t border-border-subtle/60",
-          // Phase 4.2.1 — density-driven row padding. Keeps the
-          // icon sizes stable across densities (data density
-          // principle — every affordance stays readable / tappable).
-          isCompact ? "px-2.5 py-1" : "px-3 py-1.5",
-        )}
-      >
-        {/* Left — secondary-info icons with tooltips. Each renders
-            only when its data is present, keeping the row clean. */}
-        <div className="flex items-center gap-0.5">
-          {family && (
-            <IconTooltip
-              icon={UserIcon}
-              label={`Family: ${family}`}
-              dataSlot="dispatch-icon-family"
-            />
-          )}
-          {section && (
-            <IconTooltip
-              icon={MapPinIcon}
-              label={`Cemetery section: ${section}`}
-              dataSlot="dispatch-icon-section"
-            />
-          )}
-          {/* Phase 4.3.3.1 — helper indicator. Shows when the delivery
-              has a helper_user_id; tooltip surfaces the helper's name
-              from the denormalized helper_user_name field on the DTO.
-              Highlight (text-accent) per IconTooltip convention because
-              "this delivery has a second person" is information worth
-              noticing. Falls back to "Helper: assigned" when the name
-              didn't resolve (defensive — backend may have lost the
-              user row, but the UI still flags the helper presence). */}
-          {delivery.helper_user_id && (
-            <IconTooltip
-              icon={UsersIcon}
-              label={
-                delivery.helper_user_name
-                  ? `Helper: ${delivery.helper_user_name}`
-                  : "Helper: assigned"
-              }
-              dataSlot="dispatch-icon-helper"
-              highlight
-            />
-          )}
-          {driverNote && (
-            <IconTooltip
-              icon={StickyNoteIcon}
-              label={driverNote}
-              dataSlot="dispatch-icon-note"
-              highlight
-            />
-          )}
-          {chatCount > 0 && (
-            <IconTooltip
-              icon={MessageCircleIcon}
-              label={`${chatCount} unread ${chatCount === 1 ? "message" : "messages"} with funeral home`}
-              dataSlot="dispatch-icon-chat"
-              highlight
-              badge={chatCount}
-            />
-          )}
-        </div>
-
-        {/* Right — status indicators (ancillary + hole-dug).
-            Phase 4.3.3.1 — ancillary badge converted from "+N ancillary"
-            text pill to icon+count chip matching the IconTooltip+badge
-            pattern (Paperclip icon, chip overlaid top-right). Keeps
-            visual weight consistent with the chat-icon unread count
-            chip on the icon-row's left cluster — the pill version
-            dominated the row, the icon version is a peer affordance. */}
-        <div className="flex items-center gap-1">
-          {ancillaryCount > 0 && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    data-slot="dispatch-ancillary-badge"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onToggleAncillary?.(delivery.id)
-                    }}
-                    className={cn(
-                      "relative inline-flex h-6 w-6 items-center justify-center rounded-sm",
-                      "text-content-muted hover:bg-surface-sunken transition-colors duration-quick",
-                      "focus-ring-accent outline-none cursor-pointer",
-                    )}
-                    aria-label={`${ancillaryCount} ancillary ${
-                      ancillaryCount === 1 ? "item" : "items"
-                    } attached — click to ${
-                      ancillaryExpanded ? "collapse" : "expand"
-                    }`}
-                    aria-expanded={ancillaryExpanded}
-                  >
-                    <PaperclipIcon className="h-3.5 w-3.5" aria-hidden />
-                    <span
-                      data-slot="dispatch-ancillary-badge-count"
-                      className={cn(
-                        "absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1",
-                        "inline-flex items-center justify-center rounded-full",
-                        "bg-accent text-content-on-accent text-[10px] font-medium",
-                        "font-mono tabular-nums",
-                      )}
-                      aria-hidden
-                    >
-                      {ancillaryCount}
-                    </span>
-                  </button>
-                }
-              />
-              <TooltipContent side="top" size="default">
-                {`${ancillaryCount} ancillary ${
-                  ancillaryCount === 1 ? "item" : "items"
-                } attached — click to ${
-                  ancillaryExpanded ? "collapse" : "expand"
-                }`}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          <HoleDugBadge
-            status={delivery.hole_dug_status}
-            onCycle={
-              onCycleHoleDug
-                ? () =>
-                    onCycleHoleDug(
-                      delivery,
-                      nextHoleDugStatus(delivery.hole_dug_status),
-                    )
-                : undefined
-            }
-          />
-        </div>
-      </div>
+      {/* R-2.1 — actions sub-section (icon row + ancillary badge +
+          hole-dug + optional R-4 button row). Renders below + outside
+          the click-button per the canonical structure. */}
+      <DeliveryCardActions
+        delivery={delivery}
+        isCompact={isCompact}
+        family={family}
+        section={section}
+        driverNote={driverNote}
+        chatCount={chatCount}
+        ancillaryCount={ancillaryCount}
+        ancillaryExpanded={ancillaryExpanded}
+        onToggleAncillary={onToggleAncillary}
+        onCycleHoleDug={onCycleHoleDug}
+        nextHoleDugStatus={nextHoleDugStatus(delivery.hole_dug_status)}
+      />
     </div>
   )
 }
 
 
-// ── Icon + tooltip helper ──────────────────────────────────────────────
-//
-// Tiny wrapper — a Lucide icon inside a TooltipTrigger that opens the
-// canonical Tooltip primitive. Used for family / section / note /
-// chat affordances. `highlight` bumps the icon to text-accent to signal
-// "this has non-empty content worth noticing" (distinct from the
-// always-present family + section which render in content-muted).
-
-
-// Phase 4.3.3 — IconTooltip moved to `./_shared.tsx`. Local re-
-// export preserves call-site stability inside DeliveryCard for the
-// transition window. Future cleanup: import from `./_shared` directly
-// at use sites.
-const IconTooltip = _SharedIconTooltip
-
-
-// ── Hole-dug three-state badge ─────────────────────────────────────────
-//
-// Three states (Phase 3.1): unknown | yes | no. No null state — every
-// delivery has a hole-dug state; the question is whether the dispatcher
-// has confirmed it. Default 'unknown' renders visible (question-mark
-// on warning-muted) so the affordance stays discoverable.
-
-
-function HoleDugBadge({
-  status,
-  onCycle,
-}: {
-  status: HoleDugStatus
-  onCycle?: () => void
-}) {
-  // Aesthetic Arc Session 4.7 — Pattern 3 jewel-set badge.
-  // Background uses `--surface-base` (page substrate; substantially
-  // darker than card surface `--surface-elevated`). The ~0.12 OKLCH
-  // lightness delta is enough to read as "well below the surface"
-  // — pre-Session-4.7 the badge bg was status-*-muted which sat
-  // only ~0.04 darker than card; jewel-set effect was imperceptible.
-  // Now badge is unmistakably a darker recessed surface with the
-  // icon as the inlay sitting inside it. Icon color carries the
-  // status semantic (terracotta for unknown/needs-attention,
-  // sage-green-success for confirmed, neutral for explicit no).
-  const config = {
-    yes: {
-      icon: CheckIcon,
-      cls: "bg-surface-base text-accent-confirmed",
-      label: "Hole dug: yes",
-    },
-    no: {
-      icon: MinusIcon,
-      cls: "bg-surface-base text-content-muted",
-      label: "Hole dug: no",
-    },
-    unknown: {
-      icon: HelpCircleIcon,
-      cls: "bg-surface-base text-accent",
-      label: "Hole dug: unknown (not yet confirmed)",
-    },
-  }[status]
-
-  const Icon = config.icon
-
-  const clickProps = onCycle
-    ? {
-        onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
-        onClick: (e: React.MouseEvent) => {
-          e.stopPropagation()
-          onCycle()
-        },
-      }
-    : {}
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            data-slot="dispatch-hole-dug-badge"
-            data-status={status}
-            disabled={!onCycle}
-            className={cn(
-              "inline-flex h-5 w-5 items-center justify-center rounded-full",
-              config.cls,
-              // Aesthetic Arc Session 4.5 — Pattern 3 jewel-set status
-              // indicator. Mode-aware inset shadow via `--shadow-jewel-
-              // inset` token (light 0.15 / dark 0.30 — see DL §3 jewel-
-              // inset block + §11 Pattern 3 doc-spec). Reads as physical
-              // recessed ring with the icon "set into" the surface, not
-              // a chip pasted on top. Distinct from outer shadows
-              // (level-1/2/3 = elevation); inset shadow = "set into."
-              // Pre-Session-4.5 was hard-coded inline single-value
-              // 0.15 across modes — Session 4.5 promoted to mode-aware
-              // token because dark substrate compresses low-lightness
-              // deltas (0.15 reads imperceptible against charcoal).
-              "shadow-[var(--shadow-jewel-inset)]",
-              onCycle &&
-                "hover:ring-1 hover:ring-accent/40 transition-all duration-quick cursor-pointer",
-              !onCycle && "cursor-default",
-              "focus-ring-accent outline-none",
-            )}
-            aria-label={config.label}
-            {...clickProps}
-          >
-            <Icon className="h-3 w-3" aria-hidden />
-          </button>
-        }
-      />
-      <TooltipContent side="top" size="default">
-        {config.label}
-        {onCycle && (
-          <span className="ml-1 text-content-muted">— click to cycle</span>
-        )}
-      </TooltipContent>
-    </Tooltip>
-  )
-}
+// R-2.1 — IconTooltip + HoleDugBadge extracted to their own files +
+// registered as entity-card-section sub-components. The previous
+// inline implementations lived between the parent component and
+// the icon-row JSX; now they're imported from the registrations
+// barrel via `DeliveryCardActions` and `DeliveryCardHoleDugBadge`.
+// See:
+//   - DeliveryCardHoleDugBadge.tsx (sub-section: delivery-card.hole-dug-badge)
+//   - DeliveryCardActions.tsx (sub-section: delivery-card.actions)
+//   - _shared.tsx (IconTooltip primitive shared with AncillaryCard)

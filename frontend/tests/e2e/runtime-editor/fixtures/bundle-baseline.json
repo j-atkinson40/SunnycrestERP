@@ -1,35 +1,35 @@
 {
-  "_comment_1": "R-3.1 bundle-size baseline for spec 11.",
-  "_comment_2": "Captured against R-3.1 ship build output. Pre-R-3.1 R-2.0 baseline preserved as _previous_baseline below for delta tracking.",
+  "_comment_1": "R-2.1 bundle-size baseline for spec 11.",
+  "_comment_2": "Captured against R-2.1 ship build output. Pre-R-2.1 R-4.0 baseline preserved as _previous_baseline below for delta tracking.",
   "_comment_3": "Sizes are in BYTES (uncompressed).",
   "_comment_4": "Update this fixture with a justification in the commit message when intentional bundle growth lands. Spec 11 fails if any non-runtime-editor chunk grows by more than 5%.",
   "_comment_5": "Runtime-editor chunks (RuntimeEditorShell, TenantUserPicker, RuntimeHostTestPage, TenantRouteTree) are excluded — they're EXPECTED to change as R-2+ phases land.",
-  "_comment_6": "R-3.1 growth: row-management UI (RowControlsStrip + ColumnCountPopover + RowDropPreview + EmptyRowPlaceholder + use-canvas-interactions row-aware extension) + four-mode Selection inspector + cross-row drag handlers increases the main bundle by ~13.2 KB (5,531,408 → 5,544,572 bytes, +0.24%). Legacy shim retired (composition-editor-legacy-types.ts deleted, -196 LOC). Intentional architectural growth, well under +5% tolerance.",
-  "_baseline_commit": "R-3.1",
-  "_baseline_date": "2026-05-07",
+  "_comment_6": "R-2.1 growth: 10 entity-card-section sub-component files (DeliveryCard 4 + AncillaryCard 3 + OrderCard 3) + entity-card-sections registrations shim + InspectorPanel outer-tabs strip + Selection union + selectSection action increases the main bundle by ~22.5 KB (5,544,572 → 5,567,053 bytes, +0.41%). Well under the +0.5% target. RuntimeEditorShell chunk grew 25.13 KB → 30.66 KB (+22%) excluded per policy.",
+  "_baseline_commit": "R-2.1",
+  "_baseline_date": "2026-05-08",
   "_previous_baseline": {
-    "main_bundle_bytes": 5531408,
+    "main_bundle_bytes": 5544572,
     "css_bytes": 230709,
     "chart_renderer_bytes": 399346,
-    "commit": "R-3.0",
+    "commit": "R-3.1",
     "date": "2026-05-07"
   },
   "_tolerance_pct": 5,
   "chunks": {
     "main_bundle": {
       "pattern": "index-*.js",
-      "baseline_bytes": 5544572,
-      "description": "Tenant + admin app entry — combined ChunkA bundle that all routes depend on. R-3.1 +0.24% over R-3.0 baseline (row management UI + cross-row DnD)."
+      "baseline_bytes": 5567053,
+      "description": "Tenant + admin app entry — combined ChunkA bundle that all routes depend on. R-2.1 +0.41% over R-3.1 (entity-card sub-section decomposition + InspectorPanel outer tabs + Selection union)."
     },
     "css": {
       "pattern": "index-*.css",
-      "baseline_bytes": 230709,
-      "description": "Compiled Tailwind v4 + DESIGN_LANGUAGE.md token surface. R-2.0 -2.15% from R-1.5 baseline (Tailwind purge produces smaller output post-render-site rewrites)."
+      "baseline_bytes": 231614,
+      "description": "Compiled Tailwind v4 + DESIGN_LANGUAGE.md token surface. R-2.1 +0.39% (additional Tailwind classes from sub-section components). Well under tolerance."
     },
     "chart_renderer": {
       "pattern": "ChartRenderer-*.js",
       "baseline_bytes": 399346,
-      "description": "Lazy-loaded recharts wrapper for SavedView chart variants. R-2.0 -2.34% from R-1.5 baseline (unrelated to entity-cards; recharts internal optimization or tree-shake improvement)."
+      "description": "Lazy-loaded recharts wrapper for SavedView chart variants. Unchanged by R-2.1."
     }
   },
   "excluded_runtime_editor_chunks": [

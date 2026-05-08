@@ -405,6 +405,40 @@ export const CLASS_REGISTRATIONS: Record<string, ClassRegistration> = {
       borderTreatment: BORDER_TREATMENT_PROP,
     },
   },
+
+  // ── R-2.1 — entity-card-section (May 2026) ───────────────────
+  // Named sub-components of `entity-card` registrations
+  // (`delivery-card.header` / `delivery-card.body` / etc).
+  // Class-level dials below tune properties admins reach for
+  // across every sub-section: padding inside, gap between content
+  // lines, perimeter border treatment, and density. Per-section
+  // configurableProps live at the per-registration level and
+  // override class defaults at the prop-resolution layer.
+  "entity-card-section": {
+    className: "entity-card-section",
+    displayName: "Entity card section",
+    description:
+      "Sub-section of an entity card (header / body / actions / custom). Inherits class defaults from its parent entity-card class but exposes its own padding + spacing dials so admins can tune per-section rhythm without touching the parent card's chrome.",
+    configurableProps: {
+      padding: {
+        type: "enum",
+        default: "comfortable",
+        bounds: ["compact", "comfortable", "spacious"],
+        displayLabel: "Padding",
+        description:
+          "Inside-section padding scale. Inherits from parent card's density when omitted.",
+      },
+      gapToken: {
+        type: "tokenReference",
+        default: "spacing-1",
+        tokenCategory: "spacing",
+        displayLabel: "Inner gap",
+        description: "Vertical gap between content lines inside the section.",
+      },
+      borderTreatment: BORDER_TREATMENT_PROP,
+      density: DENSITY_PROP,
+    },
+  },
 }
 
 

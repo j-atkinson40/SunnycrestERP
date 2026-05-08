@@ -43,8 +43,17 @@ describe("Phase 3 backfill validation", () => {
     const all = _internal_listAll()
     expect(all.length).toBeGreaterThanOrEqual(13)
 
+    // R-2.1 — entity-card-section sub-sections have intentionally
+    // narrower per-section authoring surfaces (1-2 props each is
+    // appropriate for "is this section visible" / "small role
+    // tweak"). Class-level dials cover cross-section concerns
+    // (padding / gap / borderTreatment / density) at the
+    // entity-card-section class registration. Phase 3 backfill
+    // ≥3-props rule applies to top-level component registrations,
+    // not to their sub-sections.
     const violations: string[] = []
     for (const entry of all) {
+      if (entry.metadata.type === "entity-card-section") continue
       const props = entry.metadata.configurableProps ?? {}
       const count = Object.keys(props).length
       if (count < 3) {

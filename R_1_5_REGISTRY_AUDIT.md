@@ -100,3 +100,21 @@ add a `RegistryEntry.originalComponent` field exposing the un-wrapped reference
 for callers that need it. The HOC already has access to the original component
 parameter; storing it alongside the wrapped boundary is a 1-line registry
 change. Tracking as a future consideration for R-2+ but not warranted today.
+
+## R-2.1 update (2026-05-08)
+
+Phase R-2.1 adds the 13th ComponentKind value `entity-card-section` for entity-
+card sub-section registrations (10 sub-sections across DeliveryCard /
+AncillaryCard / OrderCard). The audit's findings remain valid — no callsite
+depends on ref-identity comparison; every sub-section registration goes through
+the same Path 1 wrapping HOC; the `display: contents` wrapper convention applies
+identically to sub-sections. Sub-sections introduce a new linkage shape
+(`extensions.entityCardSection.{parentKind, parentName, sectionRole, optional}`)
+that consumers walk via the new `getSubSectionsFor(parentKind, parentName)`
+introspection helper — purely additive, no breaking change to any pre-R-2.1
+callsite.
+
+The R-2.1.x backwards-compat shim (`selectedComponentName: string | null`
+derived from the new `RuntimeSelection` discriminated union) is the only
+post-R-1.5 contract risk + is explicitly tracked in `backend/docs/DEBT.md`
+for migration before removal.

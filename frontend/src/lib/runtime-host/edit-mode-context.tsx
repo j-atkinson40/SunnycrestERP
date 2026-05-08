@@ -51,10 +51,35 @@ import {
   type ReactNode,
 } from "react"
 
+import { getByName, type ComponentKind } from "@/lib/visual-editor/registry"
+
 import {
   useRuntimeHostClient,
   type DualTokenHelpers,
 } from "./dual-token-client"
+
+
+// R-2.1 — kinds list for selectComponent's registry walk.
+// MUST stay in sync with InspectorPanel.tsx kinds list (the inspector
+// header reader walks the same kinds to resolve registry entries).
+// Adding a kind here without updating InspectorPanel will surface the
+// kind in the union but the inspector header would render the slug
+// instead of the registered displayName.
+const _ALL_COMPONENT_KINDS: ComponentKind[] = [
+  "widget",
+  "focus",
+  "focus-template",
+  "document-block",
+  "pulse-widget",
+  "workflow-node",
+  "layout",
+  "composite",
+  "entity-card",
+  "button",
+  "form-input",
+  "surface-card",
+  "entity-card-section",
+]
 
 
 /** The override types runtime-aware editors author. R-0 establishes
@@ -95,6 +120,40 @@ export function overrideKey(o: Pick<RuntimeOverride, "type" | "target" | "prop">
 }
 
 
+// ─── R-2.1 — RuntimeSelection discriminated union ────────────────
+
+
+/** R-2.1 selection state. Mirrors R-3.1's Selection union pattern
+ *  verbatim from `composition-canvas/InteractivePlacementCanvas.tsx:40-46`
+ *  (none / placement / placements-multi / row). The discriminator
+ *  `kind` lets the inspector branch on selection shape:
+ *
+ *    - `none` — no current selection.
+ *    - `component` — a registered component selected at the parent
+ *      level (whole card / whole widget / whole button).
+ *    - `component-section` — a sub-section of a parent component
+ *      selected (e.g. `delivery-card.header` inside `delivery-card`).
+ *      Carries explicit `parentKind` + `parentName` so consumers
+ *      reconstruct the parent without slug-string parsing.
+ */
+export type RuntimeSelection =
+  | { kind: "none" }
+  | {
+      kind: "component"
+      componentKind: ComponentKind
+      componentName: string
+    }
+  | {
+      kind: "component-section"
+      /** Always "entity-card-section" in R-2.1; future sub-section
+       *  ComponentKinds (e.g. "widget-section") would slot in here. */
+      componentKind: ComponentKind
+      componentName: string
+      parentKind: ComponentKind
+      parentName: string
+    }
+
+
 export interface EditModeState {
   /** Tenant slug being rendered. Editor can navigate but cannot
    *  switch tenant without re-issuing impersonation. Required when
@@ -108,8 +167,21 @@ export interface EditModeState {
   /** The route-derived page_context string (e.g. "dashboard",
    *  "ops_board"). null when not yet resolved. */
   pageContext: string | null
-  /** The component name currently selected for editing within the
-   *  active page. null when no selection. */
+  /** R-2.1 — discriminated union selection state. R-2.x callers read
+   *  `selection.kind` and branch. Pre-R-2.1 callers read the legacy
+   *  `selectedComponentName` getter (string | null) which derives
+   *  from the union via `selection.kind === "none" ? null :
+   *  selection.componentName`. The shim is intentional during the
+   *  R-2.1 → R-2.1.x transition window; an R-2.1.x cleanup migrates
+   *  remaining callers to read `selection` directly + removes the
+   *  shim. Audit before removal: InspectorPanel reads it (header
+   *  + tab body), SelectionOverlay queries the DOM via
+   *  `[data-component-name="${name}"]`, runtime-writers may read it. */
+  selection: RuntimeSelection
+  /** @deprecated R-2.1 — backwards-compat shim. New callers should
+   *  read `selection` directly. Returns null when no selection,
+   *  otherwise returns the selected componentName string regardless
+   *  of whether selection is component or component-section. */
   selectedComponentName: string | null
   /** Staged overrides pending commit. Map keys come from
    *  `overrideKey(...)`; values are full RuntimeOverride records. */
@@ -124,7 +196,21 @@ export interface EditModeState {
 export interface EditModeActions {
   setEditing(next: boolean): void
   setPageContext(next: string | null): void
+  /** Pre-R-2.1 selection action; preserved for backwards compat.
+   *  R-2.1+ surfaces (SelectionOverlay's bare-slug branch) call this.
+   *  Internally translates `name` → `{kind: "component", ...}`
+   *  resolving componentKind via registry lookup; null clears. */
   selectComponent(name: string | null): void
+  /** R-2.1 NEW — sub-section selection action. Called by
+   *  SelectionOverlay when the resolved slug is dot-separated AND
+   *  by the inspector's outer-tabs strip when an admin clicks a
+   *  sub-section tab. Resolves the selection union to the
+   *  `component-section` shape with explicit parent linkage. */
+  selectSection(
+    parentKind: ComponentKind,
+    parentName: string,
+    sectionSlug: string,
+  ): void
   /** Stage one override. Multiple stages with the same overrideKey
    *  replace; differing prop on same target accumulate. */
   stageOverride(o: RuntimeOverride): void
@@ -203,6 +289,7 @@ function makeStub(): EditModeContextValue {
     impersonatedUserId: null,
     isEditing: false,
     pageContext: null,
+    selection: { kind: "none" },
     selectedComponentName: null,
     draftOverrides: new Map<string, RuntimeOverride>(),
     isCommitting: false,
@@ -214,6 +301,9 @@ function makeStub(): EditModeContextValue {
       /* stub */
     },
     selectComponent: () => {
+      /* stub */
+    },
+    selectSection: () => {
       /* stub */
     },
     stageOverride: () => {
@@ -273,9 +363,13 @@ export function EditModeProvider({
   const [pageContext, setPageContextState] = useState<string | null>(
     initialPageContext,
   )
-  const [selectedComponentName, setSelectedComponentName] = useState<
-    string | null
-  >(null)
+  // R-2.1 — selection state extended from `string | null` to a
+  // discriminated union mirroring R-3.1's pattern. The legacy
+  // `selectedComponentName` getter (string | null) is derived from
+  // the union for backwards compat with pre-R-2.1 callers.
+  const [selection, setSelection] = useState<RuntimeSelection>({
+    kind: "none",
+  })
   const [draftOverrides, setDraftOverrides] = useState<
     Map<string, RuntimeOverride>
   >(() => new Map())
@@ -295,7 +389,7 @@ export function EditModeProvider({
     if (!next) {
       // Leaving edit mode clears the per-element selection so the next
       // edit-mode entry starts clean.
-      setSelectedComponentName(null)
+      setSelection({ kind: "none" })
     }
   }, [])
 
@@ -304,8 +398,42 @@ export function EditModeProvider({
   }, [])
 
   const selectComponent = useCallback((name: string | null) => {
-    setSelectedComponentName(name)
+    if (name === null) {
+      setSelection({ kind: "none" })
+      return
+    }
+    // R-2.1 — when SelectionOverlay's capture-phase walker resolves a
+    // slug that contains a dot, it dispatches selectSection instead
+    // of selectComponent. Bare slugs land here. We resolve componentKind
+    // via the registry so the union shape carries explicit kind info.
+    // Default to "widget" when registry lookup misses (defensive — the
+    // inspector still renders the slug as a fallback).
+    let componentKind: ComponentKind = "widget"
+    for (const k of _ALL_COMPONENT_KINDS) {
+      if (getByName(k, name)) {
+        componentKind = k
+        break
+      }
+    }
+    setSelection({ kind: "component", componentKind, componentName: name })
   }, [])
+
+  const selectSection = useCallback(
+    (
+      parentKind: ComponentKind,
+      parentName: string,
+      sectionSlug: string,
+    ) => {
+      setSelection({
+        kind: "component-section",
+        componentKind: "entity-card-section",
+        componentName: sectionSlug,
+        parentKind,
+        parentName,
+      })
+    },
+    [],
+  )
 
   const stageOverride = useCallback((o: RuntimeOverride) => {
     setDraftOverrides((prev) => {
@@ -371,12 +499,19 @@ export function EditModeProvider({
     return { succeeded, failed, results, errors }
   }, [draftOverrides, helpers, writerRegistry])
 
+  // R-2.1 — backwards-compat shim. Pre-R-2.1 callers read
+  // `selectedComponentName` (string | null); the value derives from the
+  // selection union. Both shapes coexist in EditModeContextValue.
+  const selectedComponentName: string | null =
+    selection.kind === "none" ? null : selection.componentName
+
   const value = useMemo<EditModeContextValue>(
     () => ({
       tenantSlug,
       impersonatedUserId,
       isEditing,
       pageContext,
+      selection,
       selectedComponentName,
       draftOverrides,
       isCommitting,
@@ -384,6 +519,7 @@ export function EditModeProvider({
       setEditing,
       setPageContext,
       selectComponent,
+      selectSection,
       stageOverride,
       clearStaged,
       commitDraft,
@@ -394,6 +530,7 @@ export function EditModeProvider({
       impersonatedUserId,
       isEditing,
       pageContext,
+      selection,
       selectedComponentName,
       draftOverrides,
       isCommitting,
@@ -401,6 +538,7 @@ export function EditModeProvider({
       setEditing,
       setPageContext,
       selectComponent,
+      selectSection,
       stageOverride,
       clearStaged,
       commitDraft,

@@ -424,14 +424,17 @@ describe("Phase 1 auto-register population", () => {
     // as a focus-template registration so the editor's hierarchical
     // browser surfaces it under Decision Focus. R-2.0 (2026-05-07)
     // added 3 entity-card registrations (DeliveryCard / AncillaryCard /
-    // OrderCard) bringing the total to 21. Upper bound bumped to 25 so
-    // R-2.1+ entity-card sub-section registrations + future Focus
-    // templates continue to fit without further test churn. The lower
-    // bound (13) preserves the original Phase 1 minimum so accidental
-    // de-registrations still fail loudly.
+    // OrderCard) bringing the total to 21. R-4.0 added 3 button
+    // registrations bringing the total to 24. R-2.1 (2026-05-08)
+    // added 10 entity-card-section sub-section registrations
+    // bringing the total to 34. Upper bound bumped to 50 so further
+    // R-2.x sub-section growth + R-4.x button additions + future
+    // Focus templates continue to fit without further test churn.
+    // The lower bound (13) preserves the original Phase 1 minimum so
+    // accidental de-registrations still fail loudly.
     const total = getTotalCount()
     expect(total).toBeGreaterThanOrEqual(13)
-    expect(total).toBeLessThanOrEqual(25)
+    expect(total).toBeLessThanOrEqual(50)
   })
 
   it("includes at least 4 widgets across funeral_home + manufacturing", () => {

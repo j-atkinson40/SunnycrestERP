@@ -24,11 +24,20 @@
  */
 
 import { Draggable } from "@hello-pangea/dnd"
-import { Box, Church, Landmark, MapPin } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { KanbanCard, KanbanConfig } from "@/types/delivery"
+
+// R-2.1 — sub-section wrapped components imported from the registrations
+// barrel. Each emits a data-component-name boundary div for click-to-
+// edit resolution. R-2.1 ALSO adds data-slot markers to OrderCard's
+// regions (pre-R-2.1 OrderCard had none — DeliveryCard + AncillaryCard
+// had them already).
+import {
+  OrderCardHeader,
+  OrderCardBody,
+  OrderCardActions,
+} from "@/lib/visual-editor/registry/registrations/entity-card-sections"
 
 
 export interface OrderCardProps {
@@ -75,6 +84,7 @@ export function OrderCardRaw({
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
+          data-slot="order-card"
           className={cn(
             "rounded-lg border bg-surface-elevated p-3 shadow-sm transition-shadow",
             snapshot.isDragging && "shadow-lg ring-2 ring-accent",
@@ -84,135 +94,19 @@ export function OrderCardRaw({
               "border-status-warning bg-status-warning-muted",
           )}
         >
-          {/* Funeral home name */}
-          {config.card_show_funeral_home && card.funeral_home_name && (
-            <div className="text-sm font-semibold text-content-strong leading-tight">
-              {card.funeral_home_name}
-            </div>
-          )}
+          {/* R-2.1 — header sub-section (FH name + deceased "RE:"). */}
+          <OrderCardHeader
+            funeralHomeName={card.funeral_home_name ?? null}
+            deceasedName={card.deceased_name ?? null}
+            showFuneralHome={config.card_show_funeral_home}
+          />
 
-          {/* Deceased name */}
-          {card.deceased_name && (
-            <div className="text-xs text-content-muted mt-0.5">
-              RE: {card.deceased_name}
-            </div>
-          )}
+          {/* R-2.1 — body sub-section (vault/equipment + service block). */}
+          <OrderCardBody card={card} cemeteryWithLocation={cemeteryWithLocation} />
 
-          {/* Vault · Equipment */}
-          {(card.vault_type || card.equipment_summary) && (
-            <div className="mt-1.5 text-xs text-content-base">
-              {[card.vault_type, card.equipment_summary]
-                .filter(Boolean)
-                .join(" · ")}
-              {card.vault_personalization && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 text-[10px] px-1 py-0"
-                >
-                  Custom
-                </Badge>
-              )}
-            </div>
-          )}
-
-          {/* Service location → Cemetery + times */}
-          <div className="mt-1.5 text-xs text-content-muted space-y-0.5">
-            {/* Location line */}
-            {(card.service_location || card.cemetery_name) && (
-              <div className="flex items-center gap-1">
-                <span
-                  className="text-content-subtle"
-                  aria-label={
-                    card.service_location === "church"
-                      ? "Church"
-                      : card.service_location === "funeral_home"
-                        ? "Funeral home"
-                        : card.service_location === "graveside"
-                          ? "Graveside"
-                          : "Location"
-                  }
-                >
-                  {card.service_location === "church" ? (
-                    <Church className="h-3.5 w-3.5" aria-hidden="true" />
-                  ) : card.service_location === "funeral_home" ? (
-                    <Landmark className="h-3.5 w-3.5" aria-hidden="true" />
-                  ) : card.service_location === "graveside" ? (
-                    <Box className="h-3.5 w-3.5" aria-hidden="true" />
-                  ) : (
-                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                  )}
-                </span>
-                {card.service_location === "graveside" ? (
-                  <span>Graveside · {cemeteryWithLocation(card)}</span>
-                ) : (
-                  <span>
-                    {card.service_location === "church"
-                      ? "Church"
-                      : card.service_location === "funeral_home"
-                        ? "Funeral Home"
-                        : card.service_location_other || "Service"}
-                    {card.cemetery_name
-                      ? ` → ${cemeteryWithLocation(card)}`
-                      : ""}
-                  </span>
-                )}
-              </div>
-            )}
-            {!card.service_location && card.cemetery_name && (
-              <div className="truncate">{cemeteryWithLocation(card)}</div>
-            )}
-
-            {/* Time line */}
-            {card.service_location === "graveside" ? (
-              card.service_time_display ? (
-                <div className="font-medium">{card.service_time_display}</div>
-              ) : (
-                <div className="text-status-warning">Time TBD</div>
-              )
-            ) : card.service_time_display ? (
-              <div>
-                Service: {card.service_time_display}
-                {card.eta_display ? (
-                  <span className="font-medium ml-2">
-                    ETA: {card.eta_display}
-                  </span>
-                ) : (
-                  <span className="text-status-warning ml-2">ETA: TBD</span>
-                )}
-              </div>
-            ) : (
-              <div className="text-status-warning">Time TBD</div>
-            )}
-          </div>
-
-          {/* Hours countdown — critical pulses with error-family,
-              warning is warning-family, otherwise subtle outline. */}
-          {card.hours_until_service !== null &&
-            card.hours_until_service > 0 && (
-              <div className="mt-1.5">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-[10px]",
-                    card.is_critical
-                      ? "border-status-error text-status-error animate-pulse"
-                      : card.is_warning
-                        ? "border-status-warning text-status-warning"
-                        : "border-border-subtle text-content-muted",
-                  )}
-                >
-                  {card.hours_until_service < 1
-                    ? `${Math.round(card.hours_until_service * 60)}m until service`
-                    : `${card.hours_until_service}h until service`}
-                </Badge>
-              </div>
-            )}
-
-          {card.notes && (
-            <div className="mt-1.5 truncate text-[11px] italic text-content-subtle">
-              {card.notes}
-            </div>
-          )}
+          {/* R-2.1 — actions sub-section (countdown + notes + optional
+              R-4 button row). Self-collapses when nothing to show. */}
+          <OrderCardActions card={card} />
         </div>
       )}
     </Draggable>

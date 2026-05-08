@@ -48,12 +48,18 @@
 
 import { useDraggable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
-import { StickyNoteIcon } from "lucide-react"
 
 import type { DeliveryDTO } from "@/services/dispatch-service"
 import { cn } from "@/lib/utils"
 
-import { IconTooltip } from "./_shared"
+// R-2.1 — sub-section wrapped components imported from the registrations
+// barrel. Each emits a data-component-name boundary div for click-to-
+// edit resolution.
+import {
+  AncillaryCardHeader,
+  AncillaryCardBody,
+  AncillaryCardActions,
+} from "@/lib/visual-editor/registry/registrations/entity-card-sections"
 
 
 export interface AncillaryCardProps {
@@ -155,62 +161,22 @@ export function AncillaryCardRaw({
         }}
         className={cn(
           "block w-full text-left",
-          // Tighter than DeliveryCard's compact (px-2.5 py-1.5) —
-          // ancillary card has 2 lines vs DeliveryCard's 4, so the
-          // body is naturally shorter; we match the horizontal
-          // padding so primary + ancillary line up flush in lane.
+          // Tighter than DeliveryCard's compact — ancillary has 2 lines.
           "px-2.5 py-1.5",
           "focus-ring-accent outline-none rounded-md",
         )}
         aria-label={`Edit ${label} ancillary`}
       >
-        {/* Line 1 — product / type label (the headline). */}
-        <div
-          className={cn(
-            "truncate text-body-sm font-medium leading-tight text-content-strong",
-            "font-sans",
-          )}
-          data-slot="dispatch-ancillary-card-product"
-          title={label}
-        >
-          {label}
-        </div>
+        {/* R-2.1 — header sub-section (product label headline). */}
+        <AncillaryCardHeader label={label} />
 
-        {/* Line 2 — destination funeral home · city. Caption-scale
-            so the headline visually dominates. */}
-        <div
-          className="mt-0.5 truncate text-caption text-content-muted"
-          data-slot="dispatch-ancillary-card-destination"
-        >
-          {fh}
-          {city && (
-            <span>
-              {" · "}
-              {city}
-            </span>
-          )}
-        </div>
+        {/* R-2.1 — body sub-section (destination FH + city). */}
+        <AncillaryCardBody fh={fh} city={city} />
       </button>
 
-      {/* Status row — only renders if there's a note. Ancillaries
-          have no hole-dug, no equipment, no chat (yet). Empty row
-          collapses entirely so the card stays minimal-vertical. */}
-      {note && (
-        <div
-          data-slot="dispatch-ancillary-card-icon-row"
-          className={cn(
-            "flex items-center justify-end gap-0.5",
-            "border-t border-border-subtle/60 px-2.5 py-1",
-          )}
-        >
-          <IconTooltip
-            icon={StickyNoteIcon}
-            label={note}
-            dataSlot="dispatch-ancillary-icon-note"
-            highlight
-          />
-        </div>
-      )}
+      {/* R-2.1 — actions sub-section (optional icon row). Self-collapses
+          when no note + no buttonSlugs configured. */}
+      <AncillaryCardActions note={note} />
     </div>
   )
 }

@@ -11,6 +11,73 @@ When a debt item is resolved, move the entry from **Active debt** to
 
 ## Active debt
 
+### R-2.1 — flat slug array sub-composition (Option 3) vs row-based sub-compositions (Option 2)
+
+**Discovered:** R-2.1 entity-card sub-section ship (2026-05-08).
+
+**Current state:** Sub-section R-4 button composition uses a flat
+`buttonSlugs: string[]` prop (Option 3 from
+`/tmp/r2_1_subsection_scope.md` Section 8). Order = array index.
+Layout treatment locked (always a row of buttons; no grouped rows,
+no conditional rendering, no per-tenant separator authoring).
+
+**The deferred path (Option 2):** row-based sub-compositions —
+the actions sub-section accepts an authored composition record
+that follows R-3.0/3.1's row-based DnD pattern, supporting grouped
+buttons + conditional rendering + per-tenant layout flexibility.
+
+**Why Option 3 chosen for R-2.1:** simplest substrate; existing
+`array<componentReference>` schema supports it directly; no schema
+work required. Substrate is in place + admins can author. **Avoids
+premature abstraction** (canon §3.26.7.5) — no operator has yet
+asked for "place buttons in a grid inside an entity card."
+
+**Forward-only migration:** when a tenant builds something the
+flat-array editor can't express (grouped action rows, conditional
+button rendering based on entity state, separators, etc.), open
+R-2.x as a separate scoped phase with its own canon-level
+architectural call. Migration path:
+1. Schema: `buttonSlugs: string[]` deprecates → new
+   `actionsLayout: SubCompositionRecord | string[]` (string[] still
+   accepted as the simple legacy shape; new SubCompositionRecord
+   shape activates Option 2 when authored).
+2. Service: per-section sub-composition resolution layer parallels
+   R-3.0/3.1's per-row composition resolver.
+3. Editor: actions sub-section's PropsTab gains a row-based DnD
+   editor for the `actionsLayout` shape.
+4. Existing flat-array authoring continues working unchanged —
+   one-release coexistence then full migration.
+
+**No action needed for R-2.1.** Flagged so any future R-2.x author
+finds the canonical migration path documented.
+
+### R-2.1.x — selectedComponentName backwards-compat shim removal
+
+**Discovered:** R-2.1 entity-card sub-section ship (2026-05-08).
+
+**Current state:** EditModeContext exposes both:
+- `selection: RuntimeSelection` (R-2.1 NEW — discriminated union)
+- `selectedComponentName: string | null` (R-2.1 derived shim)
+
+The shim derives via `selection.kind === "none" ? null :
+selection.componentName` so pre-R-2.1 callers see the same string.
+
+**Callers of `selectedComponentName` to audit before removing the shim:**
+- `InspectorPanel.tsx` — header + tab body lookup
+- `SelectionOverlay.tsx` — `[data-component-name="${name}"]` query
+  for the brass selection border tracking
+- Any runtime-writers that may read it
+- Any test fixtures asserting on it
+
+**Migration path (R-2.1.x):**
+1. Audit every reader (grep `selectedComponentName`)
+2. Migrate each to read `selection` + branch on kind
+3. Remove the shim from EditModeState + makeStub + the value memo
+4. tsc verification + vitest regression
+
+**No action needed for R-2.1.** Shim is essential during the
+transition window.
+
 ### Journal Entry VaultItem coverage — deferred after V-1f+g
 
 **Discovered:** V-1f+g investigation (April 20, 2026).

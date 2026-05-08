@@ -27,6 +27,13 @@ import "./registrations/workflow-nodes"
 // import wrapped versions from the registrations barrel, not from
 // the underlying component files (eslint rule enforces).
 import "./registrations/entity-cards"
+// R-2.1 — entity-card-section registrations (10 sub-sections across
+// the 3 entity cards). Each sub-section is its own Path-1-wrapped
+// React component emitting `data-component-name="<parent>.<child>"`.
+// MUST import after entity-cards (the parent registrations) so the
+// inspector's outer-tabs lookup chain (parent → sub-sections) is
+// populated in canonical order.
+import "./registrations/entity-card-sections"
 // R-4.0 — button registrations (3 example slugs covering 3 of the 5
 // R-4 action types: open_focus, trigger_workflow, navigate). Other 8
 // ActionKind values from services/actions/ deferred to R-4.x

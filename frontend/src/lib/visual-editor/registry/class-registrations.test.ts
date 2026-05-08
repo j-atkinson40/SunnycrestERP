@@ -31,7 +31,7 @@ import {
 
 
 describe("CLASS_REGISTRATIONS", () => {
-  it("ships all 9 v1 classes", () => {
+  it("ships all 10 classes (9 v1 + R-2.1 entity-card-section)", () => {
     const names = getAllClassNames()
     expect(names).toEqual(
       expect.arrayContaining([
@@ -44,9 +44,11 @@ describe("CLASS_REGISTRATIONS", () => {
         "button",
         "form-input",
         "surface-card",
+        // R-2.1 — entity-card sub-sections class.
+        "entity-card-section",
       ]),
     )
-    expect(names.length).toBe(9)
+    expect(names.length).toBe(10)
   })
 
   it("each class declaration is well-formed", () => {

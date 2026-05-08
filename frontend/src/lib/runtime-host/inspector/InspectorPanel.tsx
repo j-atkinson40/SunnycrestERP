@@ -16,7 +16,12 @@
 import { useMemo, useState } from "react"
 import { X } from "lucide-react"
 
-import { getByName, type ComponentKind } from "@/lib/visual-editor/registry"
+import {
+  getByName,
+  getSubSectionsFor,
+  type ComponentKind,
+  type RegistryEntry,
+} from "@/lib/visual-editor/registry"
 import type { ThemeMode } from "@/bridgeable-admin/services/themes-service"
 
 import { useEditMode } from "../edit-mode-context"
@@ -56,13 +61,13 @@ export function InspectorPanel({
   //
   // R-2.0.4: kinds list extended to include the 4 ComponentKind values
   // added during the May 2026 class-configuration phase (entity-card,
-  // button, form-input, surface-card). Pre-R-2.0.4 this list was missing
-  // those four; clicking a DeliveryCard / AncillaryCard / OrderCard
-  // returned null from getByName because none of the original 8 kinds
-  // matched, falling back to rendering the slug ("delivery-card") in the
-  // inspector header instead of the registered displayName ("Delivery
-  // Card"). Spec 14's `toHaveText("Delivery Card")` assertion failed
-  // verbatim. Add a kind here whenever ComponentKind grows.
+  // button, form-input, surface-card).
+  //
+  // R-2.1: kinds list extended with the 13th ComponentKind value
+  // (entity-card-section). When a sub-section is selected, the union
+  // shape carries `kind: "component-section"` AND we still resolve the
+  // sub-section's own entry here for the per-section inner triad.
+  // Add a kind here whenever ComponentKind grows.
   const selectedEntry = useMemo(() => {
     if (!editMode.selectedComponentName) return null
     const kinds: ComponentKind[] = [
@@ -78,6 +83,7 @@ export function InspectorPanel({
       "button",
       "form-input",
       "surface-card",
+      "entity-card-section",
     ]
     for (const k of kinds) {
       const entry = getByName(k, editMode.selectedComponentName)
@@ -85,6 +91,70 @@ export function InspectorPanel({
     }
     return null
   }, [editMode.selectedComponentName])
+
+  // R-2.1 — outer tabs.
+  //
+  // When the selection is a sub-section, OR when the selection is a
+  // parent that has registered sub-sections, the inspector renders an
+  // outer tab strip [Card][Header][Body][Actions][...] above the inner
+  // triad (Theme/Class/Props). The active outer tab determines which
+  // entry the inner triad operates on — clicking "Card" scopes inner
+  // triad to the parent, clicking a sub-section tab scopes to that
+  // section.
+  //
+  // Sub-sections are discovered via `getSubSectionsFor(parentKind,
+  // parentName)` which consults `extensions.entityCardSection` (NOT
+  // slug-string parsing — the metadata path stays canonical even if a
+  // future parent slug contains dots).
+  const isSubSectionSelected =
+    editMode.selection.kind === "component-section"
+  const parentKind: ComponentKind | null =
+    editMode.selection.kind === "component-section"
+      ? editMode.selection.parentKind
+      : editMode.selection.kind === "component"
+        ? editMode.selection.componentKind
+        : null
+  const parentName: string | null =
+    editMode.selection.kind === "component-section"
+      ? editMode.selection.parentName
+      : editMode.selection.kind === "component"
+        ? editMode.selection.componentName
+        : null
+
+  const parentEntry: RegistryEntry | null = useMemo(() => {
+    if (!parentKind || !parentName) return null
+    return getByName(parentKind, parentName) ?? null
+  }, [parentKind, parentName])
+
+  const subSections: readonly RegistryEntry[] = useMemo(() => {
+    if (!parentKind || !parentName) return []
+    return getSubSectionsFor(parentKind, parentName)
+  }, [parentKind, parentName])
+
+  // Outer tab activation. "card" tab = parent; sub-section names = sub.
+  // Default: when a sub-section is selected, that sub-section's tab is
+  // active; otherwise the "card" tab is active.
+  const [outerTabOverride, setOuterTabOverride] = useState<string | null>(
+    null,
+  )
+  // The currently-active outer tab's identifier.
+  const activeOuterTab: string =
+    outerTabOverride ??
+    (isSubSectionSelected
+      ? editMode.selection.kind === "component-section"
+        ? editMode.selection.componentName
+        : "card"
+      : "card")
+
+  // Resolve the entry the inner triad operates on. If active outer tab
+  // is "card", that's the parent. Otherwise it's the named sub-section.
+  const activeInnerEntry: RegistryEntry | null = useMemo(() => {
+    if (activeOuterTab === "card") return parentEntry
+    return subSections.find((s) => s.metadata.name === activeOuterTab) ??
+      selectedEntry
+  }, [activeOuterTab, parentEntry, subSections, selectedEntry])
+
+  const outerTabsVisible = subSections.length > 0
 
   if (!editMode.isEditing) return null
   if (!editMode.selectedComponentName) return null
@@ -124,7 +194,61 @@ export function InspectorPanel({
         </button>
       </header>
 
-      {/* Tab strip */}
+      {/* R-2.1 — outer tab strip. Renders ONLY when the selected
+          component (or its parent) has registered sub-sections.
+          Card tab = the parent's own theme/class/props; sub-section
+          tabs scope the inner triad to that sub-section's entry. */}
+      {outerTabsVisible && (
+        <nav
+          className="flex border-b border-border-subtle text-caption overflow-x-auto"
+          data-testid="runtime-inspector-outer-tabs"
+        >
+          <button
+            type="button"
+            onClick={() => setOuterTabOverride("card")}
+            className={`flex-shrink-0 px-3 py-1.5 font-medium transition-colors ${
+              activeOuterTab === "card"
+                ? "border-b-2 border-accent text-content-strong"
+                : "border-b-2 border-transparent text-content-muted hover:text-content-strong"
+            }`}
+            data-testid="runtime-inspector-outer-tab-card"
+            data-active={activeOuterTab === "card" ? "true" : "false"}
+          >
+            Card
+          </button>
+          {subSections.map((s) => {
+            const tabId = s.metadata.name
+            // Strip parent prefix from displayName for the tab label
+            // ("Delivery Card · Header" → "Header"). Falls back to
+            // sectionRole capitalized when displayName doesn't carry
+            // the canonical separator.
+            const fullDisplay = s.metadata.displayName
+            const sepIdx = fullDisplay.indexOf(" · ")
+            const tabLabel =
+              sepIdx >= 0
+                ? fullDisplay.slice(sepIdx + 3)
+                : fullDisplay
+            return (
+              <button
+                key={tabId}
+                type="button"
+                onClick={() => setOuterTabOverride(tabId)}
+                className={`flex-shrink-0 px-3 py-1.5 font-medium transition-colors ${
+                  activeOuterTab === tabId
+                    ? "border-b-2 border-accent text-content-strong"
+                    : "border-b-2 border-transparent text-content-muted hover:text-content-strong"
+                }`}
+                data-testid={`runtime-inspector-outer-tab-${tabId}`}
+                data-active={activeOuterTab === tabId ? "true" : "false"}
+              >
+                {tabLabel}
+              </button>
+            )
+          })}
+        </nav>
+      )}
+
+      {/* Inner tab strip (Theme / Class / Props) */}
       <nav className="flex border-b border-border-subtle text-caption">
         {(["theme", "class", "props"] as const).map((key) => (
           <button
@@ -144,21 +268,22 @@ export function InspectorPanel({
         ))}
       </nav>
 
-      {/* Tab body */}
+      {/* Tab body — operates on activeInnerEntry (R-2.1) which derives
+          from the active outer tab + selection state. */}
       <div className="flex-1 overflow-y-auto">
-        {!selectedEntry && (
+        {!activeInnerEntry && (
           <div className="px-3 py-4 text-caption text-content-muted">
             Selected component <code>{editMode.selectedComponentName}</code> is
             not registered. Edits unavailable.
           </div>
         )}
-        {selectedEntry && activeTab === "props" && (
-          <PropsTab selectedEntry={selectedEntry} vertical={vertical} />
+        {activeInnerEntry && activeTab === "props" && (
+          <PropsTab selectedEntry={activeInnerEntry} vertical={vertical} />
         )}
-        {selectedEntry && activeTab === "class" && (
-          <ClassTab selectedEntry={selectedEntry} />
+        {activeInnerEntry && activeTab === "class" && (
+          <ClassTab selectedEntry={activeInnerEntry} />
         )}
-        {selectedEntry && activeTab === "theme" && (
+        {activeInnerEntry && activeTab === "theme" && (
           <ThemeTab
             vertical={vertical}
             tenantId={tenantId}

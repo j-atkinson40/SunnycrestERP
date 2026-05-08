@@ -24,6 +24,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import { getByName } from "@/lib/visual-editor/registry"
+import type { ComponentKind } from "@/lib/visual-editor/registry"
+
 import { useEditMode } from "./edit-mode-context"
 
 
@@ -36,7 +39,12 @@ interface SelectionRect {
 
 
 export function SelectionOverlay() {
-  const { isEditing, selectedComponentName, selectComponent } = useEditMode()
+  const {
+    isEditing,
+    selectedComponentName,
+    selectComponent,
+    selectSection,
+  } = useEditMode()
   const [rect, setRect] = useState<SelectionRect | null>(null)
   const observerRef = useRef<ResizeObserver | null>(null)
   const trackedElementRef = useRef<HTMLElement | null>(null)
@@ -111,7 +119,39 @@ export function SelectionOverlay() {
       if (foundName) {
         e.preventDefault()
         e.stopPropagation()
-        selectComponent(foundName)
+        // R-2.1 — when the resolved slug is dot-separated (canonical
+        // sub-section convention `<parent>.<child>`), dispatch the
+        // section-aware selectSection action so the inspector mounts
+        // the parent's outer-tab strip + scopes its inner triad
+        // (theme/class/props) to the section. Bare slugs route through
+        // the legacy selectComponent action.
+        //
+        // Parent linkage is consulted via the registry's
+        // `extensions.entityCardSection` shape — slug-string parsing
+        // is convenient (`slug.split(".")[0]`) but NOT canonical;
+        // future parents whose slugs themselves contain dots stay
+        // parseable through metadata. Falls back to the slug split if
+        // the registry entry is missing (defensive — selection still
+        // records the section name + a best-effort parent).
+        if (foundName.includes(".")) {
+          const sectionEntry = getByName(
+            "entity-card-section",
+            foundName,
+          )
+          const ext = sectionEntry?.metadata.extensions
+            ?.entityCardSection as
+            | {
+                parentKind?: ComponentKind
+                parentName?: string
+              }
+            | undefined
+          const parentKind: ComponentKind = ext?.parentKind ?? "entity-card"
+          const parentName: string =
+            ext?.parentName ?? foundName.split(".")[0]
+          selectSection(parentKind, parentName, foundName)
+        } else {
+          selectComponent(foundName)
+        }
       } else {
         // Clicking outside any registered component clears selection
         // ONLY if the click landed on the tenant content region — clicks
@@ -127,7 +167,7 @@ export function SelectionOverlay() {
     return () => {
       document.removeEventListener("click", handler, true)
     }
-  }, [isEditing, selectComponent])
+  }, [isEditing, selectComponent, selectSection])
 
   // Track selected element + its bounding rect.
   const updateRect = useCallback(() => {

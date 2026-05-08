@@ -24,7 +24,17 @@ export const REGISTRY_SCHEMA_VERSION = 1
 
 /** Top-level kind of a registered component. Extensible — Phase 2+
  * adds editor-driven types ("vertical-template", "theme", etc.)
- * without breaking existing registrations. */
+ * without breaking existing registrations.
+ *
+ * Sub-section slug convention (R-2.1, May 2026):
+ * Sub-sections of an `entity-card` register as `entity-card-section`
+ * with dot-separated slugs (`delivery-card.header`,
+ * `delivery-card.body`, `delivery-card.actions`,
+ * `delivery-card.hole-dug-badge`). The dot-segment-zero is the
+ * parent slug; explicit linkage lives at
+ * `extensions.entityCardSection.{parentKind, parentName, sectionRole, optional}`
+ * so registry walkers don't depend on slug-string parsing.
+ */
 export type ComponentKind =
   | "widget"
   | "focus"
@@ -43,6 +53,15 @@ export type ComponentKind =
   | "button"
   | "form-input"
   | "surface-card"
+  // ── R-2.1 — entity card sub-sections (May 2026) ────────────
+  // Named sub-components of an `entity-card`. Each registration
+  // carries `extensions.entityCardSection` linking to its parent.
+  // Slug convention: dot-separated `<parent>.<child>`. Examples:
+  // `delivery-card.header`, `delivery-card.actions`. Rendered as
+  // children of the parent's wrapped component; click-to-edit
+  // resolves to the deepest `data-component-name` ancestor per
+  // SelectionOverlay's capture-phase walker.
+  | "entity-card-section"
 
 
 // ─── Scope dimensions ────────────────────────────────────────────
@@ -283,8 +302,48 @@ export interface RegistrationMetadata {
   /** Arbitrary additional metadata. Future categories (data
    * binding, event emission, permission gates, accessibility
    * declarations, etc.) land here without bumping the schema
-   * version, so long as they're additive. */
+   * version, so long as they're additive.
+   *
+   * R-2.1 canonical extension keys:
+   *   - `entityCardSection` — `EntityCardSectionExtension` shape;
+   *     declares parent linkage + section role + optional flag for
+   *     `entity-card-section` registrations.
+   *   - `r4` (R-4.0) — button R-4 contract.
+   */
   extensions?: Record<string, unknown>
+}
+
+
+// ─── R-2.1 — entity-card sub-section extension shape ─────────────
+
+/** Canonical role of a sub-section within its parent entity card.
+ * Common spine `header` / `body` / `actions` is universal; per-card
+ * extensions (e.g. DeliveryCard's HoleDugBadge) use `custom`. */
+export type EntityCardSectionRole = "header" | "body" | "actions" | "custom"
+
+
+/** R-2.1 — canonical shape stored at
+ * `RegistrationMetadata.extensions.entityCardSection` for every
+ * `entity-card-section` registration. Drives:
+ *   - registry hierarchy walks (`getSubSectionsFor(parentKind, parentName)`)
+ *   - inspector outer-tabs (Card / Header / Body / Actions / Custom)
+ *   - selection union linkage
+ *   - composition placement parent-routing.
+ *
+ * Slug parsing is convenient (`slug.split(".")[0]` recovers the
+ * parent slug) but NOT canonical — registry walkers consult this
+ * extension shape directly. */
+export interface EntityCardSectionExtension {
+  parentKind: ComponentKind
+  parentName: string
+  sectionRole: EntityCardSectionRole
+  /** When true, the parent's render decides at runtime whether to
+   * mount the sub-section based on data presence. AncillaryCard's
+   * actions section (icon row) is optional today (renders only when
+   * a note exists); OrderCard's actions section is optional
+   * (informational bottom region, not action-shaped); DeliveryCard's
+   * actions section is non-optional (always renders icon row). */
+  optional: boolean
 }
 
 /** Frozen, registry-stored shape returned by introspection. The

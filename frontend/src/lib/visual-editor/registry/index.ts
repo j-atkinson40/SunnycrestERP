@@ -31,12 +31,16 @@ export {
   isCanvasPlaceable,
   getCanvasMetadata,
   getCanvasPlaceableComponents,
+  // R-2.1 — entity-card sub-section helpers
+  getSubSectionsFor,
 } from "./introspection"
 
 export type {
   ComponentKind,
   ConfigPropSchema,
   ConfigPropType,
+  EntityCardSectionExtension,
+  EntityCardSectionRole,
   RegistrationMetadata,
   RegistryEntry,
   RegistryKey,
