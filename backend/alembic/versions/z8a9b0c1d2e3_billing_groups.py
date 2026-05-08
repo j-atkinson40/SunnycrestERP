@@ -11,7 +11,18 @@ import sqlalchemy as sa
 revision = "z8a9b0c1d2e3"
 down_revision = "z7a8b9c0d1e2"
 branch_labels = None
-depends_on = None
+# R-3.3 (May 2026): cross-branch FK dependency. This migration's
+# upgrade adds `invoices.group_company_entity_id REFERENCES
+# company_entities`, but `company_entities` is created by
+# `r44_master_company_entities` on a different branch. Production
+# happened to apply r44 weeks before z8 (incremental commits Feb/Mar
+# vs early April) so the FK ALTER succeeded historically, but on a
+# fresh DB (CI, first-time local) alembic's topological resolver is
+# free to walk z8 before r44 — hitting "relation company_entities
+# does not exist". depends_on is alembic's canonical hint that
+# instructs the resolver to apply r44 before z8 regardless of the
+# parent chain. Metadata-only on already-applied revisions.
+depends_on = "r44_master_company_entities"
 
 
 def upgrade() -> None:
