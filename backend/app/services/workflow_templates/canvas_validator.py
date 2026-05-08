@@ -83,6 +83,9 @@ VALID_NODE_TYPES: tuple[str, ...] = (
     "log_vault_item",
     "generate_document",
     "call_service_method",
+    # Phase R-6.0a — headless Generation Focus invocation + review pause
+    "invoke_generation_focus",
+    "invoke_review_focus",
     # Phase 1 registry workflow-node names (canonical admin
     # vocabulary; these subsume the engine's step types when
     # rendering in the admin canvas)

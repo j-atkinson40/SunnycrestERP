@@ -27,6 +27,20 @@ router = APIRouter()
 
 
 class StartRunRequest(BaseModel):
+    """Phase R-6.0a — ``trigger_context`` accepts canonical payload
+    shapes that ``workflow_engine.resolve_variables`` knows how to
+    walk via prefix-matched references:
+
+      * ``incoming_email``         — {subject, body, from_email, attachments, ...}
+      * ``incoming_transcription`` — {text, call_id, participants, ...}
+      * ``vault_item``             — {id, item_type, metadata_json, ...}
+      * ``record``                 — entity record for ``{current_record.X}``
+
+    Pre-R-6.0 callers using arbitrary trigger_context shapes continue
+    to work — the canonical keys above are simply the ones the
+    engine's resolver dispatches on by prefix.
+    """
+
     trigger_context: dict | None = None
     initial_inputs: dict | None = None
 

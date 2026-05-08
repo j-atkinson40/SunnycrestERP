@@ -391,6 +391,7 @@ from app.models.workflow import (
     WorkflowSchedule,
     WorkflowStepParam,
 )
+from app.models.workflow_review_item import WorkflowReviewItem
 from app.models.vault_document import VaultDocument
 from app.models.command_bar import DocumentSearchIndex, CommandBarHistory
 from app.models.intelligence import (
@@ -790,6 +791,7 @@ __all__ = [
     "WorkflowEnrollment",
     "WorkflowSchedule",
     "WorkflowStepParam",
+    "WorkflowReviewItem",
     "DocumentSearchIndex",
     "CommandBarHistory",
     "VaultDocument",

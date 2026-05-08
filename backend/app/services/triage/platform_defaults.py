@@ -985,6 +985,77 @@ _safety_program_triage = TriageQueueConfig(
 )
 
 
+# ── Queue: workflow_review_triage (Phase R-6.0a) ────────────────────
+
+
+_workflow_review_triage = TriageQueueConfig(
+    queue_id="workflow_review_triage",
+    queue_name="Workflow Review",
+    description=(
+        "Review workflow review-pause items — workflows that paused "
+        "for human approval (e.g. AI-extracted decedent info awaiting "
+        "operator confirm before downstream steps run). Approve, "
+        "edit-and-approve, or reject; the underlying workflow "
+        "advances on decision."
+    ),
+    icon="GitBranch",
+    source_direct_query_key="workflow_review",
+    item_entity_type="workflow_review_item",
+    item_display=ItemDisplayConfig(
+        title_field="review_focus_id",
+        subtitle_field="workflow_name",
+        body_fields=["trigger_source", "created_at"],
+        display_component="generic",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="approve",
+            label="Approve",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="CheckCircle",
+            handler="workflow_review.approve",
+        ),
+        ActionConfig(
+            action_id="edit_and_approve",
+            label="Edit & Approve",
+            action_type=ActionType.CUSTOM,
+            keyboard_shortcut="e",
+            icon="Edit",
+            handler="workflow_review.edit_and_approve",
+        ),
+        ActionConfig(
+            action_id="reject",
+            label="Reject",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="XCircle",
+            requires_reason=True,
+            confirmation_required=True,
+            handler="workflow_review.reject",
+        ),
+    ],
+    context_panels=[
+        ContextPanelConfig(
+            panel_type=ContextPanelType.RELATED_ENTITIES,
+            title="Workflow run",
+            display_order=1,
+            default_collapsed=False,
+            related_entity_type="workflow_run",
+        ),
+    ],
+    flow_controls=FlowControlsConfig(
+        snooze_enabled=False,  # workflow runs shouldn't be deferred
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(ai_questions_enabled=False),
+    permissions=[],  # cross-vertical, any authenticated tenant user
+    display_order=100,
+    enabled=True,
+)
+
+
 # Register at import time so the registry is populated the moment
 # the triage package loads.
 register_platform_config(_task_triage)
@@ -996,3 +1067,4 @@ register_platform_config(_expense_categorization_triage)
 register_platform_config(_aftercare_triage)
 register_platform_config(_catalog_fetch_triage)
 register_platform_config(_safety_program_triage)
+register_platform_config(_workflow_review_triage)

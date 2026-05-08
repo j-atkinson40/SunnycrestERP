@@ -1360,6 +1360,60 @@ def _dq_catalog_fetch_triage(
     return out
 
 
+def _dq_workflow_review(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Phase R-6.0a — pending WorkflowReviewItem rows for the current
+    tenant. Surfaces every item with ``decision IS NULL``, oldest
+    first (longest-waiting reviewed first).
+
+    Tenant-scoped via ``company_id == user.company_id``. The
+    underlying ``workflow_runs`` table is also tenant-scoped, so the
+    item-level filter is defense-in-depth.
+    """
+    from app.models.workflow_review_item import WorkflowReviewItem
+    from app.models.workflow import WorkflowRun, Workflow
+
+    rows = (
+        db.query(WorkflowReviewItem)
+        .filter(
+            WorkflowReviewItem.company_id == user.company_id,
+            WorkflowReviewItem.decision.is_(None),
+        )
+        .order_by(WorkflowReviewItem.created_at.asc())
+        .all()
+    )
+    out: list[dict[str, Any]] = []
+    for item in rows:
+        run = (
+            db.query(WorkflowRun)
+            .filter(WorkflowRun.id == item.run_id)
+            .first()
+        )
+        workflow = None
+        if run is not None:
+            workflow = (
+                db.query(Workflow)
+                .filter(Workflow.id == run.workflow_id)
+                .first()
+            )
+        out.append(
+            {
+                "id": item.id,
+                "review_focus_id": item.review_focus_id,
+                "input_data": item.input_data or {},
+                "run_id": item.run_id,
+                "workflow_id": run.workflow_id if run else None,
+                "workflow_name": workflow.name if workflow else None,
+                "trigger_source": run.trigger_source if run else None,
+                "created_at": (
+                    item.created_at.isoformat() if item.created_at else None
+                ),
+            }
+        )
+    return out
+
+
 _DIRECT_QUERIES: dict[
     str, "Callable[[Session, User], list[dict[str, Any]]]"
 ] = {
@@ -1375,6 +1429,8 @@ _DIRECT_QUERIES: dict[
     "catalog_fetch_triage": _dq_catalog_fetch_triage,
     # Phase 8d.1 — AI-generation-with-approval
     "safety_program_triage": _dq_safety_program_triage,
+    # Phase R-6.0a — workflow review pause (invoke_review_focus)
+    "workflow_review": _dq_workflow_review,
 }
 
 

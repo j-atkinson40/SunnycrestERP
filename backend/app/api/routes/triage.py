@@ -514,3 +514,67 @@ def end_session_endpoint(
         items_snoozed_count=summary.items_snoozed_count,
         current_item_id=summary.current_item_id,
     )
+
+
+# ── Phase R-6.0a — workflow review decide endpoint ──────────────────
+
+
+class _WorkflowReviewDecideRequest(BaseModel):
+    decision: Literal["approve", "reject", "edit_and_approve"]
+    edited_data: dict[str, Any] | None = None
+    decision_notes: str | None = None
+
+
+class _WorkflowReviewDecideResponse(BaseModel):
+    item_id: str
+    decision: str
+    review_focus_id: str
+    run_id: str
+
+
+@router.post(
+    "/workflow-review/{item_id}/decide",
+    response_model=_WorkflowReviewDecideResponse,
+)
+def workflow_review_decide(
+    item_id: str,
+    body: _WorkflowReviewDecideRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _WorkflowReviewDecideResponse:
+    """Phase R-6.0a — commit a decision on a WorkflowReviewItem.
+
+    Tenant-scoped via JWT. Cross-tenant ``item_id`` returns 404
+    (existence-hiding). Routes to the canonical
+    ``workflow_review_adapter.commit_decision`` resume path.
+    """
+    from app.services.workflows.workflow_review_adapter import (
+        WorkflowReviewError,
+        WorkflowReviewItemAlreadyDecided,
+        WorkflowReviewItemNotFound,
+        commit_decision,
+    )
+
+    try:
+        item = commit_decision(
+            db,
+            item_id=item_id,
+            decision=body.decision,
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            edited_data=body.edited_data,
+            decision_notes=body.decision_notes,
+        )
+    except WorkflowReviewItemNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except WorkflowReviewItemAlreadyDecided as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WorkflowReviewError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return _WorkflowReviewDecideResponse(
+        item_id=item.id,
+        decision=item.decision or "",
+        review_focus_id=item.review_focus_id,
+        run_id=item.run_id,
+    )

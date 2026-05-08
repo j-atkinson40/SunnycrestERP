@@ -837,6 +837,128 @@ def _handle_safety_program_request_review(
 # ── Handler registry ─────────────────────────────────────────────────
 
 
+# ── Workflow Review handlers (Phase R-6.0a) ─────────────────────────
+
+
+def _handle_workflow_review_approve(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Approve a WorkflowReviewItem; resume the underlying run with
+    the canonical input payload as next-step input."""
+    from app.services.workflows.workflow_review_adapter import (
+        WorkflowReviewError,
+        WorkflowReviewItemAlreadyDecided,
+        WorkflowReviewItemNotFound,
+        commit_decision,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    try:
+        item = commit_decision(
+            db,
+            item_id=ctx["entity_id"],
+            decision="approve",
+            user_id=user.id,
+            company_id=user.company_id,
+        )
+    except WorkflowReviewItemNotFound as exc:
+        return {"status": "errored", "message": str(exc), "code": "not_found"}
+    except WorkflowReviewItemAlreadyDecided as exc:
+        return {"status": "errored", "message": str(exc), "code": "already_decided"}
+    except WorkflowReviewError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": f"Review item {item.id} approved; workflow advanced.",
+        "entity_state": "approved",
+        "review_focus_id": item.review_focus_id,
+        "run_id": item.run_id,
+    }
+
+
+def _handle_workflow_review_reject(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Reject a WorkflowReviewItem; resume the underlying run with
+    a ``decision=reject`` payload + the reviewer's note. Downstream
+    steps in the workflow can branch on this signal."""
+    from app.services.workflows.workflow_review_adapter import (
+        WorkflowReviewError,
+        WorkflowReviewItemAlreadyDecided,
+        WorkflowReviewItemNotFound,
+        commit_decision,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code") or ctx.get("note")
+    try:
+        item = commit_decision(
+            db,
+            item_id=ctx["entity_id"],
+            decision="reject",
+            user_id=user.id,
+            company_id=user.company_id,
+            decision_notes=reason,
+        )
+    except WorkflowReviewItemNotFound as exc:
+        return {"status": "errored", "message": str(exc), "code": "not_found"}
+    except WorkflowReviewItemAlreadyDecided as exc:
+        return {"status": "errored", "message": str(exc), "code": "already_decided"}
+    except WorkflowReviewError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": f"Review item {item.id} rejected; workflow advanced.",
+        "entity_state": "rejected",
+        "review_focus_id": item.review_focus_id,
+        "run_id": item.run_id,
+    }
+
+
+def _handle_workflow_review_edit_and_approve(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Approve with operator-edited payload. ``ctx['payload']`` carries
+    the edited shape, which becomes the next step's input via
+    ``workflow_review_adapter.commit_decision``."""
+    from app.services.workflows.workflow_review_adapter import (
+        WorkflowReviewError,
+        WorkflowReviewItemAlreadyDecided,
+        WorkflowReviewItemNotFound,
+        commit_decision,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    payload = ctx.get("payload")
+    if not isinstance(payload, dict):
+        return {
+            "status": "errored",
+            "message": "edit_and_approve requires 'payload' dict.",
+        }
+    try:
+        item = commit_decision(
+            db,
+            item_id=ctx["entity_id"],
+            decision="edit_and_approve",
+            user_id=user.id,
+            company_id=user.company_id,
+            edited_data=payload,
+            decision_notes=ctx.get("note"),
+        )
+    except WorkflowReviewItemNotFound as exc:
+        return {"status": "errored", "message": str(exc), "code": "not_found"}
+    except WorkflowReviewItemAlreadyDecided as exc:
+        return {"status": "errored", "message": str(exc), "code": "already_decided"}
+    except WorkflowReviewError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": f"Review item {item.id} edited + approved; workflow advanced.",
+        "entity_state": "edited_and_approved",
+        "review_focus_id": item.review_focus_id,
+        "run_id": item.run_id,
+    }
+
+
 HandlerFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 
@@ -877,6 +999,10 @@ HANDLERS: dict[str, HandlerFn] = {
     "safety_program.approve": _handle_safety_program_approve,
     "safety_program.reject": _handle_safety_program_reject,
     "safety_program.request_review": _handle_safety_program_request_review,
+    # Workflow Review (Phase R-6.0a — invoke_review_focus pause)
+    "workflow_review.approve": _handle_workflow_review_approve,
+    "workflow_review.reject": _handle_workflow_review_reject,
+    "workflow_review.edit_and_approve": _handle_workflow_review_edit_and_approve,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,

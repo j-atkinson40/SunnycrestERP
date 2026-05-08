@@ -50,17 +50,51 @@ def resolve_variables(
     step_outputs: dict,
     current_user: User | None = None,
     current_company: Company | None = None,
+    *,
+    previous_step_key: str | None = None,
 ) -> Any:
     """Replace {var.path} references in strings or dicts with real values.
 
     Handles strings, dicts, and lists recursively. Non-string leaves are
     returned unchanged. When the entire string is a single {ref}, the
     resolved value is returned as its original type (not stringified).
+
+    Supported prefixes:
+      * ``input.<step_key>[.<field>]``     — WorkflowRun.input_data lookup
+      * ``output.<step_key>[.<field>]``    — prior step output lookup
+      * ``current_user.<path>``            — User instance path walk
+      * ``current_company.<path>``         — Company instance path walk
+      * ``current_record.<path>``          — trigger_context.record path walk
+
+    Phase R-6.0 prefixes (added for trigger-driven workflows + headless
+    Generation Focus chaining):
+
+      * ``incoming_email.<path>``          — trigger_context.incoming_email
+      * ``incoming_transcription.<path>``  — trigger_context.incoming_transcription
+      * ``vault_item.<path>``              — trigger_context.vault_item
+      * ``workflow_input.<path>``          — alias resolving against the
+                                              previous step's output_data
+                                              (``previous_step_key``). When
+                                              ``previous_step_key`` is None,
+                                              ``workflow_input.*`` references
+                                              resolve to None.
     """
     if isinstance(template, dict):
-        return {k: resolve_variables(v, run, step_outputs, current_user, current_company) for k, v in template.items()}
+        return {
+            k: resolve_variables(
+                v, run, step_outputs, current_user, current_company,
+                previous_step_key=previous_step_key,
+            )
+            for k, v in template.items()
+        }
     if isinstance(template, list):
-        return [resolve_variables(v, run, step_outputs, current_user, current_company) for v in template]
+        return [
+            resolve_variables(
+                v, run, step_outputs, current_user, current_company,
+                previous_step_key=previous_step_key,
+            )
+            for v in template
+        ]
     if not isinstance(template, str):
         return template
 
@@ -92,6 +126,31 @@ def resolve_variables(
         if ref.startswith("current_record."):
             rec = (run.trigger_context or {}).get("record") if run else None
             return _get_path(rec, ref[len("current_record."):])
+        # ── Phase R-6.0 prefixes ──────────────────────────────────
+        if ref.startswith("incoming_email."):
+            tc = (run.trigger_context or {}) if run else {}
+            payload = tc.get("incoming_email") if isinstance(tc, dict) else None
+            return _get_path(payload, ref[len("incoming_email."):])
+        if ref.startswith("incoming_transcription."):
+            tc = (run.trigger_context or {}) if run else {}
+            payload = (
+                tc.get("incoming_transcription") if isinstance(tc, dict) else None
+            )
+            return _get_path(payload, ref[len("incoming_transcription."):])
+        if ref.startswith("vault_item."):
+            tc = (run.trigger_context or {}) if run else {}
+            payload = tc.get("vault_item") if isinstance(tc, dict) else None
+            return _get_path(payload, ref[len("vault_item."):])
+        if ref.startswith("workflow_input."):
+            # Canonical alias: resolve against the previous step's
+            # output_data. Decouples downstream steps from explicit
+            # upstream step_key references.
+            if previous_step_key is None:
+                return None
+            val = step_outputs.get(previous_step_key)
+            if val is None:
+                return None
+            return _get_path(val, ref[len("workflow_input."):])
         return None
 
     # If the entire template IS a single reference, return the resolved
@@ -322,17 +381,55 @@ def advance_run(db: Session, run_id: str, step_input: dict) -> WorkflowRun:
         run.status = "running"
 
     elif run.status == "awaiting_approval":
-        # For approval, we need to re-run the current playwright step with
-        # the approval flag now set in input_data. Roll current_step_id back
-        # to the previous step so _drive_run re-enters the playwright step.
-        steps = _get_steps(db, run.workflow_id)
-        current_idx = next(
-            (i for i, s in enumerate(steps) if s.id == run.current_step_id), -1
+        # awaiting_approval covers TWO distinct patterns:
+        #   (a) Playwright approval gate — re-run the current step
+        #       with the approval flag now set (legacy semantics).
+        #   (b) invoke_review_focus pause (Phase R-6.0a) — the review
+        #       step already created the WorkflowReviewItem; resuming
+        #       on reviewer decision should mark the step COMPLETED
+        #       and continue from the NEXT step, not re-enter.
+        # Discriminate via the current step's action_type.
+        current_step = (
+            db.query(WorkflowStep)
+            .filter(WorkflowStep.id == run.current_step_id)
+            .first()
+            if run.current_step_id
+            else None
         )
-        if current_idx > 0:
-            run.current_step_id = steps[current_idx - 1].id
+        cfg = (current_step.config or {}) if current_step else {}
+        action_type = cfg.get("action_type") if isinstance(cfg, dict) else None
+
+        if action_type == "invoke_review_focus":
+            # Mark the review step completed + leave current_step_id
+            # alone so _drive_run advances to the NEXT step on resume.
+            rs = (
+                db.query(WorkflowRunStep)
+                .filter(
+                    WorkflowRunStep.run_id == run.id,
+                    WorkflowRunStep.step_id == run.current_step_id,
+                )
+                .order_by(WorkflowRunStep.executed_at.desc())
+                .first()
+            )
+            if rs:
+                rs.status = "completed"
+                # Stash the resume payload on the run-step output so
+                # audit-replay can reconstruct the decision later.
+                rs.output_data = {
+                    **(rs.output_data or {}),
+                    "review_decision": step_input,
+                }
         else:
-            run.current_step_id = None  # Re-start from beginning
+            # Playwright (legacy) — roll back to re-enter the current
+            # step with the approval flag now in input_data.
+            steps = _get_steps(db, run.workflow_id)
+            current_idx = next(
+                (i for i, s in enumerate(steps) if s.id == run.current_step_id), -1
+            )
+            if current_idx > 0:
+                run.current_step_id = steps[current_idx - 1].id
+            else:
+                run.current_step_id = None  # Re-start from beginning
         run.status = "running"
 
     db.commit()
@@ -371,11 +468,16 @@ def _drive_run(db: Session, run: WorkflowRun) -> None:
 
     max_iterations = 50
     iteration = 0
+    # Phase R-6.0 — track the previous step's key so the canonical
+    # ``workflow_input.<path>`` alias can resolve against it without
+    # callers having to hard-code upstream step_key references.
+    previous_step_key: str | None = None
     while current and iteration < max_iterations:
         iteration += 1
         outputs_by_key = _step_outputs_by_key(db, run)
         result = _execute_step(
-            db, run, current, outputs_by_key, current_user, current_company
+            db, run, current, outputs_by_key, current_user, current_company,
+            previous_step_key=previous_step_key,
         )
         if result.get("pause"):
             # Awaiting input — record paused step, return
@@ -394,6 +496,16 @@ def _drive_run(db: Session, run: WorkflowRun) -> None:
             db.commit()
             return
 
+        # Phase R-6.0 — invoke_review_focus pause: like awaiting_approval
+        # for Playwright but routes through the WorkflowReviewItem
+        # primitive + canonical workflow_review_triage queue.
+        if isinstance(output, dict) and output.get("type") == "awaiting_review":
+            run.current_step_id = current.id
+            run.status = "awaiting_approval"
+            run.output_data = {**(run.output_data or {}), current.step_key: output}
+            db.commit()
+            return
+
         # Step completed; figure out next step
         next_step = _resolve_next_step(steps, current, result)
         if next_step is None:
@@ -401,6 +513,7 @@ def _drive_run(db: Session, run: WorkflowRun) -> None:
             run.current_step_id = current.id
             _complete_run(db, run)
             return
+        previous_step_key = current.step_key
         current = next_step
 
     # Safety
@@ -437,6 +550,8 @@ def _execute_step(
     outputs_by_key: dict,
     current_user: User | None,
     current_company: Company | None,
+    *,
+    previous_step_key: str | None = None,
 ) -> dict:
     """Execute one step. Returns dict with pause / output / condition_result."""
     # Record the run step
@@ -461,11 +576,12 @@ def _execute_step(
 
         # Resolve variables in the step config
         resolved_config = resolve_variables(
-            step.config, run, outputs_by_key, current_user, current_company
+            step.config, run, outputs_by_key, current_user, current_company,
+            previous_step_key=previous_step_key,
         )
 
         if step.step_type == "action" or step.step_type == "output" or step.step_type == "notification":
-            output = _execute_action(db, resolved_config, run, current_company)
+            output = _execute_action(db, resolved_config, run, current_company, run_step_id=rs.id)
         elif step.step_type == "condition":
             output = _evaluate_condition(resolved_config)
         elif step.step_type == "ai_prompt":
@@ -499,6 +615,8 @@ def _execute_action(
     resolved_config: dict,
     run: WorkflowRun,
     current_company: Company | None,
+    *,
+    run_step_id: str | None = None,
 ) -> dict:
     """Route an action step by action_type."""
     action_type = resolved_config.get("action_type")
@@ -535,8 +653,154 @@ def _execute_action(
         # agent migrations (8b-8f) plug real service logic into
         # the workflow engine without duplicating code.
         return _handle_call_service_method(db, resolved_config, run, current_company)
+    # ── Phase R-6.0a — headless Generation Focus invocation ──
+    if action_type == "invoke_generation_focus":
+        return _handle_invoke_generation_focus(db, resolved_config, run)
+    if action_type == "invoke_review_focus":
+        return _handle_invoke_review_focus(
+            db, resolved_config, run, run_step_id=run_step_id
+        )
 
     return {"status": "unknown_action_type", "action_type": action_type}
+
+
+def _handle_invoke_generation_focus(
+    db: Session,
+    config: dict,
+    run: WorkflowRun,
+) -> dict:
+    """Phase R-6.0a — invoke a Generation Focus headlessly.
+
+    Config shape:
+      {
+        "action_type": "invoke_generation_focus",
+        "focus_id":    "<focus_id, e.g. burial_vault_personalization_studio>",
+        "op_id":       "<op_id, e.g. extract_decedent_info>",
+        "kwargs":      { ... }   # passed to the dispatch callable
+      }
+
+    Returns the canonical line-items payload (or an error envelope).
+    The output is stored in run.output_data + step_outputs by the
+    surrounding ``_execute_step`` so a downstream ``invoke_review_focus``
+    step can reference it via the new ``workflow_input.line_items``
+    alias (or via legacy ``output.<this_step_key>.line_items``).
+    """
+    from app.services.generation_focus import (
+        HeadlessDispatchError,
+        dispatch,
+    )
+
+    focus_id = config.get("focus_id")
+    op_id = config.get("op_id")
+    kwargs = config.get("kwargs") or {}
+
+    if not focus_id or not op_id:
+        return {
+            "status": "errored",
+            "error_code": "missing_dispatch_key",
+            "error_message": (
+                "invoke_generation_focus requires both 'focus_id' and 'op_id'."
+            ),
+        }
+    if not isinstance(kwargs, dict):
+        return {
+            "status": "errored",
+            "error_code": "invalid_kwargs",
+            "error_message": "invoke_generation_focus 'kwargs' must be a dict.",
+        }
+
+    try:
+        payload = dispatch(
+            focus_id,
+            op_id,
+            db=db,
+            company_id=run.company_id,
+            **kwargs,
+        )
+    except HeadlessDispatchError as exc:
+        return {
+            "status": "errored",
+            "error_code": "headless_dispatch_error",
+            "error_message": str(exc),
+            "focus_id": focus_id,
+            "op_id": op_id,
+        }
+    except Exception as exc:  # noqa: BLE001 — engine surfaces step failures
+        return {
+            "status": "errored",
+            "error_code": "generation_focus_failed",
+            "error_message": str(exc)[:500],
+            "focus_id": focus_id,
+            "op_id": op_id,
+        }
+
+    # Canonical shape: pass through what dispatch returns + add a
+    # status discriminator for downstream condition steps.
+    return {
+        "status": "applied",
+        "focus_id": focus_id,
+        "op_id": op_id,
+        **(payload if isinstance(payload, dict) else {"payload": payload}),
+    }
+
+
+def _handle_invoke_review_focus(
+    db: Session,
+    config: dict,
+    run: WorkflowRun,
+    *,
+    run_step_id: str | None = None,
+) -> dict:
+    """Phase R-6.0a — pause workflow on a WorkflowReviewItem.
+
+    Config shape:
+      {
+        "action_type":     "invoke_review_focus",
+        "review_focus_id": "<slug, e.g. decedent_info_review>",
+        "input_data":      { ... }   # payload presented to the reviewer
+      }
+
+    Creates a WorkflowReviewItem row + returns a sentinel dict that
+    causes the surrounding ``_drive_run`` loop to flip the run to
+    ``awaiting_approval`` status. Reviewer decisions land via the
+    ``workflow_review_adapter.commit_decision`` resume path, which
+    re-enters ``advance_run`` with the decision payload as next
+    step's input.
+    """
+    from app.models.workflow_review_item import WorkflowReviewItem
+
+    review_focus_id = config.get("review_focus_id")
+    input_data = config.get("input_data") or {}
+
+    if not review_focus_id:
+        return {
+            "status": "errored",
+            "error_code": "missing_review_focus_id",
+            "error_message": "invoke_review_focus requires 'review_focus_id'.",
+        }
+    if not isinstance(input_data, dict):
+        return {
+            "status": "errored",
+            "error_code": "invalid_input_data",
+            "error_message": "invoke_review_focus 'input_data' must be a dict.",
+        }
+
+    item = WorkflowReviewItem(
+        run_id=run.id,
+        run_step_id=run_step_id,
+        company_id=run.company_id,
+        review_focus_id=review_focus_id,
+        input_data=input_data,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    return {
+        "type": "awaiting_review",
+        "review_item_id": item.id,
+        "review_focus_id": review_focus_id,
+    }
 
 
 def _handle_playwright_action(db: Session, config: dict, run: WorkflowRun) -> dict:
