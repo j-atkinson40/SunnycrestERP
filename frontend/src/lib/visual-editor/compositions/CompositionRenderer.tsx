@@ -41,6 +41,7 @@ import {
   getWidgetRenderer,
   type WidgetRendererProps,
 } from "@/components/focus/canvas/widget-renderers"
+import { RegisteredButton } from "@/lib/runtime-host/buttons/RegisteredButton"
 import type {
   CanvasConfig,
   CompositionRow,
@@ -79,6 +80,19 @@ function defaultGapSize(canvasConfig: CanvasConfig): number {
  *  widget-kind placements only.
  */
 function renderRuntimePlacement(p: Placement): ReactNode {
+  // R-4.0 — buttons dispatch through RegisteredButton, which looks up
+  // its own metadata via getByName("button", slug) at click-time. No
+  // parallel button-renderers registry needed; the registry's
+  // canonical introspection API + a single `if` branch here is
+  // sufficient. Per /tmp/r4_0_renderer_dispatch_probe.md.
+  if (p.component_kind === "button") {
+    return (
+      <RegisteredButton
+        componentName={p.component_name}
+        propOverrides={p.prop_overrides}
+      />
+    )
+  }
   if (p.component_kind !== "widget") {
     return (
       <div

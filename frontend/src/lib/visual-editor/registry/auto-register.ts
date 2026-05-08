@@ -27,3 +27,11 @@ import "./registrations/workflow-nodes"
 // import wrapped versions from the registrations barrel, not from
 // the underlying component files (eslint rule enforces).
 import "./registrations/entity-cards"
+// R-4.0 — button registrations (3 example slugs covering 3 of the 5
+// R-4 action types: open_focus, trigger_workflow, navigate). Other 8
+// ActionKind values from services/actions/ deferred to R-4.x
+// increments per Spec-Override Discipline. Buttons are registered as
+// `button` ComponentKind; widget-shaped registration pattern (1 kind,
+// N instances) — RegisteredButton looks up its own metadata at click-
+// time via getByName("button", slug).
+import "./registrations/buttons"
