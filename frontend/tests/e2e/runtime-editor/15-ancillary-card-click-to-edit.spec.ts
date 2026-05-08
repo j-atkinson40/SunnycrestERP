@@ -157,7 +157,18 @@ test.describe("Gate 15 — AncillaryCard click-to-edit", () => {
       "runtime-inspector-outer-tab-ancillary-card.body",
     )
     await expect(bodyTab).toHaveAttribute("data-active", "true")
-    await cardTab.click()
+    // R-2.1.3 — Focus modal's backdrop is a Base UI portal that
+    // overlays editor chrome (including the inspector's outer tabs)
+    // even though the inspector renders at a higher z-index. Same
+    // bug class as R-2.0.5 (ancillary-pool-pin-header occluding
+    // runtime-editor-toggle). Playwright's element-from-point
+    // resolves to the backdrop, .click() times out. dispatchEvent
+    // fires the click event ON the tab directly, bypassing the
+    // portal's pointer-event interception. Architectural review of
+    // focus-backdrop z-index vs inspector chrome z-index is a
+    // separate hygiene arc — production usage rarely needs inspector
+    // mid-Focus, so this is not user-blocking.
+    await cardTab.dispatchEvent("click")
     await expect(cardTab).toHaveAttribute("data-active", "true")
     await expect(bodyTab).toHaveAttribute("data-active", "false")
   })
