@@ -1,68 +1,107 @@
 /**
- * Gate 15: AncillaryCard wrapping registered + structurally ready.
+ * Gate 15: Click AncillaryCard inside the runtime editor with the
+ * funeral-scheduling Focus open → selection overlay + 3-tab inspector
+ * + ancillary-card resolves as the selected component.
  *
- * R-2.0.1 — rewritten. AncillaryCard renders ONLY inside the
- * scheduling Focus accessory rail (per
- * `SchedulingFocusWithAccessories.tsx`); the Focus opens via
- * Cmd+K → "scheduling" → Enter. Driving that flow through Playwright
- * requires the command bar's full keyboard interaction model, which
- * is fragile against the staging Cmd+K behavior + intermittent timing.
+ * R-2.0.3 — restored to full-DOM editor click-to-edit. R-2.0.1 had
+ * rewritten this to a registry-presence assertion because:
+ *   1. Editor shell couldn't mount /dispatch/funeral-schedule
+ *      pre-R-2.x (TenantRouteTree absolute-path mismatch issue).
+ *   2. AncillaryCard renders ONLY inside `SchedulingKanbanCore`, which
+ *      mounts as the funeral-scheduling Focus's operational core.
+ *      Driving Cmd+K → "scheduling" Focus open through Playwright was
+ *      flaky.
  *
- * Per /tmp/r2_specs_toggle_missing.md, R-2.0.1's pragmatic fix is to
- * validate the foundational R-2.0 promise (wrapping reaches DOM)
- * without forcing brittle Cmd+K interactions. AncillaryCard's
- * runtime DOM emission is structurally identical to DeliveryCard's
- * (Gate 14) since both wrap through the same
- * `registrations/entity-cards.ts` shim + same registerComponent HOC
- * + same display:contents boundary div.
+ * R-2.x converted renderTenantSlugRoutes to relative paths so the
+ * editor shell mounts arbitrary tenant routes. The Focus opens via
+ * URL `?focus=funeral-scheduling` query param (FocusContext reads
+ * `focusParam = searchParams.get("focus")` and auto-opens on mount —
+ * `focus-context.tsx:186 + :207-219`). URL-driven Focus open is more
+ * reliable than Cmd+K interaction in Playwright.
  *
- * This spec asserts the **registration is present + reachable** by
- * checking the visual editor's component registry surface. Spec 14
- * already asserts wrapping reaches production DOM for the
- * structurally-identical DeliveryCard; spec 15 asserts AncillaryCard
- * is registered + ready for the same surface.
+ * Validates:
+ *   - R-2.x routing: editor mounts /dispatch/funeral-schedule
+ *   - URL-driven Focus open via ?focus=funeral-scheduling
+ *   - R-2.0 Path 1 wrapping: AncillaryCard emits
+ *     data-component-name="ancillary-card" boundary div inside the
+ *     Focus core
+ *   - SelectionOverlay capture-phase walker resolves clicks on
+ *     AncillaryCard inside the Focus
+ *   - InspectorPanel mounts with the registered component (Ancillary
+ *     Card / ancillary-card) + 3 tabs
  *
- * Full click-to-edit gesture on AncillaryCard lands post-R-2.x:
- *   - shell mounts arbitrary tenant routes (R-2.x architectural arc)
- *   - scheduling Focus opens reliably via Cmd+K within a Playwright
- *     spec (separate flake-reduction work)
+ * Surface: testco's funeral-scheduling Focus. seed_dispatch_demo
+ * populates ancillary deliveries (kanban-attached + standalone);
+ * AncillaryCard renders for standalone ancillaries inside the Focus
+ * kanban (`SchedulingKanbanCore.tsx:1190 + :1476`).
  */
 import { test, expect } from "@playwright/test"
-import {
-  loginAsPlatformAdmin,
-  setupPage,
-  STAGING_FRONTEND,
-} from "./_shared"
+import { openEditorForTestco } from "./_shared"
 
 
-test.describe("Gate 15 — AncillaryCard registration validated", () => {
-  test("ancillary-card is registered in the visual-editor component registry", async ({
+test.describe("Gate 15 — AncillaryCard click-to-edit", () => {
+  test("click AncillaryCard inside editor (Focus open) → inspector mounts with ancillary-card selected", async ({
     page,
   }) => {
-    await setupPage(page)
-    await loginAsPlatformAdmin(page)
+    const sess = await openEditorForTestco(page)
 
-    // The visual editor's component registry surfaces all registered
-    // components at /bridgeable-admin/visual-editor/registry. A
-    // post-R-2.0 ancillary-card entry must be present. This is the
-    // strongest assertion that R-2.0's shim wired AncillaryCard
-    // through registerComponent correctly without forcing the
-    // Cmd+K → scheduling Focus flow.
-    await page.goto(`${STAGING_FRONTEND}/bridgeable-admin/visual-editor/registry`)
+    // Navigate to dispatch surface inside editor shell + auto-open
+    // the funeral-scheduling Focus via URL param. Editor shell reads
+    // `?tenant` + `?user` from useSearchParams; FocusContext reads
+    // `?focus`. All three coexist in the same query string.
+    const params =
+      `?tenant=${encodeURIComponent(sess.tenantSlug)}` +
+      `&user=${encodeURIComponent(sess.impersonatedUserId)}` +
+      `&focus=funeral-scheduling`
+    await page.goto(
+      `/bridgeable-admin/runtime-editor/dispatch/funeral-schedule${params}`,
+    )
     await page.waitForLoadState("networkidle")
 
-    // Find the table row for ancillary-card. The registry debug page
-    // emits per-row test-ids `registry-row-{type}-{name}`.
-    const row = page.getByTestId("registry-row-entity-card-ancillary-card")
-    await row.waitFor({ state: "visible", timeout: 15_000 })
+    // Toggle edit mode. The Focus core mounts inside the editor's
+    // tenant content wrapper; SelectionOverlay's
+    // [data-runtime-host-root] boundary still applies — clicks
+    // inside the Focus get walked up to the AncillaryCard boundary
+    // div, not bubbled into editor chrome.
+    await page.getByTestId("runtime-editor-toggle").click()
+    await expect(
+      page.getByTestId("runtime-editor-edit-indicator"),
+    ).toBeVisible({ timeout: 10_000 })
 
-    // Sanity: confirm the entity-card kind is wired by checking
-    // delivery-card + order-card siblings exist too.
+    // Find an AncillaryCard. seed_dispatch_demo populates standalone
+    // ancillary deliveries that render via SchedulingKanbanCore.
+    // First match wins; SelectionOverlay walks up to the boundary.
+    const card = page
+      .locator('[data-component-name="ancillary-card"]')
+      .first()
+    await card.waitFor({ state: "visible", timeout: 20_000 })
+    await card.click()
+
+    // Selection overlay (brass border) on the clicked card.
     await expect(
-      page.getByTestId("registry-row-entity-card-delivery-card"),
+      page.getByTestId("runtime-editor-selection-overlay"),
+    ).toBeVisible({ timeout: 10_000 })
+
+    // Inspector panel mounts with 3-tab strip.
+    await expect(page.getByTestId("runtime-inspector-panel")).toBeVisible()
+    await expect(
+      page.getByTestId("runtime-inspector-tab-theme"),
     ).toBeVisible()
     await expect(
-      page.getByTestId("registry-row-entity-card-order-card"),
+      page.getByTestId("runtime-inspector-tab-class"),
     ).toBeVisible()
+    await expect(
+      page.getByTestId("runtime-inspector-tab-props"),
+    ).toBeVisible()
+
+    // Inspector resolves ancillary-card. Visible text shows the
+    // registered displayName "Ancillary Card"; data-component-slug
+    // carries the slug from registrations/entity-cards.ts.
+    const componentName = page.getByTestId("runtime-inspector-component-name")
+    await expect(componentName).toHaveText("Ancillary Card")
+    await expect(componentName).toHaveAttribute(
+      "data-component-slug",
+      "ancillary-card",
+    )
   })
 })

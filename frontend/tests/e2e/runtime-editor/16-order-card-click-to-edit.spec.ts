@@ -1,31 +1,36 @@
 /**
  * Gate 16: OrderCard wrapping registered + structurally ready.
  *
- * R-2.0.2 — rewritten. OrderCard's only consumer is `kanban-panel.tsx`
- * mounted on the `/scheduling` route, which requires the
- * `funeral-kanban` extension. Investigation found neither testco nor
- * Hopkins has the extension enabled on staging today (HTTP 403 from
- * `/extensions/funeral-kanban/schedule` with body "Module
- * 'driver_delivery' is not enabled for this company"). The wrapped
- * OrderCard therefore has no live render surface on staging until a
- * tenant enables the extension (or a different surface mounts the
- * wrapped component).
+ * R-2.0.3 — kept as registry-presence (R-2.0.2 pattern) explicitly,
+ * NOT restored to full-DOM editor click-to-edit. R-2.x converted
+ * renderTenantSlugRoutes to relative paths so the editor shell
+ * mounts arbitrary tenant routes (specs 14 + 15 restored to
+ * full-DOM under R-2.0.3). But OrderCard's only consumer remains
+ * `kanban-panel.tsx` on the `/scheduling` route, which requires the
+ * `funeral-kanban` extension. Per R-2.0.2's investigation, neither
+ * testco nor Hopkins has the extension enabled on staging (HTTP 403
+ * from `/extensions/funeral-kanban/schedule`: "Module 'driver_delivery'
+ * is not enabled for this company"). The wrapped OrderCard has no
+ * live render surface on staging today.
  *
- * Per /tmp/r2_specs_toggle_missing.md (carried forward from R-2.0.1)
- * + the R-2.0.2 finding above, the spec validates the **registration
- * is present + reachable** in the visual editor's component registry
- * debug page. Wrapping path is structurally identical to delivery-card
- * (Gate 14 proves production DOM emission) and ancillary-card (Gate
- * 15's same-shape assertion); order-card's `registerComponent` shim
- * call goes through the same HOC + emits the same `display: contents`
- * boundary div.
+ * R-2.x routing fix unblocks the editor mounting `/scheduling`, but
+ * the `/scheduling` page itself short-circuits to a 403/empty state
+ * when funeral-kanban is disabled — the kanban-panel where OrderCard
+ * lives never renders. So full-DOM Gate 16 remains gated on the
+ * fixture change (enable funeral-kanban on a dev tenant) which is
+ * a separate fixture arc, NOT R-2.0.3 scope.
  *
- * Full DOM-emission Playwright validation for OrderCard lands when:
- *   - A tenant on staging has funeral-kanban enabled (seed change), OR
- *   - kanban-panel-equivalent rendering moves to a non-extension-gated
- *     surface (cross-vertical scheduling refresh — separate arc), OR
- *   - The R-2.x shell architectural arc lets the runtime editor mount
- *     extension-gated routes inside its preview shell.
+ * Validates the registration is present + reachable. Wrapping path
+ * is structurally identical to delivery-card (Gate 14) and
+ * ancillary-card (Gate 15) — same `registerComponent` HOC, same
+ * `display: contents` boundary div, same auto-register barrel.
+ *
+ * Full DOM-emission Gate 16 lands when:
+ *   - A dev tenant on staging has funeral-kanban enabled (fixture
+ *     change), OR
+ *   - kanban-panel-equivalent rendering moves to a non-extension-
+ *     gated surface (cross-vertical scheduling refresh — separate
+ *     arc).
  */
 import { test, expect } from "@playwright/test"
 import {

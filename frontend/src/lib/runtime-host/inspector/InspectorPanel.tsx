@@ -90,7 +90,11 @@ export function InspectorPanel({
           <div className="text-caption text-content-muted">
             {selectedEntry?.metadata.type ?? "unknown"}
           </div>
-          <div className="text-body-sm font-medium text-content-strong truncate">
+          <div
+            className="text-body-sm font-medium text-content-strong truncate"
+            data-testid="runtime-inspector-component-name"
+            data-component-slug={editMode.selectedComponentName ?? ""}
+          >
             {selectedEntry?.metadata.displayName ??
               editMode.selectedComponentName}
           </div>
