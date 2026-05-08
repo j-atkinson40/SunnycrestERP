@@ -537,9 +537,9 @@ export function renderTenantSlugRoutes(
   return (
     <>
               {/* Tenant routes — accessed via subdomain or company slug */}
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/unauthorized" element={<Unauthorized />} />
+              <Route path="login" element={<LoginPage />} />
+              <Route path="register" element={<RegisterPage />} />
+              <Route path="unauthorized" element={<Unauthorized />} />
 
               {/* Protected routes */}
               <Route element={<ProtectedRoute />}>
@@ -566,7 +566,7 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="dashboard.view" />
                     }
                   >
-                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="dashboard" element={<Dashboard />} />
                   </Route>
 
                   {/* Phase W-4a Commit 5 — Home Space's PulseSurface.
@@ -577,7 +577,7 @@ export function renderTenantSlugRoutes(
                       the Home dot (Phase W-4a Commit 1 seeded the
                       Home system space with default_home_route=/home).
                       Coexists with /dashboard until W-5. */}
-                  <Route path="/home" element={<HomePage />} />
+                  <Route path="home" element={<HomePage />} />
 
                   {/* Phase A Session 1 — dev-only test page for the
                       Focus primitive. Not in nav. Any authenticated
@@ -650,7 +650,7 @@ export function renderTenantSlugRoutes(
 
                   {/* Hub Pages */}
                   <Route element={<ProtectedRoute requiredPermission="financials.view" />}>
-                    <Route path="/financials" element={<FinancialsHub />} />
+                    <Route path="financials" element={<FinancialsHub />} />
                   </Route>
                   {/* V-1c: /crm/* → /vault/crm/* redirects.
                       See the /vault/crm route tree below for the live
@@ -719,40 +719,40 @@ export function renderTenantSlugRoutes(
                     }
                   />
                   <Route element={<ProtectedRoute requiredPermission="production_hub.view" />}>
-                    <Route path="/production-hub" element={<ProductionHub />} />
+                    <Route path="production-hub" element={<ProductionHub />} />
                   </Route>
                   <Route element={<ProtectedRoute requiredPermission="safety.view" requiredModule="safety_management" />}>
-                    <Route path="/compliance" element={<ComplianceHub />} />
+                    <Route path="compliance" element={<ComplianceHub />} />
                   </Route>
 
                   {/* Admin entry points that happen to live adjacent
                       to CRM but aren't part of the lift-and-shift. */}
-                  <Route path="/admin/company-classification" element={<CompanyClassificationPage />} />
-                  <Route path="/admin/data-quality" element={<DataQualityPage />} />
-                  <Route path="/admin/data-quality" element={<DataQualityPage />} />
-                  <Route path="/settings/ai-intelligence" element={<AiSettingsPage />} />
-                  <Route path="/settings/saved-orders" element={<SavedOrdersPage />} />
-                  <Route path="/settings/external-accounts" element={<ExternalAccountsPage />} />
+                  <Route path="admin/company-classification" element={<CompanyClassificationPage />} />
+                  <Route path="admin/data-quality" element={<DataQualityPage />} />
+                  <Route path="admin/data-quality" element={<DataQualityPage />} />
+                  <Route path="settings/ai-intelligence" element={<AiSettingsPage />} />
+                  <Route path="settings/saved-orders" element={<SavedOrdersPage />} />
+                  <Route path="settings/external-accounts" element={<ExternalAccountsPage />} />
 
                   {/* Saved Views — universal primitive (Phase 2). */}
                   {/* Order matters: /new and /:viewId/edit must be
                       declared BEFORE /:viewId so the static
                       segments aren't shadowed by the param route. */}
-                  <Route path="/saved-views" element={<SavedViewsIndex />} />
-                  <Route path="/saved-views/new" element={<SavedViewCreatePage mode="create" />} />
-                  <Route path="/saved-views/:viewId/edit" element={<SavedViewCreatePage mode="edit" />} />
-                  <Route path="/saved-views/:viewId" element={<SavedViewPage />} />
+                  <Route path="saved-views" element={<SavedViewsIndex />} />
+                  <Route path="saved-views/new" element={<SavedViewCreatePage mode="create" />} />
+                  <Route path="saved-views/:viewId/edit" element={<SavedViewCreatePage mode="edit" />} />
+                  <Route path="saved-views/:viewId" element={<SavedViewPage />} />
 
                   {/* Phase 5 — Tasks. Static /tasks/new declared
                       BEFORE /:taskId so the static route doesn't
                       get shadowed by the param route. */}
-                  <Route path="/tasks" element={<TasksList />} />
-                  <Route path="/tasks/new" element={<TaskCreate />} />
-                  <Route path="/tasks/:taskId" element={<TaskDetail />} />
+                  <Route path="tasks" element={<TasksList />} />
+                  <Route path="tasks/new" element={<TaskCreate />} />
+                  <Route path="tasks/:taskId" element={<TaskDetail />} />
 
                   {/* Phase 5 — Triage Workspace. */}
-                  <Route path="/triage" element={<TriageIndex />} />
-                  <Route path="/triage/:queueId" element={<TriagePage />} />
+                  <Route path="triage" element={<TriageIndex />} />
+                  <Route path="triage/:queueId" element={<TriagePage />} />
 
                   {/* Phase 6 — Briefings. `/briefing` (no id) shows the
                       latest morning briefing via useBriefing hook; the
@@ -762,8 +762,8 @@ export function renderTenantSlugRoutes(
                       manufacturing-dashboard.tsx + order-station.tsx
                       stays — this route is additive per the Phase 6
                       coexist strategy. */}
-                  <Route path="/briefing" element={<BriefingPage />} />
-                  <Route path="/briefing/:id" element={<BriefingPage />} />
+                  <Route path="briefing" element={<BriefingPage />} />
+                  <Route path="briefing/:id" element={<BriefingPage />} />
                   {/*
                     Phase 1F — Mfg-tenant from-share entry point at
                     canonical `manufacturer_from_fh_share` authoring
@@ -854,7 +854,7 @@ export function renderTenantSlugRoutes(
                      Communications-Layer Pulse drill-down (Step 5+).
                      Tenant-scoped via current_user; per-account access
                      enforced server-side via EmailAccountAccess. */}
-                  <Route path="/inbox" element={<InboxPage />} />
+                  <Route path="inbox" element={<InboxPage />} />
 
                   {/* Phase W-4b Layer 1 Calendar Step 5 — native event
                      detail page (§14.10.3). Surfaced from Pulse calendar_
@@ -896,16 +896,16 @@ export function renderTenantSlugRoutes(
                   </Route>
 
                   {/* Urn Sales extension */}
-                  <Route path="/urns/catalog" element={<UrnSalesCatalog />} />
-                  <Route path="/urns/orders" element={<UrnOrdersPage />} />
-                  <Route path="/urns/orders/new" element={<UrnOrderForm />} />
-                  <Route path="/urns/proof-review/:orderId" element={<ProofReviewPage />} />
+                  <Route path="urns/catalog" element={<UrnSalesCatalog />} />
+                  <Route path="urns/orders" element={<UrnOrdersPage />} />
+                  <Route path="urns/orders/new" element={<UrnOrderForm />} />
+                  <Route path="urns/proof-review/:orderId" element={<ProofReviewPage />} />
 
                   {/* Resale hub — aliases urn pages + stub inventory */}
-                  <Route path="/resale" element={<ResaleHub />} />
-                  <Route path="/resale/catalog" element={<UrnSalesCatalog />} />
-                  <Route path="/resale/orders" element={<UrnOrdersPage />} />
-                  <Route path="/resale/inventory" element={<ResaleInventory />} />
+                  <Route path="resale" element={<ResaleHub />} />
+                  <Route path="resale/catalog" element={<UrnSalesCatalog />} />
+                  <Route path="resale/orders" element={<UrnOrdersPage />} />
+                  <Route path="resale/inventory" element={<ResaleInventory />} />
 
                   {/* Customers — requires sales module + customers.view permission */}
                   <Route
@@ -929,7 +929,7 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="ar.view" requiredModule="sales" />
                     }
                   >
-                    <Route path="/order-station" element={<OrderStation />} />
+                    <Route path="order-station" element={<OrderStation />} />
                   </Route>
 
                   {/* Sales / AR — requires sales module + ar.view permission */}
@@ -1039,7 +1039,7 @@ export function renderTenantSlugRoutes(
                       path="/ap/bills"
                       element={<VendorBillsPage />}
                     />
-                    <Route path="/transfers" element={<TransfersPage />} />
+                    <Route path="transfers" element={<TransfersPage />} />
                     <Route
                       path="/ap/bills/:id"
                       element={<VendorBillDetailPage />}
@@ -1048,15 +1048,15 @@ export function renderTenantSlugRoutes(
                       path="/ap/received/:id"
                       element={<ReceivedStatementDetail />}
                     />
-                    <Route path="/alerts" element={<AlertsPage />} />
-                    <Route path="/journal-entries" element={<JournalEntriesPage />} />
-                    <Route path="/settings/tax" element={<TaxSettingsPage />} />
-                    <Route path="/reports" element={<ReportsPage />} />
-                    <Route path="/social-service-certificates" element={<SocialServiceCertificatesPage />} />
-                    <Route path="/financials/board" element={<FinancialsBoardPage />} />
-                    <Route path="/agents" element={<AgentDashboard />} />
-                    <Route path="/agents/:jobId/review" element={<ApprovalReview />} />
-                    <Route path="/ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />
+                    <Route path="alerts" element={<AlertsPage />} />
+                    <Route path="journal-entries" element={<JournalEntriesPage />} />
+                    <Route path="settings/tax" element={<TaxSettingsPage />} />
+                    <Route path="reports" element={<ReportsPage />} />
+                    <Route path="social-service-certificates" element={<SocialServiceCertificatesPage />} />
+                    <Route path="financials/board" element={<FinancialsBoardPage />} />
+                    <Route path="agents" element={<AgentDashboard />} />
+                    <Route path="agents/:jobId/review" element={<ApprovalReview />} />
+                    <Route path="ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />
                     <Route
                       path="/ap/payments"
                       element={<VendorPaymentsPage />}
@@ -1105,8 +1105,8 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="inventory.view" requiredModule="inventory" />
                     }
                   >
-                    <Route path="/bom" element={<BOMListPage />} />
-                    <Route path="/bom/:bomId" element={<BOMDetailPage />} />
+                    <Route path="bom" element={<BOMListPage />} />
+                    <Route path="bom/:bomId" element={<BOMDetailPage />} />
                   </Route>
 
                   {/* Project Management — requires project_management module */}
@@ -1115,8 +1115,8 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="projects.view" requiredModule="project_management" />
                     }
                   >
-                    <Route path="/projects" element={<ProjectListPage />} />
-                    <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+                    <Route path="projects" element={<ProjectListPage />} />
+                    <Route path="projects/:projectId" element={<ProjectDetailPage />} />
                   </Route>
 
                   {/* Quality Control — requires inventory module + qc.view permission */}
@@ -1125,13 +1125,13 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="qc.view" requiredModule="inventory" />
                     }
                   >
-                    <Route path="/qc" element={<QCDashboardPage />} />
-                    <Route path="/qc/inspections/:inspectionId" element={<QCInspectionDetailPage />} />
-                    <Route path="/qc/mobile/:inspectionId" element={<QCMobilePage />} />
+                    <Route path="qc" element={<QCDashboardPage />} />
+                    <Route path="qc/inspections/:inspectionId" element={<QCInspectionDetailPage />} />
+                    <Route path="qc/mobile/:inspectionId" element={<QCMobilePage />} />
                   </Route>
 
                   {/* Training hub — accessible to all, tiles gated individually */}
-                  <Route path="/training" element={<TrainingHubPage />} />
+                  <Route path="training" element={<TrainingHubPage />} />
 
                   {/* Safety Management — requires safety_management module */}
                   <Route
@@ -1140,32 +1140,32 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     {/* Training */}
-                    <Route path="/training/vault-order-lifecycle" element={<VaultOrderLifecyclePage />} />
-                    <Route path="/legacy/proof/:orderId" element={<LegacyProofReviewPage />} />
-                    <Route path="/legacy/generator" element={<ProofGeneratorPage />} />
-                    <Route path="/legacy/settings" element={<LegacySettingsPage />} />
-                    <Route path="/legacy/templates/upload" element={<TemplateUploadPage />} />
-                    <Route path="/legacy/library" element={<LegacyLibraryPage />} />
-                    <Route path="/legacy/library/:legacyId" element={<LegacyDetailPage />} />
-                    <Route path="/training/procedures" element={<ProcedureLibraryPage />} />
-                    <Route path="/training/procedures/:key" element={<ProcedureDetailPage />} />
+                    <Route path="training/vault-order-lifecycle" element={<VaultOrderLifecyclePage />} />
+                    <Route path="legacy/proof/:orderId" element={<LegacyProofReviewPage />} />
+                    <Route path="legacy/generator" element={<ProofGeneratorPage />} />
+                    <Route path="legacy/settings" element={<LegacySettingsPage />} />
+                    <Route path="legacy/templates/upload" element={<TemplateUploadPage />} />
+                    <Route path="legacy/library" element={<LegacyLibraryPage />} />
+                    <Route path="legacy/library/:legacyId" element={<LegacyDetailPage />} />
+                    <Route path="training/procedures" element={<ProcedureLibraryPage />} />
+                    <Route path="training/procedures/:key" element={<ProcedureDetailPage />} />
                     {/* Safety */}
-                    <Route path="/safety" element={<SafetyDashboardPage />} />
-                    <Route path="/safety/programs" element={<SafetyProgramsPage />} />
-                    <Route path="/safety/training" element={<SafetyTrainingPage />} />
-                    <Route path="/safety/inspections/new" element={<SafetyInspectPage />} />
-                    <Route path="/safety/inspect/:inspectionId" element={<SafetyInspectPage />} />
-                    <Route path="/safety/incidents" element={<SafetyIncidentPage />} />
-                    <Route path="/safety/incidents/new" element={<SafetyIncidentPage />} />
-                    <Route path="/safety/chemicals" element={<SafetyChemicalsPage />} />
-                    <Route path="/safety/loto" element={<SafetyLOTOPage />} />
-                    <Route path="/safety/notices" element={<SafetyNoticesPage />} />
-                    <Route path="/safety/training/calendar" element={<SafetyTrainingCalendarPage />} />
-                    <Route path="/safety/training/:scheduleId/post" element={<SafetyTrainingPostPage />} />
-                    <Route path="/safety/toolbox-talks" element={<SafetyToolboxTalksPage />} />
-                    <Route path="/safety/training/documents" element={<SafetyTrainingDocumentsPage />} />
-                    <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
-                    <Route path="/safety/osha-300/year-end/:year" element={<SafetyOSHA300YearEndPage />} />
+                    <Route path="safety" element={<SafetyDashboardPage />} />
+                    <Route path="safety/programs" element={<SafetyProgramsPage />} />
+                    <Route path="safety/training" element={<SafetyTrainingPage />} />
+                    <Route path="safety/inspections/new" element={<SafetyInspectPage />} />
+                    <Route path="safety/inspect/:inspectionId" element={<SafetyInspectPage />} />
+                    <Route path="safety/incidents" element={<SafetyIncidentPage />} />
+                    <Route path="safety/incidents/new" element={<SafetyIncidentPage />} />
+                    <Route path="safety/chemicals" element={<SafetyChemicalsPage />} />
+                    <Route path="safety/loto" element={<SafetyLOTOPage />} />
+                    <Route path="safety/notices" element={<SafetyNoticesPage />} />
+                    <Route path="safety/training/calendar" element={<SafetyTrainingCalendarPage />} />
+                    <Route path="safety/training/:scheduleId/post" element={<SafetyTrainingPostPage />} />
+                    <Route path="safety/toolbox-talks" element={<SafetyToolboxTalksPage />} />
+                    <Route path="safety/training/documents" element={<SafetyTrainingDocumentsPage />} />
+                    <Route path="safety/osha-300" element={<SafetyOSHA300Page />} />
+                    <Route path="safety/osha-300/year-end/:year" element={<SafetyOSHA300YearEndPage />} />
                   </Route>
 
                   {/* NPCA Audit Prep — requires npca_audit_prep extension */}
@@ -1174,7 +1174,7 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredModule="npca_audit_prep" />
                     }
                   >
-                    <Route path="/npca" element={<NpcaAuditPrepPage />} />
+                    <Route path="npca" element={<NpcaAuditPrepPage />} />
                   </Route>
 
                   {/* Production Log — requires daily_production_log module */}
@@ -1183,9 +1183,9 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="production_log.view" requiredModule="daily_production_log" />
                     }
                   >
-                    <Route path="/production-log" element={<ProductionLog />} />
-                    <Route path="/production-log/summary" element={<ProductionLogSummary />} />
-                    <Route path="/spring-burials" element={<SpringBurialList />} />
+                    <Route path="production-log" element={<ProductionLog />} />
+                    <Route path="production-log/summary" element={<ProductionLogSummary />} />
+                    <Route path="spring-burials" element={<SpringBurialList />} />
                   </Route>
 
                   {/* Work Orders & Production — requires work_orders module */}
@@ -1194,10 +1194,10 @@ export function renderTenantSlugRoutes(
                         views-composed dashboard. Legacy bespoke board
                         preserved at /production/legacy for one release
                         while Playwright parity is verified. */}
-                    <Route path="/production" element={<ProductionBoardDashboard />} />
-                    <Route path="/production/legacy" element={<ProductionBoardPage />} />
-                    <Route path="/production/pour-events/new" element={<PourEventCreatePage />} />
-                    <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
+                    <Route path="production" element={<ProductionBoardDashboard />} />
+                    <Route path="production/legacy" element={<ProductionBoardPage />} />
+                    <Route path="production/pour-events/new" element={<PourEventCreatePage />} />
+                    <Route path="work-orders/:id" element={<WorkOrderDetailPage />} />
                   </Route>
 
                   {/* Delivery & Logistics — requires driver_delivery module */}
@@ -1206,24 +1206,24 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="delivery.view" requiredModule="driver_delivery" />
                     }
                   >
-                    <Route path="/scheduling" element={<SchedulingBoardPage />} />
-                    <Route path="/delivery/dispatch" element={<Navigate to="/scheduling" replace />} />
-                    <Route path="/delivery/funeral-scheduling" element={<Navigate to="/scheduling" replace />} />
-                    <Route path="/delivery/operations" element={<OperationsPage />} />
-                    <Route path="/delivery/history" element={<HistoryPage />} />
-                    <Route path="/delivery/deliveries/:id" element={<DeliveryDetailPage />} />
-                    <Route path="/delivery/routes/:id" element={<RouteDetailPage />} />
-                    <Route path="/delivery/settings" element={<DeliverySettingsPage />} />
-                    <Route path="/admin/announcements" element={<Navigate to="/announcements" replace />} />
-                    <Route path="/settings/driver-portal-preview" element={<DriverPortalPreviewPage />} />
-                    <Route path="/admin/driver-portal-preview" element={<Navigate to="/settings/driver-portal-preview" replace />} />
+                    <Route path="scheduling" element={<SchedulingBoardPage />} />
+                    <Route path="delivery/dispatch" element={<Navigate to="/scheduling" replace />} />
+                    <Route path="delivery/funeral-scheduling" element={<Navigate to="/scheduling" replace />} />
+                    <Route path="delivery/operations" element={<OperationsPage />} />
+                    <Route path="delivery/history" element={<HistoryPage />} />
+                    <Route path="delivery/deliveries/:id" element={<DeliveryDetailPage />} />
+                    <Route path="delivery/routes/:id" element={<RouteDetailPage />} />
+                    <Route path="delivery/settings" element={<DeliverySettingsPage />} />
+                    <Route path="admin/announcements" element={<Navigate to="/announcements" replace />} />
+                    <Route path="settings/driver-portal-preview" element={<DriverPortalPreviewPage />} />
+                    <Route path="admin/driver-portal-preview" element={<Navigate to="/settings/driver-portal-preview" replace />} />
                   </Route>
                   <Route
                     element={
                       <ProtectedRoute requiredPermission="carriers.view" requiredModule="driver_delivery" />
                     }
                   >
-                    <Route path="/delivery/carriers" element={<CarriersPage />} />
+                    <Route path="delivery/carriers" element={<CarriersPage />} />
                   </Route>
 
                   {/* Funeral Home — requires funeral_home module */}
@@ -1232,12 +1232,12 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="fh_cases.view" requiredModule="funeral_home" />
                     }
                   >
-                    <Route path="/cases" element={<FHCaseListPage />} />
-                    <Route path="/cases/new" element={<FHFirstCallPage />} />
-                    <Route path="/cases/:id" element={<FHCaseDetailPage />} />
-                    <Route path="/funeral-home/dashboard" element={<FHDashboardPage />} />
-                    <Route path="/funeral-home/compliance" element={<FHCompliancePage />} />
-                    <Route path="/funeral-home/price-list" element={<FHPriceListPage />} />
+                    <Route path="cases" element={<FHCaseListPage />} />
+                    <Route path="cases/new" element={<FHFirstCallPage />} />
+                    <Route path="cases/:id" element={<FHCaseDetailPage />} />
+                    <Route path="funeral-home/dashboard" element={<FHDashboardPage />} />
+                    <Route path="funeral-home/compliance" element={<FHCompliancePage />} />
+                    <Route path="funeral-home/price-list" element={<FHPriceListPage />} />
                   </Route>
 
                   {/* Disinterment Management — requires disinterment_management extension */}
@@ -1246,38 +1246,38 @@ export function renderTenantSlugRoutes(
                       <ProtectedRoute requiredPermission="disinterments.view" requiredExtension="disinterment_management" />
                     }
                   >
-                    <Route path="/disinterments" element={<DisintermentListPage />} />
-                    <Route path="/disinterments/:id" element={<DisintermentDetailPage />} />
+                    <Route path="disinterments" element={<DisintermentListPage />} />
+                    <Route path="disinterments/:id" element={<DisintermentDetailPage />} />
                   </Route>
                   <Route
                     element={
                       <ProtectedRoute requiredPermission="disinterment_settings.manage" requiredExtension="disinterment_management" />
                     }
                   >
-                    <Route path="/settings/disinterment" element={<DisintermentSettingsPage />} />
+                    <Route path="settings/disinterment" element={<DisintermentSettingsPage />} />
                   </Route>
                   <Route
                     element={
                       <ProtectedRoute requiredPermission="union_rotations.view" requiredExtension="disinterment_management" />
                     }
                   >
-                    <Route path="/settings/union-rotations" element={<UnionRotationsPage />} />
+                    <Route path="settings/union-rotations" element={<UnionRotationsPage />} />
                   </Route>
 
                   {/* Call Log — any authenticated user */}
-                  <Route path="/calls" element={<CallLogPage />} />
+                  <Route path="calls" element={<CallLogPage />} />
 
                   {/* Knowledge Base — any authenticated user */}
-                  <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
+                  <Route path="knowledge-base" element={<KnowledgeBasePage />} />
 
                   {/* Price Management */}
-                  <Route path="/price-management" element={<PriceManagementPage />} />
-                  <Route path="/price-management/templates" element={<PriceManagementTemplatesPage />} />
-                  <Route path="/price-management/email-settings" element={<PriceManagementEmailSettingsPage />} />
-                  <Route path="/price-management/send" element={<PriceManagementSendPage />} />
+                  <Route path="price-management" element={<PriceManagementPage />} />
+                  <Route path="price-management/templates" element={<PriceManagementTemplatesPage />} />
+                  <Route path="price-management/email-settings" element={<PriceManagementEmailSettingsPage />} />
+                  <Route path="price-management/send" element={<PriceManagementSendPage />} />
 
                   {/* Announcements — any authenticated user */}
-                  <Route path="/announcements" element={<AnnouncementsPage />} />
+                  <Route path="announcements" element={<AnnouncementsPage />} />
 
                   {/* Onboarding — any authenticated user.
                       /onboarding now renders the new step-by-step flow
@@ -1287,68 +1287,68 @@ export function renderTenantSlugRoutes(
                       the 12 must_complete items stays available at
                       /onboarding/hub for tenants whose data hasn't been
                       migrated to the new checklist yet. */}
-                  <Route path="/onboarding" element={<OnboardingFlow />} />
-                  <Route path="/onboarding/flow" element={<OnboardingFlow />} />
+                  <Route path="onboarding" element={<OnboardingFlow />} />
+                  <Route path="onboarding/flow" element={<OnboardingFlow />} />
                   {/* Phase W-4a — operator onboarding (work_areas + responsibilities) */}
                   <Route
                     path="/onboarding/operator-profile"
                     element={<OperatorOnboardingFlow />}
                   />
-                  <Route path="/onboarding/hub" element={<OnboardingHub />} />
-                  <Route path="/onboarding/import-matching" element={<ImportMatchingPage />} />
-                  <Route path="/onboarding/integrations/:type" element={<IntegrationSetupPage />} />
-                  <Route path="/onboarding/product-library" element={<ProductLibraryPage />} />
-                  <Route path="/onboarding/import/:type" element={<ImportWizardPage />} />
-                  <Route path="/onboarding/scenarios/:scenarioKey" element={<ScenarioPlayerPage />} />
-                  <Route path="/onboarding/website-review" element={<WebsiteSuggestionsReview />} />
-                  <Route path="/onboarding/catalog-builder" element={<CatalogBuilder />} />
-                  <Route path="/onboarding/team" element={<TeamSetupPage />} />
-                  <Route path="/onboarding/team-intelligence" element={<TeamIntelligencePage />} />
-                  <Route path="/onboarding/safety-training" element={<SafetyTrainingSetupPage />} />
-                  <Route path="/onboarding/tax-jurisdictions" element={<TaxJurisdictionsOnboarding />} />
-                  <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
-                  <Route path="/onboarding/charge-terms" element={<ChargeTermsOnboardingPage />} />
-                  <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
-                  <Route path="/onboarding/cemeteries" element={<CemeterySetupWizard />} />
-                  <Route path="/onboarding/quick-orders" element={<QuickOrdersOnboarding />} />
-                  <Route path="/onboarding/historical-orders" element={<HistoricalOrderImportPage />} />
-                  <Route path="/onboarding/import" element={<UnifiedImportPage />} />
-                  <Route path="/onboarding/branding" element={<CompanyBrandingPage />} />
-                  <Route path="/settings/seasonal-templates" element={<SeasonalTemplatesSettings />} />
-                  <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
-                  <Route path="/onboarding/data-migration" element={<DataMigrationPage />} />
-                  <Route path="/settings/data-migration" element={<DataMigrationPage />} />
-                  <Route path="/settings/data/customer-types" element={<CustomerTypesPage />} />
-                  <Route path="/settings/cemeteries/:cemeteryId" element={<CemeteryProfilePage />} />
-                  <Route path="/settings/cemeteries" element={<CemeteryDeliverySettingsPage />} />
-                  <Route path="/onboarding/accounting/review" element={<AccountingReviewPage />} />
-                  <Route path="/onboarding/scheduling" element={<SchedulingSetupPage />} />
-                  <Route path="/onboarding/network-preferences" element={<NetworkPreferencesPage />} />
-                  <Route path="/onboarding/vault-setup" element={<VaultSetupPage />} />
-                  <Route path="/onboarding/vault-molds" element={<VaultMoldSetupPage />} />
-                  <Route path="/settings/team-intelligence" element={<TeamIntelligencePage />} />
-                  <Route path="/settings/charges" element={<ChargeSetupPage />} />
-                  <Route path="/settings/invoice" element={<InvoiceSettingsPage />} />
-                  <Route path="/settings/vault-supplier" element={<VaultSupplierSettingsPage />} />
-                  <Route path="/settings/vault-molds" element={<VaultMoldSettingsPage />} />
-                  <Route path="/settings/network/preferences" element={<NetworkPreferencesSettingsPage />} />
-                  <Route path="/settings/scheduling" element={<SchedulingSettingsPage />} />
-                  <Route path="/settings/call-intelligence" element={<CallIntelligenceSettingsPage />} />
-                  <Route path="/settings/programs" element={<ProgramsSettingsPage />} />
-                  <Route path="/settings/compliance" element={<ComplianceConfigPage />} />
-                  <Route path="/settings/integrations/accounting" element={<SyncHealthDashboardPage />} />
+                  <Route path="onboarding/hub" element={<OnboardingHub />} />
+                  <Route path="onboarding/import-matching" element={<ImportMatchingPage />} />
+                  <Route path="onboarding/integrations/:type" element={<IntegrationSetupPage />} />
+                  <Route path="onboarding/product-library" element={<ProductLibraryPage />} />
+                  <Route path="onboarding/import/:type" element={<ImportWizardPage />} />
+                  <Route path="onboarding/scenarios/:scenarioKey" element={<ScenarioPlayerPage />} />
+                  <Route path="onboarding/website-review" element={<WebsiteSuggestionsReview />} />
+                  <Route path="onboarding/catalog-builder" element={<CatalogBuilder />} />
+                  <Route path="onboarding/team" element={<TeamSetupPage />} />
+                  <Route path="onboarding/team-intelligence" element={<TeamIntelligencePage />} />
+                  <Route path="onboarding/safety-training" element={<SafetyTrainingSetupPage />} />
+                  <Route path="onboarding/tax-jurisdictions" element={<TaxJurisdictionsOnboarding />} />
+                  <Route path="onboarding/charges" element={<ChargeSetupPage />} />
+                  <Route path="onboarding/charge-terms" element={<ChargeTermsOnboardingPage />} />
+                  <Route path="onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
+                  <Route path="onboarding/cemeteries" element={<CemeterySetupWizard />} />
+                  <Route path="onboarding/quick-orders" element={<QuickOrdersOnboarding />} />
+                  <Route path="onboarding/historical-orders" element={<HistoricalOrderImportPage />} />
+                  <Route path="onboarding/import" element={<UnifiedImportPage />} />
+                  <Route path="onboarding/branding" element={<CompanyBrandingPage />} />
+                  <Route path="settings/seasonal-templates" element={<SeasonalTemplatesSettings />} />
+                  <Route path="onboarding/accounting" element={<AccountingSetupPage />} />
+                  <Route path="onboarding/data-migration" element={<DataMigrationPage />} />
+                  <Route path="settings/data-migration" element={<DataMigrationPage />} />
+                  <Route path="settings/data/customer-types" element={<CustomerTypesPage />} />
+                  <Route path="settings/cemeteries/:cemeteryId" element={<CemeteryProfilePage />} />
+                  <Route path="settings/cemeteries" element={<CemeteryDeliverySettingsPage />} />
+                  <Route path="onboarding/accounting/review" element={<AccountingReviewPage />} />
+                  <Route path="onboarding/scheduling" element={<SchedulingSetupPage />} />
+                  <Route path="onboarding/network-preferences" element={<NetworkPreferencesPage />} />
+                  <Route path="onboarding/vault-setup" element={<VaultSetupPage />} />
+                  <Route path="onboarding/vault-molds" element={<VaultMoldSetupPage />} />
+                  <Route path="settings/team-intelligence" element={<TeamIntelligencePage />} />
+                  <Route path="settings/charges" element={<ChargeSetupPage />} />
+                  <Route path="settings/invoice" element={<InvoiceSettingsPage />} />
+                  <Route path="settings/vault-supplier" element={<VaultSupplierSettingsPage />} />
+                  <Route path="settings/vault-molds" element={<VaultMoldSettingsPage />} />
+                  <Route path="settings/network/preferences" element={<NetworkPreferencesSettingsPage />} />
+                  <Route path="settings/scheduling" element={<SchedulingSettingsPage />} />
+                  <Route path="settings/call-intelligence" element={<CallIntelligenceSettingsPage />} />
+                  <Route path="settings/programs" element={<ProgramsSettingsPage />} />
+                  <Route path="settings/compliance" element={<ComplianceConfigPage />} />
+                  <Route path="settings/integrations/accounting" element={<SyncHealthDashboardPage />} />
 
                   {/* Locations — admin only */}
                   <Route
                     element={<ProtectedRoute adminOnly />}
                   >
-                    <Route path="/locations" element={<LocationsOverview />} />
-                    <Route path="/settings/locations" element={<LocationSettings />} />
+                    <Route path="locations" element={<LocationsOverview />} />
+                    <Route path="settings/locations" element={<LocationSettings />} />
                   </Route>
 
                   {/* Extension Catalog — any authenticated user */}
-                  <Route path="/extensions" element={<ExtensionCatalogPage />} />
-                  <Route path="/extensions/installed" element={<ExtensionInstalledPage />} />
+                  <Route path="extensions" element={<ExtensionCatalogPage />} />
+                  <Route path="extensions/installed" element={<ExtensionInstalledPage />} />
 
                   {/* Notifications — V-1d promoted to full Vault
                       service; the canonical path is now
@@ -1366,7 +1366,7 @@ export function renderTenantSlugRoutes(
                   />
 
                   {/* My Profile — any authenticated user */}
-                  <Route path="/profile" element={<MyProfile />} />
+                  <Route path="profile" element={<MyProfile />} />
 
                   {/* Admin employee profile — requires employees.view */}
                   <Route
@@ -1411,14 +1411,14 @@ export function renderTenantSlugRoutes(
                       element={<WorkflowBuilderPage />}
                     />
                     {/* Funeral Home vertical (FH-1a + FH-1b) */}
-                    <Route path="/fh" element={<FhDirectionHub />} />
-                    <Route path="/fh/cases" element={<FhCaseList />} />
-                    <Route path="/fh/cases/:caseId" element={<FhCaseDashboard />} />
-                    <Route path="/fh/cases/:caseId/arrangement" element={<FhArrangementConference />} />
-                    <Route path="/fh/cases/:caseId/vital-statistics" element={<FhVitalStatistics />} />
-                    <Route path="/fh/cases/:caseId/story" element={<FhStoryStep />} />
-                    <Route path="/fh/cases/:caseId/cemetery" element={<FhCemeteryStep />} />
-                    <Route path="/fh/settings/network" element={<FhNetworkSettings />} />
+                    <Route path="fh" element={<FhDirectionHub />} />
+                    <Route path="fh/cases" element={<FhCaseList />} />
+                    <Route path="fh/cases/:caseId" element={<FhCaseDashboard />} />
+                    <Route path="fh/cases/:caseId/arrangement" element={<FhArrangementConference />} />
+                    <Route path="fh/cases/:caseId/vital-statistics" element={<FhVitalStatistics />} />
+                    <Route path="fh/cases/:caseId/story" element={<FhStoryStep />} />
+                    <Route path="fh/cases/:caseId/cemetery" element={<FhCemeteryStep />} />
+                    <Route path="fh/settings/network" element={<FhNetworkSettings />} />
                   </Route>
 
                   {/* Audit logs — requires audit.view permission */}
@@ -1453,7 +1453,7 @@ export function renderTenantSlugRoutes(
                       Overview (index) is open to any authenticated
                       tenant user — it renders only the widgets whose
                       service they have access to (backend enforces). */}
-                  <Route path="/vault" element={<VaultHubLayout />}>
+                  <Route path="vault" element={<VaultHubLayout />}>
                     <Route index element={<VaultOverview />} />
 
                     {/* Documents — admin-only */}
@@ -1801,66 +1801,66 @@ export function renderTenantSlugRoutes(
               {/* Driver mobile — uses DriverLayout (no sidebar) */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<DriverLayout />}>
-                  <Route path="/driver" element={<DriverConsolePage />} />
-                  <Route path="/driver/home" element={<DriverHomePage />} />
-                  <Route path="/driver/route" element={<DriverRoutePage />} />
-                  <Route path="/driver/stops/:stopId" element={<StopDetailPage />} />
-                  <Route path="/driver/mileage" element={<MileagePage />} />
+                  <Route path="driver" element={<DriverConsolePage />} />
+                  <Route path="driver/home" element={<DriverHomePage />} />
+                  <Route path="driver/route" element={<DriverRoutePage />} />
+                  <Route path="driver/stops/:stopId" element={<StopDetailPage />} />
+                  <Route path="driver/mileage" element={<MileagePage />} />
                 </Route>
               </Route>
 
               {/* Console — production/delivery employees */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<ConsoleLayout />}>
-                  <Route path="/console" element={<ConsoleSelectPage />} />
-                  <Route path="/console/delivery" element={<DeliveryConsolePage />} />
-                  <Route path="/console/operations" element={<OperationsBoardPage />} />
-                  <Route path="/console/production" element={<ProductionConsolePage />} />
-                  <Route path="/console/operations/product-entry" element={<LogProductionPage />} />
-                  <Route path="/console/operations/incident" element={<SafetyLogPage />} />
-                  <Route path="/console/operations/observation" element={<SafetyLogPage />} />
-                  <Route path="/console/operations/qc" element={<QCCheckPage />} />
-                  <Route path="/console/operations/receive" element={<ReceiveDeliveryPage />} />
-                  <Route path="/console/operations/receive/:poId" element={<ReceiveDeliveryPage />} />
-                  <Route path="/console/operations/end-of-day" element={<EndOfDayPage />} />
-                  <Route path="/console/operations/inspection" element={<EquipmentInspectionPage />} />
+                  <Route path="console" element={<ConsoleSelectPage />} />
+                  <Route path="console/delivery" element={<DeliveryConsolePage />} />
+                  <Route path="console/operations" element={<OperationsBoardPage />} />
+                  <Route path="console/production" element={<ProductionConsolePage />} />
+                  <Route path="console/operations/product-entry" element={<LogProductionPage />} />
+                  <Route path="console/operations/incident" element={<SafetyLogPage />} />
+                  <Route path="console/operations/observation" element={<SafetyLogPage />} />
+                  <Route path="console/operations/qc" element={<QCCheckPage />} />
+                  <Route path="console/operations/receive" element={<ReceiveDeliveryPage />} />
+                  <Route path="console/operations/receive/:poId" element={<ReceiveDeliveryPage />} />
+                  <Route path="console/operations/end-of-day" element={<EndOfDayPage />} />
+                  <Route path="console/operations/inspection" element={<EquipmentInspectionPage />} />
                 </Route>
               </Route>
 
               {/* Carrier portal — authenticated, minimal UI */}
               <Route element={<ProtectedRoute />}>
-                <Route path="/carrier/deliveries" element={<CarrierDeliveriesPage />} />
+                <Route path="carrier/deliveries" element={<CarrierDeliveriesPage />} />
               </Route>
 
               {/* Mobile production log — standalone, no sidebar */}
               <Route element={<ProtectedRoute />}>
-                <Route path="/m/production-log" element={<MobileProductionLog />} />
+                <Route path="m/production-log" element={<MobileProductionLog />} />
               </Route>
 
               {/* Public intake form — no auth required */}
-              <Route path="/intake/disinterment/:token" element={<DisintermentIntakePage />} />
+              <Route path="intake/disinterment/:token" element={<DisintermentIntakePage />} />
 
               {/* FH proof approval — public, token-validated */}
-              <Route path="/proof-approval/:token" element={<FHApprovalPage />} />
+              <Route path="proof-approval/:token" element={<FHApprovalPage />} />
 
               {/* Native signing signer-facing page — public, token-validated (Phase D-4) */}
-              <Route path="/sign/:token" element={<SignerLandingPage />} />
+              <Route path="sign/:token" element={<SignerLandingPage />} />
 
               {/* Email operational-action magic-link surface — public, token-
                   authenticated kill-the-portal contextual surface per
                   §3.26.15.17 + §14.9.5 (Phase W-4b Layer 1 Step 4c). */}
-              <Route path="/email/actions/:token" element={<MagicLinkActionPage />} />
+              <Route path="email/actions/:token" element={<MagicLinkActionPage />} />
 
               {/* Calendar operational-action magic-link surface — public, token-
                   authenticated kill-the-portal contextual surface per
                   §3.26.16.17 + §14.10.5 (Phase W-4b Layer 1 Step 4). */}
-              <Route path="/calendar/actions/:token" element={<CalendarMagicLinkActionPage />} />
+              <Route path="calendar/actions/:token" element={<CalendarMagicLinkActionPage />} />
 
               {/* Family portal — no auth required, standalone page */}
-              <Route path="/portal/:token" element={<FHPortalPage />} />
+              <Route path="portal/:token" element={<FHPortalPage />} />
 
               {/* Platform admin entry (for non-subdomain setups) */}
-              <Route path="/platform-admin" element={<PlatformAdminEntry />} />
+              <Route path="platform-admin" element={<PlatformAdminEntry />} />
 
               {/* Root redirect — R-1.6.9 parameterized.
                *
@@ -1884,12 +1884,12 @@ export function renderTenantSlugRoutes(
                *  investigation. */}
               {excludeRootRedirect ? (
                 <>
-                  <Route path="/" element={<HomePage />} />
+                  <Route index element={<HomePage />} />
                   <Route path="*" element={<HomePage />} />
                 </>
               ) : (
                 <>
-                  <Route path="/" element={<RootRedirect />} />
+                  <Route index element={<RootRedirect />} />
                   <Route path="*" element={<NotFound />} />
                 </>
               )}

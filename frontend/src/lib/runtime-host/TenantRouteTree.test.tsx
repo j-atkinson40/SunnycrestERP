@@ -10,10 +10,18 @@
  * `admin.<domain>/home` (empty AdminLayout chrome).
  *
  * Fix: parameterize `renderTenantSlugRoutes({ excludeRootRedirect: true })`
- * to swap RootRedirect + NotFound for HomePage at both `/` and `*`.
+ * to swap RootRedirect + NotFound for HomePage at both root and `*`.
  * TenantRouteTree passes the opt; production tenant boot path uses the
  * default (no opts) so RootRedirect continues to dispatch role-based
  * landing.
+ *
+ * R-2.x note: paths inside renderTenantSlugRoutes were converted from
+ * absolute (`<Route path="/login">`) to relative (`<Route path="login">`)
+ * + the two root routes became `<Route index>` (RR v7 idiom). The
+ * R-1.6.9 invariant is preserved — HomePage still renders at the root
+ * slot when excludeRootRedirect=true, RootRedirect at the root slot
+ * otherwise — but the path-string predicates below were updated to
+ * match the new relative shape + index-route discriminator.
  *
  * These tests fail loudly if a future "let me clean this up" patch
  * removes the parameterization.
@@ -56,6 +64,36 @@ function findRoutesByPath(
 }
 
 
+/**
+ * R-2.x — find index routes (RR v7 idiom: `<Route index>` with no path).
+ * Used to assert the root-slot semantics (formerly `<Route path="/">`)
+ * after R-2.x converted the two root routes inside the
+ * excludeRootRedirect ternary to index routes.
+ */
+function findIndexRoutes(fragment: ReactElement): ReactElement[] {
+  const matches: ReactElement[] = []
+
+  function walk(node: unknown): void {
+    if (!isValidElement(node)) return
+    const props = node.props as {
+      index?: unknown
+      path?: unknown
+      children?: unknown
+    } | null
+    if (props?.index === true) {
+      matches.push(node as ReactElement)
+    }
+    const children = props?.children
+    if (children) {
+      Children.forEach(children, walk)
+    }
+  }
+
+  Children.forEach((fragment.props as { children?: unknown }).children, walk)
+  return matches
+}
+
+
 function elementTypeName(el: ReactElement | undefined): string {
   if (!el) return "<undefined>"
   const elementProp = (el.props as { element?: unknown } | null)?.element
@@ -76,12 +114,12 @@ function elementTypeName(el: ReactElement | undefined): string {
 
 describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
   describe("default (no opts) — production tenant operator flow", () => {
-    it("mounts <RootRedirect /> at path='/'", () => {
+    it("mounts <RootRedirect /> at the root index slot", () => {
       const fragment = renderTenantSlugRoutes()
-      const rootRoutes = findRoutesByPath(fragment, (p) => p === "/")
-      expect(rootRoutes.length).toBeGreaterThan(0)
-      const lastRoot = rootRoutes[rootRoutes.length - 1]
-      expect(elementTypeName(lastRoot)).toBe("RootRedirect")
+      const indexRoutes = findIndexRoutes(fragment)
+      expect(indexRoutes.length).toBeGreaterThan(0)
+      const lastIndex = indexRoutes[indexRoutes.length - 1]
+      expect(elementTypeName(lastIndex)).toBe("RootRedirect")
     })
 
     it("mounts <NotFound /> at path='*'", () => {
@@ -94,12 +132,12 @@ describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
   })
 
   describe("excludeRootRedirect=true — runtime editor flow", () => {
-    it("mounts <HomePage /> at path='/' (NOT RootRedirect)", () => {
+    it("mounts <HomePage /> at the root index slot (NOT RootRedirect)", () => {
       const fragment = renderTenantSlugRoutes({ excludeRootRedirect: true })
-      const rootRoutes = findRoutesByPath(fragment, (p) => p === "/")
-      expect(rootRoutes.length).toBeGreaterThan(0)
-      const lastRoot = rootRoutes[rootRoutes.length - 1]
-      expect(elementTypeName(lastRoot)).toBe("HomePage")
+      const indexRoutes = findIndexRoutes(fragment)
+      expect(indexRoutes.length).toBeGreaterThan(0)
+      const lastIndex = indexRoutes[indexRoutes.length - 1]
+      expect(elementTypeName(lastIndex)).toBe("HomePage")
       // R-1.6.9 regression guard: RootRedirect must NOT be in the tree
       // anywhere when excludeRootRedirect=true. Otherwise the runtime
       // editor would still trigger the absolute /home navigation.
@@ -127,30 +165,36 @@ describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
   })
 
   describe("default and runtime-editor branches share non-root routes", () => {
-    it("both modes still register `/login`", () => {
+    it("both modes still register `login` (R-2.x: relative path)", () => {
       const defaultFragment = renderTenantSlugRoutes()
       const rteFragment = renderTenantSlugRoutes({
         excludeRootRedirect: true,
       })
       const defaultLogin = findRoutesByPath(
         defaultFragment,
-        (p) => p === "/login",
+        (p) => p === "login",
       )
-      const rteLogin = findRoutesByPath(rteFragment, (p) => p === "/login")
+      const rteLogin = findRoutesByPath(rteFragment, (p) => p === "login")
       expect(defaultLogin.length).toBeGreaterThan(0)
       expect(rteLogin.length).toBeGreaterThan(0)
     })
 
-    it("both modes still register `/calendar/actions/:token`", () => {
+    it("both modes still register `calendar/actions/:token` (R-2.x: relative path)", () => {
       const defaultFragment = renderTenantSlugRoutes()
       const rteFragment = renderTenantSlugRoutes({
         excludeRootRedirect: true,
       })
       expect(
-        findRoutesByPath(defaultFragment, (p) => p === "/calendar/actions/:token"),
+        findRoutesByPath(
+          defaultFragment,
+          (p) => p === "calendar/actions/:token",
+        ),
       ).not.toHaveLength(0)
       expect(
-        findRoutesByPath(rteFragment, (p) => p === "/calendar/actions/:token"),
+        findRoutesByPath(
+          rteFragment,
+          (p) => p === "calendar/actions/:token",
+        ),
       ).not.toHaveLength(0)
     })
   })
