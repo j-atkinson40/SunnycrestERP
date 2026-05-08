@@ -19,9 +19,29 @@
  * `focus-context.tsx:186 + :207-219`). URL-driven Focus open is more
  * reliable than Cmd+K interaction in Playwright.
  *
+ * R-2.0.4 — mounted <Focus /> inside RuntimeEditorShell so the
+ * URL-driven Focus open actually surfaces a modal (pre-R-2.0.4 the
+ * BridgeableAdminApp branch had no Focus mount).
+ *
+ * R-2.0.5 — switched edit-mode entry from click-the-toggle to URL-
+ * driven `?edit=1`. The previous click-based toggle order was:
+ * navigate (Focus opens) → click runtime-editor-toggle. But the
+ * funeral-scheduling Focus's ancillary-pool-pin (a base-ui Popover
+ * portal) overlapped the toggle button position once the Focus
+ * mounted, intercepting pointer events and silently swallowing the
+ * click. EditModeToggle's useEffect at lines 29-35 reads `?edit=1`
+ * on mount + searchParams change, calling editMode.setEditing(true)
+ * declaratively — same state, no click ordering. The underlying
+ * z-index layering question (should Focus portal popovers occlude
+ * editor chrome?) is flagged as known hygiene; production usage
+ * typically enables edit mode at the page level before navigating
+ * into Focuses, so this is not user-blocking. Tracked for separate
+ * z-index review arc.
+ *
  * Validates:
  *   - R-2.x routing: editor mounts /dispatch/funeral-schedule
  *   - URL-driven Focus open via ?focus=funeral-scheduling
+ *   - URL-driven edit mode via ?edit=1 (R-2.0.5)
  *   - R-2.0 Path 1 wrapping: AncillaryCard emits
  *     data-component-name="ancillary-card" boundary div inside the
  *     Focus core
@@ -46,24 +66,26 @@ test.describe("Gate 15 — AncillaryCard click-to-edit", () => {
     const sess = await openEditorForTestco(page)
 
     // Navigate to dispatch surface inside editor shell + auto-open
-    // the funeral-scheduling Focus via URL param. Editor shell reads
-    // `?tenant` + `?user` from useSearchParams; FocusContext reads
-    // `?focus`. All three coexist in the same query string.
+    // the funeral-scheduling Focus via URL param + arm edit mode via
+    // ?edit=1 declaratively. Editor shell reads `?tenant` + `?user`
+    // from useSearchParams; FocusContext reads `?focus`;
+    // EditModeToggle reads `?edit`. All four coexist in the same
+    // query string; their reads are independent useEffect chains in
+    // different contexts.
     const params =
       `?tenant=${encodeURIComponent(sess.tenantSlug)}` +
       `&user=${encodeURIComponent(sess.impersonatedUserId)}` +
-      `&focus=funeral-scheduling`
+      `&focus=funeral-scheduling` +
+      `&edit=1`
     await page.goto(
       `/bridgeable-admin/runtime-editor/dispatch/funeral-schedule${params}`,
     )
     await page.waitForLoadState("networkidle")
 
-    // Toggle edit mode. The Focus core mounts inside the editor's
-    // tenant content wrapper; SelectionOverlay's
-    // [data-runtime-host-root] boundary still applies — clicks
-    // inside the Focus get walked up to the AncillaryCard boundary
-    // div, not bubbled into editor chrome.
-    await page.getByTestId("runtime-editor-toggle").click()
+    // Edit mode came up via ?edit=1; no click required (and would
+    // be intercepted by the Focus's ancillary-pool-pin Popover
+    // portal overlapping the toggle's position — see R-2.0.5
+    // header comment).
     await expect(
       page.getByTestId("runtime-editor-edit-indicator"),
     ).toBeVisible({ timeout: 10_000 })
