@@ -1,34 +1,37 @@
 /**
- * R-5.0 — EdgePanelEditorPage.
+ * R-5.2 — EdgePanelEditorPage.
  *
  * Multi-page edge panel authoring at `/visual-editor/edge-panels`.
- * Mirrors the Compositions tab's row-based shape per page; per brief
- * §8 the rendering kind is `kind="edge_panel"` + `pages` JSONB array.
+ * Replaces R-5.0's JSON-textarea row authoring with the canonical
+ * R-3.1 InteractivePlacementCanvas substrate, making this page the
+ * THIRD consumer of the canvas alongside CompositionEditorPage and
+ * FocusEditorPage's Composition tab. Reuse validates the canvas
+ * substrate's prop-driven design empirically.
  *
- * v1 ships:
- *   - Scope selector (platform_default / vertical_default / tenant_override)
- *   - Panel-key selector (focus_type column carries the slug for
- *     edge-panel kind; defaults "default")
- *   - Page-list left-rail (add page / delete page / select / set
- *     default)
- *   - Per-page name editor + page-canvas authoring (textarea-driven
- *     row JSON for v1; the visual canvas embed is a Phase R-5.x
- *     polish per Spec-Override Discipline — too tightly coupled to
- *     CompositionEditorPage's single-page state model to retrofit
- *     in this commit. Authoring-via-JSON-textarea remains a
- *     working canonical author surface; rebuild pending arc).
- *   - Live preview panel mirroring the runtime panel shape.
- *   - Save round-trip via /api/platform/admin/visual-editor/compositions/.
+ * Per-page state model (per Section 3 of R-5.2 investigation):
+ *   - `pages: EdgePanelPage[]` is the canonical state. Canvas commits
+ *     write directly to it via the active page's slice.
+ *   - `pageSelections: Record<page_id, Selection>` keyed by page_id —
+ *     selection state is per-page so switching pages preserves what
+ *     was selected on each.
+ *   - `undoStacks` + `undoPointers` keyed by page_id — Cmd+Z scopes
+ *     to the active page only. Cross-page Cmd+Z would jump pages,
+ *     which is a confusing anti-pattern.
+ *   - Page-level changes (rename / delete / add / set-default) are
+ *     NOT undoable in R-5.2 (consistent with R-5.0's behavior).
+ *
+ * Save discipline: button disabled while a drag gesture is in flight
+ * (per investigation R2). Mid-drag save would persist a partially
+ * committed state; conservative pattern matches CompositionEditorPage.
  *
  * Authentication: platform admin via adminApi (per visual-editor
  * canonical pattern).
  */
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -39,10 +42,26 @@ import {
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
 import type { ResolvedEdgePanel, EdgePanelPage } from "@/lib/edge-panel/types"
 import { CompositionRenderer } from "@/lib/visual-editor/compositions/CompositionRenderer"
-import type { ResolvedComposition } from "@/lib/visual-editor/compositions/types"
+import type {
+  CompositionRow,
+  ResolvedComposition,
+} from "@/lib/visual-editor/compositions/types"
+
+import { EdgePanelEditorCanvas } from "./components/EdgePanelEditorCanvas"
+import type { Selection } from "./components/EdgePanelEditorCanvas"
+import { PageList } from "./components/PageList"
+import { PageMetadataEditor } from "./components/PageMetadataEditor"
 
 
 type Scope = "platform_default" | "vertical_default" | "tenant_override"
+
+
+interface DraftSnapshot {
+  rows: CompositionRow[]
+}
+
+
+const UNDO_STACK_LIMIT = 50
 
 
 function emptyPage(name: string): EdgePanelPage {
@@ -69,6 +88,20 @@ function pageToResolvedComposition(page: EdgePanelPage): ResolvedComposition {
 }
 
 
+/** Deep-clone rows for snapshotting. Mirrors CompositionEditorPage's
+ * `pushSnapshot` clone discipline. */
+function cloneRows(rows: CompositionRow[]): CompositionRow[] {
+  return rows.map((r) => ({
+    ...r,
+    placements: r.placements.map((p) => ({
+      ...p,
+      prop_overrides: { ...p.prop_overrides },
+      display_config: p.display_config ? { ...p.display_config } : {},
+    })),
+  }))
+}
+
+
 export default function EdgePanelEditorPage() {
   const [scope, setScope] = useState<Scope>("platform_default")
   const [vertical, setVertical] = useState<string>("manufacturing")
@@ -77,12 +110,25 @@ export default function EdgePanelEditorPage() {
   const [pages, setPages] = useState<EdgePanelPage[]>([])
   const [activePageIndex, setActivePageIndex] = useState<number>(0)
   const [defaultPageIndex, setDefaultPageIndex] = useState<number>(0)
-  const [rowsJson, setRowsJson] = useState<string>("[]")
   const [loading, setLoading] = useState<boolean>(false)
   const [saving, setSaving] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Per-page selection state. Keyed on page_id; entries are cleaned
+  // up on page deletion to prevent orphan growth (R-5.2 R1).
+  const [pageSelections, setPageSelections] = useState<
+    Record<string, Selection>
+  >({})
+
+  // Per-page undo stacks. Same keying + cleanup discipline.
+  const undoStacks = useRef<Record<string, DraftSnapshot[]>>({})
+  const undoPointers = useRef<Record<string, number>>({})
+  const isReplayingRef = useRef(false)
+
   const activePage = pages[activePageIndex] ?? null
+  const activePageId = activePage?.page_id ?? ""
+  const activeSelection: Selection =
+    pageSelections[activePageId] ?? { kind: "none" }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -99,12 +145,25 @@ export default function EdgePanelEditorPage() {
         { params },
       )
       const incoming = r.data.pages ?? []
-      setPages(incoming.length > 0 ? incoming : [emptyPage("Page 1")])
+      const initial = incoming.length > 0 ? incoming : [emptyPage("Page 1")]
+      setPages(initial)
       setActivePageIndex(0)
       const defaultIdx = (
         r.data.canvas_config as { default_page_index?: number }
       )?.default_page_index ?? 0
       setDefaultPageIndex(defaultIdx)
+      // Reset per-page selection + undo state on load.
+      setPageSelections({})
+      undoStacks.current = {}
+      undoPointers.current = {}
+      // Seed each page's undo stack with its initial snapshot so the
+      // first mutation has something to roll back to.
+      for (const p of initial) {
+        undoStacks.current[p.page_id] = [
+          { rows: cloneRows(p.rows ?? []) },
+        ]
+        undoPointers.current[p.page_id] = 0
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -116,60 +175,180 @@ export default function EdgePanelEditorPage() {
     void load()
   }, [load])
 
-  // Sync rowsJson with the active page's rows.
-  useEffect(() => {
-    if (activePage) {
-      setRowsJson(JSON.stringify(activePage.rows ?? [], null, 2))
-    }
-  }, [activePage])
+  // ── Snapshot management (per-page) ───────────────────────────
 
-  const updateActivePageRows = useCallback(() => {
-    try {
-      const parsed = JSON.parse(rowsJson)
-      if (!Array.isArray(parsed)) {
-        setError("rows must be a JSON array")
-        return
-      }
-      setError(null)
+  const pushSnapshotForPage = useCallback(
+    (pageId: string, rows: CompositionRow[]) => {
+      if (isReplayingRef.current) return
+      const stack = undoStacks.current[pageId] ?? []
+      const ptr = undoPointers.current[pageId] ?? -1
+      const truncated = stack.slice(0, ptr + 1)
+      truncated.push({ rows: cloneRows(rows) })
+      const overflow = truncated.length - UNDO_STACK_LIMIT
+      const next = overflow > 0 ? truncated.slice(overflow) : truncated
+      undoStacks.current[pageId] = next
+      undoPointers.current[pageId] = next.length - 1
+    },
+    [],
+  )
+
+  const handleUndoableMutation = useCallback(() => {
+    if (!activePage) return
+    // Push current state BEFORE the mutation lands. Subsequent
+    // onCommitRows updates the actual state; the next push captures
+    // the post-mutation frame.
+    pushSnapshotForPage(activePage.page_id, activePage.rows)
+  }, [activePage, pushSnapshotForPage])
+
+  const replaySnapshotForPage = useCallback(
+    (pageId: string, snap: DraftSnapshot) => {
+      isReplayingRef.current = true
       setPages((prev) =>
-        prev.map((p, i) =>
-          i === activePageIndex ? { ...p, rows: parsed } : p,
+        prev.map((p) =>
+          p.page_id === pageId
+            ? { ...p, rows: cloneRows(snap.rows) }
+            : p,
         ),
       )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }, [rowsJson, activePageIndex])
+      queueMicrotask(() => {
+        isReplayingRef.current = false
+      })
+    },
+    [],
+  )
+
+  const handleUndo = useCallback(() => {
+    if (!activePage) return
+    const ptr = undoPointers.current[activePage.page_id] ?? -1
+    if (ptr <= 0) return
+    undoPointers.current[activePage.page_id] = ptr - 1
+    const stack = undoStacks.current[activePage.page_id] ?? []
+    const snap = stack[ptr - 1]
+    if (snap) replaySnapshotForPage(activePage.page_id, snap)
+  }, [activePage, replaySnapshotForPage])
+
+  const handleRedo = useCallback(() => {
+    if (!activePage) return
+    const stack = undoStacks.current[activePage.page_id] ?? []
+    const ptr = undoPointers.current[activePage.page_id] ?? -1
+    if (ptr < 0 || ptr >= stack.length - 1) return
+    undoPointers.current[activePage.page_id] = ptr + 1
+    const snap = stack[ptr + 1]
+    if (snap) replaySnapshotForPage(activePage.page_id, snap)
+  }, [activePage, replaySnapshotForPage])
+
+  // ── Selection callbacks ──────────────────────────────────────
+
+  const handleSelectionChange = useCallback(
+    (next: Selection) => {
+      if (!activePage) return
+      setPageSelections((prev) => ({
+        ...prev,
+        [activePage.page_id]: next,
+      }))
+    },
+    [activePage],
+  )
+
+  // ── Row commits from canvas ──────────────────────────────────
+
+  const handleCommitRows = useCallback(
+    (newRows: CompositionRow[]) => {
+      if (!activePage) return
+      setPages((prev) =>
+        prev.map((p) =>
+          p.page_id === activePage.page_id ? { ...p, rows: newRows } : p,
+        ),
+      )
+      // Push the post-mutation snapshot so undo walks back through the
+      // mutation history. handleUndoableMutation has already pushed the
+      // pre-mutation snapshot; this push captures the new frame so a
+      // subsequent undo lands at the pre-mutation state.
+      pushSnapshotForPage(activePage.page_id, newRows)
+    },
+    [activePage, pushSnapshotForPage],
+  )
+
+  // ── Page management ──────────────────────────────────────────
 
   const addPage = useCallback(() => {
     const next = emptyPage(`Page ${pages.length + 1}`)
     setPages((prev) => [...prev, next])
     setActivePageIndex(pages.length)
+    // Seed per-page state for the new page.
+    undoStacks.current[next.page_id] = [{ rows: [] }]
+    undoPointers.current[next.page_id] = 0
   }, [pages.length])
 
   const deletePage = useCallback(() => {
+    if (!activePage) return
     if (pages.length <= 1) {
       setError("Cannot delete the last page.")
       return
     }
-    setPages((prev) => prev.filter((_, i) => i !== activePageIndex))
+    const removedId = activePage.page_id
+    setPages((prev) => prev.filter((p) => p.page_id !== removedId))
     setActivePageIndex(Math.max(0, activePageIndex - 1))
-  }, [pages.length, activePageIndex])
+    // Clean up per-page state for the removed page (R-5.2 R1).
+    setPageSelections((prev) => {
+      const next = { ...prev }
+      delete next[removedId]
+      return next
+    })
+    delete undoStacks.current[removedId]
+    delete undoPointers.current[removedId]
+    // If we deleted the default, fall back to first page.
+    if (defaultPageIndex >= pages.length - 1) setDefaultPageIndex(0)
+  }, [activePage, pages.length, activePageIndex, defaultPageIndex])
 
   const renamePage = useCallback(
     (newName: string) => {
+      if (!activePage) return
       setPages((prev) =>
-        prev.map((p, i) =>
-          i === activePageIndex ? { ...p, name: newName } : p,
+        prev.map((p) =>
+          p.page_id === activePage.page_id ? { ...p, name: newName } : p,
         ),
       )
     },
-    [activePageIndex],
+    [activePage],
   )
 
   const setDefault = useCallback(() => {
     setDefaultPageIndex(activePageIndex)
   }, [activePageIndex])
+
+  const movePageUp = useCallback(
+    (idx: number) => {
+      if (idx === 0) return
+      setPages((prev) => {
+        const next = [...prev]
+        const [moved] = next.splice(idx, 1)
+        next.splice(idx - 1, 0, moved)
+        return next
+      })
+      // Keep active page following its content if it was the moved page.
+      if (idx === activePageIndex) setActivePageIndex(idx - 1)
+      else if (idx - 1 === activePageIndex) setActivePageIndex(idx)
+    },
+    [activePageIndex],
+  )
+
+  const movePageDown = useCallback(
+    (idx: number) => {
+      if (idx >= pages.length - 1) return
+      setPages((prev) => {
+        const next = [...prev]
+        const [moved] = next.splice(idx, 1)
+        next.splice(idx + 1, 0, moved)
+        return next
+      })
+      if (idx === activePageIndex) setActivePageIndex(idx + 1)
+      else if (idx + 1 === activePageIndex) setActivePageIndex(idx)
+    },
+    [pages.length, activePageIndex],
+  )
+
+  // ── Save flow ─────────────────────────────────────────────────
 
   const save = useCallback(async () => {
     setSaving(true)
@@ -198,55 +377,30 @@ export default function EdgePanelEditorPage() {
     }
   }, [scope, panelKey, vertical, tenantId, pages, defaultPageIndex, load])
 
+  // ── Preview composition for the right rail ────────────────────
+
   const previewComposition = useMemo(
     () => (activePage ? pageToResolvedComposition(activePage) : null),
     [activePage],
   )
 
+  // ── Render ────────────────────────────────────────────────────
+
   return (
     <div className="grid h-full grid-cols-[260px_1fr_360px] gap-3 p-4">
       {/* Left rail — page list. */}
-      <div className="flex flex-col gap-3 rounded-md border border-border-subtle bg-surface-elevated p-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-body-sm font-medium text-content-strong">
-            Pages
-          </h2>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={addPage}
-            data-testid="edge-panel-editor-add-page"
-          >
-            + Add page
-          </Button>
-        </div>
-        <ul className="flex flex-col gap-1" data-testid="edge-panel-editor-page-list">
-          {pages.map((page, idx) => (
-            <li key={page.page_id}>
-              <button
-                type="button"
-                onClick={() => setActivePageIndex(idx)}
-                data-testid={`edge-panel-editor-page-${idx}`}
-                data-active={idx === activePageIndex ? "true" : "false"}
-                className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-body-sm ${
-                  idx === activePageIndex
-                    ? "bg-accent-subtle text-content-strong"
-                    : "text-content-muted hover:bg-surface-sunken"
-                }`}
-              >
-                <span>{page.name}</span>
-                {idx === defaultPageIndex && (
-                  <span className="text-micro text-accent">DEFAULT</span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <PageList
+        pages={pages}
+        activePageIndex={activePageIndex}
+        defaultPageIndex={defaultPageIndex}
+        onSelectPage={(idx) => setActivePageIndex(idx)}
+        onAddPage={addPage}
+        onMovePageUp={movePageUp}
+        onMovePageDown={movePageDown}
+      />
 
       {/* Center — page authoring + scope. */}
-      <div className="flex flex-col gap-3 rounded-md border border-border-subtle bg-surface-elevated p-4">
+      <div className="flex min-h-0 flex-col gap-3 rounded-md border border-border-subtle bg-surface-elevated p-4">
         <div className="grid grid-cols-3 gap-3">
           <div>
             <Label htmlFor="ep-scope">Scope</Label>
@@ -294,57 +448,29 @@ export default function EdgePanelEditorPage() {
 
         {activePage !== null && (
           <>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="ep-page-name">Page name</Label>
-                <Input
-                  id="ep-page-name"
-                  data-testid="edge-panel-editor-page-name"
-                  value={activePage.name}
-                  onChange={(e) => renamePage(e.target.value)}
-                />
-              </div>
-              <div className="flex items-end gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={setDefault}
-                  data-testid="edge-panel-editor-set-default"
-                >
-                  Set as default page
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  onClick={deletePage}
-                  data-testid="edge-panel-editor-delete-page"
-                  disabled={pages.length <= 1}
-                >
-                  Delete page
-                </Button>
-              </div>
-            </div>
+            <PageMetadataEditor
+              page={activePage}
+              isDefault={defaultPageIndex === activePageIndex}
+              isOnlyPage={pages.length <= 1}
+              onRenamePage={renamePage}
+              onSetDefault={setDefault}
+              onDeletePage={deletePage}
+            />
 
-            <div>
-              <Label htmlFor="ep-rows-json">
-                Rows (JSON — composition row array)
-              </Label>
-              <Textarea
-                id="ep-rows-json"
-                data-testid="edge-panel-editor-rows-json"
-                rows={14}
-                value={rowsJson}
-                onChange={(e) => setRowsJson(e.target.value)}
-                onBlur={updateActivePageRows}
-                className="font-plex-mono text-caption"
+            <div className="flex-1 min-h-[280px]">
+              <EdgePanelEditorCanvas
+                key={activePage.page_id}
+                activePage={activePage}
+                selection={activeSelection}
+                tenantVerticalForButtonPicker={
+                  scope === "vertical_default" ? vertical : null
+                }
+                onCommitRows={handleCommitRows}
+                onSelectionChange={handleSelectionChange}
+                onUndoableMutation={handleUndoableMutation}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
               />
-              <p className="mt-1 text-caption text-content-muted">
-                Edit the row JSON, then click outside to apply. Use the
-                Compositions tab&apos;s row authoring patterns. Drag-drop
-                authoring lands in R-5.x.
-              </p>
             </div>
           </>
         )}

@@ -24,15 +24,20 @@ import type { ReactNode } from "react"
 import {
   AlertTriangle,
   Calendar,
+  CalendarPlus,
   CheckCircle2,
   FileSignature,
+  Home,
   Layers,
   Send,
   Truck,
   Wand2,
   Workflow,
+  type LucideIcon,
 } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
+import { getByName } from "@/lib/visual-editor/registry"
 import {
   PREVIEW_RENDERERS,
   PreviewFallback as Phase2PreviewFallback,
@@ -608,6 +613,88 @@ const CONFIG_AWARE: Record<string, (props: ConfigPreviewProps) => ReactNode> = {
 }
 
 
+// R-5.2 — button preview renderer.
+//
+// Edit-time appearance mirrors runtime appearance with action
+// dispatch suppressed. R-4 buttons in a composition canvas should
+// render as actual buttons (not generic "kind:name" chips), so
+// admins authoring an edge panel see what the runtime panel will
+// look like. The R-4 RegisteredButton itself can't be reused inside
+// the canvas because (a) it calls `useNavigate` + `useFocusOptional`
+// + `useAuthOptional` (all of which work in admin tree post-R-5.0.4
+// but are unnecessary overhead for a non-firing preview), and (b) it
+// fires actual action handlers on click — but the canvas's
+// click-to-select wraps placement clicks in `stopPropagation`, so
+// the inner button's onClick wouldn't fire anyway. Either approach
+// works; the stand-in is the simpler, more-bounded contract.
+//
+// Mirrors the curated ICON_MAP from RegisteredButton + ButtonPicker
+// — adding a new iconName requires extending all three (one-line
+// add per location).
+const BUTTON_ICON_MAP: Record<string, LucideIcon> = {
+  AlertTriangle,
+  CalendarPlus,
+  Home,
+  Workflow,
+}
+
+
+function renderButtonPreview(
+  componentName: string,
+  propOverrides: Record<string, unknown>,
+): ReactNode {
+  const entry = getByName("button", componentName)
+  // Compose render-time props from registration defaults overlaid
+  // by per-placement overrides. Mirrors RegisteredButton's logic.
+  const defaults = (entry?.metadata.configurableProps ?? {}) as Record<
+    string,
+    { default?: unknown }
+  >
+  const resolve = (key: string): unknown =>
+    key in propOverrides ? propOverrides[key] : defaults[key]?.default
+
+  const label =
+    (resolve("label") as string | undefined) ??
+    entry?.metadata.displayName ??
+    componentName
+  const variantRaw = resolve("variant")
+  const variant =
+    typeof variantRaw === "string"
+      ? (variantRaw as
+          | "default"
+          | "secondary"
+          | "outline"
+          | "ghost"
+          | "destructive"
+          | "link")
+      : "default"
+  const iconName = resolve("iconName") as string | undefined
+  const Icon = iconName ? (BUTTON_ICON_MAP[iconName] ?? null) : null
+
+  return (
+    <div
+      className="flex h-full w-full items-center justify-center p-2"
+      data-testid={`edge-panel-button-preview-${componentName}`}
+    >
+      <Button
+        variant={variant}
+        size="sm"
+        type="button"
+        // Edit-time stand-in: keep the button visually live but
+        // explicitly disabled so a stray click in the canvas can
+        // never accidentally fire an action. The canvas's parent
+        // click handler still receives the event for selection.
+        disabled
+        tabIndex={-1}
+      >
+        {Icon !== null && <Icon className="h-4 w-4" />}
+        {label}
+      </Button>
+    </div>
+  )
+}
+
+
 export function renderComponentPreview(
   registryKey: string,
   config: Record<string, unknown>,
@@ -616,6 +703,11 @@ export function renderComponentPreview(
   const aware = CONFIG_AWARE[registryKey]
   if (aware) {
     return aware({ config })
+  }
+  // R-5.2 — button placements get a faithful edit-time preview.
+  if (registryKey.startsWith("button:")) {
+    const componentName = registryKey.slice("button:".length)
+    return renderButtonPreview(componentName, config)
   }
   // Fall through to the Phase 2 stand-in (config-agnostic).
   const phase2 = PREVIEW_RENDERERS[registryKey]
