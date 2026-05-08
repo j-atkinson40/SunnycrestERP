@@ -42,6 +42,13 @@ export interface Placement {
   display_config: PlacementDisplayConfig
   /** Bounded-nesting extension point. Null in R-3.0. */
   nested_rows: CompositionRow[] | null
+  /** R-5.1 — used by edge-panel user overrides to indicate which row
+   * this placement should be appended to when arriving via
+   * `additional_placements`. NOT a persisted placement attribute on
+   * tenant-default rows; the resolver strips it before placing the
+   * placement into the row's `placements` array. Optional; defaults
+   * to 0 (first row). */
+  row_index?: number
 }
 
 

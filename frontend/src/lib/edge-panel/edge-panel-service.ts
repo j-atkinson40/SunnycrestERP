@@ -26,6 +26,25 @@ export async function resolveEdgePanel(
 }
 
 
+/**
+ * R-5.1 — resolve the tenant default unmodified by the caller's own
+ * per-user overrides. Used by the `/settings/edge-panel` page (R-5.1b)
+ * to compute the diff for ownership-badge rendering.
+ *
+ * Tenant + vertical + platform inheritance still applies; only the
+ * per-user override layer is bypassed.
+ */
+export async function resolveEdgePanelTenantDefault(
+  panelKey: string,
+): Promise<ResolvedEdgePanel> {
+  const r = await apiClient.get<ResolvedEdgePanel>(
+    `/edge-panel/resolve`,
+    { params: { panel_key: panelKey, ignore_user_overrides: true } },
+  )
+  return r.data
+}
+
+
 export async function getEdgePanelPreferences(): Promise<{
   edge_panel_overrides: Record<string, EdgePanelUserOverride>
 }> {

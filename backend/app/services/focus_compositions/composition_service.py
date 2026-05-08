@@ -786,6 +786,96 @@ def resolve_composition(
     }
 
 
+def _apply_placement_overrides(
+    rows: list[dict],
+    *,
+    hidden_ids: list[str],
+    additional: list[dict],
+    order: list[str] | None,
+) -> list[dict]:
+    """R-5.1 — apply per-placement overrides to a tenant page's rows.
+
+    1. Filter tenant placements: drop those whose placement_id is in
+       hidden_ids (orphan IDs in hidden_ids logged at debug + dropped
+       silently — they reference placements that were removed from the
+       tenant default since the user authored their override).
+    2. Append additional placements: each carries optional row_index
+       (default 0, clamped to len(rows)-1; if rows empty, append as a
+       new row containing the single placement so the result stays
+       structurally valid).
+    3. Reorder placements within each row by placement_order if
+       provided. Orphan IDs in order silently dropped. Placements not
+       mentioned in order keep relative position appended at end.
+
+    Returns a new rows list (does not mutate input).
+    """
+    hidden_set = set(hidden_ids or [])
+
+    # Step 1: deep-copy + filter hidden.
+    new_rows: list[dict] = []
+    for row in rows:
+        new_row = dict(row)
+        kept_placements = []
+        for p in row.get("placements") or []:
+            if p.get("placement_id") in hidden_set:
+                logger.debug(
+                    "[edge-panel] dropped hidden placement %s",
+                    p.get("placement_id"),
+                )
+                continue
+            kept_placements.append(dict(p))
+        new_row["placements"] = kept_placements
+        new_rows.append(new_row)
+
+    # Step 2: append additional placements.
+    for add in additional or []:
+        if not isinstance(add, dict):
+            continue
+        # Strip row_index from the persisted placement shape — it's a
+        # placement-resolution hint, not a placement attribute.
+        placement = {k: v for k, v in add.items() if k != "row_index"}
+        target_row_idx = add.get("row_index", 0)
+        if not isinstance(target_row_idx, int) or target_row_idx < 0:
+            target_row_idx = 0
+
+        if not new_rows:
+            # Empty rows: synthesize a new row containing this single
+            # placement so the structure stays valid.
+            new_rows.append(
+                {
+                    "row_id": f"user-row-{placement.get('placement_id', 'unknown')}",
+                    "column_count": 12,
+                    "row_height": "auto",
+                    "column_widths": None,
+                    "nested_rows": None,
+                    "placements": [placement],
+                }
+            )
+        else:
+            # Clamp to last row.
+            clamped_idx = min(target_row_idx, len(new_rows) - 1)
+            new_rows[clamped_idx]["placements"].append(placement)
+
+    # Step 3: reorder placements within each row.
+    if order:
+        order_index = {pid: i for i, pid in enumerate(order)}
+        for row in new_rows:
+            placements = row["placements"]
+
+            def sort_key(p: dict) -> tuple[int, int]:
+                pid = p.get("placement_id")
+                # In-order placements: (0, order_index) — sorts first
+                # by their declared position. Orphan-from-row
+                # placements: (1, original_idx) — appended after.
+                if pid in order_index:
+                    return (0, order_index[pid])
+                return (1, placements.index(p))
+
+            row["placements"] = sorted(placements, key=sort_key)
+
+    return new_rows
+
+
 def resolve_edge_panel(
     db: Session,
     *,
@@ -797,18 +887,43 @@ def resolve_edge_panel(
     """R-5.0 — resolve an edge panel composition with optional
     per-user override layer applied on top of the tenant resolution.
 
+    R-5.1 — extends the override schema with per-placement granularity
+    (hidden_placement_ids, additional_placements, placement_order)
+    plus top-level additional_pages (user's personal pages).
+
     `panel_key` is the canonical slug for an edge panel (carried in
     the `focus_type` column). `user_overrides` is the
     `User.preferences.edge_panel_overrides[panel_key]` JSONB blob,
     if present.
 
     Per-user override semantics:
-      - `page_overrides[page_id]` replaces that page's rows + canvas_config
-      - `hidden_page_ids` drops those pages from the result list
-      - `page_order_override` reorders pages by page_id
+
+      Per-page (`page_overrides[page_id]`):
+        - If `rows` set → use it (R-5.0 full-replace escape hatch);
+          per-placement fields ignored for this page.
+        - Else apply per-placement overrides (R-5.1):
+            - `hidden_placement_ids` → drop placements (orphan IDs
+              silently logged at debug)
+            - `additional_placements` → append; each carries optional
+              row_index (default 0, clamped to last row; empty rows
+              synthesizes a new row)
+            - `placement_order` → reorder within each row; orphan IDs
+              silently dropped
+        - `canvas_config` always replaces if set.
+
+      Top-level `additional_pages` (R-5.1) — user's personal pages
+      appended AFTER per-page overrides applied. Personal pages can
+      themselves be hidden via `hidden_page_ids` (rare but consistent
+      semantics) and participate in `page_order_override`. If a
+      personal page's page_id collides with a tenant page_id, the
+      tenant page wins (personal page silently dropped).
+
+      `hidden_page_ids` drops those pages from the final list.
+
+      `page_order_override` reorders pages by page_id.
 
     Pages outside `page_overrides` and `hidden_page_ids` fall through
-    to the tenant default.
+    to the tenant default unmodified.
     """
     base = resolve_composition(
         db,
@@ -822,28 +937,70 @@ def resolve_edge_panel(
     if not user_overrides:
         return base
 
-    # Apply per-page overrides.
+    # Step 1: per-page overrides.
     page_overrides = user_overrides.get("page_overrides") or {}
     if isinstance(page_overrides, dict):
         for idx, page in enumerate(pages):
             pid = page.get("page_id")
-            if pid in page_overrides:
-                override = page_overrides[pid]
-                if isinstance(override, dict):
-                    new_page = dict(page)
-                    if "rows" in override:
-                        new_page["rows"] = override["rows"]
-                    if "canvas_config" in override:
-                        new_page["canvas_config"] = override["canvas_config"]
-                    pages[idx] = new_page
+            if pid not in page_overrides:
+                continue
+            override = page_overrides[pid]
+            if not isinstance(override, dict):
+                continue
 
-    # Drop hidden pages.
+            new_page = dict(page)
+
+            if "rows" in override:
+                # R-5.0 full-replace escape hatch — per-placement
+                # fields ignored when rows is set.
+                new_page["rows"] = override["rows"]
+            else:
+                # R-5.1 per-placement overrides.
+                hidden_ids = override.get("hidden_placement_ids") or []
+                additional = override.get("additional_placements") or []
+                placement_order = override.get("placement_order")
+                if (
+                    hidden_ids
+                    or additional
+                    or (placement_order is not None)
+                ):
+                    new_page["rows"] = _apply_placement_overrides(
+                        list(page.get("rows") or []),
+                        hidden_ids=hidden_ids if isinstance(hidden_ids, list) else [],
+                        additional=additional if isinstance(additional, list) else [],
+                        order=placement_order if isinstance(placement_order, list) else None,
+                    )
+
+            if "canvas_config" in override:
+                new_page["canvas_config"] = override["canvas_config"]
+
+            pages[idx] = new_page
+
+    # Step 2: append additional_pages (R-5.1) — user's personal pages.
+    additional_pages = user_overrides.get("additional_pages") or []
+    if isinstance(additional_pages, list) and additional_pages:
+        existing_ids = {p.get("page_id") for p in pages}
+        for ap in additional_pages:
+            if not isinstance(ap, dict):
+                continue
+            ap_id = ap.get("page_id")
+            if ap_id in existing_ids:
+                # Collision: tenant page wins; drop personal page.
+                logger.debug(
+                    "[edge-panel] additional_page %s collides with tenant page; dropping personal page",
+                    ap_id,
+                )
+                continue
+            pages.append(ap)
+            existing_ids.add(ap_id)
+
+    # Step 3: drop hidden pages.
     hidden = user_overrides.get("hidden_page_ids") or []
     if isinstance(hidden, list) and hidden:
         hidden_set = set(hidden)
         pages = [p for p in pages if p.get("page_id") not in hidden_set]
 
-    # Reorder per page_order_override.
+    # Step 4: reorder per page_order_override.
     order = user_overrides.get("page_order_override")
     if isinstance(order, list) and order:
         by_id = {p.get("page_id"): p for p in pages}

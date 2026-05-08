@@ -92,14 +92,25 @@ def _user_overrides_for(user: User, panel_key: str) -> dict | None:
 @router.get("/resolve", response_model=_ResolveResponse)
 def resolve_endpoint(
     panel_key: str = Query(...),
+    ignore_user_overrides: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> _ResolveResponse:
-    """Resolve an edge panel composition for the caller's context."""
+    """Resolve an edge panel composition for the caller's context.
+
+    `ignore_user_overrides=true` (R-5.1) returns the unmodified tenant
+    default — used by the `/settings/edge-panel` page to compute the
+    diff for ownership-badge rendering. The user's own overrides are
+    bypassed; tenant + vertical + platform inheritance still applies.
+    """
     company = current_user.company
     vertical = company.vertical if company is not None else None
     tenant_id = company.id if company is not None else None
-    user_overrides = _user_overrides_for(current_user, panel_key)
+    user_overrides = (
+        None
+        if ignore_user_overrides
+        else _user_overrides_for(current_user, panel_key)
+    )
 
     try:
         result = resolve_edge_panel(

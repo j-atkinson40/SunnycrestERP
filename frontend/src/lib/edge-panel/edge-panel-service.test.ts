@@ -22,6 +22,7 @@ vi.mock("@/lib/api-client", () => ({
 
 import {
   resolveEdgePanel,
+  resolveEdgePanelTenantDefault,
   getEdgePanelPreferences,
   patchEdgePanelPreferences,
   getEdgePanelTenantConfig,
@@ -73,6 +74,20 @@ describe("edge-panel-service", () => {
     expect(out.edge_panel_overrides).toEqual({
       default: { hidden_page_ids: ["x"] },
     })
+  })
+
+  it("resolveEdgePanelTenantDefault calls /edge-panel/resolve with ignore_user_overrides=true (R-5.1)", async () => {
+    apiGet.mockResolvedValue({
+      data: { panel_key: "default", pages: [], canvas_config: {} },
+    })
+    const out = await resolveEdgePanelTenantDefault("default")
+    expect(apiGet).toHaveBeenCalledWith(
+      "/edge-panel/resolve",
+      expect.objectContaining({
+        params: { panel_key: "default", ignore_user_overrides: true },
+      }),
+    )
+    expect(out.panel_key).toBe("default")
   })
 
   it("getEdgePanelTenantConfig returns tenant config", async () => {

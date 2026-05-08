@@ -26,6 +26,7 @@ const mockGetTenantConfig = vi.fn()
 
 vi.mock("./edge-panel-service", () => ({
   resolveEdgePanel: (...args: unknown[]) => mockResolveEdgePanel(...args),
+  resolveEdgePanelTenantDefault: vi.fn(),
   getEdgePanelTenantConfig: (...args: unknown[]) =>
     mockGetTenantConfig(...args),
   getEdgePanelPreferences: vi.fn(),
