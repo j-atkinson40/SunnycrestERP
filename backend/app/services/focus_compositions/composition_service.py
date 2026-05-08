@@ -57,7 +57,10 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.focus_composition import (
+    CANONICAL_KINDS,
     FocusComposition,
+    KIND_EDGE_PANEL,
+    KIND_FOCUS,
     SCOPE_PLATFORM_DEFAULT,
     SCOPE_TENANT_OVERRIDE,
     SCOPE_VERTICAL_DEFAULT,
@@ -332,6 +335,97 @@ def _normalize_rows(rows: list) -> list[dict]:
     return normalized
 
 
+def _validate_kind(kind: str) -> None:
+    """Validate kind discriminator (R-5.0)."""
+    if kind not in CANONICAL_KINDS:
+        raise InvalidCompositionShape(
+            f"kind must be one of {CANONICAL_KINDS} (got {kind!r})"
+        )
+
+
+def _validate_pages(pages: Any) -> list[str]:
+    """Validate the `pages` JSONB shape for kind=edge_panel (R-5.0).
+
+    pages must be a non-empty list. Each entry:
+        {
+            "page_id": str (non-empty),
+            "name": str,
+            "rows": [...] (validated via _validate_rows),
+            "canvas_config": dict (optional, default {}),
+        }
+
+    Returns the warnings collected from validating each page's rows.
+    """
+    if not isinstance(pages, list):
+        raise InvalidCompositionShape("pages must be a list")
+    if len(pages) == 0:
+        raise InvalidCompositionShape(
+            "kind=edge_panel requires at least one page"
+        )
+
+    warnings: list[str] = []
+    seen_page_ids: set[str] = set()
+    for idx, page in enumerate(pages):
+        if not isinstance(page, dict):
+            raise InvalidCompositionShape(
+                f"pages[{idx}] must be an object"
+            )
+        page_id = page.get("page_id")
+        if not isinstance(page_id, str) or not page_id:
+            raise InvalidCompositionShape(
+                f"pages[{idx}].page_id must be a non-empty string"
+            )
+        if page_id in seen_page_ids:
+            raise InvalidCompositionShape(
+                f"pages[{idx}].page_id '{page_id}' is duplicated"
+            )
+        seen_page_ids.add(page_id)
+
+        name = page.get("name")
+        if not isinstance(name, str):
+            raise InvalidCompositionShape(
+                f"pages[{idx}].name must be a string"
+            )
+
+        rows = page.get("rows")
+        if rows is None:
+            raise InvalidCompositionShape(
+                f"pages[{idx}].rows must be a list (got null)"
+            )
+        # Recursively validate each page's rows.
+        page_warnings = _validate_rows(rows)
+        for w in page_warnings:
+            warnings.append(f"pages[{idx}]: {w}")
+
+        canvas_config = page.get("canvas_config")
+        if canvas_config is not None and not isinstance(canvas_config, dict):
+            raise InvalidCompositionShape(
+                f"pages[{idx}].canvas_config must be an object or null"
+            )
+
+    return warnings
+
+
+def _normalize_pages(pages: list) -> list[dict]:
+    """Defensive normalization for the `pages` JSONB array (R-5.0).
+
+    Each page's rows pass through _normalize_rows so placement_ids
+    + row_ids get auto-filled.
+    """
+    normalized: list[dict] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        new_page: dict[str, Any] = {
+            "page_id": page.get("page_id") or str(uuid.uuid4()),
+            "name": page.get("name") or "Untitled page",
+            "rows": _normalize_rows(list(page.get("rows") or [])),
+            "canvas_config": dict(page.get("canvas_config") or {}),
+        }
+        normalized.append(new_page)
+    return normalized
+
+
 def reject_legacy_placements_payload(body: Any) -> None:
     """API-boundary helper — rejects pre-R-3.0 flat-placements payloads
     with a clear error pointing at the rows-shaped contract.
@@ -362,10 +456,12 @@ def _find_active(
     focus_type: str,
     vertical: str | None,
     tenant_id: str | None,
+    kind: str = KIND_FOCUS,
 ) -> FocusComposition | None:
     q = db.query(FocusComposition).filter(
         FocusComposition.scope == scope,
         FocusComposition.focus_type == focus_type,
+        FocusComposition.kind == kind,
         FocusComposition.is_active.is_(True),
     )
     if vertical is None:
@@ -386,10 +482,12 @@ def _next_version(
     focus_type: str,
     vertical: str | None,
     tenant_id: str | None,
+    kind: str = KIND_FOCUS,
 ) -> int:
     q = db.query(FocusComposition).filter(
         FocusComposition.scope == scope,
         FocusComposition.focus_type == focus_type,
+        FocusComposition.kind == kind,
     )
     if vertical is None:
         q = q.filter(FocusComposition.vertical.is_(None))
@@ -414,13 +512,35 @@ def create_composition(
     tenant_id: str | None = None,
     rows: list | None = None,
     canvas_config: dict | None = None,
+    kind: str = KIND_FOCUS,
+    pages: list | None = None,
     actor_user_id: str | None = None,
 ) -> FocusComposition:
     _validate_scope(scope, vertical=vertical, tenant_id=tenant_id)
-    rows_list = _normalize_rows(list(rows or []))
-    warnings = _validate_rows(rows_list)
-    for w in warnings:
-        logger.warning("[composition] %s", w)
+    _validate_kind(kind)
+
+    if kind == KIND_EDGE_PANEL:
+        # Edge panel: pages REQUIRED; rows must be empty.
+        if pages is None:
+            raise InvalidCompositionShape(
+                "kind=edge_panel requires `pages` (a non-empty list of page records)"
+            )
+        normalized_pages = _normalize_pages(list(pages))
+        page_warnings = _validate_pages(normalized_pages)
+        for w in page_warnings:
+            logger.warning("[composition] %s", w)
+        rows_list: list = []
+    else:
+        # Focus: rows is canonical; pages must be None.
+        if pages is not None:
+            raise InvalidCompositionShape(
+                "kind=focus must not include `pages` (use `rows` instead)"
+            )
+        rows_list = _normalize_rows(list(rows or []))
+        warnings = _validate_rows(rows_list)
+        for w in warnings:
+            logger.warning("[composition] %s", w)
+        normalized_pages = None
 
     existing = _find_active(
         db,
@@ -428,6 +548,7 @@ def create_composition(
         focus_type=focus_type,
         vertical=vertical,
         tenant_id=tenant_id,
+        kind=kind,
     )
     if existing is not None:
         existing.is_active = False
@@ -440,12 +561,15 @@ def create_composition(
         focus_type=focus_type,
         rows=rows_list,
         canvas_config=dict(canvas_config or {}),
+        kind=kind,
+        pages=normalized_pages,
         version=_next_version(
             db,
             scope=scope,
             focus_type=focus_type,
             vertical=vertical,
             tenant_id=tenant_id,
+            kind=kind,
         ),
         is_active=True,
         created_by=actor_user_id,
@@ -463,6 +587,7 @@ def update_composition(
     composition_id: str,
     rows: list | None = None,
     canvas_config: dict | None = None,
+    pages: list | None = None,
     actor_user_id: str | None = None,
 ) -> FocusComposition:
     row = (
@@ -473,18 +598,31 @@ def update_composition(
     if row is None:
         raise CompositionNotFound()
 
-    if rows is not None:
-        new_rows = _normalize_rows(list(rows))
+    kind = row.kind
+    if kind == KIND_EDGE_PANEL:
+        if pages is not None:
+            new_pages = _normalize_pages(list(pages))
+            page_warnings = _validate_pages(new_pages)
+            for w in page_warnings:
+                logger.warning("[composition] %s", w)
+        else:
+            new_pages = list(row.pages or [])
+        new_rows: list = []
     else:
-        new_rows = list(row.rows or [])
+        if rows is not None:
+            new_rows = _normalize_rows(list(rows))
+        else:
+            new_rows = list(row.rows or [])
+        warnings = _validate_rows(new_rows)
+        for w in warnings:
+            logger.warning("[composition] %s", w)
+        new_pages = None
+
     new_canvas = (
         dict(canvas_config)
         if canvas_config is not None
         else dict(row.canvas_config or {})
     )
-    warnings = _validate_rows(new_rows)
-    for w in warnings:
-        logger.warning("[composition] %s", w)
 
     if row.is_active:
         row.is_active = False
@@ -497,12 +635,15 @@ def update_composition(
         focus_type=row.focus_type,
         rows=new_rows,
         canvas_config=new_canvas,
+        kind=kind,
+        pages=new_pages,
         version=_next_version(
             db,
             scope=row.scope,
             focus_type=row.focus_type,
             vertical=row.vertical,
             tenant_id=row.tenant_id,
+            kind=kind,
         ),
         is_active=True,
         created_by=row.created_by,
@@ -534,6 +675,7 @@ def list_compositions(
     vertical: str | None = None,
     tenant_id: str | None = None,
     focus_type: str | None = None,
+    kind: str | None = None,
     include_inactive: bool = False,
 ) -> list[FocusComposition]:
     q = db.query(FocusComposition)
@@ -545,6 +687,8 @@ def list_compositions(
         q = q.filter(FocusComposition.tenant_id == tenant_id)
     if focus_type is not None:
         q = q.filter(FocusComposition.focus_type == focus_type)
+    if kind is not None:
+        q = q.filter(FocusComposition.kind == kind)
     if not include_inactive:
         q = q.filter(FocusComposition.is_active.is_(True))
     return q.order_by(
@@ -563,28 +707,35 @@ def resolve_composition(
     focus_type: str,
     vertical: str | None = None,
     tenant_id: str | None = None,
+    kind: str = KIND_FOCUS,
 ) -> dict[str, Any]:
     """Walk the inheritance chain and return the first matching
     composition. First-match-wins semantics (no overlay merging at
     READ time — a composition is a complete layout, not a partial
     override).
 
+    `kind` (R-5.0) selects which composition family to resolve. The
+    inheritance chain is identical for both kinds — platform_default
+    → vertical_default → tenant_override.
+
     Returns:
         {
             "focus_type": ...,
             "vertical": ...,
             "tenant_id": ...,
+            "kind": "focus" | "edge_panel",
             "source": "platform_default" | "vertical_default" |
                       "tenant_override" | None,
             "source_id": ... | None,
             "source_version": ... | None,
-            "rows": [...],
+            "rows": [...],          # populated when kind=focus
             "canvas_config": {...},
+            "pages": [...] | None,  # populated when kind=edge_panel
         }
 
     When no composition exists at any tier, source is None and
-    rows/canvas_config are empty — caller falls back to the Focus's
-    hard-coded layout.
+    rows/pages/canvas_config carry empty defaults — caller falls back
+    to its hard-coded shape.
     """
     if tenant_id is not None:
         row = _find_active(
@@ -593,6 +744,7 @@ def resolve_composition(
             focus_type=focus_type,
             vertical=None,
             tenant_id=tenant_id,
+            kind=kind,
         )
         if row is not None:
             return _serialize_resolution(row, "tenant_override")
@@ -604,6 +756,7 @@ def resolve_composition(
             focus_type=focus_type,
             vertical=vertical,
             tenant_id=None,
+            kind=kind,
         )
         if row is not None:
             return _serialize_resolution(row, "vertical_default")
@@ -614,6 +767,7 @@ def resolve_composition(
         focus_type=focus_type,
         vertical=None,
         tenant_id=None,
+        kind=kind,
     )
     if row is not None:
         return _serialize_resolution(row, "platform_default")
@@ -622,12 +776,87 @@ def resolve_composition(
         "focus_type": focus_type,
         "vertical": vertical,
         "tenant_id": tenant_id,
+        "kind": kind,
         "source": None,
         "source_id": None,
         "source_version": None,
         "rows": [],
         "canvas_config": {},
+        "pages": [] if kind == KIND_EDGE_PANEL else None,
     }
+
+
+def resolve_edge_panel(
+    db: Session,
+    *,
+    panel_key: str,
+    vertical: str | None = None,
+    tenant_id: str | None = None,
+    user_overrides: dict | None = None,
+) -> dict[str, Any]:
+    """R-5.0 — resolve an edge panel composition with optional
+    per-user override layer applied on top of the tenant resolution.
+
+    `panel_key` is the canonical slug for an edge panel (carried in
+    the `focus_type` column). `user_overrides` is the
+    `User.preferences.edge_panel_overrides[panel_key]` JSONB blob,
+    if present.
+
+    Per-user override semantics:
+      - `page_overrides[page_id]` replaces that page's rows + canvas_config
+      - `hidden_page_ids` drops those pages from the result list
+      - `page_order_override` reorders pages by page_id
+
+    Pages outside `page_overrides` and `hidden_page_ids` fall through
+    to the tenant default.
+    """
+    base = resolve_composition(
+        db,
+        focus_type=panel_key,
+        vertical=vertical,
+        tenant_id=tenant_id,
+        kind=KIND_EDGE_PANEL,
+    )
+    pages = list(base.get("pages") or [])
+
+    if not user_overrides:
+        return base
+
+    # Apply per-page overrides.
+    page_overrides = user_overrides.get("page_overrides") or {}
+    if isinstance(page_overrides, dict):
+        for idx, page in enumerate(pages):
+            pid = page.get("page_id")
+            if pid in page_overrides:
+                override = page_overrides[pid]
+                if isinstance(override, dict):
+                    new_page = dict(page)
+                    if "rows" in override:
+                        new_page["rows"] = override["rows"]
+                    if "canvas_config" in override:
+                        new_page["canvas_config"] = override["canvas_config"]
+                    pages[idx] = new_page
+
+    # Drop hidden pages.
+    hidden = user_overrides.get("hidden_page_ids") or []
+    if isinstance(hidden, list) and hidden:
+        hidden_set = set(hidden)
+        pages = [p for p in pages if p.get("page_id") not in hidden_set]
+
+    # Reorder per page_order_override.
+    order = user_overrides.get("page_order_override")
+    if isinstance(order, list) and order:
+        by_id = {p.get("page_id"): p for p in pages}
+        reordered: list[dict] = []
+        for pid in order:
+            if pid in by_id:
+                reordered.append(by_id.pop(pid))
+        # Append any pages not mentioned in the override list.
+        reordered.extend(by_id.values())
+        pages = reordered
+
+    base["pages"] = pages
+    return base
 
 
 def _serialize_resolution(row: FocusComposition, source: str) -> dict:
@@ -635,9 +864,13 @@ def _serialize_resolution(row: FocusComposition, source: str) -> dict:
         "focus_type": row.focus_type,
         "vertical": row.vertical,
         "tenant_id": row.tenant_id,
+        "kind": row.kind,
         "source": source,
         "source_id": row.id,
         "source_version": row.version,
         "rows": list(row.rows or []),
         "canvas_config": dict(row.canvas_config or {}),
+        "pages": list(row.pages) if row.pages is not None else (
+            [] if row.kind == KIND_EDGE_PANEL else None
+        ),
     }

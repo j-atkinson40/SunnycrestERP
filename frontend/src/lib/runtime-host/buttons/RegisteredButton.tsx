@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { useFocus } from "@/contexts/focus-context"
+import { useEdgePanelOptional } from "@/lib/edge-panel/EdgePanelProvider"
 import { getByName } from "@/lib/visual-editor/registry"
 
 import { dispatchAction } from "./action-dispatch"
@@ -101,6 +102,11 @@ export function RegisteredButton({
   const [searchParams] = useSearchParams()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pending, setPending] = useState(false)
+  // R-5.0 — when this button is rendered inside the EdgePanel, auto-
+  // close the panel after a successful dispatch (per close-on-fire
+  // pattern). useEdgePanelOptional returns null outside the provider
+  // tree, which is the canonical "not in an edge panel" case.
+  const edgePanel = useEdgePanelOptional()
 
   // Pull the R-4 contract off the registration. Missing slug or
   // registration without an R-4 contract surfaces visibly rather
@@ -199,6 +205,15 @@ export function RegisteredButton({
         navigate(contract.successNavigateRoute)
       }
       // "stay" → no side effect.
+      // R-5.0 — close the edge panel when this button fired from
+      // within it. Per-button override available via
+      // R4ButtonContract.closePanelAfterFire (defaults true).
+      if (
+        edgePanel !== null &&
+        contract.closePanelAfterFire !== false
+      ) {
+        edgePanel.closePanel()
+      }
     } finally {
       setPending(false)
     }
@@ -206,6 +221,7 @@ export function RegisteredButton({
     contract,
     user,
     company,
+    edgePanel,
     routeParams,
     searchParams,
     focus,

@@ -75,6 +75,11 @@ SCOPE_PLATFORM_DEFAULT = "platform_default"
 SCOPE_VERTICAL_DEFAULT = "vertical_default"
 SCOPE_TENANT_OVERRIDE = "tenant_override"
 
+# R-5.0 — kind discriminator canonical values.
+KIND_FOCUS = "focus"
+KIND_EDGE_PANEL = "edge_panel"
+CANONICAL_KINDS = (KIND_FOCUS, KIND_EDGE_PANEL)
+
 
 class FocusComposition(Base):
     """Canvas-based Focus layout composition.
@@ -108,6 +113,20 @@ class FocusComposition(Base):
     canvas_config: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+
+    # R-5.0 (May 2026) — kind discriminator + pages JSONB.
+    # `kind='focus'` rows: `pages` is NULL; `rows` carries the
+    # single-page Focus accessory rail (existing semantics).
+    # `kind='edge_panel'` rows: `rows` is `[]`; `pages` is a
+    # non-empty list of `{page_id, name, rows: [...], canvas_config}`
+    # records, each page being its own row-set. The column-name
+    # `focus_type` carries panel slugs for kind=edge_panel — accepted
+    # naming compromise; rename deferred per /tmp/r5_edge_panel_scope.md
+    # Section 2.
+    kind: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="focus", server_default="focus"
+    )
+    pages: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
 
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -149,6 +168,10 @@ class FocusComposition(Base):
                     AND vertical IS NULL AND tenant_id IS NOT NULL)
             )""",
             name="ck_focus_compositions_scope_keys",
+        ),
+        CheckConstraint(
+            "kind IN ('focus', 'edge_panel')",
+            name="ck_focus_compositions_kind",
         ),
     )
 

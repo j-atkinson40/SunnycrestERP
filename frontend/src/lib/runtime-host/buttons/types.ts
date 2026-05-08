@@ -114,6 +114,10 @@ export interface R4ButtonContract {
   successNavigateRoute?: string
   /** successBehavior="toast": message text. */
   successToastMessage?: string
+  /** R-5.0 — when this button is rendered inside an EdgePanel,
+   *  defaults true (auto-close after dispatch). Admins can author a
+   *  specific button to STAY open via `closePanelAfterFire: false`. */
+  closePanelAfterFire?: boolean
 }
 
 

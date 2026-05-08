@@ -910,6 +910,16 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     editable: false,
   },
   {
+    // R-5.0 — edge panel handle + open panel sit at 96 (above editor
+    // chrome at 91-95 but below Focus at 100).
+    name: "z-edge-panel",
+    category: "z-index",
+    displayName: "Z — Edge panel",
+    valueType: "integer",
+    defaults: { light: "96", dark: "96" },
+    editable: false,
+  },
+  {
     name: "z-modal",
     category: "z-index",
     displayName: "Z — Modal",

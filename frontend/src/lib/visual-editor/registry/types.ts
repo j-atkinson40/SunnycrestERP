@@ -62,6 +62,15 @@ export type ComponentKind =
   // resolves to the deepest `data-component-name` ancestor per
   // SelectionOverlay's capture-phase walker.
   | "entity-card-section"
+  // ── R-5.0 — edge panel micro-primitives (May 2026) ─────────
+  // Presentational primitives for use inside edge-panel pages.
+  // `edge-panel-label` is a group separator / header (text);
+  // `edge-panel-divider` is a 1px hairline. Both render through
+  // CompositionRenderer's edge-panel-aware branch without a
+  // registry component reference (placement carries content via
+  // `prop_overrides`).
+  | "edge-panel-label"
+  | "edge-panel-divider"
 
 
 // ─── Scope dimensions ────────────────────────────────────────────

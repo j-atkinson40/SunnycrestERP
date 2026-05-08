@@ -13,6 +13,7 @@ from app.api.routes import (
     ai,
     ai_command,
     command_bar,
+    edge_panel,
     saved_views,
     spaces,
     themes_tenant,
@@ -222,6 +223,12 @@ v1_router.include_router(spaces.router, prefix="/spaces", tags=["Spaces"])
 # endpoint infers vertical + tenant_id from `current_user.company`.
 v1_router.include_router(
     themes_tenant.router, prefix="/themes", tags=["Themes (tenant)"]
+)
+# R-5.0 — edge panel tenant-realm endpoints (resolve/preferences/tenant-config).
+# Authoring lives in the admin-realm visual editor at
+# /api/platform/admin/visual-editor/compositions/ (kind=edge_panel rows).
+v1_router.include_router(
+    edge_panel.router, prefix="/edge-panel", tags=["Edge Panel"]
 )
 # Phase 8e.2.1 — tenant-admin portal user + branding management.
 # TENANT realm (require_admin), mounted at /api/v1/portal/admin/*.

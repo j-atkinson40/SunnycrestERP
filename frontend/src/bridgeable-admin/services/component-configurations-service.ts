@@ -31,6 +31,9 @@ export type ComponentKind =
   | "surface-card"
   // R-2.1 — entity-card sub-section additions (May 2026):
   | "entity-card-section"
+  // R-5.0 — edge panel micro-primitives (May 2026):
+  | "edge-panel-label"
+  | "edge-panel-divider"
 
 
 export interface ComponentConfigurationRecord {

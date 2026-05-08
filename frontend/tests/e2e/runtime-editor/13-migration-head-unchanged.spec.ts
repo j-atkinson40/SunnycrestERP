@@ -7,6 +7,9 @@
  *   - R-3.1.2: r89_merge_r48_fh_email_tld_into_r88 (alembic merge)
  *   - R-3.2: r90_drop_legacy_composition_columns (drops legacy
  *     focus_compositions.placements column)
+ *   - R-5.0: r91_compositions_kind_and_pages (kind discriminator +
+ *     pages JSONB on focus_compositions; canonical edge-panel
+ *     substrate)
  *
  * Spec asserts via the staging health endpoint (which exposes the
  * current alembic head) that the migration system is reachable. The
@@ -25,7 +28,7 @@ test.describe("Gate 13 — migration head reachability", () => {
   }) => {
     // Reach the platform admin's migrations panel API endpoint via
     // the staging backend. Endpoint shape: /api/platform/admin/migrations.
-    // R-3.2 expectation: head row reads r90_drop_legacy_composition_columns.
+    // R-5.0 expectation: head row reads r91_compositions_kind_and_pages.
     // Without an admin token in the test runner, the endpoint
     // returns 401/403; the spec validates the route is reachable
     // (i.e. the migration system is mounted), not the head value

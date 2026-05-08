@@ -93,6 +93,32 @@ function renderRuntimePlacement(p: Placement): ReactNode {
       />
     )
   }
+  // R-5.0 — edge-panel micro-primitives. text-label = group separator
+  // in edge panel pages; divider = 1px hairline. Both are presentation-
+  // only, no interactivity. Render directly without a registry lookup
+  // — the placement carries its content via prop_overrides.
+  if (p.component_kind === "edge-panel-label") {
+    const text =
+      typeof p.prop_overrides?.text === "string"
+        ? p.prop_overrides.text
+        : ""
+    return (
+      <div
+        className="px-3 py-1.5 text-micro uppercase tracking-wider text-content-muted"
+        data-testid="edge-panel-label"
+      >
+        {text}
+      </div>
+    )
+  }
+  if (p.component_kind === "edge-panel-divider") {
+    return (
+      <div
+        className="my-1 h-px w-full bg-border-subtle"
+        data-testid="edge-panel-divider"
+      />
+    )
+  }
   if (p.component_kind !== "widget") {
     return (
       <div

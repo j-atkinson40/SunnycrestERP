@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   MousePointerClick,
   Palette,
+  PanelRightOpen,
 } from "lucide-react"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import { getAllRegistered, getKnownTokens } from "@/lib/visual-editor/registry"
@@ -131,6 +132,13 @@ export default function VisualEditorIndex() {
           title="Workflows"
           description="Canvas authoring for vertical_default workflow templates. Hierarchical browser categorizes by workflow type. Locked-to-fork merge semantics for tenant customization."
           testId="ve-card-workflows"
+        />
+        <EditorCard
+          to="/visual-editor/edge-panels"
+          icon={PanelRightOpen}
+          title="Edge Panels"
+          description="Multi-page action panels — Cmd+Shift+E or right-edge handle invokes a tenant-branded sliding panel of buttons. Authoring mirrors compositions but with per-page row sets."
+          testId="ve-card-edge-panels"
         />
         <EditorCard
           to="/visual-editor/registry"

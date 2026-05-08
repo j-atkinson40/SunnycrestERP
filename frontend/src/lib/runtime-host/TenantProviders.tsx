@@ -49,6 +49,8 @@ import { FocusProvider } from "@/contexts/focus-context"
 import { LayoutProvider } from "@/contexts/layout-context"
 import { LocationProvider } from "@/contexts/location-context"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { EdgePanelHost } from "@/lib/edge-panel/EdgePanelHost"
+import { EdgePanelProvider } from "@/lib/edge-panel/EdgePanelProvider"
 
 
 /** Bridges auth context → DeviceProvider so userId is available. */
@@ -81,7 +83,20 @@ export function TenantProviders({ children }: { children: ReactNode }) {
                           400ms of a prior close, causing a sticky-
                           state race; disabling grouping makes each
                           Tooltip root fully independent). */}
-                      <TooltipProvider timeout={0}>{children}</TooltipProvider>
+                      {/* R-5.0 — EdgePanelProvider mounts inside
+                          CallContextProvider + outside TooltipProvider
+                          so EdgePanel's tooltip targets work
+                          (Tooltip is an inner concern), and the
+                          R-4 buttons rendered inside EdgePanel can
+                          reach the FocusProvider above. EdgePanelHost
+                          renders the handle + slide-in panel once at
+                          app root. */}
+                      <EdgePanelProvider>
+                        <TooltipProvider timeout={0}>
+                          {children}
+                          <EdgePanelHost />
+                        </TooltipProvider>
+                      </EdgePanelProvider>
                     </CallContextProvider>
                   </CommandBarProvider>
                 </FocusProvider>

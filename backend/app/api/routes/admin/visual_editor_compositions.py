@@ -51,6 +51,8 @@ class _CompositionResponse(BaseModel):
     focus_type: str
     rows: list
     canvas_config: dict
+    kind: str = "focus"
+    pages: list | None = None
     version: int
     is_active: bool
     created_at: str
@@ -66,22 +68,27 @@ class _CreateRequest(BaseModel):
     tenant_id: str | None = None
     rows: list = Field(default_factory=list)
     canvas_config: dict = Field(default_factory=dict)
+    kind: str = "focus"
+    pages: list | None = None
 
 
 class _UpdateRequest(BaseModel):
     rows: list | None = None
     canvas_config: dict | None = None
+    pages: list | None = None
 
 
 class _ResolveResponse(BaseModel):
     focus_type: str
     vertical: str | None
     tenant_id: str | None
+    kind: str = "focus"
     source: str | None
     source_id: str | None
     source_version: int | None
     rows: list
     canvas_config: dict
+    pages: list | None = None
 
 
 def _serialize(row) -> _CompositionResponse:
@@ -93,6 +100,8 @@ def _serialize(row) -> _CompositionResponse:
         focus_type=row.focus_type,
         rows=list(row.rows or []),
         canvas_config=dict(row.canvas_config or {}),
+        kind=row.kind,
+        pages=list(row.pages) if row.pages is not None else None,
         version=row.version,
         is_active=row.is_active,
         created_at=row.created_at.isoformat(),
@@ -127,6 +136,7 @@ def list_endpoint(
     vertical: str | None = Query(default=None),
     tenant_id: str | None = Query(default=None),
     focus_type: str | None = Query(default=None),
+    kind: str | None = Query(default=None),
     include_inactive: bool = Query(default=False),
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
@@ -137,6 +147,7 @@ def list_endpoint(
         vertical=vertical,
         tenant_id=tenant_id,
         focus_type=focus_type,
+        kind=kind,
         include_inactive=include_inactive,
     )
     return [_serialize(r) for r in rows]
@@ -147,11 +158,16 @@ def resolve_endpoint(
     focus_type: str = Query(...),
     vertical: str | None = Query(default=None),
     tenant_id: str | None = Query(default=None),
+    kind: str = Query(default="focus"),
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ) -> _ResolveResponse:
     result = resolve_composition(
-        db, focus_type=focus_type, vertical=vertical, tenant_id=tenant_id
+        db,
+        focus_type=focus_type,
+        vertical=vertical,
+        tenant_id=tenant_id,
+        kind=kind,
     )
     return _ResolveResponse(**result)
 
@@ -198,6 +214,8 @@ async def create_endpoint(
             tenant_id=body.tenant_id,
             rows=body.rows,
             canvas_config=body.canvas_config,
+            kind=body.kind,
+            pages=body.pages,
             # NOTE: PlatformUser id cannot satisfy users.id FK; same
             # carry-forward limitation flagged in CLAUDE.md §4.
             actor_user_id=None,
@@ -231,6 +249,7 @@ async def update_endpoint(
             composition_id=composition_id,
             rows=body.rows,
             canvas_config=body.canvas_config,
+            pages=body.pages,
             actor_user_id=None,
         )
     except CompositionError as err:

@@ -353,6 +353,11 @@
    */
   --z-modal: 105;
   --z-focus: 100;
+  /* R-5.0 — edge panel handle + open panel sit above editor chrome
+   * (toggle 91 / selection-overlay 92 / inspector 95) but below
+   * Focus (100). When Focus opens, the handle disappears under
+   * the Focus backdrop; on dismiss it returns. */
+  --z-edge-panel: 96;
   --z-command-bar: 110;
   --z-toast: 120;
   /* Phase A Session 4.2.4 — tooltip tier sits ABOVE every

@@ -52,6 +52,7 @@ import ClassEditorPage from "./pages/visual-editor/ClassEditorPage"
 import FocusEditorPage from "./pages/visual-editor/FocusEditorPage"
 import WidgetEditorPage from "./pages/visual-editor/WidgetEditorPage"
 import DocumentsEditorPage from "./pages/visual-editor/DocumentsEditorPage"
+import EdgePanelEditorPage from "./pages/visual-editor/EdgePanelEditorPage"
 
 /**
  * Accessed via either:
@@ -98,6 +99,8 @@ export function BridgeableAdminApp() {
         <Route path="documents" element={<DocumentsEditorPage />} />
         <Route path="classes" element={<ClassEditorPage />} />
         <Route path="workflows" element={<WorkflowEditorPage />} />
+        {/* R-5.0 — edge panel multi-page authoring. */}
+        <Route path="edge-panels" element={<EdgePanelEditorPage />} />
         <Route path="registry" element={<RegistryDebugPage />} />
         {/* Legacy redirects — May 2026 reorganization dismantled the
             standalone Component Editor + Compositions page. Their
