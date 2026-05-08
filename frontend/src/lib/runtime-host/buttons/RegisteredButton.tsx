@@ -161,6 +161,28 @@ export function RegisteredButton({
   const handleFire = useCallback(async () => {
     if (!contract) return
     setPending(true)
+    // R-5.0.2 — Close the edge panel BEFORE dispatch.
+    //
+    // Pre-R-5.0.2 the close fired after `await dispatchAction(...)`.
+    // Against staging this was observed not to take effect for the
+    // navigate-action case (spec 27): dispatch's `deps.navigate(route)`
+    // schedules a React Router transition; by the time the await
+    // resolved + the post-success `edgePanel.closePanel()` ran, the
+    // resulting `setIsOpen(false)` state update did not propagate to
+    // the rendered `data-edge-panel-open` attribute within the test
+    // window. Closing first is both safer (panel state commits before
+    // any router transition can interfere) and matches user
+    // expectation — clicking a button inside the panel feels
+    // immediate. The panel slides out while the action runs.
+    //
+    // closePanelAfterFire defaults true via `!== false`; per-button
+    // override to keep the panel open is preserved.
+    if (
+      edgePanel !== null &&
+      contract.closePanelAfterFire !== false
+    ) {
+      edgePanel.closePanel()
+    }
     try {
       const ctx: BindingContext = {
         user: user
@@ -205,15 +227,13 @@ export function RegisteredButton({
         navigate(contract.successNavigateRoute)
       }
       // "stay" → no side effect.
-      // R-5.0 — close the edge panel when this button fired from
-      // within it. Per-button override available via
-      // R4ButtonContract.closePanelAfterFire (defaults true).
-      if (
-        edgePanel !== null &&
-        contract.closePanelAfterFire !== false
-      ) {
-        edgePanel.closePanel()
-      }
+      // R-5.0 / R-5.0.2 — Edge panel close was moved BEFORE dispatch
+      // (see top of handleFire). Don't close again here — that would
+      // be a no-op but is structurally misleading. Errors caught by
+      // the early-return on result.status === "error" already skipped
+      // success behaviors; the pre-dispatch close still ran, which is
+      // intentional (button click closes panel regardless of dispatch
+      // outcome).
     } finally {
       setPending(false)
     }

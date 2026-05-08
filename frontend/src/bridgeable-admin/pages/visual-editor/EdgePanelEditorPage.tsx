@@ -95,7 +95,7 @@ export default function EdgePanelEditorPage() {
       if (scope === "vertical_default" && vertical) params.vertical = vertical
       if (scope === "tenant_override" && tenantId) params.tenant_id = tenantId
       const r = await adminApi.get<ResolvedEdgePanel>(
-        `/admin/visual-editor/compositions/resolve`,
+        `/api/platform/admin/visual-editor/compositions/resolve`,
         { params },
       )
       const incoming = r.data.pages ?? []
@@ -185,7 +185,7 @@ export default function EdgePanelEditorPage() {
         canvas_config: { default_page_index: defaultPageIndex },
       }
       await adminApi.post(
-        `/admin/visual-editor/compositions/`,
+        `/api/platform/admin/visual-editor/compositions/`,
         body,
       )
       await load()
