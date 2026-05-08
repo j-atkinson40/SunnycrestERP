@@ -53,6 +53,16 @@ export function InspectorPanel({
   // entry (component names are unique within a kind by registry
   // contract; collision across kinds is rare but possible — we take
   // the first match).
+  //
+  // R-2.0.4: kinds list extended to include the 4 ComponentKind values
+  // added during the May 2026 class-configuration phase (entity-card,
+  // button, form-input, surface-card). Pre-R-2.0.4 this list was missing
+  // those four; clicking a DeliveryCard / AncillaryCard / OrderCard
+  // returned null from getByName because none of the original 8 kinds
+  // matched, falling back to rendering the slug ("delivery-card") in the
+  // inspector header instead of the registered displayName ("Delivery
+  // Card"). Spec 14's `toHaveText("Delivery Card")` assertion failed
+  // verbatim. Add a kind here whenever ComponentKind grows.
   const selectedEntry = useMemo(() => {
     if (!editMode.selectedComponentName) return null
     const kinds: ComponentKind[] = [
@@ -64,6 +74,10 @@ export function InspectorPanel({
       "workflow-node",
       "layout",
       "composite",
+      "entity-card",
+      "button",
+      "form-input",
+      "surface-card",
     ]
     for (const k of kinds) {
       const entry = getByName(k, editMode.selectedComponentName)

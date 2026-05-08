@@ -27,6 +27,7 @@ import { useSearchParams } from "react-router-dom"
 
 import { useAdminAuth } from "@/bridgeable-admin/lib/admin-auth-context"
 import { themesService } from "@/bridgeable-admin/services/themes-service"
+import { Focus } from "@/components/focus/Focus"
 import { useAuth } from "@/contexts/auth-context"
 import { TenantProviders } from "@/lib/runtime-host/TenantProviders"
 import TenantRouteTree from "@/lib/runtime-host/TenantRouteTree"
@@ -166,6 +167,26 @@ function ShellWithTenantContext({
         tenantId={company.id}
         themeMode={themeMode}
       />
+      {/* R-2.0.4: Focus modal mount inside the editor shell.
+       *
+       *  Pre-R-2.0.4, <Focus /> was mounted only in App.tsx's tenant
+       *  branch (App.tsx:474) — the BridgeableAdminApp branch (which
+       *  hosts the runtime editor at /bridgeable-admin/runtime-editor/*)
+       *  did not include a Focus modal mount. URL `?focus=funeral-
+       *  scheduling` updated FocusContext state but no modal rendered;
+       *  SchedulingFocusWithAccessories never mounted; AncillaryCard
+       *  never appeared in DOM. Spec 15's `[data-component-name=
+       *  "ancillary-card"]` waitFor timed out at 20s.
+       *
+       *  Mounting Focus here gives the editor shell its own portal-
+       *  rendered modal that respects the editor's TenantProviders
+       *  subtree — useAuth() inside SchedulingFocusWithAccessories
+       *  resolves to the impersonated tenant context, useFocus() reads
+       *  the inner FocusProvider's URL-driven state, and the SelectionOverlay
+       *  capture-phase walker still resolves clicks inside the Focus
+       *  modal because Focus's Dialog.Portal renders into document.body
+       *  but is React-tree-wise a descendant of EditModeProvider. */}
+      <Focus />
       {/* Tenant route tree carries the impersonated user's view.
        *  data-runtime-host-root marks the boundary the SelectionOverlay
        *  walks up to so toggle / inspector clicks don't get hijacked
