@@ -133,4 +133,22 @@ export const sharedActions: ActionRegistryEntry[] = [
     vertical: "cross",
     route: "/settings/briefings",
   },
+  // ── R-5.1 — edge panel customization (cross-vertical) ──────────
+  {
+    id: "navigate_settings_edge_panel",
+    title: "Customize edge panel",
+    subtitle: "Personalize your edge panel for this tenant",
+    icon: "settings",
+    kind: "navigate",
+    keywords: [
+      "edge panel",
+      "edge panel settings",
+      "customize edge panel",
+      "edge panel preferences",
+      "panel preferences",
+    ],
+    roles: [],
+    vertical: "cross",
+    route: "/settings/edge-panel",
+  },
 ];

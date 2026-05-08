@@ -75,6 +75,7 @@ import TriageIndex from "@/pages/triage/TriageIndex";
 import TriagePage from "@/pages/triage/TriagePage";
 import BriefingPage from "@/pages/briefings/BriefingPage";
 import BriefingPreferencesPage from "@/pages/settings/BriefingPreferences";
+import EdgePanelSettingsPage from "@/pages/settings/EdgePanelSettingsPage";
 import ManufacturerPersonalizationStudioFromShareView from "@/pages/personalization-studio/ManufacturerPersonalizationStudioFromShareView";
 import SpacesSettings from "@/pages/settings/SpacesSettings";
 import PortalUsersSettings from "@/pages/settings/PortalUsersSettings";
@@ -784,6 +785,13 @@ export function renderTenantSlugRoutes(
                   <Route
                     path="/settings/spaces"
                     element={<SpacesSettings />}
+                  />
+                  {/* R-5.1 — per-user edge panel customization. Renders
+                      under same authenticated tenant guard as briefing/
+                      spaces settings; no admin gate. */}
+                  <Route
+                    path="/settings/edge-panel"
+                    element={<EdgePanelSettingsPage />}
                   />
 
                   {/* Phase 8e.2.1 — tenant-admin surfaces for managing
