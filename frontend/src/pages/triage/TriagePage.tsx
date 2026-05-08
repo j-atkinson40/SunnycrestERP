@@ -42,7 +42,7 @@ export default function TriagePage() {
 
 function TriageInner() {
   const navigate = useNavigate();
-  const { status, error, config, session, item, act, snooze } =
+  const { status, error, config, session, item, act, snooze, advance } =
     useTriageSession();
 
   if (status === "loading") {
@@ -183,7 +183,11 @@ function TriageInner() {
           key={item.entity_id}
           className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
         >
-          <TriageItemDisplay item={item} display={config.item_display} />
+          <TriageItemDisplay
+            item={item}
+            display={config.item_display}
+            onAdvance={advance}
+          />
         </div>
 
         <TriageFlowControls

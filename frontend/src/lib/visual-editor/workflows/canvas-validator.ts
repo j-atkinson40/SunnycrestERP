@@ -36,6 +36,13 @@ export const VALID_NODE_TYPES: ReadonlyArray<string> = [
   "generate_document",
   "call_service_method",
   "generation-focus-invocation",
+  // Phase R-6.0a — headless Generation Focus + Review Focus invocations.
+  // Mirrors backend `app/services/workflow_templates/canvas_validator.py`
+  // VALID_NODE_TYPES additions. Frontend authoring surfaces (the new
+  // InvokeGenerationFocusConfig + InvokeReviewFocusConfig inspector
+  // panes) consume these node types directly.
+  "invoke_generation_focus",
+  "invoke_review_focus",
   "send-communication",
   "cross_tenant_order",
   "cross_tenant_request",

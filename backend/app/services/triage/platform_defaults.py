@@ -1004,8 +1004,13 @@ _workflow_review_triage = TriageQueueConfig(
     item_display=ItemDisplayConfig(
         title_field="review_focus_id",
         subtitle_field="workflow_name",
-        body_fields=["trigger_source", "created_at"],
-        display_component="generic",
+        # R-6.0b — `input_data` is the canonical payload the frontend
+        # `WorkflowReviewItemDisplay` renders + the JSON-textarea editor
+        # mutates on edit_and_approve. Surfacing it via body_fields lets
+        # the existing `_row_to_item_summary` helper carry it through
+        # extras without a parallel fetch path.
+        body_fields=["trigger_source", "created_at", "input_data"],
+        display_component="workflow_review",
     ),
     action_palette=[
         ActionConfig(

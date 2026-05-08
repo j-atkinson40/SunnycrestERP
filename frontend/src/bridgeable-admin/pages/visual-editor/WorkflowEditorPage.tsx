@@ -37,6 +37,12 @@ import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+// Phase R-6.0b — per-node-type inspector configs for the headless
+// Generation Focus + Review Focus workflow primitives. Dispatched from
+// NodeConfigForm based on selectedNode.type; the JSON textarea remains
+// the canonical fallback for every other node type.
+import { InvokeGenerationFocusConfig } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/InvokeGenerationFocusConfig"
+import { InvokeReviewFocusConfig } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/InvokeReviewFocusConfig"
 import {
   HierarchicalEditorBrowser,
   type HierarchicalCategory,
@@ -811,7 +817,7 @@ export default function WorkflowEditorPage() {
             <span className="mr-2 text-caption text-content-muted">
               Add:
             </span>
-            {(["start", "action", "decision", "branch", "parallel_split", "parallel_join", "schedule", "send-communication", "generation-focus-invocation", "cross_tenant_order", "cross_tenant_request", "playwright_action", "log_vault_item", "end"] as const).map(
+            {(["start", "action", "decision", "branch", "parallel_split", "parallel_join", "schedule", "send-communication", "generation-focus-invocation", "invoke_generation_focus", "invoke_review_focus", "cross_tenant_order", "cross_tenant_request", "playwright_action", "log_vault_item", "end"] as const).map(
               (t) => (
                 <button
                   key={t}
@@ -1050,43 +1056,55 @@ function NodeConfigForm({
         />
       </div>
 
-      <div>
-        <label className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted">
-          Config (JSON)
-        </label>
-        <textarea
-          value={configJson}
-          onChange={(e) => {
-            setConfigJson(e.target.value)
-            try {
-              const parsed = JSON.parse(e.target.value || "{}")
-              if (
-                typeof parsed === "object" &&
-                parsed !== null &&
-                !Array.isArray(parsed)
-              ) {
-                setConfigError(null)
-                onPatch({ config: parsed })
-              } else {
-                setConfigError("Must be a JSON object")
-              }
-            } catch {
-              setConfigError("Invalid JSON")
-            }
-          }}
-          rows={6}
-          data-testid="node-config-config-textarea"
-          className="w-full rounded-md border border-border-base bg-surface-raised p-2 font-plex-mono text-caption text-content-base"
+      {node.type === "invoke_generation_focus" ? (
+        <InvokeGenerationFocusConfig
+          config={node.config}
+          onChange={(next) => onPatch({ config: next })}
         />
-        {configError && (
-          <span
-            className="text-caption text-status-error"
-            data-testid="node-config-config-error"
-          >
-            {configError}
-          </span>
-        )}
-      </div>
+      ) : node.type === "invoke_review_focus" ? (
+        <InvokeReviewFocusConfig
+          config={node.config}
+          onChange={(next) => onPatch({ config: next })}
+        />
+      ) : (
+        <div>
+          <label className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted">
+            Config (JSON)
+          </label>
+          <textarea
+            value={configJson}
+            onChange={(e) => {
+              setConfigJson(e.target.value)
+              try {
+                const parsed = JSON.parse(e.target.value || "{}")
+                if (
+                  typeof parsed === "object" &&
+                  parsed !== null &&
+                  !Array.isArray(parsed)
+                ) {
+                  setConfigError(null)
+                  onPatch({ config: parsed })
+                } else {
+                  setConfigError("Must be a JSON object")
+                }
+              } catch {
+                setConfigError("Invalid JSON")
+              }
+            }}
+            rows={6}
+            data-testid="node-config-config-textarea"
+            className="w-full rounded-md border border-border-base bg-surface-raised p-2 font-plex-mono text-caption text-content-base"
+          />
+          {configError && (
+            <span
+              className="text-caption text-status-error"
+              data-testid="node-config-config-error"
+            >
+              {configError}
+            </span>
+          )}
+        </div>
+      )}
 
       <div>
         <label className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted">

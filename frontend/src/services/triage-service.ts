@@ -181,6 +181,66 @@ export class TriageRateLimitedError extends Error {
  * the panel can render a friendly toast — callers should catch
  * specifically and display `err.friendlyMessage`.
  */
+// ── Phase R-6.0 — workflow review decision ─────────────────────────
+
+
+export type WorkflowReviewDecision = "approve" | "reject" | "edit_and_approve"
+
+
+export interface WorkflowReviewDecideResponse {
+  item_id: string
+  decision: string
+  review_focus_id: string
+  run_id: string
+}
+
+
+export type CommitWorkflowReviewDecisionResult =
+  | { ok: true; data: WorkflowReviewDecideResponse }
+  | { ok: false; error: string; status?: number }
+
+
+/**
+ * Commit a decision on a `WorkflowReviewItem`. Routes through the
+ * canonical R-6.0a `/api/v1/triage/workflow-review/{item_id}/decide`
+ * endpoint, which calls `workflow_review_adapter.commit_decision`
+ * and resumes the workflow run via `workflow_engine.advance_run`.
+ *
+ * Returns a discriminated-union result so callers can render
+ * inline error chrome (toast, modal-retain) without throwing.
+ */
+export async function commitWorkflowReviewDecision(
+  itemId: string,
+  decision: WorkflowReviewDecision,
+  editedData?: Record<string, unknown> | null,
+  decisionNotes?: string | null,
+): Promise<CommitWorkflowReviewDecisionResult> {
+  try {
+    const { data } = await apiClient.post<WorkflowReviewDecideResponse>(
+      `/triage/workflow-review/${encodeURIComponent(itemId)}/decide`,
+      {
+        decision,
+        edited_data: editedData ?? null,
+        decision_notes: decisionNotes ?? null,
+      },
+    )
+    return { ok: true, data }
+  } catch (err) {
+    const axiosErr = err as {
+      response?: { status?: number; data?: { detail?: string } }
+      message?: string
+    }
+    const detail = axiosErr?.response?.data?.detail
+    const status = axiosErr?.response?.status
+    const message =
+      (typeof detail === "string" && detail) ||
+      axiosErr?.message ||
+      "Decision failed"
+    return { ok: false, error: message, status }
+  }
+}
+
+
 export async function askQuestion(
   sessionId: string,
   itemId: string,

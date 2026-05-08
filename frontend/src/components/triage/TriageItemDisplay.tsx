@@ -14,19 +14,28 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { WorkflowReviewItemDisplay } from "@/lib/triage/workflow-review-item-display";
 import type { TriageItem, TriageItemDisplay as DisplayCfg } from "@/types/triage";
 
 interface Props {
   item: TriageItem;
   display: DisplayCfg;
+  onAdvance?: () => void | Promise<void>;
 }
 
-export function TriageItemDisplay({ item, display }: Props) {
+export function TriageItemDisplay({ item, display, onAdvance }: Props) {
   if (display.display_component === "task") {
     return <TaskDisplay item={item} />;
   }
   if (display.display_component === "social_service_certificate") {
     return <SSCertDisplay item={item} />;
+  }
+  // Phase R-6.0b — workflow review queue dispatches to a dedicated
+  // display that wires its 3 actions (approve/reject/edit_and_approve)
+  // directly to the canonical workflow-review/{id}/decide endpoint,
+  // bypassing the standard TriageActionPalette dispatch.
+  if (display.display_component === "workflow_review") {
+    return <WorkflowReviewItemDisplay item={item} onAdvance={onAdvance} />;
   }
   return <GenericDisplay item={item} bodyFields={display.body_fields} />;
 }
