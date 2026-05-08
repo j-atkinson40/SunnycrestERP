@@ -165,6 +165,25 @@ export function useFocus(): FocusContextValue {
 }
 
 
+/** R-5.0.3 — Null-safe variant of useFocus. Returns null when called
+ *  outside the FocusProvider tree (e.g. inside the admin tree's
+ *  visual-editor previews where the tenant FocusProvider is NOT
+ *  mounted). Mirrors `useEdgePanelOptional()` — components that may
+ *  render in arbitrary trees (RegisteredButton renders both inside
+ *  the tenant route tree AND inside the admin editor's preview
+ *  pane via CompositionRenderer) call this instead of `useFocus`.
+ *
+ *  Pre-R-5.0.3, RegisteredButton called the strict `useFocus()` and
+ *  crashed the entire admin editor page when the editor's preview
+ *  attempted to render a seeded button placement (the tenant tree
+ *  has FocusProvider; the admin tree does not). The crash surfaced
+ *  as a blank cream page (Playwright "edge-panel-editor-scope" not
+ *  found — root rendered nothing). */
+export function useFocusOptional(): FocusContextValue | null {
+  return useContext(FocusContext);
+}
+
+
 export function FocusProvider({ children }: { children: ReactNode }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [currentFocus, setCurrentFocus] = useState<FocusState | null>(null);

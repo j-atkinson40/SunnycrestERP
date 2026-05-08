@@ -50,7 +50,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useAuth } from "@/contexts/auth-context"
-import { useFocus } from "@/contexts/focus-context"
+import { useFocusOptional } from "@/contexts/focus-context"
 import { useEdgePanelOptional } from "@/lib/edge-panel/EdgePanelProvider"
 import { getByName } from "@/lib/visual-editor/registry"
 
@@ -96,7 +96,17 @@ export function RegisteredButton({
 }: RegisteredButtonProps) {
   const entry = getByName("button", componentName)
   const navigate = useNavigate()
-  const focus = useFocus()
+  // R-5.0.3 — null-safe useFocus. Pre-R-5.0.3 this called the strict
+  // useFocus() which throws outside the FocusProvider tree. The admin
+  // tree (BridgeableAdminApp) does NOT mount FocusProvider, so when
+  // the visual editor's preview rendered a seeded button placement
+  // via CompositionRenderer, the entire editor page crashed (blank
+  // cream — spec 28's edge-panel-editor-scope was "not found"
+  // because the root rendered nothing). The optional variant returns
+  // null in that case; open_focus action handlers downstream
+  // gracefully no-op when focus is null (admin previews never need
+  // to actually open a Focus modal).
+  const focus = useFocusOptional()
   const { user, company } = useAuth()
   const routeParams = useParams()
   const [searchParams] = useSearchParams()
@@ -206,14 +216,19 @@ export function RegisteredButton({
         nowMs: Date.now(),
         routeParams,
         queryParams: searchParams,
-        currentFocusId: focus.currentFocus?.id ?? null,
+        currentFocusId: focus?.currentFocus?.id ?? null,
       }
       const resolved = resolveBindings(contract.parameterBindings ?? [], ctx)
       const result = await dispatchAction(
         contract.actionType,
         contract.actionConfig,
         resolved,
-        { navigate, openFocus: focus.open },
+        // R-5.0.3 — provide a no-op fallback for openFocus when focus
+        // context is unavailable (admin tree previews). open_focus
+        // action handlers crash without it; the no-op makes them
+        // gracefully degrade (the editor preview never actually opens
+        // a Focus modal — that's a runtime-only concern).
+        { navigate, openFocus: focus?.open ?? (() => undefined) },
       )
       if (result.status === "error") {
         toast.error(result.errorMessage ?? "Action failed.")

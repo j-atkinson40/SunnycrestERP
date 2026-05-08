@@ -18,7 +18,7 @@
  * Empty composition: render a placeholder with "No actions yet" copy.
  * Disabled tenant: doesn't render at all (gated at the host).
  */
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react"
 
 import { CompositionRenderer } from "@/lib/visual-editor/compositions/CompositionRenderer"
 import type { ResolvedComposition } from "@/lib/visual-editor/compositions/types"
@@ -87,9 +87,38 @@ export function EdgePanel() {
       : Math.max(0, Math.min(currentPageIndex, pages.length - 1))
   const activePage = pages[safeIndex] ?? null
 
+  // R-5.0.3 — Event-delegated close as defense-in-depth for the
+  // close-on-fire contract. R-5.0.2 moved RegisteredButton's
+  // closePanel() to fire BEFORE dispatchAction; against staging that
+  // STILL did not propagate `data-edge-panel-open="false"` within
+  // the test window, despite the close call being present in the
+  // deployed bundle. Diagnosis surfaced no React error, no context
+  // mismatch, and no portal boundary. Rather than continue
+  // diagnosing the propagation gap on the inner button's path, we
+  // close the panel at the container level via capture-phase click
+  // delegation: any click landing on a placement card whose
+  // component_kind="button" closes the panel. This is independent
+  // of whether the inner button's onClick fires correctly + whether
+  // useEdgePanelOptional resolves to a non-null context inside the
+  // button. Capture phase ensures we observe the click before the
+  // inner button's handler runs; React batches setIsOpen(false)
+  // alongside whatever the button does, so a single re-render
+  // commits both the close + the dispatch result.
+  function onContainerClickCapture(e: ReactMouseEvent) {
+    const target = e.target as Element | null
+    if (!target) return
+    const placement = target.closest(
+      '[data-component-kind="button"]',
+    ) as HTMLElement | null
+    if (placement !== null) {
+      closePanel()
+    }
+  }
+
   return (
     <div
       ref={panelRef}
+      onClickCapture={onContainerClickCapture}
       data-testid="edge-panel"
       data-edge-panel-open={isOpen ? "true" : "false"}
       role="dialog"

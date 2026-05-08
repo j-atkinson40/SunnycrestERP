@@ -47,6 +47,18 @@ vi.mock("@/contexts/focus-context", () => ({
     close: vi.fn(),
     dismissReturnPill: vi.fn(),
   }),
+  // R-5.0.3 — RegisteredButton now consumes useFocusOptional for
+  // null-safe admin-tree previews. Tests mock both — the optional
+  // variant returns the same shape so handler logic exercises the
+  // not-null path identically to pre-R-5.0.3.
+  useFocusOptional: () => ({
+    currentFocus: null,
+    isOpen: false,
+    lastClosedFocus: null,
+    open: mockOpenFocus,
+    close: vi.fn(),
+    dismissReturnPill: vi.fn(),
+  }),
 }))
 
 
