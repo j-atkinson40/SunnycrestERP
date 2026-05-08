@@ -47,14 +47,27 @@ test.describe("Gate 22 — DeliveryCard sub-section click-to-edit", () => {
 
     // R-2.1 — clicking the header sub-section. The header's boundary
     // div nests inside the parent card's boundary div via Path 1
-    // wrapping. SelectionOverlay walks UP from event.target and
-    // stops at the deepest `[data-component-name]` — which is the
-    // header's `delivery-card.header` slug.
+    // wrapping. SelectionOverlay walks UP from event.target — when
+    // event.target is the header boundary div itself, the walker
+    // finds data-component-name="delivery-card.header" immediately +
+    // dispatches selectSection.
+    //
+    // R-2.1.1 — scope to the ACTIVE day pane. The funeral-schedule
+    // page pre-mounts every day as an absolute-positioned layer
+    // (funeral-schedule.tsx:1010+) so [data-component-name="delivery-
+    // card.header"] matches across every day; .first() can land on
+    // an offscreen pane's header, and Playwright's auto-scroll
+    // cannot scroll a CSS-transform-positioned element into view.
+    // dispatchEvent("click") fires the click on the wrapper directly,
+    // bypassing element-from-point + viewport checks.
     const headerSection = page
-      .locator('[data-component-name="delivery-card.header"]')
+      .locator(
+        '[data-slot="dispatch-fs-day-pane"][data-active="true"] ' +
+          '[data-component-name="delivery-card.header"]',
+      )
       .first()
-    await headerSection.waitFor({ state: "visible", timeout: 20_000 })
-    await headerSection.click()
+    await headerSection.waitFor({ state: "attached", timeout: 20_000 })
+    await headerSection.dispatchEvent("click")
 
     // Brass selection border appears.
     await expect(

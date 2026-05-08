@@ -58,16 +58,33 @@ test.describe("Gate 14 — DeliveryCard click-to-edit", () => {
       page.getByTestId("runtime-editor-edit-indicator"),
     ).toBeVisible({ timeout: 10_000 })
 
-    // Find a DeliveryCard. seed_dispatch_demo guarantees today has
-    // at least 5 kanban deliveries on testco. Boundary div is
-    // display:contents (R-2.0 wrapping pattern); the click can land
-    // on the boundary OR a child — SelectionOverlay's capture-phase
-    // walker resolves to the nearest [data-component-name] ancestor.
+    // R-2.1.1 — funeral-schedule pre-mounts every day as an absolute-
+    // positioned layer (funeral-schedule.tsx:1010+); inactive days sit
+    // at translateY(±100%) clipped by the stage's overflow-hidden.
+    // Cards in inactive panes are in the DOM but rendered offscreen
+    // via CSS transform — Playwright's auto-scroll-into-view cannot
+    // bring CSS-transform-positioned elements into view. The locator
+    // MUST scope to the active day pane (data-active="true") so
+    // .first() lands on a visible card. The pre-mount + transform
+    // pattern is intentional iOS-Smart-Stack day-rotation UX; spec-
+    // side scoping is the canonical fix per /tmp/r2_1_1_viewport_
+    // regression.md Section 4.
+    //
+    // Click target is the parent boundary div with display:contents.
+    // dispatchEvent("click") is the canonical Playwright primitive
+    // for triggering SelectionOverlay's capture-phase walker on a
+    // display:contents element — fires the click event ON the wrapper
+    // directly, bypassing element-from-point + viewport checks. Walker
+    // reads e.target, finds data-component-name="delivery-card" on the
+    // target itself, dispatches selectComponent("delivery-card").
     const card = page
-      .locator('[data-component-name="delivery-card"]')
+      .locator(
+        '[data-slot="dispatch-fs-day-pane"][data-active="true"] ' +
+          '[data-component-name="delivery-card"]',
+      )
       .first()
-    await card.waitFor({ state: "visible", timeout: 20_000 })
-    await card.click()
+    await card.waitFor({ state: "attached", timeout: 20_000 })
+    await card.dispatchEvent("click")
 
     // Brass selection border appears.
     await expect(

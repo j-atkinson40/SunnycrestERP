@@ -116,14 +116,49 @@ test.describe("Gate 15 — AncillaryCard click-to-edit", () => {
       page.getByTestId("runtime-inspector-tab-props"),
     ).toBeVisible()
 
-    // Inspector resolves ancillary-card. Visible text shows the
-    // registered displayName "Ancillary Card"; data-component-slug
-    // carries the slug from registrations/entity-cards.ts.
+    // R-2.1.2 — walker resolves to the DEEPEST `[data-component-name]`
+    // ancestor (canonical R-2.1 contract). Click on the AncillaryCard
+    // root lands inside the body button, which contains the wrapped
+    // `[data-component-name="ancillary-card.body"]` boundary. Walker
+    // walks up: clicked element → ancillary-card-body wrapper (display:
+    // contents) → STOPS. Selection dispatches as
+    // {kind: "component-section", componentName: "ancillary-card.body",
+    //  parentName: "ancillary-card"}.
+    //
+    // Pre-R-2.1.2: spec asserted parent slug "ancillary-card" — that
+    // pre-dates the deepest-wins walker contract. Updated to assert
+    // the deepest sub-section.
+    //
+    // To assert the parent's editing surface, the canonical path is:
+    // click the "Card" outer tab (validates separately below). The
+    // initial click selecting a sub-section + the Card tab scoping
+    // back to parent is the full R-2.1 contract.
     const componentName = page.getByTestId("runtime-inspector-component-name")
-    await expect(componentName).toHaveText("Ancillary Card")
+    await expect(componentName).toHaveText("Ancillary Card · Body")
     await expect(componentName).toHaveAttribute(
       "data-component-slug",
-      "ancillary-card",
+      "ancillary-card.body",
     )
+
+    // Outer-tab strip mounts because the parent (ancillary-card) has
+    // registered sub-sections. Card tab is clickable + becomes active
+    // when clicked; this scopes the inner triad (theme/class/props) to
+    // the parent without changing what's "selected" (the inspector
+    // HEADER still tracks the DOM-click selection — outer tabs only
+    // toggle which entry the inner triad operates on, mirroring the
+    // R-2.1 outer/inner separation per InspectorPanel.tsx:139-155).
+    // Spec 22 follows the same shape for DeliveryCard.
+    await expect(
+      page.getByTestId("runtime-inspector-outer-tabs"),
+    ).toBeVisible()
+    const cardTab = page.getByTestId("runtime-inspector-outer-tab-card")
+    await expect(cardTab).toBeVisible()
+    const bodyTab = page.getByTestId(
+      "runtime-inspector-outer-tab-ancillary-card.body",
+    )
+    await expect(bodyTab).toHaveAttribute("data-active", "true")
+    await cardTab.click()
+    await expect(cardTab).toHaveAttribute("data-active", "true")
+    await expect(bodyTab).toHaveAttribute("data-active", "false")
   })
 })
