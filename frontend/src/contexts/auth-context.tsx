@@ -216,3 +216,22 @@ export function useAuth() {
   if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 }
+
+
+/** R-5.0.4 — Null-safe variant of useAuth. Returns null when called
+ *  outside the AuthProvider tree (e.g. inside the admin tree's visual-
+ *  editor previews where the tenant AuthProvider is NOT mounted; the
+ *  admin tree mounts its own AdminAuthProvider against a separate
+ *  context object). Mirrors `useFocusOptional()` (R-5.0.3) +
+ *  `useEdgePanelOptional()` (R-5.0).
+ *
+ *  Pattern: components rendered in arbitrary subtrees (RegisteredButton
+ *  renders both inside the tenant route tree AND inside the admin
+ *  editor's preview pane via CompositionRenderer) need null-safe
+ *  variants of every tenant-context hook they consume. The strict
+ *  `useAuth()` stays for callers that genuinely require auth and
+ *  should crash early when missing. */
+export function useAuthOptional(): AuthContextType | null {
+  const context = useContext(AuthContext);
+  return context ?? null;
+}

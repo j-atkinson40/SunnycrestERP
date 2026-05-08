@@ -49,7 +49,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { useAuth } from "@/contexts/auth-context"
+import { useAuthOptional } from "@/contexts/auth-context"
 import { useFocusOptional } from "@/contexts/focus-context"
 import { useEdgePanelOptional } from "@/lib/edge-panel/EdgePanelProvider"
 import { getByName } from "@/lib/visual-editor/registry"
@@ -107,7 +107,19 @@ export function RegisteredButton({
   // gracefully no-op when focus is null (admin previews never need
   // to actually open a Focus modal).
   const focus = useFocusOptional()
-  const { user, company } = useAuth()
+  // R-5.0.4 — null-safe useAuth. Same architectural rationale as
+  // useFocusOptional (R-5.0.3): the admin BridgeableAdminApp tree
+  // mounts AdminAuthProvider (different context object) but NOT the
+  // tenant AuthProvider, so when the visual editor's preview pane
+  // renders a button placement via CompositionRenderer, strict
+  // useAuth() crashes the entire editor render. The optional variant
+  // returns null in that case; binding-context resolution downstream
+  // gracefully passes null for current_user / current_tenant
+  // (admin previews never need to actually fire the action — the
+  // preview is structural verification, not interactive dispatch).
+  const auth = useAuthOptional()
+  const user = auth?.user ?? null
+  const company = auth?.company ?? null
   const routeParams = useParams()
   const [searchParams] = useSearchParams()
   const [confirmOpen, setConfirmOpen] = useState(false)

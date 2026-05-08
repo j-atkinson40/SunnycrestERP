@@ -75,6 +75,23 @@ vi.mock("@/contexts/auth-context", () => ({
       vertical: "manufacturing",
     },
   }),
+  // R-5.0.4 — RegisteredButton consumes useAuthOptional for null-safe
+  // admin-tree previews. Mock returns the same shape so handler logic
+  // exercises the not-null path identically to pre-R-5.0.4. Returning
+  // null here would simulate the admin-preview path; tests for that
+  // branch are scoped to spec 28's structural verification.
+  useAuthOptional: () => ({
+    user: {
+      id: "user-1",
+      email: "u@example.com",
+      role_slug: "admin",
+    },
+    company: {
+      id: "tenant-1",
+      slug: "testco",
+      vertical: "manufacturing",
+    },
+  }),
 }))
 
 
