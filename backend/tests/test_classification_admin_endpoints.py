@@ -330,3 +330,145 @@ def test_manual_route_to_workflow(db, admin_user, tenant_pair, monkeypatch):
     body = r.json()
     assert body["selected_workflow_id"] == wf.id
     assert body["workflow_run_id"] is not None
+
+
+# ── Phase R-6.1a.1 — Confidence floors + suppression ────────────────
+
+
+def test_get_confidence_floors_returns_defaults_when_unset(db, admin_user):
+    """Fresh tenant with no settings_json key returns the canonical
+    module-level fallbacks (0.55 / 0.65)."""
+    client = _make_client(db, admin_user)
+    r = client.get("/api/v1/email-classification/confidence-floors")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["tier_2"] == 0.55
+    assert body["tier_3"] == 0.65
+
+
+def test_get_confidence_floors_returns_set_values(db, admin_user, tenant_pair):
+    """Seeded settings_json overrides surface verbatim."""
+    a, _ = tenant_pair
+    a.set_setting(
+        "classification_confidence_floors",
+        {"tier_2": 0.7, "tier_3": 0.85},
+    )
+    db.commit()
+    client = _make_client(db, admin_user)
+    r = client.get("/api/v1/email-classification/confidence-floors")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["tier_2"] == 0.7
+    assert body["tier_3"] == 0.85
+
+
+def test_put_confidence_floors_persists(db, admin_user):
+    """PUT with valid bounds persists; subsequent GET reflects."""
+    client = _make_client(db, admin_user)
+    r = client.put(
+        "/api/v1/email-classification/confidence-floors",
+        json={"tier_2": 0.6, "tier_3": 0.7},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["tier_2"] == 0.6
+    assert body["tier_3"] == 0.7
+    # Round-trip via GET.
+    r2 = client.get("/api/v1/email-classification/confidence-floors")
+    assert r2.status_code == 200
+    assert r2.json() == {"tier_2": 0.6, "tier_3": 0.7}
+
+
+def test_put_confidence_floors_rejects_out_of_range(db, admin_user):
+    """Pydantic ``Field(..., ge=0.0, le=1.0)`` returns 422 on
+    out-of-range inputs."""
+    client = _make_client(db, admin_user)
+    r = client.put(
+        "/api/v1/email-classification/confidence-floors",
+        json={"tier_2": 1.5, "tier_3": 0.7},
+    )
+    assert r.status_code == 422
+    # Below-zero is also rejected.
+    r2 = client.put(
+        "/api/v1/email-classification/confidence-floors",
+        json={"tier_2": 0.5, "tier_3": -0.1},
+    )
+    assert r2.status_code == 422
+
+
+def test_suppress_classification_writes_new_row(db, admin_user, tenant_pair):
+    """POST suppress on an existing classification writes a NEW audit
+    row with is_replay=True + replay_of_classification_id + is_suppressed=True
+    per R-6.1a's append-only canon."""
+    a, _ = tenant_pair
+    acct = make_email_account(db, a)
+    msg = make_inbound_email(db, tenant=a, account=acct)
+    cls = write_classification_audit(
+        db,
+        tenant_id=a.id,
+        email_message_id=msg.id,
+        tier=None,
+        selected_workflow_id=None,
+        is_suppressed=False,
+    )
+    db.commit()
+
+    client = _make_client(db, admin_user)
+    r = client.post(
+        f"/api/v1/email-classification/classifications/{cls.id}/suppress",
+        json={"reason": "Spam newsletter"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["is_suppressed"] is True
+    assert body["is_replay"] is True
+    assert body["replay_of_classification_id"] == cls.id
+    assert body["id"] != cls.id
+    # The chain has 2 rows now.
+    chain = (
+        db.query(WorkflowEmailClassification)
+        .filter(WorkflowEmailClassification.email_message_id == msg.id)
+        .all()
+    )
+    assert len(chain) == 2
+
+
+def test_suppress_classification_idempotent(db, admin_user, tenant_pair):
+    """Suppressing twice returns the existing suppression record;
+    no duplicate row created. Per R-6.1a.1 idempotency contract."""
+    a, _ = tenant_pair
+    acct = make_email_account(db, a)
+    msg = make_inbound_email(db, tenant=a, account=acct)
+    cls = write_classification_audit(
+        db,
+        tenant_id=a.id,
+        email_message_id=msg.id,
+        tier=None,
+        selected_workflow_id=None,
+        is_suppressed=False,
+    )
+    db.commit()
+
+    client = _make_client(db, admin_user)
+    # First suppress.
+    r1 = client.post(
+        f"/api/v1/email-classification/classifications/{cls.id}/suppress",
+        json={"reason": "Spam"},
+    )
+    assert r1.status_code == 200
+    first_id = r1.json()["id"]
+
+    # Second suppress — same input, idempotent.
+    r2 = client.post(
+        f"/api/v1/email-classification/classifications/{cls.id}/suppress",
+        json={"reason": "Spam"},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["id"] == first_id  # same record, no new row
+    # Chain has exactly 2 rows total (original + 1 suppression).
+    chain = (
+        db.query(WorkflowEmailClassification)
+        .filter(WorkflowEmailClassification.email_message_id == msg.id)
+        .all()
+    )
+    assert len(chain) == 2

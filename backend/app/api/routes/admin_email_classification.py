@@ -29,10 +29,16 @@ from app.models.email_classification import (
 from app.models.email_primitive import EmailMessage
 from app.models.user import User
 from app.models.workflow import Workflow
+from app.models.company import Company
 from app.services.classification import (
     ClassificationError,
     ClassificationNotFound,
     classify_only,
+)
+from app.services.classification.audit import write_classification_audit
+from app.services.classification.dispatch import (
+    CONFIDENCE_FLOOR_TIER_2,
+    CONFIDENCE_FLOOR_TIER_3,
 )
 
 
@@ -87,6 +93,27 @@ class _Tier3EnrollmentRequest(BaseModel):
 class _ManualRouteRequest(BaseModel):
     workflow_id: str
     decision_notes: str | None = None
+
+
+class _ConfidenceFloorsUpdate(BaseModel):
+    """Phase R-6.1a.1 — per-tenant confidence-floor overrides.
+
+    Bounds 0.0 ≤ value ≤ 1.0 enforced via Pydantic ``Field``. Stored
+    on ``Company.settings_json.classification_confidence_floors`` and
+    read via the canonical ``dispatch._resolve_floors`` path.
+    """
+
+    tier_2: float = Field(..., ge=0.0, le=1.0)
+    tier_3: float = Field(..., ge=0.0, le=1.0)
+
+
+class _SuppressRequest(BaseModel):
+    """Phase R-6.1a.1 — operator-driven suppression of a classified
+    message. Optional ``reason`` is stored in the new audit row's
+    ``tier_reasoning.suppress.reason``.
+    """
+
+    reason: str | None = None
 
 
 def _rule_to_dict(r: TenantWorkflowEmailRule) -> dict[str, Any]:
@@ -568,3 +595,125 @@ def route_classification_to_workflow(
         "selected_workflow_id": result.selected_workflow_id,
         "workflow_run_id": result.workflow_run_id,
     }
+
+
+# ── Phase R-6.1a.1 — Confidence floors + suppression ────────────────
+
+
+@router.get("/confidence-floors")
+def get_confidence_floors(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, float]:
+    """Read per-tenant Tier 2 + Tier 3 confidence floors. Returns the
+    canonical module-level fallback (0.55 / 0.65) when no override is
+    set on ``Company.settings_json.classification_confidence_floors``.
+    Mirrors the read path in ``dispatch._resolve_floors``.
+    """
+    company = (
+        db.query(Company).filter(Company.id == current_user.company_id).first()
+    )
+    settings = company.settings if company is not None else {}
+    overrides = settings.get("classification_confidence_floors") or {}
+    tier_2 = overrides.get("tier_2")
+    tier_3 = overrides.get("tier_3")
+    try:
+        tier_2_v = float(tier_2) if tier_2 is not None else CONFIDENCE_FLOOR_TIER_2
+    except (TypeError, ValueError):
+        tier_2_v = CONFIDENCE_FLOOR_TIER_2
+    try:
+        tier_3_v = float(tier_3) if tier_3 is not None else CONFIDENCE_FLOOR_TIER_3
+    except (TypeError, ValueError):
+        tier_3_v = CONFIDENCE_FLOOR_TIER_3
+    return {"tier_2": tier_2_v, "tier_3": tier_3_v}
+
+
+@router.put("/confidence-floors")
+def put_confidence_floors(
+    body: _ConfidenceFloorsUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, float]:
+    """Persist per-tenant Tier 2 + Tier 3 confidence floors via
+    ``Company.set_setting('classification_confidence_floors', ...)``.
+    Pydantic ``Field(..., ge=0.0, le=1.0)`` enforces bounds — out-of-
+    range returns 422.
+    """
+    company = (
+        db.query(Company).filter(Company.id == current_user.company_id).first()
+    )
+    if company is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    company.set_setting(
+        "classification_confidence_floors",
+        {"tier_2": body.tier_2, "tier_3": body.tier_3},
+    )
+    db.commit()
+    return {"tier_2": body.tier_2, "tier_3": body.tier_3}
+
+
+@router.post("/classifications/{classification_id}/suppress")
+def suppress_classification(
+    classification_id: str,
+    body: _SuppressRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Mark a classified message suppressed via the canonical append-
+    only audit-chain pattern: write a NEW ``WorkflowEmailClassification``
+    row with ``is_replay=True + replay_of_classification_id=<prior.id> +
+    is_suppressed=True``. Cross-tenant ``classification_id`` returns 404
+    (existence-hiding).
+
+    Idempotency: walks the replay chain to find the LATEST row for this
+    message; if that row is already suppressed, returns the existing
+    record unchanged (no duplicate insert). Reason changes do NOT
+    mutate the existing row — they would land as a new chain entry,
+    but R-6.1a.1 ships idempotent-on-already-suppressed (no update
+    path; admin re-suppresses with a new reason by a future cleanup if
+    operator signal warrants).
+    """
+    prior = (
+        db.query(WorkflowEmailClassification)
+        .filter(
+            WorkflowEmailClassification.id == classification_id,
+            WorkflowEmailClassification.tenant_id == current_user.company_id,
+        )
+        .first()
+    )
+    if prior is None:
+        raise HTTPException(status_code=404, detail="Classification not found")
+
+    # Walk to the latest row for this message — idempotency check.
+    latest = (
+        db.query(WorkflowEmailClassification)
+        .filter(
+            WorkflowEmailClassification.tenant_id == current_user.company_id,
+            WorkflowEmailClassification.email_message_id == prior.email_message_id,
+        )
+        .order_by(WorkflowEmailClassification.created_at.desc())
+        .first()
+    )
+    if latest is not None and latest.is_suppressed:
+        # Already suppressed — return existing without inserting a duplicate.
+        return _classification_to_dict(latest)
+
+    new_row = write_classification_audit(
+        db,
+        tenant_id=current_user.company_id,
+        email_message_id=prior.email_message_id,
+        tier=None,
+        selected_workflow_id=None,
+        is_suppressed=True,
+        is_replay=True,
+        replay_of_classification_id=prior.id,
+        tier_reasoning={
+            "suppress": {
+                "operator_user_id": current_user.id,
+                "reason": body.reason,
+            }
+        },
+    )
+    db.commit()
+    db.refresh(new_row)
+    return _classification_to_dict(new_row)
