@@ -53,6 +53,7 @@ import FocusTestPage from "@/pages/dev/focus-test";
 import FuneralSchedulePage from "@/pages/dispatch/funeral-schedule";
 import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
+import EmailClassificationPage from "@/pages/admin/EmailClassificationPage";
 import CompanyMigrationReviewPage from "@/pages/admin/company-migration-review";
 import CompanyClassificationPage from "@/pages/admin/company-classification";
 import CompaniesListPage from "@/pages/crm/companies";
@@ -646,6 +647,16 @@ export function renderTenantSlugRoutes(
                     <Route
                       path="/admin/company-migration"
                       element={<CompanyMigrationReviewPage />}
+                    />
+                  </Route>
+
+                  {/* Email classification — R-6.1b.a tenant-admin authoring
+                      surface for the R-6.1a + R-6.1a.1 cascade (Tier 1 rules
+                      + Tier 2 categories + Tier 2/3 confidence floors). */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/admin/email-classification"
+                      element={<EmailClassificationPage />}
                     />
                   </Route>
 
