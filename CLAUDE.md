@@ -1938,6 +1938,8 @@ Null / unknown verticals fall back to `manufacturing`. Input is case-insensitive
 - **Audit package generation is a stub** — `report_intelligence_service.py:195` has a TODO for async Claude call.
 - **Accountant invitation email** — `accounting_connection.py:304` has a TODO; email is not sent.
 - **~30 unimplemented agent jobs** — schemas and services exist, job runners not built.
+- **`seed_fh_demo` R2 dependency** — `_seed_personalization_studio_phase1g` requires R2 storage config; `commit_canvas_state` writes to R2 unconditionally. CI `test_seed_idempotency.sh` fails first run when R2 is unavailable. Likely failing since Personalization Studio Phase 1g landed; surfaced post-R-6.1a (verified `git log ea8d88d..1a945d2 -- seed_fh_demo.py personalization_studio/ legacy_r2_client.py` is empty — R-6.1a touched zero files in the failure path). Fix path (R-7 hygiene): degrade gracefully in `commit_canvas_state` when R2 unconfigured (skip upload + log warning) OR provide R2 mock in CI environment.
+- **`seed_idempotency` CI script python invocation** — script uses `python` instead of `python3`. Fails locally on macOS where `python` is not in PATH; may fail in some CI environments depending on python alias resolution. Fix path (R-7 hygiene): swap to `python3` in the script's shebang + invocation lines.
 
 ### Tech Debt
 - `@app.on_event("startup/shutdown")` — deprecated FastAPI pattern; should migrate to lifespan context manager
