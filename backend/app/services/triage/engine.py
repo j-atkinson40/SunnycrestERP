@@ -1360,6 +1360,21 @@ def _dq_catalog_fetch_triage(
     return out
 
 
+def _dq_email_unclassified_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Phase R-6.1a — surfaces inbound emails whose classification
+    cascade exhausted without a dispatch (tier IS NULL AND
+    is_suppressed = FALSE). Tenant-scoped via the
+    ``classification.list_unclassified`` helper which de-dups against
+    later replays so a once-unclassified message that's since been
+    routed via replay falls out of the queue.
+    """
+    from app.services.classification.dispatch import list_unclassified
+
+    return list_unclassified(db, tenant_id=user.company_id, limit=50)
+
+
 def _dq_workflow_review(
     db: Session, user: User
 ) -> list[dict[str, Any]]:
@@ -1431,6 +1446,8 @@ _DIRECT_QUERIES: dict[
     "safety_program_triage": _dq_safety_program_triage,
     # Phase R-6.0a — workflow review pause (invoke_review_focus)
     "workflow_review": _dq_workflow_review,
+    # Phase R-6.1a — unclassified email cascade fallthrough
+    "email_unclassified": _dq_email_unclassified_triage,
 }
 
 

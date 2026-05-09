@@ -52,6 +52,13 @@ class Workflow(Base):
     vertical: Mapped[str | None] = mapped_column(String(50), nullable=True)
     trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
     trigger_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Phase R-6.1a — opt-in flag for Tier 3 AI workflow registry
+    # selection. Default false. Per-workflow column rather than nested
+    # in trigger_config so it's queryable + filterable without a JSONB
+    # scan during Tier 3 registry assembly.
+    tier3_enrolled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)

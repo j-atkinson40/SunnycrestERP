@@ -47,6 +47,9 @@ from app.api.routes.fh import cemetery as fh_cemetery
 from app.api.routes.fh import network as fh_network
 from app.api.routes.fh import monument as fh_monument
 from app.api.routes import workflows as workflow_routes
+from app.api.routes import (
+    admin_email_classification as email_classification_routes,
+)
 from app.api.routes import vault_documents as vault_documents_routes
 from app.api.routes import saved_orders as saved_orders_routes
 from app.api.routes import external_accounts as external_accounts_routes
@@ -886,6 +889,13 @@ v1_router.include_router(
 # Workflow Engine (Phase W-1)
 v1_router.include_router(
     workflow_routes.router, prefix="/workflows", tags=["Workflows"]
+)
+
+# Email Classification cascade (Phase R-6.1a)
+v1_router.include_router(
+    email_classification_routes.router,
+    prefix="/email-classification",
+    tags=["Email Classification"],
 )
 
 # Saved Orders (Compose Templates)

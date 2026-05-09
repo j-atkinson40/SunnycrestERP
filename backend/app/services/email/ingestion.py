@@ -658,4 +658,22 @@ def ingest_provider_message(
             message.id,
         )
 
+    # 12. Workflow trigger classification — Phase R-6.1a.
+    # Inbound-only three-tier cascade: tenant rules → AI taxonomy →
+    # AI registry. Synchronous (≤2s p95). Best-effort — never blocks
+    # ingestion. Failure logs + falls through to no classification
+    # (operator can replay manually via admin replay endpoint).
+    if direction == "inbound":
+        try:
+            from app.services.classification import classify_and_fire
+
+            classify_and_fire(db, email_message=message)
+            db.flush()
+        except Exception:
+            logger.exception(
+                "Email classification failed for message %s — "
+                "non-blocking; operator can replay manually",
+                message.id,
+            )
+
     return message

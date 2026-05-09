@@ -959,6 +959,129 @@ def _handle_workflow_review_edit_and_approve(
     }
 
 
+# ── Email unclassified handlers (Phase R-6.1a) ──────────────────────
+
+
+def _handle_email_unclassified_route_to_workflow(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Operator picks a workflow + fires it with the email as
+    trigger context. Writes a NEW classification row marking the
+    manual reroute. ``ctx['payload']`` carries
+    ``{"workflow_id": str, "decision_notes": str | None}``."""
+    from app.services.classification.dispatch import (
+        ClassificationError,
+        ClassificationNotFound,
+        manual_route_to_workflow,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    payload = ctx.get("payload") or {}
+    workflow_id = payload.get("workflow_id") if isinstance(payload, dict) else None
+    decision_notes = (
+        payload.get("decision_notes") if isinstance(payload, dict) else None
+    )
+    if not isinstance(workflow_id, str) or not workflow_id:
+        return {
+            "status": "errored",
+            "message": "route_to_workflow requires payload.workflow_id (string).",
+        }
+
+    try:
+        result = manual_route_to_workflow(
+            db,
+            classification_id=ctx["entity_id"],
+            workflow_id=workflow_id,
+            user=user,
+            decision_notes=(
+                decision_notes if isinstance(decision_notes, str) else None
+            ),
+        )
+    except ClassificationNotFound as exc:
+        return {"status": "errored", "message": str(exc), "code": "not_found"}
+    except ClassificationError as exc:
+        return {"status": "errored", "message": str(exc)}
+
+    return {
+        "status": "applied",
+        "message": (
+            f"Routed to workflow; run_id={result.workflow_run_id or 'pending'}."
+        ),
+        "entity_state": "routed",
+        "classification_id": result.classification_id,
+        "workflow_run_id": result.workflow_run_id,
+    }
+
+
+def _handle_email_unclassified_suppress(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Mark the classification as suppressed — the email drops
+    without firing or routing to triage on subsequent identical
+    matches (operator may follow up with a Tier 1 rule for the
+    pattern). Writes a NEW classification row preserving audit
+    chain."""
+    from app.models.email_classification import (
+        WorkflowEmailClassification,
+    )
+    from app.services.classification.audit import write_classification_audit
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    prior = (
+        db.query(WorkflowEmailClassification)
+        .filter(
+            WorkflowEmailClassification.id == ctx["entity_id"],
+            WorkflowEmailClassification.tenant_id == user.company_id,
+        )
+        .first()
+    )
+    if prior is None:
+        return {
+            "status": "errored",
+            "message": "Classification not found",
+            "code": "not_found",
+        }
+
+    row = write_classification_audit(
+        db,
+        tenant_id=user.company_id,
+        email_message_id=prior.email_message_id,
+        tier=None,
+        is_suppressed=True,
+        is_replay=True,
+        replay_of_classification_id=prior.id,
+        tier_reasoning={
+            "manual_suppress": {
+                "operator_user_id": user.id,
+                "reason": ctx.get("reason") or ctx.get("note"),
+            }
+        },
+    )
+    db.commit()
+    return {
+        "status": "applied",
+        "message": "Suppressed; future identical messages may need a Tier 1 rule.",
+        "entity_state": "suppressed",
+        "classification_id": row.id,
+    }
+
+
+def _handle_email_unclassified_request_review(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Soft action — note the request for review without mutating
+    classification state. Surfaces in the audit trail; another
+    admin can pick up the item from triage. v1 does NOT route to a
+    specific user — admins share the unclassified queue."""
+    return {
+        "status": "applied",
+        "message": "Review requested; another admin can pick this up from the queue.",
+        "entity_state": "review_requested",
+    }
+
+
 HandlerFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 
@@ -1003,6 +1126,10 @@ HANDLERS: dict[str, HandlerFn] = {
     "workflow_review.approve": _handle_workflow_review_approve,
     "workflow_review.reject": _handle_workflow_review_reject,
     "workflow_review.edit_and_approve": _handle_workflow_review_edit_and_approve,
+    # Email unclassified (Phase R-6.1a)
+    "email_unclassified.route_to_workflow": _handle_email_unclassified_route_to_workflow,
+    "email_unclassified.suppress": _handle_email_unclassified_suppress,
+    "email_unclassified.request_review": _handle_email_unclassified_request_review,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,

@@ -392,6 +392,11 @@ from app.models.workflow import (
     WorkflowStepParam,
 )
 from app.models.workflow_review_item import WorkflowReviewItem
+from app.models.email_classification import (
+    TenantWorkflowEmailRule,
+    TenantWorkflowEmailCategory,
+    WorkflowEmailClassification,
+)
 from app.models.vault_document import VaultDocument
 from app.models.command_bar import DocumentSearchIndex, CommandBarHistory
 from app.models.intelligence import (
@@ -792,6 +797,9 @@ __all__ = [
     "WorkflowSchedule",
     "WorkflowStepParam",
     "WorkflowReviewItem",
+    "TenantWorkflowEmailRule",
+    "TenantWorkflowEmailCategory",
+    "WorkflowEmailClassification",
     "DocumentSearchIndex",
     "CommandBarHistory",
     "VaultDocument",

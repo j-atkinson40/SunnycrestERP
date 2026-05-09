@@ -1073,3 +1073,87 @@ register_platform_config(_aftercare_triage)
 register_platform_config(_catalog_fetch_triage)
 register_platform_config(_safety_program_triage)
 register_platform_config(_workflow_review_triage)
+
+
+# ── Queue: email_unclassified_triage (Phase R-6.1a) ─────────────────
+
+
+_email_unclassified_triage = TriageQueueConfig(
+    queue_id="email_unclassified_triage",
+    queue_name="Unclassified emails",
+    description=(
+        "Inbound emails the classifier couldn't route to a workflow. "
+        "Review and assign manually — picking a workflow fires it "
+        "with the email as trigger context. Suppress drops the "
+        "message without firing or surfacing again."
+    ),
+    icon="Mail",
+    source_direct_query_key="email_unclassified",
+    item_entity_type="email_classification",
+    item_display=ItemDisplayConfig(
+        title_field="subject",
+        subtitle_field="sender_email",
+        body_fields=[
+            "sender_name",
+            "received_at",
+            "body_excerpt",
+            "tier_reasoning",
+        ],
+        display_component="email_unclassified",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="route_to_workflow",
+            label="Route to workflow",
+            action_type=ActionType.CUSTOM,
+            keyboard_shortcut="Enter",
+            icon="ArrowRight",
+            handler="email_unclassified.route_to_workflow",
+        ),
+        ActionConfig(
+            action_id="suppress",
+            label="Suppress",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="XCircle",
+            requires_reason=False,
+            confirmation_required=True,
+            handler="email_unclassified.suppress",
+        ),
+        ActionConfig(
+            action_id="request_review",
+            label="Request review",
+            action_type=ActionType.CUSTOM,
+            keyboard_shortcut="r",
+            icon="MessageSquare",
+            handler="email_unclassified.request_review",
+        ),
+    ],
+    context_panels=[
+        ContextPanelConfig(
+            panel_type=ContextPanelType.RELATED_ENTITIES,
+            title="Related entities",
+            display_order=1,
+            default_collapsed=False,
+            related_entity_type="email_message",
+        ),
+        ContextPanelConfig(
+            panel_type=ContextPanelType.AI_QUESTION,
+            title="Ask Claude about this email",
+            display_order=2,
+            default_collapsed=True,
+        ),
+    ],
+    flow_controls=FlowControlsConfig(
+        snooze_enabled=False,
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(ai_questions_enabled=True),
+    permissions=["admin"],
+    display_order=110,
+    enabled=True,
+)
+
+
+register_platform_config(_email_unclassified_triage)
