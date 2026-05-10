@@ -24,6 +24,9 @@ import {
   X,
 } from "lucide-react"
 import apiClient from "@/lib/api-client"
+import { useAuth } from "@/contexts/auth-context"
+import { WorkflowEmailTriggersSection } from "@/components/email-classification/WorkflowEmailTriggersSection"
+import type { WorkflowSummary } from "@/types/email-classification"
 import { StepCard, TriggerCard as TriggerCardV2 } from "@/components/workflow/StepCard"
 import {
   BlockLibrary,
@@ -140,6 +143,41 @@ export default function WorkflowBuilderPage() {
   })
   const [selectedStepIdx, setSelectedStepIdx] = useState<number | null>(null)
   const [placeholderIndex, setPlaceholderIndex] = useState<number | null>(null)
+
+  // R-6.1b.b — workflow library + tier3 state for the Email triggers section.
+  // Fetched once when the builder mounts; the section consumes the result
+  // for the rule editor's WorkflowPicker + the Tier 3 enrollment toggle.
+  const { company } = useAuth()
+  const [emailWorkflowsLib, setEmailWorkflowsLib] = useState<WorkflowSummary[]>([])
+  const [emailLibLoaded, setEmailLibLoaded] = useState(false)
+  const [tier3Enrolled, setTier3Enrolled] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    apiClient
+      .get<{
+        mine: WorkflowSummary[]
+        platform: WorkflowSummary[]
+      }>("/workflows/library/all")
+      .then((r) => {
+        if (cancelled) return
+        const all = [...(r.data.mine ?? []), ...(r.data.platform ?? [])]
+        setEmailWorkflowsLib(all)
+        if (workflowId) {
+          const me = all.find((w) => w.id === workflowId)
+          setTier3Enrolled(me?.tier3_enrolled ?? false)
+        }
+        setEmailLibLoaded(true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setEmailWorkflowsLib([])
+        setEmailLibLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workflowId])
 
   // Load existing workflow
   useEffect(() => {
@@ -385,6 +423,25 @@ export default function WorkflowBuilderPage() {
               }
             />
             <ConnectorLine />
+
+            {/* R-6.1b.b — Email triggers section. Routes inbound
+                emails to this workflow at the classification cascade
+                stage. Distinct from `trigger_type` above. Only renders
+                for saved workflows (need an id to filter rules + toggle
+                enrollment). */}
+            {draft.id && emailLibLoaded ? (
+              <>
+                <WorkflowEmailTriggersSection
+                  workflowId={draft.id}
+                  workflowName={draft.name}
+                  workflows={emailWorkflowsLib}
+                  tenantVertical={company?.vertical ?? null}
+                  initialTier3Enrolled={tier3Enrolled}
+                  readOnly={readOnly}
+                />
+                <ConnectorLine />
+              </>
+            ) : null}
 
             {loadedMeta?.tier === 1 && params.length > 0 && draft.id && (
               <>

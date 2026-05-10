@@ -14,6 +14,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmailUnclassifiedItemDisplay } from "@/components/triage/EmailUnclassifiedItemDisplay";
 import { WorkflowReviewItemDisplay } from "@/lib/triage/workflow-review-item-display";
 import type { TriageItem, TriageItemDisplay as DisplayCfg } from "@/types/triage";
 
@@ -36,6 +37,19 @@ export function TriageItemDisplay({ item, display, onAdvance }: Props) {
   // bypassing the standard TriageActionPalette dispatch.
   if (display.display_component === "workflow_review") {
     return <WorkflowReviewItemDisplay item={item} onAdvance={onAdvance} />;
+  }
+  // Phase R-6.1b.b — email unclassified queue dispatches its 3 actions
+  // (route_to_workflow / suppress / author rule) directly to the
+  // R-6.1a + R-6.1a.1 classification endpoints, bypassing the
+  // standard TriageActionPalette dispatch.
+  if (display.display_component === "email_unclassified") {
+    return (
+      <EmailUnclassifiedItemDisplay
+        item={item}
+        display={display}
+        onAdvance={onAdvance}
+      />
+    );
   }
   return <GenericDisplay item={item} bodyFields={display.body_fields} />;
 }
