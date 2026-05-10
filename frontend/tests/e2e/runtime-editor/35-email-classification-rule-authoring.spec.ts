@@ -27,6 +27,7 @@ import { test, expect } from "@playwright/test"
 import {
   STAGING_BACKEND,
   STAGING_FRONTEND,
+  impersonateHopkinsDirector,
   loginAsPlatformAdmin,
   setupPage,
 } from "./_shared"
@@ -40,6 +41,12 @@ test.describe(
       async ({ page }) => {
         await setupPage(page)
         await loginAsPlatformAdmin(page)
+        // R-6.1b.1 — /admin/email-classification is a tenant-tree
+        // route gated by ProtectedRoute adminOnly checking tenant
+        // useAuth().isAdmin. Platform-admin login alone redirects to
+        // /unauthorized. Impersonate a tenant admin (Hopkins per
+        // canon precedent) to reach the page.
+        await impersonateHopkinsDirector(page)
 
         // Substrate check 1 — admin email-classification page mounts.
         await page.goto(
@@ -101,6 +108,8 @@ test.describe(
         // + a saved workflow row to fully render).
         await setupPage(page)
         await loginAsPlatformAdmin(page)
+        // R-6.1b.1 — same tenant-impersonation requirement as Test 1.
+        await impersonateHopkinsDirector(page)
         await page.goto(
           `${STAGING_FRONTEND}/admin/email-classification`,
         )
