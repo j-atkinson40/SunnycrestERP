@@ -40,13 +40,18 @@ test.describe(
       "admin email-classification page + 3 tabs mount; WorkflowBuilder Email triggers reachable",
       async ({ page }) => {
         await setupPage(page)
-        await loginAsPlatformAdmin(page)
         // R-6.1b.1 — /admin/email-classification is a tenant-tree
         // route gated by ProtectedRoute adminOnly checking tenant
         // useAuth().isAdmin. Platform-admin login alone redirects to
         // /unauthorized. Impersonate a tenant admin (Hopkins per
         // canon precedent) to reach the page.
-        await impersonateHopkinsDirector(page)
+        // R-6.1b.2 — capture loginAsPlatformAdmin's JWT and pass as
+        // adminToken to impersonateHopkinsDirector(page, adminToken).
+        // R-6.1b.1 omitted the second arg, sending Bearer undefined
+        // → 401 → helper's misleading "Hopkins may not be seeded"
+        // hint. Helper signature is 2-arg required.
+        const adminToken = await loginAsPlatformAdmin(page)
+        await impersonateHopkinsDirector(page, adminToken)
 
         // Substrate check 1 — admin email-classification page mounts.
         await page.goto(
@@ -107,9 +112,11 @@ test.describe(
         // actual workflow edit URL (which would need impersonation
         // + a saved workflow row to fully render).
         await setupPage(page)
-        await loginAsPlatformAdmin(page)
-        // R-6.1b.1 — same tenant-impersonation requirement as Test 1.
-        await impersonateHopkinsDirector(page)
+        // R-6.1b.2 — same tenant-impersonation requirement as Test 1.
+        // Capture login JWT + pass to impersonate per 2-arg helper
+        // signature (R-6.1b.1 missed this).
+        const adminToken = await loginAsPlatformAdmin(page)
+        await impersonateHopkinsDirector(page, adminToken)
         await page.goto(
           `${STAGING_FRONTEND}/admin/email-classification`,
         )
