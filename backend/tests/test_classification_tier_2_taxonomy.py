@@ -44,7 +44,9 @@ def test_classify_dispatches_above_floor(
     taxonomy = [cat]
 
     def stub(db_, **kwargs):
-        assert kwargs.get("prompt_key") == "email.classify_into_taxonomy"
+        # R-6.2a: prompt renamed to intake.* with adapter_type variable.
+        assert kwargs.get("prompt_key") == "intake.classify_into_taxonomy"
+        assert kwargs.get("variables", {}).get("adapter_type") == "email"
         return make_intelligence_result(
             response_parsed={
                 "category_id": cat.id,

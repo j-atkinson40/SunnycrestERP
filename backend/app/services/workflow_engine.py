@@ -72,6 +72,10 @@ def resolve_variables(
       * ``incoming_email.<path>``          — trigger_context.incoming_email
       * ``incoming_transcription.<path>``  — trigger_context.incoming_transcription
       * ``vault_item.<path>``              — trigger_context.vault_item
+      * ``incoming_form_submission.<path>`` — trigger_context.incoming_form_submission
+                                              (R-6.2a)
+      * ``incoming_file.<path>``            — trigger_context.incoming_file
+                                              (R-6.2a)
       * ``workflow_input.<path>``          — alias resolving against the
                                               previous step's output_data
                                               (``previous_step_key``). When
@@ -141,6 +145,17 @@ def resolve_variables(
             tc = (run.trigger_context or {}) if run else {}
             payload = tc.get("vault_item") if isinstance(tc, dict) else None
             return _get_path(payload, ref[len("vault_item."):])
+        # ── Phase R-6.2a prefixes ─────────────────────────────────
+        if ref.startswith("incoming_form_submission."):
+            tc = (run.trigger_context or {}) if run else {}
+            payload = (
+                tc.get("incoming_form_submission") if isinstance(tc, dict) else None
+            )
+            return _get_path(payload, ref[len("incoming_form_submission."):])
+        if ref.startswith("incoming_file."):
+            tc = (run.trigger_context or {}) if run else {}
+            payload = tc.get("incoming_file") if isinstance(tc, dict) else None
+            return _get_path(payload, ref[len("incoming_file."):])
         if ref.startswith("workflow_input."):
             # Canonical alias: resolve against the previous step's
             # output_data. Decouples downstream steps from explicit

@@ -490,6 +490,457 @@ def list_unclassified(
     return out
 
 
+# ── R-6.2a — Form + file cascade entry points ───────────────────────
+
+
+def _build_form_trigger_context(
+    submission, config
+) -> dict[str, Any]:
+    """R-6.2a contract: ``incoming_form_submission.<path>`` resolves
+    trigger context. Flat shape parallels ``incoming_email``."""
+    return {
+        "incoming_form_submission": {
+            "id": submission.id,
+            "config_id": submission.config_id,
+            "config_slug": config.slug,
+            "submitted_data": submission.submitted_data or {},
+            "submitter_metadata": submission.submitter_metadata or {},
+            "received_at": (
+                submission.received_at.isoformat()
+                if submission.received_at
+                else None
+            ),
+            "tenant_id": submission.tenant_id,
+        }
+    }
+
+
+def _build_file_trigger_context(upload, config) -> dict[str, Any]:
+    """R-6.2a contract: ``incoming_file.<path>`` resolves trigger
+    context. Includes a presigned download URL with 1-hour TTL."""
+    presigned_url = None
+    try:
+        from app.services import legacy_r2_client
+
+        presigned_url = legacy_r2_client.generate_signed_url(
+            upload.r2_key, expires_in=3600
+        )
+    except Exception:
+        # Best-effort — workflows that need the URL handle None.
+        logger.warning(
+            "Failed to generate presigned URL for upload %s; trigger "
+            "context will lack presigned_url.",
+            upload.id,
+        )
+
+    return {
+        "incoming_file": {
+            "id": upload.id,
+            "config_id": upload.config_id,
+            "config_slug": config.slug,
+            "r2_key": upload.r2_key,
+            "presigned_url": presigned_url,
+            "original_filename": upload.original_filename,
+            "content_type": upload.content_type,
+            "size_bytes": upload.size_bytes,
+            "uploader_metadata": upload.uploader_metadata or {},
+            "received_at": (
+                upload.received_at.isoformat()
+                if upload.received_at
+                else None
+            ),
+            "tenant_id": upload.tenant_id,
+        }
+    }
+
+
+def _fire_workflow_with_context(
+    db: Session,
+    *,
+    workflow: Workflow,
+    tenant_id: str,
+    trigger_source: str,
+    trigger_context: dict,
+) -> str | None:
+    """Fire a workflow with a pre-built trigger_context. Returns
+    run_id or None on failure (logged)."""
+    try:
+        run = workflow_engine.start_run(
+            db,
+            workflow_id=workflow.id,
+            company_id=tenant_id,
+            triggered_by_user_id=None,
+            trigger_source=trigger_source,
+            trigger_context=trigger_context,
+            initial_inputs={},
+        )
+        return run.id
+    except Exception:
+        logger.exception(
+            "Workflow %s start_run failed (trigger_source=%s)",
+            workflow.id,
+            trigger_source,
+        )
+        return None
+
+
+def classify_and_fire_form(
+    db: Session,
+    *,
+    submission,
+    config,
+) -> dict[str, Any]:
+    """Run the three-tier cascade synchronously against a form
+    submission. Updates ``submission.classification_*`` columns with
+    the outcome. Best-effort — caller wraps in try/except.
+
+    Cascade structure mirrors ``classify_and_fire`` for emails but
+    persists outcome on the submission row directly (no parallel
+    audit table — denormalized payload + tier on the submission).
+    """
+    started_at = time.monotonic()
+    tier_reasoning: dict[str, Any] = {
+        "tier1": None,
+        "tier2": None,
+        "tier3": None,
+    }
+
+    tier_2_floor, tier_3_floor = _resolve_floors(db, submission.tenant_id)
+
+    # Tier 1 — form-shape rules.
+    matched_rule = tier_1_rules.evaluate_form(
+        db,
+        tenant_id=submission.tenant_id,
+        form_slug=config.slug,
+        submitted_data=submission.submitted_data or {},
+        submitter_metadata=submission.submitter_metadata or {},
+    )
+    if matched_rule is not None:
+        fire_action = matched_rule.fire_action or {}
+        target_wf_id = fire_action.get("workflow_id")
+        tier_reasoning["tier1"] = {
+            "matched_rule_id": matched_rule.id,
+            "rule_name": matched_rule.name,
+            "workflow_id": target_wf_id,
+        }
+        if target_wf_id is None:
+            submission.classification_tier = 1
+            submission.classification_is_suppressed = True
+            submission.classification_payload = {
+                "tier_reasoning": tier_reasoning,
+                "latency_ms": int((time.monotonic() - started_at) * 1000),
+            }
+            db.flush()
+            return {"tier": 1, "is_suppressed": True}
+
+        workflow = (
+            db.query(Workflow)
+            .filter(
+                Workflow.id == target_wf_id, Workflow.is_active.is_(True)
+            )
+            .first()
+        )
+        if workflow is not None:
+            trigger_ctx = _build_form_trigger_context(submission, config)
+            run_id = _fire_workflow_with_context(
+                db,
+                workflow=workflow,
+                tenant_id=submission.tenant_id,
+                trigger_source="form_classification",
+                trigger_context=trigger_ctx,
+            )
+            submission.classification_tier = 1
+            submission.classification_workflow_id = workflow.id
+            submission.classification_workflow_run_id = run_id
+            submission.classification_payload = {
+                "tier_reasoning": tier_reasoning,
+                "latency_ms": int((time.monotonic() - started_at) * 1000),
+            }
+            db.flush()
+            return {
+                "tier": 1,
+                "selected_workflow_id": workflow.id,
+                "workflow_run_id": run_id,
+            }
+        else:
+            tier_reasoning["tier1"]["error"] = "workflow_not_active"
+
+    # Tier 2.
+    taxonomy = tier_2_taxonomy.list_active_taxonomy(db, submission.tenant_id)
+    matched_category, t2_confidence, t2_error, t2_reasoning = (
+        tier_2_taxonomy.classify_form(
+            db,
+            submission_id=submission.id,
+            tenant_id=submission.tenant_id,
+            form_slug=config.slug,
+            submitted_data=submission.submitted_data or {},
+            taxonomy=taxonomy,
+            confidence_floor=tier_2_floor,
+        )
+    )
+    tier_reasoning["tier2"] = {
+        "category_id": matched_category.id if matched_category else None,
+        "confidence": t2_confidence,
+        "error": t2_error,
+        "reasoning": t2_reasoning,
+    }
+    if matched_category is not None and matched_category.mapped_workflow_id:
+        workflow = (
+            db.query(Workflow)
+            .filter(Workflow.id == matched_category.mapped_workflow_id)
+            .first()
+        )
+        if workflow is not None:
+            trigger_ctx = _build_form_trigger_context(submission, config)
+            run_id = _fire_workflow_with_context(
+                db,
+                workflow=workflow,
+                tenant_id=submission.tenant_id,
+                trigger_source="form_classification",
+                trigger_context=trigger_ctx,
+            )
+            submission.classification_tier = 2
+            submission.classification_workflow_id = workflow.id
+            submission.classification_workflow_run_id = run_id
+            submission.classification_payload = {
+                "tier_reasoning": tier_reasoning,
+                "latency_ms": int((time.monotonic() - started_at) * 1000),
+            }
+            db.flush()
+            return {
+                "tier": 2,
+                "selected_workflow_id": workflow.id,
+                "workflow_run_id": run_id,
+            }
+
+    # Tier 3.
+    registry = tier_3_registry.assemble_registry(db, submission.tenant_id)
+    matched_workflow, t3_confidence, t3_error, t3_reasoning = (
+        tier_3_registry.classify_form(
+            db,
+            submission_id=submission.id,
+            tenant_id=submission.tenant_id,
+            form_slug=config.slug,
+            submitted_data=submission.submitted_data or {},
+            registry=registry,
+            confidence_floor=tier_3_floor,
+        )
+    )
+    tier_reasoning["tier3"] = {
+        "workflow_id": matched_workflow.id if matched_workflow else None,
+        "confidence": t3_confidence,
+        "error": t3_error,
+        "reasoning": t3_reasoning,
+    }
+    if matched_workflow is not None:
+        trigger_ctx = _build_form_trigger_context(submission, config)
+        run_id = _fire_workflow_with_context(
+            db,
+            workflow=matched_workflow,
+            tenant_id=submission.tenant_id,
+            trigger_source="form_classification",
+            trigger_context=trigger_ctx,
+        )
+        submission.classification_tier = 3
+        submission.classification_workflow_id = matched_workflow.id
+        submission.classification_workflow_run_id = run_id
+        submission.classification_payload = {
+            "tier_reasoning": tier_reasoning,
+            "latency_ms": int((time.monotonic() - started_at) * 1000),
+        }
+        db.flush()
+        return {
+            "tier": 3,
+            "selected_workflow_id": matched_workflow.id,
+            "workflow_run_id": run_id,
+        }
+
+    # Unclassified.
+    submission.classification_payload = {
+        "tier_reasoning": tier_reasoning,
+        "latency_ms": int((time.monotonic() - started_at) * 1000),
+    }
+    db.flush()
+    return {"tier": None, "selected_workflow_id": None}
+
+
+def classify_and_fire_file(
+    db: Session,
+    *,
+    upload,
+    config,
+) -> dict[str, Any]:
+    """Run the three-tier cascade synchronously against a file
+    upload. Updates ``upload.classification_*`` columns. Best-effort."""
+    started_at = time.monotonic()
+    tier_reasoning: dict[str, Any] = {
+        "tier1": None,
+        "tier2": None,
+        "tier3": None,
+    }
+
+    tier_2_floor, tier_3_floor = _resolve_floors(db, upload.tenant_id)
+
+    # Tier 1.
+    matched_rule = tier_1_rules.evaluate_file(
+        db,
+        tenant_id=upload.tenant_id,
+        file_slug=config.slug,
+        content_type=upload.content_type,
+        original_filename=upload.original_filename,
+        uploader_metadata=upload.uploader_metadata or {},
+    )
+    if matched_rule is not None:
+        fire_action = matched_rule.fire_action or {}
+        target_wf_id = fire_action.get("workflow_id")
+        tier_reasoning["tier1"] = {
+            "matched_rule_id": matched_rule.id,
+            "rule_name": matched_rule.name,
+            "workflow_id": target_wf_id,
+        }
+        if target_wf_id is None:
+            upload.classification_tier = 1
+            upload.classification_is_suppressed = True
+            upload.classification_payload = {
+                "tier_reasoning": tier_reasoning,
+                "latency_ms": int((time.monotonic() - started_at) * 1000),
+            }
+            db.flush()
+            return {"tier": 1, "is_suppressed": True}
+
+        workflow = (
+            db.query(Workflow)
+            .filter(
+                Workflow.id == target_wf_id, Workflow.is_active.is_(True)
+            )
+            .first()
+        )
+        if workflow is not None:
+            trigger_ctx = _build_file_trigger_context(upload, config)
+            run_id = _fire_workflow_with_context(
+                db,
+                workflow=workflow,
+                tenant_id=upload.tenant_id,
+                trigger_source="file_classification",
+                trigger_context=trigger_ctx,
+            )
+            upload.classification_tier = 1
+            upload.classification_workflow_id = workflow.id
+            upload.classification_workflow_run_id = run_id
+            upload.classification_payload = {
+                "tier_reasoning": tier_reasoning,
+                "latency_ms": int((time.monotonic() - started_at) * 1000),
+            }
+            db.flush()
+            return {
+                "tier": 1,
+                "selected_workflow_id": workflow.id,
+                "workflow_run_id": run_id,
+            }
+
+    # Tier 2.
+    taxonomy = tier_2_taxonomy.list_active_taxonomy(db, upload.tenant_id)
+    matched_category, t2_confidence, t2_error, t2_reasoning = (
+        tier_2_taxonomy.classify_file(
+            db,
+            upload_id=upload.id,
+            tenant_id=upload.tenant_id,
+            file_slug=config.slug,
+            original_filename=upload.original_filename,
+            content_type=upload.content_type,
+            uploader_metadata=upload.uploader_metadata or {},
+            taxonomy=taxonomy,
+            confidence_floor=tier_2_floor,
+        )
+    )
+    tier_reasoning["tier2"] = {
+        "category_id": matched_category.id if matched_category else None,
+        "confidence": t2_confidence,
+        "error": t2_error,
+        "reasoning": t2_reasoning,
+    }
+    if matched_category is not None and matched_category.mapped_workflow_id:
+        workflow = (
+            db.query(Workflow)
+            .filter(Workflow.id == matched_category.mapped_workflow_id)
+            .first()
+        )
+        if workflow is not None:
+            trigger_ctx = _build_file_trigger_context(upload, config)
+            run_id = _fire_workflow_with_context(
+                db,
+                workflow=workflow,
+                tenant_id=upload.tenant_id,
+                trigger_source="file_classification",
+                trigger_context=trigger_ctx,
+            )
+            upload.classification_tier = 2
+            upload.classification_workflow_id = workflow.id
+            upload.classification_workflow_run_id = run_id
+            upload.classification_payload = {
+                "tier_reasoning": tier_reasoning,
+                "latency_ms": int((time.monotonic() - started_at) * 1000),
+            }
+            db.flush()
+            return {
+                "tier": 2,
+                "selected_workflow_id": workflow.id,
+                "workflow_run_id": run_id,
+            }
+
+    # Tier 3.
+    registry = tier_3_registry.assemble_registry(db, upload.tenant_id)
+    matched_workflow, t3_confidence, t3_error, t3_reasoning = (
+        tier_3_registry.classify_file(
+            db,
+            upload_id=upload.id,
+            tenant_id=upload.tenant_id,
+            file_slug=config.slug,
+            original_filename=upload.original_filename,
+            content_type=upload.content_type,
+            uploader_metadata=upload.uploader_metadata or {},
+            registry=registry,
+            confidence_floor=tier_3_floor,
+        )
+    )
+    tier_reasoning["tier3"] = {
+        "workflow_id": matched_workflow.id if matched_workflow else None,
+        "confidence": t3_confidence,
+        "error": t3_error,
+        "reasoning": t3_reasoning,
+    }
+    if matched_workflow is not None:
+        trigger_ctx = _build_file_trigger_context(upload, config)
+        run_id = _fire_workflow_with_context(
+            db,
+            workflow=matched_workflow,
+            tenant_id=upload.tenant_id,
+            trigger_source="file_classification",
+            trigger_context=trigger_ctx,
+        )
+        upload.classification_tier = 3
+        upload.classification_workflow_id = matched_workflow.id
+        upload.classification_workflow_run_id = run_id
+        upload.classification_payload = {
+            "tier_reasoning": tier_reasoning,
+            "latency_ms": int((time.monotonic() - started_at) * 1000),
+        }
+        db.flush()
+        return {
+            "tier": 3,
+            "selected_workflow_id": matched_workflow.id,
+            "workflow_run_id": run_id,
+        }
+
+    # Unclassified.
+    upload.classification_payload = {
+        "tier_reasoning": tier_reasoning,
+        "latency_ms": int((time.monotonic() - started_at) * 1000),
+    }
+    db.flush()
+    return {"tier": None, "selected_workflow_id": None}
+
+
 def manual_route_to_workflow(
     db: Session,
     *,

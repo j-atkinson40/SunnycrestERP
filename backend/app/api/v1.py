@@ -84,6 +84,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     disinterment_charge_types,
     docusign_webhook,
     intake,
+    intake_adapters,
     union_rotations,
     charge_library,
     charge_terms,
@@ -459,6 +460,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     intake.router, prefix="/intake", tags=["Public Intake"]
+)
+v1_router.include_router(
+    intake_adapters.router,
+    prefix="/intake-adapters",
+    tags=["Intake Adapters"],
 )
 v1_router.include_router(
     union_rotations.router, prefix="/union-rotations", tags=["Union Rotations"]

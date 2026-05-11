@@ -72,6 +72,12 @@ class TenantWorkflowEmailRule(Base):
     )
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # R-6.2a — discriminator for intake adapter the rule applies to.
+    # "email" (default) preserves R-6.1 backward compat; "form" + "file"
+    # added for R-6.2 form/file intake adapters.
+    adapter_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="email"
+    )
     match_conditions: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict
     )

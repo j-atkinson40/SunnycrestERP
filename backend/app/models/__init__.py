@@ -397,6 +397,10 @@ from app.models.email_classification import (
     TenantWorkflowEmailCategory,
     WorkflowEmailClassification,
 )
+from app.models.intake_form_configuration import IntakeFormConfiguration
+from app.models.intake_file_configuration import IntakeFileConfiguration
+from app.models.intake_form_submission import IntakeFormSubmission
+from app.models.intake_file_upload import IntakeFileUpload
 from app.models.vault_document import VaultDocument
 from app.models.command_bar import DocumentSearchIndex, CommandBarHistory
 from app.models.intelligence import (
@@ -800,6 +804,10 @@ __all__ = [
     "TenantWorkflowEmailRule",
     "TenantWorkflowEmailCategory",
     "WorkflowEmailClassification",
+    "IntakeFormConfiguration",
+    "IntakeFileConfiguration",
+    "IntakeFormSubmission",
+    "IntakeFileUpload",
     "DocumentSearchIndex",
     "CommandBarHistory",
     "VaultDocument",

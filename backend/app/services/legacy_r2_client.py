@@ -98,6 +98,74 @@ def generate_signed_url(r2_key: str, expires_in: int = 3600) -> str:
     )
 
 
+def generate_presigned_upload_url(
+    r2_key: str,
+    *,
+    content_type: str = "application/octet-stream",
+    expires_in: int = 900,
+    max_size_bytes: int | None = None,
+) -> dict:
+    """Generate a presigned PUT URL for direct R2 uploads.
+
+    Phase R-6.2a — file intake adapter. Browser PUTs the file bytes
+    directly to R2 without proxying through the Bridgeable backend.
+    The presigned URL has a short TTL (15 min default) so the upload
+    must happen promptly; classification cascade fires post-completion.
+
+    Returns ``{"url": str, "method": "PUT", "headers": {...}, "key": str}``.
+    The headers dict carries the Content-Type the browser MUST send to
+    match the signed request — boto3 includes Content-Type in the
+    signature when the param is set.
+    """
+    client = _get_client()
+    if not client:
+        raise RuntimeError("R2 not configured")
+    params: dict = {
+        "Bucket": settings.R2_BUCKET_NAME,
+        "Key": r2_key,
+        "ContentType": content_type,
+    }
+    if max_size_bytes is not None:
+        # boto3 doesn't enforce ContentLength in the presigned URL;
+        # the server-side completion endpoint re-validates size via
+        # head_object on the resulting key.
+        pass
+    url = client.generate_presigned_url(
+        "put_object",
+        Params=params,
+        ExpiresIn=expires_in,
+    )
+    return {
+        "url": url,
+        "method": "PUT",
+        "headers": {"Content-Type": content_type},
+        "key": r2_key,
+    }
+
+
+def head_object(r2_key: str) -> dict | None:
+    """Return head metadata for an R2 object, or None if missing.
+
+    Used by the file intake adapter's completion endpoint to verify
+    the uploaded object's actual size + content-type matches the
+    presigned-URL contract.
+    """
+    client = _get_client()
+    if not client:
+        return None
+    try:
+        response = client.head_object(
+            Bucket=settings.R2_BUCKET_NAME, Key=r2_key
+        )
+        return {
+            "size_bytes": response.get("ContentLength"),
+            "content_type": response.get("ContentType"),
+            "etag": response.get("ETag"),
+        }
+    except ClientError:
+        return None
+
+
 def get_public_url(r2_key: str) -> str:
     """Return the public URL for an R2 key."""
     base = settings.R2_PUBLIC_URL.rstrip("/")

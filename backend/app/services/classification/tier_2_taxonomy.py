@@ -1,10 +1,17 @@
 """Phase R-6.1a — Tier 2 AI taxonomy classification.
 
 Triggered when Tier 1 returns no match. Calls the
-``email.classify_into_taxonomy`` managed prompt (Haiku, force_json)
-with the tenant's taxonomy + message excerpt; the returned
-``category_id`` is validated against the live taxonomy + the
-mapped workflow's active state before dispatch.
+``intake.classify_into_taxonomy`` managed prompt (Haiku, force_json,
+parameterized by ``adapter_type`` per R-6.2a) with the tenant's
+taxonomy + source excerpt; the returned ``category_id`` is validated
+against the live taxonomy + the mapped workflow's active state
+before dispatch.
+
+R-6.2a — the prompt key renamed from ``email.classify_into_taxonomy``
+to ``intake.classify_into_taxonomy`` with an ``adapter_type``
+variable. Behavioral equivalence preserved when adapter_type="email"
+via test gates. Seed script handles the rename via Option A
+idempotent state machine.
 
 Returns a tuple of:
   - matched ``TenantWorkflowEmailCategory`` row (or None)
@@ -90,7 +97,7 @@ def classify(
     str | None,
     str | None,
 ]:
-    """Run Tier 2 classification.
+    """Run Tier 2 classification for an email message.
 
     Returns ``(matched_category, confidence, error_message, reasoning)``.
     ``matched_category`` is None when:
@@ -106,6 +113,7 @@ def classify(
 
     serialized_taxonomy = _serialize_taxonomy(taxonomy)
     variables = {
+        "adapter_type": "email",
         "subject": (message.subject or "").strip(),
         "sender_email": message.sender_email or "",
         "sender_name": message.sender_name or "",
@@ -116,10 +124,10 @@ def classify(
     try:
         result = intelligence_service.execute(
             db,
-            prompt_key="email.classify_into_taxonomy",
+            prompt_key="intake.classify_into_taxonomy",
             variables=variables,
             company_id=message.tenant_id,
-            caller_module="email_classification.tier_2",
+            caller_module="intake_classification.tier_2",
             caller_entity_type="email_message",
             caller_entity_id=message.id,
         )
@@ -196,3 +204,183 @@ def classify(
         return (None, confidence, None, reasoning)
 
     return (category, confidence, None, reasoning)
+
+
+# ── R-6.2a — Generic dispatch for form + file sources ───────────────
+
+
+def _classify_against_taxonomy(
+    db: Session,
+    *,
+    tenant_id: str,
+    taxonomy: list[TenantWorkflowEmailCategory],
+    variables: dict,
+    confidence_floor: float,
+    caller_entity_type: str,
+    caller_entity_id: str,
+) -> tuple[
+    TenantWorkflowEmailCategory | None,
+    float | None,
+    str | None,
+    str | None,
+]:
+    """Adapter-agnostic Tier 2 classifier. Caller supplies the
+    pre-built variables dict (must include ``taxonomy_json`` +
+    ``adapter_type`` + source-specific fields)."""
+    if not taxonomy:
+        return (None, None, None, None)
+
+    try:
+        result = intelligence_service.execute(
+            db,
+            prompt_key="intake.classify_into_taxonomy",
+            variables=variables,
+            company_id=tenant_id,
+            caller_module="intake_classification.tier_2",
+            caller_entity_type=caller_entity_type,
+            caller_entity_id=caller_entity_id,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Tier 2 LLM call raised for tenant %s caller_id=%s",
+            tenant_id,
+            caller_entity_id,
+        )
+        return (None, None, f"tier_2_exception: {exc}", None)
+
+    if result.status != "success":
+        return (
+            None,
+            None,
+            f"tier_2_status: {result.status} ({result.error_message or 'no_detail'})",
+            None,
+        )
+
+    parsed = result.response_parsed or {}
+    if not isinstance(parsed, dict):
+        return (None, None, "tier_2_parse: not_object", None)
+
+    category_id_raw = parsed.get("category_id")
+    confidence_raw = parsed.get("confidence")
+    reasoning = parsed.get("reasoning")
+    if not isinstance(reasoning, str):
+        reasoning = None
+
+    if category_id_raw is None:
+        return (None, None, None, reasoning)
+    if not isinstance(category_id_raw, str):
+        return (None, None, "tier_2_parse: category_id_not_string", reasoning)
+
+    try:
+        confidence = float(confidence_raw) if confidence_raw is not None else 0.0
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    if confidence < confidence_floor:
+        return (None, confidence, None, reasoning)
+
+    by_id = {n.id: n for n in taxonomy}
+    category = by_id.get(category_id_raw)
+    if category is None:
+        logger.warning(
+            "Tier 2 returned unknown category_id=%s for tenant %s",
+            category_id_raw,
+            tenant_id,
+        )
+        return (None, confidence, None, reasoning)
+    if category.mapped_workflow_id is None:
+        return (None, confidence, None, reasoning)
+
+    workflow = (
+        db.query(Workflow)
+        .filter(
+            Workflow.id == category.mapped_workflow_id,
+            Workflow.is_active.is_(True),
+        )
+        .first()
+    )
+    if workflow is None:
+        return (None, confidence, None, reasoning)
+
+    return (category, confidence, None, reasoning)
+
+
+def classify_form(
+    db: Session,
+    *,
+    submission_id: str,
+    tenant_id: str,
+    form_slug: str,
+    submitted_data: dict,
+    taxonomy: list[TenantWorkflowEmailCategory],
+    confidence_floor: float,
+):
+    """Run Tier 2 classification against a form submission. Mirrors
+    ``classify`` for emails."""
+    excerpt = _form_excerpt(submitted_data)
+    variables = {
+        "adapter_type": "form",
+        "subject": form_slug,
+        "sender_email": (submitted_data or {}).get("family_contact_email", ""),
+        "sender_name": (submitted_data or {}).get("family_contact_name", ""),
+        "body_excerpt": excerpt,
+        "taxonomy_json": _serialize_taxonomy(taxonomy),
+    }
+    return _classify_against_taxonomy(
+        db,
+        tenant_id=tenant_id,
+        taxonomy=taxonomy,
+        variables=variables,
+        confidence_floor=confidence_floor,
+        caller_entity_type="intake_form_submission",
+        caller_entity_id=submission_id,
+    )
+
+
+def classify_file(
+    db: Session,
+    *,
+    upload_id: str,
+    tenant_id: str,
+    file_slug: str,
+    original_filename: str,
+    content_type: str,
+    uploader_metadata: dict,
+    taxonomy: list[TenantWorkflowEmailCategory],
+    confidence_floor: float,
+):
+    """Run Tier 2 classification against a file upload."""
+    excerpt = (
+        f"filename: {original_filename}\n"
+        f"content_type: {content_type}\n"
+        f"uploader_metadata: {uploader_metadata}"
+    )
+    variables = {
+        "adapter_type": "file",
+        "subject": file_slug,
+        "sender_email": (uploader_metadata or {}).get("uploader_email", ""),
+        "sender_name": (uploader_metadata or {}).get("uploader_name", ""),
+        "body_excerpt": excerpt[:_BODY_EXCERPT_LIMIT],
+        "taxonomy_json": _serialize_taxonomy(taxonomy),
+    }
+    return _classify_against_taxonomy(
+        db,
+        tenant_id=tenant_id,
+        taxonomy=taxonomy,
+        variables=variables,
+        confidence_floor=confidence_floor,
+        caller_entity_type="intake_file_upload",
+        caller_entity_id=upload_id,
+    )
+
+
+def _form_excerpt(submitted_data: dict) -> str:
+    """Build a body-excerpt string from a form submission for Tier 2/3
+    LLM context. Concatenates field_id: value pairs."""
+    if not isinstance(submitted_data, dict):
+        return ""
+    parts: list[str] = []
+    for field_id, value in submitted_data.items():
+        if isinstance(value, (str, int, float, bool)):
+            parts.append(f"{field_id}: {value}")
+    return "\n".join(parts)[:_BODY_EXCERPT_LIMIT]

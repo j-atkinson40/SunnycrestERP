@@ -87,7 +87,9 @@ def test_classify_above_floor_dispatches(db, tenant_pair, monkeypatch):
     registry = [wf]
 
     def stub(db_, **kwargs):
-        assert kwargs["prompt_key"] == "email.classify_into_registry"
+        # R-6.2a: prompt renamed to intake.* with adapter_type variable.
+        assert kwargs["prompt_key"] == "intake.classify_into_registry"
+        assert kwargs.get("variables", {}).get("adapter_type") == "email"
         return make_intelligence_result(
             response_parsed={
                 "workflow_id": wf.id,
