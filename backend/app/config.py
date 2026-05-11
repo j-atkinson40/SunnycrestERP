@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = "noreply@getbridgeable.com"
     FROM_NAME: str = "Bridgeable"
 
+    # Cloudflare Turnstile (CAPTCHA) — R-6.2b.
+    # Missing key in non-production: log warning + allow submission
+    # (dev-friendly per R-6.2a.1 graceful-degradation canon).
+    # Missing key in production: reject with explicit configuration
+    # error (prevents silent insecurity).
+    TURNSTILE_SECRET_KEY: str = ""
+
     # Twilio (optional — only needed for SMS notifications)
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""

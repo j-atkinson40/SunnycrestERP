@@ -33,6 +33,10 @@ import PortalDriverRoute from "@/pages/portal/PortalDriverRoute";
 import PortalStopDetail from "@/pages/portal/PortalStopDetail";
 import PortalMileage from "@/pages/portal/PortalMileage";
 import FamilyPortalApprovalView from "@/pages/portal/FamilyPortalApprovalView";
+import PortalFormPage from "@/pages/portal/PortalFormPage";
+import PortalFormConfirmationPage from "@/pages/portal/PortalFormConfirmationPage";
+import PortalFileUploadPage from "@/pages/portal/PortalFileUploadPage";
+import PortalUploadConfirmationPage from "@/pages/portal/PortalUploadConfirmationPage";
 
 function PortalShell() {
   // Grab :slug from the URL. If absent, redirect to a 404-ish landing.
@@ -89,6 +93,30 @@ export function PortalApp() {
       <Route
         path="/portal/:tenantSlug/personalization-studio/family-approval/:token"
         element={<FamilyPortalApprovalView />}
+      />
+      {/*
+        Phase R-6.2b — Intake adapter portal pages. Mounted OUTSIDE
+        PortalShell so they skip PortalAuthProvider entirely:
+        intake forms + file uploads are anonymous public surfaces.
+        Each page wraps itself in PortalBrandProvider + PublicPortalLayout.
+        Per CLAUDE.md §4 portal substrate access modes — these are
+        the canonical "fully anonymous public portal" instances.
+      */}
+      <Route
+        path="/portal/:tenantSlug/intake/:slug"
+        element={<PortalFormPage />}
+      />
+      <Route
+        path="/portal/:tenantSlug/intake/:slug/confirmation"
+        element={<PortalFormConfirmationPage />}
+      />
+      <Route
+        path="/portal/:tenantSlug/upload/:slug"
+        element={<PortalFileUploadPage />}
+      />
+      <Route
+        path="/portal/:tenantSlug/upload/:slug/confirmation"
+        element={<PortalUploadConfirmationPage />}
       />
       <Route path="/portal/:slug/*" element={<PortalShell />} />
       {/* Any other path under the portal detection — redirect home. */}

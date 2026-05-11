@@ -63,6 +63,10 @@ from app.services.intake import (
     resolve_form_config,
     submit_form,
 )
+from app.services.intake.captcha import (
+    CaptchaError,
+    verify_turnstile_token,
+)
 from app.services.intake.resolver import resolve_tenant_by_slug
 
 
@@ -90,6 +94,7 @@ class _UploadCompleteRequest(BaseModel):
     content_type: str
     size_bytes: int
     uploader_metadata: dict[str, Any] = Field(default_factory=dict)
+    captcha_token: str | None = None
 
 
 def _public_form_config_view(config: IntakeFormConfiguration) -> dict[str, Any]:
@@ -158,13 +163,20 @@ def submit_form_public(
     if config is None:
         raise HTTPException(status_code=404, detail="Form not found.")
 
-    # CAPTCHA stub — accept-and-pass-through for R-6.2a.
-    # R-6.2b will reject when settings.TURNSTILE_SECRET_KEY is set
-    # AND captcha_token is missing OR Turnstile verify fails.
+    # R-6.2b CAPTCHA verification. Per app/services/intake/captcha.py
+    # docstring: missing secret in non-production logs warning + allows
+    # (graceful degradation); missing in production raises 500;
+    # verification failure raises 403. Defensive `request.client` access
+    # — TestClient may emit no client; pass None then.
     captcha_token = body.captcha_token
+    client_ip = request.client.host if request.client else None
+    try:
+        verify_turnstile_token(captcha_token, ip_address=client_ip)
+    except CaptchaError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=str(exc))
 
     submitter_metadata = {
-        "ip": request.client.host if request.client else None,
+        "ip": client_ip,
         "user_agent": request.headers.get("user-agent"),
         "captcha_token_present": captcha_token is not None,
     }
@@ -211,6 +223,7 @@ def presign_upload_public(
     tenant_slug: str,
     upload_slug: str,
     body: _UploadPresignRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Public — return a presigned PUT URL for direct R2 upload."""
@@ -220,6 +233,15 @@ def presign_upload_public(
     config = resolve_file_config(db, slug=upload_slug, tenant=tenant)
     if config is None:
         raise HTTPException(status_code=404, detail="Upload not found.")
+
+    # R-6.2b CAPTCHA verification (presign is the spam-attractive
+    # site — once we hand out a signed URL, R2 acks the bytes; checking
+    # again at /complete is redundant since the upload is already paid).
+    client_ip = request.client.host if request.client else None
+    try:
+        verify_turnstile_token(body.captcha_token, ip_address=client_ip)
+    except CaptchaError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=str(exc))
 
     try:
         signed = presign_file_upload(
@@ -257,10 +279,17 @@ def complete_upload_public(
     if config is None:
         raise HTTPException(status_code=404, detail="Upload not found.")
 
+    # R-6.2b CAPTCHA verification. Defense-in-depth — presign already
+    # verified, but a direct POST to /complete with a forged r2_key
+    # would bypass that. Cheap to re-verify; expensive to recover from.
+    client_ip = request.client.host if request.client else None
+    try:
+        verify_turnstile_token(body.captcha_token, ip_address=client_ip)
+    except CaptchaError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=str(exc))
+
     uploader_metadata = dict(body.uploader_metadata or {})
-    uploader_metadata.setdefault(
-        "ip", request.client.host if request.client else None
-    )
+    uploader_metadata.setdefault("ip", client_ip)
     uploader_metadata.setdefault(
         "user_agent", request.headers.get("user-agent")
     )
