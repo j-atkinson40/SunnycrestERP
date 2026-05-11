@@ -29,6 +29,9 @@ from sqlalchemy.orm import Session
 from app.models.notification import Notification
 from app.models.role import Role
 from app.models.user import User
+from app.services.notifications.category_types import (
+    assert_valid_notification_category,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +59,13 @@ def create_notification(
     Alert-flavor kwargs (severity, due_date, source_reference_*) are
     optional and used by the V-1d notification sources (safety_alert,
     compliance_expiry, delivery_failed, etc.).
+
+    R-8.1: `category` validated against the canonical registry at
+    `app.services.notifications.category_types`. `None` permitted
+    (many notifications have no category); unknown strings raise
+    `UnknownNotificationCategoryError`.
     """
+    assert_valid_notification_category(category)
     notification = Notification(
         company_id=company_id,
         user_id=user_id,
@@ -98,7 +107,12 @@ def notify_tenant_admins(
     return list is empty and no rows are created — the caller should
     log or ignore. Wrap this in try/except if the event is not
     mission-critical (every V-1d wire-up does).
+
+    R-8.1: `category` validated once at fan-out entry (rather than
+    inside the per-admin loop) so a malformed category fails fast
+    before fan-out work.
     """
+    assert_valid_notification_category(category)
     admins = (
         db.query(User)
         .join(Role, Role.id == User.role_id)
