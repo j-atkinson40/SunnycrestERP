@@ -1,6 +1,8 @@
 # PLUGIN_CONTRACTS.md — Canonical Plugin Category Contracts
 
 **Established**: 2026-05-11 (Phase R-8.y.a — first of four R-8.y documentation sub-arcs)
+**Last updated**: 2026-05-11 (Phase R-8.y.b delta — Calendar providers reclassified ✓ canonical)
+**Canonical contract count**: 11 (10 R-8.y.a + 1 R-8.y.b delta-update)
 **Scope**: Bridgeable's explicit plugin categories — input/output contracts, guarantees, failure modes, configuration shape, registration mechanism, current implementations.
 
 ---
@@ -41,7 +43,8 @@ This document is the canonical contract reference for Bridgeable's plugin catego
 9. [Accounting providers](#8-accounting-providers)
 10. [Email providers](#9-email-providers)
 11. [Playwright scripts](#10-playwright-scripts)
-12. [Cross-category patterns appendix](#cross-category-patterns-appendix)
+12. [Calendar providers](#11-calendar-providers) `[✓ canonical — reclassified R-8.y.b investigation]`
+13. [Cross-category patterns appendix](#cross-category-patterns-appendix)
 
 ---
 
@@ -818,6 +821,108 @@ Commented-out scaffolding for future scripts in `__init__.py`:
 - **Workflow engine action_types** (R-8.y.b / R-9 candidate) — `playwright_action` action type consumes script via `script_name` config field
 - **`credential_service`** + **`tenant_credentials`** table — per-tenant credential storage; scripts resolve via `service_key`
 - **Document blocks (§4 above)** — cleaner `register_*` API canon Playwright scripts could adopt if registration mechanism warrants lift
+
+---
+
+## 11. Calendar providers
+
+**Maturity**: `[✓ canonical — reclassified R-8.y.b investigation]`
+
+### Purpose
+
+Calendar providers abstract over external calendar systems for Bridgeable's Calendar primitive — Google Calendar OAuth, Microsoft 365 OAuth (MS Graph), and Bridgeable-native local storage (no external transport). Each provider implements a uniform connect/sync/fetch/freebusy/send surface per §3.26.16.4 canon.
+
+The category exists so the Calendar primitive's substrate doesn't branch on provider. Adding a future native CalDAV provider (or any new transport — Apple iCloud, Zoho, FastMail) registers under the same contract; Calendar primitive code doesn't change. The local provider is canonical first-class — Bridgeable owns calendar state directly via the `calendar_events` table, with provider abstraction handling external transport only (per CLAUDE.md §14 Session 3 integrate-now-make-native-later commitment).
+
+This section was originally graded `~ partial` in the R-8 audit on the basis "Local provider only at September; Google + MS Graph + CalDAV documented as future." Runtime verification at `backend/app/services/calendar/providers/__init__.py:42-44` showed 3 providers registered today via the canonical `register_provider` + ABC + `PROVIDER_REGISTRY` pattern matching §9 Email providers verbatim. Google + MSGraph are stub-shaped at this commit (Step 2 wires real OAuth); the registration mechanism, ABC, and result dataclasses are canonical regardless. Reclassified ✓ canonical in R-8.y.b investigation.
+
+### Input Contract
+
+`CalendarProvider` ABC at `backend/app/services/calendar/providers/base.py:145`. Required methods (7 abstractmethods):
+- `connect(oauth_redirect_payload?) → ProviderConnectResult` — establish connection (OAuth or no-op for local)
+- `disconnect() → None` — tear down subscriptions / watches (idempotent)
+- `sync_initial(*, backfill_window_days=90, lookahead_window_days=365) → ProviderSyncResult` — initial backfill of recent + upcoming events per §3.26.16.4 default window
+- `subscribe_realtime() → bool` — establish realtime subscription if supported (Google watch, MS Graph subscription); returns False for local
+- `fetch_event(provider_event_id) → ProviderFetchedEvent` — fetch full event payload
+- `fetch_attendee_responses(provider_event_id) → list[ProviderAttendeeRef]` — refresh attendee response state between full syncs
+- `fetch_freebusy(*, calendar_id?, time_range_start, time_range_end) → ProviderFreeBusyResult` — query free/busy windows over a time range
+
+One non-abstract method (Step 3 outbound, default raises `NotImplementedError`):
+- `send_event(*, vcalendar_text, method='REQUEST') → ProviderSendEventResult` — send outbound event via provider API per §3.26.16.5
+
+Class attributes:
+- `provider_type: str` (matches `CalendarAccount.provider_type` + `PROVIDER_REGISTRY` key)
+- `display_label: str` — UI provider picker label
+- `supports_inbound: bool` — whether the provider supports inbound sync (local is storage-only, False)
+- `supports_realtime: bool` — whether the provider supports realtime subscription callbacks
+- `supports_freebusy: bool` — whether the provider supports cross-account free/busy queries
+
+Constructor: `__init__(self, account_config: dict, *, db_session=None, account_id=None)` — receives `CalendarAccount.provider_config` JSONB. Per Step 2 Q1 Path A architectural decision, providers receive optional `db_session` + `account_id` so the canonical state surface (the `calendar_events` table for local provider's freebusy; CalendarAccount row for sync engine) is reachable without deliberate-injection hacks. OAuth providers generally don't need the db handle; local provider uses both.
+
+### Output Contract
+
+Each method returns a typed dataclass (defined in `base.py:35-138`):
+- `ProviderConnectResult(success, provider_account_id?, error_message?, config_to_persist)` — line 40
+- `ProviderSyncResult(success, events_synced=0, last_sync_at?, last_sync_token?, error_message?)` — line 52
+- `ProviderEventRef(provider_event_id, provider_calendar_id?, updated_at?)` — line 63 (lightweight reference from realtime callbacks)
+- `ProviderFetchedEvent(provider_event_id, provider_calendar_id, subject, description_text?, description_html?, location?, start_at?, end_at?, is_all_day, event_timezone?, recurrence_rule?, status, transparency, organizer_email?, organizer_name?, attendees, raw_payload)` — line 72 (full-fidelity event payload)
+- `ProviderAttendeeRef(email_address, display_name?, role, response_status, responded_at?, comment?)` — line 95
+- `ProviderFreeBusyWindow(start_at, end_at, status)` — line 107 (status: "busy" | "tentative" | "out_of_office")
+- `ProviderFreeBusyResult(success, windows, last_sync_at?, error_message?)` — line 116
+- `ProviderSendEventResult(success, provider_event_id?, provider_calendar_id?, error_message?, error_retryable=False)` — line 126 (mirrors Email primitive's `ProviderSendResult` shape)
+
+### Guarantees
+
+- **Per-account instantiation**: each provider is instantiated per-account when needed. The `account_config` dict is the persisted `CalendarAccount.provider_config`; each provider interprets its slice differently (Google expects `credentials_json`, MSGraph expects `tenant_id` + `client_id`, local expects nothing — it has no transport).
+- **`supports_inbound` + `supports_realtime` + `supports_freebusy` class attributes** govern caller behavior — local skips inbound sync; Google/MSGraph use realtime subscriptions; freebusy resolution checks `supports_freebusy` before calling the provider.
+- **`ProviderSendEventResult.error_retryable`** signals to caller whether to retry; classification belongs to provider, not consumer (parallel to Email's `ProviderSendResult.error_retryable`).
+- **`disconnect` idempotency** required so CalendarAccount disable/delete is safe to retry.
+- **Step 1 stubs raise `NotImplementedError`** with step-2-pointer messages so missed calls fail loud rather than silently — defensive discipline preserved per the integrate-now-make-native-later framework. Local provider ships functional at Step 1 (canonical-native storage).
+- **Recurrence canon ownership**: RRULE-as-source-of-truth per §3.26.16.4 — Bridgeable owns recurrence engine; providers bridge to external transports. Free/busy queries prefer canonical resolution from `calendar_events` rows after Step 2 ships the engine; fall back to provider only when canonical state is stale.
+
+### Failure Modes
+
+- `ProviderConnectResult.success=False` with `error_message` for OAuth failures
+- `NotImplementedError` from Step 1 stubs for operations awaiting Step 2 wiring (OAuth providers); local provider raises `NotImplementedError` from `fetch_event` / `fetch_attendee_responses` because local events are Bridgeable-native and accessed via canonical CalendarEvent queries directly (no separate transport)
+- Provider-internal exceptions propagate; consumer (Calendar primitive substrate) classifies + logs
+- `send_event` default raises `NotImplementedError` for providers that don't implement outbound (none at Step 3 — all 3 implement)
+
+### Configuration Shape
+
+Per-account configuration on `calendar_accounts` table:
+- `provider_type` — must be a registered key
+- `provider_config` JSONB — provider-specific (Google expects `credentials_json`, MSGraph expects `tenant_id` + `client_id`, local expects nothing)
+- Account-state columns (last sync timestamp, sync tokens, OAuth refresh state, subscription/watch ids returned from realtime registration)
+
+OAuth state persisted via `config_to_persist` from `ProviderConnectResult` (Google watch `resource_id`; MSGraph `subscription_id`).
+
+**No multi-scope cascade** — providers are platform-coded; per-tenant variation is per-account configuration (each tenant connects their own Google/MSGraph accounts).
+
+### Registration Mechanism
+
+`register_provider(provider_type, provider_class)` at `backend/app/services/calendar/providers/base.py:340` + `PROVIDER_REGISTRY: dict[str, type[CalendarProvider]]` at line 337.
+
+**Side-effect import**: `backend/app/services/calendar/providers/__init__.py:42-44` calls `register_provider` for all 3 providers at package import. Future native CalDAV provider registers via the same single-line call. Re-registering an existing key replaces (last-wins).
+
+`get_provider_class(provider_type)` at line 351 resolves; raises `KeyError` for unknown. Callers MUST validate `provider_type` against the canonical provider type set before calling.
+
+### Current Implementations
+
+Three providers registered at package import:
+- **`google_calendar`** → `GoogleCalendarProvider` (`google_calendar.py`) — `supports_inbound=True`, `supports_realtime=True`, `supports_freebusy=True`. Stub-shaped at this commit; Step 2 wires real OAuth + Google Calendar API integration (`events.insert` with `sendUpdates=all` for iTIP server-side propagation).
+- **`msgraph`** → `MicrosoftGraphCalendarProvider` (`msgraph.py`) — `supports_inbound=True`, `supports_realtime=True`, `supports_freebusy=True`. Stub-shaped at this commit; Step 2 wires real OAuth + MS Graph API integration (`POST /me/events` with `Prefer: outlook.sendNotifications=true` for iTIP server-side propagation).
+- **`local`** → `LocalCalendarProvider` (`local.py`) — `supports_inbound=False`, `supports_realtime=False`, `supports_freebusy=True`. **Canonical-native first-class implementation** functional at Step 1. Bridgeable owns calendar state directly via `calendar_events`; this provider answers freebusy from canonical rows, no external transport.
+
+Step 1 ships ABC + result dataclasses + registration + 3 implementations (1 functional, 2 stub-shaped for Step 2 wiring). The native CalDAV provider lands as the 4th provider behind the same contract when concrete signal warrants per §3.26.16.21 strategic vision deferral catalog.
+
+### Cross-References
+
+- **Pattern mirrors §9 Email providers verbatim** — same `register_provider` + `PROVIDER_REGISTRY` + ABC + side-effect-import structure; same result-dataclass shape (`ProviderConnectResult` / `ProviderSyncResult` / `ProviderFetchedEvent` parallels Email's `ProviderConnectResult` / `ProviderSyncResult` / `ProviderFetchedMessage`); same `supports_*` class-attribute discipline; same Step 1 stub vs Step 2 wiring cadence.
+- **CLAUDE.md §14 Session 3 (Calendar Primitive Canon)** — canonical architectural framing + integrate-now-make-native-later commitment + RRULE-as-source-of-truth canon at §3.26.16.4
+- **BRIDGEABLE_MASTER.md §3.26.16** — Calendar Primitive canon (25 subsections including §3.26.16.4 entity model + §3.26.16.5 outbound + §3.26.16.21 strategic vision deferral catalog)
+- **Email providers (§9 above)** — direct sibling; Calendar providers are second canonical communication-primitive provider category sharing structural canon
+- **Calendar Step 4 actions** (§3.26.16.17 / CLAUDE.md R-6.0+ context) — operational-action affordances built on top of provider substrate
+- **R-8.y.b investigation report** (`/tmp/r8_y_b_normative_contracts_findings.md`) — reclassification rationale + file:line evidence
 
 ---
 
