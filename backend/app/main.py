@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import JSONResponse
 from sqlalchemy import text as sa_text
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -7,8 +9,40 @@ from app.api.platform import platform_router
 from app.api.v1 import v1_router
 from app.config import settings
 
+
 # ---------------------------------------------------------------------------
-# OpenAPI / docs configuration
+# OpenAPI / docs gating (R-7-β)
+# ---------------------------------------------------------------------------
+# Defaults disabled at FastAPI level (openapi_url=None / docs_url=None /
+# redoc_url=None). On dev + staging we mount our own /openapi.json + /docs +
+# /redoc routes; on staging the routes are gated by platform-admin auth. On
+# production no routes are mounted — paths return 404.
+#
+# Pattern: platform-admin-gated API introspection is canonical for staging
+# diagnostic tooling. Future diagnostic endpoints (health summaries, debug
+# routes, metrics) follow the same env-conditional + platform-auth-gate shape.
+
+
+def _should_mount_openapi(env: str) -> bool:
+    """Mount /openapi.json + /docs + /redoc routes (gated or not).
+
+    True for dev + staging; False for production. Production stays 404
+    until concrete operational need emerges.
+    """
+    return env in {"dev", "staging"}
+
+
+def _should_gate_openapi(env: str) -> bool:
+    """Whether the mounted openapi routes require platform-admin auth.
+
+    True for staging (platform-admin gate enforced); False for dev (open
+    access for local developer ergonomics — FastAPI's default behavior).
+    """
+    return env == "staging"
+
+
+# ---------------------------------------------------------------------------
+# FastAPI app
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title=settings.APP_NAME,
@@ -17,9 +51,11 @@ app = FastAPI(
         "Supports manufacturing, death care, and hospitality verticals."
     ),
     version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    # R-7-β: defaults off — see _should_mount_openapi / _should_gate_openapi
+    # for the staging + dev mount pattern below.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
     contact={
         "name": f"{settings.APP_NAME} Support",
         "email": settings.SUPPORT_EMAIL,
@@ -98,7 +134,7 @@ class DeprecationMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         path = request.url.path
         # Only tag bare /api/ that is NOT /api/v1/, /api/docs, /api/redoc, /api/openapi.json
-        if path.startswith("/api/") and not path.startswith(("/api/v1/", "/api/platform/", "/api/docs", "/api/redoc", "/api/openapi.json", "/api/health")):
+        if path.startswith("/api/") and not path.startswith(("/api/v1/", "/api/platform/", "/api/health")):
             response.headers["Deprecation"] = "true"
             response.headers["Sunset"] = "2026-09-01"
             response.headers["Link"] = f'</api/v1{path[4:]}>; rel="successor-version"'
@@ -122,6 +158,43 @@ app.include_router(platform_router, prefix="/api/platform")
 
 # Deprecated alias: /api/ (same routes, triggers deprecation headers)
 app.include_router(v1_router, prefix="/api")
+
+
+# ---------------------------------------------------------------------------
+# R-7-β: gated /openapi.json + /docs + /redoc
+# ---------------------------------------------------------------------------
+# Mount our own openapi routes so we control auth.
+#   - dev: open (no auth dep) — preserves developer ergonomics
+#   - staging: gated by get_current_platform_user (canonical platform-admin dep)
+#   - production: not mounted — paths return 404
+#
+# Note: /docs and /redoc HTML pages reference /openapi.json. When the operator
+# loads /docs in staging, the Swagger UI fetches /openapi.json with the same
+# browser JWT — same gate, same auth, no special-casing.
+if _should_mount_openapi(settings.ENVIRONMENT):
+    _openapi_deps = []
+    if _should_gate_openapi(settings.ENVIRONMENT):
+        from app.api.deps import get_current_platform_user
+        _openapi_deps = [Depends(get_current_platform_user)]
+
+    @app.get("/openapi.json", include_in_schema=False, dependencies=_openapi_deps)
+    def _openapi_spec():
+        return JSONResponse(app.openapi())
+
+    @app.get("/docs", include_in_schema=False, dependencies=_openapi_deps)
+    def _swagger_ui():
+        return get_swagger_ui_html(
+            openapi_url="/openapi.json",
+            title=f"{settings.APP_NAME} API — Swagger UI",
+        )
+
+    @app.get("/redoc", include_in_schema=False, dependencies=_openapi_deps)
+    def _redoc_ui():
+        return get_redoc_html(
+            openapi_url="/openapi.json",
+            title=f"{settings.APP_NAME} API — ReDoc",
+        )
+
 
 # Static files — safety training templates
 import os
