@@ -1,11 +1,10 @@
 # PLUGIN_CONTRACTS.md — Canonical Plugin Category Contracts
 
 **Established**: 2026-05-11 (Phase R-8.y.a — first of four R-8.y documentation sub-arcs)
-**Last updated**: 2026-05-11 (Phase R-8.y.c Phase 2a — 2 reclassifications + 4 descriptive sections + 3 cross-reference head-notes)
-**Total contract count**: 23 (13 ✓ canonical + 10 ~ partial/implicit)
+**Last updated**: 2026-05-11 (Phase R-8.y.c Phase 2b — §23 Customer classification rules authored against settled B-CLASSIFY-1/2/3 decisions)
+**Document version**: 1.3
+**Total contract count**: 24 (13 ✓ canonical + 11 ~ partial/implicit)
 **Scope**: Bridgeable's explicit plugin categories + implicit category contracts surfaced by R-8 audit Section 2 — input/output contracts, guarantees, failure modes, configuration shape, registration mechanism, current implementations.
-
-**Phase 2b note**: §23 Customer classification rules pending B-CLASSIFY-1/2/3 direction settlement; ships separately as Phase 2b.
 
 ---
 
@@ -57,7 +56,7 @@ This document is the canonical contract reference for Bridgeable's plugin catego
 21. [Activity log event types](#20-activity-log-event-types) `[✓ canonical — reclassified R-8.y.c investigation]`
 22. [PDF generator callers](#21-pdf-generator-callers) `[~ implicit pattern]`
 23. [Page contexts](#22-page-contexts) `[~ implicit pattern]`
-24. [Customer classification rules](#23-customer-classification-rules) `[RESERVED — Phase 2b after B-CLASSIFY-1/2/3 direction]`
+24. [Customer classification rules](#23-customer-classification-rules) `[~ implicit pattern]`
 25. [Intent classifiers](#24-intent-classifiers) `[~ implicit pattern]`
 26. [Cross-category patterns appendix](#cross-category-patterns-appendix)
 
@@ -1978,9 +1977,106 @@ N/A — frozen `PAGE_CONTEXT_MAP` array in code; no per-tenant configuration. Pa
 
 ## 23. Customer classification rules
 
-**Maturity**: `[RESERVED — Phase 2b after B-CLASSIFY-1/2/3 direction]`
+**Maturity**: `[~ implicit pattern]`
 
-Phase R-8.y.c Phase 2a defers this section to Phase 2b pending direction on three Type B calls surfaced by the investigation (B-CLASSIFY-1: vertical-plug-in classifiers vs module-level regex; B-CLASSIFY-2: tenant-overridable thresholds; B-CLASSIFY-3: standalone section vs CRM substrate parent). Investigation report at `/tmp/r8_y_c_implicit_contracts_findings.md` §9. Phase 2b ships the full 8-section contract once direction settles.
+### Purpose
+
+Customer classification rules are the substrate Bridgeable's onboarding import pipeline uses to assign a `customer_type` (funeral_home / cemetery / contractor / individual) to each customer name parsed from a tenant's Sage / QBO export. The canonical pipeline is two-stage — Stage 1 fires deterministic name-pattern rules; Stage 2 falls back to AI batch classification for low-confidence cases — with three confidence thresholds gating decision flow.
+
+The category exists so classification logic operates against a stable contract (closed rule-family vocabulary + closed strength vocabulary + tenant-tunable confidence thresholds) rather than ad-hoc string matching. Adding rule patterns for a new vertical, or tightening per-tenant thresholds for a chain with unusual naming conventions, should be registration + configuration — not service-layer edits.
+
+### Input Contract
+
+Per-customer classification at `backend/app/services/customer_classification_service.py`:
+
+- `classify_by_name(name: str) → dict` — pure-function rule-based classification (no DB queries)
+- `classify_customers(parsed_customers, *, db, company_id, tenant_name) → dict` — batch orchestration combining rule + AI stages
+- `classify_one(name, city, state, *, db, company_id, tenant_name) → ClassificationResult` — single-customer convenience
+
+Each rule family declares regex patterns at two strengths:
+
+```python
+ClassificationRuleSet(
+    rule_family="funeral",   # Literal: funeral | cemetery | contractor | individual
+    strength="strong",        # Literal: strong | weak
+    regex=re.compile(r"..."),
+)
+```
+
+`rule_family` + `strength` are orthogonal closed-vocabulary discriminators per Meta-Pattern 3 sub-pattern (multiple closed-vocabulary discriminators within a category — same sub-pattern as §16 Agent kinds' `AgentJobType` + `ApprovalFlow`).
+
+### Output Contract
+
+`ClassificationResult` dict with three fields:
+- `customer_type`: one of `funeral_home | cemetery | contractor | individual | unknown`
+- `confidence`: float `[0.0, 1.0]`
+- `rule_strength`: `strong | weak | none` (rule path) or `null` (AI path)
+
+Downstream `onboarding/customer_import` writes `customer_type` into `customers.customer_type` column + flags low-confidence results for needs-review queue.
+
+### Guarantees
+
+- **Tenant isolation**: AI batch classification routes through `intelligence_service.execute(prompt_key="onboarding.classify_customer_batch", company_id=...)` (Phase 2c-2 migration); regex constants are platform-global with no per-tenant scope
+- **Pure-function rule classification**: stateless; no DB queries during rule stage
+- **Confidence-gated decision flow**: three thresholds determine when rules suffice, when AI fallback fires, when results go to manual review
+- **Stage ordering invariant**: rules always run first; AI only fires when rule confidence falls below `rule_confidence_threshold`
+
+### Failure Modes
+
+- AI batch dispatch failure → caller catches Intelligence-layer exception; affected batch falls back to highest-confidence rule result (even if below `rule_confidence_threshold`)
+- Empty rule match → `customer_type = "unknown"` + `confidence = 0.0` + routes to needs-review
+- Conflict between rule + AI (different `customer_type` outputs) → resolution at `customer_classification_service.py:491-498` picks higher-confidence result
+
+### Configuration Shape
+
+**Per-tenant thresholds** at `Company.settings_json.classification_thresholds.*`:
+
+```python
+Company.settings_json.classification_thresholds = {
+    "rule_confidence": 0.85,   # use rule result without AI (platform default)
+    "ai_confidence": 0.75,     # AI result accepted above this (platform default)
+    "needs_review": 0.75,      # anything below this goes to needs_review (platform default)
+}
+```
+
+Platform-default values supplied at registration; per-tenant overrides written via existing `Company.settings_json` JSONB column (same canonical override path as Phase 8a-era tenant settings + R-6.1a classification confidence floors). Tenants with unusual naming conventions (FH chains using non-standard suffixes, regional contractor licensing terms) tighten or loosen per-tenant without service-layer edits.
+
+**Per-vertical rule sets** (canonical Tier R1 target): each vertical registers its rule set at module import time via `register_classification_rule_set(vertical, rule_set)`. Cross-vertical rules (individual fallback) register against vertical sentinel `"*"`. Three-scope cascade does NOT apply here — rule sets are platform-coded per vertical; per-tenant rule additions are deferred to a separate sub-arc when concrete signal warrants.
+
+### Registration Mechanism
+
+**Tier R1 canonical target** (B-CLASSIFY-1):
+
+```python
+register_classification_rule_set(
+    vertical="funeral_home",
+    rule_set=ClassificationRuleSet(
+        rule_family="funeral",
+        strength="strong",
+        regex=re.compile(r"funeral\s*home|funeral\s*service", re.IGNORECASE),
+    ),
+)
+```
+
+Adding a new vertical's rules = `register_classification_rule_set(...)` call from that vertical's package init (side-effect import). Adding a new strength tier to an existing family = extend the `strength` Literal + register matching rules. Backend caller surface (`classify_by_name`) iterates registered rule sets in canonical order (strong before weak) rather than dispatching against hardcoded `_RE_*` constants.
+
+The closed-vocabulary discriminators (`rule_family` + `strength`) are Tier R2 — enum stability matters because the caller-facing `ClassificationResult.rule_strength` shape depends on them.
+
+### Current Implementations + Cross-References
+
+- Backend dispatch: `backend/app/services/customer_classification_service.py:189-195` (regex compilation), `:312` (AI fallback dispatch), `:424-426` (threshold constants), `:464,491,504,577,589` (threshold consumption decision points)
+- AI fallback prompt: `onboarding.classify_customer_batch` (Phase 2c-2 migration; managed Intelligence prompt)
+- CLAUDE.md §14 Bridgeable Intelligence — canonical AI dispatch path
+- **§16 Agent kinds** — sibling category exercising the same Meta-Pattern 3 sub-pattern (multiple closed-vocabulary discriminators within a category — `rule_family` + `strength` parallel `AgentJobType` + `ApprovalFlow`)
+- **§13 Intelligence providers** — AI fallback stage routes through the canonical `intelligence_service.execute()` substrate
+
+**Cross-References**: Customer classification rules is one of several CRM-substrate plugins identified in R-8 audit Section 5 (alongside at-risk scoring at `services/crm/at_risk_service.py` and name enrichment at `services/agents/name_enrichment_agent.py`). These adjacent plugins have not been investigated within R-8.y arc scope; future sub-arc may investigate and either document standalone (per R-8.y.c §23 precedent) or consolidate into a CRM substrate parent section if contract shape is genuinely shared. Standalone documentation is the current default; consolidation is signal-driven rather than speculative.
+
+### Current Divergences from Canonical
+
+1. **Module-level regex constants instead of registry** (B-CLASSIFY-1). Pre-canonical implementation uses 7 module-level compiled regex constants at `customer_classification_service.py:189-195` (`_RE_FUNERAL_STRONG`/`WEAK`, `_RE_CEMETERY_STRONG`/`WEAK`, `_RE_CONTRACTOR_STRONG`/`WEAK`, `_RE_INDIVIDUAL`) rather than the canonical `register_classification_rule_set()` API + per-vertical side-effect-import pattern. Adding rules for a new vertical requires source edit instead of registration. Migration deferred to **R-classify future sub-arc** per documentation-leads-implementation discipline (parallels §12 → R-9 precedent + R-8.y.c documentation-before-implementation methodology).
+2. **Hardcoded thresholds instead of `Company.settings_json` overrides** (B-CLASSIFY-2). Pre-canonical implementation uses three module-level constants at `customer_classification_service.py:424-426` (`_RULE_CONFIDENCE_THRESHOLD = 0.85`, `_AI_CONFIDENCE_THRESHOLD = 0.75`, `_NEEDS_REVIEW_THRESHOLD = 0.75`) consumed at five decision points (`:464`, `:491`, `:504`, `:577`, `:589`) rather than reading from `Company.settings_json.classification_thresholds.*`. Tenants with unusual naming conventions cannot tighten or loosen per-tenant without source edits. Migration deferred to R-classify sub-arc alongside B-CLASSIFY-1 (coupled migration window for single file — ~600 LOC total per R-8 audit Tier 2 §7).
+3. **R-classify future sub-arc** unifies both divergences. Same shape as R-9 for workflow node types (§12) and the Phase 8b BLOCKING parity test discipline: ship migration alongside parity test asserting `classify_by_name(name)` produces identical `ClassificationResult` outputs pre + post migration across a frozen test corpus. Tracked at CLAUDE.md §14 + DEBT.md once R-classify scoping arc opens.
 
 ---
 
@@ -2171,9 +2267,8 @@ R-9 is the primary downstream migration arc consuming this document; the 5 R-8.x
 
 ---
 
-**Document version**: 1.2 (R-8.y.c Phase 2a, 2026-05-11)
-**Total contract count**: 23 (13 ✓ canonical + 10 ~ partial/implicit)
+**Document version**: 1.3 (R-8.y.c Phase 2b, 2026-05-11)
+**Total contract count**: 24 (13 ✓ canonical + 11 ~ partial/implicit)
 **Canonical contract count**: 13 (10 R-8.y.a ✓ + 1 R-8.y.b Calendar reclassification ✓ + 2 R-8.y.c reclassifications ✓: Notification categories §19 + Activity log event types §20)
-**Partial/implicit contract count**: 10 (6 R-8.y.b ~ partial + 4 R-8.y.c ~ implicit: §18 Match operators, §21 PDF generators, §22 Page contexts, §24 Intent classifiers)
-**Phase 2b reservation**: §23 Customer classification rules pending B-CLASSIFY-1/2/3 direction; ships separately.
+**Partial/implicit contract count**: 11 (6 R-8.y.b ~ partial + 5 R-8.y.c ~ implicit: §18 Match operators, §21 PDF generators, §22 Page contexts, §23 Customer classification rules, §24 Intent classifiers)
 **Maintenance**: This document is canonical. Updates land alongside source changes — never in a separate commit. CLAUDE.md §14 Recent Changes entries link back here when categories evolve.
