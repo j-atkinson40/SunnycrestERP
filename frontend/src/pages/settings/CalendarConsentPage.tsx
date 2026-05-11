@@ -13,10 +13,11 @@
  *                      (with [Accept] inline action)
  *   active           → status-success "Full details" (with [Revoke])
  *
- * **Avoid `asChild` violation per CLAUDE.md §12** — pre-existing
- * CalendarAccountsPage.tsx ships an asChild on Button>Link which is
- * NOT compatible with shadcn/ui v4 + @base-ui/react. Use
- * ``buttonVariants()`` for any Link-as-button styling.
+ * **Avoid `asChild` violation per CLAUDE.md §12** — shadcn/ui v4 +
+ * @base-ui/react do NOT support `asChild`. Use `render={<Component />}`
+ * (the canonical Trigger pattern, see CalendarAccountsPage:330 post-Path-E
+ * fix in commit 73427db) or `buttonVariants()` for Link-as-button styling
+ * (see EmailAccountsPage, PortalUsersSettings).
  */
 
 import { useEffect, useState } from "react";

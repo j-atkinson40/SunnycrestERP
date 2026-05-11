@@ -20,11 +20,12 @@
  *   7. Action footer: [Edit event] [Reschedule] [Cancel event] [Add to
  *      my calendar]
  *
- * **Spec discipline (CLAUDE.md §12)**: this page MUST NOT introduce
- * the pre-existing `asChild` violation that lives on
- * `CalendarAccountsPage.tsx`. Action buttons that navigate use a
- * direct `<Button onClick={() => navigate(...)}>` shape instead of
- * Link composition.
+ * **Spec discipline (CLAUDE.md §12)**: shadcn/ui v4 + @base-ui/react
+ * do NOT support `asChild`. Action buttons that navigate use a direct
+ * `<Button onClick={() => navigate(...)}>` shape instead of Link
+ * composition. (The historical CalendarAccountsPage violation referenced
+ * in this comment was resolved by Path E in commit 73427db; R-7-ζ
+ * verified the fix is intact.)
  *
  * **Step 5 scope** is informative + light-action: response updates +
  * cancel commit ship today; full edit / reschedule wizards route
