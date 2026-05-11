@@ -8,6 +8,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.models.activity_log import ActivityLog
+from app.services.crm.activity_log_types import assert_valid_activity_type
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,11 @@ def log_system_event(
 
     If master_company_id is None but customer_id is provided, looks up
     the company_entity via customers.master_company_id.
+
+    Validates activity_type against the canonical registry (R-8.2).
     """
+    assert_valid_activity_type(activity_type)
+
     if not master_company_id and customer_id:
         from app.models.customer import Customer
         row = db.query(Customer.master_company_id).filter(Customer.id == customer_id).first()
@@ -69,7 +74,11 @@ def log_manual_activity(
     follow_up_date: str | None = None,
     follow_up_assigned_to: str | None = None,
 ) -> ActivityLog:
-    """Create a manual activity log entry."""
+    """Create a manual activity log entry.
+
+    Validates activity_type against the canonical registry (R-8.2).
+    """
+    assert_valid_activity_type(activity_type)
     entry = ActivityLog(
         id=str(_uuid.uuid4()),
         tenant_id=tenant_id,
