@@ -148,8 +148,15 @@ def list_blocks(
     return get_blocks(db, current_user.company_id)
 
 
+# R-7-ε: function renamed from `list_drivers` to `list_intelligence_drivers`
+# to resolve FastAPI duplicate Operation ID collision with the canonical
+# driver-CRUD endpoint at `app/api/routes/deliveries.py::list_drivers`.
+# Both routes serve `/drivers` under different router prefixes
+# (delivery-intelligence vs deliveries) but FastAPI's default
+# operationId derivation uses the function name. Distinct names keep
+# OpenAPI client SDK generators + tooling integrations functional.
 @router.get("/drivers")
-def list_drivers(
+def list_intelligence_drivers(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
