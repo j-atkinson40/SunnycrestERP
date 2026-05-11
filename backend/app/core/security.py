@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import os
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -12,15 +13,26 @@ from app.config import settings
 
 _fernet_instance: Fernet | None = None
 
+# R-8.4: Salt for PIN encryption Fernet key derivation. Reads from
+# PIN_ENCRYPTION_SALT env var; defaults to the legacy hardcoded value
+# to preserve backward compatibility with existing encrypted PINs in
+# production databases. Changing this salt invalidates all existing
+# encrypted PINs (Fernet derives a different key from a different salt).
+# The default is intentionally the legacy value — deployments can override
+# via env var but must coordinate with PIN re-encryption if they do.
+_DEFAULT_PIN_SALT = b"sunnycrest-pin-encryption-salt"
+
 
 def _get_fernet() -> Fernet:
     """Derive a stable Fernet key from SECRET_KEY via PBKDF2."""
     global _fernet_instance
     if _fernet_instance is None:
+        salt_env = os.environ.get("PIN_ENCRYPTION_SALT")
+        salt = salt_env.encode() if salt_env else _DEFAULT_PIN_SALT
         dk = hashlib.pbkdf2_hmac(
             "sha256",
             settings.SECRET_KEY.encode(),
-            b"sunnycrest-pin-encryption-salt",
+            salt,
             100_000,
         )
         key = base64.urlsafe_b64encode(dk[:32])

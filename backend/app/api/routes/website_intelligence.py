@@ -5,7 +5,7 @@ import logging
 import threading
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_platform_role
@@ -159,15 +159,22 @@ def get_extension_suggestions(
 
 
 @router.get("/website-intelligence/debug-network")
-def debug_network(db: Session = Depends(get_db)):
-    """Temporary endpoint: run the FULL intelligence pipeline synchronously."""
+def debug_network(
+    url: str = Query(..., description="URL to scrape for diagnostic purposes (required, no default)"),
+    db: Session = Depends(get_db),
+):
+    """Temporary endpoint: run the FULL intelligence pipeline synchronously.
+
+    R-8.4: URL must be supplied by the caller — no hardcoded tenant-named
+    default. Diagnostic endpoint; not consumed by production flows.
+    """
     import traceback
-    results = {}
+    results = {"requested_url": url}
 
     # Test 1: Scrape
     try:
         from app.services.website_scraper_service import scrape_website
-        scrape_result = scrape_website("https://www.sunnycrest.com")
+        scrape_result = scrape_website(url)
         results["scrape"] = f"OK: {len(scrape_result['pages_scraped'])} pages, {len(scrape_result['raw_content'])} chars"
         results["scrape_preview"] = scrape_result["raw_content"][:500]
     except Exception as e:
