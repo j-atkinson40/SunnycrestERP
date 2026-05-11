@@ -35,6 +35,45 @@ def client():
     return TestClient(app)
 
 
+# ─── R-7-δ — autouse PlatformTheme cleanup ────────────────────
+#
+# Test order coupling fix. Pre-R-7-δ, tests in this file shared the
+# dev Postgres DB without per-test cleanup. Earlier tests seeded
+# `vertical_default` rows for `vertical="manufacturing"`; later tests
+# (notably `test_resolve_cannot_request_other_tenant` + the empty-state
+# test) created fresh manufacturing tenants that LEGITIMATELY inherited
+# the leftovers per canonical `platform_default → vertical_default →
+# tenant_override` order. Assertions like `tokens == {}` failed because
+# the response correctly carried the leftover accent.
+#
+# Per investigation `/tmp/r7_delta_theme_test_scope.md` Section 4: the
+# cross-tenant boundary at `themes_tenant.py` is intact (route signature
+# only declares `mode`; FastAPI discards query-param tenant_id hints;
+# server reads tenant_id from JWT). This is a fixture-isolation bug,
+# NOT a security regression.
+#
+# Canonical pattern: matches `test_platform_themes_phase2.py:182` —
+# autouse fixture wrapping each test with PlatformTheme DELETE.
+# Failure had been pre-existing across 7+ arcs since 3ba9f7d (R-2.5).
+def _cleanup_themes():
+    from app.database import SessionLocal
+    from app.models.platform_theme import PlatformTheme
+
+    db = SessionLocal()
+    try:
+        db.query(PlatformTheme).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def _clean_themes_each_test():
+    _cleanup_themes()
+    yield
+    _cleanup_themes()
+
+
 def _make_tenant_with_admin(vertical: str = "manufacturing") -> dict:
     from app.core.security import create_access_token
     from app.database import SessionLocal
