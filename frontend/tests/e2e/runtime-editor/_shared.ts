@@ -177,10 +177,16 @@ export async function impersonateHopkinsDirector(
     },
   )
   if (!lookup.ok()) {
+    // R-7-η: per R-6.1b.2 lock, differentiate failure modes rather than collapse to single hint.
+    const status = lookup.status()
+    const hint =
+      status === 401 ? "platform admin token invalid or expired; refresh and retry" :
+      status === 403 ? "platform admin token lacks impersonation permissions" :
+      status === 404 ? "Hopkins FH tenant not found; verify `seed_fh_demo --apply` ran successfully on staging" :
+      status >= 500  ? "backend error during impersonation; check Railway deploy logs" :
+      "Hopkins FH may not be seeded — verify railway-start.sh ran seed_fh_demo successfully."
     throw new Error(
-      `Tenant lookup failed: ${lookup.status()} ${await lookup.text()}. ` +
-        "Hopkins FH may not be seeded — verify railway-start.sh ran " +
-        "seed_fh_demo successfully.",
+      `Tenant lookup failed: ${status} ${await lookup.text()} (${hint})`,
     )
   }
   const tenants: Array<{ id: string; slug: string; name: string }> =
@@ -363,10 +369,16 @@ export async function impersonateTestcoAdmin(
     },
   )
   if (!lookup.ok()) {
+    // R-7-η: per R-6.1b.2 lock, differentiate failure modes rather than collapse to single hint.
+    const status = lookup.status()
+    const hint =
+      status === 401 ? "platform admin token invalid or expired; refresh and retry" :
+      status === 403 ? "platform admin token lacks impersonation permissions" :
+      status === 404 ? "testco tenant not found; verify `seed_staging` ran successfully on staging" :
+      status >= 500  ? "backend error during impersonation; check Railway deploy logs" :
+      "testco may not be seeded — verify railway-start.sh ran seed_staging successfully."
     throw new Error(
-      `Tenant lookup failed: ${lookup.status()} ${await lookup.text()}. ` +
-        "testco may not be seeded — verify railway-start.sh ran " +
-        "seed_staging successfully.",
+      `Tenant lookup failed: ${status} ${await lookup.text()} (${hint})`,
     )
   }
   const tenants: Array<{ id: string; slug: string; name: string }> =

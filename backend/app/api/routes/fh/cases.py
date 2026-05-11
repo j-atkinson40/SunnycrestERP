@@ -347,7 +347,7 @@ def add_informant(
 def sign_authorization(
     case_id: str,
     informant_id: str,
-    method: str = Query(..., regex="^(in_person|emailed|faxed|digital)$"),
+    method: str = Query(..., pattern="^(in_person|emailed|faxed|digital)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

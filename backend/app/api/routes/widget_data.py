@@ -321,7 +321,7 @@ class _AcknowledgeAnomalyRequest(BaseModel):
 def anomalies_widget_summary(
     severity: str | None = Query(
         default=None,
-        regex="^(critical|warning|info)$",
+        pattern="^(critical|warning|info)$",
         description="Filter to a single severity level. Omit for all.",
     ),
     limit: int = Query(default=20, ge=1, le=200),

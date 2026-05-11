@@ -234,7 +234,7 @@ def list_workflows(
     scope: str | None = Query(
         None,
         description="Filter by workflow scope. Valid values: core, vertical, tenant.",
-        regex="^(core|vertical|tenant)$",
+        pattern="^(core|vertical|tenant)$",
     ),
     include_used_by: bool = Query(
         False,

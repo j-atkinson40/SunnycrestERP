@@ -25,7 +25,7 @@ def list_spring_burials(
     current_user: User = Depends(get_current_user),
     company: Company = Depends(get_current_company),
     db: Session = Depends(get_db),
-    group_by: str = Query("funeral_home", regex="^(funeral_home|cemetery)$"),
+    group_by: str = Query("funeral_home", pattern="^(funeral_home|cemetery)$"),
     funeral_home_id: str | None = Query(None),
 ):
     """List all spring burial orders, grouped by funeral home or cemetery."""

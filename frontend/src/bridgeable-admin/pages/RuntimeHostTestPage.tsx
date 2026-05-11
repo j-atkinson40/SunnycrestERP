@@ -25,15 +25,17 @@
  * don't visit this route never pull the tenant chunk.
  */
 import { Suspense } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 
 import { useAdminAuth } from "@/bridgeable-admin/lib/admin-auth-context"
+import { Button } from "@/components/ui/button"
 import { TenantProviders } from "@/lib/runtime-host/TenantProviders"
 import TenantRouteTree from "@/lib/runtime-host/TenantRouteTree"
 
 
 export default function RuntimeHostTestPage() {
   const { user, loading } = useAdminAuth()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const tenantSlug = searchParams.get("tenant") ?? "(unspecified)"
   const userQuery = searchParams.get("user") ?? "(unspecified)"
@@ -66,6 +68,17 @@ export default function RuntimeHostTestPage() {
           <p className="mt-2 text-content-muted">
             The runtime-host test surface is super_admin-only.
           </p>
+          {/* R-7-η: recovery affordance — route to /login.
+           *  Canonical pattern from R-7-α RuntimeEditorShell unauth branch. */}
+          <div className="mt-4 flex justify-center">
+            <Button
+              data-testid="runtime-host-test-unauth-signin"
+              onClick={() => navigate("/login")}
+              aria-label="Sign in to admin"
+            >
+              Sign in
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -85,6 +98,17 @@ export default function RuntimeHostTestPage() {
             The runtime-host test surface requires the super_admin role.
             Your account has role <code>{user.role}</code>.
           </p>
+          {/* R-7-η: recovery affordance — route to admin home.
+           *  Canonical pattern from R-7-α RuntimeEditorShell forbidden branch. */}
+          <div className="mt-4 flex justify-center">
+            <Button
+              data-testid="runtime-host-test-forbidden-admin-home"
+              onClick={() => navigate("/bridgeable-admin")}
+              aria-label="Return to admin home"
+            >
+              Return to admin home
+            </Button>
+          </div>
         </div>
       </div>
     )

@@ -34,7 +34,7 @@ class MarkAvailableRequest(BaseModel):
 
 @router.get("/templates")
 def list_templates(
-    type: str = Query("standard", regex="^(standard|urn)$"),
+    type: str = Query("standard", pattern="^(standard|urn)$"),
     current_user: User = Depends(get_current_user),
 ):
     """List all legacy print templates with availability status."""
@@ -247,7 +247,7 @@ def mark_template_available(
 @router.post("/admin/upload-template")
 async def upload_template_tif(
     file: UploadFile = File(...),
-    template_type: str = Query("standard", regex="^(standard|urn|bv_standard|bv_urn)$"),
+    template_type: str = Query("standard", pattern="^(standard|urn|bv_standard|bv_urn)$"),
     current_user: User = Depends(require_admin),
 ):
     """Upload a template TIF file to R2 storage.
@@ -301,7 +301,7 @@ async def upload_template_tif(
 @router.post("/admin/upload-templates-bulk")
 async def upload_templates_bulk(
     files: list[UploadFile] = File(...),
-    template_type: str = Query("standard", regex="^(standard|urn|bv_standard|bv_urn)$"),
+    template_type: str = Query("standard", pattern="^(standard|urn|bv_standard|bv_urn)$"),
     current_user: User = Depends(require_admin),
 ):
     """Upload multiple template TIF files at once."""
@@ -349,7 +349,7 @@ async def upload_templates_bulk(
 
 @router.get("/admin/template-status")
 def template_upload_status(
-    type: str = Query("standard", regex="^(standard|urn)$"),
+    type: str = Query("standard", pattern="^(standard|urn)$"),
     current_user: User = Depends(require_admin),
 ):
     """Check which registered templates have TIF files in R2."""
@@ -372,7 +372,7 @@ def template_upload_status(
 
 @router.post("/admin/generate-thumbnails")
 def generate_all_thumbnails(
-    type: str = Query("standard", regex="^(standard|urn)$"),
+    type: str = Query("standard", pattern="^(standard|urn)$"),
     current_user: User = Depends(require_admin),
 ):
     """Pre-generate cached JPEG thumbnails for all templates that have TIFs in R2."""
