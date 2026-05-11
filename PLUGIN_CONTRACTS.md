@@ -1,9 +1,11 @@
 # PLUGIN_CONTRACTS.md — Canonical Plugin Category Contracts
 
 **Established**: 2026-05-11 (Phase R-8.y.a — first of four R-8.y documentation sub-arcs)
-**Last updated**: 2026-05-11 (Phase R-8.y.b Phase 2 — 6 normative contracts + meta-patterns)
-**Total contract count**: 17 (11 ✓ canonical + 6 ~ partial)
-**Scope**: Bridgeable's explicit plugin categories — input/output contracts, guarantees, failure modes, configuration shape, registration mechanism, current implementations.
+**Last updated**: 2026-05-11 (Phase R-8.y.c Phase 2a — 2 reclassifications + 4 descriptive sections + 3 cross-reference head-notes)
+**Total contract count**: 23 (13 ✓ canonical + 10 ~ partial/implicit)
+**Scope**: Bridgeable's explicit plugin categories + implicit category contracts surfaced by R-8 audit Section 2 — input/output contracts, guarantees, failure modes, configuration shape, registration mechanism, current implementations.
+
+**Phase 2b note**: §23 Customer classification rules pending B-CLASSIFY-1/2/3 direction settlement; ships separately as Phase 2b.
 
 ---
 
@@ -50,7 +52,14 @@ This document is the canonical contract reference for Bridgeable's plugin catego
 16. [Triage queue configs](#15-triage-queue-configs) `[~ partial — see Current Divergences]`
 17. [Agent kinds](#16-agent-kinds) `[~ partial — see Current Divergences]`
 18. [Button kinds](#17-button-kinds) `[~ partial — see Current Divergences]`
-19. [Cross-category patterns appendix](#cross-category-patterns-appendix)
+19. [Intake match-condition operators](#18-intake-match-condition-operators) `[~ implicit pattern]`
+20. [Notification categories](#19-notification-categories) `[✓ canonical — reclassified R-8.y.c investigation]`
+21. [Activity log event types](#20-activity-log-event-types) `[✓ canonical — reclassified R-8.y.c investigation]`
+22. [PDF generator callers](#21-pdf-generator-callers) `[~ implicit pattern]`
+23. [Page contexts](#22-page-contexts) `[~ implicit pattern]`
+24. [Customer classification rules](#23-customer-classification-rules) `[RESERVED — Phase 2b after B-CLASSIFY-1/2/3 direction]`
+25. [Intent classifiers](#24-intent-classifiers) `[~ implicit pattern]`
+26. [Cross-category patterns appendix](#cross-category-patterns-appendix)
 
 ---
 
@@ -936,6 +945,8 @@ Step 1 ships ABC + result dataclasses + registration + 3 implementations (1 func
 
 **Maturity**: `[~ partial — see Current Divergences]`
 
+> **Phase R-8.y.c cross-reference**: this category was implicit category #1 in R-8 audit Section 2 (workflow `action_type` dispatch); canonical documentation lives in this section. Source bindings (implicit category #3 in the same audit) are likewise covered by this section's B-WORK-3 deferral and require no separate section.
+
 ### Purpose
 
 Workflow node types are the substrate the workflow engine dispatches on at runtime. Each `WorkflowStep.action_type` (`create_record`, `send_notification`, `playwright_action`, `invoke_generation_focus`, etc.) routes to a handler that executes the step's side effects + returns an outcome the engine consumes to drive `WorkflowRun` state.
@@ -1066,6 +1077,8 @@ R-9 is the migration arc that resolves these. Estimated scope: ~900 LOC total (b
 ## 13. Intelligence providers
 
 **Maturity**: `[~ partial — see Current Divergences]`
+
+> **Phase R-8.y.c cross-reference**: implicit category #7 (AI prompt categories per R-8 audit) is a sub-pattern of this contract — `prompt_key` namespace conventions (`scribe.*`, `briefing.*`, `classification.*`, `nl_creation.*`, `workshop.*`, `accounting.*`, `vision.*`, etc.) are documented in CLAUDE.md §4 Bridgeable Intelligence; no separate registry layer.
 
 ### Purpose
 
@@ -1619,6 +1632,417 @@ The two flagged items (B-BTN-3 hardcoded parameter binding resolver branches; pa
 
 ---
 
+## 18. Intake match-condition operators
+
+**Maturity**: `[~ implicit pattern]`
+
+### Purpose
+
+Intake match-condition operators are the closed-vocabulary discriminators Tier 1 deterministic rules evaluate against canonical records produced by intake adapters (§1). Each adapter type (email / form / file) declares its own operator catalog tuned to the source's candidate fields. Rules combine operators via AND-within-rule + OR-within-operator semantics so tenants compose precise routing decisions without engine changes.
+
+The category exists so admin-authored Tier 1 rules (`tenant_workflow_email_rules.match_email / match_form / match_file`) route inbound traffic deterministically before LLM cascade fallback (Tier 2 taxonomy + Tier 3 registry). Adapter-specific operator catalogs preserve clarity over speculative cross-source unification per R-6.2a signal-driven canon.
+
+### Input Contract
+
+Each operator catalog is a closed vocabulary of operator keys evaluated against the canonical adapter record. Operator evaluation at `backend/app/services/classification/tier_1_rules.py:11-31` (module docstring enumerates all three catalogs):
+
+- **Email operators** (5): `sender_email_in`, `sender_domain_in`, `subject_contains_any`, `body_contains_any` (first 4KB), `thread_label_in` — evaluated by `match_email_message` at `tier_1_rules.py:85`.
+- **Form operators** (5): `form_slug_equals`, `field_value_equals`, `field_value_contains`, `submitter_email_in`, `submitter_domain_in` — evaluated by `match_form` at `tier_1_rules.py:155`.
+- **File operators** (5): `file_adapter_slug_equals`, `content_type_in`, `filename_contains_any`, `uploader_email_in`, `uploader_domain_in` — evaluated by `match_file` at `tier_1_rules.py:255`.
+
+Operator config is a dict keyed by operator name with value-shape determined by operator semantics (list of strings for `*_in` operators, single string for `*_equals`, etc.).
+
+### Output Contract
+
+Each operator evaluator returns `bool`. Match function returns `bool` indicating whether the full rule's operator set matched.
+
+### Guarantees
+
+- **AND-within-rule + OR-within-operator** semantics: a rule with `{sender_domain_in: [...], subject_contains_any: [...]}` matches when BOTH operators match; each operator matches if ANY of its values match.
+- **Closed vocabulary per adapter**: invalid operator key in rule config rejected at evaluation time (KeyError surfaced).
+- **No silent fall-through**: operators evaluated exhaustively; missing required candidate fields → operator returns False rather than crash.
+- **Pure-function evaluation**: each operator is stateless; no DB queries, no side effects.
+
+### Failure Modes
+
+- Invalid operator key → KeyError at `_evaluate_operator` dispatch
+- Malformed operator config (wrong value shape) → TypeError surfaced verbatim
+- Missing candidate field on source record → operator returns False (treated as non-match, not error)
+
+### Configuration Shape
+
+Match conditions stored as JSONB inside `tenant_workflow_email_rules.match_email / match_form / match_file` columns. Rule rows are tenant-owned (created via admin Tier 1 rule authoring UI). Per-adapter columns enforce adapter-type discriminator: a rule targeting email cannot accidentally match form/file traffic.
+
+### Registration Mechanism
+
+**Tier R3 partial**. Closed vocabulary frozen in code; no `register_operator` API. Adding a new operator to an existing adapter = source edit + frontend mirror update (no migration). Adding cross-source operators deferred per R-6.2a canon ("Cross-source operator unification is signal-driven, not speculative").
+
+### Current Implementations + Cross-References
+
+- Backend evaluators at `tier_1_rules.py:85` (email), `:155` (form), `:255` (file)
+- Frontend mirror at `frontend/src/components/email-classification/MatchConditionsEditor.tsx` + `RulesTable.tsx:56-58` (operator-key dispatch) + `AuthorRuleFromEmailWizard.tsx:132,135` (heuristic emits operator keys)
+- CLAUDE.md §14 R-6.1a + R-6.2a — Tier 1 rule substrate + cross-source canon
+- §1 Intake adapters — operators consume canonical adapter records
+
+### Current Divergences from Canonical
+
+1. **Cross-source operator unification deferred** (CLAUDE.md §14 R-6.2a canon): single operator vocabulary across email + form + file would conflate canonical adapter-specific candidate fields. Deferred until concrete cross-adapter rule pattern emerges from production tenant authoring.
+2. **Frontend-backend symmetry not lint-enforced**: MatchConditionsEditor + RulesTable + AuthorRuleFromEmailWizard hardcode operator-key dispatch; drift detectable via test gate (deferred per R-8.2 precedent unless drift surfaces).
+
+---
+
+## 19. Notification categories
+
+**Maturity**: `[✓ canonical — reclassified R-8.y.c investigation]`
+
+### Purpose
+
+Notification categories are the closed-vocabulary classification keys carried on `notifications.category` (`backend/app/services/notifications/category_types.py`). Each category corresponds to a distinct platform notification source (delivery_failed, share_granted, signature_requested, compliance_expiry, account_at_risk, calendar_*, etc.); category drives default icon + color rendering hints + admin notification preferences (future).
+
+The category exists so notification routing + filtering + per-user preferences (deferred) operate against a stable enumeration rather than ad-hoc strings sprinkled across caller modules. R-8.1 shipped the registry post-audit, replacing the ~18 implicit category strings called out in R-8 audit Section 2 item 4.
+
+**Reclassification context**: R-8 audit graded this category `×` ("Should be a category catalog"). R-8.1 shipped the registry at `category_types.py` between audit and this documentation pass; R-8.y.c reclassifies as ✓ canonical via the delta-update pattern established by R-8.y.b Calendar reclassification.
+
+### Input Contract
+
+Callers pass a `category: str` key when creating notifications:
+
+```python
+notification_service.create_notification(
+    db,
+    user_id=...,
+    company_id=...,
+    type="info" | "success" | "warning" | "error",  # tone discriminator
+    category="share_granted",                        # category discriminator (validated)
+    title=...,
+    body=...,
+    severity=...,           # optional alert-flavor field
+    source_reference_type=..., source_reference_id=...,  # optional linkage
+)
+```
+
+`category` validated at create-time via `assert_valid_notification_category(category)` (`category_types.py:173`).
+
+### Output Contract
+
+`NOTIFICATION_CATEGORY_REGISTRY` exposes per-key metadata:
+
+```python
+{
+    "category": str,                  # canonical key
+    "description": str,               # operator-facing
+    "default_icon": str,              # Lucide icon name
+    "default_color_token": str,       # DESIGN_LANGUAGE token
+}
+```
+
+`NOTIFICATION_CATEGORIES` frozenset exposes the full enumeration for validation + iteration.
+
+### Guarantees
+
+- **Closed vocabulary**: 18 canonical entries at `NOTIFICATION_CATEGORY_REGISTRY` (`category_types.py:43`); unknown category at create-time raises `UnknownNotificationCategoryError` (typed exception at `:151`).
+- **Pure-function validation**: `validate_notification_category(category)` + `assert_valid_notification_category(category)` at `:160,173` are stateless; no DB queries.
+- **Tenant isolation**: category is platform-global metadata; per-tenant notifications carry `company_id` on the Notification row; category itself is not scoped.
+- **Frozen set discipline**: frontend dispatches on `Notification.type` (info/success/warning/error tone) NOT category — module docstring at `:23-28` documents this explicitly; no frontend-backend symmetry contract required.
+
+### Failure Modes
+
+- Unknown category → `UnknownNotificationCategoryError` (typed; translatable to HTTP 400 at caller boundary)
+- Type mismatch (non-string category) → TypeError at validation helper
+
+### Configuration Shape
+
+N/A — category catalog is code-defined; no per-instance configuration. Per-notification rows carry category as a string column on `notifications`; registry validates write-time only.
+
+### Registration Mechanism
+
+**Tier R1 — canonical**. Closed-vocabulary frozenset + typed validation + caller boundary enforcement. Adding a new category = single-line addition to `NOTIFICATION_CATEGORY_REGISTRY` dict; frozenset rebuilds automatically. R-8.1 module docstring at `:1-33` explicitly cites R-8 audit Section 2 item 4 + R-6.1 DEBT flag closure.
+
+### Current Implementations + Cross-References
+
+- Registry: `backend/app/services/notifications/category_types.py` (191 LOC)
+- 18 canonical categories: `share_granted`, `delivery_failed`, `signature_requested`, `compliance_expiry`, `account_at_risk`, `calendar_attendee_responded`, `calendar_consent_upgrade_request`, `calendar_consent_upgrade_accepted`, `calendar_consent_revoked`, `employee_*`, `system_*`, etc.
+- Caller integration: `notification_service.create_notification` at `notifications/service.py` + `notify_tenant_admins` fan-out helper
+- CLAUDE.md §14 R-8.1 entry — post-audit registry shipment record
+- §20 Activity log event types — sibling reclassification (R-8.2)
+
+---
+
+## 20. Activity log event types
+
+**Maturity**: `[✓ canonical — reclassified R-8.y.c investigation]`
+
+### Purpose
+
+Activity log event types are the closed-vocabulary classification keys carried on `activity_logs.activity_type` (`backend/app/services/crm/activity_log_types.py`). Each type corresponds to a distinct V-1c CRM activity feed event source (email, calendar, manual note, call, document, follow_up, status_change, delivery, invoice, order, payment, proof, case, legacy_proof); type drives the activity-feed verb rendered in `RecentActivityWidget.activityVerb` map.
+
+The category exists so V-1c activity feed rendering + filtering operates against a stable enumeration rather than ad-hoc strings duplicated between backend write paths + frontend render dispatch. R-8.2 shipped the registry post-audit, replacing the implicit activity_type strings called out in R-8 audit Section 2 item 5.
+
+**Reclassification context**: R-8 audit graded this category `~` (verb-resolution duplicated between backend + frontend). R-8.2 shipped the registry at `activity_log_types.py` between audit and this documentation pass; R-8.y.c reclassifies as ✓ canonical via the delta-update pattern.
+
+### Input Contract
+
+Callers pass an `activity_type: str` key when writing activity log rows:
+
+```python
+activity_log_service.log_event(
+    db,
+    company_id=...,
+    company_entity_id=...,
+    activity_type="email",          # validated
+    actor_user_id=...,
+    title=..., body=...,
+)
+```
+
+`activity_type` validated via `assert_valid_activity_type(activity_type)` (`activity_log_types.py:116`).
+
+### Output Contract
+
+`ACTIVITY_TYPE_REGISTRY` exposes per-key metadata:
+
+```python
+{
+    "activity_type": str,    # canonical key
+    "display_label": str,    # admin-facing
+    "description": str,      # operator-facing
+}
+```
+
+`ACTIVITY_TYPES` frozenset exposes full enumeration.
+
+### Guarantees
+
+- **Closed vocabulary**: 15 canonical entries at `ACTIVITY_TYPE_REGISTRY` (`activity_log_types.py:28`); unknown type raises `UnknownActivityTypeError` (typed at `:99`).
+- **Pure-function validation**: `validate_activity_type` + `assert_valid_activity_type` at `:108,116` stateless; no DB queries.
+- **Tenant isolation**: activity rows carry `company_id`; type catalog is platform-global metadata.
+- **Append-only**: activity_logs rows immutable post-write per V-1c canon; type strings on existing rows never change retroactively.
+
+### Failure Modes
+
+- Unknown activity_type → `UnknownActivityTypeError` (typed; HTTP 400 at caller boundary)
+- Type mismatch → TypeError at validation helper
+
+### Configuration Shape
+
+N/A — type catalog is code-defined; no per-instance configuration. `activity_logs.activity_type` column carries the validated string.
+
+### Frontend-backend symmetry contract
+
+**Canonical invariant (R-8.2 documented at module docstring `activity_log_types.py:14-17`)**: every registry key MUST have a corresponding entry in the frontend `activityVerb` map at `RecentActivityWidget.tsx`. Cross-tier vocabulary parity is the canonical interface — drift between backend write paths + frontend render dispatch produces silent rendering gaps (unknown type → "logged an activity" fallback verb).
+
+**Symmetry enforcement**: lint-or-test enforcement deferred unless drift surfaces. Module docstring documents the expectation; future R-8.x sub-arc can promote to a Vitest cross-reference test (registry keys parity-match `activityVerb` dispatch) when concrete drift emerges. This is R-8.y.b Meta-Pattern 2 applied to cross-tier vocabulary: document honesty now, migrate fragility when needed.
+
+This is the **first contract in PLUGIN_CONTRACTS.md to declare an explicit cross-tier vocabulary parity invariant**. Future cross-tier closed-vocabulary categories (e.g. §18 intake operators frontend mirror) follow this pattern when symmetry warrants explicit documentation.
+
+### Registration Mechanism
+
+**Tier R1 — canonical**. Closed-vocabulary frozenset + typed validation + frontend-symmetry contract documented. Adding a new activity_type = single-line addition to `ACTIVITY_TYPE_REGISTRY` dict + corresponding `activityVerb` entry in frontend mirror.
+
+### Current Implementations + Cross-References
+
+- Registry: `backend/app/services/crm/activity_log_types.py` (129 LOC)
+- 15 canonical types: `note`, `call`, `email`, `calendar`, `meeting`, `document`, `follow_up`, `status_change`, `delivery`, `invoice`, `order`, `payment`, `proof`, `case`, `legacy_proof`
+- Caller integration: `activity_log_service.log_event` + V-1c migration callers (delivery, calendar, email, etc.)
+- Frontend dispatch: `frontend/src/components/widgets/RecentActivityWidget.tsx::activityVerb` map
+- CLAUDE.md §14 R-8.2 entry — post-audit registry shipment record
+- §19 Notification categories — sibling reclassification (R-8.1)
+
+---
+
+## 21. PDF generator callers
+
+**Maturity**: `[~ implicit pattern]`
+
+### Purpose
+
+PDF generator callers are the substrate caller modules that emit PDF documents via the unified `document_renderer.render()` entry path. Each generator (statement, disinterment, price_list, invoice-preview, wilbert engraving form) consumes managed templates from the document template registry + produces canonical `Document` + `DocumentVersion` rows via the Phase D-1 backbone.
+
+The category exists so PDF generation routes through a single canonical surface (`document_renderer.render(template_key=...)`) rather than direct WeasyPrint calls scattered across the codebase. The canonical entry path enables template versioning, R2 archival, tenant template overrides, and unified rendering audit per Phase D-2/D-3.
+
+### Input Contract
+
+Canonical entry: `document_renderer.render(template_key, context, *, company_id, entity_type, entity_id, caller_module, ...)` at `backend/app/services/documents/document_renderer.py`. Each generator wraps this with domain-specific context resolution + entity linkage.
+
+5 canonical generators today:
+- `statement_pdf_service.py:30,193` — `template_key="statement.*"` (per-vertical variants)
+- `disinterment_pdf_service.py:30,85,116,125` — `template_key="disinterment.release_form"` + download_bytes fallback
+- `price_list_pdf_service.py:207,232,257,261,268` — `template_key="price_list.*"`
+- `pdf_generation_service.py:400-430` — invoice preview path via `render_html` (admin tool)
+- `wilbert_utils.render_form_pdf` — `template_key="urn.wilbert_engraving_form"` (D-9 migration)
+
+### Output Contract
+
+Each call produces canonical `Document` + `DocumentVersion` rows + writes PDF bytes to R2 at `tenants/{company_id}/documents/{document_id}/v{n}.pdf`. Generators return the Document handle for caller-side linkage; legacy bytes-returning APIs preserved as thin wrappers calling `download_bytes(doc)`.
+
+### Guarantees
+
+- **Single canonical entry path**: every PDF emit routes through `document_renderer.render` (verified by D-2 lint test `test_documents_d2_lint.py::test_weasyprint_import_forbidden_outside_documents`)
+- **Tenant isolation**: `company_id` required on every render; surfaces in Document row + R2 storage key
+- **Template versioning**: each render captures the active `DocumentTemplateVersion` at write time; re-render after template update produces new version
+- **Audit linkage**: `caller_module` + `caller_entity_*` populate Document linkage fields
+- **R2 archival**: rendered bytes uploaded to R2 with presigned download URLs (1h TTL)
+
+### Failure Modes
+
+- Unknown `template_key` → `TemplateNotFound` (404 at API boundary)
+- WeasyPrint rendering exception → `RenderError` with template + context details
+- R2 upload failure → `StorageError`; Document row not created (atomic)
+
+### Configuration Shape
+
+Per-tenant template overrides flow through the document template registry (`document_templates` + `document_template_versions` tables, three-scope cascade per Pattern 1). Generator code is the substrate; templates are the configuration.
+
+### Registration Mechanism
+
+**Tier R2 partial**. Caller surface honestly documented; no `register_pdf_generator` API. Adding a new generator = create the wrapper module + register its templates in the document template registry + call `document_renderer.render` from the wrapper. The 5 transitional WeasyPrint sites permanently allowlisted per D-2 lint test invariant are the only generators NOT routing through `document_renderer.render` today; lint test fails if a 6th appears.
+
+### Current Implementations + Cross-References
+
+- 5 canonical generators routing through `document_renderer.render` (listed above)
+- 3 transitional WeasyPrint allowlist entries (`pdf_generation_service.generate_template_preview_pdf`, `quote_service.generate_quote_pdf`, `wilbert_utils` legacy path) — D-9 closes these
+- CLAUDE.md §14 Phase D-1/D-2/D-9 — Document backbone + template registry + WeasyPrint migration arc
+- §4 Document blocks — block-level composition substrate (upstream of PDF rendering)
+- D-2 lint gate: `backend/tests/test_documents_d2_lint.py`
+
+### Current Divergences from Canonical
+
+1. **3 transitional WeasyPrint allowlist entries** preserved at D-2 lint test invariant; each documented for D-9 migration consideration. The lint test prevents new direct WeasyPrint usage; existing entries migrate as templates land in the registry.
+
+---
+
+## 22. Page contexts
+
+**Maturity**: `[~ implicit pattern]`
+
+### Purpose
+
+Page contexts are the substrate the runtime editor (R-1) dispatches against to resolve a route's editing context. Each page in the tenant app maps to a `pageContext` key + display `label` via `PAGE_CONTEXT_MAP` at `frontend/src/lib/runtime-host/page-contexts.ts:21-30`. Runtime editor uses the context to scope edits, surface contextual affordances, and gate per-page customization.
+
+The category exists so the runtime editor operates against a stable route → context registry rather than per-page hardcoded logic. Page contexts are a flat data registry consumed by R-1 runtime editor dispatch.
+
+### Input Contract
+
+`resolvePageContext(pathname: string): {pageContext, label, mapped}` at `page-contexts.ts`. Pattern matching supports `:param` segments (e.g. `/cases/:id`) and `*` wildcards; first-match-wins from the ordered `PAGE_CONTEXT_MAP` array.
+
+`PageContextEntry`:
+```typescript
+interface PageContextEntry {
+  pattern: string;       // route pattern with :param + * support
+  pageContext: string;   // canonical context key
+  label: string;         // operator-facing label
+}
+```
+
+### Output Contract
+
+```typescript
+{
+  pageContext: string;   // matched context OR "unmapped:{path}" fallback
+  label: string;
+  mapped: boolean;       // true if a pattern matched
+}
+```
+
+### Guarantees
+
+- **First-match-wins**: pattern order in `PAGE_CONTEXT_MAP` determines resolution
+- **Pure-function lookup**: route → context is stateless; no DB queries
+- **Graceful fallback**: unmapped routes return `pageContext: "unmapped:{path}"` allowing R-1 to surface a warning without crashing
+- **Closed vocabulary at September scope**: 20 canonical routes today; expansion is a code edit
+
+### Failure Modes
+
+- No pattern matches → `mapped: false` + `pageContext: "unmapped:{path}"`; runtime editor surfaces an "unmapped route" warning indicator
+
+### Configuration Shape
+
+N/A — frozen `PAGE_CONTEXT_MAP` array in code; no per-tenant configuration. Pattern is the runtime editor's single source of truth.
+
+### Registration Mechanism
+
+**Tier R3 partial**. Frozen table; no `register_page_context` API. Adding a new route = source edit appending to `PAGE_CONTEXT_MAP`. R-8 audit Tier 3 §10 explicitly defers refactoring threshold until ≥50 routes; at 20 routes today, frozen-table pattern suits the scale.
+
+### Current Implementations + Cross-References
+
+- Registry: `frontend/src/lib/runtime-host/page-contexts.ts:1-31` (introductory comment documents extension path)
+- 20 canonical routes mapped today (dashboard, cases, scheduling, orders, deliveries, accounting, etc.)
+- CLAUDE.md §14 R-1 entry — runtime editor canon + page context registry reference
+- §3 Widget kinds — sibling flat-data registry pattern at backend (page contexts are the frontend parallel for route → context resolution)
+
+### Current Divergences from Canonical
+
+1. **Refactoring threshold deferred** per R-8 audit Tier 3 §10: promote to `register_page_context(entry)` API when route count exceeds ~50 OR when per-vertical page context overrides emerge. At September scope (20 routes), frozen table is appropriate.
+
+---
+
+## 23. Customer classification rules
+
+**Maturity**: `[RESERVED — Phase 2b after B-CLASSIFY-1/2/3 direction]`
+
+Phase R-8.y.c Phase 2a defers this section to Phase 2b pending direction on three Type B calls surfaced by the investigation (B-CLASSIFY-1: vertical-plug-in classifiers vs module-level regex; B-CLASSIFY-2: tenant-overridable thresholds; B-CLASSIFY-3: standalone section vs CRM substrate parent). Investigation report at `/tmp/r8_y_c_implicit_contracts_findings.md` §9. Phase 2b ships the full 8-section contract once direction settles.
+
+---
+
+## 24. Intent classifiers
+
+**Maturity**: `[~ implicit pattern]`
+
+### Purpose
+
+Intent classifiers are the substrate the command bar + NL Creation overlay dispatch against to resolve user query intent. Backend `command_bar/intent.py` classifies queries into a closed 5-value vocabulary; frontend `detectNLIntent.ts` mirrors the classification for NL Creation overlay activation. The category exists so intent dispatch operates against a stable enumeration + dispatchable handlers rather than ad-hoc string matching per consumer.
+
+### Input Contract
+
+**Backend** (`backend/app/services/command_bar/intent.py:42`):
+- `Intent = Literal[...]` — 5-value closed vocabulary
+- `_CREATE_VERBS` at `:56` + `_NAVIGATE_VERBS` at `:60` — hand-maintained verb arrays
+- `_RECORD_NUMBER_RX` at `:71` — record-number regex (prefix+numeric shape)
+- `classify(query: str) → Intent` at `:80` — pure-function dispatch
+
+**Frontend** (`frontend/src/components/nl-creation/detectNLIntent.ts:88`):
+- `detectNLIntent(query: string)` — derives patterns from `getActionsSupportingNLCreation()` at runtime per Phase 5 actionRegistry reshape canon (supersedes hand-maintained ENTITY_PATTERNS table per comment header at `:4`)
+
+### Output Contract
+
+Backend: `Intent` literal value (one of the 5 vocabulary entries) — drives command bar action filtering.
+
+Frontend: NL creation entity type + extracted natural language tail — drives overlay activation.
+
+### Guarantees
+
+- **Closed vocabulary at backend**: 5-value Intent literal; unknown queries default to a fall-through intent (no crash)
+- **Pure-function classification**: stateless; no DB queries
+- **Frontend dynamic dispatch**: patterns derived from action registry at runtime per Phase 5 reshape — adding a new entity with `supports_nl_creation: true` extends the frontend classifier without code edit
+
+### Failure Modes
+
+- Backend: unrecognized verb → fall-through intent (caller handles)
+- Frontend: no pattern match → returns null (overlay does not activate)
+
+### Configuration Shape
+
+N/A at backend — closed vocabulary + hand-maintained verb arrays in code. Frontend derives from action registry; entities opt in via `supports_nl_creation: true` field on their registry entry.
+
+### Registration Mechanism
+
+**Tier R3 partial**. Frontend reshape complete (Phase 5 actionRegistry → action-registry-derived patterns; R2-ish). Backend hand-maintained verbs at `_CREATE_VERBS` + `_NAVIGATE_VERBS` (R3). Adding a new intent vocabulary value = source edit to `Intent` literal + dispatch table.
+
+### Current Implementations + Cross-References
+
+- Backend dispatch: `backend/app/services/command_bar/intent.py:42,80,137,173,210`
+- Frontend mirror: `frontend/src/components/nl-creation/detectNLIntent.ts:4,88`
+- CLAUDE.md §4 Command Bar Platform Layer — overall substrate
+- §7 Composition action types — sibling registry (action registry consumed by both command bar dispatch + NL detection)
+- CLAUDE.md §14 Phase 5 — actionRegistry reshape canon
+
+### Current Divergences from Canonical
+
+1. **Backend hand-maintained verbs vs frontend action-registry-derived patterns**: asymmetry by design. Frontend has render-time action registry available; backend dispatches pre-action-resolution. Documented honestly per Meta-Pattern 2 (working code that suits its category; no migration needed).
+2. **Record-number regex assumes Bridgeable record-number shape** (numeric + prefix): future verticals with non-numeric record IDs would need regex extension. Bounded scope; flagged for any vertical-expansion arc that introduces alternative record-number formats.
+
+---
+
 ## Cross-category patterns appendix
 
 Architectural patterns that span multiple categories. Documenting them once here keeps the per-category sections focused on substrate while making the cross-cutting discipline visible.
@@ -1747,7 +2171,9 @@ R-9 is the primary downstream migration arc consuming this document; the 5 R-8.x
 
 ---
 
-**Document version**: 1.1 (R-8.y.b Phase 2, 2026-05-11)
-**Canonical contract count**: 17 (10 R-8.y.a ✓ + 1 R-8.y.b Calendar reclassification ✓ + 6 R-8.y.b Phase 2 ~)
-**Partial contract count**: 6 (Workflow node types, Intelligence providers, Delivery channels, Triage queue configs, Agent kinds, Button kinds)
+**Document version**: 1.2 (R-8.y.c Phase 2a, 2026-05-11)
+**Total contract count**: 23 (13 ✓ canonical + 10 ~ partial/implicit)
+**Canonical contract count**: 13 (10 R-8.y.a ✓ + 1 R-8.y.b Calendar reclassification ✓ + 2 R-8.y.c reclassifications ✓: Notification categories §19 + Activity log event types §20)
+**Partial/implicit contract count**: 10 (6 R-8.y.b ~ partial + 4 R-8.y.c ~ implicit: §18 Match operators, §21 PDF generators, §22 Page contexts, §24 Intent classifiers)
+**Phase 2b reservation**: §23 Customer classification rules pending B-CLASSIFY-1/2/3 direction; ships separately.
 **Maintenance**: This document is canonical. Updates land alongside source changes — never in a separate commit. CLAUDE.md §14 Recent Changes entries link back here when categories evolve.
