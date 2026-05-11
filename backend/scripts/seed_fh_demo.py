@@ -559,8 +559,22 @@ def _commit_canvas_state_r2_optional(
     suffers without R2; CI seed-idempotency check passes regardless.
 
     Closes §15 entry #1 (seed_fh_demo R2 dependency).
+
+    R-6.2a.2 correction: catches PersonalizationStudioError (NOT
+    RuntimeError). instance_service.commit_canvas_state wraps the
+    underlying RuntimeError("R2 not configured") from
+    legacy_r2_client.upload_bytes into PersonalizationStudioError
+    via `raise ... from exc` (instance_service.py:465). R-6.2a.1's
+    except RuntimeError missed the wrap; production path raised
+    PersonalizationStudioError instead. Substring check on
+    "R2 not configured" still works because the wrapped message
+    preserves the canonical substring: "R2 upload failed for canvas
+    state vN of instance 'X': R2 not configured".
     """
     from app.services.personalization_studio import instance_service
+    from app.services.personalization_studio.instance_service import (
+        PersonalizationStudioError,
+    )
 
     try:
         instance_service.commit_canvas_state(
@@ -570,7 +584,7 @@ def _commit_canvas_state_r2_optional(
             committed_by_user_id=committed_by_user_id,
         )
         return True
-    except RuntimeError as exc:
+    except PersonalizationStudioError as exc:
         if "R2 not configured" not in str(exc):
             raise
         print(
