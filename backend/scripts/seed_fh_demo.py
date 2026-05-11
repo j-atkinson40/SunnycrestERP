@@ -539,6 +539,47 @@ def _seed_workshop_catalog_overrides(
     return changed
 
 
+def _commit_canvas_state_r2_optional(
+    *,
+    instance_id: str,
+    canvas_state: dict,
+    committed_by_user_id: str,
+    db,
+    label: str,
+) -> bool:
+    """R-6.2a.1 — wrap commit_canvas_state for seed environments where R2
+    may not be configured (CI test_seed_idempotency.sh canonical case).
+
+    Runtime callers of instance_service.commit_canvas_state retain the
+    hard RuntimeError("R2 not configured") canon — only seed callers
+    handle gracefully. Returns True if commit succeeded; False if
+    skipped due to R2 unavailability. DB structure (PersonalizationStudio
+    Instance row + canvas_state metadata) is unaffected on skip; only
+    the R2-stored canvas payload upload is bypassed. Demo viewability
+    suffers without R2; CI seed-idempotency check passes regardless.
+
+    Closes §15 entry #1 (seed_fh_demo R2 dependency).
+    """
+    from app.services.personalization_studio import instance_service
+
+    try:
+        instance_service.commit_canvas_state(
+            db,
+            instance_id=instance_id,
+            canvas_state=canvas_state,
+            committed_by_user_id=committed_by_user_id,
+        )
+        return True
+    except RuntimeError as exc:
+        if "R2 not configured" not in str(exc):
+            raise
+        print(
+            f"  ⚠ Personalization studio canvas commit skipped ({label}) "
+            f"— R2 not configured; seed continues with DB structure only."
+        )
+        return False
+
+
 def _seed_personalization_studio_phase1g(db, hopkins, sunnycrest, case):
     """Phase 1G canonical demo seed integration.
 
@@ -702,11 +743,12 @@ def _seed_personalization_studio_phase1g(db, hopkins, sunnycrest, case):
             linked_entity_id=case.id,
             opened_by_user_id=director_id,
         )
-        instance_service.commit_canvas_state(
-            db,
+        _commit_canvas_state_r2_optional(
+            db=db,
             instance_id=ps_instance.id,
             canvas_state=_hopkins_demo_canvas_state(case.id),
             committed_by_user_id=director_id,
+            label="Phase 1G Hopkins burial_vault",
         )
         # Canonical Phase 1F state: family approved + canonical
         # committed lifecycle_state.
@@ -1110,11 +1152,12 @@ def _seed_personalization_studio_step2(db, hopkins, sunnycrest):
             linked_entity_id=case.id,
             opened_by_user_id=director.id,
         )
-        instance_service.commit_canvas_state(
-            db,
+        _commit_canvas_state_r2_optional(
+            db=db,
             instance_id=ps_instance.id,
             canvas_state=_hopkins_step2_demo_canvas_state(case.id),
             committed_by_user_id=director.id,
+            label="Step 2 Hopkins urn_vault",
         )
         # Step 2 family-approved committed state (mirrors Phase 1G).
         now = datetime.now(timezone.utc)
