@@ -18,6 +18,7 @@
  */
 
 import { Fragment } from "react"
+import type { JSX } from "react"
 
 
 interface MarkdownContentProps {

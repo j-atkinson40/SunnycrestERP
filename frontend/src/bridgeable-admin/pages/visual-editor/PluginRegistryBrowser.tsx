@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
+import type { JSX } from "react"
 
 import snapshotJson from "@/lib/plugin-registry/plugin-contracts-snapshot.json"
 
