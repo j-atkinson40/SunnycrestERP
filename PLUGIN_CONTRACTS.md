@@ -1,8 +1,8 @@
 # PLUGIN_CONTRACTS.md — Canonical Plugin Category Contracts
 
 **Established**: 2026-05-11 (Phase R-8.y.a — first of four R-8.y documentation sub-arcs)
-**Last updated**: 2026-05-11 (Phase R-8.y.b delta — Calendar providers reclassified ✓ canonical)
-**Canonical contract count**: 11 (10 R-8.y.a + 1 R-8.y.b delta-update)
+**Last updated**: 2026-05-11 (Phase R-8.y.b Phase 2 — 6 normative contracts + meta-patterns)
+**Total contract count**: 17 (11 ✓ canonical + 6 ~ partial)
 **Scope**: Bridgeable's explicit plugin categories — input/output contracts, guarantees, failure modes, configuration shape, registration mechanism, current implementations.
 
 ---
@@ -33,18 +33,24 @@ This document is the canonical contract reference for Bridgeable's plugin catego
 ## Table of Contents
 
 1. [Document conventions](#document-conventions)
-2. [Intake adapters](#1-intake-adapters)
-3. [Focus composition kinds](#2-focus-composition-kinds)
-4. [Widget kinds](#3-widget-kinds)
-5. [Document blocks](#4-document-blocks)
-6. [Theme tokens](#5-theme-tokens)
-7. [Workshop template types](#6-workshop-template-types)
-8. [Composition action types](#7-composition-action-types)
-9. [Accounting providers](#8-accounting-providers)
-10. [Email providers](#9-email-providers)
-11. [Playwright scripts](#10-playwright-scripts)
+2. [Intake adapters](#1-intake-adapters) `[✓ canonical]`
+3. [Focus composition kinds](#2-focus-composition-kinds) `[✓ canonical]`
+4. [Widget kinds](#3-widget-kinds) `[✓ canonical]`
+5. [Document blocks](#4-document-blocks) `[✓ canonical]`
+6. [Theme tokens](#5-theme-tokens) `[✓ canonical]`
+7. [Workshop template types](#6-workshop-template-types) `[✓ canonical]`
+8. [Composition action types](#7-composition-action-types) `[✓ canonical]`
+9. [Accounting providers](#8-accounting-providers) `[✓ canonical]`
+10. [Email providers](#9-email-providers) `[✓ canonical]`
+11. [Playwright scripts](#10-playwright-scripts) `[✓ canonical]`
 12. [Calendar providers](#11-calendar-providers) `[✓ canonical — reclassified R-8.y.b investigation]`
-13. [Cross-category patterns appendix](#cross-category-patterns-appendix)
+13. [Workflow node types](#12-workflow-node-types) `[~ partial — see Current Divergences]`
+14. [Intelligence providers](#13-intelligence-providers) `[~ partial — see Current Divergences]`
+15. [Delivery channels](#14-delivery-channels) `[~ partial — see Current Divergences]`
+16. [Triage queue configs](#15-triage-queue-configs) `[~ partial — see Current Divergences]`
+17. [Agent kinds](#16-agent-kinds) `[~ partial — see Current Divergences]`
+18. [Button kinds](#17-button-kinds) `[~ partial — see Current Divergences]`
+19. [Cross-category patterns appendix](#cross-category-patterns-appendix)
 
 ---
 
@@ -926,6 +932,693 @@ Step 1 ships ABC + result dataclasses + registration + 3 implementations (1 func
 
 ---
 
+## 12. Workflow node types
+
+**Maturity**: `[~ partial — see Current Divergences]`
+
+### Purpose
+
+Workflow node types are the substrate the workflow engine dispatches on at runtime. Each `WorkflowStep.action_type` (`create_record`, `send_notification`, `playwright_action`, `invoke_generation_focus`, etc.) routes to a handler that executes the step's side effects + returns an outcome the engine consumes to drive `WorkflowRun` state.
+
+The category exists so workflow templates can be authored as data: a tenant adopts a template referencing well-known action types, the engine knows how to execute each step without per-tenant branching. R-9 promotes the current if/elif dispatch chain to a registry; this section is the canonical contract R-9 implements against.
+
+This is the **highest-stakes contract in R-8.y.b** — every action_type has live tenants invoking it through deployed workflow templates; R-9 migration parity must be tight (per Phase 8b cash_receipts BLOCKING parity precedent).
+
+### Input Contract
+
+**Canonical uniform handler signature** (B-WORK-1):
+
+```python
+def handler(
+    db: Session,
+    config: dict,
+    run: WorkflowRun,
+    ctx: WorkflowActionContext,
+) -> WorkflowActionResult
+```
+
+`WorkflowActionContext` is a frozen dataclass carrying optional ambient values: `run_step_id`, `current_company`, `current_user`, `trigger_context`. Adding a new ambient value extends the dataclass; handler signatures don't churn.
+
+Source bindings are resolved BEFORE handler invocation via the variable resolver (`workflow_engine.resolve_variables`) — handler receives a `config` dict with `{var.path}` references already substituted. Available source prefixes: `input.`, `output.`, `current_user.`, `current_company.`, `current_record.`, `incoming_email.`, `incoming_transcription.`, `vault_item.`, `incoming_form_submission.`, `incoming_file.`, `workflow_input.` (11 prefixes today, hardcoded at `workflow_engine.py:47-182`). Source bindings are a parallel registry concern (B-WORK-3) — separate sub-arc, not coupled to action types.
+
+### Output Contract
+
+**Canonical uniform output shape** (B-WORK-2):
+
+```python
+@dataclass(frozen=True)
+class WorkflowActionResult:
+    status: Literal["applied", "errored", "skipped", "awaiting_review", "awaiting_approval"]
+    data: dict[str, Any]
+    error_message: str | None = None
+    error_code: str | None = None
+```
+
+`status` is the canonical discriminator field — eliminates the current `status`-vs-`type` inconsistency (`invoke_review_focus` returns `{"type": "awaiting_review", ...}` at `workflow_engine.py:813-818`; `invoke_generation_focus` returns `{"status": "applied", ...}` at `workflow_engine.py:754-758`).
+
+`data` carries per-action-type payload — downstream steps reference `{output.<step_key>.<field>}` against this dict. Handler-specific output shape lives inside `data`; engine treats it opaquely.
+
+Engine pattern-matches on `status` to drive `WorkflowRun` state: `applied` advances; `errored` marks step failed; `awaiting_review`/`awaiting_approval` flips run to paused state; `skipped` advances without state mutation.
+
+### Guarantees
+
+- **Fire-and-forget transactional semantics** (B-WORK-4). Per-step commit on success; mark step failed on exception. Cross-step transactionality is NOT provided — compensation is workflow-level explicit rollback steps. Aligns with the Phase 8b `call_service_method` adapter pattern where handlers explicitly delegate to service-level commit semantics.
+- **Tenant isolation**: handlers receive `WorkflowRun.tenant_id` via `run` argument; queries against tenant-scoped tables filter by it. Per-action-type review during R-9 migration verifies each handler honors the boundary.
+- **Step idempotency**: not guaranteed by engine. Each handler implements idempotency per its action_type semantics (e.g. `create_record` may use `source_entity_id` deduplication; `send_email` is fire-once with DocumentDelivery row creation before dispatch).
+- **No silent fall-through**: unknown `action_type` returns `WorkflowActionResult(status="errored", error_code="unknown_action_type")` — eliminates the current silent `{"status": "unknown_action_type", ...}` fall-through at `workflow_engine.py:679` that doesn't mark the step failed.
+
+### Failure Modes
+
+- Handler raises exception → engine catches, marks step failed, sets `WorkflowActionResult(status="errored", error_message=str(exc), error_code=type(exc).__name__)`, calls `_fail_run`.
+- Handler returns `status="errored"` explicitly → engine marks step failed (same path as exception, no exception captured).
+- Unknown `action_type` → `errored` with `error_code="unknown_action_type"`.
+- `awaiting_review` / `awaiting_approval` → flips `WorkflowRun.status` to paused; resume via `workflow_review_adapter.commit_decision` (R-6.0a canonical path) or via approval webhook.
+
+### Configuration Shape
+
+Workflow steps live as JSONB inside `workflow_templates.canvas_state.nodes` (admin-authored) and `workflows.steps` (tenant-instantiated). Each step carries:
+- `id`: stable step identifier
+- `type` / `action_type`: registered action_type key
+- `config`: action-type-specific JSONB (validated against `WorkflowActionDescriptor.expected_config_keys` at adopt time)
+- `next`: ID of next step on success / branching descriptor
+
+**Three-scope cascade** for workflow templates per Pattern 1: `platform_default → vertical_default → tenant_override` (fork-on-customize per CLAUDE.md §4 Workflow Canvas). Action types themselves are platform-only data — registrations are code, never per-tenant — per Pattern 5 (configuration is data, code is substrate).
+
+### Registration Mechanism
+
+**Canonical**: Tier R1 — `register_workflow_action_type(WorkflowActionDescriptor)` API + module-level `_REGISTRY` singleton + side-effect-import seed pattern. Mirrors §7 Composition action types verbatim.
+
+```python
+@dataclass(frozen=True)
+class WorkflowActionDescriptor:
+    action_type: str
+    display_name: str
+    handler: Callable[[Session, dict, WorkflowRun, WorkflowActionContext], WorkflowActionResult]
+    expected_config_keys: list[str]
+    state_mutating: bool  # documented; not enforced by engine
+    # Future extensibility (not v1):
+    # input_schema, output_schema, side_effect_audit_tags, ...
+```
+
+**Validator derivation** (B-WORK-5): Full derivation. Backend canvas validator imports the registry; `VALID_NODE_TYPES` derives from `_REGISTRY.keys()`. Frontend mirror reads a committed JSON snapshot generated at build time from the registry; CI verifies snapshot matches registry (pattern parallels `class-registrations.test.ts` cross-language metadata snapshot canon). Three parallel allowlists (engine if/elif, backend `canvas_validator.py:62-105`, frontend `canvas-validator.ts:18-56`) collapse to one source of truth.
+
+### Current Implementations
+
+13 action_types dispatched by the if/elif chain at `backend/app/services/workflow_engine.py:628-679`:
+
+| action_type | Handler | Notes |
+|---|---|---|
+| `create_record` | `_handle_create_record` | State-mutating; creates polymorphic vault items |
+| `update_record` | `_handle_update_record` | State-mutating |
+| `open_slide_over` | inline pass-through | Client-side action; engine emits config |
+| `show_confirmation` | inline | UI-only |
+| `send_notification` | `_handle_send_notification` | State-mutating; writes Notification rows |
+| `send_email` | inline pass-through | State-mutating via DeliveryService; current implementation is thin stub |
+| `log_vault_item` | `_handle_log_vault_item` | State-mutating |
+| `generate_document` | `_handle_generate_document` | State-mutating; creates Document via D-1 substrate |
+| `playwright_action` | `_handle_playwright_action` | External side effect |
+| `call_service_method` | `_handle_call_service_method` | Adapter pattern (Phase 8b); whitelisted dispatch via `_SERVICE_METHOD_REGISTRY` at `workflow_engine.py:986-1028` |
+| `invoke_generation_focus` | `_handle_invoke_generation_focus` | Pause-and-wait; returns `status="applied"` for synchronous Focus invocations |
+| `invoke_review_focus` | `_handle_invoke_review_focus` | Pause-and-wait; returns `type="awaiting_review"` (B-WORK-2 divergence — discriminator field is `type`, not `status`) |
+| (fall-through) | inline | Returns `{"status": "unknown_action_type"}` without marking step failed (B-WORK-2 divergence — silent no-op) |
+
+### Current Divergences from Canonical
+
+R-9 is the migration arc that resolves these. Estimated scope: ~900 LOC total (backend ~600 + tests ~200 + frontend ~50 + Playwright regression).
+
+1. **Engine dispatch is if/elif chain, not registry** (`workflow_engine.py:628-679`). Primary R-9 migration target. ~150 LOC engine rewrite to `_REGISTRY[action_type](db, config, run, ctx)` dispatch.
+2. **Per-handler signature variance** — `_handle_create_record(db, config, run)` vs `_handle_invoke_review_focus(db, config, run, *, run_step_id)`. ~30 LOC per handler migration to uniform `(db, config, run, ctx)` signature; ~390 LOC across 13 handlers.
+3. **Per-handler output shape variance + inconsistent discriminator field** — `status` vs `type` (`workflow_engine.py:813-818` invoke_review_focus uses `type` key). Migration to `WorkflowActionResult` dataclass uniformizes; eliminates silent fall-through at line 679.
+4. **Canvas validator allowlist drift surface** — 3 parallel allowlists (`workflow_engine.py:628-679` dispatch, `canvas_validator.py:62-105` backend allowlist, `canvas-validator.ts:18-56` frontend mirror). R-9 collapses to single registry-derived source.
+5. **`_SERVICE_METHOD_REGISTRY` is a sub-registry inside `call_service_method` action** (`workflow_engine.py:986-1028`, 7 entries today). R-9 preserves as a separate concern — action types register `call_service_method` as one entry; the method registry stays as the dispatch surface for service-layer adapters introduced by workflow-arc Phases 8b-8f.
+6. **Source bindings hardcoded 11-prefix table** at `workflow_engine.py:47-182`. Separate sub-arc per B-WORK-3 recommendation (NOT coupled to R-9). Future ~400 LOC promotion to `register_source_binding(prefix, resolver)` registry when concrete signal warrants.
+
+### Cross-References
+
+- **§7 Composition action types** — canonical reference pattern. Workflow node types adopt the same `register_action_type(ActionTypeDescriptor)` + side-effect-import shape.
+- **§17 Button kinds** — client-side parallel. Both are extensible-dispatch categories; deliberately parallel catalogs (B-BTN-1) because client-side React-bound dispatch is fundamentally different from server-side SQLAlchemy-bound dispatch. See Meta-Pattern 3 sub-pattern: category-clusters.
+- **CLAUDE.md §4 Workflow Canvas** — workflow_templates substrate (R-9 builds on this); three-scope cascade canon.
+- **CLAUDE.md §14 R-9 entry** (future) — migration session that consumes this section.
+- **R-8 audit Section 2 #3 (Source bindings)** — separate sub-arc, ~400 LOC.
+
+---
+
+## 13. Intelligence providers
+
+**Maturity**: `[~ partial — see Current Divergences]`
+
+### Purpose
+
+Bridgeable Intelligence is the unified AI layer — every AI call in the platform routes through `intelligence_service.execute(prompt_key=..., variables=..., company_id=..., caller_module=..., caller_entity_*=...)`. The Intelligence provider category abstracts over LLM transport (Anthropic today; OpenAI / Google / native models as deferred future).
+
+The category exists so prompts are managed configuration (versioned, scope-cascaded, admin-customizable) and provider switching can happen without touching the 80+ callers across the codebase. CLAUDE.md §3 Bridgeable Intelligence canon describes the architectural role; this section specifies the contract.
+
+### Input Contract
+
+`intelligence_service.execute()` at `backend/app/services/intelligence/intelligence_service.py:268`. Public callable signature:
+
+```python
+def execute(
+    *,
+    prompt_key: str,
+    variables: dict[str, Any] | None = None,
+    company_id: str,
+    caller_module: str,
+    caller_entity_type: str | None = None,
+    caller_entity_id: str | None = None,
+    content_blocks: list[ContentBlock] | None = None,
+    force_json: bool | None = None,
+    response_schema: dict | None = None,
+    model_override: str | None = None,
+    ...
+) -> IntelligenceResult
+```
+
+- `prompt_key` resolves a managed prompt via the two-tier registry (platform_default → tenant_override on `(company_id, prompt_key)`); `prompt_registry.get_prompt` at `prompt_registry.py:36-63`.
+- `variables` is a flat dict for Jinja rendering; per-key validation against `PromptVersion.variable_schema` at execute-time.
+- `caller_module` + `caller_entity_*` populate audit linkage on the `intelligence_executions` row.
+- `content_blocks` carries multimodal payload (vision: image/document base64); raw base64 redacted from audit row's `rendered_user_prompt` (sha256 + bytes_len only).
+
+### Output Contract
+
+`IntelligenceResult` dataclass with structured response + audit metadata:
+
+```python
+@dataclass
+class IntelligenceResult:
+    text: str | None
+    json_payload: dict | None
+    status: Literal["success", "fallback_used", "rate_limited", "api_error", "parse_error", "all_models_failed"]
+    model_used: str
+    prompt_id: str
+    prompt_version: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: Decimal
+    latency_ms: int
+    execution_id: str
+    error_code: str | None  # canonical IntelligenceError code
+    error_message: str | None
+```
+
+Every call produces an `intelligence_executions` audit row regardless of success/failure (full audit trail; never silently dropped).
+
+### Guarantees
+
+- **Single canonical AI surface**: every AI call routes here; direct `anthropic` SDK imports outside `app/services/intelligence/` are forbidden (Ruff TID251 + pytest lint gate).
+- **Tenant isolation**: `company_id` required on every call; surfaces in audit row; prompt resolution respects tenant_override scope.
+- **Cost accounting**: `cost_usd` computed from token counts × per-model rates on `intelligence_model_routes`; every call attributable to a caller via `caller_module` + `caller_entity_*` linkage.
+- **Per-prompt model routing via `intelligence_model_routes` table** (`backend/app/models/intelligence.py:104-127`) — routes carry `route_key`, `primary_model`, `fallback_model`, `provider` (column defaults `"anthropic"`), cost rates, max_tokens, temperature, is_active.
+- **Fallback dispatch via `model_router.route_with_fallback`** (`model_router.py:103-138`): on retryable exception, retry on `fallback_model`; non-retryable propagates; both-failed raises `AllModelsFailedError`. Retryable classification via `_RETRYABLE_EXC_NAMES` frozenset at `model_router.py:70-78` (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError, ServiceUnavailableError, OverloadedError).
+
+### Failure Modes
+
+**Hybrid failure taxonomy** (B-INTEL-2). Binary at dispatch level (retryable / non-retryable via `_RETRYABLE_EXC_NAMES` frozenset) + closed-vocabulary `IntelligenceError` codes surfaced in `IntelligenceResult.status` + `error_code`:
+
+| status / error_code | Meaning |
+|---|---|
+| `success` | Normal response from primary model |
+| `fallback_used` | Primary failed retryable; fallback succeeded |
+| `rate_limited` | Provider rate limit; non-retryable for this call (post-fallback) |
+| `api_error` | Provider returned 4xx/5xx not classified as retryable |
+| `parse_error` | force_json=True but response was unparsable JSON |
+| `all_models_failed` | Both primary + fallback exhausted retries |
+
+Closed-vocabulary platform-owned (Tier R2). Callers introspect `error_code` for finer signal without parsing message text.
+
+### Configuration Shape
+
+**Prompts as platform-global configuration data** (Tier R2 + Pattern 5):
+- `intelligence_prompts` table — `prompt_key` (unique within `company_id` scope), `company_id` (null = platform-global), `display_name`, `description`, ...
+- `intelligence_prompt_versions` table — `version`, `system_prompt`, `user_prompt_template`, `variable_schema` (JSONB), `is_active`, `created_at`. Versioning is append-only; activation flips `is_active` flag.
+- `intelligence_model_routes` table — per `route_key`, the primary + fallback model + cost rates.
+
+**Two-tier scope cascade** (B-INTEL-3): `platform_global → tenant_override` on `(company_id, prompt_key)`. Vertical-variance is canonically handled by Jinja-branching inside platform-global prompts (per `test_briefing_vertical_terminology.py` precedent — VERTICAL-APPROPRIATE TERMINOLOGY blocks gate output by `{{ vertical }}` variable). Three-scope cascade would be substantial migration with little operational gain over the established Jinja-branch pattern.
+
+### Registration Mechanism
+
+**Provider registration**: Tier R3 — deferred. Currently `_get_client()` at `intelligence_service.py:253-258` hardcodes `anthropic.Anthropic`. The `IntelligenceModelRoute.provider` column is forward-compat scaffold.
+
+**Prompt registration**: Pattern 5 (configuration is data). Prompts seeded via idempotent seed scripts (`scripts/seed_intelligence_*.py`); no code-side `register_prompt` API. Adding a new prompt is a seed-script edit + activation.
+
+### Current Implementations
+
+**Single provider canonical** (Anthropic): `intelligence_service.py:29` imports `anthropic`; `_get_client()` returns `anthropic.Anthropic(api_key=...)`. 73+ active platform-global prompts covering Scribe, accounting agents, briefings, command bar, NL Overlay, urn pipeline, safety, CRM, KB, onboarding, training, compose, workflows, vision (check-image + PDF extraction).
+
+### Current Divergences from Canonical
+
+1. **`_get_client()` hardcodes `anthropic.Anthropic`** (`intelligence_service.py:253-258`). Deferred per B-INTEL-1 — no concrete signal warrants multi-provider integration yet; ABC design defers until 2nd provider in production OR Anthropic SDK breaking-change pressure OR cost/availability driver requiring per-request multi-provider failover. The `provider` column on `intelligence_model_routes` is the documented-but-unactivated scaffold.
+2. **`model_router._RETRYABLE_EXC_NAMES` opaque to callers** (`model_router.py:70-78`). Canonical `IntelligenceError` vocabulary on `IntelligenceResult.error_code` IS the stable surface (B-INTEL-2); frozenset stays as internal classifier.
+
+### Cross-References
+
+- **CLAUDE.md §3 Bridgeable Intelligence canon** — architectural framing + 73-prompt inventory + caller migration history.
+- **§9 Email providers** — canonical multi-provider reference (Tier R1 + ABC). When B-INTEL-1 activates, Intelligence providers ABC adopts that shape.
+- **§14 Delivery channels** — canonical hybrid Protocol + closed-vocabulary error taxonomy. B-INTEL-2 follows the same hybrid discipline.
+- **Briefings precedent** (CLAUDE.md §14 Session 6 entry) — Jinja-branch vertical-variance pattern.
+- **R-8 audit §6 Tier 1 item R-8.3** — 2 escaped Claude system prompts (call_extraction_service + obituary_service) bypass the Intelligence registry; DEBT.md migration target.
+
+---
+
+## 14. Delivery channels
+
+**Maturity**: `[~ partial — see Current Divergences]`
+
+### Purpose
+
+Delivery channels abstract over outbound message transport — Email (Resend today; native SMTP deferred), SMS (stub `NOT_IMPLEMENTED`; native carrier integration deferred), future webhook / push / in-app. The DeliveryService orchestrator at `backend/app/services/delivery/delivery_service.py:189-330` resolves content + recipient, creates the `document_deliveries` row, then dispatches to the registered channel.
+
+The category exists so DeliveryService callers (10 email callers today: signing, statement, collections, invoice, alert digest, accountant invitation, etc.) don't branch on transport — they pass `channel="email"` or `channel="sms"` and let the substrate handle dispatch + retry + audit.
+
+### Input Contract
+
+**Protocol-based contract surface** (B-DELIV-1) — Tier R1 registration + Protocol-typed contract. Honors the stateless-dispatch nature of channels (see Meta-Pattern 3 sub-pattern: stateless-dispatch vs stateful-lifecycle).
+
+`DeliveryChannel(Protocol)` at `backend/app/services/delivery/channels/base.py:67-78`. `@runtime_checkable`. Required surface:
+
+```python
+@runtime_checkable
+class DeliveryChannel(Protocol):
+    channel_type: str  # class attr — "email" | "sms" | future
+    provider: str      # class attr — "resend" | "stub" | future
+    supports_attachments: bool  # capability flag
+    supports_html_body: bool    # capability flag
+
+    def send(self, request: ChannelSendRequest) -> ChannelSendResult: ...
+```
+
+`ChannelSendRequest` carries the resolved message: recipients (list of `Recipient(email, phone, name)`), subject, body_text, body_html, attachments (list of `Attachment(filename, content_type, content_bytes)`), provider-specific overrides (reply_to, headers).
+
+### Output Contract
+
+`ChannelSendResult` dataclass at `base.py:36-63`:
+
+```python
+@dataclass
+class ChannelSendResult:
+    success: bool
+    provider: str
+    provider_message_id: str | None = None
+    error_message: str | None = None
+    error_code: str | None = None  # canonical error class name (Tier R2)
+    retryable: bool = False
+    provider_response: dict[str, Any] | None = None
+```
+
+`retryable: bool` is the canonical retry-signal carrier consumed by DeliveryService's inline-retry loop. Channel classifies; consumer decides retry policy.
+
+### Guarantees
+
+- **Stateless**: channel instances are singletons; `_CHANNELS` dict at `__init__.py:35` holds one per type. No per-call state.
+- **Caller owns idempotency**: DeliveryService creates `DocumentDelivery` row with `status=pending` BEFORE dispatch; on success → `sent`; on failure post-retry → `failed`. Channel is fire-and-forget within a single call; re-dispatch creates a new row.
+- **`success=False + retryable=False`**: canonical clean-failure shape (used by SMS stub; future webhook 4xx auth failures). Engine marks delivery `failed`/`rejected` without retry.
+- **Inline retry**: DeliveryService loops up to `max_retries` (default 3) when `retryable=True`; raises after exhaustion.
+
+### Failure Modes
+
+**Closed-vocabulary exception class hierarchy** (B-DELIV-2) — Tier R2. Channels MAP provider-specific exceptions to canonical classes at the wrap boundary:
+
+```python
+class ChannelSendError(Exception):
+    """Base — never raised directly."""
+
+class RetryableChannelError(ChannelSendError):
+    """Network / timeout / transient — caller retries."""
+
+class PermanentChannelError(ChannelSendError):
+    """Validation / 4xx — caller does NOT retry."""
+
+class RateLimitedChannelError(RetryableChannelError):
+    """429 — retryable with backoff."""
+
+class AuthFailureChannelError(PermanentChannelError):
+    """401/403 from provider — config issue, not transient."""
+
+class BadRequestChannelError(PermanentChannelError):
+    """400 from provider — recipient/payload invalid."""
+```
+
+Channels CAN return `ChannelSendResult(success=False, retryable=...)` instead of raising — the result shape carries the same canonical `error_code` vocabulary. Raising is canonical for downstream observability + structured logging integration.
+
+### Configuration Shape
+
+**No multi-scope cascade** — channels are platform-coded; per-tenant variation is per-account configuration (e.g. tenant's own Resend domain; future tenant SMTP overrides).
+
+DeliveryService caller-side configuration: `channel_type`, `template_key` (resolves managed Workshop template per §6), `recipient_resolution_strategy`, `max_retries`. Per Pattern 5 (configuration is data).
+
+### Registration Mechanism
+
+**Canonical Tier R1**: `register_channel(channel_type, implementation)` at `backend/app/services/delivery/__init__.py:55-61` + `_CHANNELS: dict[str, DeliveryChannel]` singleton at line 35. Side-effect-import discipline: implementations registered at `delivery/__init__.py:35-38` (line `_CHANNELS = {"email": EmailChannel(), "sms": SMSChannel()}`).
+
+Future native-SMTP / native-SMS implementations swap in via `register_channel("email", NativeSmtpChannel())` without caller changes.
+
+**Canonical `NOT_IMPLEMENTED` reservation** (B-DELIV-3) — Tier R2 stable error_code value. Stub channels register fully, implement Protocol surface, return canonical not-implemented result rather than crashing:
+
+```python
+ChannelSendResult(
+    success=False,
+    provider=self.provider,
+    error_code="NOT_IMPLEMENTED",
+    retryable=False,
+    error_message="Channel registered but transport awaiting implementation",
+)
+```
+
+Used by SMS today (`sms_channel.py:30-45`); reserved for future webhook/push/in-app deferrals. Discipline: stub never raises; implements full Protocol surface; has tracked implementation arc.
+
+### Current Implementations
+
+| channel_type | Implementation | Provider | Status |
+|---|---|---|---|
+| `email` | `EmailChannel` (`email_channel.py`) | `resend` | Functional. Supports attachments + html_body. |
+| `sms` | `SMSChannel` (`sms_channel.py`) | `stub` | `NOT_IMPLEMENTED` per canonical stub pattern. |
+
+### Current Divergences from Canonical
+
+1. **EmailChannel retryable-classification via substring matching** (`email_channel.py:121-124`). Message-substring heuristic — fragile to Resend's error text changes. Migration target: ~30 LOC to wrap `resend` exceptions in canonical exception-class hierarchy per B-DELIV-2. Bounded sub-arc; high reliability gain.
+2. **No webhook / push / in-app channels registered** — divergence is "category is single-implementation today" not contract violation. Registry is ready for additions.
+
+### Cross-References
+
+- **§9 Email providers** — canonical multi-provider ABC pattern. Delivery channels are sibling category-cluster: providers are stateful-lifecycle (connect/sync/disconnect), channels are stateless-dispatch. Both canonical for their use cases (Meta-Pattern 3).
+- **§6 Workshop template types** — `template_key` resolution for caller-side content; DeliveryService renders template before channel dispatch.
+- **D-7 Delivery Abstraction** (CLAUDE.md §14) — architectural framing + integrate-now-make-native-later commitment.
+- **Future native-SMS implementation arc** — tracked at `sms_channel.py:1-9` comments; separate workstream.
+
+---
+
+## 15. Triage queue configs
+
+**Maturity**: `[~ partial — see Current Divergences]`
+
+### Purpose
+
+Triage queue configs are the substrate the triage workspace (Phase 5 UI/UX arc) dispatches on at runtime. Each `TriageQueueConfig` declares item source + action palette + context panels + permission/vertical gating + workflow integration. The triage engine resolves configs at session start, surfaces items via direct query or saved-view registry, dispatches per-item actions through the action handlers dict.
+
+The category exists so triage queues are configuration data — adding a new queue is a `register_platform_config(...)` call from the platform_defaults seed plus action handler entries; new tenant-customized queues are vault_items with `item_type="triage_queue_config"`.
+
+### Input Contract
+
+`TriageQueueConfig` Pydantic model at `backend/app/services/triage/types.py:203-266` with `extra="forbid"` + `schema_version="1.0"`. Required fields:
+
+- `queue_id: str` — stable identifier
+- `display_name: str` + `description: str`
+- `item_entity_type: str` (e.g. `task`, `social_service_certificate`, `safety_program_generation`)
+- 7 nested component configs: `ItemDisplayConfig`, `ActionConfig` (list), `ContextPanelConfig` (list), `EmbeddedActionConfig` (list), `FlowControlsConfig`, `CollaborationConfig`, `IntelligenceConfig`
+- `permissions: list[str]`, `required_vertical: list[str]`, `required_extension: list[str]` — gating
+
+**Source discriminator** (B-TRIAGE-3 canonical target — Pydantic v2 discriminated union):
+
+```python
+class DirectQuerySourceConfig(BaseModel):
+    source_type: Literal["direct_query"]
+    source_direct_query_key: str
+
+class SavedViewSourceConfig(BaseModel):
+    source_type: Literal["saved_view"]
+    source_saved_view_id: str
+
+class InlineSourceConfig(BaseModel):
+    source_type: Literal["inline"]
+    source_inline_config: dict[str, Any]
+
+TriageSourceConfig = Annotated[
+    DirectQuerySourceConfig | SavedViewSourceConfig | InlineSourceConfig,
+    Field(discriminator="source_type"),
+]
+```
+
+`source_inline_config` flagged transitional — future removal when Phase 2 saved-view registry coverage complete.
+
+### Output Contract
+
+Each `ActionConfig.handler` references a key in the global `HANDLERS` dict at `backend/app/services/triage/action_handlers.py:1088`. Handler signature:
+
+```python
+HandlerFn = Callable[[Session, TriageActionContext], TriageActionResult]
+```
+
+Returns:
+- Outcome status (`approved`, `rejected`, `deferred`, `escalated`)
+- Side-effect summary (vault_items created, workflow_runs started, etc.)
+- Next-item-advance signal (engine auto-advances on success unless workflow paused)
+
+### Guarantees
+
+- **Tenant isolation**: queue configs gated by `permissions` + `required_vertical` + `required_extension` at `list_queues_for_user` (`registry.py:143-183`); items filtered to caller tenant at source dispatch.
+- **Action atomicity**: each action handler runs in a single DB transaction; commit on success, rollback on exception. Engine state-machine transitions are part of the same transaction.
+- **Resumable sessions**: `triage_sessions` rows persist current item + queue position; reload restores state.
+- **Permission gates fire BEFORE handler invocation**: handler only sees actions it's permitted to dispatch.
+
+### Failure Modes
+
+- `TriageQueueConfig` validation rejects malformed configs at `register_platform_config` time (Pydantic `extra="forbid"` + per-field validators).
+- Unknown handler key → handler-missing error at config load (validation at `register_platform_config` cross-references `HANDLERS` dict).
+- Action handler raises → transaction rollback + 500 to caller; action stays uncommitted.
+- Cross-tenant `item_id` → 404 (existence-hiding, not 403).
+
+### Configuration Shape
+
+**Three-scope cascade** canonical (B-TRIAGE-1) per Pattern 1: `platform_default → vertical_default → tenant_override`. Current implementation is two-scope (platform_default + tenant_override only) — divergence + migration target.
+
+**Tenant overrides** persist as vault_items with `item_type="triage_queue_config"` + JSONB body matching `TriageQueueConfig` shape. `list_all_configs` at `registry.py:117-128` merges atop platform_defaults by `queue_id` (last-write-wins on key collision).
+
+### Registration Mechanism
+
+**Canonical**: Tier R1 — `register_platform_config(config: TriageQueueConfig)` at `backend/app/services/triage/registry.py:60-63` + `_PLATFORM_CONFIGS` module-level singleton + side-effect-import seed from `platform_defaults.py:1066-1159` (11 platform queues registered at first import).
+
+**Action handlers dict** (B-TRIAGE-2): flat `HANDLERS: dict[str, HandlerFn]` at `action_handlers.py:1088` — Tier R2 closed-vocabulary platform-owned. **`<entity>.<action>` naming convention** canonical (lowercase, dot-separated): `task.complete`, `ss_cert.approve`, `cash_receipts.approve`, `safety_program.approve`, ~34+ entries today. Validation enforced at config load (cross-references `ActionConfig.handler` against dict keys); naming enforced by code review.
+
+Kept as flat dict rather than promoting to per-primitive `register_triage_handler` registry — handler keys are stable (workflow arc Phase 8b/8c/8d added new keys without churning existing ones); 34 entries today + ~50 at saturation is manageable.
+
+### Current Implementations
+
+11 platform queues registered at September scope: `task_triage`, `ss_cert_triage`, `cash_receipts_matching_triage`, `month_end_close_triage`, `ar_collections_triage`, `expense_categorization_triage`, `aftercare_triage`, `catalog_fetch_triage`, `safety_program_triage`, `email_unclassified_triage`, `workflow_review_triage`.
+
+### Current Divergences from Canonical
+
+1. **Missing `vertical_default` scope** (B-TRIAGE-1). Current cascade is two-scope (platform_default + tenant_override). Migration target ~200 LOC + data migration adding the middle layer. Per R-8 audit Tier 2 §8.
+2. **Three-optional-fields source pattern** (B-TRIAGE-3). Current `types.py:233-235` carries `source_direct_query_key`, `source_saved_view_id`, `source_inline_config` as three Optional fields with "Exactly one of..." comment + runtime validator. Migration target ~50 LOC to Pydantic v2 discriminated union.
+3. **`source_inline_config` transitional**. Workaround for entities not in Phase 2 saved-view registry yet; sunset target once registry coverage complete.
+
+### Cross-References
+
+- **§7 Composition action types** — canonical reference pattern; same `register_*` + singleton + side-effect-import shape.
+- **Phase 5 Triage Workspace** (CLAUDE.md §14) — architectural framing + canonical 7-component config shape.
+- **§16 Agent kinds** — workflow arc Phase 8b/8c/8d migrations route agent approvals through triage queues; handler-dispatch dict is the integration seam.
+- **Pattern 1 (three-scope inheritance)** — divergence target.
+
+---
+
+## 16. Agent kinds
+
+**Maturity**: `[~ partial — see Current Divergences]`
+
+### Purpose
+
+Accounting agents are the substrate Bridgeable's nightly + weekly + monthly + annual accounting automation runs on. Each agent kind (month_end_close, ar_collections, cash_receipts_matching, 12 total at September scope) extends `BaseAgent` ABC + registers against an `AgentJobType` enum value + runs through the canonical AgentRunner orchestrator.
+
+The category exists so accounting automation is configuration-driven: per-tenant `agent_schedules` rows fire registered agent kinds on cron; runners execute steps; anomalies surface; approval gate or triage queue routes operator action; financial writes occur post-approval.
+
+### Input Contract
+
+`BaseAgent` ABC at `backend/app/services/agents/base_agent.py:53`. Required class attributes + abstractmethod:
+
+```python
+class BaseAgent(ABC):
+    STEPS: list[str]  # ordered step names
+    APPROVAL_FLOW: ApprovalFlow  # canonical metadata (B-AGENT-3 target)
+
+    @abstractmethod
+    def run_step(self, step_name: str) -> StepResult: ...
+```
+
+Each agent declares an `AgentJobType` enum value (closed-vocabulary discriminator per B-AGENT-2) + registers via `register_agent(job_type, agent_class)` (B-AGENT-1 target). Constructor receives `job: AgentJob` + `db: Session`.
+
+`ApprovalFlow` enum (B-AGENT-3 target):
+
+```python
+class ApprovalFlow(str, Enum):
+    FULL = "full"             # period lock + statement run (month_end_close, year_end_close)
+    SIMPLE = "simple"         # no period lock (weekly agents, 1099_prep, annual_budget, tax_package)
+    TRIAGE_MIGRATED = "triage_migrated"  # routes through triage queue, no approval gate
+```
+
+Canonical metadata on agent class; replaces `SIMPLE_APPROVAL_TYPES` set-based discriminator at `approval_gate.py:198-209`.
+
+### Output Contract
+
+`StepResult` dataclass — per-step outcome:
+- `status`: `success | warning | error`
+- `message`: human-readable summary
+- `data`: step-specific payload (JSONB)
+- `anomalies`: list of `AgentAnomaly` records created during step
+
+Per-job aggregate written to `agent_jobs.report_payload` JSONB — final HTML/PDF report served via approval-gate email or triage queue context panel.
+
+### Guarantees
+
+- **Tenant isolation**: every agent receives `job.tenant_id`; queries filter by it; financial writes hit `Company.id == tenant_id` only.
+- **Dry-run safety**: `guard_write()` on BaseAgent raises `DryRunGuardError` if dry_run + handler tries to write. Period-pre-flight runs in dry_run; commit runs in non-dry-run after approval.
+- **Per-step transactionality**: each `run_step` is one transaction; failures don't corrupt prior step state.
+- **Anomaly schema canonical**: `AgentAnomaly` rows with `severity: AnomalySeverity` enum (CRITICAL, WARNING, INFO); operator triage routes through severity-ordered queues.
+- **Approval gate canonical**: financial writes blocked until `agent_jobs.status == "approved"` (FULL or SIMPLE paths) OR triage action handler invokes the agent's commit path (TRIAGE_MIGRATED path).
+
+### Failure Modes
+
+- Step raises exception → caught by AgentRunner, marked `errored`, anomaly captured with stack trace, job status `failed`.
+- Period-lock violation (financial write into locked period) → `PeriodLockedError` (HTTP 409) at `sales_service` / `journal_entry_service` boundary.
+- Approval token expired → 410 at approval-gate endpoint; admin must retrigger job.
+- Cross-tenant `job_id` → 404 (existence-hiding).
+
+### Configuration Shape
+
+**Per-tenant scheduling**: `agent_schedules` table — `tenant_id`, `job_type` (FK to `AgentJobType` enum value), `cron`, `enabled`, `dry_run_default`. Pattern 5 (configuration is data).
+
+**`AgentJob` row state machine**: `pending → running → awaiting_approval → approved → complete` (or `rejected` / `failed`). Triage-migrated agents skip `awaiting_approval` state; commit on operator action.
+
+**No multi-scope cascade**: agent classes are platform-coded; per-tenant variation is via scheduling + per-tenant data + approval flow choice.
+
+### Registration Mechanism
+
+**Two-tier classification** (B-AGENT-2 canonical pattern — multiple closed-vocabulary discriminators within a single category; Meta-Pattern 3 sub-pattern):
+
+- **`AgentJobType` enum**: Tier R2 closed-vocabulary at `app.schemas.agent`. Describes WHAT agent states exist. Adding a new agent kind requires enum extension first (coordinated migration). Caller-facing surface (API endpoints, `agent_schedules.job_type` FK, `agent_jobs.job_type` column) depends on enum stability.
+- **`AGENT_REGISTRY` extensible dict**: Tier R1 target — `register_agent(job_type, agent_class)` + side-effect-import seed from `app/services/agents/__init__.py`. Describes HOW handlers register.
+
+This pattern (closed-vocabulary discriminator + extensible registry) is canonical for categories where the operator-facing surface needs enumeration stability but the implementation registry is open.
+
+### Current Implementations
+
+12 agents registered today (per `agent_runner.py:31-54` lazy-load list): `month_end_close`, `ar_collections`, `unbilled_orders`, `cash_receipts_matching`, `expense_categorization`, `estimated_tax_prep`, `inventory_reconciliation`, `budget_vs_actual`, `1099_prep`, `annual_budget`, `year_end_close`, `tax_package`.
+
+Approval flow distribution per `SIMPLE_APPROVAL_TYPES` (`approval_gate.py:198-209`): FULL (month_end_close, year_end_close); SIMPLE (10 others); TRIAGE_MIGRATED (workflow arc Phase 8b cash_receipts_matching + Phase 8c month_end_close, ar_collections, expense_categorization — coexistence: legacy approval path still works for forensic re-runs, triage is canonical for routine processing).
+
+### Current Divergences from Canonical
+
+1. **Lazy `_ensure_registry()` pattern** at `agent_runner.py:26-54` instead of side-effect-import. Imports happen inside the method to avoid circular imports. Migration target ~30 LOC per B-AGENT-1: move 12 imports + 12 registrations into `app/services/agents/__init__.py`; drop `_ensure_registry`; add import-time integration test verifying registry has expected 12 entries. Circular-import concern from Phase 1 has been resolved by workflow-arc import reorganization.
+2. **`SIMPLE_APPROVAL_TYPES` set-based discriminator** at `approval_gate.py:198-209` instead of `ApprovalFlow` enum class attribute. Migration target ~80 LOC per B-AGENT-3: promote to enum + class attribute on each agent. Triage-migrated workflow arc agents would land as `ApprovalFlow.TRIAGE_MIGRATED` cleanly.
+
+### Cross-References
+
+- **§9 Email providers** — canonical Tier R1 register_provider pattern. B-AGENT-1 migration adopts this shape.
+- **§15 Triage queue configs** — workflow arc Phase 8b/8c/8d migrations route agent approvals through triage. Handler-dispatch dict is the integration seam.
+- **Phase 1 Accounting Agent Infrastructure** (CLAUDE.md §14) — architectural framing + 12-agent inventory.
+- **Workflow arc Phase 8b cash_receipts** — first agent-to-workflow migration; established the parity-test discipline R-9 inherits.
+
+---
+
+## 17. Button kinds
+
+**Maturity**: `[~ partial — see Current Divergences]`
+
+### Purpose
+
+Button kinds are the client-side dispatch substrate for R-4 buttons in the runtime editor + Pulse home + spaces. Each button registration declares an action type (navigate, open_focus, trigger_workflow, etc.) + per-button parameter bindings + success behavior. The dispatch resolves bindings against React context (auth, route params, focus) + invokes the handler.
+
+The category exists so admins compose buttons as data (a saved-view trigger button, a workflow-firing button on a kanban card) without React code per button. R-4.0 shipped the substrate; this section documents the contract.
+
+### Input Contract
+
+`R4ButtonContract` at `frontend/src/lib/runtime-host/buttons/types.ts:103-121`:
+
+```typescript
+type R4ButtonContract = {
+  actionType: R4ActionType;  // closed type-union discriminator
+  actionConfig: ActionConfig;  // per-action-type config dict
+  parameterBindings: ParameterBinding[];  // up to 7 sources
+  successBehavior?: SuccessBehavior;  // toast, navigate, refresh, none
+};
+```
+
+`R4ActionType` type-union at `types.ts:37-42` (B-BTN-2 canonical surface — TypeScript equivalent of Tier R2 closed-vocabulary):
+
+```typescript
+type R4ActionType =
+  | "navigate"
+  | "open_focus"
+  | "trigger_workflow"
+  | "create_vault_item"
+  | "run_playwright_workflow";
+```
+
+### Output Contract
+
+`Handler` signature:
+
+```typescript
+type Handler = (
+  config: ActionConfig,
+  bindings: ResolvedBindings,
+  deps: HandlerDeps,
+) => Promise<ActionResult>;
+
+type ActionResult = {
+  success: boolean;
+  errorMessage?: string;
+  navigateTo?: string;  // routes via deps.navigate if set
+};
+```
+
+`deps` carries React-bound capabilities: `deps.navigate` (react-router useNavigate), `deps.openFocus` (focus context openFocus), `deps.apiClient` (axios). Handler returns `ActionResult` for the dispatch caller to drive UI feedback (toast, navigate).
+
+### Guarantees
+
+- **Stateless**: handlers are pure functions; no per-button state. Side effects are entirely via `deps` (navigate, API calls, focus opening).
+- **Type-safe dispatch**: TypeScript exhaustive-check on `Record<R4ActionType, Handler>` at compile time — forgotten action type fails compile.
+- **Tree-shakeable**: bundle includes only registered handlers (compile-time `Record` literal, not runtime registry).
+- **Client-side only**: buttons fire in browser context; server-side equivalent is §12 Workflow node types (deliberately parallel — see Meta-Pattern 3 sub-pattern: category-clusters).
+
+### Failure Modes
+
+- Handler returns `{success: false, errorMessage: "..."}` → dispatch surfaces toast.
+- Handler throws → dispatch catches, treats as failure, surfaces generic error toast.
+- Missing required binding → dispatch returns failure result without invoking handler.
+- Unknown `actionType` at runtime → TypeScript prevents (compile error); not reachable in deployed code.
+
+### Configuration Shape
+
+Per-button `R4ButtonContract` lives on button registration metadata (the registry described in CLAUDE.md §4 Component Registry). Per Pattern 5 (configuration is data).
+
+**Platform-only**: button registrations are code (not per-tenant); per-tenant variation is via the per-user edge-panel substrate (R-5.1) layering user overrides over platform-default registrations.
+
+### Registration Mechanism
+
+**Canonical Tier R2**: `DISPATCH_HANDLERS: Record<R4ActionType, Handler>` at `frontend/src/lib/runtime-host/buttons/action-dispatch.ts:225-233` — TypeScript Record-literal as dispatch surface; type-union as discriminator surface.
+
+```typescript
+export const DISPATCH_HANDLERS: Readonly<Record<R4ActionType, Handler>> = {
+  navigate: handleNavigate,
+  open_focus: handleOpenFocus,
+  trigger_workflow: handleTriggerWorkflow,
+  create_vault_item: handleCreateVaultItem,
+  run_playwright_workflow: handleRunPlaywrightWorkflow,
+};
+```
+
+Adding a new action type is an explicit type-union extension (B-BTN-2). Compile-time exhaustive checking forces every dispatch consumer to acknowledge it; no runtime registration needed; bundle stays tree-shakeable.
+
+**Parameter binding sources** (B-BTN-3) — Tier R4 hardcoded resolver branches at `parameter-resolver.ts` (7 sources: literal, current_user, current_tenant, current_date, current_route_param, current_query_param, current_focus_id). Parallel to server-side workflow parameter bindings (11 prefixes at `workflow_engine.py:47-182`). Two parallel categories — see Meta-Pattern 3 sub-pattern: category-clusters. Future Tier R1 promotion deferred until concrete signal warrants.
+
+### Current Implementations
+
+5 action types registered today: `navigate`, `open_focus`, `trigger_workflow`, `create_vault_item`, `run_playwright_workflow`. Adding a 6th is a type-union extension + Record entry + new handler module (3-step recipe documented in CLAUDE.md §14 Phase R-4.0 entry).
+
+### Current Divergences from Canonical
+
+None substantive at Button kinds proper. The `~ partial` grade was based on "no vertical/tenant scope on button registrations" — but button registrations are intentionally platform-only per Pattern 5 + R-5.1 user-override substrate handling per-tenant variation. Canonical-by-shape at registration + dispatch level.
+
+The two flagged items (B-BTN-3 hardcoded parameter binding resolver branches; parallel client/server source binding registries) are canonical category-clusters per Meta-Pattern 3 — separate sections cross-referenced rather than forced structural unification.
+
+### Cross-References
+
+- **§12 Workflow node types** — server-side parallel; deliberately parallel catalogs (B-BTN-1) because client-side React-bound dispatch fundamentally differs from server-side SQLAlchemy-bound dispatch. Same authoring conventions (action_type discriminator + Record/dict dispatch); different runtime contexts.
+- **R-4.0 Buttons as composable components** (CLAUDE.md §14) — substrate framing + 5-action-type catalog + parameter binding canon.
+- **R-5.0 Edge panel substrate** (CLAUDE.md §14) — first concrete consumer of R-4 buttons inside another registered component.
+- **CLAUDE.md §4 Component Registry** — overall composable-component registration substrate; buttons join via `extensions.r4` field on registration metadata.
+
+---
+
 ## Cross-category patterns appendix
 
 Architectural patterns that span multiple categories. Documenting them once here keeps the per-category sections focused on substrate while making the cross-cutting discipline visible.
@@ -988,16 +1681,73 @@ Across every category: per-instance configuration sits in tables (`platform_them
 
 This is the **canonical-substrate-extension canon** that R-8's audit grade ✓ verified across the 10 categories documented here. R-8.y.b extends documentation to ~ partial categories (where the substrate is canonical but some dimension — usually scope cascade or registration mechanism — is partial). R-8.y.c extends to implicit categories (working patterns missing only formal contract documentation). R-8.y.d ships the plugin registry browser consuming all three documentation tiers.
 
-### Divergence-watching list (per R-8.y.a investigation)
+### Registration Pattern Tiers (added R-8.y.b Phase 2)
+
+Cross-category nomenclature for registration mechanisms. **Tiers describe patterns, NOT rank.** Tier R2 is canonical for closed-vocabulary platform-owned registries — it is NOT a lesser version of R1. Each tier suits its category; promotion between tiers is appropriate only when concrete signal warrants.
+
+| Tier | Pattern | Canonical for | Categories using this tier |
+|---|---|---|---|
+| **R1** | Side-effect-import + `register_*` API + ABC/Protocol contract | Extensible plugins where implementations register from their own packages | §1 Intake adapters, §4 Document blocks, §6 Workshop template types, §7 Composition action types, §8 Accounting providers, §9 Email providers, §11 Calendar providers, §14 Delivery channels, §12 Workflow node types (target — currently R4), §16 Agent kinds (target — currently R3) |
+| **R2** | Frozen dict / frozenset / type-union constant + validation helpers | Closed-vocabulary platform-owned registries (where vocabulary stability is the canonical interface) | §15 Triage queue configs `HANDLERS` dict, §16 `AgentJobType` enum + `ApprovalFlow` enum, §17 Button kinds `R4ActionType` type-union + `DISPATCH_HANDLERS` Record, §13 Intelligence `IntelligenceError` codes |
+| **R3** | Lazy registry (deferred imports inside method; circular-import workaround) | Migration target where promotion to R1 warrants | §16 Agent kinds `AGENT_REGISTRY` lazy `_ensure_registry()` — divergence, R1 target |
+| **R4** | If/elif dispatch chain | Migration target where promotion to R1 warrants | §12 Workflow node types `_execute_action` chain — divergence, R-9 target. §17 parameter binding resolver branches — divergence-by-pragmatism, R1 promotion deferred per category-cluster pattern (Meta-Pattern 3) |
+
+**R2 vs R1 is not a hierarchy.** R2 is canonical when the enumeration IS the operator-facing surface (e.g. `AgentJobType` is referenced by `agent_schedules.job_type` FK + API endpoint params; promoting to runtime string-keyed registry would dissolve the canonical interface). R1 is canonical when implementations register from their own packages (e.g. Email providers; each provider package owns its `register_provider` call). Choose tier per category's natural shape; "lower tier number" does not mean "more correct."
+
+### Meta-Pattern 1: Document what is, not what would be uniform
+
+Canonical contracts honor real distinctions between categories rather than forcing speculative uniformity. R-8.y.b investigation surfaced 23 architectural calls; collaborative deliberation settled them by asking "what does this category ACTUALLY look like at runtime?" rather than "how can we force this to match category X?"
+
+Examples:
+- **Per-category output shapes** (Cross-Type-B-1 — option (c) hybrid). Workflow node types, Triage queue configs, Delivery channels have meaningfully different output shapes. Common fields canonicalized; category-specific data stays nested. NO forced cross-category unified `PlatformActionResult` dataclass.
+- **Delivery channels Protocol vs Email providers ABC** (B-DELIV-1). Both canonical for their use cases (stateless-dispatch vs stateful-lifecycle). NOT forced into single ABC pattern.
+- **Workflow node types vs Button kinds parallel catalogs** (B-BTN-1). Server-side SQLAlchemy-bound vs client-side React-bound. NOT forced into unified action-type registry.
+
+### Meta-Pattern 2: Migrate fragility, document honesty
+
+Two grades of divergences exist; treat them differently.
+
+- **Fragile patterns** (substring-matching error classification, three-optional-fields with runtime validator, silent fall-through that masks bugs) get **canonical-target framing + migration flag**. The current code works but breaks in unobserved ways under stress; document the canonical replacement + estimate migration scope. Examples: EmailChannel retryable substring match (B-DELIV-2, ~30 LOC); TriageQueueConfig three-source pattern (B-TRIAGE-3, ~50 LOC); workflow_engine.py:679 silent `unknown_action_type` fall-through (B-WORK-2, part of R-9).
+- **Honest patterns** (per-category output shapes; Protocol-based stateless dispatch; flat HANDLERS dict where keys are stable) get **documented as-is**. Working code that suits its category; no migration needed. Examples: Triage HANDLERS flat dict (B-TRIAGE-2 keep); Button kinds Record-literal (B-BTN-2 keep); Intelligence provider single-implementation state (B-INTEL-1 defer).
+
+The discipline: read the code, decide which grade applies, document accordingly. Don't migrate honest patterns for aesthetic uniformity; don't preserve fragile patterns by calling them honest.
+
+### Meta-Pattern 3: Canonical contracts describe what implementations ARE
+
+Canonical contracts describe what implementations ARE at runtime, not what they SHOULD LOOK LIKE for uniformity. R-8.y.b investigation surfaced four canonical sub-distinctions:
+
+**Sub-pattern: Content-variance vs structural-variance scope cascade.** Some categories vary in CONTENT per scope (a tenant overrides specific theme tokens atop platform defaults — only deltas merge; the full token catalog stays canonical). Other categories vary in STRUCTURE per scope (a tenant forks a workflow template — entire definition replaces). Pattern 1's three-scope cascade applies to both, but the merge semantics differ. Examples: theme tokens (content-variance, merge); workflow templates (structural-variance, first-match-wins fork).
+
+**Sub-pattern: Stateless-dispatch vs stateful-lifecycle contract surfaces.** Protocol is canonical for stateless-dispatch (channels send + return; no per-instance state). ABC is canonical for stateful-lifecycle (providers connect / sync / disconnect; instances carry session + token state). Both canonical; choose per category's runtime shape. Examples: Delivery channels (Protocol); Email + Calendar + Accounting providers (ABC).
+
+**Sub-pattern: Category-clusters — parallel sections for related-but-different runtime contexts.** Some categories have client-side AND server-side parallel surfaces with deliberately separate contracts because runtime contexts differ enough that forcing structural unification would force awkward abstraction. Canonical example: Button kinds (client-side, React-bound, useNavigate hooks) + Workflow node types (server-side, SQLAlchemy-bound, DB session). Both are extensible-dispatch categories with discriminator + handler shape; deliberately documented as parallel sections with cross-references rather than unified. Parameter binding sources are a future category-cluster candidate: 7 client-side button bindings + 11 server-side workflow bindings — same conceptual shape, different runtime contexts.
+
+**Sub-pattern: Multiple closed-vocabulary discriminators within a single category.** Some categories have TWO closed-vocabulary discriminators serving different purposes. Canonical example: Agent kinds. `AgentJobType` enum (Tier R2) describes WHAT agent states exist (operator-facing surface; enum stability is the canonical interface). `ApprovalFlow` enum (Tier R2 target) describes HOW agents route through approval. Both Tier R2; serve orthogonal concerns. `AGENT_REGISTRY` extensible dict (Tier R1) is third-tier on top — describes WHICH handler class implements each enum value.
+
+### Divergence-watching list (R-8.y.a + R-8.y.b)
 
 Implementations flagged in current sections that diverge from canonical contract:
+
+**R-8.y.a divergences (canonical sections):**
 
 1. **Accounting providers** registration via factory if/elif chain instead of `register_provider` API (canonical reference: §9 Email providers' `PROVIDER_REGISTRY`). Future migration arc could lift; bounded ~50 LOC.
 2. **Playwright scripts** registration via dict literal instead of `register_*` API (canonical reference: §4 Document blocks' `register_block_kind`). Future migration arc when script count exceeds ~3-4; bounded ~30 LOC.
 
-Both flagged for future cleanup arcs. R-8.y.a documents canonical contract + the divergence; resolving is out of scope (per R-8.y.a discipline — documentation arc, not migration arc).
+**R-8.y.b divergences (partial sections — migration targets surfaced):**
+
+3. **Workflow node types**: if/elif dispatch chain (R4 → R1). R-9 design surface. **~900 LOC** (backend ~600 + tests ~200 + frontend ~50 + Playwright regression). Per B-WORK-1 through B-WORK-5.
+4. **EmailChannel retryable classification**: substring-matching (Meta-Pattern 2 fragility) → exception class hierarchy. **~30 LOC** R-8.x sub-arc per B-DELIV-2.
+5. **Triage queue configs `vertical_default` scope**: two-scope → three-scope cascade. **~200 LOC** R-8.x sub-arc per B-TRIAGE-1.
+6. **TriageQueueConfig source discriminator**: three-optional-fields → Pydantic v2 discriminated union. **~50 LOC** R-8.x sub-arc per B-TRIAGE-3.
+7. **AGENT_REGISTRY side-effect-import**: lazy `_ensure_registry()` (R3 → R1). **~30 LOC** R-8.x sub-arc per B-AGENT-1.
+8. **ApprovalFlow enum on agent classes**: set-based discriminator → typed enum class attribute. **~80 LOC** R-8.x sub-arc per B-AGENT-3.
+9. **Source bindings registries** (parallel sections): hardcoded resolver branches (R4 → R1). Two parallel registries — server-side workflow source bindings (~11 prefixes) + client-side button parameter bindings (~7 sources). **~400 LOC** future sub-arc when concrete signal warrants per B-WORK-3 + B-BTN-3 category-cluster pattern.
+
+R-9 is the primary downstream migration arc consuming this document; the 5 R-8.x sub-arcs sequence after R-9 as bounded individual cleanup arcs. R-8.y documents the canonical contract + the divergences; resolving is future migration work.
 
 ---
 
-**Document version**: 1.0 (R-8.y.a, 2026-05-11)
+**Document version**: 1.1 (R-8.y.b Phase 2, 2026-05-11)
+**Canonical contract count**: 17 (10 R-8.y.a ✓ + 1 R-8.y.b Calendar reclassification ✓ + 6 R-8.y.b Phase 2 ~)
+**Partial contract count**: 6 (Workflow node types, Intelligence providers, Delivery channels, Triage queue configs, Agent kinds, Button kinds)
 **Maintenance**: This document is canonical. Updates land alongside source changes — never in a separate commit. CLAUDE.md §14 Recent Changes entries link back here when categories evolve.
