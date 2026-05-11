@@ -23,6 +23,7 @@ import {
   MousePointerClick,
   Palette,
   PanelRightOpen,
+  Plug,
 } from "lucide-react"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import { getAllRegistered, getKnownTokens } from "@/lib/visual-editor/registry"
@@ -146,6 +147,14 @@ export default function VisualEditorIndex() {
           title="Registry inspector"
           description="In-memory component registry browser. Verify metadata coverage + reverse-lookup tokens to consumers."
           testId="ve-card-registry"
+        />
+        <EditorCard
+          to="/visual-editor/plugin-registry"
+          icon={Plug}
+          title="Plugin Registry"
+          description="24 canonical plugin categories from PLUGIN_CONTRACTS.md grouped by maturity. Per-category contract details + live introspection for enumerable Tier R1/R2 registries. Operator-facing architectural-surface documentation."
+          testId="ve-card-plugin-registry"
+          stats="24 contracts"
         />
         <EditorCard
           to="/runtime-editor"

@@ -25,6 +25,7 @@ import {
   LayoutDashboard,
   Library,
   Palette,
+  Plug,
 } from "lucide-react"
 import { useAdminAuth } from "../lib/admin-auth-context"
 import { adminPath } from "../lib/admin-routes"
@@ -48,6 +49,7 @@ const EDITOR_TABS: EditorTab[] = [
   { to: "/visual-editor/classes", label: "Classes", icon: Boxes, testId: "ve-tab-classes" },
   { to: "/visual-editor/workflows", label: "Workflows", icon: GitBranch, testId: "ve-tab-workflows" },
   { to: "/visual-editor/registry", label: "Registry", icon: Layers, testId: "ve-tab-registry" },
+  { to: "/visual-editor/plugin-registry", label: "Plugin Registry", icon: Plug, testId: "ve-tab-plugin-registry" },
 ]
 
 

@@ -36,6 +36,7 @@ from app.api.routes.admin import (
     visual_editor_classes,
     visual_editor_compositions,
     visual_editor_dashboard_layouts,
+    plugin_registry as admin_plugin_registry,
 )
 
 platform_router = APIRouter()
@@ -159,4 +160,10 @@ platform_router.include_router(
     visual_editor_dashboard_layouts.router,
     prefix="/admin/visual-editor/dashboard-layouts",
     tags=["Visual Editor — Dashboard Layouts"],
+)
+# R-8.y.d — Plugin Registry browser introspection endpoint.
+platform_router.include_router(
+    admin_plugin_registry.router,
+    prefix="/admin/plugin-registry",
+    tags=["Plugin Registry Browser"],
 )

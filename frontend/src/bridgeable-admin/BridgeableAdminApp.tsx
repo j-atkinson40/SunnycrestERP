@@ -53,6 +53,7 @@ import FocusEditorPage from "./pages/visual-editor/FocusEditorPage"
 import WidgetEditorPage from "./pages/visual-editor/WidgetEditorPage"
 import DocumentsEditorPage from "./pages/visual-editor/DocumentsEditorPage"
 import EdgePanelEditorPage from "./pages/visual-editor/EdgePanelEditorPage"
+import PluginRegistryBrowser from "./pages/visual-editor/PluginRegistryBrowser"
 
 /**
  * Accessed via either:
@@ -102,6 +103,11 @@ export function BridgeableAdminApp() {
         {/* R-5.0 — edge panel multi-page authoring. */}
         <Route path="edge-panels" element={<EdgePanelEditorPage />} />
         <Route path="registry" element={<RegistryDebugPage />} />
+        {/* R-8.y.d — Plugin Registry browser. Surfaces 24 canonical
+            plugin categories from PLUGIN_CONTRACTS.md with maturity
+            grouping + live introspection for ~11 enumerable Tier
+            R1/R2 registries. */}
+        <Route path="plugin-registry" element={<PluginRegistryBrowser />} />
         {/* Legacy redirects — May 2026 reorganization dismantled the
             standalone Component Editor + Compositions page. Their
             functionality is redistributed across Widget Editor + Focus
