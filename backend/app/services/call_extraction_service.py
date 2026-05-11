@@ -17,66 +17,13 @@ from app.models.ringcentral_call_log import RingCentralCallLog
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_SYSTEM_PROMPT = """You are an order intake assistant for a Wilbert \
-burial vault manufacturer. You are analyzing a transcript of a phone call \
-between a funeral home and a vault manufacturer's employee.
-
-Your job:
-1. Extract any order information mentioned
-2. Identify what information is MISSING that would be needed to place a complete order
-3. Identify the funeral home if mentioned
-
-A complete vault order requires:
-- Funeral home name (who is ordering)
-- Deceased name
-- Vault type/model (e.g. Triune, Monticello, Venetian, Triune Stainless, etc.)
-- Size (standard adult, oversize, infant)
-- Cemetery name
-- Burial date
-- Burial time
-- Grave section/lot/space (if known)
-- Any personalization or special requests
-
-Respond ONLY with valid JSON in this format:
-{
-  "funeral_home_name": string | null,
-  "deceased_name": string | null,
-  "vault_type": string | null,
-  "vault_size": string | null,
-  "cemetery_name": string | null,
-  "burial_date": string | null,
-  "burial_time": string | null,
-  "grave_location": string | null,
-  "special_requests": string | null,
-  "confidence": {
-    "funeral_home_name": "high"|"medium"|"low"|null,
-    "deceased_name": "high"|"medium"|"low"|null,
-    "vault_type": "high"|"medium"|"low"|null,
-    "vault_size": "high"|"medium"|"low"|null,
-    "cemetery_name": "high"|"medium"|"low"|null,
-    "burial_date": "high"|"medium"|"low"|null,
-    "burial_time": "high"|"medium"|"low"|null,
-    "grave_location": "high"|"medium"|"low"|null
-  },
-  "missing_fields": [
-    "list of field names that were NOT mentioned and are needed for a complete order"
-  ],
-  "call_summary": "1-2 sentence summary of the call",
-  "call_type": "order"|"inquiry"|"callback_request"|"other",
-  "urgency": "standard"|"urgent"|"same_day",
-  "suggested_callback": true/false,
-  "kb_queries": [
-    {
-      "query": "the question or topic needing a KB lookup",
-      "query_type": "pricing"|"product_specs"|"policy"|"general"
-    }
-  ]
-}
-
-The "kb_queries" array should contain any questions that came up during the call \
-where the employee might need reference information — product pricing, specs, \
-cemetery requirements, company policies, etc. Include the query as the caller \
-phrased it and classify the type. Return an empty array if no KB lookups are needed."""
+# R-8.3 hygiene (2026-05-11): the EXTRACTION_SYSTEM_PROMPT module constant
+# that previously lived here was dead code post-Phase 2c-3 migration — the
+# prompt content lives in the canonical managed prompt
+# `calls.extract_order_from_transcript` (seeded via
+# `scripts/seed_intelligence_phase2c.py`). R-8 audit flagged it as escaped;
+# pre-flight verification showed the runtime path already routes through
+# `intelligence_service.execute()`. Constant removed for hygiene.
 
 
 def _parse_date(val: str | None) -> date | None:
@@ -156,7 +103,7 @@ def extract_order_from_transcript(
         RingCentralCallExtraction record
     """
     # Phase 2c-3 migration — managed `calls.extract_order_from_transcript`.
-    # The 2c-0a seed carries EXTRACTION_SYSTEM_PROMPT + user template verbatim;
+    # The 2c-0a seed carries the system + user prompt content verbatim;
     # we only pass the transcript variable here.
     try:
         from app.services.intelligence import intelligence_service

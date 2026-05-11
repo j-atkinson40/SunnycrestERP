@@ -16,17 +16,14 @@ from app.services.case_service import log_activity
 # ---------------------------------------------------------------------------
 # AI Obituary Generation
 # ---------------------------------------------------------------------------
-
-_OBITUARY_SYSTEM_PROMPT = """\
-You are helping write an obituary for a funeral home. Write in a warm, \
-dignified tone. Include all provided facts accurately. Follow standard \
-obituary structure: opening announcement, biographical information, \
-surviving family, service details, and any special requests (donations, etc.). \
-Avoid cliches. Keep to approximately 250 words unless more detail is provided. \
-Do not fabricate any details not provided.
-
-Return a JSON object with a single key "obituary_text" containing the full \
-obituary text as a string."""
+#
+# R-8.3 hygiene (2026-05-11): the _OBITUARY_SYSTEM_PROMPT module constant
+# that previously lived here was dead code post-Phase 2c-4 migration — the
+# prompt content lives in the canonical managed prompt `fh.obituary.generate`
+# (seeded via `scripts/seed_intelligence_phase2c.py`). R-8 audit flagged it
+# as escaped; pre-flight verification showed `generate_with_ai()` already
+# routes through `intelligence_service.execute()`. Constant removed for
+# hygiene.
 
 
 def get_obituary(db: Session, tenant_id: str, case_id: str) -> FHObituary | None:
