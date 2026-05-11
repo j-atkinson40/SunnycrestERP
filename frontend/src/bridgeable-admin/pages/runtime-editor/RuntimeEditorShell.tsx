@@ -23,9 +23,10 @@
  * tuple at vertical_default scope.
  */
 import { Suspense, useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 
 import { useAdminAuth } from "@/bridgeable-admin/lib/admin-auth-context"
+import { Button } from "@/components/ui/button"
 import { themesService } from "@/bridgeable-admin/services/themes-service"
 import { Focus } from "@/components/focus/Focus"
 import { useAuth } from "@/contexts/auth-context"
@@ -64,6 +65,8 @@ function ShellWithTenantContext({
   themeMode: "light" | "dark"
 }) {
   const { user, company, isLoading } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   // Build writer registry from impersonation context — must be a
   // stable Required<…> map so EditModeProvider's writers prop
@@ -149,6 +152,19 @@ function ShellWithTenantContext({
             impersonation session — the tenant token expired or the
             page was refreshed without the entry handshake.
           </p>
+          {/* R-7-α: recovery affordance — strip query params so the
+           *  outer RuntimeEditorShell falls through to the
+           *  TenantUserPicker per R-1.6.1's picker-as-child
+           *  arrangement. */}
+          <div className="mt-4 flex justify-center">
+            <Button
+              data-testid="runtime-editor-impersonation-restart"
+              onClick={() => navigate(location.pathname, { replace: true })}
+              aria-label="Restart impersonation session"
+            >
+              Restart impersonation
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -202,9 +218,24 @@ function ShellWithTenantContext({
 export default function RuntimeEditorShell() {
   const { user, loading } = useAdminAuth()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const location = useLocation()
   const tenantSlug = searchParams.get("tenant")
   const userQuery = searchParams.get("user")
   const [themeMode] = useState<"light" | "dark">("light")
+  // R-7-α: surface a recovery affordance after 10s of admin-session
+  // loading. Long-running loads are rare in practice but indicate
+  // network/admin-token issues; without this, operators stare at a
+  // spinner indefinitely.
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false)
+  useEffect(() => {
+    if (!loading) {
+      setLoadingTimedOut(false)
+      return
+    }
+    const timer = setTimeout(() => setLoadingTimedOut(true), 10_000)
+    return () => clearTimeout(timer)
+  }, [loading])
 
   // Honor the impersonation token on every nav into the shell — if
   // it's missing we render an explicit "go back to picker" prompt
@@ -223,7 +254,25 @@ export default function RuntimeEditorShell() {
         className="flex h-screen items-center justify-center bg-surface-base text-content-muted"
         data-testid="runtime-editor-loading"
       >
-        Loading admin session…
+        <div className="max-w-md text-center">
+          <div>Loading admin session…</div>
+          {/* R-7-α: surface cancel affordance after 10s so operators
+           *  aren't stuck on indefinite spinner. Strips query params
+           *  and returns to the picker. */}
+          {loadingTimedOut && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="runtime-editor-loading-cancel"
+                onClick={() => navigate(location.pathname, { replace: true })}
+                aria-label="Cancel loading and return to runtime editor picker"
+              >
+                Cancel and return to picker
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -241,6 +290,16 @@ export default function RuntimeEditorShell() {
           <p className="mt-2 text-content-muted">
             Sign in to the platform admin to use the runtime editor.
           </p>
+          {/* R-7-α: recovery affordance — route to /login. */}
+          <div className="mt-4 flex justify-center">
+            <Button
+              data-testid="runtime-editor-unauth-signin"
+              onClick={() => navigate("/login")}
+              aria-label="Sign in to admin"
+            >
+              Sign in
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -264,6 +323,16 @@ export default function RuntimeEditorShell() {
             <code> platform_admin</code>, or <code> support</code>{" "}
             role. Your account has role <code>{user.role}</code>.
           </p>
+          {/* R-7-α: recovery affordance — route to admin home. */}
+          <div className="mt-4 flex justify-center">
+            <Button
+              data-testid="runtime-editor-forbidden-admin-home"
+              onClick={() => navigate("/bridgeable-admin")}
+              aria-label="Return to admin home"
+            >
+              Return to admin home
+            </Button>
+          </div>
         </div>
       </div>
     )
