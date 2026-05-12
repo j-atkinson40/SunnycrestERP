@@ -38,7 +38,6 @@ import {
   Loader2,
   Plus,
   Settings as SettingsIcon,
-  Trash2,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +47,8 @@ import {
   type HierarchicalCategory,
   type HierarchicalTemplate,
 } from "@/bridgeable-admin/components/visual-editor/HierarchicalEditorBrowser"
+import { BlockConfigEditor } from "@/bridgeable-admin/components/visual-editor/documents/BlockConfigEditor"
+import { BlockKindPicker } from "@/bridgeable-admin/components/visual-editor/documents/BlockKindPicker"
 import {
   documentBlocksService,
   type BlockKindMetadata,
@@ -803,92 +804,6 @@ function BlocksTab({
 }
 
 
-function BlockConfigEditor({
-  block,
-  blockKinds,
-  onUpdateConfig,
-  onDelete,
-  canEdit,
-}: {
-  block: TemplateBlock
-  blockKinds: BlockKindMetadata[]
-  onUpdateConfig: (config: Record<string, unknown>) => void
-  onDelete: () => void
-  canEdit: boolean
-}) {
-  const kind = blockKinds.find((k) => k.kind === block.block_kind)
-  const [draft, setDraft] = useState<Record<string, unknown>>(block.config)
-
-  useEffect(() => {
-    setDraft(block.config)
-  }, [block.id, block.config])
-
-  const dirty = JSON.stringify(draft) !== JSON.stringify(block.config)
-
-  return (
-    <div
-      className="px-3 py-2"
-      data-testid={`documents-block-config-${block.id}`}
-    >
-      <div className="text-body-sm font-medium text-content-strong">
-        {kind?.display_name ?? block.block_kind}
-      </div>
-      <div className="mt-0.5 text-caption text-content-muted">
-        {kind?.description}
-      </div>
-      <div className="mt-3">
-        <label className="mb-1 block text-micro uppercase tracking-wider text-content-muted">
-          Config (JSON)
-        </label>
-        <textarea
-          value={JSON.stringify(draft, null, 2)}
-          onChange={(e) => {
-            try {
-              setDraft(JSON.parse(e.target.value))
-            } catch {
-              // Ignore invalid JSON during typing — only persist on save.
-            }
-          }}
-          disabled={!canEdit}
-          rows={10}
-          className="w-full rounded-sm border border-border-base bg-surface-raised px-2 py-1 font-plex-mono text-[11px]"
-          data-testid={`documents-block-config-textarea-${block.id}`}
-        />
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <Button
-          size="sm"
-          onClick={() => onUpdateConfig(draft)}
-          disabled={!canEdit || !dirty}
-          data-testid={`documents-block-save-${block.id}`}
-        >
-          Save
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setDraft(block.config)}
-          disabled={!dirty}
-        >
-          Reset
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto text-status-error"
-          onClick={onDelete}
-          disabled={!canEdit}
-          data-testid={`documents-block-delete-${block.id}`}
-        >
-          <Trash2 size={11} className="mr-1" />
-          Delete
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-
 function ConfigurationTab({
   version,
 }: {
@@ -959,57 +874,7 @@ function VersionsTab({
 }
 
 
-function BlockKindPicker({
-  blockKinds,
-  onPick,
-  onCancel,
-}: {
-  blockKinds: BlockKindMetadata[]
-  onPick: (kind: string) => void
-  onCancel: () => void
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onCancel}
-      data-testid="documents-block-picker-modal"
-    >
-      <div
-        className="w-[480px] max-h-[80vh] overflow-y-auto rounded-md border border-border-subtle bg-surface-elevated p-4 shadow-level-2"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-h4 font-plex-serif text-content-strong">
-            Add a block
-          </div>
-          <Button size="sm" variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-        <div className="grid gap-2">
-          {blockKinds.map((k) => (
-            <button
-              key={k.kind}
-              type="button"
-              onClick={() => onPick(k.kind)}
-              className="rounded-sm border border-border-subtle bg-surface-base p-3 text-left hover:bg-accent-subtle/30"
-              data-testid={`documents-block-picker-${k.kind}`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-body-sm font-medium text-content-strong">
-                  {k.display_name}
-                </span>
-                {k.accepts_children && (
-                  <Badge variant="outline">wraps children</Badge>
-                )}
-              </div>
-              <div className="mt-1 text-caption text-content-muted">
-                {k.description}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
+// BlockKindPicker + BlockConfigEditor moved to shared module at
+// @/bridgeable-admin/components/visual-editor/documents/* per Arc 3b
+// Q-CROSS-2 canon — both standalone editor + inspector Documents tab
+// consume identical components.

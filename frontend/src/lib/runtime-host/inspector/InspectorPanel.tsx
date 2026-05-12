@@ -26,6 +26,7 @@ import type { ThemeMode } from "@/bridgeable-admin/services/themes-service"
 
 import { useEditMode } from "../edit-mode-context"
 import { ClassTab } from "./ClassTab"
+import { DocumentsTab } from "./DocumentsTab"
 import { PropsTab } from "./PropsTab"
 import { ThemeTab } from "./ThemeTab"
 import { WorkflowsTab } from "./WorkflowsTab"
@@ -34,9 +35,13 @@ import { WorkflowsTab } from "./WorkflowsTab"
 // Arc 2 Phase 2a — added "workflows" as 4th tab in the inner strip.
 // Workflows tab follows direct-service-call pattern (NOT staged-
 // override writer) — saves go through workflowTemplatesService
-// directly. Phase 2a is read-only (list + deep-link); Phase 2b will
-// add in-inspector canvas editing.
-type TabKey = "props" | "class" | "theme" | "workflows"
+// directly.
+//
+// Arc 3b — added "documents" as 5th tab. Per-block immediate writes
+// (Q-DOCS-2 canon); tab is selection-independent at the tab body
+// level (operator can browse document templates regardless of which
+// component is selected).
+type TabKey = "props" | "class" | "theme" | "workflows" | "documents"
 
 
 export interface InspectorPanelProps {
@@ -264,44 +269,50 @@ export function InspectorPanel({
           contract; selection-free panel mount is Phase 2b territory
           per investigation §5 "selection model" finding. */}
       <nav className="flex border-b border-border-subtle text-caption">
-        {(["theme", "class", "props", "workflows"] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setActiveTab(key)}
-            className={`flex-1 px-3 py-2 font-medium transition-colors ${
-              activeTab === key
-                ? "border-b-2 border-accent text-content-strong"
-                : "border-b-2 border-transparent text-content-muted hover:text-content-strong"
-            }`}
-            data-testid={`runtime-inspector-tab-${key}`}
-            data-active={activeTab === key ? "true" : "false"}
-          >
-            {key === "theme"
-              ? "Theme"
-              : key === "class"
-                ? "Class"
-                : key === "props"
-                  ? "Props"
-                  : "Workflows"}
-          </button>
-        ))}
+        {(["theme", "class", "props", "workflows", "documents"] as const).map(
+          (key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveTab(key)}
+              className={`flex-1 px-2 py-2 font-medium transition-colors ${
+                activeTab === key
+                  ? "border-b-2 border-accent text-content-strong"
+                  : "border-b-2 border-transparent text-content-muted hover:text-content-strong"
+              }`}
+              data-testid={`runtime-inspector-tab-${key}`}
+              data-active={activeTab === key ? "true" : "false"}
+            >
+              {key === "theme"
+                ? "Theme"
+                : key === "class"
+                  ? "Class"
+                  : key === "props"
+                    ? "Props"
+                    : key === "workflows"
+                      ? "Workflows"
+                      : "Documents"}
+            </button>
+          ),
+        )}
       </nav>
 
       {/* Tab body — operates on activeInnerEntry (R-2.1) which derives
           from the active outer tab + selection state. Arc 2 Phase 2a:
           Workflows tab renders independently of activeInnerEntry —
-          workflows browse is selection-independent (operator can
-          view workflows for the impersonated tenant regardless of
-          which component is selected). The unregistered-component
-          notice only shows for Theme / Class / Props tabs. */}
+          workflows browse is selection-independent. Arc 3b: Documents
+          tab follows the same selection-independent pattern. The
+          unregistered-component notice only shows for Theme / Class /
+          Props tabs. */}
       <div className="flex-1 overflow-y-auto">
-        {!activeInnerEntry && activeTab !== "workflows" && (
-          <div className="px-3 py-4 text-caption text-content-muted">
-            Selected component <code>{editMode.selectedComponentName}</code> is
-            not registered. Edits unavailable.
-          </div>
-        )}
+        {!activeInnerEntry &&
+          activeTab !== "workflows" &&
+          activeTab !== "documents" && (
+            <div className="px-3 py-4 text-caption text-content-muted">
+              Selected component <code>{editMode.selectedComponentName}</code>{" "}
+              is not registered. Edits unavailable.
+            </div>
+          )}
         {activeInnerEntry && activeTab === "props" && (
           <PropsTab selectedEntry={activeInnerEntry} vertical={vertical} />
         )}
@@ -316,6 +327,7 @@ export function InspectorPanel({
           />
         )}
         {activeTab === "workflows" && <WorkflowsTab vertical={vertical} />}
+        {activeTab === "documents" && <DocumentsTab vertical={vertical} />}
       </div>
 
       {/* Footer — commit/discard + partial-commit errors */}
