@@ -1,51 +1,93 @@
 /**
- * Arc 2 Phase 2a — Inspector Workflows tab.
+ * Arc 2 Phase 2a — Inspector Workflows tab (list view).
+ * Arc 2 Phase 2b — In-inspector canvas editing (3-level mode-stack:
+ * list → workflow-edit → node-config). Form-local state + 1.5s
+ * autosave matching standalone editor pattern verbatim (parity-not-
+ * exceedance canon). NodeConfigForm + InvokeGenerationFocusConfig +
+ * InvokeReviewFocusConfig reused verbatim from standalone.
  *
- * Read-only workflow list filtered by scope (vertical_default +
- * platform_default). Per-tab scope pill (independent of other tabs
- * per B-ARC2-5). Filter toggle: all-workflows default + "filter to
- * this surface" option (per B-ARC2-4). Deep-link to standalone
- * editor for full editing (per B-ARC2-1 mode-stack pattern Phase 2a).
+ * Architectural patterns locked (Phase 2b):
  *
- * Architectural pattern locked (Arc 2 vs Arc 1 contrast):
+ * - **Tab-level mode-stack canon** (B-ARC2B-1): each tab owns its own
+ *   {stack, push, pop} state. Arc 3+ tabs inherit the pattern via
+ *   convention, NOT via a shared inspector-level abstraction. Per
+ *   §3.26.7.5 architectural restraint: factor a shared helper hook
+ *   when a third tab needs the same shape — not preemptively.
  *
- * - Arc 1 dashboard_layout writer: staged-override pattern. Edits
- *   stage into draftOverrides map; commit footer flushes via
- *   makeDashboardLayoutWriter. Field-merged per page_context.
- * - Arc 2 Phase 2a workflows: direct-service-call pattern. NO
- *   writer. Phase 2a is read-only (list + deep-link only); Phase 2b
- *   will call workflowTemplatesService.update directly for atomic-
- *   per-template saves.
+ * - **Form-local + 1.5s autosave canon** (B-ARC2B-2): atomic-per-
+ *   instance writes (workflow templates, document templates, focus
+ *   compositions, etc.) use form-local React `useState` for the
+ *   draft + a debounced `service.update()` call. Contrasts with
+ *   Arc 1's staged-override writer pattern, which is reserved for
+ *   surfaces where a single commit flushes ≥2 different shape types
+ *   together (theme + class + prop tokens). Direct-service-call
+ *   atomicity from Phase 2a's B-ARC2-3 preserved.
  *
- * Discrimination criterion: SAVE SEMANTICS, not surface type.
- * Staged-override writers exist where the same draft-state shape
- * (token / prop / class / layout) needs cross-cutting commit
- * semantics. Workflows are atomic-per-template; they don't fit the
- * staged-override abstraction. Adding a writer would force
- * workflows into the wrong abstraction.
+ * - **3-level sub-mode push canon** (B-ARC2B-3): when an inspector
+ *   tab needs detail-authoring on top of a list, it pushes through
+ *   `list → edit → detail`. Each level uses full 380px width. Arc 3
+ *   tabs that need the same shape (Documents template-detail, Focus
+ *   composition node-config) inherit verbatim.
  *
- * Workflow scope locked at vertical_default + platform_default
- * (`workflow_templates` table only). Tenant `workflows` + tenant_
- * workflow_forks deferred post-September.
+ * - **Parity-not-exceedance canon** (Q-UX-3): the inspector ships
+ *   everything the standalone editor has at 380px and nothing more.
+ *   No drag-reorder (standalone preserves array order). No trigger-
+ *   editing UI (standalone preserves read-only). Edges canonical
+ *   only at node-config sub-view; canvas edit-view shows them as
+ *   read-only `→ target` labels per standalone lines 888-913.
  *
- * Filter-to-this-surface uses page_context keyword match against
- * workflow display_name + description + workflow_type. Genuine
- * page-context-to-workflow metadata doesn't exist on
- * workflow_templates schema today; client-side keyword match is the
- * Phase 2a heuristic (B-ARC2-4 documented). Phase 2b OR Arc 3 may
- * introduce explicit `extensions.affectingPageContexts` metadata
- * when the relation hardens.
+ * - **Mount-gate refactor deferred** (B-ARC2B-4): Phase 2b preserves
+ *   the Phase 2a "select any widget, open Workflows tab" entry
+ *   pattern. Selection-free panel mount ships as Arc-3.x-mount-gate
+ *   when Arc 3 Documents tab forces the discoverability question.
+ *
+ * - **Workflow scope locked** at `vertical_default` + `platform_
+ *   default` (workflow_templates table only). Tenant `workflows` +
+ *   `tenant_workflow_forks` deferred post-September.
  */
-import { useEffect, useMemo, useState } from "react"
-import { ExternalLink, ChevronDown } from "lucide-react"
-
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  ArrowLeft,
+  ChevronDown,
+  ExternalLink,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react"
+import { toast } from "sonner"
+
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { NodeConfigForm } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/NodeConfigForm"
+import {
+  EMPTY_CANVAS,
   workflowTemplatesService,
+  type CanvasNode,
+  type CanvasState,
   type WorkflowScope,
+  type WorkflowTemplateFull,
   type WorkflowTemplateMetadata,
 } from "@/bridgeable-admin/services/workflow-templates-service"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
+import {
+  CanvasValidationError,
+  VALID_NODE_TYPES,
+  validateCanvasState,
+} from "@/lib/visual-editor/workflows/canvas-validator"
+
 import { usePageContext } from "../use-page-context"
+
+
+// ── Autosave timing (verbatim parity with standalone editor) ──
+export const AUTOSAVE_DEBOUNCE_MS = 1500
 
 
 export interface WorkflowsTabProps {
@@ -55,30 +97,61 @@ export interface WorkflowsTabProps {
 }
 
 
-/** Build the workflow standalone editor URL. Phase 2a uses canonical
- *  `/visual-editor/workflows` (the editor picks workflow_type from
- *  its own left rail). Per pre-flight: WorkflowEditorPage doesn't
- *  accept a `?workflow_type=` query param today; using the canonical
- *  bare URL keeps Phase 2a additive (no standalone-editor changes).
- *  Phase 2b OR a separate hygiene patch can teach the standalone
- *  editor to pre-select via `?workflow_type=<x>&scope=<y>`. */
+/** Mode-stack levels for the Workflows tab (B-ARC2B-3).
+ *  Generic stack data structure accommodates per-tab depth variation;
+ *  Arc 3+ tabs inherit the pattern, not a shared abstraction. */
+export type ModeStackLevel =
+  | { kind: "list" }
+  | { kind: "workflow-edit"; templateId: string }
+  | { kind: "node-config"; templateId: string; nodeId: string }
+
+
+/** Build the workflow standalone editor URL (Phase 2a deep-link). */
 function buildEditorUrl(_template: WorkflowTemplateMetadata): string {
   return adminPath("/visual-editor/workflows")
 }
 
 
-/** Client-side filter heuristic for "this surface" toggle.
- *
- *  Matches workflow_type / display_name / description against page-
- *  context tokens (the canonical page_context plus its human label).
- *  Tokenized + case-insensitive. Splits both sides on
- *  `[\s_/.-]+` so `funeral_scheduling_focus` matches "funeral",
- *  "scheduling", "focus".
- *
- *  Returns true if ANY token in the page_context tokenization
- *  appears as a substring in any of the workflow's searchable
- *  fields. Heuristic; Phase 2b OR Arc 3 may replace with explicit
- *  `extensions.affectingPageContexts` metadata. */
+/** Normalize partial CanvasState into full shape. */
+function ensureCanvasState(
+  c: Partial<CanvasState> | undefined,
+): CanvasState {
+  if (!c || !c.nodes || !c.edges) {
+    return { ...EMPTY_CANVAS, nodes: [], edges: [] }
+  }
+  return {
+    version: c.version ?? 1,
+    trigger: c.trigger,
+    nodes: c.nodes,
+    edges: c.edges,
+  }
+}
+
+
+function generateNodeId(canvas: CanvasState): string {
+  let i = canvas.nodes.length + 1
+  while (canvas.nodes.some((n) => n.id === `n_node_${i}`)) i += 1
+  return `n_node_${i}`
+}
+
+
+function generateEdgeId(
+  canvas: CanvasState,
+  source: string,
+  target: string,
+): string {
+  const base = `e_${source}_${target}`.replace(/[^a-zA-Z0-9_]/g, "_")
+  let candidate = base
+  let i = 2
+  while (canvas.edges.some((e) => e.id === candidate)) {
+    candidate = `${base}_${i}`
+    i += 1
+  }
+  return candidate
+}
+
+
+/** Client-side filter heuristic for "this surface" toggle. */
 export function workflowMatchesPageContext(
   workflow: WorkflowTemplateMetadata,
   pageContextId: string,
@@ -101,6 +174,70 @@ export function workflowMatchesPageContext(
 
 
 export function WorkflowsTab({ vertical }: WorkflowsTabProps) {
+  // ── Mode-stack state (B-ARC2B-1: tab-level, not inspector-level) ──
+  const [modeStack, setModeStack] = useState<ModeStackLevel[]>([
+    { kind: "list" },
+  ])
+  const currentLevel = modeStack[modeStack.length - 1]
+
+  const push = useCallback((level: ModeStackLevel) => {
+    setModeStack((prev) => [...prev, level])
+  }, [])
+
+  const pop = useCallback(() => {
+    setModeStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev))
+  }, [])
+
+  if (currentLevel.kind === "list") {
+    return (
+      <ListView
+        vertical={vertical}
+        onSelectWorkflow={(templateId) =>
+          push({ kind: "workflow-edit", templateId })
+        }
+      />
+    )
+  }
+
+  if (currentLevel.kind === "workflow-edit") {
+    return (
+      <WorkflowEditView
+        templateId={currentLevel.templateId}
+        onBack={pop}
+        onSelectNode={(nodeId) =>
+          push({
+            kind: "node-config",
+            templateId: currentLevel.templateId,
+            nodeId,
+          })
+        }
+      />
+    )
+  }
+
+  // node-config
+  return (
+    <NodeConfigView
+      templateId={currentLevel.templateId}
+      nodeId={currentLevel.nodeId}
+      onBack={pop}
+    />
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// Level 1 — List view (Phase 2a, preserved + onSelectWorkflow wired)
+// ─────────────────────────────────────────────────────────────────
+
+
+function ListView({
+  vertical,
+  onSelectWorkflow,
+}: {
+  vertical: string | null
+  onSelectWorkflow: (templateId: string) => void
+}) {
   // Per-tab scope state (B-ARC2-5: scope pill is per-tab; does NOT
   // share with theme/class/props tabs).
   const [scope, setScope] = useState<WorkflowScope>("vertical_default")
@@ -116,7 +253,6 @@ export function WorkflowsTab({ vertical }: WorkflowsTabProps) {
 
   const pageContext = usePageContext()
 
-  // Load workflows when scope or vertical changes.
   useEffect(() => {
     let cancelled = false
     setIsLoading(true)
@@ -263,7 +399,11 @@ export function WorkflowsTab({ vertical }: WorkflowsTabProps) {
           data-testid="runtime-inspector-workflows-list"
         >
           {filteredWorkflows.map((w) => (
-            <WorkflowRow key={w.id} workflow={w} />
+            <WorkflowRow
+              key={w.id}
+              workflow={w}
+              onSelect={() => onSelectWorkflow(w.id)}
+            />
           ))}
         </ul>
       )}
@@ -272,17 +412,28 @@ export function WorkflowsTab({ vertical }: WorkflowsTabProps) {
 }
 
 
-function WorkflowRow({ workflow }: { workflow: WorkflowTemplateMetadata }) {
+function WorkflowRow({
+  workflow,
+  onSelect,
+}: {
+  workflow: WorkflowTemplateMetadata
+  onSelect: () => void
+}) {
   const editorUrl = buildEditorUrl(workflow)
 
   return (
     <li
-      className="rounded-sm border border-border-subtle bg-surface-elevated px-2 py-2"
       data-testid={`runtime-inspector-workflow-row-${workflow.workflow_type}`}
       data-workflow-id={workflow.id}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+      <div className="flex items-start justify-between gap-2 rounded-sm border border-border-subtle bg-surface-elevated px-2 py-2 hover:bg-accent-subtle/40">
+        <button
+          type="button"
+          onClick={onSelect}
+          className="min-w-0 flex-1 text-left"
+          data-testid="runtime-inspector-workflow-row-edit"
+          title="Edit in inspector"
+        >
           <div
             className="text-body-sm font-medium text-content-strong truncate"
             data-testid="runtime-inspector-workflow-row-name"
@@ -301,11 +452,12 @@ function WorkflowRow({ workflow }: { workflow: WorkflowTemplateMetadata }) {
               {workflow.description}
             </div>
           )}
-        </div>
+        </button>
         <a
           href={editorUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
           className="flex-shrink-0 rounded-sm border border-border-base px-2 py-1 text-caption text-content-strong hover:bg-accent-subtle/40"
           data-testid="runtime-inspector-workflow-row-open"
           title="Open in full editor"
@@ -354,5 +506,776 @@ function EmptyState({
       </a>{" "}
       to create one.
     </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// Level 2 — Workflow edit view
+// ─────────────────────────────────────────────────────────────────
+
+
+type SavingState = "idle" | "saving" | "saved" | "error"
+
+
+/** Internal hook: form-local draft + 1.5s autosave (B-ARC2B-2). */
+function useWorkflowDraft(templateId: string) {
+  const [template, setTemplate] = useState<WorkflowTemplateFull | null>(null)
+  const [draftCanvas, setDraftCanvas] = useState<CanvasState>(EMPTY_CANVAS)
+  const [lastSavedCanvas, setLastSavedCanvas] =
+    useState<CanvasState>(EMPTY_CANVAS)
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [savingState, setSavingState] = useState<SavingState>("idle")
+  const autosaveTimerRef = useRef<number | null>(null)
+  const pendingSaveRef = useRef<boolean>(false)
+
+  // Load template
+  useEffect(() => {
+    let cancelled = false
+    setIsLoading(true)
+    setLoadError(null)
+    workflowTemplatesService
+      .get(templateId)
+      .then((full) => {
+        if (cancelled) return
+        setTemplate(full)
+        const canvas = ensureCanvasState(full.canvas_state)
+        setDraftCanvas(canvas)
+        setLastSavedCanvas(canvas)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        // eslint-disable-next-line no-console
+        console.warn("[runtime-editor] workflow get failed", err)
+        setLoadError(
+          err instanceof Error ? err.message : "Failed to load workflow",
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [templateId])
+
+  // Client-side validation runs on every mutation
+  useEffect(() => {
+    try {
+      validateCanvasState(draftCanvas)
+      setValidationError(null)
+    } catch (err) {
+      if (err instanceof CanvasValidationError) {
+        setValidationError(err.message)
+      }
+    }
+  }, [draftCanvas])
+
+  // isDirty derived
+  const isDirty = useMemo(() => {
+    return JSON.stringify(lastSavedCanvas) !== JSON.stringify(draftCanvas)
+  }, [draftCanvas, lastSavedCanvas])
+
+  const performSave = useCallback(async () => {
+    if (validationError) {
+      // Validation blocks autosave per standalone canon (line 321)
+      return
+    }
+    if (!template) return
+    setSavingState("saving")
+    pendingSaveRef.current = true
+    try {
+      const updated = await workflowTemplatesService.update(template.id, {
+        canvas_state: draftCanvas,
+        notify_forks: true,
+      })
+      setTemplate(updated)
+      setLastSavedCanvas(ensureCanvasState(updated.canvas_state))
+      setSavingState("saved")
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[runtime-editor] workflow save failed", err)
+      setSavingState("error")
+      toast.error("Failed to save workflow", {
+        action: {
+          label: "Retry",
+          onClick: () => {
+            void performSave()
+          },
+        },
+      })
+    } finally {
+      pendingSaveRef.current = false
+    }
+  }, [draftCanvas, template, validationError])
+
+  // Autosave debounce — 1.5s after last mutation
+  useEffect(() => {
+    if (!isDirty || validationError !== null) return
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current)
+    }
+    autosaveTimerRef.current = window.setTimeout(() => {
+      void performSave()
+    }, AUTOSAVE_DEBOUNCE_MS)
+    return () => {
+      if (autosaveTimerRef.current !== null) {
+        window.clearTimeout(autosaveTimerRef.current)
+        autosaveTimerRef.current = null
+      }
+    }
+  }, [draftCanvas, isDirty, performSave, validationError])
+
+  // Flush pending autosave immediately
+  const flushPendingSave = useCallback(async () => {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current)
+      autosaveTimerRef.current = null
+    }
+    if (isDirty && !validationError && template) {
+      await performSave()
+    }
+  }, [isDirty, performSave, template, validationError])
+
+  // Discard draft → revert to last saved
+  const discardDraft = useCallback(() => {
+    setDraftCanvas(lastSavedCanvas)
+    setSavingState("idle")
+  }, [lastSavedCanvas])
+
+  return {
+    template,
+    draftCanvas,
+    setDraftCanvas,
+    validationError,
+    loadError,
+    isLoading,
+    isDirty,
+    savingState,
+    flushPendingSave,
+    discardDraft,
+  }
+}
+
+
+/** Unsaved-changes guard state */
+type GuardAction = "save" | "discard" | null
+
+
+function WorkflowEditView({
+  templateId,
+  onBack,
+  onSelectNode,
+}: {
+  templateId: string
+  onBack: () => void
+  onSelectNode: (nodeId: string) => void
+}) {
+  const draft = useWorkflowDraft(templateId)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [guardOpen, setGuardOpen] = useState(false)
+  const [guardAction, setGuardAction] = useState<GuardAction>(null)
+
+  const handleAddNode = useCallback(
+    (nodeType: string) => {
+      draft.setDraftCanvas((prev) => {
+        const next: CanvasState = {
+          version: prev.version || 1,
+          trigger: prev.trigger,
+          nodes: [...prev.nodes],
+          edges: [...prev.edges],
+        }
+        const id = generateNodeId(next)
+        const yPos =
+          next.nodes.length === 0
+            ? 0
+            : Math.max(...next.nodes.map((n) => n.position.y)) + 120
+        next.nodes.push({
+          id,
+          type: nodeType,
+          label: "",
+          position: { x: 0, y: yPos },
+          config: {},
+        })
+        return next
+      })
+      setPaletteOpen(false)
+    },
+    [draft],
+  )
+
+  const handleRemoveNode = useCallback(
+    (nodeId: string) => {
+      draft.setDraftCanvas((prev) => ({
+        version: prev.version,
+        trigger: prev.trigger,
+        nodes: prev.nodes.filter((n) => n.id !== nodeId),
+        edges: prev.edges.filter(
+          (e) => e.source !== nodeId && e.target !== nodeId,
+        ),
+      }))
+    },
+    [draft],
+  )
+
+  const hasPendingWrite =
+    draft.savingState === "saving" || draft.isDirty
+
+  const handleBack = useCallback(() => {
+    if (hasPendingWrite) {
+      setGuardOpen(true)
+      return
+    }
+    onBack()
+  }, [hasPendingWrite, onBack])
+
+  const handleGuardSave = useCallback(async () => {
+    setGuardAction("save")
+    await draft.flushPendingSave()
+    setGuardAction(null)
+    setGuardOpen(false)
+    onBack()
+  }, [draft, onBack])
+
+  const handleGuardDiscard = useCallback(() => {
+    setGuardAction("discard")
+    draft.discardDraft()
+    setGuardAction(null)
+    setGuardOpen(false)
+    onBack()
+  }, [draft, onBack])
+
+  if (draft.isLoading) {
+    return (
+      <div
+        className="flex flex-col gap-2 px-3 py-3"
+        data-testid="runtime-inspector-workflow-edit-loading"
+      >
+        <BackHeader label="Workflows" onBack={onBack} />
+        <div className="flex items-center gap-2 text-caption text-content-muted">
+          <Loader2 size={14} className="animate-spin" /> Loading workflow…
+        </div>
+      </div>
+    )
+  }
+
+  if (draft.loadError || !draft.template) {
+    return (
+      <div
+        className="flex flex-col gap-2 px-3 py-3"
+        data-testid="runtime-inspector-workflow-edit-error"
+      >
+        <BackHeader label="Workflows" onBack={onBack} />
+        <div className="rounded-sm bg-status-error-muted px-2 py-1 text-caption text-status-error">
+          {draft.loadError ?? "Failed to load workflow"}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="flex flex-col gap-2 px-3 py-3"
+      data-testid="runtime-inspector-workflow-edit"
+      data-workflow-id={draft.template.id}
+    >
+      {/* Back header + breadcrumb */}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
+          data-testid="runtime-inspector-workflow-edit-back"
+          aria-label="Back to workflows list"
+        >
+          <ArrowLeft size={12} />
+          <span>Workflows</span>
+        </button>
+        <SavingIndicator state={draft.savingState} isDirty={draft.isDirty} />
+      </div>
+      <h2
+        className="text-body-sm font-medium text-content-strong truncate"
+        data-testid="runtime-inspector-workflow-edit-title"
+        title={draft.template.display_name}
+      >
+        {draft.template.display_name || draft.template.workflow_type}
+      </h2>
+      <div className="flex items-center gap-2 text-caption text-content-muted">
+        <code className="font-plex-mono">{draft.template.workflow_type}</code>
+        {draft.template.vertical && (
+          <Badge variant="outline" className="text-micro">
+            {draft.template.vertical}
+          </Badge>
+        )}
+      </div>
+
+      {/* Validation banner */}
+      {draft.validationError && (
+        <div
+          className="rounded-sm border border-status-error bg-status-error-muted px-2 py-1 text-caption text-status-error"
+          data-testid="runtime-inspector-workflow-validation"
+        >
+          {draft.validationError}
+        </div>
+      )}
+
+      {/* Toolbar — Add node */}
+      <div className="relative">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setPaletteOpen((o) => !o)}
+          data-testid="runtime-inspector-workflow-add-node"
+          aria-expanded={paletteOpen}
+        >
+          <Plus size={12} className="mr-1" />
+          Add node
+          <ChevronDown size={12} className="ml-1" />
+        </Button>
+        {paletteOpen && (
+          <div
+            className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-sm border border-border-base bg-surface-raised shadow-level-2"
+            data-testid="runtime-inspector-workflow-palette"
+          >
+            {VALID_NODE_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => handleAddNode(t)}
+                className="block w-full px-2 py-1.5 text-left font-plex-mono text-caption text-content-strong hover:bg-accent-subtle/60"
+                data-testid={`runtime-inspector-workflow-palette-${t}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Node list (read-only edges as labels per parity canon) */}
+      <div data-testid="runtime-inspector-workflow-node-list">
+        {draft.draftCanvas.nodes.length === 0 ? (
+          <p
+            className="rounded-sm border border-dashed border-border-base px-2 py-3 text-caption text-content-muted"
+            data-testid="runtime-inspector-workflow-empty-nodes"
+          >
+            No nodes yet. Use “Add node” above to start.
+          </p>
+        ) : (
+          <ol className="flex flex-col gap-1.5">
+            {draft.draftCanvas.nodes.map((node, idx) => {
+              const outgoingEdges = draft.draftCanvas.edges.filter(
+                (e) => e.source === node.id,
+              )
+              return (
+                <li
+                  key={node.id}
+                  data-testid={`runtime-inspector-workflow-node-${node.id}`}
+                  data-node-type={node.type}
+                >
+                  <div className="flex items-start justify-between gap-1 rounded-sm border border-border-subtle bg-surface-elevated hover:bg-accent-subtle/30">
+                    <button
+                      type="button"
+                      onClick={() => onSelectNode(node.id)}
+                      className="min-w-0 flex-1 px-2 py-1.5 text-left"
+                      data-testid={`runtime-inspector-workflow-node-${node.id}-select`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-micro text-content-muted">
+                          #{idx + 1}
+                        </span>
+                        <Badge variant="outline" className="text-micro">
+                          {node.type}
+                        </Badge>
+                        <code className="truncate font-plex-mono text-caption text-content-muted">
+                          {node.id}
+                        </code>
+                      </div>
+                      {node.label && (
+                        <p className="mt-0.5 truncate text-caption text-content-strong">
+                          {node.label}
+                        </p>
+                      )}
+                      {outgoingEdges.length > 0 && (
+                        <div className="mt-0.5 flex flex-wrap gap-1">
+                          {outgoingEdges.map((e) => {
+                            const target = draft.draftCanvas.nodes.find(
+                              (n) => n.id === e.target,
+                            )
+                            return (
+                              <span
+                                key={e.id}
+                                className="text-caption text-content-muted"
+                              >
+                                →{" "}
+                                <code className="font-plex-mono">
+                                  {target?.label ?? e.target}
+                                </code>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveNode(node.id)}
+                      data-testid={`runtime-inspector-workflow-node-${node.id}-remove`}
+                      aria-label={`Remove node ${node.id}`}
+                      className="m-1 rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+      </div>
+
+      {/* Unsaved-changes guard */}
+      <UnsavedChangesDialog
+        open={guardOpen}
+        actionPending={guardAction}
+        onSave={handleGuardSave}
+        onDiscard={handleGuardDiscard}
+        onCancel={() => setGuardOpen(false)}
+      />
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// Level 3 — Node config view
+// ─────────────────────────────────────────────────────────────────
+
+
+function NodeConfigView({
+  templateId,
+  nodeId,
+  onBack,
+}: {
+  templateId: string
+  nodeId: string
+  onBack: () => void
+}) {
+  const draft = useWorkflowDraft(templateId)
+  const [guardOpen, setGuardOpen] = useState(false)
+  const [guardAction, setGuardAction] = useState<GuardAction>(null)
+
+  const selectedNode = useMemo(
+    () => draft.draftCanvas.nodes.find((n) => n.id === nodeId) ?? null,
+    [draft.draftCanvas, nodeId],
+  )
+
+  const outgoingEdges = useMemo(
+    () =>
+      draft.draftCanvas.edges.filter((e) => e.source === nodeId),
+    [draft.draftCanvas, nodeId],
+  )
+
+  const handlePatch = useCallback(
+    (patch: Partial<CanvasNode>) => {
+      draft.setDraftCanvas((prev) => ({
+        version: prev.version,
+        trigger: prev.trigger,
+        nodes: prev.nodes.map((n) =>
+          n.id === nodeId ? { ...n, ...patch } : n,
+        ),
+        edges: prev.edges,
+      }))
+    },
+    [draft, nodeId],
+  )
+
+  const handleAddEdge = useCallback(
+    (target: string) => {
+      draft.setDraftCanvas((prev) => {
+        const id = generateEdgeId(prev, nodeId, target)
+        return {
+          version: prev.version,
+          trigger: prev.trigger,
+          nodes: prev.nodes,
+          edges: [...prev.edges, { id, source: nodeId, target }],
+        }
+      })
+    },
+    [draft, nodeId],
+  )
+
+  const handleRemoveEdge = useCallback(
+    (edgeId: string) => {
+      draft.setDraftCanvas((prev) => ({
+        version: prev.version,
+        trigger: prev.trigger,
+        nodes: prev.nodes,
+        edges: prev.edges.filter((e) => e.id !== edgeId),
+      }))
+    },
+    [draft],
+  )
+
+  const hasPendingWrite =
+    draft.savingState === "saving" || draft.isDirty
+
+  const handleBack = useCallback(() => {
+    if (hasPendingWrite) {
+      setGuardOpen(true)
+      return
+    }
+    onBack()
+  }, [hasPendingWrite, onBack])
+
+  const handleGuardSave = useCallback(async () => {
+    setGuardAction("save")
+    await draft.flushPendingSave()
+    setGuardAction(null)
+    setGuardOpen(false)
+    onBack()
+  }, [draft, onBack])
+
+  const handleGuardDiscard = useCallback(() => {
+    setGuardAction("discard")
+    draft.discardDraft()
+    setGuardAction(null)
+    setGuardOpen(false)
+    onBack()
+  }, [draft, onBack])
+
+  if (draft.isLoading) {
+    return (
+      <div
+        className="flex flex-col gap-2 px-3 py-3"
+        data-testid="runtime-inspector-node-config-loading"
+      >
+        <BackHeader label="Workflow" onBack={onBack} />
+        <div className="flex items-center gap-2 text-caption text-content-muted">
+          <Loader2 size={14} className="animate-spin" /> Loading workflow…
+        </div>
+      </div>
+    )
+  }
+
+  if (draft.loadError || !draft.template || !selectedNode) {
+    return (
+      <div
+        className="flex flex-col gap-2 px-3 py-3"
+        data-testid="runtime-inspector-node-config-error"
+      >
+        <BackHeader label="Workflow" onBack={onBack} />
+        <div className="rounded-sm bg-status-error-muted px-2 py-1 text-caption text-status-error">
+          {draft.loadError ?? "Node not found"}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="flex flex-col gap-2 px-3 py-3"
+      data-testid="runtime-inspector-node-config"
+      data-node-id={nodeId}
+    >
+      {/* Back header + breadcrumb */}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
+          data-testid="runtime-inspector-node-config-back"
+          aria-label="Back to workflow"
+        >
+          <ArrowLeft size={12} />
+          <span className="truncate">
+            {draft.template.display_name || draft.template.workflow_type}
+          </span>
+        </button>
+        <SavingIndicator state={draft.savingState} isDirty={draft.isDirty} />
+      </div>
+      <div className="text-caption text-content-muted">
+        Node:{" "}
+        <code className="font-plex-mono text-content-strong">
+          {selectedNode.id}
+        </code>
+      </div>
+
+      {/* Validation banner */}
+      {draft.validationError && (
+        <div
+          className="rounded-sm border border-status-error bg-status-error-muted px-2 py-1 text-caption text-status-error"
+          data-testid="runtime-inspector-node-config-validation"
+        >
+          {draft.validationError}
+        </div>
+      )}
+
+      <NodeConfigForm
+        node={selectedNode}
+        allNodes={draft.draftCanvas.nodes}
+        outgoingEdges={outgoingEdges}
+        onPatch={handlePatch}
+        onAddEdge={handleAddEdge}
+        onRemoveEdge={handleRemoveEdge}
+      />
+
+      {/* Unsaved-changes guard */}
+      <UnsavedChangesDialog
+        open={guardOpen}
+        actionPending={guardAction}
+        onSave={handleGuardSave}
+        onDiscard={handleGuardDiscard}
+        onCancel={() => setGuardOpen(false)}
+      />
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// Shared sub-components
+// ─────────────────────────────────────────────────────────────────
+
+
+function BackHeader({
+  label,
+  onBack,
+}: {
+  label: string
+  onBack: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
+      data-testid="runtime-inspector-back-header"
+    >
+      <ArrowLeft size={12} />
+      <span>{label}</span>
+    </button>
+  )
+}
+
+
+function SavingIndicator({
+  state,
+  isDirty,
+}: {
+  state: SavingState
+  isDirty: boolean
+}) {
+  // Saving-now beats saved beats unsaved beats idle.
+  if (state === "saving") {
+    return (
+      <span
+        className="flex items-center gap-1 text-caption text-content-muted"
+        data-testid="runtime-inspector-saving-indicator"
+        data-state="saving"
+      >
+        <Loader2 size={10} className="animate-spin" />
+        Saving…
+      </span>
+    )
+  }
+  if (state === "error") {
+    return (
+      <span
+        className="text-caption text-status-error"
+        data-testid="runtime-inspector-saving-indicator"
+        data-state="error"
+      >
+        Save failed
+      </span>
+    )
+  }
+  if (isDirty) {
+    return (
+      <span
+        className="text-caption text-content-muted"
+        data-testid="runtime-inspector-saving-indicator"
+        data-state="unsaved"
+      >
+        Unsaved
+      </span>
+    )
+  }
+  if (state === "saved") {
+    return (
+      <span
+        className="text-caption text-content-muted"
+        data-testid="runtime-inspector-saving-indicator"
+        data-state="saved"
+      >
+        Saved
+      </span>
+    )
+  }
+  return null
+}
+
+
+function UnsavedChangesDialog({
+  open,
+  actionPending,
+  onSave,
+  onDiscard,
+  onCancel,
+}: {
+  open: boolean
+  actionPending: GuardAction
+  onSave: () => void
+  onDiscard: () => void
+  onCancel: () => void
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onCancel()
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        data-testid="runtime-inspector-unsaved-dialog"
+      >
+        <DialogHeader>
+          <DialogTitle>Unsaved changes</DialogTitle>
+          <DialogDescription>
+            You have unsaved changes. Save now or discard?
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={onCancel}
+            disabled={actionPending !== null}
+            data-testid="runtime-inspector-unsaved-cancel"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onDiscard}
+            disabled={actionPending !== null}
+            data-testid="runtime-inspector-unsaved-discard"
+          >
+            Discard
+          </Button>
+          <Button
+            onClick={() => {
+              void onSave()
+            }}
+            disabled={actionPending !== null}
+            data-testid="runtime-inspector-unsaved-save"
+          >
+            {actionPending === "save" ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

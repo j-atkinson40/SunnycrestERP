@@ -16,7 +16,7 @@
  * Mocks workflowTemplatesService.list so tests don't hit the network.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   fireEvent,
   render,
@@ -31,6 +31,7 @@ import "@/lib/visual-editor/registry/auto-register"
 import { EditModeProvider, useEditMode } from "../edit-mode-context"
 import { InspectorPanel } from "./InspectorPanel"
 import {
+  AUTOSAVE_DEBOUNCE_MS,
   WorkflowsTab,
   workflowMatchesPageContext,
 } from "./WorkflowsTab"
@@ -40,14 +41,36 @@ import {
 } from "@/bridgeable-admin/services/workflow-templates-service"
 
 
-vi.mock("@/bridgeable-admin/services/workflow-templates-service", () => ({
-  workflowTemplatesService: {
-    list: vi.fn(),
+vi.mock("@/bridgeable-admin/services/workflow-templates-service", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/bridgeable-admin/services/workflow-templates-service")
+  >("@/bridgeable-admin/services/workflow-templates-service")
+  return {
+    ...actual,
+    workflowTemplatesService: {
+      list: vi.fn(),
+      get: vi.fn(),
+      update: vi.fn(),
+    },
+  }
+})
+
+
+// Sonner toast mock — captured for assertions; not actually rendering
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
   },
 }))
 
 
 const mockList = workflowTemplatesService.list as unknown as ReturnType<
+  typeof vi.fn
+>
+const mockGet = workflowTemplatesService.get as unknown as ReturnType<
+  typeof vi.fn
+>
+const mockUpdate = workflowTemplatesService.update as unknown as ReturnType<
   typeof vi.fn
 >
 
@@ -429,5 +452,875 @@ describe("workflowMatchesPageContext heuristic", () => {
         "Ab",
       ),
     ).toBe(false)
+  })
+})
+
+
+// ─────────────────────────────────────────────────────────────────
+// Arc 2 Phase 2b — in-inspector canvas editing
+// ─────────────────────────────────────────────────────────────────
+
+import { toast } from "sonner"
+import type {
+  WorkflowTemplateFull,
+  CanvasState,
+} from "@/bridgeable-admin/services/workflow-templates-service"
+
+
+function makeFullTemplate(
+  overrides: Partial<WorkflowTemplateFull> = {},
+): WorkflowTemplateFull {
+  return {
+    id: "tpl-1",
+    scope: "vertical_default",
+    vertical: "manufacturing",
+    workflow_type: "month_end_close",
+    display_name: "Month-End Close",
+    description: "Close the financial period.",
+    version: 1,
+    is_active: true,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    created_by: null,
+    updated_by: null,
+    canvas_state: {
+      version: 1,
+      nodes: [
+        {
+          id: "n_start",
+          type: "start",
+          label: "Begin",
+          position: { x: 0, y: 0 },
+          config: {},
+        },
+        {
+          id: "n_action_1",
+          type: "action",
+          label: "Generate report",
+          position: { x: 0, y: 120 },
+          config: { template_key: "month_end_close.report" },
+        },
+      ],
+      edges: [
+        { id: "e_start_action", source: "n_start", target: "n_action_1" },
+      ],
+    },
+    ...overrides,
+  }
+}
+
+
+describe("Arc 2 Phase 2b — mode-stack push (list → workflow-edit → node-config)", () => {
+  beforeEach(() => {
+    mockList.mockReset()
+    mockGet.mockReset()
+    mockUpdate.mockReset()
+    ;(toast.error as ReturnType<typeof vi.fn>).mockReset?.()
+  })
+
+  it("clicking a workflow row pushes to workflow-edit view (Level 2)", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-month_end_close"),
+      ).toBeTruthy()
+    })
+
+    // Click the row's edit-button (the workflow-name area) to push
+    const editButton = result.getByTestId(
+      "runtime-inspector-workflow-row-edit",
+    )
+    fireEvent.click(editButton)
+
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy()
+    })
+    expect(mockGet).toHaveBeenCalledWith("tpl-1")
+  })
+
+  it("workflow-edit view shows node list from loaded canvas_state", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_start"),
+      ).toBeTruthy()
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_action_1"),
+      ).toBeTruthy()
+    })
+  })
+
+  it("clicking a node row pushes to node-config view (Level 3)", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_action_1-select"),
+      ).toBeTruthy(),
+    )
+
+    // Pop ALL further get calls to clean tracking; click node
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-node-n_action_1-select"),
+    )
+
+    await waitFor(() => {
+      expect(result.getByTestId("runtime-inspector-node-config")).toBeTruthy()
+      expect(result.getByTestId("node-config-form")).toBeTruthy()
+    })
+  })
+
+  it("back arrow at Level 2 pops to Level 1 (list)", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    // Press back — no pending writes, should pop immediately
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-edit-back"))
+    await waitFor(() => {
+      expect(result.getByTestId("runtime-inspector-workflows-tab")).toBeTruthy()
+    })
+  })
+
+  it("back arrow at Level 3 pops to Level 2 (workflow-edit)", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_start-select"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-node-n_start-select"),
+    )
+    await waitFor(() =>
+      expect(result.getByTestId("runtime-inspector-node-config")).toBeTruthy(),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-node-config-back"))
+    await waitFor(() => {
+      expect(result.getByTestId("runtime-inspector-workflow-edit")).toBeTruthy()
+    })
+  })
+})
+
+
+describe("Arc 2 Phase 2b — autosave 1.5s debounce", () => {
+  beforeEach(() => {
+    mockList.mockReset()
+    mockGet.mockReset()
+    mockUpdate.mockReset()
+    ;(toast.error as ReturnType<typeof vi.fn>).mockReset?.()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("a mutation followed by 1.5s elapse calls service.update with full canvas_state", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    const initial = makeFullTemplate()
+    mockGet.mockResolvedValue(initial)
+    mockUpdate.mockResolvedValue({
+      ...initial,
+      canvas_state: {
+        ...initial.canvas_state,
+        nodes: [
+          ...(initial.canvas_state.nodes ?? []),
+          {
+            id: "n_node_3",
+            type: "action",
+            label: "",
+            position: { x: 0, y: 240 },
+            config: {},
+          },
+        ],
+      },
+    })
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    // Open palette, add a node
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    // Advance fake timers; assert update called exactly once with full
+    // canvas_state
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50)
+
+    await waitFor(() => {
+      expect(mockUpdate).toHaveBeenCalledTimes(1)
+    })
+    const updateCall = mockUpdate.mock.calls[0]
+    expect(updateCall[0]).toBe("tpl-1")
+    const payload = updateCall[1] as {
+      canvas_state: CanvasState
+      notify_forks: boolean
+    }
+    expect(payload.canvas_state.nodes.length).toBe(3) // original 2 + 1 added
+    expect(payload.notify_forks).toBe(true)
+  })
+
+  it("multiple mutations within 1.5s debounce result in a single service.update call", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    mockUpdate.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    // Three back-to-back mutations
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50)
+
+    await waitFor(() => {
+      expect(mockUpdate).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("saving indicator transitions unsaved → saving → saved on autosave success", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    // Echo the canvas_state from the patch back as the persisted state
+    // so isDirty becomes false post-save (lastSavedCanvasRef catches up
+    // to the current draftCanvas).
+    mockUpdate.mockImplementation(
+      async (
+        _id: string,
+        patch: { canvas_state?: Partial<CanvasState> },
+      ) => ({
+        ...makeFullTemplate(),
+        canvas_state: patch.canvas_state ?? makeFullTemplate().canvas_state,
+      }),
+    )
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    // Initial state: no indicator (idle, not dirty)
+    expect(
+      result.queryByTestId("runtime-inspector-saving-indicator"),
+    ).toBeNull()
+
+    // Mutate → unsaved state
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+    await waitFor(() => {
+      const ind = result.getByTestId("runtime-inspector-saving-indicator")
+      expect(ind.getAttribute("data-state")).toBe("unsaved")
+    })
+
+    // Fire timer → indicator flips to saving → saved
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50)
+    await waitFor(() => {
+      const ind = result.getByTestId("runtime-inspector-saving-indicator")
+      expect(ind.getAttribute("data-state")).toBe("saved")
+    })
+  })
+
+  it("save failure shows toast.error with retry action; indicator shows save-failed", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    mockUpdate.mockRejectedValue(new Error("network error"))
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+      const ind = result.getByTestId("runtime-inspector-saving-indicator")
+      expect(ind.getAttribute("data-state")).toBe("error")
+    })
+    const errorCall = (toast.error as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(errorCall[0]).toBe("Failed to save workflow")
+    expect(errorCall[1]).toMatchObject({
+      action: { label: "Retry" },
+    })
+  })
+})
+
+
+describe("Arc 2 Phase 2b — unsaved-changes guard dialog", () => {
+  beforeEach(() => {
+    mockList.mockReset()
+    mockGet.mockReset()
+    mockUpdate.mockReset()
+    ;(toast.error as ReturnType<typeof vi.fn>).mockReset?.()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("pop attempt with pending autosave shows the dialog", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    mockUpdate.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    // Mutate so isDirty=true, but do NOT advance time (autosave still
+    // pending in debounce window)
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    // Try to go back
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-edit-back"))
+
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-unsaved-dialog"),
+      ).toBeTruthy()
+    })
+  })
+
+  it("Save in dialog flushes autosave + pops to list", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    mockUpdate.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-edit-back"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-unsaved-dialog"),
+      ).toBeTruthy(),
+    )
+
+    // Save button
+    fireEvent.click(result.getByTestId("runtime-inspector-unsaved-save"))
+
+    await waitFor(() => {
+      expect(mockUpdate).toHaveBeenCalled()
+    })
+    await waitFor(() => {
+      // Back at list
+      expect(
+        result.getByTestId("runtime-inspector-workflows-tab"),
+      ).toBeTruthy()
+    })
+  })
+
+  it("Discard in dialog reverts canvas + pops to list (no service.update)", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    mockUpdate.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-edit-back"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-unsaved-dialog"),
+      ).toBeTruthy(),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-unsaved-discard"))
+
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-workflows-tab"),
+      ).toBeTruthy()
+    })
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it("Cancel in dialog stays at the current level", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    mockUpdate.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-action"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-action"),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-edit-back"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-unsaved-dialog"),
+      ).toBeTruthy(),
+    )
+
+    fireEvent.click(result.getByTestId("runtime-inspector-unsaved-cancel"))
+
+    // Still on workflow-edit
+    await waitFor(() =>
+      expect(result.getByTestId("runtime-inspector-workflow-edit")).toBeTruthy(),
+    )
+  })
+})
+
+
+describe("Arc 2 Phase 2b — node operations + per-node-type configs", () => {
+  beforeEach(() => {
+    mockList.mockReset()
+    mockGet.mockReset()
+    mockUpdate.mockReset()
+  })
+
+  it("Add node via palette appends to canvas_state.nodes", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-edit"),
+      ).toBeTruthy(),
+    )
+
+    // Two nodes initial
+    expect(
+      result.getByTestId("runtime-inspector-workflow-node-n_start"),
+    ).toBeTruthy()
+
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-add-node"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-palette-decision"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-palette-decision"),
+    )
+
+    // New node n_node_3 should appear
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_node_3"),
+      ).toBeTruthy()
+    })
+  })
+
+  it("Delete node removes from canvas_state.nodes (and incident edges)", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_action_1"),
+      ).toBeTruthy(),
+    )
+
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-node-n_action_1-remove"),
+    )
+    await waitFor(() => {
+      expect(
+        result.queryByTestId("runtime-inspector-workflow-node-n_action_1"),
+      ).toBeNull()
+    })
+  })
+
+  it("NodeConfigForm renders at 380px inspector width — JSON textarea fallback for canonical action node", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(makeFullTemplate())
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_action_1-select"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-node-n_action_1-select"),
+    )
+
+    // NodeConfigForm + standard fields render
+    await waitFor(() => {
+      expect(result.getByTestId("node-config-form")).toBeTruthy()
+      expect(result.getByTestId("node-config-type-select")).toBeTruthy()
+      expect(result.getByTestId("node-config-id-input")).toBeTruthy()
+      expect(result.getByTestId("node-config-label-input")).toBeTruthy()
+      // action node → JSON textarea fallback
+      expect(result.getByTestId("node-config-config-textarea")).toBeTruthy()
+    })
+  })
+
+  it("invoke_generation_focus node renders InvokeGenerationFocusConfig", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(
+      makeFullTemplate({
+        canvas_state: {
+          version: 1,
+          nodes: [
+            {
+              id: "n_gen",
+              type: "invoke_generation_focus",
+              label: "Generate",
+              position: { x: 0, y: 0 },
+              config: {
+                focus_id: "burial_vault_personalization_studio",
+                op_id: "extract_decedent_info",
+                source_bindings: [],
+              },
+            },
+          ],
+          edges: [],
+        },
+      }),
+    )
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_gen-select"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-node-n_gen-select"),
+    )
+
+    await waitFor(() => {
+      // Per-type config rendered → JSON textarea NOT present
+      expect(result.queryByTestId("node-config-config-textarea")).toBeNull()
+      // InvokeGenerationFocusConfig contains focus/op selectors —
+      // assert the form mounts (its specific test-ids depend on the
+      // standalone component; verify NodeConfigForm dispatched
+      // correctly via absence of JSON fallback).
+      expect(result.getByTestId("node-config-form")).toBeTruthy()
+    })
+  })
+
+  it("invoke_review_focus node renders InvokeReviewFocusConfig", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    mockGet.mockResolvedValue(
+      makeFullTemplate({
+        canvas_state: {
+          version: 1,
+          nodes: [
+            {
+              id: "n_review",
+              type: "invoke_review_focus",
+              label: "Review",
+              position: { x: 0, y: 0 },
+              config: {
+                review_focus_id: "burial_vault_review",
+                reviewer_role: "mfg_admin",
+                input_binding: {},
+                decision_actions: {
+                  approve: true,
+                  edit_and_approve: true,
+                  reject: true,
+                },
+              },
+            },
+          ],
+          edges: [],
+        },
+      }),
+    )
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-node-n_review-select"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflow-node-n_review-select"),
+    )
+
+    await waitFor(() => {
+      expect(result.queryByTestId("node-config-config-textarea")).toBeNull()
+      expect(result.getByTestId("node-config-form")).toBeTruthy()
+    })
+  })
+
+  it("Empty canvas state shows empty-state copy + add-node CTA stays visible", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-empty", workflow_type: "blank" }),
+    ])
+    mockGet.mockResolvedValue(
+      makeFullTemplate({
+        id: "tpl-empty",
+        workflow_type: "blank",
+        display_name: "Blank Workflow",
+        canvas_state: { version: 1, nodes: [], edges: [] },
+      }),
+    )
+    const result = render(<MountTab />)
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-edit"),
+      ).toBeTruthy(),
+    )
+    fireEvent.click(result.getByTestId("runtime-inspector-workflow-row-edit"))
+    await waitFor(() =>
+      expect(
+        result.getByTestId("runtime-inspector-workflow-empty-nodes"),
+      ).toBeTruthy(),
+    )
+    expect(
+      result.getByTestId("runtime-inspector-workflow-add-node"),
+    ).toBeTruthy()
   })
 })
