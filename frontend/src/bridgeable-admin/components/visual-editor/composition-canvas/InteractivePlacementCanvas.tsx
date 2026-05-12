@@ -494,10 +494,16 @@ function renderPlacement(
       data-row-id={row.row_id}
       className={`overflow-hidden rounded-md bg-surface-elevated shadow-level-1 ${baseRingClass}`}
       onPointerDown={(e) => {
-        if (!interactionsEnabled) return
+        // Arc 3a Q-CROSS-2: when interactionsEnabled=false (read-mostly
+        // mode, e.g. inspector embed at 380px), click-to-select still
+        // fires but startPlacementDrag does NOT. Standalone callers
+        // pass interactionsEnabled=true (default behavior — drag +
+        // select); inspector passes false (select-only).
         e.stopPropagation()
         onSelectPlacement(p.placement_id, { shift: e.shiftKey })
-        interactions.startPlacementDrag(p.placement_id, row.row_id, e)
+        if (interactionsEnabled) {
+          interactions.startPlacementDrag(p.placement_id, row.row_id, e)
+        }
       }}
     >
       {p.display_config?.show_header !== false && (
