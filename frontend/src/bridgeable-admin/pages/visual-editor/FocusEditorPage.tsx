@@ -1685,9 +1685,13 @@ function CategoryConfigPlaceholder({ focusType }: { focusType: FocusType }) {
         Class-level Focus configuration
       </div>
       <div className="mt-1 text-caption text-content-muted">
-        Type-level configurable props (header treatment, action bar
-        layout, transition style, dismiss behavior, accent border) live
-        in the Class Editor.
+        Type-level configurable props (header treatment, transition
+        style, dismiss behavior, accent border) live in the Class
+        Editor. Action bar buttons for this Focus type are configured
+        in the Class Editor as well — open the <code>focus</code> class
+        and edit its <code>buttonSlugs</code> array to compose the
+        default action bar, or open the <code>focus-template</code>
+        class to override per-template (Arc 4a.1).
       </div>
       <Link
         to={adminPath("/visual-editor/classes")}

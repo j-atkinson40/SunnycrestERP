@@ -51,6 +51,12 @@ import { OrderCardActionsRaw } from "@/components/delivery/OrderCardActions"
 
 import { registerComponent } from "../register"
 import type { EntityCardSectionExtension } from "../types"
+// Re-exported for back-compat — existing consumers that import
+// `BUTTON_SLUGS_PROP` from this file (R-2.1 era) continue to work.
+// Canonical home is `./shared-props.ts` (Arc 4a.1 — prevents circular
+// imports with `class-registrations.ts`).
+import { BUTTON_SLUGS_PROP as _SHARED_BUTTON_SLUGS_PROP } from "./shared-props"
+export { BUTTON_SLUGS_PROP } from "./shared-props"
 
 
 /** Internal helper: builds a `RegistrationMetadata` shape with the
@@ -102,25 +108,10 @@ function sectionMeta(opts: {
 }
 
 
-/** Shared `buttonSlugs` prop schema — R-2.1 button composition Path A.
- *  Array of componentReference props filtered to `button` ComponentKind.
- *  The actions sub-section's runtime maps each slug to a
- *  `<RegisteredButton componentName={slug} />`. */
-const BUTTON_SLUGS_PROP: import("../types").ConfigPropSchema<string[]> = {
-  type: "array",
-  default: [],
-  bounds: { maxLength: 6 },
-  displayLabel: "Action buttons",
-  description:
-    "Array of registered button slugs to render in this section. Each slug fires its R-4 contract on click. Buttons must be registered via `registry/registrations/buttons.ts` first.",
-  itemSchema: {
-    type: "componentReference",
-    default: "",
-    componentTypes: ["button"],
-    displayLabel: "Button",
-    description: "Pick a registered button by slug.",
-  },
-}
+/** Backwards-compat reference — canonical home is `./shared-props.ts`.
+ *  Existing R-2.1 usages reference `BUTTON_SLUGS_PROP` via local
+ *  identifier; alias kept so the existing closure references work. */
+const BUTTON_SLUGS_PROP = _SHARED_BUTTON_SLUGS_PROP
 
 
 // ─── delivery-card sub-sections (4) ────────────────────────────────

@@ -83,6 +83,28 @@ describe("CLASS_REGISTRATIONS", () => {
   it("getClassRegistration returns undefined for unknown class", () => {
     expect(getClassRegistration("not-a-real-class")).toBeUndefined()
   })
+
+  // ── Arc 4a.1 — Focus action bar via class-level buttonSlugs ──────
+  it("focus class declares buttonSlugs (Arc 4a.1 action bar substrate)", () => {
+    const prop = getClassProp("focus", "buttonSlugs")
+    expect(prop?.type).toBe("array")
+    expect(prop?.itemSchema?.type).toBe("componentReference")
+    expect(prop?.itemSchema?.componentTypes).toEqual(["button"])
+    expect(prop?.default).toEqual([])
+  })
+
+  it("focus-template class declares buttonSlugs override slot", () => {
+    const prop = getClassProp("focus-template", "buttonSlugs")
+    expect(prop?.type).toBe("array")
+    expect(prop?.itemSchema?.type).toBe("componentReference")
+    expect(prop?.itemSchema?.componentTypes).toEqual(["button"])
+  })
+
+  it("focus class buttonSlugs bounds limit length to 6 (R-2.1 canon)", () => {
+    const prop = getClassProp("focus", "buttonSlugs")
+    expect(prop?.bounds).toBeDefined()
+    expect((prop?.bounds as { maxLength: number }).maxLength).toBe(6)
+  })
 })
 
 

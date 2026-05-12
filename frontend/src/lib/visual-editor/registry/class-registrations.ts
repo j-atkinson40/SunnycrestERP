@@ -23,6 +23,11 @@
  */
 
 import type { ConfigPropSchema } from "./types"
+// Arc 4a.1 — Focus action bar substrate via class-level buttonSlugs.
+// Imported from `shared-props.ts` (NOT `entity-card-sections.ts`) to
+// avoid the circular load order that would otherwise register the
+// 10 entity-card sub-sections before the auto-register barrel fires.
+import { BUTTON_SLUGS_PROP } from "./registrations/shared-props"
 
 
 export interface ClassRegistration {
@@ -188,6 +193,17 @@ export const CLASS_REGISTRATIONS: Record<string, ClassRegistration> = {
         displayLabel: "Action bar layout",
         description: "How action buttons are arranged in the footer.",
       },
+      // Arc 4a.1 — Focus action bar buttons composed via class-level
+      // buttonSlugs (R-2.1 canon reuse). Per the Q-ARC4A-2 settled
+      // call: per-instance + per-mode + per-button-conditional
+      // substrate evolution triggers are NOT met today, so class
+      // scope is canonical. Tenant overrides via the class
+      // configuration layer apply across every Focus instance in
+      // the tenant. Future: when per-Focus-type buttonSlugs is
+      // demanded by concrete operator signal, the substrate
+      // evolves additively (e.g., per-Focus-template overrides via
+      // focus-template class) without retiring this slot.
+      buttonSlugs: BUTTON_SLUGS_PROP,
       transitionStyle: {
         type: "enum",
         default: "slide-up",
@@ -238,6 +254,12 @@ export const CLASS_REGISTRATIONS: Record<string, ClassRegistration> = {
         displayLabel: "Autosave interval",
         description: "How often draft state is committed (seconds).",
       },
+      // Arc 4a.1 — per-template action bar override slot. Empty array
+      // means "inherit from the parent `focus` class buttonSlugs".
+      // When populated, this template's action bar overrides the
+      // class-level default per the standard class inheritance walk
+      // (registration → class → platform → vertical → tenant → draft).
+      buttonSlugs: BUTTON_SLUGS_PROP,
     },
   },
 

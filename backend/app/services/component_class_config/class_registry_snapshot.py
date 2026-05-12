@@ -103,6 +103,20 @@ _ENTITY_CARD: ClassProps = {
 }
 
 
+# Arc 4a.1 — shared buttonSlugs prop schema (R-2.1 canon reuse).
+# Array of componentReference items filtered to `button` ComponentKind.
+# Mirrors the frontend BUTTON_SLUGS_PROP in
+# entity-card-sections.ts verbatim.
+_BUTTON_SLUGS: PropSchema = {
+    "type": "array",
+    "bounds": {"maxLength": 6},
+    "itemSchema": {
+        "type": "componentReference",
+        "componentTypes": ["button"],
+    },
+}
+
+
 _FOCUS: ClassProps = {
     "headerStyle": {
         "type": "enum",
@@ -124,6 +138,10 @@ _FOCUS: ClassProps = {
         "type": "enum",
         "bounds": ["none", "top-edge", "left-edge", "outline"],
     },
+    # Arc 4a.1 — Focus action bar buttons composed via class-level
+    # buttonSlugs. R-2.1 canon reuse; same shape as entity-card-section
+    # actions sub-section.
+    "buttonSlugs": _BUTTON_SLUGS,
 }
 
 
@@ -134,6 +152,10 @@ _FOCUS_TEMPLATE: ClassProps = {
     },
     "optionalFieldsVisible": {"type": "boolean"},
     "autosaveIntervalSeconds": {"type": "number", "bounds": [5, 120]},
+    # Arc 4a.1 — per-template override slot for the parent focus class's
+    # action bar buttons. When populated, this template's buttonSlugs
+    # override the class-level default via the standard inheritance walk.
+    "buttonSlugs": _BUTTON_SLUGS,
 }
 
 
