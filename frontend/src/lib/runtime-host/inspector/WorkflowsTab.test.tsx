@@ -323,9 +323,97 @@ describe("Arc 2 Phase 2a — WorkflowsTab (component-level)", () => {
     expect(openLinks.length).toBeGreaterThan(0)
     const link = openLinks[0]
     const href = link.getAttribute("href") ?? ""
-    expect(href.endsWith("/visual-editor/workflows")).toBe(true)
+    // Arc-3.x-deep-link-retrofit: deep-link carries return_to + workflow_type + scope.
+    expect(href).toContain("/visual-editor/workflows")
+    expect(href).toContain("workflow_type=month_end_close")
+    expect(href).toContain("scope=vertical_default")
+    expect(href).toContain("return_to=")
     expect(link.getAttribute("target")).toBe("_blank")
     expect(link.getAttribute("rel")).toBe("noopener noreferrer")
+  })
+
+  // Arc-3.x-deep-link-retrofit tests
+  it("deep-link encodes return_to with current pathname+search", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    const result = render(<MountTab />)
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-month_end_close"),
+      ).toBeTruthy()
+    })
+    const link = result.getAllByTestId(
+      "runtime-inspector-workflow-row-open",
+    )[0]
+    const href = link.getAttribute("href") ?? ""
+    const url = new URL(href, "http://localhost")
+    const returnTo = url.searchParams.get("return_to")
+    expect(returnTo).not.toBeNull()
+    // window.location at test-time is jsdom default ("/"). The encoder
+    // captures pathname + search regardless of what jsdom reports.
+    expect(typeof returnTo).toBe("string")
+    expect(returnTo!.length).toBeGreaterThan(0)
+  })
+
+  it("deep-link encodes the active scope in URL param", async () => {
+    mockList.mockResolvedValue([
+      makeMetadata({ id: "tpl-1", workflow_type: "month_end_close" }),
+    ])
+    const result = render(<MountTab />)
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-workflows-scope-pill"),
+      ).toBeTruthy()
+    })
+    // Switch scope to platform_default
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-workflows-scope-pill"),
+    )
+    mockList.mockResolvedValueOnce([
+      makeMetadata({
+        id: "tpl-2",
+        workflow_type: "global_cleanup",
+        scope: "platform_default",
+        vertical: null,
+      }),
+    ])
+    fireEvent.click(
+      result.getByTestId(
+        "runtime-inspector-workflows-scope-option-platform_default",
+      ),
+    )
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-workflow-row-global_cleanup"),
+      ).toBeTruthy()
+    })
+    const link = result.getAllByTestId(
+      "runtime-inspector-workflow-row-open",
+    )[0]
+    const href = link.getAttribute("href") ?? ""
+    expect(href).toContain("scope=platform_default")
+    expect(href).toContain("workflow_type=global_cleanup")
+  })
+
+  it("empty-state deep-link carries return_to (no workflow_type)", async () => {
+    mockList.mockResolvedValue([])
+    const result = render(<MountTab />)
+    await waitFor(() => {
+      expect(
+        result.getByTestId(
+          "runtime-inspector-workflows-empty-create-link",
+        ),
+      ).toBeTruthy()
+    })
+    const link = result.getByTestId(
+      "runtime-inspector-workflows-empty-create-link",
+    )
+    const href = link.getAttribute("href") ?? ""
+    expect(href).toContain("/visual-editor/workflows")
+    expect(href).toContain("return_to=")
+    // No workflow_type when no template selected
+    expect(href).not.toContain("workflow_type=")
   })
 
   it("empty state renders when service returns no workflows", async () => {

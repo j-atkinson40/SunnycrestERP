@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowLeftRight,
   GitBranch,
   History,
@@ -32,7 +33,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -107,10 +108,33 @@ function generateEdgeId(canvas: CanvasState, source: string, target: string): st
 
 
 export default function WorkflowEditorPage() {
+  // ── Arc-3.x-deep-link-retrofit: bidirectional deep-link ──
+  //
+  // When opened from the runtime editor inspector's Workflows tab via
+  // the "Open in full editor" deep-link, the URL carries `return_to`
+  // and optionally `workflow_type` + `scope`. We render a "Back to
+  // runtime editor" affordance that navigates the operator back with
+  // their inspector state preserved (return_to encoded the full
+  // pathname + search; the runtime editor stays mounted in the
+  // originating tab because the link uses target="_blank"). Launched
+  // directly (no return_to), the affordance is hidden and behavior is
+  // identical to pre-retrofit. Mirrors Arc 3a FocusEditorPage canon.
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const returnTo = searchParams.get("return_to")
+  const initialWorkflowType = searchParams.get("workflow_type")
+  const initialScope = searchParams.get("scope")
+
   // ── Template selection ───────────────────────────────
-  const [scope, setScope] = useState<WorkflowScope>("vertical_default")
+  const [scope, setScope] = useState<WorkflowScope>(
+    initialScope === "platform_default" || initialScope === "vertical_default"
+      ? (initialScope as WorkflowScope)
+      : "vertical_default",
+  )
   const [vertical, setVertical] = useState<string>("funeral_home")
-  const [workflowType, setWorkflowType] = useState<string>("")
+  const [workflowType, setWorkflowType] = useState<string>(
+    initialWorkflowType ?? "",
+  )
 
   // ── Available templates at the current scope/vertical ────
   const [availableTemplates, setAvailableTemplates] = useState<
@@ -443,6 +467,35 @@ export default function WorkflowEditorPage() {
       className="flex h-[calc(100vh-3rem)] flex-col"
       data-testid="workflow-editor-page"
     >
+      {/* Arc-3.x-deep-link-retrofit: return-to banner — visible only
+          when launched via inspector deep-link. Mirrors Arc 3a
+          FocusEditorPage banner shape verbatim (icon, copy, placement). */}
+      {returnTo && (
+        <div
+          className="flex items-center justify-between border-b border-border-subtle bg-accent-subtle/30 px-4 py-2"
+          data-testid="workflow-editor-return-to-banner"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                const decoded = decodeURIComponent(returnTo)
+                navigate(decoded)
+              } catch {
+                navigate(returnTo)
+              }
+            }}
+            className="flex items-center gap-1 text-caption font-medium text-content-strong hover:text-accent"
+            data-testid="workflow-editor-return-to-back"
+          >
+            <ArrowLeft size={12} />
+            Back to runtime editor
+          </button>
+          <span className="text-caption text-content-muted">
+            Inspector state preserved on return
+          </span>
+        </div>
+      )}
       {/* ── Top bar ───────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4 border-b border-border-subtle bg-surface-elevated px-6 py-3">
         <div>

@@ -33,12 +33,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   AlertCircle,
+  ArrowLeft,
   FileText,
   Layers,
   Loader2,
   Plus,
   Settings as SettingsIcon,
 } from "lucide-react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -72,6 +74,24 @@ type RightTab = "blocks" | "configuration" | "versions"
 
 
 export default function DocumentsEditorPage() {
+  // ── Arc-3.x-deep-link-retrofit: bidirectional deep-link ──
+  //
+  // When opened from the runtime editor inspector's Documents tab via
+  // the "Open in full editor" deep-link, the URL carries `return_to`
+  // and optionally `template_id` + `scope` + `document_type`. We
+  // render a "Back to runtime editor" affordance that navigates the
+  // operator back with their inspector state preserved (return_to
+  // encoded the originating URL; the runtime editor stays mounted in
+  // the originating tab via target="_blank"). Mirrors Arc 3a
+  // FocusEditorPage canon. When launched directly (no return_to),
+  // the banner is hidden and behavior is identical to pre-retrofit.
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const returnTo = searchParams.get("return_to")
+  const initialTemplateId = searchParams.get("template_id")
+  void searchParams.get("scope") // reserved: scope filter is per-pane state today
+  void searchParams.get("document_type") // reserved: document-type filter
+
   // ── Catalog + browser state ──────────────────────────────
   const [catalog, setCatalog] = useState<DocumentTypeCatalog | null>(null)
   const [templates, setTemplates] = useState<DocumentTemplateListItem[]>([])
@@ -80,7 +100,7 @@ export default function DocumentsEditorPage() {
     null,
   )
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
-    null,
+    initialTemplateId,
   )
 
   // ── Selected template state ──────────────────────────────
@@ -144,6 +164,21 @@ export default function DocumentsEditorPage() {
       cancelled = true
     }
   }, [])
+
+  // Arc-3.x-deep-link-retrofit: when launched via deep-link with
+  // template_id, also pre-select the matching category so the browser
+  // shows the template's group expanded. Runs once after catalog +
+  // templates load; deliberately omitted from deps after initial pass.
+  useEffect(() => {
+    if (!initialTemplateId || !catalog || templates.length === 0) return
+    const tmpl = templates.find((t) => t.id === initialTemplateId)
+    if (!tmpl) return
+    const typeEntry = catalog.types.find(
+      (ty) => ty.type_id === tmpl.document_type,
+    )
+    if (typeEntry?.category) setSelectedCategoryId(typeEntry.category)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, templates])
 
   // ── Browser data ─────────────────────────────────────────
   const { browserCategories, browserTemplates } = useMemo(() => {
@@ -366,6 +401,35 @@ export default function DocumentsEditorPage() {
       className="flex h-[calc(100vh-3rem)] w-full flex-col"
       data-testid="documents-editor"
     >
+      {/* Arc-3.x-deep-link-retrofit: return-to banner — visible only
+          when launched via inspector deep-link. Mirrors Arc 3a
+          FocusEditorPage banner shape verbatim (icon, copy, placement). */}
+      {returnTo && (
+        <div
+          className="flex items-center justify-between border-b border-border-subtle bg-accent-subtle/30 px-4 py-2"
+          data-testid="documents-editor-return-to-banner"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                const decoded = decodeURIComponent(returnTo)
+                navigate(decoded)
+              } catch {
+                navigate(returnTo)
+              }
+            }}
+            className="flex items-center gap-1 text-caption font-medium text-content-strong hover:text-accent"
+            data-testid="documents-editor-return-to-back"
+          >
+            <ArrowLeft size={12} />
+            Back to runtime editor
+          </button>
+          <span className="text-caption text-content-muted">
+            Inspector state preserved on return
+          </span>
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         {/* ── LEFT: Hierarchical browser ──────────────────── */}
         <aside

@@ -77,6 +77,7 @@ import {
   type WorkflowTemplateMetadata,
 } from "@/bridgeable-admin/services/workflow-templates-service"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
+import { buildEditorDeepLink } from "./deep-link-state"
 import {
   CanvasValidationError,
   VALID_NODE_TYPES,
@@ -106,9 +107,29 @@ export type ModeStackLevel =
   | { kind: "node-config"; templateId: string; nodeId: string }
 
 
-/** Build the workflow standalone editor URL (Phase 2a deep-link). */
-function buildEditorUrl(_template: WorkflowTemplateMetadata): string {
-  return adminPath("/visual-editor/workflows")
+/** Build the workflow standalone editor URL.
+ *
+ *  Arc-3.x-deep-link-retrofit (May 2026): upgraded from one-way bare
+ *  URL to bidirectional deep-link carrying `return_to` per Arc 3a
+ *  deep-link-as-navigation-primitive canon. Optional params:
+ *  `workflow_type` (so standalone pre-selects the matching template)
+ *  + `scope` (preserves inspector's scope pill selection).
+ *
+ *  Inspector state is preserved on return because `return_to` carries
+ *  the originating pathname+search; the runtime editor route stays
+ *  mounted in the originating browser tab (link opens via target=
+ *  "_blank"). No URL-state-to-inspector-state restoration logic
+ *  needed — same mechanism Arc 3a established for FocusCompositionsTab.
+ */
+function buildEditorUrl(
+  template?: WorkflowTemplateMetadata,
+  scope?: WorkflowScope,
+): string {
+  const base = adminPath("/visual-editor/workflows")
+  return buildEditorDeepLink(base, {
+    workflow_type: template?.workflow_type,
+    scope: scope,
+  })
 }
 
 
@@ -402,6 +423,7 @@ function ListView({
             <WorkflowRow
               key={w.id}
               workflow={w}
+              scope={scope}
               onSelect={() => onSelectWorkflow(w.id)}
             />
           ))}
@@ -414,12 +436,17 @@ function ListView({
 
 function WorkflowRow({
   workflow,
+  scope,
   onSelect,
 }: {
   workflow: WorkflowTemplateMetadata
+  scope: WorkflowScope
   onSelect: () => void
 }) {
-  const editorUrl = buildEditorUrl(workflow)
+  // Arc-3.x-deep-link-retrofit: bidirectional deep-link carrying
+  // return_to + workflow_type + scope so standalone pre-selects
+  // matching template and returns to inspector with state preserved.
+  const editorUrl = buildEditorUrl(workflow, scope)
 
   return (
     <li
@@ -496,7 +523,7 @@ function EmptyState({
     >
       No workflows in this scope yet.{" "}
       <a
-        href={adminPath("/visual-editor/workflows")}
+        href={buildEditorUrl()}
         target="_blank"
         rel="noopener noreferrer"
         className="text-accent hover:underline"

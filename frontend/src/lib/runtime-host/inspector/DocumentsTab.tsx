@@ -72,6 +72,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
+import { buildEditorDeepLink } from "./deep-link-state"
 import { BlockConfigEditor } from "@/bridgeable-admin/components/visual-editor/documents/BlockConfigEditor"
 import { BlockKindPicker } from "@/bridgeable-admin/components/visual-editor/documents/BlockKindPicker"
 import {
@@ -105,6 +106,29 @@ export type ModeStackLevel =
 
 /** Scope filter for the templates list. Per documents-v2 contract. */
 type ScopeFilter = "both" | "platform" | "tenant"
+
+
+/** Build the documents standalone editor URL.
+ *
+ *  Arc-3.x-deep-link-retrofit (May 2026): bidirectional deep-link
+ *  carrying `return_to` per Arc 3a canon. Optional params:
+ *  `template_id` (so standalone pre-selects matching template),
+ *  `scope`, `document_type`. State preservation mechanism per Arc 3a:
+ *  return_to encodes originating URL; runtime editor stays mounted
+ *  in originating tab (target="_blank"); state is preserved via
+ *  React state, not URL restoration. */
+function buildDocumentsEditorUrl(opts?: {
+  templateId?: string
+  scope?: ScopeFilter
+  documentType?: string | null
+}): string {
+  const base = adminPath("/visual-editor/documents")
+  return buildEditorDeepLink(base, {
+    template_id: opts?.templateId,
+    scope: opts?.scope,
+    document_type: opts?.documentType ?? undefined,
+  })
+}
 
 
 export function DocumentsTab({ vertical: _vertical }: DocumentsTabProps) {
@@ -379,6 +403,8 @@ function ListView({
             <TemplateRow
               key={t.id}
               template={t}
+              scope={scope}
+              documentType={documentTypeFilter}
               onSelect={() => onSelectTemplate(t.id)}
             />
           ))}
@@ -391,12 +417,24 @@ function ListView({
 
 function TemplateRow({
   template,
+  scope,
+  documentType,
   onSelect,
 }: {
   template: DocumentTemplateListItem
+  scope: ScopeFilter
+  documentType: string | null
   onSelect: () => void
 }) {
-  const editorUrl = adminPath("/visual-editor/documents")
+  // Arc-3.x-deep-link-retrofit: bidirectional deep-link carrying
+  // return_to + template_id + scope + document_type so standalone
+  // pre-selects matching template and returns to inspector with
+  // state preserved.
+  const editorUrl = buildDocumentsEditorUrl({
+    templateId: template.id,
+    scope,
+    documentType,
+  })
   return (
     <li
       data-testid={`runtime-inspector-document-row-${template.id}`}
@@ -477,7 +515,7 @@ function EmptyState({
       No templates in <span className="text-content-strong">{scope}</span>{" "}
       scope yet.{" "}
       <a
-        href={adminPath("/visual-editor/documents")}
+        href={buildDocumentsEditorUrl({ scope })}
         target="_blank"
         rel="noopener noreferrer"
         className="text-accent hover:underline"
@@ -806,7 +844,12 @@ function TemplateEditView({
   }
 
   const topLevel = draft.blocks.filter((b) => !b.parent_block_id)
-  const editorUrl = adminPath("/visual-editor/documents")
+  // Arc-3.x-deep-link-retrofit: Level 2 deep-link carries template_id
+  // so standalone pre-selects the active template; return_to preserves
+  // inspector state (still at Level 2 in the originating tab) on return.
+  const editorUrl = buildDocumentsEditorUrl({
+    templateId: draft.templateDetail.id,
+  })
 
   return (
     <div

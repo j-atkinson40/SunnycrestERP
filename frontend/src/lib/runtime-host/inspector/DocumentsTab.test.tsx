@@ -485,6 +485,42 @@ describe("Arc 3b — DocumentsTab level 1: template list", () => {
     expect(openLink.href).toContain("/visual-editor/documents")
   })
 
+  // Arc-3.x-deep-link-retrofit tests
+  it("deep-link carries return_to + template_id + scope", async () => {
+    const result = render(<MountTab />)
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-document-row-tpl-1"),
+      ).toBeTruthy()
+    })
+    const openLink = result.getByTestId(
+      "runtime-inspector-document-row-tpl-1-open",
+    ) as HTMLAnchorElement
+    const href = openLink.href
+    expect(href).toContain("return_to=")
+    expect(href).toContain("template_id=tpl-1")
+    expect(href).toContain("scope=both")
+  })
+
+  it("empty-state deep-link carries return_to + scope (no template_id)", async () => {
+    mockListTemplates.mockResolvedValue(makeListResponse([]))
+    const result = render(<MountTab />)
+    await waitFor(() => {
+      expect(
+        result.getByTestId(
+          "runtime-inspector-documents-empty-create-link",
+        ),
+      ).toBeTruthy()
+    })
+    const link = result.getByTestId(
+      "runtime-inspector-documents-empty-create-link",
+    ) as HTMLAnchorElement
+    expect(link.href).toContain("/visual-editor/documents")
+    expect(link.href).toContain("return_to=")
+    expect(link.href).toContain("scope=both")
+    expect(link.href).not.toContain("template_id=")
+  })
+
   it("empty state renders when zero templates", async () => {
     mockListTemplates.mockResolvedValue(makeListResponse([]))
     const result = render(<MountTab />)
@@ -532,6 +568,32 @@ describe("Arc 3b — Mode-stack push level 1 → 2 → 3 and pop", () => {
     })
     // service.getTemplate fired for the selected template
     expect(mockGetTemplate).toHaveBeenCalledWith("tpl-1")
+  })
+
+  it("level 2 'Full editor' deep-link carries return_to + template_id (Arc-3.x-deep-link-retrofit)", async () => {
+    const result = render(<MountTab />)
+    await waitFor(() => {
+      expect(
+        result.getByTestId("runtime-inspector-document-row-tpl-1"),
+      ).toBeTruthy()
+    })
+    fireEvent.click(
+      result.getByTestId("runtime-inspector-document-row-tpl-1-edit"),
+    )
+    await waitFor(() => {
+      expect(
+        result.getByTestId(
+          "runtime-inspector-documents-open-full-editor",
+        ),
+      ).toBeTruthy()
+    })
+    const link = result.getByTestId(
+      "runtime-inspector-documents-open-full-editor",
+    ) as HTMLAnchorElement
+    expect(link.href).toContain("/visual-editor/documents")
+    expect(link.href).toContain("return_to=")
+    expect(link.href).toContain("template_id=tpl-1")
+    expect(link.target).toBe("_blank")
   })
 
   it("clicking block row pushes to level 3 (block-detail)", async () => {
