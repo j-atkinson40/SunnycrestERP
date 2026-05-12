@@ -64,10 +64,30 @@ import {
   ArrowLeft,
   ChevronDown,
   ExternalLink,
+  GripVertical,
   Loader2,
+  MoveDown,
+  MoveUp,
   Plus,
   Trash2,
 } from "lucide-react"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -87,6 +107,10 @@ import {
   type DocumentTemplateListItem,
   type DocumentTemplateVersion,
 } from "@/services/documents-v2-service"
+import {
+  SuggestionDropdown,
+  handleSuggestionKeyDown,
+} from "@/lib/visual-editor/suggestion-dropdown"
 
 
 export interface DocumentsTabProps {
@@ -789,6 +813,66 @@ function useTemplateBlocks(templateId: string) {
     [templateDetail, editingVersion, reloadBlocks, clearBlockError, setBlockError],
   )
 
+  /** Arc 4b.1b — Per-block-immediate-write: reorder top-level OR
+   *  child blocks via documentBlocksService.reorder. Optimistic
+   *  update + rollback on failure per Arc 4b.1b drag-drop spec.
+   *  Operates on the parent_block_id scope: pass null for top-level,
+   *  or a parent_block_id for that parent's children. The full
+   *  ordered id list at that scope is what the server replays.
+   *  Per Q-DOCS-2 per-block-immediate canon: fires the API
+   *  immediately; no batching.
+   */
+  const reorderBlocks = useCallback(
+    async (
+      orderedIds: string[],
+      parentBlockId: string | null,
+    ): Promise<boolean> => {
+      if (!templateDetail || !editingVersion) return false
+      // Snapshot current blocks for rollback on failure
+      const snapshot = blocks
+      // Optimistic update — reproject `position` per orderedIds
+      // within the parent scope, leaving other blocks untouched.
+      const idToPosition = new Map<string, number>()
+      orderedIds.forEach((id, idx) => {
+        idToPosition.set(id, idx)
+      })
+      const optimistic = blocks.map((b) => {
+        const matchesScope =
+          (parentBlockId === null && b.parent_block_id === null) ||
+          (parentBlockId !== null && b.parent_block_id === parentBlockId)
+        if (matchesScope && idToPosition.has(b.id)) {
+          return { ...b, position: idToPosition.get(b.id)! }
+        }
+        return b
+      })
+      if (!cancelledRef.current) setBlocks(optimistic)
+      clearBlockError("__reorder__")
+      try {
+        const rows = await documentBlocksService.reorder(
+          templateDetail.id,
+          editingVersion.id,
+          { block_id_order: orderedIds, parent_block_id: parentBlockId },
+        )
+        if (!cancelledRef.current) setBlocks(rows)
+        return true
+      } catch (err) {
+        // Rollback to pre-mutation snapshot
+        if (!cancelledRef.current) setBlocks(snapshot)
+        // eslint-disable-next-line no-console
+        console.error(
+          "[runtime-editor] documents reorder blocks failed",
+          err,
+        )
+        setBlockError(
+          "__reorder__",
+          err instanceof Error ? err.message : "Failed to reorder blocks",
+        )
+        return false
+      }
+    },
+    [templateDetail, editingVersion, blocks, clearBlockError, setBlockError],
+  )
+
   /** Per-block immediate write: delete block. */
   const deleteBlock = useCallback(
     async (blockId: string): Promise<boolean> => {
@@ -840,6 +924,7 @@ function useTemplateBlocks(templateId: string) {
     updateBlockConfig,
     updateBlockCondition,
     deleteBlock,
+    reorderBlocks,
     clearBlockError,
   }
 }
@@ -856,6 +941,22 @@ function TemplateEditView({
 }) {
   const draft = useTemplateBlocks(templateId)
   const [showPicker, setShowPicker] = useState(false)
+
+  // Arc 4b.1b — Slash command summoning state. The `/` keystroke in
+  // the slash-input opens SuggestionDropdown with block_registry
+  // kinds; Enter inserts a new block; Escape cancels. Documents-only
+  // (Q-COMMITMENT-4 settled scope).
+  const [slashOpen, setSlashOpen] = useState(false)
+  const [slashQuery, setSlashQuery] = useState("")
+  const [slashActiveId, setSlashActiveId] = useState<string | null>(null)
+  const [slashPosition, setSlashPosition] = useState<{
+    top: number
+    left: number
+  }>({ top: 0, left: 0 })
+  const slashInputRef = useRef<HTMLInputElement | null>(null)
+  // Arc 4b.1b — Track focused block id so Alt+Arrow keyboard
+  // shortcuts target the right block. Updated on block hover/focus.
+  const focusedBlockIdRef = useRef<string | null>(null)
 
   const canEdit = !!draft.draftVersion
 
@@ -954,7 +1055,10 @@ function TemplateEditView({
         </div>
       )}
 
-      {/* Add block button */}
+      {/* Arc 4b.1b — Add block: slash command input + fallback picker.
+       *  Slash command is the canonical insertion UX (Notion-shape);
+       *  the legacy modal picker remains as fallback for users who
+       *  prefer browse-first. */}
       <div className="flex items-center justify-between">
         <span className="text-micro uppercase tracking-wider text-content-muted">
           Blocks ({topLevel.length})
@@ -969,6 +1073,31 @@ function TemplateEditView({
           <Plus size={11} className="mr-1" /> Add
         </Button>
       </div>
+
+      {/* Slash-command input — Arc 4b.1b. Type `/` to summon
+       *  SuggestionDropdown listing block_registry kinds. Enter
+       *  inserts a new block; Escape cancels. */}
+      {canEdit && (
+        <SlashCommandInput
+          inputRef={slashInputRef}
+          slashOpen={slashOpen}
+          slashQuery={slashQuery}
+          slashActiveId={slashActiveId}
+          slashPosition={slashPosition}
+          blockKinds={draft.blockKinds}
+          onOpenChange={setSlashOpen}
+          onQueryChange={setSlashQuery}
+          onActiveChange={setSlashActiveId}
+          onPositionChange={setSlashPosition}
+          onInsert={(kind) => {
+            setSlashOpen(false)
+            setSlashQuery("")
+            setSlashActiveId(null)
+            if (slashInputRef.current) slashInputRef.current.value = ""
+            void draft.addBlock(kind)
+          }}
+        />
+      )}
 
       {/* Add-block error surface */}
       {draft.blockErrors.__add__ && (
@@ -990,97 +1119,50 @@ function TemplateEditView({
         </div>
       )}
 
-      {/* Block list */}
-      <div data-testid="runtime-inspector-documents-block-list">
-        {topLevel.length === 0 ? (
-          <p
-            className="rounded-sm border border-dashed border-border-base px-2 py-3 text-caption text-content-muted"
-            data-testid="runtime-inspector-documents-empty-blocks"
+      {/* Reorder error surface — Arc 4b.1b. Optimistic-update rollback
+       *  on reorder failure restores prior block order; this surface
+       *  notifies the operator the server rejected the new order. */}
+      {draft.blockErrors.__reorder__ && (
+        <div
+          className="flex items-start gap-1 rounded-sm bg-status-error-muted px-2 py-1 text-caption text-status-error"
+          data-testid="runtime-inspector-documents-reorder-error"
+        >
+          <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+          <span className="flex-1">{draft.blockErrors.__reorder__}</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => draft.clearBlockError("__reorder__")}
+            className="ml-1 h-5 px-1 text-caption"
+            data-testid="runtime-inspector-documents-reorder-error-dismiss"
           >
-            No blocks yet. Use “Add” above to start.
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-1.5">
-            {topLevel.map((block, idx) => {
-              const children = draft.blocks
-                .filter((b) => b.parent_block_id === block.id)
-                .sort((a, b) => a.position - b.position)
-              return (
-                <li
-                  key={block.id}
-                  data-testid={`runtime-inspector-documents-block-${block.id}`}
-                  data-block-kind={block.block_kind}
-                >
-                  <div className="flex items-start justify-between gap-1 rounded-sm border border-border-subtle bg-surface-elevated hover:bg-accent-subtle/30">
-                    <button
-                      type="button"
-                      onClick={() => onSelectBlock(block.id)}
-                      className="min-w-0 flex-1 px-2 py-1.5 text-left"
-                      data-testid={`runtime-inspector-documents-block-${block.id}-select`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-micro text-content-muted">
-                          #{idx + 1}
-                        </span>
-                        <Badge variant="outline" className="text-micro">
-                          {block.block_kind}
-                        </Badge>
-                        <span className="text-caption text-content-muted">
-                          pos {block.position}
-                        </span>
-                        {children.length > 0 && (
-                          <span className="text-caption text-content-muted">
-                            · {children.length} child{children.length === 1 ? "" : "ren"}
-                          </span>
-                        )}
-                      </div>
-                      {children.length > 0 && (
-                        <div className="mt-0.5 flex flex-wrap gap-1">
-                          {children.map((c) => (
-                            <code
-                              key={c.id}
-                              className="text-caption text-content-muted font-plex-mono"
-                            >
-                              ↳ {c.block_kind}
-                            </code>
-                          ))}
-                        </div>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void draft.deleteBlock(block.id)}
-                      disabled={!canEdit || !!draft.blockSaving[block.id]}
-                      data-testid={`runtime-inspector-documents-block-${block.id}-remove`}
-                      aria-label={`Remove block ${block.id}`}
-                      className="m-1 rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error disabled:opacity-50"
-                    >
-                      <Trash2 size={10} />
-                    </button>
-                  </div>
-                  {draft.blockErrors[block.id] && (
-                    <div
-                      className="mt-1 flex items-start gap-1 rounded-sm bg-status-error-muted px-2 py-1 text-caption text-status-error"
-                      data-testid={`runtime-inspector-documents-block-${block.id}-error`}
-                    >
-                      <AlertCircle size={11} className="mt-0.5 flex-shrink-0" />
-                      <span className="flex-1">{draft.blockErrors[block.id]}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => draft.clearBlockError(block.id)}
-                        className="ml-1 h-5 px-1 text-caption"
-                      >
-                        Dismiss
-                      </Button>
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ol>
-        )}
-      </div>
+            Dismiss
+          </Button>
+        </div>
+      )}
+
+      {/* Block list — Arc 4b.1b drag-drop reorderable. @dnd-kit/sortable
+       *  consumer matching WidgetGrid precedent. Grip handle for drag
+       *  (hover-revealed); Move-up/Move-down buttons (also hover-
+       *  revealed); Alt+ArrowUp/Down keyboard shortcuts (Alt is
+       *  canonical per Command Bar digit shortcut precedent). */}
+      <SortableBlockList
+        blocks={topLevel}
+        allBlocks={draft.blocks}
+        canEdit={canEdit}
+        blockSaving={draft.blockSaving}
+        blockErrors={draft.blockErrors}
+        clearBlockError={draft.clearBlockError}
+        onSelectBlock={onSelectBlock}
+        onDelete={(blockId) => void draft.deleteBlock(blockId)}
+        onReorder={(orderedIds) =>
+          void draft.reorderBlocks(orderedIds, null)
+        }
+        onFocusBlock={(id) => {
+          focusedBlockIdRef.current = id
+        }}
+        focusedBlockIdRef={focusedBlockIdRef}
+      />
 
       {showPicker && (
         <BlockKindPicker
@@ -1093,6 +1175,516 @@ function TemplateEditView({
         />
       )}
     </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// Arc 4b.1b — Slash command input
+// ─────────────────────────────────────────────────────────────────
+
+
+/** Slash-command input. Operator types into a single-line input;
+ *  hitting `/` summons SuggestionDropdown over the block kinds.
+ *  Per-kind preview = kind display_name + description from the
+ *  block_registry metadata (canonical source). Enter inserts;
+ *  Escape cancels + clears `/` from input. Documents-only per
+ *  Q-COMMITMENT-4 settled scope. */
+function SlashCommandInput({
+  inputRef,
+  slashOpen,
+  slashQuery,
+  slashActiveId,
+  slashPosition,
+  blockKinds,
+  onOpenChange,
+  onQueryChange,
+  onActiveChange,
+  onPositionChange,
+  onInsert,
+}: {
+  inputRef: React.MutableRefObject<HTMLInputElement | null>
+  slashOpen: boolean
+  slashQuery: string
+  slashActiveId: string | null
+  slashPosition: { top: number; left: number }
+  blockKinds: BlockKindMetadata[]
+  onOpenChange: (open: boolean) => void
+  onQueryChange: (q: string) => void
+  onActiveChange: (id: string | null) => void
+  onPositionChange: (pos: { top: number; left: number }) => void
+  onInsert: (kind: string) => void
+}) {
+  // Filter block kinds by query (after the `/`).
+  const filteredKinds = useMemo(() => {
+    const q = slashQuery.trim().toLowerCase()
+    if (q.length === 0) return blockKinds
+    return blockKinds.filter(
+      (k) =>
+        k.kind.toLowerCase().includes(q) ||
+        k.display_name.toLowerCase().includes(q),
+    )
+  }, [slashQuery, blockKinds])
+
+  // Initialize active id to first match when filter changes.
+  useEffect(() => {
+    if (!slashOpen) return
+    if (filteredKinds.length === 0) {
+      onActiveChange(null)
+      return
+    }
+    const stillValid = filteredKinds.some((k) => k.kind === slashActiveId)
+    if (!stillValid) onActiveChange(filteredKinds[0].kind)
+  }, [filteredKinds, slashActiveId, slashOpen, onActiveChange])
+
+  function cancel() {
+    onOpenChange(false)
+    onQueryChange("")
+    onActiveChange(null)
+    if (inputRef.current) inputRef.current.value = ""
+  }
+
+  function commitSelection(kind: string) {
+    onInsert(kind)
+  }
+
+  return (
+    <div
+      className="relative flex flex-col gap-1"
+      data-testid="runtime-inspector-documents-slash-input-wrapper"
+    >
+      <label
+        htmlFor="runtime-inspector-documents-slash-input"
+        className="text-micro uppercase tracking-wider text-content-muted"
+      >
+        Quick insert
+      </label>
+      <input
+        ref={inputRef}
+        id="runtime-inspector-documents-slash-input"
+        type="text"
+        placeholder='Type "/" to insert a block…'
+        data-testid="runtime-inspector-documents-slash-input"
+        data-slash-open={slashOpen ? "true" : "false"}
+        className="w-full rounded-sm border border-border-base bg-surface-elevated px-2 py-1.5 text-caption text-content-strong placeholder:text-content-muted focus-ring-accent"
+        onChange={(e) => {
+          const value = e.target.value
+          if (value.startsWith("/")) {
+            if (!slashOpen) {
+              // Position dropdown below the input
+              const rect = e.currentTarget.getBoundingClientRect()
+              onPositionChange({
+                top: rect.bottom + 4,
+                left: rect.left,
+              })
+              onOpenChange(true)
+            }
+            onQueryChange(value.slice(1))
+          } else if (value === "") {
+            // Cleared input — close
+            if (slashOpen) cancel()
+          } else if (slashOpen) {
+            // User typed non-`/` text; drop the dropdown and treat
+            // input as free text (no insertion).
+            cancel()
+          }
+        }}
+        onKeyDown={(e) => {
+          if (!slashOpen) return
+          const handled = handleSuggestionKeyDown(e, {
+            suggestions: filteredKinds,
+            activeId: slashActiveId,
+            onActiveChange,
+            onSelect: (k) => commitSelection(k.kind),
+            onCancel: cancel,
+            getKey: (k) => k.kind,
+          })
+          if (handled) {
+            // event already prevented inside handler
+          }
+        }}
+      />
+      {slashOpen && (
+        <SuggestionDropdown<BlockKindMetadata>
+          suggestions={filteredKinds}
+          activeId={slashActiveId}
+          onActiveChange={onActiveChange}
+          onSelect={(k) => commitSelection(k.kind)}
+          onCancel={cancel}
+          getKey={(k) => k.kind}
+          position={slashPosition}
+          width={340}
+          renderSuggestion={(k, active) => (
+            <div data-testid={`runtime-inspector-documents-slash-row-${k.kind}`}>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`text-body-sm font-medium ${
+                    active ? "text-content-strong" : "text-content-base"
+                  }`}
+                >
+                  {k.display_name}
+                </span>
+                <code className="font-plex-mono text-micro text-content-muted">
+                  {k.kind}
+                </code>
+                {k.accepts_children && (
+                  <Badge variant="outline" className="text-micro">
+                    wraps
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-0.5 text-caption text-content-muted line-clamp-2">
+                {k.description}
+              </div>
+            </div>
+          )}
+          renderEmpty={() => (
+            <span data-testid="runtime-inspector-documents-slash-empty">
+              No block kind matches{slashQuery ? ` “${slashQuery}”` : ""}.
+            </span>
+          )}
+          data-testid="runtime-inspector-documents-slash-dropdown"
+        />
+      )}
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// Arc 4b.1b — Sortable block list (drag-drop reorder)
+// ─────────────────────────────────────────────────────────────────
+
+
+/** Sortable wrapper for the top-level block list. Mirrors WidgetGrid's
+ *  @dnd-kit/sortable consumer shape:
+ *    - PointerSensor with 8px activation distance (prevents
+ *      accidental drag on intended clicks).
+ *    - KeyboardSensor for native focus-based reorder (Tab into a
+ *      sortable, Space to lift, ArrowDown to move).
+ *    - closestCenter collision detection.
+ *    - verticalListSortingStrategy (vs WidgetGrid's rectSorting —
+ *      blocks are stacked top-to-bottom, not a 2D grid). */
+function SortableBlockList({
+  blocks,
+  allBlocks,
+  canEdit,
+  blockSaving,
+  blockErrors,
+  clearBlockError,
+  onSelectBlock,
+  onDelete,
+  onReorder,
+  onFocusBlock,
+  focusedBlockIdRef,
+}: {
+  blocks: TemplateBlock[]
+  allBlocks: TemplateBlock[]
+  canEdit: boolean
+  blockSaving: Record<string, boolean>
+  blockErrors: Record<string, string>
+  clearBlockError: (key: string) => void
+  onSelectBlock: (blockId: string) => void
+  onDelete: (blockId: string) => void
+  onReorder: (orderedIds: string[]) => void
+  onFocusBlock: (id: string | null) => void
+  focusedBlockIdRef: React.MutableRefObject<string | null>
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+
+  // Alt+ArrowUp / Alt+ArrowDown keyboard shortcuts target the
+  // focused block. Alt is canonical platform-wide for inspector
+  // shortcuts per Command Bar digit precedent
+  // (lib/cmd-digit-shortcuts.ts). Cmd/Ctrl are reserved for global
+  // shortcuts; Shift is reserved for selection/Sortable Space-lift.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!canEdit) return
+      // Require Alt without Cmd/Ctrl/Shift to avoid colliding with
+      // browser shortcuts (e.g. Alt+Shift+Arrow on macOS).
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return
+      const focusedId = focusedBlockIdRef.current
+      if (focusedId === null) return
+      const idx = blocks.findIndex((b) => b.id === focusedId)
+      if (idx < 0) return
+      // Only ignore if a non-slash input is focused; the slash
+      // input doesn't render blocks above, so Alt+Arrow over a
+      // block list element is unambiguous.
+      const target = e.target
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase()
+        const isEditable =
+          tag === "input" ||
+          tag === "textarea" ||
+          target.isContentEditable
+        if (isEditable) return
+      }
+      if (e.key === "ArrowUp" && idx > 0) {
+        e.preventDefault()
+        const next = arrayMove(blocks, idx, idx - 1).map((b) => b.id)
+        onReorder(next)
+      } else if (e.key === "ArrowDown" && idx < blocks.length - 1) {
+        e.preventDefault()
+        const next = arrayMove(blocks, idx, idx + 1).map((b) => b.id)
+        onReorder(next)
+      }
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [blocks, canEdit, focusedBlockIdRef, onReorder])
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = blocks.findIndex((b) => b.id === active.id)
+    const newIndex = blocks.findIndex((b) => b.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    const next = arrayMove(blocks, oldIndex, newIndex).map((b) => b.id)
+    onReorder(next)
+  }
+
+  if (blocks.length === 0) {
+    return (
+      <div data-testid="runtime-inspector-documents-block-list">
+        <p
+          className="rounded-sm border border-dashed border-border-base px-2 py-3 text-caption text-content-muted"
+          data-testid="runtime-inspector-documents-empty-blocks"
+        >
+          No blocks yet. Type "/" above to insert one.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div data-testid="runtime-inspector-documents-block-list">
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={blocks.map((b) => b.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <ol className="flex flex-col gap-1.5">
+            {blocks.map((block, idx) => {
+              const children = allBlocks
+                .filter((b) => b.parent_block_id === block.id)
+                .sort((a, b) => a.position - b.position)
+              const canMoveUp = idx > 0
+              const canMoveDown = idx < blocks.length - 1
+              return (
+                <SortableBlockRow
+                  key={block.id}
+                  block={block}
+                  idx={idx}
+                  children_={children}
+                  canEdit={canEdit}
+                  canMoveUp={canMoveUp}
+                  canMoveDown={canMoveDown}
+                  isSaving={!!blockSaving[block.id]}
+                  errorMessage={blockErrors[block.id] ?? null}
+                  onSelect={() => onSelectBlock(block.id)}
+                  onDelete={() => onDelete(block.id)}
+                  onMoveUp={() => {
+                    const next = arrayMove(blocks, idx, idx - 1).map((b) => b.id)
+                    onReorder(next)
+                  }}
+                  onMoveDown={() => {
+                    const next = arrayMove(blocks, idx, idx + 1).map((b) => b.id)
+                    onReorder(next)
+                  }}
+                  onClearError={() => clearBlockError(block.id)}
+                  onFocus={() => onFocusBlock(block.id)}
+                />
+              )
+            })}
+          </ol>
+        </SortableContext>
+      </DndContext>
+    </div>
+  )
+}
+
+
+/** Sortable row for a top-level block. `useSortable` provides
+ *  transform + listeners; we apply them via inline CSS Transform
+ *  on the row wrapper. Grip handle gets the drag listeners; the
+ *  rest of the row is non-draggable so clicks navigate to block
+ *  detail. Edit-vs-drag boundary discipline. */
+function SortableBlockRow({
+  block,
+  idx,
+  children_,
+  canEdit,
+  canMoveUp,
+  canMoveDown,
+  isSaving,
+  errorMessage,
+  onSelect,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  onClearError,
+  onFocus,
+}: {
+  block: TemplateBlock
+  idx: number
+  children_: TemplateBlock[]
+  canEdit: boolean
+  canMoveUp: boolean
+  canMoveDown: boolean
+  isSaving: boolean
+  errorMessage: string | null
+  onSelect: () => void
+  onDelete: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  onClearError: () => void
+  onFocus: () => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: block.id, disabled: !canEdit })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      data-testid={`runtime-inspector-documents-block-${block.id}`}
+      data-block-kind={block.block_kind}
+      data-dragging={isDragging ? "true" : "false"}
+      onMouseEnter={onFocus}
+      onFocus={onFocus}
+      className="group"
+    >
+      <div className="flex items-start gap-1 rounded-sm border border-border-subtle bg-surface-elevated hover:bg-accent-subtle/30">
+        {/* Grip handle — drag affordance (hover-revealed via group-hover) */}
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          disabled={!canEdit}
+          aria-label={`Drag block ${block.id}`}
+          data-testid={`runtime-inspector-documents-block-${block.id}-grip`}
+          className="m-1 flex-shrink-0 cursor-grab self-stretch rounded-sm px-0.5 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-content-strong disabled:cursor-not-allowed disabled:opacity-0 active:cursor-grabbing"
+          title="Drag to reorder"
+        >
+          <GripVertical size={12} />
+        </button>
+
+        {/* Block summary — click-to-edit */}
+        <button
+          type="button"
+          onClick={onSelect}
+          className="min-w-0 flex-1 px-1 py-1.5 text-left"
+          data-testid={`runtime-inspector-documents-block-${block.id}-select`}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="text-micro text-content-muted">#{idx + 1}</span>
+            <Badge variant="outline" className="text-micro">
+              {block.block_kind}
+            </Badge>
+            <span className="text-caption text-content-muted">
+              pos {block.position}
+            </span>
+            {children_.length > 0 && (
+              <span className="text-caption text-content-muted">
+                · {children_.length} child{children_.length === 1 ? "" : "ren"}
+              </span>
+            )}
+          </div>
+          {children_.length > 0 && (
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {children_.map((c) => (
+                <code
+                  key={c.id}
+                  className="text-caption text-content-muted font-plex-mono"
+                >
+                  ↳ {c.block_kind}
+                </code>
+              ))}
+            </div>
+          )}
+        </button>
+
+        {/* Move-up / Move-down — hover-revealed reorder affordances.
+         *  Alt+ArrowUp/Down keyboard shortcuts target the focused
+         *  block (see SortableBlockList useEffect). */}
+        <div className="flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={!canEdit || !canMoveUp || isSaving}
+            data-testid={`runtime-inspector-documents-block-${block.id}-move-up`}
+            aria-label={`Move block ${block.id} up`}
+            title="Move up (Alt+↑)"
+            className="m-1 rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-accent-subtle/60 hover:text-content-strong disabled:opacity-50"
+          >
+            <MoveUp size={10} />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={!canEdit || !canMoveDown || isSaving}
+            data-testid={`runtime-inspector-documents-block-${block.id}-move-down`}
+            aria-label={`Move block ${block.id} down`}
+            title="Move down (Alt+↓)"
+            className="m-1 rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-accent-subtle/60 hover:text-content-strong disabled:opacity-50"
+          >
+            <MoveDown size={10} />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={!canEdit || isSaving}
+          data-testid={`runtime-inspector-documents-block-${block.id}-remove`}
+          aria-label={`Remove block ${block.id}`}
+          className="m-1 rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error disabled:opacity-50"
+        >
+          <Trash2 size={10} />
+        </button>
+      </div>
+      {errorMessage && (
+        <div
+          className="mt-1 flex items-start gap-1 rounded-sm bg-status-error-muted px-2 py-1 text-caption text-status-error"
+          data-testid={`runtime-inspector-documents-block-${block.id}-error`}
+        >
+          <AlertCircle size={11} className="mt-0.5 flex-shrink-0" />
+          <span className="flex-1">{errorMessage}</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onClearError}
+            className="ml-1 h-5 px-1 text-caption"
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+    </li>
   )
 }
 
