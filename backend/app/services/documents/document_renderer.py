@@ -92,19 +92,74 @@ def _storage_key(company_id: str, document_id: str, version_number: int) -> str:
     )
 
 
-def _jinja_env():
-    """Return a Jinja2 Environment with safe-by-default autoescape for HTML."""
+def _jinja_env(
+    *,
+    db: Session | None = None,
+    company_id: str | None = None,
+):
+    """Return a Jinja2 Environment with safe-by-default autoescape for HTML.
+
+    Arc 4b.2a: when `db` + `company_id` are provided, registers the
+    mention `ref` global function backed by a fresh per-render-pass
+    `MentionResolutionCache` (Q-ARC4B2-3). Cache lifecycle is bounded
+    to a single call into `_render_jinja` — caller invokes `_render_jinja`
+    multiple times only for subject-template renders (which intentionally
+    re-create cache; subject + body are conceptually distinct renders).
+
+    When `db` is None, the `ref` filter is registered as a no-op
+    placeholder that emits `@[unresolved]` — this keeps templates
+    renderable even when the renderer is invoked outside an
+    Arc-4b.2a-aware code path (e.g. legacy callers that haven't
+    threaded `db`+`company_id` through yet). Most production code
+    paths thread the cache; the no-op fallback is defensive.
+    """
     try:
         from jinja2 import Environment, select_autoescape
     except ImportError as exc:
         raise DocumentRenderError(
             "Jinja2 is not installed — cannot render document template"
         ) from exc
-    return Environment(autoescape=select_autoescape(["html", "xml"]))
+    env = Environment(autoescape=select_autoescape(["html", "xml"]))
+
+    # Register the `ref` global for mention resolution.
+    if db is not None and company_id:
+        from app.services.documents.mention_filter import (
+            MentionResolutionCache,
+            make_ref_filter,
+        )
+        cache = MentionResolutionCache(db=db, company_id=company_id)
+        env.globals["ref"] = make_ref_filter(cache)
+        # Attach cache to env so test code can inspect dedup behaviour.
+        env.globals["__mention_cache__"] = cache
+    else:
+        from markupsafe import Markup
+
+        def _ref_unresolved(entity_type: Any, entity_id: Any) -> Markup:
+            return Markup("@[unresolved]")
+
+        env.globals["ref"] = _ref_unresolved
+
+    return env
 
 
-def _render_jinja(body_template: str, context: dict[str, Any]) -> str:
-    env = _jinja_env()
+def _render_jinja(
+    body_template: str,
+    context: dict[str, Any],
+    *,
+    db: Session | None = None,
+    company_id: str | None = None,
+) -> str:
+    """Render a Jinja template string against `context`.
+
+    Arc 4b.2a: optional `db` + `company_id` enable mention `ref`
+    resolution. Each invocation of `_render_jinja` creates a fresh
+    `MentionResolutionCache` — the per-render cache scope is the
+    boundary of one `_render_jinja` call. Calling `_render_jinja`
+    twice (e.g. subject + body in the same render() invocation)
+    creates two caches; this is intentional — subject + body are
+    distinct render-passes and dedup should not cross that boundary.
+    """
+    env = _jinja_env(db=db, company_id=company_id)
     try:
         tpl = env.from_string(body_template)
         return tpl.render(**context)
@@ -220,12 +275,16 @@ def render(
 
     # HTML / text path: render + return, no Document
     if effective_format in ("html", "text"):
-        rendered_body = _render_jinja(loaded.body_template, context)
+        rendered_body = _render_jinja(
+            loaded.body_template, context,
+            db=db, company_id=company_id,
+        )
         rendered_subject: str | None = None
         if loaded.subject_template:
             try:
                 rendered_subject = _render_jinja(
-                    loaded.subject_template, context
+                    loaded.subject_template, context,
+                    db=db, company_id=company_id,
                 )
             except DocumentRenderError:
                 # Subject failures fall back to None rather than failing
@@ -250,7 +309,10 @@ def render(
         )
 
     start = time.perf_counter()
-    html = _render_jinja(loaded.body_template, context)
+    html = _render_jinja(
+        loaded.body_template, context,
+        db=db, company_id=company_id,
+    )
     pdf_bytes = _html_to_pdf(html, base_url=loaded.template_dir)
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     context_hash = _hash_context(context)
@@ -368,7 +430,10 @@ def rerender(
     loaded = template_loader.load(
         doc.template_key, company_id=doc.company_id, db=db
     )
-    html = _render_jinja(loaded.body_template, context)
+    html = _render_jinja(
+        loaded.body_template, context,
+        db=db, company_id=doc.company_id,
+    )
     pdf_bytes = _html_to_pdf(html, base_url=loaded.template_dir)
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     context_hash = _hash_context(context)
@@ -479,12 +544,16 @@ def _render_non_pdf(
     short-lived one if needed so legacy callers without a session can
     still use the registry."""
     loaded = template_loader.load(template_key, company_id=company_id, db=db)
-    rendered_body = _render_jinja(loaded.body_template, context)
+    rendered_body = _render_jinja(
+        loaded.body_template, context,
+        db=db, company_id=company_id,
+    )
     rendered_subject: str | None = None
     if loaded.subject_template:
         try:
             rendered_subject = _render_jinja(
-                loaded.subject_template, context
+                loaded.subject_template, context,
+                db=db, company_id=company_id,
             )
         except DocumentRenderError:
             logger.warning(
@@ -520,5 +589,8 @@ def render_pdf_bytes(
         raise DocumentRenderError(
             f"Template {template_key!r} is {loaded.output_format}, not pdf"
         )
-    html = _render_jinja(loaded.body_template, context)
+    html = _render_jinja(
+        loaded.body_template, context,
+        db=db, company_id=company_id,
+    )
     return _html_to_pdf(html, base_url=loaded.template_dir)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -423,3 +423,55 @@ class DocumentTypeCategoryResponse(BaseModel):
 class DocumentTypeCatalogResponse(BaseModel):
     categories: list[DocumentTypeCategoryResponse]
     types: list[DocumentTypeResponse]
+
+
+# ─── Arc 4b.2a — Mention picker (Q-DISPATCH-5) ─────────────────────
+#
+# Picker subset (Q-COUPLING-1): UI vocabulary `case` / `order` /
+# `contact` / `product`. The endpoint translates to substrate vocab
+# (`fh_case` / `sales_order` / `contact` / `product`) at request layer.
+#
+# Picker subset is enforced via Literal — out-of-subset entity_types
+# (e.g. `invoice`, `document`, `task`) return 422 from FastAPI's
+# request validation. The mention substrate supports all 7 entity
+# types in SEARCHABLE_ENTITIES; the picker shipping subset is
+# deliberately narrower at v1. Expansion trigger criteria locked at
+# Arc 4b.2 investigation.
+
+
+MentionEntityType = Literal["case", "order", "contact", "product"]
+
+
+class MentionResolveRequest(BaseModel):
+    """Request shape for the dedicated mention endpoint.
+
+    Per per-consumer endpoint shaping canon: substrate is shared with
+    the command bar (`/api/v1/command-bar/query`), but the endpoint
+    shape is consumer-specific. Picker doesn't need command-bar's
+    intent classifier or result merging; this endpoint returns RECORD-
+    shape entity hits only.
+    """
+
+    entity_type: MentionEntityType
+    query: str = Field(..., min_length=0, max_length=200)
+    limit: int = Field(default=10, ge=1, le=20)
+
+
+class MentionResolveResponseItem(BaseModel):
+    """Single mention candidate. `entity_type` is UI vocabulary (matches
+    the request)."""
+
+    entity_type: MentionEntityType
+    entity_id: str
+    display_name: str
+    preview_snippet: str | None = None
+    """Secondary context (e.g. case number, sku, status). NOT rendered
+    at v1 mention-render layer per Q-ARC4B2-2 (reference-only); the
+    picker UI consumes it to help operators disambiguate matches."""
+
+
+class MentionResolveResponse(BaseModel):
+    """Picker response — flat list of candidates ranked by resolver."""
+
+    results: list[MentionResolveResponseItem]
+    total: int

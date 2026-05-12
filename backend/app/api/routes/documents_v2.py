@@ -83,6 +83,10 @@ from app.schemas.document_template import (
     TemplateBlockReorderRequest,
     TemplateBlockResponse,
     TemplateBlockUpdateRequest,
+    # Arc 4b.2a — mention substrate
+    MentionResolveRequest,
+    MentionResolveResponse,
+    MentionResolveResponseItem,
 )
 from app.services.documents import document_renderer, document_sharing_service
 from app.services.documents import template_service
@@ -104,6 +108,11 @@ from app.services.documents.document_types import (
     list_categories,
     list_document_types,
 )
+from app.services.documents.mention_filter import (
+    MENTION_PICKER_VOCAB,
+    substrate_to_picker_ui_label,
+)
+from app.services.command_bar.resolver import resolve as resolver_resolve
 
 router = APIRouter()
 
@@ -1592,3 +1601,74 @@ def list_document_types_endpoint(
         for cid, cname in list_categories()
     ]
     return DocumentTypeCatalogResponse(categories=categories, types=types)
+
+
+# ─── Arc 4b.2a — Dedicated mention endpoint (Q-DISPATCH-5) ──────────
+#
+# Per per-consumer endpoint shaping canon: shared underlying substrate
+# (Phase 1 pg_trgm entity resolver — `app.services.command_bar.resolver`)
+# with consumer-specific endpoint shape. The command bar consumer at
+# `/api/v1/command-bar/query` does intent classification + multi-shape
+# result merging; this picker consumer returns RECORD-shape hits only,
+# narrower picker entity-type subset (Q-COUPLING-1: 4 entity types).
+#
+# UI vocabulary translation boundary: picker submits `case` / `order` /
+# `contact` / `product`; substrate uses `fh_case` / `sales_order` /
+# `contact` / `product`. Pydantic Literal in MentionResolveRequest
+# enforces the picker subset (out-of-subset entity_types → 422 before
+# this handler runs).
+
+
+@router.post(
+    "/admin/mentions/resolve",
+    response_model=MentionResolveResponse,
+)
+def resolve_mention(
+    payload: MentionResolveRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Resolve entity candidates for the mention picker.
+
+    Tenant-scoped via `current_user.company_id` — the Phase 1 resolver
+    enforces tenant isolation on every query, so cross-tenant leakage
+    is structurally prevented.
+
+    Empty/whitespace `query` returns an empty result set (resolver
+    requires non-empty query text). Picker UX may surface this as
+    "Start typing to search…" copy.
+
+    Picker subset enforcement via Pydantic Literal on
+    `entity_type` — invalid values return 422 at request validation.
+    """
+    substrate_type = MENTION_PICKER_VOCAB.get(payload.entity_type)
+    if substrate_type is None:
+        # Defensive — Pydantic should have rejected this at the request
+        # layer. If we somehow get here, surface as 422.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Unknown entity_type {payload.entity_type!r}",
+        )
+
+    query_text = (payload.query or "").strip()
+    if not query_text:
+        return MentionResolveResponse(results=[], total=0)
+
+    hits = resolver_resolve(
+        db,
+        query_text=query_text,
+        company_id=current_user.company_id,
+        limit=payload.limit,
+        entity_types=(substrate_type,),
+    )
+
+    results = [
+        MentionResolveResponseItem(
+            entity_type=payload.entity_type,  # echo picker vocab
+            entity_id=hit.entity_id,
+            display_name=hit.primary_label,
+            preview_snippet=hit.secondary_context,
+        )
+        for hit in hits
+    ]
+    return MentionResolveResponse(results=results, total=len(results))
