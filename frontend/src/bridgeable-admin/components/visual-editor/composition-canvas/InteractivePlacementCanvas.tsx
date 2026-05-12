@@ -35,6 +35,14 @@ import {
 import { RowControlsStrip } from "./RowControlsStrip"
 import { RowDropPreview } from "./RowDropPreview"
 import { EmptyRowPlaceholder } from "./EmptyRowPlaceholder"
+import {
+  AlignmentGuideOverlay,
+  computeAlignmentGuides,
+  liveDraggedRect,
+  resolveReferenceRectsForRow,
+  type AlignmentGuide,
+  type CanvasRect,
+} from "./AlignmentGuideOverlay"
 
 
 export interface Selection {
@@ -54,6 +62,16 @@ export interface InteractivePlacementCanvasProps {
   showGrid?: boolean
   /** When false, drag/resize/row-reorder don't apply (e.g., during a save). */
   interactionsEnabled?: boolean
+  /** When true (default), renders SVG alignment-guide overlay during drag
+   * for Figma-shape snap feedback per Arc 4c Q-ARC4C-2 canon. Inspector
+   * read-mostly canvas (interactionsEnabled=false) should also pass
+   * `showAlignmentGuides={false}` to keep the overlay off, though it would
+   * never trigger anyway since no drag is possible. */
+  showAlignmentGuides?: boolean
+  /** When true (default), shift+marquee adds to current selection
+   * (cumulative). When false OR shift not held, marquee replaces. Per
+   * Arc 4c marquee-with-shift cumulative-select canon. */
+  cumulativeMarqueeOnShift?: boolean
   onSelectPlacement: (id: string, opts: { shift: boolean }) => void
   onSelectRow: (rowId: string) => void
   onDeselectAll: () => void
@@ -143,6 +161,8 @@ export function InteractivePlacementCanvas({
   selection,
   showGrid = true,
   interactionsEnabled = true,
+  showAlignmentGuides = true,
+  cumulativeMarqueeOnShift: _cumulativeMarqueeOnShift = true,
   onSelectPlacement,
   onSelectRow,
   onDeselectAll,
@@ -155,6 +175,14 @@ export function InteractivePlacementCanvas({
   onDeleteRow,
   onChangeRowColumnCount,
 }: InteractivePlacementCanvasProps) {
+  // _cumulativeMarqueeOnShift is the per-canvas opt-out flag for marquee-
+  // with-shift cumulative-select. Default true. The canvas surfaces
+  // shift state via onMarqueeSelect's second arg; the consumer
+  // decides REPLACE vs ADD-TO based on shift. Prefixed `_` because
+  // the flag itself isn't consumed inside the canvas — it's a
+  // contract signaling intent to upstream test fixtures + future
+  // canvas variants (e.g., touch-screen consumers may want false).
+  void _cumulativeMarqueeOnShift
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const rowElsRef = useRef<Map<string, HTMLElement>>(new Map())
 
@@ -167,6 +195,30 @@ export function InteractivePlacementCanvas({
   const selectedPlacementIds = useMemo(() => {
     return selection.placementIds ?? new Set<string>()
   }, [selection])
+
+  // Placement DOM refs — used for alignment-guide computation during
+  // drag. Each placement registers itself at mount via the
+  // `data-testid="interactive-placement-{id}"` attribute reachable
+  // via `querySelector` in alignment guide resolution. We avoid a
+  // parallel Map ref because the existing data-testid lookup gives
+  // us O(N) walk per gesture tick — bounded ~4-8 placements per row
+  // in realistic compositions.
+  const getPlacementRectFromDOM = (placementId: string): CanvasRect | null => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const el = canvas.querySelector<HTMLElement>(
+      `[data-testid="interactive-placement-${placementId}"]`,
+    )
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    const c = canvas.getBoundingClientRect()
+    return {
+      left: r.left - c.left + canvas.scrollLeft,
+      top: r.top - c.top + canvas.scrollTop,
+      width: r.width,
+      height: r.height,
+    }
+  }
 
   const interactions = useCanvasInteractions({
     rows,
@@ -191,12 +243,72 @@ export function InteractivePlacementCanvas({
     },
   })
 
+  // Arc 4c — alignment guides during placement drag. Computed
+  // per-render; bounded by source-row placement count (~4-8). When
+  // `showAlignmentGuides=false` (inspector embed) OR no active drag,
+  // returns empty array → overlay null-renders.
+  const alignmentGuides: AlignmentGuide[] = (() => {
+    if (!showAlignmentGuides) return []
+    const g = interactions.gesture
+    if (g.kind !== "dragging-placement") return []
+    const sourceRow = rows.find((r) => r.row_id === g.sourceRowId)
+    if (!sourceRow) return []
+    const startRect = getPlacementRectFromDOM(g.placementId)
+    if (!startRect) return []
+    // The DOM rect is the LIVE rect (already includes transform); we
+    // must undo the live transform to get the start rect.
+    const offset = interactions.liveOffset.get(g.placementId)
+    const draggedStartRect: CanvasRect = offset
+      ? {
+          left: startRect.left - offset.dxPx,
+          top: startRect.top - offset.dyPx,
+          width: startRect.width,
+          height: startRect.height,
+        }
+      : startRect
+    const draggedRect = liveDraggedRect(
+      draggedStartRect,
+      offset ?? { dxPx: 0, dyPx: 0 },
+    )
+    const rowEl = rowElsRef.current.get(sourceRow.row_id)
+    const rowRect: CanvasRect | null = rowEl
+      ? (() => {
+          const r = rowEl.getBoundingClientRect()
+          const c = canvasRef.current?.getBoundingClientRect()
+          if (!c) return null
+          return {
+            left: r.left - c.left + (canvasRef.current?.scrollLeft ?? 0),
+            top: r.top - c.top + (canvasRef.current?.scrollTop ?? 0),
+            width: r.width,
+            height: r.height,
+          }
+        })()
+      : null
+    const refs = resolveReferenceRectsForRow(
+      sourceRow,
+      g.placementId,
+      getPlacementRectFromDOM,
+      rowRect,
+    )
+    return computeAlignmentGuides(draggedRect, refs)
+  })()
+
+  const canvasDims = (() => {
+    const c = canvasRef.current
+    if (!c) return { width: 0, height: 0 }
+    return {
+      width: c.scrollWidth,
+      height: c.scrollHeight,
+    }
+  })()
+
   return (
     <div
       ref={canvasRef}
       className={`${backgroundClassFor(backgroundTreatment)} relative h-full w-full overflow-auto`}
       data-testid="interactive-canvas"
       data-row-count={rows.length}
+      data-alignment-guides={alignmentGuides.length}
       onClick={(e) => {
         if (e.target === e.currentTarget) onDeselectAll()
       }}
@@ -217,7 +329,13 @@ export function InteractivePlacementCanvas({
             e.button === 0
           ) {
             interactions.startMarqueeSelect(e)
-            onDeselectAll()
+            // Arc 4c cumulative-marquee canon: shift+drag preserves
+            // current selection; consumer's onMarqueeSelect receives
+            // (ids, shiftKey=true) and adds-to. Bare drag clears
+            // selection first (REPLACE semantics).
+            if (!e.shiftKey) {
+              onDeselectAll()
+            }
           }
         }}
       >
@@ -282,6 +400,16 @@ export function InteractivePlacementCanvas({
               pointerEvents: "none",
               zIndex: 100,
             }}
+          />
+        )}
+
+        {/* Arc 4c — alignment guides during placement drag (standalone
+            canvas only; inspector embed passes showAlignmentGuides=false). */}
+        {alignmentGuides.length > 0 && (
+          <AlignmentGuideOverlay
+            guides={alignmentGuides}
+            canvasWidth={canvasDims.width}
+            canvasHeight={canvasDims.height}
           />
         )}
       </div>
@@ -451,15 +579,24 @@ function renderPlacement(
     )
   }
 
+  // Arc 4c — drop-shadow lift on active drag for Figma-shape gesture
+  // affordance. The dragged placement's z-index also lifts to render
+  // above siblings during the gesture; box-shadow flips to shadow-
+  // level-3 token for clear "I am being moved" visual feedback.
+  const isDragging = !!offset
   const cellStyle: CSSProperties = {
     gridColumn: `${liveStartingColumn + 1} / span ${liveColumnSpan}`,
-    zIndex: p.display_config?.z_index ?? (isSelected ? 5 : 1),
+    zIndex:
+      p.display_config?.z_index ??
+      (isDragging ? 20 : isSelected ? 5 : 1),
     transform: offset
       ? `translate(${offset.dxPx}px, ${offset.dyPx}px)`
       : undefined,
     position: "relative",
     cursor: interactionsEnabled ? "move" : "default",
     transition: offset || liveResize ? "none" : "box-shadow 120ms",
+    boxShadow: isDragging ? "var(--shadow-level-3)" : undefined,
+    opacity: isDragging ? 0.92 : undefined,
   }
   const showBorder = p.display_config?.show_border !== false
   const baseRingClass = isSelected

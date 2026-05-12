@@ -815,15 +815,30 @@ export default function CompositionEditorPage() {
     setSelection({ kind: "none" })
   }, [])
 
-  const handleMarqueeSelect = useCallback((ids: string[]) => {
-    if (ids.length === 0) {
-      setSelection({ kind: "none" })
-    } else if (ids.length === 1) {
-      setSelection({ kind: "placement", placementIds: new Set(ids) })
-    } else {
-      setSelection({ kind: "placements-multi", placementIds: new Set(ids) })
-    }
-  }, [])
+  const handleMarqueeSelect = useCallback(
+    (ids: string[], shiftKey: boolean = false) => {
+      // Arc 4c canon — shift+marquee adds to current selection
+      // (cumulative). Bare marquee REPLACES selection. Matches Figma
+      // canonical multi-select gesture.
+      setSelection((prev) => {
+        if (shiftKey && prev.placementIds && prev.placementIds.size > 0) {
+          const next = new Set(prev.placementIds)
+          for (const id of ids) next.add(id)
+          if (next.size === 0) return { kind: "none" }
+          if (next.size === 1) {
+            return { kind: "placement", placementIds: next }
+          }
+          return { kind: "placements-multi", placementIds: next }
+        }
+        if (ids.length === 0) return { kind: "none" }
+        if (ids.length === 1) {
+          return { kind: "placement", placementIds: new Set(ids) }
+        }
+        return { kind: "placements-multi", placementIds: new Set(ids) }
+      })
+    },
+    [],
+  )
 
   // ── Keyboard shortcuts ───────────────────────────────────
   useEffect(() => {

@@ -70,6 +70,7 @@ import { Link } from "react-router-dom"
 import {
   ArrowDown,
   ArrowLeft,
+  ArrowRight as ArrowRightIcon,
   ArrowUp,
   ChevronDown,
   ExternalLink,
@@ -94,6 +95,7 @@ import {
   InteractivePlacementCanvas,
   type Selection,
 } from "@/bridgeable-admin/components/visual-editor/composition-canvas/InteractivePlacementCanvas"
+import { ColumnCountPopover } from "@/bridgeable-admin/components/visual-editor/composition-canvas/ColumnCountPopover"
 import { focusCompositionsService } from "@/bridgeable-admin/services/focus-compositions-service"
 import {
   getByName,
@@ -1093,6 +1095,221 @@ function CompositionEditView({
     [draft],
   )
 
+  // Arc 4c — placement reorder within row (Alt+ArrowLeft/Right
+  // canonical per Q-ARC4C-3 + per-placement Move buttons).
+  // Moves the selected placement N column-spans within its row.
+  // Multi-select group: shifts every selected placement together;
+  // clamps each at row bounds.
+  const handleMovePlacements = useCallback(
+    (placementIds: string[], delta: number) => {
+      if (placementIds.length === 0 || delta === 0) return
+      const ids = new Set(placementIds)
+      draft.setDraftRows((cur) =>
+        cur.map((r) => {
+          const movingHere = r.placements.filter((p) =>
+            ids.has(p.placement_id),
+          )
+          if (movingHere.length === 0) return r
+          return {
+            ...r,
+            placements: r.placements.map((p) => {
+              if (!ids.has(p.placement_id)) return p
+              const proposed = p.starting_column + delta
+              const clamped = Math.max(
+                0,
+                Math.min(r.column_count - p.column_span, proposed),
+              )
+              return { ...p, starting_column: clamped }
+            }),
+          }
+        }),
+      )
+    },
+    [draft],
+  )
+
+  // Arc 4c — Alt+ArrowUp/Down row reorder via keyboard (parallel to
+  // Move-up/Move-down buttons). When a row is selected, moves the row
+  // up/down in the rows array. When a placement is selected, finds
+  // its row and moves THAT row (operator-intent canon: "the thing I'm
+  // editing should move").
+  const handleReorderRowViaKey = useCallback(
+    (direction: "up" | "down") => {
+      const rowId =
+        selection.kind === "row" && selection.rowId
+          ? selection.rowId
+          : (() => {
+              if (
+                (selection.kind === "placement" ||
+                  selection.kind === "placements-multi") &&
+                selection.placementIds
+              ) {
+                const firstId = Array.from(selection.placementIds)[0]
+                for (const r of draft.draftRows) {
+                  if (
+                    r.placements.some((p) => p.placement_id === firstId)
+                  ) {
+                    return r.row_id
+                  }
+                }
+              }
+              return null
+            })()
+      if (!rowId) return
+      draft.setDraftRows((cur) => {
+        const idx = cur.findIndex((r) => r.row_id === rowId)
+        if (idx < 0) return cur
+        const swap = direction === "up" ? idx - 1 : idx + 1
+        if (swap < 0 || swap >= cur.length) return cur
+        const next = [...cur]
+        ;[next[idx], next[swap]] = [next[swap], next[idx]]
+        return next
+      })
+    },
+    [draft, selection],
+  )
+
+  // Arc 4c — column-axis nudge for selected placements per Q-ARC4C-3.
+  // Bare ArrowLeft/Right = ±1 column-span; Shift+Arrow = ±5 (matching
+  // Figma + Arc 3a standalone canon). Multi-select moves group.
+  const handleKeyboardNudge = useCallback(
+    (delta: number) => {
+      if (selection.kind !== "placement" && selection.kind !== "placements-multi")
+        return
+      const ids = Array.from(selection.placementIds ?? [])
+      handleMovePlacements(ids, delta)
+    },
+    [selection, handleMovePlacements],
+  )
+
+  // Arc 4c — inspector-scoped keyboard listener. Handles:
+  //   Arrow alone       : ±1 column-span nudge for selected placements
+  //   Shift+Arrow       : ±5 column-span nudge (larger step)
+  //   Alt+ArrowUp/Down  : row reorder per Q-ARC4C-3 canonical canon
+  //   Alt+ArrowLeft/Right: in-row placement reorder (±1)
+  //   Backspace/Delete  : per Q-ARC4C-4: NO modal for placement delete
+  //   Escape            : clear selection
+  //
+  // Skip when focus is on input/textarea/contentEditable — matches
+  // Arc 4b.1b Documents canon + standalone canvas keyboard canon.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return
+        }
+      }
+      // Cmd/Ctrl-modified Arrow stays browser-reserved per Q-ARC4C-3
+      // (Cmd/Ctrl+Arrow is canonical browser navigation; do not
+      // hijack).
+      if (e.metaKey || e.ctrlKey) return
+
+      // Alt+Arrow first (modifier-distinguished from bare/shift):
+      if (e.altKey && !e.shiftKey) {
+        if (e.key === "ArrowUp") {
+          e.preventDefault()
+          handleReorderRowViaKey("up")
+          return
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault()
+          handleReorderRowViaKey("down")
+          return
+        }
+        if (e.key === "ArrowLeft") {
+          if (
+            selection.kind === "placement" ||
+            selection.kind === "placements-multi"
+          ) {
+            e.preventDefault()
+            handleMovePlacements(
+              Array.from(selection.placementIds ?? []),
+              -1,
+            )
+          }
+          return
+        }
+        if (e.key === "ArrowRight") {
+          if (
+            selection.kind === "placement" ||
+            selection.kind === "placements-multi"
+          ) {
+            e.preventDefault()
+            handleMovePlacements(
+              Array.from(selection.placementIds ?? []),
+              1,
+            )
+          }
+          return
+        }
+        return
+      }
+
+      // Bare/Shift+Arrow — column-axis nudge for selected placements
+      // (Q-ARC4C-3 grid-coordinate-native canon).
+      if (e.key === "ArrowLeft" && !e.altKey) {
+        if (
+          selection.kind === "placement" ||
+          selection.kind === "placements-multi"
+        ) {
+          e.preventDefault()
+          handleKeyboardNudge(e.shiftKey ? -5 : -1)
+        }
+        return
+      }
+      if (e.key === "ArrowRight" && !e.altKey) {
+        if (
+          selection.kind === "placement" ||
+          selection.kind === "placements-multi"
+        ) {
+          e.preventDefault()
+          handleKeyboardNudge(e.shiftKey ? 5 : 1)
+        }
+        return
+      }
+
+      // Delete/Backspace — no modal per Q-ARC4C-4 canon. Cmd+Z is the
+      // safety net via the standalone editor; inspector relies on
+      // tab-level autosave + draft state for reversibility.
+      if (
+        (e.key === "Backspace" || e.key === "Delete") &&
+        !e.altKey
+      ) {
+        if (
+          selection.kind === "placement" ||
+          selection.kind === "placements-multi"
+        ) {
+          const ids = Array.from(selection.placementIds ?? [])
+          if (ids.length > 0) {
+            e.preventDefault()
+            // Bulk-delete still no modal per canonical canon.
+            ids.forEach((id) => handleDeletePlacement(id))
+          }
+        }
+        return
+      }
+
+      if (e.key === "Escape") {
+        setSelection({ kind: "none" })
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [
+    selection,
+    handleKeyboardNudge,
+    handleMovePlacements,
+    handleReorderRowViaKey,
+    handleDeletePlacement,
+  ])
+
   // Read-mostly canvas: drag/resize/marquee disabled but click-to-select
   // preserved. Canvas Q-CROSS-2 refinement.
   const noopCommitMove = useCallback(() => {}, [])
@@ -1290,6 +1507,9 @@ function CompositionEditView({
             selection={selection}
             showGrid={false}
             interactionsEnabled={false}
+            // Arc 4c — alignment guides STANDALONE-ONLY per Q-FOCUS-1
+            // canon (inspector canvas read-mostly; no drag → no guides).
+            showAlignmentGuides={false}
             onSelectPlacement={handleSelectPlacement}
             onSelectRow={handleSelectRow}
             onDeselectAll={handleDeselectAll}
@@ -1326,7 +1546,18 @@ function CompositionEditView({
                   {row.placements.length === 1 ? "" : "s"}
                 </Badge>
               </span>
-              <div className="flex gap-1">
+              <div className="flex items-center gap-1">
+                {/* Arc 4c — ColumnCountPopover wired inline per Q-ARC4C-6
+                    Option (c). Second-consumer canon validation
+                    (canonical outcome a — substrate holds verbatim). */}
+                <ColumnCountPopover
+                  row={row}
+                  onChange={(n) =>
+                    handleChangeRowColumnCount(row.row_id, n)
+                  }
+                  triggerTestId={`runtime-inspector-focus-row-cols-${row.row_id}`}
+                  triggerClassName="rounded-sm border border-border-subtle bg-surface-raised px-1.5 py-0.5 font-plex-mono text-micro text-content-strong hover:bg-accent-subtle/40"
+                />
                 <button
                   type="button"
                   onClick={() => handleReorderRow(row.row_id, "up")}
@@ -1377,6 +1608,36 @@ function CompositionEditView({
                 : `${selectedPlacementIds.length} placements selected`}
           </span>
           <div className="flex gap-1">
+            {/* Arc 4c — placement reorder within row via Move-left /
+                Move-right buttons (parallel to Alt+ArrowLeft/Right
+                keyboard shortcut). Visible only when at least one
+                placement is selected. */}
+            {selectedPlacementIds.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleMovePlacements(selectedPlacementIds, -1)
+                  }
+                  className="rounded-sm p-1 text-content-muted hover:bg-accent-subtle/40 hover:text-content-strong"
+                  aria-label="Move placement left"
+                  data-testid="runtime-inspector-focus-placement-move-left"
+                >
+                  <ArrowLeft size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleMovePlacements(selectedPlacementIds, 1)
+                  }
+                  className="rounded-sm p-1 text-content-muted hover:bg-accent-subtle/40 hover:text-content-strong"
+                  aria-label="Move placement right"
+                  data-testid="runtime-inspector-focus-placement-move-right"
+                >
+                  <ArrowRightIcon size={12} />
+                </button>
+              </>
+            )}
             {selectedPlacementIds.length === 1 && (
               <button
                 type="button"
@@ -1386,6 +1647,22 @@ function CompositionEditView({
                 className="rounded-sm p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error"
                 aria-label="Delete placement"
                 data-testid="runtime-inspector-focus-placement-delete"
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
+            {selectedPlacementIds.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Arc 4c Q-ARC4C-4 canonical canon — bulk delete NO modal.
+                  selectedPlacementIds.forEach((id) =>
+                    handleDeletePlacement(id),
+                  )
+                }}
+                className="rounded-sm p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error"
+                aria-label="Delete selected placements"
+                data-testid="runtime-inspector-focus-placement-bulk-delete"
               >
                 <Trash2 size={12} />
               </button>

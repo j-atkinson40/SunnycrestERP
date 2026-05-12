@@ -296,8 +296,16 @@ export interface UseCanvasInteractionsOptions {
   }) => void
   /** Called on row-reorder commit. */
   onCommitRowReorder: (input: { fromIndex: number; toIndex: number }) => void
-  /** Marquee select commit. */
-  onMarqueeSelect?: (placementIds: string[]) => void
+  /** Marquee select commit.
+   *
+   * Arc 4c — `shiftKey` carries the modifier state captured at marquee
+   * start (NOT at marquee end — Apple Pro convention: the modifier
+   * pressed at gesture-start is the modifier the gesture honors,
+   * matches Figma + Final Cut behavior). Consumer decides whether to
+   * REPLACE (shiftKey=false) or ADD-TO (shiftKey=true) the current
+   * selection. Pre-Arc-4c consumers ignoring the second arg get
+   * REPLACE behavior unchanged. */
+  onMarqueeSelect?: (placementIds: string[], shiftKey?: boolean) => void
   /** Per-placement min/max column-span bounds for resize clamping. */
   getPlacementBounds?: (placementId: string) =>
     | { minColumns?: number; maxColumns?: number }
@@ -358,7 +366,11 @@ export function useCanvasInteractions({
   const [marqueeRect, setMarqueeRect] = useState<
     { x: number; y: number; w: number; h: number } | null
   >(null)
-  const marqueeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const marqueeStartRef = useRef<{
+    x: number
+    y: number
+    shiftKey: boolean
+  } | null>(null)
 
   // Refs to avoid stale closures in the window-level handlers.
   const rowsRef = useRef(rows)
@@ -434,7 +446,12 @@ export function useCanvasInteractions({
     const rect = target.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
-    marqueeStartRef.current = { x, y }
+    // Capture shift state at marquee START per Arc 4c canon — the
+    // modifier pressed when the gesture began is the modifier the
+    // gesture honors. Matches Apple Pro app convention (Figma + Final
+    // Cut). Mid-marquee shift release doesn't change the gesture's
+    // committed semantic.
+    marqueeStartRef.current = { x, y, shiftKey: e.shiftKey }
     setMarqueeRect({ x, y, w: 0, h: 0 })
   }, [])
 
@@ -639,7 +656,11 @@ export function useCanvasInteractions({
               }
             }
           }
-          onMarqueeSelect(inside)
+          // Surface shift state captured at marquee start so consumer
+          // can implement cumulative-select per Arc 4c canon.
+          const startedWithShift =
+            marqueeStartRef.current?.shiftKey ?? false
+          onMarqueeSelect(inside, startedWithShift)
         }
         marqueeStartRef.current = null
         setMarqueeRect(null)
