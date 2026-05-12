@@ -28,9 +28,15 @@ import { useEditMode } from "../edit-mode-context"
 import { ClassTab } from "./ClassTab"
 import { PropsTab } from "./PropsTab"
 import { ThemeTab } from "./ThemeTab"
+import { WorkflowsTab } from "./WorkflowsTab"
 
 
-type TabKey = "props" | "class" | "theme"
+// Arc 2 Phase 2a — added "workflows" as 4th tab in the inner strip.
+// Workflows tab follows direct-service-call pattern (NOT staged-
+// override writer) — saves go through workflowTemplatesService
+// directly. Phase 2a is read-only (list + deep-link); Phase 2b will
+// add in-inspector canvas editing.
+type TabKey = "props" | "class" | "theme" | "workflows"
 
 
 export interface InspectorPanelProps {
@@ -248,9 +254,17 @@ export function InspectorPanel({
         </nav>
       )}
 
-      {/* Inner tab strip (Theme / Class / Props) */}
+      {/* Inner tab strip (Theme / Class / Props / Workflows).
+          Arc 2 Phase 2a appended Workflows as 4th tab. Tab content
+          swap below renders the Workflows tab body even when no
+          activeInnerEntry exists (workflows tab is selection-
+          independent — operator can browse workflows for any surface
+          regardless of which component is selected). The panel
+          itself still gates on selection per the existing R-1
+          contract; selection-free panel mount is Phase 2b territory
+          per investigation §5 "selection model" finding. */}
       <nav className="flex border-b border-border-subtle text-caption">
-        {(["theme", "class", "props"] as const).map((key) => (
+        {(["theme", "class", "props", "workflows"] as const).map((key) => (
           <button
             key={key}
             type="button"
@@ -263,15 +277,26 @@ export function InspectorPanel({
             data-testid={`runtime-inspector-tab-${key}`}
             data-active={activeTab === key ? "true" : "false"}
           >
-            {key === "theme" ? "Theme" : key === "class" ? "Class" : "Props"}
+            {key === "theme"
+              ? "Theme"
+              : key === "class"
+                ? "Class"
+                : key === "props"
+                  ? "Props"
+                  : "Workflows"}
           </button>
         ))}
       </nav>
 
       {/* Tab body — operates on activeInnerEntry (R-2.1) which derives
-          from the active outer tab + selection state. */}
+          from the active outer tab + selection state. Arc 2 Phase 2a:
+          Workflows tab renders independently of activeInnerEntry —
+          workflows browse is selection-independent (operator can
+          view workflows for the impersonated tenant regardless of
+          which component is selected). The unregistered-component
+          notice only shows for Theme / Class / Props tabs. */}
       <div className="flex-1 overflow-y-auto">
-        {!activeInnerEntry && (
+        {!activeInnerEntry && activeTab !== "workflows" && (
           <div className="px-3 py-4 text-caption text-content-muted">
             Selected component <code>{editMode.selectedComponentName}</code> is
             not registered. Edits unavailable.
@@ -290,6 +315,7 @@ export function InspectorPanel({
             themeMode={themeMode}
           />
         )}
+        {activeTab === "workflows" && <WorkflowsTab vertical={vertical} />}
       </div>
 
       {/* Footer — commit/discard + partial-commit errors */}
