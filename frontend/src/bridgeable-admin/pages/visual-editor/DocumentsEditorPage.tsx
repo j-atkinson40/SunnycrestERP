@@ -363,6 +363,29 @@ export default function DocumentsEditorPage() {
     [templateDetail, editingVersion, reloadBlocks],
   )
 
+  // Arc 4b.1a — conditional_wrapper row-column condition writes.
+  const handleUpdateBlockCondition = useCallback(
+    async (blockId: string, condition: string | null) => {
+      if (!templateDetail || !editingVersion) return
+      try {
+        await documentBlocksService.update(
+          templateDetail.id,
+          editingVersion.id,
+          blockId,
+          { condition },
+        )
+        await reloadBlocks()
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[documents-editor] update block condition failed", err)
+        setError(
+          err instanceof Error ? err.message : "Failed to update condition",
+        )
+      }
+    },
+    [templateDetail, editingVersion, reloadBlocks],
+  )
+
   const selectedBlock = useMemo(
     () => blocks.find((b) => b.id === selectedBlockId) ?? null,
     [blocks, selectedBlockId],
@@ -595,6 +618,7 @@ export default function DocumentsEditorPage() {
                     onAddBlock={() => setShowBlockPicker(true)}
                     blockKinds={blockKinds}
                     onUpdateBlockConfig={handleUpdateBlockConfig}
+                    onUpdateBlockCondition={handleUpdateBlockCondition}
                     selectedBlock={selectedBlock}
                     canEdit={!!draftVersion}
                   />
@@ -789,6 +813,7 @@ function BlocksTab({
   onAddBlock,
   blockKinds,
   onUpdateBlockConfig,
+  onUpdateBlockCondition,
   selectedBlock,
   canEdit,
 }: {
@@ -799,6 +824,7 @@ function BlocksTab({
   onAddBlock: () => void
   blockKinds: BlockKindMetadata[]
   onUpdateBlockConfig: (id: string, config: Record<string, unknown>) => void
+  onUpdateBlockCondition: (id: string, condition: string | null) => void
   selectedBlock: TemplateBlock | null
   canEdit: boolean
 }) {
@@ -859,6 +885,9 @@ function BlocksTab({
           block={selectedBlock}
           blockKinds={blockKinds}
           onUpdateConfig={(cfg) => onUpdateBlockConfig(selectedBlock.id, cfg)}
+          onUpdateCondition={(condition) =>
+            onUpdateBlockCondition(selectedBlock.id, condition)
+          }
           onDelete={() => onDeleteBlock(selectedBlock.id)}
           canEdit={canEdit}
         />

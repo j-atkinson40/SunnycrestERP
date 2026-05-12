@@ -701,7 +701,7 @@ describe("Arc 3b — Per-block immediate writes (Q-DOCS-2)", () => {
     ])
   })
 
-  it("Save fires documentBlocksService.update immediately", async () => {
+  it("Save fires documentBlocksService.update immediately (Arc 4b.1a canonical dispatch)", async () => {
     mockUpdateBlock.mockResolvedValue(
       makeBlock({ id: "blk-1", config: { title: "New" } }),
     )
@@ -722,19 +722,18 @@ describe("Arc 3b — Per-block immediate writes (Q-DOCS-2)", () => {
     fireEvent.click(
       result.getByTestId("runtime-inspector-documents-block-blk-1-select"),
     )
+    // Arc 4b.1a — header kind now dispatches through canonical
+    // PropControlDispatcher, NOT the JSON textarea. Edit the title
+    // field directly via its testid.
     await waitFor(() => {
       expect(
-        result.getByTestId("documents-block-config-textarea-blk-1"),
+        result.getByTestId("documents-block-config-canonical-blk-1"),
       ).toBeTruthy()
     })
-
-    // Mutate JSON
-    const textarea = result.getByTestId(
-      "documents-block-config-textarea-blk-1",
-    ) as HTMLTextAreaElement
-    fireEvent.change(textarea, {
-      target: { value: JSON.stringify({ title: "Updated" }, null, 2) },
-    })
+    fireEvent.change(
+      result.getByTestId("documents-block-field-blk-1-title-control-input"),
+      { target: { value: "Updated" } },
+    )
     fireEvent.click(result.getByTestId("documents-block-save-blk-1"))
 
     await waitFor(() => {
@@ -744,10 +743,12 @@ describe("Arc 3b — Per-block immediate writes (Q-DOCS-2)", () => {
     expect(updateCall[0]).toBe("tpl-1") // templateId
     expect(updateCall[1]).toBe("ver-draft") // versionId
     expect(updateCall[2]).toBe("blk-1") // blockId
-    expect(updateCall[3]).toEqual({ config: { title: "Updated" } })
+    // The canonical dispatch path passes ALL fields in the schema
+    // (each pulled from block.config), not just the dirty one.
+    expect(updateCall[3].config).toMatchObject({ title: "Updated" })
   })
 
-  it("update failure surfaces inline error + preserves operator input", async () => {
+  it("update failure surfaces inline error + preserves operator input (Arc 4b.1a canonical dispatch)", async () => {
     mockUpdateBlock.mockRejectedValue(new Error("save broke"))
     const result = render(<MountTab />)
     await waitFor(() => {
@@ -766,18 +767,16 @@ describe("Arc 3b — Per-block immediate writes (Q-DOCS-2)", () => {
     fireEvent.click(
       result.getByTestId("runtime-inspector-documents-block-blk-1-select"),
     )
+    // Arc 4b.1a — canonical path replaces JSON textarea.
     await waitFor(() => {
       expect(
-        result.getByTestId("documents-block-config-textarea-blk-1"),
+        result.getByTestId("documents-block-config-canonical-blk-1"),
       ).toBeTruthy()
     })
-
-    const textarea = result.getByTestId(
-      "documents-block-config-textarea-blk-1",
-    ) as HTMLTextAreaElement
-    fireEvent.change(textarea, {
-      target: { value: JSON.stringify({ title: "Updated" }, null, 2) },
-    })
+    const titleInput = result.getByTestId(
+      "documents-block-field-blk-1-title-control-input",
+    ) as HTMLInputElement
+    fireEvent.change(titleInput, { target: { value: "Updated" } })
     fireEvent.click(result.getByTestId("documents-block-save-blk-1"))
 
     // Wait for error to surface
@@ -786,8 +785,9 @@ describe("Arc 3b — Per-block immediate writes (Q-DOCS-2)", () => {
         result.getByTestId("documents-block-config-error-blk-1"),
       ).toBeTruthy()
     })
-    // Input preserved (textarea still shows updated JSON)
-    expect(textarea.value).toContain("Updated")
+    // Input preserved (canonical dispatch retains draft state after
+    // failure; operator's typing survives).
+    expect(titleInput.value).toBe("Updated")
   })
 
   it("add block fires documentBlocksService.add immediately", async () => {

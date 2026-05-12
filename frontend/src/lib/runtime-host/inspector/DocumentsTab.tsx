@@ -746,6 +746,49 @@ function useTemplateBlocks(templateId: string) {
     [templateDetail, editingVersion, reloadBlocks, clearBlockError, setBlockError],
   )
 
+  /** Arc 4b.1a — Per-block immediate write: update conditional_wrapper
+   *  row-column `condition`. Separate from updateBlockConfig because
+   *  `condition` lives on the row, not in config JSONB. Per-block
+   *  immediate-write semantics preserved (Q-DOCS-2 canon). */
+  const updateBlockCondition = useCallback(
+    async (
+      blockId: string,
+      condition: string | null,
+    ): Promise<boolean> => {
+      if (!templateDetail || !editingVersion) return false
+      clearBlockError(blockId)
+      setBlockSaving((prev) => ({ ...prev, [blockId]: true }))
+      try {
+        await documentBlocksService.update(
+          templateDetail.id,
+          editingVersion.id,
+          blockId,
+          { condition },
+        )
+        await reloadBlocks()
+        return true
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error(
+          "[runtime-editor] documents update block condition failed",
+          err,
+        )
+        setBlockError(
+          blockId,
+          err instanceof Error ? err.message : "Failed to update condition",
+        )
+        return false
+      } finally {
+        setBlockSaving((prev) => {
+          const next = { ...prev }
+          delete next[blockId]
+          return next
+        })
+      }
+    },
+    [templateDetail, editingVersion, reloadBlocks, clearBlockError, setBlockError],
+  )
+
   /** Per-block immediate write: delete block. */
   const deleteBlock = useCallback(
     async (blockId: string): Promise<boolean> => {
@@ -795,6 +838,7 @@ function useTemplateBlocks(templateId: string) {
     blockSaving,
     addBlock,
     updateBlockConfig,
+    updateBlockCondition,
     deleteBlock,
     clearBlockError,
   }
@@ -1150,6 +1194,9 @@ function BlockDetailView({
         blockKinds={draft.blockKinds}
         onUpdateConfig={(cfg) => {
           void draft.updateBlockConfig(block.id, cfg)
+        }}
+        onUpdateCondition={(condition) => {
+          void draft.updateBlockCondition(block.id, condition)
         }}
         onDelete={() => {
           void draft.deleteBlock(block.id).then((ok) => {

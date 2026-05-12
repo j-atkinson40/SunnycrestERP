@@ -101,7 +101,23 @@ export type UserParadigm =
 /** Schema-described type for a single configurable prop. The
  * editor renders different inputs per type (boolean → switch,
  * tokenReference → palette picker, componentReference →
- * component picker, etc.). */
+ * component picker, etc.).
+ *
+ * Arc 4b.1a — additive extension with 4 new discriminators for
+ * complex Documents block-kind config shapes. The new types are
+ * dispatched by `PropControlDispatcher` to bespoke array-of-records
+ * control components. Existing 8 types unchanged; vocabulary
+ * extension is purely additive.
+ *
+ *   - `tableOfColumns` — array of `{header, field, format?}` records
+ *     (line_items.columns shape).
+ *   - `tableOfRows` — array of `{label, variable, emphasis?}` records
+ *     (totals.rows shape).
+ *   - `listOfParties` — array of `{role, signature_date?}` records
+ *     (signature.parties shape).
+ *   - `conditionalRule` — bounded `{field, operator, value}` triple
+ *     for conditional_wrapper.condition (NOT unbounded Jinja
+ *     expression language; see ConditionalRuleControl). */
 export type ConfigPropType =
   | "boolean"
   | "number"
@@ -111,6 +127,10 @@ export type ConfigPropType =
   | "componentReference"
   | "array"
   | "object"
+  | "tableOfColumns"
+  | "tableOfRows"
+  | "listOfParties"
+  | "conditionalRule"
 
 /** Categories of design tokens consumable via tokenReference
  * props. Mirrors the families declared in `tokens.css` (surface,
