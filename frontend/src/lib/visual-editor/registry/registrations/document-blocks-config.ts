@@ -55,12 +55,17 @@ export const HEADER_BLOCK_SCHEMA: Record<string, ConfigPropSchema> = {
     default: "{{ document_title }}",
     displayLabel: "Title",
     description:
-      "Document title. May contain Jinja variables (e.g. {{ document_title }}).",
+      "Document title. May contain Jinja variables (e.g. {{ document_title }}). Type @ to insert an entity reference.",
+    // Arc 4b.2b — Jinja-aware free-text field; opt in to `@` mentions.
+    supportsMentions: true,
   },
   subtitle: {
     type: "string",
     default: "",
     displayLabel: "Subtitle",
+    description: "Optional subtitle. Type @ to insert an entity reference.",
+    // Arc 4b.2b — Jinja-aware free-text field; opt in to `@` mentions.
+    supportsMentions: true,
   },
   accent_color: {
     type: "string",
@@ -84,14 +89,20 @@ export const BODY_SECTION_BLOCK_SCHEMA: Record<string, ConfigPropSchema> = {
     type: "string",
     default: "",
     displayLabel: "Heading",
-    description: "Optional section heading.",
+    description:
+      "Optional section heading. Type @ to insert an entity reference.",
+    // Arc 4b.2b — Jinja-aware free-text field; opt in to `@` mentions.
+    supportsMentions: true,
   },
   body: {
     type: "string",
     default: "",
     displayLabel: "Body",
     description:
-      "Body content. May contain Jinja variables. Rich-text + slash + mention UX ships in Arc 4b.1b.",
+      "Body content. May contain Jinja variables. Type @ to insert an entity reference.",
+    // Arc 4b.2b — multiline + mention-aware Jinja body field.
+    bounds: { multiline: true },
+    supportsMentions: true,
   },
   accent_color: {
     type: "string",

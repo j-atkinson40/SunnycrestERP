@@ -9,7 +9,7 @@
  * produce out-of-bounds states the backend would reject.
  */
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from "lucide-react"
 
 import type { ConfigPropSchema } from "@/lib/visual-editor/registry"
@@ -21,6 +21,11 @@ import {
   type TokenEntry,
 } from "@/lib/visual-editor/themes/token-catalog"
 import { getAllRegistered } from "@/lib/visual-editor/registry"
+import {
+  MentionPicker,
+  useMentionPicker,
+  handleSuggestionKeyDown,
+} from "@/lib/visual-editor/suggestion-dropdown"
 
 
 /** The registry's `TokenCategory` (broad family enum: "accent",
@@ -99,6 +104,12 @@ export interface StringControlProps {
   placeholder?: string
   multiline?: boolean
   disabled?: boolean
+  /** Arc 4b.2b — enable `@` mention picker. When true, typing `@`
+   *  at a non-mid-word position opens MentionPicker and selecting
+   *  a candidate inserts a canonical `{{ ref(...) }}` Jinja token
+   *  at the cursor. Opt-in per field; only Jinja-aware free-text
+   *  fields should set this. */
+  supportsMentions?: boolean
   "data-testid"?: string
 }
 
@@ -109,35 +120,97 @@ export function StringControl({
   placeholder,
   multiline,
   disabled,
+  supportsMentions,
   "data-testid": testid = "prop-string",
 }: StringControlProps) {
-  const Input = multiline ? "textarea" : "input"
+  const fieldRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null)
+  // Hook called unconditionally to honor React's hook discipline;
+  // the picker stays closed (no fetch, no surface) when
+  // `supportsMentions` is false, so cost is one state slot only.
+  const mentionPicker = useMentionPicker({
+    value,
+    onValueChange: onChange,
+    fieldRef,
+  })
+
+  // maxLength-aware wrapped onChange. When mentions are enabled,
+  // we route through the picker's input handler (which already calls
+  // onValueChange === our onChange); otherwise, fall back to the
+  // legacy maxLength enforcement.
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    if (supportsMentions) {
+      mentionPicker.handleInputChange(e)
+      return
+    }
+    const next = e.target.value
+    if (maxLength === undefined || next.length <= maxLength) {
+      onChange(next)
+    } else {
+      onChange(next.slice(0, maxLength))
+    }
+  }
+
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    if (!supportsMentions) return
+    // Picker-owned keys (Escape with β semantics).
+    const pickerConsumed = mentionPicker.handleKeyDown(e)
+    if (pickerConsumed) return
+    // SuggestionDropdown navigation (ArrowUp/Down/Enter) when picker open.
+    if (mentionPicker.pickerState.open) {
+      // Defer to the MentionPicker → SuggestionDropdown internal
+      // keyboard model. We don't have direct access to suggestions
+      // here, so we rely on MentionPicker's onMouseDown selection
+      // for v1. Future: lift suggestions state up and bind
+      // handleSuggestionKeyDown here. For v1 the operator uses
+      // mouse OR continues typing to filter.
+      // Suppress unused-import warning at compile time.
+      void handleSuggestionKeyDown
+    }
+  }
+
+  const commonProps = {
+    ref: fieldRef as React.RefObject<HTMLInputElement & HTMLTextAreaElement>,
+    value,
+    onChange: handleChange,
+    onKeyDown: handleKeyDown,
+    placeholder,
+    disabled,
+    maxLength,
+    "data-testid": `${testid}-input`,
+    "data-supports-mentions": supportsMentions ? "true" : "false",
+    className:
+      "rounded-md border border-border-base bg-surface-raised px-2 py-1.5 font-plex-mono text-caption text-content-base",
+  }
+
   return (
     <div
       className="flex flex-col gap-1"
       data-testid={testid}
     >
-      <Input
-        value={value}
-        onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-          const next = e.target.value
-          if (maxLength === undefined || next.length <= maxLength) {
-            onChange(next)
-          } else {
-            onChange(next.slice(0, maxLength))
-          }
-        }}
-        placeholder={placeholder}
-        disabled={disabled}
-        maxLength={maxLength}
-        data-testid={`${testid}-input`}
-        className="rounded-md border border-border-base bg-surface-raised px-2 py-1.5 font-plex-mono text-caption text-content-base"
-        rows={multiline ? 3 : undefined}
-      />
+      {multiline ? (
+        <textarea {...commonProps} rows={3} />
+      ) : (
+        <input {...commonProps} />
+      )}
       {maxLength !== undefined && (
         <span className="text-right text-micro text-content-muted">
           {value.length}/{maxLength}
         </span>
+      )}
+      {supportsMentions && (
+        <MentionPicker
+          pickerState={mentionPicker.pickerState}
+          fieldRef={fieldRef}
+          onSelectCandidate={mentionPicker.handleSelectCandidate}
+          onCancelKeepText={mentionPicker.handleCancelKeepText}
+          onCancelEraseText={mentionPicker.handleCancelEraseText}
+          onSwitchEntityType={mentionPicker.setEntityType}
+          data-testid={`${testid}-mention`}
+        />
       )}
     </div>
   )
@@ -1148,11 +1221,23 @@ export function PropControlDispatcher({
       "maxLength" in (schema.bounds as Record<string, unknown>)
         ? Number((schema.bounds as Record<string, unknown>).maxLength)
         : undefined
+    // Arc 4b.2b — derive `multiline` from schema.bounds when set
+    // (allows body_section.body to render as textarea without a
+    // dedicated schema type); supportsMentions flag opts in to
+    // the `@` mention picker UX.
+    const multilineFlag =
+      typeof schema.bounds === "object" &&
+      schema.bounds !== null &&
+      "multiline" in (schema.bounds as Record<string, unknown>)
+        ? Boolean((schema.bounds as Record<string, unknown>).multiline)
+        : undefined
     return (
       <StringControl
         value={value !== undefined && value !== null ? String(value) : ""}
         onChange={onChange}
         maxLength={maxLen}
+        multiline={multilineFlag}
+        supportsMentions={schema.supportsMentions}
         disabled={disabled}
         data-testid={testid}
       />

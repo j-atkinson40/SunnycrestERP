@@ -181,6 +181,14 @@ export interface ConfigPropSchema<TDefault = unknown> {
   /** Indicates the prop is required (editor will not allow
    * clearing it). Defaults to false. */
   required?: boolean
+  /** For `string` fields: enable Arc 4b.2b mention picker.
+   * `@` keystroke at a non-mid-word position opens a SuggestionDropdown
+   * that resolves entity references (case / order / contact / product
+   * per Q-COUPLING-1 picker subset) and inserts a canonical Jinja
+   * `{{ ref(...) }}` token. Opt-in per field — only Jinja-aware
+   * free-text fields (block heading / title / body / subtitle) set
+   * this. Identifier-shape strings (e.g. items_variable) do NOT. */
+  supportsMentions?: boolean
 }
 
 
