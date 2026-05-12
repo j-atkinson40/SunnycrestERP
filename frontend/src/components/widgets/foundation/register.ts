@@ -45,6 +45,11 @@ import {
 } from "@/components/focus/canvas/widget-renderers"
 
 // R-1.6.12: wrapped versions (carry data-component-name boundary div).
+// Arc 1: lifted 6 more widgets into the wrapped set (was 4 pre-Arc-1;
+// now 10 foundation-cluster widgets — all visual-editor-metadata-
+// registered + emit data-component-name on tenant pages). Briefing /
+// SavedView / EmailGlance / CalendarGlance / CalendarSummary /
+// CalendarConsentPending all migrated through Path 1 in Arc 1.
 //
 // Cast through `unknown` is required because each wrapped component
 // preserves its original prop type (e.g. `TodayWidgetProps` declares
@@ -58,15 +63,14 @@ import {
   OperatorProfileWidget as OperatorProfileWidgetWrapped,
   RecentActivityWidget as RecentActivityWidgetWrapped,
   AnomaliesWidget as AnomaliesWidgetWrapped,
+  // Arc 1 additions (Group D foundation cluster)
+  SavedViewWidget as SavedViewWidgetWrapped,
+  BriefingWidget as BriefingWidgetWrapped,
+  EmailGlanceWidget as EmailGlanceWidgetWrapped,
+  CalendarGlanceWidget as CalendarGlanceWidgetWrapped,
+  CalendarSummaryWidget as CalendarSummaryWidgetWrapped,
+  CalendarConsentPendingWidget as CalendarConsentPendingWidgetWrapped,
 } from "@/lib/visual-editor/registry/registrations/widgets"
-
-// Unwrapped — not yet in visual-editor metadata registry.
-import { BriefingWidget } from "./BriefingWidget"
-import { CalendarConsentPendingWidget } from "./CalendarConsentPendingWidget"
-import { CalendarGlanceWidget } from "./CalendarGlanceWidget"
-import { CalendarSummaryWidget } from "./CalendarSummaryWidget"
-import { EmailGlanceWidget } from "./EmailGlanceWidget"
-import { SavedViewWidget } from "./SavedViewWidget"
 
 
 const TodayWidget =
@@ -77,6 +81,18 @@ const RecentActivityWidget =
   RecentActivityWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
 const AnomaliesWidget =
   AnomaliesWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const SavedViewWidget =
+  SavedViewWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const BriefingWidget =
+  BriefingWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const EmailGlanceWidget =
+  EmailGlanceWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const CalendarGlanceWidget =
+  CalendarGlanceWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const CalendarSummaryWidget =
+  CalendarSummaryWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const CalendarConsentPendingWidget =
+  CalendarConsentPendingWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
 
 
 // `today` widget — cross-vertical foundation. Visible to every tenant

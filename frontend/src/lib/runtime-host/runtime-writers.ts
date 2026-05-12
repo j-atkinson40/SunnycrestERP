@@ -39,6 +39,10 @@ import {
   componentConfigurationsService,
   type ComponentConfigurationRecord,
 } from "@/bridgeable-admin/services/component-configurations-service"
+import {
+  dashboardLayoutsService,
+  type DashboardLayoutEntry,
+} from "@/bridgeable-admin/services/dashboard-layouts-service"
 import { themesService } from "@/bridgeable-admin/services/themes-service"
 
 import type {
@@ -197,6 +201,69 @@ export function makeComponentClassWriter(
 }
 
 
+/** Dashboard-layout writer — POST a full layout_config at
+ *  vertical_default scope for a given page_context. Arc 1 wires this
+ *  writer (replacing the R-1 stub). The inspector affordance that
+ *  emits `stageOverride({ type: "dashboard_layout", ... })` calls
+ *  remains Arc 3+ territory; Arc 1 ships the writer so when the
+ *  inspector affordance lands, the contract is already implemented.
+ *
+ *  Layout semantics: a layout is replaced as a whole, not field-merged.
+ *  `override.value` is the FULL DashboardLayoutEntry[] array — staging
+ *  a partial update is the caller's responsibility before commit.
+ *
+ *  Per-tenant Pulse layout authoring at `/visual-editor/widgets >
+ *  Dashboard Layouts` tab continues to work unchanged via `adminApi`
+ *  directly; that path doesn't go through this writer. */
+export function makeDashboardLayoutWriter(
+  ctx: RuntimeWriteContext,
+): OverrideWriter {
+  return async (_helpers, override: RuntimeOverride) => {
+    if (!ctx.vertical) {
+      throw new Error(
+        "runtime-writers/dashboard_layout: vertical missing — runtime " +
+          "editor requires impersonated tenant's vertical to author at " +
+          "vertical_default scope.",
+      )
+    }
+    if (override.prop !== "layout_config") {
+      throw new Error(
+        `runtime-writers/dashboard_layout: only 'layout_config' prop ` +
+          `supported, got '${override.prop}'. A layout is replaced as a ` +
+          `whole, not field-merged.`,
+      )
+    }
+    const pageContext = override.target
+    if (!pageContext) {
+      throw new Error(
+        "runtime-writers/dashboard_layout: target (page_context) missing.",
+      )
+    }
+    // Lookup any existing row at vertical_default scope for this
+    // page_context. If present, update; else create.
+    const existing = await dashboardLayoutsService.list({
+      scope: "vertical_default",
+      vertical: ctx.vertical,
+      page_context: pageContext,
+    })
+    const activeRow = existing.find((r) => r.is_active) ?? null
+    const layoutValue = override.value as DashboardLayoutEntry[]
+    if (activeRow) {
+      await dashboardLayoutsService.update(activeRow.id, {
+        layout_config: layoutValue,
+      })
+    } else {
+      await dashboardLayoutsService.create({
+        scope: "vertical_default",
+        vertical: ctx.vertical,
+        page_context: pageContext,
+        layout_config: layoutValue,
+      })
+    }
+  }
+}
+
+
 /** Build the full per-type writer registry for a runtime editor
  *  session. Consumed by `<EditModeProvider writers={...}>`. */
 export function buildRuntimeWriters(
@@ -211,17 +278,10 @@ export function buildRuntimeWriters(
     token: makeThemeWriter(ctx),
     component_prop: makeComponentPropWriter(ctx),
     component_class: makeComponentClassWriter(ctx),
-    dashboard_layout: async () => {
-      // R-1 doesn't ship layout editing in the inspector. Layouts
-      // continue to be authored via the Widget Editor's Dashboard
-      // Layouts tab. Keeping a stub writer so the contract is
-      // honored — staged dashboard_layout overrides commit as a
-      // no-op (and inspector doesn't expose them in V1).
-      throw new Error(
-        "runtime-writers/dashboard_layout: not wired in R-1. Use " +
-          "the Widget Editor's 'Dashboard Layouts' tab to author " +
-          "layouts at vertical_default scope.",
-      )
-    },
+    // Arc 1 — dashboard_layout writer wired (was R-1 stub throw).
+    // Inspector affordance that triggers `stageOverride({ type:
+    // "dashboard_layout", ... })` lands in Arc 3+; the writer is
+    // ready when the affordance ships.
+    dashboard_layout: makeDashboardLayoutWriter(ctx),
   }
 }

@@ -39,11 +39,27 @@
  * Height 600 unchanged.
  */
 
-import { registerFocus } from "@/contexts/focus-registry"
-import { registerWidgetRenderer } from "@/components/focus/canvas/widget-renderers"
+import type { ComponentType } from "react"
 
-import { AncillaryPoolPin } from "./AncillaryPoolPin"
+import { registerFocus } from "@/contexts/focus-registry"
+import {
+  registerWidgetRenderer,
+  type WidgetRendererProps,
+} from "@/components/focus/canvas/widget-renderers"
+
+// Arc 1: AncillaryPoolPin lifted to wrapped via R-1.6.12 Path 1 —
+// import wrapped version from the visual-editor metadata shim so the
+// runtime DOM emits data-component-name. Cast through `unknown` per
+// established pattern (component preserves wider prop type than
+// WidgetRendererProps). Context coupling already resolved per
+// R-5.0.5 lineage (uses useSchedulingFocusOptional internally; safe
+// to render outside the FH Focus subtree).
+import { AncillaryPoolPin as AncillaryPoolPinWrapped } from "@/lib/visual-editor/registry/registrations/scheduling-widgets"
 import { SchedulingFocusWithAccessories } from "./SchedulingFocusWithAccessories"
+
+
+const AncillaryPoolPin =
+  AncillaryPoolPinWrapped as unknown as ComponentType<WidgetRendererProps>
 
 
 // Phase 4.3b.3 — register the AncillaryPoolPin component before the

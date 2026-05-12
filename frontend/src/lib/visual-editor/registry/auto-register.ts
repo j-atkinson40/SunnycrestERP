@@ -18,6 +18,14 @@
  */
 
 import "./registrations/widgets"
+// Arc 1 — Group E widget (scheduling-focus cluster). Separate shim
+// file from `./widgets.ts` so the dispatch cluster owns its visual-
+// editor metadata alongside its canvas-renderer cluster. Import
+// after `widgets` so the foundation/manufacturing wraps register
+// first (deterministic order; not strictly required for correctness
+// but keeps registry-population ordering predictable for any
+// future order-sensitive consumer).
+import "./registrations/scheduling-widgets"
 import "./registrations/focus-types"
 import "./registrations/focus-templates"
 import "./registrations/document-blocks"

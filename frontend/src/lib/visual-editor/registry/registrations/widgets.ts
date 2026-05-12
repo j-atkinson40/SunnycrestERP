@@ -35,6 +35,36 @@ import { AnomaliesWidget as AnomaliesWidgetRaw } from "@/components/widgets/foun
 import { VaultScheduleWidget as VaultScheduleWidgetRaw } from "@/components/widgets/manufacturing/VaultScheduleWidget"
 import { LineStatusWidget as LineStatusWidgetRaw } from "@/components/widgets/manufacturing/LineStatusWidget"
 
+// Arc 1 (visual-authoring capability audit Friction 1 closure) —
+// 7 Group D widgets lifted from canvas-registered-but-unwrapped to
+// fully wrapped + visual-editor-metadata-registered. Same R-1.6.12
+// Path 1 pattern as the 6 above; the wrapped components carry the
+// `data-component-name` boundary div so the runtime editor's
+// SelectionOverlay can resolve a clicked widget on Pulse / spaces_pin
+// / focus_canvas / focus_stack surfaces. Pre-Arc-1 these widgets
+// rendered without the boundary div (canvas registry stored
+// unwrapped exports) — click-to-edit could never select them.
+//
+// R-2.1 backfill discipline applied: each widget declares ≥3
+// configurableProps with type/default/bounds/displayLabel/description
+// per §3 widget contract canon.
+//
+// B-ARC1-1 canonical pattern: widget configurableProps stay narrow
+// (presentation overrides only). Instance-content selection — e.g.,
+// saved_view's `view_id` — lives at placement-level config
+// (`pin.config` / `placement.prop_overrides`), NOT widget metadata.
+// The widget is registered code; configuration of which content to
+// render is placement-level data. Pattern generalizes platform-wide
+// to container-plus-instance-content widgets (future chart_widget
+// data source, kpi_card metric source, list_widget query binding).
+import { SavedViewWidget as SavedViewWidgetRaw } from "@/components/widgets/foundation/SavedViewWidget"
+import { BriefingWidget as BriefingWidgetRaw } from "@/components/widgets/foundation/BriefingWidget"
+import { EmailGlanceWidget as EmailGlanceWidgetRaw } from "@/components/widgets/foundation/EmailGlanceWidget"
+import { CalendarGlanceWidget as CalendarGlanceWidgetRaw } from "@/components/widgets/foundation/CalendarGlanceWidget"
+import { CalendarSummaryWidget as CalendarSummaryWidgetRaw } from "@/components/widgets/foundation/CalendarSummaryWidget"
+import { CalendarConsentPendingWidget as CalendarConsentPendingWidgetRaw } from "@/components/widgets/foundation/CalendarConsentPendingWidget"
+import { UrnCatalogStatusWidget as UrnCatalogStatusWidgetRaw } from "@/components/widgets/manufacturing/UrnCatalogStatusWidget"
+
 import { registerComponent } from "../register"
 
 
@@ -604,3 +634,526 @@ export const LineStatusWidget = registerComponent({
   schemaVersion: 1,
   componentVersion: 2,
 })(LineStatusWidgetRaw)
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Arc 1 — Group D + Group E widgets (lift from canvas-registered-but-
+// unwrapped to fully wrapped). 7 Group D widgets follow; Group E
+// (scheduling.ancillary-pool) lives in `./scheduling-widgets.ts` shim
+// because it sits in the dispatch/scheduling-focus cluster.
+// ═══════════════════════════════════════════════════════════════════
+
+
+// ─── saved_view (cross-surface infrastructure — Phase W-3b) ──────
+//
+// B-ARC1-1: configurableProps stay narrow — `view_id` (which saved
+// view to render) is INSTANCE config (placement-level `pin.config` /
+// `placement.prop_overrides`), NOT widget metadata. The widget is
+// registered code; the saved-view selection is data on the
+// placement. Same pattern applies to future container-plus-instance-
+// content widgets.
+export const SavedViewWidget = registerComponent({
+  type: "widget",
+  name: "saved-view",
+  displayName: "Saved View",
+  description:
+    "Generic widget rendering any tenant saved view via `config.view_id` (instance-level). Brief + Detail + Deep variants — NO Glance, NO spaces_pin per §12.10 (saved views need at minimum a list to be informative). The widget's configurableProps cover presentation overrides only; view_id selection lives at placement scope per B-ARC1-1.",
+  category: "foundation",
+  verticals: ["all"],
+  userParadigms: ["owner-operator", "operator-power-user", "focused-executor"],
+  consumedTokens: [
+    "surface-elevated",
+    "border-subtle",
+    "content-strong",
+    "content-base",
+    "content-muted",
+    "accent",
+    "accent-subtle",
+    "radius-base",
+    "shadow-level-1",
+    "text-body-sm",
+    "text-caption",
+  ],
+  configurableProps: {
+    showHeader: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show header",
+      description:
+        "Show the saved-view title row inside the widget chrome.",
+    },
+    density: {
+      type: "enum",
+      default: "comfortable",
+      bounds: ["compact", "comfortable", "spacious"],
+      displayLabel: "Row density",
+      description:
+        "Per-row padding within the rendered list/table/cards.",
+    },
+    accentToken: {
+      type: "tokenReference",
+      default: "accent",
+      tokenCategory: "accent",
+      displayLabel: "Accent token",
+      description:
+        "Token coloring highlights (selected row, primary column, etc.).",
+    },
+    maxRowsBrief: {
+      type: "number",
+      default: 5,
+      bounds: [1, 25],
+      displayLabel: "Max rows in Brief",
+      description:
+        "Cap on rows rendered in Brief variant (Detail + Deep render the configured saved-view limit).",
+    },
+    showRowCount: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show row count",
+      description: "Show 'Showing N of M' subtext beneath the rows.",
+    },
+    emptyStateText: {
+      type: "string",
+      default: "No items match",
+      displayLabel: "Empty state text",
+      description:
+        "Shown when the saved-view returns zero rows. Surface-level — widget renders 'Select a saved view' when config.view_id is unset.",
+      bounds: { maxLength: 80 },
+    },
+  },
+  variants: [
+    { name: "brief", displayLabel: "Brief" },
+    { name: "detail", displayLabel: "Detail" },
+    { name: "deep", displayLabel: "Deep" },
+  ],
+  schemaVersion: 1,
+  componentVersion: 1,
+})(SavedViewWidgetRaw)
+
+
+// ─── briefing (cross-surface infrastructure — Phase W-3b) ────────
+export const BriefingWidget = registerComponent({
+  type: "widget",
+  name: "briefing",
+  displayName: "Briefing",
+  description:
+    "Per-user scoped morning/evening briefing surface (promotion of Phase 6 BriefingCard to widget contract). Glance + Brief + Detail variants — Glance lands on sidebar (spaces_pin), Brief on dashboards/canvas, Detail on focus canvas. Briefing-type ('morning' | 'evening') per-instance via config.briefing_type. View-only per §12.6a — Mark-read + Regenerate live on /briefing.",
+  category: "foundation",
+  verticals: ["all"],
+  userParadigms: ["owner-operator", "operator-power-user"],
+  consumedTokens: [
+    "surface-elevated",
+    "border-subtle",
+    "content-strong",
+    "content-base",
+    "content-muted",
+    "accent",
+    "accent-subtle",
+    "status-info",
+    "radius-base",
+    "shadow-level-1",
+    "text-body",
+    "text-body-sm",
+    "text-caption",
+  ],
+  configurableProps: {
+    briefingType: {
+      type: "enum",
+      default: "morning",
+      bounds: ["morning", "evening"],
+      displayLabel: "Briefing type",
+      description:
+        "Which briefing to surface. Morning orients forward; evening closes backward.",
+    },
+    showUnreadIndicator: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show unread indicator",
+      description:
+        "Show accent dot when the most-recent briefing has not been marked read.",
+    },
+    showSpacePill: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show active-space pill (Brief variant)",
+      description:
+        "Show 'Generated for {active space}' chip in Brief + Detail variants.",
+    },
+    narrativeTruncationChars: {
+      type: "number",
+      default: 320,
+      bounds: [120, 800],
+      displayLabel: "Narrative truncation length",
+      description:
+        "Brief variant truncates at last-word boundary before this character count. Detail variant shows full narrative.",
+    },
+    showStructuredSections: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show structured sections (Detail variant)",
+      description:
+        "Render Queues / Flags / Pending decisions cards beneath the narrative.",
+    },
+    accentToken: {
+      type: "tokenReference",
+      default: "accent",
+      tokenCategory: "accent",
+      displayLabel: "Accent token",
+      description:
+        "Token coloring the briefing-type icon (Sunrise / Sunset).",
+    },
+  },
+  variants: [
+    { name: "glance", displayLabel: "Glance" },
+    { name: "brief", displayLabel: "Brief" },
+    { name: "detail", displayLabel: "Detail" },
+  ],
+  schemaVersion: 1,
+  componentVersion: 1,
+})(BriefingWidgetRaw)
+
+
+// ─── email_glance (cross-vertical foundation — Phase W-4b Step 5) ─
+export const EmailGlanceWidget = registerComponent({
+  type: "widget",
+  name: "email-glance",
+  displayName: "Email Glance",
+  description:
+    "Email primitive Glance for Pulse Communications Layer per §3.26.9.7. Surfaces unread inbound count + top sender + cross-tenant indicator across the user's accessible email accounts. Three density tiers per §13.4.1 + §14.4-14.5. Click-through navigation per §12.6a — view-only widget.",
+  category: "foundation",
+  verticals: ["all"],
+  userParadigms: ["owner-operator", "operator-power-user", "focused-executor"],
+  consumedTokens: [
+    "surface-elevated",
+    "border-subtle",
+    "content-strong",
+    "content-base",
+    "content-muted",
+    "accent",
+    "accent-subtle",
+    "status-info",
+    "radius-base",
+    "shadow-level-1",
+    "text-body-sm",
+    "text-caption",
+    "text-micro",
+  ],
+  configurableProps: {
+    showTopSender: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show top sender",
+      description:
+        "Surface the most-frequent recent sender in Default + Compact density tiers.",
+    },
+    showCrossTenantIndicator: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show cross-tenant indicator",
+      description:
+        "Show 'cross-tenant' dot when any of the user's accessible accounts is from a partner tenant.",
+    },
+    accentToken: {
+      type: "tokenReference",
+      default: "accent",
+      tokenCategory: "accent",
+      displayLabel: "Accent token",
+      description:
+        "Token coloring the count emphasis + click affordance.",
+    },
+    emptyStateBehavior: {
+      type: "enum",
+      default: "minimal",
+      bounds: ["minimal", "cta", "hidden"],
+      displayLabel: "Empty-state behavior",
+      description:
+        "When inbox is fully read: 'minimal' shows 'No unread'; 'cta' shows 'Open inbox →'; 'hidden' renders no widget body.",
+    },
+    refreshIntervalSeconds: {
+      type: "number",
+      default: 300,
+      bounds: [60, 1800],
+      displayLabel: "Refresh interval (seconds)",
+    },
+  },
+  variants: [{ name: "glance", displayLabel: "Glance" }],
+  schemaVersion: 1,
+  componentVersion: 1,
+})(EmailGlanceWidgetRaw)
+
+
+// ─── calendar_glance (cross-vertical foundation — Calendar Step 5) ──
+export const CalendarGlanceWidget = registerComponent({
+  type: "widget",
+  name: "calendar-glance",
+  displayName: "Calendar Glance",
+  description:
+    "Calendar primitive Glance for Pulse Communications Layer per §3.26.16.10. Surfaces interpersonal-scheduling signals — responses awaiting + cross-tenant invitations — across the user's accessible calendar accounts. Pattern parallels email_glance verbatim (canonical Step 5 cross-surface rendering precedent). Three density tiers + spaces_pin surface. View-only per §12.6a.",
+  category: "foundation",
+  verticals: ["all"],
+  userParadigms: ["owner-operator", "operator-power-user", "focused-executor"],
+  consumedTokens: [
+    "surface-elevated",
+    "border-subtle",
+    "content-strong",
+    "content-base",
+    "content-muted",
+    "accent",
+    "accent-subtle",
+    "status-info",
+    "status-warning",
+    "radius-base",
+    "shadow-level-1",
+    "text-body-sm",
+    "text-caption",
+    "text-micro",
+  ],
+  configurableProps: {
+    showInvitations: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show invitation count",
+      description:
+        "Show pending invitations awaiting response. When false, only count-of-events surfaces.",
+    },
+    showCrossTenantIndicator: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show cross-tenant indicator",
+      description:
+        "Highlight cross-tenant invitations distinctly from same-tenant invites.",
+    },
+    accentToken: {
+      type: "tokenReference",
+      default: "accent",
+      tokenCategory: "accent",
+      displayLabel: "Accent token",
+      description: "Token coloring the count emphasis + click affordance.",
+    },
+    clickTargetRoute: {
+      type: "enum",
+      default: "calendar-home",
+      bounds: ["calendar-home", "invitations", "today"],
+      displayLabel: "Click-through target",
+      description:
+        "Where clicks navigate. 'calendar-home' goes to /calendar; 'invitations' opens the pending-invitations view; 'today' lands on today's day-view.",
+    },
+    refreshIntervalSeconds: {
+      type: "number",
+      default: 300,
+      bounds: [60, 1800],
+      displayLabel: "Refresh interval (seconds)",
+    },
+  },
+  variants: [{ name: "glance", displayLabel: "Glance" }],
+  schemaVersion: 1,
+  componentVersion: 1,
+})(CalendarGlanceWidgetRaw)
+
+
+// ─── calendar_summary (cross-vertical foundation — Calendar Step 5) ──
+export const CalendarSummaryWidget = registerComponent({
+  type: "widget",
+  name: "calendar-summary",
+  displayName: "Calendar Summary",
+  description:
+    "Calendar primitive Operational Layer extension per §3.26.16.10. Surfaces this-week schedule (next event + per-day event counts + first-event subjects). Confirmed + opaque events only — tentative drafts route to drafted-event review queue. Three density tiers + spaces_pin surface. Per-instance window via config.days (1..31; default 7). View-only per §12.6a.",
+  category: "foundation",
+  verticals: ["all"],
+  userParadigms: ["owner-operator", "operator-power-user"],
+  consumedTokens: [
+    "surface-elevated",
+    "border-subtle",
+    "content-strong",
+    "content-base",
+    "content-muted",
+    "accent",
+    "accent-subtle",
+    "radius-base",
+    "shadow-level-1",
+    "text-body-sm",
+    "text-caption",
+    "text-micro",
+  ],
+  configurableProps: {
+    daysWindow: {
+      type: "number",
+      default: 7,
+      bounds: [1, 31],
+      displayLabel: "Days window",
+      description:
+        "How many days forward to summarize. 7 = this week; 14 = two-week outlook; 1 = today only.",
+    },
+    showNextEventSubject: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show next-event subject",
+      description:
+        "Show the next event's subject + start time prominently above the per-day counts.",
+    },
+    showFirstEventPerDay: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show first-event subject per day (Default density)",
+      description:
+        "In Default-density Pulse rendering, show one subject per day; Compact density hides subject and shows counts only.",
+    },
+    accentToken: {
+      type: "tokenReference",
+      default: "accent",
+      tokenCategory: "accent",
+      displayLabel: "Accent token",
+    },
+    refreshIntervalSeconds: {
+      type: "number",
+      default: 300,
+      bounds: [60, 1800],
+      displayLabel: "Refresh interval (seconds)",
+    },
+  },
+  variants: [{ name: "brief", displayLabel: "Brief" }],
+  schemaVersion: 1,
+  componentVersion: 1,
+})(CalendarSummaryWidgetRaw)
+
+
+// ─── calendar_consent_pending (Calendar Step 5.1) ────────────────
+export const CalendarConsentPendingWidget = registerComponent({
+  type: "widget",
+  name: "calendar-consent-pending",
+  displayName: "Calendar Consent Pending",
+  description:
+    "Calendar primitive Pulse Communications Layer per §3.26.16.10 (alongside calendar_glance + email_glance). Surfaces pending_inbound PTR consent rows — partner has opted into full_details + this side hasn't accepted yet. Three density tiers + spaces_pin surface. Cross-vertical default-ship with empty state. View-only per §12.6a — accept/revoke happens on the settings page.",
+  category: "foundation",
+  verticals: ["all"],
+  userParadigms: ["owner-operator", "operator-power-user"],
+  consumedTokens: [
+    "surface-elevated",
+    "border-subtle",
+    "content-strong",
+    "content-base",
+    "content-muted",
+    "accent",
+    "accent-subtle",
+    "status-info",
+    "status-warning",
+    "radius-base",
+    "shadow-level-1",
+    "text-body-sm",
+    "text-caption",
+    "text-micro",
+  ],
+  configurableProps: {
+    showTopRequester: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show top requester",
+      description:
+        "Surface the most-recent requesting tenant in Default density.",
+    },
+    accentWhenAnyPending: {
+      type: "tokenReference",
+      default: "status-warning",
+      tokenCategory: "status",
+      displayLabel: "Accent when any pending",
+      description:
+        "Status token coloring the count chip when ≥1 pending request exists.",
+    },
+    emptyStateText: {
+      type: "string",
+      default: "No pending consent requests",
+      displayLabel: "Empty state text",
+      description:
+        "Copy shown when zero pending_inbound PTR rows exist. Surface remains visible — operators see 'all clear' rather than no widget.",
+      bounds: { maxLength: 80 },
+    },
+    showDeepLinkToSettings: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Deep-link to settings page",
+      description:
+        "Single-request surface adds ?relationship_id={id} deep-link; multi-request surface lands on /settings/calendar/freebusy-consent.",
+    },
+    refreshIntervalSeconds: {
+      type: "number",
+      default: 300,
+      bounds: [60, 1800],
+      displayLabel: "Refresh interval (seconds)",
+    },
+  },
+  variants: [{ name: "glance", displayLabel: "Glance" }],
+  schemaVersion: 1,
+  componentVersion: 1,
+})(CalendarConsentPendingWidgetRaw)
+
+
+// ─── urn_catalog_status (manufacturing per-line — Phase W-3d) ────
+export const UrnCatalogStatusWidget = registerComponent({
+  type: "widget",
+  name: "urn-catalog-status",
+  displayName: "Urn Catalog Status",
+  description:
+    "Extension-gated widget exercising the urn_sales extension axis. Visible only to tenants with urn_sales activated. Glance + Brief variants — catalog management lives at /urns/catalog (the page); the widget surfaces health (SKU counts, low-stock identification, recent order count).",
+  category: "manufacturing-operations",
+  verticals: ["manufacturing"],
+  userParadigms: ["owner-operator", "operator-power-user"],
+  productLines: ["urn_sales"],
+  consumedTokens: [
+    "surface-elevated",
+    "border-subtle",
+    "content-strong",
+    "content-base",
+    "content-muted",
+    "accent",
+    "status-warning",
+    "status-success",
+    "radius-base",
+    "shadow-level-1",
+    "text-body-sm",
+    "text-caption",
+    "text-micro",
+  ],
+  configurableProps: {
+    showLowStockCount: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show low-stock count",
+      description:
+        "Surface count of SKUs at-or-below reorder point. Excludes products with reorder_point=0 (treated as 'no monitoring').",
+    },
+    showRecentOrders: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show recent orders count",
+      description: "Count of urn orders placed in the last 7 days.",
+    },
+    lowStockThreshold: {
+      type: "number",
+      default: 0,
+      bounds: [0, 100],
+      displayLabel: "Low-stock visual threshold",
+      description:
+        "Count threshold at which the widget gains visual urgency (status-warning accent). 0 disables the visual escalation; otherwise applies when low-stock count ≥ threshold.",
+    },
+    accentToken: {
+      type: "tokenReference",
+      default: "accent",
+      tokenCategory: "accent",
+      displayLabel: "Accent token (healthy state)",
+      description:
+        "Token coloring the count emphasis when low-stock count is below threshold.",
+    },
+    refreshIntervalSeconds: {
+      type: "number",
+      default: 300,
+      bounds: [60, 1800],
+      displayLabel: "Refresh interval (seconds)",
+    },
+  },
+  variants: [
+    { name: "glance", displayLabel: "Glance" },
+    { name: "brief", displayLabel: "Brief" },
+  ],
+  schemaVersion: 1,
+  componentVersion: 1,
+})(UrnCatalogStatusWidgetRaw)

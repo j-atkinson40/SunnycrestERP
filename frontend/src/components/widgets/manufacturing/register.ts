@@ -24,8 +24,8 @@ import {
 
 // R-1.6.12: wrapped versions of vault_schedule + line_status (carry
 // data-component-name boundary div from `registerComponent` HOC).
-// urn_catalog_status is not yet in the visual-editor metadata
-// registry — stays unwrapped until promoted.
+// Arc 1: urn_catalog_status lifted from unwrapped → wrapped; now
+// emits data-component-name on Pulse / spaces_pin / focus_canvas.
 //
 // Cast through `unknown` is required because the wrapped components
 // preserve their original prop type (e.g. `VaultScheduleWidgetProps`
@@ -38,14 +38,16 @@ import {
 import {
   LineStatusWidget as LineStatusWidgetWrapped,
   VaultScheduleWidget as VaultScheduleWidgetWrapped,
+  // Arc 1 addition (Group D manufacturing cluster)
+  UrnCatalogStatusWidget as UrnCatalogStatusWidgetWrapped,
 } from "@/lib/visual-editor/registry/registrations/widgets"
-
-import { UrnCatalogStatusWidget } from "./UrnCatalogStatusWidget"
 
 const VaultScheduleWidget =
   VaultScheduleWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
 const LineStatusWidget =
   LineStatusWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
+const UrnCatalogStatusWidget =
+  UrnCatalogStatusWidgetWrapped as unknown as ComponentType<WidgetRendererProps>
 
 
 // `vault_schedule` widget — Phase W-3d manufacturing per-line
