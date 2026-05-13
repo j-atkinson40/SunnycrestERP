@@ -1,5 +1,5 @@
 /**
- * StudioLiveModeWrap — Studio 1a-i.A2.
+ * StudioLiveModeWrap — Studio 1a-i.A2 + Studio test maintenance (2026-05-13).
  *
  * Wraps RuntimeEditorShell inside Studio so the operator drops into
  * Live mode without leaving the Studio shell. The Studio shell dispatches
@@ -12,17 +12,31 @@
  * Studio's own top bar (rendered by StudioShell above this wrap) takes
  * the ribbon's role.
  *
+ * Lazy boundary (Studio test maintenance, 2026-05-13): RuntimeEditorShell
+ * is loaded via React.lazy() so the runtime-editor chunk (TenantProviders,
+ * TenantRouteTree, inspector substrate) does NOT enter the main admin
+ * bundle. Pre-fix, eager import grew main_bundle 7.54% over the
+ * pre-A2 baseline; lazy boundary restores within tolerance. The Studio
+ * shell entry into Live mode pays a one-time chunk fetch, same shape as
+ * the rest of the admin tree's lazy routes (RuntimeHostTestPage,
+ * StudioShell itself in BridgeableAdminApp).
+ *
  * Element layering inside Studio Live mode (no duplication):
  *   • Studio top bar    (StudioShell)
  *   • Studio left rail  (StudioShell, icon-strip default in Live)
- *   • this wrap → RuntimeEditorShell:
+ *   • this wrap → Suspense → RuntimeEditorShell:
  *       • TenantProviders + impersonated route tree
  *       • <EditModeToggle /> (floating)
  *       • <SelectionOverlay /> (capture-phase click)
  *       • <InspectorPanel /> (right rail when widget selected)
  *       • <Focus /> (modal mount inside editor shell)
  */
-import RuntimeEditorShell from "@/bridgeable-admin/pages/runtime-editor/RuntimeEditorShell"
+import { lazy, Suspense } from "react"
+
+
+const RuntimeEditorShell = lazy(
+  () => import("@/bridgeable-admin/pages/runtime-editor/RuntimeEditorShell"),
+)
 
 
 export interface StudioLiveModeWrapProps {
@@ -42,10 +56,21 @@ export default function StudioLiveModeWrap({ vertical }: StudioLiveModeWrapProps
       data-vertical-filter={vertical ?? "any"}
       className="relative"
     >
-      <RuntimeEditorShell
-        studioContext={true}
-        verticalFilter={vertical}
-      />
+      <Suspense
+        fallback={
+          <div
+            className="flex h-screen items-center justify-center bg-surface-base text-content-muted"
+            data-testid="studio-live-loading"
+          >
+            <span>Loading Live mode…</span>
+          </div>
+        }
+      >
+        <RuntimeEditorShell
+          studioContext={true}
+          verticalFilter={vertical}
+        />
+      </Suspense>
     </div>
   )
 }

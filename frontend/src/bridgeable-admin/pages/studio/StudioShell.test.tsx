@@ -165,17 +165,19 @@ describe("StudioShell — Live mode wrap (1a-i.A2)", () => {
     expect(toggle.getAttribute("data-active-mode")).toBe("live")
   })
 
-  it("Live mode mounts RuntimeEditorShell with studioContext=true", () => {
+  it("Live mode mounts RuntimeEditorShell with studioContext=true", async () => {
     renderAt("/studio/live")
-    const stub = screen.getByTestId("runtime-editor-shell-stub")
+    // RuntimeEditorShell is lazy-loaded inside StudioLiveModeWrap;
+    // await Suspense resolution before asserting on the stub.
+    const stub = await screen.findByTestId("runtime-editor-shell-stub")
     expect(stub.getAttribute("data-studio-context")).toBe("true")
   })
 
-  it("Live mode forwards vertical URL segment as verticalFilter", () => {
+  it("Live mode forwards vertical URL segment as verticalFilter", async () => {
     renderAt("/studio/live/manufacturing")
     const wrap = screen.getByTestId("studio-live-mode-wrap")
     expect(wrap.getAttribute("data-vertical-filter")).toBe("manufacturing")
-    const stub = screen.getByTestId("runtime-editor-shell-stub")
+    const stub = await screen.findByTestId("runtime-editor-shell-stub")
     expect(stub.getAttribute("data-vertical-filter")).toBe("manufacturing")
   })
 

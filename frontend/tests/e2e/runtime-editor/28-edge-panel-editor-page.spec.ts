@@ -46,14 +46,20 @@ test.describe("Gate 28 — EdgePanelEditor mounts + saves", () => {
     ).toBeVisible()
   })
 
-  test("nav card on visual editor index links to /visual-editor/edge-panels", async ({
+  test("Studio overview surfaces an edge-panels card (post-Studio migration)", async ({
     page,
   }) => {
+    // Studio shell migration (1a-i.A1, May 2026): the legacy
+    // `/visual-editor` index page redirects to `/studio` overview.
+    // The Phase 1 visual editor nav cards (`ve-card-*`) were
+    // replaced by Studio overview section cards
+    // (`studio-overview-card-*`). Intent preserved: "edge panels
+    // editor is reachable from the visual-editor index surface."
     await setupPage(page)
     await loginAsPlatformAdmin(page)
     await page.goto(`${STAGING_FRONTEND}/bridgeable-admin/visual-editor`)
     await page.waitForLoadState("networkidle")
-    const card = page.getByTestId("ve-card-edge-panels")
+    const card = page.getByTestId("studio-overview-card-edge-panels")
     await expect(card).toBeVisible({ timeout: 15_000 })
   })
 })

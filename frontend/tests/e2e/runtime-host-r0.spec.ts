@@ -92,7 +92,10 @@ test.describe("Phase R-0 — Runtime Host Foundation", () => {
     // this smoke assertion — we're verifying the route is mounted
     // (no 404).
     // The page should NOT 404. We check for known shell elements.
+    // Studio shell migration (1a-i.A1, May 2026): `/visual-editor/*`
+    // routes redirect to `/studio/*`. Accept either URL form — the
+    // intent is "route is registered + lands on widgets editor".
     const url = page.url()
-    expect(url).toContain("/visual-editor/widgets")
+    expect(url).toMatch(/\/(visual-editor|studio)\/widgets/)
   })
 })

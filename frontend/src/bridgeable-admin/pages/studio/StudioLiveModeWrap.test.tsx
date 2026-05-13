@@ -1,10 +1,15 @@
 /**
- * StudioLiveModeWrap smoke tests — Studio 1a-i.A2.
+ * StudioLiveModeWrap smoke tests — Studio 1a-i.A2 + Studio test maintenance.
  *
  * Verifies:
  *   - Mounts RuntimeEditorShell with studioContext=true
  *   - Forwards `vertical` prop to RuntimeEditorShell.verticalFilter
  *   - Renders the wrap test id so Studio shell test can locate it
+ *
+ * The wrap loads RuntimeEditorShell via React.lazy() (lazy boundary
+ * restored in Studio test maintenance, 2026-05-13). Tests await the
+ * Suspense resolution via `findByTestId` for assertions on the
+ * RuntimeEditorShell stub.
  */
 import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
@@ -42,9 +47,9 @@ describe("StudioLiveModeWrap", () => {
     expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
   })
 
-  it("mounts RuntimeEditorShell with studioContext=true", () => {
+  it("mounts RuntimeEditorShell with studioContext=true", async () => {
     renderWith(null)
-    const stub = screen.getByTestId("runtime-editor-shell-stub")
+    const stub = await screen.findByTestId("runtime-editor-shell-stub")
     expect(stub.getAttribute("data-studio-context")).toBe("true")
   })
 
@@ -54,11 +59,11 @@ describe("StudioLiveModeWrap", () => {
     expect(wrap.getAttribute("data-vertical-filter")).toBe("any")
   })
 
-  it("forwards a vertical slug as verticalFilter", () => {
+  it("forwards a vertical slug as verticalFilter", async () => {
     renderWith("manufacturing")
     const wrap = screen.getByTestId("studio-live-mode-wrap")
     expect(wrap.getAttribute("data-vertical-filter")).toBe("manufacturing")
-    const stub = screen.getByTestId("runtime-editor-shell-stub")
+    const stub = await screen.findByTestId("runtime-editor-shell-stub")
     expect(stub.getAttribute("data-vertical-filter")).toBe("manufacturing")
   })
 
