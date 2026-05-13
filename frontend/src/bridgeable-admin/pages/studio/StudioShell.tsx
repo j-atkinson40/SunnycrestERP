@@ -9,16 +9,25 @@
  *   /studio/:vertical                 → Vertical overview
  *   /studio/:editor                   → Platform-scope editor
  *   /studio/:vertical/:editor         → Vertical-scope editor
- *   /studio/live                      → Live mode placeholder (1a-i.A1)
+ *   /studio/live                      → Live mode landing (picker)
+ *   /studio/live/:vertical            → Live mode pre-scoped to vertical
+ *   /studio/live/:vertical/<tail>     → Live mode deep-link into tenant page
+ *   /studio/live/<tail>               → Live mode deep-link pre-impersonation
  *
- * Studio 1a-i.A1 substrate. Editor pages mount in-place via lazy
- * import; editor adaptation to the rail-expand signal ships in 1a-i.B
- * (today the editors just render with their own existing chrome / left
- * panes; rail collapses-to-icon-strip on editor click so editors keep
- * room for their own left pane per investigation §2).
+ * Studio 1a-i.B follow-up #3 — hybrid dispatch model:
+ *   - Live mode uses NESTED <Routes> so React Router consumes the
+ *     `live/:vertical` prefix and leaves the deep tenant tail
+ *     (e.g. `dispatch/funeral-schedule`) as the unconsumed remainder
+ *     that TenantRouteTree's nested <Routes> can match against.
+ *   - Edit mode + overview continue to use direct-dispatch via
+ *     `parseStudioPath()` inside <EditModeDispatcher>. Their dispatch
+ *     does NOT need tail consumption (no nested tenant route tree).
+ *
+ * See docs/investigations/2026-05-13-studio-live-router-topology.md §2
+ * Option A for the architectural decision.
  */
 import { Suspense, lazy, useEffect, useMemo, useState } from "react"
-import { Navigate, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { useAdminAuth } from "@/bridgeable-admin/lib/admin-auth-context"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import {
@@ -59,6 +68,30 @@ const EDITOR_PAGES: Record<StudioEditorKey, React.ComponentType> = {
   "edge-panels": EdgePanelEditorPage,
   registry: RegistryDebugPage,
   "plugin-registry": PluginRegistryBrowser,
+}
+
+
+/**
+ * Edit-mode + overview dispatcher. Reads `useLocation().pathname`,
+ * runs `parseStudioPath`, and renders the matching overview or editor.
+ *
+ * This wrapper exists so Edit mode can continue to use the
+ * direct-dispatch model (parseStudioPath classifies the URL by shape)
+ * while Live mode opts into declarative nested-Routes consumption.
+ * See investigation §2 Option A for the hybrid rationale.
+ */
+function EditModeDispatcher() {
+  const location = useLocation()
+  const parsed = useMemo(
+    () => parseStudioPath(location.pathname.replace(/^\/bridgeable-admin/, "")),
+    [location.pathname],
+  )
+
+  if (parsed.editor === null) {
+    return <StudioOverviewPage activeVertical={parsed.vertical} />
+  }
+  const EditorPage = EDITOR_PAGES[parsed.editor]
+  return <EditorPage />
 }
 
 
@@ -112,12 +145,13 @@ export default function StudioShell() {
   // /studio/:vertical/:editor, /studio/admin/*) redirect unauth users
   // to /login as before.
   //
-  // Live-mode routes (/studio/live[/:vertical]) DELEGATE auth handling
-  // to RuntimeEditorShell, which renders its own `runtime-editor-unauth`
-  // / `runtime-editor-forbidden` surfaces with mode-specific recovery
-  // affordances (sign-in CTA, admin-home CTA, restart-impersonation CTA).
-  // Studio chrome is suppressed in this case so the operator focuses on
-  // resolving auth rather than seeing a teasing-but-inaccessible shell.
+  // Live-mode routes (/studio/live[/:vertical][/<tail>]) DELEGATE auth
+  // handling to RuntimeEditorShell, which renders its own
+  // `runtime-editor-unauth` / `runtime-editor-forbidden` surfaces with
+  // mode-specific recovery affordances (sign-in CTA, admin-home CTA,
+  // restart-impersonation CTA). Studio chrome is suppressed in this
+  // case so the operator focuses on resolving auth rather than seeing
+  // a teasing-but-inaccessible shell.
   //
   // See DECISIONS.md 2026-05-13 (PM) — "Studio mode-specific auth gate
   // delegation" for the rationale + future-mode pattern.
@@ -148,20 +182,17 @@ export default function StudioShell() {
             </div>
           }
         >
-          <StudioLiveModeWrap vertical={parsed.vertical} />
+          {/* Live wrap inside suppressed-chrome path still uses the
+              same component; it reads vertical from useParams() now. */}
+          <Routes>
+            <Route path="live/:vertical/*" element={<StudioLiveModeWrap />} />
+            <Route path="live/*" element={<StudioLiveModeWrap />} />
+            <Route path="live" element={<StudioLiveModeWrap />} />
+            <Route path="*" element={<StudioLiveModeWrap />} />
+          </Routes>
         </Suspense>
       </div>
     )
-  }
-
-  let child: React.ReactNode
-  if (parsed.isLive) {
-    child = <StudioLiveModeWrap vertical={parsed.vertical} />
-  } else if (parsed.editor === null) {
-    child = <StudioOverviewPage activeVertical={parsed.vertical} />
-  } else {
-    const EditorPage = EDITOR_PAGES[parsed.editor]
-    child = <EditorPage />
   }
 
   return (
@@ -203,7 +234,22 @@ export default function StudioShell() {
                 </div>
               }
             >
-              {child}
+              {/* Hybrid dispatch (Studio 1a-i.B follow-up #3):
+                  - Live mode uses nested <Routes> so React Router
+                    consumes the `live/:vertical` prefix; the deep
+                    tail flows to TenantRouteTree's nested Routes.
+                  - Edit + overview routes fall through to the
+                    direct-dispatch via parseStudioPath inside
+                    <EditModeDispatcher>. */}
+              <Routes>
+                <Route
+                  path="live/:vertical/*"
+                  element={<StudioLiveModeWrap />}
+                />
+                <Route path="live/*" element={<StudioLiveModeWrap />} />
+                <Route path="live" element={<StudioLiveModeWrap />} />
+                <Route path="*" element={<EditModeDispatcher />} />
+              </Routes>
             </Suspense>
           </main>
         </div>

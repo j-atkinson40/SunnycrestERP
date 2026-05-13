@@ -193,7 +193,35 @@ export function redirectFromStandalone(
   search: string,
   options: { lastVertical?: string | null } = {},
 ): string {
-  const cleanPath = pathname.replace(/\/+$/, "") || "/"
+  // Tolerate the `/bridgeable-admin` prefix so the admin tree mount
+  // path is preserved end-to-end (caller decides whether to re-prefix).
+  const adminPrefix = pathname.startsWith("/bridgeable-admin")
+    ? "/bridgeable-admin"
+    : ""
+  const pathSansAdmin = adminPrefix
+    ? pathname.slice(adminPrefix.length) || "/"
+    : pathname
+  const cleanPath = pathSansAdmin.replace(/\/+$/, "") || "/"
+
+  // Studio 1a-i.B follow-up #3 — deep-path runtime-editor preservation.
+  // `/runtime-editor/<tail>` translates to `/studio/live/<tail>` with
+  // NO vertical inserted. The TenantUserPicker resolves the vertical
+  // post-impersonation and replays the URL with vertical spliced in
+  // (pickup-and-replay). Bare `/runtime-editor` + `/runtime-editor/`
+  // continue to map via STANDALONE_TO_STUDIO_PATH → `/studio/live`.
+  if (
+    cleanPath !== "/runtime-editor" &&
+    cleanPath.startsWith("/runtime-editor/")
+  ) {
+    const tail = cleanPath.slice("/runtime-editor/".length).replace(/^\/+/, "")
+    const params = new URLSearchParams(search)
+    const finalSearch = params.toString()
+    const target = tail
+      ? `${adminPrefix}/studio/live/${tail}`
+      : `${adminPrefix}/studio/live`
+    return finalSearch ? `${target}?${finalSearch}` : target
+  }
+
   const targetBase = STANDALONE_TO_STUDIO_PATH[cleanPath] ?? "/studio"
 
   // Decide whether to splice a vertical segment in. Platform-only
@@ -374,6 +402,71 @@ export function toggleMode(pathname: string, _search: string): string {
   }
   // Edit → Live. Preserve vertical scope; drop editor.
   return studioLivePath({ vertical: parsed.vertical })
+}
+
+
+/* ---------- Studio Live deep-tail extraction (Studio 1a-i.B follow-up #3) ---------- */
+
+/**
+ * Pull the tenant-route deep tail out of a Studio Live URL pathname,
+ * given a known resolved vertical (or null for the pre-resolution case).
+ *
+ * Used by TenantUserPicker after impersonation resolves the operator's
+ * vertical: the picker preserves any deep tenant-route tail from the
+ * source URL and replays it under the canonical
+ *   /studio/live/<resolved-vertical>/<tail>
+ * URL shape.
+ *
+ * The known-vertical parameter is what disambiguates the two ambiguous
+ * URL shapes the router can't distinguish on its own:
+ *
+ *   pathname = "/studio/live/dispatch/funeral-schedule" (no resolved vertical)
+ *     resolvedVertical=null      → tail = "dispatch/funeral-schedule"
+ *     resolvedVertical="dispatch" → tail = "funeral-schedule" (vertical assumed
+ *                                   to be present; first segment is vertical)
+ *
+ *   pathname = "/studio/live/manufacturing/dispatch/funeral-schedule"
+ *     resolvedVertical="manufacturing" → tail = "dispatch/funeral-schedule"
+ *     resolvedVertical=null            → tail = "manufacturing/dispatch/funeral-schedule"
+ *
+ * Picker contract: pre-impersonation, the source URL never has a
+ * resolved vertical (the operator hasn't picked a tenant yet), so the
+ * picker calls this with `resolvedVertical=null` to capture the full
+ * post-`live` segments as the tail.
+ *
+ *   "/studio/live"                                            → ""
+ *   "/studio/live/manufacturing"                              → "manufacturing"
+ *   "/studio/live/manufacturing/dispatch/funeral-schedule"    → "manufacturing/dispatch/funeral-schedule"
+ *   "/studio/live/dispatch/funeral-schedule"                  → "dispatch/funeral-schedule"
+ *   "/bridgeable-admin/studio/live/dispatch/funeral-schedule" → "dispatch/funeral-schedule"
+ *
+ * Returns the empty string when no tail exists.
+ */
+export function extractStudioLiveDeepTail(
+  pathname: string,
+  resolvedVertical: string | null = null,
+): string {
+  const cleanPath = pathname.replace(/^\/bridgeable-admin/, "")
+  const stripped = cleanPath.replace(/^\/+/, "").replace(/\/+$/, "")
+  const parts = stripped.split("/").filter(Boolean)
+
+  // Must be /studio/live[/...]
+  if (parts[0] !== "studio" || parts[1] !== "live") return ""
+
+  const afterLive = parts.slice(2)
+  if (afterLive.length === 0) return ""
+
+  // If a resolved vertical is supplied AND it matches the first
+  // post-`live` segment, treat that segment as the vertical and the
+  // remainder as the tail.
+  if (resolvedVertical && afterLive[0] === resolvedVertical) {
+    return afterLive.slice(1).join("/")
+  }
+
+  // Otherwise (no resolved vertical OR first segment doesn't match):
+  // the full post-`live` content is the tail. The picker uses this
+  // shape pre-impersonation.
+  return afterLive.join("/")
 }
 
 

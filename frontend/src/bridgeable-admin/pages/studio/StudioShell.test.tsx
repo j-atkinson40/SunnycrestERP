@@ -12,7 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter, Route, Routes } from "react-router-dom"
 
 
 // Mock the admin auth. Default = signed-in platform_admin; individual
@@ -157,9 +157,18 @@ import StudioShell from "./StudioShell"
 
 
 function renderAt(pathname: string) {
+  // Studio 1a-i.B follow-up #3: StudioShell uses nested <Routes> for
+  // Live mode dispatch. Without an outer <Route path="/studio/*"> to
+  // consume the `/studio` prefix, the relative `live/:vertical/*`
+  // route inside StudioShell wouldn't match. The wrap below simulates
+  // BridgeableAdminApp's mount (which registers `/studio/*` +
+  // `/bridgeable-admin/studio/*` route elements).
   return render(
     <MemoryRouter initialEntries={[pathname]}>
-      <StudioShell />
+      <Routes>
+        <Route path="/studio/*" element={<StudioShell />} />
+        <Route path="/bridgeable-admin/studio/*" element={<StudioShell />} />
+      </Routes>
     </MemoryRouter>,
   )
 }
@@ -469,5 +478,104 @@ describe("StudioShell — auth gate delegation (Studio 1a-i.B follow-up #2)", ()
     expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
     const shellRoot = document.querySelector("[data-studio-shell]")
     expect(shellRoot?.getAttribute("data-studio-chrome")).toBeNull()
+  })
+})
+
+
+describe("StudioShell — nested Routes Live mode dispatch (Studio 1a-i.B follow-up #3)", () => {
+  it("mounts Live wrap at /studio/live (bare)", () => {
+    renderAt("/studio/live")
+    expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+  })
+
+  it("mounts Live wrap at /studio/live/manufacturing", async () => {
+    renderAt("/studio/live/manufacturing")
+    expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    const stub = await screen.findByTestId("runtime-editor-shell-stub")
+    expect(stub.getAttribute("data-vertical-filter")).toBe("manufacturing")
+  })
+
+  it("mounts Live wrap at /studio/live/manufacturing/dispatch/funeral-schedule (deep tail)", async () => {
+    renderAt("/studio/live/manufacturing/dispatch/funeral-schedule")
+    // The wrap mounts; the inner RuntimeEditorShell's TenantRouteTree
+    // (mocked here as a stub) is what would consume the deep tail in
+    // production. Vitest assertion: the wrap is reachable and vertical
+    // is forwarded correctly.
+    expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    const wrap = screen.getByTestId("studio-live-mode-wrap")
+    expect(wrap.getAttribute("data-vertical-filter")).toBe("manufacturing")
+    const stub = await screen.findByTestId("runtime-editor-shell-stub")
+    expect(stub.getAttribute("data-vertical-filter")).toBe("manufacturing")
+  })
+
+  it("mounts Live wrap at /studio/live/dispatch/funeral-schedule (no vertical, deep tail)", async () => {
+    // React Router scores `live/:vertical/*` higher than `live/*` so
+    // `:vertical` greedily captures "dispatch" here. The pickup-and-
+    // replay flow in TenantUserPicker (Step 4) handles this case post-
+    // impersonation.
+    renderAt("/studio/live/dispatch/funeral-schedule")
+    expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    const wrap = screen.getByTestId("studio-live-mode-wrap")
+    expect(wrap.getAttribute("data-vertical-filter")).toBe("dispatch")
+  })
+})
+
+
+describe("StudioShell — Edit mode dispatcher unchanged (Studio 1a-i.B follow-up #3)", () => {
+  it("/studio renders Platform overview", () => {
+    renderAt("/studio")
+    expect(screen.getByTestId("studio-overview")).toBeTruthy()
+    expect(screen.getByTestId("studio-overview").getAttribute("data-active-vertical")).toBe("platform")
+  })
+
+  it("/studio/manufacturing renders vertical overview", () => {
+    renderAt("/studio/manufacturing")
+    expect(screen.getByTestId("studio-overview")).toBeTruthy()
+    expect(screen.getByTestId("studio-overview").getAttribute("data-active-vertical")).toBe("manufacturing")
+  })
+
+  it("/studio/themes renders themes editor (platform scope)", () => {
+    renderAt("/studio/themes")
+    expect(screen.getByTestId("editor-stub-themes")).toBeTruthy()
+  })
+
+  it("/studio/manufacturing/themes renders themes editor (vertical scope)", () => {
+    renderAt("/studio/manufacturing/themes")
+    expect(screen.getByTestId("editor-stub-themes")).toBeTruthy()
+  })
+
+  it("/studio/manufacturing/focuses renders focuses editor (rail-aware stub)", () => {
+    renderAt("/studio/manufacturing/focuses")
+    expect(screen.getByTestId("editor-stub-focuses")).toBeTruthy()
+  })
+
+  it("/studio/widgets renders widgets editor", () => {
+    renderAt("/studio/widgets")
+    expect(screen.getByTestId("editor-stub-widgets")).toBeTruthy()
+  })
+
+  it("/studio/classes renders classes editor (platform-only)", () => {
+    renderAt("/studio/classes")
+    expect(screen.getByTestId("editor-stub-classes")).toBeTruthy()
+  })
+
+  it("/studio/workflows renders workflows editor", () => {
+    renderAt("/studio/workflows")
+    expect(screen.getByTestId("editor-stub-workflows")).toBeTruthy()
+  })
+
+  it("/studio/edge-panels renders edge-panels editor", () => {
+    renderAt("/studio/edge-panels")
+    expect(screen.getByTestId("editor-stub-edge-panels")).toBeTruthy()
+  })
+
+  it("/studio/registry renders registry debug page", () => {
+    renderAt("/studio/registry")
+    expect(screen.getByTestId("editor-stub-registry")).toBeTruthy()
+  })
+
+  it("/studio/plugin-registry renders plugin registry browser", () => {
+    renderAt("/studio/plugin-registry")
+    expect(screen.getByTestId("editor-stub-plugin-registry")).toBeTruthy()
   })
 })

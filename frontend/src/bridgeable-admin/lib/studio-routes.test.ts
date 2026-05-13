@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   assertSafeVerticalSlug,
   computeInitialRailExpanded,
+  extractStudioLiveDeepTail,
   isOverviewRoute,
   isReservedSlug,
   isStudioEditorKey,
@@ -481,5 +482,129 @@ describe("computeInitialRailExpanded — Studio 1a-i.B follow-up", () => {
   it("returns false outside Studio", () => {
     expect(computeInitialRailExpanded("/")).toBe(false)
     expect(computeInitialRailExpanded("/bridgeable-admin")).toBe(false)
+  })
+})
+
+
+describe("redirectFromStandalone — deep-path runtime-editor preservation (Studio 1a-i.B follow-up #3)", () => {
+  it("/runtime-editor/dispatch/funeral-schedule preserves tail", () => {
+    expect(
+      redirectFromStandalone(
+        "/runtime-editor/dispatch/funeral-schedule",
+        "tenant=X&user=Y",
+      ),
+    ).toBe("/studio/live/dispatch/funeral-schedule?tenant=X&user=Y")
+  })
+
+  it("/runtime-editor/home preserves single-segment tail", () => {
+    expect(
+      redirectFromStandalone("/runtime-editor/home", "tenant=X&user=Y"),
+    ).toBe("/studio/live/home?tenant=X&user=Y")
+  })
+
+  it("/bridgeable-admin/runtime-editor/dashboard preserves admin prefix + tail", () => {
+    expect(
+      redirectFromStandalone(
+        "/bridgeable-admin/runtime-editor/dashboard",
+        "tenant=X&user=Y",
+      ),
+    ).toBe("/bridgeable-admin/studio/live/dashboard?tenant=X&user=Y")
+  })
+
+  it("bare /runtime-editor still maps via legacy STANDALONE_TO_STUDIO_PATH", () => {
+    expect(
+      redirectFromStandalone("/runtime-editor", "tenant=X&user=Y"),
+    ).toBe("/studio/live?tenant=X&user=Y")
+  })
+
+  it("/runtime-editor/ (trailing slash) still maps via legacy STANDALONE_TO_STUDIO_PATH", () => {
+    // Trailing slash is stripped before lookup → matches `/runtime-editor`.
+    expect(redirectFromStandalone("/runtime-editor/", "")).toBe("/studio/live")
+  })
+
+  it("deep tail preserves multi-segment paths", () => {
+    expect(
+      redirectFromStandalone(
+        "/runtime-editor/cases/abc-123",
+        "tenant=X&user=Y",
+      ),
+    ).toBe("/studio/live/cases/abc-123?tenant=X&user=Y")
+  })
+
+  it("deep tail with no query string", () => {
+    expect(
+      redirectFromStandalone("/runtime-editor/dispatch/funeral-schedule", ""),
+    ).toBe("/studio/live/dispatch/funeral-schedule")
+  })
+
+  it("deep tail does NOT insert vertical (per locked decision 1)", () => {
+    // Even if `lastVertical` is supplied, deep-path runtime-editor
+    // redirects do NOT splice in a vertical — the URL stays honest
+    // until impersonation resolves the vertical (pickup-and-replay
+    // closes the gap).
+    expect(
+      redirectFromStandalone("/runtime-editor/dispatch/funeral-schedule", "", {
+        lastVertical: "manufacturing",
+      }),
+    ).toBe("/studio/live/dispatch/funeral-schedule")
+  })
+})
+
+
+describe("extractStudioLiveDeepTail — Studio 1a-i.B follow-up #3", () => {
+  it("returns empty string for bare /studio/live", () => {
+    expect(extractStudioLiveDeepTail("/studio/live")).toBe("")
+  })
+
+  it("returns single-segment tail when no resolved vertical", () => {
+    expect(extractStudioLiveDeepTail("/studio/live/manufacturing")).toBe(
+      "manufacturing",
+    )
+  })
+
+  it("returns full tail when no resolved vertical (multi-segment)", () => {
+    expect(
+      extractStudioLiveDeepTail("/studio/live/dispatch/funeral-schedule"),
+    ).toBe("dispatch/funeral-schedule")
+  })
+
+  it("strips matching vertical when resolved", () => {
+    expect(
+      extractStudioLiveDeepTail(
+        "/studio/live/manufacturing/dispatch/funeral-schedule",
+        "manufacturing",
+      ),
+    ).toBe("dispatch/funeral-schedule")
+  })
+
+  it("keeps non-matching first segment as part of tail", () => {
+    // Defense-in-depth: if the caller's resolvedVertical doesn't match
+    // the URL's first post-`live` segment, treat the segment as tail.
+    expect(
+      extractStudioLiveDeepTail(
+        "/studio/live/dispatch/funeral-schedule",
+        "manufacturing",
+      ),
+    ).toBe("dispatch/funeral-schedule")
+  })
+
+  it("tolerates /bridgeable-admin prefix", () => {
+    expect(
+      extractStudioLiveDeepTail(
+        "/bridgeable-admin/studio/live/dispatch/funeral-schedule",
+      ),
+    ).toBe("dispatch/funeral-schedule")
+  })
+
+  it("returns empty string for non-Studio-live URLs", () => {
+    expect(extractStudioLiveDeepTail("/studio/themes")).toBe("")
+    expect(extractStudioLiveDeepTail("/studio")).toBe("")
+    expect(extractStudioLiveDeepTail("/dashboard")).toBe("")
+  })
+
+  it("tolerates trailing slash", () => {
+    expect(
+      extractStudioLiveDeepTail("/studio/live/dispatch/funeral-schedule/"),
+    ).toBe("dispatch/funeral-schedule")
   })
 })

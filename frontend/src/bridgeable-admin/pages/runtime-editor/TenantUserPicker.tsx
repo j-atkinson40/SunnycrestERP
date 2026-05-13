@@ -23,12 +23,15 @@
  * picks the tenant's first admin (per ImpersonateRequest schema).
  */
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { TenantPicker, type TenantSummary } from "@/bridgeable-admin/components/TenantPicker"
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
-import { studioLivePath } from "@/bridgeable-admin/lib/studio-routes"
+import {
+  extractStudioLiveDeepTail,
+  studioLivePath,
+} from "@/bridgeable-admin/lib/studio-routes"
 
 
 interface ImpersonateResponse {
@@ -65,6 +68,7 @@ export default function TenantUserPicker({
   verticalFilter = null,
 }: TenantUserPickerProps = {}) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [tenant, setTenant] = useState<TenantSummary | null>(null)
   const [userId, setUserId] = useState("")
   const [reason, setReason] = useState("")
@@ -115,18 +119,33 @@ export default function TenantUserPicker({
         // tenant's vertical scope. The wrap reads the same `?tenant
         // &user` query params verbatim; the path's `:vertical` segment
         // pre-scopes the Studio top bar's scope readout.
+        //
+        // Studio 1a-i.B follow-up #3 — pickup-and-replay: if the source
+        // URL carried a deep tail (e.g. operator landed at
+        // `/studio/live/dispatch/funeral-schedule` pre-impersonation),
+        // preserve it in the post-impersonation URL so the tenant route
+        // tree mounts the requested page directly. Path shape:
+        //   /studio/live/<resolved-vertical>/<deep-tail>?tenant=&user=
         const verticalSegment = tenant?.vertical ?? null
-        navigate(
-          adminPath(
-            studioLivePath({
-              vertical: verticalSegment,
-              query: {
-                tenant: data.tenant_slug,
-                user: data.impersonated_user_id,
-              },
-            }),
-          ),
-        )
+        const deepTail = extractStudioLiveDeepTail(location.pathname)
+        const basePath = studioLivePath({
+          vertical: verticalSegment,
+          query: {
+            tenant: data.tenant_slug,
+            user: data.impersonated_user_id,
+          },
+        })
+        // basePath shape: `/studio/live[/<vertical>][?<query>]`. Splice
+        // the deep tail between the path and the query string.
+        let target: string
+        if (deepTail) {
+          const [pathPart, queryPart] = basePath.split("?")
+          const withTail = `${pathPart}/${deepTail}`
+          target = queryPart ? `${withTail}?${queryPart}` : withTail
+        } else {
+          target = basePath
+        }
+        navigate(adminPath(target), { replace: true })
       } else {
         navigate(
           adminPath(
