@@ -30,10 +30,22 @@ test.describe("Gate 1 — picker lands on dashboard", () => {
     await expect(page.getByTestId("runtime-editor-shell")).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByTestId("runtime-editor-ribbon")).toBeVisible()
-    // Ribbon carries the tenant slug + impersonated user.
-    await expect(page.getByTestId("runtime-editor-tenant")).toHaveText(
-      HOPKINS_FH_SLUG,
+    // Studio shell migration (1a-i.A2, May 2026): the legacy yellow
+    // admin ribbon (data-testid="runtime-editor-ribbon") is suppressed
+    // inside Studio context because the Studio top bar takes the
+    // ribbon's role. The shell records its Studio-vs-standalone state
+    // on `data-studio-context`. Intent preserved: "shell mounts in
+    // Studio context with the impersonated tenant context active."
+    await expect(page.getByTestId("runtime-editor-shell")).toHaveAttribute(
+      "data-studio-context",
+      "true",
     )
+    // Studio top bar replaces the ribbon and is visible above the
+    // shell — verifies the chrome handoff completed.
+    await expect(page.getByTestId("studio-top-bar")).toBeVisible()
+    // Tenant slug remains observable via the URL (already asserted at
+    // line 26 above). No replacement tenant-slug test-id exists in the
+    // Studio top bar today; if a future Studio surface renders the
+    // impersonated tenant inline, tighten this assertion to target it.
   })
 })

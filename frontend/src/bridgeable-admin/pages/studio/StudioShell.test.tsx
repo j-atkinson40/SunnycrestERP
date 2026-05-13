@@ -239,6 +239,53 @@ describe("StudioShell — chrome", () => {
 })
 
 
+describe("StudioShell — rail default-by-route (Studio 1a-i.B follow-up)", () => {
+  it("rail collapses by default on editor route when localStorage empty", () => {
+    renderAt("/studio/themes")
+    const rail = screen.getByTestId("studio-rail")
+    expect(rail.getAttribute("data-rail-expanded")).toBe("false")
+  })
+
+  it("rail collapses by default on vertical-scoped editor route", () => {
+    renderAt("/studio/manufacturing/themes")
+    const rail = screen.getByTestId("studio-rail")
+    expect(rail.getAttribute("data-rail-expanded")).toBe("false")
+  })
+
+  it("rail collapses by default on Live mode route", () => {
+    renderAt("/studio/live")
+    const rail = screen.getByTestId("studio-rail")
+    expect(rail.getAttribute("data-rail-expanded")).toBe("false")
+  })
+
+  it("rail collapses by default on Live mode with vertical", () => {
+    renderAt("/studio/live/manufacturing")
+    const rail = screen.getByTestId("studio-rail")
+    expect(rail.getAttribute("data-rail-expanded")).toBe("false")
+  })
+
+  it("rail expands by default on vertical overview", () => {
+    renderAt("/studio/manufacturing")
+    const rail = screen.getByTestId("studio-rail")
+    expect(rail.getAttribute("data-rail-expanded")).toBe("true")
+  })
+
+  it("localStorage 'true' wins over route default on editor route", () => {
+    window.localStorage.setItem("studio.railExpanded", "true")
+    renderAt("/studio/themes")
+    const rail = screen.getByTestId("studio-rail")
+    expect(rail.getAttribute("data-rail-expanded")).toBe("true")
+  })
+
+  it("localStorage 'false' wins over route default on overview", () => {
+    window.localStorage.setItem("studio.railExpanded", "false")
+    renderAt("/studio")
+    const rail = screen.getByTestId("studio-rail")
+    expect(rail.getAttribute("data-rail-expanded")).toBe("false")
+  })
+})
+
+
 describe("StudioShell — rail collapse behavior", () => {
   it("clicking an editor entry collapses the rail to icon strip", async () => {
     renderAt("/studio")
@@ -292,7 +339,17 @@ describe("StudioShell — rail context propagation (Studio 1a-i.B)", () => {
     // (Re-render via second call would mount fresh tree.)
   })
 
-  it("focuses editor sees rail expanded=true by default", () => {
+  it("focuses editor sees rail expanded=false by default (route-default, Studio 1a-i.B follow-up)", () => {
+    // /studio/focuses is an editor route — route-default is collapsed
+    // so the editor gets the full canvas on first mount.
+    renderAt("/studio/focuses")
+    const stub = screen.getByTestId("editor-stub-focuses")
+    expect(stub.getAttribute("data-rail-expanded")).toBe("false")
+    expect(stub.getAttribute("data-in-studio-context")).toBe("true")
+  })
+
+  it("focuses editor sees rail expanded=true when localStorage opts in", () => {
+    window.localStorage.setItem("studio.railExpanded", "true")
     renderAt("/studio/focuses")
     const stub = screen.getByTestId("editor-stub-focuses")
     expect(stub.getAttribute("data-rail-expanded")).toBe("true")

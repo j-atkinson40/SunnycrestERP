@@ -11,6 +11,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   assertSafeVerticalSlug,
+  computeInitialRailExpanded,
+  isOverviewRoute,
   isReservedSlug,
   isStudioEditorKey,
   parseStudioPath,
@@ -401,5 +403,83 @@ describe("localStorage helpers", () => {
     writeLastVertical("manufacturing")
     writeLastVertical(null)
     expect(readLastVertical()).toBe(null)
+  })
+})
+
+
+describe("isOverviewRoute — Studio 1a-i.B follow-up", () => {
+  it("platform overview /studio is overview", () => {
+    expect(isOverviewRoute("/studio")).toBe(true)
+  })
+
+  it("vertical overview /studio/:vertical is overview", () => {
+    expect(isOverviewRoute("/studio/manufacturing")).toBe(true)
+    expect(isOverviewRoute("/studio/funeral_home")).toBe(true)
+  })
+
+  it("platform-scope editor /studio/:editor is NOT overview", () => {
+    expect(isOverviewRoute("/studio/themes")).toBe(false)
+    expect(isOverviewRoute("/studio/widgets")).toBe(false)
+    expect(isOverviewRoute("/studio/edge-panels")).toBe(false)
+  })
+
+  it("vertical-scope editor /studio/:vertical/:editor is NOT overview", () => {
+    expect(isOverviewRoute("/studio/manufacturing/themes")).toBe(false)
+    expect(isOverviewRoute("/studio/funeral_home/focuses")).toBe(false)
+  })
+
+  it("Live mode /studio/live[/:vertical] is NOT overview", () => {
+    expect(isOverviewRoute("/studio/live")).toBe(false)
+    expect(isOverviewRoute("/studio/live/manufacturing")).toBe(false)
+  })
+
+  it("/studio/admin is treated as non-overview (reserved future area)", () => {
+    expect(isOverviewRoute("/studio/admin")).toBe(false)
+    expect(isOverviewRoute("/studio/admin/anything")).toBe(false)
+  })
+
+  it("tolerates /bridgeable-admin prefix", () => {
+    expect(isOverviewRoute("/bridgeable-admin/studio")).toBe(true)
+    expect(isOverviewRoute("/bridgeable-admin/studio/manufacturing")).toBe(true)
+    expect(isOverviewRoute("/bridgeable-admin/studio/themes")).toBe(false)
+    expect(isOverviewRoute("/bridgeable-admin/studio/live")).toBe(false)
+  })
+
+  it("non-Studio routes return false", () => {
+    expect(isOverviewRoute("/")).toBe(false)
+    expect(isOverviewRoute("/bridgeable-admin")).toBe(false)
+    expect(isOverviewRoute("/bridgeable-admin/tenants")).toBe(false)
+    expect(isOverviewRoute("/runtime-editor")).toBe(false)
+    expect(isOverviewRoute("/visual-editor/themes")).toBe(false)
+  })
+
+  it("tolerates trailing slash", () => {
+    expect(isOverviewRoute("/studio/")).toBe(true)
+    expect(isOverviewRoute("/studio/manufacturing/")).toBe(true)
+    expect(isOverviewRoute("/studio/themes/")).toBe(false)
+  })
+})
+
+
+describe("computeInitialRailExpanded — Studio 1a-i.B follow-up", () => {
+  it("returns true on overview routes", () => {
+    expect(computeInitialRailExpanded("/studio")).toBe(true)
+    expect(computeInitialRailExpanded("/studio/manufacturing")).toBe(true)
+    expect(computeInitialRailExpanded("/bridgeable-admin/studio/funeral_home")).toBe(true)
+  })
+
+  it("returns false on editor routes", () => {
+    expect(computeInitialRailExpanded("/studio/themes")).toBe(false)
+    expect(computeInitialRailExpanded("/studio/manufacturing/themes")).toBe(false)
+  })
+
+  it("returns false on Live mode routes", () => {
+    expect(computeInitialRailExpanded("/studio/live")).toBe(false)
+    expect(computeInitialRailExpanded("/studio/live/funeral_home")).toBe(false)
+  })
+
+  it("returns false outside Studio", () => {
+    expect(computeInitialRailExpanded("/")).toBe(false)
+    expect(computeInitialRailExpanded("/bridgeable-admin")).toBe(false)
   })
 })

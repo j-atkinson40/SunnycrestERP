@@ -248,6 +248,62 @@ export function readRailExpanded(defaultValue = true): boolean {
 }
 
 
+/**
+ * Studio 1a-i.B follow-up — pathname-classifies whether the current URL
+ * is an "overview" surface (rail-defaults-expanded) vs. an editor / Live
+ * surface (rail-defaults-collapsed).
+ *
+ * Overview routes:
+ *   /studio                       → Platform overview
+ *   /studio/:vertical             → Vertical overview (where :vertical is
+ *                                   NOT a reserved editor key or `live`)
+ *
+ * Non-overview (editor or Live):
+ *   /studio/:editor               → Platform-scope editor
+ *   /studio/:vertical/:editor     → Vertical-scope editor
+ *   /studio/live[/:vertical]      → Live mode
+ *   /studio/admin/...             → Reserved future area (treated as non-overview)
+ *
+ * Non-Studio routes return `false` — the rail-expanded route default is
+ * Studio-only so non-Studio surfaces don't get an unintended override.
+ *
+ * Tolerates `/bridgeable-admin` prefix per existing helper conventions.
+ */
+export function isOverviewRoute(pathname: string): boolean {
+  const cleanPath = pathname.replace(/^\/bridgeable-admin/, "")
+  const stripped = cleanPath.replace(/^\/+/, "").replace(/\/+$/, "")
+  const parts = stripped.split("/").filter(Boolean)
+  if (parts[0] !== "studio") return false
+  const parsed = parseStudioPath(cleanPath)
+  if (parsed.isLive) return false
+  if (parsed.editor !== null) return false
+  // `/studio/admin` parses to Platform overview today but is reserved
+  // for a future admin sub-area; treat as non-overview so when admin
+  // sub-pages land the rail-default doesn't have to be revisited.
+  if (parts[1] === "admin") return false
+  return true
+}
+
+
+/**
+ * Studio 1a-i.B follow-up — computes the rail's initial-expanded value
+ * for a given pathname when localStorage has no opinion.
+ *
+ * Overview routes (Platform overview / vertical overview) default to
+ * EXPANDED so first-time operators see the section list immediately.
+ * Editor + Live routes default to COLLAPSED so the editor content gets
+ * the full canvas instead of the rail covering it.
+ *
+ * Once the operator clicks the rail toggle the choice persists to
+ * localStorage; `readRailExpanded()` returns the persisted value and
+ * this function's route-default is bypassed. Route-default is only the
+ * initial-mount value on a clean localStorage.
+ */
+export function computeInitialRailExpanded(pathname: string): boolean {
+  return isOverviewRoute(pathname)
+}
+
+
 export function writeRailExpanded(expanded: boolean): void {
   if (typeof window === "undefined") return
   try {

@@ -22,8 +22,9 @@ import { Navigate, useLocation } from "react-router-dom"
 import { useAdminAuth } from "@/bridgeable-admin/lib/admin-auth-context"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import {
+  computeInitialRailExpanded,
   parseStudioPath,
-  readRailExpanded,
+  STUDIO_RAIL_EXPANDED_KEY,
   writeLastVertical,
   type StudioEditorKey,
 } from "@/bridgeable-admin/lib/studio-routes"
@@ -70,9 +71,23 @@ export default function StudioShell() {
     [location.pathname],
   )
 
-  const [railExpanded, setRailExpanded] = useState<boolean>(() =>
-    readRailExpanded(true),
-  )
+  // Rail-initial-state precedence (Studio 1a-i.B follow-up):
+  //   1. localStorage["studio.railExpanded"] if set — operator's saved choice.
+  //   2. Route-dependent default — expanded on overview, collapsed on editor / Live.
+  // Once the operator toggles the rail at runtime, `setRailExpanded` writes
+  // to localStorage (via StudioRail's onExpandedChange), so subsequent
+  // navigations honor that choice regardless of route.
+  const [railExpanded, setRailExpanded] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(STUDIO_RAIL_EXPANDED_KEY)
+        if (raw !== null) return raw === "true"
+      } catch {
+        // Fall through to route-based default.
+      }
+    }
+    return computeInitialRailExpanded(location.pathname)
+  })
 
   // Remember last vertical for cross-session pickup.
   useEffect(() => {

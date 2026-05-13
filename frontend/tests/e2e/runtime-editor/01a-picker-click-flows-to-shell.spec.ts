@@ -163,15 +163,23 @@ test.describe("Gate 1a — picker click drives full flow to shell @r-1.6.1", () 
       page.locator("[data-component-name]").first(),
     ).toBeVisible({ timeout: 15_000 })
 
-    // Step 10: ribbon visible — the runtime editor's "impersonation
-    // context shown" surface (per Spec-Override note in the file
-    // header: this editor does not integrate the existing
-    // ImpersonationBanner; the ribbon is its canonical equivalent).
-    await expect(page.getByTestId("runtime-editor-ribbon")).toBeVisible()
-    // Ribbon content reflects the impersonation parameters.
-    await expect(page.getByTestId("runtime-editor-tenant")).toHaveText(
-      HOPKINS_FH_SLUG,
+    // Step 10: Studio chrome handoff verification.
+    // Pre-Studio (R-1.6) the runtime-editor-ribbon was the canonical
+    // "impersonation context shown" surface. Studio 1a-i.A2 suppresses
+    // the ribbon inside Studio context because the Studio top bar
+    // takes the ribbon's role. The shell records its Studio-vs-
+    // standalone state on `data-studio-context` so this assertion
+    // catches a regression to the pre-A2 chrome path.
+    await expect(page.getByTestId("runtime-editor-shell")).toHaveAttribute(
+      "data-studio-context",
+      "true",
     )
-    await expect(page.getByTestId("runtime-editor-user")).not.toHaveText("")
+    // Studio top bar mounts above the runtime editor.
+    await expect(page.getByTestId("studio-top-bar")).toBeVisible()
+    // Tenant + user remain observable via the URL (asserted earlier in
+    // this spec at the post-impersonation URL check). No tenant-slug
+    // test-id exists in the Studio top bar today; if a future Studio
+    // surface renders impersonated tenant inline, tighten here.
+    expect(page.url()).toContain(`tenant=${HOPKINS_FH_SLUG}`)
   })
 })
