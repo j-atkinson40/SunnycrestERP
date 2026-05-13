@@ -35,7 +35,14 @@ import type { ConfigPropSchema } from "@/lib/visual-editor/registry/types"
 import { useEditMode } from "../edit-mode-context"
 
 
-type SourceBadge =
+// Arc 4d note: local type identifier renamed `SourceBadge` →
+// `ClassSourceTag` to avoid name collision with the canonical
+// `SourceBadge` primitive value imported by CompactPropControl
+// (which this file delegates rendering to). ClassTab continues to
+// pass its 3-value narrow union into CompactPropControl's wider
+// PropSource type — TypeScript subtype assignment handles the
+// widening automatically.
+type ClassSourceTag =
   | "registration-default"
   | "class-default"
   | "draft"
@@ -131,7 +138,7 @@ export function ClassTab({ selectedEntry }: { selectedEntry: RegistryEntry }) {
     )
   }
 
-  function badgeForProp(propName: string): SourceBadge {
+  function badgeForProp(propName: string): ClassSourceTag {
     if (propName in draftMap) return "draft"
     if (propName in classDefaults) return "class-default"
     return "registration-default"

@@ -111,6 +111,32 @@ import {
   SuggestionDropdown,
   handleSuggestionKeyDown,
 } from "@/lib/visual-editor/suggestion-dropdown"
+// Arc 4d — chip-variant SourceBadge for per-template scope display.
+// Documents transitions Class C (no source metadata) → Class B
+// (per-instance source metadata) via list endpoint's `scope` field +
+// new backend `resolve_with_sources` for hover-reveal cascade.
+import {
+  SourceBadge,
+  type SourceValue,
+} from "@/lib/visual-editor/source-badge"
+
+
+/**
+ * Arc 4d — map documents-v2 scope (`"platform"` | `"tenant"`) to
+ * canonical SourceValue. Note: documents-v2's `scope` field today
+ * collapses vertical_default into "platform" (vertical_default is
+ * `company_id=NULL AND vertical=X` per §4 Documents canon). The
+ * full 3-tier chain is available via the new backend
+ * `resolve_with_sources` for hover-reveal scope diff (substrate
+ * ready; consumer hookup is bounded Arc-4.x follow-on if signal
+ * warrants — list-endpoint-level scope field is sufficient for
+ * per-row badge at Arc 4d).
+ */
+function documentScopeToSource(
+  scope: DocumentTemplateListItem["scope"],
+): SourceValue {
+  return scope === "tenant" ? "tenant" : "platform"
+}
 
 
 export interface DocumentsTabProps {
@@ -478,16 +504,19 @@ function TemplateRow({
           >
             {template.template_key}
           </div>
-          <div className="text-caption text-content-muted truncate">
+          <div className="flex items-center gap-1.5 text-caption text-content-muted truncate">
             <code className="font-plex-mono">{template.document_type}</code>
-            <span className="ml-2">· {template.scope}</span>
+            {/* Arc 4d — chip SourceBadge per-template scope tier. */}
+            <SourceBadge
+              source={documentScopeToSource(template.scope)}
+              variant="chip"
+              data-testid={`runtime-inspector-document-row-${template.id}-scope`}
+            />
             {template.current_version_number !== null && (
-              <span className="ml-2">
-                · v{template.current_version_number}
-              </span>
+              <span>· v{template.current_version_number}</span>
             )}
             {template.has_draft && (
-              <span className="ml-2 text-status-warning">· draft</span>
+              <span className="text-status-warning">· draft</span>
             )}
           </div>
           {template.description && (

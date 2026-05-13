@@ -31,6 +31,15 @@ import {
   composeEffective,
   type TokenOverrideMap,
 } from "@/lib/visual-editor/themes/theme-resolver"
+// Arc 4d — canonical SourceBadge (letter variant) + ScopeDiffPopover.
+// Replaces inline `badgeLetter` + bare `<span>` ad-hoc badge per
+// 3-way pattern drift closure.
+import {
+  SourceBadge,
+  ScopeDiffPopover,
+  type SourceValue,
+  type ResolutionSourceEntry,
+} from "@/lib/visual-editor/source-badge"
 
 import { useEditMode } from "../edit-mode-context"
 
@@ -155,19 +164,59 @@ export function ThemeTab({
     return "registration-default"
   }
 
-  function badgeLetter(s: ReturnType<typeof sourceFor>): string {
+  /**
+   * Arc 4d — map `sourceFor` legacy union to canonical SourceValue.
+   * Replaces inline `badgeLetter` switch with single canonical mapping.
+   */
+  function toCanonicalSource(
+    s: ReturnType<typeof sourceFor>,
+  ): SourceValue {
     switch (s) {
       case "draft":
-        return "•"
+        return "draft"
       case "tenant-override":
-        return "T"
+        return "tenant"
       case "vertical-default":
-        return "V"
+        return "vertical"
       case "platform-default":
-        return "P"
+        return "platform"
       case "registration-default":
-        return "D"
+        return "default"
     }
+  }
+
+  /**
+   * Arc 4d — build resolution chain for ScopeDiffPopover. Walks
+   * `resolved.sources` filtering to entries that applied THIS token.
+   * Returns winning entry FIRST (resolver-order matches backend
+   * source array ordering).
+   */
+  function chainFor(tokenName: string): ResolutionSourceEntry[] {
+    if (!resolved) return []
+    const chain: ResolutionSourceEntry[] = []
+    for (const src of resolved.sources) {
+      if (src.applied_keys.includes(tokenName)) {
+        chain.push({
+          scope:
+            src.scope === "tenant_override"
+              ? "tenant_override"
+              : src.scope === "vertical_default"
+              ? "vertical_default"
+              : "platform_default",
+          // Per-source token-value isn't exposed by themes resolver
+          // today (only `applied_keys` + winning `tokens` map). The
+          // ScopeDiffPopover renders "undefined" gracefully; full
+          // per-tier values would require a themes resolver
+          // extension parallel to Arc 4d's Documents extension —
+          // tracked but out of Arc 4d scope.
+          value: undefined,
+          version: src.version,
+          vertical: src.vertical,
+          tenant_id: src.tenant_id,
+        })
+      }
+    }
+    return chain
   }
 
   return (
@@ -192,12 +241,20 @@ export function ThemeTab({
             className="flex items-center gap-2 border-b border-border-subtle px-2 py-1.5"
             data-testid={`runtime-inspector-token-${token.name}`}
           >
-            <span
-              className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-surface-sunken text-[9px] font-medium text-content-muted"
-              title={source}
+            {/* Arc 4d — canonical SourceBadge (letter) + hover-reveal
+                ScopeDiffPopover. Both consume canonical source vocabulary;
+                the chain is built from `resolved.sources`. */}
+            <ScopeDiffPopover
+              sources={chainFor(token.name)}
+              currentValue={value}
+              fieldLabel={token.displayName}
+              data-testid={`runtime-inspector-theme-scope-diff-${token.name}`}
             >
-              {badgeLetter(source)}
-            </span>
+              <SourceBadge
+                source={toCanonicalSource(source)}
+                variant="letter"
+              />
+            </ScopeDiffPopover>
             <div className="flex-1 min-w-0">
               <div className="text-caption text-content-strong truncate">
                 {token.displayName}

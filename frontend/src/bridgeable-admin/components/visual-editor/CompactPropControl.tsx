@@ -20,6 +20,15 @@ import {
   type PropControlDispatcherProps,
 } from "@/lib/visual-editor/components/PropControls"
 import type { ConfigPropSchema } from "@/lib/visual-editor/registry"
+// Arc 4d — tenth canonical primitive promotion. Inline SourceBadge
+// retired in favor of canonical SourceBadge with `variant="letter"`.
+// 3-way pattern drift closed (ThemeTab inline + per-tab + canonical).
+import {
+  SourceBadge,
+  ScopeDiffPopover,
+  type SourceValue,
+  type ResolutionSourceEntry,
+} from "@/lib/visual-editor/source-badge"
 
 
 export type PropSource =
@@ -29,6 +38,29 @@ export type PropSource =
   | "vertical-default"
   | "tenant-override"
   | "draft"
+
+
+/**
+ * Arc 4d — map historical PropSource vocabulary onto canonical
+ * SourceValue. CompactPropControl callers continue to pass the
+ * historical strings; the primitive accepts only canonical values.
+ */
+function toSourceValue(s: PropSource): SourceValue {
+  switch (s) {
+    case "registration-default":
+      return "default"
+    case "class-default":
+      return "class-default"
+    case "platform-default":
+      return "platform"
+    case "vertical-default":
+      return "vertical"
+    case "tenant-override":
+      return "tenant"
+    case "draft":
+      return "draft"
+  }
+}
 
 
 interface Props {
@@ -44,31 +76,24 @@ interface Props {
   /** When true, show a reset-to-inherited affordance. */
   isOverriddenAtCurrentScope: boolean
   onReset: () => void
+  /**
+   * Arc 4d — optional resolution chain for hover-reveal scope diff.
+   * When provided + non-empty, wraps the SourceBadge in
+   * ScopeDiffPopover so the operator can see up-the-chain values.
+   * Empty / undefined → bare badge with title tooltip only.
+   */
+  scopeSources?: ResolutionSourceEntry[]
+  /** Optional fieldLabel for ScopeDiffPopover header (e.g. "accent token"). */
+  scopeFieldLabel?: string
 }
 
 
-function SourceBadge({ source }: { source: PropSource }) {
-  const labels: Record<PropSource, { letter: string; tone: string; title: string }> = {
-    "registration-default": { letter: "D", tone: "text-content-subtle", title: "Default (registration)" },
-    "class-default": { letter: "C", tone: "text-content-muted", title: "Inherited from class default" },
-    "platform-default": { letter: "P", tone: "text-content-muted", title: "Platform default" },
-    "vertical-default": { letter: "V", tone: "text-content-muted", title: "Vertical default" },
-    "tenant-override": { letter: "T", tone: "text-accent", title: "Tenant override" },
-    draft: { letter: "•", tone: "text-status-warning", title: "Unsaved draft" },
-  }
-  const { letter, tone, title } = labels[source]
-  return (
-    <span
-      className={`inline-flex h-4 w-4 items-center justify-center rounded-full bg-surface-sunken text-[9px] font-medium ${tone}`}
-      title={title}
-      data-testid={`source-badge-${source}`}
-    >
-      {letter}
-    </span>
-  )
-}
-
-
+/**
+ * Arc 4d — `SourceBadge` previously declared inline here. Promoted
+ * to canonical primitive at `@/lib/visual-editor/source-badge`. The
+ * letter-variant chrome matches the pre-Arc-4d treatment verbatim;
+ * consumers (Class/Props tabs via this wrapper) pass `variant="letter"`.
+ */
 export function CompactPropControl({
   name,
   schema,
@@ -78,6 +103,8 @@ export function CompactPropControl({
   source,
   isOverriddenAtCurrentScope,
   onReset,
+  scopeSources,
+  scopeFieldLabel,
 }: Props) {
   const [showDescription, setShowDescription] = useState(false)
   const description = schema.description
@@ -118,7 +145,28 @@ export function CompactPropControl({
         <span className="flex-1 text-caption font-medium text-content-strong">
           {displayLabel}
         </span>
-        <SourceBadge source={source} />
+        {/* Arc 4d — canonical SourceBadge (letter variant) optionally
+            wrapped in ScopeDiffPopover for hover-reveal cascade diff. */}
+        {scopeSources && scopeSources.length > 0 ? (
+          <ScopeDiffPopover
+            sources={scopeSources}
+            currentValue={value}
+            fieldLabel={scopeFieldLabel ?? displayLabel}
+            data-testid={`scope-diff-${name}`}
+          >
+            <SourceBadge
+              source={toSourceValue(source)}
+              variant="letter"
+              data-testid={`source-badge-${source}`}
+            />
+          </ScopeDiffPopover>
+        ) : (
+          <SourceBadge
+            source={toSourceValue(source)}
+            variant="letter"
+            data-testid={`source-badge-${source}`}
+          />
+        )}
         {isOverriddenAtCurrentScope && (
           <button
             type="button"

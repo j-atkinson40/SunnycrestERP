@@ -108,6 +108,33 @@ import type {
   CompositionRow,
   Placement,
 } from "@/lib/visual-editor/compositions/types"
+// Arc 4d — chip-variant SourceBadge for per-composition scope tier
+// display. Replaces inline `<Badge variant="outline">{source}</Badge>`
+// (3-way pattern drift closure: ThemeTab inline + FocusCompositions
+// inline + canonical → single canonical primitive).
+import {
+  SourceBadge,
+  type SourceValue,
+} from "@/lib/visual-editor/source-badge"
+
+
+/**
+ * Arc 4d — map focus_compositions resolver source string
+ * (`tenant_override` | `vertical_default` | `platform_default`) to
+ * canonical SourceValue.
+ */
+function compositionSourceToSource(source: string): SourceValue {
+  switch (source) {
+    case "tenant_override":
+      return "tenant"
+    case "vertical_default":
+      return "vertical"
+    case "platform_default":
+      return "platform"
+    default:
+      return "default"
+  }
+}
 
 
 export const FOCUS_COMPOSITIONS_AUTOSAVE_DEBOUNCE_MS = 1500
@@ -526,10 +553,14 @@ function ListView({
                   <Badge variant="outline" className="text-micro">
                     {t.focus_type_category}
                   </Badge>
+                  {/* Arc 4d — canonical chip-variant SourceBadge.
+                      Replaces inline `<Badge>{source}</Badge>`. */}
                   {source && (
-                    <Badge variant="outline" className="text-micro">
-                      {source.replace("_", " ")}
-                    </Badge>
+                    <SourceBadge
+                      source={compositionSourceToSource(source)}
+                      variant="chip"
+                      data-testid={`runtime-inspector-focus-row-${t.composition_focus_type}-scope`}
+                    />
                   )}
                 </div>
               </button>

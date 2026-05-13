@@ -83,8 +83,26 @@ import {
   VALID_NODE_TYPES,
   validateCanvasState,
 } from "@/lib/visual-editor/workflows/canvas-validator"
+// Arc 4d — chip-variant SourceBadge for per-workflow scope display.
+// Class B per-instance source metadata: workflows expose scope on
+// each WorkflowTemplateMetadata row.
+import {
+  SourceBadge,
+  type SourceValue,
+} from "@/lib/visual-editor/source-badge"
 
 import { usePageContext } from "../use-page-context"
+
+
+/**
+ * Arc 4d — map workflows-side WorkflowScope (`platform_default` |
+ * `vertical_default`) to canonical SourceBadge SourceValue.
+ * `tenant_override` is N/A here — tenant customization happens via
+ * fork mechanic (TenantWorkflowFork), not tenant_override scope.
+ */
+function workflowScopeToSource(scope: WorkflowScope): SourceValue {
+  return scope === "vertical_default" ? "vertical" : "platform"
+}
 
 
 // ── Autosave timing (verbatim parity with standalone editor) ──
@@ -467,12 +485,18 @@ function WorkflowRow({
           >
             {workflow.display_name || workflow.workflow_type}
           </div>
-          <div className="text-caption text-content-muted truncate">
+          <div className="flex items-center gap-1.5 text-caption text-content-muted truncate">
             <code className="font-plex-mono">{workflow.workflow_type}</code>
             {workflow.vertical ? (
-              <span className="ml-2">· {workflow.vertical}</span>
+              <span>· {workflow.vertical}</span>
             ) : null}
-            <span className="ml-2">· v{workflow.version}</span>
+            <span>· v{workflow.version}</span>
+            {/* Arc 4d — chip SourceBadge per-workflow scope tier. */}
+            <SourceBadge
+              source={workflowScopeToSource(workflow.scope)}
+              variant="chip"
+              data-testid={`runtime-inspector-workflow-row-scope-${workflow.workflow_type}`}
+            />
           </div>
           {workflow.description && (
             <div className="mt-1 text-caption text-content-muted line-clamp-2">

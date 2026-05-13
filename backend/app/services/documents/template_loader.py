@@ -335,3 +335,186 @@ class _AllKeysTrueRegistry:
 
 
 _TEMPLATE_REGISTRY = _AllKeysTrueRegistry()
+
+
+# ---------------------------------------------------------------------------
+# Arc 4d — Scope-cascade resolver returns (Q-ARC4D-3 settled).
+#
+# Documents transitions Class C (no source metadata) → Class B (per-instance
+# source metadata) by exposing the full resolution chain alongside the
+# winning template. Inspector tab's SourceBadge + ScopeDiffPopover consume
+# this to render hover-reveal cascade visualization.
+#
+# Parallel canon: themes (`platform_themes.theme_service.resolve_theme` returns
+# `{tokens, sources, ...}`), component_configurations (sources field on
+# ResolvedConfiguration), workflow_templates (resolver returns `{source,
+# source_id, source_version, ...}`), focus_compositions (resolver returns
+# `{source, source_id, sources, ...}`). Documents was the holdout returning
+# only the winning version.
+# ---------------------------------------------------------------------------
+
+from dataclasses import field as _dc_field
+from typing import Literal as _Literal
+
+
+# Canonical scope vocabulary — mirrors frontend
+# `lib/visual-editor/source-badge/ScopeDiffPopover.ts::ResolutionScope`.
+DocumentResolutionScope = _Literal[
+    "platform_default",
+    "vertical_default",
+    "tenant_override",
+]
+
+
+@dataclass
+class DocumentResolutionSourceEntry:
+    """One entry in the Documents resolution chain.
+
+    Resolver-order: winning entry FIRST. Parallels themes / component_configs
+    / focus_compositions resolver convention (first-match-wins; deepest scope
+    that matched wins per §4 Documents canon three-tier inheritance).
+    """
+
+    scope: str  # DocumentResolutionScope (Literal not enforceable at field)
+    template_id: str
+    version_id: str
+    version_number: int
+    company_id: str | None = None
+    vertical: str | None = None
+
+
+@dataclass
+class ResolvedTemplateWithSources:
+    """Full resolution result for Arc 4d Class B → C transition.
+
+    - `version`: winning DocumentTemplateVersion (same as legacy return).
+    - `template`: winning DocumentTemplate (carries scope discriminator).
+    - `source`: winning scope (`tenant_override`/`vertical_default`/
+      `platform_default`).
+    - `sources`: full resolution chain in resolver order (winning entry
+      FIRST). May contain 1-3 entries depending on which tiers have
+      templates registered for the key.
+    """
+
+    template: DocumentTemplate
+    version: DocumentTemplateVersion
+    source: str  # DocumentResolutionScope
+    sources: list[DocumentResolutionSourceEntry] = _dc_field(
+        default_factory=list,
+    )
+
+
+def resolve_with_sources(
+    db: Session,
+    template_key: str,
+    *,
+    company_id: str | None = None,
+    vertical: str | None = None,
+) -> ResolvedTemplateWithSources | None:
+    """Arc 4d — return (version, source, sources) triple instead of single
+    version. Powers inspector tab's hover-reveal scope diff.
+
+    First-match-wins semantics preserved from `_resolve_version`: walks
+    tenant → vertical → platform; deepest scope with an active version
+    wins. The non-winning tiers (if registered) also populate `sources` so
+    the operator can see what the winning value overrides.
+
+    Returns None if no tier resolves an active version (same contract as
+    `_resolve_version`).
+    """
+
+    def _load_active_version(
+        t: DocumentTemplate,
+    ) -> DocumentTemplateVersion | None:
+        if not t.current_version_id:
+            return None
+        return (
+            db.query(DocumentTemplateVersion)
+            .filter(DocumentTemplateVersion.id == t.current_version_id)
+            .first()
+        )
+
+    # Collect ALL tier candidates first (regardless of which wins), then
+    # decide winner. This lets us populate `sources` with the up-the-chain
+    # entries even when the operator's tenant has an override.
+    candidates: list[
+        tuple[str, DocumentTemplate, DocumentTemplateVersion]
+    ] = []
+
+    # 1. Tenant override.
+    if company_id is not None:
+        tenant_template = (
+            db.query(DocumentTemplate)
+            .filter(
+                DocumentTemplate.template_key == template_key,
+                DocumentTemplate.company_id == company_id,
+                DocumentTemplate.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if tenant_template is not None:
+            version = _load_active_version(tenant_template)
+            if version is not None:
+                candidates.append(("tenant_override", tenant_template, version))
+
+    # 2. Vertical default.
+    if vertical is not None:
+        vertical_template = (
+            db.query(DocumentTemplate)
+            .filter(
+                DocumentTemplate.template_key == template_key,
+                DocumentTemplate.company_id.is_(None),
+                DocumentTemplate.vertical == vertical,
+                DocumentTemplate.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if vertical_template is not None:
+            version = _load_active_version(vertical_template)
+            if version is not None:
+                candidates.append(
+                    ("vertical_default", vertical_template, version)
+                )
+
+    # 3. Platform default.
+    platform_template = (
+        db.query(DocumentTemplate)
+        .filter(
+            DocumentTemplate.template_key == template_key,
+            DocumentTemplate.company_id.is_(None),
+            DocumentTemplate.vertical.is_(None),
+            DocumentTemplate.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if platform_template is not None:
+        version = _load_active_version(platform_template)
+        if version is not None:
+            candidates.append(
+                ("platform_default", platform_template, version)
+            )
+
+    if not candidates:
+        return None
+
+    # Winning entry = first candidate (resolver order: tenant > vertical >
+    # platform). Sources list mirrors resolver order; UI consumers (Arc 4d
+    # ScopeDiffPopover) render winning entry FIRST with accent.
+    winner_scope, winner_template, winner_version = candidates[0]
+    sources = [
+        DocumentResolutionSourceEntry(
+            scope=scope,
+            template_id=t.id,
+            version_id=v.id,
+            version_number=v.version_number,
+            company_id=t.company_id,
+            vertical=t.vertical,
+        )
+        for scope, t, v in candidates
+    ]
+    return ResolvedTemplateWithSources(
+        template=winner_template,
+        version=winner_version,
+        source=winner_scope,
+        sources=sources,
+    )
