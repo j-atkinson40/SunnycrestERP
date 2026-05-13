@@ -1,35 +1,36 @@
 {
-  "_comment_1": "R-2.1 bundle-size baseline for spec 11.",
-  "_comment_2": "Captured against R-2.1 ship build output. Pre-R-2.1 R-4.0 baseline preserved as _previous_baseline below for delta tracking.",
+  "_comment_1": "Bundle-size baseline for spec 11.",
+  "_comment_2": "Captured against current HEAD build output. Prior baseline preserved as _previous_baseline below for delta tracking.",
   "_comment_3": "Sizes are in BYTES (uncompressed).",
   "_comment_4": "Update this fixture with a justification in the commit message when intentional bundle growth lands. Spec 11 fails if any non-runtime-editor chunk grows by more than 5%.",
   "_comment_5": "Runtime-editor chunks (RuntimeEditorShell, TenantUserPicker, RuntimeHostTestPage, TenantRouteTree) are excluded — they're EXPECTED to change as R-2+ phases land.",
   "_comment_6": "R-2.1 growth: 10 entity-card-section sub-component files (DeliveryCard 4 + AncillaryCard 3 + OrderCard 3) + entity-card-sections registrations shim + InspectorPanel outer-tabs strip + Selection union + selectSection action increases the main bundle by ~22.5 KB (5,544,572 → 5,567,053 bytes, +0.41%). Well under the +0.5% target. RuntimeEditorShell chunk grew 25.13 KB → 30.66 KB (+22%) excluded per policy.",
-  "_baseline_commit": "R-2.1",
-  "_baseline_date": "2026-05-08",
+  "_comment_7": "Baseline refreshed 2026-05-13. Drift accumulated from R-2.1 baseline (5,567,053 bytes captured 2026-05-08): Arcs 4a / 4a.1 / 4a.2a / 4b.1a / 4b.1b / 4b.2a / 4b.2b / 4c / 4d landed cumulative ~377kB growth across the May 8-13 ship window. Studio 1a-i.A1 added ~43kB shell substrate. Studio 1a-i.A2's eager-import of RuntimeEditorShell briefly added 111kB; restored to lazy boundary by the 2026-05-13 test maintenance commit (a9d26f0). Current baseline reflects the lazy-boundary post-state at HEAD.",
+  "_baseline_commit": "2c24a79",
+  "_baseline_date": "2026-05-13",
   "_previous_baseline": {
-    "main_bundle_bytes": 5544572,
-    "css_bytes": 230709,
+    "main_bundle_bytes": 5567053,
+    "css_bytes": 231614,
     "chart_renderer_bytes": 399346,
-    "commit": "R-3.1",
-    "date": "2026-05-07"
+    "commit": "R-2.1",
+    "date": "2026-05-08"
   },
   "_tolerance_pct": 5,
   "chunks": {
     "main_bundle": {
       "pattern": "index-*.js",
-      "baseline_bytes": 5567053,
-      "description": "Tenant + admin app entry — combined ChunkA bundle that all routes depend on. R-2.1 +0.41% over R-3.1 (entity-card sub-section decomposition + InspectorPanel outer tabs + Selection union)."
+      "baseline_bytes": 5986664,
+      "description": "Tenant + admin app entry — combined ChunkA bundle that all routes depend on. 2026-05-13 refresh: +7.54% over R-2.1 baseline absorbing Arc 4 family (4a/4a.1/4a.2a/4b.1a/4b.1b/4b.2a/4b.2b/4c/4d) + Studio 1a-i shell substrate. RuntimeEditorShell lazy boundary restored — eager-import drift from A2 fully recovered."
     },
     "css": {
       "pattern": "index-*.css",
-      "baseline_bytes": 231614,
-      "description": "Compiled Tailwind v4 + DESIGN_LANGUAGE.md token surface. R-2.1 +0.39% (additional Tailwind classes from sub-section components). Well under tolerance."
+      "baseline_bytes": 233872,
+      "description": "Compiled Tailwind v4 + DESIGN_LANGUAGE.md token surface. 2026-05-13 refresh: +0.97% over R-2.1 (additional classes from Arc 4 components + Studio shell). Well under tolerance."
     },
     "chart_renderer": {
       "pattern": "ChartRenderer-*.js",
       "baseline_bytes": 399346,
-      "description": "Lazy-loaded recharts wrapper for SavedView chart variants. Unchanged by R-2.1."
+      "description": "Lazy-loaded recharts wrapper for SavedView chart variants. Unchanged since R-2.1."
     }
   },
   "excluded_runtime_editor_chunks": [
