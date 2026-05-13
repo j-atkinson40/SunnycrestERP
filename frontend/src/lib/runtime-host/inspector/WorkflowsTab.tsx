@@ -143,7 +143,15 @@ function buildEditorUrl(
   template?: WorkflowTemplateMetadata,
   scope?: WorkflowScope,
 ): string {
-  const base = adminPath("/visual-editor/workflows")
+  // Studio 1a-i.A1: prefer the Studio path when inside Studio shell.
+  const inStudio =
+    typeof window !== "undefined" &&
+    window.location.pathname
+      .replace(/^\/bridgeable-admin/, "")
+      .startsWith("/studio/")
+  const base = inStudio
+    ? adminPath("/studio/workflows")
+    : adminPath("/visual-editor/workflows")
   return buildEditorDeepLink(base, {
     workflow_type: template?.workflow_type,
     scope: scope,

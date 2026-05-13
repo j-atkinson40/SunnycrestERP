@@ -46,11 +46,11 @@ export function AdminHeader() {
               Verticals
             </Link>
             <Link
-              to={adminPath("/visual-editor")}
+              to={adminPath("/studio")}
               className="hover:text-amber-300"
               data-testid="admin-nav-visual-editor"
             >
-              Visual Editor
+              Studio
             </Link>
           </nav>
         </div>

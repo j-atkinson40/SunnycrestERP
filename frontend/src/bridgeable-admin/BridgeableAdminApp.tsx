@@ -45,16 +45,11 @@ import { DeploymentsPage } from "./pages/DeploymentsPage"
 import { StagingCreatePage } from "./pages/StagingPage"
 import { ArcTelemetry } from "./pages/ArcTelemetry"
 import VerticalsAdminPage from "./pages/admin/VerticalsAdminPage"
-import VisualEditorIndex from "./pages/visual-editor/VisualEditorIndex"
-import RegistryDebugPage from "./pages/visual-editor/RegistryDebugPage"
-import ThemeEditorPage from "./pages/visual-editor/themes/ThemeEditorPage"
-import WorkflowEditorPage from "./pages/visual-editor/WorkflowEditorPage"
-import ClassEditorPage from "./pages/visual-editor/ClassEditorPage"
-import FocusEditorPage from "./pages/visual-editor/FocusEditorPage"
-import WidgetEditorPage from "./pages/visual-editor/WidgetEditorPage"
-import DocumentsEditorPage from "./pages/visual-editor/DocumentsEditorPage"
-import EdgePanelEditorPage from "./pages/visual-editor/EdgePanelEditorPage"
-import PluginRegistryBrowser from "./pages/visual-editor/PluginRegistryBrowser"
+// Visual editor pages — imported inside StudioShell. The Studio shell
+// is now the canonical mount point for these editors; the legacy
+// /visual-editor/* routes redirect into Studio.
+import StudioShell from "./pages/studio/StudioShell"
+import { StudioRedirect } from "./pages/studio/StudioRedirect"
 
 /**
  * Accessed via either:
@@ -92,34 +87,49 @@ export function BridgeableAdminApp() {
     </AdminLayout>
   )
 
+  // Studio 1a-i.A1 (May 2026): the standalone visual-editor pages
+  // remain mounted as their own routes during a coexistence window,
+  // BUT every entry is replaced with a redirect to the Studio shell
+  // equivalent. Direct mounts deferred to a follow-on cleanup arc once
+  // every bookmark + deep-link is verified to be re-targeted. The
+  // editor page components themselves are imported here for use INSIDE
+  // StudioShell at /studio/... routes.
   const visualEditorPages = (
     <VisualEditorLayout>
       <Routes>
-        <Route index element={<VisualEditorIndex />} />
-        <Route path="themes" element={<ThemeEditorPage />} />
-        {/* New top-level editors (May 2026 reorganization). */}
-        <Route path="focuses" element={<FocusEditorPage />} />
-        <Route path="widgets" element={<WidgetEditorPage />} />
-        <Route path="documents" element={<DocumentsEditorPage />} />
-        <Route path="classes" element={<ClassEditorPage />} />
-        <Route path="workflows" element={<WorkflowEditorPage />} />
-        {/* R-5.0 — edge panel multi-page authoring. */}
-        <Route path="edge-panels" element={<EdgePanelEditorPage />} />
-        <Route path="registry" element={<RegistryDebugPage />} />
-        {/* R-8.y.d — Plugin Registry browser. Surfaces 24 canonical
-            plugin categories from PLUGIN_CONTRACTS.md with maturity
-            grouping + live introspection for ~11 enumerable Tier
-            R1/R2 registries. */}
-        <Route path="plugin-registry" element={<PluginRegistryBrowser />} />
-        {/* Legacy redirects — May 2026 reorganization dismantled the
-            standalone Component Editor + Compositions page. Their
-            functionality is redistributed across Widget Editor + Focus
-            Editor. Existing bookmarks land on the editor index where
-            the new structure is discoverable. */}
+        {/* All standalone visual-editor URLs redirect into Studio. */}
+        <Route index element={<StudioRedirect />} />
+        <Route path="themes" element={<StudioRedirect />} />
+        <Route path="focuses" element={<StudioRedirect />} />
+        <Route path="widgets" element={<StudioRedirect />} />
+        <Route path="documents" element={<StudioRedirect />} />
+        <Route path="classes" element={<StudioRedirect />} />
+        <Route path="workflows" element={<StudioRedirect />} />
+        <Route path="edge-panels" element={<StudioRedirect />} />
+        <Route path="registry" element={<StudioRedirect />} />
+        <Route path="plugin-registry" element={<StudioRedirect />} />
+        {/* Pre-Studio May 2026 reorganization redirects — preserve them. */}
         <Route path="components" element={<Navigate to="../" replace />} />
         <Route path="compositions" element={<Navigate to="../focuses" replace />} />
       </Routes>
     </VisualEditorLayout>
+  )
+
+  // Suspense fallback for the Studio shell. Same shape as the runtime
+  // editor's loading state.
+  const studioRoute = (
+    <Suspense
+      fallback={
+        <div
+          className="flex h-screen items-center justify-center bg-surface-base text-content-muted"
+          data-testid="studio-shell-suspense"
+        >
+          <span>Loading Studio…</span>
+        </div>
+      }
+    >
+      <StudioShell />
+    </Suspense>
   )
 
   // Phase R-0 — Runtime Host Test routes (super_admin gated, hidden
@@ -200,6 +210,16 @@ export function BridgeableAdminApp() {
           path="/runtime-editor/*"
           element={runtimeEditorShellRoute}
         />
+
+        {/* Studio shell — Studio 1a-i.A1 (May 2026). Path-segment-
+            canonical URL scheme (see lib/studio-routes.ts). Catches
+            /studio, /studio/:vertical, /studio/:editor,
+            /studio/:vertical/:editor, /studio/live[/...]. */}
+        <Route
+          path="/bridgeable-admin/studio/*"
+          element={studioRoute}
+        />
+        <Route path="/studio/*" element={studioRoute} />
 
         {/* Path-based entry: /bridgeable-admin/visual-editor/* — visual editor */}
         <Route

@@ -237,9 +237,24 @@ function buildEditorUrl(
   compositionId: string | null,
   returnTo: string,
 ): string {
-  const base = adminPath("/visual-editor/focuses")
+  // Studio 1a-i.A1 (May 2026): when the runtime editor is mounted
+  // inside Studio (at /studio/live/...) — currently a placeholder in
+  // A1 — construct a Studio deep link. Outside Studio (standalone
+  // /runtime-editor/...) keep the existing /visual-editor/* URL so
+  // the standalone editor mount remains addressable. The redirect
+  // layer catches the legacy URL either way.
+  const inStudio =
+    typeof window !== "undefined" &&
+    window.location.pathname
+      .replace(/^\/bridgeable-admin/, "")
+      .startsWith("/studio/")
+  const base = inStudio
+    ? adminPath("/studio/focuses")
+    : adminPath("/visual-editor/focuses")
   const params = new URLSearchParams()
-  if (compositionFocusType) params.set("focus_type", compositionFocusType)
+  if (compositionFocusType) {
+    params.set(inStudio ? "category" : "focus_type", compositionFocusType)
+  }
   if (compositionId) params.set("composition_id", compositionId)
   params.set("return_to", returnTo)
   return `${base}?${params.toString()}`

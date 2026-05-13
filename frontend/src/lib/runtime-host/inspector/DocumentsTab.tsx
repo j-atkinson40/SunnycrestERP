@@ -172,7 +172,15 @@ function buildDocumentsEditorUrl(opts?: {
   scope?: ScopeFilter
   documentType?: string | null
 }): string {
-  const base = adminPath("/visual-editor/documents")
+  // Studio 1a-i.A1: prefer the Studio path when inside Studio shell.
+  const inStudio =
+    typeof window !== "undefined" &&
+    window.location.pathname
+      .replace(/^\/bridgeable-admin/, "")
+      .startsWith("/studio/")
+  const base = inStudio
+    ? adminPath("/studio/documents")
+    : adminPath("/visual-editor/documents")
   return buildEditorDeepLink(base, {
     template_id: opts?.templateId,
     scope: opts?.scope,
