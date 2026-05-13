@@ -57,3 +57,22 @@ In Studio Live mode, the scope picker is informational and read-only — scope i
 Supersedes 2026-05-13 (Studio shell arc decomposition) on the question of how Studio 1a-i is dispatched. Investigation at `docs/investigations/2026-05-13-studio-1a-i-scoping.md` applied R-7-α floor analysis (verticals-lite shipped at 2.3x estimate) to Studio 1a-i and found the bundled scope at ~4,000-4,500 LOC midpoint exceeds the sub-agent execution ceiling. The bundle splits into three sub-arcs: 1a-i.A1 (routing + rail + redirect + placeholder overview + smoke tests, ~2,300 worst case); 1a-i.A2 (Live mode wrap + impersonation handshake + mode-toggle URL helper + Live mode tests, ~1,900 worst case); 1a-i.B (editor adaptation pass + comprehensive tests, ~1,840 worst case). Each fits the ~2,000-2,500 ceiling at worst case.
 
 The 2026-05-13 commitment "Live mode ships in 1a-i, not deferred" is honored by sequencing A2 immediately after A1 with no other arcs interleaved. The brief window between A1 and A2 ships where Studio is operator-visible without Live mode is treated as transitional sub-arc sequencing, not deferral. A2 dispatches as the next arc after A1 lands; B dispatches after A2.
+---
+
+## 2026-05-13 (PM) — Studio test maintenance lazy-boundary canon
+
+The Studio shell's Live mode wrap consumes `RuntimeEditorShell`, the largest non-chart chunk in the admin tree (~113 kB minified, 26 kB gzip). Eager import — even one level deep through `StudioLiveModeWrap` — makes that chunk part of the main admin bundle on every admin page load. The runtime editor is only relevant when an operator is editing a tenant's environment via Live mode (a deliberate-activation flow with its own loading affordance, not a passive nav target). Lazy boundary belongs at the wrap, not above it.
+
+Canon: any Studio child that pulls in tenant-tree machinery (TenantProviders, TenantRouteTree, impersonation chain, inspector substrate) loads via `React.lazy()` + a `Suspense` fallback shaped like the rest of the admin tree's lazy boundaries. The Studio shell itself and the overview surface are eager; tenant-tree-consuming children are lazy. Pattern reference: `BridgeableAdminApp.tsx::studioRoute` + `RuntimeHostTestPage` lazy mount. Future Studio Live-mode siblings (e.g., a hypothetical preview-only mode, a hypothetical scope-cascade visualizer over tenant data) follow the same boundary.
+
+---
+
+## 2026-05-13 (PM) — E2E test maintenance pattern under Studio migration
+
+The Studio shell migration (1a-i.A1) installed a redirect from `/visual-editor/*` and `/runtime-editor` to `/studio/*` and `/studio/live`. The redirect preserves intent for most E2E tests — pages that `goto()` a legacy route and assert on editor body content pass unchanged because the redirect lands on the same editor mount.
+
+Two test shapes break:
+1. **URL assertions against the legacy path.** `expect(url).toContain("/visual-editor/widgets")` fails post-redirect. Broaden to `expect(url).toMatch(/\/(visual-editor|studio)\/widgets/)` — both forms remain accepted during the migration window. Eventually the legacy half drops when the redirect retires.
+2. **Test-ids tied to the legacy index page structure.** `ve-card-*` test-ids on the legacy `/visual-editor` index were superseded by `studio-overview-card-*` test-ids on the Studio overview. Tests migrate to the new test-ids when the intent ("editor reachable from index surface") still applies; tests are deleted when the intent is purely tied to the legacy structure.
+
+Going forward, new E2E tests should assert on Studio-canonical paths (`/studio/...`) and Studio-canonical test-ids. The legacy redirect is a back-compat affordance, not a primary surface.
