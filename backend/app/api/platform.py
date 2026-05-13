@@ -37,6 +37,7 @@ from app.api.routes.admin import (
     visual_editor_compositions,
     visual_editor_dashboard_layouts,
     plugin_registry as admin_plugin_registry,
+    studio_inventory as admin_studio_inventory,
     verticals as admin_verticals,
 )
 
@@ -176,4 +177,12 @@ platform_router.include_router(
     admin_verticals.router,
     prefix="/admin/verticals",
     tags=["Admin Verticals"],
+)
+
+# Studio 1a-ii — overview inventory (per-section counts + recent
+# edits feed) backing /studio + /studio/:vertical.
+platform_router.include_router(
+    admin_studio_inventory.router,
+    prefix="/admin/studio/inventory",
+    tags=["Studio — Inventory"],
 )

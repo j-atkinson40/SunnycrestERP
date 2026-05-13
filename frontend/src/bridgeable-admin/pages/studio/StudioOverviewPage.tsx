@@ -1,17 +1,25 @@
 /**
- * StudioOverviewPage — placeholder overview surface.
+ * StudioOverviewPage — live overview surface.
  *
- * Studio 1a-i.A1 ships a static section list with descriptions. NO
- * inventory counts, NO recent-edits feed. Inventory service ships in
- * Studio 1a-ii.
+ * Studio 1a-i.A1 shipped a static section list with descriptions.
+ * Studio 1a-ii adds live data:
+ *   - Per-section counts on each card (omitted when null)
+ *   - Recent edits feed below the card grid
  *
  * Renders at:
  *   /studio                            — Platform overview
  *   /studio/:vertical                  — Vertical overview
  *
- * Vertical scope just changes the breadcrumb + the cards' target URLs;
- * card descriptions stay generic until 1a-ii surfaces per-scope counts.
+ * Vertical scope changes the breadcrumb, card target URLs, and the
+ * scope of the live data fetched from the inventory endpoint.
+ *
+ * Recent-edits source: per-table `updated_at` (Studio 1a-ii Path A
+ * pivot per locked decision 6). Editor attribution silently omitted
+ * when null — no "by —" placeholder. Card count display omitted
+ * when count is null (Registry inspector + Plugin Registry under
+ * vertical scope).
  */
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import type { LucideIcon } from "lucide-react"
 import {
@@ -31,6 +39,12 @@ import {
   studioPath,
   type StudioEditorKey,
 } from "@/bridgeable-admin/lib/studio-routes"
+import {
+  getStudioInventory,
+  StudioInventoryError,
+  type InventoryResponse,
+  type RecentEditEntry,
+} from "@/bridgeable-admin/lib/studio-inventory-client"
 
 
 export interface StudioOverviewPageProps {
@@ -123,12 +137,63 @@ const SECTIONS: SectionCard[] = [
 ]
 
 
+// Section labels for the recent-edits feed. Mirrors A1's SECTIONS
+// titles so "Edited X in {section}" reads naturally regardless of
+// which underlying table the row came from.
+const SECTION_LABEL_BY_KEY: Record<string, string> = SECTIONS.reduce(
+  (acc, s) => {
+    acc[s.editor] = s.title
+    return acc
+  },
+  {} as Record<string, string>,
+)
+
+
 export default function StudioOverviewPage({
   activeVertical,
 }: StudioOverviewPageProps) {
   const scopeLabel = activeVertical
     ? `${activeVertical} vertical`
     : "Platform scope"
+
+  const [inventory, setInventory] = useState<InventoryResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getStudioInventory(activeVertical)
+      .then((data) => {
+        if (cancelled) return
+        setInventory(data)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        const msg =
+          err instanceof StudioInventoryError
+            ? err.message
+            : "Failed to load inventory."
+        setError(msg)
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeVertical])
+
+  // Build a count lookup. When inventory isn't loaded yet, every
+  // card renders with count omitted (loading state).
+  const countByKey: Record<string, number | null> =
+    inventory?.sections.reduce(
+      (acc, s) => {
+        acc[s.key] = s.count
+        return acc
+      },
+      {} as Record<string, number | null>,
+    ) ?? {}
 
   return (
     <div
@@ -175,6 +240,11 @@ export default function StudioOverviewPage({
             studioPath({ vertical, editor: section.editor }),
           )
           const Icon = section.icon
+          const count =
+            inventory && section.editor in countByKey
+              ? countByKey[section.editor]
+              : null
+          const showCount = inventory != null && count !== null
           return (
             <Link
               key={section.editor}
@@ -189,11 +259,21 @@ export default function StudioOverviewPage({
                     {section.title}
                   </span>
                 </div>
-                {isPlatformOnly && (
-                  <span className="rounded-sm bg-surface-sunken px-2 py-0.5 text-caption font-plex-mono text-content-muted">
-                    Platform
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {showCount && (
+                    <span
+                      className="rounded-sm bg-surface-sunken px-2 py-0.5 text-caption font-plex-mono text-content-strong"
+                      data-testid={`${section.testId}-count`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                  {isPlatformOnly && (
+                    <span className="rounded-sm bg-surface-sunken px-2 py-0.5 text-caption font-plex-mono text-content-muted">
+                      Platform
+                    </span>
+                  )}
+                </div>
               </div>
               <p className="text-body-sm text-content-muted">
                 {section.description}
@@ -204,12 +284,97 @@ export default function StudioOverviewPage({
       </div>
 
       <div
-        className="mt-8 rounded-md border border-dashed border-border-subtle bg-surface-sunken p-5 text-caption text-content-muted"
-        data-testid="studio-overview-inventory-placeholder"
+        className="mt-8"
+        data-testid="studio-overview-recent-edits"
       >
-        Per-section inventory counts and recent edits ship in Studio
-        1a-ii.
+        <h2 className="mb-3 text-h4 font-plex-serif font-medium text-content-strong">
+          Recent edits
+        </h2>
+        {loading && (
+          <div
+            className="rounded-md border border-dashed border-border-subtle bg-surface-sunken p-5 text-caption text-content-muted"
+            data-testid="studio-overview-recent-edits-loading"
+          >
+            Loading recent edits…
+          </div>
+        )}
+        {!loading && error && (
+          <div
+            className="rounded-md border border-border-subtle bg-surface-sunken p-5 text-body-sm text-status-error"
+            data-testid="studio-overview-recent-edits-error"
+          >
+            {error}
+          </div>
+        )}
+        {!loading && !error && inventory && inventory.recent_edits.length === 0 && (
+          <div
+            className="rounded-md border border-dashed border-border-subtle bg-surface-sunken p-5 text-caption text-content-muted"
+            data-testid="studio-overview-recent-edits-empty"
+          >
+            No recent edits.
+          </div>
+        )}
+        {!loading && !error && inventory && inventory.recent_edits.length > 0 && (
+          <ul
+            className="flex flex-col gap-1 rounded-md border border-border-subtle bg-surface-elevated p-2"
+            data-testid="studio-overview-recent-edits-list"
+          >
+            {inventory.recent_edits.map((entry) => (
+              <RecentEditRow key={`${entry.section}:${entry.entity_id}`} entry={entry} />
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )
+}
+
+
+function RecentEditRow({ entry }: { entry: RecentEditEntry }) {
+  const sectionLabel = SECTION_LABEL_BY_KEY[entry.section] ?? entry.section
+  const relative = formatRelativeTime(entry.edited_at)
+  return (
+    <li>
+      <Link
+        to={adminPath(entry.deep_link_path)}
+        className="flex flex-wrap items-baseline gap-x-2 rounded-sm px-3 py-2 text-body-sm text-content-base hover:bg-surface-sunken"
+        data-testid="studio-overview-recent-edit-row"
+        data-section={entry.section}
+        data-entity-id={entry.entity_id}
+      >
+        <span>
+          Edited <strong className="text-content-strong">{entry.entity_name}</strong>{" "}
+          in <span className="text-content-muted">{sectionLabel}</span> —{" "}
+          <span className="text-content-muted">{relative}</span>
+        </span>
+        {entry.editor_email && (
+          <span className="text-caption text-content-subtle">
+            by {entry.editor_email}
+          </span>
+        )}
+      </Link>
+    </li>
+  )
+}
+
+
+/**
+ * Lightweight relative-time formatter. No new dep — internal-only
+ * mapping. Falls back to ISO date when older than 7 days (shouldn't
+ * occur given the 7-day server-side cutoff, but defensive).
+ */
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return iso
+  const now = Date.now()
+  const deltaMs = now - then
+  if (deltaMs < 0) return "just now"
+  const minutes = Math.floor(deltaMs / (60 * 1000))
+  if (minutes < 1) return "just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(iso).toISOString().slice(0, 10)
 }
