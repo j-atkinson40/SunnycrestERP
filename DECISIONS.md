@@ -43,7 +43,7 @@ No widget can be authored in the Studio without first selecting a Vault data sou
 
 ## 2026-05-13 — Spaces substrate is the next-on-queue arc after Studio shell
 
-Investigation (`/tmp/studio_shell_investigation_findings.md` §2) confirmed there is no platform-tier Spaces substrate today: spaces are per-user JSONB in `user.preferences`, the 15 endpoints are tenant-token + per-user scoped, role-seeded templates live in Python code. The absence of platform-tier Spaces substrate is a strategic gap on the vertical-launch flow, not just a Studio-scoping question; per-user-JSONB-only constrains every future vertical launch. Spaces substrate arc — `space_templates` table with 3-tier scope inheritance, platform-admin API, service-layer resolver — is locked as the immediate post-Studio-shell priority, estimated ~1,500-2,500 LOC before any Studio integration. The Studio rail in 1a-i shows a "Spaces" entry as disabled with "Coming soon" affordance.
+Investigation (`docs/investigations/2026-05-13-studio-shell.md` §2) confirmed there is no platform-tier Spaces substrate today: spaces are per-user JSONB in `user.preferences`, the 15 endpoints are tenant-token + per-user scoped, role-seeded templates live in Python code. The absence of platform-tier Spaces substrate is a strategic gap on the vertical-launch flow, not just a Studio-scoping question; per-user-JSONB-only constrains every future vertical launch. Spaces substrate arc — `space_templates` table with 3-tier scope inheritance, platform-admin API, service-layer resolver — is locked as the immediate post-Studio-shell priority, estimated ~1,500-2,500 LOC before any Studio integration. The Studio rail in 1a-i shows a "Spaces" entry as disabled with "Coming soon" affordance.
 
 ---
 
