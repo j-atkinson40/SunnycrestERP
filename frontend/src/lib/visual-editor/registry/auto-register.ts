@@ -26,6 +26,16 @@ import "./registrations/widgets"
 // but keeps registry-population ordering predictable for any
 // future order-sensitive consumer).
 import "./registrations/scheduling-widgets"
+// Arc 4a.2a — dashboard ops-board widgets (17 widgets). Separate
+// shim file from `./widgets.ts` so the dashboard cluster owns its
+// metadata alongside its dispatch substrate (WidgetGrid componentMap
+// vs Pulse getWidgetRenderer per widget-renderer-parity.test.ts
+// canon). Pulse-eligible Pulse cluster stays in `./widgets.ts`;
+// dashboard-only ops-board cluster lives here. Imported after the
+// foundation/manufacturing/scheduling wraps for deterministic
+// registration order. Vault cluster (9 widgets) deferred to Arc
+// 4a.2b — separate componentMap indirection via vaultHubRegistry.
+import "./registrations/dashboard-widgets"
 import "./registrations/focus-types"
 import "./registrations/focus-templates"
 import "./registrations/document-blocks"

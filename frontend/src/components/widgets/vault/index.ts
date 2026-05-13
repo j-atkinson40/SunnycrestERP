@@ -18,6 +18,8 @@
  *   4. Import + register it below.
  */
 
+import type { ComponentType } from "react";
+
 import { vaultHubRegistry } from "@/services/vault-hub-registry";
 import RecentDocumentsWidget from "./RecentDocumentsWidget";
 import PendingSignaturesWidget from "./PendingSignaturesWidget";
@@ -26,7 +28,17 @@ import RecentDeliveriesWidget from "./RecentDeliveriesWidget";
 import NotificationsWidget from "./NotificationsWidget";
 // V-1c: CRM widgets.
 import CrmRecentActivityWidget from "./CrmRecentActivityWidget";
-import AtRiskAccountsWidget from "@/components/widgets/ops-board/AtRiskAccountsWidget";
+// Arc 4a.2a — at_risk_accounts is the cross-cluster widget: it
+// appears in BOTH the ops-board componentMap AND this vault
+// componentMap (vault re-exports the same component per V-1c canon).
+// Backend WIDGET_DEFINITIONS declares supported_surfaces once;
+// frontend consumers re-route through the wrapped version so the
+// vault overview surface also emits data-component-name. Wrap site
+// is `@/lib/visual-editor/registry/registrations/dashboard-widgets`.
+import type { WidgetProps } from "../types";
+import { AtRiskAccountsWidget as AtRiskAccountsWidgetWrapped } from "@/lib/visual-editor/registry/registrations/dashboard-widgets";
+const AtRiskAccountsWidget =
+  AtRiskAccountsWidgetWrapped as unknown as ComponentType<WidgetProps>;
 // V-1e: Accounting admin widgets.
 import PendingPeriodCloseWidget from "./PendingPeriodCloseWidget";
 import GlClassificationReviewWidget from "./GlClassificationReviewWidget";

@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 
 WIDGET_DEFINITIONS: list[dict] = [
     # ── Operations Board widgets ──────────────────────────────
+    #
+    # Arc 4a.2a (B-4a2-4): all 28 legacy ops-board + home-dashboard +
+    # vault widgets previously without `supported_surfaces` declared
+    # gain `["dashboard_grid"]`. Conservative — these widgets render
+    # via WidgetGrid componentMap dispatch (dashboard surfaces only);
+    # Pulse-promotion decisions stay deferred per B-4a2-4 settled
+    # scope. Widgets that need pulse_grid additions decide case-by-case
+    # in a separate arc when concrete signal warrants.
     {
         "widget_id": "todays_services",
         "title": "Today's Services",
@@ -28,6 +36,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Calendar",
         "default_enabled": True,
         "default_position": 1,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "legacy_queue",
@@ -41,6 +50,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Image",
         "default_enabled": True,
         "default_position": 2,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "driver_status",
@@ -54,6 +64,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Truck",
         "default_enabled": True,
         "default_position": 3,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "production_status",
@@ -67,6 +78,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Factory",
         "default_enabled": True,
         "default_position": 4,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "open_orders",
@@ -80,6 +92,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "ClipboardList",
         "default_enabled": True,
         "default_position": 5,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "inventory_levels",
@@ -93,6 +106,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Package",
         "default_enabled": True,
         "default_position": 6,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "briefing_summary",
@@ -106,11 +120,17 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Sunrise",
         "default_enabled": True,
         "default_position": 7,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "activity_feed",
         "title": "Recent Activity",
         "description": "Latest actions across the platform",
+        # Arc 4a.2a note: page_contexts includes `company_detail` —
+        # surface dispatch on `company_detail` route currently uses
+        # WidgetGrid (verified ops-board pattern). `dashboard_grid`
+        # supported_surface covers ops_board + home + company_detail
+        # canonically — all three are WidgetGrid-mounted.
         "page_contexts": ["ops_board", "home", "company_detail"],
         "default_size": "1x2",
         "min_size": "1x2",
@@ -119,6 +139,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Activity",
         "default_enabled": False,
         "default_position": 8,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     # ── Extension widgets (ops board) ─────────────────────────
     {
@@ -138,6 +159,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "CheckSquare",
         "default_enabled": True,
         "default_position": 9,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "time_clock",
@@ -152,6 +174,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Clock",
         "default_enabled": True,
         "default_position": 10,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "safety_status",
@@ -166,6 +189,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "ShieldCheck",
         "default_enabled": True,
         "default_position": 11,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     # ── Home Dashboard widgets (future, seeded now) ───────────
     {
@@ -181,6 +205,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "required_permission": "ar.view",
         "default_enabled": True,
         "default_position": 1,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "ar_summary",
@@ -195,6 +220,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "required_permission": "ar.view",
         "default_enabled": True,
         "default_position": 2,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "at_risk_accounts",
@@ -213,6 +239,12 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_enabled": True,
         "default_position": 7,
         "required_permission": "customers.view",
+        # Arc 4a.2a — single supported_surfaces declaration even
+        # though `at_risk_accounts` is in BOTH ops-board AND vault
+        # componentMaps (vault re-exports from ops-board). Surface
+        # declaration is property of the widget definition; consumer
+        # re-export at the componentMap layer is orthogonal.
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     # ───────────────────────────────────────────────────────────────
     # Platform Polish additions — compliance, training, knowledge base surfaces
@@ -230,6 +262,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_enabled": True,
         "default_position": 20,
         "required_permission": "compliance.view",
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "team_certifications",
@@ -244,6 +277,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_enabled": True,
         "default_position": 21,
         "required_permission": "employees.view",
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "my_certifications",
@@ -257,6 +291,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Award",
         "default_enabled": True,
         "default_position": 22,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "my_training",
@@ -270,6 +305,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "GraduationCap",
         "default_enabled": True,
         "default_position": 23,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "kb_recent",
@@ -283,6 +319,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "BookOpen",
         "default_enabled": True,
         "default_position": 24,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     # ───────────────────────────────────────────────────────────────
     # V-1b — Bridgeable Vault Overview widgets
@@ -305,6 +342,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "FileText",
         "default_enabled": True,
         "default_position": 1,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "vault_pending_signatures",
@@ -318,6 +356,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "FileCheck",
         "default_enabled": True,
         "default_position": 2,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "vault_unread_inbox",
@@ -331,6 +370,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Megaphone",
         "default_enabled": True,
         "default_position": 3,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "vault_notifications",
@@ -344,6 +384,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Bell",
         "default_enabled": True,
         "default_position": 4,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "vault_recent_deliveries",
@@ -357,6 +398,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "icon": "Truck",
         "default_enabled": True,
         "default_position": 5,
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     # ───────────────────────────────────────────────────────────────
     # V-1c — CRM Overview widget
@@ -379,6 +421,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_enabled": True,
         "default_position": 6,
         "required_permission": "customers.view",
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     # ───────────────────────────────────────────────────────────────────
     # V-1e: Accounting admin widgets. All gated on `admin` so only
@@ -398,6 +441,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_enabled": True,
         "default_position": 8,
         "required_permission": "admin",
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "vault_gl_classification_review",
@@ -412,6 +456,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_enabled": True,
         "default_position": 9,
         "required_permission": "admin",
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     {
         "widget_id": "vault_agent_recent_activity",
@@ -426,6 +471,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_enabled": True,
         "default_position": 10,
         "required_permission": "admin",
+        "supported_surfaces": ["dashboard_grid"],  # Arc 4a.2a backfill
     },
     # ── Phase W-3a cross-vertical foundation widgets ──────────
     # Cross-vertical (required_vertical: "*") + cross-line

@@ -427,14 +427,16 @@ describe("Phase 1 auto-register population", () => {
     // OrderCard) bringing the total to 21. R-4.0 added 3 button
     // registrations bringing the total to 24. R-2.1 (2026-05-08)
     // added 10 entity-card-section sub-section registrations
-    // bringing the total to 34. Upper bound bumped to 50 so further
+    // bringing the total to 34. Arc 4a.2a (2026-05-13) added 17
+    // ops-board dashboard widgets bringing the total to ~51. Upper
+    // bound bumped to 75 so Arc 4a.2b (9 vault wraps) + further
     // R-2.x sub-section growth + R-4.x button additions + future
     // Focus templates continue to fit without further test churn.
     // The lower bound (13) preserves the original Phase 1 minimum so
     // accidental de-registrations still fail loudly.
     const total = getTotalCount()
     expect(total).toBeGreaterThanOrEqual(13)
-    expect(total).toBeLessThanOrEqual(50)
+    expect(total).toBeLessThanOrEqual(75)
   })
 
   it("includes at least 4 widgets across funeral_home + manufacturing", () => {
