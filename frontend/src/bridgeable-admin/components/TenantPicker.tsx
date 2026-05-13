@@ -29,6 +29,12 @@ interface TenantPickerProps {
   onSelect: (tenant: TenantSummary | null) => void
   /** Optional placeholder text when no tenant selected. */
   placeholder?: string
+  /**
+   * Studio 1a-i.A2 — client-side filter on `Company.vertical`. When
+   * set, only tenants whose vertical exactly matches are surfaced
+   * after the lookup fetch. Null / undefined = no filter.
+   */
+  verticalFilter?: string | null
 }
 
 
@@ -36,6 +42,7 @@ export function TenantPicker({
   selected,
   onSelect,
   placeholder = "Search tenants by name or slug…",
+  verticalFilter = null,
 }: TenantPickerProps) {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<TenantSummary[]>([])
@@ -53,7 +60,10 @@ export function TenantPicker({
           "/api/platform/admin/tenants/lookup",
           { params: { q: query || undefined, limit: 25 } },
         )
-        setResults(data)
+        const filtered = verticalFilter
+          ? data.filter((t) => t.vertical === verticalFilter)
+          : data
+        setResults(filtered)
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error("[tenant-picker] lookup failed", err)
@@ -65,7 +75,7 @@ export function TenantPicker({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [query, open])
+  }, [query, open, verticalFilter])
 
   if (selected) {
     return (

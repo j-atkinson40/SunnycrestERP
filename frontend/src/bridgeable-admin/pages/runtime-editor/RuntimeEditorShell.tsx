@@ -215,7 +215,27 @@ function ShellWithTenantContext({
 }
 
 
-export default function RuntimeEditorShell() {
+export interface RuntimeEditorShellProps {
+  /**
+   * Studio 1a-i.A2 — when true, suppresses the admin chrome ribbon
+   * (the yellow h-8 bar) because the Studio shell renders its own
+   * top bar above the runtime editor. Defaults false for standalone
+   * `/runtime-editor` usage (now legacy; redirects to `/studio/live`).
+   */
+  studioContext?: boolean
+  /**
+   * Studio 1a-i.A2 — vertical slug pre-filter for the TenantUserPicker
+   * when no impersonation params are present. Studio's `/studio/live/
+   * :vertical` route uses this to pre-scope the tenant list.
+   */
+  verticalFilter?: string | null
+}
+
+
+export default function RuntimeEditorShell({
+  studioContext = false,
+  verticalFilter = null,
+}: RuntimeEditorShellProps = {}) {
   const { user, loading } = useAdminAuth()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -346,16 +366,22 @@ export default function RuntimeEditorShell() {
     // resolves cleanly to the same route + this branch falls through
     // to the editor body when params are present.
     //
-    // Wrapped in `data-testid="runtime-editor-missing-params"` for
-    // R-1.5 spec contract preservation — specs that asserted the
-    // missing-params state continue to find the test-id (now on the
-    // picker's surrounding shell instead of an empty-state).
+    // Studio 1a-i.A2 — when mounted inside Studio (`studioContext`),
+    // the StudioLiveModeWrap reads the `:vertical` URL param and
+    // passes it down via the picker's `verticalFilter` to pre-filter
+    // the tenant list. The picker also navigates to a Studio-shaped
+    // URL when `studioContext` is true so the impersonation handshake
+    // returns to `/studio/live/:vertical?...` rather than the
+    // standalone `/runtime-editor/?...` path.
     return (
       <div
         className="min-h-screen bg-surface-base"
         data-testid="runtime-editor-missing-params"
       >
-        <TenantUserPicker />
+        <TenantUserPicker
+          studioContext={studioContext}
+          verticalFilter={verticalFilter}
+        />
       </div>
     )
   }
@@ -364,23 +390,32 @@ export default function RuntimeEditorShell() {
     <div
       className="relative h-screen w-screen overflow-hidden bg-surface-base"
       data-testid="runtime-editor-shell"
+      data-studio-context={studioContext ? "true" : "false"}
     >
       {/* Admin chrome ribbon — distinct from tenant chrome so it's
-       *  obvious the platform admin is rendering tenant content. */}
-      <div
-        className="absolute top-0 left-0 right-0 z-50 flex h-8 items-center gap-3 border-b border-status-warning/30 bg-status-warning-muted px-3 text-caption text-status-warning"
-        data-testid="runtime-editor-ribbon"
-      >
-        <span className="font-medium">Runtime Editor (R-1)</span>
-        <span className="text-content-muted">
-          tenant=<code data-testid="runtime-editor-tenant">{tenantSlug}</code> ·{" "}
-          user=<code data-testid="runtime-editor-user">{userQuery}</code> ·{" "}
-          editing as platform admin {user.email}
-        </span>
-      </div>
+       *  obvious the platform admin is rendering tenant content.
+       *  Studio 1a-i.A2: suppressed when `studioContext` is true
+       *  because the Studio shell renders its own top bar above. */}
+      {!studioContext && (
+        <div
+          className="absolute top-0 left-0 right-0 z-50 flex h-8 items-center gap-3 border-b border-status-warning/30 bg-status-warning-muted px-3 text-caption text-status-warning"
+          data-testid="runtime-editor-ribbon"
+        >
+          <span className="font-medium">Runtime Editor (R-1)</span>
+          <span className="text-content-muted">
+            tenant=<code data-testid="runtime-editor-tenant">{tenantSlug}</code> ·{" "}
+            user=<code data-testid="runtime-editor-user">{userQuery}</code> ·{" "}
+            editing as platform admin {user.email}
+          </span>
+        </div>
+      )}
 
       <div
-        className="absolute inset-0 mt-8 overflow-hidden"
+        className={
+          studioContext
+            ? "absolute inset-0 overflow-hidden"
+            : "absolute inset-0 mt-8 overflow-hidden"
+        }
         data-testid="runtime-editor-tenant-content"
       >
         <TenantProviders>

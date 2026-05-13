@@ -32,9 +32,10 @@ import { VisualEditorLayout } from "./components/VisualEditorLayout"
 const RuntimeHostTestPage = lazy(
   () => import("./pages/RuntimeHostTestPage"),
 )
-const RuntimeEditorShell = lazy(
-  () => import("./pages/runtime-editor/RuntimeEditorShell"),
-)
+// Studio 1a-i.A2: RuntimeEditorShell is now mounted exclusively inside
+// Studio (StudioLiveModeWrap → RuntimeEditorShell with studioContext=true).
+// The legacy `/runtime-editor/*` route was retired in favor of
+// `/studio/live[/:vertical]` and redirects via StudioRedirect.
 import { AdminLogin } from "./pages/AdminLogin"
 import { HealthDashboard } from "./pages/HealthDashboard"
 import { TenantKanban } from "./pages/TenantKanban"
@@ -153,30 +154,6 @@ export function BridgeableAdminApp() {
     </Suspense>
   )
 
-  // Phase R-1 — Runtime Editor (canonical path). The shell handles
-  // both entry states: when impersonation params are absent, the
-  // shell renders the picker as a child (R-1.6.1 Fix 2 — collapse
-  // exact + splat routes to splat-only, eliminating the route
-  // specificity conflict that silently bounced picker→shell
-  // navigations back to the picker route). Lazy-loaded; bypasses
-  // admin/visual-editor layouts. Auth gate (platform_admin/support/
-  // super_admin) enforced inside RuntimeEditorShell + impersonation
-  // API.
-  const runtimeEditorShellRoute = (
-    <Suspense
-      fallback={
-        <div
-          className="flex h-screen items-center justify-center bg-surface-base text-content-muted"
-          data-testid="runtime-editor-shell-suspense"
-        >
-          <span>Loading runtime editor…</span>
-        </div>
-      }
-    >
-      <RuntimeEditorShell />
-    </Suspense>
-  )
-
   return (
     <AdminAuthProvider>
       <Routes>
@@ -197,18 +174,28 @@ export function BridgeableAdminApp() {
           element={runtimeHostRoute}
         />
 
-        {/* Phase R-1 — canonical runtime editor entry. R-1.6.1 fix:
-            collapse to splat-only routes. RuntimeEditorShell renders
-            the picker as a child component when tenant/user params
-            are absent. Single route handles both states; React
-            Router has no specificity conflict. */}
+        {/* Studio 1a-i.A2 — `/runtime-editor` is now legacy. All entries
+            redirect to `/studio/live` via StudioRedirect, preserving
+            `?tenant=&user=` query params. The runtime editor itself is
+            mounted inside Studio at `/studio/live[/:vertical]` via
+            StudioLiveModeWrap → RuntimeEditorShell(studioContext=true).
+            Pre-A2 the canonical entry was `/runtime-editor/*`; the A1
+            spec-override that kept that route active is now resolved. */}
+        <Route
+          path="/bridgeable-admin/runtime-editor"
+          element={<StudioRedirect />}
+        />
         <Route
           path="/bridgeable-admin/runtime-editor/*"
-          element={runtimeEditorShellRoute}
+          element={<StudioRedirect />}
+        />
+        <Route
+          path="/runtime-editor"
+          element={<StudioRedirect />}
         />
         <Route
           path="/runtime-editor/*"
-          element={runtimeEditorShellRoute}
+          element={<StudioRedirect />}
         />
 
         {/* Studio shell — Studio 1a-i.A1 (May 2026). Path-segment-

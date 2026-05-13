@@ -99,6 +99,23 @@ vi.mock("@/bridgeable-admin/pages/visual-editor/PluginRegistryBrowser", () => ({
 }))
 
 
+// Stub RuntimeEditorShell — the real component pulls in TenantProviders
+// and the entire tenant route tree. Studio 1a-i.A2's Live mode wrap
+// mounts RuntimeEditorShell with studioContext=true; verify the prop
+// plumbs through, not the runtime editor internals.
+vi.mock("@/bridgeable-admin/pages/runtime-editor/RuntimeEditorShell", () => ({
+  default: (props: { studioContext?: boolean; verticalFilter?: string | null }) => (
+    <div
+      data-testid="runtime-editor-shell-stub"
+      data-studio-context={props.studioContext ? "true" : "false"}
+      data-vertical-filter={props.verticalFilter ?? "any"}
+    >
+      stub
+    </div>
+  ),
+}))
+
+
 import StudioShell from "./StudioShell"
 
 
@@ -136,16 +153,42 @@ describe("StudioShell — overview surface", () => {
 })
 
 
-describe("StudioShell — Live mode placeholder", () => {
-  it("renders Live placeholder at /studio/live", () => {
+describe("StudioShell — Live mode wrap (1a-i.A2)", () => {
+  it("renders the Live mode wrap at /studio/live", () => {
     renderAt("/studio/live")
-    expect(screen.getByTestId("studio-live-placeholder")).toBeTruthy()
+    expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
   })
 
   it("top bar reflects live mode at /studio/live", () => {
     renderAt("/studio/live")
     const toggle = screen.getByTestId("studio-mode-toggle")
     expect(toggle.getAttribute("data-active-mode")).toBe("live")
+  })
+
+  it("Live mode mounts RuntimeEditorShell with studioContext=true", () => {
+    renderAt("/studio/live")
+    const stub = screen.getByTestId("runtime-editor-shell-stub")
+    expect(stub.getAttribute("data-studio-context")).toBe("true")
+  })
+
+  it("Live mode forwards vertical URL segment as verticalFilter", () => {
+    renderAt("/studio/live/manufacturing")
+    const wrap = screen.getByTestId("studio-live-mode-wrap")
+    expect(wrap.getAttribute("data-vertical-filter")).toBe("manufacturing")
+    const stub = screen.getByTestId("runtime-editor-shell-stub")
+    expect(stub.getAttribute("data-vertical-filter")).toBe("manufacturing")
+  })
+
+  it("Live mode without vertical forwards verticalFilter=any", () => {
+    renderAt("/studio/live")
+    const wrap = screen.getByTestId("studio-live-mode-wrap")
+    expect(wrap.getAttribute("data-vertical-filter")).toBe("any")
+  })
+
+  it("scope switcher renders read-only in Live mode", () => {
+    renderAt("/studio/live/manufacturing")
+    const sw = screen.getByTestId("studio-scope-switcher")
+    expect(sw.getAttribute("data-read-only")).toBe("true")
   })
 })
 

@@ -33,6 +33,18 @@ export interface StudioScopeSwitcherProps {
   activeEditor: StudioEditorKey | null
   /** If true, render disabled (e.g. Live mode locks scope to tenant's vertical). */
   disabled?: boolean
+  /**
+   * Studio 1a-i.A2 — when true, render as a static read-only readout
+   * rather than a dropdown. Used in Live mode where scope is determined
+   * by the impersonated tenant's `Company.vertical`, not authored.
+   */
+  readOnly?: boolean
+  /**
+   * Studio 1a-i.A2 — supplemental description rendered in read-only
+   * mode (e.g. "Vertical: manufacturing — via tenant testco"). When
+   * omitted in readOnly mode, falls back to the activeLabel alone.
+   */
+  liveModeDescription?: string | null
 }
 
 
@@ -40,6 +52,8 @@ export function StudioScopeSwitcher({
   activeVertical,
   activeEditor,
   disabled = false,
+  readOnly = false,
+  liveModeDescription = null,
 }: StudioScopeSwitcherProps) {
   const [verticals, setVerticals] = useState<Vertical[]>([])
   const [open, setOpen] = useState(false)
@@ -82,6 +96,25 @@ export function StudioScopeSwitcher({
       ? "Platform"
       : verticals.find((v) => v.slug === activeVertical)?.display_name ??
         activeVertical
+
+  if (readOnly) {
+    const display = liveModeDescription
+      ? liveModeDescription
+      : activeVertical === null
+        ? "(pick a tenant)"
+        : `Vertical: ${activeLabel}`
+    return (
+      <div
+        data-testid="studio-scope-switcher"
+        data-active-vertical={activeVertical ?? "platform"}
+        data-read-only="true"
+        className="flex items-center gap-1.5 rounded-sm bg-surface-sunken px-3 py-1.5 text-body-sm text-content-muted"
+      >
+        <Globe size={14} className="text-content-subtle" />
+        <span>{display}</span>
+      </div>
+    )
+  }
 
   return (
     <div className="relative">

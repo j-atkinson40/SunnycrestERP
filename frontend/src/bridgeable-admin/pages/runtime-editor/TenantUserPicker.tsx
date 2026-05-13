@@ -28,6 +28,7 @@ import { useNavigate } from "react-router-dom"
 import { TenantPicker, type TenantSummary } from "@/bridgeable-admin/components/TenantPicker"
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
+import { studioLivePath } from "@/bridgeable-admin/lib/studio-routes"
 
 
 interface ImpersonateResponse {
@@ -42,7 +43,27 @@ interface ImpersonateResponse {
 }
 
 
-export default function TenantUserPicker() {
+export interface TenantUserPickerProps {
+  /**
+   * Studio 1a-i.A2 — when true, post-impersonation navigation targets
+   * `/studio/live/:vertical?tenant=...&user=...` (the Studio Live mode
+   * URL shape) rather than the standalone `/runtime-editor/?...` path.
+   * Vertical segment is derived from the chosen tenant's `vertical`.
+   */
+  studioContext?: boolean
+  /**
+   * Studio 1a-i.A2 — when set, the TenantPicker filters its result
+   * list client-side to tenants whose `Company.vertical` matches.
+   * Null = no filter (legacy behavior).
+   */
+  verticalFilter?: string | null
+}
+
+
+export default function TenantUserPicker({
+  studioContext = false,
+  verticalFilter = null,
+}: TenantUserPickerProps = {}) {
   const navigate = useNavigate()
   const [tenant, setTenant] = useState<TenantSummary | null>(null)
   const [userId, setUserId] = useState("")
@@ -89,11 +110,30 @@ export default function TenantUserPicker() {
         console.warn("[runtime-editor] localStorage write failed", e)
       }
 
-      navigate(
-        adminPath(
-          `/runtime-editor/?tenant=${encodeURIComponent(data.tenant_slug)}&user=${encodeURIComponent(data.impersonated_user_id)}`,
-        ),
-      )
+      if (studioContext) {
+        // Studio 1a-i.A2 — return to Studio Live mode at the chosen
+        // tenant's vertical scope. The wrap reads the same `?tenant
+        // &user` query params verbatim; the path's `:vertical` segment
+        // pre-scopes the Studio top bar's scope readout.
+        const verticalSegment = tenant?.vertical ?? null
+        navigate(
+          adminPath(
+            studioLivePath({
+              vertical: verticalSegment,
+              query: {
+                tenant: data.tenant_slug,
+                user: data.impersonated_user_id,
+              },
+            }),
+          ),
+        )
+      } else {
+        navigate(
+          adminPath(
+            `/runtime-editor/?tenant=${encodeURIComponent(data.tenant_slug)}&user=${encodeURIComponent(data.impersonated_user_id)}`,
+          ),
+        )
+      }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[runtime-editor] impersonate failed", err)
@@ -127,7 +167,11 @@ export default function TenantUserPicker() {
           <label className="mb-1 block text-caption font-medium text-content-strong">
             Tenant
           </label>
-          <TenantPicker selected={tenant} onSelect={setTenant} />
+          <TenantPicker
+            selected={tenant}
+            onSelect={setTenant}
+            verticalFilter={verticalFilter}
+          />
         </div>
 
         <div>

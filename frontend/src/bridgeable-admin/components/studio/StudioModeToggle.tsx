@@ -1,16 +1,16 @@
 /**
  * StudioModeToggle — Edit / Live mode toggle.
  *
- * Live mode lands in 1a-i.A2 (impersonation handshake + RuntimeEditor
- * wrap). In 1a-i.A1 the Live tab navigates to the placeholder Live
- * page (`/studio/live`) so the route + chrome exist, but the operator
- * is shown a "Coming next sub-arc" panel.
+ * Studio 1a-i.A2 — uses `toggleMode()` to flip Edit ↔ Live preserving
+ * vertical scope per the 5 canonical translation rules (investigation
+ * §4). Tenant impersonation params drop on Live → Edit since Edit mode
+ * has no concept of impersonated tenant.
  */
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { Eye, Pencil } from "lucide-react"
+import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import {
-  studioLivePath,
-  studioPath,
+  toggleMode,
   type StudioEditorKey,
 } from "@/bridgeable-admin/lib/studio-routes"
 
@@ -18,25 +18,22 @@ import {
 export interface StudioModeToggleProps {
   /** Currently active mode. */
   mode: "edit" | "live"
-  /** Active vertical slug (preserved on toggle). */
+  /** Active vertical slug (preserved on toggle). Retained for API parity. */
   activeVertical: string | null
-  /** Active editor key (preserved on Live → Edit return, if any). */
+  /** Active editor key (preserved on Live → Edit return, if any). Retained for API parity. */
   activeEditor: StudioEditorKey | null
 }
 
 
 export function StudioModeToggle({
   mode,
-  activeVertical,
-  activeEditor,
 }: StudioModeToggleProps) {
   const navigate = useNavigate()
+  const location = useLocation()
 
-  const toEdit = () => {
-    navigate(studioPath({ vertical: activeVertical, editor: activeEditor }))
-  }
-  const toLive = () => {
-    navigate(studioLivePath({ vertical: activeVertical }))
+  const flip = () => {
+    const target = toggleMode(location.pathname, location.search)
+    navigate(adminPath(target))
   }
 
   return (
@@ -47,7 +44,7 @@ export function StudioModeToggle({
     >
       <button
         type="button"
-        onClick={toEdit}
+        onClick={mode === "edit" ? undefined : flip}
         data-testid="studio-mode-edit"
         data-active={mode === "edit" ? "true" : "false"}
         className={
@@ -61,7 +58,7 @@ export function StudioModeToggle({
       </button>
       <button
         type="button"
-        onClick={toLive}
+        onClick={mode === "live" ? undefined : flip}
         data-testid="studio-mode-live"
         data-active={mode === "live" ? "true" : "false"}
         className={

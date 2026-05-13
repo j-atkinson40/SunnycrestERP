@@ -283,6 +283,44 @@ export function writeLastVertical(slug: string | null): void {
 }
 
 
+/* ---------- Mode toggle (Edit ↔ Live) ---------- */
+
+/**
+ * Translate a current Studio URL into the target URL for the opposite
+ * mode. Studio 1a-i.A2.
+ *
+ * Edit → Live: preserve scope (vertical or Platform); drop editor key
+ *   since Live mode has no editor concept. Tenant impersonation params
+ *   are not relevant in Edit mode (the operator picks tenant inside
+ *   Live mode) so they're not added.
+ *
+ * Live → Edit: preserve scope (vertical or Platform); drop tenant +
+ *   user impersonation params. Editor key is not in the source URL
+ *   (Live mode has no editor), so the result lands at the scope
+ *   overview.
+ *
+ * 5 canonical translation rules per investigation §4:
+ *   /studio/themes              → /studio/live
+ *   /studio/wastewater/themes   → /studio/live/wastewater
+ *   /studio/live/wastewater?... → /studio/wastewater       (drop ?tenant&user)
+ *   /studio/live                → /studio
+ *   /studio/live/wastewater     → /studio/wastewater
+ *
+ * Edge: live → edit from `/studio/live` lands at `/studio`, NOT
+ * `/studio/` (no trailing slash).
+ */
+export function toggleMode(pathname: string, _search: string): string {
+  const cleanPath = pathname.replace(/^\/bridgeable-admin/, "")
+  const parsed = parseStudioPath(cleanPath)
+  if (parsed.isLive) {
+    // Live → Edit. Preserve vertical scope; drop tenant + user.
+    return studioPath({ vertical: parsed.vertical, editor: null })
+  }
+  // Edit → Live. Preserve vertical scope; drop editor.
+  return studioLivePath({ vertical: parsed.vertical })
+}
+
+
 /* ---------- URL parsing (for shell mount-time scope detection) ---------- */
 
 export interface StudioRouteParsed {

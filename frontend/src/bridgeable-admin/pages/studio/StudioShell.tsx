@@ -30,7 +30,7 @@ import {
 import { StudioTopBar } from "@/bridgeable-admin/components/studio/StudioTopBar"
 import { StudioRail } from "@/bridgeable-admin/components/studio/StudioRail"
 import StudioOverviewPage from "./StudioOverviewPage"
-import StudioLivePlaceholderPage from "./StudioLivePlaceholderPage"
+import StudioLiveModeWrap from "./StudioLiveModeWrap"
 
 // Eager imports for the existing visual editor pages. They are small
 // enough that lazy-loading per-editor inside Studio doesn't pay for
@@ -98,7 +98,7 @@ export default function StudioShell() {
 
   let child: React.ReactNode
   if (parsed.isLive) {
-    child = <StudioLivePlaceholderPage />
+    child = <StudioLiveModeWrap vertical={parsed.vertical} />
   } else if (parsed.editor === null) {
     child = <StudioOverviewPage activeVertical={parsed.vertical} />
   } else {

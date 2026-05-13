@@ -23,6 +23,7 @@ import {
   studioLivePath,
   studioPath,
   STUDIO_EDITOR_KEYS,
+  toggleMode,
   writeLastVertical,
   writeRailExpanded,
 } from "./studio-routes"
@@ -319,6 +320,51 @@ describe("reserved-slug guard", () => {
   it("isStudioEditorKey type guard", () => {
     expect(isStudioEditorKey("themes")).toBe(true)
     expect(isStudioEditorKey("not-a-key")).toBe(false)
+  })
+})
+
+
+describe("toggleMode — Edit ↔ Live translation (5 canonical rules)", () => {
+  it("Edit + Platform → Live (no vertical)", () => {
+    expect(toggleMode("/studio/themes", "")).toBe("/studio/live")
+  })
+
+  it("Edit + vertical → Live + vertical", () => {
+    expect(toggleMode("/studio/wastewater/themes", "")).toBe(
+      "/studio/live/wastewater",
+    )
+  })
+
+  it("Live + vertical + tenant params → Edit + vertical (drops tenant params)", () => {
+    expect(
+      toggleMode(
+        "/studio/live/wastewater",
+        "?tenant=testco&user=u1",
+      ),
+    ).toBe("/studio/wastewater")
+  })
+
+  it("Live + Platform → Edit + Platform (no trailing slash)", () => {
+    expect(toggleMode("/studio/live", "")).toBe("/studio")
+  })
+
+  it("Live + vertical (no tenant params) → Edit + vertical", () => {
+    expect(toggleMode("/studio/live/wastewater", "")).toBe("/studio/wastewater")
+  })
+
+  it("edge case — Edit overview (no editor) Platform → Live Platform", () => {
+    expect(toggleMode("/studio", "")).toBe("/studio/live")
+  })
+
+  it("edge case — Edit overview + vertical → Live + vertical", () => {
+    expect(toggleMode("/studio/manufacturing", "")).toBe(
+      "/studio/live/manufacturing",
+    )
+  })
+
+  it("tolerates /bridgeable-admin path prefix", () => {
+    expect(toggleMode("/bridgeable-admin/studio/themes", "")).toBe("/studio/live")
+    expect(toggleMode("/bridgeable-admin/studio/live", "")).toBe("/studio")
   })
 })
 

@@ -60,6 +60,14 @@ export function StudioTopBar({
               activeVertical={activeVertical}
               activeEditor={activeEditor}
               disabled={mode === "live"}
+              readOnly={mode === "live"}
+              liveModeDescription={
+                mode === "live"
+                  ? activeVertical
+                    ? `Vertical: ${activeVertical}`
+                    : "(pick a tenant)"
+                  : null
+              }
             />
             <StudioModeToggle
               mode={mode}
