@@ -29,6 +29,7 @@ import {
 } from "@/bridgeable-admin/lib/studio-routes"
 import { StudioTopBar } from "@/bridgeable-admin/components/studio/StudioTopBar"
 import { StudioRail } from "@/bridgeable-admin/components/studio/StudioRail"
+import { StudioRailContext } from "@/bridgeable-admin/components/studio/StudioRailContext"
 import StudioOverviewPage from "./StudioOverviewPage"
 import StudioLiveModeWrap from "./StudioLiveModeWrap"
 
@@ -107,46 +108,50 @@ export default function StudioShell() {
   }
 
   return (
-    <div
-      className="min-h-screen bg-surface-base text-content-base"
-      data-studio-shell="true"
-      data-active-vertical={parsed.vertical ?? "platform"}
-      data-active-editor={parsed.editor ?? "overview"}
-      data-mode={mode}
+    <StudioRailContext.Provider
+      value={{ railExpanded, inStudioContext: true }}
     >
-      <StudioTopBar
-        mode={mode}
-        activeVertical={parsed.vertical}
-        activeEditor={parsed.editor}
-      />
-      <div className="flex">
-        <StudioRail
-          expanded={railExpanded}
-          onExpandedChange={setRailExpanded}
+      <div
+        className="min-h-screen bg-surface-base text-content-base"
+        data-studio-shell="true"
+        data-active-vertical={parsed.vertical ?? "platform"}
+        data-active-editor={parsed.editor ?? "overview"}
+        data-mode={mode}
+      >
+        <StudioTopBar
+          mode={mode}
           activeVertical={parsed.vertical}
           activeEditor={parsed.editor}
-          mode={mode}
         />
-        <main
-          className="min-w-0 flex-1"
-          data-testid="studio-main"
-          data-rail-expanded={railExpanded ? "true" : "false"}
-        >
-          <Suspense
-            fallback={
-              <div
-                className="flex h-64 items-center justify-center text-content-muted"
-                data-testid="studio-child-suspense"
-              >
-                Loading…
-              </div>
-            }
+        <div className="flex">
+          <StudioRail
+            expanded={railExpanded}
+            onExpandedChange={setRailExpanded}
+            activeVertical={parsed.vertical}
+            activeEditor={parsed.editor}
+            mode={mode}
+          />
+          <main
+            className="min-w-0 flex-1"
+            data-testid="studio-main"
+            data-rail-expanded={railExpanded ? "true" : "false"}
           >
-            {child}
-          </Suspense>
-        </main>
+            <Suspense
+              fallback={
+                <div
+                  className="flex h-64 items-center justify-center text-content-muted"
+                  data-testid="studio-child-suspense"
+                >
+                  Loading…
+                </div>
+              }
+            >
+              {child}
+            </Suspense>
+          </main>
+        </div>
       </div>
-    </div>
+    </StudioRailContext.Provider>
   )
 }
 

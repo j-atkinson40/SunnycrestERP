@@ -56,6 +56,7 @@ import { DashboardContextFrame } from "@/bridgeable-admin/components/visual-edit
 import { FocusContextFrame } from "@/bridgeable-admin/components/visual-editor/context-frames/FocusContextFrame"
 import { DocumentContextFrame } from "@/bridgeable-admin/components/visual-editor/context-frames/DocumentContextFrame"
 import { WorkflowCanvasContextFrame } from "@/bridgeable-admin/components/visual-editor/context-frames/WorkflowCanvasContextFrame"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 
 
 type PreviewMode = "light" | "dark"
@@ -220,6 +221,11 @@ function pickContextFrame(
 
 
 export default function ClassEditorPage() {
+  // Studio 1a-i.B — hide editor's own left pane when inside Studio shell
+  // with rail expanded. Standalone callers keep left pane visible.
+  const { railExpanded, inStudioContext } = useStudioRail()
+  const hideLeftPane = railExpanded && inStudioContext
+
   // ── Selection ────────────────────────────────────────────
   const [selectedClass, setSelectedClass] = useState<string | null>(null)
   const [browserSearch, setBrowserSearch] = useState("")
@@ -428,6 +434,7 @@ export default function ClassEditorPage() {
     >
       <div className="flex flex-1 overflow-hidden">
         {/* ── LEFT: Class browser ─────────────────────────── */}
+        {!hideLeftPane && (
         <aside
           className="flex w-[320px] flex-shrink-0 flex-col border-r border-border-subtle bg-surface-elevated"
           data-testid="class-browser"
@@ -491,6 +498,7 @@ export default function ClassEditorPage() {
             })}
           </div>
         </aside>
+        )}
 
         {/* ── CENTER: Multi-component preview ─────────────── */}
         <main

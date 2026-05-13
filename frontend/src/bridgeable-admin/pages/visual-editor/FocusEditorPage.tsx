@@ -64,6 +64,7 @@ import {
   type HierarchicalCategory,
   type HierarchicalTemplate,
 } from "@/bridgeable-admin/components/visual-editor/HierarchicalEditorBrowser"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 import {
   focusCompositionsService,
 } from "@/bridgeable-admin/services/focus-compositions-service"
@@ -311,6 +312,13 @@ function useCompositionDraft(
 
 
 export default function FocusEditorPage() {
+  // Studio 1a-i.B — hide editor's own left pane when mounted inside the
+  // Studio shell with the rail expanded. Standalone-mount callers keep
+  // the left pane visible (context defaults to railExpanded=false,
+  // inStudioContext=false).
+  const { railExpanded, inStudioContext } = useStudioRail()
+  const hideLeftPane = railExpanded && inStudioContext
+
   // ── Arc 3a: Bidirectional deep-link via return_to URL param ──
   //
   // When opened from the runtime editor inspector's Focus tab via the
@@ -476,32 +484,34 @@ export default function FocusEditorPage() {
       )}
       <div className="flex flex-1 overflow-hidden">
         {/* ── LEFT: Hierarchical browser ─────────────────── */}
-        <aside
-          className="flex w-[320px] flex-shrink-0 flex-col border-r border-border-subtle bg-surface-elevated"
-          data-testid="focus-editor-browser"
-        >
-          <div className="border-b border-border-subtle px-3 py-2">
-            <div className="text-h4 font-plex-serif text-content-strong">
-              Focus templates
+        {!hideLeftPane && (
+          <aside
+            className="flex w-[320px] flex-shrink-0 flex-col border-r border-border-subtle bg-surface-elevated"
+            data-testid="focus-editor-browser"
+          >
+            <div className="border-b border-border-subtle px-3 py-2">
+              <div className="text-h4 font-plex-serif text-content-strong">
+                Focus templates
+              </div>
+              <div className="text-caption text-content-muted">
+                5 Focus types · {templates.length} templates
+              </div>
             </div>
-            <div className="text-caption text-content-muted">
-              5 Focus types · {templates.length} templates
+            <div className="flex-1 overflow-hidden">
+              <HierarchicalEditorBrowser
+                categories={categories}
+                templates={templates}
+                selectedCategoryId={selectedCategoryId}
+                selectedTemplateId={selectedTemplateId}
+                search={search}
+                onSearchChange={setSearch}
+                onSelectCategory={handleSelectCategory}
+                onSelectTemplate={handleSelectTemplate}
+                searchPlaceholder="Filter Focus types + templates"
+              />
             </div>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <HierarchicalEditorBrowser
-              categories={categories}
-              templates={templates}
-              selectedCategoryId={selectedCategoryId}
-              selectedTemplateId={selectedTemplateId}
-              search={search}
-              onSearchChange={setSearch}
-              onSelectCategory={handleSelectCategory}
-              onSelectTemplate={handleSelectTemplate}
-              searchPlaceholder="Filter Focus types + templates"
-            />
-          </div>
-        </aside>
+          </aside>
+        )}
 
         {/* ── CENTER: Preview ─────────────────────────── */}
         <main

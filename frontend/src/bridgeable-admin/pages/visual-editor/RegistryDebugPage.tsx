@@ -32,6 +32,7 @@ import {
   getKnownTokens,
   getComponentsConsumingToken,
 } from "@/lib/visual-editor/registry"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 import type {
   ComponentKind,
   RegistryEntry,
@@ -69,6 +70,13 @@ function formatRelative(ms: number): string {
 
 
 export default function RegistryDebugPage() {
+  // Studio 1a-i.B — participate in the rail-context pattern for
+  // uniformity. RegistryDebugPage is a single-pane filter + table view
+  // with no separate left pane, so the rail-expanded signal is a no-op
+  // here visually. The hook call is intentional: any future left pane
+  // added here can flip on the conditional without re-wiring substrate.
+  useStudioRail()
+
   // Snapshot the registry once per render. The registry is
   // module-load-populated; we don't expect it to change between
   // renders inside this page.

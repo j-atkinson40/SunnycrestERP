@@ -60,6 +60,7 @@ import {
 } from "@/lib/visual-editor/themes/token-catalog"
 import { TokenEditorPane } from "./TokenEditorPane"
 import { PreviewCanvas } from "./PreviewCanvas"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 import {
   TenantPicker,
   type TenantSummary,
@@ -70,6 +71,11 @@ const VERTICALS = ["funeral_home", "manufacturing", "cemetery", "crematory"] as 
 
 
 export default function ThemeEditorPage() {
+  // Studio 1a-i.B — hide editor's own left pane when inside Studio shell
+  // with rail expanded. Standalone callers keep left pane visible.
+  const { railExpanded, inStudioContext } = useStudioRail()
+  const hideLeftPane = railExpanded && inStudioContext
+
   // ── Editing scope ──────────────────────────────────────
   const [scope, setScope] = useState<ThemeScope>("platform_default")
   const [vertical, setVertical] = useState<string>("funeral_home")
@@ -386,8 +392,15 @@ export default function ThemeEditorPage() {
       </div>
 
       {/* ── Three-pane body ─────────────────────────────── */}
-      <div className="grid flex-1 grid-cols-[280px_minmax(0,1fr)_minmax(0,1.2fr)] overflow-hidden">
+      <div
+        className={
+          hideLeftPane
+            ? "grid flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] overflow-hidden"
+            : "grid flex-1 grid-cols-[280px_minmax(0,1fr)_minmax(0,1.2fr)] overflow-hidden"
+        }
+      >
         {/* ── Left pane — scope + mode ──────────────────── */}
+        {!hideLeftPane && (
         <aside
           className="border-r border-border-subtle bg-surface-sunken p-4"
           data-testid="theme-editor-scope-pane"
@@ -543,6 +556,7 @@ export default function ThemeEditorPage() {
             </p>
           )}
         </aside>
+        )}
 
         {/* ── Center pane — token editor ─────────────────── */}
         <TokenEditorPane

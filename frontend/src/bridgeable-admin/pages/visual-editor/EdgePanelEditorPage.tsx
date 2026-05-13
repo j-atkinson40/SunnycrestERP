@@ -51,6 +51,7 @@ import { EdgePanelEditorCanvas } from "./components/EdgePanelEditorCanvas"
 import type { Selection } from "./components/EdgePanelEditorCanvas"
 import { PageList } from "./components/PageList"
 import { PageMetadataEditor } from "./components/PageMetadataEditor"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 
 
 type Scope = "platform_default" | "vertical_default" | "tenant_override"
@@ -103,6 +104,12 @@ function cloneRows(rows: CompositionRow[]): CompositionRow[] {
 
 
 export default function EdgePanelEditorPage() {
+  // Studio 1a-i.B — hide editor's own left rail (PageList) when inside
+  // Studio shell with rail expanded. Standalone callers keep the
+  // PageList visible.
+  const { railExpanded, inStudioContext } = useStudioRail()
+  const hideLeftPane = railExpanded && inStudioContext
+
   const [scope, setScope] = useState<Scope>("platform_default")
   const [vertical, setVertical] = useState<string>("manufacturing")
   const [tenantId, setTenantId] = useState<string>("")
@@ -387,17 +394,25 @@ export default function EdgePanelEditorPage() {
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <div className="grid h-full grid-cols-[260px_1fr_360px] gap-3 p-4">
+    <div
+      className={
+        hideLeftPane
+          ? "grid h-full grid-cols-[1fr_360px] gap-3 p-4"
+          : "grid h-full grid-cols-[260px_1fr_360px] gap-3 p-4"
+      }
+    >
       {/* Left rail — page list. */}
-      <PageList
-        pages={pages}
-        activePageIndex={activePageIndex}
-        defaultPageIndex={defaultPageIndex}
-        onSelectPage={(idx) => setActivePageIndex(idx)}
-        onAddPage={addPage}
-        onMovePageUp={movePageUp}
-        onMovePageDown={movePageDown}
-      />
+      {!hideLeftPane && (
+        <PageList
+          pages={pages}
+          activePageIndex={activePageIndex}
+          defaultPageIndex={defaultPageIndex}
+          onSelectPage={(idx) => setActivePageIndex(idx)}
+          onAddPage={addPage}
+          onMovePageUp={movePageUp}
+          onMovePageDown={movePageDown}
+        />
+      )}
 
       {/* Center — page authoring + scope. */}
       <div className="flex min-h-0 flex-col gap-3 rounded-md border border-border-subtle bg-surface-elevated p-4">

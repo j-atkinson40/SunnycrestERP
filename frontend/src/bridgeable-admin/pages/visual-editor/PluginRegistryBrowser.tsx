@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 
 import { MarkdownContent } from "@/bridgeable-admin/components/MarkdownContent"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 import {
   getCategoryRegistrations,
   PluginRegistryError,
@@ -83,6 +84,11 @@ type MaturityFilter = "all" | "canonical" | "partial" | "implicit"
 
 
 export default function PluginRegistryBrowser() {
+  // Studio 1a-i.B — participate in the rail-context pattern for
+  // uniformity. PluginRegistryBrowser is single-pane (no separate left
+  // pane), so the rail-expanded signal is a visual no-op here.
+  useStudioRail()
+
   const [search, setSearch] = useState("")
   const [maturity, setMaturity] = useState<MaturityFilter>("all")
   const [selectedSection, setSelectedSection] = useState<number | null>(null)

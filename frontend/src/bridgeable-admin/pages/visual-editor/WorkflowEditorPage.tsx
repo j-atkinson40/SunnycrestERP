@@ -68,6 +68,7 @@ import {
   summarizeCanvas,
   validateCanvasState,
 } from "@/lib/visual-editor/workflows/canvas-validator"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 
 
 const VERTICALS = ["funeral_home", "manufacturing", "cemetery", "crematory"] as const
@@ -108,6 +109,14 @@ function generateEdgeId(canvas: CanvasState, source: string, target: string): st
 
 
 export default function WorkflowEditorPage() {
+  // Studio 1a-i.B — hide editor's own left pane when inside Studio shell
+  // with rail expanded. Standalone callers keep left pane visible.
+  // Workflow editor's left pane carries metadata + dependent-forks view
+  // alongside the scope/workflow_type selectors; collapsing the Studio
+  // rail to the icon strip restores access to those views.
+  const { railExpanded, inStudioContext } = useStudioRail()
+  const hideLeftPane = railExpanded && inStudioContext
+
   // ── Arc-3.x-deep-link-retrofit: bidirectional deep-link ──
   //
   // When opened from the runtime editor inspector's Workflows tab via
@@ -629,8 +638,15 @@ export default function WorkflowEditorPage() {
       </div>
 
       {/* ── Body ───────────────────────────────────────── */}
-      <div className="grid flex-1 grid-cols-[280px_minmax(0,1fr)_320px] overflow-hidden">
+      <div
+        className={
+          hideLeftPane
+            ? "grid flex-1 grid-cols-[minmax(0,1fr)_320px] overflow-hidden"
+            : "grid flex-1 grid-cols-[280px_minmax(0,1fr)_320px] overflow-hidden"
+        }
+      >
         {/* ── Left pane — selector + metadata + forks ── */}
+        {!hideLeftPane && (
         <aside
           className="flex flex-col gap-3 overflow-y-auto border-r border-border-subtle bg-surface-sunken p-4"
           data-testid="workflow-editor-selector-pane"
@@ -862,6 +878,7 @@ export default function WorkflowEditorPage() {
             <p className="text-caption text-status-error">{loadError}</p>
           )}
         </aside>
+        )}
 
         {/* ── Center pane — node-list canvas ───────────── */}
         <div

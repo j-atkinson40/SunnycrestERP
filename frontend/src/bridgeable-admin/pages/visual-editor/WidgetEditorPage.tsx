@@ -74,6 +74,7 @@ import {
   TenantPicker,
   type TenantSummary,
 } from "@/bridgeable-admin/components/TenantPicker"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 
 
 type EditMode = "class" | "individual" | "layouts"
@@ -164,6 +165,11 @@ export default function WidgetEditorPage() {
 
 
 function IndividualWidgetEditor() {
+  // Studio 1a-i.B — hide editor's own left pane when inside Studio shell
+  // with rail expanded. Standalone callers keep left pane visible.
+  const { railExpanded, inStudioContext } = useStudioRail()
+  const hideLeftPane = railExpanded && inStudioContext
+
   // Load all registered widgets (filter out other kinds).
   const widgets = useMemo<readonly RegistryEntry[]>(() => {
     return getComponentsInClass("widget")
@@ -335,6 +341,7 @@ function IndividualWidgetEditor() {
   return (
     <div className="flex flex-1 overflow-hidden">
       {/* Left — widget browser */}
+      {!hideLeftPane && (
       <aside
         className="flex w-[320px] flex-shrink-0 flex-col border-r border-border-subtle bg-surface-elevated"
         data-testid="widget-editor-browser"
@@ -399,6 +406,7 @@ function IndividualWidgetEditor() {
           )}
         </div>
       </aside>
+      )}
 
       {/* Center — preview */}
       <main

@@ -49,6 +49,7 @@ import {
   type HierarchicalCategory,
   type HierarchicalTemplate,
 } from "@/bridgeable-admin/components/visual-editor/HierarchicalEditorBrowser"
+import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 import { BlockConfigEditor } from "@/bridgeable-admin/components/visual-editor/documents/BlockConfigEditor"
 import { BlockKindPicker } from "@/bridgeable-admin/components/visual-editor/documents/BlockKindPicker"
 import {
@@ -74,6 +75,11 @@ type RightTab = "blocks" | "configuration" | "versions"
 
 
 export default function DocumentsEditorPage() {
+  // Studio 1a-i.B — hide editor's own left pane when inside Studio shell
+  // with rail expanded. Standalone callers keep left pane visible.
+  const { railExpanded, inStudioContext } = useStudioRail()
+  const hideLeftPane = railExpanded && inStudioContext
+
   // ── Arc-3.x-deep-link-retrofit: bidirectional deep-link ──
   //
   // When opened from the runtime editor inspector's Documents tab via
@@ -455,48 +461,50 @@ export default function DocumentsEditorPage() {
       )}
       <div className="flex flex-1 overflow-hidden">
         {/* ── LEFT: Hierarchical browser ──────────────────── */}
-        <aside
-          className="flex w-[320px] flex-shrink-0 flex-col border-r border-border-subtle bg-surface-elevated"
-          data-testid="documents-editor-browser"
-        >
-          <div className="border-b border-border-subtle px-3 py-2">
-            <div className="text-h4 font-plex-serif text-content-strong">
-              Document templates
+        {!hideLeftPane && (
+          <aside
+            className="flex w-[320px] flex-shrink-0 flex-col border-r border-border-subtle bg-surface-elevated"
+            data-testid="documents-editor-browser"
+          >
+            <div className="border-b border-border-subtle px-3 py-2">
+              <div className="text-h4 font-plex-serif text-content-strong">
+                Document templates
+              </div>
+              <div className="text-caption text-content-muted">
+                {catalog?.types.length ?? 0} types · {templates.length} templates
+              </div>
             </div>
-            <div className="text-caption text-content-muted">
-              {catalog?.types.length ?? 0} types · {templates.length} templates
-            </div>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <HierarchicalEditorBrowser
-              categories={browserCategories}
-              templates={browserTemplates}
-              selectedCategoryId={selectedCategoryId}
-              selectedTemplateId={selectedTemplateId}
-              search={search}
-              onSearchChange={setSearch}
-              onSelectCategory={(id) => {
-                setSelectedCategoryId(id)
-                setSelectedTemplateId(null)
-              }}
-              onSelectTemplate={(id) => {
-                setSelectedTemplateId(id)
-                const t = templates.find((x) => x.id === id)
-                if (t) {
-                  const cat =
-                    catalog?.types.find((ty) => ty.type_id === t.document_type)
-                      ?.category ?? null
-                  if (cat) setSelectedCategoryId(cat)
+            <div className="flex-1 overflow-hidden">
+              <HierarchicalEditorBrowser
+                categories={browserCategories}
+                templates={browserTemplates}
+                selectedCategoryId={selectedCategoryId}
+                selectedTemplateId={selectedTemplateId}
+                search={search}
+                onSearchChange={setSearch}
+                onSelectCategory={(id) => {
+                  setSelectedCategoryId(id)
+                  setSelectedTemplateId(null)
+                }}
+                onSelectTemplate={(id) => {
+                  setSelectedTemplateId(id)
+                  const t = templates.find((x) => x.id === id)
+                  if (t) {
+                    const cat =
+                      catalog?.types.find((ty) => ty.type_id === t.document_type)
+                        ?.category ?? null
+                    if (cat) setSelectedCategoryId(cat)
+                  }
+                  setTab("blocks")
+                }}
+                searchPlaceholder="Filter document types + templates"
+                emptyStateForCategory={(cat) =>
+                  `No templates yet for ${cat.label}.`
                 }
-                setTab("blocks")
-              }}
-              searchPlaceholder="Filter document types + templates"
-              emptyStateForCategory={(cat) =>
-                `No templates yet for ${cat.label}.`
-              }
-            />
-          </div>
-        </aside>
+              />
+            </div>
+          </aside>
+        )}
 
         {/* ── CENTER: Preview ──────────────────────────────── */}
         <main
