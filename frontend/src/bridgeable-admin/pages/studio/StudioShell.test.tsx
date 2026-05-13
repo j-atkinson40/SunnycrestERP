@@ -174,7 +174,7 @@ function renderAt(pathname: string) {
 }
 
 
-beforeEach(() => {
+beforeEach(async () => {
   window.localStorage.clear()
   // Reset auth state to default (signed-in platform_admin) before each
   // test. Tests that need unauth/loading override this after this hook.
@@ -187,6 +187,12 @@ beforeEach(() => {
     is_super_admin: false,
   }
   mockAuthState.loading = false
+  // Follow-up #4: reset module-level verticals cache so each test
+  // re-fetches deterministically.
+  const { __resetVerticalsCacheForTests } = await import(
+    "@/bridgeable-admin/hooks/useVerticals"
+  )
+  __resetVerticalsCacheForTests()
 })
 afterEach(() => {
   window.localStorage.clear()
@@ -232,14 +238,23 @@ describe("StudioShell — Live mode wrap (1a-i.A2)", () => {
 
   it("Live mode forwards vertical URL segment as verticalFilter", async () => {
     renderAt("/studio/live/manufacturing")
+    // Follow-up #4: wrap blocks render until verticals registry loads.
+    await waitFor(() => {
+      const wrap = screen.getByTestId("studio-live-mode-wrap")
+      expect(wrap.getAttribute("data-loading")).not.toBe("true")
+    })
     const wrap = screen.getByTestId("studio-live-mode-wrap")
     expect(wrap.getAttribute("data-vertical-filter")).toBe("manufacturing")
     const stub = await screen.findByTestId("runtime-editor-shell-stub")
     expect(stub.getAttribute("data-vertical-filter")).toBe("manufacturing")
   })
 
-  it("Live mode without vertical forwards verticalFilter=any", () => {
+  it("Live mode without vertical forwards verticalFilter=any", async () => {
     renderAt("/studio/live")
+    await waitFor(() => {
+      const wrap = screen.getByTestId("studio-live-mode-wrap")
+      expect(wrap.getAttribute("data-loading")).not.toBe("true")
+    })
     const wrap = screen.getByTestId("studio-live-mode-wrap")
     expect(wrap.getAttribute("data-vertical-filter")).toBe("any")
   })
@@ -440,6 +455,11 @@ describe("StudioShell — auth gate delegation (Studio 1a-i.B follow-up #2)", ()
     mockAuthState.user = null
     renderAt("/studio/live/manufacturing")
     expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    // Follow-up #4: await verticals-registry load.
+    await waitFor(() => {
+      const wrap = screen.getByTestId("studio-live-mode-wrap")
+      expect(wrap.getAttribute("data-loading")).not.toBe("true")
+    })
     const wrap = screen.getByTestId("studio-live-mode-wrap")
     expect(wrap.getAttribute("data-vertical-filter")).toBe("manufacturing")
   })
@@ -491,6 +511,8 @@ describe("StudioShell — nested Routes Live mode dispatch (Studio 1a-i.B follow
   it("mounts Live wrap at /studio/live/manufacturing", async () => {
     renderAt("/studio/live/manufacturing")
     expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    // Follow-up #4: await verticals-registry load before asserting on
+    // RuntimeEditorShell stub's vertical-filter attribute.
     const stub = await screen.findByTestId("runtime-editor-shell-stub")
     expect(stub.getAttribute("data-vertical-filter")).toBe("manufacturing")
   })
@@ -502,21 +524,34 @@ describe("StudioShell — nested Routes Live mode dispatch (Studio 1a-i.B follow
     // production. Vitest assertion: the wrap is reachable and vertical
     // is forwarded correctly.
     expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    await waitFor(() => {
+      const wrap = screen.getByTestId("studio-live-mode-wrap")
+      expect(wrap.getAttribute("data-loading")).not.toBe("true")
+    })
     const wrap = screen.getByTestId("studio-live-mode-wrap")
     expect(wrap.getAttribute("data-vertical-filter")).toBe("manufacturing")
     const stub = await screen.findByTestId("runtime-editor-shell-stub")
     expect(stub.getAttribute("data-vertical-filter")).toBe("manufacturing")
   })
 
-  it("mounts Live wrap at /studio/live/dispatch/funeral-schedule (no vertical, deep tail)", async () => {
+  it("mounts Live wrap at /studio/live/dispatch/funeral-schedule (spurious vertical → vertical=null + tail; Studio 1a-i.B follow-up #4)", async () => {
     // React Router scores `live/:vertical/*` higher than `live/*` so
-    // `:vertical` greedily captures "dispatch" here. The pickup-and-
-    // replay flow in TenantUserPicker (Step 4) handles this case post-
-    // impersonation.
+    // `:vertical` greedily captures "dispatch" here. Pre-#4 the wrap
+    // trusted the captured value and rendered "Vertical: dispatch" in
+    // the top bar (visible bug). Post-#4, the wrap validates the
+    // captured slug against the verticals registry (mocked here to
+    // include manufacturing + funeral_home) — `dispatch` is NOT a
+    // known slug, so vertical disambiguates to null + the full
+    // post-`live` content becomes the tail.
     renderAt("/studio/live/dispatch/funeral-schedule")
     expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    await waitFor(() => {
+      const wrap = screen.getByTestId("studio-live-mode-wrap")
+      expect(wrap.getAttribute("data-loading")).not.toBe("true")
+    })
     const wrap = screen.getByTestId("studio-live-mode-wrap")
-    expect(wrap.getAttribute("data-vertical-filter")).toBe("dispatch")
+    expect(wrap.getAttribute("data-vertical-filter")).toBe("any")
+    expect(wrap.getAttribute("data-deep-tail")).toBe("dispatch/funeral-schedule")
   })
 })
 

@@ -29,9 +29,10 @@ import { TenantPicker, type TenantSummary } from "@/bridgeable-admin/components/
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import {
-  extractStudioLiveDeepTail,
+  disambiguateStudioLive,
   studioLivePath,
 } from "@/bridgeable-admin/lib/studio-routes"
+import { useVerticals } from "@/bridgeable-admin/hooks/useVerticals"
 
 
 interface ImpersonateResponse {
@@ -69,6 +70,7 @@ export default function TenantUserPicker({
 }: TenantUserPickerProps = {}) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { knownSlugs } = useVerticals()
   const [tenant, setTenant] = useState<TenantSummary | null>(null)
   const [userId, setUserId] = useState("")
   const [reason, setReason] = useState("")
@@ -126,8 +128,23 @@ export default function TenantUserPicker({
         // preserve it in the post-impersonation URL so the tenant route
         // tree mounts the requested page directly. Path shape:
         //   /studio/live/<resolved-vertical>/<deep-tail>?tenant=&user=
+        //
+        // Studio 1a-i.B follow-up #4 — verticals-registry disambiguation:
+        // the source URL's first post-`live` segment may legitimately be
+        // a real vertical slug (e.g. `/studio/live/manufacturing`, from
+        // toggleMode) OR a tenant-route tail segment (e.g.
+        // `/studio/live/dispatch/funeral-schedule`, from a deep-link
+        // standalone redirect). `disambiguateStudioLive` validates
+        // against the verticals registry; legitimate slugs are stripped
+        // from the tail so the replay URL doesn't double-up vertical
+        // segments. Without this, picking a different tenant from a
+        // `/studio/live/manufacturing` source would produce
+        // `/studio/live/wastewater/manufacturing?...` (broken).
         const verticalSegment = tenant?.vertical ?? null
-        const deepTail = extractStudioLiveDeepTail(location.pathname)
+        const { tail: deepTail } = disambiguateStudioLive(
+          location.pathname,
+          knownSlugs,
+        )
         const basePath = studioLivePath({
           vertical: verticalSegment,
           query: {

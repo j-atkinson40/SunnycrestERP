@@ -470,6 +470,70 @@ export function extractStudioLiveDeepTail(
 }
 
 
+/**
+ * Studio 1a-i.B follow-up #4 — verticals-registry disambiguation.
+ *
+ * Given a Studio Live URL pathname plus the set of valid vertical
+ * slugs known at runtime, classify the first post-`live` segment:
+ *
+ *   - If it matches a known slug → that segment IS the vertical;
+ *     remaining segments form the tail.
+ *   - If it does NOT match a known slug → there is no vertical in
+ *     the URL; the full post-`live` content is the tail.
+ *   - If the pathname is bare `/studio/live` (no post-`live` segments)
+ *     → vertical=null, tail="".
+ *   - If the pathname is not a Studio Live URL at all → vertical=null,
+ *     tail="".
+ *
+ * Closes the canonical edge case where React Router's
+ * `<Route path="live/:vertical/*">` declaration greedily captures the
+ * first post-`live` segment as `:vertical` even when that segment is
+ * actually a tenant-route path component (e.g. `dispatch`). The wrap
+ * uses this to report the correct vertical scope; the picker uses
+ * this to compose the correct pickup-and-replay tail.
+ *
+ * Tolerates `/bridgeable-admin` prefix + trailing slash per existing
+ * helper conventions.
+ *
+ * Examples (knownVerticals = ["manufacturing", "funeral_home", ...]):
+ *
+ *   "/studio/live"                                            → { vertical: null, tail: "" }
+ *   "/studio/live/manufacturing"                              → { vertical: "manufacturing", tail: "" }
+ *   "/studio/live/manufacturing/dashboard"                    → { vertical: "manufacturing", tail: "dashboard" }
+ *   "/studio/live/manufacturing/dispatch/funeral-schedule"    → { vertical: "manufacturing", tail: "dispatch/funeral-schedule" }
+ *   "/studio/live/dispatch/funeral-schedule"                  → { vertical: null, tail: "dispatch/funeral-schedule" }
+ *   "/studio/live/dispatch"                                   → { vertical: null, tail: "dispatch" }
+ */
+export function disambiguateStudioLive(
+  pathname: string,
+  knownVerticals: readonly string[],
+): { vertical: string | null; tail: string } {
+  const cleanPath = pathname.replace(/^\/bridgeable-admin/, "")
+  const stripped = cleanPath.replace(/^\/+/, "").replace(/\/+$/, "")
+  const parts = stripped.split("/").filter(Boolean)
+
+  if (parts[0] !== "studio" || parts[1] !== "live") {
+    return { vertical: null, tail: "" }
+  }
+
+  const afterLive = parts.slice(2)
+  if (afterLive.length === 0) {
+    return { vertical: null, tail: "" }
+  }
+
+  const first = afterLive[0]
+  const validSet = new Set(knownVerticals)
+  if (validSet.has(first)) {
+    return { vertical: first, tail: afterLive.slice(1).join("/") }
+  }
+
+  // First segment is NOT a known vertical → treat full post-`live`
+  // content as tail. Vertical is unresolved until the picker (or other
+  // caller) supplies one out-of-band.
+  return { vertical: null, tail: afterLive.join("/") }
+}
+
+
 /* ---------- URL parsing (for shell mount-time scope detection) ---------- */
 
 export interface StudioRouteParsed {

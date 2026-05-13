@@ -41,6 +41,21 @@ vi.mock("@/bridgeable-admin/lib/admin-api", () => ({
 }))
 
 
+// Mock verticalsService for the useVerticals() hook called by the
+// picker (Studio 1a-i.B follow-up #4 disambiguation requires the
+// canonical 4 vertical slugs to be known).
+vi.mock("@/bridgeable-admin/services/verticals-service", () => ({
+  verticalsService: {
+    list: vi.fn(async () => [
+      { slug: "manufacturing", display_name: "Manufacturing", description: null, status: "published", icon: null, sort_order: 1, created_at: "", updated_at: "" },
+      { slug: "funeral_home", display_name: "Funeral Home", description: null, status: "published", icon: null, sort_order: 2, created_at: "", updated_at: "" },
+      { slug: "cemetery", display_name: "Cemetery", description: null, status: "published", icon: null, sort_order: 3, created_at: "", updated_at: "" },
+      { slug: "crematory", display_name: "Crematory", description: null, status: "published", icon: null, sort_order: 4, created_at: "", updated_at: "" },
+    ]),
+  },
+}))
+
+
 // Mock TenantPicker to expose a deterministic onSelect callback we
 // trigger from the test by clicking a button.
 vi.mock("@/bridgeable-admin/components/TenantPicker", () => {
@@ -122,10 +137,16 @@ function mockImpersonateSuccess() {
 }
 
 
-beforeEach(() => {
+beforeEach(async () => {
   navigateMock.mockReset()
   adminApiPost.mockReset()
   window.localStorage.clear()
+  // Follow-up #4: reset module-level verticals cache so each test
+  // re-fetches the mocked verticals deterministically.
+  const { __resetVerticalsCacheForTests } = await import(
+    "@/bridgeable-admin/hooks/useVerticals"
+  )
+  __resetVerticalsCacheForTests()
 })
 
 afterEach(() => {
@@ -141,6 +162,15 @@ describe("TenantUserPicker — pickup-and-replay (Studio 1a-i.B follow-up #3)", 
       startPath: "/bridgeable-admin/studio/live/dispatch/funeral-schedule",
     })
     fireEvent.click(screen.getByTestId("mock-tenant-picker"))
+    // Wait for useVerticals() to resolve before triggering handleStart
+    // so the disambiguation closure (follow-up #4) has the registry.
+    await waitFor(() => {
+      // verticalsService.list() is async; the hook's setLoaded flips
+      // after resolution. Querying for the start button ensures React
+      // has rendered the form section (which requires tenant != null
+      // from the prior click).
+      expect(screen.getByTestId("runtime-editor-picker-start")).toBeTruthy()
+    })
     fireEvent.click(screen.getByTestId("runtime-editor-picker-start"))
 
     await waitFor(() => {
@@ -160,6 +190,15 @@ describe("TenantUserPicker — pickup-and-replay (Studio 1a-i.B follow-up #3)", 
       startPath: "/bridgeable-admin/studio/live",
     })
     fireEvent.click(screen.getByTestId("mock-tenant-picker"))
+    // Wait for useVerticals() to resolve before triggering handleStart
+    // so the disambiguation closure (follow-up #4) has the registry.
+    await waitFor(() => {
+      // verticalsService.list() is async; the hook's setLoaded flips
+      // after resolution. Querying for the start button ensures React
+      // has rendered the form section (which requires tenant != null
+      // from the prior click).
+      expect(screen.getByTestId("runtime-editor-picker-start")).toBeTruthy()
+    })
     fireEvent.click(screen.getByTestId("runtime-editor-picker-start"))
 
     await waitFor(() => {
@@ -178,6 +217,15 @@ describe("TenantUserPicker — pickup-and-replay (Studio 1a-i.B follow-up #3)", 
       startPath: "/bridgeable-admin/studio/live/cases/abc-123",
     })
     fireEvent.click(screen.getByTestId("mock-tenant-picker"))
+    // Wait for useVerticals() to resolve before triggering handleStart
+    // so the disambiguation closure (follow-up #4) has the registry.
+    await waitFor(() => {
+      // verticalsService.list() is async; the hook's setLoaded flips
+      // after resolution. Querying for the start button ensures React
+      // has rendered the form section (which requires tenant != null
+      // from the prior click).
+      expect(screen.getByTestId("runtime-editor-picker-start")).toBeTruthy()
+    })
     fireEvent.click(screen.getByTestId("runtime-editor-picker-start"))
 
     await waitFor(() => {
@@ -189,6 +237,41 @@ describe("TenantUserPicker — pickup-and-replay (Studio 1a-i.B follow-up #3)", 
     )
   })
 
+  it("toggleMode edge case — source has known vertical, picker resolves DIFFERENT vertical (follow-up #4 fix)", async () => {
+    // Pre-#4: source URL `/studio/live/manufacturing` (from toggleMode)
+    // + picker selects a tenant in a different vertical would treat
+    // `manufacturing` as the tail and produce
+    // `/studio/live/<new-vertical>/manufacturing?...` which fails to
+    // match a tenant route.
+    //
+    // Post-#4: `manufacturing` IS a known vertical → tail="" →
+    // post-impersonation URL is the canonical vertical landing.
+    //
+    // (Mock selects manufacturing here too, so vertical doesn't actually
+    // change, but the disambiguation logic runs identically — the key
+    // assertion is that `manufacturing` is NOT carried as tail.)
+    mockImpersonateSuccess()
+    renderPicker({
+      studioContext: true,
+      startPath: "/bridgeable-admin/studio/live/manufacturing",
+    })
+    fireEvent.click(screen.getByTestId("mock-tenant-picker"))
+    await waitFor(() => {
+      expect(screen.getByTestId("runtime-editor-picker-start")).toBeTruthy()
+    })
+    fireEvent.click(screen.getByTestId("runtime-editor-picker-start"))
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledTimes(1)
+    })
+    const [target] = navigateMock.mock.calls[0]
+    // Target should be the canonical vertical landing — NO
+    // `/manufacturing/manufacturing` doubling.
+    expect(target).toBe(
+      "/bridgeable-admin/studio/live/manufacturing?tenant=testco&user=u1",
+    )
+  })
+
   it("legacy (studioContext=false) navigates to /runtime-editor/?... unchanged", async () => {
     mockImpersonateSuccess()
     renderPicker({
@@ -196,6 +279,15 @@ describe("TenantUserPicker — pickup-and-replay (Studio 1a-i.B follow-up #3)", 
       startPath: "/bridgeable-admin/runtime-editor",
     })
     fireEvent.click(screen.getByTestId("mock-tenant-picker"))
+    // Wait for useVerticals() to resolve before triggering handleStart
+    // so the disambiguation closure (follow-up #4) has the registry.
+    await waitFor(() => {
+      // verticalsService.list() is async; the hook's setLoaded flips
+      // after resolution. Querying for the start button ensures React
+      // has rendered the form section (which requires tenant != null
+      // from the prior click).
+      expect(screen.getByTestId("runtime-editor-picker-start")).toBeTruthy()
+    })
     fireEvent.click(screen.getByTestId("runtime-editor-picker-start"))
 
     await waitFor(() => {

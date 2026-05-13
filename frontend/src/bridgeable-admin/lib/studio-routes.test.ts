@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   assertSafeVerticalSlug,
   computeInitialRailExpanded,
+  disambiguateStudioLive,
   extractStudioLiveDeepTail,
   isOverviewRoute,
   isReservedSlug,
@@ -606,5 +607,104 @@ describe("extractStudioLiveDeepTail — Studio 1a-i.B follow-up #3", () => {
     expect(
       extractStudioLiveDeepTail("/studio/live/dispatch/funeral-schedule/"),
     ).toBe("dispatch/funeral-schedule")
+  })
+})
+
+
+describe("disambiguateStudioLive — Studio 1a-i.B follow-up #4", () => {
+  const KNOWN: readonly string[] = [
+    "manufacturing",
+    "funeral_home",
+    "cemetery",
+    "crematory",
+  ]
+
+  it("bare /studio/live → vertical=null, tail=''", () => {
+    expect(disambiguateStudioLive("/studio/live", KNOWN)).toEqual({
+      vertical: null,
+      tail: "",
+    })
+  })
+
+  it("known vertical alone → vertical=slug, tail=''", () => {
+    expect(disambiguateStudioLive("/studio/live/manufacturing", KNOWN)).toEqual(
+      { vertical: "manufacturing", tail: "" },
+    )
+  })
+
+  it("known vertical + single tail segment → vertical=slug, tail=segment", () => {
+    expect(
+      disambiguateStudioLive("/studio/live/manufacturing/dashboard", KNOWN),
+    ).toEqual({ vertical: "manufacturing", tail: "dashboard" })
+  })
+
+  it("known vertical + multi-segment tail → vertical=slug, full tail", () => {
+    expect(
+      disambiguateStudioLive(
+        "/studio/live/manufacturing/dispatch/funeral-schedule",
+        KNOWN,
+      ),
+    ).toEqual({
+      vertical: "manufacturing",
+      tail: "dispatch/funeral-schedule",
+    })
+  })
+
+  it("unknown first segment + tail → vertical=null, full content is tail (canonical follow-up #4 bug fix)", () => {
+    expect(
+      disambiguateStudioLive("/studio/live/dispatch/funeral-schedule", KNOWN),
+    ).toEqual({ vertical: null, tail: "dispatch/funeral-schedule" })
+  })
+
+  it("single unknown segment → vertical=null, tail=segment", () => {
+    expect(disambiguateStudioLive("/studio/live/dispatch", KNOWN)).toEqual({
+      vertical: null,
+      tail: "dispatch",
+    })
+  })
+
+  it("tolerates /bridgeable-admin prefix", () => {
+    expect(
+      disambiguateStudioLive(
+        "/bridgeable-admin/studio/live/manufacturing/dashboard",
+        KNOWN,
+      ),
+    ).toEqual({ vertical: "manufacturing", tail: "dashboard" })
+    expect(
+      disambiguateStudioLive(
+        "/bridgeable-admin/studio/live/dispatch/funeral-schedule",
+        KNOWN,
+      ),
+    ).toEqual({ vertical: null, tail: "dispatch/funeral-schedule" })
+  })
+
+  it("tolerates trailing slash", () => {
+    expect(
+      disambiguateStudioLive("/studio/live/manufacturing/", KNOWN),
+    ).toEqual({ vertical: "manufacturing", tail: "" })
+  })
+
+  it("non-Studio-live URL → vertical=null, tail=''", () => {
+    expect(disambiguateStudioLive("/studio", KNOWN)).toEqual({
+      vertical: null,
+      tail: "",
+    })
+    expect(disambiguateStudioLive("/studio/themes", KNOWN)).toEqual({
+      vertical: null,
+      tail: "",
+    })
+    expect(disambiguateStudioLive("/dashboard", KNOWN)).toEqual({
+      vertical: null,
+      tail: "",
+    })
+  })
+
+  it("empty knownVerticals list → every segment becomes tail", () => {
+    // Fail-soft mode: if verticals fetch failed, the hook reports an
+    // empty list. Wrap still mounts; every segment is treated as tail
+    // (vertical resolution falls to the picker at impersonation time).
+    expect(
+      disambiguateStudioLive("/studio/live/manufacturing/dashboard", []),
+    ).toEqual({ vertical: null, tail: "manufacturing/dashboard" })
   })
 })
