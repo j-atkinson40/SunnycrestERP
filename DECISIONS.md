@@ -50,3 +50,10 @@ Investigation (`docs/investigations/2026-05-13-studio-shell.md` §2) confirmed t
 ## 2026-05-13 — Live mode is vertical-or-tenant-tier authoring; platform-tier changes happen in Edit mode
 
 In Studio Live mode, the scope picker is informational and read-only — scope is determined by the impersonated tenant's `Company.vertical`. Operators cannot author platform-tier changes from inside Live mode. Platform-tier authoring (changes affecting every tenant) happens exclusively in Edit mode at Platform scope. This is a deliberate constraint, not a limitation pending future work: authoring platform-tier changes while looking at one specific tenant's runtime would design against that tenant's data without surfacing the platform-wide blast radius. The constraint will eventually need surfacing in the Studio's chrome (Live mode top bar shows "Editing vertical_default for Wastewater — via tenant Hopkins FH"). Future tenant_override scope authoring inside Live mode is a separate UX arc.
+---
+
+## 2026-05-13 (PM) — Studio 1a-i sub-arc refinement
+
+Supersedes 2026-05-13 (Studio shell arc decomposition) on the question of how Studio 1a-i is dispatched. Investigation at `docs/investigations/2026-05-13-studio-1a-i-scoping.md` applied R-7-α floor analysis (verticals-lite shipped at 2.3x estimate) to Studio 1a-i and found the bundled scope at ~4,000-4,500 LOC midpoint exceeds the sub-agent execution ceiling. The bundle splits into three sub-arcs: 1a-i.A1 (routing + rail + redirect + placeholder overview + smoke tests, ~2,300 worst case); 1a-i.A2 (Live mode wrap + impersonation handshake + mode-toggle URL helper + Live mode tests, ~1,900 worst case); 1a-i.B (editor adaptation pass + comprehensive tests, ~1,840 worst case). Each fits the ~2,000-2,500 ceiling at worst case.
+
+The 2026-05-13 commitment "Live mode ships in 1a-i, not deferred" is honored by sequencing A2 immediately after A1 with no other arcs interleaved. The brief window between A1 and A2 ships where Studio is operator-visible without Live mode is treated as transitional sub-arc sequencing, not deferral. A2 dispatches as the next arc after A1 lands; B dispatches after A2.
