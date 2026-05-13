@@ -586,7 +586,7 @@ export function renderTenantSlugRoutes(
                       tenant user can access it. Delete when Phase A
                       ships its first real Focus consumer. */}
                   <Route
-                    path="/dev/focus-test"
+                    path="dev/focus-test"
                     element={<FocusTestPage />}
                   />
 
@@ -605,7 +605,7 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/dispatch/funeral-schedule"
+                      path="dispatch/funeral-schedule"
                       element={<FuneralSchedulePage />}
                     />
                   </Route>
@@ -617,7 +617,7 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/admin/users"
+                      path="admin/users"
                       element={<UserManagement />}
                     />
                   </Route>
@@ -629,7 +629,7 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/team"
+                      path="team"
                       element={<TeamDashboardPage />}
                     />
                   </Route>
@@ -641,11 +641,11 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/admin/roles"
+                      path="admin/roles"
                       element={<RoleManagement />}
                     />
                     <Route
-                      path="/admin/company-migration"
+                      path="admin/company-migration"
                       element={<CompanyMigrationReviewPage />}
                     />
                   </Route>
@@ -655,7 +655,7 @@ export function renderTenantSlugRoutes(
                       + Tier 2 categories + Tier 2/3 confidence floors). */}
                   <Route element={<ProtectedRoute adminOnly />}>
                     <Route
-                      path="/admin/email-classification"
+                      path="admin/email-classification"
                       element={<EmailClassificationPage />}
                     />
                   </Route>
@@ -670,17 +670,17 @@ export function renderTenantSlugRoutes(
                       same discipline used for /admin/documents/* in
                       V-1a; see DEBT.md "Vault redirect scaffolding". */}
                   <Route
-                    path="/crm"
+                    path="crm"
                     element={<Navigate to="/vault/crm" replace />}
                   />
                   <Route
-                    path="/crm/companies"
+                    path="crm/companies"
                     element={
                       <Navigate to="/vault/crm/companies" replace />
                     }
                   />
                   <Route
-                    path="/crm/companies/duplicates"
+                    path="crm/companies/duplicates"
                     element={
                       <Navigate
                         to="/vault/crm/companies/duplicates"
@@ -689,43 +689,43 @@ export function renderTenantSlugRoutes(
                     }
                   />
                   <Route
-                    path="/crm/companies/:id"
+                    path="crm/companies/:id"
                     element={
                       <RedirectPreserveParam toPrefix="/vault/crm/companies" />
                     }
                   />
                   <Route
-                    path="/crm/funeral-homes"
+                    path="crm/funeral-homes"
                     element={
                       <Navigate to="/vault/crm/funeral-homes" replace />
                     }
                   />
                   <Route
-                    path="/crm/contractors"
+                    path="crm/contractors"
                     element={
                       <Navigate to="/vault/crm/contractors" replace />
                     }
                   />
                   <Route
-                    path="/crm/billing-groups"
+                    path="crm/billing-groups"
                     element={
                       <Navigate to="/vault/crm/billing-groups" replace />
                     }
                   />
                   <Route
-                    path="/crm/billing-groups/:id"
+                    path="crm/billing-groups/:id"
                     element={
                       <RedirectPreserveParam toPrefix="/vault/crm/billing-groups" />
                     }
                   />
                   <Route
-                    path="/crm/settings"
+                    path="crm/settings"
                     element={
                       <Navigate to="/vault/crm/settings" replace />
                     }
                   />
                   <Route
-                    path="/crm/pipeline"
+                    path="crm/pipeline"
                     element={
                       <Navigate to="/vault/crm/pipeline" replace />
                     }
@@ -784,24 +784,24 @@ export function renderTenantSlugRoutes(
                     template's `canvas_url` variable.
                   */}
                   <Route
-                    path="/personalization-studio/from-share/:documentShareId"
+                    path="personalization-studio/from-share/:documentShareId"
                     element={
                       <ManufacturerPersonalizationStudioFromShareView />
                     }
                   />
                   <Route
-                    path="/settings/briefings"
+                    path="settings/briefings"
                     element={<BriefingPreferencesPage />}
                   />
                   <Route
-                    path="/settings/spaces"
+                    path="settings/spaces"
                     element={<SpacesSettings />}
                   />
                   {/* R-5.1 — per-user edge panel customization. Renders
                       under same authenticated tenant guard as briefing/
                       spaces settings; no admin gate. */}
                   <Route
-                    path="/settings/edge-panel"
+                    path="settings/edge-panel"
                     element={<EdgePanelSettingsPage />}
                   />
 
@@ -813,11 +813,11 @@ export function renderTenantSlugRoutes(
                       rep who sees the tenant's logo in their email. */}
                   <Route element={<ProtectedRoute adminOnly />}>
                     <Route
-                      path="/settings/portal-users"
+                      path="settings/portal-users"
                       element={<PortalUsersSettings />}
                     />
                     <Route
-                      path="/settings/portal-branding"
+                      path="settings/portal-branding"
                       element={<PortalBrandingSettings />}
                     />
                     {/* Phase W-4b Layer 1 Step 1 — Email Primitive (§3.26.15).
@@ -826,11 +826,11 @@ export function renderTenantSlugRoutes(
                        architectural concern: conversation/inbox vs one-shot
                        transactional send). */}
                     <Route
-                      path="/settings/email"
+                      path="settings/email"
                       element={<EmailAccountsPage />}
                     />
                     <Route
-                      path="/settings/email/oauth-callback"
+                      path="settings/email/oauth-callback"
                       element={<EmailOAuthCallback />}
                     />
                     {/* Phase W-4b Layer 1 Calendar Step 1 (§3.26.16).
@@ -840,11 +840,11 @@ export function renderTenantSlugRoutes(
                        one-way iCal export vs. canonical primitive with
                        provider abstraction + bidirectional sync). */}
                     <Route
-                      path="/settings/calendar"
+                      path="settings/calendar"
                       element={<CalendarAccountsPage />}
                     />
                     <Route
-                      path="/settings/calendar/oauth-callback"
+                      path="settings/calendar/oauth-callback"
                       element={<CalendarOAuthCallback />}
                     />
                     {/* Phase W-4b Calendar Step 3 — drafted-event review
@@ -853,7 +853,7 @@ export function renderTenantSlugRoutes(
                        explicit Send (commit + iTIP REQUEST) or Cancel
                        (iTIP CANCEL) per drafted-not-auto-sent discipline. */}
                     <Route
-                      path="/settings/calendar/drafts"
+                      path="settings/calendar/drafts"
                       element={<CalendarDraftsPage />}
                     />
                     {/* Phase W-4b Calendar Step 4.1 — PTR consent upgrade
@@ -862,7 +862,7 @@ export function renderTenantSlugRoutes(
                        Bilateral consent state machine; either tenant can
                        unilaterally revoke. */}
                     <Route
-                      path="/settings/calendar/freebusy-consent"
+                      path="settings/calendar/freebusy-consent"
                       element={<CalendarConsentPage />}
                     />
                   </Route>
@@ -882,7 +882,7 @@ export function renderTenantSlugRoutes(
                      attendee response + send/cancel actions; full edit
                      + reschedule wizards live on the calendar workspace. */}
                   <Route
-                    path="/calendar/events/:eventId"
+                    path="calendar/events/:eventId"
                     element={<EventDetailPage />}
                   />
 
@@ -893,19 +893,19 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/products"
+                      path="products"
                       element={<ProductsPage />}
                     />
                     <Route
-                      path="/products/:productId"
+                      path="products/:productId"
                       element={<ProductDetailPage />}
                     />
                     <Route
-                      path="/products/urns"
+                      path="products/urns"
                       element={<UrnCatalogPage />}
                     />
                     <Route
-                      path="/products/urns/import"
+                      path="products/urns/import"
                       element={<UrnImportWizard />}
                     />
                     <Route
@@ -933,11 +933,11 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/customers"
+                      path="customers"
                       element={<Navigate to="/crm/companies?role=customer" replace />}
                     />
                     <Route
-                      path="/customers/:customerId"
+                      path="customers/:customerId"
                       element={<CustomerDetailPage />}
                     />
                   </Route>
@@ -958,68 +958,68 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/ar/quotes"
+                      path="ar/quotes"
                       element={<QuotesPage />}
                     />
                     <Route
-                      path="/ar/quotes/:id"
+                      path="ar/quotes/:id"
                       element={<QuoteDetailPage />}
                     />
                     <Route
-                      path="/quoting"
+                      path="quoting"
                       element={<QuotingHubPage />}
                     />
                     <Route
-                      path="/quoting/:id"
+                      path="quoting/:id"
                       element={<QuoteDetailPage />}
                     />
                     <Route
-                      path="/ar/orders"
+                      path="ar/orders"
                       element={<SalesOrdersPage />}
                     />
                     <Route
-                      path="/ar/orders/:id"
+                      path="ar/orders/:id"
                       element={<SalesOrderDetailPage />}
                     />
                     <Route
-                      path="/billing"
+                      path="billing"
                       element={<BillingPage />}
                     />
                     {/* Redirect old billing/received to Vendors & Bills */}
                     <Route
-                      path="/billing/received/:id"
+                      path="billing/received/:id"
                       element={<Navigate to="/ap/bills?tab=received" replace />}
                     />
                     <Route
-                      path="/billing/received"
+                      path="billing/received"
                       element={<Navigate to="/ap/bills?tab=received" replace />}
                     />
                     <Route
-                      path="/ar/invoices/review"
+                      path="ar/invoices/review"
                       element={<InvoiceReviewQueuePage />}
                     />
                     <Route
-                      path="/ar/invoices"
+                      path="ar/invoices"
                       element={<InvoicesPage />}
                     />
                     <Route
-                      path="/ar/invoices/:id"
+                      path="ar/invoices/:id"
                       element={<InvoiceDetailPage />}
                     />
                     <Route
-                      path="/ar/payments"
+                      path="ar/payments"
                       element={<CustomerPaymentsPage />}
                     />
                     <Route
-                      path="/ar/payments/:id"
+                      path="ar/payments/:id"
                       element={<PaymentDetailPage />}
                     />
                     <Route
-                      path="/ar/aging"
+                      path="ar/aging"
                       element={<ARAgingPage2 />}
                     />
                     <Route
-                      path="/ar/statements"
+                      path="ar/statements"
                       element={<StatementsPage />}
                     />
                   </Route>
@@ -1031,11 +1031,11 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/vendors"
+                      path="vendors"
                       element={<VendorsPage />}
                     />
                     <Route
-                      path="/vendors/:vendorId"
+                      path="vendors/:vendorId"
                       element={<VendorDetailPage />}
                     />
                   </Route>
@@ -1047,24 +1047,24 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/ap/purchase-orders"
+                      path="ap/purchase-orders"
                       element={<PurchaseOrdersPage />}
                     />
                     <Route
-                      path="/ap/purchase-orders/:id"
+                      path="ap/purchase-orders/:id"
                       element={<PurchaseOrderDetailPage />}
                     />
                     <Route
-                      path="/ap/bills"
+                      path="ap/bills"
                       element={<VendorBillsPage />}
                     />
                     <Route path="transfers" element={<TransfersPage />} />
                     <Route
-                      path="/ap/bills/:id"
+                      path="ap/bills/:id"
                       element={<VendorBillDetailPage />}
                     />
                     <Route
-                      path="/ap/received/:id"
+                      path="ap/received/:id"
                       element={<ReceivedStatementDetail />}
                     />
                     <Route path="alerts" element={<AlertsPage />} />
@@ -1077,15 +1077,15 @@ export function renderTenantSlugRoutes(
                     <Route path="agents/:jobId/review" element={<ApprovalReview />} />
                     <Route path="ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />
                     <Route
-                      path="/ap/payments"
+                      path="ap/payments"
                       element={<VendorPaymentsPage />}
                     />
                     <Route
-                      path="/ap/payments/:id"
+                      path="ap/payments/:id"
                       element={<VendorPaymentDetailPage />}
                     />
                     <Route
-                      path="/ap/aging"
+                      path="ap/aging"
                       element={<APAgingPage />}
                     />
                   </Route>
@@ -1097,23 +1097,23 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/inventory"
+                      path="inventory"
                       element={<InventoryPage />}
                     />
                     <Route
-                      path="/inventory/production"
+                      path="inventory/production"
                       element={<ProductionEntryPage />}
                     />
                     <Route
-                      path="/inventory/write-offs"
+                      path="inventory/write-offs"
                       element={<WriteOffsPage />}
                     />
                     <Route
-                      path="/inventory/sage-exports"
+                      path="inventory/sage-exports"
                       element={<SageExportsPage />}
                     />
                     <Route
-                      path="/inventory/:productId"
+                      path="inventory/:productId"
                       element={<InventoryDetailPage />}
                     />
                   </Route>
@@ -1310,7 +1310,7 @@ export function renderTenantSlugRoutes(
                   <Route path="onboarding/flow" element={<OnboardingFlow />} />
                   {/* Phase W-4a — operator onboarding (work_areas + responsibilities) */}
                   <Route
-                    path="/onboarding/operator-profile"
+                    path="onboarding/operator-profile"
                     element={<OperatorOnboardingFlow />}
                   />
                   <Route path="onboarding/hub" element={<OnboardingHub />} />
@@ -1376,11 +1376,11 @@ export function renderTenantSlugRoutes(
                       bookmarks, widget click-throughs from before
                       V-1d). */}
                   <Route
-                    path="/notifications"
+                    path="notifications"
                     element={<Navigate to="/vault/notifications" replace />}
                   />
                   <Route
-                    path="/vault/notifications"
+                    path="vault/notifications"
                     element={<NotificationsPage />}
                   />
 
@@ -1394,7 +1394,7 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/admin/users/:userId/profile"
+                      path="admin/users/:userId/profile"
                       element={<AdminEmployeeProfile />}
                     />
                   </Route>
@@ -1406,27 +1406,27 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/admin/settings"
+                      path="admin/settings"
                       element={<CompanySettings />}
                     />
                     <Route
-                      path="/settings/product-lines"
+                      path="settings/product-lines"
                       element={<ProductLinesPage />}
                     />
                     <Route
-                      path="/settings/workflows"
+                      path="settings/workflows"
                       element={<WorkflowsSettingsPage />}
                     />
                     <Route
-                      path="/settings/workflows/new"
+                      path="settings/workflows/new"
                       element={<WorkflowBuilderPage />}
                     />
                     <Route
-                      path="/settings/workflows/:workflowId/edit"
+                      path="settings/workflows/:workflowId/edit"
                       element={<WorkflowBuilderPage />}
                     />
                     <Route
-                      path="/settings/workflows/:workflowId/view"
+                      path="settings/workflows/:workflowId/view"
                       element={<WorkflowBuilderPage />}
                     />
                     {/* Funeral Home vertical (FH-1a + FH-1b) */}
@@ -1447,7 +1447,7 @@ export function renderTenantSlugRoutes(
                     }
                   >
                     <Route
-                      path="/admin/audit-logs"
+                      path="admin/audit-logs"
                       element={<AuditLogs />}
                     />
                   </Route>
@@ -1663,74 +1663,74 @@ export function renderTenantSlugRoutes(
                       paths redirect to /vault/*. One-release grace
                       period; remove after that. */}
                   <Route
-                    path="/admin/documents"
+                    path="admin/documents"
                     element={<Navigate to="/vault/documents" replace />}
                   />
                   <Route
-                    path="/admin/documents/templates"
+                    path="admin/documents/templates"
                     element={
                       <Navigate to="/vault/documents/templates" replace />
                     }
                   />
                   <Route
-                    path="/admin/documents/templates/:templateId"
+                    path="admin/documents/templates/:templateId"
                     element={<RedirectPreserveParam toPrefix="/vault/documents/templates" />}
                   />
                   <Route
-                    path="/admin/documents/documents"
+                    path="admin/documents/documents"
                     element={<Navigate to="/vault/documents" replace />}
                   />
                   <Route
-                    path="/admin/documents/documents/:documentId"
+                    path="admin/documents/documents/:documentId"
                     element={<RedirectPreserveParam toPrefix="/vault/documents" />}
                   />
                   <Route
-                    path="/admin/documents/inbox"
+                    path="admin/documents/inbox"
                     element={<Navigate to="/vault/documents/inbox" replace />}
                   />
                   <Route
-                    path="/admin/documents/deliveries"
+                    path="admin/documents/deliveries"
                     element={
                       <Navigate to="/vault/documents/deliveries" replace />
                     }
                   />
                   <Route
-                    path="/admin/documents/deliveries/:deliveryId"
+                    path="admin/documents/deliveries/:deliveryId"
                     element={<RedirectPreserveParam toPrefix="/vault/documents/deliveries" />}
                   />
                   <Route
-                    path="/admin/documents/signing/envelopes"
+                    path="admin/documents/signing/envelopes"
                     element={
                       <Navigate to="/vault/documents/signing" replace />
                     }
                   />
                   <Route
-                    path="/admin/documents/signing/envelopes/new"
+                    path="admin/documents/signing/envelopes/new"
                     element={
                       <Navigate to="/vault/documents/signing/new" replace />
                     }
                   />
                   <Route
-                    path="/admin/documents/signing/envelopes/:envelopeId"
+                    path="admin/documents/signing/envelopes/:envelopeId"
                     element={<RedirectPreserveParam toPrefix="/vault/documents/signing" />}
                   />
 
                   <Route
-                    path="/admin/intelligence"
+                    path="admin/intelligence"
                     element={<Navigate to="/vault/intelligence" replace />}
                   />
                   <Route
-                    path="/admin/intelligence/prompts"
+                    path="admin/intelligence/prompts"
                     element={
                       <Navigate to="/vault/intelligence/prompts" replace />
                     }
                   />
                   <Route
-                    path="/admin/intelligence/prompts/:promptId"
+                    path="admin/intelligence/prompts/:promptId"
                     element={<RedirectPreserveParam toPrefix="/vault/intelligence/prompts" />}
                   />
                   <Route
-                    path="/admin/intelligence/executions"
+                    path="admin/intelligence/executions"
                     element={
                       <Navigate
                         to="/vault/intelligence/executions"
@@ -1739,11 +1739,11 @@ export function renderTenantSlugRoutes(
                     }
                   />
                   <Route
-                    path="/admin/intelligence/executions/:executionId"
+                    path="admin/intelligence/executions/:executionId"
                     element={<RedirectPreserveParam toPrefix="/vault/intelligence/executions" />}
                   />
                   <Route
-                    path="/admin/intelligence/model-routes"
+                    path="admin/intelligence/model-routes"
                     element={
                       <Navigate
                         to="/vault/intelligence/model-routes"
@@ -1752,7 +1752,7 @@ export function renderTenantSlugRoutes(
                     }
                   />
                   <Route
-                    path="/admin/intelligence/experiments"
+                    path="admin/intelligence/experiments"
                     element={
                       <Navigate
                         to="/vault/intelligence/experiments"
@@ -1761,7 +1761,7 @@ export function renderTenantSlugRoutes(
                     }
                   />
                   <Route
-                    path="/admin/intelligence/experiments/new"
+                    path="admin/intelligence/experiments/new"
                     element={
                       <Navigate
                         to="/vault/intelligence/experiments/new"
@@ -1770,7 +1770,7 @@ export function renderTenantSlugRoutes(
                     }
                   />
                   <Route
-                    path="/admin/intelligence/experiments/:experimentId"
+                    path="admin/intelligence/experiments/:experimentId"
                     element={<RedirectPreserveParam toPrefix="/vault/intelligence/experiments" />}
                   />
 
@@ -1779,7 +1779,7 @@ export function renderTenantSlugRoutes(
                     element={<ProtectedRoute adminOnly />}
                   >
                     <Route
-                      path="/admin/api-keys"
+                      path="admin/api-keys"
                       element={<ApiKeysPage />}
                     />
                   </Route>
@@ -1789,7 +1789,7 @@ export function renderTenantSlugRoutes(
                     element={<ProtectedRoute adminOnly />}
                   >
                     <Route
-                      path="/admin/accounting"
+                      path="admin/accounting"
                       element={<AccountingPage />}
                     />
                   </Route>
@@ -1799,7 +1799,7 @@ export function renderTenantSlugRoutes(
                     element={<ProtectedRoute adminOnly />}
                   >
                     <Route
-                      path="/admin/modules"
+                      path="admin/modules"
                       element={<ModulesPage />}
                     />
                   </Route>
@@ -1809,7 +1809,7 @@ export function renderTenantSlugRoutes(
                     element={<ProtectedRoute adminOnly />}
                   >
                     <Route
-                      path="/admin/onboarding/analytics"
+                      path="admin/onboarding/analytics"
                       element={<OnboardingAnalyticsPage />}
                     />
                   </Route>

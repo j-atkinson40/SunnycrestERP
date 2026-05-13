@@ -164,6 +164,63 @@ describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
     })
   })
 
+  describe("R-2.x.1 — universal relative-paths invariant", () => {
+    /**
+     * R-2.x.1 — guards against absolute-path Route declarations
+     * leaking into renderTenantSlugRoutes(). R-2.x converted ~100 of
+     * ~203 paths; R-2.x.1 completed the conversion across the
+     * remaining 102. Under the editor shell's nested <Routes> mount
+     * (TenantRouteTree inside RuntimeEditorShell inside Studio Live),
+     * absolute-path child routes don't match against the splat
+     * remainder pathname — the catch-all wins, HomePage mounts in
+     * place of the intended page. The invariant below fails loudly
+     * if a future commit reintroduces an absolute path.
+     *
+     * The `index` route + `*` catch-all are excluded (no literal
+     * leading-slash issue; both are RR v7 idiomatic).
+     */
+    function findAllRoutePaths(fragment: ReactElement): string[] {
+      const paths: string[] = []
+      function walk(node: unknown): void {
+        if (!isValidElement(node)) return
+        const props = node.props as {
+          path?: unknown
+          children?: unknown
+        } | null
+        const path = props?.path
+        if (typeof path === "string") {
+          paths.push(path)
+        }
+        const children = props?.children
+        if (children) {
+          Children.forEach(children, walk)
+        }
+      }
+      Children.forEach(
+        (fragment.props as { children?: unknown }).children,
+        walk,
+      )
+      return paths
+    }
+
+    it("no Route inside renderTenantSlugRoutes uses an absolute path (default mode)", () => {
+      const fragment = renderTenantSlugRoutes()
+      const allPaths = findAllRoutePaths(fragment)
+      const offenders = allPaths.filter((p) => p.startsWith("/"))
+      expect(offenders).toEqual([])
+      // Sanity: we did walk meaningful surface area.
+      expect(allPaths.length).toBeGreaterThan(50)
+    })
+
+    it("no Route inside renderTenantSlugRoutes uses an absolute path (excludeRootRedirect mode)", () => {
+      const fragment = renderTenantSlugRoutes({ excludeRootRedirect: true })
+      const allPaths = findAllRoutePaths(fragment)
+      const offenders = allPaths.filter((p) => p.startsWith("/"))
+      expect(offenders).toEqual([])
+      expect(allPaths.length).toBeGreaterThan(50)
+    })
+  })
+
   describe("default and runtime-editor branches share non-root routes", () => {
     it("both modes still register `login` (R-2.x: relative path)", () => {
       const defaultFragment = renderTenantSlugRoutes()
