@@ -106,11 +106,53 @@ export default function StudioShell() {
       </div>
     )
   }
-  if (!user) {
+  // Studio 1a-i.B follow-up #2 — auth gate delegation for Live mode.
+  //
+  // Edit-mode routes (/studio, /studio/:vertical, /studio/:editor,
+  // /studio/:vertical/:editor, /studio/admin/*) redirect unauth users
+  // to /login as before.
+  //
+  // Live-mode routes (/studio/live[/:vertical]) DELEGATE auth handling
+  // to RuntimeEditorShell, which renders its own `runtime-editor-unauth`
+  // / `runtime-editor-forbidden` surfaces with mode-specific recovery
+  // affordances (sign-in CTA, admin-home CTA, restart-impersonation CTA).
+  // Studio chrome is suppressed in this case so the operator focuses on
+  // resolving auth rather than seeing a teasing-but-inaccessible shell.
+  //
+  // See DECISIONS.md 2026-05-13 (PM) — "Studio mode-specific auth gate
+  // delegation" for the rationale + future-mode pattern.
+  if (!user && !parsed.isLive) {
     return <Navigate to={adminPath("/login")} replace />
   }
 
   const mode: "edit" | "live" = parsed.isLive ? "live" : "edit"
+
+  // Live mode + unauthenticated: render the wrap directly without Studio
+  // chrome. RuntimeEditorShell renders its own unauth/forbidden recovery
+  // surface inside StudioLiveModeWrap.
+  if (!user && parsed.isLive) {
+    return (
+      <div
+        className="min-h-screen bg-surface-base text-content-base"
+        data-studio-shell="true"
+        data-studio-chrome="suppressed"
+        data-mode="live"
+      >
+        <Suspense
+          fallback={
+            <div
+              className="flex h-screen items-center justify-center text-content-muted"
+              data-testid="studio-child-suspense"
+            >
+              Loading…
+            </div>
+          }
+        >
+          <StudioLiveModeWrap vertical={parsed.vertical} />
+        </Suspense>
+      </div>
+    )
+  }
 
   let child: React.ReactNode
   if (parsed.isLive) {

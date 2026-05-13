@@ -15,18 +15,34 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 
 
-// Mock the admin auth so user is always present.
+// Mock the admin auth. Default = signed-in platform_admin; individual
+// tests can override `mockAuthState` to simulate unauth / loading
+// before rendering.
+const mockAuthState: {
+  user: null | {
+    id: string
+    email: string
+    first_name: string
+    last_name: string
+    role: string
+    is_super_admin: boolean
+  }
+  loading: boolean
+} = {
+  user: {
+    id: "u1",
+    email: "test@bridgeable.local",
+    first_name: "Test",
+    last_name: "Operator",
+    role: "platform_admin",
+    is_super_admin: false,
+  },
+  loading: false,
+}
 vi.mock("@/bridgeable-admin/lib/admin-auth-context", () => ({
   useAdminAuth: () => ({
-    user: {
-      id: "u1",
-      email: "test@bridgeable.local",
-      first_name: "Test",
-      last_name: "Operator",
-      role: "platform_admin",
-      is_super_admin: false,
-    },
-    loading: false,
+    user: mockAuthState.user,
+    loading: mockAuthState.loading,
     logout: vi.fn(),
   }),
   AdminAuthProvider: ({ children }: { children: React.ReactNode }) => (
@@ -151,6 +167,17 @@ function renderAt(pathname: string) {
 
 beforeEach(() => {
   window.localStorage.clear()
+  // Reset auth state to default (signed-in platform_admin) before each
+  // test. Tests that need unauth/loading override this after this hook.
+  mockAuthState.user = {
+    id: "u1",
+    email: "test@bridgeable.local",
+    first_name: "Test",
+    last_name: "Operator",
+    role: "platform_admin",
+    is_super_admin: false,
+  }
+  mockAuthState.loading = false
 })
 afterEach(() => {
   window.localStorage.clear()
@@ -377,5 +404,70 @@ describe("StudioShell — rail context propagation (Studio 1a-i.B)", () => {
       const rail = screen.getByTestId("studio-rail")
       expect(rail.getAttribute("data-rail-expanded")).toBe("false")
     })
+  })
+})
+
+
+describe("StudioShell — auth gate delegation (Studio 1a-i.B follow-up #2)", () => {
+  it("unauth user at /studio/live mounts RuntimeEditorShell (delegates to mode auth)", async () => {
+    mockAuthState.user = null
+    renderAt("/studio/live")
+    // Live mode delegates — wrap mounts, RuntimeEditorShell renders its
+    // own unauth surface. We assert the wrap appears and the chrome
+    // suppression marker is set; the unauth surface itself is verified
+    // by RuntimeEditorShell's own tests (and by Gate 37 in Playwright).
+    expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    const shellRoot = document.querySelector("[data-studio-shell]")
+    expect(shellRoot?.getAttribute("data-studio-chrome")).toBe("suppressed")
+    // Studio top bar + rail are NOT mounted in this suppressed-chrome
+    // path — focus is on resolving auth.
+    expect(screen.queryByTestId("studio-top-bar")).toBeNull()
+    expect(screen.queryByTestId("studio-rail")).toBeNull()
+    // RuntimeEditorShell stub still mounts (lazy-loaded inside wrap).
+    await screen.findByTestId("runtime-editor-shell-stub")
+  })
+
+  it("unauth user at /studio/live/manufacturing forwards verticalFilter", async () => {
+    mockAuthState.user = null
+    renderAt("/studio/live/manufacturing")
+    expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    const wrap = screen.getByTestId("studio-live-mode-wrap")
+    expect(wrap.getAttribute("data-vertical-filter")).toBe("manufacturing")
+  })
+
+  it("unauth user at /studio (Platform overview) redirects to /login", () => {
+    mockAuthState.user = null
+    renderAt("/studio")
+    // <Navigate> in MemoryRouter unmounts StudioShell — no Studio
+    // chrome should be rendered.
+    expect(screen.queryByTestId("studio-top-bar")).toBeNull()
+    expect(screen.queryByTestId("studio-overview")).toBeNull()
+    expect(screen.queryByTestId("studio-live-mode-wrap")).toBeNull()
+  })
+
+  it("unauth user at /studio/wastewater/themes (vertical editor) redirects to /login", () => {
+    mockAuthState.user = null
+    renderAt("/studio/wastewater/themes")
+    expect(screen.queryByTestId("studio-top-bar")).toBeNull()
+    expect(screen.queryByTestId("editor-stub-themes")).toBeNull()
+    expect(screen.queryByTestId("studio-live-mode-wrap")).toBeNull()
+  })
+
+  it("unauth user at /studio/themes (platform editor) redirects to /login", () => {
+    mockAuthState.user = null
+    renderAt("/studio/themes")
+    expect(screen.queryByTestId("studio-top-bar")).toBeNull()
+    expect(screen.queryByTestId("editor-stub-themes")).toBeNull()
+  })
+
+  it("authed user at /studio/live mounts Studio chrome + wrap normally", async () => {
+    // Default user is set in beforeEach — verify the auth path doesn't
+    // suppress chrome.
+    renderAt("/studio/live")
+    expect(screen.getByTestId("studio-top-bar")).toBeTruthy()
+    expect(screen.getByTestId("studio-rail")).toBeTruthy()
+    expect(screen.getByTestId("studio-live-mode-wrap")).toBeTruthy()
+    const shellRoot = document.querySelector("[data-studio-shell]")
+    expect(shellRoot?.getAttribute("data-studio-chrome")).toBeNull()
   })
 })

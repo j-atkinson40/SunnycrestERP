@@ -76,3 +76,13 @@ Two test shapes break:
 2. **Test-ids tied to the legacy index page structure.** `ve-card-*` test-ids on the legacy `/visual-editor` index were superseded by `studio-overview-card-*` test-ids on the Studio overview. Tests migrate to the new test-ids when the intent ("editor reachable from index surface") still applies; tests are deleted when the intent is purely tied to the legacy structure.
 
 Going forward, new E2E tests should assert on Studio-canonical paths (`/studio/...`) and Studio-canonical test-ids. The legacy redirect is a back-compat affordance, not a primary surface.
+
+---
+
+## 2026-05-13 (PM) — Studio mode-specific auth gate delegation
+
+Each Studio mode handles its own auth gate. StudioShell's top-level auth check redirects to `/login` for Edit-mode routes (`/studio`, `/studio/:vertical`, `/studio/:editor`, `/studio/:vertical/:editor`, `/studio/admin/*`) but delegates auth-failure rendering to the child component when the route is Live mode (`/studio/live/*`).
+
+Rationale: the recovery affordance is mode-specific. An operator trying to enter Live mode unauthenticated has a specific intent (edit a tenant's runtime); the recovery surface should reflect that intent rather than bouncing through a generic Studio-level unauth. More structurally: every Studio mode may have different auth requirements (Edit mode allows ops-admin and platform-admin; Live mode requires platform-admin per `RuntimeEditorShell.tsx:308-311`). Centralizing all auth gates in StudioShell would require StudioShell to know about every mode's permissions, which couples the shell to every child's auth model. Delegation keeps auth-requirements knowledge co-located with the component that enforces them.
+
+Pattern for future Studio modes: if a future mode needs auth handling different from the Studio default, it owns its own auth gate; StudioShell delegates by detecting the mode's path prefix and skipping the top-level redirect.
