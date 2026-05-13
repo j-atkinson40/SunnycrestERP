@@ -44,6 +44,7 @@ import { FeatureFlagsPage } from "./pages/FeatureFlagsPage"
 import { DeploymentsPage } from "./pages/DeploymentsPage"
 import { StagingCreatePage } from "./pages/StagingPage"
 import { ArcTelemetry } from "./pages/ArcTelemetry"
+import VerticalsAdminPage from "./pages/admin/VerticalsAdminPage"
 import VisualEditorIndex from "./pages/visual-editor/VisualEditorIndex"
 import RegistryDebugPage from "./pages/visual-editor/RegistryDebugPage"
 import ThemeEditorPage from "./pages/visual-editor/themes/ThemeEditorPage"
@@ -85,6 +86,8 @@ export function BridgeableAdminApp() {
         <Route path="/staging" element={<StagingCreatePage />} />
         {/* Phase 7 — arc telemetry (minimal process-scoped counters) */}
         <Route path="/telemetry" element={<ArcTelemetry />} />
+        {/* Verticals-lite precursor — first-class verticals registry. */}
+        <Route path="/verticals" element={<VerticalsAdminPage />} />
       </Routes>
     </AdminLayout>
   )

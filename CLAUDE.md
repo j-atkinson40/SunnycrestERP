@@ -1104,6 +1104,7 @@ These are the **correct** table names (corrected from old incorrect names):
 - Soft deletes via `is_active` boolean (not physical deletion)
 - JSONB used extensively for flexible fields (settings, config, metadata)
 - `company_id` or `tenant_id` FK on all tenant-scoped tables
+- **Vertical column convention (post-r95):** Going forward, any migration introducing a column referring to a vertical must reference `verticals.slug` as a foreign key. The existing pattern of String(32) nullable `vertical` columns on `platform_themes`, `focus_compositions`, `workflow_templates`, `document_templates`, `component_configurations`, `dashboard_layouts`, `companies`, and others is preserved for backward compatibility. A future cleanup arc may migrate these to FKs; new tables should not perpetuate the String-not-FK pattern.
 
 ### Timestamp column convention — two conventions in active use
 

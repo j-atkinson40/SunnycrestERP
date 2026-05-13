@@ -37,6 +37,7 @@ from app.api.routes.admin import (
     visual_editor_compositions,
     visual_editor_dashboard_layouts,
     plugin_registry as admin_plugin_registry,
+    verticals as admin_verticals,
 )
 
 platform_router = APIRouter()
@@ -166,4 +167,13 @@ platform_router.include_router(
     admin_plugin_registry.router,
     prefix="/admin/plugin-registry",
     tags=["Plugin Registry Browser"],
+)
+
+# Verticals-lite precursor arc — first-class registry for the 4
+# canonical verticals (seeded via migration r92). Admin-only read
+# + partial update; full CRUD lands when Studio shell needs it.
+platform_router.include_router(
+    admin_verticals.router,
+    prefix="/admin/verticals",
+    tags=["Admin Verticals"],
 )

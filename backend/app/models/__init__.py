@@ -298,6 +298,7 @@ from app.models.vault_supplier import VaultSupplier
 from app.models.widget_definition import WidgetDefinition
 from app.models.user_widget_layout import UserWidgetLayout
 from app.models.dashboard_layout import DashboardLayout
+from app.models.vertical import Vertical
 from app.models.extension_widget import ExtensionWidget
 from app.models.price_list_version import PriceListVersion
 from app.models.price_list_item import PriceListItem
@@ -683,6 +684,7 @@ __all__ = [
     "WidgetDefinition",
     "UserWidgetLayout",
     "DashboardLayout",
+    "Vertical",
     "ExtensionWidget",
     "RingCentralCallLog",
     "RingCentralCallExtraction",

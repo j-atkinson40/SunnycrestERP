@@ -6,7 +6,7 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
 - Go-live date: April 7, 2026
-- Migration head: `r91_compositions_kind_and_pages`
+- Migration head: `r95_verticals_table`
 
 ## Build status
 
@@ -34,14 +34,16 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
 ## Active arc
 
-- Arc name: Visual authoring substrate (Arc 4 sequence) — pre-September Wilbert demo prep
-- Current phase: Arc 4d — uncommitted in working tree (scope cascade visualization + SourceBadge tenth canonical shared authoring primitive + ScopeDiffPopover eleventh candidate co-located)
-- Last shipped: Arc 4c (commit `efeed99`) — Focus compositions canvas polish (alignment guides + keyboard nudge + inspector inline ops)
+- Arc name: Studio shell precursors → Bridgeable Studio shell arc (consolidating 7 visual editors + runtime-aware editor under `/studio`)
+- Current phase: Precursor work shipping (verticals-lite + Arc 4d + Arc 4a.2a all just committed); Studio 1a-i next per `/tmp/studio_1a_internal_investigation_findings.md` (~1,100-1,600 LOC: shell + rail + redirect + editor adaptation + placeholder overview)
+- Last shipped: Verticals-lite precursor (`8affc8f` chain, 2026-05-13) — `verticals` table + service + admin page
 
 ## Active deferred items
 
 - **Data Migration Tool** — waiting on Sage CSV exports from Sunnycrest accountant (invoice history, customer list, cash receipts)
-- **Arc 4a.2** — dashboard-componentMap substrate coverage; post-September; estimated 1,500-3,500 LOC (likely warrants 4a.2a/4a.2b split per sub-agent execution ceiling canon)
+- **Studio shell arc** — three sub-arcs sequenced post-verticals-lite per `/tmp/studio_1a_internal_investigation_findings.md`: Studio 1a-i shell + rail + redirect + editor adaptation + placeholder overview (~1,100-1,600 LOC), Studio 1a-ii overview population + Live mode wrap (~1,100-1,800 LOC), and follow-on Spaces substrate / drag-to-canvas palette / saved-view authoring as separate bounded arcs.
+- **Arc 4a.2b** — vault cluster Path 1 wrap (9 widgets) + dashboard_layouts seed script; sibling of Arc 4a.2a (committed `8affc8f`); estimated ~1,300-1,800 LOC
+- **revenue_summary + ar_summary** — declared in backend WIDGET_DEFINITIONS but no frontend React component; documented in widget-renderer-parity.test.ts `KNOWN_DEFERRED_VAULT`; hygiene arc TBD
 - **13 simpler agent jobs** — `STALE_DRAFT_MONITOR`, `REVERSAL_RUNNER`, `PO_DELIVERY_MONITOR`, `RECONCILIATION_MONITOR`, `ABANDONED_RECONCILIATION_MONITOR`, `STATEMENT_RUN_MONITOR`, `FINANCE_CHARGE_REMINDER`, `EXEMPTION_EXPIRY_MONITOR`, `1099_MONITOR`, `DELIVERY_WEEKLY_REVIEW`, `FINANCE_CHARGE_INSIGHT_JOB`, `DISCOUNT_UPTAKE_JOB`, `OUTCOME_CLOSURE_JOB`
 - **NPCA Audit Prep feature** — placeholder UI at `/npca`; full feature not yet built (compliance score engine, gap analysis, audit package ZIP)
 - **Performance optimization** for report generation
@@ -54,19 +56,18 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
 ## Recently shipped (rolling, last 10)
 
-1. **Arc 4c** (`efeed99`, 2026-05-12) — Focus compositions canvas polish: AlignmentGuideOverlay + shift-marquee cumulative-select + drop-shadow drag lift + inspector Move-left/Move-right + Alt+Arrow keyboard reorder + ColumnCountPopover. ~1,747 LOC.
-2. **Arc 4b.2b** (`7ff864a`, 2026-05-12) — Mention consumer UX: `@` trigger + SuggestionDropdown integration + getCaretCoordinates companion utility + 4 Jinja-aware field sites (header.title/subtitle + body_section.heading/body). ~1,400 LOC.
-3. **Arc 4b.2a** (`66ec8c5`, 2026-05-12) — Mention substrate: Jinja `ref` filter + dedicated `/api/v1/documents-v2/admin/mentions/resolve` endpoint + per-render MentionResolutionCache. ~640 LOC.
-4. **Arc 4b.1b** (`a534adb`, 2026-05-12) — SuggestionDropdown (9th shared primitive) + slash command insertion + drag-drop block reorder via @dnd-kit/sortable + Alt+ArrowUp/Down keyboard. ~1,860 LOC.
-5. **Arc 4b.1a** (`3008ca2`, 2026-05-12) — PropControlDispatcher vocabulary extension: 4 new ConfigPropType discriminators (tableOfColumns, tableOfRows, listOfParties, conditionalRule) + per-block-kind canonical dispatch. ~1,900 LOC.
-6. **Arc 4a.1** (`63fc1c2`, 2026-05-12) — Focus action bar substrate via class-level buttonSlugs (R-2.1 canon reuse) + IconPicker as 6th shared authoring primitive (45 curated lucide icons). ~810 LOC.
-7. **Arc-3.x-deep-link-retrofit** (`7c56f44`, 2026-05-12) — Workflows + Documents bidirectional deep-link retrofit; extracted deep-link-state shared utility. ~635 LOC.
-8. **Arc 3a** (`f0c8daf`, 2026-05-12) — Focus compositions tab on inspector with read-mostly canvas embed + bidirectional deep-link to standalone Focus editor. ~2,202 LOC.
-9. **Arc 3b** (`e054e3a`, 2026-05-12) — Documents tab on inspector with 3-level mode-stack + per-block immediate writes (third save-semantics pattern). ~2,315 LOC.
-10. **Phase R-8.y.d** (2026-05-11) — Plugin Registry browser at `/visual-editor/plugin-registry`; 24 plugin categories surfaced from PLUGIN_CONTRACTS.md.
+1. **Verticals-lite precursor** (this commit, 2026-05-13) — `verticals` table + service + 3 admin endpoints + `/admin/verticals` page; precursor to Studio shell. Migration `r95_verticals_table` (spec named `r92` but r92-r94 already existed; renumbered per CLAUDE.md §12 Spec-Override). ~720 LOC.
+2. **Arc 4a.2a** (`8affc8f`, 2026-05-13) — Ops-board cluster Path 1 wrap + 28 supported_surfaces backfills + dashboard-grid parity test branch. 17 ops-board widgets wrapped via registerComponent HOC; componentMap consumers updated; revenue_summary + ar_summary deferred (no frontend React component). ~1,624 LOC.
+3. **Arc 4d** (`9fbcab5`, 2026-05-13) — Scope cascade visualization + tenth canonical shared authoring primitive (SourceBadge with letter/chip variant) + eleventh candidate co-located (ScopeDiffPopover). Documents Class C → Class B transition via `_resolve_version` extension. Sixth audit-count recalibration shape (audit-frames-as-uniform-where-substrate-architecturally-distinct). PRE-SEPTEMBER ARC 4 SEQUENCE CLOSES. ~1,565 LOC.
+4. **Canon/state separation** (`c655771`, 2026-05-13) — CLAUDE.md cleanup (2537 → 1631 lines) + STATE.md + DECISIONS.md. Documentation discipline: Sonnet writes STATE.md only; canon stays canon (Opus-only, batched).
+5. **Arc 4c** (`efeed99`, 2026-05-12) — Focus compositions canvas polish: AlignmentGuideOverlay + shift-marquee cumulative-select + drop-shadow drag lift + inspector Move-left/Move-right + Alt+Arrow keyboard reorder + ColumnCountPopover. ~1,747 LOC.
+6. **Arc 4b.2b** (`7ff864a`, 2026-05-12) — Mention consumer UX: `@` trigger + SuggestionDropdown integration + getCaretCoordinates companion utility + 4 Jinja-aware field sites. ~1,400 LOC.
+7. **Arc 4b.2a** (`66ec8c5`, 2026-05-12) — Mention substrate: Jinja `ref` filter + dedicated `/api/v1/documents-v2/admin/mentions/resolve` endpoint + per-render MentionResolutionCache. ~640 LOC.
+8. **Arc 4b.1b** (`a534adb`, 2026-05-12) — SuggestionDropdown (9th shared primitive) + slash command insertion + drag-drop block reorder via @dnd-kit/sortable + Alt+ArrowUp/Down keyboard. ~1,860 LOC.
+9. **Arc 4b.1a** (`3008ca2`, 2026-05-12) — PropControlDispatcher vocabulary extension: 4 new ConfigPropType discriminators + per-block-kind canonical dispatch. ~1,900 LOC.
+10. **Arc 4a.1** (`63fc1c2`, 2026-05-12) — Focus action bar substrate via class-level buttonSlugs (R-2.1 canon reuse) + IconPicker as 6th shared authoring primitive. ~810 LOC.
 
 ## Open questions / blockers
 
 - **Sage CSV exports** — blocked on Sunnycrest accountant providing invoice history, customer list, cash receipts files. Once received, Data Migration Tool can complete.
-- **Arc 4d commit** — uncommitted in working tree; ready for user review per spec instruction "Do NOT push".
 - **Pre-existing bugs** catalogued in `backend/docs/BUGS.md` (separate file) — `quote_service` calls `audit_service.log` but function is `log_action` (BUGS.md entry #7), unrelated to active arc.
