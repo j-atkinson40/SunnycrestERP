@@ -35,13 +35,13 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 ## Active arc
 
 - Arc name: Studio shell precursors → Bridgeable Studio shell arc (consolidating 7 visual editors + runtime-aware editor under `/studio`)
-- Current phase: Precursor work shipping (verticals-lite + Arc 4d + Arc 4a.2a all just committed); Studio 1a-i next per `docs/investigations/2026-05-13-studio-1a-internal.md` (~1,100-1,600 LOC: shell + rail + redirect + editor adaptation + placeholder overview)
+- Current phase: Studio 1a-i.A1 next — Studio shell substrate (routing, rail, redirect, placeholder overview, smoke tests). Per DECISIONS.md 2026-05-13 (PM), 1a-i splits into A1 → A2 → B.
 - Last shipped: Verticals-lite precursor (`c70050f` chain, 2026-05-13) — `verticals` table + service + admin page
 
 ## Active deferred items
 
 - **Data Migration Tool** — waiting on Sage CSV exports from Sunnycrest accountant (invoice history, customer list, cash receipts)
-- **Studio shell arc** — three sub-arcs sequenced post-verticals-lite per `docs/investigations/2026-05-13-studio-1a-internal.md`: Studio 1a-i shell + rail + redirect + editor adaptation + placeholder overview (~1,100-1,600 LOC), Studio 1a-ii overview population + Live mode wrap (~1,100-1,800 LOC), and follow-on Spaces substrate / drag-to-canvas palette / saved-view authoring as separate bounded arcs.
+- **Studio 1a-i.A2** — Live mode wrap + impersonation handshake (next after A1). **Studio 1a-i.B** — editor adaptation pass (after A2). **Studio 1a-ii** — overview surface implementation with inventory service (after 1a-i complete). **Spaces substrate arc** — locked as immediate post-Studio-shell priority per DECISIONS.md 2026-05-13.
 - **Arc 4a.2b** — vault cluster Path 1 wrap (9 widgets) + dashboard_layouts seed script; sibling of Arc 4a.2a (committed `8affc8f`); estimated ~1,300-1,800 LOC
 - **revenue_summary + ar_summary** — declared in backend WIDGET_DEFINITIONS but no frontend React component; documented in widget-renderer-parity.test.ts `KNOWN_DEFERRED_VAULT`; hygiene arc TBD
 - **13 simpler agent jobs** — `STALE_DRAFT_MONITOR`, `REVERSAL_RUNNER`, `PO_DELIVERY_MONITOR`, `RECONCILIATION_MONITOR`, `ABANDONED_RECONCILIATION_MONITOR`, `STATEMENT_RUN_MONITOR`, `FINANCE_CHARGE_REMINDER`, `EXEMPTION_EXPIRY_MONITOR`, `1099_MONITOR`, `DELIVERY_WEEKLY_REVIEW`, `FINANCE_CHARGE_INSIGHT_JOB`, `DISCOUNT_UPTAKE_JOB`, `OUTCOME_CLOSURE_JOB`
