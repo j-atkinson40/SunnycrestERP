@@ -36,7 +36,7 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
 - Arc name: Studio shell precursors → Bridgeable Studio shell arc (consolidating 7 visual editors + runtime-aware editor under `/studio`)
 - Current phase: Precursor work shipping (verticals-lite + Arc 4d + Arc 4a.2a all just committed); Studio 1a-i next per `/tmp/studio_1a_internal_investigation_findings.md` (~1,100-1,600 LOC: shell + rail + redirect + editor adaptation + placeholder overview)
-- Last shipped: Verticals-lite precursor (`8affc8f` chain, 2026-05-13) — `verticals` table + service + admin page
+- Last shipped: Verticals-lite precursor (`c70050f` chain, 2026-05-13) — `verticals` table + service + admin page
 
 ## Active deferred items
 
