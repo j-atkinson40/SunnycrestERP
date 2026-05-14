@@ -100,19 +100,19 @@ if [ "${ENVIRONMENT:-dev}" != "production" ]; then
     fi
     echo "  ✓ seed_dispatch_demo.py completed."
 
-    # R-5.0.1 — seed default edge panel composition. Without this
-    # seed, the runtime resolver returns has_panel=false (pages=[]) for
-    # every tenant + the EdgePanel never renders content (handle visible
-    # but no buttons inside). Specs 26/27/28 fail under this state. The
-    # seed creates a `platform_default` kind=edge_panel composition with
-    # 2 pages of R-4 button placements; idempotent (skips when active
-    # row matches expected content; replaces when content drifts).
-    # Production guard inside the script.
-    if ! python -m scripts.seed_edge_panel 2>&1; then
-        echo "  ✗ seed_edge_panel.py FAILED — deploy aborted."
+    # B-2 (May 2026) — seed edge panel templates via the new B-1.5
+    # `edge_panel_templates` substrate. Replaces the deleted R-5.0
+    # `seed_edge_panel.py` (which targeted the dropped legacy
+    # focus_compositions kind=edge_panel rows). Seeds two
+    # vertical_default rows (funeral_home + manufacturing) — see
+    # `scripts/seed_edge_panel_inheritance.py` for content. Idempotent
+    # via content-equality short-circuit; ENVIRONMENT=production
+    # refusal inside the script.
+    if ! python -m scripts.seed_edge_panel_inheritance 2>&1; then
+        echo "  ✗ seed_edge_panel_inheritance.py FAILED — deploy aborted."
         exit 1
     fi
-    echo "  ✓ seed_edge_panel.py completed."
+    echo "  ✓ seed_edge_panel_inheritance.py completed."
 else
     echo ""
     echo "ENVIRONMENT=production — skipping staging seed scripts."

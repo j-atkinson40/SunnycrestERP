@@ -65,23 +65,27 @@ Service layer + endpoints + resolver land in sub-arc B. This file
 is data-shape only — no validates_* decorators on the JSONB
 columns; JSONB-shape validation is service-layer responsibility.
 
-──── Import-compatibility shim (sub-arc A only) ────────────────────
+──── Sub-arc B-2 shim removal (May 2026) ───────────────────────────
 
-The legacy R-5.0 `focus_compositions` shape exported several module
-level constants that downstream services (`composition_service`,
-`vertical_inventory`, route handlers, tests) imported by name. Sub
-arc A is structural-only and is forbidden from touching service
-logic. The constants are retained at module level so the existing
-import statements still resolve. The constants have NO semantic
-meaning against the new Tier 3 model — they are inert string
-literals preserved for import-compile compatibility during the
-sub-arc B handoff.
+The sub-arc A import-compatibility shim (SCOPE_*, KIND_*,
+CANONICAL_KINDS module-level constants retained for legacy
+consumers) was removed in sub-arc B-2 once all consumers had
+migrated to the new substrates:
 
-Sub-arc B is expected to:
-  - Rewrite `composition_service` against the new three-tier model.
-  - Delete these compat constants when no consumer imports them.
-  - Migrate vertical_inventory, route handlers, and tests off the
-    R-5.0 shape onto the new model.
+  - composition_service.py            → deleted; consumers moved to
+                                          focus_template_inheritance
+                                          and edge_panel_inheritance
+  - vertical_inventory/service.py     → anchors on focus_templates +
+                                          edge_panel_templates
+  - api/routes/admin/visual_editor_compositions.py → deleted
+  - api/routes/edge_panel.py          → uses edge_panel_inheritance
+  - tests/{test_focus_compositions,
+            test_edge_panel_r50,
+            test_edge_panel_user_override,
+            test_vertical_inventory}.py → rewritten against the new
+                                          substrates
+
+No remaining consumer imports SCOPE_*, KIND_*, or CANONICAL_KINDS.
 """
 
 from __future__ import annotations
@@ -100,22 +104,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-
-
-# ── Import-compatibility shims (see module docstring) ──────────────
-# These constants no longer correspond to columns on FocusComposition
-# but remain at module level so legacy import statements in
-# composition_service.py / vertical_inventory / route handlers /
-# tests still resolve at import time. Sub-arc B removes them when
-# all consumers have migrated.
-SCOPE_PLATFORM_DEFAULT = "platform_default"
-SCOPE_VERTICAL_DEFAULT = "vertical_default"
-SCOPE_TENANT_OVERRIDE = "tenant_override"
-
-KIND_FOCUS = "focus"
-KIND_EDGE_PANEL = "edge_panel"
-CANONICAL_KINDS = (KIND_FOCUS, KIND_EDGE_PANEL)
-# ── End import-compatibility shims ─────────────────────────────────
 
 
 class FocusComposition(Base):

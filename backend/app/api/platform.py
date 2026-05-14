@@ -34,7 +34,6 @@ from app.api.routes.admin import (
     visual_editor_components,
     visual_editor_workflows,
     visual_editor_classes,
-    visual_editor_compositions,
     visual_editor_dashboard_layouts,
     focus_template_inheritance as admin_focus_template_inheritance,
     edge_panel_inheritance as admin_edge_panel_inheritance,
@@ -155,11 +154,10 @@ platform_router.include_router(
     prefix="/admin/visual-editor/classes",
     tags=["Visual Editor — Component Classes"],
 )
-platform_router.include_router(
-    visual_editor_compositions.router,
-    prefix="/admin/visual-editor/compositions",
-    tags=["Visual Editor — Focus Compositions"],
-)
+# NOTE (B-2, May 2026): legacy `visual_editor_compositions` router
+# deleted. Focus + edge-panel authoring now ships through:
+#   - /admin/focus-template-inheritance/* (B-1)
+#   - /admin/edge-panel-inheritance/*     (B-1.5)
 platform_router.include_router(
     visual_editor_dashboard_layouts.router,
     prefix="/admin/visual-editor/dashboard-layouts",

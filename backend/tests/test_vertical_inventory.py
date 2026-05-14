@@ -1,4 +1,4 @@
-"""Studio 1a-ii — Vertical Inventory service + API tests.
+"""Studio 1a-ii — Vertical Inventory service + API tests (B-2 rewrite).
 
 Covers:
   - Section counts correct for platform vs vertical scope
@@ -13,6 +13,11 @@ Covers:
   - Deep-link path construction (vertical drop on platform-only
     editors; entity-id query param shape)
   - API: 200 platform, 200 vertical, 401 anon/tenant, 404 unknown slug
+
+B-2 update: Focus + edge-panel inventory now anchors on the new
+`focus_templates` + `edge_panel_templates` Tier 2 tables (post-r96/r97),
+NOT the legacy `focus_compositions` shape. Seed fixtures create rows
+against the new substrate.
 """
 
 from __future__ import annotations
@@ -22,9 +27,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-
-
-# ─── Fixtures ──────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -101,22 +103,25 @@ def _make_tenant_admin() -> dict:
         )
         db.add(role)
         db.flush()
-        user = User(
+        u = User(
             id=str(uuid.uuid4()),
             company_id=co.id,
-            email=f"admin-{suffix}@inv-ten.test",
+            email=f"ten-inv-{suffix}@inv.test",
             hashed_password="x",
             first_name="T",
             last_name="A",
             role_id=role.id,
             is_active=True,
         )
-        db.add(user)
+        db.add(u)
         db.commit()
-        token = create_access_token(
-            {"sub": user.id, "company_id": co.id}, realm="tenant"
-        )
-        return {"slug": co.slug, "tenant_token": token}
+        token = create_access_token({"sub": u.id}, realm="tenant")
+        return {
+            "company_id": co.id,
+            "user_id": u.id,
+            "tenant_token": token,
+            "slug": co.slug,
+        }
     finally:
         db.close()
 
@@ -135,30 +140,27 @@ def seeded_inventory(db_session):
     """Insert a small fixed set of rows across editor tables so the
     service has known data to count + surface.
 
-    Returns dict { 'marker', 'platform_user_id', 'verticals_used' }.
+    Returns dict { 'marker', 'user_id', 'user_email', 'ids' }.
     Cleanup runs on teardown so the test DB stays clean.
     """
     from app.models.component_class_configuration import (
         ComponentClassConfiguration,
     )
     from app.models.component_configuration import ComponentConfiguration
+    from app.models.company import Company
     from app.models.document_template import DocumentTemplate
-    from app.models.focus_composition import FocusComposition
+    from app.models.edge_panel_template import EdgePanelTemplate
+    from app.models.focus_core import FocusCore
+    from app.models.focus_template import FocusTemplate
     from app.models.platform_theme import PlatformTheme
+    from app.models.role import Role
     from app.models.user import User
     from app.models.workflow_template import WorkflowTemplate
 
     marker = _marker()
 
-    # Create a User to resolve editor_email through. (Editor email
-    # resolution joins updated_by → users.id → users.email.)
     user_id = str(uuid.uuid4())
     user_email = f"editor-{marker}@inv.test"
-    # Need a company for the User FK. Reuse the tenant fixture
-    # pattern's bare Company.
-    from app.models.company import Company
-    from app.models.role import Role
-
     co = Company(
         id=str(uuid.uuid4()),
         name=f"InvSeed {marker}",
@@ -192,7 +194,8 @@ def seeded_inventory(db_session):
 
     now = datetime.now(timezone.utc)
 
-    # 2 themes — 1 manufacturing-vertical, 1 funeral_home
+    # 2 themes — 1 manufacturing-vertical (with editor), 1 funeral_home
+    # (without editor — exercises updated_by=NULL email resolution).
     t1 = PlatformTheme(
         id=str(uuid.uuid4()),
         scope="vertical_default",
@@ -211,37 +214,59 @@ def seeded_inventory(db_session):
         token_overrides={"_marker": marker},
         is_active=True,
         updated_at=now - timedelta(minutes=20),
-        updated_by=None,  # unresolvable → email stays None
+        updated_by=None,
     )
     db_session.add_all([t1, t2])
 
-    # 2 focus compositions — 1 focus kind, 1 edge_panel kind, both mfg
-    fc1 = FocusComposition(
+    # Tier 1 Focus Core (single shared core for both templates).
+    core = FocusCore(
+        id=str(uuid.uuid4()),
+        core_slug=f"core-{marker[:8]}",
+        display_name=f"Core {marker[:8]}",
+        registered_component_kind="focus-core",
+        registered_component_name=f"Core{marker[:8]}",
+        default_starting_column=0,
+        default_column_span=12,
+        default_row_index=0,
+        min_column_span=6,
+        max_column_span=12,
+        canvas_config={},
+        is_active=True,
+    )
+    db_session.add(core)
+    db_session.flush()
+
+    # 1 Focus template — manufacturing vertical
+    ft_mfg = FocusTemplate(
         id=str(uuid.uuid4()),
         scope="vertical_default",
         vertical="manufacturing",
-        focus_type=f"scheduling_{marker[:8]}",
+        template_slug=f"scheduling-{marker[:8]}",
+        display_name=f"Scheduling {marker[:8]}",
+        inherits_from_core_id=core.id,
+        inherits_from_core_version=core.version,
         rows=[],
         canvas_config={"_marker": marker},
-        kind="focus",
         is_active=True,
         updated_at=now - timedelta(minutes=5),
         updated_by=user_id,
     )
-    fc2 = FocusComposition(
+    db_session.add(ft_mfg)
+
+    # 1 Edge-panel template — manufacturing vertical
+    ep_mfg = EdgePanelTemplate(
         id=str(uuid.uuid4()),
         scope="vertical_default",
         vertical="manufacturing",
-        focus_type=f"panel_{marker[:8]}",
-        rows=[],
-        canvas_config={"_marker": marker},
-        kind="edge_panel",
+        panel_key=f"panel-{marker[:8]}",
+        display_name=f"Panel {marker[:8]}",
         pages=[],
+        canvas_config={"_marker": marker},
         is_active=True,
         updated_at=now - timedelta(minutes=3),
         updated_by=user_id,
     )
-    db_session.add_all([fc1, fc2])
+    db_session.add(ep_mfg)
 
     # 1 widget config (component_configurations, kind=widget) mfg
     cc1 = ComponentConfiguration(
@@ -269,9 +294,6 @@ def seeded_inventory(db_session):
     )
     db_session.add_all([cc1, cc2])
 
-    # 1 class config (no vertical column). The CHECK enumerates 9
-    # canonical class names — `surface-card` is unused by seeds so
-    # the partial-unique on is_active=true doesn't conflict.
     ccc = ComponentClassConfiguration(
         id=str(uuid.uuid4()),
         component_class="surface-card",
@@ -282,7 +304,6 @@ def seeded_inventory(db_session):
     )
     db_session.add(ccc)
 
-    # 1 workflow template, mfg
     wt = WorkflowTemplate(
         id=str(uuid.uuid4()),
         scope="vertical_default",
@@ -296,7 +317,6 @@ def seeded_inventory(db_session):
     )
     db_session.add(wt)
 
-    # 1 document template, mfg (no updated_by column)
     dt = DocumentTemplate(
         id=str(uuid.uuid4()),
         template_key=f"tpl_{marker[:8]}",
@@ -331,8 +351,8 @@ def seeded_inventory(db_session):
         "ids": {
             "themes_recent": [t1.id, t2.id],
             "themes_old": [t_old.id],
-            "focuses": [fc1.id],
-            "edge_panels": [fc2.id],
+            "focuses": [ft_mfg.id],
+            "edge_panels": [ep_mfg.id],
             "widgets": [cc1.id],
             "classes": [ccc.id],
             "workflows": [wt.id],
@@ -341,11 +361,12 @@ def seeded_inventory(db_session):
     }
 
     # ─── Cleanup ─────────────────────────────────────────
-    # Delete by id (best-effort).
     db_session.rollback()
     for model_name, id_list in [
         (PlatformTheme, [t1.id, t2.id, t_old.id]),
-        (FocusComposition, [fc1.id, fc2.id]),
+        (FocusTemplate, [ft_mfg.id]),
+        (EdgePanelTemplate, [ep_mfg.id]),
+        (FocusCore, [core.id]),
         (ComponentConfiguration, [cc1.id, cc2.id]),
         (ComponentClassConfiguration, [ccc.id]),
         (WorkflowTemplate, [wt.id]),
@@ -372,7 +393,6 @@ class TestSections:
         assert resp.scope == "platform"
         assert resp.vertical_slug is None
         assert isinstance(resp.sections, list)
-        # 9 sections always returned, in canonical order
         keys = [s.key for s in resp.sections]
         assert keys == [
             "themes",
@@ -394,8 +414,6 @@ class TestSections:
         counts_mfg = {s.key: s.count for s in mfg.sections}
         counts_fh = {s.key: s.count for s in fh.sections}
 
-        # Seeded under mfg: 2 themes (recent + old), 1 focus, 1 edge,
-        # 1 widget, 1 workflow, 1 doc.
         assert counts_mfg["themes"] >= 2
         assert counts_mfg["focuses"] >= 1
         assert counts_mfg["edge-panels"] >= 1
@@ -403,16 +421,12 @@ class TestSections:
         assert counts_mfg["workflows"] >= 1
         assert counts_mfg["documents"] >= 1
 
-        # FH only got 1 theme; the rest seeded under mfg.
         assert counts_fh["themes"] >= 1
-        # mfg counts strictly larger for themes since both are >0
         assert counts_mfg["themes"] > counts_fh["themes"]
 
     def test_classes_zero_under_vertical_scope(
         self, db_session, seeded_inventory
     ):
-        """component_class_configurations has no vertical column →
-        vertical scope returns count=0, NOT None."""
         from app.services.vertical_inventory import get_inventory
 
         platform_resp = get_inventory(db_session, vertical_slug=None)
@@ -423,12 +437,10 @@ class TestSections:
         vertical_counts = {s.key: s.count for s in vertical_resp.sections}
 
         assert platform_counts["classes"] is not None
-        assert platform_counts["classes"] >= 1  # seeded row
-        assert vertical_counts["classes"] == 0  # zero, not None
+        assert platform_counts["classes"] >= 1
+        assert vertical_counts["classes"] == 0
 
     def test_registry_count_always_none(self, db_session):
-        """Registry inspector has no backend source — count is None
-        in both platform + vertical scopes."""
         from app.services.vertical_inventory import get_inventory
 
         platform_resp = get_inventory(db_session, vertical_slug=None)
@@ -447,9 +459,8 @@ class TestSections:
     def test_plugin_registry_count_platform_vs_vertical(
         self, db_session
     ):
-        """Plugin Registry has a platform-global static catalog.
-        Platform scope → count = 24. Vertical scope → count = None."""
         from app.services.vertical_inventory import get_inventory
+        from app.services.plugin_registry import list_category_keys
 
         platform_resp = get_inventory(db_session, vertical_slug=None)
         vertical_resp = get_inventory(
@@ -465,28 +476,22 @@ class TestSections:
             for s in vertical_resp.sections
             if s.key == "plugin-registry"
         )
-        assert platform_count == 24
+        assert platform_count == len(list_category_keys())
         assert vertical_count is None
 
     def test_widgets_section_filters_by_component_kind(
         self, db_session, seeded_inventory
     ):
-        """The widgets section counts ONLY rows where
-        component_kind='widget'. The non-widget row in seeded data
-        must not inflate the count."""
         from app.services.vertical_inventory import get_inventory
 
         resp = get_inventory(db_session, vertical_slug="manufacturing")
         widgets = next(s for s in resp.sections if s.key == "widgets")
-        # Exactly the 1 widget config seeded; the entity-card row
-        # under mfg must not be counted.
         assert widgets.count is not None
         assert widgets.count >= 1
 
 
 class TestRecentEdits:
     def test_window_excludes_old(self, db_session, seeded_inventory):
-        """Edits older than 7 days are excluded from the feed."""
         from app.services.vertical_inventory import get_inventory
 
         resp = get_inventory(db_session, vertical_slug="manufacturing")
@@ -497,7 +502,6 @@ class TestRecentEdits:
     def test_ordering_desc_by_edited_at(
         self, db_session, seeded_inventory
     ):
-        """Recent-edits sorted by edited_at desc."""
         from app.services.vertical_inventory import get_inventory
 
         resp = get_inventory(db_session, vertical_slug="manufacturing")
@@ -505,7 +509,6 @@ class TestRecentEdits:
         assert timestamps == sorted(timestamps, reverse=True)
 
     def test_limit_at_most_10(self, db_session, seeded_inventory):
-        """Top of merged candidates capped at 10."""
         from app.services.vertical_inventory import get_inventory
 
         resp = get_inventory(db_session, vertical_slug="manufacturing")
@@ -514,12 +517,9 @@ class TestRecentEdits:
     def test_editor_email_resolved_when_user_present(
         self, db_session, seeded_inventory
     ):
-        """When updated_by points at a real User, editor_email is the
-        user's email address."""
         from app.services.vertical_inventory import get_inventory
 
         resp = get_inventory(db_session, vertical_slug="manufacturing")
-        # The widget config had updated_by=user_id.
         widget_id = seeded_inventory["ids"]["widgets"][0]
         widget_edit = next(
             (e for e in resp.recent_edits if e.entity_id == widget_id),
@@ -531,10 +531,8 @@ class TestRecentEdits:
     def test_editor_email_none_when_updated_by_null(
         self, db_session, seeded_inventory
     ):
-        """When updated_by is NULL, editor_email is None."""
         from app.services.vertical_inventory import get_inventory
 
-        # The FH theme had updated_by=None; query under fh scope.
         resp = get_inventory(db_session, vertical_slug="funeral_home")
         fh_theme_id = seeded_inventory["ids"]["themes_recent"][1]
         match = next(
@@ -547,8 +545,6 @@ class TestRecentEdits:
     def test_editor_email_none_on_documents(
         self, db_session, seeded_inventory
     ):
-        """document_templates has no updated_by column → email is
-        always None for document entries."""
         from app.services.vertical_inventory import get_inventory
 
         resp = get_inventory(db_session, vertical_slug="manufacturing")
@@ -556,11 +552,11 @@ class TestRecentEdits:
         for e in docs:
             assert e.editor_email is None
 
-    def test_edge_panel_section_split_from_focuses(
+    def test_edge_panel_section_distinct_from_focuses(
         self, db_session, seeded_inventory
     ):
-        """A focus_compositions row with kind='edge_panel' surfaces
-        as section='edge-panels', not 'focuses'."""
+        """Edge-panel templates surface as section='edge-panels'; focus
+        templates as section='focuses'."""
         from app.services.vertical_inventory import get_inventory
 
         resp = get_inventory(db_session, vertical_slug="manufacturing")
@@ -588,7 +584,6 @@ class TestDeepLink:
         from app.services.vertical_inventory import get_inventory
 
         resp = get_inventory(db_session, vertical_slug=None)
-        # Find any themes entry; deep link should be /studio/themes?...
         themes = [e for e in resp.recent_edits if e.section == "themes"]
         assert len(themes) > 0
         for e in themes:
@@ -606,24 +601,34 @@ class TestDeepLink:
                 "/studio/manufacturing/themes?theme_id="
             )
 
+    def test_focus_deep_link_uses_template_id(
+        self, db_session, seeded_inventory
+    ):
+        """B-2 contract: focuses + edge-panels deep-link uses
+        `template_id` (not `composition_id`) since the inventory now
+        anchors on Tier 2 rows."""
+        from app.services.vertical_inventory import get_inventory
+
+        resp = get_inventory(db_session, vertical_slug="manufacturing")
+        focus_entries = [
+            e for e in resp.recent_edits if e.section == "focuses"
+        ]
+        edge_entries = [
+            e for e in resp.recent_edits if e.section == "edge-panels"
+        ]
+        for e in focus_entries:
+            assert "template_id=" in e.deep_link_path
+        for e in edge_entries:
+            assert "template_id=" in e.deep_link_path
+
     def test_platform_only_editor_drops_vertical(
         self, db_session, seeded_inventory
     ):
-        """Classes is a platform-only editor — even under vertical
-        scope, the deep link omits the vertical segment.
-
-        Classes won't appear in vertical-scope recent_edits (because
-        the table has no vertical column → suppressed entirely), so
-        we exercise the deep-link rule under platform scope alongside
-        a manual call shape check.
-        """
         from app.services.vertical_inventory.service import _build_deep_link
 
-        # Platform-only editor under vertical request → no vertical seg
         link = _build_deep_link("classes", "manufacturing", "abc-123")
         assert link == "/studio/classes?config_id=abc-123"
         link2 = _build_deep_link("registry", "manufacturing", "x")
-        # Registry has no entity-id param
         assert link2 == "/studio/registry"
 
 
@@ -681,16 +686,19 @@ class TestAPI:
         assert r.status_code == 404
 
     def test_section_count_shape_optional(self, client):
-        """Confirm `count` is Optional[int] over the wire."""
+        from app.services.plugin_registry import list_category_keys
+
         ctx = _make_platform_admin()
         r = client.get(
             "/api/platform/admin/studio/inventory",
             headers={"Authorization": f"Bearer {ctx['platform_token']}"},
         )
         body = r.json()
-        registry = next(s for s in body["sections"] if s["key"] == "registry")
+        registry = next(
+            s for s in body["sections"] if s["key"] == "registry"
+        )
         assert registry["count"] is None
         plugin_reg = next(
             s for s in body["sections"] if s["key"] == "plugin-registry"
         )
-        assert plugin_reg["count"] == 24  # platform scope: catalog size
+        assert plugin_reg["count"] == len(list_category_keys())

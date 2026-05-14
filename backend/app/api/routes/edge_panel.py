@@ -1,12 +1,14 @@
-"""Edge panel tenant-realm endpoints — R-5.0.
+"""Edge panel tenant-realm endpoints — R-5.0 + B-2 (May 2026).
 
-Three endpoints:
+Four endpoints:
 
   - `GET /api/v1/edge-panel/resolve?panel_key=...` — resolves the
-    composition for the caller's own tenant context, layering in the
-    user's `User.preferences.edge_panel_overrides[panel_key]` blob.
-    Returns the same shape as the admin endpoint (kind="edge_panel"
-    flavor — `pages` is populated, `rows` empty).
+    composition for the caller's own tenant + user context. Routes
+    through B-1.5's `edge_panel_inheritance.resolve_edge_panel`,
+    which walks Tier 2 template → Tier 3 tenant composition →
+    User.preferences.edge_panel_overrides[panel_key]. Response shape
+    is preserved from the R-5.0 contract so existing frontend
+    callers do not break.
 
   - `GET /api/v1/edge-panel/preferences` — returns the caller's
     `User.preferences.edge_panel_overrides` map (read-only access to
@@ -22,9 +24,9 @@ Three endpoints:
     tenant-level edge panel config (width + enabled flag) read from
     `Company.settings_json`. Defaults: width=320, enabled=true.
 
-Tenants never write platform/vertical/tenant_override composition
-rows via these endpoints — those live in the admin realm at
-`/api/platform/admin/visual-editor/compositions/`. This module is
+Tenants never write platform/vertical/tenant_override template rows
+via these endpoints — those live in the admin realm at
+`/api/platform/admin/edge-panel-inheritance/*`. This module is
 READ + per-user-override write only.
 """
 
@@ -41,8 +43,8 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.services.focus_compositions import (
-    CompositionError,
+from app.services.edge_panel_inheritance import (
+    EdgePanelTemplateResolveError,
     resolve_edge_panel,
 )
 
@@ -78,17 +80,6 @@ class _TenantConfigResponse(BaseModel):
     width: int = _DEFAULT_WIDTH
 
 
-def _user_overrides_for(user: User, panel_key: str) -> dict | None:
-    prefs = user.preferences or {}
-    overrides_root = prefs.get("edge_panel_overrides")
-    if not isinstance(overrides_root, dict):
-        return None
-    blob = overrides_root.get(panel_key)
-    if not isinstance(blob, dict):
-        return None
-    return blob
-
-
 @router.get("/resolve", response_model=_ResolveResponse)
 def resolve_endpoint(
     panel_key: str = Query(...),
@@ -106,11 +97,7 @@ def resolve_endpoint(
     company = current_user.company
     vertical = company.vertical if company is not None else None
     tenant_id = company.id if company is not None else None
-    user_overrides = (
-        None
-        if ignore_user_overrides
-        else _user_overrides_for(current_user, panel_key)
-    )
+    user_id = None if ignore_user_overrides else current_user.id
 
     try:
         result = resolve_edge_panel(
@@ -118,20 +105,35 @@ def resolve_endpoint(
             panel_key=panel_key,
             vertical=vertical,
             tenant_id=tenant_id,
-            user_overrides=user_overrides,
+            user_id=user_id,
         )
-    except CompositionError as err:
-        raise HTTPException(status_code=err.http_status, detail=str(err))
+    except EdgePanelTemplateResolveError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+
+    # Surface a frontend-compatible "source" string. The new resolver
+    # exposes structured provenance via `sources`; the R-5.0 wire
+    # contract expected a single string label. Prefer the deepest
+    # applied layer.
+    sources = result.sources or {}
+    composition_block = sources.get("composition")
+    if composition_block:
+        source = "tenant_override"
+        source_id = composition_block.get("composition_id")
+        source_version = composition_block.get("version")
+    else:
+        source = result.template_scope
+        source_id = result.template_id
+        source_version = result.template_version
 
     return _ResolveResponse(
         panel_key=panel_key,
-        vertical=result.get("vertical"),
-        tenant_id=result.get("tenant_id"),
-        source=result.get("source"),
-        source_id=result.get("source_id"),
-        source_version=result.get("source_version"),
-        pages=list(result.get("pages") or []),
-        canvas_config=dict(result.get("canvas_config") or {}),
+        vertical=result.template_vertical,
+        tenant_id=tenant_id,
+        source=source,
+        source_id=source_id,
+        source_version=source_version,
+        pages=list(result.pages or []),
+        canvas_config=dict(result.canvas_config or {}),
     )
 
 

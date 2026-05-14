@@ -10,6 +10,15 @@ Counts strategy:
     Sections without a backend table (Registry, Plugin Registry under
     vertical scope) return count=None.
 
+    Sub-arc B-2 (May 2026) — Focus + edge-panel counts re-anchored
+    onto the post-r96/r97 substrate:
+      * `focuses`     → `focus_templates` (Tier 2 of Focus inheritance)
+      * `edge-panels` → `edge_panel_templates` (Tier 2 of EP inheritance)
+    Tier 3 rows (`focus_compositions`, `edge_panel_compositions`) are
+    per-tenant deltas; the Studio overview surfaces TEMPLATES — the
+    canvases an operator authors against. Counting deltas would
+    double-count published templates by their per-tenant variations.
+
 Recent-edits strategy (Path A — per-table updated_at pivot per
 Studio 1a-ii locked decision 6):
     Per editor table, SELECT entity_id, display_field, updated_at,
@@ -24,8 +33,8 @@ Studio 1a-ii locked decision 6):
 
 Display-name column choice (documented per table):
     - platform_themes               → "Theme — {mode} ({scope})"
-    - focus_compositions (focus)    → "{focus_type}"
-    - focus_compositions (edge_pnl) → "{focus_type} (edge panel)"
+    - focus_templates               → "{display_name}"
+    - edge_panel_templates          → "{display_name}"
     - component_configurations      → "{component_kind}:{component_name}"
     - component_class_configurations→ "{component_class} class"
     - workflow_templates            → "{display_name}"
@@ -36,16 +45,14 @@ Deep-link convention:
     Platform-only editors (classes/registry/plugin-registry) drop
     the vertical segment. The entity-param key per editor:
         themes        → ?theme_id=
-        focuses       → ?composition_id=    (kind=focus)
-        edge-panels   → ?composition_id=    (kind=edge_panel)
+        focuses       → ?template_id=    (post-B-2: anchored on
+                                          focus_templates.id)
+        edge-panels   → ?template_id=    (post-B-2: anchored on
+                                          edge_panel_templates.id)
         widgets       → ?config_id=
         classes       → ?config_id=
         workflows     → ?template_id=
         documents     → ?template=
-
-Implemented inline rather than wired to per-editor canonical helpers
-to keep the service self-contained; if/when an editor changes its
-deep-link param, update this module's `_DEEP_LINK_PARAM` map.
 """
 
 from __future__ import annotations
@@ -59,7 +66,8 @@ from sqlalchemy.orm import Session
 from app.models.component_class_configuration import ComponentClassConfiguration
 from app.models.component_configuration import ComponentConfiguration
 from app.models.document_template import DocumentTemplate
-from app.models.focus_composition import FocusComposition
+from app.models.edge_panel_template import EdgePanelTemplate
+from app.models.focus_template import FocusTemplate
 from app.models.platform_theme import PlatformTheme
 from app.models.user import User
 from app.models.workflow_template import WorkflowTemplate
@@ -95,10 +103,12 @@ _PLATFORM_ONLY_EDITORS = {"classes", "registry", "plugin-registry"}
 
 
 # Entity-query-param convention per editor. Studio 1a-ii spec.
+# B-2: focuses + edge-panels migrated from `composition_id` to
+# `template_id` because the inventory now anchors on Tier 2 rows.
 _DEEP_LINK_PARAM: dict[str, str] = {
     "themes": "theme_id",
-    "focuses": "composition_id",
-    "edge-panels": "composition_id",
+    "focuses": "template_id",
+    "edge-panels": "template_id",
     "widgets": "config_id",
     "classes": "config_id",
     "workflows": "template_id",
@@ -147,9 +157,9 @@ def _build_sections(
         db, PlatformTheme, vertical_slug, has_vertical=True
     )
 
-    # focuses — focus_compositions WHERE kind='focus'
-    counts["focuses"] = _count_focus_compositions(
-        db, vertical_slug, kind="focus"
+    # focuses — focus_templates (Tier 2 of Focus inheritance, post-r96)
+    counts["focuses"] = _count_with_vertical(
+        db, FocusTemplate, vertical_slug, has_vertical=True
     )
 
     # widgets — component_configurations WHERE component_kind='widget'
@@ -189,9 +199,9 @@ def _build_sections(
         db, WorkflowTemplate, vertical_slug, has_vertical=True
     )
 
-    # edge-panels — focus_compositions WHERE kind='edge_panel'
-    counts["edge-panels"] = _count_focus_compositions(
-        db, vertical_slug, kind="edge_panel"
+    # edge-panels — edge_panel_templates (Tier 2 of EP inheritance, r97)
+    counts["edge-panels"] = _count_with_vertical(
+        db, EdgePanelTemplate, vertical_slug, has_vertical=True
     )
 
     # registry — frontend in-memory; no backend source → None
@@ -226,25 +236,6 @@ def _count_with_vertical(
     return int(db.execute(q).scalar_one())
 
 
-def _count_focus_compositions(
-    db: Session,
-    vertical_slug: str | None,
-    *,
-    kind: str,
-) -> int:
-    q = (
-        select(func.count())
-        .select_from(FocusComposition)
-        .where(
-            FocusComposition.is_active.is_(True),
-            FocusComposition.kind == kind,
-        )
-    )
-    if vertical_slug:
-        q = q.where(FocusComposition.vertical == vertical_slug)
-    return int(db.execute(q).scalar_one())
-
-
 # ─── Recent edits ────────────────────────────────────────────────
 
 
@@ -252,15 +243,12 @@ def _build_recent_edits(
     db: Session,
     vertical_slug: str | None,
 ) -> list[RecentEditEntry]:
-    """UNION across the seven editor tables that carry `updated_at`.
+    """UNION across the editor tables that carry `updated_at`.
 
-    Implemented as 7 small SELECTs + in-Python merge rather than a
+    Implemented as N small SELECTs + in-Python merge rather than a
     single SQL UNION. Each editor table has different display-name
     composition rules; pushing the formatting into SQL CASE
-    expressions would clutter the query. Each individual SELECT is
-    indexed on `updated_at DESC` via the underlying table indexes;
-    the in-Python sort + slice is O(n log n) over ~70 candidate rows
-    (10 per table × 7 tables).
+    expressions would clutter the query.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(
         days=_RECENT_EDITS_WINDOW_DAYS
@@ -296,39 +284,60 @@ def _build_recent_edits(
             )
         )
 
-    # focuses + edge-panels (one query, branch by kind)
+    # focuses — focus_templates
     q = (
         select(
-            FocusComposition.id,
-            FocusComposition.focus_type,
-            FocusComposition.kind,
-            FocusComposition.updated_at,
-            FocusComposition.updated_by,
+            FocusTemplate.id,
+            FocusTemplate.display_name,
+            FocusTemplate.updated_at,
+            FocusTemplate.updated_by,
         )
-        .where(FocusComposition.is_active.is_(True))
-        .where(FocusComposition.updated_at >= cutoff)
+        .where(FocusTemplate.is_active.is_(True))
+        .where(FocusTemplate.updated_at >= cutoff)
     )
     if vertical_slug:
-        q = q.where(FocusComposition.vertical == vertical_slug)
-    q = q.order_by(FocusComposition.updated_at.desc()).limit(
-        _RECENT_EDITS_LIMIT * 2
-    )
+        q = q.where(FocusTemplate.vertical == vertical_slug)
+    q = q.order_by(FocusTemplate.updated_at.desc()).limit(_RECENT_EDITS_LIMIT)
     for row in db.execute(q).all():
-        if row.kind == "edge_panel":
-            section = "edge-panels"
-            name = f"{row.focus_type} (edge panel)"
-        else:
-            section = "focuses"
-            name = row.focus_type
         candidates.append(
             RecentEditEntry(
-                section=section,
-                entity_name=name,
+                section="focuses",
+                entity_name=row.display_name,
                 entity_id=row.id,
                 editor_email=None,
                 edited_at=row.updated_at,
                 deep_link_path=_build_deep_link(
-                    section, vertical_slug, row.id
+                    "focuses", vertical_slug, row.id
+                ),
+            )
+        )
+
+    # edge-panels — edge_panel_templates
+    q = (
+        select(
+            EdgePanelTemplate.id,
+            EdgePanelTemplate.display_name,
+            EdgePanelTemplate.updated_at,
+            EdgePanelTemplate.updated_by,
+        )
+        .where(EdgePanelTemplate.is_active.is_(True))
+        .where(EdgePanelTemplate.updated_at >= cutoff)
+    )
+    if vertical_slug:
+        q = q.where(EdgePanelTemplate.vertical == vertical_slug)
+    q = q.order_by(EdgePanelTemplate.updated_at.desc()).limit(
+        _RECENT_EDITS_LIMIT
+    )
+    for row in db.execute(q).all():
+        candidates.append(
+            RecentEditEntry(
+                section="edge-panels",
+                entity_name=row.display_name,
+                entity_id=row.id,
+                editor_email=None,
+                edited_at=row.updated_at,
+                deep_link_path=_build_deep_link(
+                    "edge-panels", vertical_slug, row.id
                 ),
             )
         )
@@ -458,13 +467,6 @@ def _build_recent_edits(
     candidates.sort(key=lambda r: r.edited_at, reverse=True)
     top = candidates[:_RECENT_EDITS_LIMIT]
 
-    # Resolve editor_email in one batch query. We have to track the
-    # source updated_by per candidate — re-collect by re-running the
-    # relevant SELECTs would be wasteful. We held updated_by in-row
-    # but didn't capture it on the RecentEditEntry (which intentionally
-    # exposes editor_email, not user_id, to the API surface).
-    # Re-query just the chosen 10 rows to fetch updated_by, then
-    # bulk-resolve users.
     if top:
         _resolve_editor_emails(db, top)
 
@@ -486,7 +488,6 @@ def _resolve_editor_emails(
     `updated_by` (documents) or whose updated_by is NULL or
     unresolvable stay at editor_email=None.
     """
-    # Build a map from (section, entity_id) → updated_by user_id.
     by_section: dict[str, list[str]] = {}
     for e in entries:
         by_section.setdefault(e.section, []).append(e.entity_id)
@@ -503,20 +504,25 @@ def _resolve_editor_emails(
         for r in rows:
             user_id_by_entry[("themes", r.id)] = r.updated_by
 
-    if "focuses" in by_section or "edge-panels" in by_section:
-        ids = by_section.get("focuses", []) + by_section.get(
-            "edge-panels", []
-        )
+    if "focuses" in by_section:
+        ids = by_section["focuses"]
         rows = db.execute(
-            select(
-                FocusComposition.id,
-                FocusComposition.kind,
-                FocusComposition.updated_by,
-            ).where(FocusComposition.id.in_(ids))
+            select(FocusTemplate.id, FocusTemplate.updated_by).where(
+                FocusTemplate.id.in_(ids)
+            )
         ).all()
         for r in rows:
-            section = "edge-panels" if r.kind == "edge_panel" else "focuses"
-            user_id_by_entry[(section, r.id)] = r.updated_by
+            user_id_by_entry[("focuses", r.id)] = r.updated_by
+
+    if "edge-panels" in by_section:
+        ids = by_section["edge-panels"]
+        rows = db.execute(
+            select(
+                EdgePanelTemplate.id, EdgePanelTemplate.updated_by
+            ).where(EdgePanelTemplate.id.in_(ids))
+        ).all()
+        for r in rows:
+            user_id_by_entry[("edge-panels", r.id)] = r.updated_by
 
     if "widgets" in by_section:
         ids = by_section["widgets"]
@@ -563,7 +569,6 @@ def _resolve_editor_emails(
         for r in rows:
             email_by_user[r.id] = r.email
 
-    # Write back into the entries.
     for entry in entries:
         uid = user_id_by_entry.get((entry.section, entry.entity_id))
         if uid and uid in email_by_user:

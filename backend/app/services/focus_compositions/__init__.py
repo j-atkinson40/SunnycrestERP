@@ -1,22 +1,14 @@
-"""Focus compositions service package — canvas-based Focus layout
-composition (May 2026).
+"""Focus compositions package — Tier 3 ORM exports only (B-2).
 
-R-5.0 (May 2026) extended to support `kind="edge_panel"` compositions
-alongside the original `kind="focus"` accessory rails. Same service
-surface; kind discriminator selects the composition family.
+Sub-arc B-2 deleted the legacy R-5.0 `composition_service` module: its
+service surface was structurally incompatible with the new three-tier
+inheritance chain (focus_cores → focus_templates → focus_compositions).
+Consumers were migrated to the canonical substrates:
+
+  - Focus consumers       → `app.services.focus_template_inheritance`
+  - Edge-panel consumers  → `app.services.edge_panel_inheritance`
+
+This package retains its name only because the `focus_compositions`
+ORM model still lives in `app.models.focus_composition` (Tier 3 of
+the Focus inheritance chain). No service-layer surface remains here.
 """
-
-from app.services.focus_compositions.composition_service import (  # noqa: F401
-    CompositionError,
-    CompositionNotFound,
-    CompositionScopeMismatch,
-    InvalidCompositionShape,
-    LegacyPayloadRejected,
-    create_composition,
-    get_composition,
-    list_compositions,
-    reject_legacy_placements_payload,
-    resolve_composition,
-    resolve_edge_panel,
-    update_composition,
-)
