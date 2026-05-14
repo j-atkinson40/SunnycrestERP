@@ -120,9 +120,14 @@ def _reset_seeds_each_test():
 
 
 class TestMigration:
-    def test_alembic_head_is_r95(self):
-        """Alembic chain advances to r95_verticals_table."""
-        import os
+    def test_alembic_chain_includes_r95_verticals_table(self):
+        """Alembic chain includes r95_verticals_table revision.
+
+        Originally pinned r95 as a head; r96_focus_template_inheritance
+        now builds on r95, so walk the chain rather than check current
+        heads. Preserves the test's intent (verticals-lite migration
+        shipped) without coupling to whichever migration is latest.
+        """
         from pathlib import Path
 
         from alembic.config import Config
@@ -135,9 +140,9 @@ class TestMigration:
             "script_location", str(backend_root / "alembic")
         )
         script = ScriptDirectory.from_config(cfg)
-        heads = script.get_heads()
-        assert "r95_verticals_table" in heads, (
-            f"r95_verticals_table not in heads: {heads}"
+        revisions = {rev.revision for rev in script.walk_revisions()}
+        assert "r95_verticals_table" in revisions, (
+            f"r95_verticals_table not in chain: {sorted(revisions)}"
         )
 
     def test_verticals_table_exists(self, db_session):

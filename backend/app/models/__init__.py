@@ -343,6 +343,8 @@ from app.models.platform_notification import PlatformNotification
 from app.models.platform_theme import PlatformTheme
 from app.models.component_configuration import ComponentConfiguration
 from app.models.component_class_configuration import ComponentClassConfiguration
+from app.models.focus_core import FocusCore
+from app.models.focus_template import FocusTemplate
 from app.models.focus_composition import FocusComposition
 from app.models.workflow_template import (
     TenantWorkflowFork,
@@ -734,6 +736,8 @@ __all__ = [
     "PlatformTheme",
     "ComponentConfiguration",
     "ComponentClassConfiguration",
+    "FocusCore",
+    "FocusTemplate",
     "FocusComposition",
     "WorkflowTemplate",
     "TenantWorkflowFork",
