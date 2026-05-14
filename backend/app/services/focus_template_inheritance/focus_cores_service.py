@@ -25,6 +25,10 @@ from sqlalchemy.orm import Session
 
 from app.models.focus_core import FocusCore
 from app.models.focus_template import FocusTemplate
+from app.services.focus_template_inheritance.chrome_validation import (
+    InvalidChromeShape,
+    validate_chrome_blob,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -147,6 +151,7 @@ def create_core(
     min_column_span: int = 6,
     max_column_span: int = 12,
     canvas_config: Mapping[str, Any] | None = None,
+    chrome: Mapping[str, Any] | None = None,
     created_by: str | None = None,
 ) -> FocusCore:
     """Create a new active core. If an active row already exists at
@@ -180,6 +185,12 @@ def create_core(
     if not isinstance(cfg, dict):
         raise InvalidCoreShape("canvas_config must be a dict")
 
+    chrome_blob = dict(chrome or {})
+    try:
+        validate_chrome_blob(chrome_blob)
+    except InvalidChromeShape as exc:
+        raise InvalidCoreShape(str(exc)) from exc
+
     existing = _find_active_by_slug(db, core_slug)
     if existing is not None:
         raise FocusCoreError(
@@ -199,6 +210,7 @@ def create_core(
         min_column_span=min_column_span,
         max_column_span=max_column_span,
         canvas_config=cfg,
+        chrome=chrome_blob,
         version=1,
         is_active=True,
         created_by=created_by,
@@ -225,6 +237,7 @@ def update_core(
     min_column_span: int | None = None,
     max_column_span: int | None = None,
     canvas_config: Mapping[str, Any] | None = None,
+    chrome: Mapping[str, Any] | None = None,
     core_slug: str | None = None,
 ) -> FocusCore:
     """Version-bump the core. Deactivate the prior active row; insert a
@@ -302,6 +315,14 @@ def update_core(
     if not isinstance(new_cfg, dict):
         raise InvalidCoreShape("canvas_config must be a dict")
 
+    new_chrome = (
+        dict(chrome) if chrome is not None else dict(prior.chrome or {})
+    )
+    try:
+        validate_chrome_blob(new_chrome)
+    except InvalidChromeShape as exc:
+        raise InvalidCoreShape(str(exc)) from exc
+
     prior.is_active = False
     new_row = FocusCore(
         core_slug=prior.core_slug,
@@ -315,6 +336,7 @@ def update_core(
         min_column_span=new_min,
         max_column_span=new_max,
         canvas_config=new_cfg,
+        chrome=new_chrome,
         version=prior.version + 1,
         is_active=True,
         created_by=prior.created_by,

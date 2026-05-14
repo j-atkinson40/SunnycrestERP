@@ -98,6 +98,15 @@ class FocusCore(Base):
         JSONB, nullable=False, default=dict
     )
 
+    # Sub-arc B-3 (r98): outer-chrome defaults for this core. Field
+    # vocabulary: background_color, drop_shadow, border, padding.
+    # Tier 2 overrides via `focus_templates.chrome_overrides`; Tier 3
+    # overrides via `focus_compositions.deltas.chrome_overrides`.
+    # Service-layer validator: chrome_validation.validate_chrome_blob.
+    chrome: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True

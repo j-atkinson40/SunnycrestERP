@@ -528,6 +528,8 @@ class TestFocusCompositionsService:
             "placement_order": [],
             "placement_geometry_overrides": {},
             "core_geometry_override": None,
+            # Sub-arc B-3 added chrome_overrides to the deltas vocabulary.
+            "chrome_overrides": {},
         }
         assert r.canvas_config_overrides == {}
 

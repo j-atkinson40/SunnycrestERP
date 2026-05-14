@@ -43,6 +43,10 @@ from app.services.focus_template_inheritance.focus_templates_service import (
     TemplateNotFound,
     get_template_by_id,
 )
+from app.services.focus_template_inheritance.chrome_validation import (
+    InvalidChromeShape,
+    validate_chrome_blob,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -72,6 +76,9 @@ _ALLOWED_DELTA_KEYS: tuple[str, ...] = (
     "placement_order",
     "placement_geometry_overrides",
     "core_geometry_override",
+    # Sub-arc B-3: Tier 3 chrome overrides. Field-level cascade over
+    # template.chrome_overrides + core.chrome.
+    "chrome_overrides",
 )
 
 
@@ -261,6 +268,7 @@ def _validate_deltas(deltas: Any, *, core: FocusCore) -> dict:
             "placement_order": [],
             "placement_geometry_overrides": {},
             "core_geometry_override": None,
+            "chrome_overrides": {},
         }
     if not isinstance(deltas, dict):
         raise InvalidCompositionShape("deltas must be a dict or null")
@@ -300,12 +308,24 @@ def _validate_deltas(deltas: Any, *, core: FocusCore) -> dict:
         deltas.get("core_geometry_override"), core=core
     )
 
+    chrome_overrides_raw = deltas.get("chrome_overrides", {})
+    if not isinstance(chrome_overrides_raw, dict):
+        raise InvalidCompositionShape(
+            "chrome_overrides must be a dict"
+        )
+    chrome_overrides_blob = dict(chrome_overrides_raw)
+    try:
+        validate_chrome_blob(chrome_overrides_blob)
+    except InvalidChromeShape as exc:
+        raise InvalidCompositionShape(str(exc)) from exc
+
     return {
         "hidden_placement_ids": hidden,
         "additional_placements": additional,
         "placement_order": order,
         "placement_geometry_overrides": geometry_overrides,
         "core_geometry_override": core_override,
+        "chrome_overrides": chrome_overrides_blob,
     }
 
 

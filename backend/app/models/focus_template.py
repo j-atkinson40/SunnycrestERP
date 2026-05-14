@@ -129,6 +129,15 @@ class FocusTemplate(Base):
         JSONB, nullable=False, default=dict
     )
 
+    # Sub-arc B-3 (r98): Tier 2 chrome overrides. Field-level cascade
+    # over `focus_cores.chrome`. Each present key overrides Tier 1;
+    # absent keys inherit. Explicit None values DO override (key-
+    # presence check). Service-layer validator:
+    # chrome_validation.validate_chrome_blob.
+    chrome_overrides: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True

@@ -43,6 +43,10 @@ from app.services.focus_template_inheritance.focus_cores_service import (
     CoreNotFound,
     get_core_by_id,
 )
+from app.services.focus_template_inheritance.chrome_validation import (
+    InvalidChromeShape,
+    validate_chrome_blob,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -319,6 +323,7 @@ def create_template(
     inherits_from_core_id: str,
     rows: Iterable[Mapping[str, Any]] | None = None,
     canvas_config: Mapping[str, Any] | None = None,
+    chrome_overrides: Mapping[str, Any] | None = None,
     created_by: str | None = None,
 ) -> FocusTemplate:
     """Create or version a template at (scope, vertical, template_slug).
@@ -358,6 +363,12 @@ def create_template(
     if not isinstance(cfg, dict):
         raise InvalidTemplateShape("canvas_config must be a dict")
 
+    chrome_blob = dict(chrome_overrides or {})
+    try:
+        validate_chrome_blob(chrome_blob)
+    except InvalidChromeShape as exc:
+        raise InvalidTemplateShape(str(exc)) from exc
+
     existing = _find_active(
         db, scope=scope, vertical=vertical, template_slug=template_slug
     )
@@ -376,6 +387,7 @@ def create_template(
         inherits_from_core_version=core.version,
         rows=rows_list,
         canvas_config=cfg,
+        chrome_overrides=chrome_blob,
         version=next_version,
         is_active=True,
         created_by=created_by,
@@ -396,6 +408,7 @@ def update_template(
     description: str | None = None,
     rows: Iterable[Mapping[str, Any]] | None = None,
     canvas_config: Mapping[str, Any] | None = None,
+    chrome_overrides: Mapping[str, Any] | None = None,
 ) -> FocusTemplate:
     """Version-bump the template. `scope`, `vertical`, `template_slug`,
     `inherits_from_core_id` are immutable through this surface —
@@ -435,6 +448,16 @@ def update_template(
     if not isinstance(new_cfg, dict):
         raise InvalidTemplateShape("canvas_config must be a dict")
 
+    new_chrome = (
+        dict(chrome_overrides)
+        if chrome_overrides is not None
+        else dict(prior.chrome_overrides or {})
+    )
+    try:
+        validate_chrome_blob(new_chrome)
+    except InvalidChromeShape as exc:
+        raise InvalidTemplateShape(str(exc)) from exc
+
     prior.is_active = False
     new_row = FocusTemplate(
         scope=prior.scope,
@@ -446,6 +469,7 @@ def update_template(
         inherits_from_core_version=prior.inherits_from_core_version,
         rows=new_rows,
         canvas_config=new_cfg,
+        chrome_overrides=new_chrome,
         version=prior.version + 1,
         is_active=True,
         created_by=prior.created_by,

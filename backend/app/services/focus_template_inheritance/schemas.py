@@ -12,6 +12,50 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+# ─── Chrome (sub-arc B-3) ───────────────────────────────────────
+
+
+class ChromeDropShadow(BaseModel):
+    offset_x: int
+    offset_y: int
+    blur: int = Field(ge=0)
+    spread: int  # can be negative
+    color: str = Field(min_length=1)
+
+    model_config = {"extra": "forbid"}
+
+
+class ChromeBorder(BaseModel):
+    width: int = Field(ge=0)
+    style: Literal["solid", "dashed", "dotted", "none"]
+    color: str = Field(min_length=1)
+    radius: int = Field(ge=0)
+
+    model_config = {"extra": "forbid"}
+
+
+class ChromePadding(BaseModel):
+    top: int = Field(ge=0)
+    right: int = Field(ge=0)
+    bottom: int = Field(ge=0)
+    left: int = Field(ge=0)
+
+    model_config = {"extra": "forbid"}
+
+
+class ChromeBlob(BaseModel):
+    """Chrome shape used at all three tiers. Each field is independently
+    nullable and optional — absent keys inherit from the parent tier,
+    explicit None overrides the parent (key-presence check)."""
+
+    background_color: str | None = None
+    drop_shadow: ChromeDropShadow | None = None
+    border: ChromeBorder | None = None
+    padding: ChromePadding | None = None
+
+    model_config = {"extra": "forbid"}
+
+
 # ─── Tier 1: cores ──────────────────────────────────────────────
 
 
@@ -27,6 +71,7 @@ class CoreCreateRequest(BaseModel):
     min_column_span: int = 6
     max_column_span: int = 12
     canvas_config: dict[str, Any] = Field(default_factory=dict)
+    chrome: dict[str, Any] = Field(default_factory=dict)
 
 
 class CoreUpdateRequest(BaseModel):
@@ -41,6 +86,7 @@ class CoreUpdateRequest(BaseModel):
     min_column_span: int | None = None
     max_column_span: int | None = None
     canvas_config: dict[str, Any] | None = None
+    chrome: dict[str, Any] | None = None
 
 
 class CoreResponse(BaseModel):
@@ -56,6 +102,7 @@ class CoreResponse(BaseModel):
     min_column_span: int
     max_column_span: int
     canvas_config: dict[str, Any]
+    chrome: dict[str, Any]
     version: int
     is_active: bool
     created_at: str
@@ -82,6 +129,7 @@ class TemplateCreateRequest(BaseModel):
     inherits_from_core_id: str = Field(min_length=1, max_length=36)
     rows: list[dict[str, Any]] = Field(default_factory=list)
     canvas_config: dict[str, Any] = Field(default_factory=dict)
+    chrome_overrides: dict[str, Any] = Field(default_factory=dict)
 
 
 class TemplateUpdateRequest(BaseModel):
@@ -89,6 +137,7 @@ class TemplateUpdateRequest(BaseModel):
     description: str | None = None
     rows: list[dict[str, Any]] | None = None
     canvas_config: dict[str, Any] | None = None
+    chrome_overrides: dict[str, Any] | None = None
 
 
 class TemplateResponse(BaseModel):
@@ -102,6 +151,7 @@ class TemplateResponse(BaseModel):
     inherits_from_core_version: int
     rows: list[dict[str, Any]]
     canvas_config: dict[str, Any]
+    chrome_overrides: dict[str, Any]
     version: int
     is_active: bool
     created_at: str
@@ -150,4 +200,8 @@ class ResolveResponse(BaseModel):
     core_registered_component: dict[str, str]
     rows: list[dict[str, Any]]
     canvas_config: dict[str, Any]
+    # Sub-arc B-3: resolved chrome (None when every chrome field
+    # resolves to None across all tiers — saves consumers rendering
+    # an empty wrapper).
+    resolved_chrome: dict[str, Any] | None = None
     sources: dict[str, Any]

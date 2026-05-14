@@ -230,6 +230,7 @@ def _core_to_response(row) -> CoreResponse:
         min_column_span=row.min_column_span,
         max_column_span=row.max_column_span,
         canvas_config=dict(row.canvas_config or {}),
+        chrome=dict(row.chrome or {}),
         version=row.version,
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else "",
@@ -249,6 +250,7 @@ def _template_to_response(row) -> TemplateResponse:
         inherits_from_core_version=row.inherits_from_core_version,
         rows=list(row.rows or []),
         canvas_config=dict(row.canvas_config or {}),
+        chrome_overrides=dict(row.chrome_overrides or {}),
         version=row.version,
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else "",
@@ -316,6 +318,7 @@ def admin_create_core(
             min_column_span=body.min_column_span,
             max_column_span=body.max_column_span,
             canvas_config=body.canvas_config,
+            chrome=body.chrome,
             # PlatformUser id cannot satisfy users.id FK; attribution
             # deferred per relocation-phase note in CLAUDE.md.
             created_by=None,
@@ -347,6 +350,7 @@ def admin_update_core(
             min_column_span=body.min_column_span,
             max_column_span=body.max_column_span,
             canvas_config=body.canvas_config,
+            chrome=body.chrome,
         )
     except Exception as exc:
         raise _translate(exc)
@@ -439,6 +443,7 @@ def admin_create_template(
             inherits_from_core_id=body.inherits_from_core_id,
             rows=body.rows,
             canvas_config=body.canvas_config,
+            chrome_overrides=body.chrome_overrides,
             created_by=None,
         )
     except Exception as exc:
@@ -462,6 +467,7 @@ def admin_update_template(
             description=body.description,
             rows=body.rows,
             canvas_config=body.canvas_config,
+            chrome_overrides=body.chrome_overrides,
         )
     except Exception as exc:
         raise _translate(exc)

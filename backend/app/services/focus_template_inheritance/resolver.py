@@ -57,6 +57,9 @@ from app.models.focus_template import (
     SCOPE_VERTICAL_DEFAULT,
     FocusTemplate,
 )
+from app.services.focus_template_inheritance.chrome_validation import (
+    CHROME_FIELDS,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -84,6 +87,10 @@ class ResolvedFocus(BaseModel):
     core_registered_component: dict[str, str]
     rows: list[dict[str, Any]]
     canvas_config: dict[str, Any]
+    # Sub-arc B-3: resolved chrome after field-level cascade.
+    # None when every chrome field resolves to None across all
+    # tiers (saves consumers rendering an empty wrapper).
+    resolved_chrome: dict[str, Any] | None
     sources: dict[str, Any]
 
 
@@ -397,6 +404,41 @@ def resolve_focus(
     if composition is not None:
         canvas_config.update(dict(composition.canvas_config_overrides or {}))
 
+    # Sub-arc B-3: chrome field-level cascade per locked merge rule.
+    # Key-presence check at each tier (explicit None overrides parent).
+    core_chrome = dict(core.chrome or {})
+    template_chrome_overrides = dict(template.chrome_overrides or {})
+    composition_chrome_overrides: dict[str, Any] = {}
+    if composition is not None:
+        deltas_for_chrome = composition.deltas or {}
+        composition_chrome_overrides = dict(
+            deltas_for_chrome.get("chrome_overrides", {}) or {}
+        )
+
+    resolved_chrome: dict[str, Any] = {}
+    chrome_sources: dict[str, str | None] = {}
+    for field in CHROME_FIELDS:
+        if field in composition_chrome_overrides:
+            resolved_chrome[field] = composition_chrome_overrides[field]
+            chrome_sources[field] = "tier3"
+        elif field in template_chrome_overrides:
+            resolved_chrome[field] = template_chrome_overrides[field]
+            chrome_sources[field] = "tier2"
+        elif field in core_chrome:
+            resolved_chrome[field] = core_chrome[field]
+            chrome_sources[field] = "tier1"
+        else:
+            resolved_chrome[field] = None
+            chrome_sources[field] = None
+
+    # Collapse to top-level None when every field is None — saves
+    # consumers rendering an empty wrapper. The per-field sources
+    # dict is still reported.
+    if all(v is None for v in resolved_chrome.values()):
+        resolved_chrome_payload: dict[str, Any] | None = None
+    else:
+        resolved_chrome_payload = resolved_chrome
+
     sources: dict[str, Any] = {
         "template": {
             "id": template.id,
@@ -418,6 +460,9 @@ def resolve_focus(
             if composition is not None
             else None
         ),
+        # Sub-arc B-3: per-field chrome provenance for the editor's
+        # "inherited from" indicators (consumed by sub-arc C-2).
+        "chrome_sources": chrome_sources,
     }
 
     return ResolvedFocus(
@@ -435,5 +480,6 @@ def resolve_focus(
         },
         rows=rows,
         canvas_config=canvas_config,
+        resolved_chrome=resolved_chrome_payload,
         sources=sources,
     )

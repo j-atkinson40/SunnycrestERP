@@ -59,3 +59,9 @@ from app.services.focus_template_inheritance.resolver import (  # noqa: F401
     ResolvedFocus,
     resolve_focus,
 )
+from app.services.focus_template_inheritance.chrome_validation import (  # noqa: F401
+    CHROME_FIELDS,
+    BORDER_STYLES,
+    InvalidChromeShape,
+    validate_chrome_blob,
+)
