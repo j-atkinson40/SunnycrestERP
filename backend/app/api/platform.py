@@ -36,6 +36,7 @@ from app.api.routes.admin import (
     visual_editor_classes,
     visual_editor_compositions,
     visual_editor_dashboard_layouts,
+    focus_template_inheritance as admin_focus_template_inheritance,
     plugin_registry as admin_plugin_registry,
     studio_inventory as admin_studio_inventory,
     verticals as admin_verticals,
@@ -162,6 +163,14 @@ platform_router.include_router(
     visual_editor_dashboard_layouts.router,
     prefix="/admin/visual-editor/dashboard-layouts",
     tags=["Visual Editor — Dashboard Layouts"],
+)
+# Focus Template Inheritance — sub-arc B-1 (May 2026). Three-tier
+# inheritance (cores → templates → compositions) with delta-storage
+# at Tier 3.
+platform_router.include_router(
+    admin_focus_template_inheritance.router,
+    prefix="/admin/focus-template-inheritance",
+    tags=["Focus Template Inheritance"],
 )
 # R-8.y.d — Plugin Registry browser introspection endpoint.
 platform_router.include_router(
