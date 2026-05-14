@@ -47,6 +47,10 @@ from app.services.focus_template_inheritance.chrome_validation import (
     InvalidChromeShape,
     validate_chrome_blob,
 )
+from app.services.focus_template_inheritance.substrate_validation import (
+    InvalidSubstrateShape,
+    validate_substrate_blob,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -79,6 +83,9 @@ _ALLOWED_DELTA_KEYS: tuple[str, ...] = (
     # Sub-arc B-3: Tier 3 chrome overrides. Field-level cascade over
     # template.chrome_overrides + core.chrome.
     "chrome_overrides",
+    # Sub-arc B-4: Tier 3 substrate overrides. Field-level cascade
+    # over template.substrate. Cores stay substrate-free.
+    "substrate_overrides",
 )
 
 
@@ -269,6 +276,7 @@ def _validate_deltas(deltas: Any, *, core: FocusCore) -> dict:
             "placement_geometry_overrides": {},
             "core_geometry_override": None,
             "chrome_overrides": {},
+            "substrate_overrides": {},
         }
     if not isinstance(deltas, dict):
         raise InvalidCompositionShape("deltas must be a dict or null")
@@ -319,6 +327,17 @@ def _validate_deltas(deltas: Any, *, core: FocusCore) -> dict:
     except InvalidChromeShape as exc:
         raise InvalidCompositionShape(str(exc)) from exc
 
+    substrate_overrides_raw = deltas.get("substrate_overrides", {})
+    if not isinstance(substrate_overrides_raw, dict):
+        raise InvalidCompositionShape(
+            "substrate_overrides must be a dict"
+        )
+    substrate_overrides_blob = dict(substrate_overrides_raw)
+    try:
+        validate_substrate_blob(substrate_overrides_blob)
+    except InvalidSubstrateShape as exc:
+        raise InvalidCompositionShape(str(exc)) from exc
+
     return {
         "hidden_placement_ids": hidden,
         "additional_placements": additional,
@@ -326,6 +345,7 @@ def _validate_deltas(deltas: Any, *, core: FocusCore) -> dict:
         "placement_geometry_overrides": geometry_overrides,
         "core_geometry_override": core_override,
         "chrome_overrides": chrome_overrides_blob,
+        "substrate_overrides": substrate_overrides_blob,
     }
 
 

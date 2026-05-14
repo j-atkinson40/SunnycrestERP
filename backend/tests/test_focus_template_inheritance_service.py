@@ -530,6 +530,8 @@ class TestFocusCompositionsService:
             "core_geometry_override": None,
             # Sub-arc B-3 added chrome_overrides to the deltas vocabulary.
             "chrome_overrides": {},
+            # Sub-arc B-4 added substrate_overrides to the deltas vocabulary.
+            "substrate_overrides": {},
         }
         assert r.canvas_config_overrides == {}
 

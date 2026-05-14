@@ -251,6 +251,7 @@ def _template_to_response(row) -> TemplateResponse:
         rows=list(row.rows or []),
         canvas_config=dict(row.canvas_config or {}),
         chrome_overrides=dict(row.chrome_overrides or {}),
+        substrate=dict(getattr(row, "substrate", None) or {}),
         version=row.version,
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else "",
@@ -444,6 +445,7 @@ def admin_create_template(
             rows=body.rows,
             canvas_config=body.canvas_config,
             chrome_overrides=body.chrome_overrides,
+            substrate=body.substrate,
             created_by=None,
         )
     except Exception as exc:
@@ -468,6 +470,7 @@ def admin_update_template(
             rows=body.rows,
             canvas_config=body.canvas_config,
             chrome_overrides=body.chrome_overrides,
+            substrate=body.substrate,
         )
     except Exception as exc:
         raise _translate(exc)

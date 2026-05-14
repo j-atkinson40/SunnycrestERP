@@ -79,6 +79,11 @@ SCHEDULING_FH_TEMPLATE = {
     ),
     "rows": [],  # Editor populates accessories in sub-arc C.
     "canvas_config": {},
+    # Sub-arc B-4: Tier 2 page-background substrate default — canonical
+    # "morning-warm" preset matches the funeral-scheduling mockup
+    # (warm-gradient atmosphere with brass + warning accents). Tier 3
+    # per-tenant substrate_overrides ride deltas.substrate_overrides.
+    "substrate": {"preset": "morning-warm"},
 }
 
 
@@ -130,6 +135,7 @@ def _seed_template(db, *, inherits_from_core_id: str) -> str:
         inherits_from_core_id=inherits_from_core_id,
         rows=SCHEDULING_FH_TEMPLATE["rows"],
         canvas_config=SCHEDULING_FH_TEMPLATE["canvas_config"],
+        substrate=SCHEDULING_FH_TEMPLATE["substrate"],
     )
     logger.info(
         "Seeded Tier 2 template %r (id=%s, vertical=%s, version=%d)",

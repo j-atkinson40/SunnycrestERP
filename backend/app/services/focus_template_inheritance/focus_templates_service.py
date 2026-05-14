@@ -47,6 +47,10 @@ from app.services.focus_template_inheritance.chrome_validation import (
     InvalidChromeShape,
     validate_chrome_blob,
 )
+from app.services.focus_template_inheritance.substrate_validation import (
+    InvalidSubstrateShape,
+    validate_substrate_blob,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -324,6 +328,7 @@ def create_template(
     rows: Iterable[Mapping[str, Any]] | None = None,
     canvas_config: Mapping[str, Any] | None = None,
     chrome_overrides: Mapping[str, Any] | None = None,
+    substrate: Mapping[str, Any] | None = None,
     created_by: str | None = None,
 ) -> FocusTemplate:
     """Create or version a template at (scope, vertical, template_slug).
@@ -369,6 +374,12 @@ def create_template(
     except InvalidChromeShape as exc:
         raise InvalidTemplateShape(str(exc)) from exc
 
+    substrate_blob = dict(substrate or {})
+    try:
+        validate_substrate_blob(substrate_blob)
+    except InvalidSubstrateShape as exc:
+        raise InvalidTemplateShape(str(exc)) from exc
+
     existing = _find_active(
         db, scope=scope, vertical=vertical, template_slug=template_slug
     )
@@ -388,6 +399,7 @@ def create_template(
         rows=rows_list,
         canvas_config=cfg,
         chrome_overrides=chrome_blob,
+        substrate=substrate_blob,
         version=next_version,
         is_active=True,
         created_by=created_by,
@@ -409,6 +421,7 @@ def update_template(
     rows: Iterable[Mapping[str, Any]] | None = None,
     canvas_config: Mapping[str, Any] | None = None,
     chrome_overrides: Mapping[str, Any] | None = None,
+    substrate: Mapping[str, Any] | None = None,
 ) -> FocusTemplate:
     """Version-bump the template. `scope`, `vertical`, `template_slug`,
     `inherits_from_core_id` are immutable through this surface —
@@ -458,6 +471,16 @@ def update_template(
     except InvalidChromeShape as exc:
         raise InvalidTemplateShape(str(exc)) from exc
 
+    new_substrate = (
+        dict(substrate)
+        if substrate is not None
+        else dict(prior.substrate or {})
+    )
+    try:
+        validate_substrate_blob(new_substrate)
+    except InvalidSubstrateShape as exc:
+        raise InvalidTemplateShape(str(exc)) from exc
+
     prior.is_active = False
     new_row = FocusTemplate(
         scope=prior.scope,
@@ -470,6 +493,7 @@ def update_template(
         rows=new_rows,
         canvas_config=new_cfg,
         chrome_overrides=new_chrome,
+        substrate=new_substrate,
         version=prior.version + 1,
         is_active=True,
         created_by=prior.created_by,

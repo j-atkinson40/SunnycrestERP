@@ -60,6 +60,9 @@ from app.models.focus_template import (
 from app.services.focus_template_inheritance.chrome_validation import (
     CHROME_FIELDS,
 )
+from app.services.focus_template_inheritance.substrate_validation import (
+    SUBSTRATE_FIELDS,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -147,6 +150,81 @@ def expand_preset(chrome: dict[str, Any]) -> dict[str, Any]:
     return expanded
 
 
+# ─── Substrate preset expansion (sub-arc B-4) ────────────────────
+#
+# Substrate is the Focus-level atmospheric backdrop (the warm-
+# gradient page background behind the core + accessories). Distinct
+# from chrome (per-surface composition). Each preset resolves to a
+# canonical block of DESIGN_LANGUAGE warm-family tokens.
+#
+# Substrate v1 ships at Tier 2 (focus_templates.substrate) + Tier 3
+# (focus_compositions.deltas.substrate_overrides). Tier 1 cores are
+# substrate-free by design (locked decision).
+#
+# Slider-to-CSS mapping (intensity 0-100 → gradient stops + alpha)
+# is intentionally NOT performed here — that stays the consumer's
+# concern in sub-arc C-2's runtime renderer. Resolver preserves
+# integer values verbatim.
+
+SUBSTRATE_PRESETS: dict[str, dict[str, Any]] = {
+    "morning-warm": {
+        "base_token": "surface-base",
+        "accent_token_1": "accent-brass-subtle",
+        "accent_token_2": "status-warning-muted",
+        "intensity": 70,
+    },
+    "morning-cool": {
+        "base_token": "surface-base",
+        "accent_token_1": "status-info-muted",
+        "accent_token_2": "accent-brass-subtle",
+        "intensity": 55,
+    },
+    "evening-lounge": {
+        "base_token": "surface-sunken",
+        "accent_token_1": "accent-brass-muted",
+        "accent_token_2": "accent-brass-subtle",
+        "intensity": 80,
+    },
+    "neutral": {
+        "base_token": "surface-base",
+        "accent_token_1": None,
+        "accent_token_2": None,
+        "intensity": 15,
+    },
+    "custom": {},
+}
+
+
+def expand_substrate_preset(substrate: dict[str, Any]) -> dict[str, Any]:
+    """Expand a substrate blob's preset (if any) into its canonical
+    defaults, then overlay the blob's explicit fields on top. The
+    expansion is per-tier (called once per tier in the cascade
+    BEFORE cross-tier merging).
+
+    Behavior:
+      - No "preset" key OR preset is None → return input unchanged
+        (preserves the field-presence cascade semantics).
+      - preset == "custom" → return input unchanged (custom means
+        "no preset; use the explicit overrides only").
+      - Known preset → start from SUBSTRATE_PRESETS[preset], overlay
+        explicit fields from `substrate` on top.
+
+    The returned dict is fresh (caller is free to mutate).
+    """
+    if not isinstance(substrate, dict):
+        return {}
+    preset = substrate.get("preset")
+    if preset is None or preset == "custom":
+        return dict(substrate)
+    defaults = SUBSTRATE_PRESETS.get(preset, {})
+    expanded: dict[str, Any] = dict(defaults)
+    # Overlay every explicit field from the blob (including preset
+    # itself, so source tier remains identifiable downstream).
+    for k, v in substrate.items():
+        expanded[k] = v
+    return expanded
+
+
 # ─── Exceptions + types ──────────────────────────────────────────
 
 
@@ -173,6 +251,12 @@ class ResolvedFocus(BaseModel):
     # None when every chrome field resolves to None across all
     # tiers (saves consumers rendering an empty wrapper).
     resolved_chrome: dict[str, Any] | None
+    # Sub-arc B-4: resolved page-background substrate after Tier 2
+    # → Tier 3 field-level cascade. None when every substrate field
+    # resolves to None across both tiers (saves consumers rendering
+    # an empty backdrop wrapper). Tier 1 cores are substrate-free
+    # by design — no Tier 1 contribution to this field.
+    resolved_substrate: dict[str, Any] | None = None
     sources: dict[str, Any]
 
 
@@ -528,6 +612,41 @@ def resolve_focus(
     else:
         resolved_chrome_payload = resolved_chrome
 
+    # Sub-arc B-4: substrate cascade. Tier 2 + Tier 3 only (Tier 1
+    # is substrate-free by design). Each tier's blob is FIRST
+    # expanded via expand_substrate_preset() so a tier's preset
+    # contributes its canonical defaults; THEN cross-tier field-
+    # level cascade runs (Tier 3 wins over Tier 2, key-presence
+    # check at each tier — explicit None overrides parent).
+    template_substrate_raw = dict(template.substrate or {})
+    composition_substrate_raw: dict[str, Any] = {}
+    if composition is not None:
+        deltas_for_substrate = composition.deltas or {}
+        composition_substrate_raw = dict(
+            deltas_for_substrate.get("substrate_overrides", {}) or {}
+        )
+
+    tier2_substrate_expanded = expand_substrate_preset(template_substrate_raw)
+    tier3_substrate_expanded = expand_substrate_preset(composition_substrate_raw)
+
+    resolved_substrate: dict[str, Any] = {}
+    substrate_sources: dict[str, str | None] = {}
+    for field in SUBSTRATE_FIELDS:
+        if field in tier3_substrate_expanded:
+            resolved_substrate[field] = tier3_substrate_expanded[field]
+            substrate_sources[field] = "tier3"
+        elif field in tier2_substrate_expanded:
+            resolved_substrate[field] = tier2_substrate_expanded[field]
+            substrate_sources[field] = "tier2"
+        else:
+            resolved_substrate[field] = None
+            substrate_sources[field] = None
+
+    if all(v is None for v in resolved_substrate.values()):
+        resolved_substrate_payload: dict[str, Any] | None = None
+    else:
+        resolved_substrate_payload = resolved_substrate
+
     sources: dict[str, Any] = {
         "template": {
             "id": template.id,
@@ -552,6 +671,9 @@ def resolve_focus(
         # Sub-arc B-3: per-field chrome provenance for the editor's
         # "inherited from" indicators (consumed by sub-arc C-2).
         "chrome_sources": chrome_sources,
+        # Sub-arc B-4: per-field substrate provenance (Tier 2 +
+        # Tier 3 only; cores are substrate-free).
+        "substrate_sources": substrate_sources,
     }
 
     return ResolvedFocus(
@@ -570,5 +692,6 @@ def resolve_focus(
         rows=rows,
         canvas_config=canvas_config,
         resolved_chrome=resolved_chrome_payload,
+        resolved_substrate=resolved_substrate_payload,
         sources=sources,
     )

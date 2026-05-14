@@ -35,6 +35,38 @@ class ChromeBlob(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+# ─── Substrate (sub-arc B-4 — page-background vocabulary) ────────
+
+
+class SubstrateBlob(BaseModel):
+    """Substrate v1 shape used at Tier 2 (template default) + Tier 3
+    (composition override). Each field is independently nullable and
+    optional — absent keys inherit from Tier 2, explicit None
+    overrides Tier 2 (key-presence check). The resolver expands
+    `preset` into its canonical defaults before cross-tier cascade.
+
+    Tier 1 cores are substrate-free by design — substrate is a
+    Focus-level atmospheric backdrop, not a core composition concern.
+    """
+
+    preset: (
+        Literal[
+            "morning-warm",
+            "morning-cool",
+            "evening-lounge",
+            "neutral",
+            "custom",
+        ]
+        | None
+    ) = None
+    intensity: int | None = Field(default=None, ge=0, le=100)
+    base_token: str | None = Field(default=None, min_length=1)
+    accent_token_1: str | None = Field(default=None, min_length=1)
+    accent_token_2: str | None = Field(default=None, min_length=1)
+
+    model_config = {"extra": "forbid"}
+
+
 # ─── Tier 1: cores ──────────────────────────────────────────────
 
 
@@ -109,6 +141,8 @@ class TemplateCreateRequest(BaseModel):
     rows: list[dict[str, Any]] = Field(default_factory=list)
     canvas_config: dict[str, Any] = Field(default_factory=dict)
     chrome_overrides: dict[str, Any] = Field(default_factory=dict)
+    # Sub-arc B-4: Tier 2 page-background substrate default.
+    substrate: dict[str, Any] = Field(default_factory=dict)
 
 
 class TemplateUpdateRequest(BaseModel):
@@ -117,6 +151,8 @@ class TemplateUpdateRequest(BaseModel):
     rows: list[dict[str, Any]] | None = None
     canvas_config: dict[str, Any] | None = None
     chrome_overrides: dict[str, Any] | None = None
+    # Sub-arc B-4: omit to preserve prior substrate on version-bump.
+    substrate: dict[str, Any] | None = None
 
 
 class TemplateResponse(BaseModel):
@@ -131,6 +167,8 @@ class TemplateResponse(BaseModel):
     rows: list[dict[str, Any]]
     canvas_config: dict[str, Any]
     chrome_overrides: dict[str, Any]
+    # Sub-arc B-4: stored substrate blob (pre-cascade).
+    substrate: dict[str, Any]
     version: int
     is_active: bool
     created_at: str
@@ -183,4 +221,8 @@ class ResolveResponse(BaseModel):
     # resolves to None across all tiers — saves consumers rendering
     # an empty wrapper).
     resolved_chrome: dict[str, Any] | None = None
+    # Sub-arc B-4: resolved page-background substrate (None when
+    # every substrate field resolves to None across Tier 2 + Tier 3 —
+    # cores stay substrate-free by design).
+    resolved_substrate: dict[str, Any] | None = None
     sources: dict[str, Any]

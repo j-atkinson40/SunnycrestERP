@@ -138,6 +138,17 @@ class FocusTemplate(Base):
         JSONB, nullable=False, default=dict
     )
 
+    # Sub-arc B-4 (r100): Tier 2 page-background substrate. Distinct
+    # from chrome (per-surface composition) — substrate is the Focus-
+    # level atmospheric backdrop (warm-gradient page background
+    # behind core + accessories). Tier 3 (focus_compositions.deltas
+    # key `substrate_overrides`) overrides field-by-field; Tier 1
+    # cores stay substrate-free by design. Service-layer validator:
+    # substrate_validation.validate_substrate_blob.
+    substrate: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
