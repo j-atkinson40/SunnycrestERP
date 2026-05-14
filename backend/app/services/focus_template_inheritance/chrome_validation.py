@@ -15,9 +15,11 @@ Chrome v2 vocabulary (locked sub-arc B-3.5 decisions):
 
     {
         "preset":           "card" | "modal" | "dropdown" |
-                            "toast" | "floating" | "custom" | None,
+                            "toast" | "floating" | "frosted" |
+                            "custom" | None,
         "elevation":        int (0-100) | None,
         "corner_radius":    int (0-100) | None,
+        "backdrop_blur":    int (0-100) | None,
         "background_token": str | None,    # design-token reference
         "border_token":     str | None,    # design-token reference
         "padding_token":    str | None,    # design-token reference
@@ -45,13 +47,14 @@ CHROME_FIELDS: tuple[str, ...] = (
     "preset",
     "elevation",
     "corner_radius",
+    "backdrop_blur",
     "background_token",
     "border_token",
     "padding_token",
 )
 
 VALID_PRESETS: frozenset[str] = frozenset(
-    {"card", "modal", "dropdown", "toast", "floating", "custom"}
+    {"card", "modal", "dropdown", "toast", "floating", "frosted", "custom"}
 )
 
 
@@ -95,6 +98,7 @@ _FIELD_VALIDATORS = {
     "preset": _validate_preset,
     "elevation": lambda v: _validate_slider(v, "elevation"),
     "corner_radius": lambda v: _validate_slider(v, "corner_radius"),
+    "backdrop_blur": lambda v: _validate_slider(v, "backdrop_blur"),
     "background_token": lambda v: _validate_token(v, "background_token"),
     "border_token": lambda v: _validate_token(v, "border_token"),
     "padding_token": lambda v: _validate_token(v, "padding_token"),

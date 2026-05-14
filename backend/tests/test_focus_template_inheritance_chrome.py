@@ -209,13 +209,45 @@ class TestChromeValidationV2:
             "preset",
             "elevation",
             "corner_radius",
+            "backdrop_blur",
             "background_token",
             "border_token",
             "padding_token",
         )
         assert VALID_PRESETS == frozenset(
-            {"card", "modal", "dropdown", "toast", "floating", "custom"}
+            {
+                "card",
+                "modal",
+                "dropdown",
+                "toast",
+                "floating",
+                "frosted",
+                "custom",
+            }
         )
+
+    # ─── Sub-arc C-1 additions: frosted preset + backdrop_blur ────
+
+    def test_frosted_preset_valid(self):
+        validate_chrome_blob({"preset": "frosted"})
+
+    def test_backdrop_blur_in_range_valid(self):
+        validate_chrome_blob({"backdrop_blur": 0})
+        validate_chrome_blob({"backdrop_blur": 60})
+        validate_chrome_blob({"backdrop_blur": 100})
+
+    def test_backdrop_blur_out_of_bounds_rejected(self):
+        with pytest.raises(
+            InvalidChromeShape, match=r"backdrop_blur must be in \[0, 100\]"
+        ):
+            validate_chrome_blob({"backdrop_blur": 101})
+        with pytest.raises(
+            InvalidChromeShape, match=r"backdrop_blur must be in \[0, 100\]"
+        ):
+            validate_chrome_blob({"backdrop_blur": -1})
+
+    def test_backdrop_blur_null_valid(self):
+        validate_chrome_blob({"backdrop_blur": None})
 
 
 # ═══ TestPresetExpansion ════════════════════════════════════════════
@@ -268,6 +300,25 @@ class TestPresetExpansion:
         assert result["elevation"] == 80
         assert result["corner_radius"] == 37
         assert result["background_token"] == "surface-elevated"
+
+    # ─── Sub-arc C-1: frosted preset expansion ────────────────────
+
+    def test_frosted_preset_returns_canonical_defaults(self):
+        result = expand_preset({"preset": "frosted"})
+        assert result["preset"] == "frosted"
+        assert result["background_token"] == "surface-elevated"
+        assert result["elevation"] == 50
+        assert result["corner_radius"] == 62
+        assert result["padding_token"] == "space-6"
+        assert result["backdrop_blur"] == 60
+        assert result["border_token"] == "border-subtle"
+
+    def test_frosted_preset_with_backdrop_blur_override(self):
+        result = expand_preset({"preset": "frosted", "backdrop_blur": 100})
+        # Overlay wins for backdrop_blur; rest from preset.
+        assert result["backdrop_blur"] == 100
+        assert result["background_token"] == "surface-elevated"
+        assert result["elevation"] == 50
 
 
 # ═══ TestCoreServiceChrome ══════════════════════════════════════════
@@ -526,6 +577,34 @@ class TestResolverChromeCascadeV2:
         _make_template(db, core.id)
         r = resolve_focus(db, template_slug="scheduling-default")
         assert r.resolved_chrome["background_token"] == "made-up-token-name"
+
+    # ─── Sub-arc C-1: backdrop_blur + frosted cascade ─────────────
+
+    def test_frosted_preset_resolves_through_cascade(self, db):
+        core = _make_core(db, chrome={"preset": "frosted"})
+        _make_template(db, core.id)
+        r = resolve_focus(db, template_slug="scheduling-default")
+        assert r.resolved_chrome is not None
+        assert r.resolved_chrome["backdrop_blur"] == 60
+        assert r.resolved_chrome["background_token"] == "surface-elevated"
+        assert r.sources["chrome_sources"]["backdrop_blur"] == "tier1"
+
+    def test_backdrop_blur_tier3_overrides_tier1(self, db, tenant_company):
+        core = _make_core(db, chrome={"preset": "frosted"})
+        t = _make_template(db, core.id)
+        create_or_update_composition(
+            db,
+            tenant_id=tenant_company,
+            template_id=t.id,
+            deltas={"chrome_overrides": {"backdrop_blur": 100}},
+        )
+        r = resolve_focus(
+            db, template_slug="scheduling-default", tenant_id=tenant_company
+        )
+        assert r.resolved_chrome["backdrop_blur"] == 100
+        assert r.sources["chrome_sources"]["backdrop_blur"] == "tier3"
+        # Other frosted fields still flow from tier1.
+        assert r.sources["chrome_sources"]["background_token"] == "tier1"
 
     def test_expand_preset_runs_before_cascade_not_after(self, db):
         # If preset expansion ran AFTER cascade, a tier2 preset=modal

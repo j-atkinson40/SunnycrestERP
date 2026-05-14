@@ -24,10 +24,14 @@ class ChromeBlob(BaseModel):
     """
 
     preset: (
-        Literal["card", "modal", "dropdown", "toast", "floating", "custom"] | None
+        Literal[
+            "card", "modal", "dropdown", "toast", "floating", "frosted", "custom"
+        ]
+        | None
     ) = None
     elevation: int | None = Field(default=None, ge=0, le=100)
     corner_radius: int | None = Field(default=None, ge=0, le=100)
+    backdrop_blur: int | None = Field(default=None, ge=0, le=100)
     background_token: str | None = Field(default=None, min_length=1)
     border_token: str | None = Field(default=None, min_length=1)
     padding_token: str | None = Field(default=None, min_length=1)

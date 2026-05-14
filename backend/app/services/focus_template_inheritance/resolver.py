@@ -116,6 +116,14 @@ PRESETS: dict[str, dict[str, Any]] = {
         "padding_token": "space-4",
         "border_token": "border-brass",
     },
+    "frosted": {
+        "background_token": "surface-elevated",
+        "elevation": 50,
+        "corner_radius": 62,
+        "padding_token": "space-6",
+        "backdrop_blur": 60,
+        "border_token": "border-subtle",
+    },
     "custom": {},
 }
 

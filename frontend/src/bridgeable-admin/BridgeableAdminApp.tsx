@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom"
 import { AdminAuthProvider } from "./lib/admin-auth-context"
 import { AdminLayout } from "./components/AdminLayout"
 import { VisualEditorLayout } from "./components/VisualEditorLayout"
+import ChromePrimitivesDemoPage from "./pages/visual-editor/ChromePrimitivesDemoPage"
 
 // Phase R-0 + R-1 — runtime editor pages are lazy-loaded so the
 // tenant route tree chunk only ships when an admin actually visits
@@ -100,6 +101,16 @@ export function BridgeableAdminApp() {
       <Routes>
         {/* All standalone visual-editor URLs redirect into Studio. */}
         <Route index element={<StudioRedirect />} />
+        {/* Sub-arc C-1 — chrome primitives demo. Internal / dev surface,
+            not a production editor. Mounted as a real page (not a
+            StudioRedirect) so the demo can be navigated to during
+            visual development of the C-2 production editor. The
+            VisualEditorLayout above already enforces platform-admin
+            auth. */}
+        <Route
+          path="_chrome-primitives-demo"
+          element={<ChromePrimitivesDemoPage />}
+        />
         <Route path="themes" element={<StudioRedirect />} />
         <Route path="focuses" element={<StudioRedirect />} />
         <Route path="widgets" element={<StudioRedirect />} />
