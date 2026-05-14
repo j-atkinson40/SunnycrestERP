@@ -65,6 +65,88 @@ from app.services.focus_template_inheritance.chrome_validation import (
 logger = logging.getLogger(__name__)
 
 
+# ─── Chrome preset expansion (sub-arc B-3.5) ─────────────────────
+#
+# Each preset is a named composition that resolves to a specific
+# defaults block, per DESIGN_LANGUAGE §6 (Surface composition
+# patterns). At resolve time we expand the preset's defaults FIRST,
+# then overlay any explicit fields the same tier provided on top.
+# Cross-tier cascade runs on the expanded form, so a Tier-2 author
+# can mix "preset = card" at Tier 1 with "elevation = 80" at Tier 2
+# without re-declaring the preset.
+#
+# Slider-to-token mapping (storage 0-100, resolution to canonical
+# token names) is intentionally NOT performed here — it stays the
+# consumer's concern in sub-arc C-1's runtime renderer. Resolver
+# preserves integer values verbatim.
+
+PRESETS: dict[str, dict[str, Any]] = {
+    "card": {
+        "background_token": "surface-elevated",
+        "elevation": 37,
+        "corner_radius": 37,
+        "padding_token": "space-6",
+    },
+    "modal": {
+        "background_token": "surface-raised",
+        "elevation": 62,
+        "corner_radius": 62,
+        "padding_token": "space-6",
+    },
+    "dropdown": {
+        "background_token": "surface-raised",
+        "elevation": 62,
+        "corner_radius": 37,
+        "padding_token": "space-2",
+        "border_token": "border-subtle",
+    },
+    "toast": {
+        "background_token": "surface-raised",
+        "elevation": 87,
+        "corner_radius": 37,
+        "padding_token": "space-4",
+    },
+    "floating": {
+        "background_token": "surface-raised",
+        "elevation": 87,
+        "corner_radius": 62,
+        "padding_token": "space-4",
+        "border_token": "border-brass",
+    },
+    "custom": {},
+}
+
+
+def expand_preset(chrome: dict[str, Any]) -> dict[str, Any]:
+    """Expand a chrome blob's preset (if any) into its canonical
+    defaults, then overlay the blob's explicit fields on top. The
+    expansion is per-tier (called once per tier in the cascade
+    BEFORE cross-tier merging).
+
+    Behavior:
+      - No "preset" key OR preset is None → return input unchanged
+        (preserves the field-presence cascade semantics).
+      - preset == "custom" → return input unchanged (custom means
+        "no preset; use the explicit overrides only").
+      - Known preset → start from PRESETS[preset], overlay explicit
+        fields from `chrome` on top.
+
+    The returned dict is fresh (caller is free to mutate).
+    """
+    if not isinstance(chrome, dict):
+        return {}
+    preset = chrome.get("preset")
+    if preset is None or preset == "custom":
+        return dict(chrome)
+    defaults = PRESETS.get(preset, {})
+    expanded: dict[str, Any] = dict(defaults)
+    # Overlay every explicit field from the blob (including preset
+    # itself, so source tier remains identifiable downstream).
+    for k, v in chrome.items():
+        expanded[k] = v
+    return expanded
+
+
 # ─── Exceptions + types ──────────────────────────────────────────
 
 
@@ -404,28 +486,35 @@ def resolve_focus(
     if composition is not None:
         canvas_config.update(dict(composition.canvas_config_overrides or {}))
 
-    # Sub-arc B-3: chrome field-level cascade per locked merge rule.
-    # Key-presence check at each tier (explicit None overrides parent).
-    core_chrome = dict(core.chrome or {})
-    template_chrome_overrides = dict(template.chrome_overrides or {})
-    composition_chrome_overrides: dict[str, Any] = {}
+    # Sub-arc B-3.5: chrome v2 cascade. Each tier's blob is FIRST
+    # expanded via expand_preset() so a tier's preset contributes
+    # its canonical defaults; THEN cross-tier field-level cascade
+    # runs (Tier 3 wins over Tier 2 wins over Tier 1, key-presence
+    # check at each tier — explicit None overrides parent).
+    core_chrome_raw = dict(core.chrome or {})
+    template_chrome_raw = dict(template.chrome_overrides or {})
+    composition_chrome_raw: dict[str, Any] = {}
     if composition is not None:
         deltas_for_chrome = composition.deltas or {}
-        composition_chrome_overrides = dict(
+        composition_chrome_raw = dict(
             deltas_for_chrome.get("chrome_overrides", {}) or {}
         )
+
+    tier1_expanded = expand_preset(core_chrome_raw)
+    tier2_expanded = expand_preset(template_chrome_raw)
+    tier3_expanded = expand_preset(composition_chrome_raw)
 
     resolved_chrome: dict[str, Any] = {}
     chrome_sources: dict[str, str | None] = {}
     for field in CHROME_FIELDS:
-        if field in composition_chrome_overrides:
-            resolved_chrome[field] = composition_chrome_overrides[field]
+        if field in tier3_expanded:
+            resolved_chrome[field] = tier3_expanded[field]
             chrome_sources[field] = "tier3"
-        elif field in template_chrome_overrides:
-            resolved_chrome[field] = template_chrome_overrides[field]
+        elif field in tier2_expanded:
+            resolved_chrome[field] = tier2_expanded[field]
             chrome_sources[field] = "tier2"
-        elif field in core_chrome:
-            resolved_chrome[field] = core_chrome[field]
+        elif field in tier1_expanded:
+            resolved_chrome[field] = tier1_expanded[field]
             chrome_sources[field] = "tier1"
         else:
             resolved_chrome[field] = None

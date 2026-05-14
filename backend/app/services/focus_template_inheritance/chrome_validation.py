@@ -1,6 +1,6 @@
-"""Chrome blob validation for Focus Template Inheritance (sub-arc B-3).
+"""Chrome blob validation for Focus Template Inheritance (sub-arc B-3.5).
 
-Validates the chrome shape stored at three tiers:
+Validates the chrome v2 shape stored at three tiers:
 
     Tier 1: focus_cores.chrome           (full defaults)
     Tier 2: focus_templates.chrome_overrides   (partial; field-level)
@@ -11,39 +11,29 @@ Tiers 2+3 store partial overrides — present keys override the
 parent tier, absent keys inherit. Empty dict `{}` is valid at any
 tier (inherit everything from parent).
 
-Chrome v1 vocabulary (locked decisions):
+Chrome v2 vocabulary (locked sub-arc B-3.5 decisions):
 
     {
-        "background_color": str | None,                # any non-empty string OR None
-        "drop_shadow": {                               # OR None
-            "offset_x": int,
-            "offset_y": int,
-            "blur": int (>= 0),
-            "spread": int (can be negative),
-            "color": str (non-empty)
-        } | None,
-        "border": {                                    # OR None
-            "width": int (>= 0),
-            "style": "solid" | "dashed" | "dotted" | "none",
-            "color": str (non-empty),
-            "radius": int (>= 0)
-        } | None,
-        "padding": {                                   # OR None
-            "top": int (>= 0),
-            "right": int (>= 0),
-            "bottom": int (>= 0),
-            "left": int (>= 0)
-        } | None
+        "preset":           "card" | "modal" | "dropdown" |
+                            "toast" | "floating" | "custom" | None,
+        "elevation":        int (0-100) | None,
+        "corner_radius":    int (0-100) | None,
+        "background_token": str | None,    # design-token reference
+        "border_token":     str | None,    # design-token reference
+        "padding_token":    str | None,    # design-token reference
     }
 
-Unknown top-level keys are rejected. Per-sub-object unknown keys
-are rejected too — drop_shadow / border / padding accept exactly
-the fields enumerated above.
+Preset semantics: named compositions resolve to specific token
+defaults in the resolver (see resolver._PRESETS). Explicit fields
+(elevation, corner_radius, *_token) override the preset's defaults
+for those fields. `preset="custom"` means "no preset — use explicit
+overrides only." Per-field cascade is the resolver's concern, NOT
+this validator's — this fn only checks shape.
 
-Color strings: service-layer accepts any non-empty string. The
-sub-arc C-1 color picker emits CSS-valid values (hex / rgb / rgba
-/ hsl / oklch). Service stays permissive so existing operators can
-paste arbitrary tokens.
+Token references are validated permissively at the service layer
+(any non-empty string accepted). Missing-token resolution is a
+consumer-side concern (CSS variable fallback in the runtime
+renderer).
 """
 
 from __future__ import annotations
@@ -52,27 +42,17 @@ from typing import Any
 
 
 CHROME_FIELDS: tuple[str, ...] = (
-    "background_color",
-    "drop_shadow",
-    "border",
-    "padding",
+    "preset",
+    "elevation",
+    "corner_radius",
+    "background_token",
+    "border_token",
+    "padding_token",
 )
 
-BORDER_STYLES: frozenset[str] = frozenset(
-    {"solid", "dashed", "dotted", "none"}
+VALID_PRESETS: frozenset[str] = frozenset(
+    {"card", "modal", "dropdown", "toast", "floating", "custom"}
 )
-
-_DROP_SHADOW_FIELDS: tuple[str, ...] = (
-    "offset_x",
-    "offset_y",
-    "blur",
-    "spread",
-    "color",
-)
-
-_BORDER_FIELDS: tuple[str, ...] = ("width", "style", "color", "radius")
-
-_PADDING_FIELDS: tuple[str, ...] = ("top", "right", "bottom", "left")
 
 
 class InvalidChromeShape(ValueError):
@@ -81,116 +61,53 @@ class InvalidChromeShape(ValueError):
     layer route translator converts it to HTTP 422 / 400."""
 
 
-def _require_int(value: Any, field: str, *, allow_negative: bool = False) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise InvalidChromeShape(f"{field} must be an integer")
-    if not allow_negative and value < 0:
-        raise InvalidChromeShape(f"{field} must be >= 0")
-    return value
+def _validate_preset(value: Any) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str) or value not in VALID_PRESETS:
+        raise InvalidChromeShape(
+            f"preset must be one of {sorted(VALID_PRESETS)} or null; "
+            f"got {value!r}"
+        )
 
 
-def _require_nonempty_str(value: Any, field: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise InvalidChromeShape(f"{field} must be a non-empty string")
-    return value
+def _validate_slider(value: Any, field: str) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise InvalidChromeShape(f"{field} must be an integer in [0, 100]")
+    if value < 0 or value > 100:
+        raise InvalidChromeShape(
+            f"{field} must be in [0, 100]; got {value}"
+        )
 
 
-def _validate_background_color(value: Any) -> None:
+def _validate_token(value: Any, field: str) -> None:
     if value is None:
         return
     if not isinstance(value, str) or not value:
         raise InvalidChromeShape(
-            "background_color must be a non-empty string or null"
+            f"{field} must be a non-empty string or null"
         )
-
-
-def _validate_drop_shadow(value: Any) -> None:
-    if value is None:
-        return
-    if not isinstance(value, dict):
-        raise InvalidChromeShape("drop_shadow must be a dict or null")
-    unknown = set(value.keys()) - set(_DROP_SHADOW_FIELDS)
-    if unknown:
-        raise InvalidChromeShape(
-            f"drop_shadow has unknown keys: {sorted(unknown)}; "
-            f"allowed: {_DROP_SHADOW_FIELDS}"
-        )
-    missing = set(_DROP_SHADOW_FIELDS) - set(value.keys())
-    if missing:
-        raise InvalidChromeShape(
-            f"drop_shadow missing required keys: {sorted(missing)}"
-        )
-    _require_int(value["offset_x"], "drop_shadow.offset_x", allow_negative=True)
-    _require_int(value["offset_y"], "drop_shadow.offset_y", allow_negative=True)
-    _require_int(value["blur"], "drop_shadow.blur")  # >= 0
-    _require_int(value["spread"], "drop_shadow.spread", allow_negative=True)
-    _require_nonempty_str(value["color"], "drop_shadow.color")
-
-
-def _validate_border(value: Any) -> None:
-    if value is None:
-        return
-    if not isinstance(value, dict):
-        raise InvalidChromeShape("border must be a dict or null")
-    unknown = set(value.keys()) - set(_BORDER_FIELDS)
-    if unknown:
-        raise InvalidChromeShape(
-            f"border has unknown keys: {sorted(unknown)}; "
-            f"allowed: {_BORDER_FIELDS}"
-        )
-    missing = set(_BORDER_FIELDS) - set(value.keys())
-    if missing:
-        raise InvalidChromeShape(
-            f"border missing required keys: {sorted(missing)}"
-        )
-    _require_int(value["width"], "border.width")  # >= 0
-    style = value["style"]
-    if not isinstance(style, str) or style not in BORDER_STYLES:
-        raise InvalidChromeShape(
-            f"border.style must be one of {sorted(BORDER_STYLES)}; "
-            f"got {style!r}"
-        )
-    _require_nonempty_str(value["color"], "border.color")
-    _require_int(value["radius"], "border.radius")  # >= 0
-
-
-def _validate_padding(value: Any) -> None:
-    if value is None:
-        return
-    if not isinstance(value, dict):
-        raise InvalidChromeShape("padding must be a dict or null")
-    unknown = set(value.keys()) - set(_PADDING_FIELDS)
-    if unknown:
-        raise InvalidChromeShape(
-            f"padding has unknown keys: {sorted(unknown)}; "
-            f"allowed: {_PADDING_FIELDS}"
-        )
-    missing = set(_PADDING_FIELDS) - set(value.keys())
-    if missing:
-        raise InvalidChromeShape(
-            f"padding missing required keys: {sorted(missing)}"
-        )
-    for f in _PADDING_FIELDS:
-        _require_int(value[f], f"padding.{f}")  # >= 0
 
 
 _FIELD_VALIDATORS = {
-    "background_color": _validate_background_color,
-    "drop_shadow": _validate_drop_shadow,
-    "border": _validate_border,
-    "padding": _validate_padding,
+    "preset": _validate_preset,
+    "elevation": lambda v: _validate_slider(v, "elevation"),
+    "corner_radius": lambda v: _validate_slider(v, "corner_radius"),
+    "background_token": lambda v: _validate_token(v, "background_token"),
+    "border_token": lambda v: _validate_token(v, "border_token"),
+    "padding_token": lambda v: _validate_token(v, "padding_token"),
 }
 
 
 def validate_chrome_blob(chrome: Any) -> None:
-    """Validate a chrome blob. Raises InvalidChromeShape on any
+    """Validate a chrome v2 blob. Raises InvalidChromeShape on any
     structural / type violation. Empty dict `{}` is valid (means
     "inherit everything from parent tier"). Unknown top-level keys
-    rejected.
-
-    Per-field validators handle None (explicit-null override) +
-    full-object shapes. Field-level cascade is the resolver's
-    concern, not this validator's — this fn only checks shape.
+    rejected — B-3's vocabulary (background_color / drop_shadow /
+    border / padding) is fully retired and will trip the unknown-key
+    check.
     """
     if not isinstance(chrome, dict):
         raise InvalidChromeShape("chrome must be a dict")

@@ -60,21 +60,11 @@ SCHEDULING_KANBAN_CORE = {
     "min_column_span": 8,
     "max_column_span": 12,
     "canvas_config": {},
-    # Sub-arc B-3: Tier 1 chrome defaults. Tier 2 (scheduling-fh)
+    # Sub-arc B-3.5: Tier 1 chrome v2 default — canonical "card"
+    # preset (per DESIGN_LANGUAGE §6). Tier 2 (scheduling-fh)
     # inherits via empty chrome_overrides; per-tenant Tier 3
     # overrides ride deltas.chrome_overrides.
-    "chrome": {
-        "background_color": "#1a1a1a",
-        "drop_shadow": {
-            "offset_x": 0,
-            "offset_y": 4,
-            "blur": 12,
-            "spread": 0,
-            "color": "rgba(0,0,0,0.18)",
-        },
-        "border": None,
-        "padding": {"top": 24, "right": 24, "bottom": 24, "left": 24},
-    },
+    "chrome": {"preset": "card"},
 }
 
 

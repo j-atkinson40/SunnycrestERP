@@ -12,46 +12,25 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-# ─── Chrome (sub-arc B-3) ───────────────────────────────────────
-
-
-class ChromeDropShadow(BaseModel):
-    offset_x: int
-    offset_y: int
-    blur: int = Field(ge=0)
-    spread: int  # can be negative
-    color: str = Field(min_length=1)
-
-    model_config = {"extra": "forbid"}
-
-
-class ChromeBorder(BaseModel):
-    width: int = Field(ge=0)
-    style: Literal["solid", "dashed", "dotted", "none"]
-    color: str = Field(min_length=1)
-    radius: int = Field(ge=0)
-
-    model_config = {"extra": "forbid"}
-
-
-class ChromePadding(BaseModel):
-    top: int = Field(ge=0)
-    right: int = Field(ge=0)
-    bottom: int = Field(ge=0)
-    left: int = Field(ge=0)
-
-    model_config = {"extra": "forbid"}
+# ─── Chrome (sub-arc B-3.5 — v2 preset-driven vocabulary) ───────
 
 
 class ChromeBlob(BaseModel):
-    """Chrome shape used at all three tiers. Each field is independently
-    nullable and optional — absent keys inherit from the parent tier,
-    explicit None overrides the parent (key-presence check)."""
+    """Chrome v2 shape used at all three tiers. Each field is
+    independently nullable and optional — absent keys inherit from
+    the parent tier, explicit None overrides the parent (key-presence
+    check). The resolver expands `preset` into its canonical defaults
+    before cross-tier cascade.
+    """
 
-    background_color: str | None = None
-    drop_shadow: ChromeDropShadow | None = None
-    border: ChromeBorder | None = None
-    padding: ChromePadding | None = None
+    preset: (
+        Literal["card", "modal", "dropdown", "toast", "floating", "custom"] | None
+    ) = None
+    elevation: int | None = Field(default=None, ge=0, le=100)
+    corner_radius: int | None = Field(default=None, ge=0, le=100)
+    background_token: str | None = Field(default=None, min_length=1)
+    border_token: str | None = Field(default=None, min_length=1)
+    padding_token: str | None = Field(default=None, min_length=1)
 
     model_config = {"extra": "forbid"}
 
