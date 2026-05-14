@@ -37,6 +37,7 @@ from app.api.routes.admin import (
     visual_editor_compositions,
     visual_editor_dashboard_layouts,
     focus_template_inheritance as admin_focus_template_inheritance,
+    edge_panel_inheritance as admin_edge_panel_inheritance,
     plugin_registry as admin_plugin_registry,
     studio_inventory as admin_studio_inventory,
     verticals as admin_verticals,
@@ -171,6 +172,15 @@ platform_router.include_router(
     admin_focus_template_inheritance.router,
     prefix="/admin/focus-template-inheritance",
     tags=["Focus Template Inheritance"],
+)
+# Edge Panel Inheritance — sub-arc B-1.5 (May 2026). Two-tier
+# inheritance (templates → compositions, lazy fork) with recursive
+# page-keyed delta-storage at Tier 3. Edge-panels are pure
+# composition; no Tier 1 core analogue to FocusCore.
+platform_router.include_router(
+    admin_edge_panel_inheritance.router,
+    prefix="/admin/edge-panel-inheritance",
+    tags=["Edge Panel Inheritance"],
 )
 # R-8.y.d — Plugin Registry browser introspection endpoint.
 platform_router.include_router(

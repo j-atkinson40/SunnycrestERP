@@ -346,6 +346,8 @@ from app.models.component_class_configuration import ComponentClassConfiguration
 from app.models.focus_core import FocusCore
 from app.models.focus_template import FocusTemplate
 from app.models.focus_composition import FocusComposition
+from app.models.edge_panel_template import EdgePanelTemplate
+from app.models.edge_panel_composition import EdgePanelComposition
 from app.models.workflow_template import (
     TenantWorkflowFork,
     WorkflowTemplate,
@@ -739,6 +741,8 @@ __all__ = [
     "FocusCore",
     "FocusTemplate",
     "FocusComposition",
+    "EdgePanelTemplate",
+    "EdgePanelComposition",
     "WorkflowTemplate",
     "TenantWorkflowFork",
     "TenantHealthScore",
