@@ -2,6 +2,10 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## Recent investigation (uncommitted)
+
+- **2026-05-15 — Tier 1+2 editor scoping** (sub-arc C-2). Investigation closed at `docs/investigations/2026-05-15-tier-1-2-editor.md`. Surfaces 8 lockable decisions across rail integration, tier-editor differences, canvas architecture, inspector composition, create-from-Core flow, inheritance surfacing, substrate plumbing (largest open decision), test strategy, and LOC budget. Recommended dispatch shape: decompose into 3 sub-sub-arcs (C-2.1 Tier 1 cores + create flow ~1,200-1,800 LOC; C-2.2 Tier 2 templates + three-section inspector + canvas adaptation ~2,500-3,500 LOC; C-2.3 inheritance surfacing + polish ~700-1,200 LOC). Awaiting James review.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
