@@ -117,7 +117,12 @@ PRESETS: dict[str, dict[str, Any]] = {
         "border_token": "border-brass",
     },
     "frosted": {
-        "background_token": "surface-elevated",
+        # Translucent surface (alpha 0.60 light / 0.55 dark) — alpha
+        # is load-bearing for backdrop-filter visibility. Sub-arc
+        # C-1.1: pre-fix this read `surface-elevated`, an opaque
+        # token, which masked the blur entirely. See DESIGN_LANGUAGE
+        # §3 surface tokens + §6 frosted glass card composition.
+        "background_token": "surface-frosted",
         "elevation": 50,
         "corner_radius": 62,
         "padding_token": "space-6",

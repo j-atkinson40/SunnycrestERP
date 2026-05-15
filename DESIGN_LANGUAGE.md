@@ -739,6 +739,7 @@ Not every token has every variant. The table below lists all defined tokens.
 | `--surface-elevated` | `oklch(0.965 0.014 82)` | `oklch(0.28 0.014 81)` |
 | `--surface-raised` | `oklch(0.985 0.010 82)` | `oklch(0.32 0.016 85)` |
 | `--surface-sunken` | `oklch(0.91 0.020 82)` | `oklch(0.13 0.010 55)` |
+| `--surface-frosted` | `oklch(0.965 0.014 82 / 0.60)` | `oklch(0.20 0.014 65 / 0.55)` |
 
 *Notes:*
 - Chroma decreases slightly as lightness increases in light mode — the lightest surfaces approach near-white and carry less warmth. This is intentional: the raised surface feels like "paper catching more light" rather than "saturated pale." Tier-5 calibration (April 2026) against design-ref-light.png linen tablecloth raised `--surface-base` chroma 0.018 → 0.030; photo measured C=0.037, token backed off to 0.030 because token→UI-at-scale amplifies perceived warmth.
@@ -746,6 +747,7 @@ Not every token has every variant. The table below lists all defined tokens.
 - **Dark-mode hue progression** is the second material-not-paint dimension: `base` sits at h=59 (the cool-amber foundation), `elevated` shifts to h=81 (the warmer-amber "catches more lamplight" treatment), `raised` continues to h=85 (most-elevated, most-directly-lit). `sunken` drops to h=55 (cooler, recessed-from-light). The hue shift IS what makes a dark elevated surface feel like "warm metal catching pendant light" rather than just "a lighter shade of the same surface." Without the hue shift, lightness-lift alone reads as monotone grading and doesn't deliver the "material, not paint" anchor.
 - **Dark-mode non-uniform step (Tier-5):** base→elevated L=0.12 is deliberately larger than elevated→raised L=0.04. The mood-anchor scenario (walnut bar top catching pendant light) shows a dramatic luminance difference between the charcoal wall (base, ~L=0.21 measured, pulled darker to L=0.16 per §1 "cozier than reference" correction) and the walnut surface directly under the pendant (elevated, measured L=0.40-0.52 at bulk, L=0.91 at highlight). Token L=0.28 sits deliberately below the bulk-walnut value because a UI card at pixel-coverage scale reads brighter than a textured material sample in a photo; L=0.28 preserves the catching-light signal without over-brightening the card. Elevated→raised then uses the smaller 0.04 step because "raised" is overlay-level hierarchy, not material-level hierarchy — one step more lifted, not "catching fundamentally different light."
 - `surface-sunken` is used for deep-recessed areas (inset panels, code blocks, sidebar backgrounds that sit below the page level). Not commonly used; defined for consistency.
+- `surface-frosted` is the translucent warm-cream variant used for glass-effect surfaces (cards with `backdrop-filter` blur). The alpha channel is essential — it's what makes `backdrop-filter` produce visible blur of the substrate behind it. An opaque background masks the blur entirely; the filter is applied but invisible. Use specifically for chrome presets that include `backdrop_blur` (currently only `frosted`). Light mode tracks `--surface-elevated`'s lightness/chroma/hue with alpha 0.60; dark mode sits between base and elevated (L=0.20) with alpha 0.55 so dark-mode glass reads as cocktail-lounge frosted glass under pendant light rather than a fogged window.
 - **Reconciliation history (April 2026):** pre-Tier-4, dark-mode tokens used a static h=65 across the elevation stack. Tiers 2–4 attempted progressive calibration against an approved UI mockup (IMG_6085.jpg, now archived). Tier-5 sampled the external mood anchors directly (`design-ref-dark.png` cocktail lounge + `design-ref-light.png` Mediterranean garden) per the §1 calibration chain and corrected `--surface-elevated` (dark) L=0.20→0.28, `--surface-raised` (dark) L=0.24→0.32, `--surface-base` (light) C=0.018→0.030, and the three shadow-color tokens in both modes. Tier-4 hue progression (59→81→85) retained — directionally correct. Tier-2 three-layer shadow composition (tight ground + soft halo + 3px inset highlight) retained — architecturally correct.
 
 ### Content tokens (text and icons)
@@ -916,6 +918,7 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --surface-elevated: oklch(0.965 0.014 82);
   --surface-raised: oklch(0.985 0.010 82);
   --surface-sunken: oklch(0.91 0.020 82);
+  --surface-frosted: oklch(0.965 0.014 82 / 0.60);
 
   /* Content */
   --content-strong: oklch(0.22 0.015 70);
@@ -971,6 +974,7 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --surface-elevated: oklch(0.28 0.014 81);
   --surface-raised: oklch(0.32 0.016 85);
   --surface-sunken: oklch(0.13 0.010 55);
+  --surface-frosted: oklch(0.20 0.014 65 / 0.55);
 
   /* Content — `--content-on-accent` flipped to LIGHT cream in dark mode
      (was dark charcoal pre-Session-2 for the brass-era "glowing pill
@@ -1617,6 +1621,18 @@ box-shadow: var(--shadow-level-3);
 border: 1px solid var(--border-accent); /* Accent edge signals primary interaction surface */
 padding: var(--space-4);
 ```
+
+**Frosted glass card (level 2):**
+```css
+background: var(--surface-frosted); /* Translucent — alpha is load-bearing */
+border-radius: var(--radius-lg);
+box-shadow: var(--shadow-level-2);
+padding: var(--space-6);
+border: 1px solid var(--border-subtle);
+backdrop-filter: blur(14px);
+-webkit-backdrop-filter: blur(14px); /* Safari prefix required */
+```
+The translucent `surface-frosted` token is the load-bearing piece — `backdrop-filter` is only visible when the element's own background is non-opaque, since opaque pixels mask the blur of the substrate behind. Use for chrome with the `frosted` preset (Focus Template Inheritance sub-arc C-1 / C-1.1). Both `backdrop-filter` and `-webkit-backdrop-filter` must be set; Safari requires the prefix.
 
 ### Tooltip patterns
 

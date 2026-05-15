@@ -90,7 +90,9 @@ const PRESETS: Record<PresetSlug, Partial<ChromeBlob>> = {
     border_token: "border-brass",
   },
   frosted: {
-    background_token: "surface-elevated",
+    // Translucent token — alpha is load-bearing for visible blur
+    // (sub-arc C-1.1). See DESIGN_LANGUAGE §3 + §6.
+    background_token: "surface-frosted",
     elevation: 50,
     corner_radius: 62,
     padding_token: "space-6",
@@ -154,6 +156,11 @@ const FALLBACK_TOKENS: Record<string, string> = {
   "surface-elevated": "#ffffff",
   "surface-raised": "#fdfcf8",
   "surface-sunken": "#f1efe9",
+  // Sub-arc C-1.1: translucent variant. Alpha 0.60 matches
+  // tokens.css :root --surface-frosted. Encoded as rgba so the
+  // fallback path mirrors the resolved-theme path under
+  // backdrop-filter.
+  "surface-frosted": "rgba(255, 251, 240, 0.60)",
   "border-subtle": "#e8e3d8",
   "border-base": "#cfc8b8",
   "border-strong": "#a89e88",

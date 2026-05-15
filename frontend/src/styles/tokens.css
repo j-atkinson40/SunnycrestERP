@@ -50,6 +50,13 @@
   --surface-elevated: oklch(0.965 0.014 82);
   --surface-raised: oklch(0.985 0.010 82);
   --surface-sunken: oklch(0.91 0.020 82);
+  /* Translucent variant for backdrop-filter glass surfaces (sub-arc
+     C-1.1). Tracks --surface-elevated's L/C/H with alpha 0.60.
+     Alpha is load-bearing — backdrop-filter only produces visible
+     blur when the element's own background is non-opaque. See
+     DESIGN_LANGUAGE.md §3 surface tokens notes + §6 frosted glass
+     card composition pattern. */
+  --surface-frosted: oklch(0.965 0.014 82 / 0.60);
 
   /* ─── COLORS — CONTENT (text + icons) ─── */
   --content-strong: oklch(0.22 0.015 70);
@@ -410,6 +417,11 @@
   --surface-elevated: oklch(0.28 0.014 81);
   --surface-raised: oklch(0.32 0.016 85);
   --surface-sunken: oklch(0.13 0.010 55);
+  /* Dark-mode frosted sits between base (L=0.16) and elevated
+     (L=0.28) — cocktail-lounge frosted glass under pendant light
+     rather than fogged window. Alpha 0.55 for the same load-bearing
+     reason as the light-mode variant. */
+  --surface-frosted: oklch(0.20 0.014 65 / 0.55);
 
   /* ─── COLORS — CONTENT ───
    *   --content-on-accent: light cream in BOTH modes (Aesthetic Arc

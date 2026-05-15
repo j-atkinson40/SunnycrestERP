@@ -306,7 +306,10 @@ class TestPresetExpansion:
     def test_frosted_preset_returns_canonical_defaults(self):
         result = expand_preset({"preset": "frosted"})
         assert result["preset"] == "frosted"
-        assert result["background_token"] == "surface-elevated"
+        # Sub-arc C-1.1: background_token swapped from
+        # surface-elevated (opaque) → surface-frosted (translucent)
+        # so backdrop-filter blur produces visible glass effect.
+        assert result["background_token"] == "surface-frosted"
         assert result["elevation"] == 50
         assert result["corner_radius"] == 62
         assert result["padding_token"] == "space-6"
@@ -317,7 +320,7 @@ class TestPresetExpansion:
         result = expand_preset({"preset": "frosted", "backdrop_blur": 100})
         # Overlay wins for backdrop_blur; rest from preset.
         assert result["backdrop_blur"] == 100
-        assert result["background_token"] == "surface-elevated"
+        assert result["background_token"] == "surface-frosted"
         assert result["elevation"] == 50
 
 
@@ -586,7 +589,7 @@ class TestResolverChromeCascadeV2:
         r = resolve_focus(db, template_slug="scheduling-default")
         assert r.resolved_chrome is not None
         assert r.resolved_chrome["backdrop_blur"] == 60
-        assert r.resolved_chrome["background_token"] == "surface-elevated"
+        assert r.resolved_chrome["background_token"] == "surface-frosted"
         assert r.sources["chrome_sources"]["backdrop_blur"] == "tier1"
 
     def test_backdrop_blur_tier3_overrides_tier1(self, db, tenant_company):

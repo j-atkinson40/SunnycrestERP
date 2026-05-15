@@ -154,6 +154,18 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       dark: "oklch(0.13 0.010 55)",
     },
   },
+  {
+    name: "surface-frosted",
+    category: "surface",
+    displayName: "Surface — Frosted (translucent)",
+    description:
+      "Translucent variant for backdrop-filter glass surfaces (sub-arc C-1.1 frosted chrome preset). Alpha channel is load-bearing — opaque backgrounds mask backdrop-filter blur.",
+    valueType: "oklch",
+    defaults: {
+      light: "oklch(0.965 0.014 82 / 0.60)",
+      dark: "oklch(0.20 0.014 65 / 0.55)",
+    },
+  },
 
   // ── Content family ──────────────────────────────────────────
   {
