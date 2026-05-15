@@ -214,6 +214,32 @@ export function Tier2TemplatesEditor({
     [typographyView, themeTokens],
   )
 
+  // Canvas-wide typography exposed as CSS custom properties so any
+  // inner text content (current preview card, future inherited-core
+  // placement) inherits the template's typographic intent without
+  // each surface re-resolving the view. Per the C-2.2a.1 locked
+  // decision #2 (canvas-wide typography as CSS variables).
+  const canvasStyle = React.useMemo<React.CSSProperties>(
+    () => ({
+      ...substrateStyle,
+      ["--tier2-heading-weight" as string]: String(
+        typographyView.heading_weight ?? 500,
+      ),
+      ["--tier2-body-weight" as string]: String(
+        typographyView.body_weight ?? 400,
+      ),
+      ["--tier2-heading-color" as string]:
+        (typographyView.heading_color_token &&
+          themeTokens[typographyView.heading_color_token]) ||
+        "var(--content-strong)",
+      ["--tier2-body-color" as string]:
+        (typographyView.body_color_token &&
+          themeTokens[typographyView.body_color_token]) ||
+        "var(--content-base)",
+    }),
+    [substrateStyle, typographyView, themeTokens],
+  )
+
   return (
     <div className="flex h-full flex-1 overflow-hidden">
       {/* LEFT — templates browser */}
@@ -306,11 +332,14 @@ export function Tier2TemplatesEditor({
         </aside>
       )}
 
-      {/* CENTER — preview canvas */}
+      {/* CENTER — preview canvas. `tier2-canvas` is the canonical
+          C-2.2a.1 testid; `tier2-preview` is retained for the C-2.2a
+          tests that pre-date the rename and asserts on the same node. */}
       <section
-        data-testid="tier2-preview"
+        data-testid="tier2-canvas"
+        data-tier2-preview="true"
         className="relative flex flex-1 overflow-hidden"
-        style={substrateStyle}
+        style={canvasStyle}
       >
         <div className="relative flex h-full flex-1 items-center justify-center p-12">
           {!selectedTemplateId ? (
