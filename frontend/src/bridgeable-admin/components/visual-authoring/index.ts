@@ -31,6 +31,24 @@ export type {
 } from "./ChromePresetPicker"
 
 export {
+  SubstratePresetPicker,
+  default as SubstratePresetPickerDefault,
+} from "./SubstratePresetPicker"
+export type {
+  SubstratePresetPickerProps,
+  SubstratePresetSlug,
+} from "./SubstratePresetPicker"
+
+export {
+  TypographyPresetPicker,
+  default as TypographyPresetPickerDefault,
+} from "./TypographyPresetPicker"
+export type {
+  TypographyPresetPickerProps,
+  TypographyPresetSlug,
+} from "./TypographyPresetPicker"
+
+export {
   PropertyPanel,
   PropertySection,
   PropertyRow,

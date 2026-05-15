@@ -48,6 +48,14 @@ export function PropertyPanel({ children, className }: PropertyPanelProps) {
 
 export interface PropertySectionProps {
   title: string
+  /**
+   * Optional lineage hint rendered as a thin caption below the title.
+   * Added in sub-arc C-2.2b for the Tier 2 inspector to surface where
+   * each section's values cascade from (e.g. "cascading from:
+   * scheduling-kanban-core"). C-2.3 ships polished inheritance chrome;
+   * this is the minimal-extension version.
+   */
+  lineageHint?: string
   collapsible?: boolean
   defaultExpanded?: boolean
   children: React.ReactNode
@@ -56,6 +64,7 @@ export interface PropertySectionProps {
 
 export function PropertySection({
   title,
+  lineageHint,
   collapsible = true,
   defaultExpanded = true,
   children,
@@ -86,11 +95,22 @@ export function PropertySection({
           }
         }}
       >
-        <span
-          className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[color:var(--content-muted)]"
-          style={{ fontFamily: "var(--font-plex-sans)" }}
-        >
-          {title}
+        <span className="flex flex-col">
+          <span
+            className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[color:var(--content-muted)]"
+            style={{ fontFamily: "var(--font-plex-sans)" }}
+          >
+            {title}
+          </span>
+          {lineageHint ? (
+            <span
+              data-testid="property-section-lineage"
+              className="mt-0.5 text-[10px] tracking-wide text-[color:var(--content-subtle)]"
+              style={{ fontFamily: "var(--font-plex-mono)" }}
+            >
+              {lineageHint}
+            </span>
+          ) : null}
         </span>
         {collapsible ? (
           <Icon

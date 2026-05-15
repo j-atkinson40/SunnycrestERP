@@ -116,15 +116,18 @@ describe("FocusEditorPage — sub-arc C-2.1", () => {
     expect(await screen.findByTestId("focus-editor-browser")).toBeTruthy()
   })
 
-  it("renders Tier 2 templates editor when ?tier=2 (C-2.2a)", async () => {
+  it("renders Tier 2 templates editor when ?tier=2 (C-2.2a → C-2.2b)", async () => {
     renderAt("/?tier=2")
-    // Tier 2 mounts the templates editor with its inspector placeholder.
+    // Post-C-2.2b: tier 2 mounts the templates editor with the
+    // three-section inspector. With no template selected the
+    // inspector right-rail shows the empty-state hint.
     expect(
-      await screen.findByTestId("tier2-inspector-placeholder"),
+      await screen.findByTestId("tier2-inspector"),
     ).toBeTruthy()
-    // Tier-1-specific browser marker should NOT be present (Tier 2
-    // uses the same focus-editor-browser testid but a different
-    // tier2 marker).
+    expect(
+      screen.getByTestId("tier2-inspector-empty"),
+    ).toBeInTheDocument()
+    // Tier-1-specific preview marker should NOT be present.
     expect(screen.queryByTestId("tier1-preview")).toBeNull()
   })
 
@@ -133,7 +136,7 @@ describe("FocusEditorPage — sub-arc C-2.1", () => {
     const t2 = await screen.findByTestId("tier-toggle-2")
     fireEvent.click(t2)
     await waitFor(() => {
-      expect(screen.queryByTestId("tier2-inspector-placeholder")).toBeTruthy()
+      expect(screen.queryByTestId("tier2-inspector")).toBeTruthy()
     })
     fireEvent.click(screen.getByTestId("tier-toggle-1"))
     await waitFor(() => {
@@ -141,10 +144,10 @@ describe("FocusEditorPage — sub-arc C-2.1", () => {
     })
   })
 
-  it("Tier 2 inspector placeholder copy mentions C-2.2b", async () => {
+  it("Tier 2 inspector empty-state hint surfaces when no template selected", async () => {
     renderAt("/?tier=2")
-    const placeholder = await screen.findByTestId("tier2-inspector-placeholder")
-    expect(placeholder.textContent ?? "").toMatch(/C-2\.2b/)
+    const empty = await screen.findByTestId("tier2-inspector-empty")
+    expect(empty.textContent ?? "").toMatch(/select a template/i)
   })
 
   it("loads cores list on mount and renders browser rows", async () => {
