@@ -58,6 +58,17 @@ vi.mock("@/bridgeable-admin/services/focus-cores-service", () => {
   }
 })
 
+// Sub-arc C-2.2a — Tier 2 templates editor lands; mock its service.
+vi.mock("@/bridgeable-admin/services/focus-templates-service", () => ({
+  focusTemplatesService: {
+    list: vi.fn().mockResolvedValue([]),
+    get: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    usage: vi.fn(),
+  },
+}))
+
 vi.mock("@/bridgeable-admin/lib/admin-api", () => ({
   adminApi: {
     get: vi.fn().mockResolvedValue({ data: { tokens: {} } }),
@@ -105,11 +116,16 @@ describe("FocusEditorPage — sub-arc C-2.1", () => {
     expect(await screen.findByTestId("focus-editor-browser")).toBeTruthy()
   })
 
-  it("renders Tier 2 placeholder when ?tier=2", async () => {
+  it("renders Tier 2 templates editor when ?tier=2 (C-2.2a)", async () => {
     renderAt("/?tier=2")
-    expect(await screen.findByTestId("tier2-placeholder")).toBeTruthy()
-    // Tier 1 browser should NOT mount when in Tier 2 mode.
-    expect(screen.queryByTestId("focus-editor-browser")).toBeNull()
+    // Tier 2 mounts the templates editor with its inspector placeholder.
+    expect(
+      await screen.findByTestId("tier2-inspector-placeholder"),
+    ).toBeTruthy()
+    // Tier-1-specific browser marker should NOT be present (Tier 2
+    // uses the same focus-editor-browser testid but a different
+    // tier2 marker).
+    expect(screen.queryByTestId("tier1-preview")).toBeNull()
   })
 
   it("switching tier via toggle updates URL and renders the other tier body", async () => {
@@ -117,18 +133,18 @@ describe("FocusEditorPage — sub-arc C-2.1", () => {
     const t2 = await screen.findByTestId("tier-toggle-2")
     fireEvent.click(t2)
     await waitFor(() => {
-      expect(screen.queryByTestId("tier2-placeholder")).toBeTruthy()
+      expect(screen.queryByTestId("tier2-inspector-placeholder")).toBeTruthy()
     })
     fireEvent.click(screen.getByTestId("tier-toggle-1"))
     await waitFor(() => {
-      expect(screen.queryByTestId("focus-editor-browser")).toBeTruthy()
+      expect(screen.queryByTestId("tier1-preview")).toBeTruthy()
     })
   })
 
-  it("Tier 2 placeholder copy mentions C-2.2", async () => {
+  it("Tier 2 inspector placeholder copy mentions C-2.2b", async () => {
     renderAt("/?tier=2")
-    const placeholder = await screen.findByTestId("tier2-placeholder")
-    expect(placeholder.textContent ?? "").toMatch(/C-2\.2/)
+    const placeholder = await screen.findByTestId("tier2-inspector-placeholder")
+    expect(placeholder.textContent ?? "").toMatch(/C-2\.2b/)
   })
 
   it("loads cores list on mount and renders browser rows", async () => {

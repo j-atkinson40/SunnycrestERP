@@ -45,119 +45,19 @@ import { adminApi } from "@/bridgeable-admin/lib/admin-api"
 import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 import { resolveEffectiveTokens } from "@/lib/visual-editor/themes/resolve-effective-tokens"
 import { BASE_TOKENS } from "@/lib/visual-editor/themes/base-tokens"
+import {
+  PADDING_PX,
+  blurToPx,
+  chromeViewFromDraft,
+  cornerToPx,
+  elevationToBoxShadow,
+  expandPreset,
+} from "@/bridgeable-admin/lib/visual-editor/chrome-resolver"
 import { CreateTierOneCoreModal } from "./CreateTierOneCoreModal"
-
-interface ChromeView {
-  preset: PresetSlug | null
-  elevation: number | null
-  corner_radius: number | null
-  backdrop_blur: number | null
-  background_token: string | null
-  border_token: string | null
-  padding_token: string | null
-}
-
-/** Frontend mirror of backend chrome PRESETS (sub-arc C-1 canon). */
-const PRESETS: Record<PresetSlug, Partial<ChromeView>> = {
-  card: {
-    background_token: "surface-elevated",
-    elevation: 37,
-    corner_radius: 37,
-    padding_token: "space-6",
-  },
-  modal: {
-    background_token: "surface-raised",
-    elevation: 62,
-    corner_radius: 62,
-    padding_token: "space-6",
-  },
-  dropdown: {
-    background_token: "surface-raised",
-    elevation: 62,
-    corner_radius: 37,
-    padding_token: "space-2",
-    border_token: "border-subtle",
-  },
-  toast: {
-    background_token: "surface-raised",
-    elevation: 87,
-    corner_radius: 37,
-    padding_token: "space-4",
-  },
-  floating: {
-    background_token: "surface-raised",
-    elevation: 87,
-    corner_radius: 62,
-    padding_token: "space-4",
-    border_token: "border-accent",
-  },
-  frosted: {
-    background_token: "surface-frosted",
-    elevation: 50,
-    corner_radius: 62,
-    padding_token: "space-6",
-    backdrop_blur: 60,
-    border_token: "border-subtle",
-  },
-  custom: {},
-}
-
-function expandPreset(chrome: ChromeView): ChromeView {
-  const preset = chrome.preset
-  if (!preset || preset === "custom") return chrome
-  const defaults = PRESETS[preset]
-  const merged: ChromeView = { ...chrome }
-  for (const key of Object.keys(defaults) as (keyof ChromeView)[]) {
-    if (chrome[key] === null || chrome[key] === undefined) {
-      ;(merged as unknown as Record<string, unknown>)[key] = defaults[
-        key
-      ] as unknown
-    }
-  }
-  return merged
-}
-
-function elevationToBoxShadow(v: number | null): string {
-  if (v === null || v <= 25) return "none"
-  if (v <= 50) return "0 2px 6px rgba(48, 32, 16, 0.10)"
-  if (v <= 75) return "0 8px 24px rgba(48, 32, 16, 0.14)"
-  return "0 16px 48px rgba(48, 32, 16, 0.20)"
-}
-function cornerToPx(v: number | null): number {
-  if (v === null || v <= 25) return 0
-  if (v <= 50) return 8
-  if (v <= 75) return 14
-  return 24
-}
-function blurToPx(v: number | null): number {
-  if (v === null || v <= 25) return 0
-  if (v <= 50) return 8
-  if (v <= 75) return 14
-  return 24
-}
-const PADDING_PX: Record<string, number> = {
-  "space-2": 8,
-  "space-4": 16,
-  "space-6": 24,
-  "space-8": 32,
-}
 
 interface ResolvedThemeResponse {
   tokens?: Record<string, string>
   resolved?: Record<string, string>
-}
-
-function chromeViewFromDraft(draft: Record<string, unknown>): ChromeView {
-  return {
-    preset: (draft.preset as PresetSlug | null | undefined) ?? null,
-    elevation: (draft.elevation as number | null | undefined) ?? null,
-    corner_radius: (draft.corner_radius as number | null | undefined) ?? null,
-    backdrop_blur: (draft.backdrop_blur as number | null | undefined) ?? null,
-    background_token:
-      (draft.background_token as string | null | undefined) ?? null,
-    border_token: (draft.border_token as string | null | undefined) ?? null,
-    padding_token: (draft.padding_token as string | null | undefined) ?? null,
-  }
 }
 
 export interface Tier1CoresEditorProps {

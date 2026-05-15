@@ -94,7 +94,9 @@ const PRESETS: Record<PresetSlug, Partial<ChromeBlob>> = {
     elevation: 87,
     corner_radius: 62,
     padding_token: "space-4",
-    border_token: "border-brass",
+    // C-2.2a sweep: legacy `border-brass` retired in DESIGN_LANGUAGE
+    // Aesthetic Arc Session 2 in favor of canonical `border-accent`.
+    border_token: "border-accent",
   },
   frosted: {
     // Translucent token — alpha is load-bearing for visible blur

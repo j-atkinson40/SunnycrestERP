@@ -33,10 +33,11 @@
  */
 import * as React from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeft, Circle, Loader2 } from "lucide-react"
+import { ArrowLeft, Circle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tier1CoresEditor } from "@/bridgeable-admin/components/visual-editor/Tier1CoresEditor"
+import { Tier2TemplatesEditor } from "@/bridgeable-admin/components/visual-editor/Tier2TemplatesEditor"
 
 type Tier = "1" | "2"
 
@@ -58,6 +59,7 @@ export default function FocusEditorPage() {
   const tierParam = searchParams.get("tier")
   const tier: Tier = tierParam === "2" ? "2" : "1"
   const selectedCoreId = searchParams.get("core")
+  const selectedTemplateId = searchParams.get("template")
   const returnTo = searchParams.get("return_to")
 
   const [isDirty, setIsDirty] = React.useState(false)
@@ -77,9 +79,11 @@ export default function FocusEditorPage() {
   const switchTier = (next: Tier) => {
     const params = new URLSearchParams(searchParams)
     params.set("tier", next)
-    // Switching tiers should not carry the Tier-1 core selection
-    // into the Tier-2 placeholder (it's meaningless there).
+    // Switching tiers strips the OTHER tier's selection param —
+    // selections are tier-scoped and meaningless across tier
+    // boundaries.
     if (next === "2") params.delete("core")
+    else params.delete("template")
     setSearchParams(params, { replace: true })
   }
 
@@ -88,6 +92,16 @@ export default function FocusEditorPage() {
       const params = new URLSearchParams(searchParams)
       if (id) params.set("core", id)
       else params.delete("core")
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+
+  const setSelectedTemplate = React.useCallback(
+    (id: string | null) => {
+      const params = new URLSearchParams(searchParams)
+      if (id) params.set("template", id)
+      else params.delete("template")
       setSearchParams(params, { replace: true })
     },
     [searchParams, setSearchParams],
@@ -190,7 +204,12 @@ export default function FocusEditorPage() {
           onLastSavedChange={setLastSavedAt}
         />
       ) : (
-        <Tier2Placeholder />
+        <Tier2TemplatesEditor
+          selectedTemplateId={selectedTemplateId}
+          onSelectTemplate={setSelectedTemplate}
+          onDirtyChange={setIsDirty}
+          onLastSavedChange={setLastSavedAt}
+        />
       )}
     </div>
   )
@@ -223,41 +242,6 @@ function TierButton({ tier, active, label, onClick }: TierButtonProps) {
   )
 }
 
-/**
- * Named-placeholder for Tier 2 templates. C-2.2 will replace this
- * with the full three-section inspector + canvas + create-from-Core
- * flow. The placeholder is intentional, not a 404 or crash, so
- * operators clicking "Tier 2 templates" understand "this exists but
- * is coming next" rather than "this is broken."
- */
-function Tier2Placeholder() {
-  return (
-    <div
-      data-testid="tier2-placeholder"
-      className="flex flex-1 items-center justify-center bg-[color:var(--surface-sunken)] p-8"
-    >
-      <div
-        className="flex max-w-md flex-col items-center gap-3 rounded-lg border border-dashed border-[color:var(--accent-muted)] bg-[color:var(--surface-elevated)] p-8 text-center shadow-[var(--shadow-level-1)]"
-        style={{ fontFamily: "var(--font-plex-sans)" }}
-      >
-        <Loader2 className="h-5 w-5 text-[color:var(--accent)]" />
-        <h2
-          className="text-[16px] font-medium text-[color:var(--content-strong)]"
-          style={{ fontFamily: "var(--font-plex-serif)" }}
-        >
-          Tier 2 templates editor
-        </h2>
-        <p className="text-[13px] leading-relaxed text-[color:var(--content-muted)]">
-          Tier 2 authors Focus templates that inherit from Tier 1 cores
-          — accessory layout, chrome overrides, substrate, typography.
-        </p>
-        <p className="text-[12px] text-[color:var(--accent)]">
-          Coming in sub-arc C-2.2.
-        </p>
-        <p className="text-[11px] text-[color:var(--content-subtle)]">
-          Switch to Tier 1 cores to author Focus core chrome defaults.
-        </p>
-      </div>
-    </div>
-  )
-}
+// Tier2Placeholder was replaced by <Tier2TemplatesEditor /> in
+// sub-arc C-2.2a — the READ-ONLY canvas seam now mounts directly.
+// Three-section inspector lands in C-2.2b; create flow in C-2.2c.
