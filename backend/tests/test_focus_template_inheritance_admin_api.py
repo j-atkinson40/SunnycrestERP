@@ -519,3 +519,190 @@ def test_scope_mismatch_in_create_template(client, ctx):
         headers=_platform_headers(ctx),
     )
     assert r.status_code == 422
+
+
+# ─── Sub-arc C-2.1.3: response-shape normalization ──────────────
+#
+# The frontend draft (Tier 1 cores editor + Tier 2 templates editor)
+# always carries the full canonical field set for chrome / substrate
+# / typography — some keys null. Pre-C-2.1.3 the API stripped null
+# fields from the stored blob during serialization; the response
+# carried fewer keys than the draft, the frontend dirty-state check
+# (`deepEqualChrome` post-C-2.1.2) saw "missing key on snapshot"
+# vs. "explicit null on draft" as different, and the Unsaved
+# indicator stuck after every save.
+#
+# C-2.1.3 normalizes the response shape: every canonical field is
+# present, unset fields are explicit nulls. Draft + response now
+# have identical key sets and equality holds.
+
+
+def _seed_core(client, ctx, *, slug: str = "c213", chrome: dict | None = None):
+    """Helper to create a core via the platform admin endpoint."""
+    body: dict[str, Any] = {
+        "core_slug": slug,
+        "display_name": slug.upper(),
+        "registered_component_kind": "focus-core",
+        "registered_component_name": f"{slug.upper()}Core",
+    }
+    if chrome is not None:
+        body["chrome"] = chrome
+    r = client.post(
+        f"{API_ROOT}/cores",
+        json=body,
+        headers=_platform_headers(ctx),
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+_CHROME_CANONICAL = (
+    "preset",
+    "elevation",
+    "corner_radius",
+    "backdrop_blur",
+    "background_token",
+    "border_token",
+    "padding_token",
+)
+
+
+def test_core_response_includes_all_chrome_fields_with_explicit_nulls(
+    client, ctx
+):
+    """Empty chrome on the row → response has all 7 canonical keys,
+    every value is null."""
+    rec = _seed_core(client, ctx, slug="c213empty", chrome={})
+    chrome = rec["chrome"]
+    for field in _CHROME_CANONICAL:
+        assert field in chrome, f"missing canonical chrome field: {field}"
+        assert chrome[field] is None, f"{field} should default to None"
+
+
+def test_core_response_full_chrome_after_partial_update(client, ctx):
+    """PUT chrome={preset: 'card'} → response has all 7 keys, only
+    preset has a value, the other 6 are explicit null."""
+    rec = _seed_core(client, ctx, slug="c213partial", chrome={})
+    r = client.put(
+        f"{API_ROOT}/cores/{rec['id']}",
+        json={"chrome": {"preset": "card"}},
+        headers=_platform_headers(ctx),
+    )
+    assert r.status_code == 200, r.text
+    chrome = r.json()["chrome"]
+    assert set(chrome.keys()) == set(_CHROME_CANONICAL)
+    assert chrome["preset"] == "card"
+    for field in _CHROME_CANONICAL:
+        if field == "preset":
+            continue
+        assert chrome[field] is None, f"{field} should be explicit null"
+
+
+def test_core_get_response_full_chrome_after_storage(client, ctx):
+    """GET a previously-saved core → response carries the full
+    canonical shape even though storage may have stripped nulls."""
+    rec = _seed_core(client, ctx, slug="c213get", chrome={"elevation": 50})
+    r = client.get(
+        f"{API_ROOT}/cores/{rec['id']}",
+        headers=_platform_headers(ctx),
+    )
+    assert r.status_code == 200
+    chrome = r.json()["chrome"]
+    assert set(chrome.keys()) == set(_CHROME_CANONICAL)
+    assert chrome["elevation"] == 50
+
+
+def test_template_response_includes_all_chrome_override_fields(client, ctx):
+    """Tier 2 chrome_overrides normalizes to the full canonical
+    chrome shape, same as Tier 1 chrome."""
+    core = _seed_core(client, ctx, slug="c213tmpl", chrome={"preset": "card"})
+    r = client.post(
+        f"{API_ROOT}/templates",
+        json={
+            "scope": "vertical_default",
+            "vertical": "funeral_home",
+            "template_slug": "c213-t",
+            "display_name": "T",
+            "inherits_from_core_id": core["id"],
+            "rows": [],
+            "chrome_overrides": {"elevation": 80},
+        },
+        headers=_platform_headers(ctx),
+    )
+    assert r.status_code == 201, r.text
+    chrome_overrides = r.json()["chrome_overrides"]
+    assert set(chrome_overrides.keys()) == set(_CHROME_CANONICAL)
+    assert chrome_overrides["elevation"] == 80
+    for field in _CHROME_CANONICAL:
+        if field == "elevation":
+            continue
+        assert chrome_overrides[field] is None
+
+
+def test_template_response_includes_all_substrate_fields(client, ctx):
+    """Tier 2 substrate normalizes to the full canonical substrate
+    field set."""
+    from app.services.focus_template_inheritance.substrate_validation import (
+        SUBSTRATE_FIELDS,
+    )
+
+    core = _seed_core(client, ctx, slug="c213sub", chrome={})
+    r = client.post(
+        f"{API_ROOT}/templates",
+        json={
+            "scope": "vertical_default",
+            "vertical": "funeral_home",
+            "template_slug": "c213-sub",
+            "display_name": "S",
+            "inherits_from_core_id": core["id"],
+            "rows": [],
+        },
+        headers=_platform_headers(ctx),
+    )
+    assert r.status_code == 201, r.text
+    substrate = r.json()["substrate"]
+    assert set(substrate.keys()) == set(SUBSTRATE_FIELDS)
+    for field in SUBSTRATE_FIELDS:
+        assert substrate[field] is None
+
+
+def test_template_response_includes_all_typography_fields(client, ctx):
+    """Tier 2 typography normalizes to the full canonical typography
+    field set."""
+    from app.services.focus_template_inheritance.typography_validation import (
+        TYPOGRAPHY_FIELDS,
+    )
+
+    core = _seed_core(client, ctx, slug="c213typo", chrome={})
+    r = client.post(
+        f"{API_ROOT}/templates",
+        json={
+            "scope": "vertical_default",
+            "vertical": "funeral_home",
+            "template_slug": "c213-typo",
+            "display_name": "Y",
+            "inherits_from_core_id": core["id"],
+            "rows": [],
+        },
+        headers=_platform_headers(ctx),
+    )
+    assert r.status_code == 201, r.text
+    typography = r.json()["typography"]
+    assert set(typography.keys()) == set(TYPOGRAPHY_FIELDS)
+    for field in TYPOGRAPHY_FIELDS:
+        assert typography[field] is None
+
+
+def test_core_list_response_full_chrome_shape(client, ctx):
+    """List endpoint also normalizes — each row carries full chrome
+    canonical shape."""
+    _seed_core(client, ctx, slug="c213list1", chrome={"preset": "modal"})
+    _seed_core(client, ctx, slug="c213list2", chrome={})
+    r = client.get(f"{API_ROOT}/cores", headers=_platform_headers(ctx))
+    assert r.status_code == 200
+    rows = r.json()
+    for row in rows:
+        assert set(row["chrome"].keys()) == set(_CHROME_CANONICAL), (
+            f"row {row['core_slug']} missing chrome keys"
+        )
+

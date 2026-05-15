@@ -660,9 +660,14 @@ class TestApiSubstrate:
         )
         assert r.status_code == 201, r.text
         payload = r.json()
+        # Sub-arc C-2.1.3: response normalizes to full canonical
+        # substrate field set with explicit nulls for unset fields.
         assert payload["substrate"] == {
             "preset": "morning-warm",
             "intensity": 60,
+            "base_token": None,
+            "accent_token_1": None,
+            "accent_token_2": None,
         }
 
     def test_post_templates_invalid_substrate_rejected(
@@ -701,7 +706,14 @@ class TestApiSubstrate:
         )
         assert r.status_code == 200, r.text
         payload = r.json()
-        assert payload["substrate"] == {"preset": "evening-lounge"}
+        # Sub-arc C-2.1.3: response normalizes to full canonical shape.
+        assert payload["substrate"] == {
+            "preset": "evening-lounge",
+            "intensity": None,
+            "base_token": None,
+            "accent_token_1": None,
+            "accent_token_2": None,
+        }
 
     def test_get_resolve_returns_resolved_substrate(
         self, client, api_ctx, db

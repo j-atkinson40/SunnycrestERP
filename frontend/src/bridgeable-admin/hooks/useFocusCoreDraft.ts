@@ -99,30 +99,45 @@ function generateSessionToken(): string {
 }
 
 /**
- * Sub-arc C-2.1.2 — dirty-state fix.
+ * Sub-arc C-2.1.3 — dirty-state fix (the real one).
  *
- * Pre-fix the hook compared draft vs. savedSnapshot via
- * `JSON.stringify(draft) !== JSON.stringify(savedSnapshot)`. That is
- * key-order-sensitive: when the backend round-trips a chrome blob
- * through a JSONB column, PostgreSQL does not preserve insertion
- * order of object keys. SQLAlchemy reads the dict back in whatever
- * order the storage layer produced, FastAPI serializes it in that
- * order, and the frontend receives a blob with the same VALUES as
- * the draft but a different key sequence — JSON.stringify produces
- * a different string, isDirty stays true forever, the "Unsaved"
- * indicator never clears, and the auto-save / lastSavedAt UX
- * fully breaks.
+ * C-2.1.2's `deepEqualChrome` was key-order-tolerant but still
+ * key-set-strict — it counted `{a: 1, b: null}` and `{a: 1}` as
+ * different. Production response from `_core_to_response` stripped
+ * null-valued fields (`dict(row.chrome or {})` preserved whatever
+ * shape the JSONB column had, and that often dropped never-written
+ * fields entirely). Frontend drafts always carried the full
+ * 7-field chrome shape (some values null because the user hadn't
+ * touched a slider yet). Save round-trip → response has 4 keys,
+ * draft has 7, dirty check returned true forever → Unsaved
+ * indicator stuck.
  *
- * `deepEqualChrome` is a small recursive deep-equality check that
- * ignores object-key order. Limited to the shape `useFocusCoreDraft`
- * traffics in (primitive values, plain objects, arrays of those) —
- * NOT a general structural-equality library. Keeps the hook
- * self-contained without dropping a lodash-style dep into a tiny
- * editor surface.
+ * C-2.1.3 fix:
+ *   - Backend `_core_to_response` + `_template_to_response` now
+ *     normalize the response to the full canonical field set with
+ *     explicit nulls (matching the draft shape).
+ *   - This frontend helper additionally treats missing-key and
+ *     explicit-null-value as semantically equivalent, defensively
+ *     handling any current or future backend serializer that drops
+ *     null fields.
+ *
+ * Equality semantics:
+ *   - `{ a: 1, b: null }` deep-equals `{ a: 1 }`           (missing == null)
+ *   - `{ a: 1, b: undefined }` deep-equals `{ a: 1 }`      (missing == undefined)
+ *   - `{ a: 1, b: null }` deep-equals `{ a: 1, b: null }`  (trivial)
+ *   - `{ a: 1, b: 0 }` does NOT deep-equal `{ a: 1 }`      (0 is a real value)
+ *
+ * Recursive: same rules apply to nested objects/arrays.
+ *
+ * Limited to the shape `useFocusCoreDraft` traffics in (primitive
+ * values, plain objects, arrays of those) — NOT a general
+ * structural-equality library.
  */
 function deepEqualChrome(a: unknown, b: unknown): boolean {
   if (a === b) return true
-  if (a === null || b === null) return false
+  // Treat null and undefined as interchangeable absence.
+  if (a == null && b == null) return true
+  if (a == null || b == null) return false
   if (typeof a !== typeof b) return false
   if (typeof a !== "object") return false
   if (Array.isArray(a)) {
@@ -136,12 +151,17 @@ function deepEqualChrome(a: unknown, b: unknown): boolean {
   if (Array.isArray(b)) return false
   const aObj = a as Record<string, unknown>
   const bObj = b as Record<string, unknown>
-  const aKeys = Object.keys(aObj)
-  const bKeys = Object.keys(bObj)
-  if (aKeys.length !== bKeys.length) return false
-  for (const k of aKeys) {
-    if (!Object.prototype.hasOwnProperty.call(bObj, k)) return false
-    if (!deepEqualChrome(aObj[k], bObj[k])) return false
+  // Compare the union of keys; missing-key on one side is
+  // equivalent to explicit null/undefined on the other.
+  const allKeys = new Set([...Object.keys(aObj), ...Object.keys(bObj)])
+  for (const k of allKeys) {
+    const av = Object.prototype.hasOwnProperty.call(aObj, k)
+      ? aObj[k]
+      : undefined
+    const bv = Object.prototype.hasOwnProperty.call(bObj, k)
+      ? bObj[k]
+      : undefined
+    if (!deepEqualChrome(av, bv)) return false
   }
   return true
 }
@@ -217,8 +237,8 @@ export function useFocusCoreDraft(
     }
   }, [coreId])
 
-  // Sub-arc C-2.1.2: dirty check via key-order-independent deep
-  // equality (see deepEqualChrome above for why). useMemo so we
+  // Sub-arc C-2.1.3: dirty check via key-order-AND-key-set-tolerant
+  // deep equality (see deepEqualChrome above for why). useMemo so we
   // recompute only when draft or savedSnapshot identity changes.
   const isDirty = useMemo(
     () => !deepEqualChrome(draft, savedSnapshot),

@@ -740,7 +740,17 @@ class TestApiChromeV2:
         )
         assert r.status_code == 201, r.text
         payload = r.json()
-        assert payload["chrome"] == {"preset": "card", "elevation": 80}
+        # Sub-arc C-2.1.3: response normalizes to full canonical
+        # chrome field set with explicit nulls for unset fields.
+        assert payload["chrome"] == {
+            "preset": "card",
+            "elevation": 80,
+            "corner_radius": None,
+            "backdrop_blur": None,
+            "background_token": None,
+            "border_token": None,
+            "padding_token": None,
+        }
 
     def test_post_cores_with_b3_shape_returns_400(self, client, api_ctx):
         body = {

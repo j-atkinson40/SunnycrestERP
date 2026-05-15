@@ -82,8 +82,17 @@ from app.services.focus_template_inheritance import (
     update_core,
     update_template,
 )
+from app.services.focus_template_inheritance.chrome_validation import (
+    CHROME_FIELDS,
+)
 from app.services.focus_template_inheritance.focus_compositions_service import (
     get_composition_by_id,
+)
+from app.services.focus_template_inheritance.substrate_validation import (
+    SUBSTRATE_FIELDS,
+)
+from app.services.focus_template_inheritance.typography_validation import (
+    TYPOGRAPHY_FIELDS,
 )
 from app.services.focus_template_inheritance.schemas import (
     CompositionResponse,
@@ -246,6 +255,27 @@ def _translate(exc: Exception) -> HTTPException:
 # ─── Serialization helpers ──────────────────────────────────────
 
 
+def _normalize_blob(
+    stored: dict | None, canonical_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    """Return a blob with all canonical fields present, defaulting
+    unset fields to None.
+
+    Sub-arc C-2.1.3 — API response shape normalization. PostgreSQL
+    JSONB storage may drop null-valued keys (or storage code may
+    never write them in the first place when the authoring surface
+    skips a slider). Frontend drafts always carry the full canonical
+    field set (some values null); response shape now matches verbatim
+    so dirty-state equality checks can compare like-for-like without
+    needing to distinguish missing-key from explicit-null.
+
+    Database storage stays as-is — this is a response-layer
+    normalization only. Migration is NOT required.
+    """
+    stored = stored or {}
+    return {field: stored.get(field) for field in canonical_fields}
+
+
 def _core_to_response(row) -> CoreResponse:
     return CoreResponse(
         id=row.id,
@@ -260,7 +290,7 @@ def _core_to_response(row) -> CoreResponse:
         min_column_span=row.min_column_span,
         max_column_span=row.max_column_span,
         canvas_config=dict(row.canvas_config or {}),
-        chrome=dict(row.chrome or {}),
+        chrome=_normalize_blob(row.chrome, CHROME_FIELDS),
         version=row.version,
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else "",
@@ -290,9 +320,13 @@ def _template_to_response(row) -> TemplateResponse:
         inherits_from_core_version=row.inherits_from_core_version,
         rows=list(row.rows or []),
         canvas_config=dict(row.canvas_config or {}),
-        chrome_overrides=dict(row.chrome_overrides or {}),
-        substrate=dict(getattr(row, "substrate", None) or {}),
-        typography=dict(getattr(row, "typography", None) or {}),
+        chrome_overrides=_normalize_blob(row.chrome_overrides, CHROME_FIELDS),
+        substrate=_normalize_blob(
+            getattr(row, "substrate", None), SUBSTRATE_FIELDS
+        ),
+        typography=_normalize_blob(
+            getattr(row, "typography", None), TYPOGRAPHY_FIELDS
+        ),
         version=row.version,
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else "",

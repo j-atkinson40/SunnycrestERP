@@ -694,9 +694,14 @@ class TestApiTypography:
         )
         assert r.status_code == 201, r.text
         payload = r.json()
+        # Sub-arc C-2.1.3: response normalizes to full canonical
+        # typography field set with explicit nulls for unset fields.
         assert payload["typography"] == {
             "preset": "card-text",
             "heading_weight": 600,
+            "heading_color_token": None,
+            "body_weight": None,
+            "body_color_token": None,
         }
 
     def test_post_templates_invalid_typography_rejected(
@@ -736,7 +741,14 @@ class TestApiTypography:
         )
         assert r.status_code == 200, r.text
         payload = r.json()
-        assert payload["typography"] == {"preset": "headline"}
+        # Sub-arc C-2.1.3: response normalizes to full canonical shape.
+        assert payload["typography"] == {
+            "preset": "headline",
+            "heading_weight": None,
+            "heading_color_token": None,
+            "body_weight": None,
+            "body_color_token": None,
+        }
 
     def test_get_resolve_returns_resolved_typography(
         self, client, api_ctx, db

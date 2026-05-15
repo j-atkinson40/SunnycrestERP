@@ -342,6 +342,128 @@ describe("useFocusCoreDraft", () => {
     expect(result.current.isDirty).toBe(true)
   })
 
+  // ─── Sub-arc C-2.1.3: real dirty-state regression ──────────────
+  //
+  // C-2.1.2's deepEqualChrome was key-order-tolerant but key-set-
+  // strict. Production response from `_core_to_response` was
+  // stripping null/unset chrome fields, so the response carried
+  // fewer keys than the draft. C-2.1.2's check returned !equal
+  // forever, isDirty stuck at true, "Unsaved" indicator never
+  // cleared after save.
+  //
+  // C-2.1.3 fix: (a) backend response normalized to full canonical
+  // shape with explicit nulls, (b) frontend deepEqualChrome treats
+  // missing-key and explicit-null-value as equivalent (defensive).
+  //
+  // This test reproduces the production bug: mock response has
+  // FEWER keys than draft. Pre-C-2.1.3 it would FAIL. Post-C-2.1.3
+  // it passes.
+
+  it("clears isDirty after save when response chrome has fewer keys than draft (C-2.1.3)", async () => {
+    // Mock GET returns sparse chrome (matches pre-C-2.1.3 backend
+    // shape: only the non-null fields).
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      chrome: {
+        preset: "card",
+        elevation: 30,
+        corner_radius: 10,
+        backdrop_blur: 0,
+        // background_token, border_token, padding_token absent
+      },
+    })
+    // Mock PUT returns the same sparse shape (after bumping elevation).
+    ;(focusCoresService.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      chrome: {
+        preset: "card",
+        elevation: 50,
+        corner_radius: 10,
+        backdrop_blur: 0,
+      },
+    })
+
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // User interacts with sliders — populates the full 7-field shape
+    // because every slider has an onChange that writes its own key.
+    // This is the production-reality draft: 7 keys, some null.
+    act(() => {
+      result.current.updateDraft({
+        elevation: 50,
+        background_token: null,
+        border_token: null,
+        padding_token: null,
+      })
+    })
+    expect(result.current.isDirty).toBe(true)
+
+    await act(async () => {
+      await result.current.save()
+    })
+
+    // CRITICAL: dirty must clear even though response carries only
+    // 4 keys while draft has 7 (3 explicit nulls). Pre-C-2.1.3 fix
+    // this assertion FAILS.
+    expect(result.current.isDirty).toBe(false)
+    expect(result.current.lastSavedAt).not.toBeNull()
+  })
+
+  it("treats missing key and explicit null as equivalent for dirty check", async () => {
+    // Set up a saved snapshot with one explicit-null field, then
+    // mark dirty by ALSO setting that same field to null in the draft
+    // (no semantic change). Should NOT be dirty.
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      chrome: { preset: "card", elevation: 50 }, // 2 keys
+    })
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.isDirty).toBe(false)
+
+    // Add a null-valued key — no semantic change.
+    act(() => {
+      result.current.updateDraft({ background_token: null })
+    })
+    expect(result.current.isDirty).toBe(false)
+  })
+
+  it("normalized full-shape response (post-backend-fix) also clears dirty", async () => {
+    // Backend post-C-2.1.3 returns full canonical shape with explicit
+    // nulls. Frontend draft already has full shape. Equal sets, equal
+    // values → not dirty after save.
+    const FULL_CHROME = {
+      preset: "card",
+      elevation: 50,
+      corner_radius: null,
+      backdrop_blur: null,
+      background_token: null,
+      border_token: null,
+      padding_token: null,
+    }
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      chrome: { preset: "card", elevation: 30, corner_radius: null,
+                backdrop_blur: null, background_token: null,
+                border_token: null, padding_token: null },
+    })
+    ;(focusCoresService.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      chrome: FULL_CHROME,
+    })
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.updateDraft({ elevation: 50 })
+    })
+    expect(result.current.isDirty).toBe(true)
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(result.current.isDirty).toBe(false)
+  })
+
   it("on 410 Gone, swaps to active_core_id and retries", async () => {
     ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       SAMPLE_CORE,
