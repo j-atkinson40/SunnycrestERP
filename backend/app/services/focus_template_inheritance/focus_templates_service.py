@@ -51,6 +51,10 @@ from app.services.focus_template_inheritance.substrate_validation import (
     InvalidSubstrateShape,
     validate_substrate_blob,
 )
+from app.services.focus_template_inheritance.typography_validation import (
+    InvalidTypographyShape,
+    validate_typography_blob,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -329,6 +333,7 @@ def create_template(
     canvas_config: Mapping[str, Any] | None = None,
     chrome_overrides: Mapping[str, Any] | None = None,
     substrate: Mapping[str, Any] | None = None,
+    typography: Mapping[str, Any] | None = None,
     created_by: str | None = None,
 ) -> FocusTemplate:
     """Create or version a template at (scope, vertical, template_slug).
@@ -380,6 +385,12 @@ def create_template(
     except InvalidSubstrateShape as exc:
         raise InvalidTemplateShape(str(exc)) from exc
 
+    typography_blob = dict(typography or {})
+    try:
+        validate_typography_blob(typography_blob)
+    except InvalidTypographyShape as exc:
+        raise InvalidTemplateShape(str(exc)) from exc
+
     existing = _find_active(
         db, scope=scope, vertical=vertical, template_slug=template_slug
     )
@@ -400,6 +411,7 @@ def create_template(
         canvas_config=cfg,
         chrome_overrides=chrome_blob,
         substrate=substrate_blob,
+        typography=typography_blob,
         version=next_version,
         is_active=True,
         created_by=created_by,
@@ -422,6 +434,7 @@ def update_template(
     canvas_config: Mapping[str, Any] | None = None,
     chrome_overrides: Mapping[str, Any] | None = None,
     substrate: Mapping[str, Any] | None = None,
+    typography: Mapping[str, Any] | None = None,
 ) -> FocusTemplate:
     """Version-bump the template. `scope`, `vertical`, `template_slug`,
     `inherits_from_core_id` are immutable through this surface —
@@ -481,6 +494,16 @@ def update_template(
     except InvalidSubstrateShape as exc:
         raise InvalidTemplateShape(str(exc)) from exc
 
+    new_typography = (
+        dict(typography)
+        if typography is not None
+        else dict(getattr(prior, "typography", None) or {})
+    )
+    try:
+        validate_typography_blob(new_typography)
+    except InvalidTypographyShape as exc:
+        raise InvalidTemplateShape(str(exc)) from exc
+
     prior.is_active = False
     new_row = FocusTemplate(
         scope=prior.scope,
@@ -494,6 +517,7 @@ def update_template(
         canvas_config=new_cfg,
         chrome_overrides=new_chrome,
         substrate=new_substrate,
+        typography=new_typography,
         version=prior.version + 1,
         is_active=True,
         created_by=prior.created_by,

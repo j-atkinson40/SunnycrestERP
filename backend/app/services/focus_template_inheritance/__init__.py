@@ -68,12 +68,20 @@ from app.services.focus_template_inheritance.chrome_validation import (  # noqa:
 from app.services.focus_template_inheritance.resolver import (  # noqa: F401
     PRESETS,
     SUBSTRATE_PRESETS,
+    TYPOGRAPHY_PRESETS,
     expand_preset,
     expand_substrate_preset,
+    expand_typography_preset,
 )
 from app.services.focus_template_inheritance.substrate_validation import (  # noqa: F401
     SUBSTRATE_FIELDS,
     VALID_SUBSTRATE_PRESETS,
     InvalidSubstrateShape,
     validate_substrate_blob,
+)
+from app.services.focus_template_inheritance.typography_validation import (  # noqa: F401
+    TYPOGRAPHY_FIELDS,
+    VALID_TYPOGRAPHY_PRESETS,
+    InvalidTypographyShape,
+    validate_typography_blob,
 )

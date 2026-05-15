@@ -84,6 +84,11 @@ SCHEDULING_FH_TEMPLATE = {
     # (warm-gradient atmosphere with brass + warning accents). Tier 3
     # per-tenant substrate_overrides ride deltas.substrate_overrides.
     "substrate": {"preset": "morning-warm"},
+    # Sub-arc B-5: Tier 2 typography default — canonical "frosted-text"
+    # preset matches the funeral-scheduling mockup (grounds against
+    # translucent surfaces with heavier 600-weight headings). Tier 3
+    # per-tenant typography_overrides ride deltas.typography_overrides.
+    "typography": {"preset": "frosted-text"},
 }
 
 
@@ -136,6 +141,7 @@ def _seed_template(db, *, inherits_from_core_id: str) -> str:
         rows=SCHEDULING_FH_TEMPLATE["rows"],
         canvas_config=SCHEDULING_FH_TEMPLATE["canvas_config"],
         substrate=SCHEDULING_FH_TEMPLATE["substrate"],
+        typography=SCHEDULING_FH_TEMPLATE["typography"],
     )
     logger.info(
         "Seeded Tier 2 template %r (id=%s, vertical=%s, version=%d)",

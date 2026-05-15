@@ -149,6 +149,17 @@ class FocusTemplate(Base):
         JSONB, nullable=False, default=dict
     )
 
+    # Sub-arc B-5 (r101): Tier 2 typography defaults (heading + body
+    # weights + color tokens). Distinct from chrome (per-surface
+    # composition) and substrate (atmospheric backdrop). Tier 3
+    # (focus_compositions.deltas key `typography_overrides`) overrides
+    # field-by-field; Tier 1 cores stay typography-free by design.
+    # Service-layer validator: typography_validation.
+    # validate_typography_blob.
+    typography: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True

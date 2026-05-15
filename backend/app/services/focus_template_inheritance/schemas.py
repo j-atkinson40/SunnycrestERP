@@ -71,6 +71,36 @@ class SubstrateBlob(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+# ─── Typography (sub-arc B-5 — type-treatment vocabulary) ───────
+
+
+class TypographyBlob(BaseModel):
+    """Typography v1 shape used at Tier 2 (template default) + Tier 3
+    (composition override). Each field is independently nullable and
+    optional — absent keys inherit from Tier 2, explicit None
+    overrides Tier 2 (key-presence check). The resolver expands
+    `preset` into its canonical defaults before cross-tier cascade.
+
+    Tier 1 cores are typography-free by design — typography is a
+    Focus-level concern, not a core composition concern.
+
+    Vocabulary scope: weight + color only. Family / line-height /
+    letter-spacing / size are platform-canonical concerns owned by
+    DESIGN_LANGUAGE §4 and are NOT part of this v1 vocabulary.
+    """
+
+    preset: (
+        Literal["card-text", "frosted-text", "headline", "custom"]
+        | None
+    ) = None
+    heading_weight: int | None = Field(default=None, ge=400, le=900)
+    heading_color_token: str | None = Field(default=None, min_length=1)
+    body_weight: int | None = Field(default=None, ge=400, le=900)
+    body_color_token: str | None = Field(default=None, min_length=1)
+
+    model_config = {"extra": "forbid"}
+
+
 # ─── Tier 1: cores ──────────────────────────────────────────────
 
 
@@ -147,6 +177,8 @@ class TemplateCreateRequest(BaseModel):
     chrome_overrides: dict[str, Any] = Field(default_factory=dict)
     # Sub-arc B-4: Tier 2 page-background substrate default.
     substrate: dict[str, Any] = Field(default_factory=dict)
+    # Sub-arc B-5: Tier 2 typography default.
+    typography: dict[str, Any] = Field(default_factory=dict)
 
 
 class TemplateUpdateRequest(BaseModel):
@@ -157,6 +189,8 @@ class TemplateUpdateRequest(BaseModel):
     chrome_overrides: dict[str, Any] | None = None
     # Sub-arc B-4: omit to preserve prior substrate on version-bump.
     substrate: dict[str, Any] | None = None
+    # Sub-arc B-5: omit to preserve prior typography on version-bump.
+    typography: dict[str, Any] | None = None
 
 
 class TemplateResponse(BaseModel):
@@ -173,6 +207,8 @@ class TemplateResponse(BaseModel):
     chrome_overrides: dict[str, Any]
     # Sub-arc B-4: stored substrate blob (pre-cascade).
     substrate: dict[str, Any]
+    # Sub-arc B-5: stored typography blob (pre-cascade).
+    typography: dict[str, Any]
     version: int
     is_active: bool
     created_at: str
@@ -229,4 +265,8 @@ class ResolveResponse(BaseModel):
     # every substrate field resolves to None across Tier 2 + Tier 3 —
     # cores stay substrate-free by design).
     resolved_substrate: dict[str, Any] | None = None
+    # Sub-arc B-5: resolved typography (None when every typography
+    # field resolves to None across Tier 2 + Tier 3 — cores stay
+    # typography-free by design).
+    resolved_typography: dict[str, Any] | None = None
     sources: dict[str, Any]

@@ -63,6 +63,9 @@ from app.services.focus_template_inheritance.chrome_validation import (
 from app.services.focus_template_inheritance.substrate_validation import (
     SUBSTRATE_FIELDS,
 )
+from app.services.focus_template_inheritance.typography_validation import (
+    TYPOGRAPHY_FIELDS,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -238,6 +241,75 @@ def expand_substrate_preset(substrate: dict[str, Any]) -> dict[str, Any]:
     return expanded
 
 
+# ─── Typography preset expansion (sub-arc B-5) ───────────────────
+#
+# Typography is the Focus-level type-treatment vocabulary — heading
+# + body weights + color tokens. Distinct from chrome (per-surface
+# composition) and substrate (atmospheric backdrop). Each preset
+# resolves to a canonical block of DESIGN_LANGUAGE §4 weights + §3
+# content color tokens.
+#
+# Typography v1 ships at Tier 2 (focus_templates.typography) + Tier 3
+# (focus_compositions.deltas.typography_overrides). Tier 1 cores are
+# typography-free by design (locked decision).
+#
+# Family / line-height / letter-spacing / size are platform-canonical
+# concerns owned by DESIGN_LANGUAGE §4 and are NOT part of this v1
+# vocabulary — v1 is weight + color only.
+
+TYPOGRAPHY_PRESETS: dict[str, dict[str, Any]] = {
+    "card-text": {
+        "heading_weight": 500,
+        "heading_color_token": "content-strong",
+        "body_weight": 400,
+        "body_color_token": "content-base",
+    },
+    "frosted-text": {
+        "heading_weight": 600,
+        "heading_color_token": "content-strong",
+        "body_weight": 500,
+        "body_color_token": "content-base",
+    },
+    "headline": {
+        "heading_weight": 700,
+        "heading_color_token": "content-strong",
+        "body_weight": 500,
+        "body_color_token": "content-base",
+    },
+    "custom": {},
+}
+
+
+def expand_typography_preset(typography: dict[str, Any]) -> dict[str, Any]:
+    """Expand a typography blob's preset (if any) into its canonical
+    defaults, then overlay the blob's explicit fields on top. The
+    expansion is per-tier (called once per tier in the cascade
+    BEFORE cross-tier merging).
+
+    Behavior:
+      - No "preset" key OR preset is None → return input unchanged
+        (preserves the field-presence cascade semantics).
+      - preset == "custom" → return input unchanged (custom means
+        "no preset; use the explicit overrides only").
+      - Known preset → start from TYPOGRAPHY_PRESETS[preset], overlay
+        explicit fields from `typography` on top.
+
+    The returned dict is fresh (caller is free to mutate).
+    """
+    if not isinstance(typography, dict):
+        return {}
+    preset = typography.get("preset")
+    if preset is None or preset == "custom":
+        return dict(typography)
+    defaults = TYPOGRAPHY_PRESETS.get(preset, {})
+    expanded: dict[str, Any] = dict(defaults)
+    # Overlay every explicit field from the blob (including preset
+    # itself, so source tier remains identifiable downstream).
+    for k, v in typography.items():
+        expanded[k] = v
+    return expanded
+
+
 # ─── Exceptions + types ──────────────────────────────────────────
 
 
@@ -270,6 +342,12 @@ class ResolvedFocus(BaseModel):
     # an empty backdrop wrapper). Tier 1 cores are substrate-free
     # by design — no Tier 1 contribution to this field.
     resolved_substrate: dict[str, Any] | None = None
+    # Sub-arc B-5: resolved Focus-level typography after Tier 2 →
+    # Tier 3 field-level cascade. None when every typography field
+    # resolves to None across both tiers. Tier 1 cores are
+    # typography-free by design — no Tier 1 contribution to this
+    # field.
+    resolved_typography: dict[str, Any] | None = None
     sources: dict[str, Any]
 
 
@@ -660,6 +738,43 @@ def resolve_focus(
     else:
         resolved_substrate_payload = resolved_substrate
 
+    # Sub-arc B-5: typography cascade. Tier 2 + Tier 3 only (Tier 1
+    # is typography-free by design). Each tier's blob is FIRST
+    # expanded via expand_typography_preset() so a tier's preset
+    # contributes its canonical defaults; THEN cross-tier field-
+    # level cascade runs (Tier 3 wins over Tier 2, key-presence
+    # check at each tier — explicit None overrides parent).
+    template_typography_raw = dict(
+        getattr(template, "typography", None) or {}
+    )
+    composition_typography_raw: dict[str, Any] = {}
+    if composition is not None:
+        deltas_for_typography = composition.deltas or {}
+        composition_typography_raw = dict(
+            deltas_for_typography.get("typography_overrides", {}) or {}
+        )
+
+    tier2_typography_expanded = expand_typography_preset(template_typography_raw)
+    tier3_typography_expanded = expand_typography_preset(composition_typography_raw)
+
+    resolved_typography: dict[str, Any] = {}
+    typography_sources: dict[str, str | None] = {}
+    for field in TYPOGRAPHY_FIELDS:
+        if field in tier3_typography_expanded:
+            resolved_typography[field] = tier3_typography_expanded[field]
+            typography_sources[field] = "tier3"
+        elif field in tier2_typography_expanded:
+            resolved_typography[field] = tier2_typography_expanded[field]
+            typography_sources[field] = "tier2"
+        else:
+            resolved_typography[field] = None
+            typography_sources[field] = None
+
+    if all(v is None for v in resolved_typography.values()):
+        resolved_typography_payload: dict[str, Any] | None = None
+    else:
+        resolved_typography_payload = resolved_typography
+
     sources: dict[str, Any] = {
         "template": {
             "id": template.id,
@@ -687,6 +802,9 @@ def resolve_focus(
         # Sub-arc B-4: per-field substrate provenance (Tier 2 +
         # Tier 3 only; cores are substrate-free).
         "substrate_sources": substrate_sources,
+        # Sub-arc B-5: per-field typography provenance (Tier 2 +
+        # Tier 3 only; cores are typography-free).
+        "typography_sources": typography_sources,
     }
 
     return ResolvedFocus(
@@ -706,5 +824,6 @@ def resolve_focus(
         canvas_config=canvas_config,
         resolved_chrome=resolved_chrome_payload,
         resolved_substrate=resolved_substrate_payload,
+        resolved_typography=resolved_typography_payload,
         sources=sources,
     )
