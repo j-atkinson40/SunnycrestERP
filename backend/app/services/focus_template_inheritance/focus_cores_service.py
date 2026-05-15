@@ -19,6 +19,7 @@ inventing a new core; explicit `create_core` is the canonical path.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
 from sqlalchemy.orm import Session
@@ -32,6 +33,12 @@ from app.services.focus_template_inheritance.chrome_validation import (
 
 
 logger = logging.getLogger(__name__)
+
+
+# Sub-arc C-2.1.1: edit-session window. Updates carrying a matching
+# `edit_session_id` within this window mutate in place; otherwise
+# they version-bump per the B-1 behavior.
+EDIT_SESSION_WINDOW_SECONDS = 300
 
 
 # ─── Exceptions ──────────────────────────────────────────────────
@@ -51,6 +58,30 @@ class InvalidCoreShape(FocusCoreError):
 
 class CoreSlugImmutable(FocusCoreError):
     pass
+
+
+class StaleCoreVersionError(FocusCoreError):
+    """Sub-arc C-2.1.1: caller targeted an inactive core_id. Carries
+    the slug + the currently-active core_id so the route handler can
+    surface them in the 410 Gone response body and the frontend can
+    update its local ID + retry within the same edit session.
+    """
+
+    def __init__(self, inactive_id: str, slug: str, active_id: str | None):
+        self.inactive_id = inactive_id
+        self.slug = slug
+        self.active_id = active_id
+        msg = (
+            f"cannot update inactive core {inactive_id!r}; "
+            f"latest version "
+            + (
+                f"is active at {active_id!r}"
+                if active_id is not None
+                else "is not available"
+            )
+            + f" under slug {slug!r}"
+        )
+        super().__init__(msg)
 
 
 # ─── Validation helpers ──────────────────────────────────────────
@@ -239,18 +270,43 @@ def update_core(
     canvas_config: Mapping[str, Any] | None = None,
     chrome: Mapping[str, Any] | None = None,
     core_slug: str | None = None,
+    edit_session_id: str | None = None,
 ) -> FocusCore:
-    """Version-bump the core. Deactivate the prior active row; insert a
-    fresh active row at version+1. `core_slug` is immutable — passing
-    a value other than the existing slug raises CoreSlugImmutable.
+    """Update the core.
+
+    Sub-arc C-2.1.1 (session-aware semantics):
+
+    - If `edit_session_id` matches the core's `last_edit_session_id`
+      AND `last_edit_session_at` is within `EDIT_SESSION_WINDOW_SECONDS`,
+      the update mutates in place. `version` is unchanged; `updated_at`
+      bumps; `last_edit_session_at` advances. The row's id stays the
+      same — frontends can continue editing without addressing churn.
+    - Otherwise the update version-bumps per the B-1 behavior:
+      deactivate the prior active row, insert a fresh active row at
+      version+1. The new row carries the supplied session id (if any)
+      so subsequent updates within the same session mutate the new
+      active row in place.
+
+    `core_slug` is immutable — passing a value other than the existing
+    slug raises CoreSlugImmutable.
+
+    If the target `core_id` is INACTIVE, raises StaleCoreVersionError
+    with the currently-active core_id (when one exists). The route
+    layer translates this to HTTP 410 Gone with the active_core_id in
+    the response body; the frontend updates its local ID + retries.
     """
     prior = get_core_by_id(db, core_id)
     if prior is None:
         raise CoreNotFound(core_id)
     if not prior.is_active:
-        raise FocusCoreError(
-            f"cannot update inactive core {core_id!r}; latest version "
-            f"is active under slug {prior.core_slug!r}"
+        # Sub-arc C-2.1.1: surface the active row's id so the
+        # frontend can transparently switch + retry within the same
+        # edit session.
+        active = _find_active_by_slug(db, prior.core_slug)
+        raise StaleCoreVersionError(
+            inactive_id=core_id,
+            slug=prior.core_slug,
+            active_id=active.id if active is not None else None,
         )
 
     if core_slug is not None and core_slug != prior.core_slug:
@@ -323,6 +379,32 @@ def update_core(
     except InvalidChromeShape as exc:
         raise InvalidCoreShape(str(exc)) from exc
 
+    now = datetime.now(timezone.utc)
+
+    # ── Session-aware fast path: mutate in place ──────────────────
+    if edit_session_id is not None and _within_edit_session(prior, edit_session_id, now):
+        prior.display_name = new_display_name
+        prior.description = new_description
+        prior.registered_component_kind = new_kind
+        prior.registered_component_name = new_name
+        prior.default_starting_column = new_dsc
+        prior.default_column_span = new_dcs
+        prior.default_row_index = new_dri
+        prior.min_column_span = new_min
+        prior.max_column_span = new_max
+        prior.canvas_config = new_cfg
+        prior.chrome = new_chrome
+        prior.last_edit_session_id = edit_session_id
+        prior.last_edit_session_at = now
+        prior.updated_at = now
+        prior.updated_by = updated_by
+        # version unchanged; is_active unchanged; id unchanged.
+        db.add(prior)
+        db.commit()
+        db.refresh(prior)
+        return prior
+
+    # ── Default path: version-bump (B-1 behavior) ─────────────────
     prior.is_active = False
     new_row = FocusCore(
         core_slug=prior.core_slug,
@@ -341,11 +423,48 @@ def update_core(
         is_active=True,
         created_by=prior.created_by,
         updated_by=updated_by,
+        last_edit_session_id=edit_session_id,
+        last_edit_session_at=now if edit_session_id is not None else None,
     )
     db.add(new_row)
     db.commit()
     db.refresh(new_row)
     return new_row
+
+
+def _within_edit_session(
+    core: FocusCore, edit_session_id: str, now: datetime
+) -> bool:
+    """Return True iff this update should mutate `core` in place.
+
+    Two acceptance cases:
+
+    1. **First touch under this session.** The row has never been
+       session-stamped (`last_edit_session_id IS NULL`) — this is
+       the first save during the operator's edit session. Mutate
+       in place + set the session pointer. Without this branch the
+       FIRST update of every editor session would version-bump and
+       the auto-save scrub would still produce one stray version
+       per session.
+
+    2. **Repeat touch within the active window.** The row's session
+       pointer matches the supplied token AND `last_edit_session_at`
+       is within `EDIT_SESSION_WINDOW_SECONDS`. Mutate in place.
+
+    Anything else (different token, expired window) falls through
+    to the version-bump path.
+    """
+    # Case 1: row never session-stamped → first touch.
+    if core.last_edit_session_id is None or core.last_edit_session_at is None:
+        return True
+    # Case 2: token must match.
+    if str(core.last_edit_session_id) != str(edit_session_id):
+        return False
+    # ... and the window must still be open.
+    stamp = core.last_edit_session_at
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return (now - stamp) < timedelta(seconds=EDIT_SESSION_WINDOW_SECONDS)
 
 
 def count_templates_referencing(db: Session, core_id: str) -> int:

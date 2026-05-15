@@ -193,4 +193,135 @@ describe("useFocusCoreDraft", () => {
     expect(result.current.core).toBeNull()
     expect(result.current.draft).toEqual({})
   })
+
+  // ─── Sub-arc C-2.1.1: session-aware update semantics ────────────
+
+  it("generates a session token when coreId becomes real", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.editSessionId).toBeTruthy()
+    expect(typeof result.current.editSessionId).toBe("string")
+    // Looks like a UUID v4-ish (hyphenated, 36 chars).
+    expect(result.current.editSessionId!.length).toBe(36)
+  })
+
+  it("preserves session token across re-renders with same coreId", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    const { result, rerender } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const firstToken = result.current.editSessionId
+    rerender()
+    expect(result.current.editSessionId).toBe(firstToken)
+  })
+
+  it("generates a fresh session token when coreId switches", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      id: "core-002",
+    })
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useFocusCoreDraft(id),
+      { initialProps: { id: "core-001" } },
+    )
+    await waitFor(() => expect(result.current.core?.id).toBe("core-001"))
+    const tokenA = result.current.editSessionId
+    rerender({ id: "core-002" })
+    await waitFor(() => expect(result.current.core?.id).toBe("core-002"))
+    const tokenB = result.current.editSessionId
+    expect(tokenB).toBeTruthy()
+    expect(tokenB).not.toBe(tokenA)
+  })
+
+  it("clears session token when coreId becomes null", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string | null }) => useFocusCoreDraft(id),
+      { initialProps: { id: "core-001" as string | null } },
+    )
+    await waitFor(() => expect(result.current.editSessionId).toBeTruthy())
+    rerender({ id: null })
+    expect(result.current.editSessionId).toBeNull()
+  })
+
+  it("save includes edit_session_id in PUT payload", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    ;(focusCoresService.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      chrome: { preset: "card", elevation: 80 },
+    })
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const sessionToken = result.current.editSessionId
+    act(() => {
+      result.current.updateDraft({ elevation: 80 })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(focusCoresService.update).toHaveBeenCalledWith(
+      "core-001",
+      expect.objectContaining({
+        edit_session_id: sessionToken,
+        chrome: expect.objectContaining({ elevation: 80 }),
+      }),
+    )
+  })
+
+  it("on 410 Gone, swaps to active_core_id and retries", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    const staleError = Object.assign(new Error("Gone"), {
+      response: {
+        status: 410,
+        data: {
+          detail: {
+            message: "stale",
+            inactive_core_id: "core-001",
+            active_core_id: "core-001-v2",
+            slug: "test-core",
+          },
+        },
+      },
+    })
+    ;(focusCoresService.update as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(staleError)
+      .mockResolvedValueOnce({
+        ...SAMPLE_CORE,
+        id: "core-001-v2",
+        chrome: { preset: "card", elevation: 90 },
+      })
+
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.updateDraft({ elevation: 90 })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    // Two update calls: first with stale id, retry with active id.
+    const calls = (focusCoresService.update as ReturnType<typeof vi.fn>).mock
+      .calls
+    expect(calls.length).toBe(2)
+    expect(calls[0][0]).toBe("core-001")
+    expect(calls[1][0]).toBe("core-001-v2")
+    // Both calls carried the same session token.
+    expect(calls[0][1].edit_session_id).toBe(calls[1][1].edit_session_id)
+    // Final core state reflects the swapped id.
+    expect(result.current.core?.id).toBe("core-001-v2")
+    expect(result.current.error).toBeNull()
+  })
 })

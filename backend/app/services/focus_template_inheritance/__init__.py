@@ -22,10 +22,12 @@ focus_compositions shape and removes the import-compat shim.
 """
 
 from app.services.focus_template_inheritance.focus_cores_service import (  # noqa: F401
+    EDIT_SESSION_WINDOW_SECONDS,
     CoreNotFound,
     CoreSlugImmutable,
     FocusCoreError,
     InvalidCoreShape,
+    StaleCoreVersionError,
     count_templates_referencing,
     create_core,
     get_core_by_id,

@@ -62,6 +62,7 @@ from app.services.focus_template_inheritance import (
     InvalidCompositionShape,
     InvalidCoreShape,
     InvalidTemplateShape,
+    StaleCoreVersionError,
     TemplateNotFound,
     TemplateScopeMismatch,
     count_compositions_referencing,
@@ -194,6 +195,19 @@ def _translate(exc: Exception) -> HTTPException:
         ),
     ):
         return HTTPException(status_code=404, detail=str(exc) or "Not found")
+    if isinstance(exc, StaleCoreVersionError):
+        # Sub-arc C-2.1.1: surface the active core id in the response
+        # body so the frontend can update its local id + retry within
+        # the same edit session.
+        return HTTPException(
+            status_code=410,
+            detail={
+                "message": str(exc),
+                "inactive_core_id": exc.inactive_id,
+                "active_core_id": exc.active_id,
+                "slug": exc.slug,
+            },
+        )
     if isinstance(
         exc,
         (
@@ -235,6 +249,16 @@ def _core_to_response(row) -> CoreResponse:
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else "",
         updated_at=row.updated_at.isoformat() if row.updated_at else "",
+        last_edit_session_id=(
+            str(getattr(row, "last_edit_session_id", None))
+            if getattr(row, "last_edit_session_id", None) is not None
+            else None
+        ),
+        last_edit_session_at=(
+            row.last_edit_session_at.isoformat()
+            if getattr(row, "last_edit_session_at", None) is not None
+            else None
+        ),
     )
 
 
@@ -353,6 +377,7 @@ def admin_update_core(
             max_column_span=body.max_column_span,
             canvas_config=body.canvas_config,
             chrome=body.chrome,
+            edit_session_id=body.edit_session_id,
         )
     except Exception as exc:
         raise _translate(exc)

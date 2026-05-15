@@ -132,6 +132,11 @@ class CoreUpdateRequest(BaseModel):
     max_column_span: int | None = None
     canvas_config: dict[str, Any] | None = None
     chrome: dict[str, Any] | None = None
+    # Sub-arc C-2.1.1: optional edit-session token (UUID v4 string).
+    # When present AND matches `focus_cores.last_edit_session_id` AND
+    # `last_edit_session_at` is within 5 minutes, the update mutates
+    # in place. Otherwise version-bumps per B-1.
+    edit_session_id: str | None = Field(default=None, max_length=36)
 
 
 class CoreResponse(BaseModel):
@@ -152,6 +157,9 @@ class CoreResponse(BaseModel):
     is_active: bool
     created_at: str
     updated_at: str
+    # Sub-arc C-2.1.1: edit-session metadata surfaced for client telemetry.
+    last_edit_session_id: str | None = None
+    last_edit_session_at: str | None = None
 
 
 class CoreUsageResponse(BaseModel):
