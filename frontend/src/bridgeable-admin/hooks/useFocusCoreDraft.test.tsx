@@ -144,6 +144,89 @@ describe("useFocusCoreDraft", () => {
     ).toBe(1)
   })
 
+  /**
+   * Sub-arc C-2.1.4 regression test — stale-closure-in-debounced-save.
+   *
+   * Bug: pre-fix, `save` had `draft` in its useCallback deps. Each
+   * rapid updateDraft call registered a setTimeout that captured the
+   * save function from BEFORE the corresponding setDraft committed.
+   * Result on a continuous scrub: the queued save reads a `draft`
+   * value one event behind the actual state. The save payload's
+   * `chrome.elevation` carries the SECOND-TO-LAST update's value,
+   * not the LAST.
+   *
+   * Wire-level: every PUT 200, request matches response (the saved
+   * value is correctly persisted). React state: savedSnapshot reflects
+   * what was saved (stale value); draft reflects user's actual latest
+   * value. deepEqualChrome(draft, savedSnapshot) → false. isDirty
+   * stuck true forever; "Unsaved" indicator never clears.
+   *
+   * Fix: draftRef.current syncs with draft state via useEffect; save
+   * reads from the ref, not closure. The save callback's identity
+   * stabilizes (draft removed from deps), and the queued save always
+   * picks up the latest committed draft when the timer fires.
+   *
+   * This test must use a mock that ECHOES the sent chrome (so the
+   * response shape matches the request shape and isDirty can resolve
+   * to false when payload === draft). The critical assertions:
+   *   - payload.chrome.elevation === LATEST value (not stale)
+   *   - isDirty === false after save resolves
+   */
+  it("save sends latest draft value not stale closure value", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    // Echo the sent chrome so savedSnapshot matches draft after save.
+    ;(focusCoresService.update as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_id: string, body: { chrome: Record<string, unknown> }) => ({
+        ...SAMPLE_CORE,
+        chrome: { ...SAMPLE_CORE.chrome, ...body.chrome },
+      }),
+    )
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // Three rapid scrubs before any debounce fires. Pre-fix, the
+    // queued save would read draft from the closure captured during
+    // the SECOND updateDraft (when draft was still elevation=70 in
+    // the closure but post-commit elevation=72) — but actually the
+    // captured value can be even staler depending on render timing.
+    // The locked-in assertion: payload's elevation MUST be 75, the
+    // latest committed value.
+    act(() => {
+      result.current.updateDraft({ elevation: 70 })
+    })
+    act(() => {
+      result.current.updateDraft({ elevation: 72 })
+    })
+    act(() => {
+      result.current.updateDraft({ elevation: 75 })
+    })
+
+    await waitFor(
+      () => {
+        expect(focusCoresService.update).toHaveBeenCalled()
+      },
+      { timeout: 2000 },
+    )
+
+    // Critical: payload carries the LATEST draft value, not stale.
+    const updateMock = focusCoresService.update as ReturnType<typeof vi.fn>
+    expect(updateMock.mock.calls.length).toBe(1)
+    const payload = updateMock.mock.calls[0][1] as {
+      chrome: { elevation: number }
+    }
+    expect(payload.chrome.elevation).toBe(75)
+
+    // Critical: with payload === draft and echoing mock, isDirty
+    // resolves to false. Pre-fix, payload.chrome.elevation would be
+    // a stale value, savedSnapshot wouldn't match draft, isDirty
+    // would stay true.
+    await waitFor(() => {
+      expect(result.current.isDirty).toBe(false)
+    })
+  })
+
   it("discard reverts draft to last-saved snapshot", async () => {
     ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       SAMPLE_CORE,

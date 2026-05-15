@@ -194,8 +194,25 @@ export function useFocusCoreDraft(
   // keep editing the same logical core via its new active row id.
   const activeCoreIdRef = useRef<string | null>(null)
 
+  // Sub-arc C-2.1.4: draftRef tracks the latest draft so `save` can
+  // read it via mutable reference rather than closure capture. Without
+  // this, save's setTimeout (registered in updateDraft) captures the
+  // draft value at registration time; subsequent rapid updateDraft
+  // calls advance the state but the queued save still reads the old
+  // closure value. Result on a continuous scrub: every save persists
+  // a value one event behind the actual draft, so savedSnapshot ===
+  // draft is never true and isDirty never clears.
+  const draftRef = useRef<ChromeDraft>({})
+
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inFlightCoreId = useRef<string | null>(null)
+
+  // Sub-arc C-2.1.4: keep draftRef in sync with draft state so the
+  // save callback always reads the latest committed draft, not the
+  // closure-captured one.
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
 
   // Load on coreId change.
   useEffect(() => {
@@ -255,9 +272,14 @@ export function useFocusCoreDraft(
     setIsSaving(true)
     setError(null)
 
+    // Sub-arc C-2.1.4: read latest draft via ref, not closure. The
+    // closure value (`draft`) is captured at save-callback creation
+    // time; rapid updateDraft calls advance the React state but the
+    // queued save would still send the stale closure value.
+    const latestDraft = draftRef.current
     const payload = editSessionId
-      ? { chrome: draft, edit_session_id: editSessionId }
-      : { chrome: draft }
+      ? { chrome: latestDraft, edit_session_id: editSessionId }
+      : { chrome: latestDraft }
 
     try {
       const updated = await focusCoresService.update(targetId, payload)
@@ -295,7 +317,9 @@ export function useFocusCoreDraft(
     } finally {
       setIsSaving(false)
     }
-  }, [coreId, draft, editSessionId])
+    // Sub-arc C-2.1.4: deps intentionally exclude `draft` — save
+    // reads it from draftRef.current to avoid the stale-closure race.
+  }, [coreId, editSessionId])
 
   const updateDraft = useCallback(
     (partial: ChromeDraft) => {
