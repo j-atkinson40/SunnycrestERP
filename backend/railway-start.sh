@@ -118,6 +118,28 @@ else
     echo "ENVIRONMENT=production — skipping staging seed scripts."
 fi
 
+# D-1 — Canonical platform seed runner.
+#
+# Discovers all `seed_*.py` in backend/scripts/ alphabetically and runs
+# each via `python -m scripts.<name>`. Skips seeds already invoked with
+# fail-loud discipline upstream (SKIP_SEEDS in the runner). Failures
+# are non-fatal: warn + continue + exit 0 (locked decision 2 — partial
+# state + idempotent re-run on next deploy is preferred over
+# deploy-lockout).
+#
+# Closes the gap where new canonical seeds (e.g., scheduling-kanban-core
+# from sub-arc B-1) added to backend/scripts/ weren't being applied on
+# staging deploys. New canonical seeds in future arcs are picked up
+# automatically by naming convention.
+#
+# Production also runs the canonical seeds — they're idempotent and
+# self-guard demo content via ENVIRONMENT=production refusal inside the
+# script. Inheritance/platform-canonical seeds (focus_template_inheritance,
+# etc.) intentionally seed in production too.
+echo ""
+echo "Running canonical platform seeds (D-1)..."
+bash "$(dirname "$0")/scripts/run_canonical_seeds.sh"
+
 echo ""
 echo "Starting server..."
 exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
