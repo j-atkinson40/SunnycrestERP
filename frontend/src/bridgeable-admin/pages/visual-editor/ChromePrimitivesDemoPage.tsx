@@ -43,6 +43,13 @@ import {
   TokenSwatchPicker,
   type PresetSlug,
 } from "@/bridgeable-admin/components/visual-authoring"
+// Sub-arc C-2.1: BASE_TOKENS is the canonical platform-default
+// substrate mirrored from tokens.css. Replaces the C-1
+// FALLBACK_TOKENS constant; single source of truth shared with
+// FocusEditorPage's Tier 1 chrome inspector. A vitest drift-gate
+// keeps the mirror in sync with tokens.css at build time.
+import { BASE_TOKENS } from "@/lib/visual-editor/themes/base-tokens"
+import { resolveEffectiveTokens } from "@/lib/visual-editor/themes/resolve-effective-tokens"
 
 /** Chrome v2 vocabulary (mirror of backend schemas.ChromeBlob). */
 interface ChromeBlob {
@@ -150,22 +157,14 @@ const PADDING_PX: Record<string, number> = {
   "space-8": 32,
 }
 
-/** Hardcoded fallback (tokens.css light-mode defaults — abbreviated). */
-const FALLBACK_TOKENS: Record<string, string> = {
-  "surface-base": "#fbfaf6",
-  "surface-elevated": "#ffffff",
-  "surface-raised": "#fdfcf8",
-  "surface-sunken": "#f1efe9",
-  // Sub-arc C-1.1: translucent variant. Alpha 0.60 matches
-  // tokens.css :root --surface-frosted. Encoded as rgba so the
-  // fallback path mirrors the resolved-theme path under
-  // backdrop-filter.
-  "surface-frosted": "rgba(255, 251, 240, 0.60)",
-  "border-subtle": "#e8e3d8",
-  "border-base": "#cfc8b8",
-  "border-strong": "#a89e88",
-  "border-brass": "#9C5640",
-}
+/**
+ * Sub-arc C-2.1: FALLBACK_TOKENS retired. Replaced by the shared
+ * BASE_TOKENS substrate at @/lib/visual-editor/themes/base-tokens.
+ * Single source of truth shared with FocusEditorPage's Tier 1
+ * chrome inspector; a vitest drift-gate keeps it synced with
+ * tokens.css.
+ */
+const FALLBACK_TOKENS: Record<string, string> = { ...BASE_TOKENS.light }
 
 interface ResolvedThemeResponse {
   tokens?: Record<string, string>
@@ -197,16 +196,11 @@ export default function ChromePrimitivesDemoPage() {
         )
         if (cancelled) return
         // The endpoint shape carries the resolved token map under
-        // `tokens` or `resolved` depending on phase. Try both, fall
-        // back gracefully.
-        const map = res.data.tokens ?? res.data.resolved ?? {}
-        // Normalize: tokens may be keyed with or without leading `--`.
-        const normalized: Record<string, string> = { ...FALLBACK_TOKENS }
-        for (const [k, v] of Object.entries(map)) {
-          const key = k.startsWith("--") ? k.slice(2) : k
-          normalized[key] = v
-        }
-        setThemeTokens(normalized)
+        // `tokens` or `resolved` depending on phase. Compose against
+        // the shared BASE_TOKENS substrate per the C-2.1 plumbing
+        // canon.
+        const overrides = res.data.tokens ?? res.data.resolved ?? {}
+        setThemeTokens(resolveEffectiveTokens("light", overrides))
       } catch {
         // Fallback only — demo is internal/dev; do not block render
         // on theme fetch failure.

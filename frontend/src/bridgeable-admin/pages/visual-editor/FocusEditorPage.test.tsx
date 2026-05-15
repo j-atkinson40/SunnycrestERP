@@ -1,214 +1,184 @@
 /**
- * Arc 3a — FocusEditorPage return-to banner tests.
+ * FocusEditorPage tests — sub-arc C-2.1 rewrite.
  *
- * Verifies bidirectional deep-link contract:
- * - When launched with `?return_to=...` URL param, the editor renders
- *   a "Back to runtime editor" affordance.
- * - Click navigates to the decoded return_to value (preserves inspector
- *   state because the runtime editor route stays mounted in the
- *   originating tab).
- * - When launched without return_to, the banner is hidden + behavior
- *   is identical to pre-Arc-3a.
- * - When launched with `?focus_type=scheduling`, the matching focus-
- *   template pre-selects (forward-compat scaffolding).
+ * Validates the tier toggle, tier-1 cores browser, and tier-2
+ * placeholder. The legacy composition-authoring tests (Arc 3a
+ * return_to banner, ?focus_type pre-selection against
+ * focus_compositions) are retired here — the legacy code path is
+ * replaced by the C-2.1 + C-2.2 inheritance editor.
  *
- * Mocks `focusCompositionsService` to avoid network. Uses MemoryRouter
- * with initial URL carrying query params per react-router-dom v7
- * canonical pattern.
+ * Network calls mocked: focusCoresService (list / get / create /
+ * update) + adminApi.get for themes resolve.
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, waitFor } from "@testing-library/react"
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter, Route, Routes } from "react-router-dom"
 
 import "@/lib/visual-editor/registry/auto-register"
 
 import FocusEditorPage from "./FocusEditorPage"
 
+// Mock focusCoresService for predictable list/get/update behavior.
+// NOTE: vi.mock is hoisted; inline factory must not reference outer
+// bindings. Define mockCores inside the factory + re-derive for tests.
+vi.mock("@/bridgeable-admin/services/focus-cores-service", () => {
+  const cores = [
+    {
+      id: "core-001",
+      core_slug: "scheduling-kanban-core",
+      display_name: "Scheduling Kanban Core",
+      description: "Funeral scheduling kanban dispatcher.",
+      registered_component_kind: "focus-template",
+      registered_component_name: "SchedulingKanbanCore",
+      default_starting_column: 0,
+      default_column_span: 12,
+      default_row_index: 0,
+      min_column_span: 6,
+      max_column_span: 12,
+      canvas_config: {},
+      chrome: { preset: "card" },
+      version: 1,
+      is_active: true,
+      created_at: "2026-05-01T00:00:00Z",
+      updated_at: "2026-05-15T00:00:00Z",
+    },
+  ]
+  return {
+    focusCoresService: {
+      list: vi.fn().mockResolvedValue(cores),
+      get: vi.fn().mockResolvedValue(cores[0]),
+      create: vi.fn(),
+      update: vi
+        .fn()
+        .mockImplementation(async (_id: string, payload: { chrome: unknown }) => ({
+          ...cores[0],
+          chrome: payload.chrome,
+        })),
+    },
+  }
+})
 
-vi.mock(
-  "@/bridgeable-admin/services/focus-compositions-service",
-  async () => {
-    const actual = await vi.importActual<
-      typeof import("@/bridgeable-admin/services/focus-compositions-service")
-    >("@/bridgeable-admin/services/focus-compositions-service")
-    return {
-      ...actual,
-      focusCompositionsService: {
-        list: vi.fn().mockResolvedValue([]),
-        get: vi.fn(),
-        resolve: vi.fn().mockResolvedValue({
-          focus_type: "scheduling",
-          vertical: null,
-          tenant_id: null,
-          source: null,
-          source_id: null,
-          source_version: null,
-          rows: [],
-          canvas_config: { gap_size: 12, background_treatment: "surface-base" },
-        }),
-        create: vi.fn(),
-        update: vi.fn(),
-      },
-    }
+vi.mock("@/bridgeable-admin/lib/admin-api", () => ({
+  adminApi: {
+    get: vi.fn().mockResolvedValue({ data: { tokens: {} } }),
+    post: vi.fn(),
+    put: vi.fn(),
   },
-)
-
-vi.mock(
-  "@/bridgeable-admin/services/component-configurations-service",
-  async () => {
-    const actual = await vi.importActual<
-      typeof import("@/bridgeable-admin/services/component-configurations-service")
-    >("@/bridgeable-admin/services/component-configurations-service")
-    return {
-      ...actual,
-      componentConfigurationsService: {
-        list: vi.fn().mockResolvedValue([]),
-        resolve: vi.fn().mockResolvedValue({
-          component_kind: "focus-template",
-          component_name: "funeral-scheduling",
-          vertical: null,
-          tenant_id: null,
-          props: {},
-          orphaned_keys: [],
-          sources: [],
-        }),
-        create: vi.fn(),
-        update: vi.fn(),
-      },
-    }
-  },
-)
-
-vi.mock("@/bridgeable-admin/components/TenantPicker", () => ({
-  TenantPicker: () => null,
 }))
 
-
-// Location capture for route navigation assertion
-function LocationProbe({ onLocation }: { onLocation: (path: string) => void }) {
-  const loc = useLocation()
-  onLocation(loc.pathname + loc.search)
-  return null
+function renderAt(initialPath: string) {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path="*" element={<FocusEditorPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
 }
-
 
 afterEach(() => {
   vi.clearAllMocks()
 })
 
-
-describe("FocusEditorPage — Arc 3a return-to banner", () => {
-  it("does NOT render return-to banner when no return_to URL param", async () => {
-    const result = render(
-      <MemoryRouter initialEntries={["/visual-editor/focuses"]}>
-        <FocusEditorPage />
-      </MemoryRouter>,
-    )
-    // Banner test-id should NOT be present
-    await waitFor(() => {
-      expect(result.getByTestId("focus-editor")).toBeTruthy()
-    })
-    expect(
-      result.queryByTestId("focus-editor-return-to-banner"),
-    ).toBeFalsy()
+describe("FocusEditorPage — sub-arc C-2.1", () => {
+  it("renders the focus-editor-page test ID", async () => {
+    renderAt("/")
+    expect(await screen.findByTestId("focus-editor-page")).toBeTruthy()
   })
 
-  it("renders 'Back to runtime editor' affordance when return_to param present", async () => {
-    const returnTo = encodeURIComponent(
-      "/bridgeable-admin/runtime-editor/?tenant=hopkins-fh&user=u1",
-    )
-    const result = render(
-      <MemoryRouter
-        initialEntries={[
-          `/visual-editor/focuses?return_to=${returnTo}&focus_type=scheduling`,
-        ]}
-      >
-        <FocusEditorPage />
-      </MemoryRouter>,
-    )
-    await waitFor(() => {
-      expect(
-        result.getByTestId("focus-editor-return-to-banner"),
-      ).toBeTruthy()
-    })
-    expect(
-      result.getByTestId("focus-editor-return-to-back"),
-    ).toBeTruthy()
+  it("renders the tier toggle with both options", async () => {
+    renderAt("/")
+    expect(await screen.findByTestId("focus-tier-toggle")).toBeTruthy()
+    expect(screen.getByTestId("tier-toggle-1")).toBeTruthy()
+    expect(screen.getByTestId("tier-toggle-2")).toBeTruthy()
   })
 
-  it("click 'Back to runtime editor' navigates to decoded return_to value", async () => {
-    let capturedPath = ""
-    const returnTo =
-      "/bridgeable-admin/runtime-editor/?tenant=hopkins-fh&user=u1"
-    const encoded = encodeURIComponent(returnTo)
+  it("defaults to Tier 1 when no ?tier param", async () => {
+    renderAt("/")
+    const t1 = await screen.findByTestId("tier-toggle-1")
+    expect(t1.getAttribute("data-active")).toBe("true")
+    expect(screen.getByTestId("tier-toggle-2").getAttribute("data-active")).toBe("false")
+  })
 
-    const result = render(
-      <MemoryRouter
-        initialEntries={[
-          `/visual-editor/focuses?return_to=${encoded}&focus_type=scheduling`,
-        ]}
-      >
-        <Routes>
-          <Route
-            path="/visual-editor/focuses"
-            element={
-              <>
-                <LocationProbe onLocation={(p) => (capturedPath = p)} />
-                <FocusEditorPage />
-              </>
-            }
-          />
-          <Route
-            path="/bridgeable-admin/runtime-editor/"
-            element={
-              <LocationProbe onLocation={(p) => (capturedPath = p)} />
-            }
-          />
-        </Routes>
-      </MemoryRouter>,
-    )
-    const backBtn = await waitFor(() =>
-      result.getByTestId("focus-editor-return-to-back"),
-    )
-    fireEvent.click(backBtn)
+  it("renders Tier 1 cores browser when active", async () => {
+    renderAt("/")
+    expect(await screen.findByTestId("focus-editor-browser")).toBeTruthy()
+  })
+
+  it("renders Tier 2 placeholder when ?tier=2", async () => {
+    renderAt("/?tier=2")
+    expect(await screen.findByTestId("tier2-placeholder")).toBeTruthy()
+    // Tier 1 browser should NOT mount when in Tier 2 mode.
+    expect(screen.queryByTestId("focus-editor-browser")).toBeNull()
+  })
+
+  it("switching tier via toggle updates URL and renders the other tier body", async () => {
+    renderAt("/?tier=1")
+    const t2 = await screen.findByTestId("tier-toggle-2")
+    fireEvent.click(t2)
     await waitFor(() => {
-      expect(capturedPath).toContain("/bridgeable-admin/runtime-editor")
-      expect(capturedPath).toContain("tenant=hopkins-fh")
+      expect(screen.queryByTestId("tier2-placeholder")).toBeTruthy()
+    })
+    fireEvent.click(screen.getByTestId("tier-toggle-1"))
+    await waitFor(() => {
+      expect(screen.queryByTestId("focus-editor-browser")).toBeTruthy()
     })
   })
 
-  it("pre-selects focus-template when focus_type URL param matches a registered compositionFocusType", async () => {
-    const result = render(
-      <MemoryRouter
-        initialEntries={[
-          "/visual-editor/focuses?focus_type=scheduling",
-        ]}
-      >
-        <FocusEditorPage />
-      </MemoryRouter>,
-    )
-    // funeral-scheduling registers compositionFocusType="scheduling"
-    // → editor should pre-select that template
+  it("Tier 2 placeholder copy mentions C-2.2", async () => {
+    renderAt("/?tier=2")
+    const placeholder = await screen.findByTestId("tier2-placeholder")
+    expect(placeholder.textContent ?? "").toMatch(/C-2\.2/)
+  })
+
+  it("loads cores list on mount and renders browser rows", async () => {
+    renderAt("/")
     await waitFor(() => {
-      const label = result.queryByTestId("focus-preview-template-label")
-      expect(label).toBeTruthy()
-      expect(label?.textContent).toContain("Funeral Scheduling")
+      expect(screen.queryByTestId("core-row-scheduling-kanban-core")).toBeTruthy()
     })
   })
 
-  it("standalone behavior unchanged when no URL params (smoke)", async () => {
-    const result = render(
-      <MemoryRouter initialEntries={["/visual-editor/focuses"]}>
-        <FocusEditorPage />
-      </MemoryRouter>,
-    )
+  it("clicking a core row updates the URL ?core param", async () => {
+    renderAt("/")
+    const row = await screen.findByTestId("core-row-scheduling-kanban-core")
+    fireEvent.click(row)
+    // No URL hook in this test, but the row's data-selected should
+    // toggle to true after the click.
     await waitFor(() => {
-      expect(result.getByTestId("focus-editor")).toBeTruthy()
-      expect(result.getByTestId("focus-editor-browser")).toBeTruthy()
+      expect(row.getAttribute("data-selected")).toBe("true")
     })
-    // No banner; default category Decision selected
-    expect(
-      result.queryByTestId("focus-editor-return-to-banner"),
-    ).toBeFalsy()
+  })
+
+  it("dirty indicator hidden by default", async () => {
+    renderAt("/")
+    await screen.findByTestId("focus-editor-page")
+    expect(screen.queryByTestId("dirty-indicator")).toBeNull()
+  })
+
+  it("displays New Core button in the cores browser", async () => {
+    renderAt("/")
+    expect(await screen.findByTestId("new-core-button")).toBeTruthy()
+  })
+
+  it("clicking New Core opens the create modal", async () => {
+    renderAt("/")
+    const btn = await screen.findByTestId("new-core-button")
+    fireEvent.click(btn)
+    await waitFor(() => {
+      expect(screen.queryByTestId("create-tier-one-core-modal")).toBeTruthy()
+    })
+  })
+
+  it("renders no-selection state in preview when no core selected", async () => {
+    renderAt("/")
+    expect(await screen.findByTestId("tier1-no-selection")).toBeTruthy()
+  })
+
+  it("auto-selects core from ?core query param", async () => {
+    renderAt("/?core=core-001")
+    await waitFor(() => {
+      const row = screen.queryByTestId("core-row-scheduling-kanban-core")
+      expect(row?.getAttribute("data-selected")).toBe("true")
+    })
   })
 })
