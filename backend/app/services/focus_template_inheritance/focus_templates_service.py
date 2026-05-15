@@ -28,6 +28,7 @@ the service layer when needed.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping
 
 from sqlalchemy.orm import Session
@@ -38,6 +39,9 @@ from app.models.focus_template import (
     SCOPE_PLATFORM_DEFAULT,
     SCOPE_VERTICAL_DEFAULT,
     FocusTemplate,
+)
+from app.services.focus_template_inheritance.constants import (
+    EDIT_SESSION_WINDOW_SECONDS,
 )
 from app.services.focus_template_inheritance.focus_cores_service import (
     CoreNotFound,
@@ -80,6 +84,42 @@ class InvalidTemplateShape(FocusTemplateError):
 
 class TemplateScopeMismatch(FocusTemplateError):
     pass
+
+
+class StaleTemplateVersionError(FocusTemplateError):
+    """Sub-arc C-2.1.2: caller targeted an inactive template_id. Carries
+    the slug + the currently-active template_id so the route handler
+    can surface them in the 410 Gone response body and the frontend
+    can update its local ID + retry within the same edit session.
+
+    Mirrors `StaleCoreVersionError` (sub-arc C-2.1.1).
+    """
+
+    def __init__(
+        self,
+        inactive_id: str,
+        slug: str,
+        scope: str,
+        vertical: str | None,
+        active_id: str | None,
+    ):
+        self.inactive_id = inactive_id
+        self.slug = slug
+        self.scope = scope
+        self.vertical = vertical
+        self.active_id = active_id
+        msg = (
+            f"cannot update inactive template {inactive_id!r}; "
+            f"latest version "
+            + (
+                f"is active at {active_id!r}"
+                if active_id is not None
+                else "is not available"
+            )
+            + f" under (scope={scope!r}, vertical={vertical!r}, "
+            f"slug={slug!r})"
+        )
+        super().__init__(msg)
 
 
 # ─── Validation helpers ──────────────────────────────────────────
@@ -435,17 +475,61 @@ def update_template(
     chrome_overrides: Mapping[str, Any] | None = None,
     substrate: Mapping[str, Any] | None = None,
     typography: Mapping[str, Any] | None = None,
+    edit_session_id: str | None = None,
 ) -> FocusTemplate:
-    """Version-bump the template. `scope`, `vertical`, `template_slug`,
-    `inherits_from_core_id` are immutable through this surface —
-    they identify the chain. Changing core = new template (caller
-    should create a new template_slug)."""
+    """Update the template.
+
+    `scope`, `vertical`, `template_slug`, `inherits_from_core_id` are
+    immutable through this surface — they identify the chain. Changing
+    core = new template (caller should create a new template_slug).
+
+    Sub-arc C-2.1.2 (session-aware semantics, mirrors C-2.1.1 for
+    cores):
+
+    - If `edit_session_id` matches the template's
+      `last_edit_session_id` AND `last_edit_session_at` is within
+      `EDIT_SESSION_WINDOW_SECONDS`, the update mutates in place.
+      `version` is unchanged; `updated_at` bumps; `last_edit_session_at`
+      advances. The row's id stays the same — frontends can continue
+      editing without addressing churn.
+    - If the row has never been session-stamped (`last_edit_session_id
+      IS NULL`) AND `edit_session_id` is provided, this is the
+      first-touch case: mutate in place + set the session pointer.
+      Without this branch the FIRST update of every editor session
+      would version-bump and the auto-save scrub would still produce
+      one stray version per session.
+    - Otherwise (no token, expired window, different token) the
+      update version-bumps per the B-1 behavior: deactivate the prior
+      active row, insert a fresh active row at version+1. The new
+      row carries the supplied session id (if any) so subsequent
+      updates within the same session mutate the new active row in
+      place.
+
+    If the target `template_id` is INACTIVE, raises
+    StaleTemplateVersionError with the currently-active template_id
+    (when one exists). The route layer translates this to HTTP 410
+    Gone with the active_template_id in the response body; the
+    frontend updates its local ID + retries.
+    """
     prior = get_template_by_id(db, template_id)
     if prior is None:
         raise TemplateNotFound(template_id)
     if not prior.is_active:
-        raise FocusTemplateError(
-            f"cannot update inactive template {template_id!r}"
+        # Sub-arc C-2.1.2: surface the active row's id so the
+        # frontend can transparently switch + retry within the same
+        # edit session.
+        active = _find_active(
+            db,
+            scope=prior.scope,
+            vertical=prior.vertical,
+            template_slug=prior.template_slug,
+        )
+        raise StaleTemplateVersionError(
+            inactive_id=template_id,
+            slug=prior.template_slug,
+            scope=prior.scope,
+            vertical=prior.vertical,
+            active_id=active.id if active is not None else None,
         )
 
     new_display_name = (
@@ -504,6 +588,30 @@ def update_template(
     except InvalidTypographyShape as exc:
         raise InvalidTemplateShape(str(exc)) from exc
 
+    now = datetime.now(timezone.utc)
+
+    # ── Session-aware fast path: mutate in place ──────────────────
+    if edit_session_id is not None and _within_template_edit_session(
+        prior, edit_session_id, now
+    ):
+        prior.display_name = new_display_name
+        prior.description = new_description
+        prior.rows = new_rows
+        prior.canvas_config = new_cfg
+        prior.chrome_overrides = new_chrome
+        prior.substrate = new_substrate
+        prior.typography = new_typography
+        prior.last_edit_session_id = edit_session_id
+        prior.last_edit_session_at = now
+        prior.updated_at = now
+        prior.updated_by = updated_by
+        # version unchanged; is_active unchanged; id unchanged.
+        db.add(prior)
+        db.commit()
+        db.refresh(prior)
+        return prior
+
+    # ── Default path: version-bump (B-1 behavior) ─────────────────
     prior.is_active = False
     new_row = FocusTemplate(
         scope=prior.scope,
@@ -522,11 +630,45 @@ def update_template(
         is_active=True,
         created_by=prior.created_by,
         updated_by=updated_by,
+        last_edit_session_id=edit_session_id,
+        last_edit_session_at=now if edit_session_id is not None else None,
     )
     db.add(new_row)
     db.commit()
     db.refresh(new_row)
     return new_row
+
+
+def _within_template_edit_session(
+    template: FocusTemplate, edit_session_id: str, now: datetime
+) -> bool:
+    """Return True iff this update should mutate `template` in place.
+
+    Two acceptance cases (mirrors `_within_edit_session` for cores):
+
+    1. **First touch under this session.** The row has never been
+       session-stamped (`last_edit_session_id IS NULL`) — this is
+       the first save during the operator's edit session. Mutate
+       in place + set the session pointer.
+
+    2. **Repeat touch within the active window.** The row's session
+       pointer matches the supplied token AND `last_edit_session_at`
+       is within `EDIT_SESSION_WINDOW_SECONDS`. Mutate in place.
+
+    Anything else (different token, expired window) falls through
+    to the version-bump path.
+    """
+    if (
+        template.last_edit_session_id is None
+        or template.last_edit_session_at is None
+    ):
+        return True
+    if str(template.last_edit_session_id) != str(edit_session_id):
+        return False
+    stamp = template.last_edit_session_at
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return (now - stamp) < timedelta(seconds=EDIT_SESSION_WINDOW_SECONDS)
 
 
 def count_compositions_referencing(db: Session, template_id: str) -> int:

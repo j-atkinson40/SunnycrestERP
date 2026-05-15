@@ -30,15 +30,30 @@ from app.services.focus_template_inheritance.chrome_validation import (
     InvalidChromeShape,
     validate_chrome_blob,
 )
+from app.services.focus_template_inheritance.constants import (
+    EDIT_SESSION_WINDOW_SECONDS,
+)
 
 
 logger = logging.getLogger(__name__)
 
 
-# Sub-arc C-2.1.1: edit-session window. Updates carrying a matching
-# `edit_session_id` within this window mutate in place; otherwise
-# they version-bump per the B-1 behavior.
-EDIT_SESSION_WINDOW_SECONDS = 300
+__all__ = [
+    "EDIT_SESSION_WINDOW_SECONDS",
+    "CoreNotFound",
+    "CoreSlugImmutable",
+    "FocusCoreError",
+    "InvalidCoreShape",
+    "StaleCoreVersionError",
+    "count_templates_referencing",
+    "create_core",
+    "get_active_core_by_slug",
+    "get_core_by_id",
+    "get_core_by_slug",
+    "get_core_slug_by_id",
+    "list_cores",
+    "update_core",
+]
 
 
 # ─── Exceptions ──────────────────────────────────────────────────
@@ -162,6 +177,36 @@ def get_core_by_slug(db: Session, core_slug: str) -> FocusCore | None:
 
 
 def _find_active_by_slug(db: Session, core_slug: str) -> FocusCore | None:
+    return get_core_by_slug(db, core_slug)
+
+
+def get_core_slug_by_id(db: Session, core_id: str) -> str | None:
+    """Return the `core_slug` for a given core_id (active or inactive),
+    or None if no row exists.
+
+    Sub-arc C-2.1.2: the resolver consumes this to translate a
+    template's stored `inherits_from_core_id` (possibly pointing at an
+    inactive version) into the canonical slug so it can then look up
+    the CURRENT active core under the same slug. This closes the
+    live-cascade bug where a version-bumped core stranded templates
+    on the inactive row.
+    """
+    row = (
+        db.query(FocusCore.core_slug)
+        .filter(FocusCore.id == core_id)
+        .first()
+    )
+    return row[0] if row is not None else None
+
+
+def get_active_core_by_slug(db: Session, core_slug: str) -> FocusCore | None:
+    """Return the currently-active FocusCore for a slug, or None.
+
+    Thin alias over `get_core_by_slug` (which is already active-only)
+    surfaced under an explicit name so the resolver's intent reads
+    clearly. Indexed lookup via the partial unique
+    `ix_focus_cores_active_slug` (r96) — single-row hit.
+    """
     return get_core_by_slug(db, core_slug)
 
 

@@ -60,6 +60,10 @@ from app.models.focus_template import (
 from app.services.focus_template_inheritance.chrome_validation import (
     CHROME_FIELDS,
 )
+from app.services.focus_template_inheritance.focus_cores_service import (
+    get_active_core_by_slug,
+    get_core_slug_by_id,
+)
 from app.services.focus_template_inheritance.substrate_validation import (
     SUBSTRATE_FIELDS,
 )
@@ -613,15 +617,32 @@ def resolve_focus(
         )
     template, scope_resolved = found
 
-    core = (
-        db.query(FocusCore)
-        .filter(FocusCore.id == template.inherits_from_core_id)
-        .first()
-    )
-    if core is None:
+    # Sub-arc C-2.1.2 — live cascade via slug lookup. The template's
+    # stored `inherits_from_core_id` becomes informational/audit at
+    # resolve time; the resolver translates that id → core_slug →
+    # currently-active core. This keeps the resolver locked to the
+    # live cascade even after a core version-bumps outside an editor
+    # session (the stored UUID points at the now-inactive prior row).
+    # When the stored UUID is still active, the slug lookup returns
+    # the same row — backwards-compatible. When it's been bumped, the
+    # slug lookup returns the new active row — closes the live-cascade
+    # bug.
+    core_slug = get_core_slug_by_id(db, template.inherits_from_core_id)
+    if core_slug is None:
         raise FocusTemplateNotFound(
-            f"template {template.id!r} points at missing core "
+            f"template {template.id!r} points at missing core id "
             f"{template.inherits_from_core_id!r}"
+        )
+    core = get_active_core_by_slug(db, core_slug)
+    if core is None:
+        # Orphan slug guard: every slug must have exactly one active
+        # version per the partial unique index `ix_focus_cores_active_slug`.
+        # Reaching this branch means an operational integrity issue
+        # (manual DB intervention deactivated the only row). Surface
+        # explicitly rather than silently swallowing.
+        raise FocusTemplateNotFound(
+            f"core slug {core_slug!r} has no active version "
+            f"(orphan reference from template {template.id!r})"
         )
 
     composition: FocusComposition | None = None

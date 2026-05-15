@@ -919,3 +919,124 @@ class TestResolver:
         assert r1.rows == r2.rows
         # canvas_config merge: template values + overrides on top.
         assert r1.canvas_config == {"gap_size": 8, "padding": 12}
+
+
+# ═══ TestResolverSlugBasedLookup (sub-arc C-2.1.2) ═════════════════
+#
+# Verifies the resolver follows the active core BY SLUG, not by the
+# template's stored `inherits_from_core_id`. The stored id becomes
+# audit/lineage; the live cascade always resolves through the slug.
+#
+# Pre-C-2.1.2 the resolver did `db.query(FocusCore).filter(id == ...)`
+# which would happily return inactive rows or fail when the bumped
+# version's id moved on. Post-C-2.1.2 it does
+# `slug_by_id → active_core_by_slug`, so cross-session version bumps
+# propagate transparently to every dependent template.
+
+
+class TestResolverSlugBasedLookup:
+    def test_resolver_follows_slug_when_stored_id_active(
+        self, db, tenant_company
+    ):
+        """Regression: stored UUID is the active row — slug lookup
+        returns the same row. Existing in-place mutation cascade
+        still works (same row id → same row resolved)."""
+        c = _make_core(db, slug="slug-1")
+        _make_template(db, core_id=c.id, slug="slug-tpl-1")
+        r = resolve_focus(
+            db,
+            template_slug="slug-tpl-1",
+            vertical="funeral_home",
+            tenant_id=tenant_company,
+        )
+        assert r.core_id == c.id
+        assert r.core_slug == "slug-1"
+        assert r.core_version == 1
+
+    def test_resolver_follows_slug_after_cross_session_version_bump(
+        self, db, tenant_company
+    ):
+        """New behavior: an out-of-session core version-bump strands
+        the template's stored UUID on the now-inactive row. The
+        resolver MUST still produce the new active core's view —
+        otherwise every template referencing that core silently
+        renders stale chrome/geometry until it's manually re-pointed.
+        """
+        c1 = _make_core(db, slug="slug-2")
+        _make_template(db, core_id=c1.id, slug="slug-tpl-2")
+        # Out-of-session version bump (no edit_session_id → bumps).
+        c2 = update_core(
+            db,
+            c1.id,
+            display_name="v2",
+            chrome={"preset": "frosted"},
+            updated_by=None,
+        )
+        # The template's stored inherits_from_core_id still points at
+        # c1.id — that's the audit trail. The resolver must follow
+        # the slug to c2.
+        assert c2.id != c1.id
+        r = resolve_focus(
+            db,
+            template_slug="slug-tpl-2",
+            vertical="funeral_home",
+            tenant_id=tenant_company,
+        )
+        assert r.core_id == c2.id  # active row id
+        assert r.core_slug == "slug-2"  # same slug
+        assert r.core_version == c2.version
+        # And the bumped chrome surfaces through the live cascade.
+        assert r.resolved_chrome is not None
+        assert r.resolved_chrome.get("preset") == "frosted"
+
+    def test_resolver_orphan_slug_raises(self, db, tenant_company):
+        """Operational-integrity guard: every slug must have an
+        active row. If a manual DB intervention deactivated the only
+        row, the resolver surfaces an explicit error rather than
+        silently swallowing — the partial unique index
+        `ix_focus_cores_active_slug` would normally prevent this
+        state, but the assertion is the canonical safety net."""
+        c = _make_core(db, slug="slug-3")
+        _make_template(db, core_id=c.id, slug="slug-tpl-3")
+        c.is_active = False
+        db.commit()
+        with pytest.raises(FocusTemplateNotFound) as ei:
+            resolve_focus(
+                db,
+                template_slug="slug-tpl-3",
+                vertical="funeral_home",
+                tenant_id=tenant_company,
+            )
+        msg = str(ei.value)
+        assert "slug-3" in msg
+        assert "active" in msg.lower() or "orphan" in msg.lower()
+
+    def test_resolver_in_place_mutation_propagates_without_id_change(
+        self, db, tenant_company
+    ):
+        """Regression: an in-place mutation (same session token)
+        leaves the row id stable. The resolver still returns the
+        same core_id, AND the mutated chrome surfaces — same as
+        pre-C-2.1.2 plus session-aware mutation."""
+        import uuid as _uuid
+        c = _make_core(db, slug="slug-4")
+        _make_template(db, core_id=c.id, slug="slug-tpl-4")
+        sid = str(_uuid.uuid4())
+        updated = update_core(
+            db,
+            c.id,
+            chrome={"preset": "card", "elevation": 90},
+            edit_session_id=sid,
+            updated_by=None,
+        )
+        assert updated.id == c.id
+        r = resolve_focus(
+            db,
+            template_slug="slug-tpl-4",
+            vertical="funeral_home",
+            tenant_id=tenant_company,
+        )
+        assert r.core_id == c.id
+        assert r.resolved_chrome is not None
+        assert r.resolved_chrome.get("preset") == "card"
+        assert r.resolved_chrome.get("elevation") == 90

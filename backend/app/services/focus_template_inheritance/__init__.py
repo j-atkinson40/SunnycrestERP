@@ -21,8 +21,10 @@ Sub-arc B-2 rewrites legacy consumers of the prior
 focus_compositions shape and removes the import-compat shim.
 """
 
-from app.services.focus_template_inheritance.focus_cores_service import (  # noqa: F401
+from app.services.focus_template_inheritance.constants import (  # noqa: F401
     EDIT_SESSION_WINDOW_SECONDS,
+)
+from app.services.focus_template_inheritance.focus_cores_service import (  # noqa: F401
     CoreNotFound,
     CoreSlugImmutable,
     FocusCoreError,
@@ -30,14 +32,17 @@ from app.services.focus_template_inheritance.focus_cores_service import (  # noq
     StaleCoreVersionError,
     count_templates_referencing,
     create_core,
+    get_active_core_by_slug,
     get_core_by_id,
     get_core_by_slug,
+    get_core_slug_by_id,
     list_cores,
     update_core,
 )
 from app.services.focus_template_inheritance.focus_templates_service import (  # noqa: F401
     FocusTemplateError,
     InvalidTemplateShape,
+    StaleTemplateVersionError,
     TemplateNotFound,
     TemplateScopeMismatch,
     count_compositions_referencing,

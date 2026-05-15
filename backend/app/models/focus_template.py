@@ -86,6 +86,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -178,6 +179,20 @@ class FocusTemplate(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
     updated_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+    # Sub-arc C-2.1.2 (r103): edit-session tracking, mirroring r102's
+    # focus_cores columns. Updates carrying `edit_session_id` that
+    # match the row's `last_edit_session_id` AND fall within 5 minutes
+    # of `last_edit_session_at` mutate in place (no version bump). All
+    # other updates version-bump per B-1. Both fields NULL on rows
+    # pre-r103 + on rows that have never been touched by a session-
+    # aware writer.
+    last_edit_session_id: Mapped[str | None] = mapped_column(
+        PGUUID(as_uuid=False), nullable=True
+    )
+    last_edit_session_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     core: Mapped["FocusCore"] = relationship(  # noqa: F821
         "FocusCore", back_populates="templates"

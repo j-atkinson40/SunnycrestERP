@@ -279,6 +279,69 @@ describe("useFocusCoreDraft", () => {
     )
   })
 
+  // ─── Sub-arc C-2.1.2: dirty-state-clear regression ─────────────
+  //
+  // Pre-fix the hook used `JSON.stringify(a) !== JSON.stringify(b)`
+  // for the dirty check. JSONB round-trips through PostgreSQL do
+  // NOT preserve object-key order — the backend can legitimately
+  // return chrome with the same values in a different key sequence,
+  // and the JSON.stringify equality check would consider that
+  // "dirty" forever, breaking "Auto-saved Xs ago" + the Unsaved
+  // indicator.
+  //
+  // The fix is `deepEqualChrome` — recursive key-order-insensitive
+  // equality. These tests pin the contract.
+
+  it("clears isDirty after successful save even when response key order differs", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    // Mock the backend returning the same chrome values in a
+    // different key order — simulates JSONB round-trip behavior.
+    ;(focusCoresService.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      // Note: keys reversed from { preset: "card", elevation: 75 }
+      chrome: { elevation: 75, preset: "card" },
+    })
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.updateDraft({ elevation: 75 })
+    })
+    expect(result.current.isDirty).toBe(true)
+    await act(async () => {
+      await result.current.save()
+    })
+    // Regression assertion: dirty must clear despite key-order
+    // mismatch between draft + savedSnapshot.
+    expect(result.current.isDirty).toBe(false)
+    expect(result.current.lastSavedAt).not.toBeNull()
+  })
+
+  it("becomes dirty again after further updates following a save", async () => {
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      SAMPLE_CORE,
+    )
+    ;(focusCoresService.update as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...SAMPLE_CORE,
+      chrome: { preset: "card", elevation: 75 },
+    })
+    const { result } = renderHook(() => useFocusCoreDraft("core-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.updateDraft({ elevation: 75 })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(result.current.isDirty).toBe(false)
+    // Now make another change — must register as dirty.
+    act(() => {
+      result.current.updateDraft({ elevation: 80 })
+    })
+    expect(result.current.isDirty).toBe(true)
+  })
+
   it("on 410 Gone, swaps to active_core_id and retries", async () => {
     ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       SAMPLE_CORE,

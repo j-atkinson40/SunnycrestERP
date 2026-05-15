@@ -63,6 +63,7 @@ from app.services.focus_template_inheritance import (
     InvalidCoreShape,
     InvalidTemplateShape,
     StaleCoreVersionError,
+    StaleTemplateVersionError,
     TemplateNotFound,
     TemplateScopeMismatch,
     count_compositions_referencing,
@@ -208,6 +209,21 @@ def _translate(exc: Exception) -> HTTPException:
                 "slug": exc.slug,
             },
         )
+    if isinstance(exc, StaleTemplateVersionError):
+        # Sub-arc C-2.1.2: surface the active template id so the
+        # frontend can update its local id + retry within the same
+        # edit session (mirrors StaleCoreVersionError for cores).
+        return HTTPException(
+            status_code=410,
+            detail={
+                "message": str(exc),
+                "inactive_template_id": exc.inactive_id,
+                "active_template_id": exc.active_id,
+                "slug": exc.slug,
+                "scope": exc.scope,
+                "vertical": exc.vertical,
+            },
+        )
     if isinstance(
         exc,
         (
@@ -281,6 +297,16 @@ def _template_to_response(row) -> TemplateResponse:
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else "",
         updated_at=row.updated_at.isoformat() if row.updated_at else "",
+        last_edit_session_id=(
+            str(getattr(row, "last_edit_session_id", None))
+            if getattr(row, "last_edit_session_id", None) is not None
+            else None
+        ),
+        last_edit_session_at=(
+            row.last_edit_session_at.isoformat()
+            if getattr(row, "last_edit_session_at", None) is not None
+            else None
+        ),
     )
 
 
@@ -499,6 +525,7 @@ def admin_update_template(
             chrome_overrides=body.chrome_overrides,
             substrate=body.substrate,
             typography=body.typography,
+            edit_session_id=body.edit_session_id,
         )
     except Exception as exc:
         raise _translate(exc)

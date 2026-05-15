@@ -39,7 +39,7 @@
  *   - NOT persisted across page reload (intentional fresh session).
  *   - NOT used for create / list / get — only for update.
  */
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
   focusCoresService,
@@ -97,6 +97,55 @@ function generateSessionToken(): string {
     return v.toString(16)
   })
 }
+
+/**
+ * Sub-arc C-2.1.2 — dirty-state fix.
+ *
+ * Pre-fix the hook compared draft vs. savedSnapshot via
+ * `JSON.stringify(draft) !== JSON.stringify(savedSnapshot)`. That is
+ * key-order-sensitive: when the backend round-trips a chrome blob
+ * through a JSONB column, PostgreSQL does not preserve insertion
+ * order of object keys. SQLAlchemy reads the dict back in whatever
+ * order the storage layer produced, FastAPI serializes it in that
+ * order, and the frontend receives a blob with the same VALUES as
+ * the draft but a different key sequence — JSON.stringify produces
+ * a different string, isDirty stays true forever, the "Unsaved"
+ * indicator never clears, and the auto-save / lastSavedAt UX
+ * fully breaks.
+ *
+ * `deepEqualChrome` is a small recursive deep-equality check that
+ * ignores object-key order. Limited to the shape `useFocusCoreDraft`
+ * traffics in (primitive values, plain objects, arrays of those) —
+ * NOT a general structural-equality library. Keeps the hook
+ * self-contained without dropping a lodash-style dep into a tiny
+ * editor surface.
+ */
+function deepEqualChrome(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === null || b === null) return false
+  if (typeof a !== typeof b) return false
+  if (typeof a !== "object") return false
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b)) return false
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i += 1) {
+      if (!deepEqualChrome(a[i], b[i])) return false
+    }
+    return true
+  }
+  if (Array.isArray(b)) return false
+  const aObj = a as Record<string, unknown>
+  const bObj = b as Record<string, unknown>
+  const aKeys = Object.keys(aObj)
+  const bKeys = Object.keys(bObj)
+  if (aKeys.length !== bKeys.length) return false
+  for (const k of aKeys) {
+    if (!Object.prototype.hasOwnProperty.call(bObj, k)) return false
+    if (!deepEqualChrome(aObj[k], bObj[k])) return false
+  }
+  return true
+}
+
 
 function extractStaleActiveId(err: unknown): string | null {
   if (!err || typeof err !== "object") return null
@@ -168,8 +217,13 @@ export function useFocusCoreDraft(
     }
   }, [coreId])
 
-  const isDirty =
-    JSON.stringify(draft) !== JSON.stringify(savedSnapshot)
+  // Sub-arc C-2.1.2: dirty check via key-order-independent deep
+  // equality (see deepEqualChrome above for why). useMemo so we
+  // recompute only when draft or savedSnapshot identity changes.
+  const isDirty = useMemo(
+    () => !deepEqualChrome(draft, savedSnapshot),
+    [draft, savedSnapshot],
+  )
 
   const save = useCallback(async () => {
     const targetId = activeCoreIdRef.current ?? coreId
