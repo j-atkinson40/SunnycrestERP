@@ -80,7 +80,49 @@ export interface TemplateUsageResponse {
   compositions_count: number
 }
 
+/**
+ * Sub-arc C-2.3 — per-field provenance dicts surfaced by the resolver.
+ * Each maps field name → "tier1" | "tier2" | "tier3" | null.
+ *  - chrome: parent can be tier1 (inherited core). Tier 2 editor uses
+ *    "tier1" as the inherited-from-parent signal.
+ *  - substrate / typography: cores are substrate/typography-free by
+ *    design; only "tier2" / "tier3" / null appear.
+ */
+export interface ResolveSources {
+  template: Record<string, unknown>
+  core: Record<string, unknown>
+  tenant: Record<string, unknown> | null
+  chrome_sources: Record<string, string | null>
+  substrate_sources: Record<string, string | null>
+  typography_sources: Record<string, string | null>
+}
+
+export interface ResolveResponse {
+  template_id: string
+  template_slug: string
+  template_version: number
+  template_scope: string
+  template_vertical: string | null
+  core_id: string
+  core_slug: string
+  core_version: number
+  core_registered_component: Record<string, string>
+  rows: Array<Record<string, unknown>>
+  canvas_config: Record<string, unknown>
+  resolved_chrome: Record<string, unknown> | null
+  resolved_substrate: Record<string, unknown> | null
+  resolved_typography: Record<string, unknown> | null
+  sources: ResolveSources
+}
+
+export interface ResolveParams {
+  template_slug: string
+  vertical?: string | null
+  tenant_id?: string | null
+}
+
 const BASE = "/api/platform/admin/focus-template-inheritance/templates"
+const RESOLVE_PATH = "/api/platform/admin/focus-template-inheritance/resolve"
 
 export const focusTemplatesService = {
   async list(params: TemplateListParams = {}): Promise<TemplateRecord[]> {
@@ -108,6 +150,19 @@ export const focusTemplatesService = {
 
   async usage(id: string): Promise<TemplateUsageResponse> {
     const res = await adminApi.get<TemplateUsageResponse>(`${BASE}/${id}/usage`)
+    return res.data
+  },
+
+  /**
+   * Sub-arc C-2.3 — fetch the resolved Focus with per-field provenance
+   * for the inheritance-indicator chrome in the Tier 2 inspector.
+   * Backend route: GET /resolve?template_slug=&vertical=&tenant_id=.
+   */
+  async resolve(params: ResolveParams): Promise<ResolveResponse> {
+    const query: Record<string, string> = { template_slug: params.template_slug }
+    if (params.vertical) query.vertical = params.vertical
+    if (params.tenant_id) query.tenant_id = params.tenant_id
+    const res = await adminApi.get<ResolveResponse>(RESOLVE_PATH, { params: query })
     return res.data
   },
 }

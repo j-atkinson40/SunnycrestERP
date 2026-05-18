@@ -1,7 +1,7 @@
 /**
  * PropertyPanel unit tests — sub-arc C-1.
  */
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 
 import {
@@ -104,5 +104,81 @@ describe("PropertyPanel", () => {
       </PropertyPanel>,
     )
     expect(screen.getByTestId("property-panel")).toBeInTheDocument()
+  })
+
+  // ─── Sub-arc C-2.3: per-row inheritance + reset ↺ ──────────────
+
+  it("renders a neutral row when no inheritanceSource is provided", () => {
+    render(
+      <PropertyRow label="Preset">
+        <button>Pick</button>
+      </PropertyRow>,
+    )
+    const value = screen.getByTestId("property-row-value")
+    expect(value.getAttribute("data-dimmed")).toBeNull()
+    expect(
+      screen.queryByTestId("property-row-inheritance-caption"),
+    ).toBeNull()
+    expect(screen.queryByTestId("property-row-reset")).toBeNull()
+  })
+
+  it("dims the value + renders inheritance caption when inherited", () => {
+    render(
+      <PropertyRow
+        label="Elevation"
+        inheritanceSource={{ tier: "Tier 1 core" }}
+      >
+        <button>50</button>
+      </PropertyRow>,
+    )
+    const value = screen.getByTestId("property-row-value")
+    expect(value.getAttribute("data-dimmed")).toBe("true")
+    const caption = screen.getByTestId("property-row-inheritance-caption")
+    expect(caption.textContent).toMatch(/inherited from Tier 1 core/)
+    // Inherited rows never carry the reset affordance.
+    expect(screen.queryByTestId("property-row-reset")).toBeNull()
+  })
+
+  it("renders full-opacity value when inheritanceSource is explicit", () => {
+    render(
+      <PropertyRow
+        label="Preset"
+        inheritanceSource="explicit"
+        onReset={() => {}}
+      >
+        <button>card</button>
+      </PropertyRow>,
+    )
+    const value = screen.getByTestId("property-row-value")
+    expect(value.getAttribute("data-dimmed")).toBeNull()
+    expect(
+      screen.queryByTestId("property-row-inheritance-caption"),
+    ).toBeNull()
+  })
+
+  it("renders the reset ↺ affordance only for explicit rows that wire onReset", () => {
+    const onReset = vi.fn()
+    render(
+      <PropertyRow
+        label="Preset"
+        inheritanceSource="explicit"
+        onReset={onReset}
+      >
+        <button>card</button>
+      </PropertyRow>,
+    )
+    const btn = screen.getByTestId("property-row-reset")
+    expect(btn).toBeInTheDocument()
+    fireEvent.click(btn)
+    expect(onReset).toHaveBeenCalledTimes(1)
+  })
+
+  it("hides the reset button when explicit row has no onReset handler", () => {
+    render(
+      <PropertyRow label="Preset" inheritanceSource="explicit">
+        <button>card</button>
+      </PropertyRow>,
+    )
+    expect(screen.queryByTestId("property-row-reset")).toBeNull()
   })
 })

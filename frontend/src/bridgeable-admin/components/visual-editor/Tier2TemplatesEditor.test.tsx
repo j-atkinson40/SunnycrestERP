@@ -17,6 +17,34 @@ vi.mock("@/bridgeable-admin/services/focus-templates-service", () => ({
     create: vi.fn(),
     update: vi.fn(),
     usage: vi.fn(),
+    // Sub-arc C-2.3 — default resolve mock surfaces empty sources so
+    // the inheritance chrome renders neutral by default. Per-test
+    // overrides set this to a richer payload to exercise the
+    // dimmed/explicit treatment + reset ↺ affordance.
+    resolve: vi.fn().mockResolvedValue({
+      template_id: "tpl-1",
+      template_slug: "stub",
+      template_version: 1,
+      template_scope: "platform_default",
+      template_vertical: null,
+      core_id: "core-1",
+      core_slug: "stub-core",
+      core_version: 1,
+      core_registered_component: {},
+      rows: [],
+      canvas_config: {},
+      resolved_chrome: null,
+      resolved_substrate: null,
+      resolved_typography: null,
+      sources: {
+        template: {},
+        core: {},
+        tenant: null,
+        chrome_sources: {},
+        substrate_sources: {},
+        typography_sources: {},
+      },
+    }),
   },
 }))
 
@@ -877,6 +905,257 @@ describe("Tier2TemplatesEditor — sub-arc C-2.2c integration", () => {
         core_slug: "scheduling-kanban-core",
         version: 2,
       })
+    })
+  })
+})
+
+// ─── Sub-arc C-2.3: per-row inheritance + reset ↺ + controlled panel ───
+
+describe("Tier2TemplatesEditor — sub-arc C-2.3 inheritance chrome", () => {
+  const TEMPLATE_C23 = {
+    id: "tpl-c23",
+    scope: "platform_default" as const,
+    vertical: null,
+    template_slug: "c23-template",
+    display_name: "C-2.3 Template",
+    description: null,
+    inherits_from_core_id: "core-c23",
+    inherits_from_core_version: 1,
+    rows: [],
+    canvas_config: {},
+    // preset is explicit at Tier 2 (overrides core); elevation is
+    // absent so it cascades from the inherited core.
+    chrome_overrides: { preset: "frosted" } as Record<string, unknown>,
+    substrate: {},
+    typography: {},
+    version: 1,
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  }
+  const CORE_C23 = {
+    id: "core-c23",
+    core_slug: "default-core",
+    display_name: "Default Core",
+    description: null,
+    registered_component_kind: "focus-template",
+    registered_component_name: "DefaultCore",
+    default_starting_column: 0,
+    default_column_span: 12,
+    default_row_index: 0,
+    min_column_span: 6,
+    max_column_span: 12,
+    canvas_config: {},
+    chrome: { preset: "card", elevation: 40 },
+    version: 1,
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  }
+
+  /**
+   * Resolver payload — `preset` resolves at Tier 2 (operator-authored
+   * override), `elevation` cascades down from the Tier 1 core. This
+   * is the exact provenance the inspector must render:
+   *   - preset row: full opacity + hover-reveal reset ↺
+   *   - elevation row: dimmed + "↑ inherited from Tier 1 core" caption
+   */
+  const RESOLVE_PAYLOAD_C23 = {
+    template_id: "tpl-c23",
+    template_slug: "c23-template",
+    template_version: 1,
+    template_scope: "platform_default",
+    template_vertical: null,
+    core_id: "core-c23",
+    core_slug: "default-core",
+    core_version: 1,
+    core_registered_component: {},
+    rows: [],
+    canvas_config: {},
+    resolved_chrome: { preset: "frosted", elevation: 40 },
+    resolved_substrate: null,
+    resolved_typography: null,
+    sources: {
+      template: {},
+      core: {},
+      tenant: null,
+      chrome_sources: {
+        preset: "tier2",
+        elevation: "tier1",
+        corner_radius: "tier1",
+        backdrop_blur: "tier1",
+        background_token: "tier1",
+        border_token: "tier1",
+        padding_token: "tier1",
+      },
+      substrate_sources: {},
+      typography_sources: {},
+    },
+  }
+
+  beforeEach(() => {
+    ;(focusTemplatesService.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      TEMPLATE_C23,
+    ])
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      TEMPLATE_C23,
+    )
+    ;(
+      focusTemplatesService.resolve as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(RESOLVE_PAYLOAD_C23)
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      CORE_C23,
+    )
+  })
+
+  it("renders the inherited-from caption for rows that cascade from Tier 1", async () => {
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c23"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+        />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId("tier2-preview-card")
+    // At least one inherited row caption must appear once the
+    // resolver call settles.
+    await waitFor(() => {
+      const captions = screen.queryAllByTestId(
+        "property-row-inheritance-caption",
+      )
+      expect(captions.length).toBeGreaterThan(0)
+      expect(captions[0].textContent).toMatch(/inherited from Tier 1 core/)
+    })
+  })
+
+  it("only explicit rows carry the reset ↺ affordance", async () => {
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c23"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+        />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId("tier2-preview-card")
+    await waitFor(() => {
+      // Exactly one explicit row in the fixture: chrome.preset.
+      const resets = screen.queryAllByTestId("property-row-reset")
+      expect(resets.length).toBe(1)
+    })
+  })
+
+  it("clicking reset ↺ clears the override + persists via update", async () => {
+    ;(
+      focusTemplatesService.update as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      ...TEMPLATE_C23,
+      chrome_overrides: {},
+      version: 2,
+    })
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c23"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+        />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId("tier2-preview-card")
+    const resetBtn = await screen.findByTestId("property-row-reset")
+    fireEvent.click(resetBtn)
+    await waitFor(() => {
+      const calls = (
+        focusTemplatesService.update as ReturnType<typeof vi.fn>
+      ).mock.calls
+      expect(calls.length).toBeGreaterThan(0)
+      expect(calls[0][1].chrome_overrides).toEqual({})
+    })
+  })
+
+  it("controlled panel: parent can open InheritedCoreInspectorPanel", async () => {
+    const onPanelOpenChange = vi.fn()
+    const { rerender } = render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c23"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+          inheritedCorePanelOpen={false}
+          onInheritedCorePanelOpenChange={onPanelOpenChange}
+        />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId("tier2-preview-card")
+    expect(
+      screen.queryByTestId("inherited-core-inspector-panel"),
+    ).toBeNull()
+    // Parent flips the controlled prop → panel mounts.
+    rerender(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c23"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+          inheritedCorePanelOpen={true}
+          onInheritedCorePanelOpenChange={onPanelOpenChange}
+        />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId("inherited-core-inspector-panel")
+  })
+
+  it("controlled panel: canvas placement click invokes onInheritedCorePanelOpenChange(true)", async () => {
+    const onPanelOpenChange = vi.fn()
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c23"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+          inheritedCorePanelOpen={false}
+          onInheritedCorePanelOpenChange={onPanelOpenChange}
+        />
+      </MemoryRouter>,
+    )
+    const placement = await screen.findByTestId("inherited-core-placement")
+    // Wait for inheritedCore lookup to settle so disabled flips off.
+    await waitFor(() => expect(placement).not.toBeDisabled())
+    fireEvent.click(placement)
+    expect(onPanelOpenChange).toHaveBeenCalledWith(true)
+  })
+
+  it("invokes onNavigateToTier1Core when 'Edit core in Tier 1' fires from the panel", async () => {
+    const onNavigateToTier1Core = vi.fn()
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c23"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+          onNavigateToTier1Core={onNavigateToTier1Core}
+          inheritedCorePanelOpen={true}
+        />
+      </MemoryRouter>,
+    )
+    // The InheritedCoreInspectorPanel's "Edit core in Tier 1" button.
+    // The panel's internal testid is established in C-2.2c.
+    const navBtn = await screen.findByTestId("inherited-core-edit-button")
+    await waitFor(() => expect(navBtn).not.toBeDisabled())
+    fireEvent.click(navBtn)
+    await waitFor(() => {
+      expect(onNavigateToTier1Core).toHaveBeenCalledWith("core-c23")
     })
   })
 })

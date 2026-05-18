@@ -23,7 +23,6 @@
  * captions on each section into proper inheritance chrome.
  */
 import * as React from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Loader2, ArrowLeftRight } from "lucide-react"
@@ -34,7 +33,9 @@ import {
 import {
   focusTemplatesService,
   type TemplateRecord,
+  type ResolveSources,
 } from "@/bridgeable-admin/services/focus-templates-service"
+import type { PropertyRowInheritance } from "@/bridgeable-admin/components/visual-authoring/PropertyPanel"
 import { CreateTierTwoTemplateModal } from "./CreateTierTwoTemplateModal"
 import { InheritedCoreInspectorPanel } from "./InheritedCoreInspectorPanel"
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
@@ -108,6 +109,21 @@ export interface Tier2TemplatesEditorProps {
    * the scope + vertical fields to match the operator's Studio context.
    */
   defaultVertical?: string | null
+  /**
+   * Sub-arc C-2.3 — navigate to the Tier 1 editor with `coreId`
+   * preselected. Lifted from this editor's local useSearchParams
+   * handler up to FocusEditorPage (the canonical URL owner per the
+   * C-2.3 consolidation). The previous in-editor implementation read
+   * + wrote the location bar directly; the parent now owns it.
+   */
+  onNavigateToTier1Core?: (coreId: string) => void
+  /**
+   * Sub-arc C-2.3 — controlled side-panel state lifted to the parent
+   * so the FocusEditorPage top-bar lineage chrome can open the panel
+   * (same panel as the canvas placement click).
+   */
+  inheritedCorePanelOpen?: boolean
+  onInheritedCorePanelOpenChange?: (open: boolean) => void
 }
 
 export function Tier2TemplatesEditor({
@@ -117,9 +133,10 @@ export function Tier2TemplatesEditor({
   onLastSavedChange,
   onInheritedCoreChange,
   defaultVertical,
+  onNavigateToTier1Core,
+  inheritedCorePanelOpen: controlledPanelOpen,
+  onInheritedCorePanelOpenChange,
 }: Tier2TemplatesEditorProps) {
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
   const [templates, setTemplates] = React.useState<TemplateRecord[]>([])
   const [listLoading, setListLoading] = React.useState(true)
   const [listError, setListError] = React.useState<string | null>(null)
@@ -136,9 +153,25 @@ export function Tier2TemplatesEditor({
     null,
   )
   // Sub-arc C-2.2c: modal + side-panel state.
+  // Sub-arc C-2.3: panel state may be lifted to the parent (controlled
+  // mode) so the FocusEditorPage lineage chrome can open it. Falls
+  // back to local uncontrolled state when no controller is wired —
+  // preserves the C-2.2c canvas-placement-click behavior in isolation.
   const [createModalOpen, setCreateModalOpen] = React.useState(false)
-  const [inheritedCorePanelOpen, setInheritedCorePanelOpen] =
+  const [uncontrolledPanelOpen, setUncontrolledPanelOpen] =
     React.useState(false)
+  const inheritedCorePanelOpen =
+    controlledPanelOpen ?? uncontrolledPanelOpen
+  const setInheritedCorePanelOpen = React.useCallback(
+    (open: boolean) => {
+      if (onInheritedCorePanelOpenChange) {
+        onInheritedCorePanelOpenChange(open)
+      } else {
+        setUncontrolledPanelOpen(open)
+      }
+    },
+    [onInheritedCorePanelOpenChange],
+  )
 
   const { railExpanded, inStudioContext } = useStudioRail()
   const hideLeftBrowser = railExpanded && inStudioContext
@@ -154,6 +187,9 @@ export function Tier2TemplatesEditor({
     updateChromeOverrides,
     updateSubstrate,
     updateTypography,
+    resetChromeOverridesField,
+    resetSubstrateField,
+    resetTypographyField,
     save: saveDraft,
     discard: discardDraft,
     isDirty,
@@ -161,6 +197,47 @@ export function Tier2TemplatesEditor({
     isLoading: templateLoading,
     error: templateError,
   } = useFocusTemplateDraft(selectedTemplateId)
+
+  // Sub-arc C-2.3 — resolver-driven inheritance provenance. The
+  // resolver returns per-field {tier1|tier2|tier3|null} for each of
+  // chrome / substrate / typography. Refetched whenever the saved
+  // template version changes (i.e. after a save round-trip) so
+  // operator-authored explicit values transition from "tier1
+  // inherited" → "tier2 explicit" without operator action.
+  const [sources, setSources] = React.useState<ResolveSources | null>(null)
+  React.useEffect(() => {
+    if (!template?.template_slug) {
+      setSources(null)
+      return
+    }
+    // Defensive: some test fixtures stub the templates service without
+    // a `resolve` method. The inheritance chrome is a best-effort
+    // overlay — fall back to null sources when the call isn't wired.
+    if (typeof focusTemplatesService.resolve !== "function") {
+      setSources(null)
+      return
+    }
+    let cancelled = false
+    focusTemplatesService
+      .resolve({
+        template_slug: template.template_slug,
+        vertical: template.vertical ?? null,
+      })
+      .then((resp) => {
+        if (cancelled) return
+        setSources(resp.sources)
+      })
+      .catch(() => {
+        if (!cancelled) setSources(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    template?.template_slug,
+    template?.vertical,
+    template?.version,
+  ])
 
   // Surface dirty + last-saved up to the parent (FocusEditorPage's
   // top bar renders the indicator).
@@ -309,22 +386,54 @@ export function Tier2TemplatesEditor({
     [substrateStyle, typographyView, themeTokens],
   )
 
-  // Sub-arc C-2.2c — navigate to the Tier 1 editor with the inherited
-  // core preselected. Preserves any existing `return_to` query param
-  // so the runtime-editor back-link chain stays intact.
-  const navigateToTier1Core = React.useCallback(
+  // Sub-arc C-2.3 — URL handling lives at FocusEditorPage now.
+  // `onNavigateToTier1Core` is invoked from the inherited-core
+  // inspector's "Edit core in Tier 1" path; the parent rewrites the
+  // URL + preserves return_to.
+  const handleNavigateToTier1Core = React.useCallback(
     (coreId: string) => {
-      const params = new URLSearchParams(searchParams)
-      params.set("tier", "1")
-      params.set("core", coreId)
-      params.delete("template")
-      // useNavigate is relative to current location; explicit
-      // pathname keeps it inside the focus editor route.
-      navigate(`${window.location.pathname}?${params.toString()}`, {
-        replace: false,
-      })
+      onNavigateToTier1Core?.(coreId)
     },
-    [navigate, searchParams],
+    [onNavigateToTier1Core],
+  )
+
+  // Sub-arc C-2.3 — map the resolver's per-field tier string to a
+  // PropertyRowInheritance value. Resolver vocabulary:
+  //   "tier1" → inherited from the Tier 1 core (chrome only)
+  //   "tier2" → explicit at the current tier (Tier 2 template)
+  //   "tier3" → would be a Tier 3 composition delta; in this editor's
+  //             context (Tier 2 authoring with no Tier 3 in scope) we
+  //             treat it as explicit at the current resolve view.
+  //   null    → no value at any tier; row is neutral (no decoration).
+  const chromeInheritanceFor = React.useCallback(
+    (field: string): PropertyRowInheritance => {
+      const tier = sources?.chrome_sources?.[field]
+      if (tier === "tier1") return { tier: "Tier 1 core" }
+      if (tier === "tier2" || tier === "tier3") return "explicit"
+      return null
+    },
+    [sources],
+  )
+  // Substrate / typography do not cascade from Tier 1 (cores are
+  // substrate/typography-free by design — see resolver.py). The only
+  // observable states are "tier2" (explicit) or null (unset). No
+  // inherited-from-parent indicator applies here, but the explicit
+  // signal still drives the reset ↺ affordance per locked decisions.
+  const substrateInheritanceFor = React.useCallback(
+    (field: string): PropertyRowInheritance => {
+      const tier = sources?.substrate_sources?.[field]
+      if (tier === "tier2" || tier === "tier3") return "explicit"
+      return null
+    },
+    [sources],
+  )
+  const typographyInheritanceFor = React.useCallback(
+    (field: string): PropertyRowInheritance => {
+      const tier = sources?.typography_sources?.[field]
+      if (tier === "tier2" || tier === "tier3") return "explicit"
+      return null
+    },
+    [sources],
   )
 
   // Inheritance lineage strings rendered in each section's header.
@@ -532,7 +641,10 @@ export function Tier2TemplatesEditor({
               lineageHint={chromeLineage}
               defaultExpanded
             >
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={chromeInheritanceFor("preset")}
+                onReset={() => resetChromeOverridesField("preset")}
+              >
                 <ChromePresetPicker
                   value={(chromeView.preset ?? null) as PresetSlug | null}
                   onChange={(p) =>
@@ -542,7 +654,10 @@ export function Tier2TemplatesEditor({
                   }
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={chromeInheritanceFor("elevation")}
+                onReset={() => resetChromeOverridesField("elevation")}
+              >
                 <ScrubbableButton
                   value={chromeView.elevation ?? 0}
                   min={0}
@@ -551,7 +666,10 @@ export function Tier2TemplatesEditor({
                   onChange={(v) => updateChromeOverrides({ elevation: v })}
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={chromeInheritanceFor("corner_radius")}
+                onReset={() => resetChromeOverridesField("corner_radius")}
+              >
                 <ScrubbableButton
                   value={chromeView.corner_radius ?? 0}
                   min={0}
@@ -562,7 +680,10 @@ export function Tier2TemplatesEditor({
                   }
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={chromeInheritanceFor("backdrop_blur")}
+                onReset={() => resetChromeOverridesField("backdrop_blur")}
+              >
                 <ScrubbableButton
                   value={chromeView.backdrop_blur ?? 0}
                   min={0}
@@ -573,7 +694,10 @@ export function Tier2TemplatesEditor({
                   }
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={chromeInheritanceFor("background_token")}
+                onReset={() => resetChromeOverridesField("background_token")}
+              >
                 <TokenSwatchPicker
                   value={chromeView.background_token ?? null}
                   tokenFamily="surface"
@@ -584,7 +708,10 @@ export function Tier2TemplatesEditor({
                   label="Background"
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={chromeInheritanceFor("border_token")}
+                onReset={() => resetChromeOverridesField("border_token")}
+              >
                 <TokenSwatchPicker
                   value={chromeView.border_token ?? null}
                   tokenFamily="border"
@@ -593,7 +720,10 @@ export function Tier2TemplatesEditor({
                   label="Border"
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={chromeInheritanceFor("padding_token")}
+                onReset={() => resetChromeOverridesField("padding_token")}
+              >
                 <TokenSwatchPicker
                   value={chromeView.padding_token ?? null}
                   tokenFamily="padding"
@@ -610,7 +740,10 @@ export function Tier2TemplatesEditor({
               lineageHint={substrateLineage}
               defaultExpanded
             >
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={substrateInheritanceFor("preset")}
+                onReset={() => resetSubstrateField("preset")}
+              >
                 <SubstratePresetPicker
                   value={
                     (substrateView.preset ??
@@ -623,7 +756,10 @@ export function Tier2TemplatesEditor({
                   }
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={substrateInheritanceFor("intensity")}
+                onReset={() => resetSubstrateField("intensity")}
+              >
                 <ScrubbableButton
                   value={substrateView.intensity ?? 0}
                   min={0}
@@ -632,7 +768,10 @@ export function Tier2TemplatesEditor({
                   onChange={(v) => updateSubstrate({ intensity: v })}
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={substrateInheritanceFor("base_token")}
+                onReset={() => resetSubstrateField("base_token")}
+              >
                 <TokenSwatchPicker
                   value={substrateView.base_token ?? null}
                   tokenFamily="surface"
@@ -641,7 +780,10 @@ export function Tier2TemplatesEditor({
                   label="Base"
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={substrateInheritanceFor("accent_token_1")}
+                onReset={() => resetSubstrateField("accent_token_1")}
+              >
                 <TokenSwatchPicker
                   value={substrateView.accent_token_1 ?? null}
                   tokenFamily="surface"
@@ -650,7 +792,10 @@ export function Tier2TemplatesEditor({
                   label="Accent 1"
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={substrateInheritanceFor("accent_token_2")}
+                onReset={() => resetSubstrateField("accent_token_2")}
+              >
                 <TokenSwatchPicker
                   value={substrateView.accent_token_2 ?? null}
                   tokenFamily="surface"
@@ -667,7 +812,10 @@ export function Tier2TemplatesEditor({
               lineageHint={typographyLineage}
               defaultExpanded
             >
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={typographyInheritanceFor("preset")}
+                onReset={() => resetTypographyField("preset")}
+              >
                 <TypographyPresetPicker
                   value={
                     (typographyView.preset ??
@@ -680,7 +828,10 @@ export function Tier2TemplatesEditor({
                   }
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={typographyInheritanceFor("heading_weight")}
+                onReset={() => resetTypographyField("heading_weight")}
+              >
                 <ScrubbableButton
                   value={typographyView.heading_weight ?? 400}
                   min={400}
@@ -689,7 +840,10 @@ export function Tier2TemplatesEditor({
                   onChange={(v) => updateTypography({ heading_weight: v })}
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={typographyInheritanceFor("body_weight")}
+                onReset={() => resetTypographyField("body_weight")}
+              >
                 <ScrubbableButton
                   value={typographyView.body_weight ?? 400}
                   min={400}
@@ -698,7 +852,12 @@ export function Tier2TemplatesEditor({
                   onChange={(v) => updateTypography({ body_weight: v })}
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={typographyInheritanceFor(
+                  "heading_color_token",
+                )}
+                onReset={() => resetTypographyField("heading_color_token")}
+              >
                 <TokenSwatchPicker
                   value={typographyView.heading_color_token ?? null}
                   tokenFamily="surface"
@@ -709,7 +868,10 @@ export function Tier2TemplatesEditor({
                   label="Heading color"
                 />
               </PropertyRow>
-              <PropertyRow>
+              <PropertyRow
+                inheritanceSource={typographyInheritanceFor("body_color_token")}
+                onReset={() => resetTypographyField("body_color_token")}
+              >
                 <TokenSwatchPicker
                   value={typographyView.body_color_token ?? null}
                   tokenFamily="surface"
@@ -735,7 +897,7 @@ export function Tier2TemplatesEditor({
           discardDraft={discardDraft}
           onNavigateToTier1Core={(coreId) => {
             setInheritedCorePanelOpen(false)
-            navigateToTier1Core(coreId)
+            handleNavigateToTier1Core(coreId)
           }}
           onClose={() => setInheritedCorePanelOpen(false)}
         />

@@ -48,6 +48,16 @@ export interface UseFocusTemplateDraftResult {
   updateChromeOverrides: (partial: ChromeOverridesBlob) => void
   updateSubstrate: (partial: SubstrateBlob) => void
   updateTypography: (partial: TypographyBlob) => void
+  /**
+   * Sub-arc C-2.3 — per-field reset to inherited. Removes the named
+   * field from the override blob and triggers a debounced save. The
+   * canonical "no override" representation is field absence (see
+   * C-2.1.3 full-shape contract); the resolver re-cascades from the
+   * parent tier at next resolve.
+   */
+  resetChromeOverridesField: (fieldName: string) => void
+  resetSubstrateField: (fieldName: string) => void
+  resetTypographyField: (fieldName: string) => void
   save: () => Promise<void>
   discard: () => void
   isDirty: boolean
@@ -363,6 +373,50 @@ export function useFocusTemplateDraft(
     [queueSave],
   )
 
+  // Sub-arc C-2.3 — per-field reset helpers. Each removes the named
+  // field from its blob and triggers the same debounced save path as
+  // updateXxx. Field absence is the canonical "no override" state per
+  // C-2.1.3; the next resolve re-cascades the parent value into the
+  // resolved view. Mirrors the updateXxx pattern (setState + queueSave).
+  const resetChromeOverridesField = useCallback(
+    (fieldName: string) => {
+      setChromeOverridesDraft((prev) => {
+        if (!(fieldName in prev)) return prev
+        const next = { ...prev }
+        delete next[fieldName]
+        return next
+      })
+      queueSave()
+    },
+    [queueSave],
+  )
+
+  const resetSubstrateField = useCallback(
+    (fieldName: string) => {
+      setSubstrateDraft((prev) => {
+        if (!(fieldName in prev)) return prev
+        const next = { ...prev }
+        delete next[fieldName]
+        return next
+      })
+      queueSave()
+    },
+    [queueSave],
+  )
+
+  const resetTypographyField = useCallback(
+    (fieldName: string) => {
+      setTypographyDraft((prev) => {
+        if (!(fieldName in prev)) return prev
+        const next = { ...prev }
+        delete next[fieldName]
+        return next
+      })
+      queueSave()
+    },
+    [queueSave],
+  )
+
   const discard = useCallback(() => {
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current)
@@ -387,6 +441,9 @@ export function useFocusTemplateDraft(
     updateChromeOverrides,
     updateSubstrate,
     updateTypography,
+    resetChromeOverridesField,
+    resetSubstrateField,
+    resetTypographyField,
     save,
     discard,
     isDirty,

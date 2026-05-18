@@ -166,6 +166,107 @@ describe("useFocusTemplateDraft — load / discard / basic dirty", () => {
     expect(result.current.isDirty).toBe(false)
   })
 
+  // ─── Sub-arc C-2.3: per-field reset methods ───────────────────
+
+  it("resetChromeOverridesField removes the named field + marks dirty", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      ...SAMPLE_TEMPLATE,
+      chrome_overrides: { preset: "frosted", elevation: 80 },
+    })
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.chromeOverridesDraft).toEqual({
+      preset: "frosted",
+      elevation: 80,
+    })
+    expect(result.current.isDirty).toBe(false)
+    act(() => {
+      result.current.resetChromeOverridesField("elevation")
+    })
+    expect(result.current.chromeOverridesDraft).toEqual({ preset: "frosted" })
+    expect(result.current.isDirty).toBe(true)
+  })
+
+  it("resetSubstrateField removes the named field + marks dirty", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.resetSubstrateField("intensity")
+    })
+    expect(result.current.substrateDraft).toEqual({ preset: "morning-warm" })
+    expect(result.current.isDirty).toBe(true)
+  })
+
+  it("resetTypographyField removes the named field + marks dirty", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      ...SAMPLE_TEMPLATE,
+      typography: { preset: "card-text", heading_weight: 700 },
+    })
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.resetTypographyField("heading_weight")
+    })
+    expect(result.current.typographyDraft).toEqual({ preset: "card-text" })
+    expect(result.current.isDirty).toBe(true)
+  })
+
+  it("reset methods are no-op when the named field is absent", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const before = result.current.chromeOverridesDraft
+    act(() => {
+      // SAMPLE_TEMPLATE has no `elevation` in chrome_overrides.
+      result.current.resetChromeOverridesField("elevation")
+    })
+    // Object identity preserved when no key was present — preserves
+    // React reference equality + avoids triggering a save.
+    expect(result.current.chromeOverridesDraft).toBe(before)
+    expect(result.current.isDirty).toBe(false)
+  })
+
+  it("reset triggers debounced save with the field removed from payload", async () => {
+    vi.useFakeTimers()
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      ...SAMPLE_TEMPLATE,
+      chrome_overrides: { preset: "frosted", elevation: 80 },
+    })
+    ;(
+      focusTemplatesService.update as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      ...SAMPLE_TEMPLATE,
+      chrome_overrides: { preset: "frosted" },
+    })
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await vi.waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.resetChromeOverridesField("elevation")
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400)
+    })
+    const updateCalls = (
+      focusTemplatesService.update as ReturnType<typeof vi.fn>
+    ).mock.calls
+    expect(updateCalls.length).toBeGreaterThan(0)
+    const payload = updateCalls[0][1]
+    expect(payload.chrome_overrides).toEqual({ preset: "frosted" })
+    expect("elevation" in payload.chrome_overrides).toBe(false)
+    vi.useRealTimers()
+  })
+
   it("clears state when templateId becomes null", async () => {
     ;(
       focusTemplatesService.get as ReturnType<typeof vi.fn>

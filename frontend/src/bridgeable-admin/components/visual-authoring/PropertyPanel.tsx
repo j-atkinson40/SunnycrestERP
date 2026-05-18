@@ -21,7 +21,7 @@
  * substrate.
  */
 import * as React from "react"
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronRight, RotateCcw } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -140,15 +140,66 @@ export function PropertySection({
   )
 }
 
+/**
+ * Sub-arc C-2.3 — per-row inheritance source vocabulary.
+ *
+ *   "explicit"          — value is authored at the current tier;
+ *                         full opacity; reset ↺ shows on hover when
+ *                         onReset is supplied.
+ *   { tier: <label> }   — value cascades from a parent tier; the
+ *                         value block dims and a "↑ inherited from
+ *                         <label>" caption renders below.
+ *   undefined / null    — neutral; no source signal applied.
+ *
+ * Driven entirely by the resolver's `sources.*_sources` provenance
+ * (locked decision #4). Per-row consumers map the resolver's
+ * "tier1" / "tier2" / "tier3" / null strings to display labels.
+ */
+export type PropertyRowInheritance =
+  | "explicit"
+  | { tier: string }
+  | null
+  | undefined
+
 export interface PropertyRowProps {
   label?: string
   children: React.ReactNode
   className?: string
+  /**
+   * Sub-arc C-2.3 — inheritance source for this row's value. See
+   * PropertyRowInheritance for the vocabulary. Omitted = neutral row.
+   */
+  inheritanceSource?: PropertyRowInheritance
+  /**
+   * Sub-arc C-2.3 — reset-to-inherited handler. When supplied AND
+   * `inheritanceSource === "explicit"`, a hover-only ↺ button
+   * renders to the right of the row's value block. Hover-only so it
+   * doesn't compete with the value at rest. Inherited / neutral rows
+   * never render the button.
+   */
+  onReset?: () => void
 }
 
-export function PropertyRow({ label, children, className }: PropertyRowProps) {
+export function PropertyRow({
+  label,
+  children,
+  className,
+  inheritanceSource,
+  onReset,
+}: PropertyRowProps) {
+  const isInherited =
+    inheritanceSource != null &&
+    typeof inheritanceSource === "object" &&
+    "tier" in inheritanceSource
+  const isExplicit = inheritanceSource === "explicit"
+  const showReset = isExplicit && typeof onReset === "function"
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
+    <div
+      className={cn("group/property-row flex flex-col gap-1", className)}
+      data-inheritance={
+        isInherited ? "inherited" : isExplicit ? "explicit" : undefined
+      }
+    >
       {label ? (
         <span
           className="text-[10px] tracking-wide uppercase text-[color:var(--content-subtle)]"
@@ -157,7 +208,46 @@ export function PropertyRow({ label, children, className }: PropertyRowProps) {
           {label}
         </span>
       ) : null}
-      {children}
+      <div className="relative flex items-start gap-1.5">
+        <div
+          data-testid="property-row-value"
+          data-dimmed={isInherited ? "true" : undefined}
+          className={cn(
+            "min-w-0 flex-1 transition-opacity",
+            isInherited && "opacity-60",
+          )}
+        >
+          {children}
+        </div>
+        {showReset ? (
+          <button
+            type="button"
+            data-testid="property-row-reset"
+            aria-label="Reset to inherited"
+            title="Reset to inherited"
+            onClick={onReset}
+            className={cn(
+              "shrink-0 self-start rounded-sm p-1",
+              "text-[color:var(--content-muted)] hover:text-[color:var(--accent)]",
+              "hover:bg-[color:var(--accent-subtle)]",
+              "opacity-0 transition-opacity",
+              "group-hover/property-row:opacity-100 focus-visible:opacity-100",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--accent)]",
+            )}
+          >
+            <RotateCcw className="h-3 w-3" aria-hidden />
+          </button>
+        ) : null}
+      </div>
+      {isInherited ? (
+        <span
+          data-testid="property-row-inheritance-caption"
+          className="text-[10px] tracking-wide text-[color:var(--accent)]"
+          style={{ fontFamily: "var(--font-plex-mono)" }}
+        >
+          ↑ inherited from {(inheritanceSource as { tier: string }).tier}
+        </span>
+      ) : null}
     </div>
   )
 }

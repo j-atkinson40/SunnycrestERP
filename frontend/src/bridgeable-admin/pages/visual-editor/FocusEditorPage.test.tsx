@@ -66,6 +66,17 @@ vi.mock("@/bridgeable-admin/services/focus-templates-service", () => ({
     create: vi.fn(),
     update: vi.fn(),
     usage: vi.fn(),
+    // Sub-arc C-2.3 — resolver call for per-row inheritance chrome.
+    resolve: vi.fn().mockResolvedValue({
+      sources: {
+        template: {},
+        core: {},
+        tenant: null,
+        chrome_sources: {},
+        substrate_sources: {},
+        typography_sources: {},
+      },
+    }),
   },
 }))
 
@@ -199,5 +210,64 @@ describe("FocusEditorPage — sub-arc C-2.1", () => {
       const row = screen.queryByTestId("core-row-scheduling-kanban-core")
       expect(row?.getAttribute("data-selected")).toBe("true")
     })
+  })
+
+  // ─── Sub-arc C-2.3: tier pill + interactive lineage chrome ─────
+
+  it("hides the tier indicator pill when no Tier 1 core is selected", async () => {
+    renderAt("/?tier=1")
+    await screen.findByTestId("focus-editor-page")
+    expect(screen.queryByTestId("tier-indicator-pill")).toBeNull()
+  })
+
+  it("renders 'Tier 1' pill when a Tier 1 core is selected", async () => {
+    renderAt("/?tier=1&core=core-001")
+    const pill = await screen.findByTestId("tier-indicator-pill")
+    expect(pill.textContent).toMatch(/Tier 1/)
+    expect(pill.getAttribute("data-tier")).toBe("1")
+  })
+
+  it("hides the tier indicator pill when Tier 2 has no template selected", async () => {
+    renderAt("/?tier=2")
+    await screen.findByTestId("tier2-inspector")
+    expect(screen.queryByTestId("tier-indicator-pill")).toBeNull()
+  })
+
+  it("renders 'Tier 2' pill when a Tier 2 template is selected", async () => {
+    // Tier 2 pill visibility is gated on selectedTemplateId being
+    // non-null — the URL param alone is sufficient; the template
+    // record doesn't need to fully load for the pill to render.
+    const { focusTemplatesService } = await import(
+      "@/bridgeable-admin/services/focus-templates-service"
+    )
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "tpl-001",
+      scope: "platform_default",
+      vertical: null,
+      template_slug: "test-template",
+      display_name: "Test Template",
+      description: null,
+      inherits_from_core_id: "core-001",
+      inherits_from_core_version: 1,
+      rows: [],
+      canvas_config: {},
+      chrome_overrides: {},
+      substrate: {},
+      typography: {},
+      version: 1,
+      is_active: true,
+      created_at: "",
+      updated_at: "",
+    })
+    renderAt("/?tier=2&template=tpl-001")
+    const pill = await screen.findByTestId("tier-indicator-pill")
+    expect(pill.textContent).toMatch(/Tier 2/)
+    expect(pill.getAttribute("data-tier")).toBe("2")
+  })
+
+  it("lineage chrome is hidden at Tier 1", async () => {
+    renderAt("/?tier=1")
+    await screen.findByTestId("focus-editor-page")
+    expect(screen.queryByTestId("tier2-lineage-chrome")).toBeNull()
   })
 })

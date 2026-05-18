@@ -70,13 +70,26 @@ export default function FocusEditorPage() {
   // Sub-arc C-2.2c — inherited core lineage chrome for Tier 2.
   const [inheritedCoreLineage, setInheritedCoreLineage] =
     React.useState<InheritedCoreLineage | null>(null)
+  // Sub-arc C-2.3 — controlled side-panel state. Lifted from the
+  // Tier 2 editor so the lineage chrome in the top bar (this file)
+  // can open the same panel the canvas placement opens. Single
+  // source of truth prevents desync between the two trigger sites.
+  const [inheritedCorePanelOpen, setInheritedCorePanelOpen] =
+    React.useState(false)
 
   // Reset lineage when switching tiers; lineage is Tier-2-only.
   React.useEffect(() => {
     if (tierParam !== "2") {
       setInheritedCoreLineage(null)
+      setInheritedCorePanelOpen(false)
     }
   }, [tierParam])
+
+  // Close the inherited-core panel when the user switches templates;
+  // its scope is the currently-loaded template.
+  React.useEffect(() => {
+    setInheritedCorePanelOpen(false)
+  }, [selectedTemplateId])
 
   // Browser confirm-before-leave when dirty.
   React.useEffect(() => {
@@ -116,6 +129,22 @@ export default function FocusEditorPage() {
       if (id) params.set("template", id)
       else params.delete("template")
       setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+
+  // Sub-arc C-2.3 — URL-handling consolidation. The Tier 2 editor
+  // previously read+wrote useSearchParams itself to navigate to a
+  // Tier 1 core. The canonical owner of the URL is this page; the
+  // editor now invokes this callback. Preserves any return_to so
+  // the runtime-editor back-link chain stays intact.
+  const navigateToTier1Core = React.useCallback(
+    (coreId: string) => {
+      const params = new URLSearchParams(searchParams)
+      params.set("tier", "1")
+      params.set("core", coreId)
+      params.delete("template")
+      setSearchParams(params, { replace: false })
     },
     [searchParams, setSearchParams],
   )
@@ -186,19 +215,41 @@ export default function FocusEditorPage() {
           Focuses
         </h1>
 
+        {/* Sub-arc C-2.3 — tier indicator pill. Brass-toned chip next
+            to the editor display name. Hidden when no selection is
+            active so the chrome only appears when there's a target
+            to attribute the tier to. */}
+        {((tier === "1" && selectedCoreId) ||
+          (tier === "2" && selectedTemplateId)) && (
+          <span
+            data-testid="tier-indicator-pill"
+            data-tier={tier}
+            className="rounded-sm bg-[color:var(--accent-subtle)] px-2 py-0.5 text-[10px] tracking-wide text-[color:var(--accent)]"
+            style={{ fontFamily: "var(--font-plex-mono)" }}
+          >
+            Tier {tier}
+          </span>
+        )}
+
         <div className="flex flex-1 items-center gap-2">
-          {/* Sub-arc C-2.2c — Tier 2 lineage chrome. Simple text only;
-              click-to-edit-core flow lives in the inherited-core side
-              panel on the canvas (clickable inherits placement). */}
+          {/* Sub-arc C-2.3 — interactive lineage chrome. The Tier 2
+              "Inherits from: X" indicator becomes a button that opens
+              the same inherited-core inspector panel as the canvas
+              placement click (locked decision #15). Dirty-state
+              confirm-before-leave flow lives inside the panel itself
+              (C-2.2c) — no extra guard needed here. */}
           {tier === "2" && inheritedCoreLineage && (
-            <span
+            <button
+              type="button"
               data-testid="tier2-lineage-chrome"
-              className="text-[11px] text-[color:var(--content-muted)]"
+              onClick={() => setInheritedCorePanelOpen(true)}
+              className="cursor-pointer rounded-sm border border-transparent px-1 py-0.5 text-[11px] text-[color:var(--content-muted)] transition-colors hover:border-[color:var(--accent-subtle)] hover:bg-[color:var(--accent-subtle)] hover:text-[color:var(--content-base)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--accent)]"
               style={{ fontFamily: "var(--font-plex-mono)" }}
+              title="Inspect inherited Tier 1 core"
             >
               Inherits from: {inheritedCoreLineage.display_name} (Tier 1 v
               {inheritedCoreLineage.version})
-            </span>
+            </button>
           )}
           {isDirty && (
             <span
@@ -236,6 +287,9 @@ export default function FocusEditorPage() {
           onDirtyChange={setIsDirty}
           onLastSavedChange={setLastSavedAt}
           onInheritedCoreChange={setInheritedCoreLineage}
+          onNavigateToTier1Core={navigateToTier1Core}
+          inheritedCorePanelOpen={inheritedCorePanelOpen}
+          onInheritedCorePanelOpenChange={setInheritedCorePanelOpen}
         />
       )}
     </div>
