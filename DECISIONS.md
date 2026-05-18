@@ -112,3 +112,23 @@ Lesson codified for future arcs: when a fix lands cleanly (unit tests pass, code
 Studio 1a-i closing with this issue tracked is the right discipline. The Studio shell platform thesis is implemented and usable; Gates 14/22 are downstream functionality that a single hands-on session should resolve. Filing the bug as tracked rather than continuing to chase fixes preserves the integrity of "closed" as a meaningful signal.
 
 Next-on-queue arcs per DECISIONS.md sequencing: Spaces substrate (immediate post-Studio-shell priority), Studio 1a-ii (overview inventory), or a small hands-on Gates 14/22 resolution session. Decision deferred to next working session with fresh eyes.
+
+---
+
+## 2026-05-18 — Discovered canon: Cores are canonical-shared-across-verticals
+
+Surfaced during F-1 build verification (Focus Builder sub-arc 1). `focus_cores` has no `vertical` field — cores are canonical shapes (Kanban, Triage Queue, Coordination Focus, etc.) that any vertical can use. A core's vertical attribution in operator-facing surfaces (e.g., the Focus Builder tree at `/studio/builder/focuses`) is derived from its inheriting templates: `vertical_default` templates pin the core to their vertical; `platform_default` templates make the core cross-vertical (visible under every published vertical's tree); cores with zero templates land in the "Unclassified" pseudo-vertical at the bottom of the tree.
+
+The same core can correctly appear under multiple verticals in the tree. Example: `scheduling-kanban-core` inherited by both a manufacturing-vertical template (Funeral Scheduling) and a funeral-home-vertical template (none exist yet) would appear under both verticals' subtrees. The core is the same; the templates that variant it for each vertical's context differ. This is correct modeling, not duplication — cores express canonical shapes; verticals express operator contexts; templates bind shape to context.
+
+Implication for future arcs: Page Builder, Document Builder, Workflow Builder all consume the `VerticalGroupedTree` primitive and will exhibit the same pattern — their canonical shapes (pages, documents, workflows) shared across verticals; vertical attribution from instances. Future builder UIs must derive vertical placement from inheriting templates, not from a (non-existent) field on the core itself. Future schema additions to `focus_cores` must not add a vertical column; doing so would mis-model the design and break the canonical-shape-shared semantics.
+
+---
+
+## 2026-05-18 — Discovered canon: Template vertical is design-time-permanent
+
+Surfaced during F-1.1 build verification (Focus Builder sub-arc 1.1). `focus_templates.vertical` is treated as immutable by `update_template`. Templates cannot migrate between verticals via the update path. Cross-vertical template migration requires a two-step pattern: (1) pre-lookup at the OLD vertical; if found active, deactivate the record; (2) lookup at the NEW vertical; `create_template` builds a fresh row with the new vertical stamp. The pattern is idempotent on subsequent runs (already-deactivated old plus already-exists-active new are both no-ops).
+
+Architectural rationale: template vertical is part of identity for tree placement (per the F-1 discovered-canon entry above — templates carry the vertical attribution that surfaces cores under verticals), for scope semantics (`vertical_default` applies to the vertical the template was authored for), for inheritance version pins (templates pin to a specific core version; cross-vertical migration would invalidate the pin's vertical-scoped audit context), and for audit trails (who-authored-this-template-in-which-vertical history). Mutability would invalidate cached resolutions, break inheritance pins, and corrupt audit history.
+
+Implication for future arcs: seed migrations that change a template's vertical (rare; surfaced once in F-1.1 when `scheduling-fh` was reclassified from `funeral_home` to `manufacturing`) follow the two-step pattern. Operator-initiated cross-vertical template migration (not currently exposed in any UI; would be a future feature) follows the same shape — deactivate at old vertical, create new at target vertical, not edit-vertical-on-existing-record. Future UI surfaces (Focus Builder, Page Builder, etc.) must not expose "change vertical" as an inline edit on a template; the operation is structurally a "create new in target + deactivate old" workflow. Reference implementation: F-1.1's seed migration code at `backend/scripts/seed_focus_template_inheritance.py` (search for the `scheduling-fh` vertical reclassification helper).
