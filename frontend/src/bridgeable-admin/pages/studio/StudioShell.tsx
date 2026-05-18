@@ -56,6 +56,7 @@ import WorkflowEditorPage from "@/bridgeable-admin/pages/visual-editor/WorkflowE
 import EdgePanelEditorPage from "@/bridgeable-admin/pages/visual-editor/EdgePanelEditorPage"
 import RegistryDebugPage from "@/bridgeable-admin/pages/visual-editor/RegistryDebugPage"
 import PluginRegistryBrowser from "@/bridgeable-admin/pages/visual-editor/PluginRegistryBrowser"
+import FocusBuilderPage from "@/bridgeable-admin/components/focus-builder/FocusBuilderPage"
 
 
 const EDITOR_PAGES: Record<StudioEditorKey, React.ComponentType> = {
@@ -248,6 +249,15 @@ export default function StudioShell() {
                 />
                 <Route path="live/*" element={<StudioLiveModeWrap />} />
                 <Route path="live" element={<StudioLiveModeWrap />} />
+                {/* Sub-arc F-1: Focus Builder mounts at
+                    /studio/builder/focuses. Explicit Route precedes
+                    the EditModeDispatcher catch-all so the
+                    parseStudioPath classifier doesn't see "builder"
+                    as a vertical slug. */}
+                <Route
+                  path="builder/focuses"
+                  element={<FocusBuilderPage />}
+                />
                 <Route path="*" element={<EditModeDispatcher />} />
               </Routes>
             </Suspense>
