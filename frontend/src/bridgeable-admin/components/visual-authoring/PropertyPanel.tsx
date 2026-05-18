@@ -28,12 +28,24 @@ import { cn } from "@/lib/utils"
 export interface PropertyPanelProps {
   children: React.ReactNode
   className?: string
+  /**
+   * Optional override for the outer container's data-testid. Defaults
+   * to "property-panel" (the C-1 canonical id). Sub-arc C-2.2c added
+   * the passthrough so consumers like InheritedCoreInspectorPanel can
+   * mount a second PropertyPanel in the same tree without testid
+   * collisions.
+   */
+  "data-testid"?: string
 }
 
-export function PropertyPanel({ children, className }: PropertyPanelProps) {
+export function PropertyPanel({
+  children,
+  className,
+  "data-testid": dataTestId,
+}: PropertyPanelProps) {
   return (
     <div
-      data-testid="property-panel"
+      data-testid={dataTestId ?? "property-panel"}
       className={cn(
         "flex h-full w-full flex-col",
         "border-l border-[color:var(--border-subtle)] bg-[color:var(--surface-base)]",

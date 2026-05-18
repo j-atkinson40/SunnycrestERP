@@ -23,14 +23,20 @@
  * captions on each section into proper inheritance chrome.
  */
 import * as React from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Loader2, ArrowLeftRight } from "lucide-react"
-import { focusCoresService } from "@/bridgeable-admin/services/focus-cores-service"
+import {
+  focusCoresService,
+  type CoreRecord,
+} from "@/bridgeable-admin/services/focus-cores-service"
 import {
   focusTemplatesService,
   type TemplateRecord,
 } from "@/bridgeable-admin/services/focus-templates-service"
+import { CreateTierTwoTemplateModal } from "./CreateTierTwoTemplateModal"
+import { InheritedCoreInspectorPanel } from "./InheritedCoreInspectorPanel"
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
 import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
 import { resolveEffectiveTokens } from "@/lib/visual-editor/themes/resolve-effective-tokens"
@@ -73,6 +79,12 @@ interface ResolvedThemeResponse {
   resolved?: Record<string, string>
 }
 
+export interface InheritedCoreLineage {
+  display_name: string
+  core_slug: string
+  version: number
+}
+
 export interface Tier2TemplatesEditorProps {
   /** Currently selected template id, or null = empty/landing state. */
   selectedTemplateId: string | null
@@ -82,6 +94,20 @@ export interface Tier2TemplatesEditorProps {
   onDirtyChange?: (dirty: boolean) => void
   /** Surfaces last-saved timestamp up to the parent. */
   onLastSavedChange?: (when: Date | null) => void
+  /**
+   * Sub-arc C-2.2c — surfaces the loaded template's inherited Tier 1
+   * core (display_name + slug + version) up to the parent so the
+   * FocusEditorPage top bar can render the "Inherits from:" lineage
+   * chrome. Null when no template is loaded or the inherited core
+   * couldn't be resolved.
+   */
+  onInheritedCoreChange?: (lineage: InheritedCoreLineage | null) => void
+  /**
+   * Studio's currently-active vertical slug (or null = Platform
+   * scope). Forwarded to CreateTierTwoTemplateModal so it can default
+   * the scope + vertical fields to match the operator's Studio context.
+   */
+  defaultVertical?: string | null
 }
 
 export function Tier2TemplatesEditor({
@@ -89,7 +115,11 @@ export function Tier2TemplatesEditor({
   onSelectTemplate,
   onDirtyChange,
   onLastSavedChange,
+  onInheritedCoreChange,
+  defaultVertical,
 }: Tier2TemplatesEditorProps) {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [templates, setTemplates] = React.useState<TemplateRecord[]>([])
   const [listLoading, setListLoading] = React.useState(true)
   const [listError, setListError] = React.useState<string | null>(null)
@@ -100,6 +130,15 @@ export function Tier2TemplatesEditor({
     Record<string, unknown> | null
   >(null)
   const [coreSlug, setCoreSlug] = React.useState<string | null>(null)
+  // Full inherited core record for the InheritedCoreInspectorPanel.
+  // Loaded lazily alongside coreChrome / coreSlug from the same fetch.
+  const [inheritedCore, setInheritedCore] = React.useState<CoreRecord | null>(
+    null,
+  )
+  // Sub-arc C-2.2c: modal + side-panel state.
+  const [createModalOpen, setCreateModalOpen] = React.useState(false)
+  const [inheritedCorePanelOpen, setInheritedCorePanelOpen] =
+    React.useState(false)
 
   const { railExpanded, inStudioContext } = useStudioRail()
   const hideLeftBrowser = railExpanded && inStudioContext
@@ -115,6 +154,8 @@ export function Tier2TemplatesEditor({
     updateChromeOverrides,
     updateSubstrate,
     updateTypography,
+    save: saveDraft,
+    discard: discardDraft,
     isDirty,
     lastSavedAt,
     isLoading: templateLoading,
@@ -177,6 +218,8 @@ export function Tier2TemplatesEditor({
     if (!template?.inherits_from_core_id) {
       setCoreChrome(null)
       setCoreSlug(null)
+      setInheritedCore(null)
+      onInheritedCoreChange?.(null)
       return
     }
     let cancelled = false
@@ -186,17 +229,30 @@ export function Tier2TemplatesEditor({
         if (cancelled) return
         setCoreChrome(core.chrome ?? null)
         setCoreSlug(core.core_slug ?? null)
+        setInheritedCore(core)
+        onInheritedCoreChange?.({
+          display_name: core.display_name,
+          core_slug: core.core_slug,
+          version:
+            template.inherits_from_core_version ?? core.version ?? 1,
+        })
       })
       .catch(() => {
         if (!cancelled) {
           setCoreChrome(null)
           setCoreSlug(null)
+          setInheritedCore(null)
+          onInheritedCoreChange?.(null)
         }
       })
     return () => {
       cancelled = true
     }
-  }, [template?.inherits_from_core_id])
+  }, [
+    template?.inherits_from_core_id,
+    template?.inherits_from_core_version,
+    onInheritedCoreChange,
+  ])
 
   // Compose the chrome / substrate / typography views FROM THE DRAFT
   // (not from `template.<blob>`). This is what makes the canvas live
@@ -253,6 +309,24 @@ export function Tier2TemplatesEditor({
     [substrateStyle, typographyView, themeTokens],
   )
 
+  // Sub-arc C-2.2c — navigate to the Tier 1 editor with the inherited
+  // core preselected. Preserves any existing `return_to` query param
+  // so the runtime-editor back-link chain stays intact.
+  const navigateToTier1Core = React.useCallback(
+    (coreId: string) => {
+      const params = new URLSearchParams(searchParams)
+      params.set("tier", "1")
+      params.set("core", coreId)
+      params.delete("template")
+      // useNavigate is relative to current location; explicit
+      // pathname keeps it inside the focus editor route.
+      navigate(`${window.location.pathname}?${params.toString()}`, {
+        replace: false,
+      })
+    },
+    [navigate, searchParams],
+  )
+
   // Inheritance lineage strings rendered in each section's header.
   // Minimal v1 per locked decision #6 — C-2.3 ships polished UI.
   const chromeLineage = coreSlug
@@ -266,7 +340,7 @@ export function Tier2TemplatesEditor({
   const typographyLineage = "Focus-level (Tier 2 default)"
 
   return (
-    <div className="flex h-full flex-1 overflow-hidden">
+    <div className="relative flex h-full flex-1 overflow-hidden">
       {/* LEFT — templates browser */}
       {!hideLeftBrowser && (
         <aside
@@ -284,9 +358,8 @@ export function Tier2TemplatesEditor({
             <Button
               size="sm"
               variant="outline"
-              disabled
               data-testid="new-template-button"
-              title="Create flow ships in sub-arc C-2.2c"
+              onClick={() => setCreateModalOpen(true)}
               className="h-7 gap-1 px-2 text-[12px]"
             >
               + New
@@ -408,11 +481,20 @@ export function Tier2TemplatesEditor({
                 {template?.description ??
                   "Tier 2 template preview. Edit chrome, substrate, or typography on the right; the canvas updates live."}
               </p>
-              <span
-                className="mt-2 text-[11px] tabular-nums text-[color:var(--content-muted)]"
+              <button
+                type="button"
+                data-testid="inherited-core-placement"
+                onClick={() => setInheritedCorePanelOpen(true)}
+                disabled={!inheritedCore}
+                className="mt-2 cursor-pointer rounded-sm border border-transparent px-1 py-0.5 text-left text-[11px] tabular-nums text-[color:var(--content-muted)] transition-colors hover:border-[color:var(--accent-subtle)] hover:bg-[color:var(--accent-subtle)] disabled:cursor-default disabled:hover:border-transparent disabled:hover:bg-transparent"
                 style={{ fontFamily: "var(--font-plex-mono)" }}
+                title={
+                  inheritedCore
+                    ? "Inspect inherited Tier 1 core"
+                    : "Loading inherited core…"
+                }
               >
-                inherits: {template?.inherits_from_core_id?.slice(0, 8) ?? "—"}{" "}
+                inherits: {coreSlug ?? template?.inherits_from_core_id?.slice(0, 8) ?? "—"}{" "}
                 · v{template?.inherits_from_core_version ?? "—"}
                 {" · "}
                 chrome: {chromeView.preset ?? "—"}
@@ -420,7 +502,7 @@ export function Tier2TemplatesEditor({
                 substrate: {substrateView.preset ?? "—"}
                 {" · "}
                 typography: {typographyView.preset ?? "—"}
-              </span>
+              </button>
             </div>
           )}
         </div>
@@ -640,6 +722,38 @@ export function Tier2TemplatesEditor({
           </PropertyPanel>
         )}
       </aside>
+
+      {/* Sub-arc C-2.2c — slide-in side panel for inspecting the
+          inherited Tier 1 core. Overlays the inspector area; does
+          NOT unmount the inspector below so Tier 2 unsaved state in
+          useFocusTemplateDraft stays intact regardless of dismissal. */}
+      {inheritedCorePanelOpen && selectedTemplateId && (
+        <InheritedCoreInspectorPanel
+          core={inheritedCore}
+          isDirty={isDirty}
+          saveDraft={saveDraft}
+          discardDraft={discardDraft}
+          onNavigateToTier1Core={(coreId) => {
+            setInheritedCorePanelOpen(false)
+            navigateToTier1Core(coreId)
+          }}
+          onClose={() => setInheritedCorePanelOpen(false)}
+        />
+      )}
+
+      {/* Sub-arc C-2.2c — create-from-Core modal. */}
+      <CreateTierTwoTemplateModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={(record) => {
+          setCreateModalOpen(false)
+          // Refresh the browser list so the new row appears, then
+          // select it. URL update flows through onSelectTemplate.
+          void refreshList()
+          onSelectTemplate(record.id)
+        }}
+        defaultVertical={defaultVertical ?? null}
+      />
     </div>
   )
 }

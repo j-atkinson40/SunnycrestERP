@@ -37,7 +37,10 @@ import { ArrowLeft, Circle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tier1CoresEditor } from "@/bridgeable-admin/components/visual-editor/Tier1CoresEditor"
-import { Tier2TemplatesEditor } from "@/bridgeable-admin/components/visual-editor/Tier2TemplatesEditor"
+import {
+  Tier2TemplatesEditor,
+  type InheritedCoreLineage,
+} from "@/bridgeable-admin/components/visual-editor/Tier2TemplatesEditor"
 
 type Tier = "1" | "2"
 
@@ -64,6 +67,16 @@ export default function FocusEditorPage() {
 
   const [isDirty, setIsDirty] = React.useState(false)
   const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
+  // Sub-arc C-2.2c — inherited core lineage chrome for Tier 2.
+  const [inheritedCoreLineage, setInheritedCoreLineage] =
+    React.useState<InheritedCoreLineage | null>(null)
+
+  // Reset lineage when switching tiers; lineage is Tier-2-only.
+  React.useEffect(() => {
+    if (tierParam !== "2") {
+      setInheritedCoreLineage(null)
+    }
+  }, [tierParam])
 
   // Browser confirm-before-leave when dirty.
   React.useEffect(() => {
@@ -174,6 +187,19 @@ export default function FocusEditorPage() {
         </h1>
 
         <div className="flex flex-1 items-center gap-2">
+          {/* Sub-arc C-2.2c — Tier 2 lineage chrome. Simple text only;
+              click-to-edit-core flow lives in the inherited-core side
+              panel on the canvas (clickable inherits placement). */}
+          {tier === "2" && inheritedCoreLineage && (
+            <span
+              data-testid="tier2-lineage-chrome"
+              className="text-[11px] text-[color:var(--content-muted)]"
+              style={{ fontFamily: "var(--font-plex-mono)" }}
+            >
+              Inherits from: {inheritedCoreLineage.display_name} (Tier 1 v
+              {inheritedCoreLineage.version})
+            </span>
+          )}
           {isDirty && (
             <span
               data-testid="dirty-indicator"
@@ -209,6 +235,7 @@ export default function FocusEditorPage() {
           onSelectTemplate={setSelectedTemplate}
           onDirtyChange={setIsDirty}
           onLastSavedChange={setLastSavedAt}
+          onInheritedCoreChange={setInheritedCoreLineage}
         />
       )}
     </div>

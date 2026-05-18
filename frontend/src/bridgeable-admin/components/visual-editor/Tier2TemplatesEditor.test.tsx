@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 
 vi.mock("@/bridgeable-admin/services/focus-templates-service", () => ({
   focusTemplatesService: {
@@ -37,6 +38,25 @@ vi.mock("@/bridgeable-admin/lib/admin-api", () => ({
   },
 }))
 
+vi.mock("@/bridgeable-admin/services/verticals-service", () => ({
+  verticalsService: {
+    list: vi.fn().mockResolvedValue([
+      {
+        slug: "funeral_home",
+        display_name: "Funeral Home",
+        description: null,
+        status: "published",
+        icon: null,
+        sort_order: 0,
+        created_at: "",
+        updated_at: "",
+      },
+    ]),
+    get: vi.fn(),
+    update: vi.fn(),
+  },
+}))
+
 import { focusTemplatesService } from "@/bridgeable-admin/services/focus-templates-service"
 import { focusCoresService } from "@/bridgeable-admin/services/focus-cores-service"
 import { Tier2TemplatesEditor } from "./Tier2TemplatesEditor"
@@ -59,12 +79,12 @@ describe("Tier2TemplatesEditor — empty state", () => {
       [],
     )
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId={null}
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     expect(await screen.findByTestId("templates-empty")).toBeInTheDocument()
     expect(screen.getByTestId("tier2-no-selection")).toBeInTheDocument()
@@ -79,12 +99,12 @@ describe("Tier2TemplatesEditor — empty state", () => {
       [],
     )
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId={null}
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     await screen.findByTestId("templates-empty")
     expect(onDirtyChange).toHaveBeenCalledWith(false)
@@ -118,12 +138,12 @@ describe("Tier2TemplatesEditor — browser + preview", () => {
       ],
     )
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId={null}
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     const row = await screen.findByTestId("template-row-default-scribe")
     expect(row).toBeInTheDocument()
@@ -194,12 +214,12 @@ describe("Tier2TemplatesEditor — browser + preview", () => {
       updated_at: "",
     })
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId="tpl-2"
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     await waitFor(() =>
       expect(screen.getByTestId("tier2-preview-card")).toBeInTheDocument(),
@@ -292,12 +312,12 @@ describe("Tier2TemplatesEditor — canvas substrate + typography wiring (C-2.2a.
       updated_at: "",
     })
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId="tpl-canvas-1"
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     const canvas = await screen.findByTestId("tier2-canvas")
     expect(canvas).toBeInTheDocument()
@@ -372,12 +392,12 @@ describe("Tier2TemplatesEditor — canvas substrate + typography wiring (C-2.2a.
       updated_at: "",
     })
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId="tpl-canvas-2"
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     await waitFor(() =>
       expect(screen.getByTestId("tier2-preview-card")).toBeInTheDocument(),
@@ -466,12 +486,12 @@ describe("Tier2TemplatesEditor — inspector → canvas live cascade (C-2.2b)", 
       CORE_LIVE,
     )
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId="tpl-live"
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     const canvas = await screen.findByTestId("tier2-canvas")
     const initialBg = canvas.style.background || canvas.style.backgroundImage
@@ -502,12 +522,12 @@ describe("Tier2TemplatesEditor — inspector → canvas live cascade (C-2.2b)", 
       CORE_LIVE,
     )
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId="tpl-live"
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     await waitFor(() =>
       expect(screen.getByTestId("tier2-preview-card")).toBeInTheDocument(),
@@ -538,12 +558,12 @@ describe("Tier2TemplatesEditor — inspector → canvas live cascade (C-2.2b)", 
       CORE_LIVE,
     )
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId="tpl-live"
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     await waitFor(() =>
       expect(screen.getByTestId("tier2-preview-card")).toBeInTheDocument(),
@@ -571,12 +591,12 @@ describe("Tier2TemplatesEditor — inspector → canvas live cascade (C-2.2b)", 
       CORE_LIVE,
     )
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId="tpl-live"
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     // All three preset pickers mount.
     await waitFor(() =>
@@ -603,15 +623,260 @@ describe("Tier2TemplatesEditor — error surfacing", () => {
       new Error("boom"),
     )
     render(
-      <Tier2TemplatesEditor
+      <MemoryRouter><Tier2TemplatesEditor
         selectedTemplateId={null}
         onSelectTemplate={onSelectTemplate}
         onDirtyChange={onDirtyChange}
         onLastSavedChange={onLastSavedChange}
-      />,
+      /></MemoryRouter>,
     )
     expect(await screen.findByTestId("templates-error")).toHaveTextContent(
       "boom",
     )
+  })
+})
+
+describe("Tier2TemplatesEditor — sub-arc C-2.2c integration", () => {
+  /**
+   * Locked-decision #11: integration test for click-to-edit-core flow
+   * is mandatory.
+   *
+   * These tests assert the wiring that makes C-2.2c operationally
+   * complete:
+   *
+   *   - New template button opens CreateTierTwoTemplateModal
+   *   - Clicking the inherited-core placement on the canvas opens
+   *     the InheritedCoreInspectorPanel side panel
+   *   - Side panel surfaces inherited Tier 1 core properties
+   *   - Successful template creation closes the modal + selects the
+   *     new template
+   */
+  const TEMPLATE_WITH_CORE = {
+    id: "tpl-c22c",
+    scope: "vertical_default" as const,
+    vertical: "funeral_home",
+    template_slug: "c22c-template",
+    display_name: "C-2.2c Template",
+    description: "integration",
+    inherits_from_core_id: "core-c22c",
+    inherits_from_core_version: 2,
+    rows: [],
+    canvas_config: {},
+    chrome_overrides: {},
+    substrate: { preset: "morning-warm" },
+    typography: {},
+    version: 1,
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  }
+  const CORE_C22C = {
+    id: "core-c22c",
+    core_slug: "scheduling-kanban-core",
+    display_name: "Scheduling Kanban Core",
+    description: null,
+    registered_component_kind: "focus-template",
+    registered_component_name: "SchedulingKanbanCore",
+    default_starting_column: 0,
+    default_column_span: 12,
+    default_row_index: 0,
+    min_column_span: 6,
+    max_column_span: 12,
+    canvas_config: {},
+    chrome: { preset: "card", elevation: 40 },
+    version: 2,
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  }
+
+  it("New template button opens CreateTierTwoTemplateModal", async () => {
+    ;(focusTemplatesService.list as ReturnType<typeof vi.fn>).mockResolvedValue(
+      [],
+    )
+    ;(focusCoresService.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      CORE_C22C,
+    ])
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId={null}
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+        />
+      </MemoryRouter>,
+    )
+    const btn = await screen.findByTestId("new-template-button")
+    expect(btn).not.toBeDisabled()
+    fireEvent.click(btn)
+    expect(
+      screen.getByTestId("create-tier-two-template-modal"),
+    ).toBeInTheDocument()
+  })
+
+  it("clicking inherited-core placement opens InheritedCoreInspectorPanel", async () => {
+    ;(focusTemplatesService.list as ReturnType<typeof vi.fn>).mockResolvedValue(
+      [TEMPLATE_WITH_CORE],
+    )
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      TEMPLATE_WITH_CORE,
+    )
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      CORE_C22C,
+    )
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c22c"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+        />
+      </MemoryRouter>,
+    )
+    // Wait for core fetch to resolve (enables the inherited-core button).
+    await waitFor(() => {
+      const btn = screen.getByTestId(
+        "inherited-core-placement",
+      ) as HTMLButtonElement
+      expect(btn).not.toBeDisabled()
+    })
+    fireEvent.click(screen.getByTestId("inherited-core-placement"))
+    expect(
+      screen.getByTestId("inherited-core-inspector-panel"),
+    ).toBeInTheDocument()
+    // Panel surfaces the inherited Tier 1 core's display name + slug.
+    expect(
+      screen.getByTestId("inherited-core-display-name").textContent,
+    ).toBe("Scheduling Kanban Core")
+    expect(
+      screen.getByTestId("inherited-core-slug").textContent,
+    ).toBe("scheduling-kanban-core · v2")
+  })
+
+  it("closing inherited-core side panel dismisses it without unmounting inspector", async () => {
+    ;(focusTemplatesService.list as ReturnType<typeof vi.fn>).mockResolvedValue(
+      [TEMPLATE_WITH_CORE],
+    )
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      TEMPLATE_WITH_CORE,
+    )
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      CORE_C22C,
+    )
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c22c"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+        />
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("inherited-core-placement") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false)
+    })
+    fireEvent.click(screen.getByTestId("inherited-core-placement"))
+    expect(
+      screen.getByTestId("inherited-core-inspector-panel"),
+    ).toBeInTheDocument()
+    // Inspector (the always-mounted right rail) is still there.
+    expect(screen.getByTestId("tier2-inspector")).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("inherited-core-close"))
+    expect(
+      screen.queryByTestId("inherited-core-inspector-panel"),
+    ).not.toBeInTheDocument()
+    // Inspector stays mounted post-close.
+    expect(screen.getByTestId("tier2-inspector")).toBeInTheDocument()
+  })
+
+  it("successful template creation closes modal + selects the new template", async () => {
+    ;(focusTemplatesService.list as ReturnType<typeof vi.fn>).mockResolvedValue(
+      [],
+    )
+    ;(focusCoresService.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      CORE_C22C,
+    ])
+    ;(focusTemplatesService.create as ReturnType<typeof vi.fn>).mockResolvedValue(
+      {
+        ...TEMPLATE_WITH_CORE,
+        id: "tpl-newly-created",
+      },
+    )
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId={null}
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+        />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByTestId("new-template-button"))
+    expect(
+      screen.getByTestId("create-tier-two-template-modal"),
+    ).toBeInTheDocument()
+    // Wait for the core list to populate the picker.
+    await waitFor(() => {
+      const sel = screen.getByTestId(
+        "inherits-from-core-select",
+      ) as HTMLSelectElement
+      expect(sel.options.length).toBeGreaterThan(1)
+    })
+    fireEvent.change(screen.getByTestId("inherits-from-core-select"), {
+      target: { value: "core-c22c" },
+    })
+    fireEvent.change(screen.getByTestId("template-slug-input"), {
+      target: { value: "new-slug" },
+    })
+    fireEvent.change(screen.getByTestId("template-display-name-input"), {
+      target: { value: "New" },
+    })
+    fireEvent.click(screen.getByTestId("scope-platform-default"))
+    fireEvent.click(screen.getByTestId("create-tier-two-template-submit"))
+    await waitFor(() => {
+      expect(onSelectTemplate).toHaveBeenCalledWith("tpl-newly-created")
+    })
+    // Modal dismisses post-create.
+    expect(
+      screen.queryByTestId("create-tier-two-template-modal"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("surfaces inherited-core lineage upward via onInheritedCoreChange callback", async () => {
+    const onInheritedCoreChange = vi.fn()
+    ;(focusTemplatesService.list as ReturnType<typeof vi.fn>).mockResolvedValue(
+      [TEMPLATE_WITH_CORE],
+    )
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      TEMPLATE_WITH_CORE,
+    )
+    ;(focusCoresService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      CORE_C22C,
+    )
+    render(
+      <MemoryRouter>
+        <Tier2TemplatesEditor
+          selectedTemplateId="tpl-c22c"
+          onSelectTemplate={onSelectTemplate}
+          onDirtyChange={onDirtyChange}
+          onLastSavedChange={onLastSavedChange}
+          onInheritedCoreChange={onInheritedCoreChange}
+        />
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(onInheritedCoreChange).toHaveBeenCalledWith({
+        display_name: "Scheduling Kanban Core",
+        core_slug: "scheduling-kanban-core",
+        version: 2,
+      })
+    })
   })
 })

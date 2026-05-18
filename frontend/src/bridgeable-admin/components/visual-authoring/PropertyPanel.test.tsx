@@ -56,4 +56,53 @@ describe("PropertyPanel", () => {
     )
     expect(screen.queryByTestId("body-content")).not.toBeInTheDocument()
   })
+
+  // Sub-arc C-2.2c: className + data-testid passthrough on the outer
+  // container so consumers can mount multiple PropertyPanels without
+  // testid collision and add scoping classes (e.g. for slide-in
+  // positioning on the inherited-core inspector).
+  it("passes className through to the outer container", () => {
+    render(
+      <PropertyPanel className="custom-scope-class">
+        <PropertySection title="Section">
+          <PropertyRow>
+            <span>Body</span>
+          </PropertyRow>
+        </PropertySection>
+      </PropertyPanel>,
+    )
+    expect(screen.getByTestId("property-panel")).toHaveClass(
+      "custom-scope-class",
+    )
+  })
+
+  it("passes data-testid override through to the outer container", () => {
+    render(
+      <PropertyPanel data-testid="inherited-core-inspector">
+        <PropertySection title="Section">
+          <PropertyRow>
+            <span>Body</span>
+          </PropertyRow>
+        </PropertySection>
+      </PropertyPanel>,
+    )
+    expect(
+      screen.getByTestId("inherited-core-inspector"),
+    ).toBeInTheDocument()
+    // Default id should NOT be present when an override is supplied.
+    expect(screen.queryByTestId("property-panel")).not.toBeInTheDocument()
+  })
+
+  it("defaults data-testid to property-panel when no override supplied", () => {
+    render(
+      <PropertyPanel>
+        <PropertySection title="Section">
+          <PropertyRow>
+            <span>Body</span>
+          </PropertyRow>
+        </PropertySection>
+      </PropertyPanel>,
+    )
+    expect(screen.getByTestId("property-panel")).toBeInTheDocument()
+  })
 })
