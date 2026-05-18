@@ -133,9 +133,9 @@ describe("buildFocusBuilderTree (pure)", () => {
     })
     expect(groups).toHaveLength(1)
     expect(groups[0].id).toBe("vertical:manufacturing")
-    // Drill: vertical → focus-type (production) → core → template
+    // Drill: vertical → focus-type (decision per F-1.1) → core → template
     const ft = groups[0].children![0]
-    expect(ft.label).toBe("Production")
+    expect(ft.label).toBe("Decision")
     const coreNode = ft.children![0]
     expect(coreNode.label).toBe("scheduling-kanban-core")
     const labels = coreNode.children!.map((n) => n.label)
@@ -212,7 +212,8 @@ describe("defaultExpansionForTree", () => {
     expect(exp.has("vertical:manufacturing")).toBe(true)
     expect(exp.has("vertical:funeral_home")).toBe(false)
     // focus-type level should also be expanded
-    const ftId = "vertical:manufacturing::focus-type:production"
+    // Sub-arc F-1.1: scheduling-kanban reclassified production → decision.
+    const ftId = "vertical:manufacturing::focus-type:decision"
     expect(exp.has(ftId)).toBe(true)
     // core-level NOT expanded
     expect(
@@ -263,8 +264,9 @@ describe("FocusBuilderTree (integration)", () => {
       expect(screen.getByText("Manufacturing")).toBeInTheDocument(),
     )
     // Studio scope expanded by default → focus-type + core visible.
+    // Sub-arc F-1.1: scheduling-kanban reclassified production → decision.
     await waitFor(() =>
-      expect(screen.getByText("Production")).toBeInTheDocument(),
+      expect(screen.getByText("Decision")).toBeInTheDocument(),
     )
     expect(screen.getByText("Scheduling Kanban")).toBeInTheDocument()
   })

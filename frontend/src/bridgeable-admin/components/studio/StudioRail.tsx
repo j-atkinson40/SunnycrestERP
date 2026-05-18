@@ -16,7 +16,7 @@
  *
  * Rail expand state persists to localStorage (key `studio.railExpanded`).
  */
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import {
   Boxes,
@@ -32,6 +32,7 @@ import {
   Palette,
   Plug,
   Sparkles,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
@@ -53,7 +54,27 @@ interface RailEntry {
   disabled?: boolean
   /** Label suffix (e.g. "Coming soon"). */
   badge?: string
+  /**
+   * Sub-arc F-1.1 (Q-41): non-editor entries that route to a
+   * standalone URL outside the studio editor space. When set,
+   * navigation bypasses studioPath() and uses this absolute path.
+   * Also signals to the rail to render a dismissible "New" badge
+   * gated on the F-1.1 dismissal localStorage key.
+   */
+  overrideHref?: string
+  /** Stable id for the dismissible-affordance localStorage key. */
+  newAffordanceId?: string
 }
+
+
+/**
+ * Sub-arc F-1.1 (Q-41): per-operator dismissal of the "New" badge on
+ * the Focus Builder rail entry. Once dismissed the affordance hides;
+ * direct route still works. Single key per affordance — currently only
+ * Focus Builder, but the pattern scales.
+ */
+export const FOCUS_BUILDER_RAIL_BANNER_KEY =
+  "bridgeable.focus-builder.studio-rail-banner-dismissed"
 
 
 /** Order = display order in the rail. Mirrors VisualEditorIndex card order. */
@@ -61,6 +82,17 @@ const RAIL_ENTRIES: RailEntry[] = [
   { editor: null, label: "Overview", icon: OverviewIcon },
   { editor: "themes", label: "Themes", icon: Palette },
   { editor: "focuses", label: "Focuses", icon: FocusIcon },
+  // Sub-arc F-1.1 (Q-41 LOCKED, Implementation B): separate Focus
+  // Builder rail entry alongside existing Focuses. Both routes are
+  // reachable; this entry surfaces /studio/builder/focuses with a
+  // dismissible "New" badge so operators discover the new surface.
+  {
+    editor: null,
+    label: "Focus Builder",
+    icon: Sparkles,
+    overrideHref: "/studio/builder/focuses",
+    newAffordanceId: FOCUS_BUILDER_RAIL_BANNER_KEY,
+  },
   { editor: "widgets", label: "Widgets", icon: LayoutDashboard },
   { editor: "documents", label: "Documents", icon: FileText },
   { editor: "classes", label: "Classes", icon: Boxes },
@@ -95,8 +127,43 @@ export function StudioRail({
 
   const navigate = useNavigate()
 
+  // Sub-arc F-1.1: per-operator dismissal of the Focus Builder "New"
+  // badge. localStorage is read once on mount; setter triggers a
+  // re-render via state so the badge disappears in place.
+  const [dismissedAffordances, setDismissedAffordances] = useState<
+    Record<string, boolean>
+  >(() => {
+    if (typeof window === "undefined") return {} as Record<string, boolean>
+    try {
+      const initial: Record<string, boolean> = {}
+      initial[FOCUS_BUILDER_RAIL_BANNER_KEY] =
+        window.localStorage.getItem(FOCUS_BUILDER_RAIL_BANNER_KEY) === "1"
+      return initial
+    } catch {
+      return {} as Record<string, boolean>
+    }
+  })
+
+  const dismissAffordance = (id: string) => {
+    try {
+      window.localStorage.setItem(id, "1")
+    } catch {
+      /* ignore (private mode etc.) */
+    }
+    setDismissedAffordances((prev) => ({ ...prev, [id]: true }))
+  }
+
   const handleEntryClick = (entry: RailEntry) => {
     if (entry.disabled) return
+    // Sub-arc F-1.1: overrideHref escapes the studioPath() builder for
+    // entries that point at non-editor URLs (e.g. /studio/builder/focuses).
+    if (entry.overrideHref) {
+      navigate(entry.overrideHref)
+      // Collapse rail to give the standalone surface room, mirroring
+      // editor-open behavior.
+      onExpandedChange(false)
+      return
+    }
     // Navigate to the editor's URL.
     const isPlatformOnly =
       entry.editor !== null && PLATFORM_ONLY_EDITORS.has(entry.editor)
@@ -129,15 +196,23 @@ export function StudioRail({
         </button>
         {RAIL_ENTRIES.map((entry) => {
           const Icon = entry.icon
-          const active = entry.editor === activeEditor
-          const isOverview = entry.editor === null && activeEditor === null
+          const active = entry.editor === activeEditor && !entry.overrideHref
+          const isOverview =
+            entry.editor === null &&
+            activeEditor === null &&
+            !entry.overrideHref
+          // Sub-arc F-1.1: same testid scheme as expanded mode for
+          // overrideHref entries.
+          const iconTestIdSuffix = entry.overrideHref
+            ? "focus-builder"
+            : (entry.editor ?? "overview")
           return (
             <button
               key={entry.label}
               type="button"
               disabled={entry.disabled}
               onClick={() => handleEntryClick(entry)}
-              data-testid={`studio-rail-icon-${entry.editor ?? "overview"}`}
+              data-testid={`studio-rail-icon-${iconTestIdSuffix}`}
               data-active={active || isOverview ? "true" : "false"}
               title={entry.label}
               className={
@@ -190,17 +265,33 @@ export function StudioRail({
       </div>
       {RAIL_ENTRIES.map((entry) => {
         const Icon = entry.icon
-        const active = entry.editor === activeEditor
-        const isOverview = entry.editor === null && activeEditor === null
+        // Sub-arc F-1.1: overrideHref entries are never "active" via the
+        // activeEditor signal (they don't have an editor key) and are
+        // never the Overview entry. We treat them as routing-only.
+        const active = entry.editor === activeEditor && !entry.overrideHref
+        const isOverview =
+          entry.editor === null &&
+          activeEditor === null &&
+          !entry.overrideHref
         const isPlatformOnly =
           entry.editor !== null && PLATFORM_ONLY_EDITORS.has(entry.editor)
         const vertical = isPlatformOnly ? null : activeVertical
-        const to = adminPath(studioPath({ vertical, editor: entry.editor }))
+        const to = entry.overrideHref
+          ? adminPath(entry.overrideHref)
+          : adminPath(studioPath({ vertical, editor: entry.editor }))
+        const showNewBadge =
+          !!entry.newAffordanceId &&
+          !dismissedAffordances[entry.newAffordanceId]
+        // Stable testid: Focus Builder (overrideHref, editor=null) needs
+        // a distinct id from Overview (no overrideHref, editor=null).
+        const testIdSuffix = entry.overrideHref
+          ? "focus-builder"
+          : (entry.editor ?? "overview")
         if (entry.disabled) {
           return (
             <div
               key={entry.label}
-              data-testid={`studio-rail-entry-${entry.editor ?? "overview"}`}
+              data-testid={`studio-rail-entry-${testIdSuffix}`}
               className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-body-sm text-content-subtle opacity-50"
             >
               <Icon size={14} />
@@ -217,7 +308,7 @@ export function StudioRail({
           <Link
             key={entry.label}
             to={to}
-            data-testid={`studio-rail-entry-${entry.editor ?? "overview"}`}
+            data-testid={`studio-rail-entry-${testIdSuffix}`}
             data-active={active || isOverview ? "true" : "false"}
             onClick={(e) => {
               // Use explicit handler so the rail collapse-on-editor-open
@@ -236,6 +327,27 @@ export function StudioRail({
             {isPlatformOnly && (
               <span className="ml-auto rounded-sm bg-surface-base px-1.5 py-0.5 text-caption text-content-subtle font-plex-mono">
                 Platform
+              </span>
+            )}
+            {showNewBadge && entry.newAffordanceId && (
+              <span
+                className="ml-auto inline-flex items-center gap-1 rounded-sm bg-accent-subtle px-1.5 py-0.5 text-caption text-accent"
+                data-testid={`studio-rail-new-badge-${testIdSuffix}`}
+              >
+                New
+                <button
+                  type="button"
+                  aria-label="Dismiss new affordance"
+                  data-testid={`studio-rail-new-badge-dismiss-${testIdSuffix}`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    dismissAffordance(entry.newAffordanceId!)
+                  }}
+                  className="-mr-0.5 flex h-3 w-3 items-center justify-center rounded-sm text-accent hover:bg-accent/20"
+                >
+                  <X size={10} />
+                </button>
               </span>
             )}
           </Link>

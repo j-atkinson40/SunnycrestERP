@@ -42,10 +42,14 @@ describe("focus-types", () => {
   })
 
   it("resolves a known slug via CORE_SLUG_TO_FOCUS_TYPE", () => {
-    expect(CORE_SLUG_TO_FOCUS_TYPE["scheduling-kanban-core"]).toBe("production")
+    // Sub-arc F-1.1: scheduling-kanban reclassified production → decision
+    // per James lock (kanban shape is canonical decision-family).
+    expect(CORE_SLUG_TO_FOCUS_TYPE["scheduling-kanban-core"]).toBe("decision")
     expect(focusTypeForCore(makeCore("scheduling-kanban-core"))).toBe(
-      "production",
+      "decision",
     )
+    expect(CORE_SLUG_TO_FOCUS_TYPE["scheduling-kanban"]).toBe("decision")
+    expect(focusTypeForCore(makeCore("scheduling-kanban"))).toBe("decision")
   })
 
   it("falls back to 'production' for unknown slugs", () => {

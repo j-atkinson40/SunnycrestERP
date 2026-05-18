@@ -37,10 +37,15 @@ export type FocusType = (typeof FOCUS_TYPES)[number]["id"]
  * Adding a new core = (a) ship the platform-default core row in the
  * focus_cores table via seed, (b) add the core_slug → FocusType row
  * here.
+ *
+ * Sub-arc F-1.1: scheduling-kanban reclassified `production` →
+ * `decision`. The kanban shape is canonical decision-family (multiple
+ * cores share the family: Kanban, Triage Queue, etc.). F-1 shipped
+ * `production` as an interim placeholder; F-1.1 corrects per James lock.
  */
 export const CORE_SLUG_TO_FOCUS_TYPE: Record<string, FocusType> = {
-  "scheduling-kanban": "production",
-  "scheduling-kanban-core": "production",
+  "scheduling-kanban": "decision",
+  "scheduling-kanban-core": "decision",
 }
 
 

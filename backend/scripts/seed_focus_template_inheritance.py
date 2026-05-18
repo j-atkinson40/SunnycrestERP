@@ -49,7 +49,12 @@ logger = logging.getLogger(__name__)
 
 SCHEDULING_KANBAN_CORE = {
     "core_slug": "scheduling-kanban",
-    "display_name": "Scheduling Kanban",
+    # Sub-arc F-1.1: display_name normalized "Scheduling Kanban" → "Kanban".
+    # The kanban shape is canonical; "Scheduling" was a use-case framing
+    # that conflated core with template. Slug stays unchanged (immutable
+    # via update_core; renaming would break references). Templates layer
+    # use-case framing ("Funeral Scheduling") on top.
+    "display_name": "Kanban",
     "description": (
         "Canonical decision-triage Focus core: column-based scheduling "
         "kanban with drag-to-reorder."
@@ -89,9 +94,18 @@ SCHEDULING_KANBAN_CORE = {
 # padding_token / backdrop_blur overrides) from the inherited core.
 SCHEDULING_FH_TEMPLATE = {
     "scope": "vertical_default",
-    "vertical": "funeral_home",
+    # Sub-arc F-1.1: vertical flipped funeral_home → manufacturing.
+    # James authored the template at Sunnycrest (precast manufacturer)
+    # to schedule funeral vault deliveries. CONTENT involves funeral
+    # homes (customer); OPERATOR is Manufacturing. Templates live in
+    # the OPERATOR's vertical, not the customer's. Slug stays unchanged
+    # (referenced externally; renaming would break links).
+    "vertical": "manufacturing",
     "template_slug": "scheduling-fh",
-    "display_name": "Funeral Home Scheduling",
+    # Sub-arc F-1.1: display_name normalized "Funeral Home Scheduling"
+    # → "Funeral Scheduling" (the use-case framing on top of the
+    # canonical Kanban core).
+    "display_name": "Funeral Scheduling",
     "description": (
         "Default funeral scheduling Focus with case overview + day-pane "
         "accessories. Sub-arc C ships the canonical accessory layout."
@@ -125,18 +139,29 @@ def _seed_core(db) -> str:
         # overrides), version-bump to align. Compare on the fields the
         # seed declares; non-declared fields are preserved by update.
         desired_chrome = dict(SCHEDULING_KANBAN_CORE["chrome"])
+        desired_display_name = SCHEDULING_KANBAN_CORE["display_name"]
         current_chrome = dict(existing.chrome or {})
-        if current_chrome != desired_chrome:
-            row = update_core(
-                db, existing.id, chrome=desired_chrome
-            )
+        current_display_name = existing.display_name
+        chrome_drift = current_chrome != desired_chrome
+        name_drift = current_display_name != desired_display_name
+        if chrome_drift or name_drift:
+            # Sub-arc F-1.1: include display_name in drift detection so
+            # "Scheduling Kanban" → "Kanban" rename actually propagates.
+            update_kwargs = {}
+            if chrome_drift:
+                update_kwargs["chrome"] = desired_chrome
+            if name_drift:
+                update_kwargs["display_name"] = desired_display_name
+            row = update_core(db, existing.id, **update_kwargs)
             logger.info(
-                "Updated Tier 1 core %r chrome to canonical mockup values "
-                "(id=%s, version=%d → %d)",
+                "Updated Tier 1 core %r to canonical mockup values "
+                "(id=%s, version=%d → %d, drift: chrome=%s, name=%s)",
                 existing.core_slug,
                 row.id,
                 existing.version,
                 row.version,
+                chrome_drift,
+                name_drift,
             )
             return row.id
         logger.info(
@@ -158,6 +183,31 @@ def _seed_core(db) -> str:
 
 
 def _seed_template(db, *, inherits_from_core_id: str) -> str:
+    # Sub-arc F-1.1: vertical migration. The template previously lived
+    # at vertical=funeral_home; F-1.1 reclassifies to vertical=manufacturing
+    # (operator-vertical canon). update_template treats `vertical` as
+    # immutable, so the migration is two-step: deactivate any prior
+    # funeral_home row, then create/update at the new manufacturing row.
+    # Idempotent: once the funeral_home row is deactivated, subsequent
+    # runs find nothing at the old location and continue at the new one.
+    legacy_existing = get_template_by_slug(
+        db,
+        SCHEDULING_FH_TEMPLATE["template_slug"],
+        scope=SCHEDULING_FH_TEMPLATE["scope"],
+        vertical="funeral_home",
+    )
+    if legacy_existing is not None and SCHEDULING_FH_TEMPLATE["vertical"] != "funeral_home":
+        legacy_existing.is_active = False
+        db.add(legacy_existing)
+        db.commit()
+        logger.info(
+            "Deactivated legacy Tier 2 template %r at vertical=funeral_home "
+            "(id=%s, version=%d) per F-1.1 vertical migration",
+            legacy_existing.template_slug,
+            legacy_existing.id,
+            legacy_existing.version,
+        )
+
     existing = get_template_by_slug(
         db,
         SCHEDULING_FH_TEMPLATE["template_slug"],
@@ -221,17 +271,24 @@ def _seed_template(db, *, inherits_from_core_id: str) -> str:
         desired_substrate = dict(SCHEDULING_FH_TEMPLATE["substrate"])
         desired_typography = dict(SCHEDULING_FH_TEMPLATE["typography"])
         desired_chrome = dict(SCHEDULING_FH_TEMPLATE["chrome_overrides"])
+        desired_display_name = SCHEDULING_FH_TEMPLATE["display_name"]
         current_substrate = dict(existing.substrate or {})
         current_typography = dict(getattr(existing, "typography", None) or {})
         current_chrome = dict(existing.chrome_overrides or {})
+        current_display_name = existing.display_name
         if (
             current_substrate != desired_substrate
             or current_typography != desired_typography
             or current_chrome != desired_chrome
+            or current_display_name != desired_display_name
         ):
+            # Sub-arc F-1.1: include display_name in drift detection so
+            # "Funeral Home Scheduling" → "Funeral Scheduling" rename
+            # propagates on re-seed.
             row = update_template(
                 db,
                 existing.id,
+                display_name=desired_display_name,
                 substrate=desired_substrate,
                 typography=desired_typography,
                 chrome_overrides=desired_chrome,
