@@ -43,6 +43,12 @@ from app.models.focus_template import (
 from app.services.focus_template_inheritance.constants import (
     EDIT_SESSION_WINDOW_SECONDS,
 )
+from app.services.focus_template_inheritance.defaults import (
+    DEFAULT_CHROME_OVERRIDES,
+    DEFAULT_SUBSTRATE,
+    DEFAULT_TYPOGRAPHY,
+    is_empty_blob,
+)
 from app.services.focus_template_inheritance.focus_cores_service import (
     CoreNotFound,
     get_core_by_id,
@@ -413,19 +419,37 @@ def create_template(
     if not isinstance(cfg, dict):
         raise InvalidTemplateShape("canvas_config must be a dict")
 
-    chrome_blob = dict(chrome_overrides or {})
+    # Sub-arc E-1: canonical defaults on empty/null create-time blobs.
+    # The C-2.2c new-template modal sends empty objects; backend
+    # populates so operators see the canonical mockup baseline. Any
+    # blob with explicit keys is respected verbatim (defaults NOT
+    # applied), so re-saving an empty Tier-2 override doesn't silently
+    # replace the operator's intent.
+    chrome_blob = (
+        dict(DEFAULT_CHROME_OVERRIDES)
+        if is_empty_blob(chrome_overrides)
+        else dict(chrome_overrides or {})
+    )
     try:
         validate_chrome_blob(chrome_blob)
     except InvalidChromeShape as exc:
         raise InvalidTemplateShape(str(exc)) from exc
 
-    substrate_blob = dict(substrate or {})
+    substrate_blob = (
+        dict(DEFAULT_SUBSTRATE)
+        if is_empty_blob(substrate)
+        else dict(substrate or {})
+    )
     try:
         validate_substrate_blob(substrate_blob)
     except InvalidSubstrateShape as exc:
         raise InvalidTemplateShape(str(exc)) from exc
 
-    typography_blob = dict(typography or {})
+    typography_blob = (
+        dict(DEFAULT_TYPOGRAPHY)
+        if is_empty_blob(typography)
+        else dict(typography or {})
+    )
     try:
         validate_typography_blob(typography_blob)
     except InvalidTypographyShape as exc:

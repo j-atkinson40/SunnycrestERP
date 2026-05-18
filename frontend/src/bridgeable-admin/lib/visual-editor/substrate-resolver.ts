@@ -35,16 +35,31 @@ export interface SubstrateView {
   accent_token_2: string | null
 }
 
-/** Frontend mirror of backend SUBSTRATE_PRESETS (sub-arc B-4). */
+/** Frontend mirror of backend SUBSTRATE_PRESETS (sub-arc B-4).
+ *
+ * Sub-arc E-1: `morning-warm` is the canonical funeral-scheduling
+ * mockup substrate — a warm sunrise gradient composed of three
+ * radial gradients (warm cream upper-left, pink upper-right, cool
+ * blue lower) over a linear-gradient base. The radial layers are
+ * hardcoded in `resolveSubstrateStyle`; only the linear base stops
+ * are token-bindable (`base_token` = bottom stop, `accent_token_1`
+ * = top stop). `accent_token_2` is unused for morning-warm.
+ * `intensity` (default 100) is the only operator-tunable axis —
+ * scales the three radial alphas proportionally (100 = full
+ * canonical alphas 0.55/0.40/0.45; 0 = no radials; linear interp).
+ *
+ * Other presets (morning-cool / evening-lounge / neutral / custom)
+ * preserve the legacy two-stop linear-gradient composition.
+ */
 export const SUBSTRATE_PRESETS: Record<
   SubstratePreset,
   Partial<SubstrateView>
 > = {
   "morning-warm": {
     base_token: "surface-base",
-    accent_token_1: "accent-subtle",
-    accent_token_2: "status-warning-muted",
-    intensity: 70,
+    accent_token_1: "surface-elevated",
+    accent_token_2: null,
+    intensity: 100,
   },
   "morning-cool": {
     base_token: "surface-base",
@@ -110,13 +125,46 @@ export function resolveSubstrateStyle(
   view: SubstrateView,
   tokens: Record<string, string>,
 ): CSSProperties {
+  const intensity = Math.max(0, Math.min(100, view.intensity ?? 0))
+  const alpha = intensity / 100
+
+  // ── morning-warm: canonical funeral-scheduling mockup substrate ──
+  //
+  // Four-layer composition per the apple-pre-liquid-glass mockup:
+  //   1. radial warm cream at 15% 10% (alpha 0.55 @ intensity 100)
+  //   2. radial pink at 85% 15%       (alpha 0.40 @ intensity 100)
+  //   3. radial cool blue at 50% 90%  (alpha 0.45 @ intensity 100)
+  //   4. linear-gradient base, top=accent_token_1, bottom=base_token
+  //
+  // Radial alphas scale linearly with intensity / 100. Radial colors,
+  // positions, and ellipse sizes are HARDCODED — they're the canonical
+  // mockup values, not operator-tunable. Only the linear base stops
+  // bind to design tokens. accent_token_2 is unused for morning-warm.
+  // Established sub-arc E-1 (mockup-canonical-defaults arc).
+  if (view.preset === "morning-warm") {
+    const baseBottom =
+      tokens[view.base_token ?? "surface-base"] ??
+      "var(--surface-base, #f0dfd0)"
+    const baseTop =
+      (view.accent_token_1 && tokens[view.accent_token_1]) ??
+      "var(--surface-elevated, #f7ebe0)"
+    const a1 = (0.55 * alpha).toFixed(3)
+    const a2 = (0.40 * alpha).toFixed(3)
+    const a3 = (0.45 * alpha).toFixed(3)
+    const background =
+      `radial-gradient(ellipse at 15% 10%, rgba(252, 220, 180, ${a1}) 0%, transparent 50%), ` +
+      `radial-gradient(ellipse at 85% 15%, rgba(220, 170, 200, ${a2}) 0%, transparent 55%), ` +
+      `radial-gradient(ellipse at 50% 90%, rgba(180, 200, 220, ${a3}) 0%, transparent 60%), ` +
+      `linear-gradient(180deg, ${baseTop} 0%, ${baseBottom} 100%)`
+    return {
+      background,
+      ["--substrate-intensity" as string]: String(alpha),
+    } as CSSProperties
+  }
+
+  // ── Legacy two-stop composition for other presets ────────────────
   const base =
     tokens[view.base_token ?? "surface-base"] ?? "var(--surface-base)"
-  const intensity = Math.max(
-    0,
-    Math.min(100, view.intensity ?? 0),
-  )
-  const alpha = intensity / 100
   const hasAccents =
     intensity > 0 && (view.accent_token_1 || view.accent_token_2)
   if (!hasAccents) {

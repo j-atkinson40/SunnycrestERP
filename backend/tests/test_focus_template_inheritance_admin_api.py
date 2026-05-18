@@ -641,7 +641,12 @@ def test_template_response_includes_all_chrome_override_fields(client, ctx):
 
 def test_template_response_includes_all_substrate_fields(client, ctx):
     """Tier 2 substrate normalizes to the full canonical substrate
-    field set."""
+    field set. Sub-arc E-1: omitted substrate on create populates
+    `DEFAULT_SUBSTRATE` (morning-warm @ intensity 100), so values
+    reflect the canonical mockup defaults rather than None."""
+    from app.services.focus_template_inheritance.defaults import (
+        DEFAULT_SUBSTRATE,
+    )
     from app.services.focus_template_inheritance.substrate_validation import (
         SUBSTRATE_FIELDS,
     )
@@ -663,12 +668,17 @@ def test_template_response_includes_all_substrate_fields(client, ctx):
     substrate = r.json()["substrate"]
     assert set(substrate.keys()) == set(SUBSTRATE_FIELDS)
     for field in SUBSTRATE_FIELDS:
-        assert substrate[field] is None
+        assert substrate[field] == DEFAULT_SUBSTRATE[field]
 
 
 def test_template_response_includes_all_typography_fields(client, ctx):
     """Tier 2 typography normalizes to the full canonical typography
-    field set."""
+    field set. Sub-arc E-1: omitted typography on create populates
+    `DEFAULT_TYPOGRAPHY` (frosted-text @ weights 600/500), so values
+    reflect the canonical mockup defaults rather than None."""
+    from app.services.focus_template_inheritance.defaults import (
+        DEFAULT_TYPOGRAPHY,
+    )
     from app.services.focus_template_inheritance.typography_validation import (
         TYPOGRAPHY_FIELDS,
     )
@@ -690,7 +700,7 @@ def test_template_response_includes_all_typography_fields(client, ctx):
     typography = r.json()["typography"]
     assert set(typography.keys()) == set(TYPOGRAPHY_FIELDS)
     for field in TYPOGRAPHY_FIELDS:
-        assert typography[field] is None
+        assert typography[field] == DEFAULT_TYPOGRAPHY[field]
 
 
 def test_core_list_response_full_chrome_shape(client, ctx):

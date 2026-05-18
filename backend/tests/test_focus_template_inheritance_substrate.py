@@ -266,9 +266,21 @@ class TestTemplateServiceSubstrate:
         assert t.substrate == substrate
 
     def test_create_default_empty_substrate(self, db):
+        """Sub-arc E-1: empty substrate on create now populates the
+        canonical mockup default (morning-warm @ intensity 100).
+        Previously left as `{}` and resolved later via preset cascade;
+        E-1 stamps the explicit values on the row at create-time so
+        new operators get a known-good visual baseline."""
         core = _make_core(db)
         t = _make_template(db, core.id)
-        assert t.substrate == {}
+        # Canonical default (mirrors defaults.DEFAULT_SUBSTRATE).
+        assert t.substrate == {
+            "preset": "morning-warm",
+            "intensity": 100,
+            "base_token": "surface-base",
+            "accent_token_1": "surface-elevated",
+            "accent_token_2": None,
+        }
 
     def test_create_invalid_substrate_rejected(self, db):
         core = _make_core(db)
@@ -494,8 +506,16 @@ class TestResolverSubstrateCascade:
             assert field in r.sources["substrate_sources"]
 
     def test_empty_at_both_tiers_collapses_to_none(self, db):
+        # Sub-arc E-1: empty `substrate=None` / `{}` now stamps the
+        # canonical mockup default at create-time. To exercise the
+        # legacy "no substrate at any tier" cascade path, create the
+        # template via the service then null the column out directly
+        # (simulates a row seeded before E-1 shipped).
         core = _make_core(db)
-        _make_template(db, core.id)
+        t = _make_template(db, core.id)
+        t.substrate = {}
+        db.add(t)
+        db.commit()
         r = resolve_focus(db, template_slug="scheduling-default")
         assert r.resolved_substrate is None
         for field in SUBSTRATE_FIELDS:

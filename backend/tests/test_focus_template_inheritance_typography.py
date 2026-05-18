@@ -286,9 +286,20 @@ class TestTemplateServiceTypography:
         assert t.typography == typography
 
     def test_create_default_empty_typography(self, db):
+        """Sub-arc E-1: empty typography on create now populates the
+        canonical mockup default (frosted-text @ weights 600/500).
+        Previously left as `{}`; E-1 stamps explicit values at
+        create-time so new operators get a known-good baseline."""
         core = _make_core(db)
         t = _make_template(db, core.id)
-        assert t.typography == {}
+        # Canonical default (mirrors defaults.DEFAULT_TYPOGRAPHY).
+        assert t.typography == {
+            "preset": "frosted-text",
+            "heading_weight": 600,
+            "body_weight": 500,
+            "heading_color_token": "content-strong",
+            "body_color_token": "content-base",
+        }
 
     def test_create_invalid_typography_rejected(self, db):
         core = _make_core(db)
@@ -521,8 +532,16 @@ class TestResolverTypographyCascade:
             assert field in r.sources["typography_sources"]
 
     def test_empty_at_both_tiers_collapses_to_none(self, db):
+        # Sub-arc E-1: empty typography on create now stamps the
+        # canonical mockup default. To exercise the legacy "no
+        # typography at any tier" cascade path, create the template
+        # via the service then null the column out directly
+        # (simulates a row seeded before E-1 shipped).
         core = _make_core(db)
-        _make_template(db, core.id)
+        t = _make_template(db, core.id)
+        t.typography = {}
+        db.add(t)
+        db.commit()
         r = resolve_focus(db, template_slug="scheduling-default")
         assert r.resolved_typography is None
         for field in TYPOGRAPHY_FIELDS:

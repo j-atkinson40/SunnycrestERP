@@ -50,6 +50,8 @@ describe("substrate-resolver — expandSubstratePreset", () => {
       SUBSTRATE_PRESETS["morning-warm"].base_token,
     )
     expect(expanded.intensity).toBe(SUBSTRATE_PRESETS["morning-warm"].intensity)
+    // E-1: morning-warm defaults to intensity 100 (canonical mockup).
+    expect(expanded.intensity).toBe(100)
   })
 
   it("explicit fields win over preset defaults", () => {
@@ -73,19 +75,130 @@ describe("substrate-resolver — resolveSubstrateStyle", () => {
     expect(style.backgroundColor).toBeUndefined()
   })
 
-  it("emits a gradient when intensity > 0 with accents", () => {
+  it("morning-warm at intensity 100 emits canonical four-layer composition", () => {
+    // Sub-arc E-1: morning-warm is the canonical mockup substrate.
+    // Three radial gradients (warm cream / pink / cool blue) over a
+    // linear-gradient base. Radial alphas at full intensity are
+    // 0.55 / 0.40 / 0.45 — values are mockup-canonical.
     const v = expandSubstratePreset(
-      substrateViewFromBlob({ preset: "morning-warm" }),
+      substrateViewFromBlob({ preset: "morning-warm", intensity: 100 }),
+    )
+    const tokens = {
+      "surface-base": "#f0dfd0",
+      "surface-elevated": "#f7ebe0",
+    }
+    const style = resolveSubstrateStyle(v, tokens)
+    const bg = String(style.background)
+    // Three radial layers in order
+    expect(bg).toContain("radial-gradient(ellipse at 15% 10%")
+    expect(bg).toContain("radial-gradient(ellipse at 85% 15%")
+    expect(bg).toContain("radial-gradient(ellipse at 50% 90%")
+    // Canonical hardcoded radial colors
+    expect(bg).toContain("rgba(252, 220, 180,")
+    expect(bg).toContain("rgba(220, 170, 200,")
+    expect(bg).toContain("rgba(180, 200, 220,")
+    // Canonical alphas at intensity 100
+    expect(bg).toContain("0.550")
+    expect(bg).toContain("0.400")
+    expect(bg).toContain("0.450")
+    // Linear base, top token then bottom token
+    expect(bg).toContain("linear-gradient(180deg, #f7ebe0 0%, #f0dfd0 100%)")
+    // No legacy soft-light blend / backgroundColor on morning-warm
+    expect(style.backgroundBlendMode).toBeUndefined()
+    expect(style.backgroundColor).toBeUndefined()
+  })
+
+  it("morning-warm at intensity 50 scales radial alphas proportionally", () => {
+    const v = expandSubstratePreset(
+      substrateViewFromBlob({ preset: "morning-warm", intensity: 50 }),
+    )
+    const tokens = {
+      "surface-base": "#f0dfd0",
+      "surface-elevated": "#f7ebe0",
+    }
+    const style = resolveSubstrateStyle(v, tokens)
+    const bg = String(style.background)
+    // Alphas scale to half: 0.275 / 0.200 / 0.225
+    expect(bg).toContain("0.275")
+    expect(bg).toContain("0.200")
+    expect(bg).toContain("0.225")
+  })
+
+  it("morning-warm at intensity 0 zeroes the radial layers", () => {
+    const v = expandSubstratePreset(
+      substrateViewFromBlob({ preset: "morning-warm", intensity: 0 }),
+    )
+    const tokens = {
+      "surface-base": "#f0dfd0",
+      "surface-elevated": "#f7ebe0",
+    }
+    const style = resolveSubstrateStyle(v, tokens)
+    const bg = String(style.background)
+    // Radial alphas all zero (still 4-layer composition)
+    expect(bg).toContain("rgba(252, 220, 180, 0.000)")
+    expect(bg).toContain("rgba(220, 170, 200, 0.000)")
+    expect(bg).toContain("rgba(180, 200, 220, 0.000)")
+    // Linear base still rendered
+    expect(bg).toContain("linear-gradient(180deg, #f7ebe0 0%, #f0dfd0 100%)")
+  })
+
+  it("morning-warm base_token / accent_token_1 bind to linear-gradient stops", () => {
+    const v = expandSubstratePreset(
+      substrateViewFromBlob({
+        preset: "morning-warm",
+        intensity: 100,
+        base_token: "custom-bottom",
+        accent_token_1: "custom-top",
+      }),
+    )
+    const tokens = {
+      "custom-bottom": "#aaaaaa",
+      "custom-top": "#bbbbbb",
+    }
+    const style = resolveSubstrateStyle(v, tokens)
+    const bg = String(style.background)
+    // accent_token_1 → top stop; base_token → bottom stop
+    expect(bg).toContain("linear-gradient(180deg, #bbbbbb 0%, #aaaaaa 100%)")
+  })
+
+  it("morning-cool preserves legacy two-stop composition (regression)", () => {
+    const v = expandSubstratePreset(
+      substrateViewFromBlob({ preset: "morning-cool" }),
     )
     const tokens = {
       "surface-base": "#fff",
-      "accent-subtle": "#f1e6d2",
-      "status-warning-muted": "#ffe9c8",
+      "status-info-muted": "#dcecff",
+      "accent-brass-subtle": "#f1e6d2",
     }
     const style = resolveSubstrateStyle(v, tokens)
-    expect(String(style.background)).toContain("linear-gradient")
+    expect(String(style.background)).toContain("linear-gradient(135deg")
     expect(style.backgroundColor).toBe("#fff")
     expect(style.backgroundBlendMode).toBe("soft-light")
+  })
+
+  it("evening-lounge + neutral preserve legacy composition (regression)", () => {
+    const tokens = {
+      "surface-base": "#fff",
+      "surface-sunken": "#eee",
+      "accent-brass-muted": "#ccc",
+      "accent-brass-subtle": "#ddd",
+    }
+    const evening = resolveSubstrateStyle(
+      expandSubstratePreset(
+        substrateViewFromBlob({ preset: "evening-lounge" }),
+      ),
+      tokens,
+    )
+    expect(String(evening.background)).toContain("linear-gradient(135deg")
+    expect(evening.backgroundBlendMode).toBe("soft-light")
+
+    const neutral = resolveSubstrateStyle(
+      expandSubstratePreset(substrateViewFromBlob({ preset: "neutral" })),
+      tokens,
+    )
+    // neutral has null accents → plain base
+    expect(neutral.background).toBe("#fff")
+    expect(neutral.backgroundBlendMode).toBeUndefined()
   })
 
   it("clamps intensity to 0..100", () => {
