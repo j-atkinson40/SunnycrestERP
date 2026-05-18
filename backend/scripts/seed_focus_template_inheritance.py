@@ -62,18 +62,21 @@ SCHEDULING_KANBAN_CORE = {
     "min_column_span": 8,
     "max_column_span": 12,
     "canvas_config": {},
-    # Sub-arc E-1: Tier 1 chrome v2 default — `card` preset with the
-    # canonical funeral-scheduling mockup overrides at the row level
-    # (corner_radius 70 / padding_token space-3 / backdrop_blur 44).
-    # The preset defaults (37 / space-6) diverged from the mockup
-    # canvas — Tier 1 now stamps mockup-matching chrome that Tier 2
-    # templates inherit via empty chrome_overrides. Per-tenant Tier 3
-    # overrides ride deltas.chrome_overrides.
+    # Sub-arc E-1.1: full canonical mockup chrome state. E-1 shipped
+    # delta updates (corner_radius / padding_token / backdrop_blur)
+    # but preserved pre-E-1 preset / elevation / background / border
+    # values that weren't mockup-canonical. E-1.1 specifies ALL 7
+    # chrome fields explicitly so the Tier 1 core stamps the full
+    # frosted-glass mockup chrome that Tier 2 templates inherit via
+    # empty chrome_overrides.
     "chrome": {
-        "preset": "card",
+        "preset": "frosted",
+        "elevation": 50,
         "corner_radius": 70,
-        "padding_token": "space-3",
         "backdrop_blur": 44,
+        "background_token": "surface-frosted",
+        "border_token": "border-subtle",
+        "padding_token": "space-3",
     },
 }
 
@@ -161,6 +164,52 @@ def _seed_template(db, *, inherits_from_core_id: str) -> str:
         scope=SCHEDULING_FH_TEMPLATE["scope"],
         vertical=SCHEDULING_FH_TEMPLATE["vertical"],
     )
+    # Sub-arc E-1.1: force a version-bump via create_template when the
+    # template's recorded `inherits_from_core_version` lags behind the
+    # active core's version. `update_template` preserves the prior
+    # version pin (immutable through that surface — service-layer
+    # captures from the live active core only on create). The resolver
+    # already uses the active core regardless (locked decision 2), but
+    # C-2.3's lineage chrome reads `template.inherits_from_core_version`
+    # directly, so a stale stamp displays as "v1" in the editor even
+    # after the core moves to v9.
+    if existing is not None:
+        from app.services.focus_template_inheritance import get_core_by_id
+
+        active_core = get_core_by_id(db, inherits_from_core_id)
+        active_core_version = (
+            active_core.version if active_core is not None else None
+        )
+        if (
+            active_core_version is not None
+            and existing.inherits_from_core_version != active_core_version
+        ):
+            row = create_template(
+                db,
+                scope=SCHEDULING_FH_TEMPLATE["scope"],
+                vertical=SCHEDULING_FH_TEMPLATE["vertical"],
+                template_slug=SCHEDULING_FH_TEMPLATE["template_slug"],
+                display_name=SCHEDULING_FH_TEMPLATE["display_name"],
+                description=SCHEDULING_FH_TEMPLATE["description"],
+                inherits_from_core_id=inherits_from_core_id,
+                rows=SCHEDULING_FH_TEMPLATE["rows"],
+                canvas_config=SCHEDULING_FH_TEMPLATE["canvas_config"],
+                chrome_overrides=SCHEDULING_FH_TEMPLATE["chrome_overrides"],
+                substrate=SCHEDULING_FH_TEMPLATE["substrate"],
+                typography=SCHEDULING_FH_TEMPLATE["typography"],
+            )
+            logger.info(
+                "Version-bumped Tier 2 template %r so "
+                "inherits_from_core_version restamps to live core v%d "
+                "(id=%s, vertical=%s, version=%d → %d)",
+                row.template_slug,
+                row.inherits_from_core_version,
+                row.id,
+                row.vertical,
+                existing.version,
+                row.version,
+            )
+            return row.id
     if existing is not None:
         # Sub-arc E-1: align previously-seeded substrate / typography /
         # chrome_overrides to the canonical mockup baseline. Earlier

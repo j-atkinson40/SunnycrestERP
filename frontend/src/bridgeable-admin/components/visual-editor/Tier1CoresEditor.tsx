@@ -268,23 +268,31 @@ export function Tier1CoresEditor({
       </aside>
       )}
 
-      {/* Center — preview pane */}
+      {/* Center — preview pane.
+       *
+       * Sub-arc E-1.1: editor canvas atmosphere matches the canonical
+       * funeral-scheduling mockup (apple-pre-liquid-glass): four-layer
+       * composition with three radial gradients (warm cream upper-left,
+       * soft pink upper-right, cool blue lower) over a vertical cream-
+       * to-tan linear base. Hardcoded directly — Tier 1 cores have no
+       * substrate vocabulary, so this is editor chrome rather than a
+       * substrate-resolver pass-through. Values mirror substrate-
+       * resolver's `morning-warm` preset at intensity 100, so operator-
+       * facing surfaces and admin-facing surfaces feel canon-matched.
+       */}
       <section
         data-testid="tier1-preview"
         className="relative flex flex-1 overflow-hidden"
         style={{
-          background:
-            "linear-gradient(135deg, #f9d9a6 0%, #e9b27e 30%, #c97d52 60%, #9C5640 100%)",
+          background: [
+            "radial-gradient(ellipse at 15% 10%, rgba(252, 220, 180, 0.55) 0%, transparent 50%)",
+            "radial-gradient(ellipse at 85% 15%, rgba(220, 170, 200, 0.40) 0%, transparent 55%)",
+            "radial-gradient(ellipse at 50% 90%, rgba(180, 200, 220, 0.45) 0%, transparent 60%)",
+            "linear-gradient(180deg, #f7ebe0 0%, #f0dfd0 100%)",
+          ].join(", "),
+          isolation: "isolate",
         }}
       >
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage:
-              "repeating-linear-gradient(45deg, rgba(255,255,255,0.18) 0 1px, transparent 1px 22px)",
-          }}
-        />
         <div className="relative flex h-full flex-1 items-center justify-center p-12">
           {!selectedCoreId ? (
             <div

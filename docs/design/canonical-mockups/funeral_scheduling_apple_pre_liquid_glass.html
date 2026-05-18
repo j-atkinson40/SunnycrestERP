@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Funeral Scheduling — Apple Pre-Liquid-Glass (Canonical)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      /* ─────────────────────────────────────────────────────────────
+       * CANONICAL FUNERAL-SCHEDULING FOCUS MOCKUP
+       * Apple-pre-liquid-glass aesthetic.
+       * Authoritative reference. When code and this mockup disagree,
+       * arcs land code changes to align with these values.
+       *
+       * ── Substrate (canvas atmosphere) ────────────────────────────
+       * Four-layer composition. Mirrored by:
+       *   - substrate-resolver.ts `morning-warm` preset at intensity 100
+       *     (operator-facing runtime)
+       *   - Tier 1 editor preview pane CSS, hardcoded
+       *     (admin-facing authoring surface)
+       *
+       * ── Chrome (card composition) ────────────────────────────────
+       * "frosted" preset. Mirrored by Tier 1 scheduling-kanban core seed:
+       *   preset: frosted
+       *   elevation: 50
+       *   corner_radius: 70  (resolver maps to ~14px)
+       *   backdrop_blur: 44  (resolver maps to ~22px)
+       *   background_token: surface-frosted
+       *   border_token: border-subtle
+       *   padding_token: space-3
+       *
+       * ── Typography ───────────────────────────────────────────────
+       * "frosted-text" preset. heading 600 / body 500.
+       * ───────────────────────────────────────────────────────────── */
+
+      :root {
+        --content-strong: #1f1a17;
+        --content-base: #3b332e;
+        --content-muted: rgba(59, 51, 46, 0.62);
+        --content-on-frosted: #1f1a17;
+        --border-subtle: rgba(255, 255, 255, 0.45);
+        --surface-frosted: rgba(255, 255, 255, 0.55);
+        --space-3: 12px;
+        --shadow-card:
+          0 10px 30px -10px rgba(120, 80, 40, 0.18),
+          0 2px 6px -1px rgba(120, 80, 40, 0.08),
+          inset 0 1px 0 0 rgba(255, 255, 255, 0.6);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "SF Pro Text",
+          "IBM Plex Sans", system-ui, sans-serif;
+        color: var(--content-base);
+        font-weight: 500;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      /* Canonical substrate — four layers. */
+      .canvas {
+        min-height: 100vh;
+        padding: 48px 40px;
+        background:
+          radial-gradient(
+            ellipse at 15% 10%,
+            rgba(252, 220, 180, 0.55) 0%,
+            transparent 50%
+          ),
+          radial-gradient(
+            ellipse at 85% 15%,
+            rgba(220, 170, 200, 0.40) 0%,
+            transparent 55%
+          ),
+          radial-gradient(
+            ellipse at 50% 90%,
+            rgba(180, 200, 220, 0.45) 0%,
+            transparent 60%
+          ),
+          linear-gradient(180deg, #f7ebe0 0%, #f0dfd0 100%);
+        isolation: isolate;
+      }
+
+      .focus-shell {
+        max-width: 1280px;
+        margin: 0 auto;
+      }
+
+      .focus-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 28px;
+      }
+
+      .focus-title {
+        font-size: 26px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--content-strong);
+        margin: 0;
+      }
+
+      .focus-meta {
+        font-size: 13px;
+        color: var(--content-muted);
+        font-weight: 500;
+      }
+
+      /* Kanban columns. */
+      .kanban {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+      }
+
+      .column {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .column-header {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--content-muted);
+        padding: 4px 6px;
+      }
+
+      /* Canonical frosted card. Mirrors `frosted` chrome preset. */
+      .card {
+        background: var(--surface-frosted);
+        border: 1px solid var(--border-subtle);
+        border-radius: 14px;            /* ≈ corner_radius 70 */
+        padding: var(--space-3);
+        backdrop-filter: blur(22px) saturate(140%); /* ≈ backdrop_blur 44 */
+        -webkit-backdrop-filter: blur(22px) saturate(140%);
+        box-shadow: var(--shadow-card);  /* ≈ elevation 50 */
+        color: var(--content-on-frosted);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .card-title {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--content-strong);
+      }
+
+      .card-meta {
+        font-size: 12px;
+        color: var(--content-muted);
+      }
+
+      .card-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 4px;
+      }
+
+      .badge {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.65);
+        border: 1px solid var(--border-subtle);
+        color: var(--content-base);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="canvas">
+      <div class="focus-shell">
+        <header class="focus-header">
+          <h1 class="focus-title">Today — Scheduling</h1>
+          <span class="focus-meta">Thursday · 4 columns · 9 cases</span>
+        </header>
+
+        <section class="kanban" aria-label="Scheduling kanban">
+          <div class="column" aria-label="Intake">
+            <div class="column-header">Intake</div>
+            <article class="card">
+              <div class="card-title">John Michael Smith</div>
+              <div class="card-meta">DOD Tue · informant Mary Smith</div>
+              <div class="card-row">
+                <span class="badge">Veteran</span>
+                <span class="card-meta">FC-2026-0001</span>
+              </div>
+            </article>
+            <article class="card">
+              <div class="card-title">Ana López</div>
+              <div class="card-meta">DOD Wed · informant Carlos López</div>
+              <div class="card-row">
+                <span class="badge">Burial</span>
+                <span class="card-meta">FC-2026-0007</span>
+              </div>
+            </article>
+          </div>
+
+          <div class="column" aria-label="Arrangement">
+            <div class="column-header">Arrangement</div>
+            <article class="card">
+              <div class="card-title">Robert Hopkins</div>
+              <div class="card-meta">Service Sat 10am</div>
+              <div class="card-row">
+                <span class="badge">Cremation</span>
+                <span class="card-meta">FC-2026-0004</span>
+              </div>
+            </article>
+          </div>
+
+          <div class="column" aria-label="Scheduled">
+            <div class="column-header">Scheduled</div>
+            <article class="card">
+              <div class="card-title">Eleanor Park</div>
+              <div class="card-meta">Visitation Fri 6pm · service Sat 11am</div>
+              <div class="card-row">
+                <span class="badge">Burial</span>
+                <span class="card-meta">FC-2026-0003</span>
+              </div>
+            </article>
+            <article class="card">
+              <div class="card-title">Marcus Reed</div>
+              <div class="card-meta">Graveside Sat 1pm</div>
+              <div class="card-row">
+                <span class="badge">Veteran</span>
+                <span class="card-meta">FC-2026-0005</span>
+              </div>
+            </article>
+          </div>
+
+          <div class="column" aria-label="In Service">
+            <div class="column-header">In Service</div>
+            <article class="card">
+              <div class="card-title">Frances Yu</div>
+              <div class="card-meta">Service in progress · 10:15am</div>
+              <div class="card-row">
+                <span class="badge">Cremation</span>
+                <span class="card-meta">FC-2026-0002</span>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
