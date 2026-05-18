@@ -4,9 +4,6 @@
  * F-2 replaces this with a real selection-driven inspector
  * (SelectionDrivenInspector + RightRailWithSections primitives).
  */
-import * as React from "react"
-
-
 export function FocusBuilderRightRailPlaceholder() {
   return (
     <div

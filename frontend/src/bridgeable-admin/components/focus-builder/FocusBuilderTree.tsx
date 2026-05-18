@@ -494,19 +494,20 @@ export function FocusBuilderTree({
 
   const selectedTreeId = React.useMemo<string | null>(() => {
     if (!selectedSubject) return null
-    const trail = expansionIdsForSubject(groups, selectedSubject)
+    const subject = selectedSubject  // narrow capture so nested walk() sees non-null
+    const trail = expansionIdsForSubject(groups, subject)
     // The leaf id is not in the trail (trail is parents only); find it.
     let found: string | null = null
     function walk(nodes: TreeNode[]) {
       for (const n of nodes) {
         const md = n.metadata as FocusBuilderTreeNodeMetadata | undefined
         if (
-          (selectedSubject.kind === "core" &&
+          (subject.kind === "core" &&
             md?.kind === "core" &&
-            md.subjectId === selectedSubject.id) ||
-          (selectedSubject.kind === "template" &&
+            md.subjectId === subject.id) ||
+          (subject.kind === "template" &&
             md?.kind === "template" &&
-            md.subjectId === selectedSubject.id)
+            md.subjectId === subject.id)
         ) {
           found = n.id
           return
