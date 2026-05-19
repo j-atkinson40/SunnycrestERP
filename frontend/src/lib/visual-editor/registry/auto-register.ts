@@ -60,3 +60,7 @@ import "./registrations/entity-card-sections"
 // N instances) — RegisteredButton looks up its own metadata at click-
 // time via getByName("button", slug).
 import "./registrations/buttons"
+// F-3 — Focus Builder placeholder widgets (3 inert placeholders for the
+// widget palette + drag-to-canvas pipeline reconnaissance). Real
+// implementations land in vertical-specific arcs.
+import "./registrations/focus-builder-widgets"

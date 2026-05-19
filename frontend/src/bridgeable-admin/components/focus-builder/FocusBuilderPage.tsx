@@ -16,6 +16,15 @@
 import * as React from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { Circle } from "lucide-react"
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core"
 
 import { parseStudioPath } from "@/bridgeable-admin/lib/studio-routes"
 import { useFocusCoreDraft } from "@/bridgeable-admin/hooks/useFocusCoreDraft"
@@ -34,12 +43,13 @@ import { InheritedCoreInspectorPanel } from "@/bridgeable-admin/components/visua
 import FocusBuilderTree, {
   type FocusBuilderSubject,
 } from "./FocusBuilderTree"
-import { FocusBuilderCanvas } from "./FocusBuilderCanvas"
+import { FocusBuilderCanvas, CANVAS_DROP_ZONE_ID } from "./FocusBuilderCanvas"
 import { FocusBuilderRightRail } from "./FocusBuilderRightRail"
 import {
   FocusBuilderSelectionProvider,
   useFocusBuilderSelection,
 } from "./FocusBuilderSelectionContext"
+import { paletteItemIdToSlug } from "./FocusBuilderPalette"
 
 
 function parseSubjectParam(raw: string | null): FocusBuilderSubject | null {
@@ -114,7 +124,7 @@ function FocusBuilderPageInner() {
   const templateHook = useFocusTemplateDraft(templateSubjectId)
 
   // ── Selection reset on subject change ─────────────────────────────
-  const { setSelection } = useFocusBuilderSelection()
+  const { selection, setSelection } = useFocusBuilderSelection()
   const lastSubjectKey = React.useRef<string | null>(null)
   const currentSubjectKey = subject ? `${subject.kind}:${subject.id}` : null
   React.useEffect(() => {
@@ -124,16 +134,40 @@ function FocusBuilderPageInner() {
     }
   }, [currentSubjectKey, setSelection])
 
-  // ── Esc → deselect ────────────────────────────────────────────────
+  // ── Keyboard — Esc deselects; Delete removes selected widget ──────
+  // F-3 extends F-2's Esc handler with Delete-on-widget-selection.
+  const selectionRef = React.useRef(selection)
+  React.useEffect(() => {
+    selectionRef.current = selection
+  }, [selection])
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSelection({ kind: "none" })
+        return
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const sel = selectionRef.current
+        if (sel.kind === "widget") {
+          // Guard: only when editing a template (cores have no widgets).
+          if (templateSubjectId) {
+            // Avoid stealing the key when an editable surface is focused.
+            const target = e.target as HTMLElement | null
+            const tag = target?.tagName
+            const editable =
+              tag === "INPUT" ||
+              tag === "TEXTAREA" ||
+              target?.isContentEditable
+            if (editable) return
+            templateHook.removeWidget(sel.id)
+            setSelection({ kind: "none" })
+          }
+        }
       }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [setSelection])
+  }, [setSelection, templateSubjectId, templateHook])
 
   // ── Inherited core fetch (template editing only) ──────────────────
   const [inheritedCore, setInheritedCore] = React.useState<CoreRecord | null>(
@@ -251,7 +285,54 @@ function FocusBuilderPageInner() {
   // Theme tokens — F-2 keeps light-mode defaults; Theme picker is F-4.
   const themeTokens = React.useMemo(() => ({ ...BASE_TOKENS.light }), [])
 
+  // ── F-3 — DndContext + drag/drop handlers ─────────────────────────
+  //
+  // Drop handler extracts the widget slug from `active.id` (format
+  // `palette-widget:<slug>`), calls `addWidget` on the template hook,
+  // and auto-selects the new widget. Drops are only meaningful when
+  // editing a template — the canvas drop zone is disabled in core
+  // mode (FocusBuilderCanvas's `useDroppable({ disabled: mode !== 'template' })`).
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  )
+  const [activeDragLabel, setActiveDragLabel] = React.useState<string | null>(
+    null,
+  )
+
+  const handleDragStart = React.useCallback((e: DragStartEvent) => {
+    const id = String(e.active.id ?? "")
+    const slug = paletteItemIdToSlug(id)
+    setActiveDragLabel(slug ?? id)
+  }, [])
+
+  const handleDragEnd = React.useCallback(
+    (e: DragEndEvent) => {
+      setActiveDragLabel(null)
+      const { active, over } = e
+      if (!over) return
+      if (over.id !== CANVAS_DROP_ZONE_ID) return
+      const slug = paletteItemIdToSlug(String(active.id))
+      if (!slug) return
+      if (mode !== "template") return
+      const newId = templateHook.addWidget(slug)
+      setSelection({ kind: "widget", id: newId })
+    },
+    [mode, templateHook, setSelection],
+  )
+
+  const handleDragCancel = React.useCallback(() => {
+    setActiveDragLabel(null)
+  }, [])
+
   return (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
     <div
       className="flex h-[calc(100vh-3rem)] min-h-[600px] flex-col bg-surface-base"
       data-testid="focus-builder-page"
@@ -317,6 +398,7 @@ function FocusBuilderPageInner() {
               mode === "template" ? templateHook.typographyDraft : undefined
             }
             coreChromeDraft={mode === "core" ? coreHook.draft : undefined}
+            rowsDraft={mode === "template" ? templateHook.rowsDraft : undefined}
           />
         </section>
 
@@ -353,6 +435,21 @@ function FocusBuilderPageInner() {
         </aside>
       </div>
     </div>
+    <DragOverlay>
+      {activeDragLabel ? (
+        <div
+          data-testid="focus-builder-drag-overlay"
+          className="rounded-md border border-[color:var(--accent)] bg-surface-elevated px-3 py-1.5 text-[12px] shadow-lg"
+          style={{
+            fontFamily: "var(--font-plex-sans)",
+            color: "var(--content-strong)",
+          }}
+        >
+          {activeDragLabel}
+        </div>
+      ) : null}
+    </DragOverlay>
+    </DndContext>
   )
 }
 

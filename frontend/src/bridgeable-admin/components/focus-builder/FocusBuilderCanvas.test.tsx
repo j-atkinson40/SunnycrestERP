@@ -7,6 +7,9 @@
  */
 import { describe, expect, it } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
+import { DndContext } from "@dnd-kit/core"
+
+import "@/lib/visual-editor/registry/auto-register"
 
 import { BASE_TOKENS } from "@/lib/visual-editor/themes/base-tokens"
 
@@ -240,5 +243,112 @@ describe("FocusBuilderCanvas", () => {
     )
     const placement = screen.getByTestId("focus-builder-core-placement")
     expect(placement).toHaveAttribute("data-selected", "true")
+  })
+
+  // ── F-3 — widget placements + drop target ───────────────────────
+
+  it("renders placed widgets when rowsDraft has placements", () => {
+    const rowsDraft = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "w-1",
+            widget_slug: "day-strip-widget",
+            column_start: 1,
+            column_span: 12,
+            chrome: {},
+          },
+          {
+            id: "w-2",
+            widget_slug: "today-pin-widget",
+            column_start: 1,
+            column_span: 6,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    render(
+      <DndContext>
+        <FocusBuilderSelectionProvider>
+          <FocusBuilderCanvas
+            mode="template"
+            themeTokens={tokens}
+            core={null}
+            template={tpl}
+            inheritedCore={core}
+            chromeOverridesDraft={{}}
+            substrateDraft={tpl.substrate}
+            typographyDraft={tpl.typography}
+            rowsDraft={rowsDraft}
+          />
+        </FocusBuilderSelectionProvider>
+      </DndContext>,
+    )
+    const placed = screen.getAllByTestId("focus-builder-placed-widget")
+    expect(placed).toHaveLength(2)
+    expect(placed[0].getAttribute("data-widget-id")).toBe("w-1")
+  })
+
+  it("clicking a placed widget sets selection to widget kind", () => {
+    let observed: Selection = { kind: "none" }
+    const rowsDraft = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "w-1",
+            widget_slug: "day-strip-widget",
+            column_start: 1,
+            column_span: 12,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    render(
+      <DndContext>
+        <FocusBuilderSelectionProvider>
+          <FocusBuilderCanvas
+            mode="template"
+            themeTokens={tokens}
+            core={null}
+            template={tpl}
+            inheritedCore={core}
+            chromeOverridesDraft={{}}
+            substrateDraft={tpl.substrate}
+            typographyDraft={tpl.typography}
+            rowsDraft={rowsDraft}
+          />
+          <Probe onSelection={(s) => { observed = s }} />
+        </FocusBuilderSelectionProvider>
+      </DndContext>,
+    )
+    fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+    expect(observed).toEqual({ kind: "widget", id: "w-1" })
+  })
+
+  it("canvas drop zone is enabled in template mode", () => {
+    render(
+      <DndContext>
+        <FocusBuilderSelectionProvider>
+          <FocusBuilderCanvas
+            mode="template"
+            themeTokens={tokens}
+            core={null}
+            template={tpl}
+            inheritedCore={core}
+            substrateDraft={{}}
+            typographyDraft={{}}
+            chromeOverridesDraft={{}}
+          />
+        </FocusBuilderSelectionProvider>
+      </DndContext>,
+    )
+    const canvas = screen.getByTestId("focus-builder-canvas")
+    expect(canvas).toBeInTheDocument()
   })
 })

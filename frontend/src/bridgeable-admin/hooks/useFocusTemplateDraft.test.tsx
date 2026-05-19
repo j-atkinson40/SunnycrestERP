@@ -691,3 +691,276 @@ describe("useFocusTemplateDraft — sparse response dirty clear (C-2.1.3 discipl
     expect(result.current.lastSavedAt).not.toBeNull()
   })
 })
+
+// ───────────────────────────────────────────────────────────────────
+// F-3 — widget placement mutators (addWidget / updateWidget /
+// removeWidget / moveWidget) + rows blob round-trip + 4th-blob dirty
+// state + stale-closure regression for updateWidget.
+// ───────────────────────────────────────────────────────────────────
+
+describe("useFocusTemplateDraft — F-3 widget mutators", () => {
+  it("rowsDraft starts empty for a template with no rows", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.rowsDraft).toEqual([])
+    expect(result.current.isDirty).toBe(false)
+  })
+
+  it("rowsDraft loads existing rows from server response", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      ...SAMPLE_TEMPLATE,
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              id: "w-existing",
+              widget_slug: "day-strip-widget",
+              column_start: 1,
+              column_span: 12,
+              chrome: {},
+            },
+          ],
+        },
+      ],
+    })
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.rowsDraft).toHaveLength(1)
+    expect(result.current.rowsDraft[0].placements[0].id).toBe("w-existing")
+    expect(result.current.isDirty).toBe(false)
+  })
+
+  it("addWidget returns a UUID + appends a placement + marks dirty", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let newId = ""
+    act(() => {
+      newId = result.current.addWidget("day-strip-widget")
+    })
+    expect(newId).toBeTruthy()
+    expect(typeof newId).toBe("string")
+    expect(result.current.rowsDraft).toHaveLength(1)
+    expect(result.current.rowsDraft[0].placements[0].id).toBe(newId)
+    expect(result.current.rowsDraft[0].placements[0].widget_slug).toBe(
+      "day-strip-widget",
+    )
+    expect(result.current.isDirty).toBe(true)
+  })
+
+  it("updateWidget merges chrome + marks dirty", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let newId = ""
+    act(() => {
+      newId = result.current.addWidget("day-strip-widget")
+    })
+    act(() => {
+      result.current.updateWidget(newId, { daysVisible: 5 })
+    })
+    expect(result.current.rowsDraft[0].placements[0].chrome.daysVisible).toBe(5)
+  })
+
+  it("removeWidget removes by id + drops empty rows", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let newId = ""
+    act(() => {
+      newId = result.current.addWidget("day-strip-widget")
+    })
+    act(() => {
+      result.current.removeWidget(newId)
+    })
+    expect(result.current.rowsDraft).toEqual([])
+  })
+
+  it("moveWidget repositions across rows", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let id = ""
+    act(() => {
+      id = result.current.addWidget("day-strip-widget")
+    })
+    act(() => {
+      result.current.moveWidget(id, { rowIndex: 5, columnStart: 3, columnSpan: 6 })
+    })
+    const row = result.current.rowsDraft.find((r) => r.row_index === 5)
+    expect(row).toBeDefined()
+    expect(row?.placements[0].id).toBe(id)
+    expect(row?.placements[0].column_start).toBe(3)
+    expect(row?.placements[0].column_span).toBe(6)
+  })
+
+  it("save sends rows in PUT payload + clears dirty", async () => {
+    vi.useFakeTimers()
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    ;(
+      focusTemplatesService.update as ReturnType<typeof vi.fn>
+    ).mockImplementation(
+      async (_id: string, body: { rows?: unknown }) => ({
+        ...SAMPLE_TEMPLATE,
+        rows: body.rows ?? [],
+      }),
+    )
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await vi.waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.addWidget("day-strip-widget")
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400)
+    })
+    const updateMock = focusTemplatesService.update as ReturnType<typeof vi.fn>
+    expect(updateMock).toHaveBeenCalled()
+    const payload = updateMock.mock.calls[0][1] as { rows?: unknown }
+    expect(Array.isArray(payload.rows)).toBe(true)
+    expect(payload.rows).toHaveLength(1)
+    await vi.waitFor(() => expect(result.current.isDirty).toBe(false))
+    vi.useRealTimers()
+  })
+
+  /**
+   * Stale-closure regression test (C-2.2b discipline) — applies the
+   * C-2.1.4 pattern to the rows blob via updateWidget. If
+   * `rowsDraft` were added to save's useCallback deps OR save read
+   * the rowsDraft closure variable instead of `rowsRef.current`, the
+   * latest updateWidget value would NOT reach the PUT body.
+   *
+   * Test-fails-against-pre-fix verification: temporarily replaced
+   * `rowsRef.current` with `rowsDraft` (closure read) in the save
+   * payload assembly + added `rowsDraft` to the save deps; this test
+   * fails with payload.rows[0].placements[0].chrome.elevation
+   * receiving the FIRST updateWidget value (50), not the last (75).
+   * Reverted; this test now asserts the canonical ref-only-read path.
+   */
+  it("save sends latest updateWidget chrome value not stale closure value", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    ;(
+      focusTemplatesService.update as ReturnType<typeof vi.fn>
+    ).mockImplementation(
+      async (_id: string, body: { rows?: unknown }) => ({
+        ...SAMPLE_TEMPLATE,
+        rows: body.rows ?? [],
+      }),
+    )
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let id = ""
+    act(() => {
+      id = result.current.addWidget("day-strip-widget")
+    })
+    act(() => {
+      result.current.updateWidget(id, { elevation: 50 })
+    })
+    act(() => {
+      result.current.updateWidget(id, { elevation: 60 })
+    })
+    act(() => {
+      result.current.updateWidget(id, { elevation: 75 })
+    })
+    await waitFor(
+      () => expect(focusTemplatesService.update).toHaveBeenCalled(),
+      { timeout: 2000 },
+    )
+    const updateMock = focusTemplatesService.update as ReturnType<typeof vi.fn>
+    expect(updateMock.mock.calls.length).toBe(1)
+    const payload = updateMock.mock.calls[0][1] as {
+      rows: Array<{ placements: Array<{ chrome: { elevation: number } }> }>
+    }
+    expect(payload.rows[0].placements[0].chrome.elevation).toBe(75)
+    await waitFor(() => expect(result.current.isDirty).toBe(false))
+  })
+
+  it("410-retry preserves rows draft state", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const staleError = Object.assign(new Error("Gone"), {
+      response: {
+        status: 410,
+        data: {
+          detail: {
+            inactive_template_id: "tpl-001",
+            active_template_id: "tpl-001-v2",
+          },
+        },
+      },
+    })
+    ;(focusTemplatesService.update as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(staleError)
+      .mockImplementationOnce(async (_id: string, body: { rows?: unknown }) => ({
+        ...SAMPLE_TEMPLATE,
+        id: "tpl-001-v2",
+        rows: body.rows ?? [],
+      }))
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.addWidget("today-pin-widget")
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(focusTemplatesService.update).toHaveBeenCalledTimes(2)
+    expect(result.current.template?.id).toBe("tpl-001-v2")
+    expect(result.current.rowsDraft).toHaveLength(1)
+    expect(result.current.isDirty).toBe(false)
+  })
+
+  it("discard restores rows snapshot", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      ...SAMPLE_TEMPLATE,
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              id: "w-pristine",
+              widget_slug: "day-strip-widget",
+              column_start: 1,
+              column_span: 12,
+              chrome: {},
+            },
+          ],
+        },
+      ],
+    })
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.addWidget("today-pin-widget")
+    })
+    expect(result.current.rowsDraft.flatMap((r) => r.placements)).toHaveLength(2)
+    act(() => {
+      result.current.discard()
+    })
+    expect(result.current.rowsDraft.flatMap((r) => r.placements)).toHaveLength(1)
+    expect(result.current.rowsDraft[0].placements[0].id).toBe("w-pristine")
+    expect(result.current.isDirty).toBe(false)
+  })
+})

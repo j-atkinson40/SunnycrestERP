@@ -11,10 +11,12 @@
  * where future surfaces will go.
  */
 import { FocusBuilderInspector, type FocusBuilderInspectorProps } from "./FocusBuilderInspector"
+import { FocusBuilderPalette } from "./FocusBuilderPalette"
 
 export type FocusBuilderRightRailProps = FocusBuilderInspectorProps
 
 export function FocusBuilderRightRail(props: FocusBuilderRightRailProps) {
+  const paletteDisabled = props.mode !== "template"
   return (
     <div
       data-testid="focus-builder-right-rail"
@@ -29,17 +31,26 @@ export function FocusBuilderRightRail(props: FocusBuilderRightRailProps) {
 
       <section
         data-testid="focus-builder-widget-palette-region"
-        className="flex flex-col gap-1 border-b border-[color:var(--border-subtle)] px-4 py-3 text-[12px] text-content-muted"
+        className="flex max-h-[40%] flex-col overflow-y-auto border-b border-[color:var(--border-subtle)] py-2"
       >
-        <span
-          className="text-[10px] font-semibold uppercase tracking-[0.08em]"
-          style={{ fontFamily: "var(--font-plex-sans)" }}
-        >
-          Widget palette
-        </span>
-        <span style={{ fontFamily: "var(--font-plex-mono)" }}>
-          Arrives in F-3.
-        </span>
+        <div className="flex items-center justify-between px-4 pb-1">
+          <span
+            className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--content-muted)]"
+            style={{ fontFamily: "var(--font-plex-sans)" }}
+          >
+            Widget palette
+          </span>
+          {paletteDisabled && (
+            <span
+              className="text-[10px] text-[color:var(--content-muted)]"
+              style={{ fontFamily: "var(--font-plex-mono)" }}
+              data-testid="focus-builder-palette-disabled-hint"
+            >
+              cores have no widgets
+            </span>
+          )}
+        </div>
+        <FocusBuilderPalette disabled={paletteDisabled} />
       </section>
 
       <section

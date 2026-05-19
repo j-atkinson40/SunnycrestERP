@@ -40,14 +40,58 @@ export type ChromeOverridesBlob = Record<string, unknown>
 export type SubstrateBlob = Record<string, unknown>
 export type TypographyBlob = Record<string, unknown>
 
+/**
+ * F-3 — widget placement shape inside the `rows` JSONB blob.
+ *
+ * A row holds `placements`, each placement targets a widget by slug
+ * and carries a chrome override blob. `column_start` / `column_span`
+ * are 1-indexed against `column_count` (default 12).
+ *
+ * The on-the-wire shape stays `Array<Record<string, unknown>>` (the
+ * existing TemplateRecord.rows contract); the interfaces below are
+ * the hook's typed view of that shape. The hook coerces in/out at
+ * the boundary so callers stay strongly typed without forcing a
+ * backend schema change.
+ */
+export interface WidgetPlacement {
+  id: string
+  widget_slug: string
+  column_start: number
+  column_span: number
+  chrome: Record<string, unknown>
+}
+
+export interface FocusRow {
+  row_index: number
+  column_count: number
+  placements: WidgetPlacement[]
+}
+
+export type RowsBlob = FocusRow[]
+
 export interface UseFocusTemplateDraftResult {
   template: TemplateRecord | null
   chromeOverridesDraft: ChromeOverridesBlob
   substrateDraft: SubstrateBlob
   typographyDraft: TypographyBlob
+  rowsDraft: RowsBlob
   updateChromeOverrides: (partial: ChromeOverridesBlob) => void
   updateSubstrate: (partial: SubstrateBlob) => void
   updateTypography: (partial: TypographyBlob) => void
+  /**
+   * F-3 — widget placement mutators. Each reads-modifies-writes the
+   * rowsRef (NOT closure) and triggers the existing debounced save.
+   */
+  addWidget: (
+    widgetSlug: string,
+    position?: { rowIndex?: number; columnStart?: number; columnSpan?: number },
+  ) => string
+  updateWidget: (widgetId: string, partialChrome: Record<string, unknown>) => void
+  removeWidget: (widgetId: string) => void
+  moveWidget: (
+    widgetId: string,
+    next: { rowIndex: number; columnStart: number; columnSpan?: number },
+  ) => void
   /**
    * Sub-arc C-2.3 — per-field reset to inherited. Removes the named
    * field from the override blob and triggers a debounced save. The
@@ -156,6 +200,8 @@ export function useFocusTemplateDraft(
     useState<ChromeOverridesBlob>({})
   const [substrateDraft, setSubstrateDraft] = useState<SubstrateBlob>({})
   const [typographyDraft, setTypographyDraft] = useState<TypographyBlob>({})
+  // F-3 — rows blob (4th independently-tracked draft slot).
+  const [rowsDraft, setRowsDraft] = useState<RowsBlob>([])
 
   const [chromeOverridesSnapshot, setChromeOverridesSnapshot] =
     useState<ChromeOverridesBlob>({})
@@ -163,6 +209,7 @@ export function useFocusTemplateDraft(
   const [typographySnapshot, setTypographySnapshot] = useState<TypographyBlob>(
     {},
   )
+  const [rowsSnapshot, setRowsSnapshot] = useState<RowsBlob>([])
 
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -182,6 +229,8 @@ export function useFocusTemplateDraft(
   const chromeOverridesRef = useRef<ChromeOverridesBlob>({})
   const substrateRef = useRef<SubstrateBlob>({})
   const typographyRef = useRef<TypographyBlob>({})
+  // F-3 — rows ref (4th draftRef per C-2.1.4 + multi-hook-mount canon).
+  const rowsRef = useRef<RowsBlob>([])
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -195,6 +244,9 @@ export function useFocusTemplateDraft(
   useEffect(() => {
     typographyRef.current = typographyDraft
   }, [typographyDraft])
+  useEffect(() => {
+    rowsRef.current = rowsDraft
+  }, [rowsDraft])
 
   // Load on templateId change.
   useEffect(() => {
@@ -203,9 +255,11 @@ export function useFocusTemplateDraft(
       setChromeOverridesDraft({})
       setSubstrateDraft({})
       setTypographyDraft({})
+      setRowsDraft([])
       setChromeOverridesSnapshot({})
       setSubstrateSnapshot({})
       setTypographySnapshot({})
+      setRowsSnapshot([])
       setError(null)
       setEditSessionId(null)
       activeTemplateIdRef.current = null
@@ -223,13 +277,16 @@ export function useFocusTemplateDraft(
         const chromeOv = (rec.chrome_overrides ?? {}) as ChromeOverridesBlob
         const sub = (rec.substrate ?? {}) as SubstrateBlob
         const typ = (rec.typography ?? {}) as TypographyBlob
+        const rows = (rec.rows ?? []) as unknown as RowsBlob
         setTemplate(rec)
         setChromeOverridesDraft({ ...chromeOv })
         setSubstrateDraft({ ...sub })
         setTypographyDraft({ ...typ })
+        setRowsDraft(rows.map((r) => ({ ...r, placements: r.placements?.map((p) => ({ ...p })) ?? [] })))
         setChromeOverridesSnapshot({ ...chromeOv })
         setSubstrateSnapshot({ ...sub })
         setTypographySnapshot({ ...typ })
+        setRowsSnapshot(rows.map((r) => ({ ...r, placements: r.placements?.map((p) => ({ ...p })) ?? [] })))
       })
       .catch((err) => {
         if (cancelled) return
@@ -243,12 +300,14 @@ export function useFocusTemplateDraft(
     }
   }, [templateId])
 
-  // Dirty = ANY of the three drafts disagrees with its snapshot.
+  // Dirty = ANY of the four drafts disagrees with its snapshot.
+  // (F-3 extends from OR-of-3 to OR-of-4 — rows blob added.)
   const isDirty = useMemo(
     () =>
       !deepEqualBlob(chromeOverridesDraft, chromeOverridesSnapshot) ||
       !deepEqualBlob(substrateDraft, substrateSnapshot) ||
-      !deepEqualBlob(typographyDraft, typographySnapshot),
+      !deepEqualBlob(typographyDraft, typographySnapshot) ||
+      !deepEqualBlob(rowsDraft, rowsSnapshot),
     [
       chromeOverridesDraft,
       chromeOverridesSnapshot,
@@ -256,6 +315,8 @@ export function useFocusTemplateDraft(
       substrateSnapshot,
       typographyDraft,
       typographySnapshot,
+      rowsDraft,
+      rowsSnapshot,
     ],
   )
 
@@ -278,19 +339,31 @@ export function useFocusTemplateDraft(
     const latestChromeOverrides = chromeOverridesRef.current
     const latestSubstrate = substrateRef.current
     const latestTypography = typographyRef.current
+    const latestRows = rowsRef.current
 
-    const payload = editSessionId
+    const payloadBase = editSessionId
       ? {
           chrome_overrides: latestChromeOverrides,
           substrate: latestSubstrate,
           typography: latestTypography,
+          rows: latestRows,
           edit_session_id: editSessionId,
         }
       : {
           chrome_overrides: latestChromeOverrides,
           substrate: latestSubstrate,
           typography: latestTypography,
+          rows: latestRows,
         }
+    // The service contract types rows as `Array<Record<string, unknown>>`
+    // (the on-the-wire JSONB shape). RowsBlob is a structurally
+    // compatible refinement — every FocusRow IS a record-with-string-
+    // keys-and-unknown-values when serialized — but TypeScript can't
+    // see through the named-interface vs index-signature distinction.
+    // Cast through `unknown` per project convention.
+    const payload = payloadBase as unknown as Parameters<
+      typeof focusTemplatesService.update
+    >[1]
 
     try {
       const updated = await focusTemplatesService.update(targetId, payload)
@@ -298,10 +371,12 @@ export function useFocusTemplateDraft(
       const chromeOv = (updated.chrome_overrides ?? {}) as ChromeOverridesBlob
       const sub = (updated.substrate ?? {}) as SubstrateBlob
       const typ = (updated.typography ?? {}) as TypographyBlob
+      const rows = (updated.rows ?? []) as unknown as RowsBlob
       setTemplate(updated)
       setChromeOverridesSnapshot({ ...chromeOv })
       setSubstrateSnapshot({ ...sub })
       setTypographySnapshot({ ...typ })
+      setRowsSnapshot(rows.map((r) => ({ ...r, placements: r.placements?.map((p) => ({ ...p })) ?? [] })))
       setLastSavedAt(new Date())
     } catch (err) {
       // 410 Gone retry — mirror C-2.1.1 cores path.
@@ -315,10 +390,12 @@ export function useFocusTemplateDraft(
             {}) as ChromeOverridesBlob
           const sub = (updated.substrate ?? {}) as SubstrateBlob
           const typ = (updated.typography ?? {}) as TypographyBlob
+          const rows = (updated.rows ?? []) as unknown as RowsBlob
           setTemplate(updated)
           setChromeOverridesSnapshot({ ...chromeOv })
           setSubstrateSnapshot({ ...sub })
           setTypographySnapshot({ ...typ })
+          setRowsSnapshot(rows.map((r) => ({ ...r, placements: r.placements?.map((p) => ({ ...p })) ?? [] })))
           setLastSavedAt(new Date())
           return
         } catch (retryErr) {
@@ -425,7 +502,160 @@ export function useFocusTemplateDraft(
     setChromeOverridesDraft({ ...chromeOverridesSnapshot })
     setSubstrateDraft({ ...substrateSnapshot })
     setTypographyDraft({ ...typographySnapshot })
-  }, [chromeOverridesSnapshot, substrateSnapshot, typographySnapshot])
+    setRowsDraft(
+      rowsSnapshot.map((r) => ({
+        ...r,
+        placements: r.placements?.map((p) => ({ ...p })) ?? [],
+      })),
+    )
+  }, [chromeOverridesSnapshot, substrateSnapshot, typographySnapshot, rowsSnapshot])
+
+  // ── F-3 widget mutators ─────────────────────────────────────────────
+  //
+  // Each method reads from rowsRef.current (NOT closure-captured
+  // `rowsDraft`) per C-2.1.4 + multi-hook-mount canon. Mutators
+  // commit to React state via `setRowsDraft` and queueSave fires the
+  // existing debounced save pipeline. The save callback's deps
+  // deliberately EXCLUDE `rowsDraft` — the save reads via ref.
+  const generateWidgetId = useCallback(() => generateSessionToken(), [])
+
+  const addWidget = useCallback(
+    (
+      widgetSlug: string,
+      position?: {
+        rowIndex?: number
+        columnStart?: number
+        columnSpan?: number
+      },
+    ): string => {
+      const newId = generateWidgetId()
+      const columnSpan = position?.columnSpan ?? 4
+      const columnStart = position?.columnStart ?? 1
+      const targetRowIndex = position?.rowIndex
+      const current = rowsRef.current
+      const next: RowsBlob = current.map((r) => ({
+        ...r,
+        placements: r.placements?.map((p) => ({ ...p })) ?? [],
+      }))
+      const placement: WidgetPlacement = {
+        id: newId,
+        widget_slug: widgetSlug,
+        column_start: columnStart,
+        column_span: columnSpan,
+        chrome: {},
+      }
+      let row: FocusRow | undefined
+      if (typeof targetRowIndex === "number") {
+        row = next.find((r) => r.row_index === targetRowIndex)
+      }
+      if (!row) {
+        const nextIndex =
+          next.reduce(
+            (m, r) => (r.row_index > m ? r.row_index : m),
+            -1,
+          ) + 1
+        row = { row_index: nextIndex, column_count: 12, placements: [] }
+        next.push(row)
+      }
+      row.placements.push(placement)
+      setRowsDraft(next)
+      queueSave()
+      return newId
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- queueSave stable
+    [generateWidgetId, queueSave],
+  )
+
+  const updateWidget = useCallback(
+    (widgetId: string, partialChrome: Record<string, unknown>) => {
+      const current = rowsRef.current
+      let found = false
+      const next: RowsBlob = current.map((r) => ({
+        ...r,
+        placements:
+          r.placements?.map((p) => {
+            if (p.id === widgetId) {
+              found = true
+              return { ...p, chrome: { ...p.chrome, ...partialChrome } }
+            }
+            return { ...p }
+          }) ?? [],
+      }))
+      if (!found) return
+      setRowsDraft(next)
+      queueSave()
+    },
+    [queueSave],
+  )
+
+  const removeWidget = useCallback(
+    (widgetId: string) => {
+      const current = rowsRef.current
+      let found = false
+      const next: RowsBlob = current
+        .map((r) => {
+          const before = r.placements?.length ?? 0
+          const placements =
+            r.placements?.filter((p) => {
+              if (p.id === widgetId) {
+                found = true
+                return false
+              }
+              return true
+            }) ?? []
+          if (placements.length === before) return { ...r, placements: r.placements?.map((p) => ({ ...p })) ?? [] }
+          return { ...r, placements }
+        })
+        // Drop empty rows so the layout doesn't accumulate ghosts.
+        .filter((r) => r.placements.length > 0)
+      if (!found) return
+      setRowsDraft(next)
+      queueSave()
+    },
+    [queueSave],
+  )
+
+  const moveWidget = useCallback(
+    (
+      widgetId: string,
+      target: { rowIndex: number; columnStart: number; columnSpan?: number },
+    ) => {
+      const current = rowsRef.current
+      let placement: WidgetPlacement | null = null
+      const stripped: RowsBlob = current
+        .map((r) => {
+          const remaining =
+            r.placements?.filter((p) => {
+              if (p.id === widgetId) {
+                placement = { ...p }
+                return false
+              }
+              return true
+            }) ?? []
+          return { ...r, placements: remaining }
+        })
+        .filter((r) => r.placements.length > 0)
+      if (!placement) return
+      const updated: WidgetPlacement = {
+        ...(placement as WidgetPlacement),
+        column_start: target.columnStart,
+        column_span: target.columnSpan ?? (placement as WidgetPlacement).column_span,
+      }
+      let row = stripped.find((r) => r.row_index === target.rowIndex)
+      if (!row) {
+        row = {
+          row_index: target.rowIndex,
+          column_count: 12,
+          placements: [],
+        }
+        stripped.push(row)
+      }
+      row.placements.push(updated)
+      setRowsDraft(stripped)
+      queueSave()
+    },
+    [queueSave],
+  )
 
   useEffect(() => {
     return () => {
@@ -438,9 +668,14 @@ export function useFocusTemplateDraft(
     chromeOverridesDraft,
     substrateDraft,
     typographyDraft,
+    rowsDraft,
     updateChromeOverrides,
     updateSubstrate,
     updateTypography,
+    addWidget,
+    updateWidget,
+    removeWidget,
+    moveWidget,
     resetChromeOverridesField,
     resetSubstrateField,
     resetTypographyField,

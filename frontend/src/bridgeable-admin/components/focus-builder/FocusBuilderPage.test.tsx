@@ -416,7 +416,8 @@ describe("FocusBuilderPage", () => {
     expect(
       screen.getByTestId("focus-builder-theme-region"),
     ).toBeInTheDocument()
-    expect(screen.getByText(/Arrives in F-3/)).toBeInTheDocument()
+    // F-3 replaces the palette placeholder with the real widget palette.
+    // Theme region stays a placeholder until F-4.
     expect(screen.getByText(/Arrives in F-4/)).toBeInTheDocument()
   })
 

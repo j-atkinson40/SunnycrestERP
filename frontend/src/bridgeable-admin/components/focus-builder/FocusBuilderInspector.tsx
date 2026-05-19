@@ -64,6 +64,10 @@ import type { UseFocusCoreDraftResult } from "@/bridgeable-admin/hooks/useFocusC
 import type { UseFocusTemplateDraftResult } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 
 import { useFocusBuilderSelection } from "./FocusBuilderSelectionContext"
+import {
+  WidgetInspectorSection,
+  findPlacementById,
+} from "./WidgetInspectorSection"
 
 export interface FocusBuilderInspectorProps {
   mode: "core" | "template" | "empty"
@@ -140,6 +144,28 @@ export function FocusBuilderInspector(props: FocusBuilderInspectorProps) {
   // ── Template editing ──────────────────────────────────────────────
   if (mode === "template") {
     if (!templateHook) return null
+
+    // F-3 — widget selection dispatches to WidgetInspectorSection.
+    if (selection.kind === "widget") {
+      const placement = findPlacementById(templateHook.rowsDraft, selection.id)
+      if (!placement) {
+        return (
+          <div
+            data-testid="focus-builder-inspector-widget-missing"
+            className="flex h-full items-center justify-center p-6 text-center text-[12px] text-content-muted"
+          >
+            Widget no longer exists.
+          </div>
+        )
+      }
+      return (
+        <WidgetInspectorSection
+          placement={placement}
+          onUpdateWidget={(id, partial) => templateHook.updateWidget(id, partial)}
+          onRemoveWidget={(id) => templateHook.removeWidget(id)}
+        />
+      )
+    }
 
     return (
       <PropertyPanel data-testid="focus-builder-inspector">

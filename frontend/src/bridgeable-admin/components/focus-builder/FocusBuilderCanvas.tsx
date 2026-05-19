@@ -17,8 +17,10 @@
  * placements + drag-to-canvas land in F-3.
  */
 import * as React from "react"
+import { useDroppable } from "@dnd-kit/core"
 
 import { resolveEffectiveTokens } from "@/lib/visual-editor/themes/resolve-effective-tokens"
+import { getByName } from "@/lib/visual-editor/registry"
 import { BASE_TOKENS } from "@/lib/visual-editor/themes/base-tokens"
 import {
   chromeViewFromDraft,
@@ -39,6 +41,7 @@ import {
 } from "@/bridgeable-admin/lib/visual-editor/typography-resolver"
 import type { CoreRecord } from "@/bridgeable-admin/services/focus-cores-service"
 import type { TemplateRecord } from "@/bridgeable-admin/services/focus-templates-service"
+import type { RowsBlob } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 
 import { useFocusBuilderSelection } from "./FocusBuilderSelectionContext"
 
@@ -85,7 +88,11 @@ export interface FocusBuilderCanvasProps {
   typographyDraft?: Record<string, unknown>
   /** Live core chrome draft when mode === 'core'. */
   coreChromeDraft?: Record<string, unknown>
+  /** F-3 — widget placements from the template's rows draft. */
+  rowsDraft?: RowsBlob
 }
+
+export const CANVAS_DROP_ZONE_ID = "focus-builder-canvas-drop-zone"
 
 export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
   const {
@@ -98,8 +105,18 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
     substrateDraft,
     typographyDraft,
     coreChromeDraft,
+    rowsDraft,
   } = props
   const { selection, setSelection } = useFocusBuilderSelection()
+
+  // F-3 — drop target. Only enabled for templates; cores have no
+  // widget placements. Identifier read by the page-level DndContext
+  // onDragEnd handler.
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: CANVAS_DROP_ZONE_ID,
+    disabled: mode !== "template",
+    data: { kind: "focus-builder-canvas" },
+  })
 
   // ── Canvas backdrop ────────────────────────────────────────────────
   //
@@ -215,11 +232,20 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
     <div
       data-testid="focus-builder-canvas"
       data-canvas-mode={mode}
+      data-drop-over={isOver ? "true" : "false"}
+      ref={setDropRef}
       className="relative flex h-full w-full overflow-hidden"
-      style={canvasStyle}
+      style={{
+        ...canvasStyle,
+        outline: isOver && mode === "template" ? "2px dashed var(--accent)" : undefined,
+        outlineOffset: isOver && mode === "template" ? "-6px" : undefined,
+      }}
       onClick={() => setSelection({ kind: "background" })}
     >
-      <div className="relative flex h-full w-full items-center justify-center p-12">
+      <div
+        data-testid="focus-builder-canvas-placements"
+        className="relative flex h-full w-full flex-col items-center justify-start gap-3 overflow-y-auto p-8"
+      >
         <div
           data-testid="focus-builder-core-placement"
           data-selected={coreSelected ? "true" : "false"}
@@ -287,7 +313,129 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
             {" · "}preset: {coreChromeView.preset ?? "—"}
           </span>
         </div>
+
+        {mode === "template" && rowsDraft && rowsDraft.length > 0 && (
+          <WidgetRowsLayer
+            rows={rowsDraft}
+            selectedWidgetId={
+              selection.kind === "widget" ? selection.id : null
+            }
+            onSelectWidget={(id) =>
+              setSelection({ kind: "widget", id })
+            }
+          />
+        )}
       </div>
+    </div>
+  )
+}
+
+// ── F-3 widget rows layer ──────────────────────────────────────────
+//
+// Renders rows of placed widgets BELOW the core placement card.
+// Each placement is wrapped in an outline + click target that drives
+// selection { kind: 'widget', id }. The widget render itself comes
+// from the component registry's React component for the slug.
+interface WidgetRowsLayerProps {
+  rows: RowsBlob
+  selectedWidgetId: string | null
+  onSelectWidget: (id: string) => void
+}
+
+function WidgetRowsLayer(props: WidgetRowsLayerProps) {
+  const { rows, selectedWidgetId, onSelectWidget } = props
+  const sorted = React.useMemo(
+    () => [...rows].sort((a, b) => a.row_index - b.row_index),
+    [rows],
+  )
+  return (
+    <div
+      data-testid="focus-builder-widget-rows-layer"
+      className="flex w-[min(700px,90%)] flex-col gap-2"
+    >
+      {sorted.map((row) => {
+        const columns = row.column_count || 12
+        return (
+          <div
+            key={row.row_index}
+            data-testid="focus-builder-widget-row"
+            data-row-index={row.row_index}
+            className="grid w-full gap-2"
+            style={{
+              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            }}
+          >
+            {row.placements.map((p) => (
+              <PlacedWidget
+                key={p.id}
+                placement={p}
+                selected={selectedWidgetId === p.id}
+                onSelect={onSelectWidget}
+                columns={columns}
+              />
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+interface PlacedWidgetProps {
+  placement: import("@/bridgeable-admin/hooks/useFocusTemplateDraft").WidgetPlacement
+  selected: boolean
+  onSelect: (id: string) => void
+  columns: number
+}
+
+function PlacedWidget(props: PlacedWidgetProps) {
+  const { placement, selected, onSelect, columns } = props
+  const entry = React.useMemo(
+    () => getByName("widget", placement.widget_slug),
+    [placement.widget_slug],
+  )
+  // `display: contents` boundary div from the HOC means rendering the
+  // Component directly will still emit the boundary; we wrap our own
+  // selection chrome around it.
+  const Component = entry?.component as React.ComponentType<unknown> | undefined
+  const span = Math.max(1, Math.min(columns, placement.column_span || 4))
+  const start = Math.max(1, Math.min(columns, placement.column_start || 1))
+  return (
+    <div
+      data-testid="focus-builder-placed-widget"
+      data-widget-id={placement.id}
+      data-widget-slug={placement.widget_slug}
+      data-selected={selected ? "true" : "false"}
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelect(placement.id)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          e.stopPropagation()
+          onSelect(placement.id)
+        }
+      }}
+      style={{
+        gridColumn: `${start} / span ${span}`,
+        outline: selected ? "2px solid var(--accent)" : "2px solid transparent",
+        outlineOffset: "2px",
+        borderRadius: 12,
+        transition: "outline-color 120ms ease-out",
+        cursor: "pointer",
+        minHeight: 56,
+      }}
+    >
+      {Component ? (
+        <Component {...(placement.chrome ?? {})} />
+      ) : (
+        <div className="rounded-md border border-dashed border-[color:var(--border-subtle)] bg-surface-base px-3 py-2 text-[12px] text-content-muted">
+          Unknown widget: {placement.widget_slug}
+        </div>
+      )}
     </div>
   )
 }
@@ -301,6 +449,7 @@ export interface FocusBuilderCanvasMountProps {
   substrateDraft?: Record<string, unknown>
   typographyDraft?: Record<string, unknown>
   coreChromeDraft?: Record<string, unknown>
+  rowsDraft?: RowsBlob
   /** Optional pre-resolved theme tokens override (tests). */
   themeTokens?: Record<string, string>
 }
