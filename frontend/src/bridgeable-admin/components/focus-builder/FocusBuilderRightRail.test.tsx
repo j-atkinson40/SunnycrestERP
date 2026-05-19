@@ -1,9 +1,9 @@
 /**
- * FocusBuilderRightRail tests (sub-arcs F-2 + F-3).
+ * FocusBuilderRightRail tests (sub-arcs F-2 → F-4).
  *
- * F-2 shipped placeholder palette + theme. F-3 replaces the palette
- * placeholder with the real WidgetPalette wrapper; theme stays a
- * placeholder until F-4.
+ * F-2 shipped placeholder palette + theme. F-3 replaced the palette
+ * placeholder with the real WidgetPalette wrapper. F-4 replaces the
+ * theme placeholder with the real FocusBuilderThemePicker.
  */
 import { describe, expect, it } from "vitest"
 import { render, screen } from "@testing-library/react"
@@ -52,9 +52,18 @@ describe("FocusBuilderRightRail", () => {
     expect(screen.getByTestId("widget-palette")).toBeInTheDocument()
   })
 
-  it("theme region keeps the F-4 placeholder", () => {
+  it("F-4 — theme picker renders in disabled state when no template is loaded", () => {
     mount("empty")
-    expect(screen.getByText(/Arrives in F-4/)).toBeInTheDocument()
+    expect(
+      screen.getByTestId("focus-builder-theme-picker-disabled"),
+    ).toBeInTheDocument()
+  })
+
+  it("F-4 — theme picker shows core-specific disabled hint when subject is a core", () => {
+    mount("core")
+    expect(
+      screen.getByTestId("focus-builder-theme-picker-disabled-hint"),
+    ).toHaveTextContent(/themes apply to templates, not cores/i)
   })
 
   it("palette is disabled when subject is a core", () => {

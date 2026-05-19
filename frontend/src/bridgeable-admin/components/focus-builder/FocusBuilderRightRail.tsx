@@ -1,17 +1,21 @@
 /**
- * FocusBuilderRightRail — sub-arc F-2.
+ * FocusBuilderRightRail — sub-arcs F-2 → F-4.
  *
  * Three stacked sections:
- *   1. Inspector (top) — FocusBuilderInspector (selection-driven).
- *   2. Widget palette placeholder — F-3 territory.
- *   3. Theme placeholder         — F-4 territory.
+ *   1. Inspector (top) — FocusBuilderInspector (selection-driven, F-2).
+ *   2. Widget palette  — FocusBuilderPalette (F-3).
+ *   3. Theme picker    — FocusBuilderThemePicker (F-4, fast-path
+ *                        substrate + typography preset selection).
  *
- * The middle + bottom slots are deliberate placeholders so the layout
- * primitive's structure is established without making operators wonder
- * where future surfaces will go.
+ * F-2 inspector's substrate + typography sections coexist with the
+ * F-4 theme picker — both write through the same hook methods. The
+ * inspector is the fine-grained path (preset + intensity scrubber +
+ * token swatches); the theme picker is the fast-path preset chip
+ * strip.
  */
 import { FocusBuilderInspector, type FocusBuilderInspectorProps } from "./FocusBuilderInspector"
 import { FocusBuilderPalette } from "./FocusBuilderPalette"
+import { FocusBuilderThemePicker } from "./FocusBuilderThemePicker"
 
 export type FocusBuilderRightRailProps = FocusBuilderInspectorProps
 
@@ -55,17 +59,12 @@ export function FocusBuilderRightRail(props: FocusBuilderRightRailProps) {
 
       <section
         data-testid="focus-builder-theme-region"
-        className="flex flex-col gap-1 px-4 py-3 text-[12px] text-content-muted"
+        className="flex flex-col overflow-y-auto"
       >
-        <span
-          className="text-[10px] font-semibold uppercase tracking-[0.08em]"
-          style={{ fontFamily: "var(--font-plex-sans)" }}
-        >
-          Theme
-        </span>
-        <span style={{ fontFamily: "var(--font-plex-mono)" }}>
-          Arrives in F-4.
-        </span>
+        <FocusBuilderThemePicker
+          mode={props.mode}
+          templateHook={props.templateHook ?? null}
+        />
       </section>
     </div>
   )

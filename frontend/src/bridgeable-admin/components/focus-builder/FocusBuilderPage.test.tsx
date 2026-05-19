@@ -2,7 +2,7 @@
  * FocusBuilderPage integration tests (sub-arcs F-1 + F-2).
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 
 import FocusBuilderPage from "./FocusBuilderPage"
@@ -293,8 +293,13 @@ describe("FocusBuilderPage", () => {
       const placement = screen.getByTestId("focus-builder-core-placement")
       expect(placement).toHaveAttribute("data-selected", "true")
     })
-    // Substrate section should NOT be visible — chrome section is.
-    expect(screen.queryByText(/Substrate$/)).not.toBeInTheDocument()
+    // Substrate section should NOT be visible in the inspector —
+    // chrome section is. (The F-4 theme picker in the right-rail
+    // bottom also shows a "Substrate" label; scope to the inspector.)
+    const inspector = screen.getByTestId("focus-builder-inspector")
+    expect(
+      within(inspector).queryByText(/Substrate$/),
+    ).not.toBeInTheDocument()
   })
 
   it("Esc deselects (returns inspector to empty state)", async () => {
@@ -401,7 +406,7 @@ describe("FocusBuilderPage", () => {
     )
   })
 
-  it("widget palette + theme placeholders render", async () => {
+  it("widget palette + theme picker regions mount", async () => {
     defaultMocks()
     render(
       <MemoryRouter initialEntries={["/studio/builder/focuses"]}>
@@ -416,9 +421,11 @@ describe("FocusBuilderPage", () => {
     expect(
       screen.getByTestId("focus-builder-theme-region"),
     ).toBeInTheDocument()
-    // F-3 replaces the palette placeholder with the real widget palette.
-    // Theme region stays a placeholder until F-4.
-    expect(screen.getByText(/Arrives in F-4/)).toBeInTheDocument()
+    // F-4 replaces the theme placeholder with the real theme picker.
+    // With no subject loaded, the picker is in disabled state.
+    expect(
+      screen.getByTestId("focus-builder-theme-picker-disabled"),
+    ).toBeInTheDocument()
   })
 
   // ─────────────────────────────────────────────────────────────────
@@ -472,8 +479,14 @@ describe("FocusBuilderPage", () => {
         screen.getByTestId("focus-builder-inspector"),
       ).toBeInTheDocument(),
     )
-    // Trigger a save by clicking a substrate preset pill.
-    const pill = await screen.findByTestId("substrate-pill-morning-warm")
+    // Trigger a save by clicking a substrate preset pill. F-4 added
+    // a second substrate-pill-morning-warm in the right-rail theme
+    // picker; scope to the inspector to keep this test about the
+    // inspector path specifically.
+    const inspector = screen.getByTestId("focus-builder-inspector")
+    const pill = await within(inspector).findByTestId(
+      "substrate-pill-morning-warm",
+    )
     fireEvent.click(pill)
 
     // Debounced save fires after 300ms; the 410-retry resolves to
@@ -750,5 +763,142 @@ describe("FocusBuilderPage", () => {
         screen.getByTestId("focus-builder-inspector-empty"),
       ).toBeInTheDocument()
     })
+  })
+
+  // ─────────────────────────────────────────────────────────────────
+  // F-4 — Theme picker cross-side integration.
+  //
+  // Per DECISIONS.md 2026-05-19 (evening) canon refinement on
+  // data↔render cross-side framing: an operator flow that produces
+  // BOTH persistence (PUT to backend) AND visual change (canvas inline
+  // style update) must be tested in both directions in the same test.
+  //
+  // Verify-against-pre-fix discipline applied for both variants:
+  //
+  //   Variant A — chip onClick revert (NOOP the updateSubstrate call):
+  //     Both save-side AND render-side assertions FAIL.
+  //
+  //   Variant B — canvas-resolver wiring revert:
+  //     The canvas already applies substrate via canvasStyle (pre-F-4
+  //     work from F-2). Removing the substrate spread from canvasStyle
+  //     leaves save-side passing (PUT still fires) while render-side
+  //     fails (canvas style attribute does not change despite save
+  //     success). This proves the cross-side test catches render-
+  //     pipeline regressions independent of save-pipeline regressions.
+  // ─────────────────────────────────────────────────────────────────
+  it("F-4 — theme picker substrate chip updates rendered canvas AND persists via PUT", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(t)
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      const canvas = await screen.findByTestId("focus-builder-canvas")
+      // Capture initial inline style. The canvas already applies the
+      // substrate-resolver output to canvasStyle (F-2 work); with the
+      // seeded empty substrate ({}), the resolver returns a populated
+      // style object (default substrate gradient + tokens). Pre-F-4,
+      // no operator path existed to change it from the right rail.
+      const initialStyleAttr = canvas.getAttribute("style") ?? ""
+      expect(initialStyleAttr.length).toBeGreaterThan(0)
+
+      // Click the substrate chip in the theme picker. evening-lounge
+      // is a meaningfully-different preset from the seeded default —
+      // its resolved style values differ from the empty-blob default.
+      const chip = await screen.findByTestId("substrate-pill-evening-lounge")
+      fireEvent.click(chip)
+
+      // Debounced save fires.
+      await vi.advanceTimersByTimeAsync(500)
+
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+
+      // ASSERTION 1 — Save side: PUT body carries substrate.preset.
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      expect(lastBody?.substrate).toBeTruthy()
+      expect(lastBody.substrate.preset).toBe("evening-lounge")
+
+      // ASSERTION 2 — Render side: canvas inline style attribute
+      // changed in response to the chip click. The substrate-resolver
+      // expands the preset into base_token + accent tokens, and the
+      // canvas's canvasStyle useMemo picks that up via substrateDraft
+      // state. JSDOM mutates the style attribute in place.
+      const updatedStyleAttr = canvas.getAttribute("style") ?? ""
+      expect(updatedStyleAttr).not.toBe(initialStyleAttr)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("F-4 — theme picker typography chip updates rendered canvas AND persists via PUT", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(t)
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      const canvas = await screen.findByTestId("focus-builder-canvas")
+      const initialStyleAttr = canvas.getAttribute("style") ?? ""
+
+      const chip = await screen.findByTestId("typography-pill-headline")
+      fireEvent.click(chip)
+
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+
+      // ASSERTION 1 — Save side.
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      expect(lastBody?.typography).toBeTruthy()
+      expect(lastBody.typography.preset).toBe("headline")
+
+      // ASSERTION 2 — Render side. The canvas's canvasStyle includes
+      // typography-derived properties (fontWeight, color) computed
+      // from typographyDraft. Headline preset alters them vs. default.
+      const updatedStyleAttr = canvas.getAttribute("style") ?? ""
+      expect(updatedStyleAttr).not.toBe(initialStyleAttr)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("F-4 — theme picker shows disabled state when subject is a core", async () => {
+    defaultMocks()
+    render(
+      <MemoryRouter
+        initialEntries={["/studio/builder/focuses?subject=core:core-1"]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("focus-builder-theme-picker-disabled"),
+      ).toBeInTheDocument()
+    })
+    expect(
+      screen.getByTestId("focus-builder-theme-picker-disabled-hint"),
+    ).toHaveTextContent(/themes apply to templates, not cores/i)
   })
 })
