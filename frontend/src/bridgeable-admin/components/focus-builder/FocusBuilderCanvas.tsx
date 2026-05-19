@@ -44,6 +44,7 @@ import type { TemplateRecord } from "@/bridgeable-admin/services/focus-templates
 import type { RowsBlob } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 
 import { useFocusBuilderSelection } from "./FocusBuilderSelectionContext"
+import { DEFAULT_WIDGET_CHROME } from "./WidgetInspectorSection"
 
 /**
  * Canonical four-layer atmospheric composition. Mirrors
@@ -323,6 +324,7 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
             onSelectWidget={(id) =>
               setSelection({ kind: "widget", id })
             }
+            themeTokens={themeTokens}
           />
         )}
       </div>
@@ -340,10 +342,11 @@ interface WidgetRowsLayerProps {
   rows: RowsBlob
   selectedWidgetId: string | null
   onSelectWidget: (id: string) => void
+  themeTokens: Record<string, string>
 }
 
 function WidgetRowsLayer(props: WidgetRowsLayerProps) {
-  const { rows, selectedWidgetId, onSelectWidget } = props
+  const { rows, selectedWidgetId, onSelectWidget, themeTokens } = props
   const sorted = React.useMemo(
     () => [...rows].sort((a, b) => a.row_index - b.row_index),
     [rows],
@@ -372,6 +375,7 @@ function WidgetRowsLayer(props: WidgetRowsLayerProps) {
                 selected={selectedWidgetId === p.id}
                 onSelect={onSelectWidget}
                 columns={columns}
+                themeTokens={themeTokens}
               />
             ))}
           </div>
@@ -386,10 +390,11 @@ interface PlacedWidgetProps {
   selected: boolean
   onSelect: (id: string) => void
   columns: number
+  themeTokens: Record<string, string>
 }
 
 function PlacedWidget(props: PlacedWidgetProps) {
-  const { placement, selected, onSelect, columns } = props
+  const { placement, selected, onSelect, columns, themeTokens } = props
   const entry = React.useMemo(
     () => getByName("widget", placement.widget_slug),
     [placement.widget_slug],
@@ -400,6 +405,25 @@ function PlacedWidget(props: PlacedWidgetProps) {
   const Component = entry?.component as React.ComponentType<unknown> | undefined
   const span = Math.max(1, Math.min(columns, placement.column_span || 4))
   const start = Math.max(1, Math.min(columns, placement.column_start || 1))
+
+  // F-3.1c — Resolve per-placement chrome through the canonical
+  // chrome-resolver pipeline, mirroring the inherited core placement
+  // pattern at lines 161-184. Widgets have no Tier-1 cascade (chrome
+  // is stamped at placement creation per F-3 canon), so we merge the
+  // placement's chrome ON TOP of DEFAULT_WIDGET_CHROME and resolve.
+  // `mergeChromeWithOverrides` cascades second-arg-wins on non-null
+  // entries — matches the inherited-core path's semantics so the
+  // resolver consumes the same `ChromeView` shape produced for cores.
+  const resolvedChromeStyle = React.useMemo(() => {
+    const view = expandPreset(
+      mergeChromeWithOverrides(
+        DEFAULT_WIDGET_CHROME as unknown as Record<string, unknown>,
+        placement.chrome ?? {},
+      ),
+    )
+    return resolveChromeStyle(view, themeTokens)
+  }, [placement.chrome, themeTokens])
+
   return (
     <div
       data-testid="focus-builder-placed-widget"
@@ -420,10 +444,15 @@ function PlacedWidget(props: PlacedWidgetProps) {
         }
       }}
       style={{
+        // Chrome-resolved styles first (background / borderRadius /
+        // boxShadow / padding / border / backdropFilter / transition).
+        // Layout + selection styles override on conflict (gridColumn
+        // is layout-only; outline is selection chrome; transition is
+        // overridden to the outline-specific easing).
+        ...resolvedChromeStyle,
         gridColumn: `${start} / span ${span}`,
         outline: selected ? "2px solid var(--accent)" : "2px solid transparent",
         outlineOffset: "2px",
-        borderRadius: 12,
         transition: "outline-color 120ms ease-out",
         cursor: "pointer",
         minHeight: 56,

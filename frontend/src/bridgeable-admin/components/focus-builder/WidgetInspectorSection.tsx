@@ -46,7 +46,7 @@ import type {
  * border-subtle, space-3). When registrations later add a
  * `defaultChrome` field, swap this constant for a registry lookup.
  */
-const DEFAULT_WIDGET_CHROME = {
+export const DEFAULT_WIDGET_CHROME = {
   preset: "frosted" as PresetSlug,
   elevation: 50,
   corner_radius: 70,

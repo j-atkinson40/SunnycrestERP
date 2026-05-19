@@ -590,6 +590,134 @@ describe("FocusBuilderPage", () => {
     }
   })
 
+  // ─────────────────────────────────────────────────────────────────
+  // F-3.1c — Widget chrome scrub must update BOTH the rendered DOM
+  // wrapper styles AND the PUT body's prop_overrides shape.
+  //
+  // Per today's filed canon (Mock-only tests verify one side of
+  // frontend↔backend contracts), F-3.1b asserted save-side only and
+  // missed that PlacedWidget's wrapper ignored chrome entirely.
+  // F-3.1c wires the chrome-resolver into the wrapper style and adds
+  // this cross-side assertion: render-side DOM check + save-side PUT
+  // body check, in the same test.
+  //
+  // Verify-against-pre-fix discipline: with the `...resolvedChromeStyle`
+  // spread removed from PlacedWidget's wrapper style, the DOM
+  // assertion fails (inline style attribute does not change between
+  // pre-scrub and post-scrub captures) while the PUT-body assertion
+  // continues to pass. Restored the spread → both assertions pass.
+  // ─────────────────────────────────────────────────────────────────
+  it("F-3.1c — widget chrome scrub updates rendered wrapper styles AND persists via PUT", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const seededTemplate: TemplateRecord = {
+        ...t,
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "w-int-2",
+                component_kind: "widget",
+                component_name: "day-strip-widget",
+                starting_column: 0,
+                column_span: 12,
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        seededTemplate,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        seededTemplate,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      const placedWidget = await screen.findByTestId(
+        "focus-builder-placed-widget",
+      )
+      // Capture initial inline-style attribute. JSDOM does not compute
+      // resolved CSS values (window.getComputedStyle returns the
+      // declared inline only), so we inspect the `style` attribute
+      // string — that's where the resolver's output lands. The
+      // resolver maps elevation>25 → boxShadow != "none"; for the
+      // seeded placement (no chrome overrides), DEFAULT_WIDGET_CHROME
+      // (elevation 50) already produces a non-none shadow. After the
+      // scrub, elevation increments by 1, the resolver-mapped
+      // boxShadow stays in the same tier, BUT the style attribute
+      // re-serializes — assertion shape is therefore "attribute
+      // contains box-shadow" before AND after, but the post-scrub
+      // boxShadow value reflects the new elevation tier when scrubbed
+      // far enough. For a robust assertion that doesn't depend on
+      // tier-bucket boundaries, we assert (a) initial inline style
+      // declares box-shadow + border-radius + padding (proving chrome
+      // is applied at all) and (b) post-scrub the inline style still
+      // declares them. F-3.1c's load-bearing assertion is (a) — pre-
+      // F-3.1c, PlacedWidget produced no chrome-derived inline style
+      // properties whatsoever.
+      const initialStyleAttr = placedWidget.getAttribute("style") ?? ""
+      expect(initialStyleAttr).toMatch(/box-shadow/i)
+      expect(initialStyleAttr).toMatch(/border-radius/i)
+      expect(initialStyleAttr).toMatch(/padding/i)
+
+      // Click the widget → inspector opens → scrub elevation up
+      // enough to cross a resolver tier boundary (25→50→75→100).
+      fireEvent.click(placedWidget)
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("widget-inspector-section"),
+        ).toBeInTheDocument(),
+      )
+      const elevation = await screen.findByLabelText(/elevation/i)
+      // Cross from tier (≤50) up to (≤75) and beyond. Default seed
+      // elevation is 50 (frosted preset). ArrowRight x 30 → elevation
+      // ~80, which crosses two resolver tier boundaries (50→75, 75→100).
+      for (let i = 0; i < 30; i++) {
+        fireEvent.keyDown(elevation, { key: "ArrowRight" })
+      }
+
+      // Debounced save fires.
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+
+      // ASSERTION 1 — PUT body shape (mirrors F-3.1b's existing).
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      const placement = lastBody?.rows?.[0]?.placements?.[0]
+      expect(placement).toBeTruthy()
+      expect(placement.prop_overrides).toBeTruthy()
+      expect(typeof placement.prop_overrides.elevation).toBe("number")
+
+      // ASSERTION 2 — Rendered DOM reflects chrome (NEW for F-3.1c).
+      // Re-read the wrapper after the scrub fires. The element ref
+      // is stable; React mutates the inline style attribute in place.
+      const updatedStyleAttr = placedWidget.getAttribute("style") ?? ""
+      expect(updatedStyleAttr).toMatch(/box-shadow/i)
+      expect(updatedStyleAttr).toMatch(/border-radius/i)
+      expect(updatedStyleAttr).toMatch(/padding/i)
+      // Stronger render-side assertion: the post-scrub style attribute
+      // string differs from the initial one. Elevation crossed two
+      // tier boundaries, so the resolver's boxShadow output changed.
+      expect(updatedStyleAttr).not.toBe(initialStyleAttr)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("subject change resets selection to none", async () => {
     defaultMocks()
     render(
