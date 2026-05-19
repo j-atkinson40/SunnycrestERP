@@ -655,6 +655,141 @@ describe("useFocusTemplateDraft — 410 Gone retry", () => {
   })
 })
 
+// ───────────────────────────────────────────────────────────────────
+// F-3.1a.2 — URL recovery on 410-retry. When the first save in a
+// session 410s and the retry succeeds against a new id, the hook
+// fires `onActiveTemplateIdChange` so the consumer can rewrite the
+// URL. Fires only on actual change; no-op when callback is absent.
+// ───────────────────────────────────────────────────────────────────
+describe("useFocusTemplateDraft — F-3.1a.2 onActiveTemplateIdChange", () => {
+  it("fires callback with new id when 410-retry succeeds against different id", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const staleError = Object.assign(new Error("Gone"), {
+      response: {
+        status: 410,
+        data: {
+          detail: {
+            inactive_template_id: "tpl-001",
+            active_template_id: "tpl-001-v2",
+          },
+        },
+      },
+    })
+    ;(focusTemplatesService.update as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(staleError)
+      .mockResolvedValueOnce({ ...SAMPLE_TEMPLATE, id: "tpl-001-v2" })
+
+    const onActiveTemplateIdChange = vi.fn()
+    const { result } = renderHook(() =>
+      useFocusTemplateDraft("tpl-001", { onActiveTemplateIdChange }),
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.updateSubstrate({ intensity: 95 })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(onActiveTemplateIdChange).toHaveBeenCalledTimes(1)
+    expect(onActiveTemplateIdChange).toHaveBeenCalledWith("tpl-001-v2")
+  })
+
+  it("does NOT fire callback when primary save returns 200 (no retry)", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    ;(
+      focusTemplatesService.update as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({ ...SAMPLE_TEMPLATE })
+
+    const onActiveTemplateIdChange = vi.fn()
+    const { result } = renderHook(() =>
+      useFocusTemplateDraft("tpl-001", { onActiveTemplateIdChange }),
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.updateSubstrate({ intensity: 95 })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(onActiveTemplateIdChange).not.toHaveBeenCalled()
+  })
+
+  it("does not throw when consumer omits the callback (option absent)", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const staleError = Object.assign(new Error("Gone"), {
+      response: {
+        status: 410,
+        data: {
+          detail: {
+            inactive_template_id: "tpl-001",
+            active_template_id: "tpl-001-v2",
+          },
+        },
+      },
+    })
+    ;(focusTemplatesService.update as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(staleError)
+      .mockResolvedValueOnce({ ...SAMPLE_TEMPLATE, id: "tpl-001-v2" })
+
+    // No options arg — callback absent. Hook must not throw.
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.updateSubstrate({ intensity: 95 })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(result.current.template?.id).toBe("tpl-001-v2")
+    expect(result.current.error).toBeNull()
+  })
+
+  it("does NOT fire callback when retry resolves back to original templateId", async () => {
+    // Defensive: if backend ever returned the same id as active
+    // (semantically a non-event), the callback must not fire.
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const staleError = Object.assign(new Error("Gone"), {
+      response: {
+        status: 410,
+        data: {
+          detail: {
+            inactive_template_id: "tpl-001",
+            // Pathological: server returns a different id mid-retry,
+            // but updated row ultimately echoes the original id.
+            active_template_id: "tpl-001-temp",
+          },
+        },
+      },
+    })
+    ;(focusTemplatesService.update as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(staleError)
+      // Retry resolves to the ORIGINAL templateId echo — no URL change
+      // needed because URL still matches.
+      .mockResolvedValueOnce({ ...SAMPLE_TEMPLATE, id: "tpl-001" })
+
+    const onActiveTemplateIdChange = vi.fn()
+    const { result } = renderHook(() =>
+      useFocusTemplateDraft("tpl-001", { onActiveTemplateIdChange }),
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.updateSubstrate({ intensity: 95 })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(onActiveTemplateIdChange).not.toHaveBeenCalled()
+  })
+})
+
 describe("useFocusTemplateDraft — sparse response dirty clear (C-2.1.3 discipline)", () => {
   it("clears isDirty after save when response substrate has fewer keys than draft", async () => {
     ;(

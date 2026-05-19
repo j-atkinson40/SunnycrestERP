@@ -421,6 +421,83 @@ describe("FocusBuilderPage", () => {
     expect(screen.getByText(/Arrives in F-4/)).toBeInTheDocument()
   })
 
+  // ─────────────────────────────────────────────────────────────────
+  // F-3.1a.2 — URL recovery on 410-retry. When the operator opens
+  // a template via a stale URL (template_id was deactivated by a
+  // prior session's version-bump on the backend), the first save
+  // in this session 410s and the hook retries against the new
+  // active id. The page must rewrite the URL `?subject=template:<new>`
+  // with `{ replace: true }` so a subsequent refresh GETs the
+  // still-active row instead of the deactivated snapshot.
+  // ─────────────────────────────────────────────────────────────────
+  it("F-3.1a.2 — URL recovers to active template id when initial save 410s", async () => {
+    defaultMocks()
+    // First PUT 410s with active_template_id pointing at the new row.
+    const staleError = Object.assign(new Error("Gone"), {
+      response: {
+        status: 410,
+        data: {
+          detail: {
+            inactive_template_id: "tpl-1",
+            active_template_id: "tpl-1-v2",
+            slug: "sched-fh",
+            scope: "vertical_default",
+            vertical: "manufacturing",
+          },
+        },
+      },
+    })
+    ;(focusTemplatesService.update as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(staleError)
+      .mockResolvedValueOnce({ ...t, id: "tpl-1-v2" })
+
+    render(
+      <MemoryRouter
+        initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+
+    // Canvas mounts in template mode for the (stale) URL-bound id.
+    await waitFor(() => {
+      const canvas = screen.getByTestId("focus-builder-canvas")
+      expect(canvas).toHaveAttribute("data-canvas-mode", "template")
+    })
+
+    // Click canvas background → substrate + typography sections.
+    fireEvent.click(screen.getByTestId("focus-builder-canvas"))
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("focus-builder-inspector"),
+      ).toBeInTheDocument(),
+    )
+    // Trigger a save by clicking a substrate preset pill.
+    const pill = await screen.findByTestId("substrate-pill-morning-warm")
+    fireEvent.click(pill)
+
+    // Debounced save fires after 300ms; the 410-retry resolves to
+    // tpl-1-v2; the page callback rewrites URL to subject=template:tpl-1-v2.
+    await waitFor(
+      () => {
+        expect(focusTemplatesService.update).toHaveBeenCalledTimes(2)
+      },
+      { timeout: 2000 },
+    )
+
+    // URL recovered. We assert via the canvas mode + the subsequent
+    // GET against the new id: the page re-derives `templateSubjectId`
+    // from the URL, the hook re-mounts against tpl-1-v2, the canvas
+    // re-renders. Verify the subject-binding via a second GET fired
+    // on the new id (the hook fetches on templateId transition).
+    await waitFor(
+      () => {
+        expect(focusTemplatesService.get).toHaveBeenCalledWith("tpl-1-v2")
+      },
+      { timeout: 2000 },
+    )
+  })
+
   it("subject change resets selection to none", async () => {
     defaultMocks()
     render(

@@ -195,8 +195,29 @@ function extractStaleActiveTemplateId(err: unknown): string | null {
     : null
 }
 
+/**
+ * F-3.1a.2 — URL recovery on 410-retry.
+ *
+ * When a session's first save against the URL-bound `templateId`
+ * 410s, the hook swaps `activeTemplateIdRef.current` to the
+ * `active_template_id` returned in the response body and retries
+ * the PUT. If the consumer provides `onActiveTemplateIdChange`,
+ * the hook fires it with the new id so the URL can be rewritten
+ * (`?subject=template:<new-id>`) before the next refresh — without
+ * this, refresh re-GETs the now-deactivated id and surfaces an
+ * inactive snapshot that predates the operator's saves.
+ *
+ * Fires ONLY when the active id actually changes from its prior
+ * value. A retry that lands on the same id (or a primary save that
+ * succeeds without retry) does NOT fire the callback.
+ */
+export interface UseFocusTemplateDraftOptions {
+  onActiveTemplateIdChange?: (newId: string) => void
+}
+
 export function useFocusTemplateDraft(
   templateId: string | null,
+  options?: UseFocusTemplateDraftOptions,
 ): UseFocusTemplateDraftResult {
   const [template, setTemplate] = useState<TemplateRecord | null>(null)
 
@@ -223,6 +244,15 @@ export function useFocusTemplateDraft(
 
   // Active id may diverge from `templateId` after a 410-Gone retry.
   const activeTemplateIdRef = useRef<string | null>(null)
+
+  // F-3.1a.2 — callback ref so deps stay minimal and the latest
+  // consumer-supplied callback is always called (no closure capture).
+  const onActiveTemplateIdChangeRef = useRef<
+    ((newId: string) => void) | undefined
+  >(options?.onActiveTemplateIdChange)
+  useEffect(() => {
+    onActiveTemplateIdChangeRef.current = options?.onActiveTemplateIdChange
+  }, [options?.onActiveTemplateIdChange])
 
   // Three draft refs — `save` reads from these, NOT from the closure-
   // captured draft state. This is the C-2.1.4 discipline applied to
@@ -405,6 +435,16 @@ export function useFocusTemplateDraft(
         try {
           const updated = await focusTemplatesService.update(activeId, payload)
           activeTemplateIdRef.current = updated.id
+          // F-3.1a.2 — fire URL-recovery callback once the retry has
+          // actually persisted. We only fire when the resolved id
+          // differs from the consumer's bound `templateId` AND a
+          // callback is wired. Subsequent saves within this session
+          // PUT against `updated.id` directly (no further retry,
+          // session-aware fast path on the backend), so the callback
+          // fires at most once per id transition.
+          if (updated.id !== templateId) {
+            onActiveTemplateIdChangeRef.current?.(updated.id)
+          }
           const chromeOv = (updated.chrome_overrides ??
             {}) as ChromeOverridesBlob
           const sub = (updated.substrate ?? {}) as SubstrateBlob

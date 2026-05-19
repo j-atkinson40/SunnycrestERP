@@ -121,7 +121,33 @@ function FocusBuilderPageInner() {
   const templateSubjectId = subject?.kind === "template" ? subject.id : null
 
   const coreHook = useFocusCoreDraft(coreSubjectId)
-  const templateHook = useFocusTemplateDraft(templateSubjectId)
+  // F-3.1a.2 — URL recovery on 410-retry. When the first save of a
+  // session 410s (because the URL-bound template_id was deactivated
+  // by a prior session's version-bump on the backend), the hook
+  // swaps to the active id and retries; the callback below rewrites
+  // the URL `?subject=template:<new-id>` with `{ replace: true }` so
+  // refresh GETs the still-active row instead of the deactivated
+  // snapshot. `{ replace: true }` is mandatory — without it every
+  // version-bump grows browser history.
+  // F-3.1a.2 — URL recovery on 410-retry. When the first save of a
+  // session 410s (because the URL-bound template_id was deactivated
+  // by a prior session's version-bump on the backend), the hook
+  // swaps to the active id and retries; the callback below rewrites
+  // the URL `?subject=template:<new-id>` with `{ replace: true }` so
+  // refresh GETs the still-active row instead of the deactivated
+  // snapshot. `{ replace: true }` is mandatory — without it every
+  // version-bump grows browser history.
+  const handleActiveTemplateIdChange = React.useCallback(
+    (newId: string) => {
+      const params = new URLSearchParams(searchParams)
+      params.set("subject", `template:${newId}`)
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+  const templateHook = useFocusTemplateDraft(templateSubjectId, {
+    onActiveTemplateIdChange: handleActiveTemplateIdChange,
+  })
 
   // ── Selection reset on subject change ─────────────────────────────
   const { selection, setSelection } = useFocusBuilderSelection()
