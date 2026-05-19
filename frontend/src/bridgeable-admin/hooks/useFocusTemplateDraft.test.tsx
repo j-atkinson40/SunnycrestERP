@@ -709,6 +709,51 @@ describe("useFocusTemplateDraft — F-3 widget mutators", () => {
     expect(result.current.isDirty).toBe(false)
   })
 
+  // F-3.1a — load-side adapter contract. Backend stores canonical
+  // shape (`placement_id` / `component_name` / `starting_column` /
+  // `prop_overrides`). Hook must adapt back to frontend-typed view
+  // for downstream consumers (FocusBuilderCanvas reads
+  // `placement.id` + `widget_slug` + `column_start` + `chrome`).
+  //
+  // Verify-against-pre-fix: comment out the `backendToFrontendRows`
+  // call in the hook's load path; this test fails with
+  // `placements[0].id === undefined`, `widget_slug === undefined`,
+  // `column_start === undefined`, `chrome === undefined`. Restored.
+  it("F-3.1a — load adapts canonical backend shape to frontend view", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      ...SAMPLE_TEMPLATE,
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              placement_id: "w-canonical",
+              component_kind: "widget",
+              component_name: "day-strip-widget",
+              starting_column: 4,
+              column_span: 4,
+              prop_overrides: { daysVisible: 7 },
+            },
+          ],
+        },
+      ],
+    })
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.rowsDraft).toHaveLength(1)
+    const p = result.current.rowsDraft[0].placements[0]
+    expect(p.id).toBe("w-canonical")
+    expect(p.widget_slug).toBe("day-strip-widget")
+    // starting_column=4 (0-indexed) → column_start=5 (1-indexed).
+    expect(p.column_start).toBe(5)
+    expect(p.column_span).toBe(4)
+    expect(p.chrome).toEqual({ daysVisible: 7 })
+    expect(result.current.isDirty).toBe(false)
+  })
+
   it("rowsDraft loads existing rows from server response", async () => {
     ;(
       focusTemplatesService.get as ReturnType<typeof vi.fn>
@@ -886,10 +931,14 @@ describe("useFocusTemplateDraft — F-3 widget mutators", () => {
     )
     const updateMock = focusTemplatesService.update as ReturnType<typeof vi.fn>
     expect(updateMock.mock.calls.length).toBe(1)
+    // F-3.1a — payload is now backend canonical shape (post-adapter).
+    // Frontend `chrome.elevation` maps to backend `prop_overrides.elevation`.
     const payload = updateMock.mock.calls[0][1] as {
-      rows: Array<{ placements: Array<{ chrome: { elevation: number } }> }>
+      rows: Array<{
+        placements: Array<{ prop_overrides?: { elevation: number } }>
+      }>
     }
-    expect(payload.rows[0].placements[0].chrome.elevation).toBe(75)
+    expect(payload.rows[0].placements[0].prop_overrides?.elevation).toBe(75)
     await waitFor(() => expect(result.current.isDirty).toBe(false))
   })
 

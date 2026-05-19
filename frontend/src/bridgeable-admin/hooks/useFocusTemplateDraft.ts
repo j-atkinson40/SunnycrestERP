@@ -35,6 +35,10 @@ import {
   focusTemplatesService,
   type TemplateRecord,
 } from "@/bridgeable-admin/services/focus-templates-service"
+import {
+  backendToFrontendRows,
+  frontendToBackendRows,
+} from "./_placement-adapter"
 
 export type ChromeOverridesBlob = Record<string, unknown>
 export type SubstrateBlob = Record<string, unknown>
@@ -277,7 +281,14 @@ export function useFocusTemplateDraft(
         const chromeOv = (rec.chrome_overrides ?? {}) as ChromeOverridesBlob
         const sub = (rec.substrate ?? {}) as SubstrateBlob
         const typ = (rec.typography ?? {}) as TypographyBlob
-        const rows = (rec.rows ?? []) as unknown as RowsBlob
+        // F-3.1a — adapt backend canonical placement shape to the
+        // hook's frontend-typed view. Backend stores `placement_id`/
+        // `component_name`/`starting_column`/`prop_overrides`;
+        // frontend uses `id`/`widget_slug`/`column_start` (1-indexed)/
+        // `chrome`. The adapter is tolerant of either-shape input so
+        // legacy frontend-shaped JSONB still in the DB round-trips
+        // without loss.
+        const rows = backendToFrontendRows(rec.rows ?? [])
         setTemplate(rec)
         setChromeOverridesDraft({ ...chromeOv })
         setSubstrateDraft({ ...sub })
@@ -339,7 +350,12 @@ export function useFocusTemplateDraft(
     const latestChromeOverrides = chromeOverridesRef.current
     const latestSubstrate = substrateRef.current
     const latestTypography = typographyRef.current
-    const latestRows = rowsRef.current
+    // F-3.1a — adapt frontend-typed rows to backend canonical shape
+    // before sending. Without this translation, `_validate_placement`
+    // on the backend rejects the payload (missing `placement_id` /
+    // `component_kind` / `starting_column` keys) and the save is a
+    // silent no-op.
+    const latestRows = frontendToBackendRows(rowsRef.current)
 
     const payloadBase = editSessionId
       ? {
@@ -371,7 +387,10 @@ export function useFocusTemplateDraft(
       const chromeOv = (updated.chrome_overrides ?? {}) as ChromeOverridesBlob
       const sub = (updated.substrate ?? {}) as SubstrateBlob
       const typ = (updated.typography ?? {}) as TypographyBlob
-      const rows = (updated.rows ?? []) as unknown as RowsBlob
+      // F-3.1a — backend echoes the canonical shape it persisted;
+      // adapt back to frontend-typed view for snapshot equality with
+      // the draft state.
+      const rows = backendToFrontendRows(updated.rows ?? [])
       setTemplate(updated)
       setChromeOverridesSnapshot({ ...chromeOv })
       setSubstrateSnapshot({ ...sub })
@@ -390,7 +409,9 @@ export function useFocusTemplateDraft(
             {}) as ChromeOverridesBlob
           const sub = (updated.substrate ?? {}) as SubstrateBlob
           const typ = (updated.typography ?? {}) as TypographyBlob
-          const rows = (updated.rows ?? []) as unknown as RowsBlob
+          // F-3.1a — adapt the 410-retry response echo same as the
+          // primary save success path.
+          const rows = backendToFrontendRows(updated.rows ?? [])
           setTemplate(updated)
           setChromeOverridesSnapshot({ ...chromeOv })
           setSubstrateSnapshot({ ...sub })
