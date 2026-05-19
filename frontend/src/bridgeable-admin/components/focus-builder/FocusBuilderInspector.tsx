@@ -163,6 +163,7 @@ export function FocusBuilderInspector(props: FocusBuilderInspectorProps) {
           placement={placement}
           onUpdateWidget={(id, partial) => templateHook.updateWidget(id, partial)}
           onRemoveWidget={(id) => templateHook.removeWidget(id)}
+          themeTokens={themeTokens}
         />
       )
     }

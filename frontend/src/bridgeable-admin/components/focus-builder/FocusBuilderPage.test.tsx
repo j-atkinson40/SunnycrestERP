@@ -498,6 +498,98 @@ describe("FocusBuilderPage", () => {
     )
   })
 
+  // ─────────────────────────────────────────────────────────────────
+  // F-3.1b — Chrome inspector: integration test verifying widget
+  // chrome scrubs persist end-to-end through the placement adapter.
+  //
+  // Per the today-filed canon entry "Mock-only tests verify one side
+  // of frontend↔backend contracts; cross-side contracts require
+  // integration tests", this exercises the full operator-flow:
+  // render → load template with seeded widget → click widget →
+  // inspector opens → scrub elevation → debounced save fires →
+  // assert PUT body's prop_overrides shape (verifies the adapter
+  // still translates `chrome` → `prop_overrides` correctly after
+  // F-3.1b's Chrome section landed).
+  // ─────────────────────────────────────────────────────────────────
+  it("F-3.1b — widget chrome scrub persists through adapter as prop_overrides", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      // Seed a template carrying one widget placement so we can click
+      // it without going through the drag-from-palette flow.
+      const seededTemplate: TemplateRecord = {
+        ...t,
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "w-int-1",
+                component_kind: "widget",
+                component_name: "day-strip-widget",
+                starting_column: 0,
+                column_span: 12,
+                // prop_overrides absent — defaults will render
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        seededTemplate,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        seededTemplate,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      // Wait for placed widget to mount.
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("focus-builder-placed-widget"),
+        ).toBeInTheDocument(),
+      )
+
+      // Click the placed widget — opens widget inspector with Chrome section.
+      fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("widget-inspector-section"),
+        ).toBeInTheDocument(),
+      )
+
+      // Chrome section is expanded by default per F-3.1b decision.
+      const elevation = await screen.findByLabelText(/elevation/i)
+      // Scrub via keyboard ArrowRight (step = 1 by default).
+      fireEvent.keyDown(elevation, { key: "ArrowRight" })
+
+      // Debounced save fires (queueSave). Advance past the debounce.
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+
+      // Inspect the PUT body's prop_overrides — must carry elevation.
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      const placement = lastBody?.rows?.[0]?.placements?.[0]
+      expect(placement).toBeTruthy()
+      expect(placement.prop_overrides).toBeTruthy()
+      expect(typeof placement.prop_overrides.elevation).toBe("number")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("subject change resets selection to none", async () => {
     defaultMocks()
     render(
