@@ -116,7 +116,19 @@ export function FocusBuilderThemePicker(props: FocusBuilderThemePickerProps) {
         <SubstratePresetPicker
           value={(substrateView.preset ?? null) as SubstratePresetSlug | null}
           onChange={(p) =>
-            templateHook.updateSubstrate({ preset: p as SubstratePreset | null })
+            // F-4.1 — chip-click semantic = "apply preset wholesale".
+            // Null out specific fields so the resolver's
+            // expandSubstratePreset applies the preset's defaults
+            // (specifics-win priority is correct for the F-2 inspector's
+            // fine-grained scrubbing path; chip click is the
+            // operator-intent override).
+            templateHook.updateSubstrate({
+              preset: p as SubstratePreset | null,
+              intensity: null,
+              base_token: null,
+              accent_token_1: null,
+              accent_token_2: null,
+            })
           }
         />
       </div>
@@ -134,7 +146,19 @@ export function FocusBuilderThemePicker(props: FocusBuilderThemePickerProps) {
         <TypographyPresetPicker
           value={(typographyView.preset ?? null) as TypographyPresetSlug | null}
           onChange={(p) =>
-            templateHook.updateTypography({ preset: p as TypographyPreset | null })
+            // F-4.1 — chip-click semantic = "apply preset wholesale".
+            // Null out specific fields so the resolver's
+            // expandTypographyPreset applies the preset's defaults
+            // (resolver's specifics-win priority is correct for F-2
+            // inspector scrubbing; chip click is the operator-intent
+            // wholesale override).
+            templateHook.updateTypography({
+              preset: p as TypographyPreset | null,
+              heading_weight: null,
+              body_weight: null,
+              heading_color_token: null,
+              body_color_token: null,
+            })
           }
         />
       </div>

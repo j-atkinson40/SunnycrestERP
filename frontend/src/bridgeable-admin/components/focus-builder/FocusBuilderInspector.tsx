@@ -405,7 +405,19 @@ function SubstrateSection({
             (substrateView.preset ?? null) as SubstratePresetSlug | null
           }
           onChange={(p) =>
-            onUpdate({ preset: p as SubstratePreset | null })
+            // F-4.1 — chip-click = "apply preset wholesale" (canon
+            // parity with F-4 theme picker). Null out scrubbed
+            // specifics so the resolver's expandSubstratePreset
+            // applies preset defaults. Specific-field scrubbing via
+            // ScrubbableButton / TokenSwatchPicker below the chip
+            // still takes priority (resolver's specifics-win path).
+            onUpdate({
+              preset: p as SubstratePreset | null,
+              intensity: null,
+              base_token: null,
+              accent_token_1: null,
+              accent_token_2: null,
+            })
           }
         />
       </PropertyRow>
@@ -489,7 +501,19 @@ function TypographySection({
         <TypographyPresetPicker
           value={(view.preset ?? null) as TypographyPresetSlug | null}
           onChange={(p) =>
-            onUpdate({ preset: p as TypographyPreset | null })
+            // F-4.1 — chip-click = "apply preset wholesale" (canon
+            // parity with F-4 theme picker). Null out scrubbed
+            // specifics so the resolver's expandTypographyPreset
+            // applies preset defaults. Specific-field scrubbing via
+            // ScrubbableButton below the chip still takes priority
+            // (resolver's specifics-win path).
+            onUpdate({
+              preset: p as TypographyPreset | null,
+              heading_weight: null,
+              body_weight: null,
+              heading_color_token: null,
+              body_color_token: null,
+            })
           }
         />
       </PropertyRow>

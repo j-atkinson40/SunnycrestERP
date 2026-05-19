@@ -101,7 +101,11 @@ describe("FocusBuilderThemePicker", () => {
     expect(chip.getAttribute("data-active")).toBe("true")
   })
 
-  it("clicking a substrate chip fires updateSubstrate with preset-only partial", () => {
+  // F-4.1 — chip-click = "apply preset wholesale". Payload nulls out
+  // specifics so the resolver's expandXPreset applies preset defaults.
+  // (Resolver specifics-win priority is correct for the inspector's
+  // fine-grained scrubbing path — the chip is the wholesale override.)
+  it("clicking a substrate chip fires updateSubstrate with preset + nulled specifics", () => {
     const updateSubstrate = vi.fn()
     render(
       <FocusBuilderThemePicker
@@ -111,10 +115,16 @@ describe("FocusBuilderThemePicker", () => {
     )
     fireEvent.click(screen.getByTestId("substrate-pill-evening-lounge"))
     expect(updateSubstrate).toHaveBeenCalledTimes(1)
-    expect(updateSubstrate).toHaveBeenCalledWith({ preset: "evening-lounge" })
+    expect(updateSubstrate).toHaveBeenCalledWith({
+      preset: "evening-lounge",
+      intensity: null,
+      base_token: null,
+      accent_token_1: null,
+      accent_token_2: null,
+    })
   })
 
-  it("clicking a typography chip fires updateTypography with preset-only partial", () => {
+  it("clicking a typography chip fires updateTypography with preset + nulled specifics", () => {
     const updateTypography = vi.fn()
     render(
       <FocusBuilderThemePicker
@@ -124,15 +134,21 @@ describe("FocusBuilderThemePicker", () => {
     )
     fireEvent.click(screen.getByTestId("typography-pill-frosted-text"))
     expect(updateTypography).toHaveBeenCalledTimes(1)
-    expect(updateTypography).toHaveBeenCalledWith({ preset: "frosted-text" })
+    expect(updateTypography).toHaveBeenCalledWith({
+      preset: "frosted-text",
+      heading_weight: null,
+      body_weight: null,
+      heading_color_token: null,
+      body_color_token: null,
+    })
   })
 
   // C-1 SubstratePresetPicker emits null when the active chip is
-  // clicked (toggle-to-clear semantics). F-4 preserves that
-  // behavior — the theme picker is a thin wrapper, not a
-  // re-implementation of the picker semantics. Clicking the
-  // currently-selected chip clears the preset.
-  it("clicking currently-selected chip clears the preset (toggle-to-clear from C-1)", () => {
+  // clicked (toggle-to-clear semantics). F-4.1 preserves that
+  // behavior — clicking the currently-selected chip clears the
+  // preset AND nulls specifics (preset null + null specifics =
+  // canvas falls back to defaults; canon-correct).
+  it("clicking currently-selected chip clears preset AND nulls specifics", () => {
     const updateSubstrate = vi.fn()
     render(
       <FocusBuilderThemePicker
@@ -144,6 +160,12 @@ describe("FocusBuilderThemePicker", () => {
       />,
     )
     fireEvent.click(screen.getByTestId("substrate-pill-morning-warm"))
-    expect(updateSubstrate).toHaveBeenCalledWith({ preset: null })
+    expect(updateSubstrate).toHaveBeenCalledWith({
+      preset: null,
+      intensity: null,
+      base_token: null,
+      accent_token_1: null,
+      accent_token_2: null,
+    })
   })
 })
