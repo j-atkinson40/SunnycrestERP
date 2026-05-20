@@ -61,13 +61,27 @@
 
 import type { FocusRow, RowsBlob, WidgetPlacement } from "./useFocusTemplateDraft"
 
-/** Backend canonical placement shape — mirrors `_validate_placement`. */
+/** Backend canonical placement shape — mirrors `_validate_placement`.
+ *
+ * FF-1 extends with optional free-form positioning fields (x/y/width/
+ * height/z_index in pixels). A given backend placement carries EITHER
+ * grid fields (starting_column + column_span) OR free-form fields
+ * (x/y/width/height + optional z_index). The backend validator
+ * enforces template-level consistency (all placements same shape).
+ */
 export interface BackendPlacement {
   placement_id: string
   component_kind: string
   component_name: string
-  starting_column: number
-  column_span: number
+  // Grid-shape (F-series; optional in FF-1+)
+  starting_column?: number
+  column_span?: number
+  // Free-form-shape (FF-1, additive)
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  z_index?: number
   prop_overrides?: Record<string, unknown>
   // Pass-through fields the adapter doesn't translate but preserves
   // on round-trip (display_config, is_core, etc.).
@@ -88,24 +102,52 @@ export type BackendRowsBlob = BackendRow[]
 const WIDGET_COMPONENT_KIND = "widget"
 
 /**
+ * FF-1: classify a frontend placement as 'freeform' or 'grid'.
+ *
+ * Field-presence detection mirrors the backend validator's dispatch.
+ * A placement carrying any of x/y/width/height is treated as
+ * free-form; otherwise grid. When neither set of fields is present
+ * (legacy/test fixtures), defaults to grid for back-compat.
+ */
+function isFreeFormPlacement(p: WidgetPlacement): boolean {
+  return (
+    p.x !== undefined ||
+    p.y !== undefined ||
+    p.width !== undefined ||
+    p.height !== undefined
+  )
+}
+
+/**
  * Frontend → backend. Used on save (PUT body construction).
  *
- * `column_start` is 1-indexed on the frontend; backend
+ * Grid shape: `column_start` is 1-indexed on the frontend; backend
  * `starting_column` is 0-indexed. Subtract 1 on send. Clamp at 0 so
  * a frontend value of 0 (theoretically invalid but defensive) maps
- * to backend 0 rather than -1 (which would trip the
- * `starting_column < 0` validation).
+ * to backend 0 rather than -1.
+ *
+ * FF-1 free-form shape: x/y/width/height/z_index round-trip 1:1
+ * (pixel coords, no indexing translation per investigation Q-25).
  */
 export function frontendToBackendPlacement(
   p: WidgetPlacement,
 ): BackendPlacement {
-  const startingColumn = Math.max(0, (p.column_start ?? 1) - 1)
   const out: BackendPlacement = {
     placement_id: p.id,
     component_kind: WIDGET_COMPONENT_KIND,
     component_name: p.widget_slug,
-    starting_column: startingColumn,
-    column_span: p.column_span,
+  }
+  if (isFreeFormPlacement(p)) {
+    // FF-1 free-form fields, 1:1.
+    if (p.x !== undefined) out.x = p.x
+    if (p.y !== undefined) out.y = p.y
+    if (p.width !== undefined) out.width = p.width
+    if (p.height !== undefined) out.height = p.height
+    if (p.z_index !== undefined) out.z_index = p.z_index
+  } else {
+    // F-series grid fields with 1↔0-indexed column translation.
+    out.starting_column = Math.max(0, (p.column_start ?? 1) - 1)
+    out.column_span = p.column_span ?? 4
   }
   // Only emit prop_overrides when chrome is a non-empty object; the
   // backend treats absence and empty-dict equivalently and absent
@@ -151,27 +193,49 @@ export function backendToFrontendPlacement(
       : typeof rec.widget_slug === "string"
         ? rec.widget_slug
         : "unknown"
-  const startingColumn =
-    typeof rec.starting_column === "number"
-      ? rec.starting_column
-      : typeof rec.column_start === "number"
-        ? rec.column_start - 1 // already 1-indexed input — back to 0
-        : 0
-  const columnSpan =
-    typeof rec.column_span === "number" ? rec.column_span : 4
   const propOverrides =
     rec.prop_overrides && typeof rec.prop_overrides === "object"
       ? (rec.prop_overrides as Record<string, unknown>)
       : rec.chrome && typeof rec.chrome === "object"
         ? (rec.chrome as Record<string, unknown>)
         : {}
-  return {
+
+  // FF-1: detect free-form shape by presence of positioning fields.
+  // Both shapes carry placement_id + component_kind + component_name;
+  // they differ on geometry fields.
+  const isFreeForm =
+    typeof rec.x === "number" ||
+    typeof rec.y === "number" ||
+    typeof rec.width === "number" ||
+    typeof rec.height === "number"
+
+  const out: WidgetPlacement = {
     id,
     widget_slug: widgetSlug,
-    column_start: startingColumn + 1,
-    column_span: columnSpan,
     chrome: { ...propOverrides },
   }
+
+  if (isFreeForm) {
+    // 1:1 round-trip (pixels, no indexing translation per Q-25).
+    if (typeof rec.x === "number") out.x = rec.x
+    if (typeof rec.y === "number") out.y = rec.y
+    if (typeof rec.width === "number") out.width = rec.width
+    if (typeof rec.height === "number") out.height = rec.height
+    if (typeof rec.z_index === "number") out.z_index = rec.z_index
+  } else {
+    // F-series grid shape with 0→1-indexed column translation.
+    const startingColumn =
+      typeof rec.starting_column === "number"
+        ? rec.starting_column
+        : typeof rec.column_start === "number"
+          ? rec.column_start - 1 // already 1-indexed input — back to 0
+          : 0
+    const columnSpan =
+      typeof rec.column_span === "number" ? rec.column_span : 4
+    out.column_start = startingColumn + 1
+    out.column_span = columnSpan
+  }
+  return out
 }
 
 /** Row-level frontend → backend. Preserves row_index + column_count. */

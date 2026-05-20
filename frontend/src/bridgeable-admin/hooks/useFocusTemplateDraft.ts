@@ -48,8 +48,28 @@ export type TypographyBlob = Record<string, unknown>
  * F-3 — widget placement shape inside the `rows` JSONB blob.
  *
  * A row holds `placements`, each placement targets a widget by slug
- * and carries a chrome override blob. `column_start` / `column_span`
- * are 1-indexed against `column_count` (default 12).
+ * and carries a chrome override blob.
+ *
+ * Two coexisting placement shapes (both round-trip through the same
+ * `_placement-adapter.ts`):
+ *
+ *   - **Grid shape** (F-series): `column_start` (1-indexed against
+ *     `column_count`, default 12) + `column_span`. Pre-FF-1 default.
+ *   - **Free-form shape** (FF-1, this sub-arc): `x` / `y` / `width` /
+ *     `height` in pixels + optional `z_index`. Positioned absolutely
+ *     against the canvas dimensions in `canvas_config.width / .height`
+ *     (default 1200×800).
+ *
+ * Per FF-series investigation 2026-05-20 Q-3: separate top-level
+ * fields, NOT a nested positioning blob. Q-25: adapter handles both
+ * shapes 1:1 (no off-by-one for pixel coords; grid retains the
+ * F-3.1a 1↔0-indexed column translation).
+ *
+ * Template-level consistency is enforced by the BACKEND validator:
+ * all placements in a single template must be the same shape. The
+ * frontend never authors mixed-shape templates (FF-2's drop-handler
+ * emits only free-form for new templates; the canvas substrate
+ * detects shape per-template at render time).
  *
  * The on-the-wire shape stays `Array<Record<string, unknown>>` (the
  * existing TemplateRecord.rows contract); the interfaces below are
@@ -60,8 +80,16 @@ export type TypographyBlob = Record<string, unknown>
 export interface WidgetPlacement {
   id: string
   widget_slug: string
-  column_start: number
-  column_span: number
+  // ── Grid-shape fields (F-series; optional in FF-1+) ───────────
+  column_start?: number
+  column_span?: number
+  // ── Free-form-shape fields (FF-1, additive) ───────────────────
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  z_index?: number
+  // ── Common ─────────────────────────────────────────────────────
   chrome: Record<string, unknown>
 }
 
@@ -85,12 +113,47 @@ export interface UseFocusTemplateDraftResult {
   /**
    * F-3 — widget placement mutators. Each reads-modifies-writes the
    * rowsRef (NOT closure) and triggers the existing debounced save.
+   *
+   * FF-1: `addWidget` and `updateWidget` accept optional free-form
+   * positioning fields (x/y/width/height/z_index in pixels). Grid
+   * fields remain accepted; the two shapes are mutually exclusive at
+   * the BACKEND validator (template-level consistency). FF-2 wires
+   * the canvas substrate to call addWidget with free-form positioning
+   * exclusively for new templates.
    */
   addWidget: (
     widgetSlug: string,
-    position?: { rowIndex?: number; columnStart?: number; columnSpan?: number },
+    position?: {
+      // Grid shape
+      rowIndex?: number
+      columnStart?: number
+      columnSpan?: number
+      // FF-1 free-form shape
+      x?: number
+      y?: number
+      width?: number
+      height?: number
+      z_index?: number
+    },
   ) => string
-  updateWidget: (widgetId: string, partialChrome: Record<string, unknown>) => void
+  updateWidget: (
+    widgetId: string,
+    partial:
+      | Record<string, unknown>
+      | Partial<
+          Pick<
+            WidgetPlacement,
+            | "x"
+            | "y"
+            | "width"
+            | "height"
+            | "z_index"
+            | "column_start"
+            | "column_span"
+            | "chrome"
+          >
+        >,
+  ) => void
   removeWidget: (widgetId: string) => void
   moveWidget: (
     widgetId: string,
@@ -587,24 +650,47 @@ export function useFocusTemplateDraft(
         rowIndex?: number
         columnStart?: number
         columnSpan?: number
+        x?: number
+        y?: number
+        width?: number
+        height?: number
+        z_index?: number
       },
     ): string => {
       const newId = generateWidgetId()
-      const columnSpan = position?.columnSpan ?? 4
-      const columnStart = position?.columnStart ?? 1
       const targetRowIndex = position?.rowIndex
       const current = rowsRef.current
       const next: RowsBlob = current.map((r) => ({
         ...r,
         placements: r.placements?.map((p) => ({ ...p })) ?? [],
       }))
+
+      // FF-1: detect free-form vs grid by which positioning fields the
+      // caller supplied. If ANY of x/y/width/height present → free-form.
+      // Otherwise → grid (F-series default, preserved for existing
+      // F-3 callers + F-series test fixtures).
+      const isFreeForm =
+        position?.x !== undefined ||
+        position?.y !== undefined ||
+        position?.width !== undefined ||
+        position?.height !== undefined
+
       const placement: WidgetPlacement = {
         id: newId,
         widget_slug: widgetSlug,
-        column_start: columnStart,
-        column_span: columnSpan,
         chrome: {},
       }
+      if (isFreeForm) {
+        if (position?.x !== undefined) placement.x = position.x
+        if (position?.y !== undefined) placement.y = position.y
+        if (position?.width !== undefined) placement.width = position.width
+        if (position?.height !== undefined) placement.height = position.height
+        if (position?.z_index !== undefined) placement.z_index = position.z_index
+      } else {
+        placement.column_start = position?.columnStart ?? 1
+        placement.column_span = position?.columnSpan ?? 4
+      }
+
       let row: FocusRow | undefined
       if (typeof targetRowIndex === "number") {
         row = next.find((r) => r.row_index === targetRowIndex)
@@ -628,16 +714,45 @@ export function useFocusTemplateDraft(
   )
 
   const updateWidget = useCallback(
-    (widgetId: string, partialChrome: Record<string, unknown>) => {
+    (widgetId: string, partial: Record<string, unknown>) => {
       const current = rowsRef.current
       let found = false
+      // FF-1: positioning-field keys are split off from the partial
+      // and applied as top-level placement field updates; everything
+      // else continues to merge into the chrome blob. This preserves
+      // F-3 callers (chrome merge) AND lets FF-3+ drag/resize gestures
+      // call `updateWidget(id, { x: 100, y: 200 })` to commit position
+      // changes without re-implementing the mutator pipeline.
+      const POSITIONING_KEYS = [
+        "x",
+        "y",
+        "width",
+        "height",
+        "z_index",
+        "column_start",
+        "column_span",
+      ] as const
+      const placementUpdates: Partial<WidgetPlacement> = {}
+      const chromeUpdates: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(partial)) {
+        if ((POSITIONING_KEYS as readonly string[]).includes(k)) {
+          ;(placementUpdates as Record<string, unknown>)[k] = v
+        } else {
+          chromeUpdates[k] = v
+        }
+      }
       const next: RowsBlob = current.map((r) => ({
         ...r,
         placements:
           r.placements?.map((p) => {
             if (p.id === widgetId) {
               found = true
-              return { ...p, chrome: { ...p.chrome, ...partialChrome } }
+              const merged: WidgetPlacement = {
+                ...p,
+                ...placementUpdates,
+                chrome: { ...p.chrome, ...chromeUpdates },
+              }
+              return merged
             }
             return { ...p }
           }) ?? [],

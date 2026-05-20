@@ -313,3 +313,205 @@ describe("row-level adapters", () => {
     expect(out).toEqual(rows)
   })
 })
+
+// ─── FF-1: free-form placement adapter ─────────────────────────────
+//
+// Per investigation Q-3 (separate top-level fields, NOT nested blob)
+// and Q-25 (1:1 round-trip for pixel coords; no off-by-one). Adapter
+// must transparently handle both shapes per template — backend
+// enforces consistency at template level, NOT per-placement.
+
+describe("FF-1 — frontendToBackendPlacement free-form shape", () => {
+  it("emits x/y/width/height when free-form fields present", () => {
+    const p: WidgetPlacement = {
+      id: "w-ff",
+      widget_slug: "day-strip-widget",
+      x: 100,
+      y: 200,
+      width: 320,
+      height: 180,
+      chrome: {},
+    }
+    const out = frontendToBackendPlacement(p)
+    expect(out.x).toBe(100)
+    expect(out.y).toBe(200)
+    expect(out.width).toBe(320)
+    expect(out.height).toBe(180)
+  })
+
+  it("does NOT emit starting_column/column_span for free-form placements", () => {
+    const p: WidgetPlacement = {
+      id: "w-ff",
+      widget_slug: "day-strip-widget",
+      x: 100,
+      y: 200,
+      width: 320,
+      height: 180,
+      chrome: {},
+    }
+    const out = frontendToBackendPlacement(p)
+    expect("starting_column" in out).toBe(false)
+    expect("column_span" in out).toBe(false)
+  })
+
+  it("emits z_index when present", () => {
+    const p: WidgetPlacement = {
+      id: "w-ff",
+      widget_slug: "day-strip-widget",
+      x: 0,
+      y: 0,
+      width: 320,
+      height: 180,
+      z_index: 5,
+      chrome: {},
+    }
+    expect(frontendToBackendPlacement(p).z_index).toBe(5)
+  })
+
+  it("omits z_index when absent", () => {
+    const p: WidgetPlacement = {
+      id: "w-ff",
+      widget_slug: "day-strip-widget",
+      x: 0,
+      y: 0,
+      width: 320,
+      height: 180,
+      chrome: {},
+    }
+    expect("z_index" in frontendToBackendPlacement(p)).toBe(false)
+  })
+
+  it("free-form roundtrip preserves all positioning fields 1:1", () => {
+    const original: WidgetPlacement = {
+      id: "w-ff",
+      widget_slug: "day-strip-widget",
+      x: 100,
+      y: 200,
+      width: 320,
+      height: 180,
+      z_index: 3,
+      chrome: { daysVisible: 7 },
+    }
+    const out = backendToFrontendPlacement(frontendToBackendPlacement(original))
+    expect(out).toEqual(original)
+  })
+})
+
+describe("FF-1 — backendToFrontendPlacement free-form shape", () => {
+  it("reads x/y/width/height when present in backend payload", () => {
+    const out = backendToFrontendPlacement({
+      placement_id: "w-ff",
+      component_kind: "widget",
+      component_name: "day-strip-widget",
+      x: 100,
+      y: 200,
+      width: 320,
+      height: 180,
+    })
+    expect(out.x).toBe(100)
+    expect(out.y).toBe(200)
+    expect(out.width).toBe(320)
+    expect(out.height).toBe(180)
+  })
+
+  it("reads z_index when present", () => {
+    const out = backendToFrontendPlacement({
+      placement_id: "w-ff",
+      component_kind: "widget",
+      component_name: "day-strip-widget",
+      x: 0,
+      y: 0,
+      width: 320,
+      height: 180,
+      z_index: 7,
+    })
+    expect(out.z_index).toBe(7)
+  })
+
+  it("free-form output does NOT carry grid fields", () => {
+    const out = backendToFrontendPlacement({
+      placement_id: "w-ff",
+      component_kind: "widget",
+      component_name: "day-strip-widget",
+      x: 100,
+      y: 200,
+      width: 320,
+      height: 180,
+    })
+    expect(out.column_start).toBeUndefined()
+    expect(out.column_span).toBeUndefined()
+  })
+
+  it("grid shape still works (regression — F-series invariant)", () => {
+    const out = backendToFrontendPlacement({
+      placement_id: "w-grid",
+      component_kind: "widget",
+      component_name: "day-strip-widget",
+      starting_column: 4,
+      column_span: 4,
+    })
+    expect(out.column_start).toBe(5)
+    expect(out.column_span).toBe(4)
+    expect(out.x).toBeUndefined()
+    expect(out.y).toBeUndefined()
+  })
+
+  it("backend → frontend → backend free-form roundtrip preserves shape", () => {
+    const original = {
+      placement_id: "w-ff",
+      component_kind: "widget",
+      component_name: "today-pin-widget",
+      x: 50,
+      y: 75,
+      width: 400,
+      height: 200,
+      z_index: 2,
+      prop_overrides: { showCount: true },
+    }
+    const out = frontendToBackendPlacement(backendToFrontendPlacement(original))
+    expect(out.placement_id).toBe("w-ff")
+    expect(out.x).toBe(50)
+    expect(out.y).toBe(75)
+    expect(out.width).toBe(400)
+    expect(out.height).toBe(200)
+    expect(out.z_index).toBe(2)
+    expect(out.prop_overrides).toEqual({ showCount: true })
+    // No grid fields leak in.
+    expect("starting_column" in out).toBe(false)
+    expect("column_span" in out).toBe(false)
+  })
+})
+
+describe("FF-1 — row-level free-form round-trip", () => {
+  it("frontendToBackendRows preserves free-form positioning across all placements", () => {
+    const rows = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "w-1",
+            widget_slug: "day-strip-widget",
+            x: 0,
+            y: 0,
+            width: 320,
+            height: 180,
+            chrome: { daysVisible: 5 },
+          },
+          {
+            id: "w-2",
+            widget_slug: "today-pin-widget",
+            x: 400,
+            y: 0,
+            width: 320,
+            height: 180,
+            z_index: 1,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    const roundTripped = backendToFrontendRows(frontendToBackendRows(rows))
+    expect(roundTripped).toEqual(rows)
+  })
+})

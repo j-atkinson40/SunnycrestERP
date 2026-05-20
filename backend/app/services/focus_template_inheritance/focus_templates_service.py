@@ -73,6 +73,26 @@ logger = logging.getLogger(__name__)
 _VALID_SCOPES: tuple[str, ...] = (SCOPE_PLATFORM_DEFAULT, SCOPE_VERTICAL_DEFAULT)
 
 
+# ─── FF-1 — free-form canvas constants ───────────────────────────
+#
+# Sub-arc FF-1: backend validator gains a second placement shape
+# (free-form: x/y/width/height/z_index in pixels) alongside the
+# existing grid shape (starting_column/column_span). Both shapes
+# coexist in `focus_templates.rows` JSONB. Per-template consistency
+# is enforced at the template level — a single template MUST be
+# all-grid OR all-free-form; mixed shapes are rejected.
+#
+# canvas_config default 1200×800 is stamped on new templates with
+# empty/missing canvas_config (per investigation Q-2). Per-template
+# canvas dimensions are read from canvas_config.width / .height at
+# validation time so free-form placements can be bounds-checked
+# against their target canvas.
+DEFAULT_CANVAS_WIDTH: int = 1200
+DEFAULT_CANVAS_HEIGHT: int = 800
+_FREEFORM_KEYS: tuple[str, ...] = ("x", "y", "width", "height")
+_GRID_KEYS: tuple[str, ...] = ("starting_column", "column_span")
+
+
 # ─── Exceptions ──────────────────────────────────────────────────
 
 
@@ -154,13 +174,34 @@ def _validate_scope(scope: str, vertical: str | None) -> None:
         )
 
 
-def _validate_placement(
+def _placement_shape(placement: Mapping[str, Any]) -> str:
+    """FF-1: classify placement as 'freeform' or 'grid' by field presence.
+
+    Returns:
+      - "freeform" if any of x/y/width/height are present
+      - "grid" otherwise (default — matches F-series legacy shape)
+
+    Field-presence rather than exclusion: a placement carrying both
+    starting_column AND x/y is classified as "freeform"; this would
+    fail individual validation downstream if width/height aren't
+    valid, surfacing a clear error rather than silently grid-validating.
+    """
+    if any(k in placement for k in _FREEFORM_KEYS):
+        return "freeform"
+    return "grid"
+
+
+def _validate_common_fields(
     placement: Any,
     *,
-    column_count: int,
     placement_ids_seen: set[str],
     core: FocusCore,
-) -> None:
+) -> tuple[str, str, str]:
+    """FF-1: validate shape-agnostic placement fields.
+
+    Returns (placement_id, component_kind, component_name) on success.
+    Raises InvalidTemplateShape on failure.
+    """
     if not isinstance(placement, dict):
         raise InvalidTemplateShape("each placement must be a dict")
 
@@ -186,6 +227,43 @@ def _validate_placement(
             f"placement {pid!r}: component_name must be a non-empty string"
         )
 
+    if "prop_overrides" in placement and not isinstance(
+        placement["prop_overrides"], dict
+    ):
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: prop_overrides must be a dict"
+        )
+    if "display_config" in placement and not isinstance(
+        placement["display_config"], dict
+    ):
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: display_config must be a dict"
+        )
+
+    if placement.get("is_core") is True:
+        if kind != core.registered_component_kind or name != core.registered_component_name:
+            raise InvalidTemplateShape(
+                f"placement {pid!r} is marked is_core=true but its "
+                f"component (kind={kind!r}, name={name!r}) does not "
+                f"match the inherited core "
+                f"(kind={core.registered_component_kind!r}, "
+                f"name={core.registered_component_name!r})"
+            )
+
+    return pid, kind, name
+
+
+def _validate_grid_placement(
+    placement: dict,
+    *,
+    pid: str,
+    column_count: int,
+) -> None:
+    """F-series grid-shape validation: starting_column + column_span.
+
+    Preserved verbatim from pre-FF-1 — existing seeded templates and
+    F-series test fixtures all depend on this shape.
+    """
     starting_column = placement.get("starting_column")
     column_span = placement.get("column_span")
     if not isinstance(starting_column, int) or isinstance(starting_column, bool):
@@ -211,40 +289,137 @@ def _validate_placement(
             f"({column_count})"
         )
 
-    if "prop_overrides" in placement and not isinstance(
-        placement["prop_overrides"], dict
-    ):
-        raise InvalidTemplateShape(
-            f"placement {pid!r}: prop_overrides must be a dict"
-        )
-    if "display_config" in placement and not isinstance(
-        placement["display_config"], dict
-    ):
-        raise InvalidTemplateShape(
-            f"placement {pid!r}: display_config must be a dict"
-        )
 
-    if placement.get("is_core") is True:
-        if kind != core.registered_component_kind or name != core.registered_component_name:
+def _validate_freeform_placement(
+    placement: dict,
+    *,
+    pid: str,
+    canvas_width: int,
+    canvas_height: int,
+) -> None:
+    """FF-1: free-form placement validation (pixel-positioned).
+
+    Required fields: x, y, width, height (positive numbers; coerced to
+    int at storage time by accepting int|float). Optional z_index
+    (integer, defaults 0). Bounds enforced against
+    canvas_config.width / .height from the parent template (default
+    1200×800 if absent).
+
+    Min width/height = 1 px. Per-widget min/max sizing is FF-4's
+    concern (resize gesture clamps), NOT the validator's.
+    """
+    def _require_positive_number(field: str) -> int | float:
+        v = placement.get(field)
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
             raise InvalidTemplateShape(
-                f"placement {pid!r} is marked is_core=true but its "
-                f"component (kind={kind!r}, name={name!r}) does not "
-                f"match the inherited core "
-                f"(kind={core.registered_component_kind!r}, "
-                f"name={core.registered_component_name!r})"
+                f"placement {pid!r}: {field} must be a number"
             )
+        return v
+
+    x = _require_positive_number("x")
+    y = _require_positive_number("y")
+    width = _require_positive_number("width")
+    height = _require_positive_number("height")
+
+    if x < 0:
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: x must be >= 0 (got {x})"
+        )
+    if y < 0:
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: y must be >= 0 (got {y})"
+        )
+    if width < 1:
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: width must be >= 1 (got {width})"
+        )
+    if height < 1:
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: height must be >= 1 (got {height})"
+        )
+    if x + width > canvas_width:
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: x ({x}) + width ({width}) exceeds "
+            f"canvas_config.width ({canvas_width})"
+        )
+    if y + height > canvas_height:
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: y ({y}) + height ({height}) exceeds "
+            f"canvas_config.height ({canvas_height})"
+        )
+
+    z_index = placement.get("z_index", 0)
+    if not isinstance(z_index, int) or isinstance(z_index, bool):
+        raise InvalidTemplateShape(
+            f"placement {pid!r}: z_index must be an integer"
+        )
 
 
-def _validate_rows(rows: Any, *, core: FocusCore) -> list[dict]:
+def _validate_placement(
+    placement: Any,
+    *,
+    column_count: int,
+    placement_ids_seen: set[str],
+    core: FocusCore,
+    canvas_width: int = DEFAULT_CANVAS_WIDTH,
+    canvas_height: int = DEFAULT_CANVAS_HEIGHT,
+) -> str:
+    """Dispatch to grid or free-form validator based on shape detection.
+
+    FF-1 extends the F-series validator with a second branch (free-form).
+    Returns the placement's shape classification ('grid' | 'freeform') so
+    the caller (_validate_rows) can enforce template-level consistency.
+    """
+    pid, _, _ = _validate_common_fields(
+        placement, placement_ids_seen=placement_ids_seen, core=core
+    )
+    shape = _placement_shape(placement)
+    if shape == "freeform":
+        _validate_freeform_placement(
+            placement,
+            pid=pid,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+        )
+    else:
+        _validate_grid_placement(
+            placement, pid=pid, column_count=column_count
+        )
+    return shape
+
+
+def _validate_rows(
+    rows: Any,
+    *,
+    core: FocusCore,
+    canvas_config: Mapping[str, Any] | None = None,
+) -> list[dict]:
     """Validate `rows` JSONB shape. Returns the rows list (no
     structural mutation; deep-copy at the boundary if mutation is
     a concern at the call site).
+
+    FF-1: free-form placements (x/y/width/height in pixels) coexist
+    with grid placements (starting_column/column_span). All placements
+    within a SINGLE template must be the same shape — mixed templates
+    are rejected at the template level. Free-form bounds are checked
+    against canvas_config.width / .height (defaults 1200×800).
     """
     if not isinstance(rows, list):
         raise InvalidTemplateShape("rows must be a list")
 
     placement_ids_seen: set[str] = set()
     core_placements_seen = 0
+    shapes_seen: set[str] = set()
+
+    canvas_width = DEFAULT_CANVAS_WIDTH
+    canvas_height = DEFAULT_CANVAS_HEIGHT
+    if isinstance(canvas_config, Mapping):
+        cw = canvas_config.get("width")
+        ch = canvas_config.get("height")
+        if isinstance(cw, (int, float)) and not isinstance(cw, bool) and cw > 0:
+            canvas_width = int(cw)
+        if isinstance(ch, (int, float)) and not isinstance(ch, bool) and ch > 0:
+            canvas_height = int(ch)
 
     for row_idx, row in enumerate(rows):
         if not isinstance(row, dict):
@@ -280,12 +455,15 @@ def _validate_rows(rows: Any, *, core: FocusCore) -> list[dict]:
                 f"row {row_idx}: placements must be a list"
             )
         for placement in placements:
-            _validate_placement(
+            shape = _validate_placement(
                 placement,
                 column_count=column_count,
                 placement_ids_seen=placement_ids_seen,
                 core=core,
+                canvas_width=canvas_width,
+                canvas_height=canvas_height,
             )
+            shapes_seen.add(shape)
             if placement.get("is_core") is True:
                 core_placements_seen += 1
 
@@ -293,6 +471,16 @@ def _validate_rows(rows: Any, *, core: FocusCore) -> list[dict]:
         raise InvalidTemplateShape(
             f"at most one placement may have is_core=true; got "
             f"{core_placements_seen}"
+        )
+
+    # FF-1: template-level shape consistency. All placements in a
+    # single template must be the same shape. Mixed templates are
+    # rejected here, AFTER per-placement validation, so any individual
+    # malformed placement still surfaces its specific error first.
+    if len(shapes_seen) > 1:
+        raise InvalidTemplateShape(
+            "Template placements must all be grid-shaped or all be "
+            "free-form-shaped; mixed shapes are not supported."
         )
 
     return rows
@@ -413,11 +601,21 @@ def create_template(
         raise InvalidTemplateShape("rows must be a list")
     else:
         rows_list = [dict(r) for r in rows]
-    _validate_rows(rows_list, core=core)
 
+    # FF-1: stamp default canvas dimensions on empty/null canvas_config
+    # at create time so free-form placements have a known bounds. Per
+    # investigation Q-2: default 1200×800. Stamping fires ONLY when
+    # canvas_config is absent or fully empty — operators or F-series
+    # callers that pass any explicit canvas_config keys are respected
+    # verbatim (matches the empty-blob discipline used for chrome /
+    # substrate / typography in sub-arc E-1).
     cfg = dict(canvas_config or {})
     if not isinstance(cfg, dict):
         raise InvalidTemplateShape("canvas_config must be a dict")
+    if not cfg:
+        cfg = {"width": DEFAULT_CANVAS_WIDTH, "height": DEFAULT_CANVAS_HEIGHT}
+
+    _validate_rows(rows_list, core=core, canvas_config=cfg)
 
     # Sub-arc E-1: canonical defaults on empty/null create-time blobs.
     # The C-2.2c new-template modal sends empty objects; backend
@@ -568,19 +766,23 @@ def update_template(
     if core is None:
         raise CoreNotFound(prior.inherits_from_core_id)
 
-    if rows is not None:
-        if not isinstance(rows, list):
-            raise InvalidTemplateShape("rows must be a list")
-        new_rows = [dict(r) for r in rows]
-        _validate_rows(new_rows, core=core)
-    else:
-        new_rows = list(prior.rows or [])
-
+    # FF-1: compute new canvas_config BEFORE validating rows so free-form
+    # placements can bounds-check against the operator's intended canvas
+    # dimensions on this save (not the prior version's). Pre-FF-1 this
+    # order didn't matter because grid placements only checked column_count.
     new_cfg = (
         dict(canvas_config) if canvas_config is not None else dict(prior.canvas_config or {})
     )
     if not isinstance(new_cfg, dict):
         raise InvalidTemplateShape("canvas_config must be a dict")
+
+    if rows is not None:
+        if not isinstance(rows, list):
+            raise InvalidTemplateShape("rows must be a list")
+        new_rows = [dict(r) for r in rows]
+        _validate_rows(new_rows, core=core, canvas_config=new_cfg)
+    else:
+        new_rows = list(prior.rows or [])
 
     new_chrome = (
         dict(chrome_overrides)

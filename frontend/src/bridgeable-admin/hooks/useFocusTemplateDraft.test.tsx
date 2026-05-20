@@ -1148,3 +1148,224 @@ describe("useFocusTemplateDraft — F-3 widget mutators", () => {
     expect(result.current.isDirty).toBe(false)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════
+// FF-1 — free-form positioning fields on addWidget / updateWidget.
+//
+// Foundation sub-arc: hook helpers accept x/y/width/height/z_index;
+// rowsDraft stores them; adapter on save sends them through 1:1. No
+// canvas substrate / drag / resize wired (FF-2+). These tests are at
+// hook-state + adapter-translation level, not render level.
+// ═══════════════════════════════════════════════════════════════════
+
+describe("useFocusTemplateDraft — FF-1 free-form positioning", () => {
+  it("addWidget accepts free-form positioning fields and stores them", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let newId = ""
+    act(() => {
+      newId = result.current.addWidget("day-strip-widget", {
+        x: 100,
+        y: 200,
+        width: 320,
+        height: 180,
+      })
+    })
+    const placement = result.current.rowsDraft[0].placements.find(
+      (p) => p.id === newId,
+    )
+    expect(placement).toBeDefined()
+    expect(placement?.x).toBe(100)
+    expect(placement?.y).toBe(200)
+    expect(placement?.width).toBe(320)
+    expect(placement?.height).toBe(180)
+    // No grid fields should leak in.
+    expect(placement?.column_start).toBeUndefined()
+    expect(placement?.column_span).toBeUndefined()
+  })
+
+  it("addWidget with z_index stores it on the placement", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let newId = ""
+    act(() => {
+      newId = result.current.addWidget("day-strip-widget", {
+        x: 0,
+        y: 0,
+        width: 320,
+        height: 180,
+        z_index: 5,
+      })
+    })
+    const placement = result.current.rowsDraft[0].placements.find(
+      (p) => p.id === newId,
+    )
+    expect(placement?.z_index).toBe(5)
+  })
+
+  it("addWidget without positioning defaults to grid shape (F-3 regression)", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let newId = ""
+    act(() => {
+      newId = result.current.addWidget("day-strip-widget")
+    })
+    const placement = result.current.rowsDraft[0].placements.find(
+      (p) => p.id === newId,
+    )
+    // Existing F-3 behavior: grid defaults populated.
+    expect(placement?.column_start).toBe(1)
+    expect(placement?.column_span).toBe(4)
+    expect(placement?.x).toBeUndefined()
+    expect(placement?.y).toBeUndefined()
+  })
+
+  it("updateWidget routes positioning keys to top-level fields, chrome elsewhere", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let newId = ""
+    act(() => {
+      newId = result.current.addWidget("day-strip-widget", {
+        x: 0,
+        y: 0,
+        width: 320,
+        height: 180,
+      })
+    })
+    // Mixed update: position fields + a chrome field.
+    act(() => {
+      result.current.updateWidget(newId, {
+        x: 150,
+        y: 250,
+        daysVisible: 7,
+      })
+    })
+    const placement = result.current.rowsDraft[0].placements.find(
+      (p) => p.id === newId,
+    )
+    expect(placement?.x).toBe(150)
+    expect(placement?.y).toBe(250)
+    expect(placement?.chrome.daysVisible).toBe(7)
+  })
+
+  it("updateWidget partial position update preserves other positioning fields", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let newId = ""
+    act(() => {
+      newId = result.current.addWidget("day-strip-widget", {
+        x: 100,
+        y: 200,
+        width: 320,
+        height: 180,
+        z_index: 2,
+      })
+    })
+    act(() => {
+      result.current.updateWidget(newId, { x: 999 })
+    })
+    const placement = result.current.rowsDraft[0].placements.find(
+      (p) => p.id === newId,
+    )
+    expect(placement?.x).toBe(999)
+    // Untouched fields preserved.
+    expect(placement?.y).toBe(200)
+    expect(placement?.width).toBe(320)
+    expect(placement?.height).toBe(180)
+    expect(placement?.z_index).toBe(2)
+  })
+
+  it("save sends positioning fields to backend via adapter", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(SAMPLE_TEMPLATE)
+    const updateMock = focusTemplatesService.update as ReturnType<typeof vi.fn>
+    updateMock.mockResolvedValueOnce({ ...SAMPLE_TEMPLATE, rows: [] })
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.addWidget("day-strip-widget", {
+        x: 100,
+        y: 200,
+        width: 320,
+        height: 180,
+        z_index: 3,
+      })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(updateMock).toHaveBeenCalled()
+    const lastCall = updateMock.mock.calls[updateMock.mock.calls.length - 1]
+    const payload = lastCall[1] as { rows: Array<Record<string, unknown>> }
+    expect(payload.rows).toHaveLength(1)
+    const sentPlacement = (
+      payload.rows[0].placements as Array<Record<string, unknown>>
+    )[0]
+    expect(sentPlacement.x).toBe(100)
+    expect(sentPlacement.y).toBe(200)
+    expect(sentPlacement.width).toBe(320)
+    expect(sentPlacement.height).toBe(180)
+    expect(sentPlacement.z_index).toBe(3)
+    // No grid fields in the free-form payload.
+    expect("starting_column" in sentPlacement).toBe(false)
+    expect("column_span" in sentPlacement).toBe(false)
+  })
+
+  it("load adapts free-form backend payload into frontend-typed view", async () => {
+    ;(
+      focusTemplatesService.get as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      ...SAMPLE_TEMPLATE,
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              placement_id: "w-ff-load",
+              component_kind: "widget",
+              component_name: "day-strip-widget",
+              x: 50,
+              y: 60,
+              width: 280,
+              height: 160,
+              z_index: 1,
+              prop_overrides: { daysVisible: 5 },
+            },
+          ],
+        },
+      ],
+    })
+    const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const placement = result.current.rowsDraft[0].placements[0]
+    expect(placement.id).toBe("w-ff-load")
+    expect(placement.widget_slug).toBe("day-strip-widget")
+    expect(placement.x).toBe(50)
+    expect(placement.y).toBe(60)
+    expect(placement.width).toBe(280)
+    expect(placement.height).toBe(160)
+    expect(placement.z_index).toBe(1)
+    expect(placement.chrome).toEqual({ daysVisible: 5 })
+    // Grid fields absent on free-form-shaped load.
+    expect(placement.column_start).toBeUndefined()
+    expect(placement.column_span).toBeUndefined()
+    expect(result.current.isDirty).toBe(false)
+  })
+})
