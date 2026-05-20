@@ -1,26 +1,42 @@
 /**
- * FreeFormPlacedWidget unit tests (sub-arc FF-2).
+ * FreeFormPlacedWidget unit tests (sub-arcs FF-2 + FF-3).
  *
- * Asserts absolute-positioning math: pixel coords are read from
- * placement.x/y/width/height/z_index and emitted as inline styles.
- * Per the operator-observable assertion canon (2026-05-20 late-
- * evening), assertions target the rendered element's inline style
- * attribute — the load-bearing render-side contract.
+ * FF-2 asserted absolute-positioning math on the (then sole)
+ * PlacedWidgetCore outer div. FF-3 introduced a draggable wrapper
+ * above the core — positioning + drag listeners now live on
+ * `focus-builder-freeform-placed-widget-draggable`. The core inside
+ * fills the wrapper (width/height: 100%). Tests below preserve the
+ * operator-observable assertion canon (inline style on the rendered
+ * positioning element) but retarget the new wrapper.
+ *
+ * useDraggable requires a DndContext ancestor; tests render the
+ * component inside a no-op DndContext.
  */
+import type { ReactNode } from "react"
 import { describe, expect, it } from "vitest"
 import { render, screen } from "@testing-library/react"
+import { DndContext } from "@dnd-kit/core"
 
 import "@/lib/visual-editor/registry/auto-register"
 
 import { BASE_TOKENS } from "@/lib/visual-editor/themes/base-tokens"
 
-import { FreeFormPlacedWidget } from "./FreeFormPlacedWidget"
+import {
+  FreeFormPlacedWidget,
+  freeFormDraggableIdFor,
+  parseFreeFormDraggableId,
+  FREE_FORM_DRAGGABLE_ID_PREFIX,
+} from "./FreeFormPlacedWidget"
 import type { WidgetPlacement } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 
 const tokens = { ...BASE_TOKENS.light }
 
-describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
-  it("emits position:absolute + left/top/width/height from placement", () => {
+function renderWithDnd(node: ReactNode) {
+  return render(<DndContext>{node}</DndContext>)
+}
+
+describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
+  it("emits position:absolute + left/top/width/height on the draggable wrapper", () => {
     const placement: WidgetPlacement = {
       id: "w-ff-1",
       widget_slug: "today-pin-widget",
@@ -30,7 +46,7 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
       height: 120,
       chrome: {},
     }
-    render(
+    renderWithDnd(
       <FreeFormPlacedWidget
         placement={placement}
         selected={false}
@@ -38,8 +54,10 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
         themeTokens={tokens}
       />,
     )
-    const outer = screen.getByTestId("focus-builder-placed-widget")
-    const styleAttr = outer.getAttribute("style") ?? ""
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    const styleAttr = draggable.getAttribute("style") ?? ""
     expect(styleAttr).toMatch(/position:\s*absolute/i)
     expect(styleAttr).toMatch(/left:\s*100px/i)
     expect(styleAttr).toMatch(/top:\s*200px/i)
@@ -58,7 +76,7 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
       z_index: 5,
       chrome: {},
     }
-    render(
+    renderWithDnd(
       <FreeFormPlacedWidget
         placement={placement}
         selected={false}
@@ -66,8 +84,10 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
         themeTokens={tokens}
       />,
     )
-    const outer = screen.getByTestId("focus-builder-placed-widget")
-    const styleAttr = outer.getAttribute("style") ?? ""
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    const styleAttr = draggable.getAttribute("style") ?? ""
     expect(styleAttr).toMatch(/z-index:\s*5/i)
   })
 
@@ -81,7 +101,7 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
       height: 100,
       chrome: {},
     }
-    render(
+    renderWithDnd(
       <FreeFormPlacedWidget
         placement={placement}
         selected={false}
@@ -89,8 +109,10 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
         themeTokens={tokens}
       />,
     )
-    const outer = screen.getByTestId("focus-builder-placed-widget")
-    const styleAttr = outer.getAttribute("style") ?? ""
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    const styleAttr = draggable.getAttribute("style") ?? ""
     expect(styleAttr).toMatch(/z-index:\s*0/i)
   })
 
@@ -102,7 +124,7 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
       y: 60,
       chrome: {},
     }
-    render(
+    renderWithDnd(
       <FreeFormPlacedWidget
         placement={placement}
         selected={false}
@@ -110,8 +132,10 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
         themeTokens={tokens}
       />,
     )
-    const outer = screen.getByTestId("focus-builder-placed-widget")
-    const styleAttr = outer.getAttribute("style") ?? ""
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    const styleAttr = draggable.getAttribute("style") ?? ""
     expect(styleAttr).toMatch(/width:\s*320px/i)
     expect(styleAttr).toMatch(/height:\s*180px/i)
   })
@@ -124,7 +148,7 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
       height: 120,
       chrome: {},
     }
-    render(
+    renderWithDnd(
       <FreeFormPlacedWidget
         placement={placement}
         selected={false}
@@ -132,8 +156,10 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
         themeTokens={tokens}
       />,
     )
-    const outer = screen.getByTestId("focus-builder-placed-widget")
-    const styleAttr = outer.getAttribute("style") ?? ""
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    const styleAttr = draggable.getAttribute("style") ?? ""
     expect(styleAttr).toMatch(/left:\s*0px/i)
     expect(styleAttr).toMatch(/top:\s*0px/i)
   })
@@ -148,7 +174,7 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
       height: 120,
       chrome: {},
     }
-    render(
+    renderWithDnd(
       <FreeFormPlacedWidget
         placement={placement}
         selected={false}
@@ -171,7 +197,7 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
       height: 120,
       chrome: {},
     }
-    render(
+    renderWithDnd(
       <FreeFormPlacedWidget
         placement={placement}
         selected={false}
@@ -179,12 +205,68 @@ describe("FreeFormPlacedWidget (absolute positioning shell)", () => {
         themeTokens={tokens}
       />,
     )
-    const outer = screen.getByTestId("focus-builder-placed-widget")
-    const styleAttr = outer.getAttribute("style") ?? ""
-    // Chrome-resolved styles applied at the outer wrapper just like
-    // grid path (cross-shape parity for chrome inheritance).
+    // Chrome resolves on PlacedWidgetCore's outer (preserved test-id).
+    const core = screen.getByTestId("focus-builder-placed-widget")
+    const styleAttr = core.getAttribute("style") ?? ""
     expect(styleAttr).toMatch(/box-shadow/i)
     expect(styleAttr).toMatch(/border-radius/i)
     expect(styleAttr).toMatch(/padding/i)
+  })
+
+  // ── FF-3 drag wiring assertions ──────────────────────────────────────
+  it("FF-3 — draggable wrapper exposes cursor: grab idle", () => {
+    const placement: WidgetPlacement = {
+      id: "w-ff-drag-1",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    expect(draggable.getAttribute("style") ?? "").toMatch(/cursor:\s*grab/i)
+    expect(draggable.getAttribute("data-dragging")).toBe("false")
+  })
+
+  it("FF-3 — data-placement-id attribute exposes placement id for drag-end lookup", () => {
+    const placement: WidgetPlacement = {
+      id: "placement-xyz",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    expect(draggable.getAttribute("data-placement-id")).toBe("placement-xyz")
+  })
+
+  it("FF-3 — draggable id helpers roundtrip", () => {
+    const id = freeFormDraggableIdFor("placement-abc")
+    expect(id.startsWith(FREE_FORM_DRAGGABLE_ID_PREFIX)).toBe(true)
+    expect(parseFreeFormDraggableId(id)).toBe("placement-abc")
+    expect(parseFreeFormDraggableId("palette-widget:foo")).toBeNull()
   })
 })

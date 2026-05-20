@@ -1,31 +1,64 @@
 /**
- * FreeFormPlacedWidget — sub-arc FF-2.
+ * FreeFormPlacedWidget — sub-arc FF-2 (positioning shell) + FF-3 (drag).
  *
  * Absolute-positioned shell for free-form placements. Reads
  * `placement.x` / `.y` / `.width` / `.height` / `.z_index` and emits
  * an inline `position: absolute` style with pixel-typed `left` /
- * `top` / `width` / `height` / `zIndex`. Delegates chrome / selection
- * / click / keyboard / widget render to the shared `PlacedWidgetCore`.
+ * `top` / `width` / `height` / `zIndex`.
  *
- * Per investigation Q-4 + Q-22 + Q-29:
- *   - Q-4 — pixel position is the placement's authored coordinate
- *     (centered on cursor at drop time; FF-3 brings drag-to-move).
- *   - Q-22 — overlap with the inherited core is permitted; `z_index`
- *     governs. Default `z_index: 0`. The inherited core renders with
- *     implicit z_index 0; widgets default to z_index 0 too — DOM
- *     ordering breaks ties (FF-2 ships widgets AFTER the core in DOM
- *     order so they paint above the core by default).
- *   - Q-29 — shared inner wrapper. Free-form is a positioning shell;
- *     the wrapper handles chrome, selection, click, render.
+ * FF-3 (this revision) wraps the positioning shell with @dnd-kit's
+ * `useDraggable` so operators can drag the widget to reposition. The
+ * shell:
+ *
+ *   - Owns position:absolute + left/top/width/height/zIndex (the FF-2
+ *     positioning contract — UNCHANGED in semantics; the carrying
+ *     element shifts up one level from PlacedWidgetCore's outer div
+ *     to the new draggable wrapper).
+ *   - Owns the drag transform during gesture (dnd-kit's `transform`
+ *     applied as a CSS translate3d so the visual moves with the
+ *     pointer/keyboard arrow; the COMMIT (drag-end) updates
+ *     placement.x/y via the page-level handler + clears the transform
+ *     on the next render).
+ *   - Owns the drag listeners (`{...listeners}` from `useDraggable`)
+ *     spread at the wrapper level per Q-9 (drag initiation from
+ *     anywhere on the widget body).
+ *   - Owns cursor styling (grab idle → grabbing during drag).
+ *   - Owns the drag-active visual feedback (subtle opacity shift +
+ *     elevated shadow accent).
+ *
+ * Inside the draggable wrapper, PlacedWidgetCore renders untouched —
+ * it owns chrome, selection, click, keyboard activation, widget
+ * render. F-2 selection model + F-3.1c chrome editing + FF-2 palette
+ * drop continue working unchanged.
+ *
+ * Per investigation Q-29: shared inner wrapper. Free-form is a
+ * positioning + drag shell; the wrapper handles chrome / selection /
+ * click / render. PlacedWidgetCore stays as the canonical chrome
+ * surface across grid + free-form shapes.
+ *
+ * Per Q-9: click-vs-drag disambiguation defers to PointerSensor's
+ * 3px activation constraint (configured in FocusBuilderPage). A
+ * pointerdown that moves <3px before pointerup is treated as a click
+ * → fires PlacedWidgetCore's onClick → selection flips to this
+ * widget. A pointerdown that moves ≥3px starts a drag → PlacedWidgetCore's
+ * onClick does NOT fire on pointerup (dnd-kit suppresses).
+ *
+ * Per Q-14: canvas-bounds clamp happens at commit time in the page-
+ * level drag-end handler (`computeDragMoveCommit`). During the
+ * gesture the transform may overshoot; the commit pulls back.
+ *
+ * Per Q-40: integration tests drive @dnd-kit's KeyboardSensor (Space
+ * to grab, arrows to nudge, Space to drop). Pointer coverage in
+ * JSDOM is unreliable; that lands in Playwright at FF-7.
  *
  * Defensive coords: `placement.x` / `.y` may be `undefined` for
  * round-trip legacy / mixed-shape inputs. Falls back to `0` for x/y
- * and the platform free-form default for width/height (registry
- * lookup happens at drop-time, not here — by the time a placement
- * arrives at this component it MUST carry concrete dimensions).
- * Defensive fallback to 0 / 320 / 180 is a structural safety net for
- * malformed JSONB.
+ * and the platform free-form default for width/height. Defensive
+ * fallback to 0 / 320 / 180 is a structural safety net for malformed
+ * JSONB.
  */
+import { useDraggable } from "@dnd-kit/core"
+
 import type { WidgetPlacement } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 import { FREE_FORM_DEFAULT_DIMENSIONS } from "@/lib/visual-editor/registry"
 
@@ -36,6 +69,23 @@ export interface FreeFormPlacedWidgetProps {
   selected: boolean
   onSelect: (id: string) => void
   themeTokens: Record<string, string>
+}
+
+/**
+ * FF-3 — draggable id prefix. Distinguishes a draggable existing
+ * placement from a palette item (`palette-widget:<slug>`) in the
+ * page-level `onDragEnd` handler. The placement id follows the
+ * colon.
+ */
+export const FREE_FORM_DRAGGABLE_ID_PREFIX = "free-form-placed-widget:"
+
+export function freeFormDraggableIdFor(placementId: string): string {
+  return `${FREE_FORM_DRAGGABLE_ID_PREFIX}${placementId}`
+}
+
+export function parseFreeFormDraggableId(id: string): string | null {
+  if (!id.startsWith(FREE_FORM_DRAGGABLE_ID_PREFIX)) return null
+  return id.slice(FREE_FORM_DRAGGABLE_ID_PREFIX.length)
 }
 
 export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
@@ -53,21 +103,75 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
   const zIndex =
     typeof placement.z_index === "number" ? placement.z_index : 0
 
+  const draggableId = freeFormDraggableIdFor(placement.id)
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: draggableId,
+    data: { kind: "free-form-placed-widget", placementId: placement.id },
+  })
+
+  // dnd-kit's transform during the drag gesture (CSS translate3d).
+  // After drag-end, the page-level handler commits the new x/y via
+  // updateWidget; React re-renders with the new placement.x/y and
+  // transform resets to null (no translate).
+  const translate = transform
+    ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+    : undefined
+
   return (
-    <PlacedWidgetCore
-      placement={placement}
-      selected={selected}
-      onSelect={onSelect}
-      themeTokens={themeTokens}
-      outerStyle={{
+    <div
+      ref={setNodeRef}
+      data-testid="focus-builder-freeform-placed-widget-draggable"
+      data-placement-id={placement.id}
+      data-dragging={isDragging ? "true" : "false"}
+      // Listeners + attributes spread on the wrapper itself per Q-9
+      // (drag initiation from anywhere on the widget body). The
+      // `attributes` include keyboard-drag a11y bindings used by
+      // @dnd-kit's KeyboardSensor.
+      {...listeners}
+      {...attributes}
+      style={{
         position: "absolute",
         left: `${x}px`,
         top: `${y}px`,
         width: `${width}px`,
         height: `${height}px`,
-        zIndex,
+        zIndex: isDragging ? Math.max(zIndex, 9999) : zIndex,
+        transform: translate,
+        // Q-9 cursor: grab idle, grabbing during drag.
+        cursor: isDragging ? "grabbing" : "grab",
+        // Drag-active visual feedback. Subtle opacity shift + elevated
+        // shadow accent (brass tint) so operators see the widget is
+        // "lifted" without overpowering the canvas composition.
+        opacity: isDragging ? 0.85 : 1,
+        boxShadow: isDragging
+          ? "0 10px 24px -4px var(--shadow-color-level-2, rgba(0,0,0,0.18))"
+          : undefined,
+        transition: isDragging
+          ? "none"
+          : "opacity 120ms ease-out, box-shadow 120ms ease-out",
+        // No padding/margin — the PlacedWidgetCore fills the shell.
       }}
-    />
+    >
+      <PlacedWidgetCore
+        placement={placement}
+        selected={selected}
+        onSelect={onSelect}
+        themeTokens={themeTokens}
+        outerStyle={{
+          // Inner core fills the draggable wrapper. The wrapper owns
+          // absolute positioning + size; the core renders chrome,
+          // selection, click, and the widget itself within.
+          width: "100%",
+          height: "100%",
+        }}
+      />
+    </div>
   )
 }
 

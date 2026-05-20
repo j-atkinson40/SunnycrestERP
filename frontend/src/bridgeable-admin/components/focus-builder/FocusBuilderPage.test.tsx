@@ -1409,8 +1409,13 @@ describe("FocusBuilderPage", () => {
     await waitFor(() =>
       expect(screen.getByTestId("focus-builder-freeform-layer")).toBeInTheDocument(),
     )
-    const placed = screen.getByTestId("focus-builder-placed-widget")
-    const styleAttr = placed.getAttribute("style") ?? ""
+    // FF-3 — positioning moved up to the draggable wrapper above the
+    // PlacedWidgetCore. Assertions target the wrapper for the
+    // operator-observable inline style.
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    const styleAttr = draggable.getAttribute("style") ?? ""
     expect(styleAttr).toMatch(/position:\s*absolute/i)
     expect(styleAttr).toMatch(/left:\s*100px/i)
     expect(styleAttr).toMatch(/top:\s*100px/i)
@@ -1514,5 +1519,202 @@ describe("FocusBuilderPage", () => {
       const placed = screen.getByTestId("focus-builder-placed-widget")
       expect(placed.getAttribute("data-selected")).toBe("true")
     })
+  })
+
+  // ─────────────────────────────────────────────────────────────────
+  // FF-3 — Drag-to-move (KeyboardSensor path per Q-40).
+  //
+  // Cross-side assertion: keyboard-driven drag commits move the
+  // free-form placement's x/y BOTH on the rendered wrapper inline
+  // style AND in the saved PUT body's placement row.
+  //
+  // Verify-against-pre-fix discipline: reverting the page-level
+  // drag-end handler's FF-3 branch to a no-op (drag fires but no
+  // updateWidget call) makes BOTH the render-side inline-style
+  // assertion AND the save-side PUT-body assertion fail. Restored →
+  // both pass. The pure-function commit math is unit-tested at
+  // computeDragMoveCommit.test.ts (Q-14 clamp coverage); per Q-40
+  // full pointer-driven drag coverage defers to Playwright at FF-7.
+  // ─────────────────────────────────────────────────────────────────
+  it("FF-3 — keyboard drag commits free-form widget x/y via render + PUT", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const freeFormTpl: TemplateRecord = {
+        ...t,
+        canvas_config: { width: 1200, height: 800 },
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "ff-drag-1",
+                component_kind: "widget",
+                component_name: "today-pin-widget",
+                x: 100,
+                y: 100,
+                width: 240,
+                height: 120,
+                z_index: 0,
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      const draggable = await screen.findByTestId(
+        "focus-builder-freeform-placed-widget-draggable",
+      )
+      // Focus the draggable so KeyboardSensor receives keystrokes.
+      draggable.focus()
+      // Activate drag — Space per @dnd-kit KeyboardSensor activator
+      // (matches `event.target === activator` requirement).
+      fireEvent.keyDown(draggable, { key: " ", code: "Space" })
+      // KeyboardSensor adds its keydown listener inside a setTimeout
+      // (see @dnd-kit/core KeyboardSensor.attach). Advance timers so
+      // arrow nudges land on the listener, not the activator path.
+      await vi.advanceTimersByTimeAsync(10)
+      // Nudge right twice (default keyboard step = 25px each → +50).
+      // KeyboardSensor's move/end listener lives on the document
+      // (per @dnd-kit/core attach()), so arrows must be dispatched
+      // there, not on the draggable element.
+      fireEvent.keyDown(document, { key: "ArrowRight", code: "ArrowRight" })
+      await vi.advanceTimersByTimeAsync(10)
+      fireEvent.keyDown(document, { key: "ArrowRight", code: "ArrowRight" })
+      await vi.advanceTimersByTimeAsync(10)
+      // Commit drop.
+      fireEvent.keyDown(document, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+
+      // Save-side: advance past debounce, assert PUT body carries
+      // the updated x. Initial x=100; after 2× ArrowRight (25px each
+      // by @dnd-kit's default), expect x>100 (allow tolerance for
+      // future default-step changes).
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      const placement = lastBody?.rows?.[0]?.placements?.[0]
+      expect(placement).toBeTruthy()
+      // Operator-observable on the save side: x advanced past 100.
+      // y remains 100 (no vertical nudges).
+      expect(placement.x).toBeGreaterThan(100)
+      expect(placement.y).toBe(100)
+
+      // Render-side: the draggable wrapper's inline `left` reflects
+      // the committed x. Per the operator-observable assertion canon
+      // (2026-05-20 late-evening), this is the load-bearing render-
+      // side contract.
+      await waitFor(() => {
+        const after = screen.getByTestId(
+          "focus-builder-freeform-placed-widget-draggable",
+        )
+        const styleAttr = after.getAttribute("style") ?? ""
+        // Extract numeric left value via regex; assert > 100.
+        const m = /left:\s*(\d+)px/i.exec(styleAttr)
+        expect(m).toBeTruthy()
+        const leftVal = m ? parseInt(m[1], 10) : 0
+        expect(leftVal).toBeGreaterThan(100)
+        // top unchanged.
+        expect(styleAttr).toMatch(/top:\s*100px/i)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // FF-3 — Canvas-bounds clamping (Q-14). Drag toward right edge past
+  // the canvas; the commit clamps to canvasWidth - widgetWidth.
+  it("FF-3 — drag past right edge clamps to canvas bounds (Q-14)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      // Widget placed near the right edge (canvas 1200, widget 240,
+      // so right-edge max x = 960). Start at x=900; drag past edge.
+      const freeFormTpl: TemplateRecord = {
+        ...t,
+        canvas_config: { width: 1200, height: 800 },
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "ff-clamp-1",
+                component_kind: "widget",
+                component_name: "today-pin-widget",
+                x: 900,
+                y: 100,
+                width: 240,
+                height: 120,
+                z_index: 0,
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      const draggable = await screen.findByTestId(
+        "focus-builder-freeform-placed-widget-draggable",
+      )
+      draggable.focus()
+      fireEvent.keyDown(draggable, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+      // Multiple right-nudges to overshoot the canvas bound. Document
+      // is the listener target per @dnd-kit/core KeyboardSensor.
+      for (let i = 0; i < 10; i++) {
+        fireEvent.keyDown(document, { key: "ArrowRight", code: "ArrowRight" })
+        await vi.advanceTimersByTimeAsync(5)
+      }
+      fireEvent.keyDown(document, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      const placement = lastBody?.rows?.[0]?.placements?.[0]
+      // Per Q-14: clamped to canvasWidth - widgetWidth = 1200 - 240
+      // = 960.
+      expect(placement.x).toBeLessThanOrEqual(960)
+      expect(placement.x).toBeGreaterThan(900) // moved at least some
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -520,7 +520,11 @@ describe("FocusBuilderCanvas", () => {
     expect(layer.getAttribute("data-canvas-width")).toBe("1200")
     expect(layer.getAttribute("data-canvas-height")).toBe("800")
     // Free-form widget rendered with absolute pos at (100, 100).
-    const placed = screen.getByTestId("focus-builder-placed-widget")
+    // FF-3 — positioning style lives on the draggable wrapper above
+    // the PlacedWidgetCore (drag wiring shipped above core's outer).
+    const placed = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
     const styleAttr = placed.getAttribute("style") ?? ""
     expect(styleAttr).toMatch(/position:\s*absolute/i)
     expect(styleAttr).toMatch(/left:\s*100px/i)

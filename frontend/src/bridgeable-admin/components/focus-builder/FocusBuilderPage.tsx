@@ -18,6 +18,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -52,8 +53,18 @@ import {
   CANVAS_DROP_ZONE_ID,
   detectTemplateShape,
   computeFreeFormDropPosition,
+  flattenFreeFormPlacements,
 } from "./FocusBuilderCanvas"
-import { getFreeFormDefaultDimensions } from "@/lib/visual-editor/registry"
+import { computeDragMoveCommit } from "./computeDragMoveCommit"
+import { parseFreeFormDraggableId } from "./FreeFormPlacedWidget"
+import {
+  getFreeFormDefaultDimensions,
+  FREE_FORM_DEFAULT_DIMENSIONS,
+} from "@/lib/visual-editor/registry"
+import {
+  FREE_FORM_DEFAULT_CANVAS_WIDTH,
+  FREE_FORM_DEFAULT_CANVAS_HEIGHT,
+} from "./WidgetFreeFormLayer"
 import { FocusBuilderRightRail } from "./FocusBuilderRightRail"
 import {
   FocusBuilderSelectionProvider,
@@ -393,10 +404,23 @@ function FocusBuilderPageInner() {
   // and auto-selects the new widget. Drops are only meaningful when
   // editing a template — the canvas drop zone is disabled in core
   // mode (FocusBuilderCanvas's `useDroppable({ disabled: mode !== 'template' })`).
+  // FF-3 — sensor stack.
+  //   - PointerSensor: 3px activation per Q-9 (click vs. drag
+  //     disambiguation; matches @dnd-kit default). Pre-FF-3 the value
+  //     was 6px (F-3 palette drop didn't need finer threshold). FF-3
+  //     widget repositioning wants the canonical 3px so a brief
+  //     intentional press resolves as a click → selection, and any
+  //     ≥3px movement is unambiguously a drag.
+  //   - KeyboardSensor: Space activates drag; arrow keys nudge; Space
+  //     commits; Escape cancels. Per Q-40 (JSDOM weakness mitigation),
+  //     integration tests drive @dnd-kit through the keyboard sensor.
+  //     Pointer-event coverage in JSDOM is unreliable; FF-7 ships
+  //     Playwright drag coverage for real pointer gestures.
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
+      activationConstraint: { distance: 3 },
     }),
+    useSensor(KeyboardSensor),
   )
   const [activeDragLabel, setActiveDragLabel] = React.useState<string | null>(
     null,
@@ -412,6 +436,55 @@ function FocusBuilderPageInner() {
     (e: DragEndEvent) => {
       setActiveDragLabel(null)
       const { active, over } = e
+
+      // FF-3 — drag-to-move branch. An existing free-form placement is
+      // being repositioned. The drag id is the placement's draggable
+      // id (`free-form-placed-widget:<placement-id>`). No drop target
+      // required — the gesture is a delta on the active widget. The
+      // commit applies `delta.x` / `delta.y` to the placement's
+      // current x/y and clamps to canvas bounds via
+      // `computeDragMoveCommit` (Q-14).
+      const placementId = parseFreeFormDraggableId(String(active.id))
+      if (placementId !== null) {
+        if (mode !== "template") return
+        // Find placement by id across all rows.
+        const flat = flattenFreeFormPlacements(templateHook.rowsDraft)
+        const placement = flat.find((p) => p.id === placementId)
+        if (!placement) return
+        const currentX = typeof placement.x === "number" ? placement.x : 0
+        const currentY = typeof placement.y === "number" ? placement.y : 0
+        const widgetWidth =
+          typeof placement.width === "number" && placement.width > 0
+            ? placement.width
+            : FREE_FORM_DEFAULT_DIMENSIONS.width
+        const widgetHeight =
+          typeof placement.height === "number" && placement.height > 0
+            ? placement.height
+            : FREE_FORM_DEFAULT_DIMENSIONS.height
+        const canvasConfig = templateHook.template?.canvas_config as
+          | Record<string, unknown>
+          | undefined
+        const canvasWidth =
+          (canvasConfig?.width as number | undefined) ??
+          FREE_FORM_DEFAULT_CANVAS_WIDTH
+        const canvasHeight =
+          (canvasConfig?.height as number | undefined) ??
+          FREE_FORM_DEFAULT_CANVAS_HEIGHT
+        const { x, y } = computeDragMoveCommit({
+          currentX,
+          currentY,
+          dx: e.delta?.x ?? 0,
+          dy: e.delta?.y ?? 0,
+          canvasWidth,
+          canvasHeight,
+          widgetWidth,
+          widgetHeight,
+        })
+        templateHook.updateWidget(placementId, { x, y })
+        return
+      }
+
+      // F-3 / FF-2 — palette drop branch (existing).
       if (!over) return
       if (over.id !== CANVAS_DROP_ZONE_ID) return
       const slug = paletteItemIdToSlug(String(active.id))
