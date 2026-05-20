@@ -35,6 +35,9 @@ export const DayStripWidget = registerComponent({
   canvasMetadata: {
     minDimensions: { columns: 4, rows: 1 },
     defaultDimensions: { columns: 12, rows: 1 },
+    // FF-2 — pixel defaults for free-form Decide canvas (per Q-5).
+    freeFormDefaultDimensions: { width: 240, height: 120 },
+    freeFormMinDimensions: { width: 120, height: 64 },
     resizable: true,
   },
   configurableProps: {
@@ -82,6 +85,9 @@ export const TodayPinWidget = registerComponent({
   canvasMetadata: {
     minDimensions: { columns: 2, rows: 1 },
     defaultDimensions: { columns: 4, rows: 1 },
+    // FF-2 — pixel defaults for free-form Decide canvas (per Q-5).
+    freeFormDefaultDimensions: { width: 240, height: 120 },
+    freeFormMinDimensions: { width: 120, height: 64 },
     resizable: true,
   },
   configurableProps: {
@@ -127,6 +133,11 @@ export const MapPlaceholderWidget = registerComponent({
   canvasMetadata: {
     minDimensions: { columns: 4, rows: 2 },
     defaultDimensions: { columns: 8, rows: 3 },
+    // FF-2 — pixel defaults for free-form Decide canvas (per Q-5).
+    // Map naturally wants a square footprint — wider/taller than the
+    // strip + pin widgets.
+    freeFormDefaultDimensions: { width: 400, height: 400 },
+    freeFormMinDimensions: { width: 200, height: 200 },
     resizable: true,
   },
   configurableProps: {

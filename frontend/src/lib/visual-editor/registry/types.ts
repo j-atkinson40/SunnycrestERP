@@ -314,6 +314,17 @@ export interface RegistrationMetadata {
     /** Human-readable hint for the editor (e.g., "Wider is better;
      * minimum 6 columns for usability"). */
     layoutNotes?: string
+    /** FF-2 — Default size in pixels when dropped onto a free-form
+     * canvas. Consumed by `WidgetFreeFormLayer`'s drop handler via
+     * `getFreeFormDefaultDimensions(entry)`; falls back to the
+     * platform default (320×180) when absent. Distinct from grid
+     * `defaultDimensions` (cells) — free-form is pixel-positioned per
+     * FF investigation Q-5. */
+    freeFormDefaultDimensions?: { width: number; height: number }
+    /** FF-2 — Minimum size in pixels on a free-form canvas. Consumed
+     * by FF-4 resize-handle clamp logic; falls back to platform
+     * default (80×40). Distinct from grid `minDimensions` (cells). */
+    freeFormMinDimensions?: { width: number; height: number }
   }
 
   // Configuration schema ────

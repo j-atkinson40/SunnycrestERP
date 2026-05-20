@@ -20,7 +20,6 @@ import * as React from "react"
 import { useDroppable } from "@dnd-kit/core"
 
 import { resolveEffectiveTokens } from "@/lib/visual-editor/themes/resolve-effective-tokens"
-import { getByName } from "@/lib/visual-editor/registry"
 import { BASE_TOKENS } from "@/lib/visual-editor/themes/base-tokens"
 import {
   chromeViewFromDraft,
@@ -44,7 +43,9 @@ import type { TemplateRecord } from "@/bridgeable-admin/services/focus-templates
 import type { RowsBlob } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 
 import { useFocusBuilderSelection } from "./FocusBuilderSelectionContext"
-import { DEFAULT_WIDGET_CHROME } from "./WidgetInspectorSection"
+import { PlacedWidget } from "./PlacedWidget"
+import { WidgetFreeFormLayer } from "./WidgetFreeFormLayer"
+import type { WidgetPlacement } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 
 /**
  * Canonical four-layer atmospheric composition. Mirrors
@@ -94,6 +95,102 @@ export interface FocusBuilderCanvasProps {
 }
 
 export const CANVAS_DROP_ZONE_ID = "focus-builder-canvas-drop-zone"
+
+/**
+ * FF-2 — template-shape detection. Per Q-28 the canvas selects which
+ * layer to render based on the placement-shape of the template's
+ * existing placements. A placement is free-form when it carries any
+ * of `x` / `y` / `width` / `height`; otherwise grid. Template-level
+ * shape consistency is enforced at the FF-1 backend validator, so
+ * checking the FIRST placement in the FIRST non-empty row is
+ * sufficient — mixed-shape templates can't round-trip through save.
+ *
+ * Templates with no placements default to `"grid"` (preserves F-3
+ * empty-template behavior; drop handlers can opt into free-form per
+ * Q-27's per-template defaulting policy — FF-2 ships free-form-by-
+ * default for the drop handler).
+ */
+export type TemplateShape = "freeform" | "grid"
+
+export function detectTemplateShape(rows: RowsBlob | undefined): TemplateShape {
+  if (!rows) return "grid"
+  for (const row of rows) {
+    if (!row.placements) continue
+    for (const p of row.placements) {
+      if (
+        typeof p.x === "number" ||
+        typeof p.y === "number" ||
+        typeof p.width === "number" ||
+        typeof p.height === "number"
+      ) {
+        return "freeform"
+      }
+      // First grid-shape placement encountered → grid. Template-
+      // level consistency means we don't need to keep scanning.
+      if (
+        typeof p.column_start === "number" ||
+        typeof p.column_span === "number"
+      ) {
+        return "grid"
+      }
+    }
+  }
+  return "grid"
+}
+
+/**
+ * FF-2 — compute drop position for a free-form widget. Pure function
+ * extracted from the page-level `handleDragEnd` so the Q-4 centering
+ * + Q-14 clamping logic is unit-testable without staging a full
+ * dnd-kit gesture in JSDOM (per investigation Q-40 — JSDOM doesn't
+ * implement pointer events robustly enough for integration drag
+ * coverage; that lands in Playwright at FF-7).
+ *
+ * Per Q-4 (centered on cursor): `x = cursorX - width/2`, `y =
+ * cursorY - height/2`. Per Q-14 (canvas-bounded clamp): `x ∈ [0,
+ * canvasWidth - width]`, `y ∈ [0, canvasHeight - height]`.
+ *
+ * `cursorX` / `cursorY` are canvas-RELATIVE coordinates — callers
+ * subtract the canvas's bounding-rect offset before calling.
+ */
+export function computeFreeFormDropPosition(input: {
+  cursorX: number
+  cursorY: number
+  width: number
+  height: number
+  canvasWidth: number
+  canvasHeight: number
+}): { x: number; y: number } {
+  const { cursorX, cursorY, width, height, canvasWidth, canvasHeight } = input
+  // Q-4 — center on cursor.
+  let x = cursorX - width / 2
+  let y = cursorY - height / 2
+  // Q-14 — clamp to canvas bounds.
+  x = Math.max(0, Math.min(x, canvasWidth - width))
+  y = Math.max(0, Math.min(y, canvasHeight - height))
+  return { x, y }
+}
+
+/**
+ * FF-2 — flatten free-form placements out of the row blob. The rows
+ * blob is the canonical storage shape (FF-1 keeps it for both
+ * shapes), but for free-form rendering only the placements matter —
+ * row metadata is meaningless. Returns the flat list across all rows
+ * for `WidgetFreeFormLayer.placements`.
+ */
+export function flattenFreeFormPlacements(
+  rows: RowsBlob | undefined,
+): WidgetPlacement[] {
+  if (!rows) return []
+  const out: WidgetPlacement[] = []
+  for (const row of rows) {
+    if (!row.placements) continue
+    for (const p of row.placements) {
+      out.push(p)
+    }
+  }
+  return out
+}
 
 export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
   const {
@@ -229,10 +326,27 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
 
   const coreSelected = selection.kind === "core"
 
+  // FF-2 — template-shape detection. Free-form templates take the
+  // WidgetFreeFormLayer path (absolute-positioned canvas with the
+  // inherited core anchored at Q-20's canonical position); grid
+  // templates take the WidgetRowsLayer path (unchanged from F-3).
+  const templateShape: TemplateShape =
+    mode === "template" ? detectTemplateShape(rowsDraft) : "grid"
+
+  // Body copy reused by both layers. Mode === "core" shows core
+  // description; mode === "template" shows template description.
+  const bodyDescription =
+    mode === "core"
+      ? core?.description ??
+        "Edit chrome on the right. Saves apply automatically."
+      : template?.description ??
+        "Edit chrome, substrate, or typography on the right. The canvas updates live."
+
   return (
     <div
       data-testid="focus-builder-canvas"
       data-canvas-mode={mode}
+      data-canvas-shape={mode === "template" ? templateShape : "core"}
       data-drop-over={isOver ? "true" : "false"}
       ref={setDropRef}
       className="relative flex h-full w-full overflow-hidden"
@@ -243,91 +357,125 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
       }}
       onClick={() => setSelection({ kind: "background" })}
     >
-      <div
-        data-testid="focus-builder-canvas-placements"
-        className="relative flex h-full w-full flex-col items-center justify-start gap-3 overflow-y-auto p-8"
-      >
+      {mode === "template" && templateShape === "freeform" ? (
+        // ── FF-2 free-form path ──────────────────────────────────────
+        // Layer owns the inherited core's canonical anchored render
+        // + every free-form placement's absolute positioning. The
+        // outer canvas div still owns substrate + drop-target +
+        // background-click selection wiring.
         <div
-          data-testid="focus-builder-core-placement"
-          data-selected={coreSelected ? "true" : "false"}
-          onClick={(e) => {
-            e.stopPropagation()
-            setSelection({ kind: "core" })
-          }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault()
+          data-testid="focus-builder-canvas-placements"
+          className="relative h-full w-full overflow-auto p-8"
+        >
+          <WidgetFreeFormLayer
+            placements={flattenFreeFormPlacements(rowsDraft)}
+            themeTokens={themeTokens}
+            canvasWidth={
+              (template?.canvas_config as Record<string, unknown> | undefined)
+                ?.width as number | undefined
+            }
+            canvasHeight={
+              (template?.canvas_config as Record<string, unknown> | undefined)
+                ?.height as number | undefined
+            }
+            coreDefaultColumnSpan={inheritedCore?.default_column_span}
+            coreIdentity={{
+              kind: identity.kind,
+              title: identity.title,
+              slug: identity.slug,
+              version: identity.version,
+              presetLabel: coreChromeView.preset,
+              description: bodyDescription,
+            }}
+            coreCardStyle={cardStyle}
+            headingStyle={headingStyle}
+            bodyStyle={bodyStyle}
+          />
+        </div>
+      ) : (
+        // ── F-3 grid path (preserved unchanged) ──────────────────────
+        <div
+          data-testid="focus-builder-canvas-placements"
+          className="relative flex h-full w-full flex-col items-center justify-start gap-3 overflow-y-auto p-8"
+        >
+          <div
+            data-testid="focus-builder-core-placement"
+            data-selected={coreSelected ? "true" : "false"}
+            onClick={(e) => {
               e.stopPropagation()
               setSelection({ kind: "core" })
-            }
-          }}
-          style={{
-            ...cardStyle,
-            width: "min(440px, 80%)",
-            minHeight: 200,
-            outline: coreSelected
-              ? "2px solid var(--accent)"
-              : "2px solid transparent",
-            outlineOffset: "4px",
-            transition: "outline-color 120ms ease-out",
-            cursor: "pointer",
-          }}
-          className="flex flex-col gap-2"
-        >
-          <span
-            className="text-[10px] uppercase tracking-[0.08em] text-[color:var(--content-muted)]"
-            style={{ fontFamily: "var(--font-plex-sans)" }}
-          >
-            {identity.kind}
-          </span>
-          <h2
-            className="text-[20px] font-medium"
-            style={
-              headingStyle ?? { fontFamily: "var(--font-plex-serif)" }
-            }
-          >
-            {identity.title}
-          </h2>
-          <p
-            className="text-[13px] leading-relaxed"
-            style={
-              bodyStyle ?? {
-                fontFamily: "var(--font-plex-sans)",
-                color: "var(--content-base)",
+            }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                e.stopPropagation()
+                setSelection({ kind: "core" })
               }
-            }
+            }}
+            style={{
+              ...cardStyle,
+              width: "min(440px, 80%)",
+              minHeight: 200,
+              outline: coreSelected
+                ? "2px solid var(--accent)"
+                : "2px solid transparent",
+              outlineOffset: "4px",
+              transition: "outline-color 120ms ease-out",
+              cursor: "pointer",
+            }}
+            className="flex flex-col gap-2"
           >
-            {mode === "core"
-              ? core?.description ??
-                "Edit chrome on the right. Saves apply automatically."
-              : template?.description ??
-                "Edit chrome, substrate, or typography on the right. The canvas updates live."}
-          </p>
-          <span
-            className="mt-2 text-[11px] tabular-nums text-[color:var(--content-muted)]"
-            style={{ fontFamily: "var(--font-plex-mono)" }}
-          >
-            {identity.slug}
-            {identity.version != null ? ` · v${identity.version}` : ""}
-            {" · "}preset: {coreChromeView.preset ?? "—"}
-          </span>
-        </div>
+            <span
+              className="text-[10px] uppercase tracking-[0.08em] text-[color:var(--content-muted)]"
+              style={{ fontFamily: "var(--font-plex-sans)" }}
+            >
+              {identity.kind}
+            </span>
+            <h2
+              className="text-[20px] font-medium"
+              style={
+                headingStyle ?? { fontFamily: "var(--font-plex-serif)" }
+              }
+            >
+              {identity.title}
+            </h2>
+            <p
+              className="text-[13px] leading-relaxed"
+              style={
+                bodyStyle ?? {
+                  fontFamily: "var(--font-plex-sans)",
+                  color: "var(--content-base)",
+                }
+              }
+            >
+              {bodyDescription}
+            </p>
+            <span
+              className="mt-2 text-[11px] tabular-nums text-[color:var(--content-muted)]"
+              style={{ fontFamily: "var(--font-plex-mono)" }}
+            >
+              {identity.slug}
+              {identity.version != null ? ` · v${identity.version}` : ""}
+              {" · "}preset: {coreChromeView.preset ?? "—"}
+            </span>
+          </div>
 
-        {mode === "template" && rowsDraft && rowsDraft.length > 0 && (
-          <WidgetRowsLayer
-            rows={rowsDraft}
-            selectedWidgetId={
-              selection.kind === "widget" ? selection.id : null
-            }
-            onSelectWidget={(id) =>
-              setSelection({ kind: "widget", id })
-            }
-            themeTokens={themeTokens}
-          />
-        )}
-      </div>
+          {mode === "template" && rowsDraft && rowsDraft.length > 0 && (
+            <WidgetRowsLayer
+              rows={rowsDraft}
+              selectedWidgetId={
+                selection.kind === "widget" ? selection.id : null
+              }
+              onSelectWidget={(id) =>
+                setSelection({ kind: "widget", id })
+              }
+              themeTokens={themeTokens}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -335,9 +483,9 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
 // ── F-3 widget rows layer ──────────────────────────────────────────
 //
 // Renders rows of placed widgets BELOW the core placement card.
-// Each placement is wrapped in an outline + click target that drives
-// selection { kind: 'widget', id }. The widget render itself comes
-// from the component registry's React component for the slug.
+// Each placement is wrapped in an outline + click target via
+// `PlacedWidget` (extracted to its own file in FF-2, consuming
+// `PlacedWidgetCore` for chrome / selection / click / render).
 interface WidgetRowsLayerProps {
   rows: RowsBlob
   selectedWidgetId: string | null
@@ -381,90 +529,6 @@ function WidgetRowsLayer(props: WidgetRowsLayerProps) {
           </div>
         )
       })}
-    </div>
-  )
-}
-
-interface PlacedWidgetProps {
-  placement: import("@/bridgeable-admin/hooks/useFocusTemplateDraft").WidgetPlacement
-  selected: boolean
-  onSelect: (id: string) => void
-  columns: number
-  themeTokens: Record<string, string>
-}
-
-function PlacedWidget(props: PlacedWidgetProps) {
-  const { placement, selected, onSelect, columns, themeTokens } = props
-  const entry = React.useMemo(
-    () => getByName("widget", placement.widget_slug),
-    [placement.widget_slug],
-  )
-  // `display: contents` boundary div from the HOC means rendering the
-  // Component directly will still emit the boundary; we wrap our own
-  // selection chrome around it.
-  const Component = entry?.component as React.ComponentType<unknown> | undefined
-  const span = Math.max(1, Math.min(columns, placement.column_span || 4))
-  const start = Math.max(1, Math.min(columns, placement.column_start || 1))
-
-  // F-3.1c — Resolve per-placement chrome through the canonical
-  // chrome-resolver pipeline, mirroring the inherited core placement
-  // pattern at lines 161-184. Widgets have no Tier-1 cascade (chrome
-  // is stamped at placement creation per F-3 canon), so we merge the
-  // placement's chrome ON TOP of DEFAULT_WIDGET_CHROME and resolve.
-  // `mergeChromeWithOverrides` cascades second-arg-wins on non-null
-  // entries — matches the inherited-core path's semantics so the
-  // resolver consumes the same `ChromeView` shape produced for cores.
-  const resolvedChromeStyle = React.useMemo(() => {
-    const view = expandPreset(
-      mergeChromeWithOverrides(
-        DEFAULT_WIDGET_CHROME as unknown as Record<string, unknown>,
-        placement.chrome ?? {},
-      ),
-    )
-    return resolveChromeStyle(view, themeTokens)
-  }, [placement.chrome, themeTokens])
-
-  return (
-    <div
-      data-testid="focus-builder-placed-widget"
-      data-widget-id={placement.id}
-      data-widget-slug={placement.widget_slug}
-      data-selected={selected ? "true" : "false"}
-      role="button"
-      tabIndex={0}
-      onClick={(e) => {
-        e.stopPropagation()
-        onSelect(placement.id)
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          e.stopPropagation()
-          onSelect(placement.id)
-        }
-      }}
-      style={{
-        // Chrome-resolved styles first (background / borderRadius /
-        // boxShadow / padding / border / backdropFilter / transition).
-        // Layout + selection styles override on conflict (gridColumn
-        // is layout-only; outline is selection chrome; transition is
-        // overridden to the outline-specific easing).
-        ...resolvedChromeStyle,
-        gridColumn: `${start} / span ${span}`,
-        outline: selected ? "2px solid var(--accent)" : "2px solid transparent",
-        outlineOffset: "2px",
-        transition: "outline-color 120ms ease-out",
-        cursor: "pointer",
-        minHeight: 56,
-      }}
-    >
-      {Component ? (
-        <Component {...(placement.chrome ?? {})} />
-      ) : (
-        <div className="rounded-md border border-dashed border-[color:var(--border-subtle)] bg-surface-base px-3 py-2 text-[12px] text-content-muted">
-          Unknown widget: {placement.widget_slug}
-        </div>
-      )}
     </div>
   )
 }

@@ -267,6 +267,77 @@ export function getCanvasPlaceableComponents(): readonly RegistryEntry[] {
 }
 
 
+/** FF-2 — Platform default pixel dimensions when a widget is dropped
+ * onto a free-form canvas and its registration declares no
+ * `canvasMetadata.freeFormDefaultDimensions`. Per investigation Q-5
+ * (locked: per-widget default in registry + platform fallback). */
+export const FREE_FORM_DEFAULT_DIMENSIONS: Readonly<{
+  width: number
+  height: number
+}> = Object.freeze({ width: 320, height: 180 })
+
+
+/** FF-2 — Platform minimum pixel dimensions when a registration
+ * declares no `canvasMetadata.freeFormMinDimensions`. Per
+ * investigation Q-13 (locked: per-widget min in registry + platform
+ * fallback). FF-2 only needs this for defensive clamping on drop
+ * positioning; FF-4 enforces it on resize gestures. */
+export const FREE_FORM_MIN_DIMENSIONS: Readonly<{
+  width: number
+  height: number
+}> = Object.freeze({ width: 80, height: 40 })
+
+
+/** FF-2 — Resolve a widget's free-form default size for a drop event.
+ * Reads the registration's `canvasMetadata.freeFormDefaultDimensions`
+ * (per Q-5 per-widget declaration) and falls back to
+ * `FREE_FORM_DEFAULT_DIMENSIONS` (320×180) when absent. Resolution by
+ * widget slug (registration `name`) keeps the lookup decoupled from
+ * the full registry entry shape — the drop handler only needs the
+ * pixel pair. Returns the platform default when no registration is
+ * found for the slug. */
+export function getFreeFormDefaultDimensions(widgetSlug: string): {
+  width: number
+  height: number
+} {
+  const entry = getByName("widget", widgetSlug)
+  const declared = entry?.metadata.canvasMetadata?.freeFormDefaultDimensions
+  if (
+    declared &&
+    typeof declared.width === "number" &&
+    typeof declared.height === "number" &&
+    declared.width > 0 &&
+    declared.height > 0
+  ) {
+    return { width: declared.width, height: declared.height }
+  }
+  return { ...FREE_FORM_DEFAULT_DIMENSIONS }
+}
+
+
+/** FF-2 — Resolve a widget's free-form minimum size. Reads the
+ * registration's `canvasMetadata.freeFormMinDimensions` (per Q-13
+ * per-widget declaration) and falls back to
+ * `FREE_FORM_MIN_DIMENSIONS` (80×40) when absent. */
+export function getFreeFormMinDimensions(widgetSlug: string): {
+  width: number
+  height: number
+} {
+  const entry = getByName("widget", widgetSlug)
+  const declared = entry?.metadata.canvasMetadata?.freeFormMinDimensions
+  if (
+    declared &&
+    typeof declared.width === "number" &&
+    typeof declared.height === "number" &&
+    declared.width > 0 &&
+    declared.height > 0
+  ) {
+    return { width: declared.width, height: declared.height }
+  }
+  return { ...FREE_FORM_MIN_DIMENSIONS }
+}
+
+
 // ── R-2.1 — entity-card sub-section helpers (May 2026) ──────────
 
 

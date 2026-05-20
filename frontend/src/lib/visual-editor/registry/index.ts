@@ -31,6 +31,11 @@ export {
   isCanvasPlaceable,
   getCanvasMetadata,
   getCanvasPlaceableComponents,
+  // FF-2 — free-form pixel-dimensions helpers
+  FREE_FORM_DEFAULT_DIMENSIONS,
+  FREE_FORM_MIN_DIMENSIONS,
+  getFreeFormDefaultDimensions,
+  getFreeFormMinDimensions,
   // R-2.1 — entity-card sub-section helpers
   getSubSectionsFor,
 } from "./introspection"

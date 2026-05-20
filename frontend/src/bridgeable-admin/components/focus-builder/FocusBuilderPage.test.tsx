@@ -1347,4 +1347,172 @@ describe("FocusBuilderPage", () => {
       vi.useRealTimers()
     }
   })
+
+  // ─────────────────────────────────────────────────────────────────
+  // FF-2 — Free-form canvas substrate (operator-observable canon).
+  //
+  // Cross-side assertion: a free-form-shaped template renders the
+  // WidgetFreeFormLayer through the full page mount; widgets land at
+  // their authored x/y/width/height via inline style on the rendered
+  // element; inherited core renders at Q-20's canonical anchored
+  // position (left=0, top=40 for span=12 on a 1200-wide canvas).
+  //
+  // Verify-against-pre-fix discipline: removing
+  // `detectTemplateShape`'s freeform branch (forcing all templates
+  // through the grid path) would route this template into
+  // WidgetRowsLayer; the inline `position: absolute / left: 100px /
+  // top: 100px` assertion fails because the grid path uses CSS grid
+  // cells, not absolute positioning. Restored detection → assertion
+  // passes.
+  //
+  // The drop-coordinate translation logic (Q-4 centering + Q-14
+  // clamp) is unit-tested at the pure-function level in
+  // FocusBuilderCanvas.test.tsx (`computeFreeFormDropPosition`); per
+  // investigation Q-40 (JSDOM weakness for drag/pointer gestures),
+  // full drag-end integration coverage defers to Playwright at FF-7.
+  // ─────────────────────────────────────────────────────────────────
+  it("FF-2 — free-form template renders absolute-positioned widgets through page mount", async () => {
+    defaultMocks()
+    const freeFormTpl: TemplateRecord = {
+      ...t,
+      canvas_config: { width: 1200, height: 800 },
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              placement_id: "ff-page-1",
+              component_kind: "widget",
+              component_name: "today-pin-widget",
+              x: 100,
+              y: 100,
+              width: 240,
+              height: 120,
+              z_index: 0,
+            },
+          ],
+        },
+      ],
+    }
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      freeFormTpl,
+    )
+    render(
+      <MemoryRouter
+        initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+    // Wait for free-form layer + widget to mount.
+    await waitFor(() =>
+      expect(screen.getByTestId("focus-builder-freeform-layer")).toBeInTheDocument(),
+    )
+    const placed = screen.getByTestId("focus-builder-placed-widget")
+    const styleAttr = placed.getAttribute("style") ?? ""
+    expect(styleAttr).toMatch(/position:\s*absolute/i)
+    expect(styleAttr).toMatch(/left:\s*100px/i)
+    expect(styleAttr).toMatch(/top:\s*100px/i)
+    expect(styleAttr).toMatch(/width:\s*240px/i)
+    expect(styleAttr).toMatch(/height:\s*120px/i)
+    // Inner operator-observable core anchor exists.
+    expect(
+      screen.getByTestId("focus-builder-placed-widget-core"),
+    ).toBeInTheDocument()
+    // Inherited core anchored at Q-20 canonical position (span=12
+    // on a 1200-wide canvas → left=0, top=40).
+    const coreEl = screen.getByTestId("focus-builder-core-placement")
+    const coreStyle = coreEl.getAttribute("style") ?? ""
+    expect(coreStyle).toMatch(/left:\s*0px/i)
+    expect(coreStyle).toMatch(/top:\s*40px/i)
+    expect(coreStyle).toMatch(/width:\s*1200px/i)
+  })
+
+  it("FF-2 — grid template regression: still renders WidgetRowsLayer through page mount", async () => {
+    defaultMocks()
+    const gridTpl: TemplateRecord = {
+      ...t,
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              placement_id: "grid-page-1",
+              component_kind: "widget",
+              component_name: "day-strip-widget",
+              starting_column: 0,
+              column_span: 12,
+            },
+          ],
+        },
+      ],
+    }
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      gridTpl,
+    )
+    render(
+      <MemoryRouter
+        initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("focus-builder-widget-rows-layer"),
+      ).toBeInTheDocument(),
+    )
+    // Free-form layer absent (regression preservation).
+    expect(screen.queryByTestId("focus-builder-freeform-layer")).toBeNull()
+    // Grid placement renders with grid-column style.
+    const placed = screen.getByTestId("focus-builder-placed-widget")
+    const styleAttr = placed.getAttribute("style") ?? ""
+    expect(styleAttr).toMatch(/grid-column/i)
+  })
+
+  it("FF-2 — clicking free-form widget fires selection (kind=widget)", async () => {
+    defaultMocks()
+    const freeFormTpl: TemplateRecord = {
+      ...t,
+      canvas_config: { width: 1200, height: 800 },
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              placement_id: "ff-sel-1",
+              component_kind: "widget",
+              component_name: "today-pin-widget",
+              x: 200,
+              y: 200,
+              width: 240,
+              height: 120,
+            },
+          ],
+        },
+      ],
+    }
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      freeFormTpl,
+    )
+    render(
+      <MemoryRouter
+        initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId("focus-builder-placed-widget")).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+    // Selection chrome flips to selected.
+    await waitFor(() => {
+      const placed = screen.getByTestId("focus-builder-placed-widget")
+      expect(placed.getAttribute("data-selected")).toBe("true")
+    })
+  })
 })

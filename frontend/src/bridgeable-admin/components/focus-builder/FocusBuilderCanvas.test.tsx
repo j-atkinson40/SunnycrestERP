@@ -16,6 +16,9 @@ import { BASE_TOKENS } from "@/lib/visual-editor/themes/base-tokens"
 import {
   FocusBuilderCanvas,
   CANONICAL_FOUR_LAYER_FALLBACK,
+  detectTemplateShape,
+  flattenFreeFormPlacements,
+  computeFreeFormDropPosition,
 } from "./FocusBuilderCanvas"
 import {
   FocusBuilderSelectionProvider,
@@ -329,6 +332,294 @@ describe("FocusBuilderCanvas", () => {
     )
     fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
     expect(observed).toEqual({ kind: "widget", id: "w-1" })
+  })
+
+  // ── FF-2 — template-shape detection + free-form layer rendering ─
+
+  it("FF-2 — detectTemplateShape returns 'grid' for grid placements", () => {
+    expect(
+      detectTemplateShape([
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              id: "g-1",
+              widget_slug: "today-pin-widget",
+              column_start: 1,
+              column_span: 4,
+              chrome: {},
+            },
+          ],
+        },
+      ]),
+    ).toBe("grid")
+  })
+
+  it("FF-2 — detectTemplateShape returns 'freeform' for free-form placements", () => {
+    expect(
+      detectTemplateShape([
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              id: "f-1",
+              widget_slug: "today-pin-widget",
+              x: 100,
+              y: 100,
+              width: 240,
+              height: 120,
+              chrome: {},
+            },
+          ],
+        },
+      ]),
+    ).toBe("freeform")
+  })
+
+  it("FF-2 — detectTemplateShape returns 'grid' for empty rows blob", () => {
+    expect(detectTemplateShape([])).toBe("grid")
+    expect(detectTemplateShape(undefined)).toBe("grid")
+  })
+
+  it("FF-2 — flattenFreeFormPlacements collapses rows to flat list", () => {
+    const flat = flattenFreeFormPlacements([
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "a",
+            widget_slug: "today-pin-widget",
+            x: 0,
+            y: 0,
+            width: 200,
+            height: 100,
+            chrome: {},
+          },
+        ],
+      },
+      {
+        row_index: 1,
+        column_count: 12,
+        placements: [
+          {
+            id: "b",
+            widget_slug: "day-strip-widget",
+            x: 50,
+            y: 50,
+            width: 240,
+            height: 120,
+            chrome: {},
+          },
+        ],
+      },
+    ])
+    expect(flat.map((p) => p.id)).toEqual(["a", "b"])
+  })
+
+  it("FF-2 — computeFreeFormDropPosition centers on cursor per Q-4", () => {
+    // Cursor at (500, 300), widget 240×120 → centered: (380, 240).
+    expect(
+      computeFreeFormDropPosition({
+        cursorX: 500,
+        cursorY: 300,
+        width: 240,
+        height: 120,
+        canvasWidth: 1200,
+        canvasHeight: 800,
+      }),
+    ).toEqual({ x: 380, y: 240 })
+  })
+
+  it("FF-2 — computeFreeFormDropPosition clamps to canvas bounds per Q-14", () => {
+    // Cursor near top-left, widget would extend off canvas.
+    expect(
+      computeFreeFormDropPosition({
+        cursorX: 10,
+        cursorY: 10,
+        width: 240,
+        height: 120,
+        canvasWidth: 1200,
+        canvasHeight: 800,
+      }),
+    ).toEqual({ x: 0, y: 0 })
+    // Cursor near bottom-right, widget would extend off canvas.
+    expect(
+      computeFreeFormDropPosition({
+        cursorX: 1200,
+        cursorY: 800,
+        width: 240,
+        height: 120,
+        canvasWidth: 1200,
+        canvasHeight: 800,
+      }),
+    ).toEqual({ x: 1200 - 240, y: 800 - 120 })
+  })
+
+  it("FF-2 — canvas renders WidgetFreeFormLayer when template has free-form placements", () => {
+    const freeFormTpl: TemplateRecord = {
+      ...tpl,
+      canvas_config: { width: 1200, height: 800 },
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              placement_id: "ff-1",
+              component_kind: "widget",
+              component_name: "today-pin-widget",
+              x: 100,
+              y: 100,
+              width: 240,
+              height: 120,
+            },
+          ],
+        },
+      ],
+    }
+    const rowsDraft = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "ff-1",
+            widget_slug: "today-pin-widget",
+            x: 100,
+            y: 100,
+            width: 240,
+            height: 120,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    render(
+      <DndContext>
+        <FocusBuilderSelectionProvider>
+          <FocusBuilderCanvas
+            mode="template"
+            themeTokens={tokens}
+            core={null}
+            template={freeFormTpl}
+            inheritedCore={core}
+            chromeOverridesDraft={{}}
+            substrateDraft={freeFormTpl.substrate}
+            typographyDraft={freeFormTpl.typography}
+            rowsDraft={rowsDraft}
+          />
+        </FocusBuilderSelectionProvider>
+      </DndContext>,
+    )
+    // Free-form path renders the freeform layer with canvas dims.
+    const layer = screen.getByTestId("focus-builder-freeform-layer")
+    expect(layer).toBeInTheDocument()
+    expect(layer.getAttribute("data-canvas-width")).toBe("1200")
+    expect(layer.getAttribute("data-canvas-height")).toBe("800")
+    // Free-form widget rendered with absolute pos at (100, 100).
+    const placed = screen.getByTestId("focus-builder-placed-widget")
+    const styleAttr = placed.getAttribute("style") ?? ""
+    expect(styleAttr).toMatch(/position:\s*absolute/i)
+    expect(styleAttr).toMatch(/left:\s*100px/i)
+    expect(styleAttr).toMatch(/top:\s*100px/i)
+    // Inherited core renders at Q-20 canonical position (span=12 →
+    // full-width-centered → left=0, top=40).
+    const coreEl = screen.getByTestId("focus-builder-core-placement")
+    const coreStyle = coreEl.getAttribute("style") ?? ""
+    expect(coreStyle).toMatch(/left:\s*0px/i)
+    expect(coreStyle).toMatch(/top:\s*40px/i)
+    // Grid layer NOT rendered.
+    expect(screen.queryByTestId("focus-builder-widget-rows-layer")).toBeNull()
+  })
+
+  it("FF-2 — canvas defensive fallback to 1200×800 when canvas_config lacks width/height", () => {
+    const partialTpl: TemplateRecord = {
+      ...tpl,
+      // Partial canvas_config (e.g. F-series fixture with only
+      // gap_size) — defensive fallback path.
+      canvas_config: { gap_size: 4 },
+      rows: [],
+    }
+    const rowsDraft = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "ff-2",
+            widget_slug: "today-pin-widget",
+            x: 50,
+            y: 50,
+            width: 240,
+            height: 120,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    render(
+      <DndContext>
+        <FocusBuilderSelectionProvider>
+          <FocusBuilderCanvas
+            mode="template"
+            themeTokens={tokens}
+            core={null}
+            template={partialTpl}
+            inheritedCore={core}
+            chromeOverridesDraft={{}}
+            substrateDraft={partialTpl.substrate}
+            typographyDraft={partialTpl.typography}
+            rowsDraft={rowsDraft}
+          />
+        </FocusBuilderSelectionProvider>
+      </DndContext>,
+    )
+    const layer = screen.getByTestId("focus-builder-freeform-layer")
+    expect(layer.getAttribute("data-canvas-width")).toBe("1200")
+    expect(layer.getAttribute("data-canvas-height")).toBe("800")
+  })
+
+  it("FF-2 — canvas regression: grid template still renders WidgetRowsLayer (no free-form layer)", () => {
+    const gridRowsDraft = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "g-1",
+            widget_slug: "day-strip-widget",
+            column_start: 1,
+            column_span: 12,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    render(
+      <DndContext>
+        <FocusBuilderSelectionProvider>
+          <FocusBuilderCanvas
+            mode="template"
+            themeTokens={tokens}
+            core={null}
+            template={tpl}
+            inheritedCore={core}
+            chromeOverridesDraft={{}}
+            substrateDraft={tpl.substrate}
+            typographyDraft={tpl.typography}
+            rowsDraft={gridRowsDraft}
+          />
+        </FocusBuilderSelectionProvider>
+      </DndContext>,
+    )
+    // Grid path still active.
+    expect(
+      screen.getByTestId("focus-builder-widget-rows-layer"),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId("focus-builder-freeform-layer")).toBeNull()
   })
 
   it("canvas drop zone is enabled in template mode", () => {

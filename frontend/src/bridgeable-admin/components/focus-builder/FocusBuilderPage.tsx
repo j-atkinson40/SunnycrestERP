@@ -47,7 +47,13 @@ import { InheritedCoreInspectorPanel } from "@/bridgeable-admin/components/visua
 import FocusBuilderTree, {
   type FocusBuilderSubject,
 } from "./FocusBuilderTree"
-import { FocusBuilderCanvas, CANVAS_DROP_ZONE_ID } from "./FocusBuilderCanvas"
+import {
+  FocusBuilderCanvas,
+  CANVAS_DROP_ZONE_ID,
+  detectTemplateShape,
+  computeFreeFormDropPosition,
+} from "./FocusBuilderCanvas"
+import { getFreeFormDefaultDimensions } from "@/lib/visual-editor/registry"
 import { FocusBuilderRightRail } from "./FocusBuilderRightRail"
 import {
   FocusBuilderSelectionProvider,
@@ -411,6 +417,87 @@ function FocusBuilderPageInner() {
       const slug = paletteItemIdToSlug(String(active.id))
       if (!slug) return
       if (mode !== "template") return
+
+      // FF-2 — template-shape branch. Existing templates respect
+      // their current placement shape (mixed-shape rejected at the
+      // FF-1 backend validator); empty templates default to FREE-
+      // FORM per Q-27 — every new Focus template authored after the
+      // FF-2 ship is a free-form template.
+      const currentShape = detectTemplateShape(templateHook.rowsDraft)
+      const isEmpty = !templateHook.rowsDraft || templateHook.rowsDraft.length === 0
+      const useFreeForm = currentShape === "freeform" || isEmpty
+
+      if (useFreeForm) {
+        // Compute cursor position relative to the canvas. dnd-kit's
+        // `DragEndEvent` exposes the original pointerdown via
+        // `activatorEvent` (clientX/Y) + cumulative `delta` (movement
+        // since activation). cursor = activator + delta. Subtract
+        // the canvas's bounding rect to get canvas-relative coords.
+        // The free-form layer is centered inside the canvas drop
+        // zone (margin: 0 auto), so we resolve coords against the
+        // layer element when available — falls back to the drop
+        // zone's rect when the layer is not yet mounted (very
+        // first drop on a brand-new template).
+        const dropZoneEl = document.querySelector<HTMLElement>(
+          `[data-testid="focus-builder-canvas"]`,
+        )
+        const layerEl =
+          document.querySelector<HTMLElement>(
+            `[data-testid="focus-builder-freeform-layer"]`,
+          ) ?? dropZoneEl
+        const rect = layerEl?.getBoundingClientRect()
+        const activator = e.activatorEvent as
+          | PointerEvent
+          | MouseEvent
+          | TouchEvent
+          | null
+        let clientX = 0
+        let clientY = 0
+        if (activator && "clientX" in activator) {
+          clientX = (activator as MouseEvent).clientX
+          clientY = (activator as MouseEvent).clientY
+        } else if (
+          activator &&
+          "touches" in activator &&
+          (activator as TouchEvent).touches.length > 0
+        ) {
+          clientX = (activator as TouchEvent).touches[0].clientX
+          clientY = (activator as TouchEvent).touches[0].clientY
+        }
+        const cursorX = clientX + (e.delta?.x ?? 0)
+        const cursorY = clientY + (e.delta?.y ?? 0)
+        const relX = rect ? cursorX - rect.left : cursorX
+        const relY = rect ? cursorY - rect.top : cursorY
+
+        // Resolve per-widget defaults from registry (Q-5).
+        const { width, height } = getFreeFormDefaultDimensions(slug)
+
+        // Q-4 + Q-14 via shared helper. When the layer isn't mounted
+        // yet (empty template, first drop), fall back to 1200×800
+        // platform defaults.
+        const canvasW = rect?.width ?? 1200
+        const canvasH = rect?.height ?? 800
+        const { x, y } = computeFreeFormDropPosition({
+          cursorX: relX,
+          cursorY: relY,
+          width,
+          height,
+          canvasWidth: canvasW,
+          canvasHeight: canvasH,
+        })
+
+        const newId = templateHook.addWidget(slug, {
+          x,
+          y,
+          width,
+          height,
+          z_index: 0,
+        })
+        setSelection({ kind: "widget", id: newId })
+        return
+      }
+
+      // F-3 grid path preserved unchanged.
       const newId = templateHook.addWidget(slug)
       setSelection({ kind: "widget", id: newId })
     },
