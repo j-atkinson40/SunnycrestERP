@@ -39,6 +39,12 @@ import {
   backendToFrontendRows,
   frontendToBackendRows,
 } from "./_placement-adapter"
+import {
+  computeZIndexCommit,
+  type ZIndexAction,
+} from "@/bridgeable-admin/components/focus-builder/computeZIndexCommit"
+
+export type { ZIndexAction } from "@/bridgeable-admin/components/focus-builder/computeZIndexCommit"
 
 export type ChromeOverridesBlob = Record<string, unknown>
 export type SubstrateBlob = Record<string, unknown>
@@ -159,6 +165,24 @@ export interface UseFocusTemplateDraftResult {
     widgetId: string,
     next: { rowIndex: number; columnStart: number; columnSpan?: number },
   ) => void
+  /**
+   * FF-5 — z-index / layering mutator. Computes the next z_index for
+   * the target placement based on the requested action and the current
+   * z_index values of every OTHER widget placement (the inherited core
+   * is rendered externally to rowsDraft and is not a z-order target —
+   * Q-22 + structural-immutability canon). Routes the result through
+   * the existing `updateWidget` mutator (which routes z_index per the
+   * FF-1 positioning-field split). Debounced save fires automatically.
+   *
+   * Available to both inspector buttons AND the right-click context
+   * menu (Q-31 (c)) — the two surfaces dispatch the same action
+   * vocabulary, this hook helper is the single integration seam.
+   *
+   * No-op when the target placement id is not found in the current
+   * rowsDraft (defensive — selection state can desync briefly after a
+   * remove).
+   */
+  setWidgetZIndex: (placementId: string, action: ZIndexAction) => void
   /**
    * Sub-arc C-2.3 — per-field reset to inherited. Removes the named
    * field from the override blob and triggers a debounced save. The
@@ -764,6 +788,36 @@ export function useFocusTemplateDraft(
     [queueSave],
   )
 
+  const setWidgetZIndex = useCallback(
+    (placementId: string, action: ZIndexAction) => {
+      // Read from rowsRef so this is stale-closure-safe (matches the
+      // C-2.1.4 discipline applied to updateWidget / removeWidget).
+      const current = rowsRef.current
+      // Flatten all placements across rows. The inherited core is NOT
+      // in rowsDraft (rendered externally by WidgetFreeFormLayer), so
+      // every entry here is a widget — no core-filtering needed.
+      const all: Array<{ id: string; z_index?: number }> = []
+      let target: { id: string; z_index?: number } | null = null
+      for (const r of current) {
+        for (const p of r.placements ?? []) {
+          all.push({ id: p.id, z_index: p.z_index })
+          if (p.id === placementId) target = { id: p.id, z_index: p.z_index }
+        }
+      }
+      // Defensive no-op when placement not found (selection state can
+      // desync briefly after a remove or 410-retry).
+      if (!target) return
+      const { z_index } = computeZIndexCommit({
+        currentPlacement: target,
+        allPlacements: all,
+        action,
+      })
+      // Route through the existing positioning-field-aware mutator.
+      updateWidget(placementId, { z_index })
+    },
+    [updateWidget],
+  )
+
   const removeWidget = useCallback(
     (widgetId: string) => {
       const current = rowsRef.current
@@ -852,6 +906,7 @@ export function useFocusTemplateDraft(
     updateWidget,
     removeWidget,
     moveWidget,
+    setWidgetZIndex,
     resetChromeOverridesField,
     resetSubstrateField,
     resetTypographyField,

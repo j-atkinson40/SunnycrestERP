@@ -92,6 +92,15 @@ export interface FocusBuilderCanvasProps {
   coreChromeDraft?: Record<string, unknown>
   /** F-3 — widget placements from the template's rows draft. */
   rowsDraft?: RowsBlob
+  /**
+   * FF-5 — right-click context menu request. Passed through to
+   * WidgetFreeFormLayer → FreeFormPlacedWidget. The page-level
+   * dispatcher owns menu state + renders CanvasContextMenu once at
+   * the page root. */
+  onWidgetContextMenuRequest?: (
+    placementId: string,
+    position: { x: number; y: number },
+  ) => void
 }
 
 export const CANVAS_DROP_ZONE_ID = "focus-builder-canvas-drop-zone"
@@ -204,6 +213,7 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
     typographyDraft,
     coreChromeDraft,
     rowsDraft,
+    onWidgetContextMenuRequest,
   } = props
   const { selection, setSelection } = useFocusBuilderSelection()
 
@@ -390,6 +400,7 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
             coreCardStyle={cardStyle}
             headingStyle={headingStyle}
             bodyStyle={bodyStyle}
+            onContextMenuRequest={onWidgetContextMenuRequest}
           />
         </div>
       ) : (
@@ -545,6 +556,11 @@ export interface FocusBuilderCanvasMountProps {
   rowsDraft?: RowsBlob
   /** Optional pre-resolved theme tokens override (tests). */
   themeTokens?: Record<string, string>
+  /** FF-5 — widget right-click context menu request. */
+  onWidgetContextMenuRequest?: (
+    placementId: string,
+    position: { x: number; y: number },
+  ) => void
 }
 
 /**

@@ -2091,4 +2091,314 @@ describe("FocusBuilderPage", () => {
       vi.useRealTimers()
     }
   })
+
+  // ─────────────────────────────────────────────────────────────────
+  // FF-5 — z-index + layering UX (inspector + context menu).
+  //
+  // Cross-side assertion (operator-observable canon, 2026-05-20 late-
+  // evening): integration tests assert BOTH the rendered wrapper's
+  // inline `z-index` AND the saved PUT body's z_index change. Pure-
+  // function math is unit-tested in `computeZIndexCommit.test.ts` (18
+  // cases across front / back / forward / backward + filter + nil).
+  //
+  // Verify-against-pre-fix discipline applied: reverting the FF-5
+  // setWidgetZIndex helper to a no-op (selecting + clicking the
+  // inspector button still mounts but the placement state never
+  // updates) makes BOTH the render-side inline-style assertion AND
+  // the save-side PUT-body assertion fail. Restored → both pass.
+  // ─────────────────────────────────────────────────────────────────
+  function freeFormTwoWidgetTemplate(): TemplateRecord {
+    return {
+      ...t,
+      canvas_config: { width: 1200, height: 800 },
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              placement_id: "ff-z-a",
+              component_kind: "widget",
+              component_name: "today-pin-widget",
+              x: 100,
+              y: 100,
+              width: 240,
+              height: 120,
+              z_index: 0,
+            },
+            {
+              placement_id: "ff-z-b",
+              component_kind: "widget",
+              component_name: "today-pin-widget",
+              x: 200,
+              y: 200,
+              width: 240,
+              height: 120,
+              z_index: 0,
+            },
+          ],
+        },
+      ],
+    } as TemplateRecord
+  }
+
+  it("FF-5 — inspector 'Bring to front' commits z_index via render + PUT", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const tpl = freeFormTwoWidgetTemplate()
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      // Wait for widgets to render.
+      const widgets = await screen.findAllByTestId(
+        "focus-builder-freeform-placed-widget-draggable",
+      )
+      expect(widgets).toHaveLength(2)
+      // Select widget A by clicking its inner core (left-click =
+      // selection). Click the wrapper too as a redundancy; the inner
+      // core's onClick stops propagation and fires onSelect.
+      const widgetA = widgets.find(
+        (w) => w.getAttribute("data-placement-id") === "ff-z-a",
+      )!
+      const coreA = within(widgetA).getByTestId(
+        "focus-builder-placed-widget-core",
+      )
+      fireEvent.click(coreA)
+
+      // Layer inspector section appears.
+      const frontBtn = await screen.findByTestId("layer-action-front")
+      expect(frontBtn).toBeInTheDocument()
+      fireEvent.click(frontBtn)
+
+      // Save-side: advance past debounce, assert PUT body has the
+      // new z_index for widget A.
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1] as {
+        rows?: Array<{
+          placements: Array<{ placement_id: string; z_index?: number }>
+        }>
+      }
+      const sentA = lastBody.rows?.[0]?.placements.find(
+        (p) => p.placement_id === "ff-z-a",
+      )
+      const sentB = lastBody.rows?.[0]?.placements.find(
+        (p) => p.placement_id === "ff-z-b",
+      )
+      // others=[b@0]; max+1 = 1.
+      expect(sentA?.z_index).toBe(1)
+      expect(sentB?.z_index).toBe(0)
+
+      // Render-side: widget A's inline z-index now 1; widget B
+      // unchanged at 0.
+      await waitFor(() => {
+        const refreshed = screen.getAllByTestId(
+          "focus-builder-freeform-placed-widget-draggable",
+        )
+        const a = refreshed.find(
+          (w) => w.getAttribute("data-placement-id") === "ff-z-a",
+        )!
+        const b = refreshed.find(
+          (w) => w.getAttribute("data-placement-id") === "ff-z-b",
+        )!
+        expect(a.getAttribute("style") ?? "").toMatch(/z-index:\s*1/i)
+        expect(b.getAttribute("style") ?? "").toMatch(/z-index:\s*0/i)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("FF-5 — right-click opens context menu; option click commits z_index", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const tpl = freeFormTwoWidgetTemplate()
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      const widgets = await screen.findAllByTestId(
+        "focus-builder-freeform-placed-widget-draggable",
+      )
+      const widgetB = widgets.find(
+        (w) => w.getAttribute("data-placement-id") === "ff-z-b",
+      )!
+
+      // Menu not yet open.
+      expect(
+        screen.queryByTestId("canvas-context-menu"),
+      ).not.toBeInTheDocument()
+
+      // Right-click widget B at viewport coords (320, 410).
+      fireEvent.contextMenu(widgetB, { clientX: 320, clientY: 410 })
+
+      // Menu now open at the cursor position.
+      const menu = await screen.findByTestId("canvas-context-menu")
+      const menuStyle = menu.getAttribute("style") ?? ""
+      expect(menuStyle).toMatch(/top:\s*410px/i)
+      expect(menuStyle).toMatch(/left:\s*320px/i)
+
+      // Click "Bring to front" in the context menu.
+      fireEvent.click(screen.getByTestId("context-menu-action-front"))
+
+      // Menu closes after option click.
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId("canvas-context-menu"),
+        ).not.toBeInTheDocument()
+      })
+
+      // PUT body carries new z_index for widget B.
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1] as {
+        rows?: Array<{
+          placements: Array<{ placement_id: string; z_index?: number }>
+        }>
+      }
+      const sentB = lastBody.rows?.[0]?.placements.find(
+        (p) => p.placement_id === "ff-z-b",
+      )
+      // others=[a@0]; max+1 = 1.
+      expect(sentB?.z_index).toBe(1)
+
+      // Render-side: widget B's inline z-index reflects the new value.
+      await waitFor(() => {
+        const refreshed = screen.getAllByTestId(
+          "focus-builder-freeform-placed-widget-draggable",
+        )
+        const b = refreshed.find(
+          (w) => w.getAttribute("data-placement-id") === "ff-z-b",
+        )!
+        expect(b.getAttribute("style") ?? "").toMatch(/z-index:\s*1/i)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("FF-5 — click outside closes context menu without firing PUT", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const tpl = freeFormTwoWidgetTemplate()
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      const widgets = await screen.findAllByTestId(
+        "focus-builder-freeform-placed-widget-draggable",
+      )
+      const widgetA = widgets.find(
+        (w) => w.getAttribute("data-placement-id") === "ff-z-a",
+      )!
+      fireEvent.contextMenu(widgetA, { clientX: 10, clientY: 10 })
+      expect(await screen.findByTestId("canvas-context-menu")).toBeInTheDocument()
+
+      // Click outside (on document body).
+      fireEvent.mouseDown(document.body)
+
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId("canvas-context-menu"),
+        ).not.toBeInTheDocument()
+      })
+
+      // No PUT fired (no z_index mutation).
+      await vi.advanceTimersByTimeAsync(500)
+      expect(focusTemplatesService.update).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("FF-5 — Escape closes context menu without firing PUT", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const tpl = freeFormTwoWidgetTemplate()
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      const widgets = await screen.findAllByTestId(
+        "focus-builder-freeform-placed-widget-draggable",
+      )
+      const widgetA = widgets.find(
+        (w) => w.getAttribute("data-placement-id") === "ff-z-a",
+      )!
+      fireEvent.contextMenu(widgetA, { clientX: 10, clientY: 10 })
+      expect(await screen.findByTestId("canvas-context-menu")).toBeInTheDocument()
+
+      // Press Escape. NB: the page-level Esc handler ALSO clears
+      // selection — that's fine; we only care that the menu closes.
+      fireEvent.keyDown(document, { key: "Escape" })
+
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId("canvas-context-menu"),
+        ).not.toBeInTheDocument()
+      })
+
+      await vi.advanceTimersByTimeAsync(500)
+      expect(focusTemplatesService.update).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

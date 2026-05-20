@@ -13,8 +13,8 @@
  * component inside a no-op DndContext.
  */
 import type { ReactNode } from "react"
-import { describe, expect, it } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { DndContext } from "@dnd-kit/core"
 
 import "@/lib/visual-editor/registry/auto-register"
@@ -291,6 +291,92 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
     )
     const handles = screen.getAllByTestId("focus-builder-resize-handle")
     expect(handles).toHaveLength(8)
+  })
+
+  // ── FF-5 right-click context menu wiring ─────────────────────────
+  it("FF-5 — fires onContextMenuRequest with placement id + cursor position on right-click", () => {
+    const onContextMenu = vi.fn()
+    const placement: WidgetPlacement = {
+      id: "ctx-1",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={() => {}}
+        themeTokens={tokens}
+        onContextMenuRequest={onContextMenu}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    fireEvent.contextMenu(draggable, { clientX: 320, clientY: 410 })
+    expect(onContextMenu).toHaveBeenCalledTimes(1)
+    expect(onContextMenu).toHaveBeenCalledWith("ctx-1", { x: 320, y: 410 })
+  })
+
+  it("FF-5 — right-click does NOT change selection (left-click owns selection)", () => {
+    const onSelect = vi.fn()
+    const onContextMenu = vi.fn()
+    const placement: WidgetPlacement = {
+      id: "ctx-2",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={onSelect}
+        themeTokens={tokens}
+        onContextMenuRequest={onContextMenu}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    fireEvent.contextMenu(draggable, { clientX: 0, clientY: 0 })
+    expect(onContextMenu).toHaveBeenCalledTimes(1)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it("FF-5 — no onContextMenuRequest prop → no handler errors; native context menu defaults", () => {
+    const placement: WidgetPlacement = {
+      id: "ctx-3",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    // Render WITHOUT onContextMenuRequest. Right-click should not
+    // throw; the handler short-circuits when the callback is absent.
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    // Should not throw.
+    fireEvent.contextMenu(draggable, { clientX: 50, clientY: 60 })
+    expect(draggable).toBeInTheDocument()
   })
 
   it("FF-4 — does not render resize handles when not selected", () => {

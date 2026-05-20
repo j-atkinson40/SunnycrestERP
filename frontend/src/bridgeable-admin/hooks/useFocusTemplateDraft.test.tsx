@@ -1327,6 +1327,177 @@ describe("useFocusTemplateDraft — FF-1 free-form positioning", () => {
     expect("column_span" in sentPlacement).toBe(false)
   })
 
+  // ── FF-5 — setWidgetZIndex layering helper ─────────────────────────
+  //
+  // Per Q-6/Q-7/Q-22/Q-31: explicit per-placement z_index; click does
+  // not promote; widgets may overlap the core; inspector + context
+  // menu both dispatch through this helper. Verifies the hook routes
+  // the computeZIndexCommit result through updateWidget and that
+  // debounced save fires.
+  describe("FF-5 — setWidgetZIndex layering helper", () => {
+    function makeFreeFormTemplate(
+      placements: Array<{ id: string; z?: number }>,
+    ) {
+      return {
+        ...SAMPLE_TEMPLATE,
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: placements.map((p) => ({
+              placement_id: p.id,
+              component_kind: "widget",
+              component_name: "today-pin-widget",
+              x: 0,
+              y: 0,
+              width: 200,
+              height: 100,
+              z_index: p.z ?? 0,
+              prop_overrides: {},
+            })),
+          },
+        ],
+      }
+    }
+
+    it("front: updates target z_index to max(others) + 1", async () => {
+      ;(
+        focusTemplatesService.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce(
+        makeFreeFormTemplate([
+          { id: "a", z: 0 },
+          { id: "b", z: 3 },
+        ]),
+      )
+      const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      act(() => {
+        result.current.setWidgetZIndex("a", "front")
+      })
+      const placements = result.current.rowsDraft[0].placements
+      const a = placements.find((p) => p.id === "a")
+      const b = placements.find((p) => p.id === "b")
+      expect(a?.z_index).toBe(4)
+      // Other widget unchanged.
+      expect(b?.z_index).toBe(3)
+      expect(result.current.isDirty).toBe(true)
+    })
+
+    it("back: updates target z_index to min(others) - 1", async () => {
+      ;(
+        focusTemplatesService.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce(
+        makeFreeFormTemplate([
+          { id: "a", z: 5 },
+          { id: "b", z: 2 },
+        ]),
+      )
+      const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      act(() => {
+        result.current.setWidgetZIndex("a", "back")
+      })
+      const a = result.current.rowsDraft[0].placements.find(
+        (p) => p.id === "a",
+      )
+      // others=[b@2]; min-1 = 1.
+      expect(a?.z_index).toBe(1)
+    })
+
+    it("forward: increments z_index", async () => {
+      ;(
+        focusTemplatesService.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce(makeFreeFormTemplate([{ id: "a", z: 2 }]))
+      const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      act(() => {
+        result.current.setWidgetZIndex("a", "forward")
+      })
+      const a = result.current.rowsDraft[0].placements.find(
+        (p) => p.id === "a",
+      )
+      expect(a?.z_index).toBe(3)
+    })
+
+    it("backward: decrements z_index", async () => {
+      ;(
+        focusTemplatesService.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce(makeFreeFormTemplate([{ id: "a", z: 2 }]))
+      const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      act(() => {
+        result.current.setWidgetZIndex("a", "backward")
+      })
+      const a = result.current.rowsDraft[0].placements.find(
+        (p) => p.id === "a",
+      )
+      expect(a?.z_index).toBe(1)
+    })
+
+    it("non-existent placement id is a no-op (no dirty, no error)", async () => {
+      ;(
+        focusTemplatesService.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce(makeFreeFormTemplate([{ id: "a", z: 0 }]))
+      const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      expect(result.current.isDirty).toBe(false)
+      act(() => {
+        result.current.setWidgetZIndex("does-not-exist", "front")
+      })
+      expect(result.current.isDirty).toBe(false)
+      const a = result.current.rowsDraft[0].placements.find(
+        (p) => p.id === "a",
+      )
+      expect(a?.z_index).toBe(0)
+    })
+
+    it("serializes through debounced save: PUT body carries updated z_index", async () => {
+      vi.useFakeTimers()
+      try {
+        ;(
+          focusTemplatesService.get as ReturnType<typeof vi.fn>
+        ).mockResolvedValueOnce(
+          makeFreeFormTemplate([
+            { id: "a", z: 0 },
+            { id: "b", z: 2 },
+          ]),
+        )
+        ;(
+          focusTemplatesService.update as ReturnType<typeof vi.fn>
+        ).mockImplementation(
+          async (_id: string, body: { rows?: unknown }) => ({
+            ...SAMPLE_TEMPLATE,
+            rows: body.rows ?? [],
+          }),
+        )
+        const { result } = renderHook(() => useFocusTemplateDraft("tpl-001"))
+        await vi.waitFor(() => expect(result.current.isLoading).toBe(false))
+        act(() => {
+          result.current.setWidgetZIndex("a", "front")
+        })
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(400)
+        })
+        const updateMock = focusTemplatesService.update as ReturnType<
+          typeof vi.fn
+        >
+        expect(updateMock).toHaveBeenCalled()
+        const payload = updateMock.mock.calls[updateMock.mock.calls.length - 1][1] as {
+          rows?: Array<{
+            placements: Array<{ placement_id: string; z_index?: number }>
+          }>
+        }
+        const sentA = payload.rows?.[0]?.placements.find(
+          (p) => p.placement_id === "a",
+        )
+        // others=[b@2]; max+1 = 3.
+        expect(sentA?.z_index).toBe(3)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
   it("load adapts free-form backend payload into frontend-typed view", async () => {
     ;(
       focusTemplatesService.get as ReturnType<typeof vi.fn>

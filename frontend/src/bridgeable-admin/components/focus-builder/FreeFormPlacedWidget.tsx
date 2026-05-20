@@ -57,6 +57,7 @@
  * fallback to 0 / 320 / 180 is a structural safety net for malformed
  * JSONB.
  */
+import type * as React from "react"
 import { useDraggable } from "@dnd-kit/core"
 
 import type { WidgetPlacement } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
@@ -70,6 +71,19 @@ export interface FreeFormPlacedWidgetProps {
   selected: boolean
   onSelect: (id: string) => void
   themeTokens: Record<string, string>
+  /**
+   * FF-5 — right-click context-menu request. Fired with the
+   * placement id + cursor position (viewport coords) when the
+   * operator right-clicks anywhere on the widget body. Per the
+   * selection-model preservation contract: right-click does NOT
+   * change selection; the menu acts on the right-clicked target
+   * regardless of current selection (Figma / Sketch precedent).
+   * Optional — when absent the default browser context menu shows.
+   */
+  onContextMenuRequest?: (
+    placementId: string,
+    position: { x: number; y: number },
+  ) => void
 }
 
 /**
@@ -90,7 +104,8 @@ export function parseFreeFormDraggableId(id: string): string | null {
 }
 
 export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
-  const { placement, selected, onSelect, themeTokens } = props
+  const { placement, selected, onSelect, themeTokens, onContextMenuRequest } =
+    props
   const x = typeof placement.x === "number" ? placement.x : 0
   const y = typeof placement.y === "number" ? placement.y : 0
   const width =
@@ -124,6 +139,22 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
     ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
     : undefined
 
+  // FF-5 — right-click handler. Fires preventDefault to suppress the
+  // browser context menu, then forwards the placement id + viewport
+  // coordinates to the parent. Per the selection-model preservation
+  // contract: this handler does NOT call onSelect. Selection state is
+  // owned by left-click; right-click acts on the target regardless.
+  // Declared AFTER the attribute spread below so it is NOT overwritten
+  // by @dnd-kit's `{...attributes}` (the May 2026 FF-4 plumbing
+  // discovery: spread order matters — explicit props must come AFTER
+  // the spread to win).
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!onContextMenuRequest) return
+    e.preventDefault()
+    e.stopPropagation()
+    onContextMenuRequest(placement.id, { x: e.clientX, y: e.clientY })
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -136,6 +167,9 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
       // @dnd-kit's KeyboardSensor.
       {...listeners}
       {...attributes}
+      // FF-5 — declared AFTER the spread so @dnd-kit's attributes
+      // can't overwrite it.
+      onContextMenu={handleContextMenu}
       style={{
         position: "absolute",
         left: `${x}px`,

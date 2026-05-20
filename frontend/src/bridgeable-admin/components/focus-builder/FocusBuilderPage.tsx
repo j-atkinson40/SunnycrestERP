@@ -68,6 +68,8 @@ import {
   FREE_FORM_DEFAULT_CANVAS_WIDTH,
   FREE_FORM_DEFAULT_CANVAS_HEIGHT,
 } from "./WidgetFreeFormLayer"
+import { CanvasContextMenu } from "./CanvasContextMenu"
+import type { ZIndexAction } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 import { FocusBuilderRightRail } from "./FocusBuilderRightRail"
 import {
   FocusBuilderSelectionProvider,
@@ -429,6 +431,54 @@ function FocusBuilderPageInner() {
     null,
   )
 
+  // ── FF-5 — right-click context menu state + dispatcher ────────────
+  //
+  // Single menu instance rendered at page root via portal (per
+  // CanvasContextMenu). Right-click on any free-form widget opens it
+  // at the cursor position; left-click anywhere outside closes it
+  // (via the menu's own document-level mousedown listener). The
+  // dispatch routes through templateHook.setWidgetZIndex.
+  const [contextMenuState, setContextMenuState] = React.useState<{
+    open: boolean
+    position: { x: number; y: number }
+    targetPlacementId: string | null
+  }>({ open: false, position: { x: 0, y: 0 }, targetPlacementId: null })
+
+  const handleWidgetContextMenuRequest = React.useCallback(
+    (placementId: string, position: { x: number; y: number }) => {
+      setContextMenuState({
+        open: true,
+        position,
+        targetPlacementId: placementId,
+      })
+    },
+    [],
+  )
+
+  const handleContextMenuClose = React.useCallback(() => {
+    setContextMenuState((prev) => ({ ...prev, open: false }))
+  }, [])
+
+  const handleContextMenuAction = React.useCallback(
+    (action: ZIndexAction) => {
+      if (!contextMenuState.targetPlacementId) return
+      if (mode !== "template") return
+      templateHook.setWidgetZIndex(
+        contextMenuState.targetPlacementId,
+        action,
+      )
+    },
+    [contextMenuState.targetPlacementId, mode, templateHook],
+  )
+
+  // Close the menu when the subject changes (defensive — same idiom
+  // as the inherited-core panel close-on-subject-change).
+  React.useEffect(() => {
+    setContextMenuState((prev) =>
+      prev.open ? { ...prev, open: false } : prev,
+    )
+  }, [currentSubjectKey])
+
   const handleDragStart = React.useCallback((e: DragStartEvent) => {
     const id = String(e.active.id ?? "")
     const slug = paletteItemIdToSlug(id)
@@ -713,6 +763,9 @@ function FocusBuilderPageInner() {
             }
             coreChromeDraft={mode === "core" ? coreHook.draft : undefined}
             rowsDraft={mode === "template" ? templateHook.rowsDraft : undefined}
+            onWidgetContextMenuRequest={
+              mode === "template" ? handleWidgetContextMenuRequest : undefined
+            }
           />
         </section>
 
@@ -749,6 +802,15 @@ function FocusBuilderPageInner() {
         </aside>
       </div>
     </div>
+    {/* FF-5 — single context menu instance, portal-rendered into
+       document.body. Closes via Escape / click-outside (own document
+       listeners) / option click. */}
+    <CanvasContextMenu
+      isOpen={contextMenuState.open}
+      position={contextMenuState.position}
+      onClose={handleContextMenuClose}
+      onAction={handleContextMenuAction}
+    />
     <DragOverlay>
       {activeDragLabel ? (
         <div

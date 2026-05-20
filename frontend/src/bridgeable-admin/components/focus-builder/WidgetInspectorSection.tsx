@@ -35,7 +35,10 @@ import type {
 import type {
   WidgetPlacement,
   RowsBlob,
+  ZIndexAction,
 } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
+
+import { LayerInspectorSection } from "./LayerInspectorSection"
 
 /**
  * Canonical default chrome values for placed widgets. F-3 widget
@@ -67,6 +70,12 @@ export interface WidgetInspectorSectionProps {
   /** Remove the widget. */
   onRemoveWidget: (widgetId: string) => void
   /**
+   * FF-5 — z-order layering action. Wired from
+   * `templateHook.setWidgetZIndex` at the inspector parent. Optional
+   * for backward-compat with existing unit tests; when absent the
+   * Layer section is omitted entirely. */
+  onSetWidgetZIndex?: (widgetId: string, action: ZIndexAction) => void
+  /**
    * Live theme tokens (light mode in F-2/F-3). Threaded through to
    * the TokenSwatchPicker controls for background/border/padding.
    * Optional — defaults to an empty record so unit tests can mount
@@ -92,6 +101,7 @@ export function WidgetInspectorSection(props: WidgetInspectorSectionProps) {
     placement,
     onUpdateWidget,
     onRemoveWidget,
+    onSetWidgetZIndex,
     themeTokens = {},
   } = props
 
@@ -187,6 +197,17 @@ export function WidgetInspectorSection(props: WidgetInspectorSectionProps) {
           />
         </PropertyRow>
       </PropertySection>
+
+      {/* FF-5 — Layer section. Only rendered when the parent supplies
+          the z-order callback (templates only — cores have no
+          widgets). Mounts inside the same PropertyPanel so it shares
+          the inspector's existing section visual conventions. */}
+      {onSetWidgetZIndex && (
+        <LayerInspectorSection
+          placementId={placement.id}
+          onAction={(action) => onSetWidgetZIndex(placement.id, action)}
+        />
+      )}
 
       {/* Chrome — per-placement override surface (sub-arc F-3.1b).
           No inheritance indicators: widget chrome is stamped at

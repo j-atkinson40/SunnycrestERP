@@ -79,6 +79,15 @@ export interface WidgetFreeFormLayerProps {
   /** Optional typography heading/body styles (template mode). */
   headingStyle: React.CSSProperties | undefined
   bodyStyle: React.CSSProperties | undefined
+  /**
+   * FF-5 — right-click context menu request. Forwarded to each
+   * FreeFormPlacedWidget. When supplied, right-click on a widget
+   * fires this with the placement id + viewport cursor coords. The
+   * page-level dispatcher owns the menu state + render. */
+  onContextMenuRequest?: (
+    placementId: string,
+    position: { x: number; y: number },
+  ) => void
 }
 
 export function WidgetFreeFormLayer(props: WidgetFreeFormLayerProps) {
@@ -92,6 +101,7 @@ export function WidgetFreeFormLayer(props: WidgetFreeFormLayerProps) {
     coreCardStyle,
     headingStyle,
     bodyStyle,
+    onContextMenuRequest,
   } = props
   const { selection, setSelection } = useFocusBuilderSelection()
 
@@ -211,6 +221,7 @@ export function WidgetFreeFormLayer(props: WidgetFreeFormLayerProps) {
           selected={selection.kind === "widget" && selection.id === p.id}
           onSelect={(id) => setSelection({ kind: "widget", id })}
           themeTokens={themeTokens}
+          onContextMenuRequest={onContextMenuRequest}
         />
       ))}
     </div>

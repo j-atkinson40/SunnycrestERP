@@ -86,6 +86,7 @@ function makeTemplateHook(): UseFocusTemplateDraftResult {
     updateWidget: vi.fn(),
     removeWidget: vi.fn(),
     moveWidget: vi.fn(),
+    setWidgetZIndex: vi.fn(),
     resetChromeOverridesField: vi.fn(),
     resetSubstrateField: vi.fn(),
     resetTypographyField: vi.fn(),

@@ -163,6 +163,9 @@ export function FocusBuilderInspector(props: FocusBuilderInspectorProps) {
           placement={placement}
           onUpdateWidget={(id, partial) => templateHook.updateWidget(id, partial)}
           onRemoveWidget={(id) => templateHook.removeWidget(id)}
+          onSetWidgetZIndex={(id, action) =>
+            templateHook.setWidgetZIndex(id, action)
+          }
           themeTokens={themeTokens}
         />
       )
