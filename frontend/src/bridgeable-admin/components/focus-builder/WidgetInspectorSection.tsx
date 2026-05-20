@@ -37,8 +37,13 @@ import type {
   RowsBlob,
   ZIndexAction,
 } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
+import { getFreeFormMinDimensions } from "@/lib/visual-editor/registry"
 
 import { LayerInspectorSection } from "./LayerInspectorSection"
+import {
+  PositionInspectorSection,
+  type PositionField,
+} from "./PositionInspectorSection"
 
 /**
  * Canonical default chrome values for placed widgets. F-3 widget
@@ -76,6 +81,14 @@ export interface WidgetInspectorSectionProps {
    * Layer section is omitted entirely. */
   onSetWidgetZIndex?: (widgetId: string, action: ZIndexAction) => void
   /**
+   * FF-6 — canvas dimensions in pixels. Threaded through to the
+   * PositionInspectorSection so its input clamps use the same canvas
+   * bounds as FF-2/FF-4's drag/resize commits. Optional for unit-test
+   * convenience; the Position section is only mounted for free-form
+   * placements (placements that carry x/y/width/height fields).
+   */
+  canvasDimensions?: { width: number; height: number }
+  /**
    * Live theme tokens (light mode in F-2/F-3). Threaded through to
    * the TokenSwatchPicker controls for background/border/padding.
    * Optional — defaults to an empty record so unit tests can mount
@@ -102,8 +115,21 @@ export function WidgetInspectorSection(props: WidgetInspectorSectionProps) {
     onUpdateWidget,
     onRemoveWidget,
     onSetWidgetZIndex,
+    canvasDimensions,
     themeTokens = {},
   } = props
+
+  // FF-6 — Free-form-shape detection. A placement is free-form when
+  // any of x/y/width/height is defined (mirrors the adapter's
+  // isFreeFormShape predicate). Grid placements (column_start +
+  // column_span only) skip the Position section entirely — they have
+  // a different positioning model that the F-3 Placement section
+  // already covers via column_span.
+  const isFreeForm =
+    placement.x !== undefined ||
+    placement.y !== undefined ||
+    placement.width !== undefined ||
+    placement.height !== undefined
 
   const chromeView = React.useMemo(() => {
     const c = (placement.chrome ?? {}) as Record<string, unknown>
@@ -198,17 +224,6 @@ export function WidgetInspectorSection(props: WidgetInspectorSectionProps) {
         </PropertyRow>
       </PropertySection>
 
-      {/* FF-5 — Layer section. Only rendered when the parent supplies
-          the z-order callback (templates only — cores have no
-          widgets). Mounts inside the same PropertyPanel so it shares
-          the inspector's existing section visual conventions. */}
-      {onSetWidgetZIndex && (
-        <LayerInspectorSection
-          placementId={placement.id}
-          onAction={(action) => onSetWidgetZIndex(placement.id, action)}
-        />
-      )}
-
       {/* Chrome — per-placement override surface (sub-arc F-3.1b).
           No inheritance indicators: widget chrome is stamped at
           placement creation and edited directly; there is no Tier-1
@@ -290,6 +305,35 @@ export function WidgetInspectorSection(props: WidgetInspectorSectionProps) {
           />
         </PropertyRow>
       </PropertySection>
+
+      {/* FF-6 — Position section. Only mounted for free-form
+          placements (those carrying x/y/width/height). Grid
+          placements skip this section per the substrate-prevents-
+          action canon: their positioning model is column-based and
+          covered by the Placement section above. */}
+      {isFreeForm && (
+        <PositionInspectorSection
+          placement={placement}
+          canvasDimensions={
+            canvasDimensions ?? { width: 1200, height: 800 }
+          }
+          minDimensions={getFreeFormMinDimensions(placement.widget_slug)}
+          onUpdate={(field: PositionField, value: number) =>
+            onUpdateWidget(placement.id, { [field]: value })
+          }
+        />
+      )}
+
+      {/* FF-5 — Layer section. Only rendered when the parent supplies
+          the z-order callback (templates only — cores have no
+          widgets). Mounts inside the same PropertyPanel so it shares
+          the inspector's existing section visual conventions. */}
+      {onSetWidgetZIndex && (
+        <LayerInspectorSection
+          placementId={placement.id}
+          onAction={(action) => onSetWidgetZIndex(placement.id, action)}
+        />
+      )}
 
       <div className="flex items-center justify-end p-2">
         <Button

@@ -158,6 +158,18 @@ export function FocusBuilderInspector(props: FocusBuilderInspectorProps) {
           </div>
         )
       }
+      // FF-6 — canvas dimensions sourced from the template's
+      // canvas_config JSONB (set by FF-2 when authoring free-form
+      // templates); falls back to the platform 1200×800 default per
+      // the FF-2 defensive-fallback pattern shared with the drag /
+      // resize commit paths.
+      const canvasConfig = templateHook.template?.canvas_config as
+        | Record<string, unknown>
+        | undefined
+      const canvasDimensions = {
+        width: (canvasConfig?.width as number | undefined) ?? 1200,
+        height: (canvasConfig?.height as number | undefined) ?? 800,
+      }
       return (
         <WidgetInspectorSection
           placement={placement}
@@ -166,6 +178,7 @@ export function FocusBuilderInspector(props: FocusBuilderInspectorProps) {
           onSetWidgetZIndex={(id, action) =>
             templateHook.setWidgetZIndex(id, action)
           }
+          canvasDimensions={canvasDimensions}
           themeTokens={themeTokens}
         />
       )
