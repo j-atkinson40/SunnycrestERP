@@ -268,6 +268,137 @@ describe("FocusBuilderInspector", () => {
     expect(inheritedRows[0].textContent).toMatch(/Tier 1 core/)
   })
 
+  // FF-7 — multi-select branching.
+  it("FF-7 — multi-select shows AlignInspectorSection AND hides Position/Layer/Chrome", () => {
+    const hook = makeTemplateHook()
+    hook.rowsDraft = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "a",
+            widget_slug: "today-pin-widget",
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 100,
+            chrome: {},
+          },
+          {
+            id: "b",
+            widget_slug: "today-pin-widget",
+            x: 500,
+            y: 250,
+            width: 100,
+            height: 150,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    render(
+      <FocusBuilderSelectionProvider>
+        <SelectionPrimer selection={{ kind: "widgets-multi", ids: ["a", "b"] }} />
+        <FocusBuilderInspector
+          mode="template"
+          themeTokens={tokens}
+          templateHook={hook}
+          inheritedCore={inheritedCore}
+        />
+      </FocusBuilderSelectionProvider>,
+    )
+    // Align section visible.
+    expect(screen.getByTestId("align-inspector-section")).toBeInTheDocument()
+    // Multi-select container present.
+    expect(screen.getByTestId("focus-builder-inspector-multi")).toBeInTheDocument()
+    // Position / Layer / Chrome sections HIDDEN.
+    expect(screen.queryByText("Position")).not.toBeInTheDocument()
+    expect(screen.queryByText("Layer")).not.toBeInTheDocument()
+    expect(screen.queryByText("Chrome")).not.toBeInTheDocument()
+  })
+
+  it("FF-7 — multi-select Align button click fires updateWidget per target", () => {
+    const hook = makeTemplateHook()
+    hook.rowsDraft = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "a",
+            widget_slug: "today-pin-widget",
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 100,
+            chrome: {},
+          },
+          {
+            id: "b",
+            widget_slug: "today-pin-widget",
+            x: 500,
+            y: 250,
+            width: 100,
+            height: 150,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    render(
+      <FocusBuilderSelectionProvider>
+        <SelectionPrimer selection={{ kind: "widgets-multi", ids: ["a", "b"] }} />
+        <FocusBuilderInspector
+          mode="template"
+          themeTokens={tokens}
+          templateHook={hook}
+          inheritedCore={inheritedCore}
+        />
+      </FocusBuilderSelectionProvider>,
+    )
+    fireEvent.click(screen.getByTestId("align-action-left"))
+    // Both widgets receive updateWidget with x = min(x) = 100.
+    expect(hook.updateWidget).toHaveBeenCalledWith("a", { x: 100 })
+    expect(hook.updateWidget).toHaveBeenCalledWith("b", { x: 100 })
+  })
+
+  it("FF-7 — single-select context still renders Position/Layer/Chrome (no regression)", () => {
+    const hook = makeTemplateHook()
+    hook.rowsDraft = [
+      {
+        row_index: 0,
+        column_count: 12,
+        placements: [
+          {
+            id: "a",
+            widget_slug: "today-pin-widget",
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 100,
+            chrome: {},
+          },
+        ],
+      },
+    ]
+    render(
+      <FocusBuilderSelectionProvider>
+        <SelectionPrimer selection={{ kind: "widget", id: "a" }} />
+        <FocusBuilderInspector
+          mode="template"
+          themeTokens={tokens}
+          templateHook={hook}
+          inheritedCore={inheritedCore}
+        />
+      </FocusBuilderSelectionProvider>,
+    )
+    // AlignInspectorSection NOT rendered.
+    expect(screen.queryByTestId("align-inspector-section")).not.toBeInTheDocument()
+    // Position section present (FF-6 wired).
+    expect(screen.getAllByText("Position").length).toBeGreaterThan(0)
+  })
+
   it("scrubbable + preset picker updates fire hook update methods", () => {
     const hook = makeTemplateHook()
     render(

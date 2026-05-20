@@ -1,17 +1,12 @@
 /**
- * CanvasContextMenu — sub-arc FF-5.
+ * CanvasContextMenu — sub-arc FF-5 + FF-7 multi-select extension.
  *
- * Right-click context menu surface for the four z-order actions
- * (front / forward / backward / back). The first right-click context
- * menu in Focus Builder; establishes the substrate for future
- * canvas-level context menus (FF-7 multi-select align is a likely
- * follow-on consumer).
- *
- * Per Q-31 (c): inspector buttons + right-click context menu both
- * dispatch the same action vocabulary. The inspector surface lives in
- * `LayerInspectorSection`; both surfaces ultimately call
- * `hook.setWidgetZIndex(placementId, action)` via the page-level
- * dispatcher.
+ * Right-click context menu surface. FF-5 shipped the z-order action
+ * vocabulary (front / forward / backward / back). FF-7 extends with
+ * an alternate action set for multi-select context: six align
+ * actions (left / center-horizontal / right / top / center-vertical
+ * / bottom) per Q-17 (b). The caller selects which set to render
+ * via `actionSet`.
  *
  * Rendering:
  *   - React `createPortal` into `document.body` so the menu is NOT
@@ -36,6 +31,12 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import {
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignStartVertical,
   ChevronsUp,
   ChevronUp,
   ChevronDown,
@@ -43,6 +44,10 @@ import {
 } from "lucide-react"
 
 import type { ZIndexAction } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
+import type { AlignAction } from "./computeAlignTargets"
+
+export type ContextMenuActionSet = "z-order" | "align"
+export type ContextMenuAction = ZIndexAction | AlignAction
 
 export interface CanvasContextMenuProps {
   /** Whether the menu is open. */
@@ -51,19 +56,23 @@ export interface CanvasContextMenuProps {
   position: { x: number; y: number }
   /** Fired on Escape, click-outside, or option click (after onAction). */
   onClose: () => void
-  /** Fired when an option is clicked. Action is the canonical z-order
-   * action vocabulary shared with LayerInspectorSection. */
-  onAction: (action: ZIndexAction) => void
+  /** Fired when an option is clicked. The action is typed across both
+   * vocabularies; the caller dispatches on the action union by
+   * actionSet. */
+  onAction: (action: ContextMenuAction) => void
+  /** Which vocabulary to render. Defaults to z-order for FF-5
+   * backward compat. */
+  actionSet?: ContextMenuActionSet
 }
 
-interface MenuItem {
-  action: ZIndexAction
+interface MenuItem<A extends string> {
+  action: A
   label: string
   testId: string
   Icon: typeof ChevronsUp
 }
 
-const MENU_ITEMS: MenuItem[] = [
+const Z_ORDER_ITEMS: MenuItem<ZIndexAction>[] = [
   {
     action: "front",
     label: "Bring to front",
@@ -90,8 +99,47 @@ const MENU_ITEMS: MenuItem[] = [
   },
 ]
 
+const ALIGN_ITEMS: MenuItem<AlignAction>[] = [
+  {
+    action: "left",
+    label: "Align left",
+    testId: "context-menu-action-align-left",
+    Icon: AlignStartVertical,
+  },
+  {
+    action: "center-horizontal",
+    label: "Center horizontal",
+    testId: "context-menu-action-align-center-horizontal",
+    Icon: AlignCenterVertical,
+  },
+  {
+    action: "right",
+    label: "Align right",
+    testId: "context-menu-action-align-right",
+    Icon: AlignEndVertical,
+  },
+  {
+    action: "top",
+    label: "Align top",
+    testId: "context-menu-action-align-top",
+    Icon: AlignStartHorizontal,
+  },
+  {
+    action: "center-vertical",
+    label: "Center vertical",
+    testId: "context-menu-action-align-center-vertical",
+    Icon: AlignCenterHorizontal,
+  },
+  {
+    action: "bottom",
+    label: "Align bottom",
+    testId: "context-menu-action-align-bottom",
+    Icon: AlignEndHorizontal,
+  },
+]
+
 export function CanvasContextMenu(props: CanvasContextMenuProps) {
-  const { isOpen, position, onClose, onAction } = props
+  const { isOpen, position, onClose, onAction, actionSet = "z-order" } = props
   const menuRef = React.useRef<HTMLDivElement | null>(null)
 
   // Document-level listeners (Escape + click-outside). Mounted only
@@ -123,10 +171,14 @@ export function CanvasContextMenu(props: CanvasContextMenuProps) {
 
   if (!isOpen) return null
 
+  const items: Array<MenuItem<ZIndexAction> | MenuItem<AlignAction>> =
+    actionSet === "align" ? ALIGN_ITEMS : Z_ORDER_ITEMS
+
   return createPortal(
     <div
       ref={menuRef}
       data-testid="canvas-context-menu"
+      data-action-set={actionSet}
       role="menu"
       style={{
         position: "fixed",
@@ -145,29 +197,32 @@ export function CanvasContextMenu(props: CanvasContextMenuProps) {
         "shadow-level-2",
       ].join(" ")}
     >
-      {MENU_ITEMS.map(({ action, label, testId, Icon }) => (
-        <button
-          key={action}
-          type="button"
-          role="menuitem"
-          data-testid={testId}
-          onClick={() => {
-            onAction(action)
-            onClose()
-          }}
-          className={[
-            "flex items-center gap-2 px-3 py-1.5",
-            "text-[12px] text-left",
-            "text-[color:var(--content-base)]",
-            "transition-colors duration-100",
-            "hover:bg-[color:var(--accent)]/10 hover:text-[color:var(--accent)]",
-            "focus-visible:outline-none focus-visible:bg-[color:var(--accent)]/10",
-          ].join(" ")}
-        >
-          <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          <span>{label}</span>
-        </button>
-      ))}
+      {items.map((item) => {
+        const { action, label, testId, Icon } = item
+        return (
+          <button
+            key={action}
+            type="button"
+            role="menuitem"
+            data-testid={testId}
+            onClick={() => {
+              onAction(action as ContextMenuAction)
+              onClose()
+            }}
+            className={[
+              "flex items-center gap-2 px-3 py-1.5",
+              "text-[12px] text-left",
+              "text-[color:var(--content-base)]",
+              "transition-colors duration-100",
+              "hover:bg-[color:var(--accent)]/10 hover:text-[color:var(--accent)]",
+              "focus-visible:outline-none focus-visible:bg-[color:var(--accent)]/10",
+            ].join(" ")}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>{label}</span>
+          </button>
+        )
+      })}
     </div>,
     document.body,
   )

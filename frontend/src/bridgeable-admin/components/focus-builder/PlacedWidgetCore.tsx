@@ -64,6 +64,15 @@ export interface PlacedWidgetCoreProps {
    * gridColumn: ...`).
    */
   outerStyle: React.CSSProperties
+  /**
+   * FF-7 — shift+click handler. When the operator clicks the widget
+   * with Shift held, `onShiftSelect` fires (and `onSelect` does NOT).
+   * Callers wire this to `addToSelection`/`removeFromSelection` so
+   * the operator can compose multi-select from the canvas per Q-16
+   * (a). Optional — when absent, all clicks fall through to
+   * `onSelect` (single-select model unchanged from F-3.1c).
+   */
+  onShiftSelect?: (id: string) => void
 }
 
 /**
@@ -90,7 +99,8 @@ export function resolvePlacementChromeStyle(
 }
 
 export function PlacedWidgetCore(props: PlacedWidgetCoreProps) {
-  const { placement, selected, onSelect, themeTokens, outerStyle } = props
+  const { placement, selected, onSelect, themeTokens, outerStyle, onShiftSelect } =
+    props
   const entry = React.useMemo(
     () => getByName("widget", placement.widget_slug),
     [placement.widget_slug],
@@ -114,6 +124,10 @@ export function PlacedWidgetCore(props: PlacedWidgetCoreProps) {
       tabIndex={0}
       onClick={(e) => {
         e.stopPropagation()
+        if (e.shiftKey && onShiftSelect) {
+          onShiftSelect(placement.id)
+          return
+        }
         onSelect(placement.id)
       }}
       onKeyDown={(e) => {

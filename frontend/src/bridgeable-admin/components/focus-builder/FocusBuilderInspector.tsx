@@ -68,6 +68,14 @@ import {
   WidgetInspectorSection,
   findPlacementById,
 } from "./WidgetInspectorSection"
+import { AlignInspectorSection } from "./AlignInspectorSection"
+import {
+  computeAlignTargets,
+  type AlignAction,
+  type AlignablePlacement,
+} from "./computeAlignTargets"
+import { FREE_FORM_DEFAULT_DIMENSIONS } from "@/lib/visual-editor/registry"
+import { flattenFreeFormPlacements } from "./FocusBuilderCanvas"
 
 export interface FocusBuilderInspectorProps {
   mode: "core" | "template" | "empty"
@@ -144,6 +152,46 @@ export function FocusBuilderInspector(props: FocusBuilderInspectorProps) {
   // ── Template editing ──────────────────────────────────────────────
   if (mode === "template") {
     if (!templateHook) return null
+
+    // FF-7 — multi-select dispatches to AlignInspectorSection per
+    // Q-18 (a). Position / Layer / Chrome sections are HIDDEN; align
+    // is the only multi-select action. Mixed-state prop editing is
+    // deferred per Q-18.
+    if (selection.kind === "widgets-multi") {
+      const flat = flattenFreeFormPlacements(templateHook.rowsDraft)
+      const selected: AlignablePlacement[] = flat
+        .filter((p) => selection.ids.includes(p.id))
+        .map((p) => ({
+          id: p.id,
+          x: typeof p.x === "number" ? p.x : 0,
+          y: typeof p.y === "number" ? p.y : 0,
+          width:
+            typeof p.width === "number" && p.width > 0
+              ? p.width
+              : FREE_FORM_DEFAULT_DIMENSIONS.width,
+          height:
+            typeof p.height === "number" && p.height > 0
+              ? p.height
+              : FREE_FORM_DEFAULT_DIMENSIONS.height,
+        }))
+      const onAlign = (action: AlignAction) => {
+        const targets = computeAlignTargets(selected, action)
+        for (const t of targets) {
+          const partial: Record<string, unknown> = {}
+          if (typeof t.x === "number") partial.x = t.x
+          if (typeof t.y === "number") partial.y = t.y
+          templateHook.updateWidget(t.id, partial)
+        }
+      }
+      return (
+        <div data-testid="focus-builder-inspector-multi">
+          <AlignInspectorSection
+            selectedPlacements={selected}
+            onAlign={onAlign}
+          />
+        </div>
+      )
+    }
 
     // F-3 — widget selection dispatches to WidgetInspectorSection.
     if (selection.kind === "widget") {

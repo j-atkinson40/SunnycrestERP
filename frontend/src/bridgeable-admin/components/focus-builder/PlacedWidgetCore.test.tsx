@@ -178,6 +178,62 @@ describe("PlacedWidgetCore", () => {
     expect(parentClick).not.toHaveBeenCalled()
   })
 
+  // FF-7 — shift+click extension.
+  it("shift+click fires onShiftSelect (not onSelect)", () => {
+    const onSelect = vi.fn()
+    const onShiftSelect = vi.fn()
+    render(
+      <PlacedWidgetCore
+        placement={placement}
+        selected={false}
+        onSelect={onSelect}
+        onShiftSelect={onShiftSelect}
+        themeTokens={tokens}
+        outerStyle={{ gridColumn: "1 / span 12" }}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("focus-builder-placed-widget"), {
+      shiftKey: true,
+    })
+    expect(onShiftSelect).toHaveBeenCalledWith("w-core-test-1")
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it("regular click without shift still fires onSelect when onShiftSelect is provided", () => {
+    const onSelect = vi.fn()
+    const onShiftSelect = vi.fn()
+    render(
+      <PlacedWidgetCore
+        placement={placement}
+        selected={false}
+        onSelect={onSelect}
+        onShiftSelect={onShiftSelect}
+        themeTokens={tokens}
+        outerStyle={{ gridColumn: "1 / span 12" }}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+    expect(onSelect).toHaveBeenCalledWith("w-core-test-1")
+    expect(onShiftSelect).not.toHaveBeenCalled()
+  })
+
+  it("shift+click falls back to onSelect when onShiftSelect absent (preserves F-3.1c behavior)", () => {
+    const onSelect = vi.fn()
+    render(
+      <PlacedWidgetCore
+        placement={placement}
+        selected={false}
+        onSelect={onSelect}
+        themeTokens={tokens}
+        outerStyle={{ gridColumn: "1 / span 12" }}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("focus-builder-placed-widget"), {
+      shiftKey: true,
+    })
+    expect(onSelect).toHaveBeenCalledWith("w-core-test-1")
+  })
+
   it("renders 'Unknown widget' fallback when widget_slug not in registry", () => {
     const bad: WidgetPlacement = {
       id: "w-bad",

@@ -101,6 +101,16 @@ export interface FocusBuilderCanvasProps {
     placementId: string,
     position: { x: number; y: number },
   ) => void
+  /** FF-7 — shift+click forwarded to FreeFormPlacedWidget. */
+  onWidgetShiftSelect?: (id: string) => void
+  /** FF-7 — marquee + snap state passed through to WidgetFreeFormLayer. */
+  marqueeStart?: { x: number; y: number } | null
+  marqueeCurrent?: { x: number; y: number } | null
+  marqueeActive?: boolean
+  snapLines?: import("./computeSnapAdjustment").SnapLine[]
+  onLayerPointerDown?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onLayerPointerMove?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onLayerPointerUp?: (e: React.PointerEvent<HTMLDivElement>) => void
 }
 
 export const CANVAS_DROP_ZONE_ID = "focus-builder-canvas-drop-zone"
@@ -214,6 +224,14 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
     coreChromeDraft,
     rowsDraft,
     onWidgetContextMenuRequest,
+    onWidgetShiftSelect,
+    marqueeStart,
+    marqueeCurrent,
+    marqueeActive,
+    snapLines,
+    onLayerPointerDown,
+    onLayerPointerMove,
+    onLayerPointerUp,
   } = props
   const { selection, setSelection } = useFocusBuilderSelection()
 
@@ -401,6 +419,14 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
             headingStyle={headingStyle}
             bodyStyle={bodyStyle}
             onContextMenuRequest={onWidgetContextMenuRequest}
+            onWidgetShiftSelect={onWidgetShiftSelect}
+            marqueeStart={marqueeStart}
+            marqueeCurrent={marqueeCurrent}
+            marqueeActive={marqueeActive}
+            snapLines={snapLines}
+            onLayerPointerDown={onLayerPointerDown}
+            onLayerPointerMove={onLayerPointerMove}
+            onLayerPointerUp={onLayerPointerUp}
           />
         </div>
       ) : (
@@ -561,6 +587,15 @@ export interface FocusBuilderCanvasMountProps {
     placementId: string,
     position: { x: number; y: number },
   ) => void
+  /** FF-7 — multi-select + marquee + snap state. */
+  onWidgetShiftSelect?: (id: string) => void
+  marqueeStart?: { x: number; y: number } | null
+  marqueeCurrent?: { x: number; y: number } | null
+  marqueeActive?: boolean
+  snapLines?: import("./computeSnapAdjustment").SnapLine[]
+  onLayerPointerDown?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onLayerPointerMove?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onLayerPointerUp?: (e: React.PointerEvent<HTMLDivElement>) => void
 }
 
 /**

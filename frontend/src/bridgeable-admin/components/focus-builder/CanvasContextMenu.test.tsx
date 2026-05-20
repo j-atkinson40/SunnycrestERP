@@ -149,4 +149,75 @@ describe("CanvasContextMenu", () => {
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).not.toHaveBeenCalled()
   })
+
+  // FF-7 — multi-select action set (align vocabulary).
+  it("renders z-order actions when actionSet=z-order (default)", () => {
+    render(
+      <CanvasContextMenu
+        isOpen
+        position={{ x: 0, y: 0 }}
+        onClose={() => {}}
+        onAction={() => {}}
+      />,
+    )
+    const menu = screen.getByTestId("canvas-context-menu")
+    expect(menu.getAttribute("data-action-set")).toBe("z-order")
+    expect(screen.getByTestId("context-menu-action-front")).toBeInTheDocument()
+    expect(screen.queryByTestId("context-menu-action-align-left")).toBeNull()
+  })
+
+  it("renders align actions when actionSet=align", () => {
+    render(
+      <CanvasContextMenu
+        isOpen
+        position={{ x: 0, y: 0 }}
+        onClose={() => {}}
+        onAction={() => {}}
+        actionSet="align"
+      />,
+    )
+    const menu = screen.getByTestId("canvas-context-menu")
+    expect(menu.getAttribute("data-action-set")).toBe("align")
+    // All 6 align options visible.
+    expect(
+      screen.getByTestId("context-menu-action-align-left"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTestId("context-menu-action-align-center-horizontal"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTestId("context-menu-action-align-right"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTestId("context-menu-action-align-top"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTestId("context-menu-action-align-center-vertical"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTestId("context-menu-action-align-bottom"),
+    ).toBeInTheDocument()
+    // Z-order options absent.
+    expect(screen.queryByTestId("context-menu-action-front")).toBeNull()
+  })
+
+  it("each align action fires onAction with correct value + closes menu", () => {
+    const onAction = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <CanvasContextMenu
+        isOpen
+        position={{ x: 0, y: 0 }}
+        onClose={onClose}
+        onAction={onAction}
+        actionSet="align"
+      />,
+    )
+    fireEvent.click(screen.getByTestId("context-menu-action-align-left"))
+    expect(onAction).toHaveBeenLastCalledWith("left")
+    expect(onClose).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByTestId("context-menu-action-align-bottom"))
+    expect(onAction).toHaveBeenLastCalledWith("bottom")
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
 })

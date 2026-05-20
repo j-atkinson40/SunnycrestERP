@@ -739,8 +739,6 @@ export function useFocusTemplateDraft(
 
   const updateWidget = useCallback(
     (widgetId: string, partial: Record<string, unknown>) => {
-      const current = rowsRef.current
-      let found = false
       // FF-1: positioning-field keys are split off from the partial
       // and applied as top-level placement field updates; everything
       // else continues to merge into the chrome blob. This preserves
@@ -765,24 +763,39 @@ export function useFocusTemplateDraft(
           chromeUpdates[k] = v
         }
       }
-      const next: RowsBlob = current.map((r) => ({
-        ...r,
-        placements:
-          r.placements?.map((p) => {
-            if (p.id === widgetId) {
-              found = true
-              const merged: WidgetPlacement = {
-                ...p,
-                ...placementUpdates,
-                chrome: { ...p.chrome, ...chromeUpdates },
+      // FF-7 — functional setRowsDraft. Pre-FF-7 this read rowsRef.current
+      // up-front; two synchronous updateWidget calls (e.g., multi-select
+      // arrow nudge or align action) raced because rowsRef.current is
+      // updated in a useEffect that runs AFTER render — the second call
+      // saw the OLD rowsRef value and silently overwrote the first
+      // call's setRowsDraft. Functional updater receives React's
+      // latest state including the prior call's update.
+      setRowsDraft((current) => {
+        let foundThisCall = false
+        const next: RowsBlob = current.map((r) => ({
+          ...r,
+          placements:
+            r.placements?.map((p) => {
+              if (p.id === widgetId) {
+                foundThisCall = true
+                const merged: WidgetPlacement = {
+                  ...p,
+                  ...placementUpdates,
+                  chrome: { ...p.chrome, ...chromeUpdates },
+                }
+                return merged
               }
-              return merged
-            }
-            return { ...p }
-          }) ?? [],
-      }))
-      if (!found) return
-      setRowsDraft(next)
+              return { ...p }
+            }) ?? [],
+        }))
+        // No-op when placement absent (defensive — selection desync
+        // after remove). Returning `current` reference skips re-render.
+        return foundThisCall ? next : current
+      })
+      // queueSave fires unconditionally. The debounced save coalesces
+      // adjacent calls, and a save of unchanged state is a no-op at
+      // the boundary. Reading rowsRef.current to short-circuit is the
+      // pre-FF-7 pattern but introduces the multi-update race.
       queueSave()
     },
     [queueSave],

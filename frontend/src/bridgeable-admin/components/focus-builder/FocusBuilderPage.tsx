@@ -23,6 +23,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
 
@@ -68,7 +69,15 @@ import {
   FREE_FORM_DEFAULT_CANVAS_WIDTH,
   FREE_FORM_DEFAULT_CANVAS_HEIGHT,
 } from "./WidgetFreeFormLayer"
-import { CanvasContextMenu } from "./CanvasContextMenu"
+import { CanvasContextMenu, type ContextMenuAction } from "./CanvasContextMenu"
+import {
+  computeSnapAdjustment,
+  type SnapLine,
+} from "./computeSnapAdjustment"
+import {
+  computeAlignTargets,
+  type AlignAction,
+} from "./computeAlignTargets"
 import type { ZIndexAction } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 import { FocusBuilderRightRail } from "./FocusBuilderRightRail"
 import {
@@ -166,7 +175,15 @@ function FocusBuilderPageInner() {
   })
 
   // ── Selection reset on subject change ─────────────────────────────
-  const { selection, setSelection } = useFocusBuilderSelection()
+  const {
+    selection,
+    setSelection,
+    addToSelection,
+    removeFromSelection,
+    clearSelection,
+    setMultiSelection,
+    isInSelection,
+  } = useFocusBuilderSelection()
   const lastSubjectKey = React.useRef<string | null>(null)
   const currentSubjectKey = subject ? `${subject.kind}:${subject.id}` : null
   React.useEffect(() => {
@@ -459,17 +476,9 @@ function FocusBuilderPageInner() {
     setContextMenuState((prev) => ({ ...prev, open: false }))
   }, [])
 
-  const handleContextMenuAction = React.useCallback(
-    (action: ZIndexAction) => {
-      if (!contextMenuState.targetPlacementId) return
-      if (mode !== "template") return
-      templateHook.setWidgetZIndex(
-        contextMenuState.targetPlacementId,
-        action,
-      )
-    },
-    [contextMenuState.targetPlacementId, mode, templateHook],
-  )
+  // FF-7 — handleContextMenuActionUnified (declared below) replaces
+  // the FF-5 single-purpose handler. The dispatcher now distinguishes
+  // z-order (single-select) vs align (multi-select) based on selection.
 
   // Close the menu when the subject changes (defensive — same idiom
   // as the inherited-core panel close-on-subject-change).
@@ -478,6 +487,304 @@ function FocusBuilderPageInner() {
       prev.open ? { ...prev, open: false } : prev,
     )
   }, [currentSubjectKey])
+
+  // ── FF-7 — snap state + alt-key tracking ──────────────────────────
+  // `snapLines` are live during the drag (set via `onDragMove`),
+  // cleared on drag-end. Alt-key flag tracked at document level
+  // because @dnd-kit's DragMoveEvent does NOT expose the activator's
+  // current modifier state mid-gesture.
+  const [snapLines, setSnapLines] = React.useState<SnapLine[]>([])
+  const altKeyHeldRef = React.useRef(false)
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      altKeyHeldRef.current = e.altKey
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      altKeyHeldRef.current = e.altKey
+    }
+    document.addEventListener("keydown", onKey)
+    document.addEventListener("keyup", onKeyUp)
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.removeEventListener("keyup", onKeyUp)
+    }
+  }, [])
+
+  // ── FF-7 — marquee state ──────────────────────────────────────────
+  // Coordinates are canvas-relative (resolved from the freeform layer
+  // element's bounding rect at pointer-down). `active` flips true once
+  // the 3px threshold is exceeded; below threshold, pointer-up is
+  // treated as a background-click → clearSelection.
+  const [marquee, setMarquee] = React.useState<{
+    start: { x: number; y: number } | null
+    current: { x: number; y: number } | null
+    active: boolean
+  }>({ start: null, current: null, active: false })
+
+  // FF-7 — selection helpers are destructured above with `selection`
+  // + `setSelection`; the FF-7 multi-select handlers (add / remove /
+  // clear / setMulti / isIn) flow through the same hook call.
+
+  // ── FF-7 — shift+click handler: add / remove this id from selection.
+  const handleWidgetShiftSelect = React.useCallback(
+    (id: string) => {
+      if (isInSelection(id)) {
+        removeFromSelection(id)
+      } else {
+        addToSelection(id)
+      }
+    },
+    [isInSelection, addToSelection, removeFromSelection],
+  )
+
+  // ── FF-7 — align action dispatcher (multi-select inspector +
+  // context menu).
+  const handleAlignAction = React.useCallback(
+    (action: AlignAction) => {
+      if (mode !== "template") return
+      if (selection.kind !== "widgets-multi") return
+      const placements = flattenFreeFormPlacements(templateHook.rowsDraft)
+      const selected = placements.filter((p) =>
+        selection.ids.includes(p.id),
+      )
+      // Normalize positioning fields to numbers (rowsDraft may carry
+      // undefined / null when round-tripped from legacy shapes).
+      const alignable = selected.map((p) => ({
+        id: p.id,
+        x: typeof p.x === "number" ? p.x : 0,
+        y: typeof p.y === "number" ? p.y : 0,
+        width:
+          typeof p.width === "number" && p.width > 0
+            ? p.width
+            : FREE_FORM_DEFAULT_DIMENSIONS.width,
+        height:
+          typeof p.height === "number" && p.height > 0
+            ? p.height
+            : FREE_FORM_DEFAULT_DIMENSIONS.height,
+      }))
+      const targets = computeAlignTargets(alignable, action)
+      for (const t of targets) {
+        const partial: Record<string, unknown> = {}
+        if (typeof t.x === "number") partial.x = t.x
+        if (typeof t.y === "number") partial.y = t.y
+        templateHook.updateWidget(t.id, partial)
+      }
+    },
+    [mode, selection, templateHook],
+  )
+
+  // ── FF-7 — unified context-menu action dispatcher. Distinguishes
+  // z-order vs align by current selection.kind.
+  const handleContextMenuActionUnified = React.useCallback(
+    (action: ContextMenuAction) => {
+      if (selection.kind === "widgets-multi") {
+        // Align vocabulary.
+        handleAlignAction(action as AlignAction)
+        return
+      }
+      // Z-order vocabulary (FF-5 path preserved).
+      if (!contextMenuState.targetPlacementId) return
+      if (mode !== "template") return
+      templateHook.setWidgetZIndex(
+        contextMenuState.targetPlacementId,
+        action as ZIndexAction,
+      )
+    },
+    [
+      selection,
+      handleAlignAction,
+      contextMenuState.targetPlacementId,
+      mode,
+      templateHook,
+    ],
+  )
+
+  // ── FF-7 — marquee pointer handlers on the canvas background.
+  // The freeform layer's onPointerDown receives the pointer-down
+  // gesture; we only initiate marquee when the down lands on the
+  // background (NOT on a widget — widgets stopPropagation in
+  // PlacedWidgetCore's onClick path, but pointer events bubble
+  // separately, so we discriminate by event target attribute).
+  const handleLayerPointerDown = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Only initiate marquee when the pointer-down lands directly
+      // on the canvas-background element (the freeform layer). When
+      // it lands on a widget or core, the widget's own pointer flow
+      // governs.
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      const isBackground =
+        target.getAttribute("data-canvas-background") === "true"
+      if (!isBackground) return
+      // Resolve canvas-relative coords.
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      setMarquee({ start: { x, y }, current: { x, y }, active: false })
+    },
+    [],
+  )
+  const handleLayerPointerMove = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Capture rect + coords OUTSIDE the state updater. React pools
+      // synthetic events; `e.currentTarget` is null by the time the
+      // updater runs.
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      setMarquee((prev) => {
+        if (!prev.start) return prev
+        const dx = x - prev.start.x
+        const dy = y - prev.start.y
+        const active =
+          prev.active || Math.sqrt(dx * dx + dy * dy) >= 3
+        return { start: prev.start, current: { x, y }, active }
+      })
+    },
+    [],
+  )
+  const handleLayerPointerUp = React.useCallback(
+    () => {
+      setMarquee((prev) => {
+        if (!prev.start || !prev.current) {
+          return { start: null, current: null, active: false }
+        }
+        if (!prev.active) {
+          // Below threshold — treat as background click → clear selection.
+          clearSelection()
+          return { start: null, current: null, active: false }
+        }
+        // Commit marquee selection. Compute bounding-box intersection
+        // for every free-form placement.
+        const left = Math.min(prev.start.x, prev.current.x)
+        const right = Math.max(prev.start.x, prev.current.x)
+        const top = Math.min(prev.start.y, prev.current.y)
+        const bottom = Math.max(prev.start.y, prev.current.y)
+        const placements = flattenFreeFormPlacements(templateHook.rowsDraft)
+        const enclosed: string[] = []
+        for (const p of placements) {
+          const px = typeof p.x === "number" ? p.x : 0
+          const py = typeof p.y === "number" ? p.y : 0
+          const pw =
+            typeof p.width === "number" && p.width > 0
+              ? p.width
+              : FREE_FORM_DEFAULT_DIMENSIONS.width
+          const ph =
+            typeof p.height === "number" && p.height > 0
+              ? p.height
+              : FREE_FORM_DEFAULT_DIMENSIONS.height
+          // Standard AABB intersection.
+          if (
+            !(
+              px + pw < left ||
+              px > right ||
+              py + ph < top ||
+              py > bottom
+            )
+          ) {
+            enclosed.push(p.id)
+          }
+        }
+        setMultiSelection(enclosed)
+        return { start: null, current: null, active: false }
+      })
+    },
+    [clearSelection, setMultiSelection, templateHook.rowsDraft],
+  )
+
+  // ── FF-7 — keyboard nudge + z-order shortcuts ──────────────────────
+  // Arrow keys nudge the selected widget(s) by 1px (Shift+arrow = 10px).
+  // `]` / `[` / `Shift+]` / `Shift+[` are z-order shortcuts in
+  // single-select mode. Listeners ignore typing in inputs/textareas.
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ignore typing in inputs / textareas / contenteditable.
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      const editable =
+        tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable
+      if (editable) return
+      // Ignore focused buttons — covers ScrubbableButton (`<button>`
+      // with its own ArrowLeft/Right handler), the inspector's align
+      // buttons, the layer-section toggle buttons, the right-rail
+      // tab buttons, and any other operator-driven keyboard target.
+      // The nudge listener fires on `window`, so we need to discriminate
+      // by activeElement before consuming the keystroke.
+      if (tag === "BUTTON") return
+      // Guard: only when editing a template.
+      if (mode !== "template") return
+      // Guard: bail when a drag is in flight. @dnd-kit's
+      // KeyboardSensor + PointerSensor own the arrow keys during a
+      // gesture (Space activates, arrows nudge, Space commits). The
+      // page-level nudge listener must not race the sensor.
+      if (activeDragLabel !== null) return
+
+      // Resolve currently-selected placement ids.
+      let ids: string[] = []
+      if (selection.kind === "widget") ids = [selection.id]
+      else if (selection.kind === "widgets-multi") ids = selection.ids
+      if (ids.length === 0) return
+
+      const placements = flattenFreeFormPlacements(templateHook.rowsDraft)
+      const selectedPlacements = placements.filter((p) => ids.includes(p.id))
+      if (selectedPlacements.length === 0) return
+
+      const canvasConfig = templateHook.template?.canvas_config as
+        | Record<string, unknown>
+        | undefined
+      const canvasWidth =
+        (canvasConfig?.width as number | undefined) ??
+        FREE_FORM_DEFAULT_CANVAS_WIDTH
+      const canvasHeight =
+        (canvasConfig?.height as number | undefined) ??
+        FREE_FORM_DEFAULT_CANVAS_HEIGHT
+
+      // Arrow nudges.
+      const stepDelta = e.shiftKey ? 10 : 1
+      let dx = 0
+      let dy = 0
+      if (e.key === "ArrowLeft") dx = -stepDelta
+      else if (e.key === "ArrowRight") dx = stepDelta
+      else if (e.key === "ArrowUp") dy = -stepDelta
+      else if (e.key === "ArrowDown") dy = stepDelta
+
+      if (dx !== 0 || dy !== 0) {
+        e.preventDefault()
+        for (const p of selectedPlacements) {
+          const curX = typeof p.x === "number" ? p.x : 0
+          const curY = typeof p.y === "number" ? p.y : 0
+          const w =
+            typeof p.width === "number" && p.width > 0
+              ? p.width
+              : FREE_FORM_DEFAULT_DIMENSIONS.width
+          const h =
+            typeof p.height === "number" && p.height > 0
+              ? p.height
+              : FREE_FORM_DEFAULT_DIMENSIONS.height
+          const nextX = Math.max(0, Math.min(curX + dx, canvasWidth - w))
+          const nextY = Math.max(0, Math.min(curY + dy, canvasHeight - h))
+          templateHook.updateWidget(p.id, { x: nextX, y: nextY })
+        }
+        return
+      }
+
+      // Z-order shortcuts: single-select only.
+      if (selection.kind !== "widget") return
+      const id = selection.id
+      if (e.key === "]") {
+        e.preventDefault()
+        templateHook.setWidgetZIndex(id, e.shiftKey ? "front" : "forward")
+        return
+      }
+      if (e.key === "[") {
+        e.preventDefault()
+        templateHook.setWidgetZIndex(id, e.shiftKey ? "back" : "backward")
+        return
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [mode, selection, templateHook, activeDragLabel])
 
   const handleDragStart = React.useCallback((e: DragStartEvent) => {
     const id = String(e.active.id ?? "")
@@ -552,6 +859,12 @@ function FocusBuilderPageInner() {
       // commit applies `delta.x` / `delta.y` to the placement's
       // current x/y and clamps to canvas bounds via
       // `computeDragMoveCommit` (Q-14).
+      //
+      // FF-7: snap-to-alignment fires AFTER the clamp. Multi-select
+      // moves all selected widgets together if the dragged widget is
+      // part of the current multi-selection (Figma precedent: a drag
+      // of a widget NOT in the selection moves only that widget +
+      // preserves the existing multi-selection).
       const placementId = parseFreeFormDraggableId(String(active.id))
       if (placementId !== null) {
         if (mode !== "template") return
@@ -578,17 +891,98 @@ function FocusBuilderPageInner() {
         const canvasHeight =
           (canvasConfig?.height as number | undefined) ??
           FREE_FORM_DEFAULT_CANVAS_HEIGHT
-        const { x, y } = computeDragMoveCommit({
+
+        // FF-7 — multi-select drag branch. When the dragged placement
+        // is part of a multi-selection, apply the SAME delta to every
+        // selected widget (each clamped to its own canvas bounds).
+        // Otherwise fall through to the single-widget commit.
+        let appliedDx = e.delta?.x ?? 0
+        let appliedDy = e.delta?.y ?? 0
+
+        // Compute snapped position for the DRAGGED widget. Snap fires
+        // AFTER canvas-bounds clamp. Inherited core excluded from
+        // other placements (structural-immutability canon).
+        const clampedSelf = computeDragMoveCommit({
           currentX,
           currentY,
-          dx: e.delta?.x ?? 0,
-          dy: e.delta?.y ?? 0,
+          dx: appliedDx,
+          dy: appliedDy,
           canvasWidth,
           canvasHeight,
           widgetWidth,
           widgetHeight,
         })
-        templateHook.updateWidget(placementId, { x, y })
+        const others = flat
+          .filter((p) => p.id !== placementId)
+          .map((p) => ({
+            id: p.id,
+            x: typeof p.x === "number" ? p.x : 0,
+            y: typeof p.y === "number" ? p.y : 0,
+            width:
+              typeof p.width === "number" && p.width > 0
+                ? p.width
+                : FREE_FORM_DEFAULT_DIMENSIONS.width,
+            height:
+              typeof p.height === "number" && p.height > 0
+                ? p.height
+                : FREE_FORM_DEFAULT_DIMENSIONS.height,
+          }))
+        const snapped = computeSnapAdjustment({
+          draggedPlacement: {
+            id: placementId,
+            x: currentX,
+            y: currentY,
+            width: widgetWidth,
+            height: widgetHeight,
+          },
+          otherPlacements: others,
+          canvasDimensions: { width: canvasWidth, height: canvasHeight },
+          dragPosition: { x: clampedSelf.x, y: clampedSelf.y },
+          altKeyHeld: altKeyHeldRef.current,
+        })
+        // Snap may have shifted position — re-clamp to canvas bounds
+        // so a snap target NEAR the edge that would push outside the
+        // canvas defers to the bound (the bound wins).
+        const finalX = Math.max(
+          0,
+          Math.min(snapped.x, canvasWidth - widgetWidth),
+        )
+        const finalY = Math.max(
+          0,
+          Math.min(snapped.y, canvasHeight - widgetHeight),
+        )
+        // The effective delta after clamp + snap re-clamp:
+        appliedDx = finalX - currentX
+        appliedDy = finalY - currentY
+
+        // Clear snap lines on drag-end.
+        setSnapLines([])
+
+        // Apply to dragged widget.
+        templateHook.updateWidget(placementId, { x: finalX, y: finalY })
+
+        // Multi-select cohort: apply the SAME effective delta to every
+        // other selected widget, each clamped to canvas bounds. Only
+        // applies when the dragged widget IS in multi-selection.
+        if (selection.kind === "widgets-multi" && selection.ids.includes(placementId)) {
+          for (const other of flat) {
+            if (other.id === placementId) continue
+            if (!selection.ids.includes(other.id)) continue
+            const oX = typeof other.x === "number" ? other.x : 0
+            const oY = typeof other.y === "number" ? other.y : 0
+            const oW =
+              typeof other.width === "number" && other.width > 0
+                ? other.width
+                : FREE_FORM_DEFAULT_DIMENSIONS.width
+            const oH =
+              typeof other.height === "number" && other.height > 0
+                ? other.height
+                : FREE_FORM_DEFAULT_DIMENSIONS.height
+            const nextX = Math.max(0, Math.min(oX + appliedDx, canvasWidth - oW))
+            const nextY = Math.max(0, Math.min(oY + appliedDy, canvasHeight - oH))
+            templateHook.updateWidget(other.id, { x: nextX, y: nextY })
+          }
+        }
         return
       }
 
@@ -682,17 +1076,93 @@ function FocusBuilderPageInner() {
       const newId = templateHook.addWidget(slug)
       setSelection({ kind: "widget", id: newId })
     },
-    [mode, templateHook, setSelection],
+    [mode, templateHook, setSelection, selection],
+  )
+
+  // ── FF-7 — live snap lines during drag-move ────────────────────────
+  // Fires on every drag-move tick from @dnd-kit; computes the live
+  // snap candidates so SnapLineOverlay can render them. Cleared at
+  // drag-end (above) + drag-cancel.
+  const handleDragMove = React.useCallback(
+    (e: DragMoveEvent) => {
+      if (mode !== "template") return
+      const placementId = parseFreeFormDraggableId(String(e.active.id))
+      if (placementId === null) return
+      const flat = flattenFreeFormPlacements(templateHook.rowsDraft)
+      const placement = flat.find((p) => p.id === placementId)
+      if (!placement) return
+      const currentX = typeof placement.x === "number" ? placement.x : 0
+      const currentY = typeof placement.y === "number" ? placement.y : 0
+      const widgetWidth =
+        typeof placement.width === "number" && placement.width > 0
+          ? placement.width
+          : FREE_FORM_DEFAULT_DIMENSIONS.width
+      const widgetHeight =
+        typeof placement.height === "number" && placement.height > 0
+          ? placement.height
+          : FREE_FORM_DEFAULT_DIMENSIONS.height
+      const canvasConfig = templateHook.template?.canvas_config as
+        | Record<string, unknown>
+        | undefined
+      const canvasWidth =
+        (canvasConfig?.width as number | undefined) ??
+        FREE_FORM_DEFAULT_CANVAS_WIDTH
+      const canvasHeight =
+        (canvasConfig?.height as number | undefined) ??
+        FREE_FORM_DEFAULT_CANVAS_HEIGHT
+      const clamped = computeDragMoveCommit({
+        currentX,
+        currentY,
+        dx: e.delta?.x ?? 0,
+        dy: e.delta?.y ?? 0,
+        canvasWidth,
+        canvasHeight,
+        widgetWidth,
+        widgetHeight,
+      })
+      const others = flat
+        .filter((p) => p.id !== placementId)
+        .map((p) => ({
+          id: p.id,
+          x: typeof p.x === "number" ? p.x : 0,
+          y: typeof p.y === "number" ? p.y : 0,
+          width:
+            typeof p.width === "number" && p.width > 0
+              ? p.width
+              : FREE_FORM_DEFAULT_DIMENSIONS.width,
+          height:
+            typeof p.height === "number" && p.height > 0
+              ? p.height
+              : FREE_FORM_DEFAULT_DIMENSIONS.height,
+        }))
+      const snapped = computeSnapAdjustment({
+        draggedPlacement: {
+          id: placementId,
+          x: currentX,
+          y: currentY,
+          width: widgetWidth,
+          height: widgetHeight,
+        },
+        otherPlacements: others,
+        canvasDimensions: { width: canvasWidth, height: canvasHeight },
+        dragPosition: { x: clamped.x, y: clamped.y },
+        altKeyHeld: altKeyHeldRef.current,
+      })
+      setSnapLines(snapped.snapLines)
+    },
+    [mode, templateHook],
   )
 
   const handleDragCancel = React.useCallback(() => {
     setActiveDragLabel(null)
+    setSnapLines([])
   }, [])
 
   return (
     <DndContext
       sensors={sensors}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
@@ -766,6 +1236,22 @@ function FocusBuilderPageInner() {
             onWidgetContextMenuRequest={
               mode === "template" ? handleWidgetContextMenuRequest : undefined
             }
+            onWidgetShiftSelect={
+              mode === "template" ? handleWidgetShiftSelect : undefined
+            }
+            marqueeStart={marquee.start}
+            marqueeCurrent={marquee.current}
+            marqueeActive={marquee.active}
+            snapLines={snapLines}
+            onLayerPointerDown={
+              mode === "template" ? handleLayerPointerDown : undefined
+            }
+            onLayerPointerMove={
+              mode === "template" ? handleLayerPointerMove : undefined
+            }
+            onLayerPointerUp={
+              mode === "template" ? handleLayerPointerUp : undefined
+            }
           />
         </section>
 
@@ -802,14 +1288,16 @@ function FocusBuilderPageInner() {
         </aside>
       </div>
     </div>
-    {/* FF-5 — single context menu instance, portal-rendered into
-       document.body. Closes via Escape / click-outside (own document
-       listeners) / option click. */}
+    {/* FF-5 + FF-7 — single context menu instance, portal-rendered
+       into document.body. Closes via Escape / click-outside (own
+       document listeners) / option click. actionSet switches between
+       z-order (single-select) and align (multi-select). */}
     <CanvasContextMenu
       isOpen={contextMenuState.open}
       position={contextMenuState.position}
       onClose={handleContextMenuClose}
-      onAction={handleContextMenuAction}
+      onAction={handleContextMenuActionUnified}
+      actionSet={selection.kind === "widgets-multi" ? "align" : "z-order"}
     />
     <DragOverlay>
       {activeDragLabel ? (

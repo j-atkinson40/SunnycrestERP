@@ -84,6 +84,11 @@ export interface FreeFormPlacedWidgetProps {
     placementId: string,
     position: { x: number; y: number },
   ) => void
+  /**
+   * FF-7 — shift+click handler. Forwarded to PlacedWidgetCore so the
+   * operator can compose multi-select from the canvas per Q-16 (a).
+   */
+  onShiftSelect?: (id: string) => void
 }
 
 /**
@@ -104,8 +109,14 @@ export function parseFreeFormDraggableId(id: string): string | null {
 }
 
 export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
-  const { placement, selected, onSelect, themeTokens, onContextMenuRequest } =
-    props
+  const {
+    placement,
+    selected,
+    onSelect,
+    themeTokens,
+    onContextMenuRequest,
+    onShiftSelect,
+  } = props
   const x = typeof placement.x === "number" ? placement.x : 0
   const y = typeof placement.y === "number" ? placement.y : 0
   const width =
@@ -197,6 +208,7 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
         placement={placement}
         selected={selected}
         onSelect={onSelect}
+        onShiftSelect={onShiftSelect}
         themeTokens={themeTokens}
         outerStyle={{
           // Inner core fills the draggable wrapper. The wrapper owns

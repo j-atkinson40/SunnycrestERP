@@ -2730,4 +2730,325 @@ describe("FocusBuilderPage", () => {
       vi.useRealTimers()
     }
   })
+
+  // ─────────────────────────────────────────────────────────────────
+  // FF-7 — Arc finale integration scenarios.
+  //
+  // Cross-side assertion: each scenario asserts BOTH operator-
+  // observable rendered state (inspector section visible / pin
+  // wrappers' inline style) AND save-side PUT body shape where the
+  // action mutates persisted state.
+  //
+  // Verify-against-pre-fix discipline applied to Test A (multi-
+  // select via shift+click + align): reverting the page-level
+  // handleWidgetShiftSelect to a no-op makes the AlignInspectorSection
+  // never appear, and the align button is therefore never reachable
+  // from the operator's shift+click → click "Align left" flow.
+  // Restored → both render-side (AlignInspectorSection visible)
+  // and save-side (PUT body's two placements share the same x)
+  // assertions pass.
+  // ─────────────────────────────────────────────────────────────────
+  function ffTwoPlacementTemplate(): TemplateRecord {
+    return {
+      ...t,
+      canvas_config: { width: 1200, height: 800 },
+      rows: [
+        {
+          row_index: 0,
+          column_count: 12,
+          placements: [
+            {
+              placement_id: "ff7-a",
+              component_kind: "widget",
+              component_name: "today-pin-widget",
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 100,
+              z_index: 0,
+            },
+            {
+              placement_id: "ff7-b",
+              component_kind: "widget",
+              component_name: "today-pin-widget",
+              x: 500,
+              y: 250,
+              width: 100,
+              height: 150,
+              z_index: 0,
+            },
+          ],
+        },
+      ],
+    } as TemplateRecord
+  }
+
+  // Test A — Multi-select via shift+click + Align left.
+  it("FF-7 — shift+click promotes multi; AlignInspectorSection appears; Align-left commits same X for both widgets", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const tpl = ffTwoPlacementTemplate()
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      // Both widgets render.
+      await waitFor(() =>
+        expect(
+          screen.getAllByTestId("focus-builder-freeform-placed-widget-draggable"),
+        ).toHaveLength(2),
+      )
+      const draggables = screen.getAllByTestId(
+        "focus-builder-freeform-placed-widget-draggable",
+      )
+      const aWidget = draggables.find(
+        (el) => el.getAttribute("data-placement-id") === "ff7-a",
+      )!
+      const bWidget = draggables.find(
+        (el) => el.getAttribute("data-placement-id") === "ff7-b",
+      )!
+      const aCore = within(aWidget).getByTestId(
+        "focus-builder-placed-widget-core",
+      )
+      const bCore = within(bWidget).getByTestId(
+        "focus-builder-placed-widget-core",
+      )
+
+      // Click widget A → single selection.
+      fireEvent.click(aCore)
+      // Render-side: AlignInspectorSection NOT visible yet (single-select).
+      expect(screen.queryByTestId("align-inspector-section")).toBeNull()
+
+      // Shift+click widget B → promotes to multi-select.
+      fireEvent.click(bCore, { shiftKey: true })
+
+      // AlignInspectorSection visible; Position/Layer/Chrome HIDDEN.
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("align-inspector-section"),
+        ).toBeInTheDocument(),
+      )
+      // Verify-against-pre-fix marker: if shift+click did NOT promote,
+      // this section would never appear.
+
+      // Click Align left.
+      fireEvent.click(screen.getByTestId("align-action-left"))
+
+      // Save-side: PUT body's two placements both have x = 100 (leftmost).
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1] as {
+        rows?: Array<{
+          placements: Array<{ placement_id: string; x?: number }>
+        }>
+      }
+      const placements = lastBody.rows?.[0]?.placements ?? []
+      const a = placements.find((p) => p.placement_id === "ff7-a")
+      const b = placements.find((p) => p.placement_id === "ff7-b")
+      expect(a?.x).toBe(100)
+      expect(b?.x).toBe(100)
+
+      // Render-side: both widgets' inline `left` reflects 100.
+      await waitFor(() => {
+        const ds = screen.getAllByTestId(
+          "focus-builder-freeform-placed-widget-draggable",
+        )
+        for (const d of ds) {
+          const styleAttr = d.getAttribute("style") ?? ""
+          expect(styleAttr).toMatch(/left:\s*100px/i)
+        }
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Test B — Marquee selection captures intersecting widgets.
+  it("FF-7 — marquee drag captures intersecting widgets; AlignInspectorSection appears", async () => {
+    defaultMocks()
+    const tpl = ffTwoPlacementTemplate()
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      tpl,
+    )
+    ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+      tpl,
+    )
+
+    render(
+      <MemoryRouter
+        initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+
+    const layer = await screen.findByTestId("focus-builder-freeform-layer")
+    // Stub getBoundingClientRect so canvas-relative coords are
+    // predictable in JSDOM. The freeform layer is canvas-dimensioned
+    // (1200×800) per the template's canvas_config.
+    layer.getBoundingClientRect = vi.fn(() => ({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1200,
+      bottom: 800,
+      width: 1200,
+      height: 800,
+      toJSON: () => ({}),
+    })) as () => DOMRect
+
+    // Marquee drag from (50, 50) to (700, 450) — encloses widget A
+    // (100,100 → 300,200) FULLY and widget B (500,250 → 600,400) FULLY.
+    fireEvent.pointerDown(layer, { clientX: 50, clientY: 50 })
+    fireEvent.pointerMove(layer, { clientX: 700, clientY: 450 })
+    // Marquee overlay visible once threshold passed.
+    await waitFor(() => {
+      expect(screen.getByTestId("marquee-overlay")).toBeInTheDocument()
+    })
+    fireEvent.pointerUp(layer, { clientX: 700, clientY: 450 })
+
+    // Commit: AlignInspectorSection visible (multi-select active).
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("align-inspector-section"),
+      ).toBeInTheDocument(),
+    )
+    // Multi-select count = 2.
+    expect(screen.getByText(/2 widgets selected/i)).toBeInTheDocument()
+  })
+
+  // Test C — Keyboard nudge (single-select).
+  it("FF-7 — ArrowRight nudges selected widget +1px; Shift+ArrowRight nudges +10px", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const tpl = ffTwoPlacementTemplate()
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        tpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      // Select widget A by clicking its inner core.
+      const draggables = await screen.findAllByTestId(
+        "focus-builder-freeform-placed-widget-draggable",
+      )
+      const aWidget = draggables.find(
+        (el) => el.getAttribute("data-placement-id") === "ff7-a",
+      )!
+      const aCore = within(aWidget).getByTestId(
+        "focus-builder-placed-widget-core",
+      )
+      fireEvent.click(aCore)
+
+      // ArrowRight on window: nudges +1px.
+      fireEvent.keyDown(window, { key: "ArrowRight" })
+      // Render-side: A's inline left moves from 100 to 101.
+      await waitFor(() => {
+        const refreshed = screen
+          .getAllByTestId("focus-builder-freeform-placed-widget-draggable")
+          .find((el) => el.getAttribute("data-placement-id") === "ff7-a")!
+        const styleAttr = refreshed.getAttribute("style") ?? ""
+        expect(styleAttr).toMatch(/left:\s*101px/i)
+      })
+
+      // Shift+ArrowRight: +10px → 111.
+      fireEvent.keyDown(window, { key: "ArrowRight", shiftKey: true })
+      await waitFor(() => {
+        const refreshed = screen
+          .getAllByTestId("focus-builder-freeform-placed-widget-draggable")
+          .find((el) => el.getAttribute("data-placement-id") === "ff7-a")!
+        const styleAttr = refreshed.getAttribute("style") ?? ""
+        expect(styleAttr).toMatch(/left:\s*111px/i)
+      })
+
+      // Save-side: PUT body carries the final x (after debounce).
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Test D — Multi-select arrow nudge moves all selected widgets together.
+  it("FF-7 — ArrowRight in multi-select nudges all selected widgets together", async () => {
+    defaultMocks()
+    const tpl = ffTwoPlacementTemplate()
+    ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+      tpl,
+    )
+    ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+      tpl,
+    )
+
+    render(
+      <MemoryRouter
+        initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+
+    // Build multi-select via shift+click on both widgets' cores.
+    const draggables = await screen.findAllByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    const aCore = within(
+      draggables.find((el) => el.getAttribute("data-placement-id") === "ff7-a")!,
+    ).getByTestId("focus-builder-placed-widget-core")
+    const bCore = within(
+      draggables.find((el) => el.getAttribute("data-placement-id") === "ff7-b")!,
+    ).getByTestId("focus-builder-placed-widget-core")
+    fireEvent.click(aCore)
+    fireEvent.click(bCore, { shiftKey: true })
+
+    // Confirm multi-select.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("align-inspector-section"),
+      ).toBeInTheDocument(),
+    )
+
+    // ArrowRight nudges BOTH widgets +1px.
+    fireEvent.keyDown(window, { key: "ArrowRight" })
+
+    await waitFor(() => {
+      const refreshedA = screen
+        .getAllByTestId("focus-builder-freeform-placed-widget-draggable")
+        .find((el) => el.getAttribute("data-placement-id") === "ff7-a")!
+      const refreshedB = screen
+        .getAllByTestId("focus-builder-freeform-placed-widget-draggable")
+        .find((el) => el.getAttribute("data-placement-id") === "ff7-b")!
+      expect(refreshedA.getAttribute("style")).toMatch(/left:\s*101px/i)
+      expect(refreshedB.getAttribute("style")).toMatch(/left:\s*501px/i)
+    })
+  })
 })

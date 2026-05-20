@@ -31,6 +31,9 @@ import * as React from "react"
 
 import { useFocusBuilderSelection } from "./FocusBuilderSelectionContext"
 import { FreeFormPlacedWidget } from "./FreeFormPlacedWidget"
+import { MarqueeOverlay } from "./MarqueeOverlay"
+import { SnapLineOverlay } from "./SnapLineOverlay"
+import type { SnapLine } from "./computeSnapAdjustment"
 import type { WidgetPlacement } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
 
 /**
@@ -88,6 +91,35 @@ export interface WidgetFreeFormLayerProps {
     placementId: string,
     position: { x: number; y: number },
   ) => void
+  /**
+   * FF-7 — shift+click forwarded to each placed widget. Page-level
+   * wires to `addToSelection`/`removeFromSelection`.
+   */
+  onWidgetShiftSelect?: (id: string) => void
+  /**
+   * FF-7 — marquee state (canvas-relative coordinates). When
+   * `marqueeStart` + `marqueeCurrent` are both non-null, MarqueeOverlay
+   * draws inside this layer's coordinate space (the layer is the
+   * canvas-dimensioned positioning context for marquee + free-form
+   * widgets).
+   */
+  marqueeStart?: { x: number; y: number } | null
+  marqueeCurrent?: { x: number; y: number } | null
+  marqueeActive?: boolean
+  /**
+   * FF-7 — live snap lines emitted by computeSnapAdjustment during a
+   * drag. SnapLineOverlay draws inside this layer's coordinate space.
+   */
+  snapLines?: SnapLine[]
+  /**
+   * FF-7 — pointer event handlers for marquee gesture. The layer
+   * background owns pointer-down (begins marquee), pointer-move
+   * (extends marquee), pointer-up (commits selection from intersecting
+   * widgets). Page-level dispatcher owns the gesture state.
+   */
+  onLayerPointerDown?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onLayerPointerMove?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onLayerPointerUp?: (e: React.PointerEvent<HTMLDivElement>) => void
 }
 
 export function WidgetFreeFormLayer(props: WidgetFreeFormLayerProps) {
@@ -102,8 +134,16 @@ export function WidgetFreeFormLayer(props: WidgetFreeFormLayerProps) {
     headingStyle,
     bodyStyle,
     onContextMenuRequest,
+    onWidgetShiftSelect,
+    marqueeStart,
+    marqueeCurrent,
+    marqueeActive,
+    snapLines,
+    onLayerPointerDown,
+    onLayerPointerMove,
+    onLayerPointerUp,
   } = props
-  const { selection, setSelection } = useFocusBuilderSelection()
+  const { selection, setSelection, isInSelection } = useFocusBuilderSelection()
 
   // Defensive canvas-dimension fallback (Q-2 refinement).
   const width =
@@ -132,6 +172,7 @@ export function WidgetFreeFormLayer(props: WidgetFreeFormLayerProps) {
   return (
     <div
       data-testid="focus-builder-freeform-layer"
+      data-canvas-background="true"
       data-canvas-width={String(width)}
       data-canvas-height={String(height)}
       className="relative"
@@ -140,6 +181,9 @@ export function WidgetFreeFormLayer(props: WidgetFreeFormLayerProps) {
         height: `${height}px`,
         margin: "0 auto",
       }}
+      onPointerDown={onLayerPointerDown}
+      onPointerMove={onLayerPointerMove}
+      onPointerUp={onLayerPointerUp}
     >
       {/* Inherited / canonical core at anchored position per Q-20.
          Selection wires to { kind: "core" } — same semantics as the
@@ -213,17 +257,33 @@ export function WidgetFreeFormLayer(props: WidgetFreeFormLayerProps) {
 
       {/* Free-form placements. Rendered AFTER the core in DOM order
          so widgets at the same `z_index` paint above the core by
-         default (Q-22). */}
+         default (Q-22). FF-7: `selected` consults isInSelection
+         (covers single + multi); shift-click handler forwarded. */}
       {placements.map((p) => (
         <FreeFormPlacedWidget
           key={p.id}
           placement={p}
-          selected={selection.kind === "widget" && selection.id === p.id}
+          selected={isInSelection(p.id)}
           onSelect={(id) => setSelection({ kind: "widget", id })}
+          onShiftSelect={onWidgetShiftSelect}
           themeTokens={themeTokens}
           onContextMenuRequest={onContextMenuRequest}
         />
       ))}
+
+      {/* FF-7 — snap lines during drag + marquee rectangle during
+         empty-canvas drag. Both overlays draw inside this layer's
+         coordinate space (canvas-dimensioned positioning context).
+         Both are pointer-events: none so gestures pass through. */}
+      <SnapLineOverlay
+        snapLines={snapLines ?? []}
+        canvasDimensions={{ width, height }}
+      />
+      <MarqueeOverlay
+        isActive={!!marqueeActive}
+        startPoint={marqueeStart ?? null}
+        currentPoint={marqueeCurrent ?? null}
+      />
     </div>
   )
 }
