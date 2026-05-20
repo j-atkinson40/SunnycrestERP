@@ -41,6 +41,8 @@ import {
   Tier2TemplatesEditor,
   type InheritedCoreLineage,
 } from "@/bridgeable-admin/components/visual-editor/Tier2TemplatesEditor"
+import { CoexistenceDeprecationBanner } from "@/bridgeable-admin/components/focus-builder/CoexistenceDeprecationBanner"
+import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 
 type Tier = "1" | "2"
 
@@ -168,6 +170,11 @@ export default function FocusEditorPage() {
           from the prior page — Studio rail adaptation tests assert
           this id is present regardless of which tier body mounts. */}
       <div data-testid="focus-editor" className="hidden" aria-hidden />
+      {/* F-5 coexistence deprecation banner — points operators at the
+          new Focus Builder at /studio/builder/focuses. Dismissible
+          per-session via localStorage. Forward-only — only on this
+          legacy route; the new Focus Builder route renders nothing. */}
+      <CoexistenceDeprecationBanner linkHref={adminPath("studio/builder/focuses")} />
       {/* Top bar */}
       <header
         data-testid="focus-editor-top-bar"

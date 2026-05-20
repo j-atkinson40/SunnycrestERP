@@ -15,7 +15,6 @@
  */
 import * as React from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
-import { Circle } from "lucide-react"
 import {
   DndContext,
   DragOverlay,
@@ -37,6 +36,11 @@ import {
   focusTemplatesService,
   type ResolveSources,
 } from "@/bridgeable-admin/services/focus-templates-service"
+import {
+  verticalsService,
+  type Vertical,
+} from "@/bridgeable-admin/services/verticals-service"
+import { focusTypeForCore, focusTypeLabel } from "@/lib/visual-editor/focus-types"
 import { BASE_TOKENS } from "@/lib/visual-editor/themes/base-tokens"
 import { InheritedCoreInspectorPanel } from "@/bridgeable-admin/components/visual-editor/InheritedCoreInspectorPanel"
 
@@ -50,6 +54,8 @@ import {
   useFocusBuilderSelection,
 } from "./FocusBuilderSelectionContext"
 import { paletteItemIdToSlug } from "./FocusBuilderPalette"
+import { FocusBuilderBreadcrumb } from "./FocusBuilderBreadcrumb"
+import { FocusBuilderSaveIndicator } from "./FocusBuilderSaveIndicator"
 
 
 function parseSubjectParam(raw: string | null): FocusBuilderSubject | null {
@@ -67,18 +73,6 @@ function parseSubjectParam(raw: string | null): FocusBuilderSubject | null {
 
 function subjectToParam(subject: FocusBuilderSubject): string {
   return `${subject.kind}:${subject.id}`
-}
-
-
-function relativeTime(when: Date | null): string {
-  if (!when) return ""
-  const secs = Math.max(0, Math.round((Date.now() - when.getTime()) / 1000))
-  if (secs < 5) return "just now"
-  if (secs < 60) return `${secs}s ago`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  return `${hrs}h ago`
 }
 
 
@@ -262,20 +256,49 @@ function FocusBuilderPageInner() {
         : "empty"
   const isDirty =
     mode === "core" ? coreHook.isDirty : mode === "template" ? templateHook.isDirty : false
+  const isSaving =
+    mode === "core"
+      ? coreHook.isSaving
+      : mode === "template"
+        ? templateHook.isSaving
+        : false
+  const saveError =
+    mode === "core"
+      ? coreHook.error
+      : mode === "template"
+        ? templateHook.error
+        : null
   const lastSavedAt =
     mode === "core"
       ? coreHook.lastSavedAt
       : mode === "template"
         ? templateHook.lastSavedAt
         : null
+  const handleRetrySave = React.useCallback(() => {
+    if (mode === "core") void coreHook.save()
+    else if (mode === "template") void templateHook.save()
+  }, [mode, coreHook, templateHook])
 
-  // Force-refresh "Auto-saved Xs ago" every 5 seconds.
-  const [, force] = React.useReducer((n: number) => n + 1, 0)
+  // ── F-5 verticals fetch for breadcrumb display_name lookup ────────
+  // Tree fetches verticals separately for its own data needs; the
+  // breadcrumb needs the same map to translate vertical slug → label.
+  // Fetched once at mount; verticals are stable.
+  const [verticals, setVerticals] = React.useState<Vertical[]>([])
   React.useEffect(() => {
-    if (!lastSavedAt) return
-    const id = setInterval(force, 5000)
-    return () => clearInterval(id)
-  }, [lastSavedAt])
+    let cancelled = false
+    verticalsService
+      .list()
+      .then((rows) => {
+        if (!cancelled) setVerticals(rows)
+      })
+      .catch(() => {
+        // Best-effort — missing verticals just degrade the breadcrumb
+        // to slug-only segments; not load-bearing.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Browser confirm-before-leave when dirty.
   React.useEffect(() => {
@@ -310,6 +333,52 @@ function FocusBuilderPageInner() {
 
   // Theme tokens — F-2 keeps light-mode defaults; Theme picker is F-4.
   const themeTokens = React.useMemo(() => ({ ...BASE_TOKENS.light }), [])
+
+  // ── F-5 breadcrumb segments derivation ────────────────────────────
+  // Hierarchy mirrors the left tree's source-of-truth:
+  //   vertical → focus-type → core → template
+  // CORE subject → 3 segments; TEMPLATE subject → 4. Verticals slug →
+  // display_name mapping comes from the verticals-list fetch above.
+  // Falls back to slug when display_name can't be resolved.
+  const breadcrumbSegments = React.useMemo<string[]>(() => {
+    if (mode === "empty") return []
+    const verticalDisplayFor = (slug: string | null | undefined): string | null => {
+      if (!slug) return null
+      const found = verticals.find((v) => v.slug === slug)
+      return found?.display_name ?? slug
+    }
+    if (mode === "core") {
+      const core = coreHook.core
+      if (!core) return []
+      const verticalLabel = verticalDisplayFor(studioActiveVertical)
+      const ftLabel = focusTypeLabel(focusTypeForCore(core))
+      const segs: string[] = []
+      if (verticalLabel) segs.push(verticalLabel)
+      segs.push(ftLabel)
+      segs.push(core.display_name)
+      return segs
+    }
+    // template
+    const tpl = templateHook.template
+    if (!tpl) return []
+    const verticalLabel = verticalDisplayFor(tpl.vertical)
+    const ftLabel = inheritedCore
+      ? focusTypeLabel(focusTypeForCore(inheritedCore))
+      : null
+    const segs: string[] = []
+    if (verticalLabel) segs.push(verticalLabel)
+    if (ftLabel) segs.push(ftLabel)
+    if (inheritedCore) segs.push(inheritedCore.display_name)
+    segs.push(tpl.display_name)
+    return segs
+  }, [
+    mode,
+    verticals,
+    studioActiveVertical,
+    coreHook.core,
+    templateHook.template,
+    inheritedCore,
+  ])
 
   // ── F-3 — DndContext + drag/drop handlers ─────────────────────────
   //
@@ -370,25 +439,26 @@ function FocusBuilderPageInner() {
         <span className="font-plex-mono uppercase tracking-wider">
           Bridgeable Studio · Focus Builder
         </span>
+        {breadcrumbSegments.length > 0 && (
+          <>
+            <span
+              aria-hidden
+              className="text-[color:var(--accent)]"
+              data-testid="focus-builder-topbar-breadcrumb-anchor-separator"
+            >
+              ·
+            </span>
+            <FocusBuilderBreadcrumb segments={breadcrumbSegments} />
+          </>
+        )}
         <div className="flex flex-1 items-center justify-end gap-2">
-          {isDirty && (
-            <span
-              data-testid="dirty-indicator"
-              className="flex items-center gap-1.5 text-[11px] text-[color:var(--accent)]"
-              aria-label="Unsaved changes"
-            >
-              <Circle className="h-2 w-2 fill-[color:var(--accent)] text-[color:var(--accent)]" />
-              Unsaved
-            </span>
-          )}
-          {!isDirty && lastSavedAt && (
-            <span
-              data-testid="last-saved-indicator"
-              className="text-[11px] text-[color:var(--content-muted)]"
-            >
-              Auto-saved {relativeTime(lastSavedAt)}
-            </span>
-          )}
+          <FocusBuilderSaveIndicator
+            isDirty={isDirty}
+            isSaving={isSaving}
+            error={saveError}
+            lastSavedAt={lastSavedAt}
+            onRetry={handleRetrySave}
+          />
         </div>
       </header>
 

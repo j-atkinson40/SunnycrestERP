@@ -94,6 +94,13 @@ const t: TemplateRecord = {
 
 afterEach(() => {
   vi.clearAllMocks()
+  // F-5: reset just the `update` mock implementation. vi.clearAllMocks
+  // only clears calls/results — it does NOT clear mockImplementation.
+  // Without this, F-5's failed-PUT test's rejection implementation
+  // leaks across the worker's shared mock-module cache into unrelated
+  // test files (Tier2TemplatesEditor.test.tsx surfaced the pollution).
+  // Targeted reset on the one mock that gets per-test reconfiguration.
+  ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockReset()
   window.localStorage.clear()
 })
 
@@ -1092,6 +1099,250 @@ describe("FocusBuilderPage", () => {
       // continuity check from F-4.
       const updatedStyle = canvas.getAttribute("style") ?? ""
       expect(updatedStyle).not.toBe(initialStyle)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────
+  // F-5 integration tests — breadcrumb + dirty-state polish.
+  //
+  // Per DECISIONS.md 2026-05-19 (late evening) canon refinement:
+  // render-side assertions target operator-observable properties at
+  // the specific rendered element (textContent, data-state attribute
+  // on the indicator element itself) — NOT wrapper-level attribute
+  // change detection.
+  //
+  // Verify-against-pre-fix discipline (documented in build report,
+  // not codified as separate tests; reverting any of these has been
+  // validated to surface the corresponding regression):
+  //
+  //   - Breadcrumb: revert <FocusBuilderBreadcrumb> mount → bc absent
+  //     from header → testid query fails.
+  //   - Dirty state: revert deriveSaveIndicatorState branch (e.g.,
+  //     drop the error branch) → failed-state assertion fails because
+  //     indicator falls through to "saving"/"unsaved".
+  // ─────────────────────────────────────────────────────────────────
+  it("F-5 — breadcrumb renders subject hierarchy for TEMPLATE subject", async () => {
+    defaultMocks()
+    render(
+      <MemoryRouter
+        initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+    // operator-observable textContent: vertical › focus-type › core
+    // › template. Verticals come from verticalsService.list() (mocked
+    // → display_name "Manufacturing"); focus-type derived from
+    // CORE_SLUG_TO_FOCUS_TYPE (scheduling-kanban-core → decision →
+    // "Decision"); core + template display_name come from loaded
+    // records. Wait for the full 4-segment hierarchy — inheritedCore
+    // fetch is async so the breadcrumb hydrates in steps.
+    await waitFor(() => {
+      const bc = screen.getByTestId("focus-builder-breadcrumb")
+      expect(bc.textContent).toBe(
+        "Manufacturing›Decision›Scheduling Kanban›Sched FH",
+      )
+    })
+    // current segment marker on the deepest element.
+    expect(
+      screen.getByTestId("focus-builder-breadcrumb-current"),
+    ).toHaveTextContent("Sched FH")
+  })
+
+  it("F-5 — breadcrumb renders 3-segment hierarchy for CORE subject", async () => {
+    defaultMocks()
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/bridgeable-admin/studio/manufacturing/builder/focuses?subject=core:core-1",
+        ]}
+      >
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+    const bc = await screen.findByTestId("focus-builder-breadcrumb")
+    // CORE subject: 3 segments. studio-active vertical resolved from
+    // the URL path's studio segment → "manufacturing" slug → mocked
+    // verticals list maps slug → "Manufacturing" display_name.
+    expect(bc.textContent).toBe("Manufacturing›Decision›Scheduling Kanban")
+    expect(
+      screen.getByTestId("focus-builder-breadcrumb-current"),
+    ).toHaveTextContent("Scheduling Kanban")
+  })
+
+  it("F-5 — breadcrumb hidden when no subject selected", async () => {
+    defaultMocks()
+    render(
+      <MemoryRouter initialEntries={["/studio/builder/focuses"]}>
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId("focus-builder-page")).toBeInTheDocument(),
+    )
+    expect(
+      screen.queryByTestId("focus-builder-breadcrumb"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("F-5 — breadcrumb updates when subject changes via tree click on core", async () => {
+    defaultMocks()
+    render(
+      <MemoryRouter initialEntries={["/studio/builder/focuses"]}>
+        <FocusBuilderPage />
+      </MemoryRouter>,
+    )
+    // No subject → no breadcrumb.
+    await waitFor(() =>
+      expect(screen.getByTestId("focus-builder-page")).toBeInTheDocument(),
+    )
+    expect(
+      screen.queryByTestId("focus-builder-breadcrumb"),
+    ).not.toBeInTheDocument()
+    // Click the core tree-node leaf → breadcrumb appears with the
+    // CORE-shape segments. Operator-observable textContent at the
+    // deepest segment is the core's display_name.
+    const treeRegion = screen.getByTestId("focus-builder-tree-region")
+    const coreNode = await waitFor(() =>
+      within(treeRegion).getByText("Scheduling Kanban"),
+    )
+    fireEvent.click(coreNode)
+    await waitFor(() => {
+      const current = screen.getByTestId("focus-builder-breadcrumb-current")
+      expect(current.textContent).toBe("Scheduling Kanban")
+    })
+  })
+
+  it("F-5 — save indicator shows Unsaved changes on operator mutation", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      // Make update slow so we can observe the dirty → saving → saved
+      // transition. Resolve after a short delay.
+      let resolveUpdate: ((v: TemplateRecord) => void) | null = null
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockImplementation(
+        () =>
+          new Promise<TemplateRecord>((res) => {
+            resolveUpdate = res
+          }),
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      // Wait for template to load; initially no indicator (no save yet).
+      await waitFor(() =>
+        expect(screen.getByTestId("focus-builder-canvas")).toBeInTheDocument(),
+      )
+
+      // Trigger a mutation: click substrate preset chip.
+      const chip = await screen.findByTestId("substrate-pill-evening-lounge")
+      fireEvent.click(chip)
+
+      // Immediately after click (before debounce settles) the hook is
+      // dirty but not saving — operator-observable textContent.
+      await waitFor(() => {
+        const ind = screen.getByTestId("save-indicator")
+        // operator-observable: data-state attribute on the indicator
+        // itself reads "unsaved" or "saving" depending on debounce.
+        expect(["unsaved", "saving"]).toContain(ind.getAttribute("data-state"))
+      })
+
+      // Advance past debounce — save fires + is in-flight.
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      // In-flight → "Saving…".
+      await waitFor(() => {
+        const ind = screen.getByTestId("save-indicator")
+        expect(ind.getAttribute("data-state")).toBe("saving")
+        expect(ind.textContent).toBe("Saving…")
+      })
+
+      // Resolve the save — indicator settles to "Saved · just now".
+      resolveUpdate!({ ...t, substrate: { preset: "evening-lounge" } })
+      await waitFor(() => {
+        const ind = screen.getByTestId("save-indicator")
+        expect(ind.getAttribute("data-state")).toBe("saved")
+        expect(ind.textContent).toMatch(/^Saved ·/)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("F-5 — save indicator shows Save failed · Retry on PUT failure", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      // Use mockImplementation returning a rejected promise (vs.
+      // mockRejectedValue) so each call gets its own independent
+      // rejection — keeps the retry path's "another call fires +
+      // also rejects" semantics observable without leaking unhandled
+      // rejections across the test's await boundaries.
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockImplementation(
+        () => Promise.reject(new Error("network error")),
+      )
+
+      const { unmount } = render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      await waitFor(() =>
+        expect(screen.getByTestId("focus-builder-canvas")).toBeInTheDocument(),
+      )
+
+      const chip = await screen.findByTestId("substrate-pill-evening-lounge")
+      fireEvent.click(chip)
+
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+
+      // operator-observable: indicator's textContent matches the
+      // failed-state copy + Retry button renders.
+      await waitFor(() => {
+        const ind = screen.getByTestId("save-indicator")
+        expect(ind.getAttribute("data-state")).toBe("failed")
+        expect(ind.textContent).toMatch(/^Save failed ·\s+Retry$/)
+      })
+      expect(screen.getByTestId("save-indicator-retry")).toBeInTheDocument()
+
+      // Retry click re-fires save. update was called once before the
+      // click; one more call after.
+      const callsBefore = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls.length
+      fireEvent.click(screen.getByTestId("save-indicator-retry"))
+      await waitFor(() => {
+        const callsAfter = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+          .mock.calls.length
+        expect(callsAfter).toBeGreaterThan(callsBefore)
+      })
+
+      // Defensive: explicitly unmount + restore mock to a benign
+      // implementation BEFORE timer advance/teardown. The hook's
+      // debounced save and 410-retry path otherwise queue rejecting
+      // promises that race the next test's setup under the default
+      // parallel reporter — this can pollute unrelated test files.
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockImplementation(
+        () => Promise.resolve(t),
+      )
+      unmount()
+      // Advance + drain microtasks so any tail-saves resolve cleanly.
+      await vi.advanceTimersByTimeAsync(1000)
     } finally {
       vi.useRealTimers()
     }

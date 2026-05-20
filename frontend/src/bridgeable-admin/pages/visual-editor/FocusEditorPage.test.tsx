@@ -270,4 +270,46 @@ describe("FocusEditorPage — sub-arc C-2.1", () => {
     await screen.findByTestId("focus-editor-page")
     expect(screen.queryByTestId("tier2-lineage-chrome")).toBeNull()
   })
+
+  // ─────────────────────────────────────────────────────────────────
+  // F-5 — coexistence deprecation banner integration.
+  //
+  // operator-observable assertions: banner present/absent in DOM
+  // + link href + dismiss state. localStorage cleared before each test
+  // so the banner starts in undismissed state.
+  // ─────────────────────────────────────────────────────────────────
+  describe("F-5 coexistence deprecation banner", () => {
+    afterEach(() => {
+      window.localStorage.clear()
+    })
+
+    it("renders banner with link to /studio/builder/focuses", async () => {
+      renderAt("/?tier=1")
+      const banner = await screen.findByTestId("coexistence-banner")
+      // operator-observable textContent contains expected copy.
+      expect(banner.textContent).toMatch(/legacy Focus editor/i)
+      expect(banner.textContent).toMatch(/Focus Builder/)
+      const link = screen.getByTestId("coexistence-banner-link")
+      // adminPath("studio/builder/focuses") resolves under jsdom's
+      // default hostname (not admin.*) → /bridgeable-admin/studio/...
+      expect(link.getAttribute("href")).toMatch(/studio\/builder\/focuses$/)
+    })
+
+    it("dismiss button removes banner from DOM", async () => {
+      renderAt("/?tier=1")
+      await screen.findByTestId("coexistence-banner")
+      fireEvent.click(screen.getByTestId("coexistence-banner-dismiss"))
+      expect(screen.queryByTestId("coexistence-banner")).not.toBeInTheDocument()
+    })
+
+    it("banner stays hidden across re-render when localStorage flag set", async () => {
+      window.localStorage.setItem(
+        "bridgeable.focus-builder.coexistence-banner-dismissed",
+        "true",
+      )
+      renderAt("/?tier=1")
+      await screen.findByTestId("focus-editor-page")
+      expect(screen.queryByTestId("coexistence-banner")).not.toBeInTheDocument()
+    })
+  })
 })
