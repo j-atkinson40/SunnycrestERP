@@ -57,7 +57,7 @@
  * fallback to 0 / 320 / 180 is a structural safety net for malformed
  * JSONB.
  */
-import type * as React from "react"
+import * as React from "react"
 import { useDraggable } from "@dnd-kit/core"
 
 import type { WidgetPlacement } from "@/bridgeable-admin/hooks/useFocusTemplateDraft"
@@ -142,6 +142,25 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
     data: { kind: "free-form-placed-widget", placementId: placement.id },
   })
 
+  // Per 2026-05-20 investigation Finding 1 (hover-state refinement of
+  // the Q-10 selection-only lock): resize handles render on hover OR
+  // selection (Figma / Sketch precedent — discoverability via hover
+  // before commit-to-select). isDragging is included as a defensive
+  // third branch so handles never disappear mid whole-widget drag if
+  // pointer capture suppresses pointerleave on the source element.
+  // Touch / pointer-coarse devices that don't reliably fire
+  // pointerenter degrade gracefully via the selected branch (tap to
+  // select still shows handles).
+  const [isHovered, setIsHovered] = React.useState(false)
+  const handlePointerEnter = React.useCallback(
+    () => setIsHovered(true),
+    [],
+  )
+  const handlePointerLeave = React.useCallback(
+    () => setIsHovered(false),
+    [],
+  )
+
   // dnd-kit's transform during the drag gesture (CSS translate3d).
   // After drag-end, the page-level handler commits the new x/y via
   // updateWidget; React re-renders with the new placement.x/y and
@@ -181,6 +200,11 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
       // FF-5 — declared AFTER the spread so @dnd-kit's attributes
       // can't overwrite it.
       onContextMenu={handleContextMenu}
+      // 2026-05-20 hover-state refinement — declared AFTER the spread
+      // so @dnd-kit's attributes can't overwrite them (same FF-4
+      // plumbing canon as onContextMenu above).
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
       style={{
         position: "absolute",
         left: `${x}px`,
@@ -218,11 +242,18 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
           height: "100%",
         }}
       />
-      {/* FF-4 — resize handles as a SIBLING of PlacedWidgetCore.
-          Rendered only when the widget is selected (canonical
-          Figma/Sketch UX). The overlay positions 8 handles relative
-          to the FreeFormPlacedWidget wrapper's bounding box. */}
-      {selected ? <ResizeHandleOverlay placementId={placement.id} /> : null}
+      {/* FF-4 + 2026-05-20 hover-state refinement — resize handles as
+          a SIBLING of PlacedWidgetCore. Rendered when the widget is
+          hovered OR selected OR being dragged (Figma / Sketch
+          precedent — discoverability via hover; selection-persistence
+          for active manipulation; isDragging defensive branch so
+          handles never disappear mid-drag if pointer capture
+          suppresses pointerleave on the source element). The overlay
+          positions 8 handles relative to the FreeFormPlacedWidget
+          wrapper's bounding box. */}
+      {isHovered || selected || isDragging ? (
+        <ResizeHandleOverlay placementId={placement.id} />
+      ) : null}
     </div>
   )
 }

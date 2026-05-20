@@ -379,7 +379,7 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
     expect(draggable).toBeInTheDocument()
   })
 
-  it("FF-4 — does not render resize handles when not selected", () => {
+  it("FF-4 — does not render resize handles when not selected AND not hovered", () => {
     const placement: WidgetPlacement = {
       id: "w-ff-resize-2",
       widget_slug: "today-pin-widget",
@@ -403,5 +403,170 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
     expect(
       screen.queryByTestId("focus-builder-resize-handle-overlay"),
     ).not.toBeInTheDocument()
+  })
+
+  // ── 2026-05-20 hover-state refinement (Finding 1) ────────────────
+  //
+  // Per the read-only investigation
+  // `docs/investigations/2026-05-20-resize-handle-ux-refinements.md`
+  // §2 (Finding 1) — Q-10's investigation-time lock of "handles
+  // visible only when selected" was refined by operator-experience
+  // data to "handles visible on hover OR selection." The 8 handles
+  // now render on pointerenter even before the operator commits to a
+  // selection click.
+  //
+  // Operator-observable assertion canon (2026-05-19 late-evening):
+  // tests assert on rendered DOM at the specific rendered element
+  // (handle data-testid presence / absence on the
+  // focus-builder-resize-handle elements themselves).
+  // ─────────────────────────────────────────────────────────────────
+
+  it("hover-state refinement — renders 8 handles on pointerenter (not selected)", () => {
+    const placement: WidgetPlacement = {
+      id: "w-ff-hover-1",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    // Default: not hovered, not selected → no handles.
+    expect(
+      screen.queryAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(0)
+
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    fireEvent.pointerEnter(draggable)
+
+    // After hover-in: 8 handles appear without a selection click.
+    expect(
+      screen.getAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(8)
+  })
+
+  it("hover-state refinement — renders 8 handles when both hovered AND selected", () => {
+    const placement: WidgetPlacement = {
+      id: "w-ff-hover-2",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    fireEvent.pointerEnter(draggable)
+    expect(
+      screen.getAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(8)
+  })
+
+  it("hover-state refinement — pointerleave preserves handles when selected", () => {
+    const placement: WidgetPlacement = {
+      id: "w-ff-hover-3",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    fireEvent.pointerEnter(draggable)
+    fireEvent.pointerLeave(draggable)
+    // Selection branch keeps handles visible even after hover-out.
+    expect(
+      screen.getAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(8)
+  })
+
+  it("hover-state refinement — pointerleave hides handles when NOT selected", () => {
+    const placement: WidgetPlacement = {
+      id: "w-ff-hover-4",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    fireEvent.pointerEnter(draggable)
+    expect(
+      screen.getAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(8)
+    fireEvent.pointerLeave(draggable)
+    expect(
+      screen.queryAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(0)
+  })
+
+  it("hover-state refinement — touch/pointer-coarse fallback: selection still shows handles even without pointerenter", () => {
+    // Touch devices may not fire pointerenter reliably. The selection
+    // branch is the canonical fallback for those users; this test
+    // documents the contract.
+    const placement: WidgetPlacement = {
+      id: "w-ff-hover-5",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    // No pointerenter fired (simulating touch-tap-to-select). The
+    // selected branch alone renders handles.
+    expect(
+      screen.getAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(8)
   })
 })

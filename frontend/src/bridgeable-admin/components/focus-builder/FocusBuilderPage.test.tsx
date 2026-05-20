@@ -3051,4 +3051,243 @@ describe("FocusBuilderPage", () => {
       expect(refreshedB.getAttribute("style")).toMatch(/left:\s*501px/i)
     })
   })
+
+  // ─────────────────────────────────────────────────────────────────
+  // 2026-05-20 — DragOverlay UUID leak class-fix (Finding 2)
+  //
+  // Per the read-only investigation
+  // `docs/investigations/2026-05-20-resize-handle-ux-refinements.md`
+  // §3 — the DragOverlay rendered `activeDragLabel` as visible text,
+  // with the assignment `setActiveDragLabel(slug ?? id)` falling back
+  // to the raw drag id for any non-palette drag shape. Operators saw
+  // strings like `<placement-uuid>-handle-se` floating adjacent to
+  // the cursor during resize.
+  //
+  // Class-fix: every drag-id shape routes through `resolveDragLabel`.
+  // Palette ids resolve to their slug (visible label preserved).
+  // All other shapes resolve to null; the DragOverlay's existing
+  // guard (`activeDragLabel ? (...) : null`) suppresses the overlay
+  // entirely.
+  //
+  // Test discipline (operator-observable canon, 2026-05-19
+  // late-evening): assertions target the rendered DOM at the
+  // specific rendered element (the `focus-builder-drag-overlay`
+  // testid presence / absence + its text content).
+  //
+  // Verify-against-pre-fix: reverting `setActiveDragLabel(
+  // resolveDragLabel(id))` back to `setActiveDragLabel(slug ?? id)`
+  // makes Test B + Test C fail with visible UUID-pattern text;
+  // restored → both pass. Test A always passes (palette label is the
+  // one shape both pre-fix and post-fix render correctly).
+  // ─────────────────────────────────────────────────────────────────
+  describe("DragOverlay UUID leak class-fix (2026-05-20 Finding 2)", () => {
+    it("Test A — palette drag preserves the slug label in the DragOverlay (regression)", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        defaultMocks()
+        const freeFormTpl: TemplateRecord = {
+          ...t,
+          canvas_config: { width: 1200, height: 800 },
+          rows: [],
+        }
+        ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+          freeFormTpl,
+        )
+
+        render(
+          <MemoryRouter
+            initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+          >
+            <FocusBuilderPage />
+          </MemoryRouter>,
+        )
+
+        // Find a palette item (today-pin-widget is in the seeded registry).
+        const paletteItem = await waitFor(() => {
+          const items = screen.getAllByTestId("widget-palette-item")
+          const todayItem = items.find(
+            (el) =>
+              el.getAttribute("data-item-id") ===
+              "palette-widget:today-pin-widget",
+          )
+          if (!todayItem) throw new Error("today-pin-widget palette item not found")
+          return todayItem as HTMLElement
+        })
+
+        // Drive a KeyboardSensor drag on the palette item. Space to
+        // activate; the activator-fire of handleDragStart sets
+        // activeDragLabel before any arrow nudges.
+        paletteItem.focus()
+        fireEvent.keyDown(paletteItem, { key: " ", code: "Space" })
+        await vi.advanceTimersByTimeAsync(10)
+
+        // Assert the DragOverlay renders with the slug as visible
+        // text content.
+        await waitFor(() => {
+          const overlay = screen.queryByTestId("focus-builder-drag-overlay")
+          expect(overlay).not.toBeNull()
+          expect(overlay?.textContent).toBe("today-pin-widget")
+        })
+
+        // Commit drop (cancels at zero distance — but cleans
+        // activeDragLabel via handleDragEnd).
+        fireEvent.keyDown(document, { key: " ", code: "Space" })
+        await vi.advanceTimersByTimeAsync(10)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("Test B — resize-handle drag does NOT leak UUID text in the DragOverlay", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        defaultMocks()
+        const freeFormTpl: TemplateRecord = {
+          ...t,
+          canvas_config: { width: 1200, height: 800 },
+          rows: [
+            {
+              row_index: 0,
+              column_count: 12,
+              placements: [
+                {
+                  placement_id: "ff-resize-uuid-leak-1",
+                  component_kind: "widget",
+                  component_name: "today-pin-widget",
+                  x: 100,
+                  y: 100,
+                  width: 240,
+                  height: 120,
+                  z_index: 0,
+                },
+              ],
+            },
+          ],
+        }
+        ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+          freeFormTpl,
+        )
+        ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+          freeFormTpl,
+        )
+
+        render(
+          <MemoryRouter
+            initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+          >
+            <FocusBuilderPage />
+          </MemoryRouter>,
+        )
+
+        await screen.findByTestId("focus-builder-freeform-placed-widget-draggable")
+        fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+
+        // Wait for handles to appear (selection branch).
+        await waitFor(() => {
+          const h = document.querySelector(
+            '[data-testid="focus-builder-resize-handle"][data-handle-position="e"]',
+          ) as HTMLElement | null
+          expect(h).not.toBeNull()
+        })
+        const handle = document.querySelector(
+          '[data-testid="focus-builder-resize-handle"][data-handle-position="e"]',
+        ) as HTMLElement
+        handle.focus()
+
+        // Activate resize-handle drag.
+        fireEvent.keyDown(handle, { key: " ", code: "Space" })
+        await vi.advanceTimersByTimeAsync(10)
+
+        // Operator-observable assertion canon: the load-bearing
+        // contract is the absence of the visible DragOverlay element
+        // (its testid is the rendered floating-label surface). The
+        // pre-fix code rendered the overlay with the raw drag id as
+        // visible text; post-fix the overlay's guard short-circuits
+        // on null label and the testid is absent entirely.
+        //
+        // Note: @dnd-kit emits an aria-live `DndLiveRegion-*`
+        // element that DOES contain the drag id ("Picked up
+        // draggable item …") — this is the correct screen-reader
+        // a11y behavior and is NOT operator-visible (positioned
+        // fixed + clipped to 1px). The DragOverlay testid assertion
+        // is what catches the operator-visible leak.
+        const overlay = screen.queryByTestId("focus-builder-drag-overlay")
+        expect(overlay).toBeNull()
+
+        // Clean up — commit drop.
+        fireEvent.keyDown(document, { key: " ", code: "Space" })
+        await vi.advanceTimersByTimeAsync(10)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("Test C — whole-widget drag (FF-3) does NOT leak placement-id text in the DragOverlay (class-fix coverage)", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        defaultMocks()
+        const freeFormTpl: TemplateRecord = {
+          ...t,
+          canvas_config: { width: 1200, height: 800 },
+          rows: [
+            {
+              row_index: 0,
+              column_count: 12,
+              placements: [
+                {
+                  placement_id: "ff-whole-widget-uuid-leak-1",
+                  component_kind: "widget",
+                  component_name: "today-pin-widget",
+                  x: 100,
+                  y: 100,
+                  width: 240,
+                  height: 120,
+                  z_index: 0,
+                },
+              ],
+            },
+          ],
+        }
+        ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+          freeFormTpl,
+        )
+        ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+          freeFormTpl,
+        )
+
+        render(
+          <MemoryRouter
+            initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+          >
+            <FocusBuilderPage />
+          </MemoryRouter>,
+        )
+
+        const draggable = await screen.findByTestId(
+          "focus-builder-freeform-placed-widget-draggable",
+        )
+        draggable.focus()
+        fireEvent.keyDown(draggable, { key: " ", code: "Space" })
+        await vi.advanceTimersByTimeAsync(10)
+
+        // Operator-observable assertion: DragOverlay testid absent.
+        // Whole-widget drag id is `free-form-placed-widget:<uuid>` —
+        // pre-fix this would have leaked as visible overlay text;
+        // post-fix the overlay collapses to nothing.
+        //
+        // (Same note as Test B about @dnd-kit's aria-live region:
+        // the screen-reader announcer DOES include the drag id by
+        // design and is NOT the operator-visible leak this test
+        // gates against.)
+        const overlay = screen.queryByTestId("focus-builder-drag-overlay")
+        expect(overlay).toBeNull()
+
+        // Clean up — commit drop.
+        fireEvent.keyDown(document, { key: " ", code: "Space" })
+        await vi.advanceTimersByTimeAsync(10)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
 })

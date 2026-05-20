@@ -85,6 +85,7 @@ import {
   useFocusBuilderSelection,
 } from "./FocusBuilderSelectionContext"
 import { paletteItemIdToSlug } from "./FocusBuilderPalette"
+import { resolveDragLabel } from "./resolveDragLabel"
 import { FocusBuilderBreadcrumb } from "./FocusBuilderBreadcrumb"
 import { FocusBuilderSaveIndicator } from "./FocusBuilderSaveIndicator"
 
@@ -447,6 +448,16 @@ function FocusBuilderPageInner() {
   const [activeDragLabel, setActiveDragLabel] = React.useState<string | null>(
     null,
   )
+  // Per 2026-05-20 investigation Finding 2 fix arc — drag-in-progress
+  // sentinel, separated from `activeDragLabel`. Pre-fix the page-level
+  // arrow-key nudge guard at line 721 read `activeDragLabel !== null`
+  // as its "drag in flight" signal, but the label is now null during
+  // non-palette drags (resize + whole-widget) because resolveDragLabel
+  // suppresses their visible overlay. A separate boolean tracks the
+  // drag lifecycle so the nudge handler still backs off during every
+  // drag shape, not just palette drags. Set true in handleDragStart;
+  // cleared in handleDragEnd + handleDragCancel.
+  const [isDragInProgress, setIsDragInProgress] = React.useState(false)
 
   // ── FF-5 — right-click context menu state + dispatcher ────────────
   //
@@ -717,7 +728,13 @@ function FocusBuilderPageInner() {
       // KeyboardSensor + PointerSensor own the arrow keys during a
       // gesture (Space activates, arrows nudge, Space commits). The
       // page-level nudge listener must not race the sensor.
-      if (activeDragLabel !== null) return
+      //
+      // 2026-05-20 fix arc — read `isDragInProgress` instead of
+      // `activeDragLabel !== null`. Pre-fix the guard relied on the
+      // label being non-null during a drag, but the label is now
+      // null for resize + whole-widget drags (their overlays are
+      // suppressed). The lifecycle boolean tracks every drag shape.
+      if (isDragInProgress) return
 
       // Resolve currently-selected placement ids.
       let ids: string[] = []
@@ -784,17 +801,28 @@ function FocusBuilderPageInner() {
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [mode, selection, templateHook, activeDragLabel])
+  }, [mode, selection, templateHook, isDragInProgress])
 
   const handleDragStart = React.useCallback((e: DragStartEvent) => {
     const id = String(e.active.id ?? "")
-    const slug = paletteItemIdToSlug(id)
-    setActiveDragLabel(slug ?? id)
+    // Per 2026-05-20 investigation Finding 2 (UUID leak class-fix):
+    // route every drag-id shape through `resolveDragLabel`. Palette
+    // drags resolve to their slug (visible label); whole-widget drags
+    // and resize-handle drags resolve to null so the DragOverlay
+    // guard at the render site suppresses the overlay entirely (the
+    // widget itself follows the cursor in those cases — a floating
+    // label is redundant and used to leak the raw drag id as text).
+    setActiveDragLabel(resolveDragLabel(id))
+    // 2026-05-20 fix arc — mark drag in progress regardless of label
+    // resolution. The page-level arrow-key nudge guard at the keydown
+    // useEffect reads this flag to back off during the gesture.
+    setIsDragInProgress(true)
   }, [])
 
   const handleDragEnd = React.useCallback(
     (e: DragEndEvent) => {
       setActiveDragLabel(null)
+      setIsDragInProgress(false)
       const { active, over } = e
 
       // FF-4 — resize branch. The drag id matches
@@ -1155,6 +1183,7 @@ function FocusBuilderPageInner() {
 
   const handleDragCancel = React.useCallback(() => {
     setActiveDragLabel(null)
+    setIsDragInProgress(false)
     setSnapLines([])
   }, [])
 
