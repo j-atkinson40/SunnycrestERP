@@ -56,9 +56,12 @@ import {
   flattenFreeFormPlacements,
 } from "./FocusBuilderCanvas"
 import { computeDragMoveCommit } from "./computeDragMoveCommit"
+import { computeResizeCommit } from "./computeResizeCommit"
 import { parseFreeFormDraggableId } from "./FreeFormPlacedWidget"
+import { parseResizeHandleId } from "./ResizeHandleOverlay"
 import {
   getFreeFormDefaultDimensions,
+  getFreeFormMinDimensions,
   FREE_FORM_DEFAULT_DIMENSIONS,
 } from "@/lib/visual-editor/registry"
 import {
@@ -436,6 +439,61 @@ function FocusBuilderPageInner() {
     (e: DragEndEvent) => {
       setActiveDragLabel(null)
       const { active, over } = e
+
+      // FF-4 — resize branch. The drag id matches
+      // `<placementId>-handle-<position>`. Dispatch to
+      // `computeResizeCommit` with the placement's current geometry,
+      // the canvas bounds (Q-14), and the registry-resolved min
+      // dimensions (Q-13, 80×40 platform fallback). Commit width/
+      // height/x/y via the existing `updateWidget` mutator (FF-1's
+      // positioning-field routing). Checked BEFORE the FF-3 move
+      // branch because handle ids share the placement id prefix.
+      const handleParsed = parseResizeHandleId(String(active.id))
+      if (handleParsed) {
+        if (mode !== "template") return
+        const flat = flattenFreeFormPlacements(templateHook.rowsDraft)
+        const placement = flat.find((p) => p.id === handleParsed.placementId)
+        if (!placement) return
+        const currentX = typeof placement.x === "number" ? placement.x : 0
+        const currentY = typeof placement.y === "number" ? placement.y : 0
+        const currentWidth =
+          typeof placement.width === "number" && placement.width > 0
+            ? placement.width
+            : FREE_FORM_DEFAULT_DIMENSIONS.width
+        const currentHeight =
+          typeof placement.height === "number" && placement.height > 0
+            ? placement.height
+            : FREE_FORM_DEFAULT_DIMENSIONS.height
+        const canvasConfig = templateHook.template?.canvas_config as
+          | Record<string, unknown>
+          | undefined
+        const canvasWidth =
+          (canvasConfig?.width as number | undefined) ??
+          FREE_FORM_DEFAULT_CANVAS_WIDTH
+        const canvasHeight =
+          (canvasConfig?.height as number | undefined) ??
+          FREE_FORM_DEFAULT_CANVAS_HEIGHT
+        const minDimensions = getFreeFormMinDimensions(placement.widget_slug)
+        const next = computeResizeCommit({
+          currentPlacement: {
+            x: currentX,
+            y: currentY,
+            width: currentWidth,
+            height: currentHeight,
+          },
+          handle: handleParsed.position,
+          delta: { x: e.delta?.x ?? 0, y: e.delta?.y ?? 0 },
+          canvasDimensions: { width: canvasWidth, height: canvasHeight },
+          minDimensions,
+        })
+        templateHook.updateWidget(handleParsed.placementId, {
+          x: next.x,
+          y: next.y,
+          width: next.width,
+          height: next.height,
+        })
+        return
+      }
 
       // FF-3 — drag-to-move branch. An existing free-form placement is
       // being repositioned. The drag id is the placement's draggable

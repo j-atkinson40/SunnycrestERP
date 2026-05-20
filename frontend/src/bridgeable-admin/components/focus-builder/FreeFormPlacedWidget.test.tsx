@@ -269,4 +269,53 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
     expect(parseFreeFormDraggableId(id)).toBe("placement-abc")
     expect(parseFreeFormDraggableId("palette-widget:foo")).toBeNull()
   })
+
+  // ── FF-4 resize-handle conditional render assertions ─────────────
+  it("FF-4 — renders 8 resize handles when selected", () => {
+    const placement: WidgetPlacement = {
+      id: "w-ff-resize-1",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    const handles = screen.getAllByTestId("focus-builder-resize-handle")
+    expect(handles).toHaveLength(8)
+  })
+
+  it("FF-4 — does not render resize handles when not selected", () => {
+    const placement: WidgetPlacement = {
+      id: "w-ff-resize-2",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    expect(
+      screen.queryAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(0)
+    expect(
+      screen.queryByTestId("focus-builder-resize-handle-overlay"),
+    ).not.toBeInTheDocument()
+  })
 })

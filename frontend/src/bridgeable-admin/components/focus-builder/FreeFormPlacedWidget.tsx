@@ -63,6 +63,7 @@ import type { WidgetPlacement } from "@/bridgeable-admin/hooks/useFocusTemplateD
 import { FREE_FORM_DEFAULT_DIMENSIONS } from "@/lib/visual-editor/registry"
 
 import { PlacedWidgetCore } from "./PlacedWidgetCore"
+import { ResizeHandleOverlay } from "./ResizeHandleOverlay"
 
 export interface FreeFormPlacedWidgetProps {
   placement: WidgetPlacement
@@ -171,6 +172,11 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
           height: "100%",
         }}
       />
+      {/* FF-4 — resize handles as a SIBLING of PlacedWidgetCore.
+          Rendered only when the widget is selected (canonical
+          Figma/Sketch UX). The overlay positions 8 handles relative
+          to the FreeFormPlacedWidget wrapper's bounding box. */}
+      {selected ? <ResizeHandleOverlay placementId={placement.id} /> : null}
     </div>
   )
 }

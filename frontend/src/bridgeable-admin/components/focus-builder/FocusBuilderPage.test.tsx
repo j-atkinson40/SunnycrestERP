@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 
+import "@/lib/visual-editor/registry/auto-register"
+
 import FocusBuilderPage from "./FocusBuilderPage"
 import type { Vertical } from "@/bridgeable-admin/services/verticals-service"
 import type { CoreRecord } from "@/bridgeable-admin/services/focus-cores-service"
@@ -1713,6 +1715,378 @@ describe("FocusBuilderPage", () => {
       // = 960.
       expect(placement.x).toBeLessThanOrEqual(960)
       expect(placement.x).toBeGreaterThan(900) // moved at least some
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────
+  // FF-4 — Resize-to-resize (KeyboardSensor path per Q-40).
+  //
+  // Cross-side assertion (per the 2026-05-20 late-evening operator-
+  // observable canon): the integration test asserts BOTH the
+  // rendered wrapper's inline `width`/`height`/`left` value AND the
+  // saved PUT body's placement geometry change in the operator-
+  // expected direction. Pure-function math is unit-tested in
+  // `computeResizeCommit.test.ts` (32 cases across 8 handles + min/
+  // canvas clamps).
+  //
+  // Verify-against-pre-fix discipline applied: reverting the FF-4
+  // dispatch branch in `handleDragEnd` to a no-op (handle dragged
+  // but no `updateWidget` call) makes BOTH the render-side inline-
+  // style assertion AND the save-side PUT-body assertion fail.
+  // Restored → both pass.
+  //
+  // Per Q-40, full pointer-driven coverage defers to Playwright at
+  // FF-7. JSDOM-side coverage drives the KeyboardSensor path.
+  // ─────────────────────────────────────────────────────────────────
+  it("FF-4 — keyboard resize via e handle commits width via render + PUT", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const freeFormTpl: TemplateRecord = {
+        ...t,
+        canvas_config: { width: 1200, height: 800 },
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "ff-resize-1",
+                component_kind: "widget",
+                component_name: "today-pin-widget",
+                x: 100,
+                y: 100,
+                width: 240,
+                height: 120,
+                z_index: 0,
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      // Step 1 — click the widget to select it; handles only render
+      // when selected.
+      await screen.findByTestId("focus-builder-freeform-placed-widget-draggable")
+      fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+
+      // Step 2 — find the e (right edge) handle. It only mounts when
+      // the widget is selected.
+      await waitFor(() => {
+        const h = document.querySelector('[data-testid="focus-builder-resize-handle"][data-handle-position="e"]') as HTMLElement | null
+        expect(h).not.toBeNull()
+      })
+      const handle = document.querySelector('[data-testid="focus-builder-resize-handle"][data-handle-position="e"]') as HTMLElement
+      handle.focus()
+      // Activate drag on the handle — Space per @dnd-kit
+      // KeyboardSensor activator (matches `event.target === activator`).
+      fireEvent.keyDown(handle, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+      // Nudge right twice (default keyboard step = 25px each → +50).
+      // KeyboardSensor's move/end listener lives on the document
+      // (per @dnd-kit/core attach()) so arrows dispatch there.
+      fireEvent.keyDown(document, { key: "ArrowRight", code: "ArrowRight" })
+      await vi.advanceTimersByTimeAsync(10)
+      fireEvent.keyDown(document, { key: "ArrowRight", code: "ArrowRight" })
+      await vi.advanceTimersByTimeAsync(10)
+      fireEvent.keyDown(document, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+
+      // Save-side: advance past debounce, assert PUT body carries
+      // a widened width. Initial width=240; after 2× ArrowRight
+      // (25px each), expect width > 240. e handle keeps x and y
+      // unchanged.
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      const placement = lastBody?.rows?.[0]?.placements?.[0]
+      expect(placement).toBeTruthy()
+      expect(placement.width).toBeGreaterThan(240)
+      expect(placement.x).toBe(100)
+      expect(placement.y).toBe(100)
+      expect(placement.height).toBe(120)
+
+      // Render-side: the draggable wrapper's inline `width` reflects
+      // the committed value. Per the operator-observable assertion
+      // canon (2026-05-20 late-evening), this is the load-bearing
+      // render-side contract.
+      await waitFor(() => {
+        const after = screen.getByTestId(
+          "focus-builder-freeform-placed-widget-draggable",
+        )
+        const styleAttr = after.getAttribute("style") ?? ""
+        const m = /width:\s*(\d+)px/i.exec(styleAttr)
+        expect(m).toBeTruthy()
+        const widthVal = m ? parseInt(m[1], 10) : 0
+        expect(widthVal).toBeGreaterThan(240)
+        // height unchanged.
+        expect(styleAttr).toMatch(/height:\s*120px/i)
+        // x unchanged.
+        expect(styleAttr).toMatch(/left:\s*100px/i)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // FF-4 — w handle: x adjusts as width grows (right edge anchored).
+  it("FF-4 — keyboard resize via w handle adjusts x as width grows", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const freeFormTpl: TemplateRecord = {
+        ...t,
+        canvas_config: { width: 1200, height: 800 },
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "ff-resize-w-1",
+                component_kind: "widget",
+                component_name: "today-pin-widget",
+                x: 400,
+                y: 200,
+                width: 240,
+                height: 120,
+                z_index: 0,
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      await screen.findByTestId("focus-builder-freeform-placed-widget-draggable")
+      fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+
+      await waitFor(() => {
+        const h = document.querySelector('[data-testid="focus-builder-resize-handle"][data-handle-position="w"]') as HTMLElement | null
+        expect(h).not.toBeNull()
+      })
+      const handle = document.querySelector('[data-testid="focus-builder-resize-handle"][data-handle-position="w"]') as HTMLElement
+      handle.focus()
+      fireEvent.keyDown(handle, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+      // ArrowLeft on w handle: delta.x < 0 → x decreases, width grows
+      // by equal amount.
+      fireEvent.keyDown(document, { key: "ArrowLeft", code: "ArrowLeft" })
+      await vi.advanceTimersByTimeAsync(10)
+      fireEvent.keyDown(document, { key: "ArrowLeft", code: "ArrowLeft" })
+      await vi.advanceTimersByTimeAsync(10)
+      fireEvent.keyDown(document, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      const placement = lastBody?.rows?.[0]?.placements?.[0]
+      // x decreased; width grew by the same delta. Right edge stays
+      // anchored: x + width = 640 (original 400 + 240).
+      expect(placement.x).toBeLessThan(400)
+      expect(placement.width).toBeGreaterThan(240)
+      expect(placement.x + placement.width).toBe(640)
+      expect(placement.y).toBe(200)
+      expect(placement.height).toBe(120)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // FF-4 — resize clamped at canvas bound (Q-14).
+  it("FF-4 — resize at left edge clamps to canvas bound (Q-14)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      // Widget placed at x=0; w handle drag-left should clamp x at 0
+      // and widen to the original right edge.
+      const freeFormTpl: TemplateRecord = {
+        ...t,
+        canvas_config: { width: 1200, height: 800 },
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "ff-resize-clamp-1",
+                component_kind: "widget",
+                component_name: "today-pin-widget",
+                x: 0,
+                y: 100,
+                width: 240,
+                height: 120,
+                z_index: 0,
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      await screen.findByTestId("focus-builder-freeform-placed-widget-draggable")
+      fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+      await waitFor(() => {
+        const h = document.querySelector('[data-testid="focus-builder-resize-handle"][data-handle-position="w"]') as HTMLElement | null
+        expect(h).not.toBeNull()
+      })
+      const handle = document.querySelector('[data-testid="focus-builder-resize-handle"][data-handle-position="w"]') as HTMLElement
+      handle.focus()
+      fireEvent.keyDown(handle, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+      // Many ArrowLeft nudges to push past the canvas-left bound.
+      for (let i = 0; i < 10; i++) {
+        fireEvent.keyDown(document, { key: "ArrowLeft", code: "ArrowLeft" })
+        await vi.advanceTimersByTimeAsync(5)
+      }
+      fireEvent.keyDown(document, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      const placement = lastBody?.rows?.[0]?.placements?.[0]
+      // Per Q-14: x clamped at 0. Width grew to original right edge
+      // (0 + 240 = 240) since the right edge stays anchored.
+      expect(placement.x).toBe(0)
+      expect(placement.width).toBe(240)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // FF-4 — resize clamped at min dimensions (Q-13).
+  // The today-pin-widget registration declares freeFormMinDimensions
+  // 120×64 (see registry/registrations/focus-builder-widgets.ts).
+  // Shrinking from 130×120 past min should clamp at 120.
+  it("FF-4 — resize via e handle clamps at registry min dimensions (Q-13)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const freeFormTpl: TemplateRecord = {
+        ...t,
+        canvas_config: { width: 1200, height: 800 },
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "ff-resize-min-1",
+                component_kind: "widget",
+                component_name: "today-pin-widget",
+                x: 200,
+                y: 200,
+                width: 130,
+                height: 120,
+                z_index: 0,
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      await screen.findByTestId("focus-builder-freeform-placed-widget-draggable")
+      fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+      await waitFor(() => {
+        const h = document.querySelector('[data-testid="focus-builder-resize-handle"][data-handle-position="e"]') as HTMLElement | null
+        expect(h).not.toBeNull()
+      })
+      const handle = document.querySelector('[data-testid="focus-builder-resize-handle"][data-handle-position="e"]') as HTMLElement
+      handle.focus()
+      fireEvent.keyDown(handle, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+      // ArrowLeft on e handle: delta.x < 0 → width contracts.
+      // Push past min.
+      for (let i = 0; i < 6; i++) {
+        fireEvent.keyDown(document, { key: "ArrowLeft", code: "ArrowLeft" })
+        await vi.advanceTimersByTimeAsync(5)
+      }
+      fireEvent.keyDown(document, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => {
+        expect(focusTemplatesService.update).toHaveBeenCalled()
+      })
+      const calls = (focusTemplatesService.update as ReturnType<typeof vi.fn>)
+        .mock.calls
+      const lastBody = calls[calls.length - 1]?.[1]
+      const placement = lastBody?.rows?.[0]?.placements?.[0]
+      // today-pin-widget min is 120×64 per registration; clamp engages.
+      expect(placement.width).toBe(120)
+      // x and y unchanged for e handle.
+      expect(placement.x).toBe(200)
+      expect(placement.y).toBe(200)
     } finally {
       vi.useRealTimers()
     }
