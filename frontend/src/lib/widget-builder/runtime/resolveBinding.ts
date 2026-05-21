@@ -22,12 +22,26 @@ import type { BindingRef } from "../types/composition-blob"
 
 export function resolveBinding(
   bindingRef: BindingRef,
-  _dataContext?: unknown,
+  dataContext?: unknown,
 ): unknown {
   if (bindingRef.binding_type === "literal") {
     return bindingRef.literal_value
   }
   if (bindingRef.binding_type === "field_path") {
+    // WB-3 — per-row dataContext placeholder. When AtomRenderer is
+    // iterating a repeater_atom, it passes a per-row dataContext
+    // object signaling iteration: `{ __row: true, __index: number }`.
+    // Phase 1 surface a marker that distinguishes per-row from
+    // page-scoped resolution so authors see the iteration is wired.
+    // WB-6 makes both real.
+    if (
+      typeof dataContext === "object" &&
+      dataContext !== null &&
+      (dataContext as { __row?: boolean }).__row === true
+    ) {
+      const idx = (dataContext as { __index?: number }).__index ?? 0
+      return `[bound:row.${bindingRef.field_path ?? "<missing>"}#${idx}]`
+    }
     return `[bound:${bindingRef.field_path ?? "<missing>"}]`
   }
   // Defensive: WB-1 codec rejects unknown binding_types structurally;

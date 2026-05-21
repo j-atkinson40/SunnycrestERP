@@ -45,6 +45,8 @@ const ATOM_TYPES: ReadonlySet<AtomType> = new Set([
   "button",
   "image",
   "conditional_container",
+  // WB-3 — repeater_atom for iteration-shaped widgets.
+  "repeater_atom",
 ]);
 
 const BINDING_TYPES: ReadonlySet<BindingType> = new Set([
@@ -381,6 +383,25 @@ export function parseCompositionBlob(raw: unknown): CompositionBlob {
     const ref = parseBindingRef(val, `bindings_catalog[${key}]`, errors);
     if (ref !== null) {
       bindingsCatalog[key] = ref;
+    }
+  }
+
+  // WB-3 — cross-container nesting cap enforcement at the codec
+  // layer. The backend validator is the canonical gate; the codec
+  // mirrors the rule so authoring-shell client-side rejections fire
+  // before round-tripping through the API.
+  for (const [aid, node] of Object.entries(atomTree)) {
+    if (node.atom_type !== "repeater_atom") continue;
+    const childIds = node.children ?? [];
+    for (const childId of childIds) {
+      const child = atomTree[childId];
+      if (child && child.atom_type === "repeater_atom") {
+        pushFieldError(
+          errors,
+          `atom_tree[${aid}]`,
+          `repeater_atom may not contain another repeater_atom (found ${childId})`,
+        );
+      }
     }
   }
 

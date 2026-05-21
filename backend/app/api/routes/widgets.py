@@ -5,9 +5,53 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
+from app.models.widget_definition import WidgetDefinition
 from app.services.widgets import widget_service
 
 router = APIRouter()
+
+
+@router.get("/composed-definitions")
+def list_composed_widget_definitions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return widget definitions with composition_blob populated.
+
+    WB-3 — feeds the visual-editor metadata registry bridge at app
+    boot (frontend `registerComposedWidgets.ts`). Each row carries
+    `widget_id`, `title`, `description`, `category`, `icon`,
+    `composition_blob`, `composition_version`, `tier_scope`,
+    `supported_surfaces`, and `default_size` — the minimum needed
+    for Focus Builder palette + placement.
+
+    The bridge runs in tenant context (auth required); cross-tenant
+    isolation isn't a concern here because widget definitions are
+    platform-wide (no `company_id` column), but the auth gate keeps
+    the endpoint behind login so unauthenticated probes can't
+    inventory the platform.
+    """
+    rows = (
+        db.query(WidgetDefinition)
+        .filter(WidgetDefinition.composition_blob.isnot(None))
+        .all()
+    )
+    return [
+        {
+            "widget_id": r.widget_id,
+            "title": r.title,
+            "description": r.description,
+            "icon": r.icon,
+            "category": r.category,
+            "composition_blob": r.composition_blob,
+            "composition_version": r.composition_version,
+            "tier_scope": r.tier_scope,
+            "supported_surfaces": r.supported_surfaces or ["dashboard_grid"],
+            "default_size": r.default_size,
+            "supported_sizes": r.supported_sizes or ["1x1"],
+        }
+        for r in rows
+    ]
 
 
 @router.get("/available")

@@ -166,6 +166,96 @@ def validate_composition_blob(raw: Any) -> CompositionBlob:
                     f"references unknown binding_id {binding_id!r}"
                 )
 
+    # WB-3 — repeater_atom semantic gates:
+    #   • config.binding_id must reference a BindingRef in bindings_catalog
+    #     with binding_type='field_path' AND iteration_mode='per_row'.
+    #   • config.children must equal AtomNode.children (both canonical
+    #     and informational lists must agree).
+    #   • repeater_atom MAY NOT contain another repeater_atom in its
+    #     children subtree (cross-container nesting cap).
+    for atom_id, node in blob.atom_tree.items():
+        if node.atom_type != "repeater_atom":
+            continue
+        cfg = node.config or {}
+        cfg_binding_id = cfg.get("binding_id") if isinstance(cfg, dict) else None
+        if not isinstance(cfg_binding_id, str) or not cfg_binding_id:
+            errors.append(
+                f"atom_tree[{atom_id!r}].config.binding_id: "
+                f"repeater_atom requires a non-empty binding_id"
+            )
+        else:
+            ref = blob.bindings_catalog.get(cfg_binding_id)
+            if ref is None:
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.binding_id: "
+                    f"references unknown binding_id {cfg_binding_id!r}"
+                )
+            else:
+                if ref.binding_type != "field_path":
+                    errors.append(
+                        f"atom_tree[{atom_id!r}].config.binding_id: "
+                        f"repeater_atom binding must be 'field_path' "
+                        f"(got {ref.binding_type!r})"
+                    )
+                if ref.iteration_mode != "per_row":
+                    errors.append(
+                        f"atom_tree[{atom_id!r}].config.binding_id: "
+                        f"repeater_atom binding must have "
+                        f"iteration_mode='per_row' (got "
+                        f"{ref.iteration_mode!r})"
+                    )
+        # config.children equivalence to AtomNode.children
+        cfg_children = cfg.get("children") if isinstance(cfg, dict) else None
+        node_children = node.children or []
+        if cfg_children is None:
+            cfg_children = []
+        if list(cfg_children) != list(node_children):
+            errors.append(
+                f"atom_tree[{atom_id!r}]: repeater_atom config.children "
+                f"({cfg_children!r}) must equal AtomNode.children "
+                f"({node_children!r})"
+            )
+        # Cross-container nesting cap — no repeater inside repeater.
+        # Walk only the repeater's subtree (not the full tree) so we
+        # surface the smallest actionable error.
+        _seen: set[str] = set()
+
+        def _walk_repeater_subtree(start: str) -> None:
+            if start in _seen:
+                return
+            _seen.add(start)
+            sub = blob.atom_tree.get(start)
+            if sub is None:
+                return
+            if sub.children is None:
+                return
+            for child_id in sub.children:
+                child = blob.atom_tree.get(child_id)
+                if child is None:
+                    continue
+                if child.atom_type == "repeater_atom":
+                    errors.append(
+                        f"atom_tree[{atom_id!r}]: repeater_atom may "
+                        f"not contain another repeater_atom (found "
+                        f"{child_id!r}) — Phase 1 cross-container "
+                        f"nesting cap"
+                    )
+                _walk_repeater_subtree(child_id)
+
+        for child_id in node_children:
+            # Check the direct child itself before recursing — a
+            # repeater whose immediate child is also a repeater is
+            # exactly the nesting case we reject.
+            direct = blob.atom_tree.get(child_id)
+            if direct is not None and direct.atom_type == "repeater_atom":
+                errors.append(
+                    f"atom_tree[{atom_id!r}]: repeater_atom may "
+                    f"not contain another repeater_atom (found "
+                    f"{child_id!r}) — Phase 1 cross-container "
+                    f"nesting cap"
+                )
+            _walk_repeater_subtree(child_id)
+
     # Per-atom-type config validation: when the atom_type has a
     # registered Phase 1 config schema, validate the config dict
     # against it. Forward-compat: atom_types added in WB-2/7 without

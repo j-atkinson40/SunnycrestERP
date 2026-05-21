@@ -63,12 +63,20 @@ AtomType = Literal[
     "button",
     "image",
     "conditional_container",
+    # WB-3 — repeater_atom for iteration-shaped widgets. Renders its
+    # `children` once per row of an iterating BindingRef (iteration_mode
+    # === 'per_row'). The Phase 1 nesting cap stays at 2 levels of
+    # atoms-that-wrap-children: a repeater_atom may contain
+    # conditional_container, but it MAY NOT contain another
+    # repeater_atom (the cross-container validator rejects nested
+    # repeaters). See WB-3 build log.
+    "repeater_atom",
 ]
 
 # Phase 1 set of atom_types that may carry children (Q-5 two-level
-# nesting cap; only conditional_container is a container atom in
-# Phase 1).
-CONTAINER_ATOM_TYPES = frozenset({"conditional_container"})
+# nesting cap; conditional_container + repeater_atom are the two
+# container atoms in Phase 1 post-WB-3).
+CONTAINER_ATOM_TYPES = frozenset({"conditional_container", "repeater_atom"})
 
 
 # ── Variant + surface vocabulary ─────────────────────────────────────
@@ -313,6 +321,48 @@ class ImageConfig(BaseModel):
     aspect_ratio: Optional[str] = None
 
 
+class RepeaterAtomConfig(BaseModel):
+    """`repeater_atom` atom — iteration over a per_row BindingRef (WB-3).
+
+    Architectural primitive for iteration-shaped widgets (lists,
+    repeating cards, log lines). At render time:
+
+      • Resolves the BindingRef referenced by `binding_id` against the
+        atom's `binding_refs['rows']` slot.
+      • For each row of the resolved data, renders the atom_ids in
+        `config.children` once with a per-row dataContext.
+      • Phase 1 placeholder data: WB-3 surfaces 1 mock row so the
+        layout space is visible in the authoring shell. WB-6 wires
+        real saved-view row projection.
+
+    Phase 1 nesting cap (cross-container): a repeater_atom MAY contain
+    conditional_container as a child. A repeater_atom may NOT contain
+    another repeater_atom. The service-layer validator rejects nested
+    repeaters; the Pydantic schema only types the shape.
+
+    The repeater's child atom_ids live in the top-level atom_tree (same
+    flat-dict-with-id-refs model as conditional_container). `config.children`
+    lists the ordered atom_ids rendered per row.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    binding_id: str
+    """BindingRef binding_id in the parent CompositionBlob's
+    `bindings_catalog` referencing a `field_path` binding with
+    `iteration_mode='per_row'`. Validator enforces both invariants."""
+
+    children: List[str] = Field(default_factory=list)
+    """Ordered atom_ids rendered once per row. Must match
+    AtomNode.children for the same atom (the canonical tree-walk
+    field). Validator enforces equivalence."""
+
+    direction: Literal["row", "column"] = "column"
+    spacing: Literal["compact", "normal", "loose"] = "normal"
+    empty_state: Optional[str] = None
+    max_rows: Optional[int] = None
+
+
 class ConditionalContainerConfig(BaseModel):
     """`conditional_container` atom — children render only when
     `condition` evaluates true.
@@ -341,6 +391,7 @@ PER_ATOM_CONFIG_SCHEMAS: Dict[str, type[BaseModel]] = {
     "button": ButtonConfig,
     "image": ImageConfig,
     "conditional_container": ConditionalContainerConfig,
+    "repeater_atom": RepeaterAtomConfig,
 }
 
 
@@ -358,6 +409,7 @@ __all__ = [
     "ImageConfig",
     "IterationMode",
     "PER_ATOM_CONFIG_SCHEMAS",
+    "RepeaterAtomConfig",
     "StatusBadgeConfig",
     "TargetSurface",
     "TextLabelConfig",

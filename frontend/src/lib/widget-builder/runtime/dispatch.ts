@@ -38,10 +38,13 @@ import {
 
 
 /** Minimal subset of the backend WidgetDefinition row needed by
- *  the dispatch helper. Accepts the WB-1-extended shape (with
- *  composition_blob optional) without coupling to the
- *  `components/widgets/types.ts::WidgetDefinition` interface
- *  (which doesn't yet declare composition_blob — WB-3+ folds it in). */
+ *  the dispatch helper. WB-3 folded composition_blob /
+ *  composition_version / tier_scope into the canonical
+ *  `components/widgets/types.ts::WidgetDefinition` interface — this
+ *  local shape stays narrow on purpose (the dispatch helper only
+ *  needs widget_id + composition_blob), and a canonical
+ *  WidgetDefinition is a structural superset that satisfies the
+ *  contract without coercion. */
 export interface DispatchableWidgetDefinition {
   widget_id: string
   composition_blob?: unknown | null

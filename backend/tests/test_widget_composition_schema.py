@@ -293,10 +293,14 @@ def test_conditional_container_config_direction_enum():
         ConditionalContainerConfig.model_validate({"direction": "diagonal"})
 
 
-def test_per_atom_config_schemas_covers_all_eight_phase_1_atoms():
+def test_per_atom_config_schemas_covers_all_nine_phase_1_atoms():
     """The PER_ATOM_CONFIG_SCHEMAS lookup MUST cover every Phase 1
     atom_type. WB-2 atom inspector reads this dict; missing entries
-    silently degrade UX."""
+    silently degrade UX.
+
+    WB-3 expands the set to include `repeater_atom` — the iteration
+    primitive for list-shaped widgets.
+    """
     expected = {
         "text_label",
         "value_display",
@@ -306,5 +310,171 @@ def test_per_atom_config_schemas_covers_all_eight_phase_1_atoms():
         "button",
         "image",
         "conditional_container",
+        "repeater_atom",
     }
     assert set(PER_ATOM_CONFIG_SCHEMAS.keys()) == expected
+
+
+# ── WB-3 repeater_atom schema + validator coverage ────────────────────
+
+
+def _repeater_blob_dict(*, with_repeater_child: bool = False) -> dict:
+    """Helper — builds a minimal blob with a repeater_atom at root
+    containing a single text_label per row. When `with_repeater_child=True`
+    the row template ALSO contains a nested repeater_atom (validator
+    should reject)."""
+    atom_tree: dict = {
+        "root": {
+            "atom_id": "root",
+            "atom_type": "repeater_atom",
+            "config": {
+                "binding_id": "rows",
+                "children": ["row_label"],
+                "direction": "column",
+                "spacing": "normal",
+            },
+            "children": ["row_label"],
+            "binding_refs": {"rows": "rows"},
+        },
+        "row_label": {
+            "atom_id": "row_label",
+            "atom_type": "text_label",
+            "config": {},
+        },
+    }
+    if with_repeater_child:
+        atom_tree["row_label"] = {
+            "atom_id": "row_label",
+            "atom_type": "repeater_atom",
+            "config": {
+                "binding_id": "rows",
+                "children": [],
+                "direction": "column",
+                "spacing": "normal",
+            },
+            "children": [],
+            "binding_refs": {"rows": "rows"},
+        }
+        atom_tree["root"]["children"] = ["row_label"]
+        atom_tree["root"]["config"]["children"] = ["row_label"]
+    return {
+        "schema_version": 1,
+        "root_atom_id": "root",
+        "atom_tree": atom_tree,
+        "variants": [
+            {
+                "variant_id": "brief",
+                "variant_name": "Brief",
+                "target_surface": "focus_canvas",
+            }
+        ],
+        "bindings_catalog": {
+            "rows": {
+                "binding_id": "rows",
+                "binding_type": "field_path",
+                "saved_view_id": "sv1",
+                "field_path": "rows",
+                "iteration_mode": "per_row",
+            }
+        },
+    }
+
+
+def test_repeater_atom_valid_blob_parses():
+    """Valid repeater_atom blob parses + validates structurally + semantically."""
+    from app.services.widget_definitions.validators import (
+        validate_composition_blob,
+    )
+
+    blob_dict = _repeater_blob_dict()
+    parsed = validate_composition_blob(blob_dict)
+    assert parsed.root_atom_id == "root"
+    assert parsed.atom_tree["root"].atom_type == "repeater_atom"
+
+
+def test_repeater_atom_nested_repeater_rejected():
+    """A repeater_atom whose subtree contains another repeater_atom
+    must be rejected at validation time (Phase 1 cross-container
+    nesting cap)."""
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob,
+    )
+
+    blob_dict = _repeater_blob_dict(with_repeater_child=True)
+    with pytest.raises(CompositionBlobValidationError) as excinfo:
+        validate_composition_blob(blob_dict)
+    assert any("repeater_atom may not contain" in e for e in excinfo.value.errors)
+
+
+def test_repeater_atom_non_per_row_binding_rejected():
+    """A repeater_atom binding_id pointing at a non-iteration binding
+    must be rejected."""
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob,
+    )
+
+    blob_dict = _repeater_blob_dict()
+    blob_dict["bindings_catalog"]["rows"]["iteration_mode"] = "single_summary"
+    with pytest.raises(CompositionBlobValidationError) as excinfo:
+        validate_composition_blob(blob_dict)
+    assert any("iteration_mode='per_row'" in e for e in excinfo.value.errors)
+
+
+def test_repeater_atom_unknown_binding_id_rejected():
+    """A repeater_atom binding_id pointing at a non-existent binding
+    must be rejected."""
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob,
+    )
+
+    blob_dict = _repeater_blob_dict()
+    blob_dict["atom_tree"]["root"]["config"]["binding_id"] = "no-such-binding"
+    with pytest.raises(CompositionBlobValidationError) as excinfo:
+        validate_composition_blob(blob_dict)
+    assert any("references unknown binding_id" in e for e in excinfo.value.errors)
+
+
+def test_repeater_atom_config_children_mismatch_rejected():
+    """When config.children and AtomNode.children disagree the
+    validator rejects so the two views of the same data can't drift."""
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob,
+    )
+
+    blob_dict = _repeater_blob_dict()
+    blob_dict["atom_tree"]["root"]["config"]["children"] = ["different"]
+    with pytest.raises(CompositionBlobValidationError) as excinfo:
+        validate_composition_blob(blob_dict)
+    assert any("config.children" in e for e in excinfo.value.errors)
+
+
+def test_repeater_atom_config_pydantic_shape():
+    """Pydantic schema rejects malformed RepeaterAtomConfig shapes."""
+    from app.schemas.widget_composition import RepeaterAtomConfig
+
+    # Valid baseline.
+    cfg = RepeaterAtomConfig.model_validate(
+        {"binding_id": "rows", "children": ["a", "b"]}
+    )
+    assert cfg.binding_id == "rows"
+    assert cfg.spacing == "normal"
+
+    # binding_id required.
+    with pytest.raises(ValidationError):
+        RepeaterAtomConfig.model_validate({"children": []})
+
+    # spacing enum bounded.
+    with pytest.raises(ValidationError):
+        RepeaterAtomConfig.model_validate(
+            {"binding_id": "rows", "children": [], "spacing": "extra-loose"}
+        )
+
+    # direction enum bounded.
+    with pytest.raises(ValidationError):
+        RepeaterAtomConfig.model_validate(
+            {"binding_id": "rows", "children": [], "direction": "diagonal"}
+        )

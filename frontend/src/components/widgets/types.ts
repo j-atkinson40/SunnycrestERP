@@ -147,6 +147,26 @@ export interface WidgetDefinition<TConfig = unknown> {
   // Catalog UI flags
   is_available: boolean
   unavailable_reason: string | null
+
+  // ── Widget Builder substrate (WB-1 backend → WB-3 frontend) ────────
+  //
+  // Composition-driven widget shape per investigation Area 7 / Q-30.
+  // Existing hand-coded widget definitions carry these as NULL; the
+  // WB-2 ComposedWidget runtime renders composed widgets when
+  // composition_blob is populated, leaving the hand-coded dispatch
+  // path UNCHANGED for null-blob widgets.
+  //
+  // Additive optional fields per WB-3 audit (WB-2 Surprise 1) — the
+  // canonical interface now declares the composed-widget axes so the
+  // dispatch helper, the ComposedWidget runtime, and the visual-editor
+  // registry bridge all consume the same shape without coercion
+  // gymnastics. The fields default to null on the wire for legacy
+  // hand-coded rows (the backend serializer at
+  // `backend/app/services/widgets/widget_service.py::get_available_widgets`
+  // populates them verbatim from the WidgetDefinition table row).
+  composition_blob?: unknown | null
+  composition_version?: number | null
+  tier_scope?: "platform" | "vertical" | null
 }
 
 

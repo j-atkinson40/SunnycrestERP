@@ -198,4 +198,97 @@ describe("serializeCompositionBlob", () => {
     // Re-serialize: equal bytes.
     expect(serializeCompositionBlob(re)).toBe(serialized);
   });
+
+  // ── WB-3 — repeater_atom round-trip + nesting-cap rejection ──────
+
+  it("accepts repeater_atom in atom_tree (WB-3)", () => {
+    const blob = parseCompositionBlob({
+      schema_version: 1,
+      root_atom_id: "root",
+      atom_tree: {
+        root: {
+          atom_id: "root",
+          atom_type: "repeater_atom",
+          config: {
+            binding_id: "rows",
+            children: ["row_label"],
+            direction: "column",
+            spacing: "normal",
+          },
+          children: ["row_label"],
+          binding_refs: { rows: "rows" },
+        },
+        row_label: {
+          atom_id: "row_label",
+          atom_type: "text_label",
+          config: {},
+        },
+      },
+      variants: [
+        {
+          variant_id: "brief",
+          variant_name: "Brief",
+          target_surface: "focus_canvas",
+        },
+      ],
+      bindings_catalog: {
+        rows: {
+          binding_id: "rows",
+          binding_type: "field_path",
+          saved_view_id: "sv1",
+          field_path: "rows",
+          iteration_mode: "per_row",
+        },
+      },
+    });
+    expect(blob.atom_tree.root.atom_type).toBe("repeater_atom");
+    const reSerialized = serializeCompositionBlob(blob);
+    const re = parseCompositionBlob(JSON.parse(reSerialized));
+    expect(serializeCompositionBlob(re)).toBe(reSerialized);
+  });
+
+  it("rejects repeater_atom containing another repeater_atom (WB-3 cap)", () => {
+    expect(() =>
+      parseCompositionBlob({
+        schema_version: 1,
+        root_atom_id: "root",
+        atom_tree: {
+          root: {
+            atom_id: "root",
+            atom_type: "repeater_atom",
+            config: {
+              binding_id: "rows",
+              children: ["nested"],
+              direction: "column",
+              spacing: "normal",
+            },
+            children: ["nested"],
+            binding_refs: { rows: "rows" },
+          },
+          nested: {
+            atom_id: "nested",
+            atom_type: "repeater_atom",
+            config: {
+              binding_id: "rows",
+              children: [],
+              direction: "column",
+              spacing: "normal",
+            },
+            children: [],
+            binding_refs: { rows: "rows" },
+          },
+        },
+        variants: [],
+        bindings_catalog: {
+          rows: {
+            binding_id: "rows",
+            binding_type: "field_path",
+            saved_view_id: "sv1",
+            field_path: "rows",
+            iteration_mode: "per_row",
+          },
+        },
+      }),
+    ).toThrow(/may not contain another repeater_atom/);
+  });
 });

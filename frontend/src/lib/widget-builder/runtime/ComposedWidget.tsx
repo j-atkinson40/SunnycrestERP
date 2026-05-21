@@ -39,11 +39,15 @@ import { AtomRenderer } from "./AtomRenderer"
 
 
 /** Minimal subset of the WB-1-extended WidgetDefinition shape needed
- *  by ComposedWidget. Loose-typed at the boundary so callers passing
- *  the existing `WidgetDefinition` (which doesn't yet carry
- *  composition_blob in its TS interface — that's a WB-3+ catalog
- *  follow-up) plus an extra blob field can hand the value through
- *  without coercion gymnastics. */
+ *  by ComposedWidget.
+ *
+ *  WB-3 — the canonical `components/widgets/types.ts::WidgetDefinition`
+ *  interface now carries `composition_blob` + `composition_version` +
+ *  `tier_scope` as additive optional fields. This local shape stays
+ *  narrow on purpose: the renderer only needs `widget_id` + the blob,
+ *  and the canonical WidgetDefinition is a structural superset that
+ *  satisfies this contract without coercion. Callers passing a full
+ *  canonical row through work unchanged. */
 export interface ComposedWidgetInput {
   /** Required — used for the data-widget-id attribute on the inner
    *  layout box (telemetry + DOM identification). */

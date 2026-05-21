@@ -35,6 +35,12 @@ import "@/components/widgets/manufacturing/register";
 // widget_id (existing path UNCHANGED). Side-effect-on-import pattern
 // mirrors the foundation/manufacturing wraps above.
 import "@/lib/widget-builder/runtime/register";
+// WB-3 — visual-editor metadata registry bridge for composed widgets.
+// Fire-and-forget; logs warning on failure. Composed widgets stored
+// server-side become discoverable in Focus Builder palette + placeable
+// via getByName lookup. Hand-coded widgets unaffected.
+import { registerComposedWidgetsFromApi } from "@/lib/widget-builder/runtime/registerComposedWidgets";
+void registerComposedWidgetsFromApi();
 // Phase 1 of the Admin Visual Editor — populate the component
 // registry with Phase 1 tagged components. The registry is read by
 // the /admin/registry debug page and (later phases) by the visual

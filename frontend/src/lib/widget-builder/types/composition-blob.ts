@@ -25,15 +25,21 @@ export type AtomType =
   | "divider"
   | "button"
   | "image"
-  | "conditional_container";
+  | "conditional_container"
+  // WB-3 — repeater_atom for iteration-shaped widgets. Renders its
+  // children once per row of an iterating BindingRef
+  // (iteration_mode === 'per_row'). Phase 1 cross-container nesting
+  // cap rejects repeater-inside-repeater.
+  | "repeater_atom";
 
 /**
  * Phase 1 set of atom_types that may carry children (Q-5 two-level
- * nesting cap; only conditional_container is a container atom in
- * Phase 1).
+ * nesting cap; conditional_container + repeater_atom are the container
+ * atoms in Phase 1 post-WB-3).
  */
 export const CONTAINER_ATOM_TYPES: ReadonlySet<AtomType> = new Set([
   "conditional_container",
+  "repeater_atom",
 ]);
 
 // ── Variant + surface vocabulary ────────────────────────────────────
@@ -179,6 +185,24 @@ export interface ConditionalContainerConfig {
   gap_token?: string;
 }
 
+export type RepeaterDirection = "row" | "column";
+export type RepeaterSpacing = "compact" | "normal" | "loose";
+
+/** WB-3 — RepeaterAtomConfig. Iteration primitive for list-shaped
+ *  composed widgets. `binding_id` references a BindingRef in
+ *  bindings_catalog with binding_type='field_path' + iteration_mode='per_row'.
+ *  `children` is the ordered list of atom_ids rendered once per row;
+ *  the same list MUST appear on AtomNode.children for tree-walking
+ *  parity (codec + backend validator both enforce). */
+export interface RepeaterAtomConfig {
+  binding_id: string;
+  children: string[];
+  direction?: RepeaterDirection;
+  spacing?: RepeaterSpacing;
+  empty_state?: string;
+  max_rows?: number;
+}
+
 /**
  * Lookup of atom_type → human label (Phase 1). Used by the WB-2
  * atom palette + atom inspector. NOT used by the runtime renderer.
@@ -192,4 +216,5 @@ export const ATOM_TYPE_LABELS: Record<AtomType, string> = {
   button: "Button",
   image: "Image",
   conditional_container: "Conditional container",
+  repeater_atom: "Repeater",
 };

@@ -369,3 +369,86 @@ describe("AtomRenderer — binding resolution", () => {
     expect(container.textContent).toBe("[unbound:missing-binding]")
   })
 })
+
+
+describe("AtomRenderer — repeater_atom dispatch (WB-3)", () => {
+  it("dispatches to RepeaterAtomRenderer + renders one mock row in Phase 1", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: {
+          binding_id: "rows",
+          children: ["row_label"],
+          direction: "column",
+          spacing: "normal",
+        },
+        children: ["row_label"],
+        binding_refs: { rows: "rows" },
+      },
+      row_label: {
+        atom_id: "row_label",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "rowLabel" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rows: {
+        binding_id: "rows",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+      rowLabel: {
+        binding_id: "rowLabel",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "title",
+        iteration_mode: "per_row",
+      },
+    }
+    const { container } = renderAtom(tree, "rep", {
+      bindingsCatalog: bindings,
+    })
+    const root = container.querySelector("[data-atom-id='rep']")
+    expect(root).not.toBeNull()
+    expect(root?.getAttribute("data-atom-type")).toBe("repeater_atom")
+    // 1 mock row in Phase 1.
+    expect(root?.getAttribute("data-row-count")).toBe("1")
+    // Per-row binding context surfaces via resolveBinding marker.
+    expect(container.textContent).toMatch(/\[bound:row\.title#0\]/)
+  })
+
+  it("throws at render time when a repeater contains a repeater (defense-in-depth)", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: { binding_id: "rows", children: ["inner"] },
+        children: ["inner"],
+        binding_refs: { rows: "rows" },
+      },
+      inner: {
+        atom_id: "inner",
+        atom_type: "repeater_atom",
+        config: { binding_id: "rows", children: [] },
+        children: [],
+        binding_refs: { rows: "rows" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rows: {
+        binding_id: "rows",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+    }
+    expect(() => renderAtom(tree, "rep", { bindingsCatalog: bindings })).toThrow(
+      /repeater_atom .* may not contain another repeater_atom/,
+    )
+  })
+})

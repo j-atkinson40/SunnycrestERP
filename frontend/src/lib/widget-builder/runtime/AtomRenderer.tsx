@@ -40,6 +40,7 @@ import {
   DividerRenderer,
   IconRenderer,
   ImageRenderer,
+  RepeaterAtomRenderer,
   StatusBadgeRenderer,
   TextLabelRenderer,
   ValueDisplayRenderer,
@@ -58,9 +59,9 @@ const ConditionalContainerWrapped = registerComponent({
   displayName: "Conditional Container (composed-widget atom)",
   description:
     "WB-2 runtime renderer for the conditional_container atom_type. " +
-    "The only Phase 1 atom_type that may have children. Registered " +
-    "so the runtime editor can identify the container via the " +
-    "data-component-name boundary div per Area 6 dual-wrapping lock.",
+    "Container atom; registered so the runtime editor can identify " +
+    "the container via the data-component-name boundary div per " +
+    "Area 6 dual-wrapping lock.",
   category: "widget-builder",
   verticals: ["all"],
   userParadigms: ["owner-operator", "operator-power-user", "focused-executor"],
@@ -69,6 +70,29 @@ const ConditionalContainerWrapped = registerComponent({
   schemaVersion: 1,
   componentVersion: 1,
 })(ConditionalContainerRenderer)
+
+// WB-3 — repeater_atom is the second container atom in Phase 1 and
+// gets its own registerComponent wrap per Area 6 dual-wrapping lock.
+// AtomRenderer applies the wrap at dispatch time (not in the atoms
+// barrel) so the wrap stays scoped to the dispatch path.
+const RepeaterAtomWrapped = registerComponent({
+  type: "widget",
+  name: "wb-repeater-atom",
+  displayName: "Repeater (composed-widget atom)",
+  description:
+    "WB-3 runtime renderer for the repeater_atom atom_type. " +
+    "Iteration primitive — renders children once per row of an " +
+    "iterating BindingRef. Registered so the runtime editor can " +
+    "identify the container via the data-component-name boundary " +
+    "div per Area 6 dual-wrapping lock.",
+  category: "widget-builder",
+  verticals: ["all"],
+  userParadigms: ["owner-operator", "operator-power-user", "focused-executor"],
+  consumedTokens: [],
+  configurableProps: {},
+  schemaVersion: 1,
+  componentVersion: 1,
+})(RepeaterAtomRenderer)
 
 
 export interface AtomRendererProps {
@@ -140,29 +164,69 @@ export function AtomRenderer({
   )
 
   // Build child renders for container atoms BEFORE dispatch so the
-  // leaf renderer doesn't have to reach back into atom_tree. Phase 1:
-  // only conditional_container has children.
-  const childRenders =
-    atom.atom_type === "conditional_container" && atom.children
-      ? atom.children.map((childId) => {
-          const child = atomTree[childId]
-          if (!child) {
-            // Defensive: WB-1 validator catches dangling child refs;
-            // skip gracefully at runtime.
-            return null
-          }
-          return (
-            <AtomRenderer
-              key={childId}
-              atom={child}
-              atomTree={atomTree}
-              bindingsCatalog={bindingsCatalog}
-              variantId={variantId}
-              dataContext={dataContext}
-            />
-          )
-        })
-      : undefined
+  // leaf renderer doesn't have to reach back into atom_tree. Phase 1
+  // post-WB-3: conditional_container + repeater_atom are container
+  // atoms.
+  let childRenders: ReactNode | undefined = undefined
+  if (atom.atom_type === "conditional_container" && atom.children) {
+    childRenders = atom.children.map((childId) => {
+      const child = atomTree[childId]
+      if (!child) return null
+      return (
+        <AtomRenderer
+          key={childId}
+          atom={child}
+          atomTree={atomTree}
+          bindingsCatalog={bindingsCatalog}
+          variantId={variantId}
+          dataContext={dataContext}
+        />
+      )
+    })
+  } else if (atom.atom_type === "repeater_atom" && atom.children) {
+    // WB-3 — repeater iteration. Phase 1 placeholder: render 1 mock
+    // row so the layout space is visible to authors. The per-row
+    // dataContext marker (`{ __row: true, __index: i }`) flows into
+    // resolveBinding so field_path bindings surface the iteration
+    // semantics. WB-6 swaps the mock data for real saved-view row
+    // projection.
+    const rowCount = 1
+    const rows: ReactNode[] = []
+    for (let i = 0; i < rowCount; i++) {
+      const rowContext = { __row: true, __index: i }
+      rows.push(
+        <div
+          key={`row-${i}`}
+          data-row-index={i}
+          className="flex flex-row items-center gap-2"
+        >
+          {atom.children.map((childId) => {
+            const child = atomTree[childId]
+            if (!child) return null
+            // Defensive: repeater inside repeater would have been
+            // rejected at validation time. Throw at render time as
+            // defense-in-depth.
+            if (child.atom_type === "repeater_atom") {
+              throw new Error(
+                `[AtomRenderer] repeater_atom ${atom.atom_id} may not contain another repeater_atom (${childId}) — Phase 1 cap`,
+              )
+            }
+            return (
+              <AtomRenderer
+                key={`${childId}-${i}`}
+                atom={child}
+                atomTree={atomTree}
+                bindingsCatalog={bindingsCatalog}
+                variantId={variantId}
+                dataContext={rowContext}
+              />
+            )
+          })}
+        </div>,
+      )
+    }
+    childRenders = rows
+  }
 
   // Each leaf renderer types its own config narrowly; AtomRenderer
   // hands through atom.config (typed Record<string,unknown> per WB-1)
@@ -237,6 +301,19 @@ export function AtomRenderer({
         >
           {childRenders}
         </ConditionalContainerWrapped>
+      )
+    case "repeater_atom":
+      return (
+        <RepeaterAtomWrapped
+          {...baseProps}
+          config={
+            atom.config as unknown as Parameters<
+              typeof RepeaterAtomRenderer
+            >[0]["config"]
+          }
+        >
+          {childRenders}
+        </RepeaterAtomWrapped>
       )
     default: {
       // Exhaustive guard — TypeScript flags missing atom_type cases.
