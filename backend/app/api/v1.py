@@ -188,6 +188,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     vault_accounting,
     vault_molds,
     vault_supplier,
+    widget_definitions,
     widgets,
     widget_data,
     work_orders,
@@ -867,6 +868,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     vault_supplier.router, prefix="/vault-supplier", tags=["Vault Supplier"]
+)
+v1_router.include_router(
+    widget_definitions.router,
+    prefix="/widget-definitions",
+    tags=["Widget Builder"],
 )
 v1_router.include_router(
     widgets.router, prefix="/widgets", tags=["Widget Framework"]

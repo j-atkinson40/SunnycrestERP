@@ -179,3 +179,19 @@ class WidgetDefinition(Base):
     last_edit_session_actor_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False), nullable=True
     )
+
+    # WB-4a (r106) — load-bearing for the Area 2 "draft-then-publish"
+    # lock. `composition_blob` is the DRAFT (auto-saved per-tick by the
+    # Widget Builder shell, 200 ms debounce). `published_composition_blob`
+    # is the LIVE render surface; mutated ONLY on explicit Publish.
+    # Tenant render paths read published first, fall back to draft ONLY
+    # when published is NULL AND draft is non-NULL (legacy r105-backfill
+    # rows). r106 upgrade backfills existing composed widgets so they
+    # keep rendering immediately on deploy.
+    #
+    # CHECK constraint (`ck_widget_definitions_published_requires_draft`):
+    #   (published IS NULL) OR (composition_blob IS NOT NULL)
+    # i.e., can't publish without a draft.
+    published_composition_blob: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True
+    )

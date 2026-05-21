@@ -48,6 +48,10 @@ import {
 export interface DispatchableWidgetDefinition {
   widget_id: string
   composition_blob?: unknown | null
+  /** WB-4a — when populated, this is the LIVE render shape. Tenant
+   *  callers consume this in preference to composition_blob. Per the
+   *  Area 2 lock at the WB-4 investigation. */
+  published_composition_blob?: unknown | null
 }
 
 
@@ -61,11 +65,25 @@ export function dispatchWidgetDefinition(
   definition: DispatchableWidgetDefinition,
   baseProps: Omit<WidgetRendererProps, "widgetId">,
 ): DispatchResult {
-  const hasCompositionBlob =
+  // WB-4a published-first dispatch:
+  //   1. If published_composition_blob is non-null → render published.
+  //   2. Else if composition_blob is non-null → legacy r105-backfill
+  //      case OR the authoring canvas's draft-preview path explicitly
+  //      passing draft; render draft.
+  //   3. Else → hand-coded widget; existing dispatch.
+  const hasPublished =
+    definition.published_composition_blob !== null &&
+    definition.published_composition_blob !== undefined
+  const hasDraft =
     definition.composition_blob !== null &&
     definition.composition_blob !== undefined
+  const effectiveBlob = hasPublished
+    ? definition.published_composition_blob
+    : hasDraft
+      ? definition.composition_blob
+      : null
 
-  if (hasCompositionBlob) {
+  if (effectiveBlob !== null) {
     // Route via the "composed" registry key. The adapter at
     // `register.tsx` extracts composition_blob from config and
     // hands it to ComposedWidget. We avoid mutating the caller's
@@ -78,7 +96,7 @@ export function dispatchWidgetDefinition(
         widgetId: definition.widget_id,
         config: {
           ...(baseProps.config ?? {}),
-          composition_blob: definition.composition_blob,
+          composition_blob: effectiveBlob,
         },
       },
     }

@@ -148,6 +148,51 @@ export async function registerComposedWidgetsFromApi(): Promise<number> {
 }
 
 
+/** WB-4a — refresh after Publish.
+ *
+ *  The Widget Builder shell calls this after a successful Publish so
+ *  the operator's newly-published composed widget surfaces in Focus
+ *  Builder palette + other consumers WITHOUT a page reload. Unlike
+ *  `registerComposedWidgetsFromApi` (which is gated by the module-
+ *  scoped boot guard), this helper forces a fresh fetch + re-registers
+ *  every row. Idempotent: registerComponent silently overwrites an
+ *  existing registration at the same (type, name) key.
+ *
+ *  Returns the number of definitions registered (0 on failure). Logs
+ *  + swallows fetch errors so the calling Publish flow never fails on
+ *  registry-refresh issues — the publish itself already landed.
+ */
+export async function refreshComposedWidgets(): Promise<number> {
+  try {
+    const response = await apiClient.get<ComposedWidgetDefinitionDTO[]>(
+      "/widgets/composed-definitions",
+    )
+    const rows = response.data ?? []
+    for (const row of rows) {
+      try {
+        registerComposedWidgetMeta(row)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[refreshComposedWidgets] registration failed for widget_id=${row.widget_id}:`,
+          err,
+        )
+      }
+    }
+    // After a refresh, the boot guard is moot — mark fetched.
+    _fetchAttempted = true
+    return rows.length
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[refreshComposedWidgets] refresh failed; palette will show stale state until next reload:",
+      err,
+    )
+    return 0
+  }
+}
+
+
 /** Test helper — reset the module-scoped guard so a fresh fetch can
  *  run. Not exported from the public barrel; tests import directly. */
 export function _resetForTests(): void {

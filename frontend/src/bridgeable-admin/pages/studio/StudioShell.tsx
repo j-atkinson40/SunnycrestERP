@@ -57,6 +57,7 @@ import EdgePanelEditorPage from "@/bridgeable-admin/pages/visual-editor/EdgePane
 import RegistryDebugPage from "@/bridgeable-admin/pages/visual-editor/RegistryDebugPage"
 import PluginRegistryBrowser from "@/bridgeable-admin/pages/visual-editor/PluginRegistryBrowser"
 import FocusBuilderPage from "@/bridgeable-admin/components/focus-builder/FocusBuilderPage"
+import WidgetBuilderPage from "@/bridgeable-admin/components/widget-builder/WidgetBuilderPage"
 
 
 const EDITOR_PAGES: Record<StudioEditorKey, React.ComponentType> = {
@@ -257,6 +258,20 @@ export default function StudioShell() {
                 <Route
                   path="builder/focuses"
                   element={<FocusBuilderPage />}
+                />
+                {/* WB-4a: Widget Builder mounts at
+                    /studio/widget-builder[/:slug]. Slug-optional —
+                    no slug shows the create landing card. Explicit
+                    Routes precede the EditModeDispatcher catch-all
+                    so parseStudioPath doesn't see "widget-builder" as
+                    a vertical slug. */}
+                <Route
+                  path="widget-builder/:slug"
+                  element={<WidgetBuilderPage />}
+                />
+                <Route
+                  path="widget-builder"
+                  element={<WidgetBuilderPage />}
                 />
                 <Route path="*" element={<EditModeDispatcher />} />
               </Routes>

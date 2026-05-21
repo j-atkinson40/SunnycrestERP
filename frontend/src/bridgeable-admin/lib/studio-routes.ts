@@ -40,11 +40,18 @@ export const STUDIO_EDITOR_KEYS = [
 
 export type StudioEditorKey = (typeof STUDIO_EDITOR_KEYS)[number]
 
-/** Reserved first-position path segments (NOT vertical slugs). */
+/** Reserved first-position path segments (NOT vertical slugs).
+ *
+ *  WB-4a: `widget-builder` and `builder` reserved because both mount
+ *  explicit Routes in StudioShell that precede the parseStudioPath
+ *  catch-all. Reserving prevents future vertical-slug authoring from
+ *  colliding. */
 export const RESERVED_FIRST_SEGMENTS = new Set<string>([
   ...STUDIO_EDITOR_KEYS,
   "live",
   "admin",
+  "builder",
+  "widget-builder",
 ])
 
 /** Editors that are platform-only (no vertical scope). */

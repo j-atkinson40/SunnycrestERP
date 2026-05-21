@@ -14,9 +14,25 @@ from app.services.widget_definitions.validators import (
     validate_composition_blob,
     validate_widget_definition_write,
 )
+from app.services.widget_definitions.publish import (
+    CannotPublishWithoutDraftError,
+    WidgetDefinitionConflictError,
+    WidgetDefinitionNotFoundError,
+    create_widget_definition,
+    publish_draft,
+    save_draft,
+    serialize_widget,
+)
 
 __all__ = [
     "CompositionBlobValidationError",
     "validate_composition_blob",
     "validate_widget_definition_write",
+    "CannotPublishWithoutDraftError",
+    "WidgetDefinitionConflictError",
+    "WidgetDefinitionNotFoundError",
+    "create_widget_definition",
+    "publish_draft",
+    "save_draft",
+    "serialize_widget",
 ]

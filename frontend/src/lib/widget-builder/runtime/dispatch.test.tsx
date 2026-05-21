@@ -124,6 +124,72 @@ describe("dispatchWidgetDefinition — routing", () => {
     expect(callerConfig).toEqual({ existing: "value" })
     expect((callerConfig as Record<string, unknown>).composition_blob).toBeUndefined()
   })
+
+  // ── WB-4a published-first dispatch ───────────────────────────────
+
+  it("prefers published_composition_blob over composition_blob (WB-4a)", () => {
+    const draft = mkBlob()
+    const published: CompositionBlob = {
+      ...draft,
+      atom_tree: {
+        ...draft.atom_tree,
+        label: {
+          ...draft.atom_tree.label,
+          binding_refs: { text: "lb_published" },
+        },
+      },
+      bindings_catalog: {
+        ...draft.bindings_catalog,
+        lb_published: {
+          binding_id: "lb_published",
+          binding_type: "literal",
+          literal_value: "Published label",
+        },
+      },
+    }
+    const result = dispatchWidgetDefinition(
+      {
+        widget_id: "composed.wb4a",
+        composition_blob: draft,
+        published_composition_blob: published,
+      },
+      { surface: "focus_canvas" },
+    )
+    expect(result.Renderer).toBe(getWidgetRenderer("composed"))
+    expect(result.props.config?.composition_blob).toBe(published)
+  })
+
+  it("falls back to composition_blob when published is null (legacy r105)", () => {
+    const draft = mkBlob()
+    const result = dispatchWidgetDefinition(
+      {
+        widget_id: "composed.legacy",
+        composition_blob: draft,
+        published_composition_blob: null,
+      },
+      { surface: "focus_canvas" },
+    )
+    expect(result.props.config?.composition_blob).toBe(draft)
+  })
+
+  it("routes to hand-coded path when both blobs null", () => {
+    registerWidgetRenderer("test.handle", () => <div />)
+    try {
+      const result = dispatchWidgetDefinition(
+        {
+          widget_id: "test.handle",
+          composition_blob: null,
+          published_composition_blob: null,
+        },
+        { surface: "focus_canvas" },
+      )
+      expect(result.Renderer).toBe(getWidgetRenderer("test.handle"))
+      expect(result.props.config?.composition_blob).toBeUndefined()
+    } finally {
+      _resetWidgetRendererRegistryForTests()
+      void import("./register")
+    }
+  })
 })
 
 

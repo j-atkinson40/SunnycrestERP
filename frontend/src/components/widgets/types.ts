@@ -167,6 +167,17 @@ export interface WidgetDefinition<TConfig = unknown> {
   composition_blob?: unknown | null
   composition_version?: number | null
   tier_scope?: "platform" | "vertical" | null
+
+  // WB-4a — load-bearing for the draft-then-publish lock. Tenant render
+  // paths consume `published_composition_blob` (the LIVE shape) and
+  // fall back to `composition_blob` (the DRAFT) ONLY when published is
+  // null AND draft is non-null (legacy r105-backfill rows that
+  // pre-date r106). New widgets authored via the Widget Builder shell
+  // ALWAYS have published_composition_blob populated after their
+  // first Publish; pre-Publish drafts render via the fallback only
+  // INSIDE the authoring canvas (where the canvas explicitly reads the
+  // draft to provide WYSIWYG preview).
+  published_composition_blob?: unknown | null
 }
 
 
