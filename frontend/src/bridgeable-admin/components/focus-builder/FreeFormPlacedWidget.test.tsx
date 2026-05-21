@@ -421,7 +421,7 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
   // focus-builder-resize-handle elements themselves).
   // ─────────────────────────────────────────────────────────────────
 
-  it("hover-state refinement — renders 8 handles on pointerenter (not selected)", () => {
+  it("hover-state refinement — renders 8 handles on pointerover (not selected)", () => {
     const placement: WidgetPlacement = {
       id: "w-ff-hover-1",
       widget_slug: "today-pin-widget",
@@ -447,7 +447,10 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
     const draggable = screen.getByTestId(
       "focus-builder-freeform-placed-widget-draggable",
     )
-    fireEvent.pointerEnter(draggable)
+    // 2026-05-20 staging-regression fix arc — event-name swap to
+    // bubbling pointerover/pointerout. JSDOM event-firing follows
+    // the production handler names.
+    fireEvent.pointerOver(draggable)
 
     // After hover-in: 8 handles appear without a selection click.
     expect(
@@ -476,13 +479,13 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
     const draggable = screen.getByTestId(
       "focus-builder-freeform-placed-widget-draggable",
     )
-    fireEvent.pointerEnter(draggable)
+    fireEvent.pointerOver(draggable)
     expect(
       screen.getAllByTestId("focus-builder-resize-handle"),
     ).toHaveLength(8)
   })
 
-  it("hover-state refinement — pointerleave preserves handles when selected", () => {
+  it("hover-state refinement — pointerout preserves handles when selected", () => {
     const placement: WidgetPlacement = {
       id: "w-ff-hover-3",
       widget_slug: "today-pin-widget",
@@ -503,15 +506,18 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
     const draggable = screen.getByTestId(
       "focus-builder-freeform-placed-widget-draggable",
     )
-    fireEvent.pointerEnter(draggable)
-    fireEvent.pointerLeave(draggable)
+    fireEvent.pointerOver(draggable)
+    // relatedTarget = document.body — outside the widget — triggers the
+    // production handler's contains-check to evaluate false, so the
+    // hover-exit path runs.
+    fireEvent.pointerOut(draggable, { relatedTarget: document.body })
     // Selection branch keeps handles visible even after hover-out.
     expect(
       screen.getAllByTestId("focus-builder-resize-handle"),
     ).toHaveLength(8)
   })
 
-  it("hover-state refinement — pointerleave hides handles when NOT selected", () => {
+  it("hover-state refinement — pointerout hides handles when NOT selected", () => {
     const placement: WidgetPlacement = {
       id: "w-ff-hover-4",
       widget_slug: "today-pin-widget",
@@ -532,17 +538,59 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
     const draggable = screen.getByTestId(
       "focus-builder-freeform-placed-widget-draggable",
     )
-    fireEvent.pointerEnter(draggable)
+    fireEvent.pointerOver(draggable)
     expect(
       screen.getAllByTestId("focus-builder-resize-handle"),
     ).toHaveLength(8)
-    fireEvent.pointerLeave(draggable)
+    fireEvent.pointerOut(draggable, { relatedTarget: document.body })
     expect(
       screen.queryAllByTestId("focus-builder-resize-handle"),
     ).toHaveLength(0)
   })
 
-  it("hover-state refinement — touch/pointer-coarse fallback: selection still shows handles even without pointerenter", () => {
+  it("hover-state refinement — pointerout with relatedTarget INSIDE widget does NOT hide handles", () => {
+    // 2026-05-20 staging-regression fix arc — load-bearing
+    // relatedTarget contains-check. pointerout fires whenever the
+    // pointer moves to ANY child element, not just when leaving the
+    // widget. Without the contains-check, hovering a nested element
+    // would toggle isHovered → false → true repeatedly. The handler
+    // must NOT fire setIsHovered(false) when relatedTarget is a
+    // descendant of currentTarget.
+    const placement: WidgetPlacement = {
+      id: "w-ff-hover-contains",
+      widget_slug: "today-pin-widget",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 120,
+      chrome: {},
+    }
+    renderWithDnd(
+      <FreeFormPlacedWidget
+        placement={placement}
+        selected={false}
+        onSelect={() => {}}
+        themeTokens={tokens}
+      />,
+    )
+    const draggable = screen.getByTestId(
+      "focus-builder-freeform-placed-widget-draggable",
+    )
+    fireEvent.pointerOver(draggable)
+    expect(
+      screen.getAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(8)
+    // Find a descendant element of the draggable (the inner core).
+    const innerCore = screen.getByTestId("focus-builder-placed-widget-core")
+    expect(draggable.contains(innerCore)).toBe(true)
+    // pointerout with relatedTarget = descendant should NOT hide handles.
+    fireEvent.pointerOut(draggable, { relatedTarget: innerCore })
+    expect(
+      screen.getAllByTestId("focus-builder-resize-handle"),
+    ).toHaveLength(8)
+  })
+
+  it("hover-state refinement — touch/pointer-coarse fallback: selection still shows handles even without pointerover", () => {
     // Touch devices may not fire pointerenter reliably. The selection
     // branch is the canonical fallback for those users; this test
     // documents the contract.
@@ -563,7 +611,7 @@ describe("FreeFormPlacedWidget (absolute positioning + drag shell)", () => {
         themeTokens={tokens}
       />,
     )
-    // No pointerenter fired (simulating touch-tap-to-select). The
+    // No pointerover fired (simulating touch-tap-to-select). The
     // selected branch alone renders handles.
     expect(
       screen.getAllByTestId("focus-builder-resize-handle"),

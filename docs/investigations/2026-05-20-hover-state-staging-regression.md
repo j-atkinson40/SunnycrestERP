@@ -284,3 +284,77 @@ Sequence within the arc:
 
 The investigation discipline honored: static evidence exhausted; live-diagnostic step recommended to the fix arc; test-substrate gap locked independent of root cause; canon candidate flagged for post-fix arc.
 
+---
+
+## 11. Root cause confirmed via staging diagnostic — 2026-05-20 (POST-INVESTIGATION CORRECTION)
+
+After investigation ship, operator ran the recommended staging DevTools diagnostic. **All three narrowed candidates were ruled out.** Actual root cause was a fourth candidate the investigation did not enumerate.
+
+### What the operator confirmed
+
+1. Attached a native DOM listener directly on the `focus-builder-freeform-placed-widget-draggable` element at staging:
+   ```js
+   document.querySelector('[data-testid="focus-builder-freeform-placed-widget-draggable"]')
+     .addEventListener('pointerenter', () => console.log('FIRED'))
+   ```
+2. Hovered the widget body 10+ times.
+3. **Zero `pointerenter` events fired**. The native listener never invoked even once.
+
+This rules out candidates 1 (ancestor pointer-events: none) and 2 (latent transparent overlay): in both cases, the native listener would still fire when the pointer entered the element through whatever path remained. It rules out candidate 3 (React 19 / DndContext batching): a batching issue would suppress the React handler but not a directly-attached native listener.
+
+### The actual root cause
+
+`onPointerEnter` / `onPointerLeave` use **non-bubbling** native `pointerenter` / `pointerleave` semantics (W3C Pointer Events spec). Their hit-test cascade depends on **layout-box crossing**: the events fire only when the pointer crosses the layout box of the element with the listener (and any descendant layout boxes that re-trigger the cascade).
+
+The DOM tree between the operator's pointer and the `FreeFormPlacedWidget` draggable wrapper includes an intermediate `display: contents` div emitted by the `registerComponent` HOC at `frontend/src/lib/visual-editor/registry/register.ts:215`:
+
+```tsx
+createElement("div", {
+  "data-component-name": frozenMeta.name,
+  style: { display: "contents" },
+}, createElement(Component, props))
+```
+
+`display: contents` removes the element from the visual formatting context — it has **no layout box**. When the pointer enters the today-pin-widget body through this wrapper, the layout-box cascade breaks: chromium walks from the inner layout-box (the widget's rendered content) upward, finds no layout box on the `display: contents` div, and the cascade fails to reach the outer draggable wrapper that owns the `pointerenter` listener.
+
+JSDOM ignores `display: contents` entirely — it dispatches synthetic pointer events directly to the handler element identified by the testid, with no layout-box hit-test logic at all. That's why every JSDOM test passed even though the production DOM was broken.
+
+### The fix
+
+Replace `onPointerEnter` / `onPointerLeave` with the **bubbling** variants `onPointerOver` / `onPointerOut`. Bubbling rides DOM-tree edges (parent / child relationships) not layout-box adjacency, so it passes through `display: contents` cleanly.
+
+A `relatedTarget` contains-check on `pointerout` is load-bearing: `pointerout` fires whenever the pointer moves to ANY child element of the widget, NOT only when leaving the widget entirely. Without the check, hovering between nested elements would flicker isHovered → false → true. With the check, the false path runs only on true widget exit.
+
+Shipped in the same dispatch as fix arc HEAD `546aa46 + 1` (2026-05-20):
+- `FreeFormPlacedWidget.tsx`: handlers + JSX attributes swapped to bubbling variants.
+- `FreeFormPlacedWidget.test.tsx`: `fireEvent.pointerEnter` → `fireEvent.pointerOver`; `fireEvent.pointerLeave` → `fireEvent.pointerOut(... { relatedTarget: document.body })`. New JSDOM test covering relatedTarget contains-check via descendant pointer-move.
+- `tests/e2e/focus-builder-hover-pointer-semantics.spec.ts`: Playwright spec with inline `page.setContent` fixture demonstrating the bubbling shape works in real chromium + a source-shape regression gate inspecting the production file for the bubbling event names + contains-check.
+
+---
+
+## 12. Process canon candidates (post-fix)
+
+### 12.1 — Investigations of event-related bugs must enumerate by event-type semantics, not only by location
+
+This investigation enumerated hypotheses by **location**: ancestor chain (Hypothesis A spread overwrite, Hypothesis B child absorption, Hypothesis D CSS layout, Hypothesis F multiple draggables), framework batching (Hypothesis E StrictMode), test-substrate gap (Hypothesis C). All six are location-shaped.
+
+The actual root cause is **event-type semantic**: bubbling vs non-bubbling. The DOM tree shape (a `display: contents` intermediate element) only matters because of how the chosen event type's hit-test cascade interacts with elements lacking layout boxes. With the bubbling variant the same DOM tree works.
+
+The canon refinement: for event-related bugs, the candidate set must include enumeration by event-type semantics — bubbling vs non-bubbling, capture vs bubble phase, passive vs active, synthetic vs native. This is a load-bearing axis orthogonal to location enumeration.
+
+Q-40's generalization to "all pointer-event surfaces need Playwright coverage" remains valid + accepted; this is a separate, narrower axis on top.
+
+### 12.2 — Investigation-time UX locks should be revisited by operator-experience data
+
+(Carried forward from the original investigation §10.) Q-10's "selection-only handles" lock was refined by operator-experience to "hover OR selection." Pattern: investigation-time locks that depend on UX intuition should be re-examined post-ship against operator-experience data; when the operator's first interaction contradicts the lock, the lock was wrong, not the operator.
+
+### 12.3 — JSDOM-vs-chromium fidelity is bounded by DOM-tree synthesis, not just event simulation
+
+(Refinement of Q-40.) JSDOM's gap with real chromium is broader than "JSDOM can't fire pointer events reliably." JSDOM also doesn't synthesize layout for `display: contents` elements the way chromium does; doesn't run hit-tests; doesn't model pointer capture or relatedTarget propagation faithfully. Any test that depends on these mechanisms must have a chromium gate.
+
+### 12.4 — Investigation source-candidate audit
+
+(Carried forward.) When narrowing a candidate set, the investigation should explicitly audit whether the candidate set is COMPLETE. Three-candidate narrowing landed all three wrong; the actual cause was a fourth that wasn't enumerated. A "have we enumerated by every relevant axis?" gate before locking the candidate set would have surfaced the event-type-semantic axis.
+
+These four candidates are flagged here for a dedicated canon-update arc per established sequencing. They are NOT filed as canon entries in the fix arc itself.
+

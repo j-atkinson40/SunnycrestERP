@@ -147,17 +147,48 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
   // selection (Figma / Sketch precedent — discoverability via hover
   // before commit-to-select). isDragging is included as a defensive
   // third branch so handles never disappear mid whole-widget drag if
-  // pointer capture suppresses pointerleave on the source element.
-  // Touch / pointer-coarse devices that don't reliably fire
-  // pointerenter degrade gracefully via the selected branch (tap to
-  // select still shows handles).
+  // pointer capture suppresses pointer-out on the source element.
+  // Touch / pointer-coarse devices that don't reliably fire pointer
+  // events degrade gracefully via the selected branch (tap to select
+  // still shows handles).
+  //
+  // 2026-05-20 hover-state STAGING-REGRESSION fix arc — event-type
+  // refinement. The initial hover-state ship used non-bubbling
+  // `onPointerEnter` / `onPointerLeave`. Operator-confirmed via
+  // staging DevTools diagnostic: non-bubbling pointerenter does NOT
+  // fire on this wrapper in real chromium. Root cause: the
+  // `registerComponent` HOC at `lib/visual-editor/registry/register.ts`
+  // wraps every widget body in an intermediate `display: contents`
+  // div. That div has NO layout box; non-bubbling pointer-event
+  // semantics use a layout-box hit-test cascade that breaks at
+  // display:contents elements. JSDOM ignores display:contents
+  // entirely + dispatches synthetic events directly, so the unit
+  // tests passed even though production was broken.
+  //
+  // Fix: use the BUBBLING variants `onPointerOver` / `onPointerOut`.
+  // Bubbling rides DOM-tree edges (parent / child relationships) not
+  // layout-box adjacency, so it passes through display:contents
+  // cleanly.
+  //
+  // The `relatedTarget` contains-check on pointerout is load-bearing:
+  // pointerout fires whenever the pointer moves to ANY child element
+  // within the widget, NOT only when leaving the widget. Without the
+  // check, hovering a nested element would toggle isHovered → false
+  // → true repeatedly + cause flicker. With the check, isHovered →
+  // false only on true widget exit. `pointerover` setting isHovered
+  // → true is idempotent; repeated fires are safe React no-ops.
   const [isHovered, setIsHovered] = React.useState(false)
-  const handlePointerEnter = React.useCallback(
+  const handlePointerOver = React.useCallback(
     () => setIsHovered(true),
     [],
   )
-  const handlePointerLeave = React.useCallback(
-    () => setIsHovered(false),
+  const handlePointerOut = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Pointer moved to a descendant of this widget — stay hovered.
+      const related = e.relatedTarget as Node | null
+      if (related && e.currentTarget.contains(related)) return
+      setIsHovered(false)
+    },
     [],
   )
 
@@ -200,11 +231,15 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
       // FF-5 — declared AFTER the spread so @dnd-kit's attributes
       // can't overwrite it.
       onContextMenu={handleContextMenu}
-      // 2026-05-20 hover-state refinement — declared AFTER the spread
-      // so @dnd-kit's attributes can't overwrite them (same FF-4
-      // plumbing canon as onContextMenu above).
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
+      // 2026-05-20 hover-state refinement (+ staging-regression fix
+      // arc) — declared AFTER the spread so @dnd-kit's attributes
+      // can't overwrite them (same FF-4 plumbing canon as
+      // onContextMenu above). Bubbling pointerover/pointerout used
+      // (NOT non-bubbling pointerenter/leave) — see the React.useState
+      // block above for the display:contents root-cause + fix
+      // rationale.
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
       style={{
         position: "absolute",
         left: `${x}px`,
