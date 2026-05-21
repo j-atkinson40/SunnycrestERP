@@ -102,4 +102,92 @@ describe("WB-4a source-shape regression gates", () => {
     )
     expect(src).toMatch(/WHERE composition_blob IS NOT NULL/)
   })
+
+  // ── WB-4b gates ──────────────────────────────────────────────────
+
+  it("WB-4b Gate 9: 9 per-atom inspectors are defined", () => {
+    const src = read("./inspectors/AtomInspectorDispatch.tsx")
+    const inspectors = [
+      "TextLabelInspector",
+      "ValueDisplayInspector",
+      "IconInspector",
+      "StatusBadgeInspector",
+      "DividerInspector",
+      "ButtonInspector",
+      "ImageInspector",
+      "ConditionalContainerInspector",
+      "RepeaterAtomInspector",
+    ]
+    for (const i of inspectors) {
+      expect(src).toMatch(new RegExp(`function ${i}`))
+    }
+    // Dispatch component is exported.
+    expect(src).toMatch(/export function AtomInspectorDispatch/)
+    // No-selection path renders the CanvasRootInspector.
+    expect(src).toMatch(/function CanvasRootInspector/)
+  })
+
+  it("WB-4b Gate 10: useWidgetValidation hook exists + returns errorsByAtom", () => {
+    const src = read("../../hooks/useWidgetValidation.ts")
+    expect(src).toMatch(/export function useWidgetValidation/)
+    expect(src).toMatch(/errorsByAtom/)
+    expect(src).toMatch(/hasErrors/)
+  })
+
+  it("WB-4b Gate 11: WidgetListPage exists at expected route mount", () => {
+    const src = read("./WidgetListPage.tsx")
+    expect(src).toMatch(/export default function WidgetListPage/)
+    expect(src).toMatch(/\+ New Widget/)
+    // Tier filter component present.
+    expect(src).toMatch(/widget-list-tier-filter/)
+  })
+
+  it("WB-4b Gate 12: Pydantic ConditionalContainerConfig has alignment", () => {
+    const src = read(
+      "../../../../../backend/app/schemas/widget_composition.py",
+    )
+    // alignment field declared on ConditionalContainerConfig (or its
+    // shared vocab indirection). Schema-extension lock.
+    expect(src).toMatch(/alignment: Optional\[_AlignmentFour\]/)
+  })
+
+  it("WB-4b Gate 13: TypeScript ConditionalContainerConfig has alignment", () => {
+    const src = read("../../../lib/widget-builder/types/composition-blob.ts")
+    expect(src).toMatch(/alignment\?: AlignmentFour/)
+  })
+
+  it("WB-4b Gate 14: AtomErrorIndicator + ErrorSummary present", () => {
+    const ind = read("./AtomErrorIndicator.tsx")
+    expect(ind).toMatch(/export function AtomErrorIndicator/)
+    expect(ind).toMatch(/outline-status-error/)
+    const sum = read("./ErrorSummary.tsx")
+    expect(sum).toMatch(/export function ErrorSummary/)
+    expect(sum).toMatch(/onLocate/)
+  })
+
+  it("WB-4b Gate 15: Publish button respects validation error state", () => {
+    const src = read("./WidgetBuilderPage.tsx")
+    expect(src).toMatch(/disabled={publishing \|\| validation\.hasErrors}/)
+    expect(src).toMatch(/data-validation-blocked/)
+  })
+
+  it("WB-4b Gate 16: backend strict validator enforces required fields", () => {
+    const src = read(
+      "../../../../../backend/app/services/widget_definitions/validators.py",
+    )
+    expect(src).toMatch(/validate_composition_blob_strict/)
+    // The required-field rule for text_label lives across multi-line
+    // f-strings — gate via the atom_type token + the canonical
+    // "either `config.text` or a binding" phrase.
+    expect(src).toMatch(/text_label/)
+    expect(src).toMatch(/either `config\.text` or a binding/)
+    expect(src).toMatch(/requires non-empty `config\.alt`/)
+  })
+
+  it("WB-4b Gate 17: publish.py invokes the strict validator", () => {
+    const src = read(
+      "../../../../../backend/app/services/widget_definitions/publish.py",
+    )
+    expect(src).toMatch(/validate_composition_blob_strict/)
+  })
 })

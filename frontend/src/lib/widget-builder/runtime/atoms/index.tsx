@@ -650,10 +650,13 @@ const SPACING_GAP: Record<ContainerSpacing, string> = {
   loose: "gap-4",
 }
 
-const ALIGN_ITEMS: Record<SemanticAlign, string> = {
+// Four-value alignment for container flex-cross-axis (matches WB-4b
+// canonical AlignmentFour vocab).
+const ALIGN_ITEMS: Record<"start" | "center" | "end" | "stretch", string> = {
   start: "items-start",
   center: "items-center",
   end: "items-end",
+  stretch: "items-stretch",
 }
 
 export function ConditionalContainerRenderer({
@@ -664,7 +667,6 @@ export function ConditionalContainerRenderer({
 }: AtomRendererProps<
   ConditionalContainerConfig & {
     spacing?: ContainerSpacing
-    alignment?: SemanticAlign
     condition_binding_id?: string
   }
 >) {
@@ -678,7 +680,9 @@ export function ConditionalContainerRenderer({
   }
   const direction = config?.direction ?? "row"
   const spacing = (config?.spacing as ContainerSpacing | undefined) ?? "normal"
-  const alignment = (config?.alignment as SemanticAlign | undefined) ?? "start"
+  const alignment =
+    (config?.alignment as "start" | "center" | "end" | "stretch" | undefined) ??
+    "start"
   return (
     <div
       {...dataAttrs(atom)}

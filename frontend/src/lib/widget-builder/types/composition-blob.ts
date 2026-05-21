@@ -120,37 +120,95 @@ export type NumberFormat =
 
 export type TextAlign = "left" | "center" | "right";
 
+// WB-4b — shared semantic vocab matching runtime atom renderers.
+export type TypographyVariant =
+  | "body"
+  | "body-sm"
+  | "caption"
+  | "label"
+  | "heading-1"
+  | "heading-2"
+  | "heading-3"
+  | "mono"
+  | "serif";
+
+export type SemanticColor =
+  | "default"
+  | "muted"
+  | "subtle"
+  | "accent"
+  | "success"
+  | "warning"
+  | "danger";
+
+export type SemanticAlign = "start" | "center" | "end";
+export type AlignmentFour = "start" | "center" | "end" | "stretch";
+
+export type IconSizeToken = "xs" | "sm" | "md" | "lg" | "xl";
+
 export interface TextLabelConfig {
+  // WB-4b runtime fields.
+  text?: string;
+  variant?: TypographyVariant;
+  alignment?: SemanticAlign;
+  color?: SemanticColor;
+  max_lines?: number;
+  // Legacy WB-1 fields retained for back-compat.
   typography_token?: string;
   align?: TextAlign;
-  max_lines?: number;
 }
 
 export interface ValueDisplayConfig {
   format: NumberFormat;
   format_config: Record<string, unknown>;
+  // WB-4b runtime fields.
+  variant?: TypographyVariant;
+  alignment?: SemanticAlign;
+  color?: SemanticColor;
+  placeholder?: string;
+  binding_id?: string; // WB-6 binding picker placeholder
+  // Legacy WB-1 fields.
   typography_token?: string;
   align?: TextAlign;
 }
 
-export type IconSizeToken = "xs" | "sm" | "md" | "lg";
-
 export interface IconConfig {
   icon_name: string;
   size_token?: IconSizeToken;
+  // WB-4b — semantic color + stroke_width.
+  stroke_width?: number;
+  color?: SemanticColor;
+  // Legacy WB-1 field.
   color_token?: string;
 }
 
+export type StatusBadgeVariant =
+  | "neutral"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info";
+
 export interface StatusBadgeConfig {
+  // WB-4b runtime fields.
+  label?: string;
+  variant?: StatusBadgeVariant;
+  icon_name?: string;
   status_map: Record<string, string>;
   show_icon: boolean;
   typography_token?: string;
 }
 
 export type DividerOrientation = "horizontal" | "vertical";
+export type DividerSpacing = "compact" | "normal" | "loose";
+export type DividerColor = "subtle" | "normal";
 
 export interface DividerConfig {
   orientation: DividerOrientation;
+  // WB-4b semantic enums.
+  spacing?: DividerSpacing;
+  color?: DividerColor;
+  // Legacy WB-1 field.
   spacing_token?: string;
 }
 
@@ -161,28 +219,56 @@ export type ButtonActionKind =
   | "mutate"
   | "trigger_workflow";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost";
+// WB-4b — extended button variant vocab (adds destructive).
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "destructive";
+
+export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonConfig {
+  // WB-4b runtime fields.
+  label?: string;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  icon_name?: string;
   action_kind: ButtonActionKind;
   action_config: Record<string, unknown>;
-  variant?: ButtonVariant;
+  action_ref?: string; // WB-7 action picker placeholder
+  // Forward-compat alias key.
+  variantVocab?: ButtonVariant;
 }
 
 export type ImageSourceKind = "url" | "vault_asset";
 export type ImageFit = "cover" | "contain" | "fill";
+export type ImageAspectRatioToken = "square" | "video" | "portrait" | "auto";
+export type ImageObjectFit = "cover" | "contain";
 
 export interface ImageConfig {
   source_kind: ImageSourceKind;
-  fit: ImageFit;
+  // WB-4b runtime fields.
+  src?: string;
+  alt?: string;
+  aspect_ratio_token?: ImageAspectRatioToken;
+  object_fit?: ImageObjectFit;
+  fallback_icon_name?: string;
+  // Legacy WB-1 fields.
+  fit?: ImageFit;
   aspect_ratio?: string;
 }
 
 export type ConditionalContainerDirection = "row" | "column";
+export type ConditionalContainerSpacing = "compact" | "normal" | "loose";
 
 export interface ConditionalContainerConfig {
   direction: ConditionalContainerDirection;
   gap_token?: string;
+  // WB-4b — Surprise-1 schema extension + spacing semantic alias.
+  spacing?: ConditionalContainerSpacing;
+  alignment?: AlignmentFour;
+  condition_binding_id?: string; // WB-7 placeholder
 }
 
 export type RepeaterDirection = "row" | "column";

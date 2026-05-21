@@ -282,6 +282,100 @@ def validate_composition_blob(raw: Any) -> CompositionBlob:
     return blob
 
 
+def validate_composition_blob_strict(raw: Any) -> CompositionBlob:
+    """Strict validator — runs the full WB-4b Publish gate.
+
+    Wraps `validate_composition_blob` (structural + cross-reference
+    integrity) AND enforces per-atom required fields per atom_type
+    (WB-4b Step 2 tightening). Required-field rules per the
+    schema-runtime drift audit:
+
+      • text_label: either `binding_refs['text']` OR non-empty
+        `config.text` must be present.
+      • value_display: either `binding_refs['value']` OR a
+        `config.binding_id` must be present.
+      • icon: `config.icon_name` non-empty (Pydantic already enforces).
+      • status_badge: either `binding_refs['label']` /
+        `binding_refs['status']` OR non-empty `config.label` must be
+        present.
+      • button: either `binding_refs['label']` OR non-empty
+        `config.label` must be present.
+      • image: non-empty `config.alt` REQUIRED for a11y.
+      • repeater_atom: non-empty `config.binding_id` (already covered
+        by the structural validator).
+
+    Raises CompositionBlobValidationError on any failure (structural
+    errors and required-field errors surface in a single errors list).
+    """
+    errors: list[str] = []
+    try:
+        blob = validate_composition_blob(raw)
+    except CompositionBlobValidationError as exc:
+        # Add structural errors but keep going to surface required-field
+        # gaps in the same response when possible. If the blob couldn't
+        # be parsed at all, re-raise — there's nothing to check further.
+        errors.extend(exc.errors)
+        try:
+            blob = CompositionBlob.model_validate(raw)
+        except Exception:
+            raise CompositionBlobValidationError(errors)
+
+    for atom_id, node in blob.atom_tree.items():
+        cfg = node.config or {}
+        if not isinstance(cfg, dict):
+            continue
+        binding_refs = node.binding_refs or {}
+
+        if node.atom_type == "text_label":
+            has_binding = "text" in binding_refs
+            has_static = bool(cfg.get("text"))
+            if not has_binding and not has_static:
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.text: text_label "
+                    f"requires either `config.text` or a binding at "
+                    f"`binding_refs.text`"
+                )
+        elif node.atom_type == "value_display":
+            has_binding = "value" in binding_refs
+            has_static = bool(cfg.get("binding_id"))
+            if not has_binding and not has_static:
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.binding_id: "
+                    f"value_display requires either `config.binding_id` "
+                    f"or a binding at `binding_refs.value`"
+                )
+        elif node.atom_type == "status_badge":
+            has_binding = (
+                "label" in binding_refs or "status" in binding_refs
+            )
+            has_static = bool(cfg.get("label"))
+            if not has_binding and not has_static:
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.label: status_badge "
+                    f"requires either `config.label` or a binding at "
+                    f"`binding_refs.label`/`binding_refs.status`"
+                )
+        elif node.atom_type == "button":
+            has_binding = "label" in binding_refs
+            has_static = bool(cfg.get("label"))
+            if not has_binding and not has_static:
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.label: button "
+                    f"requires either `config.label` or a binding at "
+                    f"`binding_refs.label`"
+                )
+        elif node.atom_type == "image":
+            if not cfg.get("alt"):
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.alt: image "
+                    f"requires non-empty `config.alt` (accessibility)"
+                )
+
+    if errors:
+        raise CompositionBlobValidationError(errors)
+    return blob
+
+
 def _validate_children_refs(
     blob: CompositionBlob,
     atom_id_set: set[str],

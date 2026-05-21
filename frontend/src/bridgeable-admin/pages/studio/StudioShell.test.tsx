@@ -584,9 +584,12 @@ describe("StudioShell — Edit mode dispatcher unchanged (Studio 1a-i.B follow-u
     expect(screen.getByTestId("editor-stub-focuses")).toBeTruthy()
   })
 
-  it("/studio/widgets renders widgets editor", () => {
+  it("/studio/widgets renders the WB-4b widget list view", () => {
+    // WB-4b — the legacy `editor-stub-widgets` (WidgetEditorPage) is
+    // replaced at this path by the new WidgetListPage. The legacy
+    // editor remains on disk for future class-config flows.
     renderAt("/studio/widgets")
-    expect(screen.getByTestId("editor-stub-widgets")).toBeTruthy()
+    expect(screen.getByTestId("widget-list-page")).toBeTruthy()
   })
 
   it("/studio/classes renders classes editor (platform-only)", () => {

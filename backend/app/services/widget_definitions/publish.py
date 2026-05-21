@@ -33,6 +33,7 @@ from app.models.widget_definition import WidgetDefinition
 from app.services.widget_definitions.validators import (
     CompositionBlobValidationError,
     validate_composition_blob,
+    validate_composition_blob_strict,
 )
 
 
@@ -235,8 +236,11 @@ def publish_draft(db: Session, *, slug: str) -> WidgetDefinition:
     if row.composition_blob is None:
         raise CannotPublishWithoutDraftError(slug)
 
-    # Full validation. Raises on any error.
-    validate_composition_blob(row.composition_blob)
+    # WB-4b — strict validation gate at Publish. Enforces structural
+    # validity AND per-atom required fields (text_label.text,
+    # button.label, status_badge.label, image.alt, value_display
+    # binding) so operators can't ship a placeholder-only widget.
+    validate_composition_blob_strict(row.composition_blob)
 
     row.published_composition_blob = row.composition_blob
     # composition_version bump — every Publish increments. Phase 1

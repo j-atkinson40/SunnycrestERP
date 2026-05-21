@@ -37,6 +37,7 @@ import type {
 } from "@/lib/widget-builder/types/composition-blob"
 import { ComposedWidget } from "@/lib/widget-builder/runtime/ComposedWidget"
 import { isContainerAtom } from "./atom-tree-helpers"
+import { AtomErrorIndicator } from "./AtomErrorIndicator"
 
 
 export interface WidgetCanvasProps {
@@ -48,6 +49,9 @@ export interface WidgetCanvasProps {
    *  root selected). */
   selectedAtomId: string | null
   onSelect: (atom_id: string | null) => void
+  /** WB-4b — per-atom validation errors. Wrapping AtomErrorIndicator
+   *  renders a 2px red outline + tooltip when errors are present. */
+  errorsByAtom?: Record<string, string[]>
 }
 
 
@@ -160,6 +164,7 @@ export function WidgetCanvas({
   blob,
   selectedAtomId,
   onSelect,
+  errorsByAtom,
 }: WidgetCanvasProps) {
   const root = blob.atom_tree[blob.root_atom_id]
   const rootDirection =
@@ -234,16 +239,21 @@ export function WidgetCanvas({
                     index={idx}
                     direction={rootDirection}
                   />
-                  <CanvasAtom
-                    node={node}
-                    selected={selectedAtomId === child_id}
-                    onSelect={onSelect}
+                  <AtomErrorIndicator
+                    atomId={child_id}
+                    errors={errorsByAtom?.[child_id]}
                   >
-                    {/* The visible atom shape is rendered by
-                        ComposedWidget below; this overlay block holds
-                        the drop / selection affordances. */}
-                    <div className="min-h-[24px] min-w-[24px]" />
-                  </CanvasAtom>
+                    <CanvasAtom
+                      node={node}
+                      selected={selectedAtomId === child_id}
+                      onSelect={onSelect}
+                    >
+                      {/* The visible atom shape is rendered by
+                          ComposedWidget below; this overlay block holds
+                          the drop / selection affordances. */}
+                      <div className="min-h-[24px] min-w-[24px]" />
+                    </CanvasAtom>
+                  </AtomErrorIndicator>
                 </div>
               )
             })}

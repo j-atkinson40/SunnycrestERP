@@ -223,6 +223,33 @@ class CompositionBlob(BaseModel):
 _NumberFormat = Literal["number", "currency", "percent", "date", "duration"]
 
 
+# Shared semantic vocabularies (WB-4b extension — runtime parity).
+_TypographyVariant = Literal[
+    "body",
+    "body-sm",
+    "caption",
+    "label",
+    "heading-1",
+    "heading-2",
+    "heading-3",
+    "mono",
+    "serif",
+]
+
+_SemanticColor = Literal[
+    "default",
+    "muted",
+    "subtle",
+    "accent",
+    "success",
+    "warning",
+    "danger",
+]
+
+_SemanticAlign = Literal["start", "center", "end"]
+_AlignmentFour = Literal["start", "center", "end", "stretch"]
+
+
 class TextLabelConfig(BaseModel):
     """`text_label` atom — static or templated text.
 
@@ -233,9 +260,15 @@ class TextLabelConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    typography_token: Optional[str] = "body"
-    align: Optional[Literal["left", "center", "right"]] = "left"
+    # WB-4b — runtime fields (semantic vocab).
+    text: Optional[str] = None  # required at Publish if no binding
+    variant: Optional[_TypographyVariant] = "body"
+    alignment: Optional[_SemanticAlign] = "start"
+    color: Optional[_SemanticColor] = "default"
     max_lines: Optional[int] = None
+    # Legacy WB-1 fields retained for back-compat.
+    typography_token: Optional[str] = None
+    align: Optional[Literal["left", "center", "right"]] = None
 
 
 class ValueDisplayConfig(BaseModel):
@@ -250,18 +283,33 @@ class ValueDisplayConfig(BaseModel):
 
     format: _NumberFormat = "number"
     format_config: Dict[str, Any] = Field(default_factory=dict)
-    typography_token: Optional[str] = "body"
-    align: Optional[Literal["left", "center", "right"]] = "left"
+    # WB-4b — runtime fields.
+    variant: Optional[_TypographyVariant] = "body"
+    alignment: Optional[_SemanticAlign] = "start"
+    color: Optional[_SemanticColor] = "default"
+    placeholder: Optional[str] = None
+    binding_id: Optional[str] = None  # WB-6 binding picker placeholder
+    # Legacy WB-1 fields retained for back-compat.
+    typography_token: Optional[str] = None
+    align: Optional[Literal["left", "center", "right"]] = None
 
 
 class IconConfig(BaseModel):
-    """`icon` atom — Lucide-keyed icon."""
+    """`icon` atom — Lucide-keyed icon.
+
+    WB-4b — runtime reads `icon_name` (required), `size_token`,
+    `stroke_width`, `color` (semantic). `color_token` retained for
+    back-compat.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     icon_name: str
-    size_token: Optional[Literal["xs", "sm", "md", "lg"]] = "md"
-    color_token: Optional[str] = "content-base"
+    size_token: Optional[Literal["xs", "sm", "md", "lg", "xl"]] = "md"
+    stroke_width: Optional[float] = 2.0
+    color: Optional[_SemanticColor] = "default"
+    # Legacy WB-1 field retained for back-compat.
+    color_token: Optional[str] = None
 
 
 class StatusBadgeConfig(BaseModel):
@@ -275,18 +323,31 @@ class StatusBadgeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # WB-4b — runtime fields.
+    label: Optional[str] = None  # required at Publish if no binding
+    variant: Optional[
+        Literal["neutral", "success", "warning", "danger", "info"]
+    ] = "neutral"
+    icon_name: Optional[str] = None
     status_map: Dict[str, str] = Field(default_factory=dict)
     show_icon: bool = True
     typography_token: Optional[str] = "caption"
 
 
 class DividerConfig(BaseModel):
-    """`divider` atom — 1px hairline + optional spacing."""
+    """`divider` atom — 1px hairline + optional spacing.
+
+    WB-4b — runtime reads `orientation`, `spacing` (semantic enum),
+    `color`. `spacing_token` retained for back-compat.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     orientation: Literal["horizontal", "vertical"] = "horizontal"
-    spacing_token: Optional[str] = "sm"
+    spacing: Optional[Literal["compact", "normal", "loose"]] = "normal"
+    color: Optional[Literal["subtle", "normal"]] = "subtle"
+    # Legacy WB-1 field retained for back-compat.
+    spacing_token: Optional[str] = None
 
 
 class ButtonConfig(BaseModel):
@@ -300,6 +361,13 @@ class ButtonConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # WB-4b — runtime fields.
+    label: Optional[str] = None  # required at Publish if no binding
+    variant: Optional[
+        Literal["primary", "secondary", "ghost", "destructive"]
+    ] = "secondary"
+    size: Optional[Literal["sm", "md", "lg"]] = "md"
+    icon_name: Optional[str] = None
     action_kind: Literal[
         "navigate",
         "open_focus",
@@ -308,16 +376,33 @@ class ButtonConfig(BaseModel):
         "trigger_workflow",
     ] = "navigate"
     action_config: Dict[str, Any] = Field(default_factory=dict)
-    variant: Optional[Literal["primary", "secondary", "ghost"]] = "secondary"
+    action_ref: Optional[str] = None  # WB-7 action picker placeholder
+    # Forward-compat — runtime accepts a `variantVocab` alias key.
+    variantVocab: Optional[
+        Literal["primary", "secondary", "ghost", "destructive"]
+    ] = None
 
 
 class ImageConfig(BaseModel):
-    """`image` atom — URL or Vault asset ref."""
+    """`image` atom — URL or Vault asset ref.
+
+    WB-4b — runtime reads `source_kind`, `src`, `alt` (required at
+    Publish), `aspect_ratio_token`, `object_fit`, `fallback_icon_name`.
+    `fit` + `aspect_ratio` retained for back-compat.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     source_kind: Literal["url", "vault_asset"] = "url"
-    fit: Literal["cover", "contain", "fill"] = "cover"
+    src: Optional[str] = None
+    alt: Optional[str] = None  # required at Publish
+    aspect_ratio_token: Optional[
+        Literal["square", "video", "portrait", "auto"]
+    ] = "auto"
+    object_fit: Optional[Literal["cover", "contain"]] = "cover"
+    fallback_icon_name: Optional[str] = "image"
+    # Legacy WB-1 fields retained for back-compat.
+    fit: Optional[Literal["cover", "contain", "fill"]] = None
     aspect_ratio: Optional[str] = None
 
 
@@ -377,6 +462,14 @@ class ConditionalContainerConfig(BaseModel):
 
     direction: Literal["row", "column"] = "column"
     gap_token: Optional[str] = "sm"
+    # WB-4b — runtime reads `spacing` (semantic) + `alignment`.
+    # `alignment` is the canonical Surprise-1 schema-extension (per
+    # the WB-4b investigation Q-resolution). Stretch is included to
+    # match canvas-flex parity even though the WB-4b runtime renderer
+    # accepts only start/center/end today.
+    spacing: Optional[Literal["compact", "normal", "loose"]] = "normal"
+    alignment: Optional[_AlignmentFour] = "start"
+    condition_binding_id: Optional[str] = None  # WB-7 placeholder
 
 
 # Lookup table for the WB-2 atom inspector. Maps atom_type → Config

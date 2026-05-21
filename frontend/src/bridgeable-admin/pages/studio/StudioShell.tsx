@@ -58,6 +58,7 @@ import RegistryDebugPage from "@/bridgeable-admin/pages/visual-editor/RegistryDe
 import PluginRegistryBrowser from "@/bridgeable-admin/pages/visual-editor/PluginRegistryBrowser"
 import FocusBuilderPage from "@/bridgeable-admin/components/focus-builder/FocusBuilderPage"
 import WidgetBuilderPage from "@/bridgeable-admin/components/widget-builder/WidgetBuilderPage"
+import WidgetListPage from "@/bridgeable-admin/components/widget-builder/WidgetListPage"
 
 
 const EDITOR_PAGES: Record<StudioEditorKey, React.ComponentType> = {
@@ -273,6 +274,11 @@ export default function StudioShell() {
                   path="widget-builder"
                   element={<WidgetBuilderPage />}
                 />
+                {/* WB-4b: widget list view replaces the legacy
+                    WidgetEditorPage at /studio/widgets. The legacy
+                    editor remains on disk for the class-config sub-
+                    flow until widget-class authoring migrates. */}
+                <Route path="widgets" element={<WidgetListPage />} />
                 <Route path="*" element={<EditModeDispatcher />} />
               </Routes>
             </Suspense>

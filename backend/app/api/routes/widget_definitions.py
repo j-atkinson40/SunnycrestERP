@@ -107,6 +107,38 @@ def create_widget(
     return serialize_widget(row)
 
 
+@router.get("")
+def list_widgets(
+    tier_scope: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List composed widget definitions for the WB-4b list view.
+
+    Returns every row that has a non-NULL `composition_blob` (i.e.
+    rows authored via the Widget Builder) — legacy hand-coded widgets
+    are excluded. Optional `tier_scope` query filter narrows to
+    'platform' or 'vertical'.
+    """
+    from app.models.widget_definition import WidgetDefinition
+
+    q = db.query(WidgetDefinition).filter(
+        WidgetDefinition.composition_blob.isnot(None)
+    )
+    if tier_scope is not None:
+        if tier_scope not in ("platform", "vertical"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"tier_scope must be 'platform' or 'vertical'; "
+                    f"got {tier_scope!r}"
+                ),
+            )
+        q = q.filter(WidgetDefinition.tier_scope == tier_scope)
+    rows = q.order_by(WidgetDefinition.title.asc()).all()
+    return {"widgets": [serialize_widget(r) for r in rows]}
+
+
 @router.get("/{slug}")
 def get_widget(
     slug: str,

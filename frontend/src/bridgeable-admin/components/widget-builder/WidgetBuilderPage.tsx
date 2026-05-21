@@ -71,6 +71,12 @@ import {
   setRootDirection,
   setRootGap,
 } from "./atom-tree-helpers"
+import {
+  AtomInspectorDispatch,
+  useAtomConfigUpdater,
+} from "./inspectors/AtomInspectorDispatch"
+import { ErrorSummary } from "./ErrorSummary"
+import { useWidgetValidation } from "@/bridgeable-admin/hooks/useWidgetValidation"
 
 
 function isDraftDiffersFromPublished(
@@ -137,6 +143,10 @@ export default function WidgetBuilderPage() {
       setRecord(r)
     },
   })
+
+  // WB-4b — client-side validation. Memoized off the draft. Defined
+  // before handlePublish so the defense-in-depth check has access.
+  const validation = useWidgetValidation(draft)
 
   // @dnd-kit sensors per Q-40 (PointerSensor + KeyboardSensor).
   const sensors = useSensors(
@@ -214,6 +224,18 @@ export default function WidgetBuilderPage() {
 
   const handlePublish = useCallback(async () => {
     if (slug === null) return
+    // WB-4b defense-in-depth: even with the disabled state, refuse to
+    // dispatch when client-side validation has errors. The button-
+    // disable is the primary gate; this is the fallback.
+    if (validation.hasErrors) {
+      setPublishError({
+        message: "Resolve composition errors before publishing.",
+        errors: validation.errorList.map(
+          (e) => `${e.atom_type}: ${e.message}`,
+        ),
+      })
+      return
+    }
     setPublishing(true)
     setPublishError(null)
     try {
@@ -241,7 +263,26 @@ export default function WidgetBuilderPage() {
     } finally {
       setPublishing(false)
     }
-  }, [flush, slug])
+  }, [flush, slug, validation])
+
+  // WB-4b — locate handler: select the offending atom + scroll into view.
+  const handleLocate = useCallback((atomId: string) => {
+    setSelectedAtomId(atomId)
+    if (typeof document !== "undefined") {
+      const el = document.querySelector(
+        `[data-testid="widget-builder-canvas-atom-${atomId}"]`,
+      )
+      if (el && "scrollIntoView" in el) {
+        ;(el as HTMLElement).scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        })
+      }
+    }
+  }, [])
+
+  // WB-4b — config mutator for the per-atom inspector.
+  const updateAtomConfig = useAtomConfigUpdater(draft, setDraft)
 
   // Root flex config bound to the canvas-root container atom.
   const rootNode = draft ? draft.atom_tree[draft.root_atom_id] : null
@@ -403,10 +444,18 @@ export default function WidgetBuilderPage() {
             </Select>
           </div>
 
+          <ErrorSummary validation={validation} onLocate={handleLocate} />
+
           <Button
             data-testid="widget-builder-publish-button"
             onClick={handlePublish}
-            disabled={publishing}
+            disabled={publishing || validation.hasErrors}
+            data-validation-blocked={validation.hasErrors ? "true" : "false"}
+            title={
+              validation.hasErrors
+                ? `Resolve ${validation.errorList.length} error(s) before publishing`
+                : undefined
+            }
           >
             {publishing ? (
               <Loader2 size={16} className="animate-spin mr-2" />
@@ -446,26 +495,23 @@ export default function WidgetBuilderPage() {
               blob={draft}
               selectedAtomId={selectedAtomId}
               onSelect={setSelectedAtomId}
+              errorsByAtom={validation.errorsByAtom}
             />
           </main>
           <aside
             data-testid="widget-builder-inspector"
-            className="w-72 border-l border-border-subtle bg-surface-sunken p-4"
+            data-edit-session={editSessionId.slice(0, 8)}
+            className="w-72 overflow-auto border-l border-border-subtle bg-surface-sunken p-4"
           >
-            <div className="text-caption font-medium uppercase tracking-wide text-content-muted">
+            <div className="mb-3 text-caption font-medium uppercase tracking-wide text-content-muted">
               Inspector
             </div>
-            <p className="mt-2 text-body-sm text-content-muted">
-              Configuration coming soon (WB-4b).
-            </p>
-            {selectedAtomId && (
-              <div className="mt-4 rounded-md border border-border-subtle bg-surface-raised p-3 text-caption text-content-muted">
-                <div>Selected atom: {selectedAtomId.slice(0, 8)}…</div>
-                <div className="mt-1">
-                  Edit session: {editSessionId.slice(0, 8)}…
-                </div>
-              </div>
-            )}
+            <AtomInspectorDispatch
+              blob={draft}
+              selectedAtomId={selectedAtomId}
+              onUpdateConfig={updateAtomConfig}
+              errors={validation.errorsByAtom}
+            />
           </aside>
         </div>
       </div>

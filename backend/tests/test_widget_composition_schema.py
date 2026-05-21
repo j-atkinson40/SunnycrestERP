@@ -478,3 +478,294 @@ def test_repeater_atom_config_pydantic_shape():
         RepeaterAtomConfig.model_validate(
             {"binding_id": "rows", "children": [], "direction": "diagonal"}
         )
+
+
+# ── WB-4b schema-extension + strict-validator tests ─────────────────
+
+
+def _baseline_blob_with_atom(atom_type: str, config: dict, binding_refs=None):
+    """Compose a minimal valid blob with the given leaf atom as child
+    of a root conditional_container. Used by WB-4b required-field
+    tightening tests."""
+    atom_id = "leaf-1"
+    blob = {
+        "schema_version": 1,
+        "root_atom_id": "root",
+        "atom_tree": {
+            "root": {
+                "atom_id": "root",
+                "atom_type": "conditional_container",
+                "config": {"direction": "column"},
+                "children": [atom_id],
+            },
+            atom_id: {
+                "atom_id": atom_id,
+                "atom_type": atom_type,
+                "config": config,
+            },
+        },
+        "variants": [],
+        "bindings_catalog": {},
+    }
+    if binding_refs is not None:
+        blob["atom_tree"][atom_id]["binding_refs"] = binding_refs
+    return blob
+
+
+# Schema-extension acceptance — new fields parse without error.
+
+
+def test_wb4b_text_label_accepts_new_fields():
+    from app.schemas.widget_composition import TextLabelConfig
+
+    cfg = TextLabelConfig.model_validate(
+        {
+            "text": "Hello",
+            "variant": "heading-2",
+            "alignment": "center",
+            "color": "accent",
+            "max_lines": 2,
+        }
+    )
+    assert cfg.text == "Hello"
+    assert cfg.variant == "heading-2"
+    assert cfg.alignment == "center"
+    assert cfg.color == "accent"
+
+
+def test_wb4b_text_label_legacy_fields_still_accepted():
+    from app.schemas.widget_composition import TextLabelConfig
+
+    cfg = TextLabelConfig.model_validate(
+        {"typography_token": "body", "align": "left"}
+    )
+    assert cfg.typography_token == "body"
+    assert cfg.align == "left"
+
+
+def test_wb4b_value_display_accepts_new_fields():
+    from app.schemas.widget_composition import ValueDisplayConfig
+
+    cfg = ValueDisplayConfig.model_validate(
+        {
+            "format": "currency",
+            "format_config": {"currency_code": "USD"},
+            "variant": "body",
+            "alignment": "end",
+            "color": "default",
+            "placeholder": "—",
+            "binding_id": "amt",
+        }
+    )
+    assert cfg.placeholder == "—"
+    assert cfg.binding_id == "amt"
+
+
+def test_wb4b_icon_accepts_stroke_width_and_semantic_color():
+    from app.schemas.widget_composition import IconConfig
+
+    cfg = IconConfig.model_validate(
+        {"icon_name": "check", "stroke_width": 2.5, "color": "success"}
+    )
+    assert cfg.stroke_width == 2.5
+    assert cfg.color == "success"
+
+
+def test_wb4b_status_badge_accepts_label_variant_icon():
+    from app.schemas.widget_composition import StatusBadgeConfig
+
+    cfg = StatusBadgeConfig.model_validate(
+        {"label": "Pending", "variant": "warning", "icon_name": "info"}
+    )
+    assert cfg.label == "Pending"
+    assert cfg.variant == "warning"
+
+
+def test_wb4b_divider_accepts_spacing_and_color():
+    from app.schemas.widget_composition import DividerConfig
+
+    cfg = DividerConfig.model_validate(
+        {"orientation": "horizontal", "spacing": "loose", "color": "normal"}
+    )
+    assert cfg.spacing == "loose"
+    assert cfg.color == "normal"
+
+
+def test_wb4b_button_accepts_label_size_icon_destructive():
+    from app.schemas.widget_composition import ButtonConfig
+
+    cfg = ButtonConfig.model_validate(
+        {
+            "label": "Delete",
+            "variant": "destructive",
+            "size": "sm",
+            "icon_name": "x",
+            "action_kind": "mutate",
+        }
+    )
+    assert cfg.label == "Delete"
+    assert cfg.variant == "destructive"
+    assert cfg.size == "sm"
+    assert cfg.icon_name == "x"
+
+
+def test_wb4b_image_accepts_src_alt_aspect_object_fit():
+    from app.schemas.widget_composition import ImageConfig
+
+    cfg = ImageConfig.model_validate(
+        {
+            "source_kind": "url",
+            "src": "https://example.com/x.png",
+            "alt": "X",
+            "aspect_ratio_token": "video",
+            "object_fit": "contain",
+            "fallback_icon_name": "image",
+        }
+    )
+    assert cfg.alt == "X"
+    assert cfg.aspect_ratio_token == "video"
+
+
+def test_wb4b_conditional_container_accepts_alignment():
+    """Surprise-1 schema-extension: alignment field on
+    ConditionalContainerConfig per the WB-4b investigation."""
+    from app.schemas.widget_composition import ConditionalContainerConfig
+
+    cfg = ConditionalContainerConfig.model_validate(
+        {
+            "direction": "row",
+            "spacing": "compact",
+            "alignment": "center",
+        }
+    )
+    assert cfg.alignment == "center"
+    assert cfg.spacing == "compact"
+    # Default when omitted.
+    cfg2 = ConditionalContainerConfig.model_validate({"direction": "column"})
+    assert cfg2.alignment == "start"
+
+
+def test_wb4b_conditional_container_alignment_enum_bounded():
+    from app.schemas.widget_composition import ConditionalContainerConfig
+
+    with pytest.raises(ValidationError):
+        ConditionalContainerConfig.model_validate(
+            {"direction": "column", "alignment": "diagonal"}
+        )
+
+
+# Strict-validator (Publish-gate) tests — required-field tightening.
+
+
+def test_wb4b_strict_text_label_requires_text_or_binding():
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob_strict,
+    )
+
+    blob_no_text = _baseline_blob_with_atom("text_label", {})
+    with pytest.raises(CompositionBlobValidationError) as exc:
+        validate_composition_blob_strict(blob_no_text)
+    assert any("text_label" in e and "text" in e for e in exc.value.errors)
+
+    # Static text — OK.
+    blob_static = _baseline_blob_with_atom("text_label", {"text": "Hi"})
+    validate_composition_blob_strict(blob_static)
+
+
+def test_wb4b_strict_button_requires_label_or_binding():
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob_strict,
+    )
+
+    blob = _baseline_blob_with_atom("button", {"action_kind": "navigate"})
+    with pytest.raises(CompositionBlobValidationError) as exc:
+        validate_composition_blob_strict(blob)
+    assert any("button" in e and "label" in e for e in exc.value.errors)
+
+    blob_ok = _baseline_blob_with_atom(
+        "button", {"label": "Go", "action_kind": "navigate"}
+    )
+    validate_composition_blob_strict(blob_ok)
+
+
+def test_wb4b_strict_status_badge_requires_label_or_binding():
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob_strict,
+    )
+
+    blob = _baseline_blob_with_atom("status_badge", {})
+    with pytest.raises(CompositionBlobValidationError) as exc:
+        validate_composition_blob_strict(blob)
+    assert any("status_badge" in e for e in exc.value.errors)
+
+    blob_ok = _baseline_blob_with_atom("status_badge", {"label": "Active"})
+    validate_composition_blob_strict(blob_ok)
+
+
+def test_wb4b_strict_image_requires_alt():
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob_strict,
+    )
+
+    blob = _baseline_blob_with_atom(
+        "image", {"source_kind": "url", "src": "x.png"}
+    )
+    with pytest.raises(CompositionBlobValidationError) as exc:
+        validate_composition_blob_strict(blob)
+    assert any("image" in e and "alt" in e for e in exc.value.errors)
+
+    blob_ok = _baseline_blob_with_atom(
+        "image", {"source_kind": "url", "src": "x.png", "alt": "logo"}
+    )
+    validate_composition_blob_strict(blob_ok)
+
+
+def test_wb4b_strict_value_display_requires_binding_or_binding_id():
+    from app.services.widget_definitions.validators import (
+        CompositionBlobValidationError,
+        validate_composition_blob_strict,
+    )
+
+    blob = _baseline_blob_with_atom("value_display", {"format": "number"})
+    with pytest.raises(CompositionBlobValidationError) as exc:
+        validate_composition_blob_strict(blob)
+    assert any("value_display" in e for e in exc.value.errors)
+
+    blob_ok = _baseline_blob_with_atom(
+        "value_display", {"format": "number", "binding_id": "amt"}
+    )
+    validate_composition_blob_strict(blob_ok)
+
+
+def test_wb4b_strict_text_label_binding_satisfies_requirement():
+    """A binding_refs.text entry pointing at a real binding satisfies
+    the requirement even without a static config.text value."""
+    from app.services.widget_definitions.validators import (
+        validate_composition_blob_strict,
+    )
+
+    blob = _baseline_blob_with_atom(
+        "text_label", {}, binding_refs={"text": "txt"}
+    )
+    blob["bindings_catalog"]["txt"] = {
+        "binding_id": "txt",
+        "binding_type": "literal",
+        "literal_value": "Hi",
+    }
+    validate_composition_blob_strict(blob)
+
+
+def test_wb4b_strict_accepts_valid_composition():
+    """Smoke test — a fully-filled composition passes strict
+    validation with no errors raised."""
+    from app.services.widget_definitions.validators import (
+        validate_composition_blob_strict,
+    )
+
+    blob = _baseline_blob_with_atom("text_label", {"text": "Hello"})
+    result = validate_composition_blob_strict(blob)
+    assert result.root_atom_id == "root"

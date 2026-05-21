@@ -172,4 +172,92 @@ test.describe.skip("WB-4a Widget Builder canvas (Playwright; staging-pending)", 
       { timeout: 3_000 },
     )
   })
+
+  // ── WB-4b scenarios ────────────────────────────────────────────
+
+  test("scenario 6 (WB-4b): inspector configures a selected atom", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-text_label"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    const canvasAtom = page
+      .locator('[data-testid^="widget-builder-canvas-atom-"]')
+      .first()
+    await canvasAtom.click()
+    const textInput = page.locator('[data-testid="atom-inspector-text"]')
+    await textInput.waitFor({ state: "visible", timeout: 3_000 })
+    await textInput.fill("Updated label")
+    await textInput.press("Enter")
+    await expect(canvasAtom).toContainText("Updated label", {
+      timeout: 3_000,
+    })
+  })
+
+  test("scenario 7 (WB-4b): empty required field blocks Publish", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-text_label"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    const summary = page.locator(
+      '[data-testid="widget-builder-error-summary"]',
+    )
+    await summary.waitFor({ state: "visible", timeout: 3_000 })
+    const publish = page.locator(
+      '[data-testid="widget-builder-publish-button"]',
+    )
+    await expect(publish).toBeDisabled()
+    await expect(publish).toHaveAttribute(
+      "data-validation-blocked",
+      "true",
+    )
+  })
+
+  test("scenario 8 (WB-4b): /studio/widgets list view renders rows", async ({
+    page,
+  }) => {
+    await page.goto("/bridgeable-admin/studio/widgets")
+    await page
+      .locator('[data-testid="widget-list-page"]')
+      .waitFor({ state: "visible", timeout: 5_000 })
+    await expect(
+      page.locator('[data-testid="widget-list-new-button"]'),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid="widget-list-tier-filter-all"]'),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid="widget-list-tier-filter-platform"]'),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid="widget-list-tier-filter-vertical"]'),
+    ).toBeVisible()
+  })
+
+  test("scenario 9 (WB-4b): + New Widget creates and navigates to editor", async ({
+    page,
+  }) => {
+    await page.goto("/bridgeable-admin/studio/widgets")
+    await page
+      .locator('[data-testid="widget-list-page"]')
+      .waitFor({ state: "visible", timeout: 5_000 })
+    await page.locator('[data-testid="widget-list-new-button"]').click()
+    await page.waitForURL(/\/studio\/widget-builder\/[^/]+$/, {
+      timeout: 5_000,
+    })
+    await page
+      .locator('[data-testid="widget-builder-page"]')
+      .waitFor({ state: "visible", timeout: 5_000 })
+  })
 })
