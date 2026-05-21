@@ -143,6 +143,13 @@ def get_available_widgets(
             "supported_surfaces": defn.supported_surfaces or ["dashboard_grid"],
             "default_surfaces": defn.default_surfaces or ["dashboard_grid"],
             "intelligence_keywords": defn.intelligence_keywords or [],
+            # ── Widget Builder substrate (WB-1, May 2026) ────────
+            # Composed-widget fields per investigation Area 7. NULL
+            # on legacy hand-coded widgets; populated on composed
+            # widgets authored via the Widget Builder (WB-3+).
+            "composition_blob": defn.composition_blob,
+            "composition_version": defn.composition_version,
+            "tier_scope": defn.tier_scope or "platform",
             "is_available": available,
             "unavailable_reason": reason,
         })
@@ -236,6 +243,10 @@ def get_widgets_for_surface(
             "supported_surfaces": defn.supported_surfaces or ["dashboard_grid"],
             "default_surfaces": defn.default_surfaces or ["dashboard_grid"],
             "intelligence_keywords": defn.intelligence_keywords or [],
+            # ── Widget Builder substrate (WB-1, May 2026) ────────
+            "composition_blob": defn.composition_blob,
+            "composition_version": defn.composition_version,
+            "tier_scope": defn.tier_scope or "platform",
             "is_available": is_available,
             "unavailable_reason": first_reason if not is_available else None,
         })

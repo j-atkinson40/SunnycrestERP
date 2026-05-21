@@ -43,7 +43,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -134,4 +134,48 @@ class WidgetDefinition(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    # ── Widget Builder substrate (WB-1, May 2026) ─────────────────────
+    #
+    # Composition-driven widget shape per investigation Area 7 (Q-29
+    # through Q-32). Existing hand-coded widget definitions carry
+    # composition_blob = NULL + composition_version = NULL; the
+    # ComposedWidget runtime renderer (ships in WB-2/3) walks the blob
+    # at render time for composed widgets, while legacy widgets stay
+    # code-rendered via the existing widget renderer registry.
+    #
+    # CHECK constraint at the DB level (r105 migration) enforces that
+    # composition_blob + composition_version are jointly present or
+    # jointly absent. Pydantic schema in `app/schemas/widget_composition.py`
+    # validates the blob shape. Frontend mirror at
+    # `frontend/src/lib/widget-builder/types/composition-blob.ts`.
+
+    composition_blob: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    composition_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+
+    # Tier scope per Q-38: Tier-1 ('platform') + Tier-2 ('vertical').
+    # Tier-3 lives at placement level via existing prop_overrides
+    # (focus_compositions.deltas) — no DB column needed here. Existing
+    # rows backfilled to 'platform' by r105.
+    tier_scope: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="platform"
+    )
+
+    # Session-aware versioning per Q-31, mirroring r102/r103 focus
+    # cores/templates pattern. The auto-save authoring hook (WB-3)
+    # consults these fields to decide mutate-in-place (same session +
+    # within window) vs version-bump (new session OR window elapsed).
+    last_edit_session_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
+    )
+    last_edit_session_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_edit_session_actor_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
     )
