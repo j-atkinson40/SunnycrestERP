@@ -358,3 +358,15 @@ Q-40's generalization to "all pointer-event surfaces need Playwright coverage" r
 
 These four candidates are flagged here for a dedicated canon-update arc per established sequencing. They are NOT filed as canon entries in the fix arc itself.
 
+
+---
+
+## Post-arc canon filing (2026-05-21)
+
+Filed during the FF-series consolidated canon-update arc. Three DECISIONS.md entries filed from this investigation:
+
+- **Entry 27 (`DECISIONS.md` 2026-05-21 — Investigation event-type semantic enumeration is a discriminator axis)** — codifies §12.1 as canonical. Investigations of event-related bugs must enumerate by event-type semantics (bubbling vs non-bubbling, capture vs bubble phase, passive vs active, synthetic vs native), not only by location. The six-hypothesis enumeration in this investigation was location-shaped and landed all six wrong; the actual root cause was on the event-type-semantic axis.
+- **Entry 28 (`DECISIONS.md` 2026-05-21 — Investigation cross-substrate HOC audit)** — codifies the cross-substrate finding. The root cause was traced upstream to `registerComponent` HOC at `frontend/src/lib/visual-editor/registry/register.ts:215` applying `display: contents` to every registered component's wrapper. Future investigations of behavioral symptoms on registered-component consumers must audit the registry HOC + cross-substrate wrappers explicitly.
+- **Entry 30 (`DECISIONS.md` 2026-05-21 — Q-40 generalization: All pointer-event surfaces require Playwright coverage)** — codifies §12.3 as canonical. Q-40's original drag-gesture-specific framing extended to ALL pointer-event surfaces. JSDOM-vs-real-chromium fidelity gap is bounded by DOM-tree synthesis (display:contents, layout boxes, hit-tests, pointer capture, relatedTarget propagation), not just event-simulation gaps.
+
+Entry 31 (`DECISIONS.md` 2026-05-21 — Source-shape regression gate as test-substrate pattern) cites the source-shape regression gate added in commit `d9ffd90` as one of two precedent instances for the canonical pattern.

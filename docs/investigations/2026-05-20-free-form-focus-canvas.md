@@ -752,3 +752,14 @@ Additional deferrals carried forward from F-series:
 - 2026-05-20 canon commit: `0fa9ce1`
 
 ---
+
+---
+
+## Post-arc canon filing (2026-05-21)
+
+Filed during the FF-series consolidated canon-update arc. Two DECISIONS.md entries refine locks established in this investigation:
+
+- **Entry 23 (`DECISIONS.md` 2026-05-21 — Q-10 refinement: Resize handles visible on hover OR selection OR active drag)** — refines Q-10's "selection-only handles" lock at §Q-10. Operator hand-validation during FF-4 staging verification surfaced that selection-only forced operators into a two-step gesture for what felt like single intent. The original Q-10 lock stays in the historical record as the investigation-time decision; entry 23 supersedes it operationally with three-predicate render gate (hover OR selection OR active drag).
+- **Entry 24 (`DECISIONS.md` 2026-05-21 — Q-10 addendum: Shift-for-aspect-ratio resize is unimplemented (KNOWN GAP))** — files the Shift-for-aspect-ratio resize as a KNOWN GAP relative to Q-10's lock. The FF-4 implementation ships the 8-handle resize substrate without the Shift modifier path because @dnd-kit's DragMoveEvent doesn't expose modifier-key state mid-gesture. Three fix paths enumerated in entry 24; selection deferred to future arc.
+
+Entry 30 (`DECISIONS.md` 2026-05-21 — Q-40 generalization: All pointer-event surfaces require Playwright coverage) refines Q-40's drag-gesture-specific framing to cover ALL pointer-event surfaces. See `docs/investigations/2026-05-20-hover-state-staging-regression.md` post-arc canon filing for surfacing context.

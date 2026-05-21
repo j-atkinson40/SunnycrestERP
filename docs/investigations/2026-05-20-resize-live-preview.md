@@ -293,3 +293,15 @@ Each FreeFormPlacedWidget owns its own resize-in-progress state. Use `useDndMoni
 - **60Hz re-render budget on canvases with 20+ widgets**: theoretical concern, not measured. Empirical staging verification post-fix can confirm. Mitigation path (React.memo) is surgical if needed.
 - **Resize during multi-selection**: not in any sub-arc today; out of scope for this investigation.
 - **Touch-device drag-resize**: untested. Pointer events should cover touch gracefully via @dnd-kit's sensor abstraction, but Playwright coverage is desktop-pointer-only.
+
+---
+
+## Post-arc canon filing (2026-05-21)
+
+Filed during the FF-series consolidated canon-update arc. Three DECISIONS.md entries filed from this investigation:
+
+- **Entry 29 (`DECISIONS.md` 2026-05-21 — Investigations of stateful drag must model cumulative-delta-vs-per-tick-state)** — codifies the cumulative-delta-vs-per-tick-state surprise documented in §6 and resolved during build via the `resizeInitialPlacementRef` snapshot pattern. Investigations of stateful drag operations MUST explicitly enumerate (a) what state each handler reads, (b) what the event payload encodes, (c) what each handler commits — mismatched semantics across handlers in the same drag sequence is the exponential-growth class of bug.
+- **Entry 32 (`DECISIONS.md` 2026-05-21 — @dnd-kit transform model is position-only)** — codifies §8 architectural surprise #1 + #5 (process canon candidate). @dnd-kit's transform model is position-only by design; dimensional, rotational, and skew gestures require state-mediated rendering with per-tick commit. The FF-3 vs FF-4 substrate asymmetry is structural, not coincidental — flows directly from @dnd-kit's transform-payload shape.
+- **Entry 33 (`DECISIONS.md` 2026-05-21 — Gesture-vs-input symmetry as design heuristic)** — codifies §8 architectural surprise #4 (FF-6 W/H-live vs X/Y-lag asymmetry). Future canvas substrate work shipping both gesture surfaces AND input-control surfaces must explicitly choose one of {symmetric live, symmetric lag, documented asymmetry} from arc dispatch; the choice is not "ship whatever falls out of the substrate."
+
+Entry 24 (`DECISIONS.md` 2026-05-21 — Q-10 addendum: Shift-for-aspect-ratio resize is unimplemented (KNOWN GAP)) cites this investigation's surfacing of @dnd-kit DragMoveEvent not exposing modifier-key state mid-gesture. Entry 31 (`DECISIONS.md` 2026-05-21 — Source-shape regression gate as test-substrate pattern) cites the source-shape regression gate added in commit `9958fe0` as one of two precedent instances.

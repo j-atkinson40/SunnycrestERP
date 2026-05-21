@@ -276,3 +276,15 @@ Both findings honor the 2026-05-19 late-evening operator-observable canon: asser
 | Fix arc shape | **Single combined dispatch** | ~140-270 total | new arc `resize-handle-ux-fixes` |
 
 Ready for fix-arc dispatch.
+
+---
+
+## Post-arc canon filing (2026-05-21)
+
+Filed during the FF-series consolidated canon-update arc. Three DECISIONS.md entries filed from this investigation:
+
+- **Entry 23 (`DECISIONS.md` 2026-05-21 — Q-10 refinement: Resize handles visible on hover OR selection OR active drag)** — codifies Finding 1's "hover OR selection" resolution as a refinement of the original Q-10 lock. The three-predicate render gate (hover OR selection OR active drag) supersedes Q-10's "selection-only handles" operationally.
+- **Entry 25 (`DECISIONS.md` 2026-05-21 — Investigation source-candidate audit must cover all consumers of affected state)** — codifies the audit-gate lesson from Finding 2 (drag UUID label leak). The actual root cause was that `activeDragLabel` state did double duty as both visible label text AND as a DragOverlay render-gate sentinel; the original candidate enumeration covered writers, not consumers-with-side-effects.
+- **Entry 30 (`DECISIONS.md` 2026-05-21 — Q-40 generalization: All pointer-event surfaces require Playwright coverage)** — partially surfaced here as the underlying constraint motivating the Finding 1 fix's testing strategy. Generalization completed in entry 30 via the parallel hover-state regression investigation; see that investigation's post-arc filing section.
+
+Implementation deferred to entry 31 (`DECISIONS.md` 2026-05-21 — Source-shape regression gate as test-substrate pattern), which generalizes the Finding 1 + Finding 2 fix arc's source-shape regression gates into a canonical test-substrate pattern.
