@@ -803,6 +803,23 @@ function FocusBuilderPageInner() {
     return () => window.removeEventListener("keydown", handler)
   }, [mode, selection, templateHook, isDragInProgress])
 
+  // Resize-live-preview arc (2026-05-21) — snapshot of the dragged
+  // resize-handle's PLACEMENT geometry captured at drag-start. Both
+  // handleDragMove (per tick) and handleDragEnd (final commit) read
+  // this snapshot when computing the resize delta, instead of reading
+  // the placement's CURRENT geometry. Required because Option A
+  // commits per tick: after the first tick, the placement's state has
+  // already moved; subsequent ticks would re-add the cumulative delta
+  // to the moved geometry, compounding the resize. Cleared on
+  // drag-end + drag-cancel.
+  const resizeInitialPlacementRef = React.useRef<{
+    placementId: string
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null>(null)
+
   const handleDragStart = React.useCallback((e: DragStartEvent) => {
     const id = String(e.active.id ?? "")
     // Per 2026-05-20 investigation Finding 2 (UUID leak class-fix):
@@ -817,7 +834,33 @@ function FocusBuilderPageInner() {
     // resolution. The page-level arrow-key nudge guard at the keydown
     // useEffect reads this flag to back off during the gesture.
     setIsDragInProgress(true)
-  }, [])
+
+    // Resize-live-preview arc — capture initial geometry for resize
+    // gestures so per-tick commits use the start-of-drag placement
+    // as the base (delta is cumulative from drag-start in @dnd-kit).
+    const handleParsed = parseResizeHandleId(id)
+    if (handleParsed) {
+      const flat = flattenFreeFormPlacements(templateHook.rowsDraft)
+      const placement = flat.find((p) => p.id === handleParsed.placementId)
+      if (placement) {
+        resizeInitialPlacementRef.current = {
+          placementId: handleParsed.placementId,
+          x: typeof placement.x === "number" ? placement.x : 0,
+          y: typeof placement.y === "number" ? placement.y : 0,
+          width:
+            typeof placement.width === "number" && placement.width > 0
+              ? placement.width
+              : FREE_FORM_DEFAULT_DIMENSIONS.width,
+          height:
+            typeof placement.height === "number" && placement.height > 0
+              ? placement.height
+              : FREE_FORM_DEFAULT_DIMENSIONS.height,
+        }
+      }
+    } else {
+      resizeInitialPlacementRef.current = null
+    }
+  }, [templateHook])
 
   const handleDragEnd = React.useCallback(
     (e: DragEndEvent) => {
@@ -836,19 +879,31 @@ function FocusBuilderPageInner() {
       const handleParsed = parseResizeHandleId(String(active.id))
       if (handleParsed) {
         if (mode !== "template") return
+        // Resize-live-preview arc (2026-05-21) — read initial
+        // placement geometry from the drag-start snapshot, same as
+        // handleDragMove. The final commit fires the same cumulative
+        // delta against the same base; output is idempotent with the
+        // last drag-move tick's commit (no-op merge in the FF-7
+        // functional setter).
+        const initial = resizeInitialPlacementRef.current
         const flat = flattenFreeFormPlacements(templateHook.rowsDraft)
         const placement = flat.find((p) => p.id === handleParsed.placementId)
-        if (!placement) return
-        const currentX = typeof placement.x === "number" ? placement.x : 0
-        const currentY = typeof placement.y === "number" ? placement.y : 0
-        const currentWidth =
-          typeof placement.width === "number" && placement.width > 0
+        if (!placement) {
+          resizeInitialPlacementRef.current = null
+          return
+        }
+        const baseX = initial?.x ?? (typeof placement.x === "number" ? placement.x : 0)
+        const baseY = initial?.y ?? (typeof placement.y === "number" ? placement.y : 0)
+        const baseWidth =
+          initial?.width ??
+          (typeof placement.width === "number" && placement.width > 0
             ? placement.width
-            : FREE_FORM_DEFAULT_DIMENSIONS.width
-        const currentHeight =
-          typeof placement.height === "number" && placement.height > 0
+            : FREE_FORM_DEFAULT_DIMENSIONS.width)
+        const baseHeight =
+          initial?.height ??
+          (typeof placement.height === "number" && placement.height > 0
             ? placement.height
-            : FREE_FORM_DEFAULT_DIMENSIONS.height
+            : FREE_FORM_DEFAULT_DIMENSIONS.height)
         const canvasConfig = templateHook.template?.canvas_config as
           | Record<string, unknown>
           | undefined
@@ -861,10 +916,10 @@ function FocusBuilderPageInner() {
         const minDimensions = getFreeFormMinDimensions(placement.widget_slug)
         const next = computeResizeCommit({
           currentPlacement: {
-            x: currentX,
-            y: currentY,
-            width: currentWidth,
-            height: currentHeight,
+            x: baseX,
+            y: baseY,
+            width: baseWidth,
+            height: baseHeight,
           },
           handle: handleParsed.position,
           delta: { x: e.delta?.x ?? 0, y: e.delta?.y ?? 0 },
@@ -877,6 +932,7 @@ function FocusBuilderPageInner() {
           width: next.width,
           height: next.height,
         })
+        resizeInitialPlacementRef.current = null
         return
       }
 
@@ -1114,6 +1170,62 @@ function FocusBuilderPageInner() {
   const handleDragMove = React.useCallback(
     (e: DragMoveEvent) => {
       if (mode !== "template") return
+
+      // Resize-live-preview arc (2026-05-21) — Option A commit-on-tick.
+      // Parallel-shape to the `handleDragEnd` resize branch above
+      // (lines 836-880). Fires the SAME `computeResizeCommit` +
+      // `updateWidget` dispatch per drag-move tick so the widget
+      // dimensions update continuously during the gesture instead of
+      // snapping only at release. The drag-end branch still fires the
+      // final commit with the cumulative delta — that call is
+      // idempotent (same delta input → same `computeResizeCommit`
+      // output → same partial → no-op merge in the FF-7 functional
+      // setter). RETURNS before the snap-line branch below: resize
+      // does not participate in snap-to-alignment (deferred per the
+      // 2026-05-20 investigation §5).
+      const handleParsed = parseResizeHandleId(String(e.active.id))
+      if (handleParsed) {
+        // Read base geometry from the drag-start snapshot — NOT from
+        // the placement's current state. Per-tick commits mutate
+        // placement state; subsequent ticks must compute delta against
+        // the initial geometry or the cumulative @dnd-kit delta would
+        // compound across ticks.
+        const initial = resizeInitialPlacementRef.current
+        if (!initial || initial.placementId !== handleParsed.placementId) return
+        const flat = flattenFreeFormPlacements(templateHook.rowsDraft)
+        const placement = flat.find((p) => p.id === handleParsed.placementId)
+        if (!placement) return
+        const canvasConfig = templateHook.template?.canvas_config as
+          | Record<string, unknown>
+          | undefined
+        const canvasWidth =
+          (canvasConfig?.width as number | undefined) ??
+          FREE_FORM_DEFAULT_CANVAS_WIDTH
+        const canvasHeight =
+          (canvasConfig?.height as number | undefined) ??
+          FREE_FORM_DEFAULT_CANVAS_HEIGHT
+        const minDimensions = getFreeFormMinDimensions(placement.widget_slug)
+        const next = computeResizeCommit({
+          currentPlacement: {
+            x: initial.x,
+            y: initial.y,
+            width: initial.width,
+            height: initial.height,
+          },
+          handle: handleParsed.position,
+          delta: { x: e.delta?.x ?? 0, y: e.delta?.y ?? 0 },
+          canvasDimensions: { width: canvasWidth, height: canvasHeight },
+          minDimensions,
+        })
+        templateHook.updateWidget(handleParsed.placementId, {
+          x: next.x,
+          y: next.y,
+          width: next.width,
+          height: next.height,
+        })
+        return
+      }
+
       const placementId = parseFreeFormDraggableId(String(e.active.id))
       if (placementId === null) return
       const flat = flattenFreeFormPlacements(templateHook.rowsDraft)
@@ -1185,6 +1297,8 @@ function FocusBuilderPageInner() {
     setActiveDragLabel(null)
     setIsDragInProgress(false)
     setSnapLines([])
+    // Resize-live-preview arc — clear drag-start geometry snapshot.
+    resizeInitialPlacementRef.current = null
   }, [])
 
   return (

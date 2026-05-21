@@ -1849,6 +1849,155 @@ describe("FocusBuilderPage", () => {
     }
   })
 
+  // ─────────────────────────────────────────────────────────────────
+  // Resize-live-preview arc (2026-05-21) — Option A commit-on-tick.
+  //
+  // Asserts the LOAD-BEARING mid-drag contract: between consecutive
+  // keyboard ArrowRight ticks (while drag is still active — before
+  // Space-to-end), the widget's rendered inline `width` grows. This
+  // is what distinguishes "preview works" (commits per tick) from
+  // "commit-only" (snaps only at release).
+  //
+  // Verify-against-pre-fix discipline (extended per the 2026-05-20
+  // investigation §6): stashing the resize branch in `handleDragMove`
+  // makes the mid-drag width-grew assertion FAIL (widths equal across
+  // ticks because state only mutates at drag-end). Restored → PASS.
+  // ─────────────────────────────────────────────────────────────────
+  it("FF-4 — resize via e handle previews live per drag-move tick (mid-drag width grows)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      defaultMocks()
+      const freeFormTpl: TemplateRecord = {
+        ...t,
+        canvas_config: { width: 1200, height: 800 },
+        rows: [
+          {
+            row_index: 0,
+            column_count: 12,
+            placements: [
+              {
+                placement_id: "ff-resize-live-1",
+                component_kind: "widget",
+                component_name: "today-pin-widget",
+                x: 100,
+                y: 100,
+                width: 240,
+                height: 120,
+                z_index: 0,
+              },
+            ],
+          },
+        ],
+      }
+      ;(focusTemplatesService.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+      ;(focusTemplatesService.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        freeFormTpl,
+      )
+
+      render(
+        <MemoryRouter
+          initialEntries={["/studio/builder/focuses?subject=template:tpl-1"]}
+        >
+          <FocusBuilderPage />
+        </MemoryRouter>,
+      )
+
+      await screen.findByTestId("focus-builder-freeform-placed-widget-draggable")
+      fireEvent.click(screen.getByTestId("focus-builder-placed-widget"))
+
+      await waitFor(() => {
+        const h = document.querySelector(
+          '[data-testid="focus-builder-resize-handle"][data-handle-position="e"]',
+        ) as HTMLElement | null
+        expect(h).not.toBeNull()
+      })
+      const handle = document.querySelector(
+        '[data-testid="focus-builder-resize-handle"][data-handle-position="e"]',
+      ) as HTMLElement
+      handle.focus()
+
+      // Initial rendered width.
+      const readWidth = (): number => {
+        const wrap = screen.getByTestId(
+          "focus-builder-freeform-placed-widget-draggable",
+        )
+        const styleAttr = wrap.getAttribute("style") ?? ""
+        const m = /width:\s*(\d+)px/i.exec(styleAttr)
+        return m ? parseInt(m[1], 10) : 0
+      }
+      const initialWidth = readWidth()
+      expect(initialWidth).toBe(240)
+
+      // Activate drag.
+      fireEvent.keyDown(handle, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+
+      // First nudge — assert width grew MID-DRAG (drag still active).
+      fireEvent.keyDown(document, { key: "ArrowRight", code: "ArrowRight" })
+      await vi.advanceTimersByTimeAsync(10)
+      const midWidth1 = readWidth()
+      expect(midWidth1).toBeGreaterThan(initialWidth)
+
+      // Second nudge — assert width grew AGAIN mid-drag (continuous
+      // preview, not single-step). This is what distinguishes Option A
+      // from any single-commit-on-activate approach.
+      fireEvent.keyDown(document, { key: "ArrowRight", code: "ArrowRight" })
+      await vi.advanceTimersByTimeAsync(10)
+      const midWidth2 = readWidth()
+      expect(midWidth2).toBeGreaterThan(midWidth1)
+
+      // Space to commit drag — final width persists at the last
+      // tick's value (idempotent with the redundant handleDragEnd
+      // commit firing the same delta).
+      fireEvent.keyDown(document, { key: " ", code: "Space" })
+      await vi.advanceTimersByTimeAsync(10)
+
+      const finalWidth = readWidth()
+      expect(finalWidth).toBe(midWidth2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────
+  // Resize-live-preview arc (2026-05-21) — source-shape regression
+  // gate.
+  //
+  // Per the hover-fix arc precedent at `d9ffd90`: when integration
+  // coverage cannot fully exercise the production path (Playwright
+  // inline-fixture doesn't exercise FocusBuilderPage's handleDragMove,
+  // JSDOM keyboard-sensor path doesn't render the production widget
+  // layer with full bbox semantics), a source-shape regex gate
+  // catches future reverts that silently remove the resize branch
+  // from handleDragMove.
+  // ─────────────────────────────────────────────────────────────────
+  it("FF-4 source-shape gate — handleDragMove contains a parseResizeHandleId branch", async () => {
+    // Dynamic import avoids running the Node `fs` machinery during
+    // unrelated test setup; tests are pure unit assertions on file
+    // contents.
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const source = readFileSync(
+      resolve(__dirname, "./FocusBuilderPage.tsx"),
+      "utf-8",
+    )
+
+    // Locate the `handleDragMove` declaration body. Non-greedy match
+    // up to the next top-level `const ` or `React.useCallback` close.
+    const handleDragMoveMatch = source.match(
+      /const handleDragMove = React\.useCallback\(\s*\([\s\S]*?\n {2}\},\s*\[/,
+    )
+    expect(handleDragMoveMatch).toBeTruthy()
+    const body = handleDragMoveMatch![0]
+
+    // Load-bearing assertion: the resize branch was added.
+    expect(body).toMatch(/parseResizeHandleId/)
+    expect(body).toMatch(/computeResizeCommit/)
+    expect(body).toMatch(/updateWidget/)
+  })
+
   // FF-4 — w handle: x adjusts as width grows (right edge anchored).
   it("FF-4 — keyboard resize via w handle adjusts x as width grows", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
