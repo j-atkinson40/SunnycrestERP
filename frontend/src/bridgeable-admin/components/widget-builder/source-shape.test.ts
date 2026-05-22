@@ -190,4 +190,103 @@ describe("WB-4a source-shape regression gates", () => {
     )
     expect(src).toMatch(/validate_composition_blob_strict/)
   })
+
+  // ── WB-5 gates ───────────────────────────────────────────────────
+
+  it("WB-5 Gate 18: useCanvasPreviewData hook present + exports", () => {
+    const src = read("../../hooks/useCanvasPreviewData.ts")
+    expect(src).toMatch(/export function useCanvasPreviewData/)
+    expect(src).toMatch(/export function extractSavedViewIds/)
+    expect(src).toMatch(/CANVAS_PREVIEW_DEBOUNCE_MS\s*=\s*200/)
+  })
+
+  it("WB-5 Gate 19: useCanvasPreviewData uses per-saved-view AbortController + fetchId", () => {
+    const src = read("../../hooks/useCanvasPreviewData.ts")
+    // Per-saved-view AbortController in a Map ref.
+    expect(src).toMatch(/AbortController/)
+    expect(src).toMatch(/controllersRef/)
+    // fetchId discriminator ref.
+    expect(src).toMatch(/fetchIdCountersRef/)
+    // Defense-in-depth: latest-fetchId check before applying response.
+    expect(src).toMatch(/latest\s*!==\s*nextFetchId/)
+  })
+
+  it("WB-5 Gate 20: useCanvasPreviewData controller scope is SEPARATE from useWidgetAutoSave", () => {
+    // Coexistence with WB-4a per Lock 6b: each hook owns its own
+    // controller ref, with a distinct symbol name. This catches
+    // a hypothetical future refactor that unifies the two.
+    const canvas = read("../../hooks/useCanvasPreviewData.ts")
+    const autosave = read("../../hooks/useWidgetAutoSave.ts")
+    expect(canvas).toMatch(/controllersRef/)
+    expect(autosave).toMatch(/inFlightAbortRef/)
+    expect(canvas).not.toMatch(/inFlightAbortRef/)
+    expect(autosave).not.toMatch(/controllersRef/)
+  })
+
+  it("WB-5 Gate 21: WidgetCanvas mounts ComposedWidget WITH dataContext", () => {
+    const src = read("./WidgetCanvas.tsx")
+    expect(src).toMatch(/useCanvasPreviewData/)
+    // The ComposedWidget mount now passes dataContext.
+    expect(src).toMatch(/<ComposedWidget[\s\S]*?dataContext={dataContext}/)
+  })
+
+  it("WB-5 Gate 22: AtomSkeleton + CanvasPreviewBanner + AtomResolutionIndicator components present", () => {
+    const sk = read("./AtomSkeleton.tsx")
+    expect(sk).toMatch(/export function AtomSkeleton/)
+    const banner = read("./CanvasPreviewBanner.tsx")
+    expect(banner).toMatch(/export function CanvasPreviewBanner/)
+    const ind = read("./AtomResolutionIndicator.tsx")
+    expect(ind).toMatch(/export function AtomResolutionIndicator/)
+  })
+
+  it("WB-5 Gate 23: resolveBinding handles canvas-preview discriminator at all 3 layers", () => {
+    const resolveSrc = read("../../../lib/widget-builder/runtime/resolveBinding.ts")
+    expect(resolveSrc).toMatch(/__canvas_preview/)
+    expect(resolveSrc).toMatch(/isCanvasPreviewContext/)
+    expect(resolveSrc).toMatch(/export function isCanvasPreviewContext/)
+
+    const atomSrc = read("../../../lib/widget-builder/runtime/AtomRenderer.tsx")
+    expect(atomSrc).toMatch(/getCanvasPreviewRowsForRepeater/)
+    expect(atomSrc).toMatch(/isCanvasPreviewContext/)
+
+    // ComposedWidget passes dataContext through unchanged — verify
+    // it still threads dataContext to AtomRenderer.
+    const composed = read("../../../lib/widget-builder/runtime/ComposedWidget.tsx")
+    expect(composed).toMatch(/dataContext={dataContext}/)
+  })
+
+  it("WB-5 Gate 24: WB-6 1-mock-row authoring fallback path remains reachable", () => {
+    const src = read("../../../lib/widget-builder/runtime/AtomRenderer.tsx")
+    // The undefined-fallback comment + the [null] iteration path
+    // are load-bearing for "no bindings yet" authoring.
+    expect(src).toMatch(/WB-6 authoring fallback/)
+    expect(src).toMatch(/\[null\]/)
+  })
+
+  it("WB-5 Gate 25: CanvasPreviewBanner uses status-warning (NOT status-error class) — distinct from validation chrome", () => {
+    const banner = read("./CanvasPreviewBanner.tsx")
+    expect(banner).toMatch(/status-warning/)
+    // No Tailwind-class usage of status-error (bg-status-error,
+    // text-status-error, border-status-error, outline-status-error
+    // etc.). Comments referencing the WB-4b chrome by name are fine.
+    expect(banner).not.toMatch(/(bg|text|border|outline)-status-error/)
+    // AtomResolutionIndicator likewise distinct — no Tailwind class
+    // usage of status-error. Comments referencing WB-4b's chrome by
+    // name are allowed and load-bearing for the divergence intent.
+    const ind = read("./AtomResolutionIndicator.tsx")
+    expect(ind).toMatch(/status-warning/)
+    // Strip comments before checking class usage.
+    const indNoComments = ind.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
+    expect(indNoComments).not.toMatch(/(bg|text|border|outline)-status-error/)
+  })
+
+  it("WB-5 Gate 26: WidgetCanvas reads preview data + builds error / skeleton / shimmer atom sets", () => {
+    const src = read("./WidgetCanvas.tsx")
+    expect(src).toMatch(/buildResolutionErrorsByAtom/)
+    expect(src).toMatch(/buildSkeletonAtomIds/)
+    expect(src).toMatch(/buildShimmerAtomIds/)
+    expect(src).toMatch(/AtomResolutionIndicator/)
+    expect(src).toMatch(/AtomSkeleton/)
+    expect(src).toMatch(/CanvasPreviewBanner/)
+  })
 })

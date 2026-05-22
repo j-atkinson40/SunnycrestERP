@@ -45,7 +45,46 @@ import {
   TextLabelRenderer,
   ValueDisplayRenderer,
 } from "./atoms"
-import { resolveBinding } from "./resolveBinding"
+import { resolveBinding, isCanvasPreviewContext } from "./resolveBinding"
+
+
+/** WB-5 — locate the saved-view rows associated with a repeater_atom
+ *  when the dataContext is the canvas-preview map. The repeater's
+ *  'rows' binding (per WB-6 inspector wiring) references a
+ *  field_path BindingRef with a saved_view_id. We look up that view
+ *  in the canvas-preview byView map and surface its rows.
+ *
+ *  Returns:
+ *   - rows array when fetch succeeded (or previous data is available
+ *     during optimistic-stale refresh / error-with-fallback).
+ *   - undefined when no canvas-preview / no binding / view not loaded
+ *     — caller falls through to the WB-6 1-mock-row authoring path.
+ */
+function getCanvasPreviewRowsForRepeater(
+  atom: AtomNode,
+  bindingsCatalog: Record<string, BindingRef>,
+  dataContext: unknown,
+): Record<string, unknown>[] | undefined {
+  if (!isCanvasPreviewContext(dataContext)) return undefined
+  const rowsBindingId = atom.binding_refs?.rows
+  if (!rowsBindingId) return undefined
+  const ref = bindingsCatalog[rowsBindingId]
+  if (!ref || ref.binding_type !== "field_path" || !ref.saved_view_id) {
+    return undefined
+  }
+  const byView = (dataContext.byView as Record<string, unknown>)
+  const viewState = byView[ref.saved_view_id] as
+    | {
+        status: "loading" | "success" | "error"
+        data?: { rows?: Record<string, unknown>[] }
+        previous?: { rows?: Record<string, unknown>[] }
+      }
+    | undefined
+  if (!viewState) return undefined
+  const active =
+    viewState.status === "success" ? viewState.data : viewState.previous
+  return active?.rows
+}
 
 
 // Wrap ConditionalContainerRenderer with registerComponent so its
@@ -196,7 +235,18 @@ export function AtomRenderer({
     // context. `__row` discriminator + `__index` position marker stay
     // alongside; the row's fields become directly accessible.
     let realRows: Record<string, unknown>[] | undefined = undefined
+    // WB-5 — canvas-preview path: look up the repeater's saved-view
+    // rows from the canvas-preview byView map. Tried FIRST so that
+    // WB-5 canvas authoring sees real data; falls back to the legacy
+    // {rows: [...]} shape (used by embedded runtime callers that
+    // pre-resolve their data) when canvas-preview is not in play.
+    realRows = getCanvasPreviewRowsForRepeater(
+      atom,
+      bindingsCatalog,
+      dataContext,
+    )
     if (
+      realRows === undefined &&
       typeof dataContext === "object" &&
       dataContext !== null &&
       Array.isArray((dataContext as { rows?: unknown }).rows)

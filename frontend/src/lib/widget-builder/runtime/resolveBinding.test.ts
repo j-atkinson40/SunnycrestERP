@@ -347,3 +347,181 @@ describe("resolveBinding — empty field_path edge case (WB-2 compat)", () => {
     expect(resolveBinding(ref)).toBe("[bound:<missing>]")
   })
 })
+
+
+// ── WB-5 canvas-preview discriminator ──────────────────────────────
+
+describe("resolveBinding — WB-5 canvas-preview dataContext", () => {
+  function makeRef(
+    saved_view_id: string,
+    field_path: string,
+    mode: "per_row" | "single_record" | "single_summary",
+  ): BindingRef {
+    return {
+      binding_id: "b1",
+      binding_type: "field_path",
+      saved_view_id,
+      field_path,
+      iteration_mode: mode,
+    }
+  }
+
+  it("resolves single_record against view's first row via canvas-preview map", () => {
+    const ctx = {
+      __canvas_preview: true,
+      byView: {
+        vA: {
+          status: "success",
+          data: {
+            rows: [
+              { name: "Alice", id: "x" },
+              { name: "Bob", id: "y" },
+            ],
+            aggregations: null,
+            total_count: 2,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    expect(resolveBinding(makeRef("vA", "name", "single_record"), ctx)).toBe(
+      "Alice",
+    )
+  })
+
+  it("resolves single_summary against view's aggregations", () => {
+    const ctx = {
+      __canvas_preview: true,
+      byView: {
+        vB: {
+          status: "success",
+          data: {
+            rows: [],
+            aggregations: { value: 42 },
+            total_count: 0,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    expect(
+      resolveBinding(makeRef("vB", "value", "single_summary"), ctx),
+    ).toBe(42)
+  })
+
+  it("synthetic count → total_count under canvas-preview", () => {
+    const ctx = {
+      __canvas_preview: true,
+      byView: {
+        vC: {
+          status: "success",
+          data: {
+            rows: [],
+            aggregations: {},
+            total_count: 17,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    expect(
+      resolveBinding(makeRef("vC", "count", "single_summary"), ctx),
+    ).toBe(17)
+  })
+
+  it("returns null when view loading + no previous data", () => {
+    const ctx = {
+      __canvas_preview: true,
+      byView: { vD: { status: "loading" } },
+    }
+    expect(
+      resolveBinding(makeRef("vD", "name", "single_record"), ctx),
+    ).toBeNull()
+  })
+
+  it("renders prior `previous` rows during optimistic-stale refresh", () => {
+    const ctx = {
+      __canvas_preview: true,
+      byView: {
+        vE: {
+          status: "loading",
+          previous: {
+            rows: [{ name: "Prior" }],
+            aggregations: null,
+            total_count: 1,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    expect(
+      resolveBinding(makeRef("vE", "name", "single_record"), ctx),
+    ).toBe("Prior")
+  })
+
+  it("returns null on error state with no previous data", () => {
+    const ctx = {
+      __canvas_preview: true,
+      byView: {
+        vF: {
+          status: "error",
+          error: { code: "view_not_found", message: "x", network_class: false },
+        },
+      },
+    }
+    expect(
+      resolveBinding(makeRef("vF", "name", "single_record"), ctx),
+    ).toBeNull()
+  })
+
+  it("falls back to existing per_row branch when context is __row (not __canvas_preview)", () => {
+    // Inside repeater iteration the context is per-row, not
+    // canvas-preview. resolveBinding's per_row branch must still
+    // handle this case unaltered.
+    const rowCtx = { __row: true, __index: 0, name: "InRow" }
+    expect(
+      resolveBinding(makeRef("vX", "name", "per_row"), rowCtx),
+    ).toBe("InRow")
+  })
+
+  it("returns null for unknown view in canvas-preview byView", () => {
+    const ctx = {
+      __canvas_preview: true,
+      byView: {},
+    }
+    expect(
+      resolveBinding(makeRef("vUnknown", "name", "single_record"), ctx),
+    ).toBeNull()
+  })
+
+  it("per_row binding at canvas-preview root returns null (repeater intercepts upstream)", () => {
+    const ctx = {
+      __canvas_preview: true,
+      byView: {
+        vG: {
+          status: "success",
+          data: {
+            rows: [{ name: "x" }],
+            aggregations: null,
+            total_count: 1,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    expect(
+      resolveBinding(makeRef("vG", "name", "per_row"), ctx),
+    ).toBeNull()
+  })
+
+  it("preserves WB-6 undefined-context fallback (no canvas-preview, no per_row context)", () => {
+    expect(
+      resolveBinding(makeRef("vH", "name", "single_record"), undefined),
+    ).toBeNull()
+  })
+})

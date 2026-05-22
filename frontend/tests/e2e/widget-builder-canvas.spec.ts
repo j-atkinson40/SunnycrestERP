@@ -426,4 +426,188 @@ test.describe.skip("WB-4a Widget Builder canvas (Playwright; staging-pending)", 
     // verifies the input commits to draft state.
     await expect(freetext).toHaveValue("metadata_json.line_items.0.total")
   })
+
+  test("scenario 15 (WB-5): canvas surfaces real saved-view data via dataContext", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // After binding a value_display to a saved view + field path,
+    // the canvas should render the resolved real value (NOT the
+    // WB-6 1-mock-row placeholder).
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-value_display"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-saved-view"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-saved-view-option-"]',
+      )
+      .first()
+      .click()
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-field-path"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-field-path-option-"]',
+      )
+      .first()
+      .click()
+    // The canvas render area must not be empty — content should be
+    // present from the seeded saved-view result.
+    const renderArea = page.locator(
+      '[data-testid="widget-builder-canvas-render"]',
+    )
+    await expect(renderArea).toBeVisible()
+    // Canvas-preview banner should not be in error state on a
+    // healthy seeded staging environment.
+    const banner = page.locator(
+      '[data-testid="widget-builder-canvas-preview-banner"]',
+    )
+    if (await banner.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await expect(banner).not.toHaveAttribute("data-banner-state", "network-error")
+    }
+  })
+
+  test("scenario 16 (WB-5): canvas-preview banner surfaces + Retry affordance on network error", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Network-class errors are reproduced via Playwright route
+    // mocking — block the executeSavedView endpoint and verify the
+    // banner surfaces with the Retry affordance.
+    await page.route("**/api/v1/saved-views/*/execute", (route) =>
+      route.abort("internetdisconnected"),
+    )
+    // Trigger a fetch by re-selecting a binding.
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-value_display"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-saved-view"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-saved-view-option-"]',
+      )
+      .first()
+      .click()
+    const banner = page.locator(
+      '[data-testid="widget-builder-canvas-preview-banner"]',
+    )
+    await banner.waitFor({ state: "visible", timeout: 5_000 })
+    await expect(banner).toHaveAttribute("data-banner-state", "network-error")
+    await expect(
+      page.locator('[data-testid="widget-builder-canvas-preview-banner-retry"]'),
+    ).toBeVisible()
+  })
+
+  test("scenario 17 (WB-5): atom-level resolution indicator surfaces for 404", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Mock the execute endpoint to 404. Atom-level chrome should
+    // surface (per-atom ⚠ overlay), NOT the canvas-level banner.
+    await page.route("**/api/v1/saved-views/*/execute", (route) =>
+      route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Saved view not found" }),
+      }),
+    )
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-value_display"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-saved-view"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-saved-view-option-"]',
+      )
+      .first()
+      .click()
+    // Some atom-resolution indicator should appear.
+    const indicator = page
+      .locator('[data-testid^="widget-builder-canvas-atom-resolution-"]')
+      .first()
+    await indicator.waitFor({ state: "visible", timeout: 5_000 })
+    // Banner should NOT be in network-error state for 404.
+    const banner = page.locator(
+      '[data-testid="widget-builder-canvas-preview-banner"]',
+    )
+    if (await banner.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await expect(banner).not.toHaveAttribute("data-banner-state", "network-error")
+    }
+  })
+
+  test("scenario 18 (WB-5): atom-level skeleton surfaces on first fetch", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Stall the fetch so the skeleton is observable.
+    await page.route("**/api/v1/saved-views/*/execute", async (route) => {
+      await new Promise((r) => setTimeout(r, 3_000))
+      await route.continue()
+    })
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-value_display"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-saved-view"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-saved-view-option-"]',
+      )
+      .first()
+      .click()
+    // Fetching pill on the banner should appear during the stall.
+    const banner = page.locator(
+      '[data-testid="widget-builder-canvas-preview-banner"]',
+    )
+    await banner.waitFor({ state: "visible", timeout: 2_000 })
+    await expect(banner).toHaveAttribute("data-banner-state", "fetching")
+  })
+
+  test("scenario 19 (WB-5): WB-6 1-mock-row authoring fallback preserved when no bindings", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Adding a repeater_atom without any bindings should still
+    // render a structural mock row (WB-6 authoring fallback).
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-repeater_atom"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    // Canvas-preview banner should NOT show network error for an
+    // unbound canvas.
+    const banner = page.locator(
+      '[data-testid="widget-builder-canvas-preview-banner"]',
+    )
+    if (await banner.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await expect(banner).not.toHaveAttribute("data-banner-state", "network-error")
+    }
+  })
 })

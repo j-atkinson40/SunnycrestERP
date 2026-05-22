@@ -695,3 +695,214 @@ describe("AtomRenderer — WB-6 real iteration", () => {
     expect(container.textContent).toContain("250 USD")
   })
 })
+
+
+describe("AtomRenderer — WB-5 canvas-preview discriminator", () => {
+  function renderWithContext(
+    atomTree: Record<string, AtomNode>,
+    rootId: string,
+    bindings: Record<string, BindingRef>,
+    dataContext: unknown,
+  ) {
+    return render(
+      <AtomRenderer
+        atom={atomTree[rootId]}
+        atomTree={atomTree}
+        bindingsCatalog={bindings}
+        dataContext={dataContext}
+      />,
+    )
+  }
+
+  it("repeater reads canvas-preview rows via byView[saved_view_id]", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: { binding_id: "rows" },
+        children: ["row_label"],
+        binding_refs: { rows: "rowsBinding" },
+      },
+      row_label: {
+        atom_id: "row_label",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "labelBinding" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rowsBinding: {
+        binding_id: "rowsBinding",
+        binding_type: "field_path",
+        saved_view_id: "vRows",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+      labelBinding: {
+        binding_id: "labelBinding",
+        binding_type: "field_path",
+        saved_view_id: "vRows",
+        field_path: "label",
+        iteration_mode: "per_row",
+      },
+    }
+    const dataContext = {
+      __canvas_preview: true,
+      byView: {
+        vRows: {
+          status: "success",
+          data: {
+            rows: [{ label: "Alpha" }, { label: "Bravo" }],
+            aggregations: null,
+            total_count: 2,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    const { container } = renderWithContext(tree, "rep", bindings, dataContext)
+    expect(container.textContent).toContain("Alpha")
+    expect(container.textContent).toContain("Bravo")
+  })
+
+  it("repeater falls back to 1-mock-row when canvas-preview view is loading without previous", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: {},
+        children: ["row_label"],
+        binding_refs: { rows: "rowsBinding" },
+      },
+      row_label: {
+        atom_id: "row_label",
+        atom_type: "text_label",
+        config: { text: "row" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rowsBinding: {
+        binding_id: "rowsBinding",
+        binding_type: "field_path",
+        saved_view_id: "vLoading",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+    }
+    const dataContext = {
+      __canvas_preview: true,
+      byView: { vLoading: { status: "loading" } },
+    }
+    // No real rows yet → 1 structural mock row.
+    const { container } = renderWithContext(tree, "rep", bindings, dataContext)
+    // Renders the row template with the literal "row" placeholder text.
+    expect(container.textContent).toContain("row")
+  })
+
+  it("single_record leaf at root resolves via canvas-preview map", () => {
+    const tree: Record<string, AtomNode> = {
+      v: {
+        atom_id: "v",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "b" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      b: {
+        binding_id: "b",
+        binding_type: "field_path",
+        saved_view_id: "vSingle",
+        field_path: "title",
+        iteration_mode: "single_record",
+      },
+    }
+    const dataContext = {
+      __canvas_preview: true,
+      byView: {
+        vSingle: {
+          status: "success",
+          data: {
+            rows: [{ title: "First Record Title" }],
+            aggregations: null,
+            total_count: 1,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    const { container } = renderWithContext(tree, "v", bindings, dataContext)
+    expect(container.textContent).toContain("First Record Title")
+  })
+
+  it("uses `previous` rows during optimistic stale refresh", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: {},
+        children: ["row_label"],
+        binding_refs: { rows: "rowsBinding" },
+      },
+      row_label: {
+        atom_id: "row_label",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "labelBinding" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rowsBinding: {
+        binding_id: "rowsBinding",
+        binding_type: "field_path",
+        saved_view_id: "vStale",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+      labelBinding: {
+        binding_id: "labelBinding",
+        binding_type: "field_path",
+        saved_view_id: "vStale",
+        field_path: "label",
+        iteration_mode: "per_row",
+      },
+    }
+    const dataContext = {
+      __canvas_preview: true,
+      byView: {
+        vStale: {
+          status: "loading",
+          previous: {
+            rows: [{ label: "StaleOne" }],
+            aggregations: null,
+            total_count: 1,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    const { container } = renderWithContext(tree, "rep", bindings, dataContext)
+    expect(container.textContent).toContain("StaleOne")
+  })
+
+  it("preserves WB-6 1-mock-row fallback when dataContext is undefined", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: {},
+        children: ["row_label"],
+      },
+      row_label: {
+        atom_id: "row_label",
+        atom_type: "text_label",
+        config: { text: "fallback-row" },
+      },
+    }
+    const { container } = renderWithContext(tree, "rep", {}, undefined)
+    expect(container.textContent).toContain("fallback-row")
+  })
+})

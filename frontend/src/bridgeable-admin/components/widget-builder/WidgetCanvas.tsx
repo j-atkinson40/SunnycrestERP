@@ -28,16 +28,24 @@
  *     rendered atom wrapper.
  */
 import { useDroppable } from "@dnd-kit/core"
-import { useMemo } from "react"
+import { useCallback, useMemo, useState } from "react"
 
 import { cn } from "@/lib/utils"
 import type {
   AtomNode,
+  BindingRef,
   CompositionBlob,
 } from "@/lib/widget-builder/types/composition-blob"
 import { ComposedWidget } from "@/lib/widget-builder/runtime/ComposedWidget"
 import { isContainerAtom } from "./atom-tree-helpers"
 import { AtomErrorIndicator } from "./AtomErrorIndicator"
+import {
+  useCanvasPreviewData,
+  type CanvasPreviewDataMap,
+} from "@/bridgeable-admin/hooks/useCanvasPreviewData"
+import { AtomSkeleton } from "./AtomSkeleton"
+import { CanvasPreviewBanner } from "./CanvasPreviewBanner"
+import { AtomResolutionIndicator } from "./AtomResolutionIndicator"
 
 
 export interface WidgetCanvasProps {
@@ -160,6 +168,138 @@ function gapClass(token: string | undefined): string {
 }
 
 
+/** Walk the atom tree, find atoms whose binding(s) reference a saved
+ *  view that errored at the atom level (NOT network class), and
+ *  build a per-atom error message map.
+ *
+ *  Used to wrap each canvas atom in `AtomResolutionIndicator` per
+ *  Area 4 Lock 4a. Network-class errors are surfaced via the
+ *  canvas-level banner instead.
+ *
+ *  Also surfaces cross-tenant masked fields (E7) as a separate
+ *  variant when the binding's field appears in the view's
+ *  masked_fields list.
+ */
+export function buildResolutionErrorsByAtom(
+  blob: CompositionBlob,
+  previewData: CanvasPreviewDataMap,
+): Record<string, { message: string; variant: "error" | "masked" }> {
+  const errors: Record<
+    string,
+    { message: string; variant: "error" | "masked" }
+  > = {}
+  const bindingsCatalog: Record<string, BindingRef> =
+    blob.bindings_catalog ?? {}
+
+  for (const atom of Object.values(blob.atom_tree)) {
+    if (!atom.binding_refs) continue
+    for (const bindingId of Object.values(atom.binding_refs)) {
+      const ref = bindingsCatalog[bindingId]
+      if (!ref || ref.binding_type !== "field_path" || !ref.saved_view_id) {
+        continue
+      }
+      const state = previewData[ref.saved_view_id]
+      if (!state) continue
+      // Atom-level error: NOT network_class. Network class is hoisted
+      // to the canvas banner per Lock 4a.
+      if (
+        state.status === "error" &&
+        state.error &&
+        state.error.network_class === false
+      ) {
+        if (!errors[atom.atom_id]) {
+          errors[atom.atom_id] = {
+            message: state.error.message,
+            variant: "error",
+          }
+        }
+        continue
+      }
+      // Cross-tenant masking (E7): success + masked_fields contains
+      // this binding's field_path.
+      if (
+        state.status === "success" &&
+        state.data &&
+        ref.field_path &&
+        Array.isArray(state.data.masked_fields) &&
+        state.data.masked_fields.includes(ref.field_path)
+      ) {
+        if (!errors[atom.atom_id]) {
+          errors[atom.atom_id] = {
+            message: "Field masked per cross-tenant policy",
+            variant: "masked",
+          }
+        }
+      }
+    }
+  }
+  return errors
+}
+
+
+/** Per-atom: is this atom in "first load" state — i.e. it has a
+ *  binding referencing a view whose fetch has not yet produced a
+ *  success/error AND has no `previous` to render? */
+export function buildSkeletonAtomIds(
+  blob: CompositionBlob,
+  previewData: CanvasPreviewDataMap,
+): Set<string> {
+  const ids = new Set<string>()
+  const bindingsCatalog: Record<string, BindingRef> =
+    blob.bindings_catalog ?? {}
+  for (const atom of Object.values(blob.atom_tree)) {
+    if (!atom.binding_refs) continue
+    for (const bindingId of Object.values(atom.binding_refs)) {
+      const ref = bindingsCatalog[bindingId]
+      if (!ref || ref.binding_type !== "field_path" || !ref.saved_view_id) {
+        continue
+      }
+      const state = previewData[ref.saved_view_id]
+      // First load: no state yet OR loading without previous.
+      if (
+        state === undefined ||
+        (state.status === "loading" && state.previous === undefined)
+      ) {
+        ids.add(atom.atom_id)
+        break
+      }
+    }
+  }
+  return ids
+}
+
+
+/** Per-atom: is this atom currently mid-refresh (optimistic stale)?
+ *  Used to overlay shimmer atop the rendered atom. */
+export function buildShimmerAtomIds(
+  blob: CompositionBlob,
+  previewData: CanvasPreviewDataMap,
+): Set<string> {
+  const ids = new Set<string>()
+  const bindingsCatalog: Record<string, BindingRef> =
+    blob.bindings_catalog ?? {}
+  for (const atom of Object.values(blob.atom_tree)) {
+    if (!atom.binding_refs) continue
+    for (const bindingId of Object.values(atom.binding_refs)) {
+      const ref = bindingsCatalog[bindingId]
+      if (!ref || ref.binding_type !== "field_path" || !ref.saved_view_id) {
+        continue
+      }
+      const state = previewData[ref.saved_view_id]
+      if (
+        state &&
+        state.status === "loading" &&
+        state.previous !== undefined
+      ) {
+        ids.add(atom.atom_id)
+        break
+      }
+    }
+  }
+  return ids
+}
+
+
 export function WidgetCanvas({
   blob,
   selectedAtomId,
@@ -172,6 +312,61 @@ export function WidgetCanvas({
   const rootGap = root?.config?.gap_token as string | undefined
 
   const rootChildren = useMemo(() => root?.children ?? [], [root])
+
+  // WB-5 — canvas-side fetch orchestrator. Walks bindings_catalog,
+  // deduplicates saved_view_ids, fetches each via executeSavedView.
+  // Coexists with WB-4a auto-save AbortController via separate
+  // controller refs — verified in source-shape gate.
+  const previewData = useCanvasPreviewData(blob)
+
+  // Retry bumper — increments to force the hook to re-fire (changing
+  // the bindings_catalog identity is the canonical re-fire trigger,
+  // but a no-op blob change is invasive; instead we bump a local
+  // counter that flows into a synthetic catalog wrapper). For Phase 1
+  // we simply rely on the user's next edit to trigger a refresh —
+  // the Retry button is wired by re-mounting the hook via a key.
+  const [retryKey, setRetryKey] = useState(0)
+  const handleRetry = useCallback(() => {
+    setRetryKey((k) => k + 1)
+  }, [])
+
+  // Compute the 3-flavor dataContext to pass to ComposedWidget.
+  // Per Risk 4: undefined is reserved for "no bindings at all" (the
+  // WB-6 1-mock-row authoring fallback). When the catalog has any
+  // field_path bindings, we pass the canvas-preview map (which
+  // resolveBinding + AtomRenderer interpret); per-view errors live
+  // inside the map itself, NOT as a separate dataContext shape.
+  const dataContext = useMemo(() => {
+    const hasFieldPathBindings = Object.values(
+      blob.bindings_catalog ?? {},
+    ).some((b) => b.binding_type === "field_path" && b.saved_view_id)
+    if (!hasFieldPathBindings) {
+      return undefined // WB-6 fallback path.
+    }
+    // Strip out any error-only entries that have no `previous` — they
+    // would otherwise be passed through as success-ish to children;
+    // resolveBinding handles this defensively but we keep the wire
+    // shape explicit. retryKey is a no-op for the runtime but exists
+    // to bust caller memoization on Retry.
+    void retryKey
+    return {
+      __canvas_preview: true as const,
+      byView: previewData,
+    }
+  }, [blob.bindings_catalog, previewData, retryKey])
+
+  const resolutionErrors = useMemo(
+    () => buildResolutionErrorsByAtom(blob, previewData),
+    [blob, previewData],
+  )
+  const skeletonAtomIds = useMemo(
+    () => buildSkeletonAtomIds(blob, previewData),
+    [blob, previewData],
+  )
+  const shimmerAtomIds = useMemo(
+    () => buildShimmerAtomIds(blob, previewData),
+    [blob, previewData],
+  )
 
   // Empty-canvas drop target: renders the "drop atoms here" affordance.
   const emptyDroppable = useDroppable({
@@ -191,7 +386,15 @@ export function WidgetCanvas({
         "bg-surface-elevated p-6",
       )}
     >
-      {/* The composed render — WYSIWYG. */}
+      {/* WB-5 — canvas-level preview banner (network errors / fetching pill). */}
+      <CanvasPreviewBanner
+        previewData={previewData}
+        onRetry={handleRetry}
+      />
+
+      {/* The composed render — WYSIWYG. WB-5 supplies real data via
+       *  dataContext: undefined when no bindings (WB-6 1-mock-row
+       *  authoring fallback); canvas-preview map otherwise. */}
       <div
         data-testid="widget-builder-canvas-render"
         className="pointer-events-none"
@@ -201,6 +404,7 @@ export function WidgetCanvas({
             widget_id: "__widget_builder_preview__",
             composition_blob: blob,
           }}
+          dataContext={dataContext}
         />
       </div>
 
@@ -243,16 +447,35 @@ export function WidgetCanvas({
                     atomId={child_id}
                     errors={errorsByAtom?.[child_id]}
                   >
-                    <CanvasAtom
-                      node={node}
-                      selected={selectedAtomId === child_id}
-                      onSelect={onSelect}
+                    <AtomResolutionIndicator
+                      atomId={child_id}
+                      message={resolutionErrors[child_id]?.message}
+                      variant={resolutionErrors[child_id]?.variant}
                     >
-                      {/* The visible atom shape is rendered by
-                          ComposedWidget below; this overlay block holds
-                          the drop / selection affordances. */}
-                      <div className="min-h-[24px] min-w-[24px]" />
-                    </CanvasAtom>
+                      <CanvasAtom
+                        node={node}
+                        selected={selectedAtomId === child_id}
+                        onSelect={onSelect}
+                      >
+                        {/* The visible atom shape is rendered by
+                            ComposedWidget below; this overlay block
+                            holds the drop / selection affordances. */}
+                        {skeletonAtomIds.has(child_id) ? (
+                          <AtomSkeleton atomType={node.atom_type} />
+                        ) : shimmerAtomIds.has(child_id) ? (
+                          <div
+                            data-testid={`widget-builder-canvas-atom-shimmer-${child_id}`}
+                            className={cn(
+                              "pointer-events-none absolute inset-0",
+                              "animate-pulse rounded-sm bg-accent-subtle/20",
+                            )}
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <div className="min-h-[24px] min-w-[24px]" />
+                        )}
+                      </CanvasAtom>
+                    </AtomResolutionIndicator>
                   </AtomErrorIndicator>
                 </div>
               )

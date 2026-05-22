@@ -33,6 +33,25 @@
  *   { __summary: true, aggregations?: object,
  *     total_count?: number }                       // single_summary
  *   undefined / null                                // no context
+ *
+ * dataContext shape contract (WB-5 canvas-preview):
+ *   { __canvas_preview: true, byView: { [savedViewId]:
+ *       { status: 'success', data: SavedViewResult } |
+ *       { status: 'loading', previous?: SavedViewResult } |
+ *       { status: 'error', error: CanvasPreviewError, previous? } } }
+ *
+ * The canvas-preview flavor is the WB-5 substrate root context. When
+ * resolveBinding sees the discriminator AND the binding carries a
+ * saved_view_id, it looks up the matching view's state:
+ *   - status='success' → resolves against the first row (single_record)
+ *     or aggregations (single_summary).
+ *   - per_row mode requires repeater iteration upstream — the
+ *     AtomRenderer's repeater branch synthesizes a per-row context
+ *     from this flavor before resolveBinding sees it. resolveBinding
+ *     receiving canvas-preview flavor + per_row mode returns null
+ *     (signal: "caller should iterate via repeater").
+ *   - status='loading' or 'error' → return null. The atom-level chrome
+ *     surfaces the loading skeleton / error indicator separately.
  */
 
 import type { BindingRef } from "../types/composition-blob"
@@ -102,6 +121,56 @@ function isSummaryContext(dataContext: unknown): boolean {
 }
 
 
+/** WB-5 — determine whether dataContext is the canvas-preview map.
+ *  Discriminator: `__canvas_preview: true` + `byView` shape. */
+export function isCanvasPreviewContext(
+  dataContext: unknown,
+): dataContext is {
+  __canvas_preview: true
+  byView: Record<string, unknown>
+} {
+  return (
+    typeof dataContext === "object" &&
+    dataContext !== null &&
+    (dataContext as { __canvas_preview?: boolean }).__canvas_preview === true &&
+    typeof (dataContext as { byView?: unknown }).byView === "object" &&
+    (dataContext as { byView?: unknown }).byView !== null
+  )
+}
+
+
+/** Public structural type for a per-view fetch state as resolveBinding
+ *  sees it (the canvas-preview flavor). Mirrors the runtime shape
+ *  emitted by `useCanvasPreviewData`. Kept structurally permissive
+ *  (the hook lives in admin tree; runtime lives in lib — coupling
+ *  via a structural type keeps the dependency direction clean). */
+export interface ResolverViewState {
+  status: "loading" | "success" | "error"
+  data?: {
+    rows?: Record<string, unknown>[]
+    aggregations?: Record<string, unknown> | null
+    total_count?: number
+    permission_mode?: string
+    masked_fields?: string[]
+  }
+  previous?: ResolverViewState["data"]
+  error?: { code: string; message: string; network_class: boolean }
+}
+
+
+/** Lookup a view state from a canvas-preview dataContext. Returns
+ *  undefined when the view isn't yet known (caller treats as null). */
+function lookupViewState(
+  dataContext: unknown,
+  saved_view_id: string,
+): ResolverViewState | undefined {
+  if (!isCanvasPreviewContext(dataContext)) return undefined
+  const state = (dataContext.byView as Record<string, unknown>)[saved_view_id]
+  if (state === undefined) return undefined
+  return state as ResolverViewState
+}
+
+
 export function resolveBinding(
   bindingRef: BindingRef,
   dataContext?: unknown,
@@ -127,6 +196,59 @@ export function resolveBinding(
     const segments = parseFieldPath(fp)
 
     const mode = bindingRef.iteration_mode
+
+    // WB-5 canvas-preview discriminator: when the dataContext is the
+    // canvas-preview map AND this binding references a saved_view_id,
+    // translate the lookup into the appropriate per-row / summary
+    // context shape before falling through.
+    if (
+      isCanvasPreviewContext(dataContext) &&
+      bindingRef.saved_view_id
+    ) {
+      const viewState = lookupViewState(dataContext, bindingRef.saved_view_id)
+      if (!viewState) return null
+      // Choose the active result: success → data; loading-with-previous
+      // → previous (optimistic stale rendering carries last-known-good).
+      // error-with-previous → previous (atom-level chrome surfaces the
+      // ⚠ overlay; rendering continues on prior data). Else null.
+      const active =
+        viewState.status === "success"
+          ? viewState.data
+          : viewState.previous
+      if (!active) return null
+
+      if (mode === "single_summary") {
+        // Reframe as summary context + recurse via the standard branch.
+        const summaryCtx = {
+          __summary: true as const,
+          aggregations: active.aggregations ?? null,
+          total_count: active.total_count ?? 0,
+        }
+        // Special-case `count`.
+        if (segments.length === 1 && segments[0] === "count") {
+          return summaryCtx.total_count ?? null
+        }
+        if (segments[0] === "aggregations") {
+          return walkFieldPath(summaryCtx, segments)
+        }
+        return walkFieldPath(summaryCtx.aggregations, segments)
+      }
+
+      // per_row at this level is unreachable in normal flow — the
+      // repeater_atom intercepts canvas-preview before its children
+      // dispatch and reshapes the context to a per-row dict. If we
+      // see per_row here, it's an authoring artifact (a non-repeater
+      // leaf bound with per_row mode); strict validator rejects this
+      // at Publish per WB-6 Lock 5b. Defensive null.
+      if (mode === "per_row") {
+        return null
+      }
+
+      // single_record (or undefined mode) → resolve against row[0].
+      const rows = active.rows ?? []
+      if (rows.length === 0) return null
+      return walkFieldPath(rows[0], segments)
+    }
 
     // single_summary → resolve against dataContext (expected shape:
     // SavedViewResult-ish — `aggregations` + `total_count`). Provides a
