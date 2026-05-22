@@ -102,6 +102,12 @@ export interface CompositionBlob {
   atom_tree: Record<string, AtomNode>;
   variants: VariantDefinition[];
   bindings_catalog: Record<string, BindingRef>;
+  /** WB-8 Lock 6a — variant_id consumers render when no explicit
+   *  variantId is passed. When undefined/null, consumers fall through
+   *  to `variants[0]?.variant_id` then to undefined ("all atoms").
+   *  Backend validator enforces referential integrity at write time:
+   *  when set, it MUST equal a variant_id in `variants[]`. */
+  default_variant_id?: string | null;
 }
 
 // ── Per-atom-type Phase 1 config shapes ─────────────────────────────

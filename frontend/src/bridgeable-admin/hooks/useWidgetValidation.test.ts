@@ -499,4 +499,103 @@ describe("useWidgetValidation — WB-7 ActionRef structural mirrors", () => {
     const btnErrs = r.errorsByAtom.btn ?? []
     expect(btnErrs.join(" ")).not.toMatch(/current_row/)
   })
+
+  // ── WB-8 variant validation ────────────────────────────────────────
+
+  it("default_variant_id referencing unknown variant surfaces a variantError", () => {
+    const blob = blobWith("text_label", { text: "x" })
+    blob.variants = [
+      {
+        variant_id: "brief",
+        variant_name: "Brief",
+        target_surface: "focus_canvas",
+      },
+    ]
+    blob.default_variant_id = "detail"
+    const r = validateCompositionBlob(blob)
+    expect(r.variantErrors.length).toBe(1)
+    expect(r.hasErrors).toBe(true)
+  })
+
+  it("default_variant_id referencing declared variant is clean", () => {
+    const blob = blobWith("text_label", { text: "x" })
+    blob.variants = [
+      {
+        variant_id: "brief",
+        variant_name: "Brief",
+        target_surface: "focus_canvas",
+      },
+    ]
+    blob.default_variant_id = "brief"
+    const r = validateCompositionBlob(blob)
+    expect(r.variantErrors).toEqual([])
+  })
+
+  it("target_surface mismatch surfaces a variantWarning (NOT blocking)", () => {
+    const blob = blobWith("text_label", { text: "x" })
+    blob.variants = [
+      {
+        variant_id: "brief",
+        variant_name: "Brief",
+        target_surface: "focus_canvas",
+      },
+    ]
+    const r = validateCompositionBlob(blob, ["dashboard_grid"])
+    expect(r.variantWarnings.brief?.length).toBeGreaterThan(0)
+    // Pure mismatch is NOT blocking at draft.
+    expect(r.variantErrors).toEqual([])
+  })
+
+  it("spaces_pin without Glance variant raises blocking variantError (Lock 3a.2)", () => {
+    const blob = blobWith("text_label", { text: "x" })
+    blob.variants = [
+      {
+        variant_id: "brief",
+        variant_name: "Brief",
+        target_surface: "focus_canvas",
+      },
+    ]
+    const r = validateCompositionBlob(blob, ["spaces_pin", "focus_canvas"])
+    expect(r.variantErrors.some((e) => /Glance/.test(e))).toBe(true)
+    expect(r.hasErrors).toBe(true)
+  })
+
+  it("focus_canvas without Brief variant raises blocking variantError (Lock 3a.3)", () => {
+    const blob = blobWith("text_label", { text: "x" })
+    blob.variants = [
+      {
+        variant_id: "detail",
+        variant_name: "Detail",
+        target_surface: "focus_canvas",
+      },
+    ]
+    const r = validateCompositionBlob(blob, ["focus_canvas"])
+    expect(r.variantErrors.some((e) => /Brief/.test(e))).toBe(true)
+  })
+
+  it("focus_canvas with empty variants[] does NOT trigger Lock 3a.3 (graceful)", () => {
+    const blob = blobWith("text_label", { text: "x" })
+    const r = validateCompositionBlob(blob, ["focus_canvas"])
+    expect(r.variantErrors).toEqual([])
+  })
+
+  it("backward-compat: no supportedSurfaces arg, no variant warnings emitted", () => {
+    const blob = blobWith("text_label", { text: "x" })
+    blob.variants = [
+      {
+        variant_id: "brief",
+        variant_name: "Brief",
+        target_surface: "focus_canvas",
+      },
+    ]
+    const r = validateCompositionBlob(blob)
+    expect(r.variantWarnings).toEqual({})
+    expect(r.variantErrors).toEqual([])
+  })
+
+  it("validation result always exposes WB-8 fields (even on null blob)", () => {
+    const r = validateCompositionBlob(null)
+    expect(r.variantWarnings).toEqual({})
+    expect(r.variantErrors).toEqual([])
+  })
 })

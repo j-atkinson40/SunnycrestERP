@@ -161,6 +161,104 @@ describe("ComposedWidget", () => {
     ).toThrow(/not found in atom_tree/)
   })
 
+  // WB-8 — canonical_dimensions application + surface-default fallback.
+
+  it("applies canonical_dimensions of active variant to root container", () => {
+    const { container } = render(
+      <ComposedWidget
+        widgetDefinition={{
+          widget_id: "wid",
+          composition_blob: mkBlob({
+            variants: [
+              {
+                variant_id: "brief",
+                variant_name: "Brief",
+                target_surface: "focus_canvas",
+                canonical_dimensions: { width: 640, height: 360 },
+              },
+            ],
+          }),
+        }}
+        variantId="brief"
+      />,
+    )
+    const root = container.querySelector(
+      "[data-composed-widget-root='true']",
+    ) as HTMLElement | null
+    expect(root).not.toBeNull()
+    expect(root!.style.width).toBe("640px")
+    expect(root!.style.height).toBe("360px")
+    expect(root!.getAttribute("data-active-variant-id")).toBe("brief")
+  })
+
+  it("falls back to surface-default dimensions when canonical_dimensions absent", () => {
+    const { container } = render(
+      <ComposedWidget
+        widgetDefinition={{
+          widget_id: "wid",
+          composition_blob: mkBlob({
+            variants: [
+              {
+                variant_id: "brief",
+                variant_name: "Brief",
+                target_surface: "page_canvas",
+              },
+            ],
+          }),
+        }}
+        variantId="brief"
+      />,
+    )
+    const root = container.querySelector(
+      "[data-composed-widget-root='true']",
+    ) as HTMLElement | null
+    // page_canvas default per Lock 5b: 480x320.
+    expect(root!.style.width).toBe("480px")
+    expect(root!.style.height).toBe("320px")
+  })
+
+  it("renders without dimensions when variantId is undefined (catalog preview)", () => {
+    const { container } = render(
+      <ComposedWidget
+        widgetDefinition={{
+          widget_id: "wid",
+          composition_blob: mkBlob(),
+        }}
+      />,
+    )
+    const root = container.querySelector(
+      "[data-composed-widget-root='true']",
+    ) as HTMLElement | null
+    expect(root!.style.width).toBe("")
+    expect(root!.style.height).toBe("")
+    expect(root!.getAttribute("data-active-variant-id")).toBeNull()
+  })
+
+  it("renders without dimensions when active variantId not declared in variants[]", () => {
+    const { container } = render(
+      <ComposedWidget
+        widgetDefinition={{
+          widget_id: "wid",
+          composition_blob: mkBlob({
+            variants: [
+              {
+                variant_id: "brief",
+                variant_name: "Brief",
+                target_surface: "focus_canvas",
+              },
+            ],
+          }),
+        }}
+        variantId="detail"
+      />,
+    )
+    const root = container.querySelector(
+      "[data-composed-widget-root='true']",
+    ) as HTMLElement | null
+    expect(root!.style.width).toBe("")
+    expect(root!.style.height).toBe("")
+  })
+
   it("renders a tree with multiple atoms", () => {
     const { container } = render(
       <ComposedWidget

@@ -788,4 +788,165 @@ test.describe.skip("WB-4a Widget Builder canvas (Playwright; staging-pending)", 
       page.locator('[data-testid="wb-button-confirm-fire"]'),
     ).toHaveCount(0)
   })
+
+  // ── WB-8 — variant authoring substrate ────────────────────────────
+  // The 5 scenarios below cover the Lock 2a authoring surface (create,
+  // switch, per-atom visibility, default-variant promotion) plus the
+  // Lock 3a cross-surface compat draft-warning chip. Bodies pre-written
+  // per the WB-3 / WB-4a / WB-6 / WB-7 .skip precedent — activate by
+  // removing the `.skip` once staging is ready.
+
+  test("scenario 25 (WB-8): operator declares a Brief variant via the inspector + switcher activates it", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Variants inspector section visible at the top of the rail.
+    await expect(
+      page.locator('[data-testid="widget-builder-variants-inspector"]'),
+    ).toBeVisible()
+    // Empty state surfaces before any variant is declared.
+    await expect(
+      page.locator(
+        '[data-testid="widget-builder-variants-inspector-empty"]',
+      ),
+    ).toBeVisible()
+    // Click "+ Brief" to declare.
+    await page
+      .locator('[data-testid="widget-builder-variants-inspector-add-brief"]')
+      .click()
+    // Row appears with Brief.
+    await expect(
+      page.locator('[data-testid="widget-builder-variant-row-brief"]'),
+    ).toBeVisible()
+    // VariantSwitcher's Brief segment now reports declared=true.
+    const briefSeg = page.locator(
+      '[data-testid="widget-builder-variant-switcher-brief"]',
+    )
+    await expect(briefSeg).toHaveAttribute("data-declared", "true")
+    // Activating it flips data-active.
+    await briefSeg.click()
+    await expect(briefSeg).toHaveAttribute("data-active", "true")
+  })
+
+  test("scenario 26 (WB-8): VariantSwitcher All atoms ↔ Brief flip is preview-only (no fetch + canvas re-render)", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    await page
+      .locator('[data-testid="widget-builder-variants-inspector-add-brief"]')
+      .click()
+    // Switch to Brief — canvas re-renders with the variant filter.
+    await page
+      .locator('[data-testid="widget-builder-variant-switcher-brief"]')
+      .click()
+    await expect(
+      page.locator('[data-testid="widget-builder-canvas-render"]'),
+    ).toBeVisible()
+    // The composed render's data-active-variant-id mirrors the switcher.
+    await expect(
+      page.locator("[data-composed-widget-root='true']"),
+    ).toHaveAttribute("data-active-variant-id", "brief")
+    // Flip back to All atoms.
+    await page
+      .locator('[data-testid="widget-builder-variant-switcher-all"]')
+      .click()
+    // data-active-variant-id clears.
+    const root = page.locator("[data-composed-widget-root='true']")
+    await expect(root).not.toHaveAttribute("data-active-variant-id", "brief")
+  })
+
+  test("scenario 27 (WB-8): per-atom visible_in_variants chip toggle scopes an atom to a single variant", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Declare Brief + Glance.
+    await page
+      .locator('[data-testid="widget-builder-variants-inspector-add-brief"]')
+      .click()
+    await page
+      .locator('[data-testid="widget-builder-variants-inspector-add-glance"]')
+      .click()
+    // Drop a text_label atom onto the canvas.
+    const palette = page.locator('[data-testid="palette-atom-text_label"]')
+    const dropZone = page.locator(
+      '[data-testid^="widget-builder-canvas-drop-target-"]',
+    ).first()
+    await palette.dragTo(dropZone)
+    // Select it (click).
+    const atom = page
+      .locator('[data-testid^="widget-builder-canvas-atom-"]')
+      .first()
+    await atom.click()
+    // AtomVariantVisibility surfaces in the inspector with chip buttons.
+    await expect(
+      page.locator('[data-testid="atom-variant-visibility"]'),
+    ).toBeVisible()
+    // Mode defaults to "all" (empty selection = visible in every variant).
+    await expect(
+      page.locator('[data-testid="atom-variant-visibility"]'),
+    ).toHaveAttribute("data-mode", "all")
+    // Click the Brief chip → mode flips to "explicit".
+    await page
+      .locator('[data-testid="atom-variant-visibility-chip-brief"]')
+      .click()
+    await expect(
+      page.locator('[data-testid="atom-variant-visibility"]'),
+    ).toHaveAttribute("data-mode", "explicit")
+  })
+
+  test("scenario 28 (WB-8): setting default_variant_id promotes a variant + persists across reload", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Declare Brief.
+    await page
+      .locator('[data-testid="widget-builder-variants-inspector-add-brief"]')
+      .click()
+    // Mark Brief as default via its radio.
+    await page
+      .locator(
+        '[data-testid="widget-builder-variant-row-brief-default-radio"]',
+      )
+      .check()
+    // Row reports data-default=true.
+    await expect(
+      page.locator('[data-testid="widget-builder-variant-row-brief"]'),
+    ).toHaveAttribute("data-default", "true")
+    // Reload → still default after server round-trip.
+    await page.reload()
+    await page
+      .locator('[data-testid="widget-builder-page"]')
+      .waitFor({ state: "visible", timeout: 5_000 })
+    await expect(
+      page.locator('[data-testid="widget-builder-variant-row-brief"]'),
+    ).toHaveAttribute("data-default", "true")
+  })
+
+  test("scenario 29 (WB-8): cross-surface target_surface mismatch surfaces draft warning chip (Lock 3a)", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Declare Brief.
+    await page
+      .locator('[data-testid="widget-builder-variants-inspector-add-brief"]')
+      .click()
+    // Switch target_surface to palette_preview — incompatible with the
+    // widget's supported_surfaces declaration (focus_canvas / dashboard).
+    // Select-driven change; UI surfaces a chip in the same row.
+    const select = page.locator(
+      '[data-testid="widget-builder-variant-row-brief-target-surface"]',
+    )
+    await select.selectOption("palette_preview")
+    // Warning chip surfaces under the row.
+    await expect(
+      page.locator(
+        '[data-testid="widget-builder-variant-row-brief-warnings"]',
+      ),
+    ).toBeVisible()
+    // Draft-time warning does NOT block Publish; the button stays
+    // enabled per Lock 3a Option B (draft = warn-only; Publish enforces).
+    await expect(
+      page.locator('[data-testid="widget-builder-publish-button"]'),
+    ).toBeEnabled()
+  })
 })

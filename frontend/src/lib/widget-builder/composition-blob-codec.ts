@@ -404,6 +404,24 @@ export function parseCompositionBlob(raw: unknown): CompositionBlob {
     }
   }
 
+  // WB-8 — default_variant_id (additive optional field). Permissive
+  // parse: null OR undefined → undefined on the parsed shape; string
+  // → carried through. Referential integrity (default_variant_id ∈
+  // variants[*].variant_id) is enforced on the BACKEND validator at
+  // write time. Codec is structural-only.
+  let defaultVariantId: string | undefined = undefined;
+  if (raw.default_variant_id !== undefined && raw.default_variant_id !== null) {
+    if (typeof raw.default_variant_id !== "string") {
+      pushFieldError(
+        errors,
+        "default_variant_id",
+        "must be a string when present",
+      );
+    } else {
+      defaultVariantId = raw.default_variant_id;
+    }
+  }
+
   // WB-3 — cross-container nesting cap enforcement at the codec
   // layer. The backend validator is the canonical gate; the codec
   // mirrors the rule so authoring-shell client-side rejections fire
@@ -433,6 +451,9 @@ export function parseCompositionBlob(raw: unknown): CompositionBlob {
     atom_tree: atomTree,
     variants,
     bindings_catalog: bindingsCatalog,
+    ...(defaultVariantId !== undefined
+      ? { default_variant_id: defaultVariantId }
+      : {}),
   };
 }
 

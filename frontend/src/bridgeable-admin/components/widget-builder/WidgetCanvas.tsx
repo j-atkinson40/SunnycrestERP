@@ -35,6 +35,7 @@ import type {
   AtomNode,
   BindingRef,
   CompositionBlob,
+  VariantId,
 } from "@/lib/widget-builder/types/composition-blob"
 import { ComposedWidget } from "@/lib/widget-builder/runtime/ComposedWidget"
 import { isContainerAtom } from "./atom-tree-helpers"
@@ -60,6 +61,13 @@ export interface WidgetCanvasProps {
   /** WB-4b — per-atom validation errors. Wrapping AtomErrorIndicator
    *  renders a 2px red outline + tooltip when errors are present. */
   errorsByAtom?: Record<string, string[]>
+  /** WB-8 — currently-previewed variant (undefined = "all atoms"
+   *  unfiltered render path). Passed through to the embedded
+   *  ComposedWidget so the AtomRenderer's visible_in_variants filter
+   *  applies + the active variant's canonical_dimensions drive the
+   *  render-box size. Authoring-only — data layer stays passive (WB-5
+   *  fetch state unaffected per Lock 5a). */
+  currentVariantId?: VariantId
 }
 
 
@@ -305,6 +313,7 @@ export function WidgetCanvas({
   selectedAtomId,
   onSelect,
   errorsByAtom,
+  currentVariantId,
 }: WidgetCanvasProps) {
   const root = blob.atom_tree[blob.root_atom_id]
   const rootDirection =
@@ -404,6 +413,7 @@ export function WidgetCanvas({
             widget_id: "__widget_builder_preview__",
             composition_blob: blob,
           }}
+          variantId={currentVariantId}
           dataContext={dataContext}
         />
       </div>

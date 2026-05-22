@@ -27,13 +27,15 @@
  * `widget-renderer-dispatch.ts` for the dispatch helper.
  */
 
-import { useMemo } from "react"
+import { useMemo, type CSSProperties } from "react"
 
 import type {
   CompositionBlob,
+  VariantDefinition,
   VariantId,
 } from "../types/composition-blob"
 import { parseCompositionBlob } from "../composition-blob-codec"
+import { surfaceDefaultDimensions } from "../types/surface-mapping"
 
 import { AtomRenderer } from "./AtomRenderer"
 
@@ -109,10 +111,29 @@ export function ComposedWidget({
     )
   }
 
+  // WB-8 Lock 5b — apply the active variant's canonical_dimensions
+  // (with surface-default fallback) to the widget container. When no
+  // variant is active (variantId === undefined → "all atoms"), the
+  // container renders with no explicit dimensions and inherits from
+  // the parent canvas.
+  const dimensionStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!variantId) return undefined
+    const activeVariant: VariantDefinition | undefined = blob.variants.find(
+      (v) => v.variant_id === variantId,
+    )
+    if (!activeVariant) return undefined
+    const dims =
+      activeVariant.canonical_dimensions ??
+      surfaceDefaultDimensions(activeVariant.target_surface)
+    return { width: `${dims.width}px`, height: `${dims.height}px` }
+  }, [blob.variants, variantId])
+
   return (
     <div
       data-composed-widget-root="true"
       data-widget-id={widgetDefinition.widget_id}
+      data-active-variant-id={variantId ?? undefined}
+      style={dimensionStyle}
     >
       <AtomRenderer
         atom={rootAtom}

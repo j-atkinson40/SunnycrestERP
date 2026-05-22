@@ -49,7 +49,7 @@ from __future__ import annotations
 
 from typing import Any, Annotated, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, model_validator
 
 
 # ── Atom-type vocabulary ───────────────────────────────────────────────
@@ -201,6 +201,14 @@ class CompositionBlob(BaseModel):
 
     `bindings_catalog` is the table of BindingRef rows; atom
     `binding_refs` values are foreign keys into this table.
+
+    `default_variant_id` (WB-8 Lock 6a) is the variant_id consumers
+    render when no explicit variantId is passed (e.g., Focus Builder
+    palette preview, Spaces pin render). When None, consumers fall
+    through to `variants[0]?.variant_id` then to undefined ("all
+    atoms"). Backend validator (write-time) enforces referential
+    integrity: when set, the value MUST equal a variant_id in
+    `variants[]`.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -210,6 +218,24 @@ class CompositionBlob(BaseModel):
     atom_tree: Dict[str, AtomNode]
     variants: List[VariantDefinition] = Field(default_factory=list)
     bindings_catalog: Dict[str, BindingRef] = Field(default_factory=dict)
+    default_variant_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_default_variant_id_ref(self) -> "CompositionBlob":
+        """Lock 6a: when default_variant_id is set, it must reference an
+        existing variant_id declared in `variants[]`. Empty variants
+        list with non-null default_variant_id is rejected.
+        """
+        if self.default_variant_id is None:
+            return self
+        variant_ids = {v.variant_id for v in self.variants}
+        if self.default_variant_id not in variant_ids:
+            raise ValueError(
+                f"default_variant_id {self.default_variant_id!r} "
+                f"does not reference any declared variant_id in "
+                f"variants[]"
+            )
+        return self
 
 
 # ── Per-atom-type Phase 1 config schemas ─────────────────────────────

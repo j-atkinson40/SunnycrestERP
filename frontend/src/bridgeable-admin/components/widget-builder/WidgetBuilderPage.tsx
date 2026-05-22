@@ -63,6 +63,7 @@ import {
 import { useWidgetAutoSave } from "@/bridgeable-admin/hooks/useWidgetAutoSave"
 
 import { AtomPalette } from "./AtomPalette"
+import { VariantSwitcher } from "./VariantSwitcher"
 import { WidgetCanvas } from "./WidgetCanvas"
 import {
   insertAtomAt,
@@ -76,6 +77,9 @@ import {
   useAtomBindingUpdater,
   useAtomConfigUpdater,
 } from "./inspectors/AtomInspectorDispatch"
+import { AtomVariantVisibility } from "./inspectors/AtomVariantVisibility"
+import { VariantsInspectorSection } from "./inspectors/VariantsInspectorSection"
+import { useVariantAuthoring } from "./useVariantAuthoring"
 import { ErrorSummary } from "./ErrorSummary"
 import { useWidgetValidation } from "@/bridgeable-admin/hooks/useWidgetValidation"
 
@@ -147,7 +151,14 @@ export default function WidgetBuilderPage() {
 
   // WB-4b — client-side validation. Memoized off the draft. Defined
   // before handlePublish so the defense-in-depth check has access.
-  const validation = useWidgetValidation(draft)
+  // WB-8 — supported_surfaces flows into the validation hook to power
+  // cross-surface compat warnings + Lock 3a.2/3a.3 enforcement.
+  const supportedSurfaces = record?.supported_surfaces
+  const validation = useWidgetValidation(draft, supportedSurfaces)
+
+  // WB-8 — variant authoring substrate. State for currentVariantId +
+  // CRUD ops composed atop the auto-save setDraft pipeline.
+  const variantAuthoring = useVariantAuthoring(draft, setDraft)
 
   // @dnd-kit sensors per Q-40 (PointerSensor + KeyboardSensor).
   const sensors = useSensors(
@@ -446,6 +457,12 @@ export default function WidgetBuilderPage() {
             </Select>
           </div>
 
+          <VariantSwitcher
+            blob={draft}
+            currentVariantId={variantAuthoring.currentVariantId}
+            onChange={variantAuthoring.setCurrentVariantId}
+          />
+
           <ErrorSummary validation={validation} onLocate={handleLocate} />
 
           <Button
@@ -498,6 +515,7 @@ export default function WidgetBuilderPage() {
               selectedAtomId={selectedAtomId}
               onSelect={setSelectedAtomId}
               errorsByAtom={validation.errorsByAtom}
+              currentVariantId={variantAuthoring.currentVariantId}
             />
           </main>
           <aside
@@ -508,6 +526,17 @@ export default function WidgetBuilderPage() {
             <div className="mb-3 text-caption font-medium uppercase tracking-wide text-content-muted">
               Inspector
             </div>
+            {/* WB-8 — Variants section lives at the top of the inspector
+                rail and is visible regardless of atom selection (per
+                Lock 2a.6). When an atom is selected, the per-atom
+                visibility chip-toggle group sits below the per-atom
+                inspector. */}
+            <VariantsInspectorSection
+              blob={draft}
+              variantAuthoring={variantAuthoring}
+              variantWarnings={validation.variantWarnings}
+              variantErrors={validation.variantErrors}
+            />
             <AtomInspectorDispatch
               blob={draft}
               selectedAtomId={selectedAtomId}
@@ -515,6 +544,13 @@ export default function WidgetBuilderPage() {
               onUpdateBinding={updateAtomBinding}
               errors={validation.errorsByAtom}
             />
+            {selectedAtomId && selectedAtomId !== draft.root_atom_id ? (
+              <AtomVariantVisibility
+                blob={draft}
+                atomId={selectedAtomId}
+                variantAuthoring={variantAuthoring}
+              />
+            ) : null}
           </aside>
         </div>
       </div>

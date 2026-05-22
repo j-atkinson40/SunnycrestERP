@@ -36,6 +36,11 @@ import apiClient from "@/lib/api-client"
 import { registerComponent } from "@/lib/visual-editor/registry/register"
 import type { ComponentKind } from "@/lib/visual-editor/registry/types"
 
+import type {
+  CompositionBlob,
+  VariantId,
+} from "../types/composition-blob"
+
 import { ComposedWidget } from "./ComposedWidget"
 
 
@@ -59,19 +64,52 @@ let _fetchAttempted = false
 
 /** Register a single composed widget definition's metadata in the
  *  visual-editor registry. Exported for tests + future ad-hoc use. */
+/** WB-8 Lock 6b — resolve the effective variantId for bridge consumers.
+ *  Resolution chain:
+ *    1. `composition_blob.default_variant_id` (Lock 6a-stored default)
+ *    2. `composition_blob.variants[0]?.variant_id` (first declared)
+ *    3. `undefined` (the "all atoms" unfiltered render path)
+ *
+ *  Exported for tests + future ad-hoc resolution callers. */
+export function resolveEffectiveVariantId(
+  blob: CompositionBlob | unknown,
+): VariantId | string | undefined {
+  if (blob === null || typeof blob !== "object") return undefined
+  const b = blob as Partial<CompositionBlob>
+  if (typeof b.default_variant_id === "string" && b.default_variant_id) {
+    return b.default_variant_id
+  }
+  const first = Array.isArray(b.variants) ? b.variants[0] : undefined
+  if (first && typeof first.variant_id === "string") {
+    return first.variant_id
+  }
+  return undefined
+}
+
+
 export function registerComposedWidgetMeta(
   defn: ComposedWidgetDefinitionDTO,
 ): void {
   const slug = defn.widget_id
+  // WB-8 — pre-compute the bridge's effective variantId so the
+  // Component wrapper falls into the resolution chain at registration
+  // time. Allows future consumer overrides to pass variantId via
+  // props (currently the Focus Builder palette + PlacedWidgetCore
+  // call this with zero props; future Page Builder will pass
+  // variantId derived from the rendering surface — Lock 6d).
+  const resolvedDefaultVariant = resolveEffectiveVariantId(
+    defn.composition_blob,
+  ) as VariantId | undefined
   // The Component handed to registerComponent is the renderer that
   // Focus Builder palette + PlacedWidgetCore will call. It wraps
   // ComposedWidget with the definition's composition_blob.
-  const Component: ComponentType = () =>
+  const Component: ComponentType<{ variantId?: VariantId }> = (props) =>
     createElement(ComposedWidget, {
       widgetDefinition: {
         widget_id: slug,
         composition_blob: defn.composition_blob,
       },
+      variantId: props.variantId ?? resolvedDefaultVariant,
     })
   Component.displayName = `ComposedWidgetBound(${slug})`
 

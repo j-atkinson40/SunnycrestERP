@@ -34,6 +34,9 @@ from app.schemas.widget_composition import (
     PER_ATOM_CONFIG_SCHEMAS,
     CompositionBlob,
 )
+from app.services.widget_definitions.surface_mapping import (
+    variant_target_compatible_with_supported_surfaces,
+)
 
 
 # Phase 1 nesting cap per Q-5: root → group → atom. Containers
@@ -282,7 +285,11 @@ def validate_composition_blob(raw: Any) -> CompositionBlob:
     return blob
 
 
-def validate_composition_blob_strict(raw: Any) -> CompositionBlob:
+def validate_composition_blob_strict(
+    raw: Any,
+    *,
+    supported_surfaces: list[str] | tuple[str, ...] | None = None,
+) -> CompositionBlob:
     """Strict validator — runs the full WB-4b Publish gate.
 
     Wraps `validate_composition_blob` (structural + cross-reference
@@ -612,6 +619,16 @@ def validate_composition_blob_strict(raw: Any) -> CompositionBlob:
                     f"requires non-empty `config.alt` (accessibility)"
                 )
 
+    # WB-8 Lock 3a — cross-surface compatibility enforcement at Publish.
+    # When the caller passes supported_surfaces (the widget's top-level
+    # surface declaration), enforce the per-variant compatibility +
+    # Lock 3a.2/3a.3 per-surface variant-requirement rules.
+    if supported_surfaces is not None:
+        compat_issues = validate_cross_surface_compatibility(
+            blob, supported_surfaces, strict=True
+        )
+        errors.extend(compat_issues)
+
     if errors:
         raise CompositionBlobValidationError(errors)
     return blob
@@ -684,6 +701,78 @@ def _validate_children_refs(
     _walk(blob.root_atom_id, depth=1)
 
 
+def validate_cross_surface_compatibility(
+    blob: CompositionBlob,
+    supported_surfaces: list[str] | tuple[str, ...] | None,
+    *,
+    strict: bool = False,
+) -> list[str]:
+    """WB-8 Lock 3a cross-surface compatibility check.
+
+    For each declared variant, asserts that its target_surface maps
+    (per `surface_mapping.TARGET_TO_WIDGET_SURFACES`) to at least one
+    entry in the widget's top-level supported_surfaces. Lock 3a.2 +
+    Lock 3a.3 add the per-surface variant-requirement rules:
+      • supported_surfaces includes "spaces_pin" → variants[] MUST
+        contain a variant with variant_id="glance".
+      • supported_surfaces includes "focus_canvas" → variants[] MUST
+        contain a variant with variant_id="brief".
+
+    Hybrid validation per Lock 3a:
+      • `strict=False` (authoring-time / draft) — returns warnings
+        as a non-empty list but the caller treats them as soft
+        warnings (chip in inspector; not blocking).
+      • `strict=True` (Publish) — same checks; caller raises on
+        non-empty result.
+
+    Returns list of human-readable issue strings; empty list = clean.
+    """
+    issues: list[str] = []
+    if not supported_surfaces:
+        return issues
+    supported = list(supported_surfaces)
+
+    # Per-variant cross-vocabulary check.
+    for v in blob.variants:
+        if not variant_target_compatible_with_supported_surfaces(
+            v.target_surface, supported
+        ):
+            issues.append(
+                f"variants[{v.variant_id!r}].target_surface: "
+                f"{v.target_surface!r} is incompatible with widget "
+                f"supported_surfaces={supported!r}"
+            )
+
+    # Lock 3a.2 — spaces_pin requires a Glance variant declaration.
+    if "spaces_pin" in supported:
+        variant_ids = {v.variant_id for v in blob.variants}
+        if "glance" not in variant_ids:
+            issues.append(
+                "[Lock 3a.2] supported_surfaces includes 'spaces_pin' "
+                "but no variant with variant_id='glance' is declared"
+            )
+
+    # Lock 3a.3 — focus_canvas requires a Brief variant declaration.
+    # Only check when the widget actually declares non-empty variants[]
+    # (an entirely empty variants list is the WB-1 initial state and
+    # doesn't trigger this rule until the operator declares ANY
+    # variants — graceful migration for shipped composed widgets per
+    # R10 mitigation).
+    if "focus_canvas" in supported and blob.variants:
+        variant_ids = {v.variant_id for v in blob.variants}
+        if "brief" not in variant_ids:
+            issues.append(
+                "[Lock 3a.3] supported_surfaces includes 'focus_canvas' "
+                "but no variant with variant_id='brief' is declared"
+            )
+
+    # Note: strict-only flag is reserved for future per-rule severity
+    # split. Phase 1 treats every issue as the same severity; callers
+    # determine whether to raise or warn.
+    _ = strict
+    return issues
+
+
 def validate_widget_definition_write(
     payload: Dict[str, Any],
     *,
@@ -750,10 +839,32 @@ def validate_widget_definition_write(
         )
 
     # Composition-blob structural + semantic validation.
+    blob: Optional[CompositionBlob] = None
     try:
-        validate_composition_blob(composition_blob)
+        blob = validate_composition_blob(composition_blob)
     except CompositionBlobValidationError as exc:
         errors.extend(exc.errors)
+
+    # WB-8 Lock 3a — cross-surface compat at write time (draft path).
+    # Treated as soft warnings here — collected into errors only when
+    # supported_surfaces declares spaces_pin or focus_canvas with
+    # Lock 3a.2/3a.3 required-variant gaps. Pure target_surface
+    # mismatches are surfaced via authoring-time chip in the inspector;
+    # publish.py runs the strict validator (with supported_surfaces) as
+    # the blocking gate.
+    if blob is not None:
+        supported = payload.get("supported_surfaces")
+        if supported is not None:
+            for issue in validate_cross_surface_compatibility(
+                blob, supported, strict=False
+            ):
+                # Only the Lock 3a.2/3a.3 required-variant gaps are
+                # blocking at the orchestrator level — they prevent a
+                # widget declaring spaces_pin without Glance from being
+                # written at all. Pure target_surface mismatches are
+                # soft (warn-only at draft).
+                if issue.startswith("[Lock 3a."):
+                    errors.append(issue)
 
     if errors:
         raise CompositionBlobValidationError(errors)

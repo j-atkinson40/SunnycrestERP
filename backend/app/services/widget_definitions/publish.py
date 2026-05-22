@@ -240,7 +240,14 @@ def publish_draft(db: Session, *, slug: str) -> WidgetDefinition:
     # validity AND per-atom required fields (text_label.text,
     # button.label, status_badge.label, image.alt, value_display
     # binding) so operators can't ship a placeholder-only widget.
-    validate_composition_blob_strict(row.composition_blob)
+    #
+    # WB-8 — pass the widget's supported_surfaces so Lock 3a cross-
+    # surface compatibility + Lock 3a.2/3a.3 per-surface variant
+    # requirements run at the Publish gate.
+    validate_composition_blob_strict(
+        row.composition_blob,
+        supported_surfaces=row.supported_surfaces,
+    )
 
     row.published_composition_blob = row.composition_blob
     # composition_version bump — every Publish increments. Phase 1

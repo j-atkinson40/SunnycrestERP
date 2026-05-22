@@ -25,6 +25,7 @@ import type {
   AtomType,
   CompositionBlob,
 } from "@/lib/widget-builder/types/composition-blob"
+import { variantTargetCompatibleWithSupportedSurfaces } from "@/lib/widget-builder/types/surface-mapping"
 
 
 export interface ValidationResult {
@@ -33,6 +34,12 @@ export interface ValidationResult {
   /** Flattened list with (atom_id, msg) pairs in atom_tree iteration order. */
   errorList: { atom_id: string; atom_type: AtomType; message: string }[]
   hasErrors: boolean
+  /** WB-8 — per-variant warnings (non-blocking at draft). Key: variant_id.
+   *  Surfaced as warning chips in the Variant CRUD inspector section. */
+  variantWarnings: Record<string, string[]>
+  /** WB-8 — variant-level errors (blocking at Publish). default_variant_id
+   *  unknown reference + Lock 3a.2/3a.3 per-surface variant requirements. */
+  variantErrors: string[]
 }
 
 
@@ -287,9 +294,16 @@ function checkBindingsCatalog(
 
 export function validateCompositionBlob(
   blob: CompositionBlob | null,
+  supportedSurfaces?: ReadonlyArray<string>,
 ): ValidationResult {
   if (!blob) {
-    return { errorsByAtom: {}, errorList: [], hasErrors: false }
+    return {
+      errorsByAtom: {},
+      errorList: [],
+      hasErrors: false,
+      variantWarnings: {},
+      variantErrors: [],
+    }
   }
   const errorsByAtom: Record<string, string[]> = {}
   const errorList: ValidationResult["errorList"] = []
@@ -356,16 +370,82 @@ export function validateCompositionBlob(
     }
   }
 
+  // WB-8 — variant-substrate validation. Two outputs:
+  //   • variantWarnings: per-variant target_surface mismatch chips
+  //     (authoring-time soft warning per Lock 3a Option B).
+  //   • variantErrors: default_variant_id referential integrity +
+  //     Lock 3a.2 (spaces_pin → Glance required) + Lock 3a.3
+  //     (focus_canvas → Brief required). All blocking at Publish.
+  const variantWarnings: Record<string, string[]> = {}
+  const variantErrors: string[] = []
+  const declaredVariantIds = new Set(
+    blob.variants.map((v) => v.variant_id),
+  )
+  if (blob.default_variant_id) {
+    if (!declaredVariantIds.has(blob.default_variant_id)) {
+      variantErrors.push(
+        `Default variant "${blob.default_variant_id}" does not reference a declared variant.`,
+      )
+    }
+  }
+  if (supportedSurfaces && supportedSurfaces.length > 0) {
+    for (const v of blob.variants) {
+      if (
+        !variantTargetCompatibleWithSupportedSurfaces(
+          v.target_surface,
+          supportedSurfaces,
+        )
+      ) {
+        if (!variantWarnings[v.variant_id]) {
+          variantWarnings[v.variant_id] = []
+        }
+        variantWarnings[v.variant_id].push(
+          `Target surface "${v.target_surface}" is incompatible with this widget's supported surfaces.`,
+        )
+      }
+    }
+    // Lock 3a.2 — spaces_pin requires Glance variant.
+    if (
+      supportedSurfaces.includes("spaces_pin") &&
+      !declaredVariantIds.has("glance")
+    ) {
+      variantErrors.push(
+        "Widget supports spaces_pin but no Glance variant is declared.",
+      )
+    }
+    // Lock 3a.3 — focus_canvas requires Brief variant (when variants[] non-empty).
+    if (
+      supportedSurfaces.includes("focus_canvas") &&
+      blob.variants.length > 0 &&
+      !declaredVariantIds.has("brief")
+    ) {
+      variantErrors.push(
+        "Widget supports focus_canvas but no Brief variant is declared.",
+      )
+    }
+  }
+
   return {
     errorsByAtom,
     errorList,
-    hasErrors: errorList.length > 0,
+    hasErrors:
+      errorList.length > 0 || variantErrors.length > 0,
+    variantWarnings,
+    variantErrors,
   }
 }
 
 
 export function useWidgetValidation(
   blob: CompositionBlob | null,
+  supportedSurfaces?: ReadonlyArray<string>,
 ): ValidationResult {
-  return useMemo(() => validateCompositionBlob(blob), [blob])
+  return useMemo(
+    () => validateCompositionBlob(blob, supportedSurfaces),
+    // The supportedSurfaces array identity is the controlling key;
+    // callers should memoize the array if they mutate the underlying
+    // surfaces frequently. Spreading into deps would re-render too
+    // aggressively on parent rerenders.
+    [blob, supportedSurfaces],
+  )
 }
