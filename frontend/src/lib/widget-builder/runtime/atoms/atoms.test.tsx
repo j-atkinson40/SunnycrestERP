@@ -15,8 +15,10 @@
  *   - Repeater iteration semantics (children-per-row)
  */
 
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import * as React from "react"
 import { render } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 
 import type {
   AtomNode,
@@ -302,6 +304,13 @@ describe("DividerRenderer (WB-3)", () => {
 })
 
 
+// WB-7 — ButtonRenderer reads useNavigate/useFocusOptional/useAuthOptional/
+// usePeekOptional/useParams/useSearchParams. useNavigate requires a Router
+// in context; the others fall back to null via the *Optional variants.
+function renderButton(node: React.ReactNode) {
+  return render(<MemoryRouter>{node}</MemoryRouter>)
+}
+
 describe("ButtonRenderer (WB-3)", () => {
   it("renders a button element with action-kind + variant attributes", () => {
     const atom = mkAtom("button", "a6", {
@@ -310,7 +319,7 @@ describe("ButtonRenderer (WB-3)", () => {
       variant: "primary",
       size: "md",
     })
-    const { container } = render(
+    const { container } = renderButton(
       <ButtonRenderer
         atom={atom}
         config={atom.config as unknown as ButtonConfig}
@@ -326,12 +335,14 @@ describe("ButtonRenderer (WB-3)", () => {
     expect(btn?.textContent).toBe("Button")
   })
 
-  it("onClick is a no-op (does not throw)", () => {
+  it("onClick is a no-op when no action field (backward-compat)", () => {
+    // WB-7 backward-compat: a button atom without an `action` field
+    // preserves the WB-3 no-op behavior. Dispatcher does NOT fire.
     const atom = mkAtom("button", "a6", {
       action_kind: "open_focus",
       action_config: {},
     })
-    const { container } = render(
+    const { container } = renderButton(
       <ButtonRenderer
         atom={atom}
         config={atom.config as unknown as ButtonConfig}
@@ -348,7 +359,7 @@ describe("ButtonRenderer (WB-3)", () => {
       action_config: {},
       label: "Open case",
     })
-    const { container } = render(
+    const { container } = renderButton(
       <ButtonRenderer
         atom={atom}
         config={atom.config as unknown as ButtonConfig}
@@ -364,7 +375,7 @@ describe("ButtonRenderer (WB-3)", () => {
       action_config: {},
       label: "static",
     })
-    const { container } = render(
+    const { container } = renderButton(
       <ButtonRenderer
         atom={atom}
         config={atom.config as unknown as ButtonConfig}
@@ -381,7 +392,7 @@ describe("ButtonRenderer (WB-3)", () => {
       icon_name: "plus",
       label: "Add",
     })
-    const { container } = render(
+    const { container } = renderButton(
       <ButtonRenderer
         atom={atom}
         config={atom.config as unknown as ButtonConfig}
@@ -389,6 +400,166 @@ describe("ButtonRenderer (WB-3)", () => {
       />,
     )
     expect(container.querySelector("button svg")).not.toBeNull()
+  })
+})
+
+
+// ── WB-7 ButtonRenderer dispatch behavior ──────────────────────────
+//
+// Operator-observable assertion canon: tests assert on dispatcher
+// invocations + DOM outputs, not internal state. Mock R-4 dispatcher
+// + apiClient. Sonner toast assertions are kept light (just confirm
+// no error path triggered for success cases).
+
+vi.mock("@/lib/runtime-host/buttons/action-dispatch", async () => {
+  const actual =
+    await vi.importActual<
+      typeof import("@/lib/runtime-host/buttons/action-dispatch")
+    >("@/lib/runtime-host/buttons/action-dispatch")
+  return {
+    ...actual,
+    dispatchAction: vi.fn(actual.dispatchAction),
+  }
+})
+
+import { dispatchAction as mockedDispatch } from "@/lib/runtime-host/buttons/action-dispatch"
+
+describe("ButtonRenderer dispatch (WB-7)", () => {
+  function makeButtonWithAction(action: Record<string, unknown>) {
+    return mkAtom("button", "btnW7", {
+      label: "Go",
+      action_kind: (action as { action_kind: string }).action_kind,
+      action_config: {},
+      action,
+    })
+  }
+
+  beforeEach(() => {
+    ;(mockedDispatch as unknown as ReturnType<typeof vi.fn>).mockClear()
+  })
+
+  it("lifts navigate ActionRef and calls dispatcher on click (no confirm)", async () => {
+    const atom = makeButtonWithAction({
+      action_kind: "navigate",
+      href: "/cases/x",
+    })
+    const { container } = renderButton(
+      <ButtonRenderer
+        atom={atom}
+        config={atom.config as unknown as ButtonConfig}
+        resolvedBindings={{}}
+      />,
+    )
+    const btn = container.querySelector("button")!
+    btn.click()
+    // Allow microtasks.
+    await Promise.resolve()
+    expect(mockedDispatch).toHaveBeenCalled()
+    const call = (mockedDispatch as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0]
+    expect(call[0]).toBe("navigate")
+    expect(call[1]).toEqual({ route: "/cases/x" })
+  })
+
+  it("trigger_workflow defaults to confirm_before=true; click opens Dialog", async () => {
+    const atom = makeButtonWithAction({
+      action_kind: "trigger_workflow",
+      workflow_slug: "wf_x",
+    })
+    const { container, findByTestId } = renderButton(
+      <ButtonRenderer
+        atom={atom}
+        config={atom.config as unknown as ButtonConfig}
+        resolvedBindings={{}}
+      />,
+    )
+    const btn = container.querySelector("button")!
+    btn.click()
+    // The dialog renders the Confirm button under data-testid.
+    const confirmBtn = await findByTestId("wb-button-confirm-fire")
+    expect(confirmBtn).toBeTruthy()
+    // Dispatcher NOT called until confirm.
+    expect(mockedDispatch).not.toHaveBeenCalled()
+  })
+
+  it("mutate ActionRef resolves current_row binding via dataContext", async () => {
+    const atom = makeButtonWithAction({
+      action_kind: "mutate",
+      mutate_kind: "anomaly_acknowledge",
+      target_id_binding: {
+        name: "anomaly_id",
+        source: "current_row",
+        row_field: "id",
+      },
+      confirm_before: false,
+    })
+    const { container } = renderButton(
+      <ButtonRenderer
+        atom={atom}
+        config={atom.config as unknown as ButtonConfig}
+        resolvedBindings={{}}
+        dataContext={{ __row: true, __index: 0, id: "anom-1", severity: "warning" }}
+      />,
+    )
+    const btn = container.querySelector("button")!
+    btn.click()
+    await Promise.resolve()
+    expect(mockedDispatch).toHaveBeenCalled()
+    const call = (mockedDispatch as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0]
+    expect(call[0]).toBe("mutate")
+    expect(call[1]).toEqual({ mutateKind: "anomaly_acknowledge" })
+    // Resolved bindings dict carries target_id = "anom-1".
+    expect(call[2]).toEqual({ target_id: "anom-1" })
+  })
+
+  it("open_peek ActionRef passes peekEntityType to dispatcher", async () => {
+    const atom = makeButtonWithAction({
+      action_kind: "open_peek",
+      peek_view_type: "invoice",
+      initial_context: [
+        {
+          name: "entity_id",
+          source: "current_row",
+          row_field: "id",
+        },
+      ],
+    })
+    const { container } = renderButton(
+      <ButtonRenderer
+        atom={atom}
+        config={atom.config as unknown as ButtonConfig}
+        resolvedBindings={{}}
+        dataContext={{ __row: true, __index: 0, id: "inv-7" }}
+      />,
+    )
+    const btn = container.querySelector("button")!
+    btn.click()
+    await Promise.resolve()
+    const call = (mockedDispatch as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0]
+    expect(call[0]).toBe("open_peek")
+    expect(call[1]).toEqual({ peekEntityType: "invoice" })
+    expect(call[2]).toEqual({ entity_id: "inv-7" })
+  })
+
+  it("backward-compat: button without action field preserves no-op (dispatcher NOT called)", async () => {
+    const atom = mkAtom("button", "btnLegacy", {
+      label: "Legacy",
+      action_kind: "navigate",
+      action_config: {},
+    })
+    const { container } = renderButton(
+      <ButtonRenderer
+        atom={atom}
+        config={atom.config as unknown as ButtonConfig}
+        resolvedBindings={{}}
+      />,
+    )
+    const btn = container.querySelector("button")!
+    btn.click()
+    await Promise.resolve()
+    expect(mockedDispatch).not.toHaveBeenCalled()
   })
 })
 

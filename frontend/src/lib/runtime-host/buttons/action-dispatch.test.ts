@@ -31,6 +31,7 @@ function makeDeps() {
   return {
     navigate: vi.fn(),
     openFocus: vi.fn(),
+    openPeek: vi.fn(),
   }
 }
 
@@ -213,6 +214,159 @@ describe("R-4.0 dispatch handlers", () => {
         makeDeps(),
       )
       expect(result.status).toBe("error")
+    })
+  })
+
+  describe("open_peek (WB-7)", () => {
+    it("calls deps.openPeek with the resolved entity id", async () => {
+      const deps = makeDeps()
+      const result = await DISPATCH_HANDLERS.open_peek(
+        { peekEntityType: "invoice" },
+        { entity_id: "inv-1" },
+        deps,
+      )
+      expect(deps.openPeek).toHaveBeenCalledWith({
+        entityType: "invoice",
+        entityId: "inv-1",
+        triggerType: "click",
+      })
+      expect(result.status).toBe("success")
+    })
+    it("returns error when peekEntityType missing", async () => {
+      const deps = makeDeps()
+      const result = await DISPATCH_HANDLERS.open_peek({}, {}, deps)
+      expect(result.status).toBe("error")
+      expect(deps.openPeek).not.toHaveBeenCalled()
+    })
+    it("returns error when no entity_id resolved", async () => {
+      const deps = makeDeps()
+      const result = await DISPATCH_HANDLERS.open_peek(
+        { peekEntityType: "invoice" },
+        {},
+        deps,
+      )
+      expect(result.status).toBe("error")
+    })
+    it("returns skipped (not error) when openPeek dep absent — admin preview", async () => {
+      const deps = { navigate: vi.fn(), openFocus: vi.fn() } // no openPeek
+      const result = await DISPATCH_HANDLERS.open_peek(
+        { peekEntityType: "invoice" },
+        { entity_id: "inv-1" },
+        deps,
+      )
+      expect(result.status).toBe("skipped")
+    })
+    it("falls back to first non-null resolved value when no entity_id named", async () => {
+      const deps = makeDeps()
+      await DISPATCH_HANDLERS.open_peek(
+        { peekEntityType: "task" },
+        { task_id: "t-1" },
+        deps,
+      )
+      expect(deps.openPeek).toHaveBeenCalledWith({
+        entityType: "task",
+        entityId: "t-1",
+        triggerType: "click",
+      })
+    })
+  })
+
+  describe("mutate (WB-7)", () => {
+    it("POSTs to anomaly acknowledge endpoint with resolved target_id", async () => {
+      api.post.mockResolvedValueOnce({
+        data: { id: "anom-1", resolved: true },
+      })
+      const result = await DISPATCH_HANDLERS.mutate(
+        { mutateKind: "anomaly_acknowledge" },
+        { target_id: "anom-1" },
+        makeDeps(),
+      )
+      expect(api.post).toHaveBeenCalledWith(
+        "/widget-data/anomalies/anom-1/acknowledge",
+        {},
+        undefined,
+      )
+      expect(result.status).toBe("success")
+      expect(result.data?.anomaly_id).toBe("anom-1")
+    })
+    it("forwards resolution_note when provided", async () => {
+      api.post.mockResolvedValueOnce({ data: { id: "a", resolved: true } })
+      await DISPATCH_HANDLERS.mutate(
+        { mutateKind: "anomaly_acknowledge" },
+        { target_id: "a", resolution_note: "ack" },
+        makeDeps(),
+      )
+      expect(api.post).toHaveBeenCalledWith(
+        "/widget-data/anomalies/a/acknowledge",
+        { resolution_note: "ack" },
+        undefined,
+      )
+    })
+    it("returns error when mutateKind missing", async () => {
+      const result = await DISPATCH_HANDLERS.mutate({}, {}, makeDeps())
+      expect(result.status).toBe("error")
+      expect(api.post).not.toHaveBeenCalled()
+    })
+    it("rejects non-anomaly_acknowledge mutate_kind (Phase 1 narrowing)", async () => {
+      const result = await DISPATCH_HANDLERS.mutate(
+        { mutateKind: "delete_row" },
+        { target_id: "x" },
+        makeDeps(),
+      )
+      expect(result.status).toBe("error")
+      expect(result.errorMessage).toMatch(/anomaly_acknowledge only/)
+      expect(api.post).not.toHaveBeenCalled()
+    })
+    it("returns error when target_id resolves to null/empty", async () => {
+      const result = await DISPATCH_HANDLERS.mutate(
+        { mutateKind: "anomaly_acknowledge" },
+        { target_id: null as unknown as string },
+        makeDeps(),
+      )
+      expect(result.status).toBe("error")
+    })
+    it("returns error on POST failure", async () => {
+      api.post.mockRejectedValueOnce(new Error("network boom"))
+      const result = await DISPATCH_HANDLERS.mutate(
+        { mutateKind: "anomaly_acknowledge" },
+        { target_id: "x" },
+        makeDeps(),
+      )
+      expect(result.status).toBe("error")
+      expect(result.errorMessage).toContain("network boom")
+    })
+    it("passes AbortSignal through when deps.abortSignal present", async () => {
+      api.post.mockResolvedValueOnce({ data: { id: "x", resolved: true } })
+      const ctrl = new AbortController()
+      await DISPATCH_HANDLERS.mutate(
+        { mutateKind: "anomaly_acknowledge" },
+        { target_id: "x" },
+        { ...makeDeps(), abortSignal: ctrl.signal },
+      )
+      expect(api.post).toHaveBeenCalledWith(
+        "/widget-data/anomalies/x/acknowledge",
+        {},
+        { signal: ctrl.signal },
+      )
+    })
+  })
+
+  describe("R-4.0 existing 5 handlers unchanged (regression)", () => {
+    it("DISPATCH_HANDLERS contains all 7 expected verbs (3 shared + 2 R-4 + 2 WB-7)", () => {
+      // Source-shape regression gate per Risk 11.1 mitigation: assert
+      // the handler map contains exactly the 7 expected verbs. Catches
+      // accidental removal during R-4.x / WB-7.x increments.
+      expect(Object.keys(DISPATCH_HANDLERS).sort()).toEqual(
+        [
+          "create_vault_item",
+          "mutate",
+          "navigate",
+          "open_focus",
+          "open_peek",
+          "run_playwright_workflow",
+          "trigger_workflow",
+        ].sort(),
+      )
     })
   })
 

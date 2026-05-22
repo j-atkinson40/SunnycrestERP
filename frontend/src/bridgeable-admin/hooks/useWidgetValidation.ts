@@ -36,6 +36,76 @@ export interface ValidationResult {
 }
 
 
+// WB-7 — mirror of backend ActionRef structural validation. Same
+// checks as `backend/app/services/widget_definitions/validators.py`
+// per-action_kind required fields + mutate kind narrowing. The
+// current_row context check is done at the catalog-walk level
+// (checkActionsContext below) since it needs the repeater-descendant
+// set.
+function checkActionRef(action: unknown): string[] {
+  if (!action || typeof action !== "object") return []
+  const a = action as Record<string, unknown>
+  const kind = a.action_kind
+  const errs: string[] = []
+  if (kind === "navigate") {
+    if (!a.href || typeof a.href !== "string") {
+      errs.push("Navigate action requires a non-empty href.")
+    }
+  } else if (kind === "open_focus") {
+    if (!a.focus_template_slug || typeof a.focus_template_slug !== "string") {
+      errs.push("Open Focus action requires a focus_template_slug.")
+    }
+  } else if (kind === "open_peek") {
+    if (!a.peek_view_type) {
+      errs.push("Open Peek action requires a peek_view_type.")
+    }
+  } else if (kind === "trigger_workflow") {
+    if (!a.workflow_slug || typeof a.workflow_slug !== "string") {
+      errs.push("Trigger workflow action requires a workflow_slug.")
+    }
+  } else if (kind === "mutate") {
+    if (a.mutate_kind !== "anomaly_acknowledge") {
+      errs.push(
+        "Mutate action: Phase 1 mutate_kind must be 'anomaly_acknowledge'.",
+      )
+    }
+    if (!a.target_id_binding || typeof a.target_id_binding !== "object") {
+      errs.push("Mutate action requires a target_id_binding.")
+    }
+  } else if (kind !== undefined) {
+    errs.push(`Unknown action verb: ${String(kind)}`)
+  }
+  return errs
+}
+
+
+function _extractActionBindings(action: unknown): Array<{
+  source?: unknown
+  name?: unknown
+}> {
+  if (!action || typeof action !== "object") return []
+  const a = action as Record<string, unknown>
+  const out: Array<{ source?: unknown; name?: unknown }> = []
+  for (const key of ["params", "initial_context", "workflow_input"]) {
+    const lst = a[key]
+    if (Array.isArray(lst)) {
+      for (const item of lst) {
+        if (item && typeof item === "object") {
+          out.push(item as Record<string, unknown>)
+        }
+      }
+    }
+  }
+  for (const key of ["href_binding", "target_id_binding"]) {
+    const item = a[key]
+    if (item && typeof item === "object") {
+      out.push(item as Record<string, unknown>)
+    }
+  }
+  return out
+}
+
+
 function checkAtom(node: AtomNode): string[] {
   const cfg = (node.config ?? {}) as Record<string, unknown>
   const bindings = node.binding_refs ?? {}
@@ -77,6 +147,11 @@ function checkAtom(node: AtomNode): string[] {
       const label = typeof cfg.label === "string" ? cfg.label.trim() : ""
       if (!hasBinding && !label) {
         errs.push("Button requires a label.")
+      }
+      // WB-7 — ActionRef structural validation.
+      const action = cfg.action
+      if (action !== undefined && action !== null) {
+        for (const e of checkActionRef(action)) errs.push(e)
       }
       break
     }
@@ -240,6 +315,45 @@ export function validateCompositionBlob(
       atom_type: node?.atom_type ?? ("text_label" as AtomType),
       message,
     })
+  }
+
+  // WB-7 — current_row context check. Mirrors backend validator:
+  // any ActionRef binding with source='current_row' is valid only
+  // inside a repeater_atom. Walk all repeaters first to build the
+  // descendant set, then check each button atom's action bindings.
+  const repeaterDescendants = new Set<string>()
+  for (const node of Object.values(blob.atom_tree)) {
+    if (node.atom_type !== "repeater_atom") continue
+    if (!node.children) continue
+    const stack: string[] = [...node.children]
+    while (stack.length > 0) {
+      const next = stack.pop()!
+      if (repeaterDescendants.has(next)) continue
+      repeaterDescendants.add(next)
+      const child = blob.atom_tree[next]
+      if (child && child.children) stack.push(...child.children)
+    }
+  }
+  for (const [atomId, node] of Object.entries(blob.atom_tree)) {
+    if (node.atom_type !== "button") continue
+    const cfg = (node.config ?? {}) as Record<string, unknown>
+    const action = cfg.action
+    if (!action) continue
+    if (repeaterDescendants.has(atomId)) continue
+    for (const b of _extractActionBindings(action)) {
+      if (b.source === "current_row") {
+        const message =
+          `Action binding "${String(b.name ?? "")}" uses current_row but ` +
+          `this button is not inside a repeater.`
+        if (!errorsByAtom[atomId]) errorsByAtom[atomId] = []
+        errorsByAtom[atomId].push(message)
+        errorList.push({
+          atom_id: atomId,
+          atom_type: node.atom_type,
+          message,
+        })
+      }
+    }
   }
 
   return {

@@ -47,9 +47,9 @@ controls bind against.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Annotated, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Discriminator, Field
 
 
 # ── Atom-type vocabulary ───────────────────────────────────────────────
@@ -350,13 +350,156 @@ class DividerConfig(BaseModel):
     spacing_token: Optional[str] = None
 
 
-class ButtonConfig(BaseModel):
-    """`button` atom — label + action_ref.
+# ── WB-7 ActionRef substrate (Area 2 Lock 2a discriminated union) ───
+#
+# Per WB-7 investigation Area 2 Lock 2a: ActionRef is an inline
+# discriminated union per `action_kind`. Each verb's config carries
+# only the fields that verb needs. The catalog-keyed alternative
+# (Option B) was rejected — actions don't exhibit the same reuse
+# cardinality as bindings.
+#
+# Per Area 6 Lock 6a: parameter bindings carry 8 sources. The 8th
+# (current_row) is added in WB-7 to support row-iterated contexts.
+# Mirrors `frontend/src/lib/runtime-host/buttons/types.ts` for the
+# overlapping 7 sources + WB-7's current_row addition.
 
-    Per Q-17/Q-18 lock: click-target vocabulary is bounded
-    (navigate / open_focus / open_peek / mutate / trigger_workflow).
-    The `action_kind` selects the family; `action_config` carries
-    family-specific params. WB-5 wires the action invocation.
+_ParameterBindingSource = Literal[
+    "literal",
+    "static",
+    "route_param",
+    "query_param",
+    "focus_context",
+    "tenant_context",
+    "operator_context",
+    "current_row",
+]
+
+
+class ParameterBindingRef(BaseModel):
+    """A single ActionRef parameter binding (8 sources per WB-7 Area 6).
+
+    `current_row` is the 8th binding source — only available inside a
+    repeater_atom context. Resolver returns null outside that context;
+    backend validator surfaces a contextual error at publish.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    source: _ParameterBindingSource
+    # literal — direct value.
+    value: Optional[Any] = None
+    # static — alias for literal (kept distinct for picker UX vocabulary).
+    static_value: Optional[Any] = None
+    # route_param / query_param — URL param name.
+    param_name: Optional[str] = None
+    # focus_context / tenant_context / operator_context — field selector.
+    field_name: Optional[str] = None
+    # current_row — row field path (dotted access into the row dict).
+    row_field: Optional[str] = None
+
+
+class _ActionRefBase(BaseModel):
+    """Shared base across all 5 ActionRef variants."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_before: Optional[bool] = None
+    confirm_copy: Optional[str] = None
+
+
+class NavigateActionRef(_ActionRefBase):
+    """`navigate` verb — react-router push to a route template."""
+
+    action_kind: Literal["navigate"]
+    href: str
+    href_binding: Optional[ParameterBindingRef] = None
+    params: List[ParameterBindingRef] = Field(default_factory=list)
+
+
+class OpenFocusActionRef(_ActionRefBase):
+    """`open_focus` verb — open a registered Focus by slug."""
+
+    action_kind: Literal["open_focus"]
+    focus_template_slug: str
+    initial_context: List[ParameterBindingRef] = Field(default_factory=list)
+
+
+_PeekEntityType = Literal[
+    "fh_case",
+    "invoice",
+    "sales_order",
+    "task",
+    "contact",
+    "saved_view",
+]
+
+
+class OpenPeekActionRef(_ActionRefBase):
+    """`open_peek` verb — open a peek panel for an entity."""
+
+    action_kind: Literal["open_peek"]
+    peek_view_type: _PeekEntityType
+    initial_context: List[ParameterBindingRef] = Field(default_factory=list)
+
+
+class TriggerWorkflowActionRef(_ActionRefBase):
+    """`trigger_workflow` verb — start a workflow run.
+
+    Per Lock 5b: confirm_before defaults true at the picker UI layer.
+    Backend accepts explicit value; null is treated as default.
+    """
+
+    action_kind: Literal["trigger_workflow"]
+    workflow_slug: str
+    workflow_input: List[ParameterBindingRef] = Field(default_factory=list)
+
+
+_MutateKind = Literal["anomaly_acknowledge"]
+
+
+class MutateActionRef(_ActionRefBase):
+    """`mutate` verb — bounded state flip per §12.6a.
+
+    Phase 1 mutate_kind narrowed to `anomaly_acknowledge` only. Future
+    state-flip kinds (mark_read, status_flip) enumerate as the kind
+    Literal grows. Generic field-patch substrate is NOT shipped.
+    """
+
+    action_kind: Literal["mutate"]
+    mutate_kind: _MutateKind
+    target_id_binding: ParameterBindingRef
+
+
+# Discriminated union per WB-7 Area 2 Lock 2a. Pydantic 2 uses
+# `Annotated[Union[...], Discriminator(...)]` for tagged unions.
+ActionRef = Annotated[
+    Union[
+        NavigateActionRef,
+        OpenFocusActionRef,
+        OpenPeekActionRef,
+        TriggerWorkflowActionRef,
+        MutateActionRef,
+    ],
+    Discriminator("action_kind"),
+]
+
+
+class ButtonConfig(BaseModel):
+    """`button` atom — label + action.
+
+    Per Q-17/Q-18 lock + WB-7 Area 2 Lock 2a: click-target vocabulary
+    is bounded (navigate / open_focus / open_peek / mutate /
+    trigger_workflow). The `action` field carries an `ActionRef`
+    discriminated union per verb. `action_kind` + `action_config`
+    remain on the shape for back-compat reads of pre-WB-7 blobs but
+    operators author via the new `action` field; the inspector
+    populates both fields in sync for now.
+
+    `action_ref` field is RETIRED in WB-7 (Area 11 Surprise 4 — the
+    forward-compat string slot was never populated in production).
+    Typed `Optional[None]` so any legacy persisted value is parseable
+    but never carries data.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -376,7 +519,15 @@ class ButtonConfig(BaseModel):
         "trigger_workflow",
     ] = "navigate"
     action_config: Dict[str, Any] = Field(default_factory=dict)
-    action_ref: Optional[str] = None  # WB-7 action picker placeholder
+    # WB-7 — new discriminated-union ActionRef. When present, the
+    # runtime dispatcher consumes this field; action_kind / action_config
+    # exist for backward-compat reads of pre-WB-7 blobs.
+    action: Optional[ActionRef] = None
+    # WB-7 — RETIRED. `action_ref?: str` was a WB-3/4b forward-compat
+    # slot that was never populated in production. Typed as
+    # `Optional[None]` so any legacy persisted value parses but never
+    # carries data. Operators wire via the `action` field instead.
+    action_ref: Optional[None] = None
     # Forward-compat — runtime accepts a `variantVocab` alias key.
     variantVocab: Optional[
         Literal["primary", "secondary", "ghost", "destructive"]
@@ -489,6 +640,7 @@ PER_ATOM_CONFIG_SCHEMAS: Dict[str, type[BaseModel]] = {
 
 
 __all__ = [
+    "ActionRef",
     "AtomNode",
     "AtomType",
     "BindingRef",
@@ -501,11 +653,17 @@ __all__ = [
     "IconConfig",
     "ImageConfig",
     "IterationMode",
+    "MutateActionRef",
+    "NavigateActionRef",
+    "OpenFocusActionRef",
+    "OpenPeekActionRef",
     "PER_ATOM_CONFIG_SCHEMAS",
+    "ParameterBindingRef",
     "RepeaterAtomConfig",
     "StatusBadgeConfig",
     "TargetSurface",
     "TextLabelConfig",
+    "TriggerWorkflowActionRef",
     "ValueDisplayConfig",
     "VariantDefinition",
     "VariantId",

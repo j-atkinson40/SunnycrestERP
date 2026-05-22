@@ -438,6 +438,129 @@ def validate_composition_blob_strict(raw: Any) -> CompositionBlob:
                 f"this composition)."
             )
 
+    # WB-7 — ActionRef structural validation for button atoms.
+    #
+    # Strict gate (Publish-time): when a button atom carries
+    # `config.action` (the new discriminated-union ActionRef), enforce
+    # per-action_kind required fields + current_row context invariant
+    # + mutate_kind narrowing. Pydantic's discriminator catches "wrong
+    # field shape per kind" at parse time; this layer surfaces the
+    # cross-atom-context invariants (current_row inside a repeater) +
+    # the §12.6a bounded-state-flip discipline (mutate_kind
+    # restricted).
+    #
+    # Per Lock 5e parallel: strict-only at Publish; draft state stays
+    # permissive (the picker can leave fields empty mid-edit).
+    repeater_descendant_atom_ids: set[str] = set()
+    for _aid, _node in blob.atom_tree.items():
+        if _node.atom_type != "repeater_atom":
+            continue
+        # Walk the repeater's subtree (excluding itself) and mark every
+        # descendant as "inside a repeater." current_row bindings are
+        # valid only inside this set.
+        _stack: list[str] = list(_node.children or [])
+        while _stack:
+            cid = _stack.pop()
+            if cid in repeater_descendant_atom_ids:
+                continue
+            repeater_descendant_atom_ids.add(cid)
+            child = blob.atom_tree.get(cid)
+            if child and child.children:
+                _stack.extend(child.children)
+
+    for atom_id, node in blob.atom_tree.items():
+        if node.atom_type != "button":
+            continue
+        cfg = node.config if isinstance(node.config, dict) else {}
+        action = cfg.get("action") if isinstance(cfg, dict) else None
+        if action is None:
+            continue  # button without `action` is a legacy/no-op button
+        if not isinstance(action, dict):
+            errors.append(
+                f"atom_tree[{atom_id!r}].config.action: must be an object"
+            )
+            continue
+        kind = action.get("action_kind")
+        # Per-action_kind required-field validation. Pydantic
+        # discriminator catches malformed shapes at parse — this layer
+        # surfaces aggregated, friendlier errors when the strict gate
+        # runs against a blob where Pydantic accepted the parse but the
+        # operator left a required field empty.
+        if kind == "navigate":
+            if not action.get("href"):
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.action.href: "
+                    f"navigate action requires href"
+                )
+        elif kind == "open_focus":
+            if not action.get("focus_template_slug"):
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.action.focus_template_slug: "
+                    f"open_focus action requires focus_template_slug"
+                )
+        elif kind == "open_peek":
+            if not action.get("peek_view_type"):
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.action.peek_view_type: "
+                    f"open_peek action requires peek_view_type"
+                )
+        elif kind == "trigger_workflow":
+            if not action.get("workflow_slug"):
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.action.workflow_slug: "
+                    f"trigger_workflow action requires workflow_slug"
+                )
+        elif kind == "mutate":
+            mutate_kind = action.get("mutate_kind")
+            if mutate_kind != "anomaly_acknowledge":
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.action.mutate_kind: "
+                    f"Phase 1 mutate_kind must be 'anomaly_acknowledge' "
+                    f"(got {mutate_kind!r}). §12.6a bounded-state-flip "
+                    f"discipline."
+                )
+            target = action.get("target_id_binding")
+            if not isinstance(target, dict):
+                errors.append(
+                    f"atom_tree[{atom_id!r}].config.action.target_id_binding: "
+                    f"mutate action requires a target_id_binding"
+                )
+        elif kind is not None:
+            errors.append(
+                f"atom_tree[{atom_id!r}].config.action.action_kind: "
+                f"unknown action_kind {kind!r}"
+            )
+
+        # current_row context check — any ParameterBindingRef with
+        # source='current_row' is valid only inside a repeater_atom.
+        def _bindings_in_action(a: dict) -> list[dict]:
+            out: list[dict] = []
+            for key in (
+                "params",
+                "initial_context",
+                "workflow_input",
+            ):
+                lst = a.get(key)
+                if isinstance(lst, list):
+                    for item in lst:
+                        if isinstance(item, dict):
+                            out.append(item)
+            for key in ("href_binding", "target_id_binding"):
+                item = a.get(key)
+                if isinstance(item, dict):
+                    out.append(item)
+            return out
+
+        if atom_id not in repeater_descendant_atom_ids:
+            for binding in _bindings_in_action(action):
+                if binding.get("source") == "current_row":
+                    bname = binding.get("name") or "<unnamed>"
+                    errors.append(
+                        f"atom_tree[{atom_id!r}].config.action: "
+                        f"binding {bname!r} uses source='current_row' "
+                        f"but the button is not inside a repeater_atom"
+                    )
+
     for atom_id, node in blob.atom_tree.items():
         cfg = node.config or {}
         if not isinstance(cfg, dict):

@@ -228,6 +228,94 @@ export type ButtonVariant =
 
 export type ButtonSize = "sm" | "md" | "lg";
 
+
+// ── WB-7 ActionRef substrate (Area 2 Lock 2a discriminated union) ──
+//
+// TypeScript mirror of `backend/app/schemas/widget_composition.py`
+// ActionRef + ParameterBindingRef shapes. Field names + Literal values
+// match exactly per WB-7 Area 2 + Area 6 cross-side symmetry canon.
+
+export type ParameterBindingSource =
+  | "literal"
+  | "static"
+  | "route_param"
+  | "query_param"
+  | "focus_context"
+  | "tenant_context"
+  | "operator_context"
+  | "current_row";
+
+export interface ParameterBindingRef {
+  name: string;
+  source: ParameterBindingSource;
+  /** literal source — direct value. */
+  value?: unknown;
+  /** static source — alias for literal (distinct for picker UX). */
+  static_value?: unknown;
+  /** route_param / query_param — URL param name. */
+  param_name?: string;
+  /** focus_context / tenant_context / operator_context — field selector. */
+  field_name?: string;
+  /** current_row — dotted access into the row dict. */
+  row_field?: string;
+}
+
+interface _ActionRefBase {
+  confirm_before?: boolean;
+  confirm_copy?: string;
+}
+
+export interface NavigateActionRef extends _ActionRefBase {
+  action_kind: "navigate";
+  href: string;
+  href_binding?: ParameterBindingRef;
+  params?: ParameterBindingRef[];
+}
+
+export interface OpenFocusActionRef extends _ActionRefBase {
+  action_kind: "open_focus";
+  focus_template_slug: string;
+  initial_context?: ParameterBindingRef[];
+}
+
+export type PeekViewType =
+  | "fh_case"
+  | "invoice"
+  | "sales_order"
+  | "task"
+  | "contact"
+  | "saved_view";
+
+export interface OpenPeekActionRef extends _ActionRefBase {
+  action_kind: "open_peek";
+  peek_view_type: PeekViewType;
+  initial_context?: ParameterBindingRef[];
+}
+
+export interface TriggerWorkflowActionRef extends _ActionRefBase {
+  action_kind: "trigger_workflow";
+  workflow_slug: string;
+  workflow_input?: ParameterBindingRef[];
+}
+
+export type MutateKind = "anomaly_acknowledge";
+
+export interface MutateActionRef extends _ActionRefBase {
+  action_kind: "mutate";
+  mutate_kind: MutateKind;
+  target_id_binding: ParameterBindingRef;
+}
+
+/** Discriminated union per WB-7 Area 2 Lock 2a — TypeScript narrows
+ *  on `action_kind` at consumer sites (ActionPicker, action-lift,
+ *  validators). */
+export type ActionRef =
+  | NavigateActionRef
+  | OpenFocusActionRef
+  | OpenPeekActionRef
+  | TriggerWorkflowActionRef
+  | MutateActionRef;
+
 export interface ButtonConfig {
   // WB-4b runtime fields.
   label?: string;
@@ -236,7 +324,17 @@ export interface ButtonConfig {
   icon_name?: string;
   action_kind: ButtonActionKind;
   action_config: Record<string, unknown>;
-  action_ref?: string; // WB-7 action picker placeholder
+  /** WB-7 — new discriminated-union ActionRef. When present, the
+   *  runtime dispatcher consumes this field. `action_kind` +
+   *  `action_config` remain for backward-compat reads of pre-WB-7
+   *  blobs but operators author via this field. */
+  action?: ActionRef;
+  /** WB-7 — RETIRED. The forward-compat string slot was never
+   *  populated in production. Typed as `never` so any new author code
+   *  that attempts to assign a string surfaces a compile error;
+   *  legacy persisted values parsed as undefined via the codec's
+   *  permissive read pattern. */
+  action_ref?: never;
   // Forward-compat alias key.
   variantVocab?: ButtonVariant;
 }

@@ -122,7 +122,10 @@ describe("AtomInspectorDispatch", () => {
     )
   })
 
-  it("button binding placeholder labels WB-7", () => {
+  it("button inspector renders the ActionPicker (WB-7)", () => {
+    // WB-7 — replaced the disabled placeholder with the live
+    // ActionPicker. Operator can now pick a verb + configure the
+    // action; the empty-state surfaces "Pick an action verb..." copy.
     const blob = blobWith("button", { action_kind: "navigate" })
     render(
       <AtomInspectorDispatch
@@ -131,9 +134,10 @@ describe("AtomInspectorDispatch", () => {
         onUpdateConfig={() => {}}
       />,
     )
-    expect(screen.getByTestId("atom-inspector-action-placeholder").textContent).toMatch(
-      /WB-7/,
-    )
+    expect(screen.getByTestId("atom-inspector-action-picker")).toBeTruthy()
+    expect(screen.getByTestId("action-picker-verb")).toBeTruthy()
+    // Empty state CTA when no action picked.
+    expect(screen.getByTestId("action-picker-empty")).toBeTruthy()
   })
 
   it("renders the per-atom error message when errors are present", () => {

@@ -18,12 +18,14 @@
 import { useCallback } from "react"
 
 import type {
+  ActionRef,
   AtomNode,
   AtomType,
   BindingRef,
   CompositionBlob,
 } from "@/lib/widget-builder/types/composition-blob"
 
+import { ActionPicker } from "../action-picker/ActionPicker"
 import { BindingPicker } from "../binding-picker/BindingPicker"
 
 import {
@@ -283,6 +285,7 @@ export function AtomInspectorDispatch(props: AtomInspectorDispatchProps) {
           errors={rowErrors}
           bindingForProp={bindingForProp}
           onBindingChange={makeBindingChangeHandler("label")}
+          insideRepeater={isAtomInsideRepeater(blob, selectedNode.atom_id)}
         />
       )
     case "image":
@@ -707,18 +710,43 @@ function DividerInspector({
 }
 
 
+/** WB-7 — tree walk to detect whether `atomId` is inside a
+ *  repeater_atom. Used by ButtonInspector to pass `insideRepeater`
+ *  into ActionPicker for the current_row source gating + the
+ *  validator's per-atom context check. */
+function isAtomInsideRepeater(
+  blob: CompositionBlob,
+  atomId: string,
+): boolean {
+  for (const node of Object.values(blob.atom_tree)) {
+    if (node.atom_type !== "repeater_atom") continue
+    if (!node.children) continue
+    const stack: string[] = [...node.children]
+    while (stack.length > 0) {
+      const next = stack.pop()!
+      if (next === atomId) return true
+      const child = blob.atom_tree[next]
+      if (child && child.children) stack.push(...child.children)
+    }
+  }
+  return false
+}
+
+
 function ButtonInspector({
   node,
   onChange,
   errors,
   bindingForProp,
   onBindingChange,
+  insideRepeater,
 }: {
   node: AtomNode
   onChange: (next: ConfigDict) => void
   errors: string[]
   bindingForProp?: (propName: string) => BindingRef | null
   onBindingChange?: (next: BindingRef | null) => void
+  insideRepeater: boolean
 }) {
   const cfg = node.config ?? {}
   const labelError = findError(errors, "label")
@@ -777,13 +805,28 @@ function ButtonInspector({
           />
         </InspectorField>
       </InspectorSection>
-      <InspectorSection title="Action">
-        <BindingPlaceholderField
-          label="Action"
-          activatedIn="WB-7"
-          testId="atom-inspector-action-placeholder"
-        />
-      </InspectorSection>
+      <ActionPicker
+        value={(cfg as { action?: ActionRef }).action ?? null}
+        onChange={(next) => {
+          // Sync `action_kind` + `action_config` (legacy fields) with
+          // `action` so pre-WB-7 readers continue to see something
+          // sensible. The new ActionRef is the source of truth.
+          if (next === null) {
+            const nextCfg = { ...cfg }
+            delete (nextCfg as Record<string, unknown>).action
+            // Don't clobber action_kind default — leave 'navigate'.
+            onChange(nextCfg)
+            return
+          }
+          onChange({
+            ...cfg,
+            action: next as unknown as Record<string, unknown>,
+            action_kind: next.action_kind,
+          })
+        }}
+        insideRepeater={insideRepeater}
+        testId="atom-inspector-action-picker"
+      />
     </div>
   )
 }

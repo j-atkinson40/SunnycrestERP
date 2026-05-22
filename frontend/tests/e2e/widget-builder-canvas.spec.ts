@@ -610,4 +610,182 @@ test.describe.skip("WB-4a Widget Builder canvas (Playwright; staging-pending)", 
       await expect(banner).not.toHaveAttribute("data-banner-state", "network-error")
     }
   })
+
+  // ── WB-7 scenarios (5) — Button actions ─────────────────────────
+
+  test("scenario 20 (WB-7): operator authors navigate action + canvas-preview click triggers navigation", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Drop a button atom.
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-button"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    // The inspector should mount the ActionPicker.
+    await page
+      .locator('[data-testid="atom-inspector-action-picker"]')
+      .waitFor({ state: "visible", timeout: 5_000 })
+    // Pick the navigate verb.
+    await page.locator('[data-testid="action-picker-verb"]').click()
+    await page.locator('text=/Navigate to route/i').first().click()
+    // Author the href.
+    await page
+      .locator('[data-testid="action-navigate-href"]')
+      .fill("/cases/x")
+    await page.locator('[data-testid="action-navigate-href"]').blur()
+    // Action preview card surfaces the destination.
+    await expect(
+      page.locator('[data-testid="action-preview-card"]'),
+    ).toContainText(/Navigate to \/cases\/x/)
+    // Click the rendered canvas-preview button; tenant runtime click
+    // would react-router navigate. In the canvas preview the route
+    // navigates within the same app tree; assert URL change.
+    const previewBtn = page
+      .locator('[data-atom-type="button"]')
+      .first()
+    await previewBtn.click()
+    await expect(page).toHaveURL(/cases\/x/)
+  })
+
+  test("scenario 21 (WB-7): mutate-via-anomaly_acknowledge inside repeater wires target_id from current_row", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Drop a repeater + button inside.
+    await page
+      .locator('[data-testid="widget-builder-atom-tile-repeater_atom"]')
+      .dragTo(
+        page
+          .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+          .first(),
+      )
+    // Drop button into the repeater's child drop target.
+    await page
+      .locator('[data-testid="widget-builder-atom-tile-button"]')
+      .dragTo(
+        page
+          .locator('[data-atom-type="repeater_atom"] [data-testid^="widget-builder-canvas-drop-target-"]')
+          .first(),
+      )
+    // Pick mutate verb.
+    await page.locator('[data-testid="action-picker-verb"]').click()
+    await page.locator('text=/Acknowledge \\/ mutate/i').first().click()
+    // current_row binding accepted because we're inside repeater.
+    await expect(
+      page.locator('[data-testid="action-mutate-target-warning"]'),
+    ).toHaveCount(0)
+    // Click triggers confirm Dialog (mutate default confirm=true).
+    const previewBtn = page
+      .locator('[data-atom-type="button"]')
+      .first()
+    await previewBtn.click()
+    await expect(
+      page.locator('[data-testid="wb-button-confirm-fire"]'),
+    ).toBeVisible()
+  })
+
+  test("scenario 22 (WB-7): verb-switch wipe-confirm modal surfaces on switch from authored navigate", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    await page
+      .locator('[data-testid="widget-builder-atom-tile-button"]')
+      .dragTo(
+        page
+          .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+          .first(),
+      )
+    await page.locator('[data-testid="action-picker-verb"]').click()
+    await page.locator('text=/Navigate to route/i').first().click()
+    await page
+      .locator('[data-testid="action-navigate-href"]')
+      .fill("/cases/x")
+    await page.locator('[data-testid="action-navigate-href"]').blur()
+    // Switch to a different verb.
+    await page.locator('[data-testid="action-picker-verb"]').click()
+    await page.locator('text=/Trigger workflow/i').first().click()
+    // Confirm modal surfaces.
+    await expect(
+      page.locator('[data-testid="action-picker-confirm-switch"]'),
+    ).toBeVisible()
+    // Cancel + verify the navigate config is preserved.
+    await page
+      .locator('[data-testid="action-picker-confirm-cancel"]')
+      .click()
+    await expect(
+      page.locator('[data-testid="action-form-navigate"]'),
+    ).toBeVisible()
+  })
+
+  test("scenario 23 (WB-7): ActionPreviewCard is NON-DISPATCHING (no network call on render)", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    await page
+      .locator('[data-testid="widget-builder-atom-tile-button"]')
+      .dragTo(
+        page
+          .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+          .first(),
+      )
+    await page.locator('[data-testid="action-picker-verb"]').click()
+    await page.locator('text=/Trigger workflow/i').first().click()
+    // Capture any /workflows/.../start POST while preview renders.
+    const requests: string[] = []
+    page.on("request", (req) => {
+      if (req.url().includes("/workflows/") && req.method() === "POST") {
+        requests.push(req.url())
+      }
+    })
+    await page
+      .locator('[data-testid="action-trigger-workflow-slug"]')
+      .fill("wf_x")
+    await page
+      .locator('[data-testid="action-trigger-workflow-slug"]')
+      .blur()
+    // Preview card surfaces text but no dispatch happens.
+    await expect(
+      page.locator('[data-testid="action-preview-card"]'),
+    ).toContainText(/Trigger workflow "wf_x"/)
+    expect(requests).toEqual([])
+  })
+
+  test("scenario 24 (WB-7): trigger_workflow click opens confirm Dialog (per-verb default confirm)", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    await page
+      .locator('[data-testid="widget-builder-atom-tile-button"]')
+      .dragTo(
+        page
+          .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+          .first(),
+      )
+    await page.locator('[data-testid="action-picker-verb"]').click()
+    await page.locator('text=/Trigger workflow/i').first().click()
+    await page
+      .locator('[data-testid="action-trigger-workflow-slug"]')
+      .fill("wf_x")
+    await page
+      .locator('[data-testid="action-trigger-workflow-slug"]')
+      .blur()
+    const previewBtn = page
+      .locator('[data-atom-type="button"]')
+      .first()
+    await previewBtn.click()
+    // Confirm Dialog renders because trigger_workflow defaults
+    // confirm_before=true.
+    await expect(
+      page.locator('[data-testid="wb-button-confirm-fire"]'),
+    ).toBeVisible()
+    // Cancel.
+    await page.locator('[data-testid="wb-button-confirm-cancel"]').click()
+    await expect(
+      page.locator('[data-testid="wb-button-confirm-fire"]'),
+    ).toHaveCount(0)
+  })
 })

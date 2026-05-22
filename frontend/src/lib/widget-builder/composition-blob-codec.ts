@@ -202,6 +202,24 @@ function parseAtomNode(
     pushFieldError(errors, `${path}.config`, "must be an object");
     return null;
   }
+  // WB-7 — surface a console warning when a legacy `action_ref` string
+  // slot is encountered. The field was a WB-3/4b forward-compat slot
+  // never populated in production; WB-7 retires it. The codec accepts
+  // the field (config stays Record<string, unknown>) but surfaces the
+  // deprecation so authoring tools can prompt operators to migrate.
+  if (
+    (atomType as AtomType) === "button" &&
+    typeof (config as Record<string, unknown>).action_ref === "string"
+  ) {
+    // Defensive console.warn — does not throw or block parse.
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn(
+        `[composition-blob-codec] atom_tree[${atomId}].config.action_ref ` +
+          `is a deprecated WB-3/4b forward-compat slot; WB-7 retired it ` +
+          `in favor of \`config.action\`. Value will be ignored.`,
+      );
+    }
+  }
   const node: AtomNode = {
     atom_id: atomId,
     atom_type: atomType as AtomType,

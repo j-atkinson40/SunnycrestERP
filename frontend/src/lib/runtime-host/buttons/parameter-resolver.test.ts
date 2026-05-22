@@ -203,6 +203,66 @@ describe("R-4.0 parameter-resolver", () => {
     })
   })
 
+  describe("current_row source (WB-7)", () => {
+    it("resolves a row field via rowField", () => {
+      const ctx: BindingContext = {
+        ...baseCtx,
+        currentRow: { id: "anom-789", severity: "warning" },
+      }
+      expect(
+        resolveBinding(
+          { name: "x", source: "current_row", rowField: "id" },
+          ctx,
+        ),
+      ).toBe("anom-789")
+    })
+    it("returns null when currentRow is null", () => {
+      expect(
+        resolveBinding(
+          { name: "x", source: "current_row", rowField: "id" },
+          { ...baseCtx, currentRow: null },
+        ),
+      ).toBe(null)
+    })
+    it("returns null when rowField is undefined", () => {
+      expect(
+        resolveBinding(
+          { name: "x", source: "current_row" },
+          { ...baseCtx, currentRow: { id: "x" } },
+        ),
+      ).toBe(null)
+    })
+    it("returns null when the row field is missing", () => {
+      expect(
+        resolveBinding(
+          { name: "x", source: "current_row", rowField: "missing" },
+          { ...baseCtx, currentRow: { id: "x" } },
+        ),
+      ).toBe(null)
+    })
+    it("serializes object row fields to JSON", () => {
+      const out = resolveBinding(
+        { name: "x", source: "current_row", rowField: "nested" },
+        { ...baseCtx, currentRow: { nested: { a: 1 } } },
+      )
+      expect(out).toBe('{"a":1}')
+    })
+    it("returns the row field value unchanged for primitive types", () => {
+      expect(
+        resolveBinding(
+          { name: "n", source: "current_row", rowField: "count" },
+          { ...baseCtx, currentRow: { count: 42 } },
+        ),
+      ).toBe(42)
+      expect(
+        resolveBinding(
+          { name: "b", source: "current_row", rowField: "flag" },
+          { ...baseCtx, currentRow: { flag: true } },
+        ),
+      ).toBe(true)
+    })
+  })
+
   describe("resolveBindings (multiple)", () => {
     it("produces a flat name→value object", () => {
       const out = resolveBindings(

@@ -43,6 +43,10 @@ export interface BindingContext {
   queryParams?: URLSearchParams
   /** useFocus().currentFocus?.id. */
   currentFocusId?: string | null
+  /** WB-7 — the per-row dict synthesized by repeater_atom iteration.
+   *  Null outside a repeater context (resolver returns null for
+   *  current_row bindings then; backend validator flags at publish). */
+  currentRow?: Record<string, unknown> | null
 }
 
 
@@ -101,6 +105,33 @@ export function resolveBinding(
     }
     case "current_focus_id": {
       return ctx.currentFocusId ?? null
+    }
+    case "current_row": {
+      // WB-7 8th binding source. Null-safe: returns null when no row
+      // context (e.g. button outside repeater) OR when rowField is
+      // undefined OR when the resolved value is null/undefined.
+      const row = ctx.currentRow ?? null
+      if (!row) return null
+      const field = binding.rowField
+      if (!field) return null
+      const v = row[field]
+      if (v === null || v === undefined) return null
+      // Field values may be any JSON-shape; coerce to a ResolvedValue
+      // (string / number / boolean). Objects + arrays surface as their
+      // JSON string representation rather than being dropped — keeps
+      // template substitution + JSON serializers behaving sensibly.
+      if (
+        typeof v === "string" ||
+        typeof v === "number" ||
+        typeof v === "boolean"
+      ) {
+        return v
+      }
+      try {
+        return JSON.stringify(v)
+      } catch {
+        return null
+      }
     }
     default: {
       // Exhaustive switch guard. TS should catch any new

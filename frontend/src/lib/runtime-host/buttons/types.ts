@@ -32,11 +32,21 @@
  */
 
 
-/** Five action types R-4.0 dispatches. R-4.x adds new entries
- *  alongside as substrate matures. */
+/** Seven action types post-WB-7. The dispatch table accepts handlers
+ *  from multiple authoring surfaces: R-4.0 (page-level admin buttons:
+ *  create_vault_item / run_playwright_workflow) + WB-7 (widget-builder
+ *  row-context buttons: open_peek / mutate). The 3 overlapping verbs
+ *  (navigate / open_focus / trigger_workflow) are consumed verbatim by
+ *  both substrates.
+ *
+ *  Verb-vocabulary asymmetry is canonical per WB-7 Area 12 process
+ *  canon candidate B: different authoring surfaces emit subtly
+ *  different verb needs. The dispatcher accommodates additively. */
 export type R4ActionType =
   | "navigate"
   | "open_focus"
+  | "open_peek"            // NEW WB-7
+  | "mutate"               // NEW WB-7
   | "trigger_workflow"
   | "create_vault_item"
   | "run_playwright_workflow"
@@ -51,17 +61,27 @@ export interface ActionConfig {
   /** open_focus: focus id to invoke (matches `id` in
    *  `focus-registry.ts`). */
   focusId?: string
+  /** open_peek (WB-7): peek entity type (fh_case / invoice / ...). */
+  peekEntityType?: string
+  /** open_peek (WB-7): the parameter binding that resolves to the
+   *  entity id at click-time (typically a current_row binding). The
+   *  resolved value lands in the resolved-params dict under the
+   *  binding's `name` (handler reads it from there). */
   /** trigger_workflow: workflow id to start. */
   workflowId?: string
   /** create_vault_item: vault item type discriminator. */
   itemType?: string
   /** run_playwright_workflow: registered Playwright script name. */
   scriptName?: string
+  /** mutate (WB-7): the mutate variant (only `anomaly_acknowledge`
+   *  in Phase 1 per §12.6a discipline). Handler dispatches on this. */
+  mutateKind?: string
 }
 
 
-/** Seven binding sources R-4.0 supports. Each resolves to a single
- *  value at click-time. */
+/** Eight binding sources post-WB-7. The 8th — `current_row` — is
+ *  added in WB-7 to support row-iterated widget-builder contexts.
+ *  R-4.0's original 7 sources are preserved verbatim. */
 export type ParameterBindingSource =
   | "literal"
   | "current_user"
@@ -70,6 +90,7 @@ export type ParameterBindingSource =
   | "current_route_param"
   | "current_query_param"
   | "current_focus_id"
+  | "current_row"          // NEW WB-7
 
 
 /** A single named parameter binding. The resolver returns
@@ -90,6 +111,10 @@ export interface ParameterBinding {
   dateFormat?: "iso" | "iso-date" | "epoch-ms"
   /** current_route_param / current_query_param: param key. */
   paramName?: string
+  /** current_row (WB-7): dotted access into the row dict. Resolver
+   *  reads `BindingContext.currentRow[rowField]`. Returns null if
+   *  rowField is undefined OR currentRow is null. */
+  rowField?: string
 }
 
 

@@ -317,9 +317,18 @@ export function AtomRenderer({
   // (optional chaining + fallbacks); placeholder Phase 1 UI doesn't
   // need strict config validation. WB-3 may layer per-atom-type
   // runtime config validation via the codec's atom-config schemas.
+  //
+  // WB-7 — `dataContext` is propagated to atom renderers via baseProps
+  // so atoms that need row-context at click-time (ButtonRenderer) can
+  // read it without re-implementing AtomRenderer's per-row context
+  // synthesis. Existing 8 atoms (text_label, value_display, icon,
+  // status_badge, divider, image, conditional_container, repeater) do
+  // not read dataContext; the additive prop is forward-compatible.
+  // Per WB-7 Area 6 Lock 6b — the propagation chain.
   const baseProps = {
     atom,
     resolvedBindings,
+    dataContext,
   }
 
   switch (atom.atom_type) {

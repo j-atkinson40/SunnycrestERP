@@ -35,7 +35,9 @@
  *     real saved-view row projection)
  */
 
-import { type ReactNode } from "react"
+import { useCallback, useRef, useState, type ReactNode } from "react"
+import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { toast } from "sonner"
 import {
   Check,
   ChevronRight,
@@ -52,8 +54,31 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { useAuthOptional } from "@/contexts/auth-context"
+import { useFocusOptional } from "@/contexts/focus-context"
+import { usePeekOptional } from "@/contexts/peek-context"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button as UIButton } from "@/components/ui/button"
+import { dispatchAction } from "@/lib/runtime-host/buttons/action-dispatch"
+import {
+  resolveBindings,
+  type BindingContext,
+} from "@/lib/runtime-host/buttons/parameter-resolver"
+import type {
+  ParameterBinding,
+  R4ActionType,
+} from "@/lib/runtime-host/buttons/types"
+
 import type {
   AtomNode,
+  ActionRef,
   ButtonConfig,
   ConditionalContainerConfig,
   DividerConfig,
@@ -72,6 +97,14 @@ export interface AtomRendererProps<TConfig> {
   config: TConfig
   /** Resolved binding values keyed by config field name. */
   resolvedBindings: Record<string, unknown>
+  /** WB-7 — render-time data context. Propagated by AtomRenderer
+   *  per Area 6 Lock 6b. Atoms that don't need it (the existing 8
+   *  leaves) ignore the prop; ButtonRenderer reads it for action
+   *  context (per-row dict when inside a repeater). The shape is
+   *  intentionally `unknown` so leaf atoms aren't tightly coupled to
+   *  WB-5's 3-flavor discriminator — ButtonRenderer narrows as needed.
+   */
+  dataContext?: unknown
   /** Children renders, populated only for container atoms
    *  (conditional_container, repeater_atom). */
   children?: ReactNode
@@ -523,17 +556,232 @@ const BUTTON_SIZE_CLASSES: Record<ButtonSize, string> = {
   lg: "px-4 py-2 text-body",
 }
 
+// ── WB-7 ActionRef lifting ─────────────────────────────────────────
+//
+// Lift a composition-blob ActionRef into the R-4 dispatch contract per
+// WB-7 Area 3 Lock 3a. Returns the ActionType + ActionConfig + the
+// parameter binding list to resolve at click-time.
+//
+// Lift target is the R-4 substrate at
+// `frontend/src/lib/runtime-host/buttons/{types.ts,action-dispatch.ts,
+// parameter-resolver.ts}` — consumed verbatim for the 3 overlapping
+// verbs (navigate / open_focus / trigger_workflow) and extended for
+// the 2 WB-7 additions (open_peek / mutate).
+
+interface LiftedAction {
+  actionType: R4ActionType
+  // Match the R-4 ActionConfig surface — keys not under the active
+  // type are ignored at dispatch time.
+  actionConfig: {
+    route?: string
+    focusId?: string
+    peekEntityType?: string
+    workflowId?: string
+    mutateKind?: string
+  }
+  bindings: ParameterBinding[]
+  confirmBeforeFire: boolean
+  confirmCopy?: string
+}
+
+const WB_TO_R4_SOURCE_MAP: Record<string, ParameterBinding["source"]> = {
+  literal: "literal",
+  static: "literal",
+  route_param: "current_route_param",
+  query_param: "current_query_param",
+  focus_context: "current_focus_id",
+  tenant_context: "current_tenant",
+  operator_context: "current_user",
+  current_row: "current_row",
+}
+
+function liftParameterBinding(
+  binding: {
+    name?: string
+    source?: string
+    value?: unknown
+    static_value?: unknown
+    param_name?: string
+    field_name?: string
+    row_field?: string
+  },
+  // Allow overriding the binding's `name` (used when lifting a
+  // single-binding slot like target_id_binding or href_binding into
+  // the resolved-params dict under a canonical key).
+  forceName?: string,
+): ParameterBinding | null {
+  if (!binding.source) return null
+  const r4Source = WB_TO_R4_SOURCE_MAP[binding.source]
+  if (!r4Source) return null
+  const out: ParameterBinding = {
+    name: forceName ?? binding.name ?? "",
+    source: r4Source,
+  }
+  if (binding.source === "literal" || binding.source === "static") {
+    const v =
+      binding.value !== undefined ? binding.value : binding.static_value
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      out.value = v
+    }
+  } else if (binding.source === "route_param" || binding.source === "query_param") {
+    out.paramName = binding.param_name
+  } else if (
+    binding.source === "tenant_context" ||
+    binding.source === "operator_context"
+  ) {
+    // Map field_name → userField / tenantField when known. Fall through
+    // to "id" default at resolve time when unset.
+    const fname = binding.field_name
+    if (
+      fname === "id" ||
+      fname === "email" ||
+      fname === "role" ||
+      fname === "slug" ||
+      fname === "vertical"
+    ) {
+      if (binding.source === "operator_context") {
+        out.userField = fname === "slug" || fname === "vertical"
+          ? "id"  // unsupported on operator; fall back
+          : (fname as "id" | "email" | "role")
+      } else {
+        out.tenantField = fname === "email" || fname === "role"
+          ? "id"  // unsupported on tenant; fall back
+          : (fname as "id" | "slug" | "vertical")
+      }
+    }
+  } else if (binding.source === "current_row") {
+    out.rowField = binding.row_field
+  }
+  return out
+}
+
+
+function liftCompositionBlobActionToR4(
+  action: ActionRef,
+): LiftedAction | null {
+  const bindings: ParameterBinding[] = []
+  switch (action.action_kind) {
+    case "navigate": {
+      if (action.href_binding) {
+        // href_binding feeds into the URL via template substitution
+        // under the binding's name. Operators may also use {x} tokens
+        // in the literal href that resolve from `params`. Lift the
+        // href_binding into the params list so substituteTemplate
+        // can replace.
+        const b = liftParameterBinding(action.href_binding)
+        if (b) bindings.push(b)
+      }
+      for (const p of action.params ?? []) {
+        const b = liftParameterBinding(p)
+        if (b) bindings.push(b)
+      }
+      return {
+        actionType: "navigate",
+        actionConfig: { route: action.href },
+        bindings,
+        confirmBeforeFire: action.confirm_before === true,
+        confirmCopy: action.confirm_copy,
+      }
+    }
+    case "open_focus": {
+      for (const p of action.initial_context ?? []) {
+        const b = liftParameterBinding(p)
+        if (b) bindings.push(b)
+      }
+      return {
+        actionType: "open_focus",
+        actionConfig: { focusId: action.focus_template_slug },
+        bindings,
+        confirmBeforeFire: action.confirm_before === true,
+        confirmCopy: action.confirm_copy,
+      }
+    }
+    case "open_peek": {
+      for (const p of action.initial_context ?? []) {
+        const b = liftParameterBinding(p)
+        if (b) bindings.push(b)
+      }
+      return {
+        actionType: "open_peek",
+        actionConfig: { peekEntityType: action.peek_view_type },
+        bindings,
+        confirmBeforeFire: action.confirm_before === true,
+        confirmCopy: action.confirm_copy,
+      }
+    }
+    case "trigger_workflow": {
+      for (const p of action.workflow_input ?? []) {
+        const b = liftParameterBinding(p)
+        if (b) bindings.push(b)
+      }
+      return {
+        actionType: "trigger_workflow",
+        actionConfig: { workflowId: action.workflow_slug },
+        bindings,
+        // Lock 5b — trigger_workflow defaults to confirm. The picker
+        // sets confirm_before=true by default; runtime honors it.
+        confirmBeforeFire: action.confirm_before !== false,
+        confirmCopy: action.confirm_copy,
+      }
+    }
+    case "mutate": {
+      // mutate's target_id_binding is a single binding (not a list).
+      // Lift it under the canonical resolved key `target_id` so the
+      // mutate handler can read resolved["target_id"].
+      const target = liftParameterBinding(
+        action.target_id_binding,
+        "target_id",
+      )
+      if (target) bindings.push(target)
+      return {
+        actionType: "mutate",
+        actionConfig: { mutateKind: action.mutate_kind },
+        bindings,
+        // Lock 5b — mutate defaults to confirm.
+        confirmBeforeFire: action.confirm_before !== false,
+        confirmCopy: action.confirm_copy,
+      }
+    }
+    default: {
+      // Exhaustive guard — unknown verb in the discriminated union.
+      const _exhaust: never = action
+      void _exhaust
+      return null
+    }
+  }
+}
+
+
+/** Extract row dict from `dataContext` when shaped per-row. Returns
+ *  null for the canvas-preview map (top level), summary, or undefined
+ *  contexts. Per WB-7 Lock 6b shape contract. */
+function extractCurrentRow(
+  dataContext: unknown,
+): Record<string, unknown> | null {
+  if (typeof dataContext !== "object" || dataContext === null) return null
+  const ctx = dataContext as Record<string, unknown>
+  if (ctx.__row === true) {
+    // Strip discriminator + __index marker; keep the row dict.
+    const out: Record<string, unknown> = { ...ctx }
+    delete out.__row
+    delete out.__index
+    return out
+  }
+  return null
+}
+
+
 export function ButtonRenderer({
   atom,
   config,
   resolvedBindings,
+  dataContext,
 }: AtomRendererProps<
   ButtonConfig & {
     label?: string
     variantVocab?: ButtonVariantVocab
     icon_name?: string
     size?: ButtonSize
-    action_ref?: string
   }
 >) {
   const bound = resolvedBindings.label
@@ -551,23 +799,190 @@ export function ButtonRenderer({
     ((config?.variant as ButtonVariantVocab | undefined) ?? "secondary")
   const size: ButtonSize = (config?.size as ButtonSize | undefined) ?? "md"
   const Lucide = config?.icon_name ? resolveIcon(config.icon_name) : null
+
+  // WB-7 — null-safe context hooks (R-4.0 R-5.0.3 / R-5.0.4 canonical
+  // pattern). Admin-tree previews don't mount Focus / Peek / Auth
+  // providers; the optional variants return null and the dispatcher
+  // handlers (open_focus / open_peek) gracefully no-op via the
+  // null-safe deps.
+  const navigate = useNavigate()
+  const focus = useFocusOptional()
+  const peek = usePeekOptional()
+  const auth = useAuthOptional()
+  const user = auth?.user ?? null
+  const company = auth?.company ?? null
+  const routeParams = useParams()
+  const [searchParams] = useSearchParams()
+
+  // Confirm Dialog + click-during-loading scope.
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [pending, setPending] = useState(false)
+  // AbortController separate from WB-4a auto-save + WB-5 canvas
+  // preview per the Area 3 separation. Each new click during a
+  // pending request supersedes the in-flight one (rare; defense).
+  const abortRef = useRef<AbortController | null>(null)
+
+  const handleFire = useCallback(async () => {
+    if (!config?.action) return
+    const lifted = liftCompositionBlobActionToR4(config.action)
+    if (!lifted) return
+
+    // Click-during-loading: supersede any in-flight request.
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    setPending(true)
+    try {
+      const ctx: BindingContext = {
+        user: user
+          ? {
+              id: user.id,
+              email: user.email,
+              role: user.role_slug ?? null,
+            }
+          : null,
+        tenant: company
+          ? {
+              id: company.id,
+              slug: company.slug ?? null,
+              vertical: company.vertical ?? null,
+            }
+          : null,
+        nowMs: Date.now(),
+        routeParams,
+        queryParams: searchParams,
+        currentFocusId: focus?.currentFocus?.id ?? null,
+        currentRow: extractCurrentRow(dataContext),
+      }
+      const resolved = resolveBindings(lifted.bindings, ctx)
+      const result = await dispatchAction(
+        lifted.actionType,
+        lifted.actionConfig,
+        resolved,
+        {
+          navigate,
+          openFocus: focus?.open ?? (() => undefined),
+          openPeek: peek
+            ? (args) =>
+                peek.openPeek({
+                  entityType: args.entityType as Parameters<
+                    typeof peek.openPeek
+                  >[0]["entityType"],
+                  entityId: args.entityId,
+                  triggerType: args.triggerType ?? "click",
+                })
+            : undefined,
+          abortSignal: ctrl.signal,
+        },
+      )
+      if (result.status === "error") {
+        toast.error(result.errorMessage ?? "Action failed.")
+      } else if (result.status === "success") {
+        // Phase 1: silent success for navigate / open_focus / open_peek
+        // (the UX feedback is the navigation / panel itself). mutate
+        // surfaces a friendly toast; trigger_workflow surfaces a
+        // "Workflow started" toast with the run id.
+        if (lifted.actionType === "mutate") {
+          toast.success("Done.")
+        } else if (lifted.actionType === "trigger_workflow") {
+          const runId = result.data?.run_id
+          toast.success(
+            runId ? `Workflow started (run ${runId})` : "Workflow started",
+          )
+        }
+      }
+      // "skipped" status (admin preview no-op) — silent.
+    } finally {
+      setPending(false)
+      if (abortRef.current === ctrl) abortRef.current = null
+    }
+  }, [
+    config?.action,
+    user,
+    company,
+    routeParams,
+    searchParams,
+    focus,
+    peek,
+    navigate,
+    dataContext,
+  ])
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (!config?.action) {
+        // Backward-compat: button atoms without an `action` field
+        // (legacy WB-1..4 blobs or freshly-defaulted unwired buttons)
+        // preserve the WB-3 no-op behavior.
+        return
+      }
+      const lifted = liftCompositionBlobActionToR4(config.action)
+      if (lifted?.confirmBeforeFire) {
+        setConfirmOpen(true)
+        return
+      }
+      void handleFire()
+    },
+    [config?.action, handleFire],
+  )
+
+  const liftedForConfirm =
+    config?.action !== undefined
+      ? liftCompositionBlobActionToR4(config.action)
+      : null
+
   return (
-    <button
-      type="button"
-      {...dataAttrs(atom)}
-      data-action-kind={config?.action_kind ?? "navigate"}
-      data-variant={variant}
-      data-size={size}
-      className={`inline-flex items-center gap-1.5 rounded-md border font-medium transition-colors focus-visible:outline-none focus-ring-accent ${BUTTON_VARIANT_CLASSES[variant]} ${BUTTON_SIZE_CLASSES[size]}`}
-      onClick={(e) => {
-        e.stopPropagation()
-        // WB-7: dispatch config.action_kind + action_config /
-        // config.action_ref. No-op in Phase 1.
-      }}
-    >
-      {Lucide ? <Lucide width={14} height={14} strokeWidth={2.25} /> : null}
-      <span>{label}</span>
-    </button>
+    <>
+      <button
+        type="button"
+        {...dataAttrs(atom)}
+        data-action-kind={config?.action_kind ?? "navigate"}
+        data-variant={variant}
+        data-size={size}
+        data-pending={pending ? "true" : undefined}
+        disabled={pending}
+        className={`inline-flex items-center gap-1.5 rounded-md border font-medium transition-colors focus-visible:outline-none focus-ring-accent ${BUTTON_VARIANT_CLASSES[variant]} ${BUTTON_SIZE_CLASSES[size]}`}
+        onClick={handleClick}
+      >
+        {Lucide ? <Lucide width={14} height={14} strokeWidth={2.25} /> : null}
+        <span>{label}</span>
+      </button>
+      {liftedForConfirm?.confirmBeforeFire ? (
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{label}</DialogTitle>
+              <DialogDescription>
+                {liftedForConfirm.confirmCopy ?? `Confirm: ${label}?`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <UIButton
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                data-testid="wb-button-confirm-cancel"
+              >
+                Cancel
+              </UIButton>
+              <UIButton
+                variant="default"
+                onClick={async () => {
+                  setConfirmOpen(false)
+                  await handleFire()
+                }}
+                data-testid="wb-button-confirm-fire"
+              >
+                Confirm
+              </UIButton>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
   )
 }
 

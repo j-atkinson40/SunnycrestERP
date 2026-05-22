@@ -331,3 +331,172 @@ describe("useWidgetValidation — WB-6 bidirectional binding-shape checks", () =
     expect(r.hasErrors).toBe(false)
   })
 })
+
+
+// ── WB-7 ActionRef mirrors ─────────────────────────────────────────
+
+
+function blobWithButtonAction(action: Record<string, unknown>): CompositionBlob {
+  return {
+    schema_version: 1,
+    root_atom_id: "root",
+    atom_tree: {
+      root: {
+        atom_id: "root",
+        atom_type: "conditional_container",
+        config: { direction: "column" },
+        children: ["btn"],
+      },
+      btn: {
+        atom_id: "btn",
+        atom_type: "button",
+        config: { label: "X", action_kind: "navigate", action_config: {}, action },
+      },
+    },
+    variants: [],
+    bindings_catalog: {},
+  }
+}
+
+
+function blobWithRepeaterButton(action: Record<string, unknown>): CompositionBlob {
+  return {
+    schema_version: 1,
+    root_atom_id: "root",
+    atom_tree: {
+      root: {
+        atom_id: "root",
+        atom_type: "conditional_container",
+        config: { direction: "column" },
+        children: ["rep"],
+      },
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: { binding_id: "rows", children: ["btn"] },
+        children: ["btn"],
+      },
+      btn: {
+        atom_id: "btn",
+        atom_type: "button",
+        config: { label: "X", action_kind: "mutate", action_config: {}, action },
+      },
+    },
+    variants: [],
+    bindings_catalog: {
+      rows: {
+        binding_id: "rows",
+        binding_type: "field_path",
+        saved_view_id: "v",
+        field_path: "rows",
+        iteration_mode: "per_row",
+      },
+    },
+  }
+}
+
+
+describe("useWidgetValidation — WB-7 ActionRef structural mirrors", () => {
+  it("navigate missing href is flagged", () => {
+    const r = validateCompositionBlob(
+      blobWithButtonAction({ action_kind: "navigate", href: "" }),
+    )
+    expect(r.hasErrors).toBe(true)
+    expect(r.errorsByAtom.btn.join(" ")).toMatch(/href/)
+  })
+  it("open_focus missing slug is flagged", () => {
+    const r = validateCompositionBlob(
+      blobWithButtonAction({ action_kind: "open_focus", focus_template_slug: "" }),
+    )
+    expect(r.hasErrors).toBe(true)
+    expect(r.errorsByAtom.btn.join(" ")).toMatch(/focus_template_slug/)
+  })
+  it("trigger_workflow missing slug is flagged", () => {
+    const r = validateCompositionBlob(
+      blobWithButtonAction({
+        action_kind: "trigger_workflow",
+        workflow_slug: "",
+      }),
+    )
+    expect(r.hasErrors).toBe(true)
+    expect(r.errorsByAtom.btn.join(" ")).toMatch(/workflow_slug/)
+  })
+  it("mutate with disallowed kind is flagged", () => {
+    const r = validateCompositionBlob(
+      blobWithRepeaterButton({
+        action_kind: "mutate",
+        mutate_kind: "delete_row",
+        target_id_binding: {
+          name: "id",
+          source: "current_row",
+          row_field: "id",
+        },
+      }),
+    )
+    expect(r.hasErrors).toBe(true)
+    expect(r.errorsByAtom.btn.join(" ")).toMatch(/anomaly_acknowledge/)
+  })
+  it("mutate without target_id_binding is flagged", () => {
+    const r = validateCompositionBlob(
+      blobWithRepeaterButton({
+        action_kind: "mutate",
+        mutate_kind: "anomaly_acknowledge",
+      }),
+    )
+    expect(r.hasErrors).toBe(true)
+    expect(r.errorsByAtom.btn.join(" ")).toMatch(/target_id_binding/)
+  })
+  it("valid mutate inside repeater is clean", () => {
+    const r = validateCompositionBlob(
+      blobWithRepeaterButton({
+        action_kind: "mutate",
+        mutate_kind: "anomaly_acknowledge",
+        target_id_binding: {
+          name: "id",
+          source: "current_row",
+          row_field: "id",
+        },
+      }),
+    )
+    // The mutate-related errors are clean — the button label
+    // assertion shouldn't fail because we set label="X".
+    const btnErrs = r.errorsByAtom.btn ?? []
+    expect(btnErrs.join(" ")).not.toMatch(/mutate/)
+    expect(btnErrs.join(" ")).not.toMatch(/target_id_binding/)
+  })
+  it("current_row binding outside repeater is flagged", () => {
+    const r = validateCompositionBlob(
+      blobWithButtonAction({
+        action_kind: "open_peek",
+        peek_view_type: "fh_case",
+        initial_context: [
+          {
+            name: "entity_id",
+            source: "current_row",
+            row_field: "id",
+          },
+        ],
+      }),
+    )
+    expect(r.hasErrors).toBe(true)
+    expect(r.errorsByAtom.btn.join(" ")).toMatch(/current_row/i)
+    expect(r.errorsByAtom.btn.join(" ")).toMatch(/not inside a repeater/i)
+  })
+  it("current_row binding inside repeater is clean", () => {
+    const r = validateCompositionBlob(
+      blobWithRepeaterButton({
+        action_kind: "open_peek",
+        peek_view_type: "fh_case",
+        initial_context: [
+          {
+            name: "entity_id",
+            source: "current_row",
+            row_field: "id",
+          },
+        ],
+      }),
+    )
+    const btnErrs = r.errorsByAtom.btn ?? []
+    expect(btnErrs.join(" ")).not.toMatch(/current_row/)
+  })
+})

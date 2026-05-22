@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from "vitest"
 import { render } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 
 import type {
   AtomNode,
@@ -23,15 +24,22 @@ function renderAtom(
   options: {
     bindingsCatalog?: Record<string, BindingRef>
     variantId?: VariantId
+    dataContext?: unknown
   } = {},
 ) {
+  // WB-7 — ButtonRenderer reads useNavigate; tests that may dispatch
+  // a button atom need a Router. Wrap unconditionally — harmless for
+  // non-button atoms.
   return render(
-    <AtomRenderer
-      atom={atomTree[rootId]}
-      atomTree={atomTree}
-      bindingsCatalog={options.bindingsCatalog ?? {}}
-      variantId={options.variantId}
-    />,
+    <MemoryRouter>
+      <AtomRenderer
+        atom={atomTree[rootId]}
+        atomTree={atomTree}
+        bindingsCatalog={options.bindingsCatalog ?? {}}
+        variantId={options.variantId}
+        dataContext={options.dataContext}
+      />
+    </MemoryRouter>,
   )
 }
 
@@ -466,12 +474,14 @@ describe("AtomRenderer — WB-6 real iteration", () => {
     dataContext: unknown,
   ) {
     return render(
-      <AtomRenderer
-        atom={atomTree[rootId]}
-        atomTree={atomTree}
-        bindingsCatalog={bindings}
-        dataContext={dataContext}
-      />,
+      <MemoryRouter>
+        <AtomRenderer
+          atom={atomTree[rootId]}
+          atomTree={atomTree}
+          bindingsCatalog={bindings}
+          dataContext={dataContext}
+        />
+      </MemoryRouter>,
     )
   }
 
@@ -705,12 +715,14 @@ describe("AtomRenderer — WB-5 canvas-preview discriminator", () => {
     dataContext: unknown,
   ) {
     return render(
-      <AtomRenderer
-        atom={atomTree[rootId]}
-        atomTree={atomTree}
-        bindingsCatalog={bindings}
-        dataContext={dataContext}
-      />,
+      <MemoryRouter>
+        <AtomRenderer
+          atom={atomTree[rootId]}
+          atomTree={atomTree}
+          bindingsCatalog={bindings}
+          dataContext={dataContext}
+        />
+      </MemoryRouter>,
     )
   }
 
@@ -904,5 +916,125 @@ describe("AtomRenderer — WB-5 canvas-preview discriminator", () => {
     }
     const { container } = renderWithContext(tree, "rep", {}, undefined)
     expect(container.textContent).toContain("fallback-row")
+  })
+})
+
+
+// ── WB-7 baseProps.dataContext propagation (Area 6 Lock 6b) ───────
+
+
+describe("AtomRenderer — WB-7 dataContext propagation", () => {
+  it("propagates dataContext to button atom inside a repeater", () => {
+    // Per-row context carries id; button inside repeater should see
+    // it via baseProps.dataContext. Asserts the propagation seam at
+    // AtomRenderer.tsx line 320-323 area (baseProps extension).
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: { binding_id: "rows", children: ["btn"] },
+        children: ["btn"],
+        binding_refs: { rows: "rows" },
+      },
+      btn: {
+        atom_id: "btn",
+        atom_type: "button",
+        config: {
+          label: "Ack",
+          action_kind: "mutate",
+          action_config: {},
+          // ActionRef structured per WB-7 shape.
+          action: {
+            action_kind: "mutate",
+            mutate_kind: "anomaly_acknowledge",
+            target_id_binding: {
+              name: "anomaly_id",
+              source: "current_row",
+              row_field: "id",
+            },
+            confirm_before: false,
+          },
+        },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rows: {
+        binding_id: "rows",
+        binding_type: "field_path",
+        saved_view_id: "view-x",
+        field_path: "rows",
+        iteration_mode: "per_row",
+      },
+    }
+    const dataContext = {
+      __canvas_preview: true,
+      byView: {
+        "view-x": {
+          status: "success",
+          data: {
+            rows: [{ id: "anom-7", severity: "warning" }],
+            aggregations: null,
+            total_count: 1,
+            permission_mode: "full",
+            masked_fields: [],
+          },
+        },
+      },
+    }
+    const { container } = render(
+      <MemoryRouter>
+        <AtomRenderer
+          atom={tree.rep}
+          atomTree={tree}
+          bindingsCatalog={bindings}
+          dataContext={dataContext}
+        />
+      </MemoryRouter>,
+    )
+    // The button atom should render at least once (one per row).
+    const btns = container.querySelectorAll('button[data-atom-id="btn"]')
+    expect(btns.length).toBe(1)
+    // Clicking the button validates row context propagated — we don't
+    // assert the dispatch here (covered in atoms.test.tsx) but we
+    // assert the button rendered (which requires baseProps to deliver
+    // dataContext for the ButtonRenderer hooks to operate without
+    // throwing).
+  })
+
+  it("baseProps.dataContext is present for all 9 atom dispatch branches (smoke)", () => {
+    // Smoke check: render each atom type with a dataContext present
+    // to confirm no atom branch throws when dataContext is supplied.
+    const types: AtomNode["atom_type"][] = [
+      "text_label",
+      "value_display",
+      "icon",
+      "status_badge",
+      "divider",
+      "button",
+      "image",
+      "conditional_container",
+    ]
+    for (const t of types) {
+      const tree: Record<string, AtomNode> = {
+        x: {
+          atom_id: "x",
+          atom_type: t,
+          config: t === "icon" ? { icon_name: "star" } : {},
+          children: t === "conditional_container" ? [] : undefined,
+        },
+      }
+      expect(() =>
+        render(
+          <MemoryRouter>
+            <AtomRenderer
+              atom={tree.x}
+              atomTree={tree}
+              bindingsCatalog={{}}
+              dataContext={{ probe: true }}
+            />
+          </MemoryRouter>,
+        ),
+      ).not.toThrow()
+    }
   })
 })

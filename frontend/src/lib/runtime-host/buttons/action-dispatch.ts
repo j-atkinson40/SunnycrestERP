@@ -33,13 +33,29 @@ import {
 
 
 /** Hooks-bound dependencies handlers need. Populated by
- *  RegisteredButton at click-time and passed in. */
+ *  RegisteredButton (R-4.0) or ButtonRenderer (WB-7) at click-time. */
 export interface DispatchDeps {
   /** react-router useNavigate(). */
   navigate: (to: string) => void
   /** focus-context's open(). Bound to the editor or tenant
-   *  FocusProvider that's nearest to the click. */
+   *  FocusProvider that's nearest to the click. Optional — admin-tree
+   *  previews supply a no-op (R-5.0.3 null-safe pattern). */
   openFocus: (id: string, options?: { params?: Record<string, unknown> }) => void
+  /** WB-7 — peek-context's openPeek(). Optional — admin-tree previews
+   *  supply a no-op. open_peek handler gracefully no-ops when this
+   *  dep is absent (returns "skipped" status rather than throwing). */
+  openPeek?: (args: {
+    entityType: string
+    entityId: string
+    triggerType?: "hover" | "click"
+  }) => void
+  /** WB-7 — optional AbortSignal for click-during-loading dispatch
+   *  cancellation. Passed through to network handlers (mutate +
+   *  trigger_workflow) so a click during loading state can supersede
+   *  an in-flight request without leaving the toast in a half-state.
+   *  Scope distinct from WB-4a auto-save AbortController + WB-5
+   *  canvas-preview AbortController per the locked separation. */
+  abortSignal?: AbortSignal
 }
 
 
@@ -179,6 +195,126 @@ async function handleCreateVaultItem(
 }
 
 
+// ─── WB-7 NEW handlers ────────────────────────────────────────────
+
+
+async function handleOpenPeek(
+  config: ActionConfig,
+  resolved: Record<string, ResolvedValue>,
+  deps: DispatchDeps,
+): Promise<R4DispatchResult> {
+  if (!config.peekEntityType) {
+    return {
+      status: "error",
+      errorMessage: "open_peek action missing actionConfig.peekEntityType",
+    }
+  }
+  // Peek expects a single entity_id. WB-7's authoring contract names
+  // the resolved binding `entity_id`; if absent, fall back to the
+  // first non-null resolved value (rare).
+  let entityId = resolved.entity_id
+  if (entityId === null || entityId === undefined) {
+    for (const v of Object.values(resolved)) {
+      if (v !== null && v !== undefined) {
+        entityId = v
+        break
+      }
+    }
+  }
+  if (entityId === null || entityId === undefined) {
+    return {
+      status: "error",
+      errorMessage: "open_peek action missing entity_id binding",
+    }
+  }
+  // Admin-tree previews: openPeek dep is absent. Gracefully no-op
+  // with "skipped" status (mirrors the R-5.0.3 useFocusOptional
+  // pattern for open_focus in admin trees).
+  if (!deps.openPeek) {
+    return {
+      status: "skipped",
+      data: {
+        reason: "openPeek not available (admin preview / no provider)",
+        entity_type: config.peekEntityType,
+        entity_id: String(entityId),
+      },
+    }
+  }
+  deps.openPeek({
+    entityType: config.peekEntityType,
+    entityId: String(entityId),
+    triggerType: "click",
+  })
+  return {
+    status: "success",
+    data: {
+      entity_type: config.peekEntityType,
+      entity_id: String(entityId),
+    },
+  }
+}
+
+
+async function handleMutate(
+  config: ActionConfig,
+  resolved: Record<string, ResolvedValue>,
+  deps: DispatchDeps,
+): Promise<R4DispatchResult> {
+  // Phase 1 mutate narrowed to `anomaly_acknowledge` per §12.6a
+  // bounded-state-flip discipline. Other mutate_kinds (mark_read,
+  // status_flip) defer to WB-7.x.
+  if (!config.mutateKind) {
+    return {
+      status: "error",
+      errorMessage: "mutate action missing actionConfig.mutateKind",
+    }
+  }
+  if (config.mutateKind !== "anomaly_acknowledge") {
+    return {
+      status: "error",
+      errorMessage:
+        `mutate action: unsupported mutate_kind "${config.mutateKind}" ` +
+        `(Phase 1 ships anomaly_acknowledge only)`,
+    }
+  }
+  // Anomaly acknowledge takes the resolved target_id (resolved
+  // binding named `target_id` per the lift contract).
+  const targetId = resolved.target_id
+  if (targetId === null || targetId === undefined || targetId === "") {
+    return {
+      status: "error",
+      errorMessage: "mutate action missing target_id binding",
+    }
+  }
+  // Optional resolution_note bind under name `resolution_note`.
+  const note =
+    resolved.resolution_note !== undefined &&
+    resolved.resolution_note !== null
+      ? String(resolved.resolution_note)
+      : undefined
+  try {
+    const body: Record<string, unknown> = {}
+    if (note) body.resolution_note = note
+    const resp = await apiClient.post(
+      `/widget-data/anomalies/${encodeURIComponent(String(targetId))}/acknowledge`,
+      body,
+      deps.abortSignal ? { signal: deps.abortSignal } : undefined,
+    )
+    return {
+      status: "success",
+      data: {
+        anomaly_id: resp.data?.id ?? String(targetId),
+        resolved: resp.data?.resolved ?? true,
+      },
+    }
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : "Anomaly acknowledge failed"
+    return { status: "error", errorMessage: msg }
+  }
+}
+
+
 async function handleRunPlaywrightWorkflow(
   config: ActionConfig,
   resolved: Record<string, ResolvedValue>,
@@ -227,6 +363,8 @@ type Handler = (
 export const DISPATCH_HANDLERS: Readonly<Record<R4ActionType, Handler>> = {
   navigate: handleNavigate,
   open_focus: handleOpenFocus,
+  open_peek: handleOpenPeek,                      // NEW WB-7
+  mutate: handleMutate,                           // NEW WB-7
   trigger_workflow: handleTriggerWorkflow,
   create_vault_item: handleCreateVaultItem,
   run_playwright_workflow: handleRunPlaywrightWorkflow,
@@ -265,6 +403,8 @@ export const __internals = {
   paramsToQueryString,
   handleNavigate,
   handleOpenFocus,
+  handleOpenPeek,            // NEW WB-7
+  handleMutate,              // NEW WB-7
   handleTriggerWorkflow,
   handleCreateVaultItem,
   handleRunPlaywrightWorkflow,

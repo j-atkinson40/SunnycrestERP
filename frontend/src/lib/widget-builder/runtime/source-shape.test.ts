@@ -331,3 +331,184 @@ describe("WB-6 source-shape gates", () => {
     expect(src).toMatch(/must be consumed by a repeater/)
   })
 })
+
+
+// ── WB-7 source-shape regression gates (entry 31 pattern) ─────────
+
+
+describe("WB-7 source-shape gates", () => {
+  it("composition-blob.ts carries ActionRef discriminated union (5 variants) + ParameterBindingRef 8 sources", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const src = readFileSync(
+      resolve(__dirname, "../types/composition-blob.ts"),
+      "utf-8",
+    )
+    expect(src).toMatch(/export interface NavigateActionRef\b/)
+    expect(src).toMatch(/export interface OpenFocusActionRef\b/)
+    expect(src).toMatch(/export interface OpenPeekActionRef\b/)
+    expect(src).toMatch(/export interface TriggerWorkflowActionRef\b/)
+    expect(src).toMatch(/export interface MutateActionRef\b/)
+    expect(src).toMatch(/export type ActionRef =/)
+    expect(src).toMatch(/export interface ParameterBindingRef\b/)
+    expect(src).toMatch(/export type ParameterBindingSource =/)
+    // 8 sources (Area 6 Lock 6a — current_row is 8th).
+    expect(src).toMatch(/"literal"/)
+    expect(src).toMatch(/"static"/)
+    expect(src).toMatch(/"route_param"/)
+    expect(src).toMatch(/"query_param"/)
+    expect(src).toMatch(/"focus_context"/)
+    expect(src).toMatch(/"tenant_context"/)
+    expect(src).toMatch(/"operator_context"/)
+    expect(src).toMatch(/"current_row"/)
+    // action_ref retired to never (Surprise 4).
+    expect(src).toMatch(/action_ref\?:\s*never/)
+    // mutate_kind narrowed (Phase 1).
+    expect(src).toMatch(/MutateKind\s*=\s*"anomaly_acknowledge"/)
+  })
+
+  it("Pydantic schema mirrors the discriminated union (cross-side symmetry)", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const src = readFileSync(
+      resolve(
+        __dirname,
+        "../../../../../backend/app/schemas/widget_composition.py",
+      ),
+      "utf-8",
+    )
+    expect(src).toMatch(/class NavigateActionRef\b/)
+    expect(src).toMatch(/class OpenFocusActionRef\b/)
+    expect(src).toMatch(/class OpenPeekActionRef\b/)
+    expect(src).toMatch(/class TriggerWorkflowActionRef\b/)
+    expect(src).toMatch(/class MutateActionRef\b/)
+    expect(src).toMatch(/Discriminator\("action_kind"\)/)
+    expect(src).toMatch(/class ParameterBindingRef\b/)
+    // action_ref retired in Pydantic too.
+    expect(src).toMatch(/action_ref: Optional\[None\] = None/)
+  })
+
+  it("AtomRenderer.tsx propagates dataContext via baseProps (Area 6 Lock 6b)", async () => {
+    const src = await readSource("./AtomRenderer.tsx")
+    // Load-bearing: baseProps must include dataContext.
+    expect(src).toMatch(/const baseProps = \{[\s\S]*dataContext/)
+  })
+
+  it("atoms/index.tsx ButtonRenderer consumes R-4 dispatcher (no longer onClick no-op)", async () => {
+    const src = await readSource("./atoms/index.tsx")
+    expect(src).toMatch(/import \{ dispatchAction \}/)
+    expect(src).toMatch(/resolveBindings/)
+    expect(src).toMatch(/usePeekOptional/)
+    expect(src).toMatch(/useFocusOptional/)
+    expect(src).toMatch(/useAuthOptional/)
+    // Lift helper present.
+    expect(src).toMatch(/liftCompositionBlobActionToR4\(/)
+    // Backward-compat preserved.
+    expect(src).toMatch(/Backward-compat: button atoms without an `action` field/)
+    // AbortController separate from WB-4a + WB-5 scope.
+    expect(src).toMatch(/AbortController/)
+  })
+
+  it("R-4 dispatch table extended with open_peek + mutate (Area 1)", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const src = readFileSync(
+      resolve(
+        __dirname,
+        "../../../lib/runtime-host/buttons/action-dispatch.ts",
+      ),
+      "utf-8",
+    )
+    expect(src).toMatch(/handleOpenPeek/)
+    expect(src).toMatch(/handleMutate/)
+    expect(src).toMatch(/open_peek: handleOpenPeek/)
+    expect(src).toMatch(/mutate: handleMutate/)
+    // Existing 5 R-4.0 handlers preserved (3 shared + 2 R-4.0-only).
+    expect(src).toMatch(/handleNavigate/)
+    expect(src).toMatch(/handleOpenFocus/)
+    expect(src).toMatch(/handleTriggerWorkflow/)
+    expect(src).toMatch(/handleCreateVaultItem/)
+    expect(src).toMatch(/handleRunPlaywrightWorkflow/)
+  })
+
+  it("parameter-resolver extended with current_row source (8th binding)", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const src = readFileSync(
+      resolve(
+        __dirname,
+        "../../../lib/runtime-host/buttons/parameter-resolver.ts",
+      ),
+      "utf-8",
+    )
+    expect(src).toMatch(/case "current_row":/)
+    expect(src).toMatch(/currentRow/)
+  })
+
+  it("ActionPicker substrate present in action-picker/ directory", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const dir = resolve(
+      __dirname,
+      "../../../bridgeable-admin/components/widget-builder/action-picker",
+    )
+    const picker = readFileSync(resolve(dir, "ActionPicker.tsx"), "utf-8")
+    expect(picker).toMatch(/export function ActionPicker\b/)
+    // Verb dropdown + per-verb forms wired.
+    expect(picker).toMatch(/NavigateActionForm/)
+    expect(picker).toMatch(/OpenFocusActionForm/)
+    expect(picker).toMatch(/OpenPeekActionForm/)
+    expect(picker).toMatch(/TriggerWorkflowActionForm/)
+    expect(picker).toMatch(/MutateActionForm/)
+    // Verb-switch wipe-confirm Dialog wired (Lock 4c).
+    expect(picker).toMatch(/Switch action verb\?/)
+
+    const preview = readFileSync(
+      resolve(dir, "ActionPreviewCard.tsx"),
+      "utf-8",
+    )
+    expect(preview).toMatch(/export function ActionPreviewCard\b/)
+    // NON-DISPATCHING gate: preview consumes computeActionPreviewText
+    // (pure function); MUST NOT import dispatchAction.
+    expect(preview).not.toMatch(/dispatchAction/)
+
+    const previewHook = readFileSync(
+      resolve(dir, "useActionPreview.ts"),
+      "utf-8",
+    )
+    expect(previewHook).toMatch(/export function computeActionPreviewText\b/)
+    expect(previewHook).not.toMatch(/dispatchAction/)
+
+    const usePicker = readFileSync(resolve(dir, "useActionPicker.ts"), "utf-8")
+    expect(usePicker).toMatch(/export function useActionPicker\b/)
+    expect(usePicker).toMatch(/pendingVerb/)
+
+    const types = readFileSync(resolve(dir, "types.ts"), "utf-8")
+    // Per-verb confirm_before defaults (Lock 5b).
+    expect(types).toMatch(/CONFIRM_BEFORE_DEFAULTS/)
+    expect(types).toMatch(/trigger_workflow: true/)
+    expect(types).toMatch(/mutate: true/)
+    expect(types).toMatch(/navigate: false/)
+  })
+
+  it("AtomInspectorDispatch wires ActionPicker into ButtonInspector (replaces WB-4b placeholder)", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const src = readFileSync(
+      resolve(
+        __dirname,
+        "../../../bridgeable-admin/components/widget-builder/inspectors/AtomInspectorDispatch.tsx",
+      ),
+      "utf-8",
+    )
+    expect(src).toMatch(/import \{ ActionPicker \}/)
+    expect(src).toMatch(/atom-inspector-action-picker/)
+    // The disabled BUTTON action placeholder (atom-inspector-action-
+    // placeholder testId) is GONE. (Note: conditional_container's
+    // condition_binding placeholder remains WB-7-tagged — separate
+    // atom, separate substrate; not in scope for the button picker.)
+    expect(src).not.toMatch(/atom-inspector-action-placeholder/)
+    // isAtomInsideRepeater helper present.
+    expect(src).toMatch(/function isAtomInsideRepeater\b/)
+  })
+})
