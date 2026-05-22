@@ -320,6 +320,124 @@ def validate_composition_blob_strict(raw: Any) -> CompositionBlob:
         except Exception:
             raise CompositionBlobValidationError(errors)
 
+    # WB-6 — bidirectional iteration_mode + binding-shape compatibility
+    # checks. Added at strict (Publish) gate; draft state stays
+    # permissive per Lock 5e.
+    #
+    # Check 1 (repeater_atom → per_row) is already enforced by the
+    # structural validator (validate_composition_blob). The 5 WB-6
+    # bidirectional checks here:
+    #
+    #   1. (redundant with structural; restated for completeness)
+    #      repeater_atom binding MUST use iteration_mode='per_row'.
+    #   2. iteration_mode='per_row' bindings MUST be consumed by a
+    #      repeater_atom (no non-repeater atom may consume a per_row
+    #      binding). Inverse of check 1.
+    #   3. value_display + text_label + icon + status_badge + button +
+    #      image bindings MUST use 'single_record' OR 'single_summary'
+    #      (not 'per_row'). Non-repeater leaf-atom constraint.
+    #   4. binding_type='literal' MUST NOT carry iteration_mode (per
+    #      Area 4 Lock — literal-binding behavior unchanged; iteration
+    #      semantics are field_path-only).
+    #   5. Every field_path BindingRef MUST set iteration_mode (and
+    #      saved_view_id + field_path) — the field_path declared shape
+    #      MUST be compatible. Saved-view emit_shape resolves at
+    #      runtime; structural check is "iteration_mode declared per
+    #      Lock 5e".
+    _NON_REPEATER_LEAF_ATOM_TYPES = frozenset({
+        "value_display",
+        "text_label",
+        "icon",
+        "status_badge",
+        "button",
+        "image",
+    })
+    _PER_ROW_BINDING_IDS: set[str] = set()
+    for binding_id, ref in blob.bindings_catalog.items():
+        # WB-6 check 4: literal bindings must not carry iteration_mode.
+        if ref.binding_type == "literal" and ref.iteration_mode is not None:
+            errors.append(
+                f"bindings_catalog[{binding_id!r}]: literal bindings "
+                f"must not carry iteration_mode (got "
+                f"{ref.iteration_mode!r}). WB-6 reserves iteration "
+                f"semantics for field_path bindings."
+            )
+        # WB-6 check 5: field_path bindings must declare iteration_mode
+        # + saved_view_id + non-empty field_path.
+        if ref.binding_type == "field_path":
+            if ref.iteration_mode is None:
+                errors.append(
+                    f"bindings_catalog[{binding_id!r}]: field_path "
+                    f"binding requires iteration_mode (one of "
+                    f"per_row / single_summary / single_record)."
+                )
+            if not ref.saved_view_id:
+                errors.append(
+                    f"bindings_catalog[{binding_id!r}]: field_path "
+                    f"binding requires non-empty saved_view_id."
+                )
+            if not ref.field_path:
+                errors.append(
+                    f"bindings_catalog[{binding_id!r}]: field_path "
+                    f"binding requires non-empty field_path."
+                )
+            if ref.iteration_mode == "per_row":
+                _PER_ROW_BINDING_IDS.add(binding_id)
+
+    # Build a set of binding_ids legitimately consumed by a
+    # repeater_atom (either via repeater config.binding_id OR
+    # binding_refs map). Other consumers of per_row bindings are
+    # rejected by check 2.
+    _REPEATER_PERROW_CONSUMERS: set[str] = set()
+    for atom_id, node in blob.atom_tree.items():
+        if node.atom_type != "repeater_atom":
+            continue
+        cfg = node.config if isinstance(node.config, dict) else {}
+        bid = cfg.get("binding_id") if isinstance(cfg, dict) else None
+        if isinstance(bid, str) and bid:
+            _REPEATER_PERROW_CONSUMERS.add(bid)
+        for _, ref_id in (node.binding_refs or {}).items():
+            _REPEATER_PERROW_CONSUMERS.add(ref_id)
+
+    for atom_id, node in blob.atom_tree.items():
+        if node.atom_type not in _NON_REPEATER_LEAF_ATOM_TYPES:
+            continue
+        for prop_name, binding_id in (node.binding_refs or {}).items():
+            ref = blob.bindings_catalog.get(binding_id)
+            if ref is None:
+                continue  # structural validator already flagged
+            if ref.binding_type != "field_path":
+                continue
+            mode = ref.iteration_mode
+            # WB-6 check 3: non-repeater leaf atoms must use
+            # single_record OR single_summary (not per_row).
+            if mode == "per_row":
+                errors.append(
+                    f"atom_tree[{atom_id!r}].binding_refs[{prop_name!r}]: "
+                    f"{node.atom_type} atoms must use iteration_mode="
+                    f"'single_record' or 'single_summary' (got "
+                    f"'per_row'). per_row bindings must be consumed by "
+                    f"a repeater_atom."
+                )
+            elif mode is not None and mode not in (
+                "single_record",
+                "single_summary",
+            ):
+                errors.append(
+                    f"atom_tree[{atom_id!r}].binding_refs[{prop_name!r}]: "
+                    f"unknown iteration_mode {mode!r}"
+                )
+
+    # WB-6 check 2: per_row bindings must be consumed by a
+    # repeater_atom — find orphaned per_row bindings.
+    for binding_id in _PER_ROW_BINDING_IDS:
+        if binding_id not in _REPEATER_PERROW_CONSUMERS:
+            errors.append(
+                f"bindings_catalog[{binding_id!r}]: per_row binding "
+                f"must be consumed by a repeater_atom (none found in "
+                f"this composition)."
+            )
+
     for atom_id, node in blob.atom_tree.items():
         cfg = node.config or {}
         if not isinstance(cfg, dict):

@@ -143,3 +143,191 @@ describe("useWidgetValidation — composition-blob client-side validator", () =>
     expect(Object.keys(r.errorsByAtom).sort()).toEqual(["a", "b"])
   })
 })
+
+
+describe("useWidgetValidation — WB-6 bidirectional binding-shape checks", () => {
+  it("rejects literal binding carrying iteration_mode (Check 4)", () => {
+    const blob: CompositionBlob = {
+      schema_version: 1,
+      root_atom_id: "root",
+      atom_tree: {
+        root: {
+          atom_id: "root",
+          atom_type: "conditional_container",
+          config: { direction: "column" },
+          children: [],
+        },
+      },
+      variants: [],
+      bindings_catalog: {
+        b1: {
+          binding_id: "b1",
+          binding_type: "literal",
+          literal_value: "X",
+          iteration_mode: "single_record",
+        },
+      },
+    }
+    const r = validateCompositionBlob(blob)
+    expect(r.hasErrors).toBe(true)
+    expect(
+      r.errorList.some((e) => e.message.includes("cannot carry iteration_mode")),
+    ).toBe(true)
+  })
+
+  it("rejects field_path binding missing iteration_mode (Check 5)", () => {
+    const blob: CompositionBlob = {
+      schema_version: 1,
+      root_atom_id: "root",
+      atom_tree: {
+        root: {
+          atom_id: "root",
+          atom_type: "conditional_container",
+          config: { direction: "column" },
+          children: [],
+        },
+      },
+      variants: [],
+      bindings_catalog: {
+        b1: {
+          binding_id: "b1",
+          binding_type: "field_path",
+          saved_view_id: "sv1",
+          field_path: "x",
+        },
+      },
+    }
+    const r = validateCompositionBlob(blob)
+    expect(
+      r.errorList.some((e) => e.message.includes("needs an iteration mode")),
+    ).toBe(true)
+  })
+
+  it("rejects field_path binding missing saved_view_id (Check 5)", () => {
+    const blob: CompositionBlob = {
+      schema_version: 1,
+      root_atom_id: "root",
+      atom_tree: {
+        root: {
+          atom_id: "root",
+          atom_type: "conditional_container",
+          config: {},
+          children: [],
+        },
+      },
+      variants: [],
+      bindings_catalog: {
+        b1: {
+          binding_id: "b1",
+          binding_type: "field_path",
+          field_path: "x",
+          iteration_mode: "single_record",
+        },
+      },
+    }
+    const r = validateCompositionBlob(blob)
+    expect(
+      r.errorList.some((e) => e.message.includes("needs a saved view")),
+    ).toBe(true)
+  })
+
+  it("rejects leaf atom with per_row binding (Check 3)", () => {
+    const blob: CompositionBlob = {
+      schema_version: 1,
+      root_atom_id: "root",
+      atom_tree: {
+        root: {
+          atom_id: "root",
+          atom_type: "conditional_container",
+          config: {},
+          children: ["v"],
+        },
+        v: {
+          atom_id: "v",
+          atom_type: "value_display",
+          config: { format: "currency" },
+          binding_refs: { value: "b1" },
+        },
+      },
+      variants: [],
+      bindings_catalog: {
+        b1: {
+          binding_id: "b1",
+          binding_type: "field_path",
+          saved_view_id: "sv1",
+          field_path: "x",
+          iteration_mode: "per_row",
+        },
+      },
+    }
+    const r = validateCompositionBlob(blob)
+    expect(r.errorsByAtom["v"]).toBeDefined()
+    expect(
+      r.errorsByAtom["v"].some((m) => m.includes("per_row")),
+    ).toBe(true)
+  })
+
+  it("flags orphan per_row binding not consumed by a repeater (Check 2)", () => {
+    const blob: CompositionBlob = {
+      schema_version: 1,
+      root_atom_id: "root",
+      atom_tree: {
+        root: {
+          atom_id: "root",
+          atom_type: "conditional_container",
+          config: {},
+          children: [],
+        },
+      },
+      variants: [],
+      bindings_catalog: {
+        b1: {
+          binding_id: "b1",
+          binding_type: "field_path",
+          saved_view_id: "sv1",
+          field_path: "x",
+          iteration_mode: "per_row",
+        },
+      },
+    }
+    const r = validateCompositionBlob(blob)
+    expect(
+      r.errorList.some((e) =>
+        e.message.includes("must be consumed by a repeater"),
+      ),
+    ).toBe(true)
+  })
+
+  it("accepts a well-formed value_display + single_record binding", () => {
+    const blob: CompositionBlob = {
+      schema_version: 1,
+      root_atom_id: "root",
+      atom_tree: {
+        root: {
+          atom_id: "root",
+          atom_type: "conditional_container",
+          config: {},
+          children: ["v"],
+        },
+        v: {
+          atom_id: "v",
+          atom_type: "value_display",
+          config: { format: "currency", format_config: { currency_code: "USD" } },
+          binding_refs: { value: "b1" },
+        },
+      },
+      variants: [],
+      bindings_catalog: {
+        b1: {
+          binding_id: "b1",
+          binding_type: "field_path",
+          saved_view_id: "sv1",
+          field_path: "amount",
+          iteration_mode: "single_record",
+        },
+      },
+    }
+    const r = validateCompositionBlob(blob)
+    expect(r.hasErrors).toBe(false)
+  })
+})

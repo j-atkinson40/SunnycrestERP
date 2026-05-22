@@ -73,6 +73,7 @@ import {
 } from "./atom-tree-helpers"
 import {
   AtomInspectorDispatch,
+  useAtomBindingUpdater,
   useAtomConfigUpdater,
 } from "./inspectors/AtomInspectorDispatch"
 import { ErrorSummary } from "./ErrorSummary"
@@ -283,6 +284,7 @@ export default function WidgetBuilderPage() {
 
   // WB-4b — config mutator for the per-atom inspector.
   const updateAtomConfig = useAtomConfigUpdater(draft, setDraft)
+  const updateAtomBinding = useAtomBindingUpdater(draft, setDraft)
 
   // Root flex config bound to the canvas-root container atom.
   const rootNode = draft ? draft.atom_tree[draft.root_atom_id] : null
@@ -510,6 +512,7 @@ export default function WidgetBuilderPage() {
               blob={draft}
               selectedAtomId={selectedAtomId}
               onUpdateConfig={updateAtomConfig}
+              onUpdateBinding={updateAtomBinding}
               errors={validation.errorsByAtom}
             />
           </aside>

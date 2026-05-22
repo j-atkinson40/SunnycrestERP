@@ -260,4 +260,170 @@ test.describe.skip("WB-4a Widget Builder canvas (Playwright; staging-pending)", 
       .locator('[data-testid="widget-builder-page"]')
       .waitFor({ state: "visible", timeout: 5_000 })
   })
+
+  test("scenario 10 (WB-6): binding picker activates on value_display atom", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    // Drop a value_display atom.
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-value_display"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    // Pick the placed atom — inspector surfaces.
+    await page
+      .locator('[data-testid="atom-inspector-value_display"]')
+      .waitFor({ state: "visible", timeout: 3_000 })
+    // BindingPicker is mounted (no longer disabled placeholder).
+    await expect(
+      page.locator('[data-testid="atom-inspector-value-binding"]'),
+    ).toBeVisible()
+    // Placeholder is GONE — picker replaced it.
+    await expect(
+      page.locator('[data-testid="atom-inspector-binding-placeholder"]'),
+    ).toHaveCount(0)
+  })
+
+  test("scenario 11 (WB-6): saved-view picker → field-path picker cascade", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-value_display"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+
+    // Saved-view picker opens.
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-saved-view"]')
+      .click()
+    // Pick the first available view.
+    const firstOption = page
+      .locator('[data-testid^="atom-inspector-value-binding-saved-view-option-"]')
+      .first()
+    await firstOption.click()
+    // Field-path picker enables.
+    const fieldPicker = page.locator(
+      '[data-testid="atom-inspector-value-binding-field-path"]',
+    )
+    await expect(fieldPicker).toBeEnabled()
+    // Pick the first available field.
+    await fieldPicker.click()
+    const firstField = page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-field-path-option-"]',
+      )
+      .first()
+    await firstField.click()
+    // Iteration mode picker auto-displays.
+    await expect(
+      page.locator(
+        '[data-testid="atom-inspector-value-binding-iteration-mode"]',
+      ),
+    ).toBeVisible()
+  })
+
+  test("scenario 12 (WB-6): repeater_atom binding auto-locks iteration_mode='per_row'", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-repeater_atom"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    await page
+      .locator('[data-testid="atom-inspector-repeater_atom"]')
+      .waitFor({ state: "visible", timeout: 3_000 })
+    // Picker mounted.
+    await expect(
+      page.locator('[data-testid="atom-inspector-rows-binding"]'),
+    ).toBeVisible()
+    // Iteration mode locked to per_row (auto-inferred).
+    const itm = page.locator(
+      '[data-testid="atom-inspector-rows-binding-iteration-mode"]',
+    )
+    await expect(itm).toContainText("per row")
+    await expect(itm).toContainText("auto")
+  })
+
+  test("scenario 13 (WB-6): preview-value tooltip surfaces resolved value after binding", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-value_display"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    // Saved-view + field-path picks.
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-saved-view"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-saved-view-option-"]',
+      )
+      .first()
+      .click()
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-field-path"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-field-path-option-"]',
+      )
+      .first()
+      .click()
+    // Preview surfaces (any state — value / empty / error).
+    const preview = page.locator(
+      '[data-testid="atom-inspector-value-binding-preview"]',
+    )
+    await preview.waitFor({ state: "visible", timeout: 5_000 })
+    await expect(preview).toHaveAttribute("data-preview-state", /value|empty|error/)
+  })
+
+  test("scenario 14 (WB-6): free-text field-path accepts custom paths", async ({
+    page,
+  }) => {
+    await openExistingWidget(page)
+    const palette = page.locator(
+      '[data-testid="widget-builder-atom-tile-value_display"]',
+    )
+    const dropZone = page
+      .locator('[data-testid^="widget-builder-canvas-drop-target-"]')
+      .first()
+    await palette.dragTo(dropZone)
+    // Pick a saved view first to enable the free-text fallback.
+    await page
+      .locator('[data-testid="atom-inspector-value-binding-saved-view"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="atom-inspector-value-binding-saved-view-option-"]',
+      )
+      .first()
+      .click()
+    // Free-text input enables.
+    const freetext = page.locator(
+      '[data-testid="atom-inspector-value-binding-field-path-freetext"]',
+    )
+    await expect(freetext).toBeEnabled()
+    // Type a nested path that won't be in the picker.
+    await freetext.fill("metadata_json.line_items.0.total")
+    await freetext.press("Tab")
+    // No assertion on resolution — covered by the JSDOM test. This
+    // verifies the input commits to draft state.
+    await expect(freetext).toHaveValue("metadata_json.line_items.0.total")
+  })
 })

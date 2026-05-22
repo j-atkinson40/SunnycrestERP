@@ -332,7 +332,10 @@ describe("AtomRenderer — binding resolution", () => {
     expect(container.textContent).toBe("Hello bound")
   })
 
-  it("resolves field_path binding to placeholder string", () => {
+  it("resolves field_path binding to null when no dataContext provided (WB-6)", () => {
+    // Per WB-6: field_path bindings with no per-row / summary dataContext
+    // resolve to null. The atom renderer surfaces an empty render.
+    // (WB-2's `[bound:case.deceased]` placeholder string is retired.)
     const tree: Record<string, AtomNode> = {
       a1: {
         atom_id: "a1",
@@ -353,7 +356,9 @@ describe("AtomRenderer — binding resolution", () => {
     const { container } = renderAtom(tree, "a1", {
       bindingsCatalog: bindings,
     })
-    expect(container.textContent).toBe("[bound:case.deceased]")
+    // No dataContext → resolves to null → text_label falls back to its
+    // default placeholder copy ("Text label").
+    expect(container.textContent).toBe("Text label")
   })
 
   it("surfaces placeholder for dangling binding_id without crashing", () => {
@@ -372,7 +377,7 @@ describe("AtomRenderer — binding resolution", () => {
 
 
 describe("AtomRenderer — repeater_atom dispatch (WB-3)", () => {
-  it("dispatches to RepeaterAtomRenderer + renders one mock row in Phase 1", () => {
+  it("dispatches to RepeaterAtomRenderer + renders one mock row when no dataContext (WB-6 authoring fallback)", () => {
     const tree: Record<string, AtomNode> = {
       rep: {
         atom_id: "rep",
@@ -415,10 +420,9 @@ describe("AtomRenderer — repeater_atom dispatch (WB-3)", () => {
     const root = container.querySelector("[data-atom-id='rep']")
     expect(root).not.toBeNull()
     expect(root?.getAttribute("data-atom-type")).toBe("repeater_atom")
-    // 1 mock row in Phase 1.
+    // WB-6 authoring fallback: 1 structural mock row when no
+    // dataContext.rows supplied.
     expect(root?.getAttribute("data-row-count")).toBe("1")
-    // Per-row binding context surfaces via resolveBinding marker.
-    expect(container.textContent).toMatch(/\[bound:row\.title#0\]/)
   })
 
   it("throws at render time when a repeater contains a repeater (defense-in-depth)", () => {
@@ -450,5 +454,244 @@ describe("AtomRenderer — repeater_atom dispatch (WB-3)", () => {
     expect(() => renderAtom(tree, "rep", { bindingsCatalog: bindings })).toThrow(
       /repeater_atom .* may not contain another repeater_atom/,
     )
+  })
+})
+
+
+describe("AtomRenderer — WB-6 real iteration", () => {
+  function renderWithContext(
+    atomTree: Record<string, AtomNode>,
+    rootId: string,
+    bindings: Record<string, BindingRef>,
+    dataContext: unknown,
+  ) {
+    return render(
+      <AtomRenderer
+        atom={atomTree[rootId]}
+        atomTree={atomTree}
+        bindingsCatalog={bindings}
+        dataContext={dataContext}
+      />,
+    )
+  }
+
+  it("repeater iterates real rows when dataContext.rows is supplied", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: { binding_id: "rows", children: ["row_label"] },
+        children: ["row_label"],
+        binding_refs: { rows: "rows" },
+      },
+      row_label: {
+        atom_id: "row_label",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "rowTitle" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rows: {
+        binding_id: "rows",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+      rowTitle: {
+        binding_id: "rowTitle",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "title",
+        iteration_mode: "per_row",
+      },
+    }
+    const dataContext = {
+      rows: [
+        { title: "First" },
+        { title: "Second" },
+        { title: "Third" },
+      ],
+    }
+    const { container } = renderWithContext(tree, "rep", bindings, dataContext)
+    const root = container.querySelector("[data-atom-id='rep']")
+    expect(root?.getAttribute("data-row-count")).toBe("3")
+    expect(container.textContent).toContain("First")
+    expect(container.textContent).toContain("Second")
+    expect(container.textContent).toContain("Third")
+  })
+
+  it("repeater surfaces empty_state when dataContext.rows is empty", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: {
+          binding_id: "rows",
+          children: ["row_label"],
+          empty_state: "Nothing here",
+        },
+        children: ["row_label"],
+        binding_refs: { rows: "rows" },
+      },
+      row_label: {
+        atom_id: "row_label",
+        atom_type: "text_label",
+        config: { text: "x" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rows: {
+        binding_id: "rows",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+    }
+    const { container } = renderWithContext(tree, "rep", bindings, { rows: [] })
+    expect(container.textContent).toContain("Nothing here")
+  })
+
+  it("repeater respects config.max_rows cap on supplied rows", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: { binding_id: "rows", children: ["row_label"], max_rows: 2 },
+        children: ["row_label"],
+        binding_refs: { rows: "rows" },
+      },
+      row_label: {
+        atom_id: "row_label",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "rowTitle" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rows: {
+        binding_id: "rows",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+      rowTitle: {
+        binding_id: "rowTitle",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "title",
+        iteration_mode: "per_row",
+      },
+    }
+    const dataContext = {
+      rows: [
+        { title: "First" },
+        { title: "Second" },
+        { title: "Third" },
+        { title: "Fourth" },
+      ],
+    }
+    const { container } = renderWithContext(tree, "rep", bindings, dataContext)
+    const root = container.querySelector("[data-atom-id='rep']")
+    expect(root?.getAttribute("data-row-count")).toBe("2")
+    expect(container.textContent).toContain("First")
+    expect(container.textContent).toContain("Second")
+    expect(container.textContent).not.toContain("Third")
+  })
+
+  it("non-repeater leaf atom resolves single_summary against summary context", () => {
+    const tree: Record<string, AtomNode> = {
+      v: {
+        atom_id: "v",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "sum" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      sum: {
+        binding_id: "sum",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "value",
+        iteration_mode: "single_summary",
+      },
+    }
+    const dataContext = {
+      __summary: true,
+      aggregations: { value: "42 total" },
+    }
+    const { container } = renderWithContext(tree, "v", bindings, dataContext)
+    expect(container.textContent).toBe("42 total")
+  })
+
+  it("non-repeater leaf atom resolves single_record against row context", () => {
+    const tree: Record<string, AtomNode> = {
+      v: {
+        atom_id: "v",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "single" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      single: {
+        binding_id: "single",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "title",
+        iteration_mode: "single_record",
+      },
+    }
+    const dataContext = {
+      __row: true,
+      __index: 0,
+      title: "First record only",
+    }
+    const { container } = renderWithContext(tree, "v", bindings, dataContext)
+    expect(container.textContent).toBe("First record only")
+  })
+
+  it("per-row context spreads row dict so field_path resolves real data", () => {
+    const tree: Record<string, AtomNode> = {
+      rep: {
+        atom_id: "rep",
+        atom_type: "repeater_atom",
+        config: { binding_id: "rows", children: ["row_amt"] },
+        children: ["row_amt"],
+        binding_refs: { rows: "rows" },
+      },
+      row_amt: {
+        atom_id: "row_amt",
+        atom_type: "text_label",
+        config: {},
+        binding_refs: { text: "amt" },
+      },
+    }
+    const bindings: Record<string, BindingRef> = {
+      rows: {
+        binding_id: "rows",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "items",
+        iteration_mode: "per_row",
+      },
+      amt: {
+        binding_id: "amt",
+        binding_type: "field_path",
+        saved_view_id: "sv1",
+        field_path: "amount",
+        iteration_mode: "per_row",
+      },
+    }
+    const dataContext = {
+      rows: [{ amount: "100 USD" }, { amount: "250 USD" }],
+    }
+    const { container } = renderWithContext(tree, "rep", bindings, dataContext)
+    expect(container.textContent).toContain("100 USD")
+    expect(container.textContent).toContain("250 USD")
   })
 })

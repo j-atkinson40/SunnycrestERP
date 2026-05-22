@@ -20,8 +20,11 @@ import { useCallback } from "react"
 import type {
   AtomNode,
   AtomType,
+  BindingRef,
   CompositionBlob,
 } from "@/lib/widget-builder/types/composition-blob"
+
+import { BindingPicker } from "../binding-picker/BindingPicker"
 
 import {
   BindingPlaceholderField,
@@ -177,13 +180,24 @@ export interface AtomInspectorDispatchProps {
   selectedAtomId: string | null
   /** Caller mutates draft config for an atom (or root). */
   onUpdateConfig: (atomId: string, nextConfig: ConfigDict) => void
+  /** WB-6 — mutate an atom's binding_refs[propName] + the
+   *  bindings_catalog atomically. Pass `binding=null` to clear the
+   *  binding (removes the binding_refs entry; the catalog entry is
+   *  left in place — orphaned catalog entries are flagged but not
+   *  hard-rejected). */
+  onUpdateBinding?: (
+    atomId: string,
+    propName: string,
+    binding: BindingRef | null,
+  ) => void
   /** Per-atom validation errors keyed on atom_id. */
   errors?: Record<string, string[]>
 }
 
 
 export function AtomInspectorDispatch(props: AtomInspectorDispatchProps) {
-  const { blob, selectedAtomId, onUpdateConfig, errors } = props
+  const { blob, selectedAtomId, onUpdateConfig, onUpdateBinding, errors } =
+    props
 
   const selectedNode: AtomNode | null = selectedAtomId
     ? (blob.atom_tree[selectedAtomId] ?? null)
@@ -205,6 +219,23 @@ export function AtomInspectorDispatch(props: AtomInspectorDispatchProps) {
   const onChange = (next: ConfigDict) =>
     onUpdateConfig(selectedNode.atom_id, next)
 
+  // WB-6 — binding catalog lookup helper for inspectors that need to
+  // surface the current BindingRef bound to a given prop_name.
+  function bindingForProp(propName: string): BindingRef | null {
+    const id = selectedNode!.binding_refs?.[propName]
+    if (!id) return null
+    return blob.bindings_catalog[id] ?? null
+  }
+
+  function makeBindingChangeHandler(
+    propName: string,
+  ): ((next: BindingRef | null) => void) | undefined {
+    if (!onUpdateBinding) return undefined
+    return (next) => {
+      onUpdateBinding(selectedNode!.atom_id, propName, next)
+    }
+  }
+
   switch (selectedNode.atom_type) {
     case "text_label":
       return (
@@ -220,6 +251,8 @@ export function AtomInspectorDispatch(props: AtomInspectorDispatchProps) {
           node={selectedNode}
           onChange={onChange}
           errors={rowErrors}
+          bindingForProp={bindingForProp}
+          onBindingChange={makeBindingChangeHandler("value")}
         />
       )
     case "icon":
@@ -248,6 +281,8 @@ export function AtomInspectorDispatch(props: AtomInspectorDispatchProps) {
           node={selectedNode}
           onChange={onChange}
           errors={rowErrors}
+          bindingForProp={bindingForProp}
+          onBindingChange={makeBindingChangeHandler("label")}
         />
       )
     case "image":
@@ -256,6 +291,8 @@ export function AtomInspectorDispatch(props: AtomInspectorDispatchProps) {
           node={selectedNode}
           onChange={onChange}
           errors={rowErrors}
+          bindingForProp={bindingForProp}
+          onBindingChange={makeBindingChangeHandler("src")}
         />
       )
     case "conditional_container":
@@ -264,6 +301,8 @@ export function AtomInspectorDispatch(props: AtomInspectorDispatchProps) {
           node={selectedNode}
           onChange={onChange}
           errors={rowErrors}
+          bindingForProp={bindingForProp}
+          onBindingChange={makeBindingChangeHandler("condition")}
         />
       )
     case "repeater_atom":
@@ -272,6 +311,8 @@ export function AtomInspectorDispatch(props: AtomInspectorDispatchProps) {
           node={selectedNode}
           onChange={onChange}
           errors={rowErrors}
+          bindingForProp={bindingForProp}
+          onBindingChange={makeBindingChangeHandler("rows")}
         />
       )
     default: {
@@ -387,23 +428,41 @@ function ValueDisplayInspector({
   node,
   onChange,
   errors,
+  bindingForProp,
+  onBindingChange,
 }: {
   node: AtomNode
   onChange: (next: ConfigDict) => void
   errors: string[]
+  bindingForProp?: (propName: string) => BindingRef | null
+  onBindingChange?: (next: BindingRef | null) => void
 }) {
   const cfg = node.config ?? {}
   const bindError = findError(errors, "binding")
   const format = (get(cfg, "format") as string | undefined) ?? "number"
+  const currentBinding = bindingForProp?.("value") ?? null
   return (
     <div data-testid="atom-inspector-value_display">
       <AtomIdentityCard node={node} label="Value" />
       <InspectorSection title="Source">
-        <BindingPlaceholderField
-          label="Bound value"
-          activatedIn="WB-6"
-          testId="atom-inspector-binding-placeholder"
-        />
+        {onBindingChange ? (
+          <BindingPicker
+            atomType="value_display"
+            bindingRef={currentBinding}
+            onChange={onBindingChange}
+            bindingId={
+              currentBinding?.binding_id ?? `b-${node.atom_id}-value`
+            }
+            label="Bound value"
+            testId="atom-inspector-value-binding"
+          />
+        ) : (
+          <BindingPlaceholderField
+            label="Bound value"
+            activatedIn="WB-6"
+            testId="atom-inspector-binding-placeholder"
+          />
+        )}
         {bindError ? (
           <div className="text-caption text-status-error">{bindError}</div>
         ) : null}
@@ -652,13 +711,18 @@ function ButtonInspector({
   node,
   onChange,
   errors,
+  bindingForProp,
+  onBindingChange,
 }: {
   node: AtomNode
   onChange: (next: ConfigDict) => void
   errors: string[]
+  bindingForProp?: (propName: string) => BindingRef | null
+  onBindingChange?: (next: BindingRef | null) => void
 }) {
   const cfg = node.config ?? {}
   const labelError = findError(errors, "label")
+  const currentBinding = bindingForProp?.("label") ?? null
   return (
     <div data-testid="atom-inspector-button">
       <AtomIdentityCard node={node} label="Button" />
@@ -681,6 +745,20 @@ function ButtonInspector({
           />
         </InspectorField>
       </InspectorSection>
+      {onBindingChange ? (
+        <InspectorSection title="Bound label (optional)">
+          <BindingPicker
+            atomType="button"
+            bindingRef={currentBinding}
+            onChange={onBindingChange}
+            bindingId={
+              currentBinding?.binding_id ?? `b-${node.atom_id}-label`
+            }
+            label="Bind label to data"
+            testId="atom-inspector-button-binding"
+          />
+        </InspectorSection>
+      ) : null}
       <InspectorSection title="Appearance">
         <InspectorField label="Variant">
           <SelectField
@@ -715,22 +793,40 @@ function ImageInspector({
   node,
   onChange,
   errors,
+  bindingForProp,
+  onBindingChange,
 }: {
   node: AtomNode
   onChange: (next: ConfigDict) => void
   errors: string[]
+  bindingForProp?: (propName: string) => BindingRef | null
+  onBindingChange?: (next: BindingRef | null) => void
 }) {
   const cfg = node.config ?? {}
   const altError = findError(errors, "alt")
+  const currentBinding = bindingForProp?.("src") ?? null
   return (
     <div data-testid="atom-inspector-image">
       <AtomIdentityCard node={node} label="Image" />
       <InspectorSection title="Source">
-        <BindingPlaceholderField
-          label="Bound src"
-          activatedIn="WB-6"
-          testId="atom-inspector-src-placeholder"
-        />
+        {onBindingChange ? (
+          <BindingPicker
+            atomType="image"
+            bindingRef={currentBinding}
+            onChange={onBindingChange}
+            bindingId={
+              currentBinding?.binding_id ?? `b-${node.atom_id}-src`
+            }
+            label="Bound src"
+            testId="atom-inspector-image-binding"
+          />
+        ) : (
+          <BindingPlaceholderField
+            label="Bound src"
+            activatedIn="WB-6"
+            testId="atom-inspector-src-placeholder"
+          />
+        )}
         <InspectorField label="Static src (URL)">
           <TextFieldUncontrolled
             testId="atom-inspector-src"
@@ -783,12 +879,17 @@ function ImageInspector({
 function ConditionalContainerInspector({
   node,
   onChange,
+  bindingForProp,
+  onBindingChange,
 }: {
   node: AtomNode
   onChange: (next: ConfigDict) => void
   errors: string[]
+  bindingForProp?: (propName: string) => BindingRef | null
+  onBindingChange?: (next: BindingRef | null) => void
 }) {
   const cfg = node.config ?? {}
+  const currentBinding = bindingForProp?.("condition") ?? null
   return (
     <div data-testid="atom-inspector-conditional_container">
       <AtomIdentityCard node={node} label="Conditional container" />
@@ -819,11 +920,24 @@ function ConditionalContainerInspector({
         </InspectorField>
       </InspectorSection>
       <InspectorSection title="Condition">
-        <BindingPlaceholderField
-          label="Condition binding"
-          activatedIn="WB-7"
-          testId="atom-inspector-condition-placeholder"
-        />
+        {onBindingChange ? (
+          <BindingPicker
+            atomType="conditional_container"
+            bindingRef={currentBinding}
+            onChange={onBindingChange}
+            bindingId={
+              currentBinding?.binding_id ?? `b-${node.atom_id}-condition`
+            }
+            label="Condition binding"
+            testId="atom-inspector-condition-binding"
+          />
+        ) : (
+          <BindingPlaceholderField
+            label="Condition binding"
+            activatedIn="WB-7"
+            testId="atom-inspector-condition-placeholder"
+          />
+        )}
       </InspectorSection>
       <InspectorSection title="Children">
         <p className="text-caption text-content-muted">
@@ -839,21 +953,39 @@ function ConditionalContainerInspector({
 function RepeaterAtomInspector({
   node,
   onChange,
+  bindingForProp,
+  onBindingChange,
 }: {
   node: AtomNode
   onChange: (next: ConfigDict) => void
   errors: string[]
+  bindingForProp?: (propName: string) => BindingRef | null
+  onBindingChange?: (next: BindingRef | null) => void
 }) {
   const cfg = node.config ?? {}
+  const currentBinding = bindingForProp?.("rows") ?? null
   return (
     <div data-testid="atom-inspector-repeater_atom">
       <AtomIdentityCard node={node} label="Repeater" />
       <InspectorSection title="Source">
-        <BindingPlaceholderField
-          label="Row binding"
-          activatedIn="WB-6"
-          testId="atom-inspector-row-binding-placeholder"
-        />
+        {onBindingChange ? (
+          <BindingPicker
+            atomType="repeater_atom"
+            bindingRef={currentBinding}
+            onChange={onBindingChange}
+            bindingId={
+              currentBinding?.binding_id ?? `b-${node.atom_id}-rows`
+            }
+            label="Row binding"
+            testId="atom-inspector-rows-binding"
+          />
+        ) : (
+          <BindingPlaceholderField
+            label="Row binding"
+            activatedIn="WB-6"
+            testId="atom-inspector-row-binding-placeholder"
+          />
+        )}
       </InspectorSection>
       <InspectorSection title="Layout">
         <InspectorField label="Direction">
@@ -971,6 +1103,83 @@ export function useAtomConfigUpdater(
       setDraft({
         ...blob,
         atom_tree: { ...blob.atom_tree, [atomId]: nextNode },
+      })
+    },
+    [blob, setDraft],
+  )
+}
+
+
+/** WB-6 — binding mutator. Updates an atom's `binding_refs[propName]`
+ *  + `bindings_catalog` atomically.
+ *
+ *  When `binding != null`:
+ *    - Sets bindings_catalog[binding.binding_id] = binding.
+ *    - Sets atom.binding_refs[propName] = binding.binding_id.
+ *    - For repeater_atom: ALSO sets atom.config.binding_id = binding.binding_id
+ *      (the structural validator requires the two to agree).
+ *
+ *  When `binding == null`:
+ *    - Removes atom.binding_refs[propName].
+ *    - Orphaned catalog entries are left in place; the operator can
+ *      clean up via a separate dialog (future work). Validation gates
+ *      catch orphans at Publish.
+ */
+export function useAtomBindingUpdater(
+  blob: CompositionBlob | null,
+  setDraft: (next: CompositionBlob) => void,
+) {
+  return useCallback(
+    (atomId: string, propName: string, binding: BindingRef | null) => {
+      if (!blob) return
+      const node = blob.atom_tree[atomId]
+      if (!node) return
+
+      const nextBindingRefs: Record<string, string> = {
+        ...(node.binding_refs ?? {}),
+      }
+      const nextCatalog: Record<string, BindingRef> = {
+        ...blob.bindings_catalog,
+      }
+
+      if (binding === null) {
+        delete nextBindingRefs[propName]
+      } else {
+        nextCatalog[binding.binding_id] = binding
+        nextBindingRefs[propName] = binding.binding_id
+      }
+
+      // repeater_atom convention: config.binding_id mirrors the
+      // binding_refs['rows'] ref so the structural validator (which
+      // looks for config.binding_id) stays happy.
+      let nextConfig = node.config ?? {}
+      if (node.atom_type === "repeater_atom" && propName === "rows") {
+        if (binding === null) {
+          const { binding_id: _omitted, ...rest } =
+            nextConfig as Record<string, unknown>
+          void _omitted
+          nextConfig = rest
+        } else {
+          nextConfig = {
+            ...(nextConfig as Record<string, unknown>),
+            binding_id: binding.binding_id,
+          }
+        }
+      }
+
+      const nextNode: AtomNode = {
+        ...node,
+        binding_refs:
+          Object.keys(nextBindingRefs).length > 0
+            ? nextBindingRefs
+            : undefined,
+        config: nextConfig,
+      }
+
+      setDraft({
+        ...blob,
+        atom_tree: { ...blob.atom_tree, [atomId]: nextNode },
+        bindings_catalog: nextCatalog,
       })
     },
     [blob, setDraft],

@@ -105,6 +105,111 @@ function checkAtom(node: AtomNode): string[] {
 }
 
 
+// WB-6 — bidirectional iteration_mode + binding-shape compatibility
+// checks. Mirrors backend validator at validators.py per Phase 1
+// WB-4b canon (frontend mirror is fast pre-check; backend strict
+// validator runs at Publish as defense-in-depth).
+const _NON_REPEATER_LEAF_ATOM_TYPES = new Set([
+  "value_display",
+  "text_label",
+  "icon",
+  "status_badge",
+  "button",
+  "image",
+])
+
+
+function checkBindingsCatalog(
+  blob: CompositionBlob,
+): { atomId: string; message: string }[] {
+  const errs: { atomId: string; message: string }[] = []
+
+  // Build the set of binding_ids consumed by repeater_atoms (via
+  // config.binding_id OR binding_refs map).
+  const repeaterConsumers = new Set<string>()
+  for (const [, node] of Object.entries(blob.atom_tree)) {
+    if (node.atom_type !== "repeater_atom") continue
+    const cfg = (node.config ?? {}) as Record<string, unknown>
+    const bid = typeof cfg.binding_id === "string" ? cfg.binding_id : null
+    if (bid) repeaterConsumers.add(bid)
+    for (const [, refId] of Object.entries(node.binding_refs ?? {})) {
+      repeaterConsumers.add(refId)
+    }
+  }
+
+  const perRowBindingIds = new Set<string>()
+
+  for (const [bindingId, ref] of Object.entries(blob.bindings_catalog)) {
+    // Check 4: literal bindings must not carry iteration_mode.
+    if (
+      ref.binding_type === "literal" &&
+      ref.iteration_mode !== undefined &&
+      ref.iteration_mode !== null
+    ) {
+      errs.push({
+        atomId: "__bindings__",
+        message: `Binding "${bindingId}" (literal) cannot carry iteration_mode.`,
+      })
+    }
+    // Check 5: field_path bindings must declare iteration_mode +
+    // saved_view_id + non-empty field_path.
+    if (ref.binding_type === "field_path") {
+      if (!ref.iteration_mode) {
+        errs.push({
+          atomId: "__bindings__",
+          message: `Binding "${bindingId}" needs an iteration mode.`,
+        })
+      }
+      if (!ref.saved_view_id) {
+        errs.push({
+          atomId: "__bindings__",
+          message: `Binding "${bindingId}" needs a saved view.`,
+        })
+      }
+      if (!ref.field_path) {
+        errs.push({
+          atomId: "__bindings__",
+          message: `Binding "${bindingId}" needs a field path.`,
+        })
+      }
+      if (ref.iteration_mode === "per_row") {
+        perRowBindingIds.add(bindingId)
+      }
+    }
+  }
+
+  // Check 3 + a piece of Check 2: leaf atoms with per_row bindings.
+  for (const [atomId, node] of Object.entries(blob.atom_tree)) {
+    if (!_NON_REPEATER_LEAF_ATOM_TYPES.has(node.atom_type)) continue
+    for (const [propName, bindingId] of Object.entries(
+      node.binding_refs ?? {},
+    )) {
+      const ref = blob.bindings_catalog[bindingId]
+      if (!ref) continue
+      if (ref.binding_type !== "field_path") continue
+      if (ref.iteration_mode === "per_row") {
+        errs.push({
+          atomId,
+          message: `Binding "${propName}" uses per_row but ${node.atom_type} requires single_record or single_summary.`,
+        })
+      }
+    }
+  }
+
+  // Check 2: per_row bindings must be consumed by a repeater_atom.
+  for (const bindingId of perRowBindingIds) {
+    if (!repeaterConsumers.has(bindingId)) {
+      errs.push({
+        atomId: "__bindings__",
+        message: `Per-row binding "${bindingId}" must be consumed by a repeater atom.`,
+      })
+    }
+  }
+
+  return errs
+}
+
+
 export function validateCompositionBlob(
   blob: CompositionBlob | null,
 ): ValidationResult {
@@ -123,6 +228,20 @@ export function validateCompositionBlob(
       errorList.push({ atom_id: atomId, atom_type: node.atom_type, message })
     }
   }
+
+  // WB-6 — bidirectional binding-shape checks across the catalog.
+  const bindingErrs = checkBindingsCatalog(blob)
+  for (const { atomId, message } of bindingErrs) {
+    if (!errorsByAtom[atomId]) errorsByAtom[atomId] = []
+    errorsByAtom[atomId].push(message)
+    const node = blob.atom_tree[atomId]
+    errorList.push({
+      atom_id: atomId,
+      atom_type: node?.atom_type ?? ("text_label" as AtomType),
+      message,
+    })
+  }
+
   return {
     errorsByAtom,
     errorList,

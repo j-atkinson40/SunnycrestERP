@@ -177,3 +177,157 @@ describe("WB-3 source-shape gates", () => {
     expect(src).toMatch(/repeater_atom may not contain another repeater_atom/)
   })
 })
+
+
+// ── WB-6 source-shape regression gates (entry 31 pattern) ─────────────
+
+describe("WB-6 source-shape gates", () => {
+  it("resolveBinding.ts substantiates field_path resolution (no Phase-1 placeholder)", async () => {
+    const src = await readSource("./resolveBinding.ts")
+    // Real resolution primitives present.
+    expect(src).toMatch(/export function parseFieldPath\b/)
+    expect(src).toMatch(/export function walkFieldPath\b/)
+    // Iteration_mode branches.
+    expect(src).toMatch(/iteration_mode\s*===?\s*['"]single_summary['"]|mode\s*===?\s*['"]single_summary['"]/)
+    expect(src).toMatch(/iteration_mode\s*===?\s*['"]per_row['"]|mode\s*===?\s*['"]per_row['"]/)
+    expect(src).toMatch(/iteration_mode\s*===?\s*['"]single_record['"]|mode\s*===?\s*['"]single_record['"]/)
+    // Per-row context-spread + summary context discriminator.
+    expect(src).toMatch(/__row/)
+    expect(src).toMatch(/__summary/)
+    // Backward-compat literal branch.
+    expect(src).toMatch(/binding_type === "literal"/)
+    // Numeric segment array indexing.
+    expect(src).toMatch(/\\d\+|\\d/)
+    // Malformed-throw discipline.
+    expect(src).toMatch(/malformed field_path/)
+    // WB-2 placeholder string syntax REMOVED from the field_path path.
+    // (kept only for unset field_path draft-state edge case.)
+    expect(src).not.toMatch(/\[bound:row\./)
+  })
+
+  it("AtomRenderer.tsx substantiates iteration (no longer 1 mock row)", async () => {
+    const src = await readSource("./AtomRenderer.tsx")
+    // Real row iteration via dataContext.rows.
+    expect(src).toMatch(/dataContext as \{ rows\??: unknown \}/)
+    expect(src).toMatch(/realRows/)
+    // Per-row context-spread.
+    expect(src).toMatch(/__row: true, __index: i, \.\.\.rowData/)
+    // max_rows respected.
+    expect(src).toMatch(/max_rows/)
+  })
+
+  it("BindingPicker substrate present", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const dir = resolve(
+      __dirname,
+      "../../../bridgeable-admin/components/widget-builder/binding-picker",
+    )
+    const bindingPicker = readFileSync(
+      resolve(dir, "BindingPicker.tsx"),
+      "utf-8",
+    )
+    expect(bindingPicker).toMatch(/export function BindingPicker\b/)
+    expect(bindingPicker).toMatch(/SavedViewPicker/)
+    expect(bindingPicker).toMatch(/FieldPathPicker/)
+    expect(bindingPicker).toMatch(/IterationModePicker/)
+    expect(bindingPicker).toMatch(/BindingPreviewTooltip/)
+
+    const sv = readFileSync(resolve(dir, "SavedViewPicker.tsx"), "utf-8")
+    expect(sv).toMatch(/export function SavedViewPicker\b/)
+    // Shape-compatibility filter present.
+    expect(sv).toMatch(/ARRAY_SHAPED_MODES/)
+
+    const fp = readFileSync(resolve(dir, "FieldPathPicker.tsx"), "utf-8")
+    expect(fp).toMatch(/export function FieldPathPicker\b/)
+    // Free-text fallback present per Risk 1.
+    expect(fp).toMatch(/freetext/i)
+
+    const im = readFileSync(
+      resolve(dir, "IterationModePicker.tsx"),
+      "utf-8",
+    )
+    expect(im).toMatch(/export function IterationModePicker\b/)
+    expect(im).toMatch(/inferIterationMode/)
+
+    const tip = readFileSync(
+      resolve(dir, "BindingPreviewTooltip.tsx"),
+      "utf-8",
+    )
+    expect(tip).toMatch(/BindingPreviewTooltip/)
+
+    const useP = readFileSync(resolve(dir, "useBindingPicker.ts"), "utf-8")
+    expect(useP).toMatch(/export function useBindingPicker\b/)
+    expect(useP).toMatch(/listSavedViews/)
+    expect(useP).toMatch(/listEntityTypes/)
+
+    const usePrev = readFileSync(
+      resolve(dir, "useBindingPreview.ts"),
+      "utf-8",
+    )
+    expect(usePrev).toMatch(/export function useBindingPreview\b/)
+    expect(usePrev).toMatch(/executeSavedView/)
+    expect(usePrev).toMatch(/resolveBinding/)
+  })
+
+  it("AtomInspectorDispatch consumes BindingPicker (5 inspectors wired)", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const src = readFileSync(
+      resolve(
+        __dirname,
+        "../../../bridgeable-admin/components/widget-builder/inspectors/AtomInspectorDispatch.tsx",
+      ),
+      "utf-8",
+    )
+    expect(src).toMatch(/import \{ BindingPicker \}/)
+    // Inspector binding update hook present.
+    expect(src).toMatch(/export function useAtomBindingUpdater\b/)
+    // ValueDisplay + Button + Image + ConditionalContainer + Repeater
+    // all carry the BindingPicker (atomType="…") strings.
+    expect(src).toMatch(/atomType="value_display"/)
+    expect(src).toMatch(/atomType="button"/)
+    expect(src).toMatch(/atomType="image"/)
+    expect(src).toMatch(/atomType="conditional_container"/)
+    expect(src).toMatch(/atomType="repeater_atom"/)
+  })
+
+  it("backend validators carries 5 bidirectional iteration_mode checks", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const src = readFileSync(
+      resolve(
+        __dirname,
+        "../../../../../backend/app/services/widget_definitions/validators.py",
+      ),
+      "utf-8",
+    )
+    // Check 2 / 3 (per_row consumption + leaf-atom mode).
+    // Strings are split across Python f-string concat; match smaller substrings.
+    expect(src).toMatch(/per_row binding/)
+    expect(src).toMatch(/single_record' or 'single_summary'/)
+    // Check 4 (literal + iteration_mode rejection).
+    expect(src).toMatch(/literal bindings must not carry iteration_mode/)
+    // Check 5 (field_path requires iteration_mode + saved_view_id + field_path).
+    // Python f-strings split across lines; match on smaller substrings.
+    expect(src).toMatch(/binding requires iteration_mode/)
+    expect(src).toMatch(/non-empty saved_view_id/)
+    expect(src).toMatch(/non-empty field_path/)
+  })
+
+  it("useWidgetValidation mirrors backend checks", async () => {
+    const { readFileSync } = await import("fs")
+    const { resolve } = await import("path")
+    const src = readFileSync(
+      resolve(
+        __dirname,
+        "../../../bridgeable-admin/hooks/useWidgetValidation.ts",
+      ),
+      "utf-8",
+    )
+    expect(src).toMatch(/checkBindingsCatalog/)
+    expect(src).toMatch(/cannot carry iteration_mode/)
+    expect(src).toMatch(/per_row but/)
+    expect(src).toMatch(/must be consumed by a repeater/)
+  })
+})

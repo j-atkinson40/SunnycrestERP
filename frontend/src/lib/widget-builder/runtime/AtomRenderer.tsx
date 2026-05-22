@@ -184,48 +184,81 @@ export function AtomRenderer({
       )
     })
   } else if (atom.atom_type === "repeater_atom" && atom.children) {
-    // WB-3 — repeater iteration. Phase 1 placeholder: render 1 mock
-    // row so the layout space is visible to authors. The per-row
-    // dataContext marker (`{ __row: true, __index: i }`) flows into
-    // resolveBinding so field_path bindings surface the iteration
-    // semantics. WB-6 swaps the mock data for real saved-view row
-    // projection.
-    const rowCount = 1
-    const rows: ReactNode[] = []
-    for (let i = 0; i < rowCount; i++) {
-      const rowContext = { __row: true, __index: i }
-      rows.push(
-        <div
-          key={`row-${i}`}
-          data-row-index={i}
-          className="flex flex-row items-center gap-2"
-        >
-          {atom.children.map((childId) => {
-            const child = atomTree[childId]
-            if (!child) return null
-            // Defensive: repeater inside repeater would have been
-            // rejected at validation time. Throw at render time as
-            // defense-in-depth.
-            if (child.atom_type === "repeater_atom") {
-              throw new Error(
-                `[AtomRenderer] repeater_atom ${atom.atom_id} may not contain another repeater_atom (${childId}) — Phase 1 cap`,
-              )
-            }
-            return (
-              <AtomRenderer
-                key={`${childId}-${i}`}
-                atom={child}
-                atomTree={atomTree}
-                bindingsCatalog={bindingsCatalog}
-                variantId={variantId}
-                dataContext={rowContext}
-              />
-            )
-          })}
-        </div>,
-      )
+    // WB-6 — repeater iteration substantiated. Real rows flow via
+    // `dataContext.rows` (WB-5 canvas preview supplies this; embedded
+    // widget renders supply this from saved-view fetch). When
+    // `dataContext` is undefined OR rows is absent, render a single
+    // mock row so the layout remains visible during authoring (the
+    // canvas preview is WB-5's job — until then the canvas renders
+    // one structural row so the operator can shape the row template).
+    //
+    // Per Area 4c lock: rowContext spreads the row dict INTO the
+    // context. `__row` discriminator + `__index` position marker stay
+    // alongside; the row's fields become directly accessible.
+    let realRows: Record<string, unknown>[] | undefined = undefined
+    if (
+      typeof dataContext === "object" &&
+      dataContext !== null &&
+      Array.isArray((dataContext as { rows?: unknown }).rows)
+    ) {
+      realRows = (dataContext as { rows: Record<string, unknown>[] }).rows
     }
-    childRenders = rows
+
+    const repeaterConfig = (atom.config as { empty_state?: string; max_rows?: number } | undefined) ?? {}
+
+    // Empty array → render empty_state if configured. (RepeaterAtomRenderer
+    // handles the empty-children render path; we surface empty rows via
+    // an empty `rows` array passed as children below — but the renderer
+    // looks at children.length, so we route to empty path by passing [].)
+    if (realRows !== undefined && realRows.length === 0) {
+      // Empty real rows — pass no children; renderer surfaces empty_state.
+      childRenders = []
+    } else {
+      const iterRows: Array<Record<string, unknown> | null> =
+        realRows !== undefined
+          ? (repeaterConfig.max_rows
+              ? realRows.slice(0, repeaterConfig.max_rows)
+              : realRows)
+          : [null] // WB-6 authoring fallback: 1 structural mock row
+      const rows: ReactNode[] = []
+      iterRows.forEach((rowData, i) => {
+        const rowContext: Record<string, unknown> =
+          rowData !== null
+            ? { __row: true, __index: i, ...rowData }
+            : { __row: true, __index: i }
+        rows.push(
+          <div
+            key={`row-${i}`}
+            data-row-index={i}
+            className="flex flex-row items-center gap-2"
+          >
+            {atom.children!.map((childId) => {
+              const child = atomTree[childId]
+              if (!child) return null
+              // Defensive: repeater inside repeater would have been
+              // rejected at validation time. Throw at render time as
+              // defense-in-depth.
+              if (child.atom_type === "repeater_atom") {
+                throw new Error(
+                  `[AtomRenderer] repeater_atom ${atom.atom_id} may not contain another repeater_atom (${childId}) — Phase 1 cap`,
+                )
+              }
+              return (
+                <AtomRenderer
+                  key={`${childId}-${i}`}
+                  atom={child}
+                  atomTree={atomTree}
+                  bindingsCatalog={bindingsCatalog}
+                  variantId={variantId}
+                  dataContext={rowContext}
+                />
+              )
+            })}
+          </div>,
+        )
+      })
+      childRenders = rows
+    }
   }
 
   // Each leaf renderer types its own config narrowly; AtomRenderer
