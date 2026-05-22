@@ -32,6 +32,7 @@ import {
   Palette,
   Plug,
   Sparkles,
+  Wand2,
   X,
   type LucideIcon,
 } from "lucide-react"
@@ -64,6 +65,13 @@ interface RailEntry {
   overrideHref?: string
   /** Stable id for the dismissible-affordance localStorage key. */
   newAffordanceId?: string
+  /**
+   * Stable testid suffix for overrideHref entries (which lack an
+   * editor key to derive from). Required when multiple overrideHref
+   * entries coexist so test ids don't collide. Sub-arc WB-cycle-
+   * followup-1 added this for the Widget Builder rail entry.
+   */
+  testIdSuffix?: string
 }
 
 
@@ -75,6 +83,16 @@ interface RailEntry {
  */
 export const FOCUS_BUILDER_RAIL_BANNER_KEY =
   "bridgeable.focus-builder.studio-rail-banner-dismissed"
+
+
+/**
+ * Sub-arc WB-cycle-followup-1: per-operator dismissal of the "New"
+ * badge on the Widget Builder rail entry. Mirrors F-1.1's
+ * FOCUS_BUILDER_RAIL_BANNER_KEY shape (per studio nav investigation
+ * 3a019e1 Q-A3 lock).
+ */
+export const WIDGET_BUILDER_RAIL_BANNER_KEY =
+  "bridgeable.widget-builder.studio-rail-banner-dismissed"
 
 
 /** Order = display order in the rail. Mirrors VisualEditorIndex card order. */
@@ -92,8 +110,22 @@ const RAIL_ENTRIES: RailEntry[] = [
     icon: Sparkles,
     overrideHref: "/studio/builder/focuses",
     newAffordanceId: FOCUS_BUILDER_RAIL_BANNER_KEY,
+    testIdSuffix: "focus-builder",
   },
   { editor: "widgets", label: "Widgets", icon: LayoutDashboard },
+  // Sub-arc WB-cycle-followup-1 (studio nav investigation 3a019e1):
+  // Widget Builder rail entry surfaces the WB-1..WB-8 cycle authoring
+  // tool. Routes to /studio/widgets list view (Q-A4 lock) which
+  // exposes both existing widgets and the "+ New Widget" affordance.
+  // Mirrors F-1.1's overrideHref + newAffordanceId substrate verbatim.
+  {
+    editor: null,
+    label: "Widget Builder",
+    icon: Wand2,
+    overrideHref: "/studio/widgets",
+    newAffordanceId: WIDGET_BUILDER_RAIL_BANNER_KEY,
+    testIdSuffix: "widget-builder",
+  },
   { editor: "documents", label: "Documents", icon: FileText },
   { editor: "classes", label: "Classes", icon: Boxes },
   { editor: "workflows", label: "Workflows", icon: GitBranch },
@@ -138,6 +170,8 @@ export function StudioRail({
       const initial: Record<string, boolean> = {}
       initial[FOCUS_BUILDER_RAIL_BANNER_KEY] =
         window.localStorage.getItem(FOCUS_BUILDER_RAIL_BANNER_KEY) === "1"
+      initial[WIDGET_BUILDER_RAIL_BANNER_KEY] =
+        window.localStorage.getItem(WIDGET_BUILDER_RAIL_BANNER_KEY) === "1"
       return initial
     } catch {
       return {} as Record<string, boolean>
@@ -202,10 +236,12 @@ export function StudioRail({
             activeEditor === null &&
             !entry.overrideHref
           // Sub-arc F-1.1: same testid scheme as expanded mode for
-          // overrideHref entries.
-          const iconTestIdSuffix = entry.overrideHref
-            ? "focus-builder"
-            : (entry.editor ?? "overview")
+          // overrideHref entries. Sub-arc WB-cycle-followup-1: prefer
+          // entry.testIdSuffix when present so multiple overrideHref
+          // entries (Focus Builder + Widget Builder) get stable distinct
+          // ids.
+          const iconTestIdSuffix =
+            entry.testIdSuffix ?? (entry.editor ?? "overview")
           return (
             <button
               key={entry.label}
@@ -282,11 +318,13 @@ export function StudioRail({
         const showNewBadge =
           !!entry.newAffordanceId &&
           !dismissedAffordances[entry.newAffordanceId]
-        // Stable testid: Focus Builder (overrideHref, editor=null) needs
-        // a distinct id from Overview (no overrideHref, editor=null).
-        const testIdSuffix = entry.overrideHref
-          ? "focus-builder"
-          : (entry.editor ?? "overview")
+        // Stable testid: overrideHref entries (editor=null) need a
+        // distinct id from Overview (no overrideHref, editor=null).
+        // Sub-arc WB-cycle-followup-1: prefer entry.testIdSuffix when
+        // present so Focus Builder + Widget Builder (and future
+        // overrideHref entries) get stable distinct ids.
+        const testIdSuffix =
+          entry.testIdSuffix ?? (entry.editor ?? "overview")
         if (entry.disabled) {
           return (
             <div
