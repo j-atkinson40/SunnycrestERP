@@ -1,9 +1,11 @@
 /**
  * useWidgetList — WB-4b composed-widget index hook.
  *
- * Fetches the list of composed widgets from the new
- * `GET /api/v1/widget-definitions` endpoint. Filters client-side
- * by tier_scope ("all" | "platform" | "vertical").
+ * Fetches the list of composed widgets from
+ * `GET /api/platform/admin/visual-editor/widgets` (post WB-cycle-followup-2
+ * — was `GET /api/v1/widget-definitions` against tenant apiClient prior).
+ *
+ * Filters client-side by tier_scope ("all" | "platform" | "vertical").
  *
  * Phase 1 surface — no pagination, no search, no per-tenant scoping.
  * The list is bounded (≤ ~30 composed widgets per tenant in Phase 1
@@ -12,8 +14,10 @@
  */
 import { useCallback, useEffect, useState } from "react"
 
-import apiClient from "@/lib/api-client"
-import type { WidgetBuilderRecord } from "@/bridgeable-admin/services/widget-builder-service"
+import {
+  visualEditorWidgetsService,
+  type WidgetBuilderRecord,
+} from "@/bridgeable-admin/services/visual-editor-widgets-service"
 
 
 export type TierScopeFilter = "all" | "platform" | "vertical"
@@ -40,18 +44,11 @@ export function useWidgetList(): UseWidgetListResult {
     let cancelled = false
     setLoading(true)
     setError(null)
-    apiClient
-      .get<{ widgets: WidgetBuilderRecord[] } | WidgetBuilderRecord[]>(
-        "/widget-definitions",
-      )
+    visualEditorWidgetsService
+      .list()
       .then((r) => {
         if (cancelled) return
-        // Accept either {widgets: [...]} or a raw array for forward-compat.
-        const data = r.data as unknown
-        const list = Array.isArray(data)
-          ? (data as WidgetBuilderRecord[])
-          : (data as { widgets?: WidgetBuilderRecord[] })?.widgets ?? []
-        setWidgets(list)
+        setWidgets(r.widgets)
       })
       .catch((e: unknown) => {
         if (cancelled) return

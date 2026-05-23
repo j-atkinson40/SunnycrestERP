@@ -35,6 +35,7 @@ from app.api.routes.admin import (
     visual_editor_workflows,
     visual_editor_classes,
     visual_editor_dashboard_layouts,
+    visual_editor_widgets,
     focus_template_inheritance as admin_focus_template_inheritance,
     edge_panel_inheritance as admin_edge_panel_inheritance,
     plugin_registry as admin_plugin_registry,
@@ -162,6 +163,17 @@ platform_router.include_router(
     visual_editor_dashboard_layouts.router,
     prefix="/admin/visual-editor/dashboard-layouts",
     tags=["Visual Editor — Dashboard Layouts"],
+)
+# WB-cycle-followup-2 (May 2026) — Widget Builder auth-realm fix.
+# Mirrors tenant /api/v1/widget-definitions/* + /widgets/composed-definitions
+# under platform realm to close the 403 gap from WB-cycle-followup-1 on
+# admin.getbridgeable.com. Service layer at app.services.widget_definitions
+# is realm-agnostic and consumed verbatim; only the auth surface differs.
+# See docs/investigations/2026-05-26-widget-builder-auth-realm.md.
+platform_router.include_router(
+    visual_editor_widgets.router,
+    prefix="/admin/visual-editor/widgets",
+    tags=["Visual Editor — Widgets"],
 )
 # Focus Template Inheritance — sub-arc B-1 (May 2026). Three-tier
 # inheritance (cores → templates → compositions) with delta-storage
