@@ -158,6 +158,33 @@ class SocialServiceCertificateService:
             certificate_number,
             order.number,
         )
+
+        # (c) build arc Phase B — ss_cert_pending_approval dispatch (producer site #2).
+        # Defensive: notification failure must not block cert creation (V-1d pattern).
+        try:
+            from app.services import notification_service
+            notification_service.notify_users_with_permission(
+                db,
+                company_id=order.company_id,
+                permission_key="invoice.approve",
+                title=f"Social service certificate pending approval ({order.number})",
+                message=(
+                    f"Certificate {certificate_number} for order "
+                    f"{order.number} is pending approval."
+                ),
+                type="info",
+                category="ss_cert_pending_approval",
+                link=f"/social-service-certificates/{cert.id}",
+                source_reference_type="social_service_certificate",
+                source_reference_id=cert.id,
+            )
+            db.commit()
+        except Exception:
+            logger.exception(
+                "notification dispatch failed for ss_cert_pending_approval cert_id=%s",
+                cert.id,
+            )
+
         return cert
 
     @staticmethod

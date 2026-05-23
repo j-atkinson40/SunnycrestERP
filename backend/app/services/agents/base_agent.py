@@ -101,6 +101,7 @@ class BaseAgent:
             self._assemble_report()
             self._set_status(AgentJobStatus.AWAITING_APPROVAL)
             self._trigger_approval_gate()
+            self._dispatch_pending_attention_notification()
 
         except AgentStepError as e:
             self._handle_step_failure(e)
@@ -303,6 +304,86 @@ class BaseAgent:
             )
         except Exception as e:
             logger.error("Failed to send approval email for job %s: %s", self.job_id, e)
+
+    def _dispatch_pending_attention_notification(self) -> None:
+        """(c) build arc Phase B — producer site #3 (single dispatch
+        servicing 3 AgentAnomaly-backed accounting queues + month_end_close).
+
+        Branches on ``self.job.job_type`` to choose category:
+          - cash_receipts_matching / ar_collections / expense_categorization
+            → ``agent_anomaly_pending`` (per-anomaly cohort copy)
+          - month_end_close → ``agent_job_awaiting_approval``
+            (per-job cohort, distinct close action)
+
+        expense_categorization is gated on ``anomaly_count > 0`` so the
+        15-min cron's quiet runs don't notify.
+
+        Aftercare job_type (``fh_aftercare_7day``) is handled by the
+        aftercare_adapter's own dispatch (producer site #4) and is
+        NOT serviced here — recipient-cohort grain (funeral directors
+        vs accounting cohort) requires a distinct category + permission
+        gate per Lock 1 refinement.
+
+        Defensive: notification dispatch failure must NOT block agent
+        execution (V-1d pattern). All exceptions logged and swallowed.
+        """
+        try:
+            from app.services import notification_service
+
+            job_type = (self.job.job_type or "").strip()
+            anomaly_count = int(self.job.anomaly_count or 0)
+
+            if job_type in (
+                "cash_receipts_matching",
+                "ar_collections",
+                "expense_categorization",
+            ):
+                # expense_categorization fires every 15 min via cron;
+                # quiet runs (no anomalies) must stay silent.
+                if job_type == "expense_categorization" and anomaly_count == 0:
+                    return
+                category = "agent_anomaly_pending"
+                title = (
+                    f"{anomaly_count} "
+                    f"{job_type.replace('_', ' ')} "
+                    f"{'item needs' if anomaly_count == 1 else 'items need'} "
+                    f"review"
+                )
+            elif job_type == "month_end_close":
+                category = "agent_job_awaiting_approval"
+                period_label = (
+                    str(self.job.period_end)
+                    if self.job.period_end
+                    else "current period"
+                )
+                title = f"Month-end close ready to review ({period_label})"
+            else:
+                # Aftercare + future job_types fall through — they have
+                # their own producer sites or no notification scope yet.
+                return
+
+            notification_service.notify_users_with_permission(
+                self.db,
+                company_id=self.tenant_id,
+                permission_key="invoice.approve",
+                title=title,
+                message=(
+                    self.job.error_message
+                    or f"Agent job {self.job_id} is awaiting review."
+                ),
+                type="info",
+                category=category,
+                link=f"/agents/{self.job_id}/review",
+                actor_user_id=self.job.triggered_by,
+                source_reference_type="agent_job",
+                source_reference_id=self.job_id,
+            )
+            self.db.commit()
+        except Exception:
+            logger.exception(
+                "notification dispatch failed for agent job %s",
+                self.job_id,
+            )
 
     def _handle_step_failure(self, e: AgentStepError) -> None:
         logger.error(

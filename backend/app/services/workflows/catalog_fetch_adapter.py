@@ -254,6 +254,41 @@ def run_staged_fetch(
     settings.catalog_pdf_r2_key = r2_key
 
     db.commit()
+
+    # (c) build arc Phase B — catalog_sync_pending_review dispatch
+    # (producer site #5). Fires on the new pending-review row's
+    # creation; supersede semantics at lines 200-216 ensure older
+    # pending rows are flipped to 'superseded' BEFORE this row is
+    # created — older rows do NOT re-fire.
+    # Defensive: notification failure must not block ingestion (V-1d).
+    try:
+        from app.services import notification_service
+        notification_service.notify_users_with_permission(
+            db,
+            company_id=company_id,
+            permission_key="invoice.approve",
+            title=(
+                f"Urn catalog sync pending review "
+                f"({products_preview} product changes)"
+            ),
+            message=(
+                "A new Wilbert urn catalog fetch has staged "
+                f"{products_preview} product changes for review."
+            ),
+            type="info",
+            category="catalog_sync_pending_review",
+            link=f"/triage/catalog_fetch_triage",
+            source_reference_type="urn_catalog_sync_log",
+            source_reference_id=new_log.id,
+        )
+        db.commit()
+    except Exception:
+        logger.exception(
+            "notification dispatch failed for catalog_sync_pending_review "
+            "sync_log_id=%s",
+            new_log.id,
+        )
+
     return {
         "status": "applied",
         "changed": True,

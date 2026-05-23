@@ -175,6 +175,41 @@ def generate_program_content(
 
     db.commit()
     db.refresh(gen)
+
+    # (c) build arc Phase B — safety_program_pending_review dispatch
+    # (producer site #6). Fires when generation status transitions to
+    # 'pending_review' (status set at line 163 above). Recipients gated
+    # on safety.trainer.approve — distinct cohort from invoice approvers.
+    # Defensive: notification failure must not block generation (V-1d).
+    if gen.status == "pending_review":
+        try:
+            from app.services import notification_service
+            topic_title = (
+                topic.title if topic else f"generation {gen.id}"
+            )
+            notification_service.notify_users_with_permission(
+                db,
+                company_id=gen.tenant_id,
+                permission_key="safety.trainer.approve",
+                title=f"Safety program ready for review: {topic_title}",
+                message=(
+                    "An AI-generated safety program has been staged "
+                    "for safety-trainer review."
+                ),
+                type="info",
+                category="safety_program_pending_review",
+                link=f"/safety/programs/{gen.id}",
+                source_reference_type="safety_program_generation",
+                source_reference_id=gen.id,
+            )
+            db.commit()
+        except Exception:
+            logger.exception(
+                "notification dispatch failed for safety_program_pending_review "
+                "gen_id=%s",
+                gen.id,
+            )
+
     return gen
 
 

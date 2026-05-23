@@ -811,6 +811,38 @@ def _handle_invoke_review_focus(
     db.commit()
     db.refresh(item)
 
+    # (c) build arc Phase B — workflow_review_pending dispatch
+    # (producer site #7). Conservative fallback: admin permission gate
+    # per Phase A.0 (per-Focus-template recipient resolution deferred
+    # to a later arc). One row per invoke_review_focus step execution;
+    # workflow engine creates exactly once per step invocation.
+    # Defensive: notification failure must not block workflow run (V-1d).
+    try:
+        from app.services import notification_service
+        notification_service.notify_users_with_permission(
+            db,
+            company_id=run.company_id,
+            permission_key="admin",
+            title=f"Workflow review needed: {review_focus_id}",
+            message=(
+                f"A workflow run has paused on a review step "
+                f"({review_focus_id}) and is awaiting decision."
+            ),
+            type="info",
+            category="workflow_review_pending",
+            link=f"/triage/workflow_review_triage",
+            source_reference_type="workflow_review_item",
+            source_reference_id=item.id,
+        )
+        db.commit()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "notification dispatch failed for workflow_review_pending "
+            "review_item_id=%s",
+            item.id,
+        )
+
     return {
         "type": "awaiting_review",
         "review_item_id": item.id,

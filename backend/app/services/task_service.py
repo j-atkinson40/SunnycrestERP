@@ -18,6 +18,7 @@ Tenant isolation is the caller's responsibility — routes scope by
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, timezone
 from typing import Any
@@ -26,6 +27,8 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Query, Session
 
 from app.models.task import TASK_PRIORITIES, TASK_STATUSES, Task
+
+logger = logging.getLogger(__name__)
 
 
 class TaskError(Exception):
@@ -161,6 +164,33 @@ def create_task(
     db.add(task)
     db.commit()
     db.refresh(task)
+
+    # (c) build arc Phase B — task_assigned dispatch (producer site #1).
+    # Single recipient = assignee; Lock 3 self-suppress when assignee == creator.
+    # Defensive: notification failure must not block task creation (V-1d pattern).
+    if assignee_user_id and assignee_user_id != created_by_user_id:
+        try:
+            from app.services import notification_service
+            notification_service.create_notification(
+                db,
+                company_id=company_id,
+                user_id=assignee_user_id,
+                title=f"Task assigned: {title}",
+                message=description or title,
+                type="info",
+                category="task_assigned",
+                link=f"/tasks/{task.id}",
+                actor_id=created_by_user_id,
+                source_reference_type="task",
+                source_reference_id=task.id,
+            )
+            db.commit()
+        except Exception:
+            logger.exception(
+                "notification dispatch failed for task_assigned task_id=%s",
+                task.id,
+            )
+
     return task
 
 

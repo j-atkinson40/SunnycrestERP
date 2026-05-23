@@ -152,6 +152,91 @@ def notify_tenant_admins(
     return out
 
 
+def notify_users_with_permission(
+    db: Session,
+    company_id: str,
+    permission_key: str,
+    title: str,
+    message: str,
+    *,
+    type: str = "info",
+    category: str | None = None,
+    link: str | None = None,
+    actor_user_id: str | None = None,
+    severity: str | None = None,
+    due_date: datetime | None = None,
+    source_reference_type: str | None = None,
+    source_reference_id: str | None = None,
+) -> list[Notification]:
+    """Fan-out: one Notification per active tenant user with `permission_key`.
+
+    (c) build arc — closes the 11/11 triage-queue silent-by-default
+    dispatch gap. Permission-gated cohort dispatch (not admin fan-out)
+    so producer-site notifications reach users qualified to action,
+    not every admin by default.
+
+    Admin role short-circuits the permission check (per
+    `permission_service.user_has_permission`) — admin users receive
+    if they pass the permission filter, which they always do.
+
+    Lock 3 — self-assignment suppression: when `actor_user_id` is
+    supplied and matches a candidate recipient's `user.id`, that
+    recipient is skipped. Pattern lives in helper so every producer
+    inherits the behavior without per-producer remembering.
+
+    Category is validated once at fan-out entry (matches
+    `notify_tenant_admins` discipline) so malformed category fails
+    fast before the per-user permission walk.
+    """
+    assert_valid_notification_category(category)
+    # Import locally to avoid circular import via permission_service →
+    # role_service → audit_service chains at module load.
+    from app.services import permission_service
+
+    candidates = (
+        db.query(User)
+        .filter(
+            User.company_id == company_id,
+            User.is_active.is_(True),
+        )
+        .all()
+    )
+    out: list[Notification] = []
+    for user in candidates:
+        # Lock 3: self-assignment suppression
+        if actor_user_id is not None and user.id == actor_user_id:
+            continue
+        if not permission_service.user_has_permission(user, db, permission_key):
+            continue
+        out.append(
+            create_notification(
+                db,
+                company_id=company_id,
+                user_id=user.id,
+                title=title,
+                message=message,
+                type=type,
+                category=category,
+                link=link,
+                actor_id=actor_user_id,
+                severity=severity,
+                due_date=due_date,
+                source_reference_type=source_reference_type,
+                source_reference_id=source_reference_id,
+            )
+        )
+    if not out:
+        logger.info(
+            "notify_users_with_permission: no active users with "
+            "permission %r for company_id=%s category=%s — "
+            "notification not created",
+            permission_key,
+            company_id,
+            category,
+        )
+    return out
+
+
 def get_notifications(
     db: Session,
     user_id: str,

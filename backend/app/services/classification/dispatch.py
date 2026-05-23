@@ -375,6 +375,41 @@ def classify_and_fire(
         is_replay=is_replay,
         replay_of_classification_id=replay_of_classification_id,
     )
+
+    # (c) build arc Phase B — email_unclassified_pending dispatch
+    # (producer site #8). Fires once per cascade-exhaustion event.
+    # Admin gate per audit Q1 row 11. Replay regression: replays write
+    # a new audit row keyed to its own id, so re-firing per replay is
+    # correct + non-duplicative against the original. Idempotency =
+    # per-audit-row-id source_reference.
+    # Defensive: notification failure must not block ingestion (V-1d).
+    if not is_replay:
+        try:
+            from app.services import notification_service
+            subject = (email_message.subject or "(no subject)")[:80]
+            notification_service.notify_users_with_permission(
+                db,
+                company_id=email_message.tenant_id,
+                permission_key="admin",
+                title=f"Unclassified email needs routing ({subject})",
+                message=(
+                    "An inbound email failed all three classification "
+                    "tiers and needs manual routing."
+                ),
+                type="warning",
+                category="email_unclassified_pending",
+                link=f"/triage/email_unclassified_triage",
+                source_reference_type="workflow_email_classification",
+                source_reference_id=row.id,
+            )
+            db.commit()
+        except Exception:
+            logger.exception(
+                "notification dispatch failed for email_unclassified_pending "
+                "classification_id=%s",
+                row.id,
+            )
+
     return ClassificationResult(
         classification_id=row.id,
         tier=None,

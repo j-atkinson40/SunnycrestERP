@@ -25,9 +25,10 @@ class TestRegistryShape:
 
     def test_registry_is_frozen_set(self) -> None:
         assert isinstance(NOTIFICATION_CATEGORIES, frozenset)
-        # 19 canonical categories at R-8.1 ship (18 actively written +
-        # safety_alert read-only legacy).
-        assert len(NOTIFICATION_CATEGORIES) >= 18
+        # R-8.1 shipped 19 canonical categories (18 actively written +
+        # safety_alert read-only legacy). (c) build arc adds 9 more
+        # pending-attention categories — registry now ≥28.
+        assert len(NOTIFICATION_CATEGORIES) >= 28
 
     def test_every_entry_has_required_metadata(self) -> None:
         required_fields = {"description", "default_icon", "default_color_token"}

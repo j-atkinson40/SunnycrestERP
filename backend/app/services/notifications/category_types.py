@@ -140,6 +140,60 @@ NOTIFICATION_CATEGORY_REGISTRY: dict[str, dict[str, str]] = {
         "default_icon": "AlertTriangle",
         "default_color_token": "status-error",
     },
+    # ── (c) build arc — pending-attention dispatch (triage-queue producer sites) ──
+    # 9 categories close the 11/11 triage-queue silent-by-default dispatch
+    # gap. Recipient-cohort grain: per-event (not per-domain catch-all) per
+    # PLUGIN_CONTRACTS.md §19 closed-vocabulary discipline. The
+    # `agent_anomaly_pending` collapsed category services 3 AgentAnomaly-backed
+    # accounting queues (cash_receipts_matching, ar_collections,
+    # expense_categorization); aftercare splits to dedicated
+    # `funeral_followup_pending` for recipient-cohort grain correctness
+    # (funeral directors vs. accounting cohort).
+    "task_assigned": {
+        "description": "Task assigned to a user (task_triage producer site; direct dispatch to assignee).",
+        "default_icon": "ClipboardCheck",
+        "default_color_token": "status-info",
+    },
+    "ss_cert_pending_approval": {
+        "description": "Social service certificate pending approval (ss_cert_triage producer site).",
+        "default_icon": "FileCheck",
+        "default_color_token": "status-info",
+    },
+    "agent_anomaly_pending": {
+        "description": "Agent anomalies awaiting review (cash_receipts_matching, ar_collections, expense_categorization triage queues; collapsed category — job_type interpolated in copy).",
+        "default_icon": "AlertCircle",
+        "default_color_token": "status-warning",
+    },
+    "agent_job_awaiting_approval": {
+        "description": "Agent job awaiting approval (month_end_close — per-job cardinality distinct from per-anomaly cohort).",
+        "default_icon": "ClipboardList",
+        "default_color_token": "status-warning",
+    },
+    "funeral_followup_pending": {
+        "description": "Funeral case aftercare follow-up due (aftercare_triage producer site; recipient cohort is funeral directors, structurally distinct from accounting cohort).",
+        "default_icon": "Heart",
+        "default_color_token": "status-info",
+    },
+    "catalog_sync_pending_review": {
+        "description": "Urn catalog sync pending review (catalog_fetch_triage producer site; manufacturing vertical, urn_sales extension).",
+        "default_icon": "PackageSearch",
+        "default_color_token": "status-info",
+    },
+    "safety_program_pending_review": {
+        "description": "Safety program ready for review (safety_program_triage producer site; AI-generated content awaiting safety-trainer approval).",
+        "default_icon": "ShieldCheck",
+        "default_color_token": "status-info",
+    },
+    "workflow_review_pending": {
+        "description": "Workflow review needed (workflow_review_triage producer site; cross-vertical pending review items).",
+        "default_icon": "GitPullRequest",
+        "default_color_token": "status-info",
+    },
+    "email_unclassified_pending": {
+        "description": "Inbound email failed all three classification tiers and needs manual routing (classification cascade producer site).",
+        "default_icon": "Mail",
+        "default_color_token": "status-warning",
+    },
 }
 
 # Frozen set of valid notification category keys.

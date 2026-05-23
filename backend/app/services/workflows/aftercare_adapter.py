@@ -203,6 +203,43 @@ def run_pipeline(
     else:
         db.commit()
 
+        # (c) build arc Phase B — funeral_followup_pending dispatch
+        # (producer site #4). Aftercare splits to its own category from
+        # agent_anomaly_pending for recipient-cohort grain correctness
+        # (funeral directors vs accounting cohort — Lock 1 refinement).
+        # Permission gate: fh_cases.aftercare (Phase A.0 locked).
+        # Defensive: notification failure must not block pipeline (V-1d).
+        if staged > 0:
+            try:
+                from app.services import notification_service
+                notification_service.notify_users_with_permission(
+                    db,
+                    company_id=company_id,
+                    permission_key="fh_cases.aftercare",
+                    title=(
+                        f"Aftercare follow-up due: {staged} "
+                        f"{'case' if staged == 1 else 'cases'}"
+                    ),
+                    message=(
+                        f"{staged} aftercare 7-day follow-up "
+                        f"{'item is' if staged == 1 else 'items are'} "
+                        f"ready for review."
+                    ),
+                    type="info",
+                    category="funeral_followup_pending",
+                    link=f"/triage/aftercare_triage",
+                    actor_user_id=triggered_by_user_id,
+                    source_reference_type="agent_job",
+                    source_reference_id=job.id,
+                )
+                db.commit()
+            except Exception:
+                logger.exception(
+                    "notification dispatch failed for funeral_followup_pending "
+                    "job_id=%s",
+                    job.id,
+                )
+
     return {
         "status": "applied",
         "agent_job_id": job.id if not dry_run else None,

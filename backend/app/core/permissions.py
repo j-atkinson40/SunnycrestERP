@@ -89,7 +89,11 @@ PERMISSION_CATEGORIES: dict[str, dict[str, list[str]]] = {
         "safety.trainer": ["view", "generate", "approve"],
         "announcements": ["view", "create", "edit", "delete"],
         # Funeral home modules
-        "fh_cases": ["view", "create", "edit", "delete"],
+        # fh_cases.aftercare — granted to FH-director role at seed; gates
+        # funeral_followup_pending §19 notification dispatch. Recipient-grain
+        # narrower than fh_cases.edit because aftercare workflows may be
+        # delegated to specific staff (per (c) build arc, Lock 1 refinement).
+        "fh_cases": ["view", "create", "edit", "delete", "aftercare"],
         "fh_price_list": ["view", "create", "edit"],
         "fh_vault_orders": ["view", "create", "edit"],
         "fh_obituaries": ["view", "create", "edit"],
@@ -228,6 +232,8 @@ PERMISSION_DISPLAY_NAMES: dict[str, str] = {
     "safety.trainer.view": "View Safety Programs",
     "safety.trainer.generate": "Generate Safety Programs",
     "safety.trainer.approve": "Approve Safety Programs",
+    # Funeral home — aftercare ((c) build arc Lock 1 / Phase A.0)
+    "fh_cases.aftercare": "Action Aftercare Follow-Ups",
 }
 
 
