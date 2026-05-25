@@ -129,6 +129,29 @@ def _collect(
     # Triage queues (Phase 5 integration)
     queue_summaries = _collect_queue_summaries(db, user)
 
+    # v1 task substrate B3 — three task-shape summaries fed into the
+    # legacy_context dict under keys 'pending_tasks', 'recent_task_completions',
+    # 'upcoming_task_deadlines'. Prompt template additions deferred to
+    # canon-update arc; helpers + invocation persist in legacy_context so
+    # prompt evolves can read them.
+    try:
+        legacy_context.setdefault(
+            "pending_tasks",
+            _collect_pending_tasks_summary(db, user),
+        )
+        legacy_context.setdefault(
+            "recent_task_completions",
+            _collect_recent_completions_summary(
+                db, user, since=now - timedelta(days=1)
+            ),
+        )
+        legacy_context.setdefault(
+            "upcoming_task_deadlines",
+            _collect_upcoming_deadlines_summary(db, user, days_ahead=14),
+        )
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.debug("task substrate briefings helpers failed: %s", exc)
+
     # Call Intelligence (Phase 6 preserves legacy path)
     overnight_calls = None
     try:
@@ -261,6 +284,193 @@ def _collect_queue_summaries(
                 "estimated_time_minutes": est_minutes,
             }
         )
+    return out
+
+
+# ── v1 task substrate B3 — task-shape summaries ────────────────────
+
+
+def _collect_pending_tasks_summary(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Tasks assigned to the user that are still pending.
+
+    Pre-task-substrate, "what tasks does this user owe?" was answered
+    ad-hoc per-domain. v1 task substrate B3 routes it through the
+    canonical VaultItem JOIN task_details query.
+
+    Returns at most 25 task summaries (briefing context size budget).
+    Each: {task_details_id, vault_item_id, title, priority, status,
+    lifecycle_shape, due_date}. Operator-only visibility enforced.
+    """
+    try:
+        from sqlalchemy import case as sql_case
+
+        from app.models.task_details import TaskDetails
+        from app.models.vault_item import VaultItem
+    except ImportError:
+        return []
+
+    priority_rank = sql_case(
+        {"urgent": 4, "high": 3, "normal": 2, "low": 1},
+        value=TaskDetails.priority,
+        else_=0,
+    )
+
+    try:
+        rows = (
+            db.query(VaultItem, TaskDetails)
+            .join(TaskDetails, TaskDetails.vault_item_id == VaultItem.id)
+            .filter(VaultItem.company_id == user.company_id)
+            .filter(VaultItem.item_type == "task")
+            .filter(VaultItem.is_active.is_(True))
+            .filter(TaskDetails.assignee_user_id == user.id)
+            .filter(
+                TaskDetails.visibility.in_(
+                    ("operator_internal", "operator_assigned")
+                )
+            )
+            .filter(
+                TaskDetails.current_state.in_(
+                    (
+                        "created", "assigned", "in_progress", "blocked",
+                        "informational",
+                    )
+                )
+            )
+            .order_by(
+                priority_rank.desc(),
+                TaskDetails.due_date.asc().nullslast(),
+            )
+            .limit(25)
+            .all()
+        )
+    except Exception as exc:
+        logger.debug("_collect_pending_tasks_summary failed: %s", exc)
+        return []
+
+    out: list[dict[str, Any]] = []
+    for vi, td in rows:
+        out.append({
+            "task_details_id": td.id,
+            "vault_item_id": vi.id,
+            "title": vi.title,
+            "priority": td.priority,
+            "status": td.current_state,
+            "lifecycle_shape": td.lifecycle_shape,
+            "due_date": td.due_date.isoformat() if td.due_date else None,
+        })
+    return out
+
+
+def _collect_recent_completions_summary(
+    db: Session, user: User, *, since: datetime
+) -> list[dict[str, Any]]:
+    """Tasks the user completed since the cutoff (evening + 'what did I do today?').
+
+    Filters on `completed_at >= since` AND `current_state == 'done'`.
+    Operator-only visibility. Limit 25.
+    """
+    try:
+        from app.models.task_details import TaskDetails
+        from app.models.vault_item import VaultItem
+    except ImportError:
+        return []
+
+    try:
+        rows = (
+            db.query(VaultItem, TaskDetails)
+            .join(TaskDetails, TaskDetails.vault_item_id == VaultItem.id)
+            .filter(VaultItem.company_id == user.company_id)
+            .filter(VaultItem.item_type == "task")
+            .filter(TaskDetails.assignee_user_id == user.id)
+            .filter(
+                TaskDetails.visibility.in_(
+                    ("operator_internal", "operator_assigned")
+                )
+            )
+            .filter(TaskDetails.current_state == "done")
+            .filter(TaskDetails.completed_at.isnot(None))
+            .filter(TaskDetails.completed_at >= since)
+            .order_by(TaskDetails.completed_at.desc())
+            .limit(25)
+            .all()
+        )
+    except Exception as exc:
+        logger.debug("_collect_recent_completions_summary failed: %s", exc)
+        return []
+
+    out: list[dict[str, Any]] = []
+    for vi, td in rows:
+        out.append({
+            "task_details_id": td.id,
+            "vault_item_id": vi.id,
+            "title": vi.title,
+            "priority": td.priority,
+            "completed_at": td.completed_at.isoformat() if td.completed_at else None,
+            "resolution_outcome": td.resolution_outcome,
+        })
+    return out
+
+
+def _collect_upcoming_deadlines_summary(
+    db: Session, user: User, *, days_ahead: int = 14
+) -> list[dict[str, Any]]:
+    """Tasks with due_date in the next `days_ahead` days, non-terminal.
+
+    Morning briefings + 'what's coming up?' surfaces. Limit 25.
+    """
+    try:
+        from app.models.task_details import TaskDetails
+        from app.models.vault_item import VaultItem
+    except ImportError:
+        return []
+
+    today = date.today()
+    cutoff = today + timedelta(days=days_ahead)
+
+    try:
+        rows = (
+            db.query(VaultItem, TaskDetails)
+            .join(TaskDetails, TaskDetails.vault_item_id == VaultItem.id)
+            .filter(VaultItem.company_id == user.company_id)
+            .filter(VaultItem.item_type == "task")
+            .filter(VaultItem.is_active.is_(True))
+            .filter(TaskDetails.assignee_user_id == user.id)
+            .filter(
+                TaskDetails.visibility.in_(
+                    ("operator_internal", "operator_assigned")
+                )
+            )
+            .filter(
+                TaskDetails.current_state.in_(
+                    (
+                        "created", "assigned", "in_progress", "blocked",
+                        "informational",
+                    )
+                )
+            )
+            .filter(TaskDetails.due_date.isnot(None))
+            .filter(TaskDetails.due_date >= today)
+            .filter(TaskDetails.due_date <= cutoff)
+            .order_by(TaskDetails.due_date.asc())
+            .limit(25)
+            .all()
+        )
+    except Exception as exc:
+        logger.debug("_collect_upcoming_deadlines_summary failed: %s", exc)
+        return []
+
+    out: list[dict[str, Any]] = []
+    for vi, td in rows:
+        out.append({
+            "task_details_id": td.id,
+            "vault_item_id": vi.id,
+            "title": vi.title,
+            "priority": td.priority,
+            "status": td.current_state,
+            "due_date": td.due_date.isoformat() if td.due_date else None,
+        })
     return out
 
 

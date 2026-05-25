@@ -414,9 +414,11 @@ def advance_run(db: Session, run_id: str, step_input: dict) -> WorkflowRun:
         cfg = (current_step.config or {}) if current_step else {}
         action_type = cfg.get("action_type") if isinstance(cfg, dict) else None
 
-        if action_type == "invoke_review_focus":
-            # Mark the review step completed + leave current_step_id
-            # alone so _drive_run advances to the NEXT step on resume.
+        if action_type in ("invoke_review_focus", "wait_for_task_completion"):
+            # invoke_review_focus (Phase R-6.0a) + wait_for_task_completion
+            # (v1 task substrate B3) share the same completion semantics:
+            # mark the step completed + leave current_step_id alone so
+            # _drive_run advances to the NEXT step on resume.
             rs = (
                 db.query(WorkflowRunStep)
                 .filter(
@@ -430,9 +432,14 @@ def advance_run(db: Session, run_id: str, step_input: dict) -> WorkflowRun:
                 rs.status = "completed"
                 # Stash the resume payload on the run-step output so
                 # audit-replay can reconstruct the decision later.
+                payload_key = (
+                    "review_decision"
+                    if action_type == "invoke_review_focus"
+                    else "task_completion"
+                )
                 rs.output_data = {
                     **(rs.output_data or {}),
-                    "review_decision": step_input,
+                    payload_key: step_input,
                 }
         else:
             # Playwright (legacy) — roll back to re-enter the current
@@ -668,6 +675,13 @@ def _execute_action(
         # agent migrations (8b-8f) plug real service logic into
         # the workflow engine without duplicating code.
         return _handle_call_service_method(db, resolved_config, run, current_company)
+    # ── v1 task substrate B3 — task-substrate node types ──
+    if action_type == "create_task":
+        return _handle_create_task(db, resolved_config, run)
+    if action_type == "wait_for_task_completion":
+        return _handle_wait_for_task_completion(db, resolved_config, run)
+    if action_type == "route_on_task_outcome":
+        return _handle_route_on_task_outcome(db, resolved_config, run)
     # ── Phase R-6.0a — headless Generation Focus invocation ──
     if action_type == "invoke_generation_focus":
         return _handle_invoke_generation_focus(db, resolved_config, run)
@@ -1140,6 +1154,213 @@ def _handle_call_service_method(
     else:
         out["result"] = result
     return out
+
+
+# ── v1 task substrate B3 — three task-substrate node types ──────────
+#
+# `create_task`              — creates a task; continues (does NOT suspend).
+# `wait_for_task_completion` — pauses run; resumed by workflow_resumer
+#                              subscriber on task completion.
+# `route_on_task_outcome`    — branches step based on task's
+#                              resolution_outcome (read post-completion).
+#
+# All three look up a step's matched task via the provenance composite:
+# (provenance_kind='workflow_step', provenance_ref_type='workflow_run',
+#  provenance_ref_id=<run_id>). The wait + route nodes additionally
+# filter by event_kind which the create node stamps with the step_key.
+
+
+def _handle_create_task(db: Session, config: dict, run: WorkflowRun) -> dict:
+    """Create a substrate task and continue executing.
+
+    Config keys:
+      task_type_key          : str (required)
+      title                  : str (required)
+      description            : str | None
+      assignee_user_id       : str | None  — direct literal user id
+      priority               : 'low' | 'normal' | 'high' | 'urgent'
+      due_date_offset_days   : int | None — adds to run.started_at.date()
+      metadata               : dict | None — propagated onto the task's
+                                              VaultItem.metadata_json
+                                              (incl. notification_permission_key)
+      event_kind             : str | None — defaults to step_key resolution
+                                            via config['_step_key'] when present;
+                                            else 'workflow_create_task'
+
+    Output: {status, task_details_id, vault_item_id}.
+    """
+    from datetime import timedelta as _timedelta
+
+    title = config.get("title")
+    task_type_key = config.get("task_type_key") or "generic_task"
+    if not title:
+        return {
+            "status": "errored",
+            "error": "create_task step missing 'title'",
+        }
+
+    assignee_user_id = config.get("assignee_user_id")
+    priority = config.get("priority")
+    description = config.get("description")
+    metadata = config.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    event_kind = config.get("event_kind") or "workflow_create_task"
+
+    due_date = None
+    offset = config.get("due_date_offset_days")
+    if isinstance(offset, int):
+        from datetime import datetime as _dt
+
+        anchor = run.started_at or _dt.now(timezone.utc)
+        due_date = (anchor + _timedelta(days=offset)).date()
+
+    try:
+        from app.services.tasks.service import create_task_with_provenance
+
+        td = create_task_with_provenance(
+            db,
+            company_id=run.company_id,
+            provenance_kind="workflow_step",
+            provenance_ref_type="workflow_run",
+            provenance_ref_id=run.id,
+            event_kind=event_kind,
+            task_type_key=task_type_key,
+            title=title,
+            description=description,
+            created_by_user_id=run.triggered_by_user_id,
+            assignee_user_id=assignee_user_id,
+            priority=priority,
+            due_date=due_date,
+            metadata=metadata,
+        )
+    except Exception as exc:
+        return {
+            "status": "errored",
+            "error": str(exc)[:500],
+            "action_type": "create_task",
+        }
+
+    return {
+        "status": "applied",
+        "task_details_id": td.id,
+        "vault_item_id": td.vault_item_id,
+        "event_kind": event_kind,
+    }
+
+
+def _handle_wait_for_task_completion(
+    db: Session, config: dict, run: WorkflowRun
+) -> dict:
+    """Pause workflow run until the matched task transitions terminal.
+
+    Looks up a task by provenance (workflow_step / workflow_run / run.id)
+    optionally narrowed by config.event_kind. If the task is already in
+    a terminal state when the step executes (race / restart case),
+    returns 'applied' immediately and the run continues to the next
+    step. Otherwise emits the `awaiting_approval` sentinel that
+    `_drive_run` recognizes — the workflow_resumer subscriber resumes
+    the run when task_completed / task_cancelled fires.
+    """
+    from app.models.task_details import TaskDetails
+    from app.models.vault_item import VaultItem
+
+    event_kind = config.get("event_kind")
+
+    q = (
+        db.query(TaskDetails)
+        .join(VaultItem, TaskDetails.vault_item_id == VaultItem.id)
+        .filter(VaultItem.company_id == run.company_id)
+        .filter(TaskDetails.provenance_kind == "workflow_step")
+        .filter(TaskDetails.provenance_ref_type == "workflow_run")
+        .filter(TaskDetails.provenance_ref_id == run.id)
+    )
+    if event_kind:
+        q = q.filter(TaskDetails.event_kind == event_kind)
+    td = q.order_by(TaskDetails.created_at.desc()).first()
+
+    if td is None:
+        return {
+            "status": "errored",
+            "error": "wait_for_task_completion: no matching task found",
+            "event_kind": event_kind,
+        }
+
+    # If already terminal, don't pause — continue immediately.
+    if td.current_state in ("done", "cancelled", "acknowledged", "dismissed"):
+        return {
+            "status": "applied",
+            "task_details_id": td.id,
+            "current_state": td.current_state,
+            "resolution_outcome": td.resolution_outcome,
+            "already_terminal": True,
+        }
+
+    # Pause via the `awaiting_approval` sentinel _drive_run recognizes.
+    return {
+        "type": "awaiting_approval",
+        "reason": "wait_for_task_completion",
+        "task_details_id": td.id,
+        "current_state": td.current_state,
+    }
+
+
+def _handle_route_on_task_outcome(
+    db: Session, config: dict, run: WorkflowRun
+) -> dict:
+    """Branch the workflow based on a matched task's resolution_outcome.
+
+    Config:
+      event_kind            : str | None — narrow provenance match
+      outcome_branches      : {<outcome_value>: <next_step_key>}  (informational;
+                                                                  real branching uses
+                                                                  the WorkflowStep's
+                                                                  condition_true /
+                                                                  condition_false_step_id
+                                                                  set by the workflow
+                                                                  author)
+
+    Output: `condition_result` plus the outcome value. The
+    `_execute_step` glue treats steps whose step_type=='condition'
+    with `condition_result=True` as the true-branch fork.
+    A 'route_on_task_outcome' action_type is treated as a regular
+    action step today; richer multi-branch routing is captured via the
+    output payload which can be consumed by downstream condition steps
+    via the standard variable resolution (`output.<step_key>.outcome`).
+    """
+    from app.models.task_details import TaskDetails
+    from app.models.vault_item import VaultItem
+
+    event_kind = config.get("event_kind")
+    q = (
+        db.query(TaskDetails)
+        .join(VaultItem, TaskDetails.vault_item_id == VaultItem.id)
+        .filter(VaultItem.company_id == run.company_id)
+        .filter(TaskDetails.provenance_kind == "workflow_step")
+        .filter(TaskDetails.provenance_ref_type == "workflow_run")
+        .filter(TaskDetails.provenance_ref_id == run.id)
+    )
+    if event_kind:
+        q = q.filter(TaskDetails.event_kind == event_kind)
+    td = q.order_by(TaskDetails.created_at.desc()).first()
+    if td is None:
+        return {
+            "status": "errored",
+            "error": "route_on_task_outcome: no matching task found",
+            "event_kind": event_kind,
+        }
+
+    outcome = td.resolution_outcome
+    branches = config.get("outcome_branches") or {}
+    matched_branch = branches.get(outcome) if isinstance(branches, dict) else None
+
+    return {
+        "status": "applied",
+        "task_details_id": td.id,
+        "current_state": td.current_state,
+        "outcome": outcome,
+        "matched_branch": matched_branch,
+    }
 
 
 def _handle_create_record(db: Session, config: dict, run: WorkflowRun) -> dict:

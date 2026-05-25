@@ -454,6 +454,12 @@ from app.models.task_details import (
     VISIBILITY_VALUES,
     TASK_DETAILS_PRIORITIES,
 )
+# Task substrate v1.5 — routing rules (r109).
+from app.models.task_routing_rule import (
+    TaskRoutingRule,
+    ROUTING_SCOPES,
+    ROUTING_MODES,
+)
 from app.models.triage import TriageSession, TriageSnooze
 # Phase 6 — Briefings (new table, coexists with legacy employee_briefings).
 from app.models.briefing import Briefing, BRIEFING_TYPES
@@ -470,6 +476,9 @@ __all__ = [
     "PROVENANCE_KINDS",
     "VISIBILITY_VALUES",
     "TASK_DETAILS_PRIORITIES",
+    "TaskRoutingRule",
+    "ROUTING_SCOPES",
+    "ROUTING_MODES",
     "TriageSession",
     "TriageSnooze",
     "Briefing",

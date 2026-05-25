@@ -70,6 +70,15 @@ class FocusSession(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    # v1 task substrate B1 r108 — FK to vault_items.id (the canonical
+    # task identifier; task_details.vault_item_id maps 1:1).
+    # ON DELETE SET NULL: deleting a task VaultItem leaves the focus
+    # session row intact with task_id cleared (preserves session history).
+    task_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("vault_items.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

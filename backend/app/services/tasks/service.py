@@ -205,6 +205,28 @@ def create_task_with_provenance(
         priority=priority,
     )
 
+    # v1 task substrate B3 — routing-rules-driven assignment.
+    # When no explicit assignee_user_id supplied, consult the routing
+    # resolver (tenant → vertical_default → platform_default). First-
+    # match-wins; if no rule matches, assignee stays None.
+    if assignee_user_id is None:
+        try:
+            from app.services.tasks.routing import resolve_routing
+
+            routed = resolve_routing(
+                db,
+                company_id=company_id,
+                task_type_key=task_type_key,
+            )
+            if routed is not None and routed.assignee_user_id:
+                assignee_user_id = routed.assignee_user_id
+        except Exception:
+            logger.exception(
+                "task routing resolver failed (task_type=%s); "
+                "continuing with no assignee",
+                task_type_key,
+            )
+
     # Idempotency precheck (subscriber-layer guard; DB partial unique is
     # the canonical safety net).
     existing = _idempotency_lookup(

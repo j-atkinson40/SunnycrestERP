@@ -49,8 +49,20 @@ class CustomerCommunicationTaskBehavior:
         to_state: str,
         actor_user_id: str | None,
     ) -> None:
-        if to_state != "done":
-            return
+        """v1 task substrate B3 (B3.D) — outbound dispatch wire.
+
+        When a customer_communication_task transitions to the configured
+        dispatch state (`metadata.dispatch_on_state`, default 'done'),
+        send the outbound email via the canonical delivery_service per
+        D-7 substrate. Required metadata for dispatch:
+          • outbound_template_key  : str — registered document template
+          • outbound_to_email      : str
+        Optional metadata: outbound_to_name, outbound_template_context,
+        outbound_subject_override, outbound_reply_to, outbound_from_name.
+
+        When metadata is missing/incomplete, the plugin logs + skips —
+        backward-compat with callers that didn't supply outbound_* fields.
+        """
         td = (
             db.query(TaskDetails)
             .filter(TaskDetails.id == task_details_id)
@@ -66,14 +78,54 @@ class CustomerCommunicationTaskBehavior:
         if vi is None:
             return
         meta = vi.metadata_json or {}
-        outbound = meta.get("outbound_response")
-        if outbound:
-            # v1.0: logging-only stub. v1.5 communications cascade
-            # wires actual outbound dispatch through delivery_service.
+        dispatch_on_state = meta.get("dispatch_on_state") or "done"
+        if to_state != dispatch_on_state:
+            return
+
+        template_key = meta.get("outbound_template_key")
+        to_email = meta.get("outbound_to_email")
+        if not (template_key and to_email):
+            # Configured for outbound but missing required keys — log + skip.
+            if meta.get("outbound_response") or template_key:
+                logger.info(
+                    "customer_communication_task: outbound dispatch on td=%s "
+                    "skipped — required metadata missing (template_key=%s, "
+                    "to_email=%s)",
+                    td.id, bool(template_key), bool(to_email),
+                )
+            return
+
+        try:
+            from app.services.delivery.delivery_service import (
+                send_email_with_template,
+            )
+
+            send_email_with_template(
+                db,
+                company_id=vi.company_id,
+                to_email=to_email,
+                to_name=meta.get("outbound_to_name"),
+                template_key=template_key,
+                template_context=meta.get("outbound_template_context") or {},
+                subject_override=meta.get("outbound_subject_override"),
+                reply_to=meta.get("outbound_reply_to"),
+                from_name=meta.get("outbound_from_name"),
+                caller_module="customer_communication_task.on_status_change",
+                metadata={
+                    "task_details_id": td.id,
+                    "vault_item_id": vi.id,
+                },
+            )
             logger.info(
-                "customer_communication_task done with outbound_response "
-                "set (td_id=%s); v1.5 will dispatch.",
-                td.id,
+                "customer_communication_task outbound dispatched "
+                "(td_id=%s template=%s to=%s)",
+                td.id, template_key, to_email,
+            )
+        except Exception:
+            logger.exception(
+                "customer_communication_task outbound dispatch failed "
+                "(td_id=%s template=%s)",
+                td.id, template_key,
             )
 
     def render_default_payload(

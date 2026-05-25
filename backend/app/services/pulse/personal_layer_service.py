@@ -1,10 +1,16 @@
 """Personal layer composition — items addressed to the current user.
 
-**Phase W-4a Cleanup Session B.1 (2026-05-04) status: items deferred.**
+**v1 task substrate B3 (2026-05-25): `_build_tasks_item` WIRED against
+the task substrate.** The W-4a Cleanup Session B.1 deferral closed —
+the Personal layer now surfaces assigned action-shape tasks via the
+VaultItem `item_type='task'` JOIN `task_details` query established in
+B1 (r107). Query filters operator-only visibility per substrate §5.5;
+sort by priority/due_date; non-terminal lifecycle states only.
 
-Per Phase W-4b canon expansion (BRIDGEABLE_MASTER §3.26.2.3 +
-§3.26.2.4 amendment + §3.26.9 Communications Layer + D-COMMS-4),
-the Personal layer literal is **scheduled for hard-cutover removal**.
+Pre-W-4b note (preserved): Per Phase W-4b canon expansion
+(BRIDGEABLE_MASTER §3.26.2.3 + §3.26.2.4 amendment + §3.26.9
+Communications Layer + D-COMMS-4), the Personal layer literal is
+**scheduled for hard-cutover removal**.
 Tasks + approvals migrate to the Operational layer; the Personal
 layer slot at the top of the canonical layer order is reclaimed by
 the Communications layer. The migration is wholesale — this file
@@ -73,8 +79,10 @@ from typing import Any
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models.task import Task
+from app.models.task import Task  # legacy; preserved for back-compat read paths
+from app.models.task_details import TaskDetails
 from app.models.user import User
+from app.models.vault_item import VaultItem
 from app.services.pulse.types import LayerContent, LayerItem
 
 
@@ -87,68 +95,90 @@ APPROVALS_WAITING_KEY = "approvals_waiting"
 def _build_tasks_item(db: Session, *, user: User) -> LayerItem | None:
     """Surface tasks assigned to this user in the Personal layer.
 
-    **Phase W-4a Cleanup Session B.1 (2026-05-04) — DEFERRED to
-    Phase W-4b**: returns None always pending Phase W-4b migration to
-    operational_layer_service. Pre-deferral, this function emitted
-    `kind="stream"` LayerItems but composition_engine had no matching
-    IntelligenceStream registration on the dispatch side, producing
-    empty Pattern 2 chrome cards. Per §3.26.7.5 canonical-quality
-    discipline, the canonical fix is to defer emission until Phase
-    W-4b ships proper Operational-layer rendering — not to ship
-    transitional UI that retires in ~5 weeks. See file-level docstring
-    for full context.
+    **v1 task substrate B3 (2026-05-25): WIRED.** Reads through the
+    canonical substrate (VaultItem `item_type='task'` JOIN
+    `task_details`) per state doc §5.7 + build prompt §7.1. Returns
+    None when the user has zero non-terminal assigned tasks.
 
-    The pre-deferral query logic is preserved as scaffolding below
-    (after the early return) so Phase W-4b can MOVE this builder
-    (rename + relocate to operational_layer_service.py) rather than
-    recreate it. Tenant isolation contract (`company_id ==
-    user.company_id`) carries forward when re-enabled.
+    Filter contract:
+      • `vault_items.company_id == user.company_id` — tenant isolation.
+      • `vault_items.item_type == 'task'` AND `is_active`.
+      • `task_details.assignee_user_id == user.id` — personal scope.
+      • `task_details.visibility IN ('operator_internal',
+        'operator_assigned')` — v1 operator-only enforcement
+        (state doc §5.5).
+      • Non-terminal lifecycle states only: action-shape
+        {created, assigned, in_progress, blocked} + reminder-shape
+        {informational}. Terminal action states (done, cancelled) +
+        terminal reminder states (acknowledged, dismissed) excluded.
 
-    To re-enable: remove the `return None` line below.
+    Sort: priority CASE-rank (urgent > high > normal > low) DESC,
+    due_date ASC NULLS LAST.
+
+    Limit 20 (matches the pre-deferral scaffolded query envelope).
     """
-    # ── Phase W-4a Cleanup Session B.1 deferral (per §3.26.7.5)
-    # Re-enable in Phase W-4b at new home in operational_layer_service.
-    return None
-    # NOTE: lines below preserved as scaffolding for Phase W-4b
-    # migration. Tenant isolation + query correctness verified
-    # pre-deferral; data shape unchanged.
-    # Open / in-progress tasks assigned to this user.
-    rows: list[Task] = (
-        db.query(Task)
+    # Priority CASE-rank so 'urgent' > 'high' > 'normal' > 'low' rather
+    # than the previous lexicographic Task.priority.desc() ordering
+    # which silently put 'urgent' below 'high' alphabetically.
+    from sqlalchemy import case as sql_case
+
+    priority_rank = sql_case(
+        {
+            "urgent": 4,
+            "high": 3,
+            "normal": 2,
+            "low": 1,
+        },
+        value=TaskDetails.priority,
+        else_=0,
+    )
+
+    rows: list[tuple[VaultItem, TaskDetails]] = (
+        db.query(VaultItem, TaskDetails)
+        .join(TaskDetails, TaskDetails.vault_item_id == VaultItem.id)
+        .filter(VaultItem.company_id == user.company_id)
+        .filter(VaultItem.item_type == "task")
+        .filter(VaultItem.is_active.is_(True))
+        .filter(TaskDetails.assignee_user_id == user.id)
         .filter(
-            Task.company_id == user.company_id,
-            Task.assignee_user_id == user.id,
-            Task.is_active.is_(True),
-            Task.status.in_(["open", "in_progress", "blocked"]),
+            TaskDetails.visibility.in_(
+                ("operator_internal", "operator_assigned")
+            )
         )
-        .order_by(
-            # Priority sort matches TaskService.list_tasks semantics
-            # (urgent → high → normal → low) but priority is a
-            # string; ordering by string is stable + matches catalog.
-            Task.priority.desc().nullslast(),
-            Task.due_date.asc().nullslast(),
+        .filter(
+            TaskDetails.current_state.in_(
+                (
+                    # action-shape non-terminal
+                    "created",
+                    "assigned",
+                    "in_progress",
+                    "blocked",
+                    # reminder-shape non-terminal
+                    "informational",
+                )
+            )
         )
+        .order_by(priority_rank.desc(), TaskDetails.due_date.asc().nullslast())
         .limit(20)
         .all()
     )
     total = len(rows)
     if total == 0:
-        # No tasks → return nothing (suppress the item entirely; the
-        # layer-level advisory might still surface "all clear" if
-        # other personal items also empty).
         return None
 
     # Top 3 surfaced inline on Brief variant; click "View all" hits
     # the tasks page.
     top = [
         {
-            "id": t.id,
-            "title": t.title,
-            "priority": t.priority,
-            "status": t.status,
-            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "id": td.id,
+            "vault_item_id": vi.id,
+            "title": vi.title,
+            "priority": td.priority,
+            "status": td.current_state,
+            "lifecycle_shape": td.lifecycle_shape,
+            "due_date": td.due_date.isoformat() if td.due_date else None,
         }
-        for t in rows[:3]
+        for vi, td in rows[:3]
     ]
     return LayerItem(
         item_id="stream:tasks_assigned",

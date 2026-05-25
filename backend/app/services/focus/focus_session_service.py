@@ -74,15 +74,27 @@ def create_or_resume_session(
     db: Session,
     user: User,
     focus_type: str,
+    *,
+    task_id: str | None = None,
 ) -> FocusSession:
     """Idempotent: resume the active session, or create a fresh row.
 
     Resuming bumps `last_interacted_at` so the active-session row
     stays relevant in the recent-history surface.
+
+    v1 task substrate B3 (r108): optional `task_id` parameter links
+    the session to a VaultItem (item_type='task'). Used by Focus types
+    that are spawned from a task — the `focus_closer` subscriber
+    closes linked sessions when the task transitions to a terminal
+    state. When resuming an existing session, a supplied task_id
+    backfills onto the row only if it was previously NULL (avoids
+    silently overwriting an existing linkage).
     """
     existing = get_active_session(db, user, focus_type)
     if existing is not None:
         existing.last_interacted_at = datetime.now(timezone.utc)
+        if task_id and not getattr(existing, "task_id", None):
+            existing.task_id = task_id
         db.add(existing)
         db.flush()
         return existing
@@ -105,6 +117,7 @@ def create_or_resume_session(
         focus_type=focus_type,
         layout_state=seed_layout,
         is_active=True,
+        task_id=task_id,
     )
     db.add(session)
     db.flush()
