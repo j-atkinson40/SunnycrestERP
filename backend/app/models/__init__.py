@@ -443,6 +443,17 @@ from app.models.funeral_case import (
 )
 # Phase 5 — Task + Triage infrastructure.
 from app.models.task import Task, TASK_PRIORITIES, TASK_STATUSES
+# Task substrate v1.0 — task_details join table (r107).
+from app.models.task_details import (
+    TaskDetails,
+    ASSIGNEE_REALMS,
+    LIFECYCLE_SHAPES,
+    ACTION_STATES,
+    REMINDER_STATES,
+    PROVENANCE_KINDS,
+    VISIBILITY_VALUES,
+    TASK_DETAILS_PRIORITIES,
+)
 from app.models.triage import TriageSession, TriageSnooze
 # Phase 6 — Briefings (new table, coexists with legacy employee_briefings).
 from app.models.briefing import Briefing, BRIEFING_TYPES
@@ -451,6 +462,14 @@ __all__ = [
     "Task",
     "TASK_PRIORITIES",
     "TASK_STATUSES",
+    "TaskDetails",
+    "ASSIGNEE_REALMS",
+    "LIFECYCLE_SHAPES",
+    "ACTION_STATES",
+    "REMINDER_STATES",
+    "PROVENANCE_KINDS",
+    "VISIBILITY_VALUES",
+    "TASK_DETAILS_PRIORITIES",
     "TriageSession",
     "TriageSnooze",
     "Briefing",
