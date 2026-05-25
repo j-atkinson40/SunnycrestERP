@@ -376,37 +376,44 @@ def classify_and_fire(
         replay_of_classification_id=replay_of_classification_id,
     )
 
-    # (c) build arc Phase B — email_unclassified_pending dispatch
-    # (producer site #8). Fires once per cascade-exhaustion event.
-    # Admin gate per audit Q1 row 11. Replay regression: replays write
-    # a new audit row keyed to its own id, so re-firing per replay is
-    # correct + non-duplicative against the original. Idempotency =
-    # per-audit-row-id source_reference.
-    # Defensive: notification failure must not block ingestion (V-1d).
+    # v1 task substrate B2 — producer site #8 refactor.
+    # Notification dispatch flows through the substrate's
+    # notification_dispatcher subscriber. Anomaly-resolution-task: the
+    # cascade exhausted all three classifier tiers and the email needs
+    # manual routing. Idempotency = per-audit-row-id source_reference;
+    # replays write a NEW audit row (row.id), so re-firing per replay
+    # is correct + non-duplicative against the original.
     if not is_replay:
         try:
-            from app.services import notification_service
+            from app.services.tasks.service import create_task_with_provenance
             subject = (email_message.subject or "(no subject)")[:80]
-            notification_service.notify_users_with_permission(
+            create_task_with_provenance(
                 db,
                 company_id=email_message.tenant_id,
-                permission_key="admin",
+                provenance_kind="communication_inbound",
+                provenance_ref_type="workflow_email_classification",
+                provenance_ref_id=row.id,
+                event_kind="email_unclassified_pending",
+                task_type_key="anomaly_resolution_task",
                 title=f"Unclassified email needs routing ({subject})",
-                message=(
+                description=(
                     "An inbound email failed all three classification "
                     "tiers and needs manual routing."
                 ),
-                type="warning",
-                category="email_unclassified_pending",
-                link=f"/triage/email_unclassified_triage",
-                source_reference_type="workflow_email_classification",
-                source_reference_id=row.id,
+                metadata={
+                    "notification_permission_key": "admin",
+                    "notification_category": "email_unclassified_pending",
+                    "notification_link": "/triage/email_unclassified_triage",
+                    "notification_type": "warning",
+                    "notification_source_reference_type": "workflow_email_classification",
+                    "notification_source_reference_id": row.id,
+                },
             )
             db.commit()
         except Exception:
             logger.exception(
-                "notification dispatch failed for email_unclassified_pending "
-                "classification_id=%s",
+                "v1 substrate task creation failed for "
+                "email_unclassified_pending classification_id=%s",
                 row.id,
             )
 

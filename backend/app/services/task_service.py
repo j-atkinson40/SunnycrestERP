@@ -165,31 +165,60 @@ def create_task(
     db.commit()
     db.refresh(task)
 
-    # (c) build arc Phase B — task_assigned dispatch (producer site #1).
-    # Single recipient = assignee; Lock 3 self-suppress when assignee == creator.
-    # Defensive: notification failure must not block task creation (V-1d pattern).
-    if assignee_user_id and assignee_user_id != created_by_user_id:
-        try:
-            from app.services import notification_service
-            notification_service.create_notification(
-                db,
-                company_id=company_id,
-                user_id=assignee_user_id,
-                title=f"Task assigned: {title}",
-                message=description or title,
-                type="info",
-                category="task_assigned",
-                link=f"/tasks/{task.id}",
-                actor_id=created_by_user_id,
-                source_reference_type="task",
-                source_reference_id=task.id,
-            )
-            db.commit()
-        except Exception:
-            logger.exception(
-                "notification dispatch failed for task_assigned task_id=%s",
-                task.id,
-            )
+    # ── v1 task substrate B2 dual-write (Decision A, operator-locked) ──
+    # Transitional state: legacy `Task` row above is preserved to keep
+    # the 8 existing legacy-Task consumers working unchanged. Alongside,
+    # we ALSO call the v1 substrate so a VaultItem + task_details row is
+    # written AND task_created / task_assigned events fire — the
+    # notification_dispatcher subscriber handles the notification (the
+    # inline `create_notification` call this site used in (c) build arc
+    # Phase B is removed; subscriber-driven replacement is canonical).
+    #
+    # The dual-write is intentionally bounded: consolidation (drop legacy
+    # Task row write, route legacy consumers through the substrate) is
+    # deferred to a post-substrate-maturation v2+ arc.
+    #
+    # Defensive: substrate write failure must not break legacy callers
+    # that just want a Task row — log + continue.
+    try:
+        from app.services.tasks.service import create_task_with_provenance
+        metadata: dict[str, Any] = {
+            "legacy_task_id": task.id,
+            "notification_category": "task_assigned",
+            "notification_message": description or title,
+            "notification_source_reference_type": "task",
+            "notification_source_reference_id": task.id,
+            "notification_link": f"/tasks/{task.id}",
+        }
+        # Generic task title prefix mirrors the prior inline-notification
+        # title for parity with downstream Notification readers.
+        substrate_title = (
+            f"Task assigned: {title}" if assignee_user_id else title
+        )
+        create_task_with_provenance(
+            db,
+            company_id=company_id,
+            provenance_kind="manual_creation",
+            provenance_ref_type="task",
+            provenance_ref_id=task.id,
+            event_kind="manual",
+            task_type_key="generic_task",
+            title=substrate_title,
+            description=description,
+            created_by_user_id=created_by_user_id,
+            assignee_user_id=assignee_user_id,
+            priority=priority,
+            due_date=due_date,
+            due_datetime=due_datetime,
+            metadata=metadata,
+        )
+        db.commit()
+    except Exception:
+        logger.exception(
+            "v1 substrate dual-write failed for legacy task_id=%s — "
+            "legacy Task row still written; notification not dispatched",
+            task.id,
+        )
 
     return task
 

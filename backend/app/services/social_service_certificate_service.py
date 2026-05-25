@@ -159,29 +159,42 @@ class SocialServiceCertificateService:
             order.number,
         )
 
-        # (c) build arc Phase B — ss_cert_pending_approval dispatch (producer site #2).
-        # Defensive: notification failure must not block cert creation (V-1d pattern).
+        # v1 task substrate B2 — producer site #2 refactor.
+        # Notification dispatch now flows through the substrate's
+        # notification_dispatcher subscriber. Producer writes a
+        # task_details row via create_task_with_provenance carrying
+        # metadata.notification_permission_key for cohort routing.
         try:
-            from app.services import notification_service
-            notification_service.notify_users_with_permission(
+            from app.services.tasks.service import create_task_with_provenance
+            create_task_with_provenance(
                 db,
                 company_id=order.company_id,
-                permission_key="invoice.approve",
-                title=f"Social service certificate pending approval ({order.number})",
-                message=(
+                provenance_kind="integration_event",
+                provenance_ref_type="social_service_certificate",
+                provenance_ref_id=cert.id,
+                event_kind="ss_cert_pending_approval",
+                task_type_key="review_approval_task",
+                title=(
+                    f"Social service certificate pending approval "
+                    f"({order.number})"
+                ),
+                description=(
                     f"Certificate {certificate_number} for order "
                     f"{order.number} is pending approval."
                 ),
-                type="info",
-                category="ss_cert_pending_approval",
-                link=f"/social-service-certificates/{cert.id}",
-                source_reference_type="social_service_certificate",
-                source_reference_id=cert.id,
+                metadata={
+                    "notification_permission_key": "invoice.approve",
+                    "notification_category": "ss_cert_pending_approval",
+                    "notification_link": f"/social-service-certificates/{cert.id}",
+                    "notification_source_reference_type": "social_service_certificate",
+                    "notification_source_reference_id": cert.id,
+                },
             )
             db.commit()
         except Exception:
             logger.exception(
-                "notification dispatch failed for ss_cert_pending_approval cert_id=%s",
+                "v1 substrate task creation failed for "
+                "ss_cert_pending_approval cert_id=%s",
                 cert.id,
             )
 

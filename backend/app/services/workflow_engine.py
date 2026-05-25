@@ -811,35 +811,40 @@ def _handle_invoke_review_focus(
     db.commit()
     db.refresh(item)
 
-    # (c) build arc Phase B — workflow_review_pending dispatch
-    # (producer site #7). Conservative fallback: admin permission gate
-    # per Phase A.0 (per-Focus-template recipient resolution deferred
-    # to a later arc). One row per invoke_review_focus step execution;
-    # workflow engine creates exactly once per step invocation.
-    # Defensive: notification failure must not block workflow run (V-1d).
+    # v1 task substrate B2 — producer site #7 refactor.
+    # Notification dispatch flows through the substrate's
+    # notification_dispatcher subscriber. Conservative fallback: admin
+    # permission gate per Phase A.0 (per-Focus-template recipient
+    # resolution deferred to a later arc).
     try:
-        from app.services import notification_service
-        notification_service.notify_users_with_permission(
+        from app.services.tasks.service import create_task_with_provenance
+        create_task_with_provenance(
             db,
             company_id=run.company_id,
-            permission_key="admin",
+            provenance_kind="workflow_step",
+            provenance_ref_type="workflow_review_item",
+            provenance_ref_id=item.id,
+            event_kind="workflow_review_pending",
+            task_type_key="review_approval_task",
             title=f"Workflow review needed: {review_focus_id}",
-            message=(
+            description=(
                 f"A workflow run has paused on a review step "
                 f"({review_focus_id}) and is awaiting decision."
             ),
-            type="info",
-            category="workflow_review_pending",
-            link=f"/triage/workflow_review_triage",
-            source_reference_type="workflow_review_item",
-            source_reference_id=item.id,
+            metadata={
+                "notification_permission_key": "admin",
+                "notification_category": "workflow_review_pending",
+                "notification_link": "/triage/workflow_review_triage",
+                "notification_source_reference_type": "workflow_review_item",
+                "notification_source_reference_id": item.id,
+            },
         )
         db.commit()
     except Exception:
         import logging
         logging.getLogger(__name__).exception(
-            "notification dispatch failed for workflow_review_pending "
-            "review_item_id=%s",
+            "v1 substrate task creation failed for "
+            "workflow_review_pending review_item_id=%s",
             item.id,
         )
 

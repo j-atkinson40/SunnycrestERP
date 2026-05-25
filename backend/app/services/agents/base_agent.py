@@ -327,8 +327,15 @@ class BaseAgent:
         Defensive: notification dispatch failure must NOT block agent
         execution (V-1d pattern). All exceptions logged and swallowed.
         """
+        # v1 task substrate B2 — producer site #3 refactor.
+        # Notification dispatch flows through the substrate's
+        # notification_dispatcher subscriber. The branching below
+        # determines (a) the task_type_key (anomaly vs review-approval)
+        # and (b) the notification category + title, then writes a
+        # task_details row carrying metadata.notification_permission_key
+        # for cohort routing.
         try:
-            from app.services import notification_service
+            from app.services.tasks.service import create_task_with_provenance
 
             job_type = (self.job.job_type or "").strip()
             anomaly_count = int(self.job.anomaly_count or 0)
@@ -349,6 +356,8 @@ class BaseAgent:
                     f"{'item needs' if anomaly_count == 1 else 'items need'} "
                     f"review"
                 )
+                task_type_key = "anomaly_resolution_task"
+                provenance_kind = "anomaly_detection"
             elif job_type == "month_end_close":
                 category = "agent_job_awaiting_approval"
                 period_label = (
@@ -357,31 +366,39 @@ class BaseAgent:
                     else "current period"
                 )
                 title = f"Month-end close ready to review ({period_label})"
+                task_type_key = "review_approval_task"
+                provenance_kind = "workflow_step"
             else:
                 # Aftercare + future job_types fall through — they have
                 # their own producer sites or no notification scope yet.
                 return
 
-            notification_service.notify_users_with_permission(
+            create_task_with_provenance(
                 self.db,
                 company_id=self.tenant_id,
-                permission_key="invoice.approve",
+                provenance_kind=provenance_kind,
+                provenance_ref_type="agent_job",
+                provenance_ref_id=self.job_id,
+                event_kind=category,
+                task_type_key=task_type_key,
                 title=title,
-                message=(
+                description=(
                     self.job.error_message
                     or f"Agent job {self.job_id} is awaiting review."
                 ),
-                type="info",
-                category=category,
-                link=f"/agents/{self.job_id}/review",
-                actor_user_id=self.job.triggered_by,
-                source_reference_type="agent_job",
-                source_reference_id=self.job_id,
+                created_by_user_id=self.job.triggered_by,
+                metadata={
+                    "notification_permission_key": "invoice.approve",
+                    "notification_category": category,
+                    "notification_link": f"/agents/{self.job_id}/review",
+                    "notification_source_reference_type": "agent_job",
+                    "notification_source_reference_id": self.job_id,
+                },
             )
             self.db.commit()
         except Exception:
             logger.exception(
-                "notification dispatch failed for agent job %s",
+                "v1 substrate task creation failed for agent job %s",
                 self.job_id,
             )
 

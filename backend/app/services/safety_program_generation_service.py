@@ -176,37 +176,42 @@ def generate_program_content(
     db.commit()
     db.refresh(gen)
 
-    # (c) build arc Phase B — safety_program_pending_review dispatch
-    # (producer site #6). Fires when generation status transitions to
-    # 'pending_review' (status set at line 163 above). Recipients gated
-    # on safety.trainer.approve — distinct cohort from invoice approvers.
-    # Defensive: notification failure must not block generation (V-1d).
+    # v1 task substrate B2 — producer site #6 refactor.
+    # Notification dispatch flows through the substrate's
+    # notification_dispatcher subscriber. Recipients gated on
+    # safety.trainer.approve — distinct cohort from invoice approvers.
     if gen.status == "pending_review":
         try:
-            from app.services import notification_service
+            from app.services.tasks.service import create_task_with_provenance
             topic_title = (
                 topic.title if topic else f"generation {gen.id}"
             )
-            notification_service.notify_users_with_permission(
+            create_task_with_provenance(
                 db,
                 company_id=gen.tenant_id,
-                permission_key="safety.trainer.approve",
+                provenance_kind="workflow_step",
+                provenance_ref_type="safety_program_generation",
+                provenance_ref_id=gen.id,
+                event_kind="safety_program_pending_review",
+                task_type_key="review_approval_task",
                 title=f"Safety program ready for review: {topic_title}",
-                message=(
+                description=(
                     "An AI-generated safety program has been staged "
                     "for safety-trainer review."
                 ),
-                type="info",
-                category="safety_program_pending_review",
-                link=f"/safety/programs/{gen.id}",
-                source_reference_type="safety_program_generation",
-                source_reference_id=gen.id,
+                metadata={
+                    "notification_permission_key": "safety.trainer.approve",
+                    "notification_category": "safety_program_pending_review",
+                    "notification_link": f"/safety/programs/{gen.id}",
+                    "notification_source_reference_type": "safety_program_generation",
+                    "notification_source_reference_id": gen.id,
+                },
             )
             db.commit()
         except Exception:
             logger.exception(
-                "notification dispatch failed for safety_program_pending_review "
-                "gen_id=%s",
+                "v1 substrate task creation failed for "
+                "safety_program_pending_review gen_id=%s",
                 gen.id,
             )
 

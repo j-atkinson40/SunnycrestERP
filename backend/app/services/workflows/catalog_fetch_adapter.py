@@ -255,37 +255,45 @@ def run_staged_fetch(
 
     db.commit()
 
-    # (c) build arc Phase B — catalog_sync_pending_review dispatch
-    # (producer site #5). Fires on the new pending-review row's
-    # creation; supersede semantics at lines 200-216 ensure older
-    # pending rows are flipped to 'superseded' BEFORE this row is
-    # created — older rows do NOT re-fire.
-    # Defensive: notification failure must not block ingestion (V-1d).
+    # v1 task substrate B2 — producer site #5 refactor.
+    # Notification dispatch flows through the substrate's
+    # notification_dispatcher subscriber. Supersede semantics at lines
+    # 200-216 still flip older pending rows BEFORE this one is created;
+    # idempotency at the task level is provided by the partial-unique
+    # composite (provenance_kind, provenance_ref_type, provenance_ref_id,
+    # event_kind) — `new_log.id` is fresh per fetch so each new sync log
+    # produces exactly one task.
     try:
-        from app.services import notification_service
-        notification_service.notify_users_with_permission(
+        from app.services.tasks.service import create_task_with_provenance
+        create_task_with_provenance(
             db,
             company_id=company_id,
-            permission_key="invoice.approve",
+            provenance_kind="integration_event",
+            provenance_ref_type="urn_catalog_sync_log",
+            provenance_ref_id=new_log.id,
+            event_kind="catalog_sync_pending_review",
+            task_type_key="review_approval_task",
             title=(
                 f"Urn catalog sync pending review "
                 f"({products_preview} product changes)"
             ),
-            message=(
+            description=(
                 "A new Wilbert urn catalog fetch has staged "
                 f"{products_preview} product changes for review."
             ),
-            type="info",
-            category="catalog_sync_pending_review",
-            link=f"/triage/catalog_fetch_triage",
-            source_reference_type="urn_catalog_sync_log",
-            source_reference_id=new_log.id,
+            metadata={
+                "notification_permission_key": "invoice.approve",
+                "notification_category": "catalog_sync_pending_review",
+                "notification_link": "/triage/catalog_fetch_triage",
+                "notification_source_reference_type": "urn_catalog_sync_log",
+                "notification_source_reference_id": new_log.id,
+            },
         )
         db.commit()
     except Exception:
         logger.exception(
-            "notification dispatch failed for catalog_sync_pending_review "
-            "sync_log_id=%s",
+            "v1 substrate task creation failed for "
+            "catalog_sync_pending_review sync_log_id=%s",
             new_log.id,
         )
 
