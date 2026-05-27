@@ -576,6 +576,30 @@ Plus **7 Playwright mobile scenarios** at `frontend/tests/e2e/portal-phase-8e21.
 
 ---
 
+### 10.15 Task substrate cross-realm forward-compat (v1 close)
+
+v1 task substrate ships with cross-realm forward-compat schema for customer-facing portal consumption. Tenant-realm task creation today; customer-facing portal task creation contemplated at v2b family portal arc per task substrate v2 phasing doc §3.2. The substrate's foundational schema accommodates both realms without breaking changes when customer-facing portals consume task substrate.
+
+Forward-compat shape:
+
+- **`task_details.visibility` enum extension** — current enum values cover tenant-realm visibility (`tenant_internal`, `tenant_assigned`, `tenant_audit`); v2b customer-portal visibility values (`customer_visible`, `customer_actionable`, `customer_informational`) ship as enum extension when family portal arc dispatches. No schema migration required mid-flight; enum value addition is backward-compatible.
+
+- **`task_details.creator_realm` column** — VARCHAR(20) NULL column added at r107 captures realm context of task creation site (`tenant`, `customer_portal`, `system`). v1 task substrate B1 backfilled existing tasks with `creator_realm='tenant'`; new tasks created via tenant routes inherit `creator_realm='tenant'`. v2b customer-portal task creation will populate `creator_realm='customer_portal'` for portal-created tasks.
+
+- **Provenance kinds reserved for customer-portal sources** — `provenance_kind` enum at v1 includes `customer_communication_inbound` value (currently unused; reserved for v2b customer-portal inbound communication producer). Customer-portal-originated tasks dispatch through canonical task creator contract (PLUGIN_CONTRACTS.md task creators category) with portal-specific producer plugins.
+
+Cross-realm portal task surfaces follow Portal Foundation §10's path-scoped routing + JWT realm extension patterns. Customer-portal task surface plugins register against canonical PLUGIN_CONTRACTS.md task surfaces category with `accepted_task_types` filtered to customer-visible task types; portal renderer respects `task_details.visibility` filtering at query time.
+
+The forward-compat substrate ships at v1 close per DECISIONS.md 2026-05-27 — Substrate-minimal-default canon: narrow + canonical foundation that expands additively when customer-portal arc dispatches. Future arcs against the substrate find the cross-realm hooks ready; no v1 task substrate redo required for v2b family portal landing.
+
+Cross-references:
+- CLAUDE.md §4 Task Substrate subsection (substrate shape canon)
+- PLUGIN_CONTRACTS.md task creators / task surfaces / task type behaviors categories
+- §10.10 Office vs operational distinction (portal-realm authentication boundary; relevant to customer_portal creator_realm enforcement)
+- `docs/investigations/task_substrate_v2_phasing.md` §3.2 (family portal arc scope)
+
+---
+
 ## 11. Phase 3 two-layer navigation — canonical rationale
 
 This section exists because the phrase "everything is a Space" surfaces often enough in discussion that it deserves a definitive answer. **It is imprecise.** Spaces are a view overlay on top of the existing vertical navigation, not a replacement.

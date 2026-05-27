@@ -432,7 +432,23 @@ The Bridgeable codebase ships **two distinct app trees from one frontend bundle*
 
 **Visual editor library** at `frontend/src/lib/visual-editor/` is shared between trees. The tenant App tree imports it for its side-effect — `auto-register.ts` populates the in-memory component registry singleton at module load, so the registry is available regardless of which tree is rendering. The admin tree imports the same library for the editor pages. The shared library has no awareness of which tree consumes it; it has no auth dependencies, no API dependencies.
 
+**Realm-agnostic service layer (WB-cycle-followup-2, 2026-05-27):** Service-layer modules consumed by both tenant-realm and admin-platform-realm routers ship realm-agnostic. The service layer takes operational primitives (company_id, requested operation, data) without coupling to which router invoked it; realm-specific concerns (auth context, route prefix, response envelope) live at the router layer not the service layer.
+
+The pattern was load-bearing at WB-cycle-followup-2 (`33d5721`) where Widget Builder substrate originally shipped with tenant-router coupling at service layer; the 403 gap on Studio (admin-realm) consumption forced refactor to realm-agnostic service. Post-refactor, `visual_editor_widgets_service` consumed by both `/api/v1/widget-builder/*` (tenant router) and `/api/platform/admin/widget-builder/*` (admin platform router) with identical service-layer behavior; auth context flows through router-layer dependencies (`get_current_user` vs `get_current_platform_user`); service layer operates against company_id + operation + data without realm awareness.
+
+Pattern application: Studio-authored substrates (substrates whose primary authoring surface lives in Studio admin shell) ship realm-agnostic at service layer from foundation, not retrofit. Service-layer modules under `backend/app/services/visual_editor/` are canonical realm-agnostic examples; new visual-editor substrates extend this convention.
+
+Cross-reference: `Per-request API URL resolution` paragraph (this subsection) for the client-side counterpart pattern; DECISIONS.md 2026-05-27 — Discoverability canon for operator-facing substrate cycles (auth-realm reachability verification as substrate-cycle dimension).
+
 **Audit attribution limitation (relocation phase, May 2026):** the `created_by`/`updated_by` columns on `platform_themes`, `component_configurations`, `workflow_templates`, `tenant_workflow_forks` are FK-constrained to `users.id`. PlatformUser ids cannot satisfy that FK. The route layer therefore passes `actor_user_id=None` for platform-user writes — these writes are NOT recorded at the column level. Future work: drop the FK constraint or add a parallel `platform_user_id` column. Tracked as a follow-up; no migration was shipped this phase per scope constraint.
+
+**`last_edit_session_actor_id` without FK pattern (WB-cycle-followup-2, 2026-05-27):** The audit attribution limitation documented above (PlatformUser vs User FK constraint problem) resolves via the `last_edit_session_actor_id` without-FK pattern. Affected columns ship as `VARCHAR(36) NULL` (UUID string) rather than `UUID NULL` with FK constraint to a specific user table. The string-typed column accepts UUIDs from either user-source table (`User` for tenant-realm edits; `PlatformUser` for admin-realm edits) without schema-level enforcement of which table the UUID references.
+
+Audit reads resolve the user-source via two-step query: (1) attempt User lookup; (2) on miss, attempt PlatformUser lookup. The pattern preserves audit attribution across realms without requiring schema-level FK resolution. Substrate trades schema-enforced referential integrity for cross-realm audit attribution; the trade is honest given the realm-distinction architectural commitment.
+
+The pattern applies to all substrate columns capturing actor identity that may originate from either realm (audit logs, last-edit attribution, content provenance). Substrate authors documenting `actor_id`-shaped columns specify which realms can produce values + which audit-read query pattern applies.
+
+Cross-reference: preceding `Audit attribution limitation (relocation phase, May 2026)` paragraph for problem statement; DECISIONS.md 2026-05-27 — Substrate-extending arcs with colliding field names (relevant when audit columns share field names across substrates).
 
 **Per-request API URL resolution (R-1.6.7, 2026-05-07):** Tenant `apiClient` (`frontend/src/lib/api-client.ts`) and admin `adminApi` (`frontend/src/bridgeable-admin/lib/admin-api.ts`) both resolve their base URL **per-request** via `resolveApiBaseUrl()` / `getAdminBaseUrl()`, reading `localStorage["bridgeable-admin-env"]` to choose between staging (`https://sunnycresterp-staging.up.railway.app`) and production (`https://api.getbridgeable.com`). This pattern removes the dependency on Vite build-time env-var resolution, which was fragile because Railway's build environment did not reliably surface dashboard-set env vars at the moment `vite build` ran on the staging frontend service — the deployed bundle had `https://api.getbridgeable.com` baked into the tenant `apiClient` even though the dashboard showed the staging URL. The pattern allows the same deployed bundle to route to different backends based on operator choice (e.g., a platform admin opening the runtime editor against staging from a production frontend deploy). The localStorage key + staging URL hardcode + production URL hardcode are **load-bearing invariants**: tenant client and admin client must agree on all three values mid-impersonation; mismatch would route the two clients to different backends on the same flow. Vitest regression guard at `frontend/src/lib/api-client.test.ts` catches drift. Other tenant-tree clients (`platform-api-client`, `portal-service`, `company-service`, `calendar-actions-service`, `personalization-studio-service`, `email-inbox-service`, `AdminCommandBar`) still use build-time-baked URLs and will need the same pattern when their endpoints get exercised under impersonation. Adopt incrementally as new endpoints surface.
 
@@ -447,6 +463,16 @@ The Bridgeable codebase ships **two distinct app trees from one frontend bundle*
 **8 component kinds:** `widget` / `focus` / `focus-template` / `document-block` / `pulse-widget` / `workflow-node` / `layout` / `composite`. Each registration carries identity (type + name + displayName + category), scope (verticals + userParadigms + optional productLines), token consumption (`consumedTokens` array of `tokens.css` variable names without `--`), `configurableProps` (typed prop schema across 8 `ConfigPropType` values including `tokenReference` + `componentReference`), `slots` for composition, `variants` for per-variant overrides, `schemaVersion` + `componentVersion` for migration tracking, and an `extensions` JSONB-shape forward-compat field.
 
 **Phase 1 population (17 components):** 6 widgets (cross-vertical foundation + manufacturing per-line) + 5 Focus types + 2 Focus templates + 2 document blocks + 2 workflow node types. Registrations live in shim files at `lib/visual-editor/registry/registrations/` (so existing component files stay untouched in Phase 1); `auto-register.ts` is the side-effect-on-import barrel that App.tsx imports at bootstrap. **The registry is the canonical way to make a component visually editable** — new visually-relevant components must register themselves so the editor can target them. Per-tenant theme override persistence ships in Phase 2 alongside the actual visual editor UI; debug inspector lives at `/visual-editor/registry` (admin platform).
+
+**Canvas widget-renderer registry (R-1.6.12, 2026-05-27):** The Component Registry described above is the **visual-editor metadata registry** — admin-side metadata catalog covering component-kind enumeration, registration mechanism, public API for the visual editor's authoring surface. The visual-editor metadata registry lives at `frontend/src/lib/visual-editor/registry/` and serves authoring-time concerns: "what component kinds exist?", "what are their default property schemas?", "what UI variants are registered?"
+
+The **canvas widget-renderer registry** is a distinct second registry serving runtime concerns. Canvas runtime (rendering authored widgets to operator-facing surfaces) consults a separate registry mapping component_kind → runtime renderer component. Canvas widget-renderer registry lives at `frontend/src/lib/canvas/widget-renderers.ts`; entries register at module import time via `registerWidgetRenderer(component_kind, renderer)` and are consumed by canvas rendering layer at runtime.
+
+The two-layer distinction surfaced during WB-cycle work as substrate boundaries clarified: visual editor needs metadata about component kinds (for the authoring UI's component-kind palette, property schemas, etc.); canvas runtime needs renderer mappings (for actual DOM emission). Both layers consume the same component_kind enumeration but serve distinct runtime concerns. Substrate authors registering a new component_kind register against both layers — metadata in visual-editor registry + renderer in canvas widget-renderer registry.
+
+Pattern application: when adding a new component kind, register at both layers from foundation (not retrofit). Missing canvas widget-renderer registration manifests as runtime "unknown widget kind" fallback rendering; missing visual-editor metadata registration manifests as authoring-time absence from component-kind palette. Both gaps surface reactively rather than at registration time.
+
+Cross-reference: DECISIONS.md 2026-05-27 — Shared-dispatcher-multiple-authoring-surfaces canon (same architectural pattern at dispatcher altitude); DECISIONS.md 2026-05-27 — WYSIWYG discipline as canvas-layout-model constraint (relevant when canvas widget-renderer must match authoring-time visual representation).
 
 ### Theme Resolution (Admin Visual Editor — Phase 2, May 2026)
 
@@ -588,6 +614,30 @@ The visual editor surfaces seven purpose-specific editor pages, each handling a 
 
 **Documents placeholder as scaffolding**: the Documents tab exists in nav so the top-level structure is established; the actual document-authoring editor ships in Phase 2 backed by the existing Documents arc substrate (Phase D-1 through D-9, migrations r20-r28).
 
+### Studio-builder Mapping Table (WB-cycle close, 2026-05-27)
+
+Canonical reference for Studio-builder substrates: frontend mount → backend router → realm → client. The table prevents repeat investigation of "where does Studio-builder X mount + what realm + what backend route prefix + which client?" — a question that surfaced reactively across WB cycle + studio nav arc work.
+
+| Builder | Frontend mount | Backend router | Realm | Client |
+|---|---|---|---|---|
+| Theme Editor | `/admin/visual-editor/themes` (Studio) | `/api/platform/admin/visual-editor/themes/*` | platform | `adminApi` |
+| Focus Editor | `/admin/visual-editor/focuses` (Studio) | `/api/platform/admin/visual-editor/focuses/*` | platform | `adminApi` |
+| Widget Builder | `/admin/visual-editor/widgets` (Studio) + `/admin/widget-builder` (legacy alias) | `/api/platform/admin/visual-editor/widgets/*` (canonical) + `/api/v1/widget-builder/*` (tenant consumer path) | platform (Studio) + tenant (consumer) | `adminApi` (Studio) + `apiClient` (tenant) |
+| Document Composer | `/admin/visual-editor/documents` (Studio) | `/api/platform/admin/visual-editor/documents/*` | platform | `adminApi` |
+| Component Classes | `/admin/visual-editor/classes` (Studio) | `/api/platform/admin/visual-editor/classes/*` | platform | `adminApi` |
+| Workflow Editor | `/admin/visual-editor/workflows` (Studio) | `/api/platform/admin/visual-editor/workflows/*` | platform | `adminApi` |
+| Component Registry | `/admin/visual-editor/registry` (Studio) | `/api/platform/admin/visual-editor/registry/*` | platform | `adminApi` |
+
+**Canonical pattern:** Studio-authored substrates default to platform realm via `/api/platform/admin/visual-editor/*` route prefix, consumed through `adminApi` client with `get_current_platform_user` auth dependency. Tenant-router consumer paths (`/api/v1/*`) exist for substrates with tenant-side consumers (e.g. Widget Builder's composed widgets registered at tenant boot); those paths route through realm-agnostic service layer (see `Realm-agnostic service layer` paragraph above) so consumption is realm-coherent at the service layer.
+
+**Discoverability:** Each builder mounts in the Studio admin shell's left rail per Studio navigation arc (`3a019e1`). Builder rail entry registration lives in `frontend/src/admin/studio/nav-registry.ts`; entries reference the canonical frontend mount path. Future builders ship with rail entry registration as substrate deliverable (DECISIONS.md 2026-05-27 — Discoverability canon for operator-facing substrate cycles).
+
+Cross-references:
+- `Visual Editor Top-Level Structure` H3 subsection (editor-page-level enumeration; this table is broader)
+- `Realm-agnostic service layer` paragraph (service-layer realm-coherence pattern)
+- DECISIONS.md 2026-05-27 — Discoverability canon for operator-facing substrate cycles (auth-realm reachability verification)
+- `docs/investigations/2026-05-27-widget-builder-auth-realm.md` (WB-cycle-followup-2 investigation context)
+
 ### Focus Composition Layer (Admin Visual Editor — May 2026)
 
 **Core-plus-accessories pattern (canonical principle).** Focus types follow a core-plus-accessories pattern. The Focus's operational core is built as code — a React component with whatever structure best serves the operational job (a dispatcher kanban, a scribe panel, a decision flow, a canvas authoring surface). The Focus integrates with the composition layer to render an accessory layer around or alongside the core. The accessory layer is composition-authored: which widgets appear, where they're positioned, what's in their per-vertical arrangement. The core is not composition-authored.
@@ -647,6 +697,33 @@ First-match-wins at READ time — a composition is a complete layout, not a part
 - Per-service guides under [`backend/docs/vault/`](backend/docs/vault/): [documents.md](backend/docs/vault/documents.md), [intelligence.md](backend/docs/vault/intelligence.md), [crm.md](backend/docs/vault/crm.md), [notifications.md](backend/docs/vault/notifications.md), [accounting.md](backend/docs/vault/accounting.md)
 
 **V-2 candidates (not yet scoped):** Calendar (unified view over VaultItems with `event_type`), Reminders (proactive surface for upcoming events), CRM true absorption (Option B from the V-1 audit — make `CompanyEntity` a first-class VaultItem + unify the 4 parallel contact models), Vault Sharing generalization (D-6 `DocumentShare` abstraction extended to any VaultItem), notification preferences (per-user per-category opt-out + daily digest). All tracked in `backend/docs/DEBT.md`.
+
+### Task Substrate (v1 complete — May 2026)
+
+Bridgeable runs on tasks. The platform's operational model is task-centric: tasks are the canonical representation of work that needs attention. All operational events that require human awareness, decision, or action manifest as tasks. The platform's various capabilities relate to each other through task lifecycle — workflows create and complete tasks; Focuses enable task work; documents are often task outputs; communications are often task triggers and task outputs; Intelligence creates tasks from observations.
+
+The task substrate is foundational, not feature. It exists at the level of Vault-as-foundation and workflow-as-orchestration — substrate that capabilities consume rather than capability among many.
+
+User experience of the platform is fundamentally about task awareness and task completion. The platform's value proposition is helping users know what needs doing and helping them complete it efficiently, with reduced cognitive burden of tracking work mentally.
+
+**Substrate shape.** Tasks are VaultItems with `item_type='task'` (12th value added to existing 11-value enum at v1 task substrate B1) + `task_details` join table for task-specific fields. The hybrid pattern preserves Vault-as-canonical-row-type while normalizing task-specific schema (assignee, lifecycle_shape, provenance, visibility, etc.) into a dedicated join table. Task service layer + Task façade preserves backward-compat for the 8 existing Task consumers; consumers query through service-layer abstraction rather than direct table access.
+
+Task lifecycle is dual-shape: action shape (`created → assigned → in_progress ↔ blocked → done | cancelled`) for tasks requiring completion action; reminder shape (`informational → acknowledged | dismissed`) for time-based informational tasks that don't require completion. Lifecycle state machine implementation lives at `backend/app/services/tasks/lifecycle.py`; backward-compat mapping from existing 5-state machine ships in backfill.
+
+Task provenance is polymorphic across 12 `provenance_kind` values (workflow_step, intelligence_observation, manual_creation, communication_inbound, integration_event, shelf_parking, coaching_observation, scheduled_recurring, triage_event, focus_completion, anomaly_detection, system_internal). Composite idempotency key `(provenance_kind + provenance_ref + event_kind)` is partial-unique at schema layer; this is load-bearing for the operationally-idempotent claim that task-creation-event-driven dispatch depends on.
+
+**Plugin substrate.** Three plugin categories register against the task substrate (see PLUGIN_CONTRACTS.md):
+- **Task creators** (workflow steps, Intelligence observations, communications, shelf parking, manual creation, future triage adapters)
+- **Task surfaces** (list views, detail views, creation forms, Pulse Personal layer wire, briefings consumption, future authoring surfaces)
+- **Task type behaviors** (lifecycle behaviors, surface defaults, routing defaults per task type)
+
+v1 ships 5 task type behavior plugins: `generic_task`, `review_approval_task`, `scheduled_recurring_task`, `customer_communication_task`, `anomaly_resolution_task`. Future task types register additively against the substrate.
+
+**Subscriber registry.** Task lifecycle events fire to a subscriber registry (7 event types × 6 v1 subscribers; sync dispatch with isolated try/except per subscriber at `backend/app/services/tasks/subscribers/`). v1 subscribers: `audit_writer` (active at substrate-foundation), `notification_dispatcher` (active post-B2 (c) refactor), `briefings_invalidator`, `pulse_invalidator`, `workflow_resumer`, `focus_closer` (all active post-B3 consumer integration).
+
+**Producer integration.** (c)'s 8 producer sites flow through task substrate post-v1.5 B2 refactor: producer call-sites create tasks via `task_service.create_task_with_provenance`; notification dispatch fires from task-creation events via subscriber registry rather than producer-direct dispatch. Parity preserved bit-for-bit at recipient side. Site mapping documented at task substrate v1 completion artifact §2 producer refactor section (`docs/investigations/task_substrate_v1_completion.md`).
+
+**Reference instances.** v1 task substrate shipped across 3 commits: `2fba161` (B1 substrate foundation + r108 Focus extension), `a400d1b` (B2 (c) producer refactor), `1c8dbbd` (B3 consumer integration + r109 routing rules + v1 arc close). v1 build prompt at `docs/investigations/task_substrate_v2_v1_build_prompt.md`; v1 completion artifact at `docs/investigations/task_substrate_v1_completion.md`. v2 sub-arcs (10-triage-queue adapters, family portal, substrate refinements) await operator-observable signals per task substrate v2 phasing doc §5.
 
 ### Command Bar Platform Layer (Phase 1 complete — April 2026)
 

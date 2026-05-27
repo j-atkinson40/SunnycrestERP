@@ -58,7 +58,10 @@ This document is the canonical contract reference for Bridgeable's plugin catego
 23. [Page contexts](#22-page-contexts) `[~ implicit pattern]`
 24. [Customer classification rules](#23-customer-classification-rules) `[~ implicit pattern]`
 25. [Intent classifiers](#24-intent-classifiers) `[~ implicit pattern]`
-26. [Cross-category patterns appendix](#cross-category-patterns-appendix)
+26. [Task creators](#25-task-creators) `[✓ canonical]`
+27. [Task surfaces](#26-task-surfaces) `[✓ canonical]`
+28. [Task type behaviors](#27-task-type-behaviors) `[✓ canonical]`
+29. [Cross-category patterns appendix](#cross-category-patterns-appendix)
 
 ---
 
@@ -2136,6 +2139,210 @@ N/A at backend — closed vocabulary + hand-maintained verb arrays in code. Fron
 
 1. **Backend hand-maintained verbs vs frontend action-registry-derived patterns**: asymmetry by design. Frontend has render-time action registry available; backend dispatches pre-action-resolution. Documented honestly per Meta-Pattern 2 (working code that suits its category; no migration needed).
 2. **Record-number regex assumes Bridgeable record-number shape** (numeric + prefix): future verticals with non-numeric record IDs would need regex extension. Bounded scope; flagged for any vertical-expansion arc that introduces alternative record-number formats.
+
+## 25. Task creators
+
+### Purpose
+
+Plugins registering as task creators emit task entities from producer-side events. Producer sites — workflow steps completing, Intelligence observations surfacing, communications arriving, shelf parking events firing, future triage adapters, manual user creation — dispatch task creation through the task substrate via service-layer entry point. The category establishes the contract producer sites adhere to when authoring task-creating substrate.
+
+### Input Contract
+
+`task_service.create_task_with_provenance(company_id, provenance_kind, provenance_ref_type, provenance_ref_id, event_kind, task_type_key, title, description, assignee_user_id?, priority?, due_date?, suppression_key?, metadata?)` at `backend/app/services/tasks/task_service.py`.
+
+Required fields: `company_id` (tenant scope); `provenance_kind` (Enum: 12 values per task substrate v1 lock); `provenance_ref_type` + `provenance_ref_id` (polymorphic source-entity reference); `event_kind` (substrate's lifecycle-event vocabulary); `task_type_key` (selects task type behavior plugin); `title`; `description`.
+
+Optional fields: `assignee_user_id` (routing target; substrate falls back to task type behavior's routing default when absent); `priority` (substrate falls back to task type behavior's priority default); `due_date`; `suppression_key` (operator-facing notification suppression); `metadata` (JSONB free-form; producer-supplied context that subscribers may discriminate on per DECISIONS.md 2026-05-27 — Subscriber-substrate canon for task-event-driven dispatch).
+
+### Output Contract
+
+Returns `Task` façade object wrapping the created entity (VaultItem with item_type='task' + task_details row created in single atomic transaction). Task façade preserves backward-compat for the 8 existing Task consumers; new consumers use the canonical entity shape.
+
+Substrate guarantees idempotency via composite key `(provenance_kind + provenance_ref + event_kind)` partial-unique constraint; on collision, substrate returns the existing task rather than raising or creating duplicate. Producer sites can safely retry; substrate is operationally idempotent.
+
+### Guarantees
+
+- Atomic creation in single transaction (VaultItem + task_details together, or neither)
+- Subscriber registry fires post-creation (7 event kinds × 6 v1 subscribers; sync dispatch with isolated try/except per subscriber)
+- Composite-key idempotency prevents duplicate creation across producer retries
+- Task façade preserves backward-compat against existing Task consumers (8 sites at v1 close)
+
+### Failure Modes
+
+- **Composite key collision** → substrate returns existing task entity (canonical idempotency behavior; not a failure mode operationally)
+- **FK violation on `company_id`** → raises `IntegrityError`; producer site responsibility to ensure tenant scope is valid
+- **Subscriber-side failure** → individual subscriber error caught + logged via try/except; doesn't break task creation or other subscribers (sync dispatch with isolated handlers per task substrate v1 B1 substrate foundation)
+- **Producer-side defensive wrapper** → producer sites wrap `create_task_with_provenance` calls in their own try/except per V-1d substrate-additive discipline; failure to create task doesn't break producer-side correctness
+
+### Configuration Shape
+
+Producer-side plugins declare:
+- `provenance_kind`: which `provenance_kind` value the plugin emits (single value per plugin in v1; future plugins may emit multiple)
+- `task_type_default`: which `task_type_key` the plugin creates by default (overridable per call-site)
+- Producer plugin's own configuration (workflow-step config, Intelligence observation config, etc.) flows through producer-plugin's contract; task creator contract is the downstream call surface
+
+### Registration Mechanism
+
+In-memory registry per existing Bridgeable Tier R1 plugin pattern. Plugins register at module import time via decorator or registration call (consistent with existing plugin categories' registration mechanism per doc's R1 canon). Registry queryable via `get_task_creators_for_provenance_kind(kind)`.
+
+### Current Implementations
+
+v1 task substrate ships 8 producer sites refactored to task-creator contract via (c) build arc (`868fec3`):
+- `backend/app/services/workflow/workflow_step_completion.py:154` (workflow step → workflow_step provenance)
+- `backend/app/services/intelligence/observation_dispatch.py:89` (Intelligence observation → intelligence_observation provenance)
+- `backend/app/services/communications/inbound_router.py:201` (inbound communication → communication_inbound provenance)
+- `backend/app/services/shelf_parking/event_dispatch.py:74` (shelf parking event → shelf_parking provenance)
+- `backend/app/services/agent_anomaly/anomaly_creation.py:118` (anomaly detection → anomaly_detection provenance)
+- `backend/app/services/scheduling/recurring_dispatch.py:67` (scheduled recurring → scheduled_recurring provenance)
+- `backend/app/services/integration/external_event_router.py:142` (external integration event → integration_event provenance)
+- `backend/app/api/v1/routers/tasks.py:78` (manual user creation → manual_creation provenance)
+
+Future implementations: v2a triage-queue adapters (10 sites planned per task substrate v2 phasing doc §3); v2b family portal adapters; v3+ contractor portal / coaching pattern / Workshop UI plugins.
+
+### Cross-References
+
+- CLAUDE.md §4 Task Substrate subsection (substrate shape canon)
+- BRIDGEABLE_MASTER §3.24 Bridgeable Vault — V-1 Roll-Up (task item_type ratification)
+- Category 26 Task surfaces (downstream consumption of task-creator output)
+- Category 27 Task type behaviors (selects behavior per `task_type_key`)
+- DECISIONS.md 2026-05-27 — Subscriber-substrate canon for task-event-driven dispatch (downstream dispatch)
+- `docs/investigations/task_substrate_v1_completion.md` §2 (producer refactor reference instances)
+
+---
+
+## 26. Task surfaces
+
+### Purpose
+
+Plugins registering as task surfaces render task data per surface type — list views, detail views, creation forms, summary cards, badges. Surface plugins are the consumption-side counterpart to task creators; they consume task entities from substrate and render per consumer-facing context. v1 ships substrate contract; v1.5 wires Pulse Personal layer + briefings consumption as canonical surface implementations. Visual editor authors task surfaces per Studio canon.
+
+### Input Contract
+
+Surface plugins declare contract shape `(surface_key, surface_kind, accepted_task_types[], render_context() → component_props)`:
+- `surface_key`: unique identifier per surface plugin (e.g. `pulse_personal_task_list`, `briefings_task_summary`)
+- `surface_kind`: one of `SURFACE_KINDS` frozen tuple (5 v1 kinds: `list`, `detail`, `creation`, `summary`, `badge`)
+- `accepted_task_types`: list of `task_type_key` values the surface plugin handles; `['*']` for catch-all surfaces
+- `render_context()`: function receiving `(task_entity, viewing_user, surface_context)` and returning component-rendering props per the visual editor's component contract
+
+### Output Contract
+
+Returns component_props dict consumed by visual editor's surface renderer. Component props follow Bridgeable's visual editor canonical contract (see Component Registry category); task surface plugins emit props within that contract rather than rendering DOM directly.
+
+### Guarantees
+
+- Surface registration queryable via `get_task_surfaces_for_task_type(task_type_key, surface_kind)`; returns list of registered plugins matching both criteria, sorted by specificity (exact task_type_key match before catch-all `['*']`)
+- Renderer-agnostic at substrate layer; visual editor consumption layer handles per-surface_kind rendering
+- Surface plugins respect task entity visibility + tenant scope (substrate-enforced; surface plugins receive pre-filtered entities)
+
+### Failure Modes
+
+- **Surface not registered for task_type/kind combination** → substrate falls back to `generic_task` surface plugin (canonical default; renders task title + description + assignee + due_date as universally-applicable shape)
+- **Surface plugin's `render_context()` raises** → caught + logged; visual editor renders error placeholder per existing component-error convention
+- **No hard failure mode for unregistered surface** — fallback to generic_task is the canonical degradation path
+
+### Configuration Shape
+
+Surface plugins declare:
+- `surface_key` (unique identifier)
+- `surface_kind` (one of 5 v1 kinds)
+- `accepted_task_types` (list of task_type_key values or `['*']`)
+- Per-plugin component configuration following Bridgeable visual editor component contract (Component Registry category)
+
+### Registration Mechanism
+
+In-memory registry per Tier R1 plugin pattern. Plugins register at module import time. Registry maintains per-(task_type, surface_kind) lookup index for query performance.
+
+### Current Implementations
+
+v1 ships substrate contract; v1.5 wires canonical consumers:
+- `_build_tasks_item` at `backend/app/services/pulse/personal_layer_service.py:111` (Pulse Personal layer list surface; wired in v1 task substrate B3 `1c8dbbd`)
+- Briefings consumption via `backend/app/services/briefings/task_summary_builder.py:43` (summary surface; wired in v1 task substrate B3)
+
+Future implementations: v2+ visual editor surfaces (operator-authored list/detail/creation surfaces per task type); customer-facing portal surfaces (per task substrate v2 phasing doc §3.2 family portal scope).
+
+### Cross-References
+
+- CLAUDE.md §4 Task Substrate subsection
+- CLAUDE.md §4 Component Registry (visual editor component contract)
+- PLATFORM_ARCHITECTURE §3.3 The Pulse Surface (per Space) (canonical surface consumer)
+- Category 25 Task creators (upstream producer contract)
+- Category 27 Task type behaviors (selects surface defaults per task_type_key)
+- DECISIONS.md 2026-05-27 — Subscriber-substrate canon for task-event-driven dispatch (surfaces consume invalidation events)
+
+---
+
+## 27. Task type behaviors
+
+### Purpose
+
+Plugins registering as task type behaviors declare per-task-type defaults — routing mode, priority, lifecycle behaviors, surface defaults per surface_kind, on-status-change hooks. Task type behaviors are the substrate's "personality per task type" layer; they encode what makes a `review_approval_task` operationally distinct from a `customer_communication_task` from an `anomaly_resolution_task`. The category is foundational to the substrate's polymorphic task handling.
+
+### Input Contract
+
+Task type behavior plugins declare contract shape `(task_type_key, routing_mode_default, priority_default, lifecycle_shape_default, surface_key_defaults{}, on_status_change(task, old_state, new_state) → None, render_default_payload(task) → dict)`:
+- `task_type_key`: unique identifier (e.g. `review_approval_task`)
+- `routing_mode_default`: substrate's routing vocabulary (`assignee_direct`, `round_robin`, `permission_cohort`)
+- `priority_default`: low/medium/high/critical per substrate's priority enum
+- `lifecycle_shape_default`: `action` or `reminder` (selects which lifecycle state machine applies)
+- `surface_key_defaults`: dict mapping surface_kind → surface_key (which surface plugin to default to per surface kind)
+- `on_status_change(task, old_state, new_state)`: hook fired synchronously on lifecycle transition
+- `render_default_payload(task)`: function returning task-type-specific render context for surface plugins
+
+### Output Contract
+
+Substrate consumes plugin's declared defaults at task creation + lifecycle transitions. Task creation with `task_type_key='X'` inherits plugin X's routing_mode_default + priority_default + lifecycle_shape_default unless explicitly overridden by producer site. Surface plugins resolve surface_key via per-task-type lookup (plugin X's surface_key_defaults[surface_kind]) before falling back to generic_task.
+
+`on_status_change` hook fires within the lifecycle-transition transaction; plugin can read task state + side-effect into other substrate (e.g. `anomaly_resolution_task` marks `AgentAnomaly.is_resolved=True` on transition to done state).
+
+### Guarantees
+
+- Single plugin per task_type_key (registry enforces uniqueness; collision raises at registration)
+- Plugin defaults applied at task creation unless explicitly overridden in `create_task_with_provenance` call
+- `on_status_change` hook fires sync with isolated try/except; hook errors caught + logged + don't break lifecycle transition or other subscribers
+- `render_default_payload` invoked per-render by surface plugins requesting task-type-specific context
+
+### Failure Modes
+
+- **Unknown task_type_key in task creation** → substrate falls back to `generic_task` plugin (canonical catch-all; provides universally-applicable defaults)
+- **Plugin registration collision** (two plugins declaring same task_type_key) → raises at module import time before substrate operational
+- **`on_status_change` hook raises** → caught + logged via try/except wrapper; doesn't break lifecycle transition
+- **`render_default_payload` raises** → caught + logged; surface plugin uses empty dict + falls back to substrate-default render context
+
+### Configuration Shape
+
+Plugins declare task type behavior via plugin module with `__plugin_config__` declaration:
+- `task_type_key`
+- `routing_mode_default`, `priority_default`, `lifecycle_shape_default`
+- `surface_key_defaults` dict
+- `on_status_change` and `render_default_payload` as plugin-module-level functions
+
+Plugin authors implement the two hook functions; substrate calls them per documented contract.
+
+### Registration Mechanism
+
+In-memory registry per Tier R1 plugin pattern. Plugins register at module import time via `@register_task_type_behavior(task_type_key='X')` decorator or `register_task_type_behavior(plugin)` registration call. Registry maintains `task_type_key → plugin` lookup; queryable via `get_task_type_behavior(task_type_key)`.
+
+### Current Implementations
+
+v1 ships 5 canonical task type behavior plugins at `backend/app/services/tasks/plugins/type_behaviors/`:
+- `generic_task.py` (catch-all defaults; routing=assignee_direct, priority=medium, lifecycle=action, no on_status_change side-effects)
+- `review_approval_task.py` (approval-gate cohort; routing=permission_cohort, priority=high; on_status_change maps `metadata.outcome` → resolution_outcome on transition to done)
+- `scheduled_recurring_task.py` (round_robin routing override; on_created populates due_date from schedule config)
+- `customer_communication_task.py` (outbound dispatch wired through delivery_service; on_status_change to in_progress triggers delivery dispatch)
+- `anomaly_resolution_task.py` (priority=high override; on_status_change to done sets `AgentAnomaly.is_resolved=True` with best-effort try/except)
+
+Future implementations: v2+ task types per operator-validated need (e.g. `contractor_quote_task` for v3a contractor portal arc; `coaching_observation_task` for v3b coaching pattern arc).
+
+### Cross-References
+
+- CLAUDE.md §4 Task Substrate subsection
+- Category 25 Task creators (producer contract; task_type_key selects behavior)
+- Category 26 Task surfaces (surface_key_defaults consumed by surface plugins)
+- DECISIONS.md 2026-05-27 — Subscriber-substrate canon for task-event-driven dispatch (on_status_change hooks fire alongside subscriber registry)
+- DECISIONS.md 2026-05-27 — Substrate-transition discipline for substrate-additive arcs (metadata-based extension pattern relevant for plugin metadata consumption)
+- `backend/app/services/tasks/plugins/type_behaviors/` (canonical plugin location)
+
+---
 
 ---
 

@@ -3954,6 +3954,14 @@ Every piece of data a new tenant imports during onboarding — their SKU catalog
 
 **Onboarding audit note (pending):** The existing manufacturing onboarding AI features (catalog import assistance, customer migration, etc.) should be audited to ensure their AI logic routes through Bridgeable Intelligence rather than being isolated per onboarding step. Each onboarding AI feature should: (1) use the intelligence layer for extraction/mapping, (2) write output to the vault as properly typed VaultItems, (3) contribute to the self-learning loop from the moment data is imported. This audit is scheduled — a separate prompt will drive it.
 
+### Update (v1 task substrate)
+
+The VaultItem `item_type` enum gains its 12th value at v1 task substrate B1 (`2fba161`): `'task'`. Tasks are VaultItems following the hybrid schema pattern (CLAUDE.md §4 Task Substrate subsection): VaultItem row carries canonical identity + visibility + tenant scope; `task_details` join table carries task-specific fields (assignee_user_id, lifecycle_shape, provenance_kind, provenance_ref, etc.) with 1:1 enforced via UNIQUE constraint on `vault_item_id`.
+
+The `'reminder'` enum value documented at this section as V-2 deferred remains in the enum but its usage maps to `'task'` with reminder-shaped lifecycle (`informational → acknowledged | dismissed`) per the dual-lifecycle pattern at v1 task substrate. Future arcs may consolidate the enum by removing `'reminder'` if substrate maturity validates that all reminder-shape use cases live cleanly under `'task'`; v1 preserves both enum values per backward-compat discipline.
+
+Cross-reference: CLAUDE.md §4 Task Substrate subsection for substrate shape + lifecycle + plugin substrate detail; `docs/investigations/task_substrate_v1_completion.md` for v1 arc reference instances.
+
 ## 3.25 Widget Library Architecture — Foundational Consolidation (April 2026, in-progress)
 
 Established Widget Library Investigation + Specification sessions, April 2026. Specification deliverables: [DESIGN_LANGUAGE.md Section 12](DESIGN_LANGUAGE.md), [PLATFORM_ARCHITECTURE.md Section 9](PLATFORM_ARCHITECTURE.md), [PLATFORM_INTERACTION_MODEL.md Widgets as Canonical Tablet Realization](PLATFORM_INTERACTION_MODEL.md). Implementation: Phases W-1 through W-4 pre-September; W-5+ post-September.
