@@ -239,3 +239,133 @@ describe("GraphCanvas — non-drag affordances", () => {
     expect(onRemoveNode).toHaveBeenCalledWith("n_node_1")
   })
 })
+
+
+// ── Phase B sub-arc B-3 §(b) — render from node.config visual props ───
+//
+// nodeShape -> SVG shape backdrop; labelPosition -> label placement;
+// accentToken -> shape stroke. Defaults reproduce B-1's fixed look.
+
+function nodeWithConfig(config: Record<string, unknown>): CanvasState {
+  return {
+    version: 1,
+    nodes: [{ id: "n1", type: "decision", label: "Check", position: { x: 40, y: 40 }, config }],
+    edges: [],
+  }
+}
+
+describe("GraphCanvas — B-3 render-from-config", () => {
+  it("defaults to rounded-rect when config has no nodeShape (B-1 parity)", () => {
+    render(
+      <GraphCanvas
+        canvas={nodeWithConfig({})}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const card = screen.getByTestId("canvas-node-n1")
+    expect(card).toHaveAttribute("data-node-shape", "rounded-rect")
+    expect(screen.getByTestId("node-shape-rounded-rect")).toBeInTheDocument()
+  })
+
+  it("renders the configured nodeShape (diamond) as an SVG backdrop", () => {
+    render(
+      <GraphCanvas
+        canvas={nodeWithConfig({ nodeShape: "diamond" })}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
+      "data-node-shape",
+      "diamond",
+    )
+    expect(screen.getByTestId("node-shape-diamond")).toBeInTheDocument()
+  })
+
+  it("renders each of the 9 shapes from config", () => {
+    for (const shape of [
+      "rounded-rect", "pill", "circle", "diamond", "hexagon",
+      "bar", "parallelogram", "envelope", "document",
+    ]) {
+      const { unmount } = render(
+        <GraphCanvas
+          canvas={nodeWithConfig({ nodeShape: shape })}
+          selectedNodeId={null}
+          onSelectNode={noop}
+          onMoveNode={noop}
+          onRemoveNode={noop}
+        />,
+      )
+      expect(screen.getByTestId(`node-shape-${shape}`)).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it("places the label inside by default", () => {
+    render(
+      <GraphCanvas
+        canvas={nodeWithConfig({})}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
+      "data-label-position",
+      "inside",
+    )
+  })
+
+  it("places the label above when configured", () => {
+    render(
+      <GraphCanvas
+        canvas={nodeWithConfig({ labelPosition: "above" })}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const card = screen.getByTestId("canvas-node-n1")
+    expect(card).toHaveAttribute("data-label-position", "above")
+    expect(screen.getByTestId("canvas-node-n1-label")).toBeInTheDocument()
+  })
+
+  it("applies accentToken as the shape stroke (non-selected)", () => {
+    render(
+      <GraphCanvas
+        canvas={nodeWithConfig({ nodeShape: "diamond", accentToken: "status-success" })}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const polygon = screen
+      .getByTestId("node-shape-diamond")
+      .querySelector("polygon")
+    expect(polygon?.getAttribute("stroke")).toBe("var(--status-success)")
+  })
+
+  it("selection overrides accentToken with the accent stroke", () => {
+    render(
+      <GraphCanvas
+        canvas={nodeWithConfig({ nodeShape: "diamond", accentToken: "status-success" })}
+        selectedNodeId="n1"
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const polygon = screen
+      .getByTestId("node-shape-diamond")
+      .querySelector("polygon")
+    expect(polygon?.getAttribute("stroke")).toBe("var(--accent)")
+  })
+})

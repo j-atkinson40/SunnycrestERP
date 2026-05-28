@@ -67,6 +67,8 @@ import {
   computeEdgeMidpoint,
   computeNodeDragCommit,
 } from "@/lib/visual-editor/workflows/canvas-layout"
+// Phase B sub-arc B-3 §(b) — render node.config visual props.
+import { NodeShapeBackdrop, toNodeShape } from "./node-shapes"
 
 
 export interface GraphCanvasProps {
@@ -257,55 +259,109 @@ function GraphCanvasNode({
   const left = node.position.x + (transform?.x ?? 0)
   const top = node.position.y + (transform?.y ?? 0)
 
+  // Phase B sub-arc B-3 §(b) — render from node.config visual props.
+  // nodeShape -> SVG shape backdrop; labelPosition -> label placement;
+  // accentToken -> shape stroke (non-selected). Defaults reproduce B-1's
+  // fixed rounded-rect / inside-label / border-subtle look.
+  const shape = toNodeShape(node.config?.nodeShape)
+  const labelPosition =
+    node.config?.labelPosition === "above" ||
+    node.config?.labelPosition === "below"
+      ? node.config.labelPosition
+      : "inside"
+  const accentToken =
+    typeof node.config?.accentToken === "string"
+      ? node.config.accentToken
+      : null
+
+  const fill = selected ? "var(--accent-subtle)" : "var(--surface-elevated)"
+  const stroke = selected
+    ? "var(--accent)"
+    : accentToken
+      ? `var(--${accentToken})`
+      : "var(--border-subtle)"
+
   return (
     <div
       ref={setNodeRef}
       data-testid={`canvas-node-${node.id}`}
       data-node-type={node.type}
+      data-node-shape={shape}
+      data-label-position={labelPosition}
       data-selected={selected}
-      className={`absolute flex items-start justify-between gap-2 rounded-md border p-3 ${
-        selected
-          ? "border-accent bg-accent-subtle"
-          : "border-border-subtle bg-surface-elevated hover:bg-accent-subtle/40"
-      } ${isDragging ? "opacity-80 shadow-level-2" : "shadow-level-1"}`}
+      className={isDragging ? "absolute opacity-80" : "absolute"}
       style={{
         left,
         top,
         width: NODE_WIDTH,
-        minHeight: NODE_HEIGHT,
+        height: NODE_HEIGHT,
         cursor: isDragging ? "grabbing" : "grab",
         zIndex: selected || isDragging ? 2 : 1,
+        filter: isDragging
+          ? "drop-shadow(var(--shadow-level-2))"
+          : "drop-shadow(var(--shadow-level-1))",
       }}
       {...listeners}
       {...attributes}
       onClick={() => onSelect(node.id)}
     >
-      <div className="flex-1 overflow-hidden">
-        <div className="flex items-center gap-1.5">
-          <Badge variant="outline">{node.type}</Badge>
+      {/* Shape backdrop (SVG, pointer-events none) behind the content. */}
+      <NodeShapeBackdrop
+        shape={shape}
+        width={NODE_WIDTH}
+        height={NODE_HEIGHT}
+        fill={fill}
+        stroke={stroke}
+      />
+
+      {/* Label above / below the shape (outside the box). */}
+      {node.label && labelPosition === "above" && (
+        <p
+          className="absolute -top-5 left-0 w-full truncate text-center text-caption text-content-strong"
+          data-testid={`canvas-node-${node.id}-label`}
+        >
+          {node.label}
+        </p>
+      )}
+
+      {/* Content layer on top of the shape. */}
+      <div className="relative flex h-full items-start justify-between gap-2 p-3">
+        <div className="flex-1 overflow-hidden">
+          <div className="flex items-center gap-1.5">
+            <Badge variant="outline">{node.type}</Badge>
+          </div>
+          <code className="mt-1 block truncate font-plex-mono text-micro text-content-muted">
+            {node.id}
+          </code>
+          {node.label && labelPosition === "inside" && (
+            <p className="mt-0.5 truncate text-caption text-content-strong">
+              {node.label}
+            </p>
+          )}
         </div>
-        <code className="mt-1 block truncate font-plex-mono text-micro text-content-muted">
-          {node.id}
-        </code>
-        {node.label && (
-          <p className="mt-0.5 truncate text-caption text-content-strong">
-            {node.label}
-          </p>
-        )}
+        <button
+          type="button"
+          onClick={(ev) => {
+            ev.stopPropagation()
+            onRemove(node.id)
+          }}
+          onPointerDown={(ev) => ev.stopPropagation()}
+          data-testid={`canvas-node-${node.id}-remove`}
+          aria-label="Remove node"
+          className="rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error"
+        >
+          <Trash2 size={12} />
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={(ev) => {
-          ev.stopPropagation()
-          onRemove(node.id)
-        }}
-        onPointerDown={(ev) => ev.stopPropagation()}
-        data-testid={`canvas-node-${node.id}-remove`}
-        aria-label="Remove node"
-        className="rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error"
-      >
-        <Trash2 size={12} />
-      </button>
+
+      {node.label && labelPosition === "below" && (
+        <p
+          className="absolute -bottom-5 left-0 w-full truncate text-center text-caption text-content-strong"
+          data-testid={`canvas-node-${node.id}-label`}
+        >
+          {node.label}
+        </p>
+      )}
     </div>
   )
 }
