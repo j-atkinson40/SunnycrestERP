@@ -572,3 +572,148 @@ describe("GraphCanvas — B-4 reachability overlay", () => {
     ).toBeInTheDocument()
   })
 })
+
+
+// ── Phase B sub-arc B-5 — selection mechanics (edge + background) ─────
+//
+// Additive: node selection (selectedNodeId/onSelectNode) is unchanged.
+// Edges become clickable via a per-edge transparent hit-stroke
+// (pointer-events:stroke) on the otherwise pointer-events:none SVG —
+// node-drag passthrough preserved. Background-click on the empty surface
+// reports onSelectBackground.
+
+describe("GraphCanvas — B-5 edge + background selection", () => {
+  it("renders a per-edge hit-stroke when onSelectEdge is provided", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectEdge={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("edge-hit-e_n_node_1_n_node_2")).toBeInTheDocument()
+  })
+
+  it("does NOT render a hit-stroke when onSelectEdge is omitted (B-1/B-4 default)", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.queryByTestId("edge-hit-e_n_node_1_n_node_2")).not.toBeInTheDocument()
+  })
+
+  it("clicking the edge hit-stroke fires onSelectEdge with the edge id", () => {
+    const onSelectEdge = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectEdge={onSelectEdge}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("edge-hit-e_n_node_1_n_node_2"))
+    expect(onSelectEdge).toHaveBeenCalledWith("e_n_node_1_n_node_2")
+  })
+
+  it("highlights the selected edge (data-edge-selected) without altering others", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        selectedEdgeId="e_n_node_1_n_node_2"
+        onSelectEdge={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("edge-e_n_node_1_n_node_2")).toHaveAttribute("data-edge-selected", "true")
+  })
+
+  it("background-click on the empty surface fires onSelectBackground; a node click does NOT", () => {
+    const onSelectBackground = vi.fn()
+    const onSelectNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={onSelectNode}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectBackground={onSelectBackground}
+      />,
+    )
+    // Direct surface click (target === currentTarget) → background.
+    fireEvent.click(screen.getByTestId("graph-canvas-surface"))
+    expect(onSelectBackground).toHaveBeenCalledTimes(1)
+    // A node click does NOT bubble to background (target !== surface).
+    onSelectBackground.mockClear()
+    fireEvent.click(screen.getByTestId("canvas-node-n_node_1"))
+    expect(onSelectNode).toHaveBeenCalledWith("n_node_1")
+    expect(onSelectBackground).not.toHaveBeenCalled()
+  })
+
+  it("node selection still works with edges present (drag-passthrough contract intact)", () => {
+    const onSelectNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={onSelectNode}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectEdge={vi.fn()}
+        onSelectBackground={vi.fn()}
+      />,
+    )
+    // SVG edge layer stays pointer-events-none; only the hit-stroke is a
+    // target. The node remains clickable/selectable.
+    expect(screen.getByTestId("graph-canvas-edges")).toHaveClass("pointer-events-none")
+    fireEvent.click(screen.getByTestId("canvas-node-n_node_2"))
+    expect(onSelectNode).toHaveBeenCalledWith("n_node_2")
+  })
+
+  it("edge selection composes with the B-4 overlay (dim + selected highlight coexist)", () => {
+    // Orphan-source edge: overlay ON dims it; selecting it still flags it.
+    const canvas: CanvasState = {
+      version: 1,
+      nodes: [
+        { id: "s", type: "start", position: { x: 0, y: 0 }, config: {} },
+        { id: "orphan", type: "action", position: { x: 300, y: 0 }, config: {} },
+        { id: "a", type: "action", position: { x: 0, y: 200 }, config: {} },
+      ],
+      edges: [{ id: "e_o_a", source: "orphan", target: "a" }],
+    }
+    render(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        selectedEdgeId="e_o_a"
+        onSelectEdge={vi.fn()}
+      />,
+    )
+    // overlay default OFF — selection highlight present, no trace dim.
+    const edge = screen.getByTestId("edge-e_o_a")
+    expect(edge).toHaveAttribute("data-edge-selected", "true")
+    expect(edge).not.toHaveAttribute("data-trace-state")
+    // turn overlay on → orphan-source edge dims AND stays selected.
+    fireEvent.click(screen.getByTestId("trace-overlay-toggle"))
+    expect(edge).toHaveAttribute("data-trace-state", "unreachable")
+    expect(edge).toHaveAttribute("data-edge-selected", "true")
+    expect(edge.style.opacity).toBe("0.2")
+  })
+})

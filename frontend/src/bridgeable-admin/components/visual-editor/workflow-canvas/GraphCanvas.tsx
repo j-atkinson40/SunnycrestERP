@@ -99,6 +99,16 @@ export interface GraphCanvasProps {
    * to the rounded-rect hard default, which is harmless.
    */
   resolveTypeDefaultShape?: (nodeType: string) => unknown
+  /**
+   * B-5 selection-context (additive — node selection via selectedNodeId
+   * is unchanged). When an edge is selected its id is passed here for the
+   * selected-edge highlight; edge-click + empty-canvas (background) click
+   * report via onSelectEdge / onSelectBackground. Omitted → edges aren't
+   * selectable + background clicks are inert (B-4/earlier behavior).
+   */
+  selectedEdgeId?: string | null
+  onSelectEdge?: (id: string) => void
+  onSelectBackground?: () => void
 }
 
 
@@ -110,6 +120,9 @@ export function GraphCanvas({
   onRemoveNode,
   validationError,
   resolveTypeDefaultShape,
+  selectedEdgeId,
+  onSelectEdge,
+  onSelectBackground,
 }: GraphCanvasProps) {
   // Sensor stack mirrors FocusBuilderPage FF-3: 3px PointerSensor for
   // click-vs-drag disambiguation + KeyboardSensor for accessibility +
@@ -180,6 +193,15 @@ export function GraphCanvas({
               className="relative"
               style={{ width: surface.width, height: surface.height }}
               data-testid="graph-canvas-surface"
+              onClick={(ev) => {
+                // B-5: background-click selects the workflow (trigger
+                // inspector). Fires ONLY on a direct surface click — node +
+                // edge-hit clicks target their own elements (e.target !==
+                // the surface), so they don't trigger background. The edge
+                // SVG layer is pointer-events:none, so empty-area clicks
+                // fall through to this surface div.
+                if (ev.target === ev.currentTarget) onSelectBackground?.()
+              }}
             >
               {/* Edge layer — SVG paths beneath the node layer. The SVG
                   is pointer-events:none so node drags pass through; the
@@ -224,6 +246,9 @@ export function GraphCanvas({
                   // subgraph. Overlay off (trace === null) → no change.
                   const edgeUnreachable =
                     trace !== null && !isEdgeReachable(trace, edge.id)
+                  // B-5: selected-edge highlight (composes with B-4 dim —
+                  // the <g> opacity applies to both paths).
+                  const edgeSelected = selectedEdgeId === edge.id
                   return (
                     <g
                       key={edge.id}
@@ -235,20 +260,43 @@ export function GraphCanvas({
                             ? "unreachable"
                             : "reachable"
                       }
+                      data-edge-selected={edgeSelected}
                       style={{ opacity: edgeUnreachable ? 0.2 : undefined }}
                     >
                       <path
                         d={d}
                         fill="none"
                         className={
-                          edge.is_iteration
+                          edgeSelected
                             ? "stroke-accent"
-                            : "stroke-border-strong"
+                            : edge.is_iteration
+                              ? "stroke-accent"
+                              : "stroke-border-strong"
                         }
-                        strokeWidth={1.5}
+                        strokeWidth={edgeSelected ? 2.5 : 1.5}
                         strokeDasharray={edge.is_iteration ? "4 3" : undefined}
                         markerEnd="url(#wf-edge-arrow)"
                       />
+                      {/* B-5: transparent wider hit-stroke. pointer-events
+                          :stroke makes THIS path a click target even though
+                          the parent <svg> is pointer-events:none (per the
+                          SVG spec — a descendant may re-enable events). The
+                          passthrough SVG + node-drag survive; only the edge
+                          stroke itself is clickable. */}
+                      {onSelectEdge && (
+                        <path
+                          d={d}
+                          fill="none"
+                          stroke="transparent"
+                          strokeWidth={12}
+                          style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                          data-testid={`edge-hit-${edge.id}`}
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            onSelectEdge(edge.id)
+                          }}
+                        />
+                      )}
                       {edgeLabel && (
                         <text
                           x={mid.x}

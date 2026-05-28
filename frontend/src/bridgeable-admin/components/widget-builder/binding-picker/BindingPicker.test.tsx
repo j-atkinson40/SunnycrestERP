@@ -145,10 +145,16 @@ describe("BindingPicker", () => {
       expect(screen.getByTestId("binding-picker")).toBeInTheDocument(),
     )
     fireEvent.click(screen.getByTestId("binding-picker-saved-view"))
-    // List view available; chart view filtered out by shape.
-    expect(
-      screen.getByTestId("binding-picker-saved-view-option-v1"),
-    ).toBeInTheDocument()
+    // List view available; chart view filtered out by shape. The dropdown
+    // options render on a later async tick than the open click, so assert
+    // via waitFor (a bare synchronous getByTestId here is a latent race
+    // that full-suite worker load can lose — same anti-pattern as the
+    // Tier2TemplatesEditor.test:602 fix).
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("binding-picker-saved-view-option-v1"),
+      ).toBeInTheDocument(),
+    )
     expect(
       screen.queryByTestId("binding-picker-saved-view-option-v2"),
     ).toBeNull()

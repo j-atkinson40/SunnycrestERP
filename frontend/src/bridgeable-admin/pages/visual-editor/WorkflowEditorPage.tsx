@@ -65,12 +65,19 @@ import {
   EMPTY_CANVAS,
   workflowTemplatesService,
   type CanvasNode,
+  type CanvasEdge,
   type CanvasState,
+  type CanvasTrigger,
   type TenantWorkflowFork,
   type WorkflowScope,
   type WorkflowTemplateFull,
   type WorkflowTemplateMetadata,
 } from "@/bridgeable-admin/services/workflow-templates-service"
+// Phase B sub-arc B-5 — selection-driven right-rail inspectors. Edge
+// selection → EdgeConditionInspector; background (empty-canvas) selection
+// → TriggerInspector. Node selection still → NodeConfigForm (unchanged).
+import { EdgeConditionInspector } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/EdgeConditionInspector"
+import { TriggerInspector } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/TriggerInspector"
 import {
   CanvasValidationError,
   summarizeCanvas,
@@ -114,6 +121,14 @@ function getNodeTypeDefaultShape(nodeType: string): unknown {
   return getByName("workflow-node", nodeType)?.metadata.configurableProps
     ?.nodeShape?.default
 }
+
+
+// Phase B sub-arc B-5 — 4-state selection-context discriminated union.
+type WorkflowSelection =
+  | { kind: "none" }
+  | { kind: "node"; id: string }
+  | { kind: "edge"; id: string }
+  | { kind: "background" }
 
 
 function generateEdgeId(canvas: CanvasState, source: string, target: string): string {
@@ -178,7 +193,16 @@ export default function WorkflowEditorPage() {
   const [draftCanvas, setDraftCanvas] = useState<CanvasState>(EMPTY_CANVAS)
   const [draftDisplayName, setDraftDisplayName] = useState<string>("")
   const [draftDescription, setDraftDescription] = useState<string>("")
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  // Phase B sub-arc B-5 — 4-state selection-context (plain union, no
+  // reducer). Drives the right-rail inspector dispatch: none → "Nothing
+  // selected"; node → B-3 NodeConfigForm (unchanged); edge →
+  // EdgeConditionInspector; background → TriggerInspector. Node selection
+  // is preserved verbatim — `selectedNodeId` is derived for GraphCanvas.
+  const [selection, setSelection] = useState<WorkflowSelection>({
+    kind: "none",
+  })
+  const selectedNodeId = selection.kind === "node" ? selection.id : null
+  const selectedEdgeId = selection.kind === "edge" ? selection.id : null
 
   // ── Loading + save state ─────────────────────────────
   const [, setIsLoading] = useState(false)
@@ -441,7 +465,7 @@ export default function WorkflowEditorPage() {
         (e) => e.source !== nodeId && e.target !== nodeId,
       ),
     }))
-    setSelectedNodeId(null)
+    setSelection({ kind: "none" })
   }, [])
 
   const handleUpdateNode = useCallback(
@@ -482,6 +506,28 @@ export default function WorkflowEditorPage() {
     }))
   }, [])
 
+  // Phase B sub-arc B-5 — edge + trigger edits. Both flow through
+  // setDraftCanvas → the SAME dirty/auto-save path as node edits (no new
+  // mutation API). EdgeConditionInspector emits the full next edge;
+  // TriggerInspector emits the full next trigger.
+  const handleUpdateEdge = useCallback((next: CanvasEdge) => {
+    setDraftCanvas((prev) => ({
+      version: prev.version,
+      trigger: prev.trigger,
+      nodes: prev.nodes,
+      edges: prev.edges.map((e) => (e.id === next.id ? next : e)),
+    }))
+  }, [])
+
+  const handleUpdateTrigger = useCallback((next: CanvasTrigger) => {
+    setDraftCanvas((prev) => ({
+      version: prev.version,
+      trigger: next,
+      nodes: prev.nodes,
+      edges: prev.edges,
+    }))
+  }, [])
+
   // Phase B sub-arc B-1 — graph-canvas node-move commit. Reuses the
   // existing handleUpdateNode mutation (Partial<CanvasNode> patch) so
   // position changes flow through the SAME auto-save debounce path as
@@ -499,6 +545,15 @@ export default function WorkflowEditorPage() {
         ? draftCanvas.nodes.find((n) => n.id === selectedNodeId) ?? null
         : null,
     [draftCanvas, selectedNodeId],
+  )
+
+  // B-5: the selected edge (when selection.kind === "edge").
+  const selectedEdge = useMemo(
+    () =>
+      selectedEdgeId
+        ? draftCanvas.edges.find((e) => e.id === selectedEdgeId) ?? null
+        : null,
+    [draftCanvas, selectedEdgeId],
   )
 
   // Phase B sub-arc B-2 — palette node types sourced from the registry
@@ -951,24 +1006,28 @@ export default function WorkflowEditorPage() {
           <GraphCanvas
             canvas={draftCanvas}
             selectedNodeId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
+            onSelectNode={(id) =>
+              setSelection(id ? { kind: "node", id } : { kind: "none" })
+            }
             onMoveNode={handleMoveNode}
             onRemoveNode={handleRemoveNode}
             validationError={validationError}
             resolveTypeDefaultShape={getNodeTypeDefaultShape}
+            selectedEdgeId={selectedEdgeId}
+            onSelectEdge={(id) => setSelection({ kind: "edge", id })}
+            onSelectBackground={() => setSelection({ kind: "background" })}
           />
         </div>
 
-        {/* ── Right pane — node configuration ─────────── */}
+        {/* ── Right pane — selection-driven inspector (B-5) ─────────────
+            Dispatches by selection kind: node → NodeConfigForm (B-3,
+            unchanged) · edge → EdgeConditionInspector · background →
+            TriggerInspector · none → "Nothing selected". */}
         <aside
           className="flex flex-col overflow-y-auto border-l border-border-subtle bg-surface-sunken p-4"
           data-testid="workflow-editor-node-config-pane"
         >
-          {!selectedNode ? (
-            <p className="text-body-sm text-content-muted">
-              Select a node to configure it.
-            </p>
-          ) : (
+          {selectedNode ? (
             <NodeConfigForm
               node={selectedNode}
               allNodes={draftCanvas.nodes}
@@ -979,6 +1038,23 @@ export default function WorkflowEditorPage() {
               onAddEdge={(target) => handleAddEdge(selectedNode.id, target)}
               onRemoveEdge={(edgeId) => handleRemoveEdge(edgeId)}
             />
+          ) : selectedEdge ? (
+            <EdgeConditionInspector
+              edge={selectedEdge}
+              onChange={handleUpdateEdge}
+            />
+          ) : selection.kind === "background" ? (
+            <TriggerInspector
+              trigger={draftCanvas.trigger}
+              onChange={handleUpdateTrigger}
+            />
+          ) : (
+            <p
+              className="text-body-sm text-content-muted"
+              data-testid="workflow-inspector-empty"
+            >
+              Nothing selected. Click a node, an edge, or the empty canvas.
+            </p>
           )}
         </aside>
       </div>

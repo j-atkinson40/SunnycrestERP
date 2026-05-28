@@ -327,3 +327,84 @@ describe("WorkflowEditorPage — B-2 registry-driven palette", () => {
     })
   })
 })
+
+
+// ── Phase B sub-arc B-5 — selection-driven right-rail dispatch ────────
+//
+// 4-state selection (none/node/edge/background) drives the right rail:
+// none → "Nothing selected"; node → NodeConfigForm; edge →
+// EdgeConditionInspector; background → TriggerInspector.
+
+describe("WorkflowEditorPage — B-5 selection-driven inspector dispatch", () => {
+  it("initial selection is 'none' → Nothing-selected placeholder", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() =>
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument(),
+    )
+    expect(result.getByTestId("workflow-inspector-empty")).toBeInTheDocument()
+    expect(result.queryByTestId("node-config-form")).not.toBeInTheDocument()
+  })
+
+  it("node-click → NodeConfigForm (B-3 inspector, unchanged)", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    fireEvent.click(n1)
+    await waitFor(() =>
+      expect(result.getByTestId("node-config-form")).toBeInTheDocument(),
+    )
+    expect(result.queryByTestId("workflow-inspector-empty")).not.toBeInTheDocument()
+  })
+
+  it("edge-click → EdgeConditionInspector", async () => {
+    const result = renderWithTemplate()
+    const edgeHit = await waitFor(() =>
+      result.getByTestId("edge-hit-e_n_node_1_n_node_2"),
+    )
+    fireEvent.click(edgeHit)
+    await waitFor(() =>
+      expect(result.getByTestId("edge-condition-inspector")).toBeInTheDocument(),
+    )
+    expect(result.getByTestId("edge-inspector-id")).toHaveTextContent("e_n_node_1_n_node_2")
+  })
+
+  it("background-click → TriggerInspector", async () => {
+    const result = renderWithTemplate()
+    const surface = await waitFor(() =>
+      result.getByTestId("graph-canvas-surface"),
+    )
+    fireEvent.click(surface)
+    await waitFor(() =>
+      expect(result.getByTestId("trigger-inspector")).toBeInTheDocument(),
+    )
+  })
+
+  it("transitions node → edge → background → node swap the inspector cleanly (no stale panes)", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    fireEvent.click(n1)
+    await waitFor(() => expect(result.getByTestId("node-config-form")).toBeInTheDocument())
+
+    fireEvent.click(result.getByTestId("edge-hit-e_n_node_1_n_node_2"))
+    await waitFor(() => expect(result.getByTestId("edge-condition-inspector")).toBeInTheDocument())
+    expect(result.queryByTestId("node-config-form")).not.toBeInTheDocument()
+
+    fireEvent.click(result.getByTestId("graph-canvas-surface"))
+    await waitFor(() => expect(result.getByTestId("trigger-inspector")).toBeInTheDocument())
+    expect(result.queryByTestId("edge-condition-inspector")).not.toBeInTheDocument()
+
+    fireEvent.click(result.getByTestId("canvas-node-n_node_2"))
+    await waitFor(() => expect(result.getByTestId("node-config-form")).toBeInTheDocument())
+    expect(result.queryByTestId("trigger-inspector")).not.toBeInTheDocument()
+  })
+
+  it("selection transitions do not mutate the canvas (node count stable across selects)", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() => expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument())
+    const before = result.getAllByTestId(/^canvas-node-n_node_/).length
+    fireEvent.click(result.getByTestId("canvas-node-n_node_1"))
+    fireEvent.click(result.getByTestId("edge-hit-e_n_node_1_n_node_2"))
+    fireEvent.click(result.getByTestId("graph-canvas-surface"))
+    const after = result.getAllByTestId(/^canvas-node-n_node_/).length
+    expect(after).toBe(before)
+  })
+})
