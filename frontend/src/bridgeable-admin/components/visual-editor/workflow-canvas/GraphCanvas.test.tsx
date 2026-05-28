@@ -466,3 +466,109 @@ describe("GraphCanvas — B-3 render-from-config", () => {
     expect(polygon?.getAttribute("stroke")).toBe("var(--accent)")
   })
 })
+
+
+// ── Phase B sub-arc B-4 — execution-trace reachability overlay ────────
+//
+// Overlay DEFAULT OFF (operator-locked): overlay-off = byte-identical to
+// the B-1/B-3 authoring render. Toggle composes trace dim/marker OVER the
+// existing render without altering shapes/edges.
+
+// s -> a -> end, plus an orphan node (added but never connected).
+const TRACE_CANVAS: CanvasState = {
+  version: 1,
+  nodes: [
+    { id: "s", type: "start", position: { x: 0, y: 0 }, config: {} },
+    { id: "a", type: "action", position: { x: 0, y: 150 }, config: {} },
+    { id: "end", type: "end", position: { x: 0, y: 300 }, config: {} },
+    { id: "orphan", type: "action", position: { x: 300, y: 0 }, config: {} },
+  ],
+  edges: [
+    { id: "e1", source: "s", target: "a" },
+    { id: "e2", source: "a", target: "end" },
+    { id: "e_orphan", source: "orphan", target: "a" }, // source unreachable
+  ],
+}
+
+function renderTrace() {
+  return render(
+    <GraphCanvas
+      canvas={TRACE_CANVAS}
+      selectedNodeId={null}
+      onSelectNode={noop}
+      onMoveNode={noop}
+      onRemoveNode={noop}
+    />,
+  )
+}
+
+describe("GraphCanvas — B-4 reachability overlay", () => {
+  it("ships the persistent toggle, default OFF", () => {
+    renderTrace()
+    const toggle = screen.getByTestId("trace-overlay-toggle")
+    expect(toggle).toBeInTheDocument()
+    expect(toggle).toHaveAttribute("data-trace-overlay", "off")
+  })
+
+  it("overlay OFF (default): no node/edge carries a trace-state attr (byte-identical render)", () => {
+    renderTrace()
+    expect(screen.getByTestId("canvas-node-s")).not.toHaveAttribute("data-trace-state")
+    expect(screen.getByTestId("canvas-node-orphan")).not.toHaveAttribute("data-trace-state")
+    expect(screen.getByTestId("edge-e1")).not.toHaveAttribute("data-trace-state")
+  })
+
+  it("toggle ON: reachable nodes/edges marked reachable, orphan marked unreachable + dimmed", () => {
+    renderTrace()
+    fireEvent.click(screen.getByTestId("trace-overlay-toggle"))
+    expect(screen.getByTestId("trace-overlay-toggle")).toHaveAttribute("data-trace-overlay", "on")
+
+    // s -> a -> end reachable
+    expect(screen.getByTestId("canvas-node-s")).toHaveAttribute("data-trace-state", "reachable")
+    expect(screen.getByTestId("canvas-node-a")).toHaveAttribute("data-trace-state", "reachable")
+    expect(screen.getByTestId("canvas-node-end")).toHaveAttribute("data-trace-state", "reachable")
+    // orphan unreachable + dimmed
+    const orphan = screen.getByTestId("canvas-node-orphan")
+    expect(orphan).toHaveAttribute("data-trace-state", "unreachable")
+    expect(orphan.style.opacity).toBe("0.35")
+    // reachable nodes are NOT dimmed
+    expect(screen.getByTestId("canvas-node-s").style.opacity).toBe("")
+  })
+
+  it("toggle ON: reachable edge bright, unreachable edge (orphan source) dimmed", () => {
+    renderTrace()
+    fireEvent.click(screen.getByTestId("trace-overlay-toggle"))
+    expect(screen.getByTestId("edge-e1")).toHaveAttribute("data-trace-state", "reachable")
+    const orphanEdge = screen.getByTestId("edge-e_orphan")
+    expect(orphanEdge).toHaveAttribute("data-trace-state", "unreachable")
+    expect(orphanEdge.style.opacity).toBe("0.2")
+  })
+
+  it("toggle ON: terminal (end) node gets a terminal marker", () => {
+    renderTrace()
+    fireEvent.click(screen.getByTestId("trace-overlay-toggle"))
+    expect(screen.getByTestId("canvas-node-end-terminal-marker")).toBeInTheDocument()
+    // non-terminal nodes get no marker
+    expect(screen.queryByTestId("canvas-node-a-terminal-marker")).not.toBeInTheDocument()
+  })
+
+  it("toggle OFF again: trace attrs + marker cleared (returns to authoring render)", () => {
+    renderTrace()
+    const toggle = screen.getByTestId("trace-overlay-toggle")
+    fireEvent.click(toggle) // on
+    expect(screen.getByTestId("canvas-node-end-terminal-marker")).toBeInTheDocument()
+    fireEvent.click(toggle) // off
+    expect(toggle).toHaveAttribute("data-trace-overlay", "off")
+    expect(screen.getByTestId("canvas-node-s")).not.toHaveAttribute("data-trace-state")
+    expect(screen.queryByTestId("canvas-node-end-terminal-marker")).not.toBeInTheDocument()
+  })
+
+  it("overlay does not alter the shape backdrop (composes over it)", () => {
+    renderTrace()
+    fireEvent.click(screen.getByTestId("trace-overlay-toggle"))
+    // start node still renders its circle backdrop (B-3 type-default) with
+    // overlay on — trace dim is an outer layer, shape is untouched.
+    expect(
+      screen.getByTestId("canvas-node-s").querySelector('[data-testid="node-shape-rounded-rect"], [data-testid^="node-shape-"]'),
+    ).toBeInTheDocument()
+  })
+})

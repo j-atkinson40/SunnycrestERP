@@ -42,7 +42,7 @@
  * `canvas-node-${id}-remove`).
  */
 
-import { useCallback } from "react"
+import { useCallback, useMemo, useState } from "react"
 import {
   DndContext,
   KeyboardSensor,
@@ -52,7 +52,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
-import { Trash2 } from "lucide-react"
+import { Route, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import type {
@@ -69,6 +69,16 @@ import {
 } from "@/lib/visual-editor/workflows/canvas-layout"
 // Phase B sub-arc B-3 §(b) — render node.config visual props.
 import { NodeShapeBackdrop, resolveNodeShape } from "./node-shapes"
+// Phase B sub-arc B-4 — execution-trace reachability overlay.
+import {
+  simulateReachability,
+  isNodeReachable,
+  isEdgeReachable,
+  isTerminalNode,
+} from "@/lib/visual-editor/workflows/simulate-trace"
+
+/** Per-node trace overlay state (undefined = overlay off). */
+type NodeTraceState = "reachable" | "unreachable" | undefined
 
 
 export interface GraphCanvasProps {
@@ -107,6 +117,17 @@ export function GraphCanvas({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
     useSensor(KeyboardSensor),
+  )
+
+  // Phase B sub-arc B-4 — execution-trace reachability overlay.
+  // DEFAULT OFF (operator-locked): the authoring canvas renders at full
+  // strength by default — overlay-off is byte-identical to the B-1/B-3
+  // render. The overlay is a deliberate "check reachability" toggle, one
+  // click away. Trace is computed only when the overlay is on.
+  const [traceOverlay, setTraceOverlay] = useState(false)
+  const trace = useMemo(
+    () => (traceOverlay ? simulateReachability(canvas) : null),
+    [traceOverlay, canvas],
   )
 
   const surface = bbox(canvas.nodes)
@@ -199,8 +220,23 @@ export function GraphCanvas({
                     target: target.position,
                   })
                   const edgeLabel = edge.label ?? edge.condition
+                  // B-4 overlay: dim edges not traversed in the reachable
+                  // subgraph. Overlay off (trace === null) → no change.
+                  const edgeUnreachable =
+                    trace !== null && !isEdgeReachable(trace, edge.id)
                   return (
-                    <g key={edge.id} data-testid={`edge-${edge.id}`}>
+                    <g
+                      key={edge.id}
+                      data-testid={`edge-${edge.id}`}
+                      data-trace-state={
+                        trace === null
+                          ? undefined
+                          : edgeUnreachable
+                            ? "unreachable"
+                            : "reachable"
+                      }
+                      style={{ opacity: edgeUnreachable ? 0.2 : undefined }}
+                    >
                       <path
                         d={d}
                         fill="none"
@@ -238,10 +274,37 @@ export function GraphCanvas({
                   onSelect={onSelectNode}
                   onRemove={onRemoveNode}
                   typeDefaultShape={resolveTypeDefaultShape?.(node.type)}
+                  traceState={
+                    trace === null
+                      ? undefined
+                      : isNodeReachable(trace, node.id)
+                        ? "reachable"
+                        : "unreachable"
+                  }
+                  traceTerminal={trace !== null && isTerminalNode(node)}
                 />
               ))}
             </div>
           </DndContext>
+
+          {/* B-4 trace-controls — persistent reachability-overlay toggle.
+              Floats top-right of the canvas viewport; default OFF so the
+              authoring render is pristine by default. */}
+          <button
+            type="button"
+            onClick={() => setTraceOverlay((on) => !on)}
+            data-testid="trace-overlay-toggle"
+            data-trace-overlay={traceOverlay ? "on" : "off"}
+            aria-pressed={traceOverlay}
+            className={`absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-caption shadow-level-1 ${
+              traceOverlay
+                ? "border-accent bg-accent-subtle text-accent"
+                : "border-border-base bg-surface-raised text-content-muted hover:bg-accent-subtle/40"
+            }`}
+          >
+            <Route size={12} />
+            {traceOverlay ? "Reachability: on" : "Check reachability"}
+          </button>
         </div>
       )}
     </div>
@@ -256,6 +319,10 @@ interface GraphCanvasNodeProps {
   onRemove: (id: string) => void
   /** Registry per-type default shape value (injected; see GraphCanvasProps). */
   typeDefaultShape?: unknown
+  /** B-4 trace overlay state for this node (undefined = overlay off). */
+  traceState?: NodeTraceState
+  /** B-4: node is a terminal (`end`) node + overlay is on. */
+  traceTerminal?: boolean
 }
 
 function GraphCanvasNode({
@@ -264,6 +331,8 @@ function GraphCanvasNode({
   onSelect,
   onRemove,
   typeDefaultShape,
+  traceState,
+  traceTerminal,
 }: GraphCanvasNodeProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: node.id })
@@ -298,6 +367,13 @@ function GraphCanvasNode({
       ? `var(--${accentToken})`
       : "var(--border-subtle)"
 
+  // B-4 overlay: dim nodes not reachable from start (the orphan/
+  // unreachable authoring-error signal). Composed as OUTER opacity over
+  // the shape/selection render — NodeShapeBackdrop + content untouched.
+  // Overlay off (traceState undefined) → no opacity change → byte-
+  // identical to the B-1/B-3 authoring render.
+  const traceDimmed = traceState === "unreachable"
+
   return (
     <div
       ref={setNodeRef}
@@ -306,6 +382,7 @@ function GraphCanvasNode({
       data-node-shape={shape}
       data-label-position={labelPosition}
       data-selected={selected}
+      data-trace-state={traceState}
       className={isDragging ? "absolute opacity-80" : "absolute"}
       style={{
         left,
@@ -314,6 +391,7 @@ function GraphCanvasNode({
         height: NODE_HEIGHT,
         cursor: isDragging ? "grabbing" : "grab",
         zIndex: selected || isDragging ? 2 : 1,
+        opacity: !isDragging && traceDimmed ? 0.35 : undefined,
         filter: isDragging
           ? "drop-shadow(var(--shadow-level-2))"
           : "drop-shadow(var(--shadow-level-1))",
@@ -330,6 +408,17 @@ function GraphCanvasNode({
         fill={fill}
         stroke={stroke}
       />
+
+      {/* B-4: terminal (end-node) marker when overlay is on. A small
+          accent ring at the top-right corner — layered over the shape,
+          does not alter it. */}
+      {traceTerminal && (
+        <span
+          data-testid={`canvas-node-${node.id}-terminal-marker`}
+          aria-hidden
+          className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-accent bg-surface-base"
+        />
+      )}
 
       {/* Label above / below the shape (outside the box). */}
       {node.label && labelPosition === "above" && (

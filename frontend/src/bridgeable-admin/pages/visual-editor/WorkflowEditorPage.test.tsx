@@ -250,6 +250,14 @@ describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
     expect(startNode).toHaveAttribute("data-node-shape", "circle")
   })
 
+  it("B-4: the reachability-overlay toggle is reachable through the page (default off)", async () => {
+    const result = renderWithTemplate()
+    const toggle = await waitFor(() =>
+      result.getByTestId("trace-overlay-toggle"),
+    )
+    expect(toggle).toHaveAttribute("data-trace-overlay", "off")
+  })
+
   it("palette-add renders a new positioned node card through GraphCanvas", async () => {
     const result = renderWithTemplate()
     await waitFor(() => {
