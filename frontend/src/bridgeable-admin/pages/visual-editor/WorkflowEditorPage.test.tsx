@@ -163,3 +163,99 @@ describe("WorkflowEditorPage — Arc-3.x-deep-link-retrofit return-to banner", (
     })
   })
 })
+
+
+// ── Phase B sub-arc B-1 — graph-canvas integration ────────────────────
+//
+// Asserts the page mounts GraphCanvas (not the pre-B-1 <ol><li> list),
+// that palette-add mutations render through the graph surface as
+// positioned node cards, and that selection wiring opens the config
+// pane. dnd-kit pointer-drag commit math is covered in canvas-layout +
+// GraphCanvas unit suites; per Q-40 pointer-drag DOM defers to Playwright.
+
+import { workflowTemplatesService } from "@/bridgeable-admin/services/workflow-templates-service"
+
+const TEST_TEMPLATE_META = {
+  id: "wt_1",
+  scope: "platform_default" as const,
+  vertical: null,
+  workflow_type: "test_wf",
+  display_name: "Test Workflow",
+  description: null,
+  version: 1,
+  is_active: true,
+  created_at: "2026-05-27T00:00:00Z",
+  updated_at: "2026-05-27T00:00:00Z",
+  created_by: null,
+  updated_by: null,
+}
+
+const TEST_TEMPLATE_FULL = {
+  ...TEST_TEMPLATE_META,
+  canvas_state: {
+    version: 1,
+    nodes: [
+      { id: "n_node_1", type: "start", label: "Begin", position: { x: 40, y: 40 }, config: {} },
+      { id: "n_node_2", type: "action", label: "Work", position: { x: 40, y: 200 }, config: {} },
+    ],
+    edges: [{ id: "e_n_node_1_n_node_2", source: "n_node_1", target: "n_node_2" }],
+  },
+}
+
+function renderWithTemplate() {
+  vi.mocked(workflowTemplatesService.list).mockResolvedValue([TEST_TEMPLATE_META])
+  vi.mocked(workflowTemplatesService.get).mockResolvedValue(TEST_TEMPLATE_FULL)
+  return render(
+    <MemoryRouter
+      initialEntries={[
+        "/visual-editor/workflows?scope=platform_default&workflow_type=test_wf",
+      ]}
+    >
+      <WorkflowEditorPage />
+    </MemoryRouter>,
+  )
+}
+
+describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
+  it("mounts GraphCanvas (graph surface) instead of the pre-B-1 node list", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() => {
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
+    })
+    // Edge layer present; node cards positioned via inline style.
+    expect(result.getByTestId("graph-canvas-edges")).toBeInTheDocument()
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    expect(n2.style.top).toBe("200px")
+  })
+
+  it("renders the authored edge as an SVG path in the graph surface", async () => {
+    const result = renderWithTemplate()
+    const edge = await waitFor(() =>
+      result.getByTestId("edge-e_n_node_1_n_node_2"),
+    )
+    expect(edge.querySelector("path")).toBeInTheDocument()
+  })
+
+  it("palette-add renders a new positioned node card through GraphCanvas", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() => {
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
+    })
+    fireEvent.click(result.getByTestId("palette-action"))
+    await waitFor(() => {
+      // 3rd node id auto-generated as n_node_3 (stack-below-lowest).
+      expect(result.getByTestId("canvas-node-n_node_3")).toBeInTheDocument()
+    })
+    // Auto-placed below the lowest existing node (y 200 + stride 120).
+    expect(result.getByTestId("canvas-node-n_node_3").style.top).toBe("320px")
+  })
+
+  it("clicking a node card opens the node-config pane (selection wiring)", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    fireEvent.click(n1)
+    await waitFor(() => {
+      expect(n1).toHaveAttribute("data-selected", "true")
+    })
+  })
+})

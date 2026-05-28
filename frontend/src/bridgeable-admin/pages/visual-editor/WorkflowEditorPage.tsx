@@ -30,7 +30,6 @@ import {
   Loader2,
   Plus,
   Save,
-  Trash2,
   Undo2,
 } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
@@ -48,6 +47,10 @@ import { Input } from "@/components/ui/input"
 // tab can reuse it verbatim. Parity-not-exceedance canon: both the
 // standalone editor and the inspector render the SAME component.
 import { NodeConfigForm } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/NodeConfigForm"
+// Phase B sub-arc B-1 — graph-canvas authoring substrate. Replaces the
+// pre-B-1 <ol><li> vertical-list rendering with a directed-graph canvas
+// matching the runtime DAG layout model per Entry 11 WYSIWYG.
+import { GraphCanvas } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/GraphCanvas"
 import {
   HierarchicalEditorBrowser,
   type HierarchicalCategory,
@@ -461,6 +464,17 @@ export default function WorkflowEditorPage() {
       edges: prev.edges.filter((e) => e.id !== edgeId),
     }))
   }, [])
+
+  // Phase B sub-arc B-1 — graph-canvas node-move commit. Reuses the
+  // existing handleUpdateNode mutation (Partial<CanvasNode> patch) so
+  // position changes flow through the SAME auto-save debounce path as
+  // every other node edit per Adjudication 2 — no new mutation API.
+  const handleMoveNode = useCallback(
+    (nodeId: string, position: { x: number; y: number }) => {
+      handleUpdateNode(nodeId, { position })
+    },
+    [handleUpdateNode],
+  )
 
   const selectedNode = useMemo(
     () =>
@@ -904,106 +918,14 @@ export default function WorkflowEditorPage() {
               ),
             )}
           </div>
-          <div
-            className="flex-1 overflow-y-auto px-4 py-3"
-            data-testid="canvas-node-list"
-          >
-            {validationError && (
-              <p
-                className="mb-2 rounded-sm border border-status-error bg-status-error-muted px-2 py-1 text-caption text-status-error"
-                data-testid="canvas-validation-message"
-              >
-                {validationError}
-              </p>
-            )}
-            {draftCanvas.nodes.length === 0 ? (
-              <p className="text-body-sm text-content-muted">
-                No nodes yet. Add one from the palette above to start.
-              </p>
-            ) : (
-              <ol className="flex flex-col gap-2">
-                {draftCanvas.nodes.map((node, idx) => {
-                  const isSelected = selectedNodeId === node.id
-                  const outgoingEdges = draftCanvas.edges.filter(
-                    (e) => e.source === node.id,
-                  )
-                  return (
-                    <li
-                      key={node.id}
-                      data-testid={`canvas-node-${node.id}`}
-                      data-node-type={node.type}
-                      data-selected={isSelected}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setSelectedNodeId(node.id)}
-                        className={`flex w-full items-start justify-between gap-3 rounded-md border p-3 text-left ${
-                          isSelected
-                            ? "border-accent bg-accent-subtle"
-                            : "border-border-subtle bg-surface-elevated hover:bg-accent-subtle/40"
-                        }`}
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{node.type}</Badge>
-                            <code className="font-plex-mono text-caption text-content-muted">
-                              {node.id}
-                            </code>
-                            <span className="text-caption text-content-base">
-                              #{idx + 1}
-                            </span>
-                          </div>
-                          {node.label && (
-                            <p className="mt-1 text-body-sm text-content-strong">
-                              {node.label}
-                            </p>
-                          )}
-                          {outgoingEdges.length > 0 && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {outgoingEdges.map((e) => {
-                                const target = draftCanvas.nodes.find(
-                                  (n) => n.id === e.target,
-                                )
-                                return (
-                                  <span
-                                    key={e.id}
-                                    className="text-caption text-content-muted"
-                                    data-testid={`edge-${e.id}`}
-                                  >
-                                    →{" "}
-                                    <code className="font-plex-mono">
-                                      {target?.label ?? e.target}
-                                    </code>
-                                    {e.condition && (
-                                      <span className="ml-1 italic">
-                                        ({e.condition})
-                                      </span>
-                                    )}
-                                  </span>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(ev) => {
-                            ev.stopPropagation()
-                            handleRemoveNode(node.id)
-                          }}
-                          data-testid={`canvas-node-${node.id}-remove`}
-                          aria-label="Remove node"
-                          className="rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ol>
-            )}
-          </div>
+          <GraphCanvas
+            canvas={draftCanvas}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={setSelectedNodeId}
+            onMoveNode={handleMoveNode}
+            onRemoveNode={handleRemoveNode}
+            validationError={validationError}
+          />
         </div>
 
         {/* ── Right pane — node configuration ─────────── */}
