@@ -55,7 +55,7 @@ import { GraphCanvas } from "@/bridgeable-admin/components/visual-editor/workflo
 // (getByType("workflow-node")) instead of a hardcoded tuple. Registry is
 // populated via App.tsx's auto-register side-effect import (BridgeableAdminApp
 // mounts under App.tsx). Flat render per Path A — no grouping substrate.
-import { getByType } from "@/lib/visual-editor/registry"
+import { getByName, getByType } from "@/lib/visual-editor/registry"
 import {
   HierarchicalEditorBrowser,
   type HierarchicalCategory,
@@ -101,6 +101,18 @@ function generateNodeId(canvas: CanvasState): string {
   let i = canvas.nodes.length + 1
   while (canvas.nodes.some((n) => n.id === `n_node_${i}`)) i += 1
   return `n_node_${i}`
+}
+
+
+// B-3 completion: resolve a node type's registry default nodeShape (the
+// genre convention B-2 declared — decision → diamond, start/end → circle,
+// parallel_split/join → bar). Threaded into GraphCanvas as
+// `resolveTypeDefaultShape` so the canvas + node-shapes stay registry-free
+// (the registry is already imported here for the B-2 palette). Module-level
+// for a stable reference across renders.
+function getNodeTypeDefaultShape(nodeType: string): unknown {
+  return getByName("workflow-node", nodeType)?.metadata.configurableProps
+    ?.nodeShape?.default
 }
 
 
@@ -943,6 +955,7 @@ export default function WorkflowEditorPage() {
             onMoveNode={handleMoveNode}
             onRemoveNode={handleRemoveNode}
             validationError={validationError}
+            resolveTypeDefaultShape={getNodeTypeDefaultShape}
           />
         </div>
 

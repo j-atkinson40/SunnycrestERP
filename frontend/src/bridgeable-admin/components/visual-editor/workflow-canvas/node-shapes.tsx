@@ -46,12 +46,63 @@ export const KNOWN_NODE_SHAPES: readonly NodeShape[] = [
 ]
 
 /** Coerce an arbitrary config value to a known shape, defaulting to
- *  rounded-rect (B-1's pre-§(b) fixed shape). */
+ *  rounded-rect (B-1's pre-§(b) fixed shape). Pure (value-only) — used
+ *  where only the explicit value matters. `resolveNodeShape` layers the
+ *  registry per-type default on top. */
 export function toNodeShape(value: unknown): NodeShape {
   return typeof value === "string" &&
     (KNOWN_NODE_SHAPES as readonly string[]).includes(value)
     ? (value as NodeShape)
     : "rounded-rect"
+}
+
+/**
+ * B-3 completion (type-default fallback): resolve the shape a node should
+ * render, in precedence order:
+ *
+ *   1. node.config.nodeShape   — explicit operator override (if a known shape)
+ *   2. typeDefault             — the genre convention the registry declares
+ *      per node type (decision → diamond, start/end → circle,
+ *      parallel_split/join → bar) at `configurableProps.nodeShape.default`,
+ *      INJECTED by the caller (this helper stays registry-free)
+ *   3. "rounded-rect"          — hard fallback (no type default / invalid)
+ *
+ * B-3b rendered shape from `node.config.nodeShape` ONLY, so the genre
+ * defaults declared in the registry never reached the canvas (every node
+ * fell to rounded-rect). This layers the type default on top WITHOUT
+ * materializing nodeShape into node.config — the shape stays derived from
+ * type; config remains override-only.
+ *
+ * Dependency-injected (typeDefault passed in) rather than reading the
+ * registry here: this keeps node-shapes a pure leaf utility with no
+ * registry import. The single registry consumer is WorkflowEditorPage
+ * (which already imports the registry for the B-2 palette); it threads a
+ * resolver down to the canvas. Pulling the registry into this leaf
+ * regressed an unrelated full-suite test via module-graph reshuffling —
+ * keeping it pure avoids that entirely.
+ *
+ * Defensive: a missing/invalid typeDefault falls through to rounded-rect.
+ */
+export function resolveNodeShape(
+  configValue: unknown,
+  typeDefault?: unknown,
+): NodeShape {
+  // 1. Explicit override.
+  if (
+    typeof configValue === "string" &&
+    (KNOWN_NODE_SHAPES as readonly string[]).includes(configValue)
+  ) {
+    return configValue as NodeShape
+  }
+  // 2. Injected per-type default.
+  if (
+    typeof typeDefault === "string" &&
+    (KNOWN_NODE_SHAPES as readonly string[]).includes(typeDefault)
+  ) {
+    return typeDefault as NodeShape
+  }
+  // 3. Hard fallback.
+  return "rounded-rect"
 }
 
 export interface Point {

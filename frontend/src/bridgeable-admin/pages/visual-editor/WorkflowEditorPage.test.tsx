@@ -238,6 +238,18 @@ describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
     expect(edge.querySelector("path")).toBeInTheDocument()
   })
 
+  it("B-3 completion: a seeded node with no config.nodeShape renders its registry genre shape (start → circle)", async () => {
+    // End-to-end: the page threads the real getByName-backed
+    // resolveTypeDefaultShape into GraphCanvas, so a seeded start node
+    // (config:{}) renders circle — the funeral_cascade fix proven through
+    // the page (auto-register is imported at the top of this file).
+    const result = renderWithTemplate()
+    const startNode = await waitFor(() =>
+      result.getByTestId("canvas-node-n_node_1"),
+    )
+    expect(startNode).toHaveAttribute("data-node-shape", "circle")
+  })
+
   it("palette-add renders a new positioned node card through GraphCanvas", async () => {
     const result = renderWithTemplate()
     await waitFor(() => {

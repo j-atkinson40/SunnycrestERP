@@ -14,9 +14,42 @@ import {
   KNOWN_NODE_SHAPES,
   NodeShapeBackdrop,
   nodeShapeAnchors,
+  resolveNodeShape,
   toNodeShape,
   type NodeShape,
 } from "./node-shapes"
+
+describe("node-shapes — resolveNodeShape (B-3 completion: injected type-default)", () => {
+  // resolveNodeShape is PURE: the registry per-type default is injected by
+  // the caller (WorkflowEditorPage threads getByName down), so this helper
+  // stays registry-free. Tests pass the typeDefault explicitly.
+  it("uses the injected type default when config has no nodeShape", () => {
+    expect(resolveNodeShape(undefined, "diamond")).toBe("diamond")
+    expect(resolveNodeShape(undefined, "circle")).toBe("circle")
+    expect(resolveNodeShape(undefined, "bar")).toBe("bar")
+  })
+
+  it("lets an explicit (known) config value override the injected type default", () => {
+    expect(resolveNodeShape("pill", "diamond")).toBe("pill")
+    expect(resolveNodeShape("hexagon", "circle")).toBe("hexagon")
+  })
+
+  it("ignores an invalid config value and falls to the injected type default", () => {
+    expect(resolveNodeShape("not-a-shape", "diamond")).toBe("diamond")
+    expect(resolveNodeShape(42, "bar")).toBe("bar")
+  })
+
+  it("falls to rounded-rect when no type default is provided (or it is invalid)", () => {
+    expect(resolveNodeShape(undefined, undefined)).toBe("rounded-rect")
+    expect(resolveNodeShape(null, undefined)).toBe("rounded-rect")
+    expect(resolveNodeShape(undefined, "not-a-shape")).toBe("rounded-rect")
+    expect(resolveNodeShape(undefined, 99)).toBe("rounded-rect")
+  })
+
+  it("explicit config still wins even with no type default", () => {
+    expect(resolveNodeShape("diamond", undefined)).toBe("diamond")
+  })
+})
 
 describe("node-shapes — toNodeShape coercion", () => {
   it("passes through every known shape", () => {

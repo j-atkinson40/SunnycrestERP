@@ -597,9 +597,14 @@ describe("Tier2TemplatesEditor — inspector → canvas live cascade (C-2.2b)", 
       expect(screen.getByTestId("tier2-preview-card")).toBeInTheDocument(),
     )
     // Inherited core has preset=card; no chrome_overrides → cascade = "card".
-    // The footer caption renders the active preset slug. Switching to
-    // "frosted" must rewrite the caption synchronously.
-    expect(screen.getByText(/chrome: card/)).toBeInTheDocument()
+    // The footer caption renders the active preset slug on a later async tick
+    // than the preview-card mount, so assert via waitFor (matching the
+    // "frosted" assertion below). A bare synchronous getByText here is a
+    // latent race that full-suite worker load can lose — surfaced when the
+    // B-3-completion change shifted full-suite file/worker timing.
+    await waitFor(() =>
+      expect(screen.getByText(/chrome: card/)).toBeInTheDocument(),
+    )
 
     fireEvent.click(screen.getByTestId("preset-pill-frosted"))
 

@@ -254,8 +254,104 @@ function nodeWithConfig(config: Record<string, unknown>): CanvasState {
   }
 }
 
+// Test resolver standing in for the registry per-type default (the real
+// one is getByName-backed in WorkflowEditorPage). Keeps GraphCanvas.test
+// registry-free — the injected-resolver contract is what we exercise.
+const TYPE_DEFAULTS: Record<string, string> = {
+  decision: "diamond",
+  start: "circle",
+  end: "circle",
+  parallel_split: "bar",
+  parallel_join: "bar",
+}
+const testTypeDefault = (nodeType: string): unknown => TYPE_DEFAULTS[nodeType]
+
 describe("GraphCanvas — B-3 render-from-config", () => {
-  it("defaults to rounded-rect when config has no nodeShape (B-1 parity)", () => {
+  it("derives the type-default shape (decision → diamond) when config has no nodeShape", () => {
+    // B-3 completion: a decision node with config:{} renders its injected
+    // type-default (diamond) — NOT rounded-rect. The funeral_cascade case
+    // (seeded nodes carry no nodeShape; the page injects the registry
+    // default via resolveTypeDefaultShape).
+    render(
+      <GraphCanvas
+        canvas={nodeWithConfig({})}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        resolveTypeDefaultShape={testTypeDefault}
+      />,
+    )
+    const card = screen.getByTestId("canvas-node-n1")
+    expect(card).toHaveAttribute("data-node-shape", "diamond")
+    expect(screen.getByTestId("node-shape-diamond")).toBeInTheDocument()
+  })
+
+  it("explicit config.nodeShape overrides the type-default (decision + pill → pill)", () => {
+    render(
+      <GraphCanvas
+        canvas={nodeWithConfig({ nodeShape: "pill" })}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        resolveTypeDefaultShape={testTypeDefault}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
+      "data-node-shape",
+      "pill",
+    )
+  })
+
+  it("derives type-defaults for start/end (circle) + parallel_join (bar) with no config", () => {
+    const canvas: CanvasState = {
+      version: 1,
+      nodes: [
+        { id: "s", type: "start", position: { x: 0, y: 0 }, config: {} },
+        { id: "j", type: "parallel_join", position: { x: 0, y: 200 }, config: {} },
+        { id: "e", type: "end", position: { x: 0, y: 400 }, config: {} },
+      ],
+      edges: [],
+    }
+    render(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        resolveTypeDefaultShape={testTypeDefault}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-s")).toHaveAttribute("data-node-shape", "circle")
+    expect(screen.getByTestId("canvas-node-j")).toHaveAttribute("data-node-shape", "bar")
+    expect(screen.getByTestId("canvas-node-e")).toHaveAttribute("data-node-shape", "circle")
+  })
+
+  it("falls to rounded-rect for an unknown node type (resolver returns undefined)", () => {
+    const canvas: CanvasState = {
+      version: 1,
+      nodes: [{ id: "u", type: "__nonexistent__", position: { x: 0, y: 0 }, config: {} }],
+      edges: [],
+    }
+    render(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        resolveTypeDefaultShape={testTypeDefault}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-u")).toHaveAttribute(
+      "data-node-shape",
+      "rounded-rect",
+    )
+  })
+
+  it("falls to rounded-rect when no resolver is provided (omitted prop)", () => {
     render(
       <GraphCanvas
         canvas={nodeWithConfig({})}
@@ -265,9 +361,10 @@ describe("GraphCanvas — B-3 render-from-config", () => {
         onRemoveNode={noop}
       />,
     )
-    const card = screen.getByTestId("canvas-node-n1")
-    expect(card).toHaveAttribute("data-node-shape", "rounded-rect")
-    expect(screen.getByTestId("node-shape-rounded-rect")).toBeInTheDocument()
+    expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
+      "data-node-shape",
+      "rounded-rect",
+    )
   })
 
   it("renders the configured nodeShape (diamond) as an SVG backdrop", () => {

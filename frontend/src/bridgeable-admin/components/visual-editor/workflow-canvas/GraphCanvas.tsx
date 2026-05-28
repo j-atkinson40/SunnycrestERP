@@ -68,7 +68,7 @@ import {
   computeNodeDragCommit,
 } from "@/lib/visual-editor/workflows/canvas-layout"
 // Phase B sub-arc B-3 §(b) — render node.config visual props.
-import { NodeShapeBackdrop, toNodeShape } from "./node-shapes"
+import { NodeShapeBackdrop, resolveNodeShape } from "./node-shapes"
 
 
 export interface GraphCanvasProps {
@@ -80,6 +80,15 @@ export interface GraphCanvasProps {
   onRemoveNode: (id: string) => void
   /** Validation message rendered above the canvas; null hides the banner. */
   validationError?: string | null
+  /**
+   * B-3 completion: resolve a node type's default shape (the registry
+   * `configurableProps.nodeShape.default`) so a node with no
+   * `config.nodeShape` renders its genre shape. Injected so GraphCanvas +
+   * node-shapes stay registry-free (the single registry consumer is
+   * WorkflowEditorPage). Omitted (e.g. in some tests) → every node falls
+   * to the rounded-rect hard default, which is harmless.
+   */
+  resolveTypeDefaultShape?: (nodeType: string) => unknown
 }
 
 
@@ -90,6 +99,7 @@ export function GraphCanvas({
   onMoveNode,
   onRemoveNode,
   validationError,
+  resolveTypeDefaultShape,
 }: GraphCanvasProps) {
   // Sensor stack mirrors FocusBuilderPage FF-3: 3px PointerSensor for
   // click-vs-drag disambiguation + KeyboardSensor for accessibility +
@@ -227,6 +237,7 @@ export function GraphCanvas({
                   selected={selectedNodeId === node.id}
                   onSelect={onSelectNode}
                   onRemove={onRemoveNode}
+                  typeDefaultShape={resolveTypeDefaultShape?.(node.type)}
                 />
               ))}
             </div>
@@ -243,6 +254,8 @@ interface GraphCanvasNodeProps {
   selected: boolean
   onSelect: (id: string | null) => void
   onRemove: (id: string) => void
+  /** Registry per-type default shape value (injected; see GraphCanvasProps). */
+  typeDefaultShape?: unknown
 }
 
 function GraphCanvasNode({
@@ -250,6 +263,7 @@ function GraphCanvasNode({
   selected,
   onSelect,
   onRemove,
+  typeDefaultShape,
 }: GraphCanvasNodeProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: node.id })
@@ -263,7 +277,10 @@ function GraphCanvasNode({
   // nodeShape -> SVG shape backdrop; labelPosition -> label placement;
   // accentToken -> shape stroke (non-selected). Defaults reproduce B-1's
   // fixed rounded-rect / inside-label / border-subtle look.
-  const shape = toNodeShape(node.config?.nodeShape)
+  // B-3 completion: shape derives from node TYPE by default (the injected
+  // registry per-type default) when config.nodeShape is absent; explicit
+  // config overrides. node.config is NOT mutated — shape stays derived.
+  const shape = resolveNodeShape(node.config?.nodeShape, typeDefaultShape)
   const labelPosition =
     node.config?.labelPosition === "above" ||
     node.config?.labelPosition === "below"
