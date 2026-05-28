@@ -432,11 +432,15 @@ describe("Phase 1 auto-register population", () => {
     // bound bumped to 75 so Arc 4a.2b (9 vault wraps) + further
     // R-2.x sub-section growth + R-4.x button additions + future
     // Focus templates continue to fit without further test churn.
+    // Phase B sub-arc B-2 (2026-05-28) expanded workflow-node
+    // registrations 2 -> 32 (+30), bringing the total to ~81. Upper
+    // bound bumped to 130 so the remaining Phase B sub-arcs + future
+    // registry growth continue to fit without further test churn.
     // The lower bound (13) preserves the original Phase 1 minimum so
     // accidental de-registrations still fail loudly.
     const total = getTotalCount()
     expect(total).toBeGreaterThanOrEqual(13)
-    expect(total).toBeLessThanOrEqual(75)
+    expect(total).toBeLessThanOrEqual(130)
   })
 
   it("includes at least 4 widgets across funeral_home + manufacturing", () => {

@@ -16,6 +16,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 
+// Phase B sub-arc B-2 — palette renders from the registry; populate it.
+import "@/lib/visual-editor/registry/auto-register"
 import WorkflowEditorPage from "./WorkflowEditorPage"
 
 
@@ -256,6 +258,52 @@ describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
     fireEvent.click(n1)
     await waitFor(() => {
       expect(n1).toHaveAttribute("data-selected", "true")
+    })
+  })
+})
+
+
+// ── Phase B sub-arc B-2 — registry-driven palette (16 → 32) ───────────
+//
+// Asserts the palette renders from getByType("workflow-node") (all 32
+// registrations) instead of the pre-B-2 hardcoded 16-tuple, and that
+// node types absent from the old tuple (e.g. create_record) are now
+// addable. Adding a registry-typed node flows into the B-1 GraphCanvas
+// without GraphCanvas changes (§2.B.2 invariant).
+
+describe("WorkflowEditorPage — B-2 registry-driven palette", () => {
+  it("renders all 32 registered workflow-node types in the palette", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() => {
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
+    })
+    const buttons = result
+      .getAllByRole("button")
+      .filter((b) => b.getAttribute("data-testid")?.startsWith("palette-"))
+    expect(buttons.length).toBe(32)
+  })
+
+  it("exposes node types absent from the pre-B-2 16-tuple (create_record, wait, output)", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() => {
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
+    })
+    // None of these were in the old hardcoded palette.
+    expect(result.getByTestId("palette-create_record")).toBeInTheDocument()
+    expect(result.getByTestId("palette-wait")).toBeInTheDocument()
+    expect(result.getByTestId("palette-output")).toBeInTheDocument()
+  })
+
+  it("palette-add of a newly-registry-exposed type renders it on the graph canvas", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() => {
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
+    })
+    fireEvent.click(result.getByTestId("palette-create_record"))
+    await waitFor(() => {
+      // 3rd node (2 seeded) auto-generated as n_node_3 with the clicked type.
+      const node = result.getByTestId("canvas-node-n_node_3")
+      expect(node).toHaveAttribute("data-node-type", "create_record")
     })
   })
 })

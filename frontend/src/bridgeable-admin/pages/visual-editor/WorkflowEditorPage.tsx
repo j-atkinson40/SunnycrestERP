@@ -51,6 +51,11 @@ import { NodeConfigForm } from "@/bridgeable-admin/components/visual-editor/work
 // pre-B-1 <ol><li> vertical-list rendering with a directed-graph canvas
 // matching the runtime DAG layout model per Entry 11 WYSIWYG.
 import { GraphCanvas } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/GraphCanvas"
+// Phase B sub-arc B-2 — node palette renders from the component registry
+// (getByType("workflow-node")) instead of a hardcoded tuple. Registry is
+// populated via App.tsx's auto-register side-effect import (BridgeableAdminApp
+// mounts under App.tsx). Flat render per Path A — no grouping substrate.
+import { getByType } from "@/lib/visual-editor/registry"
 import {
   HierarchicalEditorBrowser,
   type HierarchicalCategory,
@@ -484,6 +489,20 @@ export default function WorkflowEditorPage() {
     [draftCanvas, selectedNodeId],
   )
 
+  // Phase B sub-arc B-2 — palette node types sourced from the registry
+  // (all 32 workflow-node registrations), sorted by displayName for a
+  // stable flat palette. Replaces the pre-B-2 hardcoded 16-tuple.
+  const paletteNodeTypes = useMemo(
+    () =>
+      getByType("workflow-node")
+        .map((entry) => ({
+          name: entry.metadata.name,
+          displayName: entry.metadata.displayName,
+        }))
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [],
+  )
+
   // ── Render ───────────────────────────────────────────
   return (
     <div
@@ -904,19 +923,18 @@ export default function WorkflowEditorPage() {
             <span className="mr-2 text-caption text-content-muted">
               Add:
             </span>
-            {(["start", "action", "decision", "branch", "parallel_split", "parallel_join", "schedule", "send-communication", "generation-focus-invocation", "invoke_generation_focus", "invoke_review_focus", "cross_tenant_order", "cross_tenant_request", "playwright_action", "log_vault_item", "end"] as const).map(
-              (t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => handleAddNode(t)}
-                  data-testid={`palette-${t}`}
-                  className="rounded-sm border border-border-base bg-surface-raised px-2 py-0.5 text-micro text-content-base hover:bg-accent-subtle"
-                >
-                  {t}
-                </button>
-              ),
-            )}
+            {paletteNodeTypes.map((nt) => (
+              <button
+                key={nt.name}
+                type="button"
+                onClick={() => handleAddNode(nt.name)}
+                data-testid={`palette-${nt.name}`}
+                title={nt.displayName}
+                className="rounded-sm border border-border-base bg-surface-raised px-2 py-0.5 text-micro text-content-base hover:bg-accent-subtle"
+              >
+                {nt.name}
+              </button>
+            ))}
           </div>
           <GraphCanvas
             canvas={draftCanvas}
