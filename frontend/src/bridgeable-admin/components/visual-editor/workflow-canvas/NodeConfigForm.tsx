@@ -16,7 +16,7 @@
  * Both render the same component verbatim. At 380px the form fits
  * cleanly (standalone right pane is ~320px; inspector body is ~380px).
  */
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,10 @@ import type { CanvasNode } from "@/bridgeable-admin/services/workflow-templates-
 
 import { InvokeGenerationFocusConfig } from "./InvokeGenerationFocusConfig"
 import { InvokeReviewFocusConfig } from "./InvokeReviewFocusConfig"
+// Phase B sub-arc B-3 — schema-driven generic inspector. Replaces the
+// JSON-textarea fallback for the 30 node types without a bespoke config
+// (Decision §(a) Option Y). Bespoke overrides dispatch ahead of it.
+import { RegistryDrivenConfig } from "./RegistryDrivenConfig"
 
 
 export interface NodeConfigFormProps {
@@ -53,16 +57,6 @@ export function NodeConfigForm({
   onRemoveEdge,
 }: NodeConfigFormProps) {
   const [edgeTargetSelect, setEdgeTargetSelect] = useState<string>("")
-  const [configJson, setConfigJson] = useState<string>(
-    JSON.stringify(node.config, null, 2),
-  )
-  const [configError, setConfigError] = useState<string | null>(null)
-
-  // Sync configJson when node changes
-  useEffect(() => {
-    setConfigJson(JSON.stringify(node.config, null, 2))
-    setConfigError(null)
-  }, [node.id])
 
   const candidateTargets = allNodes.filter(
     (n) =>
@@ -121,6 +115,10 @@ export function NodeConfigForm({
         />
       </div>
 
+      {/* Per-type config dispatch (B-3): bespoke override if registered,
+          else the schema-driven RegistryDrivenConfig. The pre-B-3
+          JSON-textarea fallback is removed — every canonical node type
+          now has a real inspector. */}
       {node.type === "invoke_generation_focus" ? (
         <InvokeGenerationFocusConfig
           config={node.config}
@@ -132,43 +130,11 @@ export function NodeConfigForm({
           onChange={(next) => onPatch({ config: next })}
         />
       ) : (
-        <div>
-          <label className="mb-1.5 block text-micro uppercase tracking-wider text-content-muted">
-            Config (JSON)
-          </label>
-          <textarea
-            value={configJson}
-            onChange={(e) => {
-              setConfigJson(e.target.value)
-              try {
-                const parsed = JSON.parse(e.target.value || "{}")
-                if (
-                  typeof parsed === "object" &&
-                  parsed !== null &&
-                  !Array.isArray(parsed)
-                ) {
-                  setConfigError(null)
-                  onPatch({ config: parsed })
-                } else {
-                  setConfigError("Must be a JSON object")
-                }
-              } catch {
-                setConfigError("Invalid JSON")
-              }
-            }}
-            rows={6}
-            data-testid="node-config-config-textarea"
-            className="w-full rounded-md border border-border-base bg-surface-raised p-2 font-plex-mono text-caption text-content-base"
-          />
-          {configError && (
-            <span
-              className="text-caption text-status-error"
-              data-testid="node-config-config-error"
-            >
-              {configError}
-            </span>
-          )}
-        </div>
+        <RegistryDrivenConfig
+          nodeName={node.type}
+          config={node.config}
+          onChange={(next) => onPatch({ config: next })}
+        />
       )}
 
       <div>

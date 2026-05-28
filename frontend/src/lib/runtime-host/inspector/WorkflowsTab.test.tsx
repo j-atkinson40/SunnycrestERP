@@ -1274,8 +1274,12 @@ describe("Arc 2 Phase 2b — node operations + per-node-type configs", () => {
       expect(result.getByTestId("node-config-type-select")).toBeTruthy()
       expect(result.getByTestId("node-config-id-input")).toBeTruthy()
       expect(result.getByTestId("node-config-label-input")).toBeTruthy()
-      // action node → JSON textarea fallback
-      expect(result.getByTestId("node-config-config-textarea")).toBeTruthy()
+      // Phase B sub-arc B-3: the pre-B-3 JSON-textarea fallback is
+      // removed; an action node now renders the schema-driven
+      // RegistryDrivenConfig (action declares actionType / parameters /
+      // nodeShape / labelPosition configurableProps).
+      expect(result.queryByTestId("node-config-config-textarea")).toBeNull()
+      expect(result.getByTestId("registry-driven-config")).toBeTruthy()
     })
   })
 
