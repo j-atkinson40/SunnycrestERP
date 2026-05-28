@@ -42,7 +42,7 @@
  * `canvas-node-${id}-remove`).
  */
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   DndContext,
   KeyboardSensor,
@@ -52,7 +52,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
-import { Route, Trash2 } from "lucide-react"
+import { Maximize2, Route, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import type {
@@ -67,6 +67,15 @@ import {
   computeEdgeMidpoint,
   computeNodeDragCommit,
 } from "@/lib/visual-editor/workflows/canvas-layout"
+// Phase B integration-phase — pan + zoom view transform (self-owned).
+import {
+  type ViewTransform,
+  DEFAULT_VIEW,
+  PAN_DRAG_THRESHOLD,
+  clampPan,
+  computeZoomToCursor,
+  formatZoomPercent,
+} from "@/lib/visual-editor/workflows/canvas-pan-zoom"
 // Phase B sub-arc B-3 §(b) — render node.config visual props.
 import { NodeShapeBackdrop, resolveNodeShape } from "./node-shapes"
 // Phase B sub-arc B-4 — execution-trace reachability overlay.
@@ -145,6 +154,148 @@ export function GraphCanvas({
 
   const surface = bbox(canvas.nodes)
 
+  // ── Phase B integration-phase — pan + zoom (self-owned view state) ──
+  // {panX, panY, zoom} is EPHEMERAL view state, NEVER persisted in
+  // canvas_state (view state, not authored state — same category as the
+  // B-4 traceOverlay toggle). Applied as `transform: translate scale` on
+  // the content surface div (Option A-direct): edges (SVG) + nodes (DOM)
+  // transform together; each node's own inline top/left is UNCHANGED.
+  const [view, setView] = useState<ViewTransform>(DEFAULT_VIEW)
+  // Mirror refs so the dep-free gesture handlers read current values
+  // without re-binding (avoids stale-closure drift mid-gesture).
+  const viewRef = useRef(view)
+  viewRef.current = view
+  const boundsRef = useRef({ minX: 0, minY: 0, maxX: 0, maxY: 0 })
+  boundsRef.current = {
+    minX: surface.minX,
+    minY: surface.minY,
+    maxX: surface.maxX,
+    maxY: surface.maxY,
+  }
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const surfaceRef = useRef<HTMLDivElement>(null)
+  // Drag-threshold gesture bookkeeping (idle → pending-bg-select →
+  // panning). Held in a ref — the threshold transitions don't need to
+  // re-render; only setView (the pan delta) does.
+  const gestureRef = useRef<{
+    mode: "idle" | "pending" | "panning"
+    startX: number
+    startY: number
+    startPanX: number
+    startPanY: number
+  }>({ mode: "idle", startX: 0, startY: 0, startPanX: 0, startPanY: 0 })
+  // After a pan completes, the trailing native `click` must NOT fire the
+  // B-5 background-select (that would select-trigger-inspector on every
+  // pan release). A plain click (no pan) leaves this false → the existing
+  // onClick bg-select fires unchanged (fireEvent.click test preserved).
+  const suppressClickRef = useRef(false)
+
+  const viewportSize = useCallback(
+    () => ({
+      width: viewportRef.current?.clientWidth ?? 0,
+      height: viewportRef.current?.clientHeight ?? 0,
+    }),
+    [],
+  )
+
+  const handleSurfacePointerDown = useCallback(
+    (ev: React.PointerEvent<HTMLDivElement>) => {
+      // Background only — a node/edge-hit pointer-down targets its own
+      // element (target !== the surface) and reaches dnd-kit / the edge
+      // hit-stroke unobstructed. Pan never engages on those.
+      if (ev.target !== ev.currentTarget) return
+      const v = viewRef.current
+      gestureRef.current = {
+        mode: "pending",
+        startX: ev.clientX,
+        startY: ev.clientY,
+        startPanX: v.panX,
+        startPanY: v.panY,
+      }
+      // Pointer capture keeps move/up flowing if the cursor leaves the
+      // surface mid-pan (guarded — JSDOM may not implement it).
+      try {
+        ev.currentTarget.setPointerCapture(ev.pointerId)
+      } catch {
+        /* no-op in environments without pointer capture */
+      }
+    },
+    [],
+  )
+
+  const handleSurfacePointerMove = useCallback(
+    (ev: React.PointerEvent<HTMLDivElement>) => {
+      const g = gestureRef.current
+      if (g.mode === "idle") return
+      const dx = ev.clientX - g.startX
+      const dy = ev.clientY - g.startY
+      if (g.mode === "pending") {
+        // <3px → still a click-in-progress; ≥3px → promote to a pan.
+        if (Math.hypot(dx, dy) <= PAN_DRAG_THRESHOLD) return
+        g.mode = "panning"
+      }
+      const clamped = clampPan(
+        {
+          panX: g.startPanX + dx,
+          panY: g.startPanY + dy,
+          zoom: viewRef.current.zoom,
+        },
+        boundsRef.current,
+        viewportSize(),
+      )
+      setView((prev) => ({ ...prev, panX: clamped.panX, panY: clamped.panY }))
+    },
+    [viewportSize],
+  )
+
+  const handleSurfacePointerUp = useCallback(
+    (ev: React.PointerEvent<HTMLDivElement>) => {
+      const g = gestureRef.current
+      // A real pan happened → suppress the trailing click's bg-select.
+      // Pending (<3px) → leave suppress false so the click fires
+      // onSelectBackground (the B-5 background-select, preserved).
+      if (g.mode === "panning") suppressClickRef.current = true
+      gestureRef.current = {
+        mode: "idle",
+        startX: 0,
+        startY: 0,
+        startPanX: 0,
+        startPanY: 0,
+      }
+      try {
+        ev.currentTarget.releasePointerCapture(ev.pointerId)
+      } catch {
+        /* no-op */
+      }
+    },
+    [],
+  )
+
+  const handleResetView = useCallback(() => setView(DEFAULT_VIEW), [])
+
+  // Wheel zoom-to-cursor via a NATIVE non-passive listener — React's
+  // synthetic onWheel can be passive (preventDefault no-op + warning), and
+  // we must preventDefault so the page doesn't scroll while zooming the
+  // canvas. Re-attaches when the surface element appears/disappears
+  // (empty ↔ non-empty branch). setView is functional → handler is stable.
+  useEffect(() => {
+    const el = surfaceRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = viewportRef.current?.getBoundingClientRect()
+      const cursorX = e.clientX - (rect?.left ?? 0)
+      const cursorY = e.clientY - (rect?.top ?? 0)
+      setView((prev) => {
+        const zoomed = computeZoomToCursor(prev, cursorX, cursorY, e.deltaY)
+        const clamped = clampPan(zoomed, boundsRef.current, viewportSize())
+        return { panX: clamped.panX, panY: clamped.panY, zoom: zoomed.zoom }
+      })
+    }
+    el.addEventListener("wheel", onWheel, { passive: false })
+    return () => el.removeEventListener("wheel", onWheel)
+  }, [canvas.nodes.length, viewportSize])
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const nodeId = String(event.active.id)
@@ -185,14 +336,32 @@ export function GraphCanvas({
         </div>
       ) : (
         <div
-          className="relative flex-1 overflow-auto bg-surface-sunken"
+          ref={viewportRef}
+          className="relative flex-1 overflow-hidden bg-surface-sunken"
           data-testid="canvas-node-list"
         >
           <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
             <div
+              ref={surfaceRef}
               className="relative"
-              style={{ width: surface.width, height: surface.height }}
+              style={{
+                width: surface.width,
+                height: surface.height,
+                // Pan + zoom view transform (Option A-direct). Both the
+                // edge SVG (absolute inset-0) and the node DOM (absolute)
+                // are children → they transform together, no sync drift.
+                // transform-origin 0,0 keeps the zoom-to-cursor math simple.
+                transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.zoom})`,
+                transformOrigin: "0 0",
+                touchAction: "none",
+              }}
               data-testid="graph-canvas-surface"
+              data-pan-x={view.panX}
+              data-pan-y={view.panY}
+              data-zoom={view.zoom}
+              onPointerDown={handleSurfacePointerDown}
+              onPointerMove={handleSurfacePointerMove}
+              onPointerUp={handleSurfacePointerUp}
               onClick={(ev) => {
                 // B-5: background-click selects the workflow (trigger
                 // inspector). Fires ONLY on a direct surface click — node +
@@ -200,6 +369,14 @@ export function GraphCanvas({
                 // the surface), so they don't trigger background. The edge
                 // SVG layer is pointer-events:none, so empty-area clicks
                 // fall through to this surface div.
+                // Integration-phase: a click that TERMINATED A PAN is
+                // suppressed (suppressClickRef) so panning never spuriously
+                // fires the background-select; a plain click (no pan) falls
+                // through unchanged.
+                if (suppressClickRef.current) {
+                  suppressClickRef.current = false
+                  return
+                }
                 if (ev.target === ev.currentTarget) onSelectBackground?.()
               }}
             >
@@ -353,6 +530,34 @@ export function GraphCanvas({
             <Route size={12} />
             {traceOverlay ? "Reachability: on" : "Check reachability"}
           </button>
+
+          {/* Pan + zoom controls — zoom readout + reset-view. Sibling of
+              the B-4 toggle, OUTSIDE the :192 transform target, so the
+              controls themselves stay fixed in the viewport corner (they
+              don't pan/zoom with the content). Reset handles the "I zoomed
+              out and lost the workflow" case. */}
+          <div
+            className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-sm border border-border-base bg-surface-raised px-2 py-1 text-caption shadow-level-1"
+            data-testid="canvas-zoom-controls"
+          >
+            <span
+              className="tabular-nums text-content-muted"
+              data-testid="canvas-zoom-indicator"
+            >
+              {formatZoomPercent(view.zoom)}
+            </span>
+            <button
+              type="button"
+              onClick={handleResetView}
+              data-testid="canvas-zoom-reset"
+              aria-label="Reset view"
+              title="Reset view"
+              className="inline-flex items-center gap-1 rounded-sm border border-border-base bg-surface-base px-1.5 py-0.5 text-content-muted hover:bg-accent-subtle hover:text-accent"
+            >
+              <Maximize2 size={12} />
+              Reset
+            </button>
+          </div>
         </div>
       )}
     </div>

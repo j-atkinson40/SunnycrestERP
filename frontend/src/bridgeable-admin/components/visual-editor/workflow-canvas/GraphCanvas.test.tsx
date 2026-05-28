@@ -717,3 +717,206 @@ describe("GraphCanvas — B-5 edge + background selection", () => {
     expect(edge.style.opacity).toBe("0.2")
   })
 })
+
+
+// ── Phase B integration-phase — pan + zoom view transform ────────────
+//
+// Self-owned {panX, panY, zoom} on GraphCanvas (B-4 precedent — zero
+// WorkflowEditorPage change, never persisted in canvas_state). Pan =
+// left-drag on background with a 3px threshold extending the B-5
+// bg-click; zoom = wheel zoom-to-cursor clamped [0.25, 2.0]. Numeric
+// zoom-to-cursor + boundary-clamp correctness lives in
+// canvas-pan-zoom.test.ts; here we assert the gesture wiring + the
+// resulting inline transform / state attributes (JSDOM exposes inline
+// style + data-* but doesn't compute transforms into layout).
+
+describe("GraphCanvas — pan + zoom", () => {
+  it("renders the identity view transform on the surface by default", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    expect(surface.style.transform).toBe("translate(0px, 0px) scale(1)")
+    expect(surface.getAttribute("data-zoom")).toBe("1")
+  })
+
+  it("a background drag >3px pans the surface (transform changes); zoom untouched", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectBackground={vi.fn()}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    const before = surface.style.transform
+    fireEvent.pointerDown(surface, { clientX: 100, clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 140, clientY: 150, pointerId: 1 })
+    expect(surface.style.transform).not.toBe(before)
+    // Pan changed translate, not scale.
+    expect(surface.getAttribute("data-zoom")).toBe("1")
+    fireEvent.pointerUp(surface, { clientX: 140, clientY: 150, pointerId: 1 })
+  })
+
+  it("a background pointer-down released <3px still fires onSelectBackground (B-5 preserved)", () => {
+    const onSelectBackground = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectBackground={onSelectBackground}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    fireEvent.pointerDown(surface, { clientX: 100, clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 101, clientY: 101, pointerId: 1 })
+    fireEvent.pointerUp(surface, { clientX: 101, clientY: 101, pointerId: 1 })
+    fireEvent.click(surface) // trailing click — not suppressed (no pan)
+    expect(onSelectBackground).toHaveBeenCalledTimes(1)
+  })
+
+  it("a click that terminates a pan does NOT fire onSelectBackground (suppression)", () => {
+    const onSelectBackground = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectBackground={onSelectBackground}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    fireEvent.pointerDown(surface, { clientX: 100, clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 200, clientY: 200, pointerId: 1 }) // >3px → pan
+    fireEvent.pointerUp(surface, { clientX: 200, clientY: 200, pointerId: 1 })
+    fireEvent.click(surface) // suppressed — terminated a pan
+    expect(onSelectBackground).not.toHaveBeenCalled()
+  })
+
+  it("a pointer-down on a NODE does not pan (gating: target !== surface)", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectBackground={vi.fn()}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    const before = surface.style.transform
+    const node = screen.getByTestId("canvas-node-n_node_1")
+    fireEvent.pointerDown(node, { clientX: 50, clientY: 50, pointerId: 1 })
+    fireEvent.pointerMove(node, { clientX: 200, clientY: 200, pointerId: 1 })
+    expect(surface.style.transform).toBe(before) // unchanged — node-drag is dnd-kit's
+  })
+
+  it("mouse-wheel zooms the surface within [0.25, 2.0]", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    fireEvent.wheel(surface, { deltaY: -100, clientX: 100, clientY: 100 })
+    const z = Number(surface.getAttribute("data-zoom"))
+    expect(z).toBeGreaterThan(1)
+    expect(z).toBeLessThanOrEqual(2)
+  })
+
+  it("zoom clamps at the 2.0 ceiling on repeated zoom-in", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    for (let i = 0; i < 50; i++) {
+      fireEvent.wheel(surface, { deltaY: -200, clientX: 100, clientY: 100 })
+    }
+    expect(Number(surface.getAttribute("data-zoom"))).toBe(2)
+  })
+
+  it("reset-view restores pan 0,0 + zoom 1", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    fireEvent.wheel(surface, { deltaY: -200, clientX: 100, clientY: 100 })
+    expect(Number(surface.getAttribute("data-zoom"))).not.toBe(1)
+    fireEvent.click(screen.getByTestId("canvas-zoom-reset"))
+    expect(surface.getAttribute("data-zoom")).toBe("1")
+    expect(surface.getAttribute("data-pan-x")).toBe("0")
+    expect(surface.getAttribute("data-pan-y")).toBe("0")
+  })
+
+  it("the zoom indicator reflects the current zoom percent", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.getByTestId("canvas-zoom-indicator")).toHaveTextContent("100%")
+    fireEvent.wheel(screen.getByTestId("graph-canvas-surface"), {
+      deltaY: -200,
+      clientX: 0,
+      clientY: 0,
+    })
+    expect(screen.getByTestId("canvas-zoom-indicator").textContent).not.toBe("100%")
+  })
+
+  it("node inline top/left stay unchanged after a pan (ancestor transform — B-1 position assertion safe)", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onSelectBackground={vi.fn()}
+      />,
+    )
+    const surface = screen.getByTestId("graph-canvas-surface")
+    const n2 = screen.getByTestId("canvas-node-n_node_2")
+    expect(n2.style.top).toBe("200px")
+    fireEvent.pointerDown(surface, { clientX: 100, clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 200, clientY: 200, pointerId: 1 })
+    fireEvent.pointerUp(surface, { clientX: 200, clientY: 200, pointerId: 1 })
+    // Transform is on the ancestor surface; node inline styles untouched.
+    expect(n2.style.top).toBe("200px")
+    expect(n2.style.left).toBe("40px")
+  })
+})
