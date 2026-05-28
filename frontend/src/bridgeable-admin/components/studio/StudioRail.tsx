@@ -95,6 +95,20 @@ export const WIDGET_BUILDER_RAIL_BANNER_KEY =
   "bridgeable.widget-builder.studio-rail-banner-dismissed"
 
 
+/**
+ * Workflow Builder nav pass (discoverability polish): per-operator
+ * dismissal of the "New" badge on the relabeled "Workflow Builder" rail
+ * entry. Mirrors the Focus/Widget banner-key shape. Unlike those two,
+ * Workflow Builder is a SINGLE editor-keyed entry (relabel, not a
+ * sibling) — the rebuilt Surface 3 was already reachable at
+ * /studio/workflows; this only surfaces it as a builder with a New
+ * badge. The two-entry viewer+builder pattern is transitional pending a
+ * signal-driven Studio nav cleanup arc, so no sibling is added here.
+ */
+export const WORKFLOW_BUILDER_RAIL_BANNER_KEY =
+  "bridgeable.workflow-builder.studio-rail-banner-dismissed"
+
+
 /** Order = display order in the rail. Mirrors VisualEditorIndex card order. */
 const RAIL_ENTRIES: RailEntry[] = [
   { editor: null, label: "Overview", icon: OverviewIcon },
@@ -128,7 +142,21 @@ const RAIL_ENTRIES: RailEntry[] = [
   },
   { editor: "documents", label: "Documents", icon: FileText },
   { editor: "classes", label: "Classes", icon: Boxes },
-  { editor: "workflows", label: "Workflows", icon: GitBranch },
+  // Workflow Builder nav pass: the single editor-keyed entry is
+  // relabeled "Workflow Builder" + carries the dismissible "New" badge
+  // (Option B — no sibling). editor:"workflows" preserved so the route
+  // stays /studio/workflows → the rebuilt WorkflowEditorPage (Surface
+  // 3). showNewBadge is already gated on newAffordanceId presence (not
+  // overrideHref), so this editor-keyed entry gets the badge with no
+  // badge-path change. GitBranch icon kept — the workflow canvas is a
+  // branching graph.
+  {
+    editor: "workflows",
+    label: "Workflow Builder",
+    icon: GitBranch,
+    newAffordanceId: WORKFLOW_BUILDER_RAIL_BANNER_KEY,
+    testIdSuffix: "workflow-builder",
+  },
   { editor: "edge-panels", label: "Edge Panels", icon: PanelRightOpen },
   { editor: "registry", label: "Registry", icon: Layers },
   { editor: "plugin-registry", label: "Plugin Registry", icon: Plug },
@@ -172,6 +200,8 @@ export function StudioRail({
         window.localStorage.getItem(FOCUS_BUILDER_RAIL_BANNER_KEY) === "1"
       initial[WIDGET_BUILDER_RAIL_BANNER_KEY] =
         window.localStorage.getItem(WIDGET_BUILDER_RAIL_BANNER_KEY) === "1"
+      initial[WORKFLOW_BUILDER_RAIL_BANNER_KEY] =
+        window.localStorage.getItem(WORKFLOW_BUILDER_RAIL_BANNER_KEY) === "1"
       return initial
     } catch {
       return {} as Record<string, boolean>

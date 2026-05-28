@@ -16,6 +16,7 @@ import {
   StudioRail,
   FOCUS_BUILDER_RAIL_BANNER_KEY,
   WIDGET_BUILDER_RAIL_BANNER_KEY,
+  WORKFLOW_BUILDER_RAIL_BANNER_KEY,
 } from "./StudioRail"
 
 
@@ -227,5 +228,104 @@ describe("StudioRail — WB-cycle-followup-1 Widget Builder affordance", () => {
     renderRail()
     // F-1.1 substrate must continue working alongside WB-cycle-followup-1.
     expect(screen.getByTestId("studio-rail-entry-focus-builder")).toBeTruthy()
+  })
+})
+
+
+describe("StudioRail — Workflow Builder nav pass (relabel + New badge)", () => {
+  beforeEach(() => {
+    // Clear all three builder keys — localStorage persists across tests
+    // in the same JSDOM, and the regression test below asserts the
+    // Focus/Widget badges render (which earlier dismiss-persist tests
+    // would otherwise leave set).
+    window.localStorage.removeItem(FOCUS_BUILDER_RAIL_BANNER_KEY)
+    window.localStorage.removeItem(WIDGET_BUILDER_RAIL_BANNER_KEY)
+    window.localStorage.removeItem(WORKFLOW_BUILDER_RAIL_BANNER_KEY)
+  })
+
+  it("relabels the single workflows entry to 'Workflow Builder' (not 'Workflows')", () => {
+    renderRail()
+    const entry = screen.getByTestId("studio-rail-entry-workflow-builder")
+    expect(entry).toBeTruthy()
+    expect(entry.textContent).toContain("Workflow Builder")
+    // No sibling: the old plain "Workflows" testid is gone (the entry is
+    // now keyed by testIdSuffix "workflow-builder", not editor "workflows").
+    expect(screen.queryByTestId("studio-rail-entry-workflows")).toBeNull()
+  })
+
+  it("renders the New badge on the editor-keyed entry (badge gates on newAffordanceId, not overrideHref)", () => {
+    renderRail()
+    expect(
+      screen.getByTestId("studio-rail-new-badge-workflow-builder"),
+    ).toBeTruthy()
+  })
+
+  it("clicking the Workflow Builder entry navigates to /studio/workflows (route unchanged)", () => {
+    renderRail()
+    fireEvent.click(screen.getByTestId("studio-rail-entry-workflow-builder"))
+    const probe = screen.getByTestId("location-probe")
+    expect(probe.getAttribute("data-pathname")).toContain("/studio/workflows")
+  })
+
+  it("dismissing the New badge persists to localStorage", () => {
+    renderRail()
+    fireEvent.click(
+      screen.getByTestId("studio-rail-new-badge-dismiss-workflow-builder"),
+    )
+    expect(
+      window.localStorage.getItem(WORKFLOW_BUILDER_RAIL_BANNER_KEY),
+    ).toBe("1")
+  })
+
+  it("hides the New badge after dismissal (without remount)", () => {
+    renderRail()
+    expect(
+      screen.getByTestId("studio-rail-new-badge-workflow-builder"),
+    ).toBeTruthy()
+    fireEvent.click(
+      screen.getByTestId("studio-rail-new-badge-dismiss-workflow-builder"),
+    )
+    expect(
+      screen.queryByTestId("studio-rail-new-badge-workflow-builder"),
+    ).toBeNull()
+  })
+
+  it("does not render the New badge on remount when localStorage is set", () => {
+    window.localStorage.setItem(WORKFLOW_BUILDER_RAIL_BANNER_KEY, "1")
+    renderRail()
+    expect(
+      screen.queryByTestId("studio-rail-new-badge-workflow-builder"),
+    ).toBeNull()
+    // Entry itself still renders + remains clickable.
+    expect(
+      screen.getByTestId("studio-rail-entry-workflow-builder"),
+    ).toBeTruthy()
+  })
+
+  it("dismiss click does not navigate (stopPropagation)", () => {
+    renderRail(["/bridgeable-admin/studio/somewhere"])
+    fireEvent.click(
+      screen.getByTestId("studio-rail-new-badge-dismiss-workflow-builder"),
+    )
+    const probe = screen.getByTestId("location-probe")
+    expect(probe.getAttribute("data-pathname")).not.toContain(
+      "/studio/workflows",
+    )
+  })
+
+  it("Focus + Widget Builder badges unaffected by the showNewBadge generalization (no regression)", () => {
+    renderRail()
+    // The badge path was already newAffordanceId-gated; the relabeled
+    // editor-keyed workflow entry coexists with the two overrideHref
+    // builder entries — all three render their New badge.
+    expect(
+      screen.getByTestId("studio-rail-new-badge-focus-builder"),
+    ).toBeTruthy()
+    expect(
+      screen.getByTestId("studio-rail-new-badge-widget-builder"),
+    ).toBeTruthy()
+    expect(
+      screen.getByTestId("studio-rail-new-badge-workflow-builder"),
+    ).toBeTruthy()
   })
 })
