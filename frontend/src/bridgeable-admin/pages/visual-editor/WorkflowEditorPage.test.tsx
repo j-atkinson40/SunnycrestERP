@@ -238,16 +238,20 @@ describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
     expect(edge.querySelector("path")).toBeInTheDocument()
   })
 
-  it("B-3 completion: a seeded node with no config.nodeShape renders its registry genre shape (start → circle)", async () => {
-    // End-to-end: the page threads the real getByName-backed
-    // resolveTypeDefaultShape into GraphCanvas, so a seeded start node
-    // (config:{}) renders circle — the funeral_cascade fix proven through
-    // the page (auto-register is imported at the top of this file).
+  it("A3 shape-treatment: a seeded start node renders as a uniform card with its type-icon + lifecycle family (no silhouette)", async () => {
+    // End-to-end through the page: the B-3b silhouette system is retired —
+    // a seeded start node renders the A3 uniform card (per-type icon +
+    // family tone), NOT a circle backdrop. data-node-shape is gone;
+    // data-node-family carries the family.
     const result = renderWithTemplate()
     const startNode = await waitFor(() =>
       result.getByTestId("canvas-node-n_node_1"),
     )
-    expect(startNode).toHaveAttribute("data-node-shape", "circle")
+    expect(startNode).not.toHaveAttribute("data-node-shape")
+    expect(startNode).toHaveAttribute("data-node-family", "lifecycle")
+    expect(
+      result.getByTestId("canvas-node-n_node_1-icon").querySelector("svg"),
+    ).toBeInTheDocument()
   })
 
   it("B-4: the reachability-overlay toggle is reachable through the page (default off)", async () => {

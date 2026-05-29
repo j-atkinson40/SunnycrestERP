@@ -241,229 +241,155 @@ describe("GraphCanvas — non-drag affordances", () => {
 })
 
 
-// ── Phase B sub-arc B-3 §(b) — render from node.config visual props ───
+// ── A3 shape-treatment — uniform cards + per-type icon + family tone ───
 //
-// nodeShape -> SVG shape backdrop; labelPosition -> label placement;
-// accentToken -> shape stroke. Defaults reproduce B-1's fixed look.
+// Replaces the retired B-3b silhouette system. Type is signalled by a
+// per-type Lucide ICON (primary); family by a warm-tonal bg + left STRIPE
+// (lightness step, no hue). Selection is an ORTHOGONAL channel (terracotta
+// ring + border + elevation) — the family tone persists when selected. No
+// silhouette SVG renders. Tests run in default light mode (getMode() →
+// "light" with no data-mode attr) so the family tones are deterministic.
 
-function nodeWithConfig(config: Record<string, unknown>): CanvasState {
+import { VALID_NODE_TYPES } from "@/lib/visual-editor/workflows/canvas-validator"
+import { resolveNodeFamily, TYPE_ICON } from "./node-families"
+
+function nodeOfType(
+  type: string,
+  config: Record<string, unknown> = {},
+): CanvasState {
   return {
     version: 1,
-    nodes: [{ id: "n1", type: "decision", label: "Check", position: { x: 40, y: 40 }, config }],
+    nodes: [{ id: "n1", type, label: "Check", position: { x: 40, y: 40 }, config }],
     edges: [],
   }
 }
 
-// Test resolver standing in for the registry per-type default (the real
-// one is getByName-backed in WorkflowEditorPage). Keeps GraphCanvas.test
-// registry-free — the injected-resolver contract is what we exercise.
-const TYPE_DEFAULTS: Record<string, string> = {
-  decision: "diamond",
-  start: "circle",
-  end: "circle",
-  parallel_split: "bar",
-  parallel_join: "bar",
+function renderType(type: string, selectedNodeId: string | null = null) {
+  return render(
+    <GraphCanvas
+      canvas={nodeOfType(type)}
+      selectedNodeId={selectedNodeId}
+      onSelectNode={noop}
+      onMoveNode={noop}
+      onRemoveNode={noop}
+    />,
+  )
 }
-const testTypeDefault = (nodeType: string): unknown => TYPE_DEFAULTS[nodeType]
 
-describe("GraphCanvas — B-3 render-from-config", () => {
-  it("derives the type-default shape (decision → diamond) when config has no nodeShape", () => {
-    // B-3 completion: a decision node with config:{} renders its injected
-    // type-default (diamond) — NOT rounded-rect. The funeral_cascade case
-    // (seeded nodes carry no nodeShape; the page injects the registry
-    // default via resolveTypeDefaultShape).
-    render(
-      <GraphCanvas
-        canvas={nodeWithConfig({})}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-        resolveTypeDefaultShape={testTypeDefault}
-      />,
-    )
-    const card = screen.getByTestId("canvas-node-n1")
-    expect(card).toHaveAttribute("data-node-shape", "diamond")
-    expect(screen.getByTestId("node-shape-diamond")).toBeInTheDocument()
-  })
+/** First descendant div of a node = the visual card (bg-tone + border). */
+function cardOf(nodeId: string): HTMLElement {
+  const el = screen.getByTestId(`canvas-node-${nodeId}`).querySelector("div")
+  if (!el) throw new Error("card div not found")
+  return el as HTMLElement
+}
 
-  it("explicit config.nodeShape overrides the type-default (decision + pill → pill)", () => {
-    render(
-      <GraphCanvas
-        canvas={nodeWithConfig({ nodeShape: "pill" })}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-        resolveTypeDefaultShape={testTypeDefault}
-      />,
-    )
-    expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
+describe("GraphCanvas — A3 shape-treatment (icon + family tone)", () => {
+  it("renders a uniform card with a per-type icon — no silhouette SVG", () => {
+    renderType("decision")
+    const icon = screen.getByTestId("canvas-node-n1-icon")
+    expect(icon.querySelector("svg")).toBeInTheDocument()
+    // The retired B-3b silhouette backdrop no longer renders.
+    expect(screen.queryByTestId("node-shape-diamond")).toBeNull()
+    expect(screen.getByTestId("canvas-node-n1")).not.toHaveAttribute(
       "data-node-shape",
-      "pill",
     )
   })
 
-  it("derives type-defaults for start/end (circle) + parallel_join (bar) with no config", () => {
-    const canvas: CanvasState = {
-      version: 1,
-      nodes: [
-        { id: "s", type: "start", position: { x: 0, y: 0 }, config: {} },
-        { id: "j", type: "parallel_join", position: { x: 0, y: 200 }, config: {} },
-        { id: "e", type: "end", position: { x: 0, y: 400 }, config: {} },
-      ],
-      edges: [],
+  it("every VALID_NODE_TYPES type renders an icon (no fallthrough)", () => {
+    for (const type of VALID_NODE_TYPES) {
+      const { unmount } = renderType(type)
+      expect(
+        screen.getByTestId("canvas-node-n1-icon").querySelector("svg"),
+      ).toBeInTheDocument()
+      unmount()
     }
-    render(
-      <GraphCanvas
-        canvas={canvas}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-        resolveTypeDefaultShape={testTypeDefault}
-      />,
-    )
-    expect(screen.getByTestId("canvas-node-s")).toHaveAttribute("data-node-shape", "circle")
-    expect(screen.getByTestId("canvas-node-j")).toHaveAttribute("data-node-shape", "bar")
-    expect(screen.getByTestId("canvas-node-e")).toHaveAttribute("data-node-shape", "circle")
-  })
-
-  it("falls to rounded-rect for an unknown node type (resolver returns undefined)", () => {
-    const canvas: CanvasState = {
-      version: 1,
-      nodes: [{ id: "u", type: "__nonexistent__", position: { x: 0, y: 0 }, config: {} }],
-      edges: [],
+    // Every canonical type is explicitly mapped (the defensive Circle
+    // fallback only covers a future unmapped type).
+    for (const type of VALID_NODE_TYPES) {
+      expect(TYPE_ICON[type]).toBeDefined()
     }
-    render(
-      <GraphCanvas
-        canvas={canvas}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-        resolveTypeDefaultShape={testTypeDefault}
-      />,
-    )
-    expect(screen.getByTestId("canvas-node-u")).toHaveAttribute(
-      "data-node-shape",
-      "rounded-rect",
-    )
   })
 
-  it("falls to rounded-rect when no resolver is provided (omitted prop)", () => {
-    render(
-      <GraphCanvas
-        canvas={nodeWithConfig({})}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-      />,
-    )
-    expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
-      "data-node-shape",
-      "rounded-rect",
-    )
-  })
-
-  it("renders the configured nodeShape (diamond) as an SVG backdrop", () => {
-    render(
-      <GraphCanvas
-        canvas={nodeWithConfig({ nodeShape: "diamond" })}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-      />,
-    )
-    expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
-      "data-node-shape",
-      "diamond",
-    )
-    expect(screen.getByTestId("node-shape-diamond")).toBeInTheDocument()
-  })
-
-  it("renders each of the 9 shapes from config", () => {
-    for (const shape of [
-      "rounded-rect", "pill", "circle", "diamond", "hexagon",
-      "bar", "parallelogram", "envelope", "document",
-    ]) {
-      const { unmount } = render(
-        <GraphCanvas
-          canvas={nodeWithConfig({ nodeShape: shape })}
-          selectedNodeId={null}
-          onSelectNode={noop}
-          onMoveNode={noop}
-          onRemoveNode={noop}
-        />,
+  it("carries the node's family via data-node-family", () => {
+    const cases: [string, string][] = [
+      ["decision", "flow-control"],
+      ["start", "lifecycle"],
+      ["action", "action-data"],
+      ["ai_prompt", "ai-generation"],
+      ["send_email", "communication"],
+      ["cross_tenant_order", "cross-tenant"],
+    ]
+    for (const [type, family] of cases) {
+      const { unmount } = renderType(type)
+      expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
+        "data-node-family",
+        family,
       )
-      expect(screen.getByTestId(`node-shape-${shape}`)).toBeInTheDocument()
+      expect(resolveNodeFamily(type)).toBe(family)
       unmount()
     }
   })
 
-  it("places the label inside by default", () => {
-    render(
-      <GraphCanvas
-        canvas={nodeWithConfig({})}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-      />,
-    )
+  it("unknown type → family 'none' + defensive Circle icon (no fallthrough)", () => {
+    renderType("__nonexistent__")
     expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
-      "data-label-position",
-      "inside",
+      "data-node-family",
+      "none",
     )
+    expect(
+      screen.getByTestId("canvas-node-n1-icon").querySelector("svg"),
+    ).toBeInTheDocument()
   })
 
-  it("places the label above when configured", () => {
-    render(
-      <GraphCanvas
-        canvas={nodeWithConfig({ labelPosition: "above" })}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-      />,
-    )
-    const card = screen.getByTestId("canvas-node-n1")
-    expect(card).toHaveAttribute("data-label-position", "above")
-    expect(screen.getByTestId("canvas-node-n1-label")).toBeInTheDocument()
+  it("renders the family left-stripe with a warm-tone background", () => {
+    renderType("decision")
+    const stripe = screen.getByTestId("canvas-node-n1-family-stripe")
+    expect(stripe).toBeInTheDocument()
+    expect(stripe.style.background).toContain("oklch")
   })
 
-  it("applies accentToken as the shape stroke (non-selected)", () => {
-    render(
-      <GraphCanvas
-        canvas={nodeWithConfig({ nodeShape: "diamond", accentToken: "status-success" })}
-        selectedNodeId={null}
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-      />,
-    )
-    const polygon = screen
-      .getByTestId("node-shape-diamond")
-      .querySelector("polygon")
-    expect(polygon?.getAttribute("stroke")).toBe("var(--status-success)")
+  it("applies the family bg-tone to the card; distinct families differ", () => {
+    const { unmount } = renderType("decision")
+    const bgFlowControl = cardOf("n1").style.background
+    expect(bgFlowControl).toContain("oklch")
+    unmount()
+    renderType("cross_tenant_order")
+    const bgCrossTenant = cardOf("n1").style.background
+    expect(bgCrossTenant).toContain("oklch")
+    expect(bgCrossTenant).not.toBe(bgFlowControl)
   })
 
-  it("selection overrides accentToken with the accent stroke", () => {
-    render(
-      <GraphCanvas
-        canvas={nodeWithConfig({ nodeShape: "diamond", accentToken: "status-success" })}
-        selectedNodeId="n1"
-        onSelectNode={noop}
-        onMoveNode={noop}
-        onRemoveNode={noop}
-      />,
+  it("selection is ORTHOGONAL to family: selected node gets the accent ring + border; family tone + stripe persist", () => {
+    // Unselected: family tone present, no selection ring.
+    const { unmount } = renderType("action")
+    const unselected = cardOf("n1")
+    const familyBg = unselected.style.background
+    expect(unselected.style.outline).toBe("")
+    expect(
+      screen.getByTestId("canvas-node-n1-family-stripe"),
+    ).toBeInTheDocument()
+    unmount()
+
+    // Selected (same type/family): accent ring + border appear; the family
+    // bg-tone + stripe are UNCHANGED — the channels never collide.
+    renderType("action", "n1")
+    expect(screen.getByTestId("canvas-node-n1")).toHaveAttribute(
+      "data-selected",
+      "true",
     )
-    const polygon = screen
-      .getByTestId("node-shape-diamond")
-      .querySelector("polygon")
-    expect(polygon?.getAttribute("stroke")).toBe("var(--accent)")
+    const selected = cardOf("n1")
+    expect(selected.style.outline).toContain("var(--accent)")
+    expect(selected.style.borderColor).toBe("var(--accent)")
+    expect(selected.style.background).toBe(familyBg) // family tone persists
+    expect(
+      screen.getByTestId("canvas-node-n1-family-stripe"),
+    ).toBeInTheDocument()
+  })
+
+  it("renders the id + label inside the card (B-1 anchors preserved)", () => {
+    renderType("decision")
+    expect(screen.getByTestId("canvas-node-n1-label")).toHaveTextContent("Check")
+    expect(screen.getByText("n1")).toBeInTheDocument()
   })
 })
 
@@ -562,14 +488,25 @@ describe("GraphCanvas — B-4 reachability overlay", () => {
     expect(screen.queryByTestId("canvas-node-end-terminal-marker")).not.toBeInTheDocument()
   })
 
-  it("overlay does not alter the shape backdrop (composes over it)", () => {
+  it("overlay does not alter the card (composes over it)", () => {
     renderTrace()
+    const startCardBefore = screen
+      .getByTestId("canvas-node-s")
+      .querySelector("div")!.style.background
     fireEvent.click(screen.getByTestId("trace-overlay-toggle"))
-    // start node still renders its circle backdrop (B-3 type-default) with
-    // overlay on — trace dim is an outer layer, shape is untouched.
+    // start node still renders its A3 card + icon + family stripe with the
+    // overlay on — trace dim is an OUTER opacity layer; the card (bg-tone +
+    // icon + stripe) is untouched.
     expect(
-      screen.getByTestId("canvas-node-s").querySelector('[data-testid="node-shape-rounded-rect"], [data-testid^="node-shape-"]'),
+      screen.getByTestId("canvas-node-s-icon").querySelector("svg"),
     ).toBeInTheDocument()
+    expect(
+      screen.getByTestId("canvas-node-s-family-stripe"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTestId("canvas-node-s").querySelector("div")!.style
+        .background,
+    ).toBe(startCardBefore)
   })
 })
 

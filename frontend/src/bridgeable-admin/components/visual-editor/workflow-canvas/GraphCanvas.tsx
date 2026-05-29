@@ -76,8 +76,15 @@ import {
   computeZoomToCursor,
   formatZoomPercent,
 } from "@/lib/visual-editor/workflows/canvas-pan-zoom"
-// Phase B sub-arc B-3 §(b) — render node.config visual props.
-import { NodeShapeBackdrop, resolveNodeShape } from "./node-shapes"
+// A3 shape-treatment — uniform cards + per-type icon + per-family warm
+// tone (replaces the retired B-3b silhouette system). Family tone is
+// mode-aware → read the current theme mode once + thread it to each node.
+import {
+  resolveTypeIcon,
+  resolveNodeFamily,
+  resolveFamilyTone,
+} from "./node-families"
+import { useThemeMode, type ThemeMode } from "@/lib/theme-mode"
 // Phase B sub-arc B-4 — execution-trace reachability overlay.
 import {
   simulateReachability,
@@ -100,12 +107,13 @@ export interface GraphCanvasProps {
   /** Validation message rendered above the canvas; null hides the banner. */
   validationError?: string | null
   /**
-   * B-3 completion: resolve a node type's default shape (the registry
-   * `configurableProps.nodeShape.default`) so a node with no
-   * `config.nodeShape` renders its genre shape. Injected so GraphCanvas +
-   * node-shapes stay registry-free (the single registry consumer is
-   * WorkflowEditorPage). Omitted (e.g. in some tests) → every node falls
-   * to the rounded-rect hard default, which is harmless.
+   * VESTIGIAL after the A3 shape-treatment retired silhouette rendering.
+   * Was the B-3-completion injected per-type shape resolver; the canvas no
+   * longer renders silhouettes, so this prop is no longer consumed. It
+   * stays DECLARED (and WorkflowEditorPage still passes its registry-backed
+   * resolver) so the inert plumbing survives untouched — full removal
+   * (registry `nodeShape` defaults + resolver + config field + inspector
+   * control) is filed forward as a fast-follow cleanup.
    */
   resolveTypeDefaultShape?: (nodeType: string) => unknown
   /**
@@ -128,11 +136,18 @@ export function GraphCanvas({
   onMoveNode,
   onRemoveNode,
   validationError,
-  resolveTypeDefaultShape,
+  // resolveTypeDefaultShape — VESTIGIAL after the A3 shape-treatment
+  // retired silhouette rendering. The prop stays DECLARED in
+  // GraphCanvasProps (+ WorkflowEditorPage still passes it) so the inert
+  // registry-backed resolver plumbing survives untouched; it is no longer
+  // destructured/consumed here. Full removal filed forward.
   selectedEdgeId,
   onSelectEdge,
   onSelectBackground,
 }: GraphCanvasProps) {
+  // A3: current theme mode selects each node's family tone (light/dark).
+  // Read once; thread to every GraphCanvasNode. Reactive via useThemeMode.
+  const [mode] = useThemeMode()
   // Sensor stack mirrors FocusBuilderPage FF-3: 3px PointerSensor for
   // click-vs-drag disambiguation + KeyboardSensor for accessibility +
   // JSDOM-testable drag per Q-40.
@@ -498,7 +513,7 @@ export function GraphCanvas({
                   selected={selectedNodeId === node.id}
                   onSelect={onSelectNode}
                   onRemove={onRemoveNode}
-                  typeDefaultShape={resolveTypeDefaultShape?.(node.type)}
+                  mode={mode}
                   traceState={
                     trace === null
                       ? undefined
@@ -570,8 +585,8 @@ interface GraphCanvasNodeProps {
   selected: boolean
   onSelect: (id: string | null) => void
   onRemove: (id: string) => void
-  /** Registry per-type default shape value (injected; see GraphCanvasProps). */
-  typeDefaultShape?: unknown
+  /** A3: current theme mode selects the family tone (light/dark). */
+  mode: ThemeMode
   /** B-4 trace overlay state for this node (undefined = overlay off). */
   traceState?: NodeTraceState
   /** B-4: node is a terminal (`end`) node + overlay is on. */
@@ -583,7 +598,7 @@ function GraphCanvasNode({
   selected,
   onSelect,
   onRemove,
-  typeDefaultShape,
+  mode,
   traceState,
   traceTerminal,
 }: GraphCanvasNodeProps) {
@@ -595,36 +610,23 @@ function GraphCanvasNode({
   const left = node.position.x + (transform?.x ?? 0)
   const top = node.position.y + (transform?.y ?? 0)
 
-  // Phase B sub-arc B-3 §(b) — render from node.config visual props.
-  // nodeShape -> SVG shape backdrop; labelPosition -> label placement;
-  // accentToken -> shape stroke (non-selected). Defaults reproduce B-1's
-  // fixed rounded-rect / inside-label / border-subtle look.
-  // B-3 completion: shape derives from node TYPE by default (the injected
-  // registry per-type default) when config.nodeShape is absent; explicit
-  // config overrides. node.config is NOT mutated — shape stays derived.
-  const shape = resolveNodeShape(node.config?.nodeShape, typeDefaultShape)
-  const labelPosition =
-    node.config?.labelPosition === "above" ||
-    node.config?.labelPosition === "below"
-      ? node.config.labelPosition
-      : "inside"
-  const accentToken =
-    typeof node.config?.accentToken === "string"
-      ? node.config.accentToken
-      : null
+  // A3 shape-treatment (replaces the B-3b silhouette system): every node
+  // is a uniform rounded-rect card. Type is signalled by a per-type Lucide
+  // ICON (the primary signal); family by a quiet warm-tonal bg + a left
+  // STRIPE (lightness step, no new hue — DESIGN_LANGUAGE warm-restraint).
+  //
+  // SELECTION is an ORTHOGONAL channel: family owns bg-tone + stripe (always
+  // present, even when selected); selection owns the terracotta ring +
+  // border + elevation. A selected node reads as selected regardless of its
+  // family tone — the channels never collide (no bg fill-swap that would
+  // clobber the family tone).
+  const family = resolveNodeFamily(node.type)
+  const tone = resolveFamilyTone(node.type, mode)
+  const Icon = resolveTypeIcon(node.type)
 
-  const fill = selected ? "var(--accent-subtle)" : "var(--surface-elevated)"
-  const stroke = selected
-    ? "var(--accent)"
-    : accentToken
-      ? `var(--${accentToken})`
-      : "var(--border-subtle)"
-
-  // B-4 overlay: dim nodes not reachable from start (the orphan/
-  // unreachable authoring-error signal). Composed as OUTER opacity over
-  // the shape/selection render — NodeShapeBackdrop + content untouched.
-  // Overlay off (traceState undefined) → no opacity change → byte-
-  // identical to the B-1/B-3 authoring render.
+  // B-4 overlay: dim nodes not reachable from start (orphan/unreachable
+  // authoring-error signal). OUTER opacity — shape-agnostic, composes over
+  // the card. Overlay off (traceState undefined) → no opacity change.
   const traceDimmed = traceState === "unreachable"
 
   return (
@@ -632,8 +634,7 @@ function GraphCanvasNode({
       ref={setNodeRef}
       data-testid={`canvas-node-${node.id}`}
       data-node-type={node.type}
-      data-node-shape={shape}
-      data-label-position={labelPosition}
+      data-node-family={family ?? "none"}
       data-selected={selected}
       data-trace-state={traceState}
       className={isDragging ? "absolute opacity-80" : "absolute"}
@@ -653,74 +654,75 @@ function GraphCanvasNode({
       {...attributes}
       onClick={() => onSelect(node.id)}
     >
-      {/* Shape backdrop (SVG, pointer-events none) behind the content. */}
-      <NodeShapeBackdrop
-        shape={shape}
-        width={NODE_WIDTH}
-        height={NODE_HEIGHT}
-        fill={fill}
-        stroke={stroke}
-      />
-
-      {/* B-4: terminal (end-node) marker when overlay is on. A small
-          accent ring at the top-right corner — layered over the shape,
-          does not alter it. */}
-      {traceTerminal && (
+      {/* Uniform card. Family owns bg-tone (always); selection owns the
+          terracotta ring + border (orthogonal — family tone persists when
+          selected). */}
+      <div
+        className="relative h-full w-full overflow-hidden rounded-md border"
+        style={{
+          background: tone.bg,
+          borderColor: selected ? "var(--accent)" : "var(--border-base)",
+          outline: selected ? "2px solid var(--accent)" : undefined,
+          outlineOffset: selected ? "1px" : undefined,
+        }}
+      >
+        {/* Family left-stripe (always present — the quiet family channel). */}
         <span
-          data-testid={`canvas-node-${node.id}-terminal-marker`}
           aria-hidden
-          className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-accent bg-surface-base"
+          data-testid={`canvas-node-${node.id}-family-stripe`}
+          className="absolute inset-y-0 left-0 w-1"
+          style={{ background: tone.stripe }}
         />
-      )}
 
-      {/* Label above / below the shape (outside the box). */}
-      {node.label && labelPosition === "above" && (
-        <p
-          className="absolute -top-5 left-0 w-full truncate text-center text-caption text-content-strong"
-          data-testid={`canvas-node-${node.id}-label`}
-        >
-          {node.label}
-        </p>
-      )}
+        {/* B-4: terminal (end-node) marker when overlay is on. */}
+        {traceTerminal && (
+          <span
+            data-testid={`canvas-node-${node.id}-terminal-marker`}
+            aria-hidden
+            className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-accent bg-surface-base"
+          />
+        )}
 
-      {/* Content layer on top of the shape. */}
-      <div className="relative flex h-full items-start justify-between gap-2 p-3">
-        <div className="flex-1 overflow-hidden">
-          <div className="flex items-center gap-1.5">
-            <Badge variant="outline">{node.type}</Badge>
+        {/* Content: per-type icon header-left + type badge + id + label. */}
+        <div className="relative flex h-full items-start justify-between gap-2 py-2 pl-3 pr-2">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            <span
+              className="mt-0.5 shrink-0 text-content-muted"
+              data-testid={`canvas-node-${node.id}-icon`}
+              aria-hidden
+            >
+              <Icon size={15} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <Badge variant="outline">{node.type}</Badge>
+              <code className="mt-1 block truncate font-plex-mono text-micro text-content-muted">
+                {node.id}
+              </code>
+              {node.label && (
+                <p
+                  className="mt-0.5 truncate text-caption text-content-strong"
+                  data-testid={`canvas-node-${node.id}-label`}
+                >
+                  {node.label}
+                </p>
+              )}
+            </div>
           </div>
-          <code className="mt-1 block truncate font-plex-mono text-micro text-content-muted">
-            {node.id}
-          </code>
-          {node.label && labelPosition === "inside" && (
-            <p className="mt-0.5 truncate text-caption text-content-strong">
-              {node.label}
-            </p>
-          )}
+          <button
+            type="button"
+            onClick={(ev) => {
+              ev.stopPropagation()
+              onRemove(node.id)
+            }}
+            onPointerDown={(ev) => ev.stopPropagation()}
+            data-testid={`canvas-node-${node.id}-remove`}
+            aria-label="Remove node"
+            className="rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error"
+          >
+            <Trash2 size={12} />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={(ev) => {
-            ev.stopPropagation()
-            onRemove(node.id)
-          }}
-          onPointerDown={(ev) => ev.stopPropagation()}
-          data-testid={`canvas-node-${node.id}-remove`}
-          aria-label="Remove node"
-          className="rounded-sm border border-border-base bg-surface-raised p-1 text-content-muted hover:bg-status-error-muted hover:text-status-error"
-        >
-          <Trash2 size={12} />
-        </button>
       </div>
-
-      {node.label && labelPosition === "below" && (
-        <p
-          className="absolute -bottom-5 left-0 w-full truncate text-center text-caption text-content-strong"
-          data-testid={`canvas-node-${node.id}-label`}
-        >
-          {node.label}
-        </p>
-      )}
     </div>
   )
 }

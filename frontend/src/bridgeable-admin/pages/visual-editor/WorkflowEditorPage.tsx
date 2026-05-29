@@ -111,12 +111,13 @@ function generateNodeId(canvas: CanvasState): string {
 }
 
 
-// B-3 completion: resolve a node type's registry default nodeShape (the
-// genre convention B-2 declared — decision → diamond, start/end → circle,
-// parallel_split/join → bar). Threaded into GraphCanvas as
-// `resolveTypeDefaultShape` so the canvas + node-shapes stay registry-free
-// (the registry is already imported here for the B-2 palette). Module-level
-// for a stable reference across renders.
+// VESTIGIAL after the A3 shape-treatment retired silhouette rendering.
+// Was the B-3-completion registry per-type nodeShape resolver, threaded
+// into GraphCanvas as `resolveTypeDefaultShape`. GraphCanvas no longer
+// consumes it (uniform cards + icons + family tone replaced silhouettes);
+// the resolver + the prop stay in place as inert registry-backed plumbing.
+// Full removal (registry defaults + this resolver + the config field +
+// the inspector control) is filed forward as a fast-follow cleanup.
 function getNodeTypeDefaultShape(nodeType: string): unknown {
   return getByName("workflow-node", nodeType)?.metadata.configurableProps
     ?.nodeShape?.default
