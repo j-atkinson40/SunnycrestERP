@@ -167,7 +167,31 @@ export function GraphCanvas({
     [traceOverlay, canvas],
   )
 
-  const surface = bbox(canvas.nodes)
+  // A3 grow-to-fit — per-node MEASURED heights (ResizeObserver in each
+  // GraphCanvasNode). Cards are variable-height (label wraps, card grows
+  // down), so bbox's bottom bound + each edge's SOURCE bottom-anchor read
+  // the real height via this Map. `reportHeight` is equality-guarded:
+  // node height is a pure function of (label, fixed width) — independent of
+  // edges/bbox/pan/selection — so measure → setState → render settles in
+  // ONE cycle (no feedback edge; RO is transform-invariant so zoom doesn't
+  // retrigger). In jsdom the RO stub no-ops → Map stays empty → heightOf
+  // falls back to NODE_HEIGHT (the fixed-height math the helper tests cover
+  // with injected heights).
+  const [heights, setHeights] = useState<Map<string, number>>(new Map())
+  const reportHeight = useCallback((id: string, h: number) => {
+    setHeights((prev) => {
+      if (prev.get(id) === h) return prev
+      const next = new Map(prev)
+      next.set(id, h)
+      return next
+    })
+  }, [])
+  const heightOf = useCallback(
+    (n: { id: string }) => heights.get(n.id) ?? NODE_HEIGHT,
+    [heights],
+  )
+
+  const surface = bbox(canvas.nodes, NODE_WIDTH, heightOf)
 
   // ── Phase B integration-phase — pan + zoom (self-owned view state) ──
   // {panX, panY, zoom} is EPHEMERAL view state, NEVER persisted in
@@ -323,6 +347,8 @@ export function GraphCanvas({
         dy: event.delta.y,
         canvasWidth: surface.width,
         canvasHeight: surface.height,
+        // A3 grow-to-fit: clamp lower-bound against the node's real height.
+        nodeHeight: heights.get(nodeId) ?? NODE_HEIGHT,
       })
       // Skip a no-op commit (keyboard cancel / sub-3px residue).
       if (committed.x === node.position.x && committed.y === node.position.y) {
@@ -330,7 +356,7 @@ export function GraphCanvas({
       }
       onMoveNode(nodeId, committed)
     },
-    [canvas.nodes, surface.width, surface.height, onMoveNode],
+    [canvas.nodes, surface.width, surface.height, onMoveNode, heights],
   )
 
   return (
@@ -425,13 +451,21 @@ export function GraphCanvas({
                   const source = canvas.nodes.find((n) => n.id === edge.source)
                   const target = canvas.nodes.find((n) => n.id === edge.target)
                   if (!source || !target) return null
+                  // A3 grow-to-fit: the SOURCE bottom-anchor (sy = source.y
+                  // + nodeHeight) must use the source card's REAL height so
+                  // an outgoing edge departs the true bottom of a tall card,
+                  // not y+72. The target anchor is the card top (height-
+                  // independent) — incoming edges were always correct.
+                  const sourceHeight = heights.get(source.id) ?? NODE_HEIGHT
                   const d = computeEdgePath({
                     source: source.position,
                     target: target.position,
+                    nodeHeight: sourceHeight,
                   })
                   const mid = computeEdgeMidpoint({
                     source: source.position,
                     target: target.position,
+                    nodeHeight: sourceHeight,
                   })
                   const edgeLabel = edge.label ?? edge.condition
                   // B-4 overlay: dim edges not traversed in the reachable
@@ -514,6 +548,7 @@ export function GraphCanvas({
                   onSelect={onSelectNode}
                   onRemove={onRemoveNode}
                   mode={mode}
+                  onMeasure={reportHeight}
                   traceState={
                     trace === null
                       ? undefined
@@ -587,6 +622,8 @@ interface GraphCanvasNodeProps {
   onRemove: (id: string) => void
   /** A3: current theme mode selects the family tone (light/dark). */
   mode: ThemeMode
+  /** A3 grow-to-fit: report this node's measured border-box height up. */
+  onMeasure: (id: string, height: number) => void
   /** B-4 trace overlay state for this node (undefined = overlay off). */
   traceState?: NodeTraceState
   /** B-4: node is a terminal (`end`) node + overlay is on. */
@@ -599,11 +636,44 @@ function GraphCanvasNode({
   onSelect,
   onRemove,
   mode,
+  onMeasure,
   traceState,
   traceTerminal,
 }: GraphCanvasNodeProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: node.id })
+
+  // A3 grow-to-fit: observe this card's rendered border-box height and
+  // report it up so bbox + the outgoing-edge source-anchor use the REAL
+  // height (cards are variable-height — labels wrap, card grows down).
+  // Combined callback ref composes dnd-kit's setNodeRef with our observed
+  // element (mirror of SelectionOverlay's ResizeObserver pattern). RO
+  // reports the layout border-box (transform-invariant → zoom doesn't
+  // retrigger); the parent's reportHeight is equality-guarded → settles in
+  // one cycle. In jsdom the RO stub no-ops (heights stay default).
+  const elRef = useRef<HTMLDivElement | null>(null)
+  const composedRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      setNodeRef(el)
+      elRef.current = el
+    },
+    [setNodeRef],
+  )
+  const nodeId = node.id
+  useEffect(() => {
+    const el = elRef.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(() => {
+      // offsetHeight = LAYOUT border-box (transform-invariant) — NOT
+      // getBoundingClientRect (which returns the zoom-scaled visual rect
+      // and would make the height vary with pan+zoom, retriggering measure).
+      onMeasure(nodeId, el.offsetHeight)
+    })
+    ro.observe(el)
+    // Initial synchronous measure (RO fires async; seed the height now).
+    onMeasure(nodeId, el.offsetHeight)
+    return () => ro.disconnect()
+  }, [nodeId, onMeasure])
 
   // Position = canvas_state coordinate + live drag transform (cleared on
   // commit when the page re-renders with the new position).
@@ -631,7 +701,7 @@ function GraphCanvasNode({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={composedRef}
       data-testid={`canvas-node-${node.id}`}
       data-node-type={node.type}
       data-node-family={family ?? "none"}
@@ -642,7 +712,10 @@ function GraphCanvasNode({
         left,
         top,
         width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        // A3 grow-to-fit: fixed width, AUTO height with a NODE_HEIGHT floor.
+        // The card hugs its wrapped-label content + grows down; the measured
+        // height feeds bbox + the outgoing-edge source-anchor (see effect).
+        minHeight: NODE_HEIGHT,
         cursor: isDragging ? "grabbing" : "grab",
         zIndex: selected || isDragging ? 2 : 1,
         opacity: !isDragging && traceDimmed ? 0.35 : undefined,
@@ -656,9 +729,9 @@ function GraphCanvasNode({
     >
       {/* Uniform card. Family owns bg-tone (always); selection owns the
           terracotta ring + border (orthogonal — family tone persists when
-          selected). */}
+          selected). min-height floor + content-driven growth. */}
       <div
-        className="relative h-full w-full overflow-hidden rounded-md border"
+        className="relative flex min-h-full w-full flex-col overflow-hidden rounded-md border"
         style={{
           background: tone.bg,
           borderColor: selected ? "var(--accent)" : "var(--border-base)",
@@ -683,8 +756,12 @@ function GraphCanvasNode({
           />
         )}
 
-        {/* Content: per-type icon header-left + type badge + id + label. */}
-        <div className="relative flex h-full items-start justify-between gap-2 py-2 pl-3 pr-2">
+        {/* Content: per-type icon header-left + type badge + label.
+            A3 grow-to-fit: the n_ node-ID is NO LONGER shown (plain-language
+            only, Shortcuts-like); the label WRAPS multi-line (no truncate) so
+            the card grows down to fit any length. `items-start` keeps the
+            icon top-aligned as the label grows. */}
+        <div className="relative flex flex-1 items-start justify-between gap-2 py-2 pl-3 pr-2">
           <div className="flex min-w-0 flex-1 items-start gap-2">
             <span
               className="mt-0.5 shrink-0 text-content-muted"
@@ -695,12 +772,9 @@ function GraphCanvasNode({
             </span>
             <div className="min-w-0 flex-1">
               <Badge variant="outline">{node.type}</Badge>
-              <code className="mt-1 block truncate font-plex-mono text-micro text-content-muted">
-                {node.id}
-              </code>
               {node.label && (
                 <p
-                  className="mt-0.5 truncate text-caption text-content-strong"
+                  className="mt-1 whitespace-normal break-words text-caption text-content-strong"
                   data-testid={`canvas-node-${node.id}-label`}
                 >
                   {node.label}

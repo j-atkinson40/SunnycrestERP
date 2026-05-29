@@ -125,9 +125,21 @@ export interface BBox {
  */
 export function computeNodeDefaultPosition(
   existingNodes: readonly PositionedNode[],
+  // A3 grow-to-fit (optional): when measured heights are available, stack
+  // below the lowest node's REAL bottom so a tall card doesn't overlap the
+  // new node. Omitted → the original `max(top) + STRIDE` behavior (a
+  // default-height node yields the identical result, since
+  // `(y + NODE_HEIGHT) + (STRIDE − NODE_HEIGHT) === y + STRIDE`).
+  heightOf?: (n: PositionedNode) => number,
 ): Point {
   if (existingNodes.length === 0) {
     return { x: NODE_DEFAULT_X, y: 40 }
+  }
+  if (heightOf) {
+    const maxBottom = Math.max(
+      ...existingNodes.map((n) => n.position.y + heightOf(n)),
+    )
+    return { x: NODE_DEFAULT_X, y: maxBottom + (NODE_STACK_STRIDE_Y - NODE_HEIGHT) }
   }
   const maxY = Math.max(...existingNodes.map((n) => n.position.y))
   return { x: NODE_DEFAULT_X, y: maxY + NODE_STACK_STRIDE_Y }
@@ -249,7 +261,12 @@ export function computeEdgeMidpoint(input: EdgePathInput): Point {
 export function bbox(
   nodes: readonly PositionedNode[],
   nodeWidth: number = NODE_WIDTH,
-  nodeHeight: number = NODE_HEIGHT,
+  // A3 grow-to-fit: per-node height resolver. Cards are variable-height
+  // (label wraps, card grows down), so the bottom bound must use each
+  // node's MEASURED height, not a constant. Default `() => NODE_HEIGHT`
+  // preserves the fixed-height behavior for callers/tests that don't
+  // measure (e.g. jsdom, where the ResizeObserver stub no-ops).
+  heightOf: (n: PositionedNode) => number = () => NODE_HEIGHT,
 ): BBox {
   if (nodes.length === 0) {
     return {
@@ -269,7 +286,7 @@ export function bbox(
     minX = Math.min(minX, n.position.x)
     minY = Math.min(minY, n.position.y)
     maxX = Math.max(maxX, n.position.x + nodeWidth)
-    maxY = Math.max(maxY, n.position.y + nodeHeight)
+    maxY = Math.max(maxY, n.position.y + heightOf(n))
   }
   // Graph origin is always (0,0) for the scroll surface; pad the far
   // edges so the bottom-right node isn't flush against the boundary.

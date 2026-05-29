@@ -126,7 +126,7 @@ describe("GraphCanvas — node rendering", () => {
     expect(screen.getByTestId("canvas-node-n_node_2")).toHaveAttribute("data-selected", "true")
   })
 
-  it("renders the node label + id", () => {
+  it("renders the plain-language label; the n_ node-ID is NOT shown (A3 grow-to-fit)", () => {
     render(
       <GraphCanvas
         canvas={makeCanvas()}
@@ -137,7 +137,10 @@ describe("GraphCanvas — node rendering", () => {
       />,
     )
     expect(screen.getByText("Begin")).toBeInTheDocument()
-    expect(screen.getByText("n_node_1")).toBeInTheDocument()
+    // The n_ technical ID is dropped from the card (Shortcuts-like,
+    // plain-language only). It survives as the testid + React key.
+    expect(screen.queryByText("n_node_1")).toBeNull()
+    expect(screen.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
   })
 })
 
@@ -386,10 +389,37 @@ describe("GraphCanvas — A3 shape-treatment (icon + family tone)", () => {
     ).toBeInTheDocument()
   })
 
-  it("renders the id + label inside the card (B-1 anchors preserved)", () => {
+  it("renders the label; the n_ node-ID is NOT shown (A3 grow-to-fit)", () => {
     renderType("decision")
     expect(screen.getByTestId("canvas-node-n1-label")).toHaveTextContent("Check")
-    expect(screen.getByText("n1")).toBeInTheDocument()
+    expect(screen.queryByText("n1")).toBeNull()
+  })
+
+  it("label wraps (no truncate) so a long label is shown in full; card grows (min-height floor, no fixed height)", () => {
+    const longLabel =
+      "Generate case file VaultItem and route to the arrangement review queue"
+    render(
+      <GraphCanvas
+        canvas={{
+          version: 1,
+          nodes: [
+            { id: "nL", type: "generate_document", label: longLabel, position: { x: 0, y: 0 }, config: {} },
+          ],
+          edges: [],
+        }}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    // Full label present, untruncated.
+    expect(screen.getByTestId("canvas-node-nL-label")).toHaveTextContent(longLabel)
+    expect(screen.getByTestId("canvas-node-nL-label").className).not.toContain("truncate")
+    // Outer node uses a min-height floor + auto growth — NOT a fixed height.
+    const outer = screen.getByTestId("canvas-node-nL")
+    expect(outer.style.height).toBe("")
+    expect(outer.style.minHeight).not.toBe("")
   })
 })
 

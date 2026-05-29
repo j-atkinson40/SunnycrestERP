@@ -49,6 +49,21 @@ describe("canvas-layout — computeNodeDefaultPosition", () => {
     const nodes = [pnode("a", 0, 500), pnode("b", 0, 100)]
     expect(computeNodeDefaultPosition(nodes).y).toBe(500 + NODE_STACK_STRIDE_Y)
   })
+
+  it("A3 grow-to-fit: with a heightOf, stacks below the lowest node's REAL bottom", () => {
+    const nodes = [pnode("a", 0, 0), pnode("b", 0, 200)]
+    // lowest bottom = 200 + 160; gap = STRIDE − NODE_HEIGHT (so a
+    // default-height node yields the identical y as the no-resolver path).
+    const out = computeNodeDefaultPosition(nodes, () => 160)
+    expect(out.y).toBe(200 + 160 + (NODE_STACK_STRIDE_Y - NODE_HEIGHT))
+  })
+
+  it("A3 grow-to-fit: a default-height heightOf equals the no-resolver result", () => {
+    const nodes = [pnode("a", 0, 0), pnode("b", 0, 240)]
+    expect(computeNodeDefaultPosition(nodes, () => NODE_HEIGHT)).toEqual(
+      computeNodeDefaultPosition(nodes),
+    )
+  })
 })
 
 
@@ -154,6 +169,18 @@ describe("canvas-layout — computeEdgePath", () => {
     expect(typeof d).toBe("string")
     expect(d.length).toBeGreaterThan(0)
   })
+
+  it("A3 grow-to-fit: source bottom-anchor uses the injected (tall) source height", () => {
+    const d = computeEdgePath({
+      source: { x: 0, y: 0 },
+      target: { x: 0, y: 400 },
+      nodeHeight: 160, // a tall, measured source card (not NODE_HEIGHT 72)
+    })
+    // Departs at source.y + 160 — the REAL bottom of the tall source card.
+    expect(d).toContain(`M ${NODE_WIDTH / 2} 160`)
+    // Target top-anchor is height-independent (card top).
+    expect(d.trimEnd().endsWith(`${NODE_WIDTH / 2} 400`)).toBe(true)
+  })
 })
 
 
@@ -166,6 +193,15 @@ describe("canvas-layout — computeEdgeMidpoint", () => {
     // sx=tx=NODE_WIDTH/2; sy=NODE_HEIGHT, ty=200 → mid.y = (72+200)/2
     expect(mid.x).toBe(NODE_WIDTH / 2)
     expect(mid.y).toBe((NODE_HEIGHT + 200) / 2)
+  })
+
+  it("A3 grow-to-fit: midpoint uses the injected source height for the source anchor", () => {
+    const mid = computeEdgeMidpoint({
+      source: { x: 0, y: 0 },
+      target: { x: 0, y: 400 },
+      nodeHeight: 160,
+    })
+    expect(mid.y).toBe((160 + 400) / 2)
   })
 })
 
@@ -194,5 +230,19 @@ describe("canvas-layout — bbox", () => {
     const farX = CANVAS_MIN_WIDTH + 500
     const out = bbox([pnode("a", farX, 0)])
     expect(out.width).toBe(farX + NODE_WIDTH + CANVAS_BBOX_PADDING)
+  })
+
+  it("A3 grow-to-fit: bounds a tall node via the injected heightOf resolver", () => {
+    const tallY = CANVAS_MIN_HEIGHT + 100
+    // Default heightOf would bound maxY = tallY + NODE_HEIGHT; the injected
+    // 300 (a measured tall card) bounds the bottom higher.
+    const out = bbox([pnode("a", 0, tallY)], NODE_WIDTH, () => 300)
+    expect(out.maxY).toBe(tallY + 300)
+    expect(out.height).toBe(tallY + 300 + CANVAS_BBOX_PADDING)
+  })
+
+  it("A3 grow-to-fit: default heightOf reproduces the fixed-height bound", () => {
+    const out = bbox([pnode("a", 100, 100)], NODE_WIDTH)
+    expect(out.maxY).toBe(100 + NODE_HEIGHT)
   })
 })
