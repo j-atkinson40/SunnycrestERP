@@ -84,6 +84,10 @@ import {
   resolveNodeFamily,
   resolveFamilyTone,
 } from "./node-families"
+// Inline-params P1 — natural-language param SENTENCE on the card body
+// (read-only token spans). Replaces the raw label render; node.label
+// becomes an optional bold title above it.
+import { NodeLabelSentence } from "./NodeLabelSentence"
 import { useThemeMode, type ThemeMode } from "@/lib/theme-mode"
 // Phase B sub-arc B-4 — execution-trace reachability overlay.
 import {
@@ -756,11 +760,15 @@ function GraphCanvasNode({
           />
         )}
 
-        {/* Content: per-type icon header-left + type badge + label.
-            A3 grow-to-fit: the n_ node-ID is NO LONGER shown (plain-language
-            only, Shortcuts-like); the label WRAPS multi-line (no truncate) so
-            the card grows down to fit any length. `items-start` keeps the
-            icon top-aligned as the label grows. */}
+        {/* Content: per-type icon header-left + type badge + optional
+            bold label TITLE + the natural-language param SENTENCE.
+            Inline-params P1: the sentence (NodeLabelSentence) is the card
+            body — it summarizes the node's params as prose with read-only
+            token-styled spans, replacing the raw label render. node.label,
+            when set, renders as an optional bold TITLE line above it (the
+            operator's human name for the node). Both wrap (whitespace-normal
+            break-words) so A3 grow-to-fit measures + grows the card. The
+            n_ node-ID stays hidden (Shortcuts-like). */}
         <div className="relative flex flex-1 items-start justify-between gap-2 py-2 pl-3 pr-2">
           <div className="flex min-w-0 flex-1 items-start gap-2">
             <span
@@ -774,12 +782,20 @@ function GraphCanvasNode({
               <Badge variant="outline">{node.type}</Badge>
               {node.label && (
                 <p
-                  className="mt-1 whitespace-normal break-words text-caption text-content-strong"
+                  className="mt-1 whitespace-normal break-words text-caption font-semibold text-content-strong"
                   data-testid={`canvas-node-${node.id}-label`}
                 >
                   {node.label}
                 </p>
               )}
+              <p className="mt-1 whitespace-normal break-words">
+                <NodeLabelSentence
+                  nodeId={node.id}
+                  nodeType={node.type}
+                  config={node.config}
+                  fallback={node.label}
+                />
+              </p>
             </div>
           </div>
           <button
