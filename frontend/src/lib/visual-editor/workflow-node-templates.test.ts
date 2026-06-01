@@ -13,7 +13,6 @@ import {
   semanticParams,
   isEditableToken,
   NOT_YET_IMPLEMENTED_PARAMS,
-  INSPECTOR_HIDDEN_PARAMS,
   parseTemplate,
   resolveSlot,
   summarizeValue,
@@ -174,11 +173,16 @@ describe("workflow-node-templates — propType + isEditableToken (P2a gate)", ()
 })
 
 describe("workflow-node-templates — semanticParams", () => {
-  it("excludes the inspector-hidden union (retired-visual + not-yet-built)", () => {
-    // generation-focus-invocation carries all 5 hidden params + real config.
+  it("excludes ONLY the retired-visual props; not-yet-built indicators STAY semantic", () => {
+    // generation-focus-invocation carries all 5 inspector-hidden params +
+    // real config. The sentence engine excludes only the 3 RETIRED props;
+    // the 2 not-yet-built indicators remain semantic (inspector-hidden ≠
+    // engine-retired — locks the distinction so the drift can't recur).
     const sem = semanticParams("generation-focus-invocation")
     expect(sem).toContain("focusTemplateName")
-    for (const v of INSPECTOR_HIDDEN_PARAMS) expect(sem).not.toContain(v)
+    for (const v of VESTIGIAL_VISUAL_PARAMS) expect(sem).not.toContain(v)
+    // The indicator enums are NOT engine-excluded — present in semanticParams.
+    for (const v of NOT_YET_IMPLEMENTED_PARAMS) expect(sem).toContain(v)
   })
 
   it("VESTIGIAL_VISUAL_PARAMS = the 3 A3-retired props; NOT_YET_IMPLEMENTED = the 2 indicators", () => {

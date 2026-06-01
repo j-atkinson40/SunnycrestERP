@@ -52,12 +52,14 @@ export const NOT_YET_IMPLEMENTED_PARAMS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Params hidden from the node inspector (RegistryDrivenConfig render):
+ * Params hidden from the node INSPECTOR (RegistryDrivenConfig render):
  * the retired-visual set ∪ the not-yet-implemented set. Two reasons, one
- * filter. The sentence engine (`semanticParams`) excludes the same union —
- * none of these are operator-editable prose params. The props stay
- * DECLARED in the registry (≥3 rule + backend snapshot untouched); only
- * their inspector controls are suppressed.
+ * inspector filter. This is the INSPECTOR's concern ONLY — the sentence
+ * engine (`semanticParams`) excludes just the RETIRED set
+ * (VESTIGIAL_VISUAL_PARAMS), NOT this union: the not-yet-built indicators
+ * are inspector-hidden but stay semantic so a future feature can token
+ * them. The props stay DECLARED in the registry (≥3 rule + backend
+ * snapshot untouched); only their inspector controls are suppressed.
  */
 export const INSPECTOR_HIDDEN_PARAMS: ReadonlySet<string> = new Set([
   ...VESTIGIAL_VISUAL_PARAMS,
@@ -116,11 +118,14 @@ export function nodeConfigProps(
 
 /** Semantic params = configurableProps keys − the vestigial-visual set. */
 export function semanticParams(nodeType: string): string[] {
-  // Excludes the inspector-hidden union (retired-visual ∪ not-yet-built) —
-  // identical to the prior 5-prop exclusion, now with the two reasons
-  // expressed as distinct sets.
+  // Excludes ONLY the RETIRED-visual props (VESTIGIAL_VISUAL_PARAMS) — the
+  // sentence engine's permanent tokenization-exclusion. NOT the union: the
+  // not-yet-built indicator enums are hidden from the INSPECTOR
+  // (INSPECTOR_HIDDEN_PARAMS, RegistryDrivenConfig) but stay SEMANTIC here,
+  // so a future status-indicator feature can token them without fighting
+  // the engine. Keeping the two reasons distinct (retired ≠ not-yet-built).
   return Object.keys(nodeConfigProps(nodeType)).filter(
-    (k) => !INSPECTOR_HIDDEN_PARAMS.has(k),
+    (k) => !VESTIGIAL_VISUAL_PARAMS.has(k),
   )
 }
 
