@@ -262,12 +262,14 @@ describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
     expect(toggle).toHaveAttribute("data-trace-overlay", "off")
   })
 
-  it("palette-add renders a new positioned node card through GraphCanvas", async () => {
+  it("rail-palette add renders a new positioned node card through GraphCanvas", async () => {
     const result = renderWithTemplate()
     await waitFor(() => {
       expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
     })
-    fireEvent.click(result.getByTestId("palette-action"))
+    // Initial selection is none → the rail action palette is the add
+    // surface (the center-top "Add:" chip-row was retired 2026-05-29).
+    fireEvent.click(result.getByTestId("node-palette-item-action"))
     await waitFor(() => {
       // 3rd node id auto-generated as n_node_3 (stack-below-lowest).
       expect(result.getByTestId("canvas-node-n_node_3")).toBeInTheDocument()
@@ -296,34 +298,41 @@ describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
 // without GraphCanvas changes (§2.B.2 invariant).
 
 describe("WorkflowEditorPage — B-2 registry-driven palette", () => {
-  it("renders all 32 registered workflow-node types in the palette", async () => {
+  it("renders all 32 registered workflow-node types in the rail palette", async () => {
     const result = renderWithTemplate()
     await waitFor(() => {
-      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
+      expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument()
     })
-    const buttons = result
+    const items = result
       .getAllByRole("button")
-      .filter((b) => b.getAttribute("data-testid")?.startsWith("palette-"))
-    expect(buttons.length).toBe(32)
+      .filter((b) =>
+        b.getAttribute("data-testid")?.startsWith("node-palette-item-"),
+      )
+    expect(items.length).toBe(32)
   })
 
   it("exposes node types absent from the pre-B-2 16-tuple (create_record, wait, output)", async () => {
     const result = renderWithTemplate()
     await waitFor(() => {
-      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
+      expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument()
     })
     // None of these were in the old hardcoded palette.
-    expect(result.getByTestId("palette-create_record")).toBeInTheDocument()
-    expect(result.getByTestId("palette-wait")).toBeInTheDocument()
-    expect(result.getByTestId("palette-output")).toBeInTheDocument()
+    expect(result.getByTestId("node-palette-item-create_record")).toBeInTheDocument()
+    expect(result.getByTestId("node-palette-item-wait")).toBeInTheDocument()
+    expect(result.getByTestId("node-palette-item-output")).toBeInTheDocument()
   })
 
-  it("palette-add of a newly-registry-exposed type renders it on the graph canvas", async () => {
+  it("rail-palette add of a newly-registry-exposed type renders it on the graph canvas", async () => {
     const result = renderWithTemplate()
+    // Wait for the TEMPLATE to load (its 2 seeded nodes) before clicking —
+    // the none-state palette renders immediately (even on the empty initial
+    // draft), so gating on the palette alone would race the async template
+    // load and add against a 0-node draft. graph-canvas-surface only renders
+    // once nodes exist.
     await waitFor(() => {
-      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument()
+      expect(result.getByTestId("canvas-node-n_node_2")).toBeInTheDocument()
     })
-    fireEvent.click(result.getByTestId("palette-create_record"))
+    fireEvent.click(result.getByTestId("node-palette-item-create_record"))
     await waitFor(() => {
       // 3rd node (2 seeded) auto-generated as n_node_3 with the clicked type.
       const node = result.getByTestId("canvas-node-n_node_3")
@@ -340,23 +349,26 @@ describe("WorkflowEditorPage — B-2 registry-driven palette", () => {
 // EdgeConditionInspector; background → TriggerInspector.
 
 describe("WorkflowEditorPage — B-5 selection-driven inspector dispatch", () => {
-  it("initial selection is 'none' → Nothing-selected placeholder", async () => {
+  it("initial selection is 'none' → the rail action palette renders", async () => {
     const result = renderWithTemplate()
     await waitFor(() =>
       expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument(),
     )
-    expect(result.getByTestId("workflow-inspector-empty")).toBeInTheDocument()
+    // none-state now renders the WorkflowNodePalette (was the
+    // "workflow-inspector-empty" placeholder pre-2026-05-29).
+    expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument()
     expect(result.queryByTestId("node-config-form")).not.toBeInTheDocument()
   })
 
-  it("node-click → NodeConfigForm (B-3 inspector, unchanged)", async () => {
+  it("node-click → NodeConfigForm (B-3 inspector, unchanged); palette hides", async () => {
     const result = renderWithTemplate()
     const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
     fireEvent.click(n1)
     await waitFor(() =>
       expect(result.getByTestId("node-config-form")).toBeInTheDocument(),
     )
-    expect(result.queryByTestId("workflow-inspector-empty")).not.toBeInTheDocument()
+    // Selecting a node swaps the rail to the inspector — palette gone.
+    expect(result.queryByTestId("workflow-node-palette")).not.toBeInTheDocument()
   })
 
   it("edge-click → EdgeConditionInspector", async () => {

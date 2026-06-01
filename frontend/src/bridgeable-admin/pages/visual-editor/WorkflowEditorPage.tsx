@@ -55,7 +55,7 @@ import { GraphCanvas } from "@/bridgeable-admin/components/visual-editor/workflo
 // (getByType("workflow-node")) instead of a hardcoded tuple. Registry is
 // populated via App.tsx's auto-register side-effect import (BridgeableAdminApp
 // mounts under App.tsx). Flat render per Path A — no grouping substrate.
-import { getByName, getByType } from "@/lib/visual-editor/registry"
+import { getByName } from "@/lib/visual-editor/registry"
 import {
   HierarchicalEditorBrowser,
   type HierarchicalCategory,
@@ -78,6 +78,10 @@ import {
 // → TriggerInspector. Node selection still → NodeConfigForm (unchanged).
 import { EdgeConditionInspector } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/EdgeConditionInspector"
 import { TriggerInspector } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/TriggerInspector"
+// Right-rail action palette (2026-05-29) — the none-state becomes a
+// searchable, family-grouped node-add palette (Apple Shortcuts model);
+// replaces the retired center-top "Add:" chip-row as the sole add-surface.
+import { WorkflowNodePalette } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/WorkflowNodePalette"
 import {
   CanvasValidationError,
   summarizeCanvas,
@@ -557,19 +561,10 @@ export default function WorkflowEditorPage() {
     [draftCanvas, selectedEdgeId],
   )
 
-  // Phase B sub-arc B-2 — palette node types sourced from the registry
-  // (all 32 workflow-node registrations), sorted by displayName for a
-  // stable flat palette. Replaces the pre-B-2 hardcoded 16-tuple.
-  const paletteNodeTypes = useMemo(
-    () =>
-      getByType("workflow-node")
-        .map((entry) => ({
-          name: entry.metadata.name,
-          displayName: entry.metadata.displayName,
-        }))
-        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
-    [],
-  )
+  // Phase B sub-arc B-2 sourced the flat "Add:" chip-row from the registry
+  // (all 32 workflow-node registrations). That chip-row was retired
+  // 2026-05-29 — the right-rail WorkflowNodePalette (none-state) now owns
+  // the registry read + grouping + the node-add surface.
 
   // ── Render ───────────────────────────────────────────
   return (
@@ -982,28 +977,13 @@ export default function WorkflowEditorPage() {
         )}
 
         {/* ── Center pane — node-list canvas ───────────── */}
+        {/* The center-top "Add:" chip-row was RETIRED (2026-05-29) — the
+            right-rail action palette (none-state) is now the sole node-add
+            surface (Apple Shortcuts model; deselect-to-add). */}
         <div
           className="flex flex-col overflow-hidden"
           data-testid="workflow-editor-canvas-pane"
         >
-          {/* Node palette across the top of the canvas */}
-          <div className="flex flex-wrap items-center gap-1 border-b border-border-subtle bg-surface-elevated px-4 py-2">
-            <span className="mr-2 text-caption text-content-muted">
-              Add:
-            </span>
-            {paletteNodeTypes.map((nt) => (
-              <button
-                key={nt.name}
-                type="button"
-                onClick={() => handleAddNode(nt.name)}
-                data-testid={`palette-${nt.name}`}
-                title={nt.displayName}
-                className="rounded-sm border border-border-base bg-surface-raised px-2 py-0.5 text-micro text-content-base hover:bg-accent-subtle"
-              >
-                {nt.name}
-              </button>
-            ))}
-          </div>
           <GraphCanvas
             canvas={draftCanvas}
             selectedNodeId={selectedNodeId}
@@ -1050,12 +1030,10 @@ export default function WorkflowEditorPage() {
               onChange={handleUpdateTrigger}
             />
           ) : (
-            <p
-              className="text-body-sm text-content-muted"
-              data-testid="workflow-inspector-empty"
-            >
-              Nothing selected. Click a node, an edge, or the empty canvas.
-            </p>
+            // none-state → the searchable, family-grouped action palette
+            // (Shortcuts model). Reuses handleAddNode verbatim. The other
+            // three inspector arms above are untouched.
+            <WorkflowNodePalette onAdd={handleAddNode} />
           )}
         </aside>
       </div>

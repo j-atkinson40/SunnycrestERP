@@ -1,9 +1,10 @@
 /**
  * WidgetPalette primitive tests — sub-arc F-3.
  */
-import { describe, expect, it } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { DndContext } from "@dnd-kit/core"
+import { Sparkles } from "lucide-react"
 
 import { WidgetPalette, type PaletteCategory } from "./WidgetPalette"
 
@@ -92,5 +93,75 @@ describe("WidgetPalette", () => {
     expect(palette.getAttribute("data-disabled")).toBe("true")
     const item = screen.getByTestId("widget-palette-item")
     expect(item.getAttribute("aria-disabled")).toBe("true")
+  })
+
+  // ── Additive extension (2026-05-29): click-to-add + icon-component +
+  // per-item testId. Drag path (above) stays the default when onItemClick
+  // is absent — the Focus Builder consumer is unaffected. ──────────────
+
+  it("click-to-add: onItemClick fires the item id on click (no drag)", () => {
+    const onItemClick = vi.fn()
+    wrap(
+      <WidgetPalette
+        onItemClick={onItemClick}
+        categories={[
+          {
+            id: "i",
+            label: "I",
+            items: [{ id: "action", label: "Action", testId: "node-palette-item-action" }],
+          },
+        ]}
+      />,
+    )
+    const item = screen.getByTestId("node-palette-item-action")
+    fireEvent.click(item)
+    expect(onItemClick).toHaveBeenCalledTimes(1)
+    expect(onItemClick).toHaveBeenCalledWith("action")
+  })
+
+  it("click-to-add: Enter / Space activate the item (keyboard)", () => {
+    const onItemClick = vi.fn()
+    wrap(
+      <WidgetPalette
+        onItemClick={onItemClick}
+        categories={[
+          { id: "i", label: "I", items: [{ id: "wait", label: "Wait" }] },
+        ]}
+      />,
+    )
+    const item = screen.getByTestId("widget-palette-item")
+    expect(item.getAttribute("tabindex")).toBe("0")
+    fireEvent.keyDown(item, { key: "Enter" })
+    fireEvent.keyDown(item, { key: " " })
+    expect(onItemClick).toHaveBeenCalledTimes(2)
+  })
+
+  it("renders an icon COMPONENT when provided (preferred over the string-map)", () => {
+    wrap(
+      <WidgetPalette
+        onItemClick={vi.fn()}
+        categories={[
+          {
+            id: "i",
+            label: "I",
+            items: [{ id: "ai_prompt", label: "AI Prompt", iconComponent: Sparkles }],
+          },
+        ]}
+      />,
+    )
+    // The Lucide component renders an <svg> inside the item row.
+    expect(screen.getByTestId("widget-palette-item").querySelector("svg")).toBeInTheDocument()
+  })
+
+  it("custom testId overrides the default widget-palette-item", () => {
+    wrap(
+      <WidgetPalette
+        categories={[
+          { id: "i", label: "I", items: [{ id: "x", label: "X", testId: "node-palette-item-x" }] },
+        ]}
+      />,
+    )
+    expect(screen.getByTestId("node-palette-item-x")).toBeInTheDocument()
+    expect(screen.queryByTestId("widget-palette-item")).toBeNull()
   })
 })
