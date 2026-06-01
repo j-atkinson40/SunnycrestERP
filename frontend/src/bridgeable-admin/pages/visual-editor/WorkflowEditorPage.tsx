@@ -997,6 +997,12 @@ export default function WorkflowEditorPage() {
             selectedEdgeId={selectedEdgeId}
             onSelectEdge={(id) => setSelection({ kind: "edge", id })}
             onSelectBackground={() => setSelection({ kind: "background" })}
+            // Inline-params P2a: clickable sentence tokens persist config
+            // edits through the SAME handleUpdateNode({config}) path the
+            // inspector uses — one mutation path, one source of truth.
+            onUpdateNodeConfig={(id, nextConfig) =>
+              handleUpdateNode(id, { config: nextConfig })
+            }
           />
         </div>
 

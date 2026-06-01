@@ -22,7 +22,10 @@
  * `{slot}` references a real semantic param of its type.
  */
 import { getByName } from "@/lib/visual-editor/registry"
-import type { ConfigPropSchema } from "@/lib/visual-editor/registry/types"
+import type {
+  ConfigPropSchema,
+  ConfigPropType,
+} from "@/lib/visual-editor/registry/types"
 
 /** Visual props excluded from sentence templates (not semantic). */
 export const VESTIGIAL_VISUAL_PARAMS: ReadonlySet<string> = new Set([
@@ -133,6 +136,27 @@ export interface RenderedToken {
   text: string
   /** True when the param is unset (placeholder rendering). */
   placeholder: boolean
+  /**
+   * The param's ConfigPropType (P2a). Gates editability: simple types
+   * (string/enum/number/boolean) render as clickable popover-editor
+   * tokens; complex types (object/array/componentReference) + an absent
+   * schema stay read-only. The editor re-fetches the full schema via
+   * `nodeConfigProps`; only the type is carried here for the gate.
+   */
+  propType?: ConfigPropType
+}
+
+/** ConfigPropTypes whose tokens are inline-editable in P2a. */
+export const SIMPLE_EDITABLE_TYPES: ReadonlySet<string> = new Set([
+  "string",
+  "enum",
+  "number",
+  "boolean",
+])
+
+/** True when a token's param is inline-editable in P2a. */
+export function isEditableToken(token: RenderedToken): boolean {
+  return token.propType !== undefined && SIMPLE_EDITABLE_TYPES.has(token.propType)
 }
 
 /** A render-model item: literal text or a resolved token. */
@@ -181,6 +205,7 @@ export function resolveSlot(
 ): RenderedToken {
   const hasConfig = config != null && param in config
   const raw = hasConfig ? config[param] : schema?.default
+  const propType = schema?.type
   const unset =
     raw === undefined || raw === null || raw === ""
   if (unset) {
@@ -189,19 +214,19 @@ export function resolveSlot(
       param,
       text: `[${humanizeParam(param)}]`,
       placeholder: true,
+      propType,
     }
   }
-  const type = schema?.type
-  if (type === "object" || type === "array" || Array.isArray(raw) ||
+  if (propType === "object" || propType === "array" || Array.isArray(raw) ||
       (typeof raw === "object" && raw !== null)) {
-    return { kind: "token", param, text: summarizeValue(param, raw), placeholder: false }
+    return { kind: "token", param, text: summarizeValue(param, raw), placeholder: false, propType }
   }
-  if (type === "componentReference" && typeof raw === "string") {
+  if (propType === "componentReference" && typeof raw === "string") {
     const resolved =
       getByName("focus-template", raw)?.metadata.displayName ?? raw
-    return { kind: "token", param, text: resolved, placeholder: false }
+    return { kind: "token", param, text: resolved, placeholder: false, propType }
   }
-  return { kind: "token", param, text: String(raw), placeholder: false }
+  return { kind: "token", param, text: String(raw), placeholder: false, propType }
 }
 
 /**

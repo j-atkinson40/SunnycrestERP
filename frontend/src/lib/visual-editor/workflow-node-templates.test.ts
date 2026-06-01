@@ -11,6 +11,7 @@ import {
   NODE_LABEL_TEMPLATES,
   VESTIGIAL_VISUAL_PARAMS,
   semanticParams,
+  isEditableToken,
   parseTemplate,
   resolveSlot,
   summarizeValue,
@@ -137,6 +138,36 @@ describe("workflow-node-templates — interpolate / renderModelFor", () => {
   it("an unknown type has no template (null → caller falls back)", () => {
     expect(renderModelFor("__nope__", {})).toBeNull()
     expect(templateFor("__nope__")).toBeUndefined()
+  })
+})
+
+describe("workflow-node-templates — propType + isEditableToken (P2a gate)", () => {
+  const mk = (type: string) =>
+    resolveSlot("p", { p: "x" }, { type, default: "" } as never)
+
+  it("resolveSlot carries the param's propType", () => {
+    expect(mk("string").propType).toBe("string")
+    expect(mk("enum").propType).toBe("enum")
+    expect(mk("number").propType).toBe("number")
+    expect(mk("componentReference").propType).toBe("componentReference")
+  })
+
+  it("isEditableToken: simple types (string/enum/number/boolean) → editable", () => {
+    for (const t of ["string", "enum", "number", "boolean"]) {
+      expect(isEditableToken(mk(t))).toBe(true)
+    }
+  })
+
+  it("isEditableToken: complex types (object/array/componentReference) → NOT editable", () => {
+    for (const t of ["object", "array", "componentReference"]) {
+      expect(isEditableToken(mk(t))).toBe(false)
+    }
+  })
+
+  it("isEditableToken: a token with no propType → NOT editable", () => {
+    expect(isEditableToken({ kind: "token", param: "p", text: "x", placeholder: false })).toBe(
+      false,
+    )
   })
 })
 

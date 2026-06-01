@@ -130,6 +130,13 @@ export interface GraphCanvasProps {
   selectedEdgeId?: string | null
   onSelectEdge?: (id: string) => void
   onSelectBackground?: () => void
+  /**
+   * Inline-params P2a (additive): persist a config edit from a clickable
+   * sentence token. Receives the node id + the FULL next config (the
+   * per-param merge happens in GraphCanvasNode where node.config is in
+   * hand). Omitted → sentence tokens render read-only (P1 behavior).
+   */
+  onUpdateNodeConfig?: (id: string, nextConfig: Record<string, unknown>) => void
 }
 
 
@@ -148,6 +155,7 @@ export function GraphCanvas({
   selectedEdgeId,
   onSelectEdge,
   onSelectBackground,
+  onUpdateNodeConfig,
 }: GraphCanvasProps) {
   // A3: current theme mode selects each node's family tone (light/dark).
   // Read once; thread to every GraphCanvasNode. Reactive via useThemeMode.
@@ -553,6 +561,7 @@ export function GraphCanvas({
                   onRemove={onRemoveNode}
                   mode={mode}
                   onMeasure={reportHeight}
+                  onUpdateNodeConfig={onUpdateNodeConfig}
                   traceState={
                     trace === null
                       ? undefined
@@ -628,6 +637,12 @@ interface GraphCanvasNodeProps {
   mode: ThemeMode
   /** A3 grow-to-fit: report this node's measured border-box height up. */
   onMeasure: (id: string, height: number) => void
+  /**
+   * Inline-params P2a: persist a config edit from a clickable sentence
+   * token. Receives the FULL next config (merge done here, where
+   * node.config is in hand). Omitted → tokens render read-only.
+   */
+  onUpdateNodeConfig?: (id: string, nextConfig: Record<string, unknown>) => void
   /** B-4 trace overlay state for this node (undefined = overlay off). */
   traceState?: NodeTraceState
   /** B-4: node is a terminal (`end`) node + overlay is on. */
@@ -641,6 +656,7 @@ function GraphCanvasNode({
   onRemove,
   mode,
   onMeasure,
+  onUpdateNodeConfig,
   traceState,
   traceTerminal,
 }: GraphCanvasNodeProps) {
@@ -794,6 +810,18 @@ function GraphCanvasNode({
                   nodeType={node.type}
                   config={node.config}
                   fallback={node.label}
+                  // P2a: simple-type tokens become clickable popover
+                  // editors; the merge happens here (node.config in hand),
+                  // then flows up as the full next config.
+                  onEditParam={
+                    onUpdateNodeConfig
+                      ? (param, value) =>
+                          onUpdateNodeConfig(node.id, {
+                            ...node.config,
+                            [param]: value,
+                          })
+                      : undefined
+                  }
                 />
               </p>
             </div>

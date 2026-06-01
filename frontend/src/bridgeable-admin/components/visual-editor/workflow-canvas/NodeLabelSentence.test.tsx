@@ -3,8 +3,8 @@
  * literals as text + slots as read-only token spans (set = accent chip;
  * unset = dimmed placeholder); falls back to plain text for unknown types.
  */
-import { describe, expect, it } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen } from "@testing-library/react"
 
 import "@/lib/visual-editor/registry/auto-register"
 import { NodeLabelSentence } from "./NodeLabelSentence"
@@ -63,5 +63,76 @@ describe("NodeLabelSentence", () => {
       />,
     )
     expect(screen.getByTestId("node-token-d-branches")).toHaveTextContent("3 branches")
+  })
+
+  // ── P2a — clickable simple-type tokens (popover editors) ───────────
+
+  it("without onEditParam, all tokens are read-only (P1 behavior)", () => {
+    render(
+      <NodeLabelSentence nodeId="n1" nodeType="action" config={{ actionType: "x" }} />,
+    )
+    expect(
+      screen.getByTestId("node-token-n1-actionType").getAttribute("data-token-editable"),
+    ).toBe("false")
+  })
+
+  it("with onEditParam, a simple (string) token is editable + click opens the popover editor", () => {
+    render(
+      <NodeLabelSentence
+        nodeId="n1"
+        nodeType="action"
+        config={{ actionType: "ship" }}
+        onEditParam={vi.fn()}
+      />,
+    )
+    const token = screen.getByTestId("node-token-n1-actionType")
+    expect(token.getAttribute("data-token-editable")).toBe("true")
+    fireEvent.click(token)
+    // popover opened → the PropControlDispatcher editor is present
+    expect(screen.getByTestId("node-token-editor-n1-actionType")).toBeInTheDocument()
+  })
+
+  it("editing the popover control fires onEditParam(param, value)", () => {
+    const onEditParam = vi.fn()
+    render(
+      <NodeLabelSentence
+        nodeId="n1"
+        nodeType="action"
+        config={{ actionType: "ship" }}
+        onEditParam={onEditParam}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("node-token-n1-actionType"))
+    const input = screen.getByRole("textbox")
+    fireEvent.change(input, { target: { value: "deliver" } })
+    expect(onEditParam).toHaveBeenCalledWith("actionType", "deliver")
+  })
+
+  it("an UNSET simple token (placeholder) is still editable (unset→set)", () => {
+    render(
+      <NodeLabelSentence
+        nodeId="n1"
+        nodeType="action"
+        config={{}}
+        onEditParam={vi.fn()}
+      />,
+    )
+    const token = screen.getByTestId("node-token-n1-actionType")
+    expect(token.getAttribute("data-token-placeholder")).toBe("true")
+    expect(token.getAttribute("data-token-editable")).toBe("true")
+  })
+
+  it("a COMPLEX token (componentReference) is NOT editable even with onEditParam (P2b)", () => {
+    render(
+      <NodeLabelSentence
+        nodeId="r"
+        nodeType="invoke_review_focus"
+        config={{ focusTemplateName: "some-tpl" }}
+        onEditParam={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getByTestId("node-token-r-focusTemplateName").getAttribute("data-token-editable"),
+    ).toBe("false")
   })
 })

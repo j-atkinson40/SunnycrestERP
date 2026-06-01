@@ -12,6 +12,9 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 
+// P2a — clickable sentence tokens resolve their schema via the registry
+// (the editable gate + popover editor); populate it.
+import "@/lib/visual-editor/registry/auto-register"
 import { GraphCanvas } from "./GraphCanvas"
 import type { CanvasState } from "@/bridgeable-admin/services/workflow-templates-service"
 
@@ -885,5 +888,69 @@ describe("GraphCanvas — pan + zoom", () => {
     // Transform is on the ancestor surface; node inline styles untouched.
     expect(n2.style.top).toBe("200px")
     expect(n2.style.left).toBe("40px")
+  })
+})
+
+
+// ── Inline-params P2a — clickable sentence tokens (popover edit) ──────
+//
+// n_node_2 is type "action" → sentence "Run action {actionType}" →
+// actionType (string) is a simple editable token. Click → popover →
+// PropControlDispatcher → edit → onUpdateNodeConfig(nodeId, mergedConfig).
+// Positioning-under-pan+zoom is Playwright-deferred (jsdom no layout); the
+// click→edit→persist LOGIC is covered here.
+
+describe("GraphCanvas — P2a inline param edit", () => {
+  it("clicking a simple token + editing persists the MERGED config via onUpdateNodeConfig", () => {
+    const onUpdateNodeConfig = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={onUpdateNodeConfig}
+      />,
+    )
+    const token = screen.getByTestId("node-token-n_node_2-actionType")
+    expect(token.getAttribute("data-token-editable")).toBe("true")
+    fireEvent.click(token)
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ship" } })
+    // config was {} → merged full config flows up (unset→set adds the key).
+    expect(onUpdateNodeConfig).toHaveBeenCalledWith("n_node_2", { actionType: "ship" })
+  })
+
+  it("without onUpdateNodeConfig, sentence tokens are read-only (P1 behavior)", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(
+      screen
+        .getByTestId("node-token-n_node_2-actionType")
+        .getAttribute("data-token-editable"),
+    ).toBe("false")
+  })
+
+  it("clicking a token does NOT select the node (stopPropagation → edit-without-select)", () => {
+    const onSelectNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={onSelectNode}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("node-token-n_node_2-actionType"))
+    expect(onSelectNode).not.toHaveBeenCalled()
   })
 })
