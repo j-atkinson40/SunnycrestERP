@@ -52,6 +52,11 @@ import type {
   ComponentKind,
   ConfigPropSchema,
 } from "@/lib/visual-editor/registry/types"
+// Inspector cleanup (path A): hide the vestigial-visual props (A3-retired
+// nodeShape/labelPosition/accentToken) + the not-yet-implemented indicator
+// enums. The props STAY declared in the registry (≥3 rule + backend
+// snapshot untouched); only their inspector controls are suppressed.
+import { INSPECTOR_HIDDEN_PARAMS } from "@/lib/visual-editor/workflow-node-templates"
 
 
 export interface RegistryDrivenConfigProps {
@@ -80,7 +85,10 @@ export function RegistryDrivenConfig({
     return entry?.metadata.configurableProps ?? {}
   }, [nodeName])
 
-  const keys = Object.keys(props)
+  // Filter the inspector-hidden params (retired-visual + not-yet-built).
+  // The props remain declared in the registry; we just don't render their
+  // controls — the inspector shows only the real, editable config.
+  const keys = Object.keys(props).filter((k) => !INSPECTOR_HIDDEN_PARAMS.has(k))
 
   if (keys.length === 0) {
     return (

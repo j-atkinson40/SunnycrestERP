@@ -12,6 +12,8 @@ import {
   VESTIGIAL_VISUAL_PARAMS,
   semanticParams,
   isEditableToken,
+  NOT_YET_IMPLEMENTED_PARAMS,
+  INSPECTOR_HIDDEN_PARAMS,
   parseTemplate,
   resolveSlot,
   summarizeValue,
@@ -172,10 +174,20 @@ describe("workflow-node-templates — propType + isEditableToken (P2a gate)", ()
 })
 
 describe("workflow-node-templates — semanticParams", () => {
-  it("excludes the vestigial visual params", () => {
-    const sem = semanticParams("generate_document")
-    expect(sem).toContain("templateKey")
-    for (const v of VESTIGIAL_VISUAL_PARAMS) expect(sem).not.toContain(v)
+  it("excludes the inspector-hidden union (retired-visual + not-yet-built)", () => {
+    // generation-focus-invocation carries all 5 hidden params + real config.
+    const sem = semanticParams("generation-focus-invocation")
+    expect(sem).toContain("focusTemplateName")
+    for (const v of INSPECTOR_HIDDEN_PARAMS) expect(sem).not.toContain(v)
+  })
+
+  it("VESTIGIAL_VISUAL_PARAMS = the 3 A3-retired props; NOT_YET_IMPLEMENTED = the 2 indicators", () => {
+    expect([...VESTIGIAL_VISUAL_PARAMS].sort()).toEqual(
+      ["accentToken", "labelPosition", "nodeShape"],
+    )
+    expect([...NOT_YET_IMPLEMENTED_PARAMS].sort()).toEqual(
+      ["failureIndicatorStyle", "successIndicatorStyle"],
+    )
   })
 })
 

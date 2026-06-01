@@ -27,13 +27,41 @@ import type {
   ConfigPropType,
 } from "@/lib/visual-editor/registry/types"
 
-/** Visual props excluded from sentence templates (not semantic). */
+/**
+ * RETIRED visual props — superseded by A3 (uniform cards + family tone +
+ * per-type icon). No render reads them; the sentence engine excludes them
+ * from tokenization. Registry declarations REMAIN — true removal is
+ * canon-gated by the ≥3-configurableProps rule + the backend snapshot.
+ */
 export const VESTIGIAL_VISUAL_PARAMS: ReadonlySet<string> = new Set([
   "nodeShape",
   "labelPosition",
   "accentToken",
+])
+
+/**
+ * NOT-YET-IMPLEMENTED props — declared (on generation-focus-invocation)
+ * but with NO render yet (a future per-node success/failure status
+ * indicator). Hidden from the inspector for now — a DISTINCT reason from
+ * the retired props above: these are NOT removal targets and may light up
+ * when the status-indicator feature lands.
+ */
+export const NOT_YET_IMPLEMENTED_PARAMS: ReadonlySet<string> = new Set([
   "successIndicatorStyle",
   "failureIndicatorStyle",
+])
+
+/**
+ * Params hidden from the node inspector (RegistryDrivenConfig render):
+ * the retired-visual set ∪ the not-yet-implemented set. Two reasons, one
+ * filter. The sentence engine (`semanticParams`) excludes the same union —
+ * none of these are operator-editable prose params. The props stay
+ * DECLARED in the registry (≥3 rule + backend snapshot untouched); only
+ * their inspector controls are suppressed.
+ */
+export const INSPECTOR_HIDDEN_PARAMS: ReadonlySet<string> = new Set([
+  ...VESTIGIAL_VISUAL_PARAMS,
+  ...NOT_YET_IMPLEMENTED_PARAMS,
 ])
 
 /**
@@ -88,8 +116,11 @@ export function nodeConfigProps(
 
 /** Semantic params = configurableProps keys − the vestigial-visual set. */
 export function semanticParams(nodeType: string): string[] {
+  // Excludes the inspector-hidden union (retired-visual ∪ not-yet-built) —
+  // identical to the prior 5-prop exclusion, now with the two reasons
+  // expressed as distinct sets.
   return Object.keys(nodeConfigProps(nodeType)).filter(
-    (k) => !VESTIGIAL_VISUAL_PARAMS.has(k),
+    (k) => !INSPECTOR_HIDDEN_PARAMS.has(k),
   )
 }
 

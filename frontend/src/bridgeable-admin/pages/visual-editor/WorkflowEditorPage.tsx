@@ -55,7 +55,6 @@ import { GraphCanvas } from "@/bridgeable-admin/components/visual-editor/workflo
 // (getByType("workflow-node")) instead of a hardcoded tuple. Registry is
 // populated via App.tsx's auto-register side-effect import (BridgeableAdminApp
 // mounts under App.tsx). Flat render per Path A — no grouping substrate.
-import { getByName } from "@/lib/visual-editor/registry"
 import {
   HierarchicalEditorBrowser,
   type HierarchicalCategory,
@@ -115,17 +114,6 @@ function generateNodeId(canvas: CanvasState): string {
 }
 
 
-// VESTIGIAL after the A3 shape-treatment retired silhouette rendering.
-// Was the B-3-completion registry per-type nodeShape resolver, threaded
-// into GraphCanvas as `resolveTypeDefaultShape`. GraphCanvas no longer
-// consumes it (uniform cards + icons + family tone replaced silhouettes);
-// the resolver + the prop stay in place as inert registry-backed plumbing.
-// Full removal (registry defaults + this resolver + the config field +
-// the inspector control) is filed forward as a fast-follow cleanup.
-function getNodeTypeDefaultShape(nodeType: string): unknown {
-  return getByName("workflow-node", nodeType)?.metadata.configurableProps
-    ?.nodeShape?.default
-}
 
 
 // Phase B sub-arc B-5 — 4-state selection-context discriminated union.
@@ -993,7 +981,6 @@ export default function WorkflowEditorPage() {
             onMoveNode={handleMoveNode}
             onRemoveNode={handleRemoveNode}
             validationError={validationError}
-            resolveTypeDefaultShape={getNodeTypeDefaultShape}
             selectedEdgeId={selectedEdgeId}
             onSelectEdge={(id) => setSelection({ kind: "edge", id })}
             onSelectBackground={() => setSelection({ kind: "background" })}

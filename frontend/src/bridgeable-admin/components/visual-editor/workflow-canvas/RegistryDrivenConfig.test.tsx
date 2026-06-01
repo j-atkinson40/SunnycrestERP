@@ -78,11 +78,37 @@ describe("RegistryDrivenConfig — control mapping per ConfigPropType", () => {
     expect(screen.getByTestId("prop-branches-item-1")).toBeInTheDocument()
   })
 
-  it("renders a tokenReference control (start.accentToken)", () => {
+  it("FILTERS the vestigial accentToken (tokenReference) control (start)", () => {
     render(
       <RegistryDrivenConfig nodeName="start" config={{}} onChange={noop} />,
     )
-    expect(screen.getByTestId("prop-accentToken")).toBeInTheDocument()
+    // accentToken is vestigial-visual (A3-retired) → filtered from the
+    // inspector. start's props are ALL vestigial → empty-state.
+    expect(screen.queryByTestId("prop-accentToken")).not.toBeInTheDocument()
+    expect(screen.getByTestId("registry-driven-config-empty")).toBeInTheDocument()
+  })
+
+  it("filters inspector-hidden params (vestigial + not-yet-built) but renders real config", () => {
+    // generation-focus-invocation: 8 props → hides nodeShape/labelPosition/
+    // accentToken (vestigial) + successIndicatorStyle/failureIndicatorStyle
+    // (not-yet-built); keeps focusTemplateName/inputBinding/reviewMode/timeoutSeconds.
+    render(
+      <RegistryDrivenConfig
+        nodeName="generation-focus-invocation"
+        config={{}}
+        onChange={noop}
+      />,
+    )
+    for (const hidden of [
+      "prop-nodeShape",
+      "prop-labelPosition",
+      "prop-successIndicatorStyle",
+      "prop-failureIndicatorStyle",
+    ]) {
+      expect(screen.queryByTestId(hidden)).not.toBeInTheDocument()
+    }
+    expect(screen.getByTestId("prop-focusTemplateName")).toBeInTheDocument()
+    expect(screen.getByTestId("prop-reviewMode")).toBeInTheDocument()
   })
 
   it("renders a componentReference control (generation-focus-invocation.focusTemplateName)", () => {

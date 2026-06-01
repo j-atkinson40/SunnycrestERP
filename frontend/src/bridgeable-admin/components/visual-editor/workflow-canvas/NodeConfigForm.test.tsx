@@ -53,10 +53,15 @@ describe("NodeConfigForm — B-3 per-type dispatch", () => {
     expect(screen.getByTestId("prop-promptKey")).toBeInTheDocument()
   })
 
-  it("dispatches a structural type (start) to RegistryDrivenConfig (visual props)", () => {
+  it("filters vestigial-visual props (start has only retired props → empty-state)", () => {
     renderForm(node("start"))
-    expect(screen.getByTestId("registry-driven-config")).toBeInTheDocument()
-    expect(screen.getByTestId("prop-nodeShape")).toBeInTheDocument()
+    // start's only configurableProps are vestigial-visual (nodeShape /
+    // labelPosition / accentToken — retired by A3) → filtered from the
+    // inspector → RegistryDrivenConfig shows its no-props empty-state.
+    expect(screen.queryByTestId("prop-nodeShape")).not.toBeInTheDocument()
+    expect(
+      screen.getByTestId("registry-driven-config-empty"),
+    ).toBeInTheDocument()
   })
 
   it("removed the pre-B-3 JSON-textarea fallback entirely", () => {

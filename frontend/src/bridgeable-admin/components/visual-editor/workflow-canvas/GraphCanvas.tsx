@@ -111,16 +111,6 @@ export interface GraphCanvasProps {
   /** Validation message rendered above the canvas; null hides the banner. */
   validationError?: string | null
   /**
-   * VESTIGIAL after the A3 shape-treatment retired silhouette rendering.
-   * Was the B-3-completion injected per-type shape resolver; the canvas no
-   * longer renders silhouettes, so this prop is no longer consumed. It
-   * stays DECLARED (and WorkflowEditorPage still passes its registry-backed
-   * resolver) so the inert plumbing survives untouched — full removal
-   * (registry `nodeShape` defaults + resolver + config field + inspector
-   * control) is filed forward as a fast-follow cleanup.
-   */
-  resolveTypeDefaultShape?: (nodeType: string) => unknown
-  /**
    * B-5 selection-context (additive — node selection via selectedNodeId
    * is unchanged). When an edge is selected its id is passed here for the
    * selected-edge highlight; edge-click + empty-canvas (background) click
@@ -147,11 +137,6 @@ export function GraphCanvas({
   onMoveNode,
   onRemoveNode,
   validationError,
-  // resolveTypeDefaultShape — VESTIGIAL after the A3 shape-treatment
-  // retired silhouette rendering. The prop stays DECLARED in
-  // GraphCanvasProps (+ WorkflowEditorPage still passes it) so the inert
-  // registry-backed resolver plumbing survives untouched; it is no longer
-  // destructured/consumed here. Full removal filed forward.
   selectedEdgeId,
   onSelectEdge,
   onSelectBackground,
