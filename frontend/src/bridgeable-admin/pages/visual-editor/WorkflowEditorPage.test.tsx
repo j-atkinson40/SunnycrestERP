@@ -342,13 +342,16 @@ describe("WorkflowEditorPage — B-2 registry-driven palette", () => {
 })
 
 
-// ── Phase B sub-arc B-5 — selection-driven right-rail dispatch ────────
+// ── B-5 + P3c — selection-driven right-rail dispatch ─────────────────
 //
-// 4-state selection (none/node/edge/background) drives the right rail:
-// none → "Nothing selected"; node → NodeConfigForm; edge →
-// EdgeConditionInspector; background → TriggerInspector.
+// 4-state selection (none/node/edge/background) drives the right rail.
+// P3c retired NodeConfigForm from the card-editor rail: node-selection now
+// shows the palette (edits happen on the card) — or BespokeNodePane for the
+// 2 invoke_* types. none → palette; node(normal) → palette; edge →
+// EdgeConditionInspector; background → TriggerInspector. (NodeConfigForm
+// lives on for the runtime-host WorkflowsTab, tested separately.)
 
-describe("WorkflowEditorPage — B-5 selection-driven inspector dispatch", () => {
+describe("WorkflowEditorPage — B-5/P3c selection-driven inspector dispatch", () => {
   it("initial selection is 'none' → the rail action palette renders", async () => {
     const result = renderWithTemplate()
     await waitFor(() =>
@@ -360,15 +363,20 @@ describe("WorkflowEditorPage — B-5 selection-driven inspector dispatch", () =>
     expect(result.queryByTestId("node-config-form")).not.toBeInTheDocument()
   })
 
-  it("node-click → NodeConfigForm (B-3 inspector, unchanged); palette hides", async () => {
+  it("node-click (normal type) → palette stays (P3c — edits on the card); NodeConfigForm gone", async () => {
     const result = renderWithTemplate()
     const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
     fireEvent.click(n1)
+    // P3c: the node IS selected (card highlight), and the rail shows the
+    // palette — node edits happen on the card, NOT in a NodeConfigForm.
     await waitFor(() =>
-      expect(result.getByTestId("node-config-form")).toBeInTheDocument(),
+      expect(result.getByTestId("canvas-node-n_node_1")).toHaveAttribute(
+        "data-selected",
+        "true",
+      ),
     )
-    // Selecting a node swaps the rail to the inspector — palette gone.
-    expect(result.queryByTestId("workflow-node-palette")).not.toBeInTheDocument()
+    expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument()
+    expect(result.queryByTestId("node-config-form")).not.toBeInTheDocument()
   })
 
   it("edge-click → EdgeConditionInspector", async () => {
@@ -394,22 +402,25 @@ describe("WorkflowEditorPage — B-5 selection-driven inspector dispatch", () =>
     )
   })
 
-  it("transitions node → edge → background → node swap the inspector cleanly (no stale panes)", async () => {
+  it("transitions node → edge → background → node swap the rail cleanly (no stale panes)", async () => {
     const result = renderWithTemplate()
     const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
     fireEvent.click(n1)
-    await waitFor(() => expect(result.getByTestId("node-config-form")).toBeInTheDocument())
+    // P3c: node(normal) → palette.
+    await waitFor(() => expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument())
 
     fireEvent.click(result.getByTestId("edge-hit-e_n_node_1_n_node_2"))
     await waitFor(() => expect(result.getByTestId("edge-condition-inspector")).toBeInTheDocument())
-    expect(result.queryByTestId("node-config-form")).not.toBeInTheDocument()
+    // edge arm replaces the palette.
+    expect(result.queryByTestId("workflow-node-palette")).not.toBeInTheDocument()
 
     fireEvent.click(result.getByTestId("graph-canvas-surface"))
     await waitFor(() => expect(result.getByTestId("trigger-inspector")).toBeInTheDocument())
     expect(result.queryByTestId("edge-condition-inspector")).not.toBeInTheDocument()
 
     fireEvent.click(result.getByTestId("canvas-node-n_node_2"))
-    await waitFor(() => expect(result.getByTestId("node-config-form")).toBeInTheDocument())
+    // back to a node → palette again (no stale trigger pane).
+    await waitFor(() => expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument())
     expect(result.queryByTestId("trigger-inspector")).not.toBeInTheDocument()
   })
 

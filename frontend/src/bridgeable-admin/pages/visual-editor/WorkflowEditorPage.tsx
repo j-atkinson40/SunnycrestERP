@@ -37,16 +37,18 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-// Phase R-6.0b — per-node-type inspector configs for the headless
-// Generation Focus + Review Focus workflow primitives. Dispatched from
-// NodeConfigForm based on selectedNode.type; the JSON textarea remains
-// the canonical fallback for every other node type.
-//
-// Arc 2 Phase 2b — NodeConfigForm extracted into shared module
-// (`workflow-canvas/NodeConfigForm.tsx`) so the inspector Workflows
-// tab can reuse it verbatim. Parity-not-exceedance canon: both the
-// standalone editor and the inspector render the SAME component.
-import { NodeConfigForm } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/NodeConfigForm"
+// Inline-params P3c (2026-06-02) — the card editor's rail no longer renders
+// NodeConfigForm for node-selection. Through P1→P3b-2 every node-edit moved
+// onto the card/canvas (config tokens + P3a expand panel, label inline-edit,
+// edges via drag-to-connect + midpoint-×), so normal node-selection now
+// shows the palette (edits happen on the card). The ONLY exception — the 2
+// bespoke invoke_* types, which can't edit inline (namespace divergence,
+// P2b) — keep a narrow BespokeNodePane. NodeConfigForm itself is NOT deleted:
+// the runtime-host WorkflowsTab (a panel inspector with no card) still uses
+// it verbatim. The BespokeNodePane remnant disappears when the filed-forward
+// "Focus-invocation namespace reconciliation + dedupe" arc lands.
+import { BespokeNodePane } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/BespokeNodePane"
+import { BESPOKE_NAMESPACE_TYPES } from "@/lib/visual-editor/workflow-node-templates"
 // Phase B sub-arc B-1 — graph-canvas authoring substrate. Replaces the
 // pre-B-1 <ol><li> vertical-list rendering with a directed-graph canvas
 // matching the runtime DAG layout model per Entry 11 WYSIWYG.
@@ -74,7 +76,7 @@ import {
 } from "@/bridgeable-admin/services/workflow-templates-service"
 // Phase B sub-arc B-5 — selection-driven right-rail inspectors. Edge
 // selection → EdgeConditionInspector; background (empty-canvas) selection
-// → TriggerInspector. Node selection still → NodeConfigForm (unchanged).
+// → TriggerInspector. (P3c: node selection → palette / BespokeNodePane.)
 import { EdgeConditionInspector } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/EdgeConditionInspector"
 import { TriggerInspector } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/TriggerInspector"
 // Right-rail action palette (2026-05-29) — the none-state becomes a
@@ -187,10 +189,10 @@ export default function WorkflowEditorPage() {
   const [draftDisplayName, setDraftDisplayName] = useState<string>("")
   const [draftDescription, setDraftDescription] = useState<string>("")
   // Phase B sub-arc B-5 — 4-state selection-context (plain union, no
-  // reducer). Drives the right-rail inspector dispatch: none → "Nothing
-  // selected"; node → B-3 NodeConfigForm (unchanged); edge →
-  // EdgeConditionInspector; background → TriggerInspector. Node selection
-  // is preserved verbatim — `selectedNodeId` is derived for GraphCanvas.
+  // reducer). Drives the right-rail inspector dispatch: none → palette;
+  // node → palette (normal) / BespokeNodePane (invoke_*) per P3c; edge →
+  // EdgeConditionInspector; background → TriggerInspector. `selectedNodeId`
+  // is derived for GraphCanvas (card selection-highlight + edits).
   const [selection, setSelection] = useState<WorkflowSelection>({
     kind: "none",
   })
@@ -475,20 +477,11 @@ export default function WorkflowEditorPage() {
     [],
   )
 
-  const handleAddEdge = useCallback(
-    (source: string, target: string) => {
-      setDraftCanvas((prev) => {
-        const id = generateEdgeId(prev, source, target)
-        return {
-          version: prev.version,
-          trigger: prev.trigger,
-          nodes: prev.nodes,
-          edges: [...prev.edges, { id, source, target }],
-        }
-      })
-    },
-    [],
-  )
+  // P3c: handleAddEdge removed — its only caller was NodeConfigForm's
+  // inspector edge-add (now gone from this rail). Edge creation flows through
+  // onCreateEdge (drag-to-connect), which inlines its own id-gen + append.
+  // handleRemoveEdge stays (onDeleteEdge / the midpoint-×); generateEdgeId
+  // stays (onCreateEdge). WorkflowsTab keeps its OWN handleAddEdge.
 
   const handleRemoveEdge = useCallback((edgeId: string) => {
     setDraftCanvas((prev) => ({
@@ -1015,25 +1008,31 @@ export default function WorkflowEditorPage() {
           />
         </div>
 
-        {/* ── Right pane — selection-driven inspector (B-5) ─────────────
-            Dispatches by selection kind: node → NodeConfigForm (B-3,
-            unchanged) · edge → EdgeConditionInspector · background →
-            TriggerInspector · none → "Nothing selected". */}
+        {/* ── Right pane — selection-driven inspector (B-5 + P3c) ───────
+            Dispatches by selection kind:
+              node (normal)  → palette (edits happen ON THE CARD — tokens +
+                               P3a expand panel + inline label; edges on the
+                               canvas via drag-to-connect + midpoint-×)
+              node (invoke_*) → BespokeNodePane (the 2 bespoke types can't
+                               edit inline — the documented P3c remnant)
+              edge           → EdgeConditionInspector (unchanged)
+              background     → TriggerInspector (unchanged)
+              none           → palette (unchanged)
+            P3c retired NodeConfigForm from THIS card-editor rail; it lives on
+            for the runtime-host WorkflowsTab (a panel inspector, no card). */}
         <aside
           className="flex flex-col overflow-y-auto border-l border-border-subtle bg-surface-sunken p-4"
           data-testid="workflow-editor-node-config-pane"
         >
           {selectedNode ? (
-            <NodeConfigForm
-              node={selectedNode}
-              allNodes={draftCanvas.nodes}
-              outgoingEdges={draftCanvas.edges.filter(
-                (e) => e.source === selectedNode.id,
-              )}
-              onPatch={(patch) => handleUpdateNode(selectedNode.id, patch)}
-              onAddEdge={(target) => handleAddEdge(selectedNode.id, target)}
-              onRemoveEdge={(edgeId) => handleRemoveEdge(edgeId)}
-            />
+            BESPOKE_NAMESPACE_TYPES.has(selectedNode.type) ? (
+              <BespokeNodePane
+                node={selectedNode}
+                onChange={(cfg) => handleUpdateNode(selectedNode.id, { config: cfg })}
+              />
+            ) : (
+              <WorkflowNodePalette onAdd={handleAddNode} />
+            )
           ) : selectedEdge ? (
             <EdgeConditionInspector
               edge={selectedEdge}
