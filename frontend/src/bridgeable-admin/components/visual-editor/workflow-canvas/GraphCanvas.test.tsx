@@ -1297,3 +1297,83 @@ describe("GraphCanvas — P3b-1b drag-to-connect gesture", () => {
     )
   })
 })
+
+// ── P3b-2 — canvas edge delete (midpoint-× on the selected edge) ─────
+// Reuses B-5 selection + handleRemoveEdge. Button affordance (matches the
+// node trash-button idiom) — NO keyboard listener, so there is deliberately
+// NO focus-guard test (Backspace-while-editing can't delete an edge because
+// no keydown handler exists). Under-transform click positioning is
+// Playwright; the testid click + the gate are vitest-coverable here.
+
+const EDGE_ID = "e_n_node_1_n_node_2"
+
+describe("GraphCanvas — P3b-2 canvas edge delete", () => {
+  it("does NOT render the delete-× on an unselected edge", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        selectedEdgeId={null}
+        onSelectEdge={vi.fn()}
+        onDeleteEdge={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId(`edge-${EDGE_ID}-delete`)).toBeNull()
+  })
+
+  it("renders the delete-× on the SELECTED edge", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        selectedEdgeId={EDGE_ID}
+        onSelectEdge={vi.fn()}
+        onDeleteEdge={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId(`edge-${EDGE_ID}-delete`)).toBeInTheDocument()
+  })
+
+  it("does NOT render the × without an onDeleteEdge handler (gated)", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        selectedEdgeId={EDGE_ID}
+        onSelectEdge={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId(`edge-${EDGE_ID}-delete`)).toBeNull()
+  })
+
+  it("clicking the × fires onDeleteEdge(id) + stopPropagation (no background re-select)", () => {
+    const onDeleteEdge = vi.fn()
+    const onSelectBackground = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        selectedEdgeId={EDGE_ID}
+        onSelectEdge={vi.fn()}
+        onSelectBackground={onSelectBackground}
+        onDeleteEdge={onDeleteEdge}
+      />,
+    )
+    fireEvent.click(screen.getByTestId(`edge-${EDGE_ID}-delete`))
+    expect(onDeleteEdge).toHaveBeenCalledWith(EDGE_ID)
+    // stopPropagation → the click never bubbles to the surface bg-select.
+    expect(onSelectBackground).not.toHaveBeenCalled()
+  })
+})

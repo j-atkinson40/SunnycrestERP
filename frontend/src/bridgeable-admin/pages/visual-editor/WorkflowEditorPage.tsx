@@ -1004,6 +1004,14 @@ export default function WorkflowEditorPage() {
               }))
               setSelection({ kind: "edge", id })
             }}
+            // Canvas edge-delete P3b-2: the midpoint-× removes the selected
+            // edge + clears selection so EdgeConditionInspector closes (the
+            // edge is gone). Same handleRemoveEdge path the inspector uses;
+            // mirrors handleRemoveNode (filter + clear selection).
+            onDeleteEdge={(id) => {
+              handleRemoveEdge(id)
+              setSelection({ kind: "none" })
+            }}
           />
         </div>
 

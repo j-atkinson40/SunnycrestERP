@@ -159,6 +159,15 @@ export interface GraphCanvasProps {
    * connection handle is not rendered (edges add via the inspector only).
    */
   onCreateEdge?: (source: string, target: string) => void
+  /**
+   * Canvas edge-delete P3b-2 (additive): remove the SELECTED edge from the
+   * canvas via its midpoint-× affordance. The page removes the edge + clears
+   * the selection (so EdgeConditionInspector closes). Omitted → no ×
+   * (edges delete via the inspector only). Mirrors the node trash-button
+   * idiom; intentionally button-only — keyboard-delete is deferred (see the
+   * render comment). Same `handleRemoveEdge` path as the inspector.
+   */
+  onDeleteEdge?: (id: string) => void
 }
 
 
@@ -175,6 +184,7 @@ export function GraphCanvas({
   onUpdateNodeConfig,
   onRenameNode,
   onCreateEdge,
+  onDeleteEdge,
 }: GraphCanvasProps) {
   // A3: current theme mode selects each node's family tone (light/dark).
   // Read once; thread to every GraphCanvasNode. Reactive via useThemeMode.
@@ -625,6 +635,45 @@ export function GraphCanvas({
                         >
                           {edgeLabel}
                         </text>
+                      )}
+                      {/* Canvas edge-delete (P3b-2): a midpoint-× on the
+                          SELECTED edge → handleRemoveEdge + clear selection
+                          (the page closes EdgeConditionInspector). Mirrors the
+                          node trash-button idiom — BUTTON, not keyboard.
+                          Keyboard-delete is a DELIBERATE deferral (not an
+                          oversight): nodes are button-only too; if a future arc
+                          adds node keyboard-delete, edge keyboard-delete joins
+                          it then, with the focus guard designed at that point.
+                          pointerEvents:auto re-enables clicks under the
+                          pointer-events:none SVG layer (like the hit-stroke);
+                          stopPropagation so the click doesn't re-trigger the
+                          hit-stroke select. Lives in the edge <g> → transforms
+                          + scales WITH the canvas, glued to the midpoint. */}
+                      {edgeSelected && onDeleteEdge && (
+                        <g
+                          role="button"
+                          aria-label="Delete edge"
+                          data-testid={`edge-${edge.id}-delete`}
+                          transform={`translate(${mid.x}, ${mid.y})`}
+                          className="group/edgedel"
+                          style={{ pointerEvents: "auto", cursor: "pointer" }}
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            onDeleteEdge(edge.id)
+                          }}
+                        >
+                          <circle
+                            r={8}
+                            strokeWidth={1}
+                            className="fill-surface-base stroke-border-base group-hover/edgedel:fill-status-error-muted"
+                          />
+                          <path
+                            d="M -3 -3 L 3 3 M 3 -3 L -3 3"
+                            strokeWidth={1.5}
+                            strokeLinecap="round"
+                            className="stroke-status-error"
+                          />
+                        </g>
                       )}
                     </g>
                   )
