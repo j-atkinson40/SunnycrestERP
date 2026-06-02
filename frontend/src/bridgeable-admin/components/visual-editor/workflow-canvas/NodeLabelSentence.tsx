@@ -1,21 +1,29 @@
 /**
  * NodeLabelSentence — renders a workflow node's natural-language label
- * sentence. P1 shipped read-only token spans; P2a (2026-05-29) makes the
+ * sentence. P1 shipped read-only token spans; P2a (2026-05-29) made the
  * SIMPLE-type tokens (string/enum/number/boolean) clickable → a popover
  * anchored to the token → PropControlDispatcher (the bare controlled
  * per-type control) → edit → onEditParam → handleUpdateNode({config}).
  *
- * COMPLEX tokens (object/array/componentReference) stay read-only in P2a
- * (P2b makes them clickable). When `onEditParam` is absent (e.g. detail
- * views, or P1 callers) ALL tokens render read-only — the clickable path
- * is purely additive.
+ * P2b (2026-05-29) extends the SAME path to the COMPLEX types
+ * (object/array/componentReference) via a gate-flip — the dispatcher
+ * already renders ObjectControl/ArrayControl/ComponentReferenceControl as
+ * controlled components, so widening the editable set makes them clickable
+ * with no per-type branching here. The gate is `isTokenInlineEditable`,
+ * which ALSO excludes the two bespoke-namespace types
+ * (invoke_generation_focus / invoke_review_focus) whose `{focusTemplateName}`
+ * token maps to a key their authoring path never writes — those tokens
+ * stay read-only (a phantom-key guard; see workflow-node-templates.ts).
+ *
+ * When `onEditParam` is absent (e.g. detail views, or P1 callers) ALL
+ * tokens render read-only — the clickable path is purely additive.
  *
  * Token styling uses existing DESIGN_LANGUAGE tokens only — no new tokens.
  * Falls back to plain text when the type has no template.
  */
 import {
   renderModelFor,
-  isEditableToken,
+  isTokenInlineEditable,
   nodeConfigProps,
   type RenderedSegment,
   type RenderedToken,
@@ -48,10 +56,12 @@ function readOnlyTokenClass(token: RenderedToken): string {
     : "mx-0.5 rounded-sm border border-accent/30 bg-accent-subtle px-1 text-content-strong"
 }
 
-/** A clickable simple-type token: a popover editor anchored to the token.
- *  Reuses PropControlDispatcher; persists via onEditParam. stopPropagation
- *  guards (onClick + onPointerDown) mirror the trash button so a token
- *  click neither selects the node nor starts a dnd-kit drag. */
+/** A clickable token: a popover editor anchored to the token. Reuses
+ *  PropControlDispatcher (which dispatches by schema.type — simple OR
+ *  complex; P2b), so the right control renders with no per-type branching
+ *  here. Persists via onEditParam. stopPropagation guards (onClick +
+ *  onPointerDown) mirror the trash button so a token click neither selects
+ *  the node nor starts a dnd-kit drag. */
 function EditableToken({
   nodeId,
   nodeType,
@@ -97,7 +107,11 @@ function EditableToken({
         }
       />
       <PopoverContent
-        className="w-56 p-3"
+        // Roomier than P2a's w-56 — complex controls (ObjectControl's
+        // rows=5 textarea, ArrayControl's row list) need the width. The
+        // control scrolls within its own borders; max-w-(--available-width)
+        // caps the popover at the viewport.
+        className="w-80 p-3"
         // Keep the popover's own interactions from bubbling to the canvas.
         onClick={stop}
         onPointerDown={stop}
@@ -143,8 +157,9 @@ export function NodeLabelSentence({
     >
       {model.map((seg: RenderedSegment, i) => {
         if (seg.kind === "literal") return <span key={i}>{seg.text}</span>
-        // P2a: simple-type token + an editor callback → clickable popover.
-        if (onEditParam && isEditableToken(seg)) {
+        // P2a+P2b: an editable-type token (simple or complex) on a
+        // non-bespoke type + an editor callback → clickable popover.
+        if (onEditParam && isTokenInlineEditable(nodeType, seg)) {
           return (
             <EditableToken
               key={i}
@@ -156,7 +171,8 @@ export function NodeLabelSentence({
             />
           )
         }
-        // Read-only token (complex types, or no editor callback).
+        // Read-only token: no editor callback, a non-editable propType,
+        // or a bespoke-namespace type (phantom-key guard).
         return (
           <span
             key={i}

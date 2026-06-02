@@ -12,6 +12,9 @@ import {
   VESTIGIAL_VISUAL_PARAMS,
   semanticParams,
   isEditableToken,
+  isTokenInlineEditable,
+  EDITABLE_TOKEN_TYPES,
+  BESPOKE_NAMESPACE_TYPES,
   NOT_YET_IMPLEMENTED_PARAMS,
   parseTemplate,
   resolveSlot,
@@ -142,7 +145,7 @@ describe("workflow-node-templates — interpolate / renderModelFor", () => {
   })
 })
 
-describe("workflow-node-templates — propType + isEditableToken (P2a gate)", () => {
+describe("workflow-node-templates — propType + isEditableToken (P2a/P2b gate)", () => {
   const mk = (type: string) =>
     resolveSlot("p", { p: "x" }, { type, default: "" } as never)
 
@@ -159,16 +162,63 @@ describe("workflow-node-templates — propType + isEditableToken (P2a gate)", ()
     }
   })
 
-  it("isEditableToken: complex types (object/array/componentReference) → NOT editable", () => {
+  it("isEditableToken: complex types (object/array/componentReference) → editable (P2b)", () => {
     for (const t of ["object", "array", "componentReference"]) {
-      expect(isEditableToken(mk(t))).toBe(false)
+      expect(isEditableToken(mk(t))).toBe(true)
     }
+  })
+
+  it("isEditableToken: tokenReference (vestigial accentToken) → NOT editable", () => {
+    expect(isEditableToken(mk("tokenReference"))).toBe(false)
   })
 
   it("isEditableToken: a token with no propType → NOT editable", () => {
     expect(isEditableToken({ kind: "token", param: "p", text: "x", placeholder: false })).toBe(
       false,
     )
+  })
+
+  it("EDITABLE_TOKEN_TYPES = the 4 simple + 3 complex; BESPOKE = the 2 invoke_ types", () => {
+    expect([...EDITABLE_TOKEN_TYPES].sort()).toEqual([
+      "array",
+      "boolean",
+      "componentReference",
+      "enum",
+      "number",
+      "object",
+      "string",
+    ])
+    expect([...BESPOKE_NAMESPACE_TYPES].sort()).toEqual([
+      "invoke_generation_focus",
+      "invoke_review_focus",
+    ])
+  })
+})
+
+describe("workflow-node-templates — isTokenInlineEditable (P2b namespace gate)", () => {
+  const mk = (type: string) =>
+    resolveSlot("p", { p: "x" }, { type, default: "" } as never)
+
+  it("non-bespoke type + editable propType → inline-editable (simple AND complex)", () => {
+    expect(isTokenInlineEditable("action", mk("string"))).toBe(true)
+    expect(isTokenInlineEditable("decision", mk("array"))).toBe(true)
+    // generation-focus-invocation (RegistryDrivenConfig) IS in scope —
+    // its focusTemplateName round-trips cleanly.
+    expect(
+      isTokenInlineEditable("generation-focus-invocation", mk("componentReference")),
+    ).toBe(true)
+  })
+
+  it("bespoke-namespace types → NOT editable for ANY propType (phantom-key guard)", () => {
+    for (const nodeType of BESPOKE_NAMESPACE_TYPES) {
+      expect(isTokenInlineEditable(nodeType, mk("componentReference"))).toBe(false)
+      expect(isTokenInlineEditable(nodeType, mk("string"))).toBe(false)
+      expect(isTokenInlineEditable(nodeType, mk("object"))).toBe(false)
+    }
+  })
+
+  it("non-editable propType stays non-editable even on a non-bespoke type", () => {
+    expect(isTokenInlineEditable("action", mk("tokenReference"))).toBe(false)
   })
 })
 

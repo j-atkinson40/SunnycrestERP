@@ -182,17 +182,73 @@ export interface RenderedToken {
   propType?: ConfigPropType
 }
 
-/** ConfigPropTypes whose tokens are inline-editable in P2a. */
-export const SIMPLE_EDITABLE_TYPES: ReadonlySet<string> = new Set([
+/**
+ * ConfigPropTypes whose tokens are inline-editable. P2a (2026-05-29)
+ * shipped the four SIMPLE types; P2b adds the three COMPLEX types — each
+ * renders the EXISTING PropControlDispatcher control in the popover
+ * (object → ObjectControl JSON textarea, array → ArrayControl,
+ * componentReference → ComponentReferenceControl picker). No new control
+ * bodies — the dispatcher already handles all seven as controlled
+ * {schema,value,onChange} components. (Renamed from SIMPLE_EDITABLE_TYPES
+ * — no longer simple-only.)
+ *
+ * NOTE on `object`: no current template SLOTS an object param (the 32
+ * templates slot only `branches`:array + `focusTemplateName`:
+ * componentReference among the complex types). object is included here
+ * so the gate is forward-compatible — the instant a future template
+ * slots an object param, it edits inline with zero further work.
+ */
+export const EDITABLE_TOKEN_TYPES: ReadonlySet<string> = new Set([
   "string",
   "enum",
   "number",
   "boolean",
+  "object",
+  "array",
+  "componentReference",
 ])
 
-/** True when a token's param is inline-editable in P2a. */
+/**
+ * Node types whose AUTHORING namespace diverges from their TEMPLATE
+ * namespace — their tokens are NEVER inline-editable, regardless of
+ * propType. Both use bespoke inspector configs
+ * (InvokeGenerationFocusConfig / InvokeReviewFocusConfig) that author
+ * `config.focus_id` / `config.review_focus_id`, while the registry
+ * declares + the template slots `{focusTemplateName}`. So
+ * `config.focusTemplateName` is NEVER written by the bespoke path —
+ * inline-editing that token would write a PHANTOM key the backend
+ * handler ignores (worse than read-only: a silent operational no-op).
+ * They stay read-only until the namespace is reconciled.
+ *
+ * Filed-forward as its own arc ("Focus-invocation namespace
+ * reconciliation + dedupe", backend-contract grounded) — NOT here.
+ *
+ * NOTE: `generation-focus-invocation` (the hyphenated Phase-1 node) is
+ * deliberately NOT in this set — it dispatches to RegistryDrivenConfig,
+ * which authors `focusTemplateName` directly, so its token round-trips
+ * cleanly and IS inline-editable.
+ */
+export const BESPOKE_NAMESPACE_TYPES: ReadonlySet<string> = new Set([
+  "invoke_generation_focus",
+  "invoke_review_focus",
+])
+
+/** True when a token's PROP TYPE is one of the inline-editable kinds.
+ *  Pure propType gate — the namespace exclusion is applied separately by
+ *  `isTokenInlineEditable` (the gate NodeLabelSentence consults). */
 export function isEditableToken(token: RenderedToken): boolean {
-  return token.propType !== undefined && SIMPLE_EDITABLE_TYPES.has(token.propType)
+  return token.propType !== undefined && EDITABLE_TOKEN_TYPES.has(token.propType)
+}
+
+/** True when a token is inline-editable IN CONTEXT: its propType is
+ *  editable AND its node type is not a bespoke-namespace type (whose
+ *  template tokens map to keys the authoring path never writes). This is
+ *  the gate NodeLabelSentence consults to decide clickable vs read-only. */
+export function isTokenInlineEditable(
+  nodeType: string,
+  token: RenderedToken,
+): boolean {
+  return isEditableToken(token) && !BESPOKE_NAMESPACE_TYPES.has(nodeType)
 }
 
 /** A render-model item: literal text or a resolved token. */
