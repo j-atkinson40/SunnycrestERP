@@ -1149,3 +1149,151 @@ describe("GraphCanvas — P3a inline label edit", () => {
     expect(screen.queryByTestId("canvas-node-n_node_1-label-input")).toBeNull()
   })
 })
+
+// ── P3b-1b — drag-to-connect gesture wiring ──────────────────────────
+// The PURE math (screenToWorld / nodeAtPoint / dropDecision) is proven in
+// canvas-layout.test + canvas-pan-zoom.test (P3b-1a). Here we assert the
+// GESTURE WIRING: handle render, pointerdown→drawing, drop→onCreateEdge /
+// cancel. In jsdom getBoundingClientRect()→0 + the default view (pan 0,
+// zoom 1) means cursorWorld === client coords, so the drop hit-test is
+// drivable by choosing clientX/Y. The LIVE drag under pan/zoom + the
+// hit-test-when-zoomed is Playwright-territory (like pan+zoom positioning).
+
+// jsdom note: offsetHeight === 0, and the node's synchronous measure seeds
+// `heights` with 0 (and `?? NODE_HEIGHT` does NOT fall back on 0 — it's a
+// real value), so a node's hittable region collapses to its TOP EDGE
+// (y === node.position.y, x ∈ [x, x+NODE_WIDTH]). The drop coords below are
+// chosen for that 0-height reality. The real hit-test over MEASURED heights,
+// under live pan/zoom, is Playwright-territory (the math itself is proven in
+// canvas-layout.test). src top-edge = y 0; tgt top-edge = y 200; x ∈ [0,200].
+function dtcCanvas(): CanvasState {
+  return {
+    version: 1,
+    nodes: [
+      { id: "src", type: "action", label: "Source", position: { x: 0, y: 0 }, config: {} },
+      { id: "tgt", type: "action", label: "Target", position: { x: 0, y: 200 }, config: {} },
+    ],
+    edges: [],
+  }
+}
+
+describe("GraphCanvas — P3b-1b drag-to-connect gesture", () => {
+  it("renders the outgoing connection handle ONLY when onCreateEdge is wired", () => {
+    const { rerender } = render(
+      <GraphCanvas
+        canvas={dtcCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.queryByTestId("canvas-node-src-connect-handle")).toBeNull()
+    rerender(
+      <GraphCanvas
+        canvas={dtcCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onCreateEdge={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-src-connect-handle")).toBeInTheDocument()
+  })
+
+  it("pointerdown on the handle starts drawing (preview appears) without selecting the node", () => {
+    const onSelectNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={dtcCanvas()}
+        selectedNodeId={null}
+        onSelectNode={onSelectNode}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onCreateEdge={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId("graph-canvas-draw-preview")).toBeNull()
+    fireEvent.pointerDown(screen.getByTestId("canvas-node-src-connect-handle"), {
+      clientX: 100,
+      clientY: 70,
+    })
+    expect(screen.getByTestId("graph-canvas-draw-preview")).toBeInTheDocument()
+    // stopPropagation → the card's onClick(select) never fires from the handle.
+    expect(onSelectNode).not.toHaveBeenCalled()
+  })
+
+  it("drop on a valid target fires onCreateEdge(source, target) + clears the preview", () => {
+    const onCreateEdge = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={dtcCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onCreateEdge={onCreateEdge}
+      />,
+    )
+    const handle = screen.getByTestId("canvas-node-src-connect-handle")
+    fireEvent.pointerDown(handle, { clientX: 100, clientY: 0 })
+    fireEvent.pointerMove(handle, { clientX: 100, clientY: 200 })
+    fireEvent.pointerUp(handle, { clientX: 100, clientY: 200 }) // tgt top-edge (y 200)
+    expect(onCreateEdge).toHaveBeenCalledWith("src", "tgt")
+    expect(screen.queryByTestId("graph-canvas-draw-preview")).toBeNull()
+  })
+
+  it("drop on the source itself cancels (self) — no onCreateEdge, preview cleared", () => {
+    const onCreateEdge = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={dtcCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onCreateEdge={onCreateEdge}
+      />,
+    )
+    const handle = screen.getByTestId("canvas-node-src-connect-handle")
+    fireEvent.pointerDown(handle, { clientX: 100, clientY: 0 })
+    fireEvent.pointerUp(handle, { clientX: 100, clientY: 0 }) // src top-edge (self)
+    expect(onCreateEdge).not.toHaveBeenCalled()
+    expect(screen.queryByTestId("graph-canvas-draw-preview")).toBeNull()
+  })
+
+  it("drop on empty canvas cancels (empty) — no onCreateEdge", () => {
+    const onCreateEdge = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={dtcCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onCreateEdge={onCreateEdge}
+      />,
+    )
+    const handle = screen.getByTestId("canvas-node-src-connect-handle")
+    fireEvent.pointerDown(handle, { clientX: 100, clientY: 70 })
+    fireEvent.pointerUp(handle, { clientX: 900, clientY: 900 }) // empty space
+    expect(onCreateEdge).not.toHaveBeenCalled()
+  })
+
+  it("the handle is opacity-visible when the node is selected", () => {
+    render(
+      <GraphCanvas
+        canvas={dtcCanvas()}
+        selectedNodeId="src"
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onCreateEdge={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-src-connect-handle").className).toContain(
+      "opacity-100",
+    )
+  })
+})

@@ -66,6 +66,11 @@ import {
   computeEdgePath,
   computeEdgeMidpoint,
   computeNodeDragCommit,
+  // Drag-to-connect P3b-1b — the preview path + the drop decision
+  // (consumes the P3b-1a pure helpers; nodeAtPoint is used transitively
+  // by dropDecision). Used AS-IS, not reimplemented.
+  computeEdgePreviewPath,
+  dropDecision,
 } from "@/lib/visual-editor/workflows/canvas-layout"
 // Phase B integration-phase — pan + zoom view transform (self-owned).
 import {
@@ -75,6 +80,8 @@ import {
   clampPan,
   computeZoomToCursor,
   formatZoomPercent,
+  // Drag-to-connect P3b-1b — screen→world inverse (P3b-1a, used as-is).
+  screenToWorld,
 } from "@/lib/visual-editor/workflows/canvas-pan-zoom"
 // A3 shape-treatment — uniform cards + per-type icon + per-family warm
 // tone (replaces the retired B-3b silhouette system). Family tone is
@@ -144,6 +151,14 @@ export interface GraphCanvasProps {
    * `handleUpdateNode(id, {label})`. Omitted → the card title is read-only.
    */
   onRenameNode?: (id: string, label: string) => void
+  /**
+   * Drag-to-connect P3b-1b (additive): create an edge by dragging from a
+   * node's outgoing handle to a target node. Receives the resolved
+   * (source, target) ids; the page generates the edge id + selects the new
+   * edge (so EdgeConditionInspector opens to condition it). Omitted → the
+   * connection handle is not rendered (edges add via the inspector only).
+   */
+  onCreateEdge?: (source: string, target: string) => void
 }
 
 
@@ -159,6 +174,7 @@ export function GraphCanvas({
   onSelectBackground,
   onUpdateNodeConfig,
   onRenameNode,
+  onCreateEdge,
 }: GraphCanvasProps) {
   // A3: current theme mode selects each node's family tone (light/dark).
   // Read once; thread to every GraphCanvasNode. Reactive via useThemeMode.
@@ -243,6 +259,67 @@ export function GraphCanvas({
   // pan release). A plain click (no pan) leaves this false → the existing
   // onClick bg-select fires unchanged (fireEvent.click test preserved).
   const suppressClickRef = useRef(false)
+
+  // ── Drag-to-connect P3b-1b — the draw gesture (mirrors pan) ─────────
+  // `drawing` is STATE (drives the preview re-render, like pan's setView);
+  // `drawRef` is its mirror (the pointer handlers read current values
+  // without stale closures, like viewRef). Pointer-capture lives on the
+  // HANDLE element (in GraphCanvasNode) so move/up fire on it even when the
+  // cursor is over another node — the handle's own move/up ARE the gesture.
+  // `cancelFlash` is a transient sourceId set on an INFORMATIVE reject
+  // (self/duplicate/cycle) → the handle tints reject for ~200ms then clears.
+  const [drawing, setDrawing] = useState<{
+    sourceId: string
+    cursorScreen: { x: number; y: number }
+  } | null>(null)
+  const drawRef = useRef(drawing)
+  drawRef.current = drawing
+  const [cancelFlash, setCancelFlash] = useState<string | null>(null)
+
+  const handleDrawStart = useCallback(
+    (sourceId: string, screenPt: { x: number; y: number }) => {
+      setDrawing({ sourceId, cursorScreen: screenPt })
+    },
+    [],
+  )
+  const handleDrawMove = useCallback(
+    (screenPt: { x: number; y: number }) => {
+      setDrawing((d) => (d ? { ...d, cursorScreen: screenPt } : d))
+    },
+    [],
+  )
+  const handleDrawEnd = useCallback(
+    (screenPt: { x: number; y: number }) => {
+      const d = drawRef.current
+      setDrawing(null)
+      if (!d) return
+      const rect = viewportRef.current?.getBoundingClientRect()
+      const cursorWorld = screenToWorld(viewRef.current, {
+        x: screenPt.x - (rect?.left ?? 0),
+        y: screenPt.y - (rect?.top ?? 0),
+      })
+      const decision = dropDecision({
+        nodes: canvas.nodes,
+        edges: canvas.edges,
+        heights,
+        sourceId: d.sourceId,
+        cursorWorld,
+      })
+      if (decision.action === "create" && decision.target && onCreateEdge) {
+        onCreateEdge(d.sourceId, decision.target)
+      } else if (
+        decision.action === "cancel" &&
+        (decision.reason === "self" ||
+          decision.reason === "duplicate" ||
+          decision.reason === "cycle")
+      ) {
+        // Informative reject → brief handle flash (empty = silent clear).
+        setCancelFlash(d.sourceId)
+        window.setTimeout(() => setCancelFlash(null), 200)
+      }
+    },
+    [canvas.nodes, canvas.edges, heights, onCreateEdge],
+  )
 
   const viewportSize = useCallback(
     () => ({
@@ -552,6 +629,40 @@ export function GraphCanvas({
                     </g>
                   )
                 })}
+
+                {/* Drag-to-connect P3b-1b — the in-progress preview edge.
+                    Renders only while drawing: from the source node's
+                    bottom-center anchor (height-aware) to the live cursor
+                    (screen→world via the proven inverse). Dashed accent
+                    (reuses the is_iteration edge styling — no new tokens),
+                    no arrow-marker, no hit-stroke (purely visual). Reads
+                    `view` directly (the SVG is in the render path → it
+                    re-renders as `drawing.cursorScreen` updates). */}
+                {drawing &&
+                  (() => {
+                    const src = canvas.nodes.find((n) => n.id === drawing.sourceId)
+                    if (!src) return null
+                    const rect = viewportRef.current?.getBoundingClientRect()
+                    const cursorWorld = screenToWorld(view, {
+                      x: drawing.cursorScreen.x - (rect?.left ?? 0),
+                      y: drawing.cursorScreen.y - (rect?.top ?? 0),
+                    })
+                    const d = computeEdgePreviewPath(
+                      src.position,
+                      heights.get(src.id) ?? NODE_HEIGHT,
+                      cursorWorld,
+                    )
+                    return (
+                      <path
+                        d={d}
+                        fill="none"
+                        className="stroke-accent"
+                        strokeWidth={2}
+                        strokeDasharray="4 3"
+                        data-testid="graph-canvas-draw-preview"
+                      />
+                    )
+                  })()}
               </svg>
 
               {/* Node layer — draggable cards above the edge layer. */}
@@ -566,6 +677,13 @@ export function GraphCanvas({
                   onMeasure={reportHeight}
                   onUpdateNodeConfig={onUpdateNodeConfig}
                   onRenameNode={onRenameNode}
+                  // Drag-to-connect P3b-1b — the outgoing handle + its
+                  // pointer gesture (only when the page wired onCreateEdge).
+                  canConnect={!!onCreateEdge}
+                  onDrawStart={handleDrawStart}
+                  onDrawMove={handleDrawMove}
+                  onDrawEnd={handleDrawEnd}
+                  rejectFlash={cancelFlash === node.id}
                   traceState={
                     trace === null
                       ? undefined
@@ -652,6 +770,18 @@ interface GraphCanvasNodeProps {
    * input → Enter/blur commits {label}). Omitted → title read-only.
    */
   onRenameNode?: (id: string, label: string) => void
+  /**
+   * Drag-to-connect P3b-1b: when true, render the outgoing connection
+   * handle (bottom-center) + wire its pointer gesture. The handle captures
+   * the pointer on down (so move/up retarget to it) + calls the draw
+   * callbacks up to the canvas, which owns the preview + drop decision.
+   */
+  canConnect?: boolean
+  onDrawStart?: (sourceId: string, screenPt: { x: number; y: number }) => void
+  onDrawMove?: (screenPt: { x: number; y: number }) => void
+  onDrawEnd?: (screenPt: { x: number; y: number }) => void
+  /** Drag-to-connect: brief reject tint after an informative cancel. */
+  rejectFlash?: boolean
   /** B-4 trace overlay state for this node (undefined = overlay off). */
   traceState?: NodeTraceState
   /** B-4: node is a terminal (`end`) node + overlay is on. */
@@ -667,6 +797,11 @@ function GraphCanvasNode({
   onMeasure,
   onUpdateNodeConfig,
   onRenameNode,
+  canConnect,
+  onDrawStart,
+  onDrawMove,
+  onDrawEnd,
+  rejectFlash,
   traceState,
   traceTerminal,
 }: GraphCanvasNodeProps) {
@@ -772,7 +907,7 @@ function GraphCanvasNode({
       data-node-family={family ?? "none"}
       data-selected={selected}
       data-trace-state={traceState}
-      className={isDragging ? "absolute opacity-80" : "absolute"}
+      className={isDragging ? "group absolute opacity-80" : "group absolute"}
       style={{
         left,
         top,
@@ -792,6 +927,46 @@ function GraphCanvasNode({
       {...attributes}
       onClick={() => onSelect(node.id)}
     >
+      {/* Drag-to-connect P3b-1b — outgoing connection handle (bottom-center,
+          matching the height-aware source anchor). Child of the OUTER card
+          div (the inner card is overflow-hidden + would clip it). Visible on
+          group-hover OR when selected. onPointerDown stopPropagations (dnd-kit
+          body-drag never engages) + captures the pointer (move/up retarget
+          here, even over another node) + starts the draw; the canvas owns the
+          preview + drop decision. */}
+      {canConnect && (
+        <div
+          role="button"
+          aria-label="Drag to connect to another node"
+          data-testid={`canvas-node-${node.id}-connect-handle`}
+          onPointerDown={(ev) => {
+            ev.stopPropagation()
+            try {
+              ev.currentTarget.setPointerCapture(ev.pointerId)
+            } catch {
+              /* no-op in environments without pointer capture (jsdom) */
+            }
+            onDrawStart?.(node.id, { x: ev.clientX, y: ev.clientY })
+          }}
+          onPointerMove={(ev) => onDrawMove?.({ x: ev.clientX, y: ev.clientY })}
+          onPointerUp={(ev) => {
+            onDrawEnd?.({ x: ev.clientX, y: ev.clientY })
+            try {
+              ev.currentTarget.releasePointerCapture(ev.pointerId)
+            } catch {
+              /* no-op */
+            }
+          }}
+          className={`absolute bottom-[-5px] left-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 cursor-crosshair rounded-full border-2 transition-opacity ${
+            selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          } ${
+            rejectFlash
+              ? "border-status-error bg-status-error"
+              : "border-accent bg-surface-base"
+          }`}
+        />
+      )}
+
       {/* Uniform card. Family owns bg-tone (always); selection owns the
           terracotta ring + border (orthogonal — family tone persists when
           selected). min-height floor + content-driven growth. */}

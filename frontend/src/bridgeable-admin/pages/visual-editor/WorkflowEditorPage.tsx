@@ -991,6 +991,19 @@ export default function WorkflowEditorPage() {
             onUpdateNodeConfig={(id, nextConfig) =>
               handleUpdateNode(id, { config: nextConfig })
             }
+            // Drag-to-connect P3b-1b: create the dragged edge + select it so
+            // EdgeConditionInspector opens for conditioning. The id is computed
+            // in-handler (generateEdgeId is deterministic; handleAddEdge can't
+            // return it from its setState updater) → append + select atomically.
+            // Same bare {id, source, target} shape the inspector edge-add uses.
+            onCreateEdge={(source, target) => {
+              const id = generateEdgeId(draftCanvas, source, target)
+              setDraftCanvas((prev) => ({
+                ...prev,
+                edges: [...prev.edges, { id, source, target }],
+              }))
+              setSelection({ kind: "edge", id })
+            }}
           />
         </div>
 
