@@ -32,6 +32,15 @@
  * negative value; the `Math.max(0, ...)` outer clamp pulls back to 0.
  */
 
+import {
+  validateCanvasState,
+} from "./canvas-validator"
+import type {
+  CanvasNode,
+  CanvasEdge,
+  CanvasState,
+} from "@/bridgeable-admin/services/workflow-templates-service"
+
 // ─── Canvas + node geometry constants ───────────────────────────────
 
 /**
@@ -293,4 +302,137 @@ export function bbox(
   const width = Math.max(CANVAS_MIN_WIDTH, maxX + CANVAS_BBOX_PADDING)
   const height = Math.max(CANVAS_MIN_HEIGHT, maxY + CANVAS_BBOX_PADDING)
   return { minX, minY, maxX, maxY, width, height }
+}
+
+
+// ─── Drag-to-connect geometry (P3b-1a — pure, consumed by P3b-1b) ────
+//
+// The math drag-to-connect needs, isolated + unit-tested BEFORE the
+// gesture is built on it (the screen-vs-world inversion is where a bug
+// would otherwise hide inside the pointer gesture). NONE of these touch
+// the DOM or pointer events — they are pure coordinate/decision functions.
+// The screen→world inverse itself lives in `canvas-pan-zoom.ts`
+// (`screenToWorld`), next to the world→screen transform it inverts.
+
+
+// ─── computeEdgePreviewPath ─────────────────────────────────────────
+
+/**
+ * SVG `d` path for the IN-PROGRESS preview edge during a drag-to-connect
+ * gesture: from the source node's bottom-center anchor to the live cursor
+ * world point. Mirrors `computeEdgePath`'s cubic-bezier curve style, but
+ * the endpoint is a BARE POINT (the cursor) — NOT a node box. (Reusing
+ * `computeEdgePath` would mis-anchor: it adds `nodeWidth/2` to the target,
+ * assuming the target is a node.) The source anchor is height-aware
+ * (`sy = sourcePos.y + sourceHeight`) so the preview departs the true
+ * bottom of a grow-to-fit card, matching the committed edge's source
+ * anchor.
+ */
+export function computeEdgePreviewPath(
+  sourcePos: Point,
+  sourceHeight: number,
+  cursorWorld: Point,
+  nodeWidth: number = NODE_WIDTH,
+): string {
+  const sx = sourcePos.x + nodeWidth / 2
+  const sy = sourcePos.y + sourceHeight
+  const tx = cursorWorld.x
+  const ty = cursorWorld.y
+  const dy = ty - sy
+  const ctrl = Math.max(40, Math.abs(dy) / 2)
+  return `M ${sx} ${sy} C ${sx} ${sy + ctrl}, ${tx} ${ty - ctrl}, ${tx} ${ty}`
+}
+
+
+// ─── nodeAtPoint ────────────────────────────────────────────────────
+
+/**
+ * Hit-test: the node whose bbox contains `worldPt`, else `null`. The bbox
+ * is `(x, y, NODE_WIDTH, heights.get(id) ?? NODE_HEIGHT)` — the grow-to-fit
+ * MEASURED height (so a tall card's lower region is hittable), falling back
+ * to the fixed height when unmeasured (jsdom, or a freshly-added node).
+ * Iterates in REVERSE so that when bboxes overlap the later-rendered node
+ * (visually on top — nodes paint in array order) wins, matching what the
+ * operator sees. Pure.
+ */
+export function nodeAtPoint(
+  nodes: readonly CanvasNode[],
+  heights: ReadonlyMap<string, number>,
+  worldPt: Point,
+  nodeWidth: number = NODE_WIDTH,
+): CanvasNode | null {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i]
+    const h = heights.get(n.id) ?? NODE_HEIGHT
+    if (
+      worldPt.x >= n.position.x &&
+      worldPt.x <= n.position.x + nodeWidth &&
+      worldPt.y >= n.position.y &&
+      worldPt.y <= n.position.y + h
+    ) {
+      return n
+    }
+  }
+  return null
+}
+
+
+// ─── dropDecision ───────────────────────────────────────────────────
+
+export interface DropDecisionInput {
+  nodes: readonly CanvasNode[]
+  edges: readonly CanvasEdge[]
+  heights: ReadonlyMap<string, number>
+  /** The node the drag started from (its outgoing handle). */
+  sourceId: string
+  /** The pointer's world position at drop (via `screenToWorld`). */
+  cursorWorld: Point
+}
+
+export interface DropDecision {
+  action: "create" | "cancel"
+  /** Why a "cancel" happened (omitted on "create"). */
+  reason?: "empty" | "self" | "duplicate" | "cycle"
+  /** The resolved target node id (present on "create"). */
+  target?: string
+}
+
+/**
+ * Decide what a drag-to-connect DROP does, purely from canvas state +
+ * geometry. Order: hit-test → no node = cancel/empty; the source itself =
+ * cancel/self; an edge (source→target) already exists = cancel/duplicate
+ * (the validator only enforces edge-id uniqueness, NOT source/target-pair
+ * uniqueness — so this is an explicit check, mirroring the inspector's
+ * candidate-target filter); else build the candidate canvas + run the
+ * canonical `validateCanvasState` — if it THROWS (cycle, excluding
+ * is_iteration back-edges) = cancel/cycle (P3-map decision #8: cycle drops
+ * are rejected; legitimate-loop authoring via is_iteration is filed
+ * forward). Otherwise = create/target.
+ *
+ * Pure: `validateCanvasState` is side-effect-free (asserts/throws on a
+ * passed canvas). The candidate carries a non-colliding placeholder edge
+ * id; `trigger` is omitted (optional + not validated).
+ */
+export function dropDecision(input: DropDecisionInput): DropDecision {
+  const { nodes, edges, heights, sourceId, cursorWorld } = input
+  const hit = nodeAtPoint(nodes, heights, cursorWorld)
+  if (!hit) return { action: "cancel", reason: "empty" }
+  if (hit.id === sourceId) return { action: "cancel", reason: "self" }
+  if (edges.some((e) => e.source === sourceId && e.target === hit.id)) {
+    return { action: "cancel", reason: "duplicate" }
+  }
+  const candidate: CanvasState = {
+    version: 1,
+    nodes: [...nodes],
+    edges: [
+      ...edges,
+      { id: `__candidate__${sourceId}__${hit.id}`, source: sourceId, target: hit.id },
+    ],
+  }
+  try {
+    validateCanvasState(candidate)
+  } catch {
+    return { action: "cancel", reason: "cycle" }
+  }
+  return { action: "create", target: hit.id }
 }

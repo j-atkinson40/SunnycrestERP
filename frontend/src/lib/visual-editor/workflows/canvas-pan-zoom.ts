@@ -20,7 +20,7 @@
  * screen point `(panX + wx*zoom, panY + wy*zoom)`.
  */
 
-import { CANVAS_BBOX_PADDING } from "./canvas-layout"
+import { CANVAS_BBOX_PADDING, type Point } from "./canvas-layout"
 
 // ─── Zoom bounds + wheel sensitivity ────────────────────────────────
 
@@ -145,4 +145,32 @@ export function clampPan(
 /** Render a zoom value as an integer percent string (e.g. 1 → "100%"). */
 export function formatZoomPercent(zoom: number): string {
   return `${Math.round(zoom * 100)}%`
+}
+
+
+// ─── screenToWorld (drag-to-connect P3b-1a) ─────────────────────────
+
+/**
+ * Invert the view transform: a VIEWPORT-RELATIVE screen point → its world
+ * (canvas) coordinate. Exact inverse of the world→screen mapping above
+ * (`screen = pan + world·zoom`, transform-origin 0 0), so
+ * `screenToWorld(view, worldToScreen(view, p)) === p`.
+ *
+ * The caller supplies an already-viewport-relative point — i.e. it has
+ * subtracted the canvas viewport's bounding-rect origin from the raw
+ * client coordinate (the same `clientX − rect.left` the wheel-zoom
+ * handler does). This helper does NOT know about the DOM; it operates on
+ * the transform alone.
+ *
+ * Drag-to-connect (P3b-1b) uses this to turn the pointer's screen position
+ * into the canvas-space point fed to `nodeAtPoint` (drop hit-test) and to
+ * the preview-edge endpoint. Isolating the inversion here — where a
+ * screen-vs-world sign/scale bug would otherwise hide inside the gesture —
+ * lets it be unit-tested standalone before the gesture is built on it.
+ */
+export function screenToWorld(view: ViewTransform, screenPt: Point): Point {
+  return {
+    x: (screenPt.x - view.panX) / view.zoom,
+    y: (screenPt.y - view.panY) / view.zoom,
+  }
 }

@@ -23,12 +23,23 @@ import {
   computeEdgeMidpoint,
   computeNodeDefaultPosition,
   computeNodeDragCommit,
+  computeEdgePreviewPath,
+  nodeAtPoint,
+  dropDecision,
   type PositionedNode,
 } from "./canvas-layout"
+import type {
+  CanvasNode,
+  CanvasEdge,
+} from "@/bridgeable-admin/services/workflow-templates-service"
 
 
 function pnode(id: string, x: number, y: number): PositionedNode {
   return { id, position: { x, y } }
+}
+
+function cnode(id: string, x: number, y: number, type = "action"): CanvasNode {
+  return { id, type, position: { x, y }, config: {} }
 }
 
 
@@ -244,5 +255,113 @@ describe("canvas-layout — bbox", () => {
   it("A3 grow-to-fit: default heightOf reproduces the fixed-height bound", () => {
     const out = bbox([pnode("a", 100, 100)], NODE_WIDTH)
     expect(out.maxY).toBe(100 + NODE_HEIGHT)
+  })
+})
+
+
+// ─── Drag-to-connect geometry (P3b-1a) ──────────────────────────────
+
+describe("canvas-layout — computeEdgePreviewPath", () => {
+  it("anchors at source bottom-center; endpoint at the cursor world point", () => {
+    // source (x=40,y=40), height 72 → bottom-center = (140, 112).
+    const d = computeEdgePreviewPath({ x: 40, y: 40 }, NODE_HEIGHT, { x: 300, y: 500 })
+    expect(d.startsWith("M 140 112 C")).toBe(true)
+    // cubic bezier ends AT the cursor (300, 500).
+    expect(d.endsWith("300 500")).toBe(true)
+  })
+
+  it("is height-aware (a tall source departs its real bottom, not y+72)", () => {
+    const d = computeEdgePreviewPath({ x: 0, y: 0 }, 200, { x: 0, y: 400 })
+    // bottom-center y = 0 + 200 = 200.
+    expect(d.startsWith("M 100 200 C")).toBe(true)
+  })
+
+  it("emits a valid cubic-bezier path string (M … C …)", () => {
+    const d = computeEdgePreviewPath({ x: 10, y: 10 }, NODE_HEIGHT, { x: 50, y: 90 })
+    expect(d).toMatch(/^M [\d.-]+ [\d.-]+ C [\d.-]+ [\d.-]+, [\d.-]+ [\d.-]+, [\d.-]+ [\d.-]+$/)
+  })
+})
+
+
+describe("canvas-layout — nodeAtPoint", () => {
+  const nodes = [cnode("a", 0, 0), cnode("b", 0, 200)]
+  const heights = new Map<string, number>()
+
+  it("returns the node whose bbox contains the point", () => {
+    // a spans x[0,200] y[0,72] (default height).
+    expect(nodeAtPoint(nodes, heights, { x: 100, y: 36 })?.id).toBe("a")
+    expect(nodeAtPoint(nodes, heights, { x: 100, y: 230 })?.id).toBe("b")
+  })
+
+  it("returns null for empty space", () => {
+    expect(nodeAtPoint(nodes, heights, { x: 500, y: 500 })).toBeNull()
+  })
+
+  it("returns null in the gap between two stacked nodes", () => {
+    // a bottom = 72; b top = 200 → y=120 is in the gap.
+    expect(nodeAtPoint(nodes, heights, { x: 100, y: 120 })).toBeNull()
+  })
+
+  it("uses the measured height (a tall node's lower region hits)", () => {
+    const tall = new Map<string, number>([["a", 300]])
+    // a now spans y[0,300]; y=290 is in a's extended region and clear of b
+    // (b spans y[200,272]). Without the measured height, y=290 would miss a
+    // (default bottom 72); with it, a hits.
+    expect(nodeAtPoint(nodes, tall, { x: 100, y: 290 })?.id).toBe("a")
+  })
+
+  it("overlap tie-break: the later-rendered (topmost) node wins", () => {
+    const overlapping = [cnode("under", 0, 0), cnode("over", 10, 10)]
+    // (50,50) is inside both; "over" is later in the array → topmost.
+    expect(nodeAtPoint(overlapping, heights, { x: 50, y: 50 })?.id).toBe("over")
+  })
+})
+
+
+describe("canvas-layout — dropDecision", () => {
+  const nodes = [cnode("a", 0, 0), cnode("b", 0, 200), cnode("c", 0, 400)]
+  const heights = new Map<string, number>()
+  const inside = (id: "a" | "b" | "c") =>
+    ({ a: { x: 100, y: 36 }, b: { x: 100, y: 236 }, c: { x: 100, y: 436 } })[id]
+
+  it("cancel/empty when the drop lands on no node", () => {
+    expect(
+      dropDecision({ nodes, edges: [], heights, sourceId: "a", cursorWorld: { x: 900, y: 900 } }),
+    ).toEqual({ action: "cancel", reason: "empty" })
+  })
+
+  it("cancel/self when the drop lands on the source node", () => {
+    expect(
+      dropDecision({ nodes, edges: [], heights, sourceId: "a", cursorWorld: inside("a") }),
+    ).toEqual({ action: "cancel", reason: "self" })
+  })
+
+  it("cancel/duplicate when an edge source→target already exists", () => {
+    const edges: CanvasEdge[] = [{ id: "e1", source: "a", target: "b" }]
+    expect(
+      dropDecision({ nodes, edges, heights, sourceId: "a", cursorWorld: inside("b") }),
+    ).toEqual({ action: "cancel", reason: "duplicate" })
+  })
+
+  it("cancel/cycle when the candidate edge would create a cycle", () => {
+    // a → b exists; dropping b → a closes a 2-cycle (validator throws).
+    const edges: CanvasEdge[] = [{ id: "e1", source: "a", target: "b" }]
+    expect(
+      dropDecision({ nodes, edges, heights, sourceId: "b", cursorWorld: inside("a") }),
+    ).toEqual({ action: "cancel", reason: "cycle" })
+  })
+
+  it("cancel/cycle for a self-loop attempt is caught as self FIRST (self precedes cycle)", () => {
+    expect(
+      dropDecision({ nodes, edges: [], heights, sourceId: "a", cursorWorld: inside("a") }).reason,
+    ).toBe("self")
+  })
+
+  it("create/target for a valid acyclic, non-duplicate drop", () => {
+    const edges: CanvasEdge[] = [{ id: "e1", source: "a", target: "b" }]
+    // a → c is new, acyclic, non-duplicate.
+    expect(
+      dropDecision({ nodes, edges, heights, sourceId: "a", cursorWorld: inside("c") }),
+    ).toEqual({ action: "create", target: "c" })
   })
 })

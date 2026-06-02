@@ -18,6 +18,8 @@ import {
   computeZoomToCursor,
   clampPan,
   formatZoomPercent,
+  screenToWorld,
+  type ViewTransform,
 } from "./canvas-pan-zoom"
 
 
@@ -135,5 +137,49 @@ describe("canvas-pan-zoom — formatZoomPercent", () => {
     expect(formatZoomPercent(0.25)).toBe("25%")
     expect(formatZoomPercent(2)).toBe("200%")
     expect(formatZoomPercent(1.1618)).toBe("116%")
+  })
+})
+
+
+describe("canvas-pan-zoom — screenToWorld (drag-to-connect inverse)", () => {
+  // world→screen per the transform: screen = (panX + wx·zoom, panY + wy·zoom).
+  const worldToScreen = (v: ViewTransform, w: { x: number; y: number }) => ({
+    x: v.panX + w.x * v.zoom,
+    y: v.panY + w.y * v.zoom,
+  })
+
+  it("identity at the default view (zoom 1, no pan)", () => {
+    expect(screenToWorld(DEFAULT_VIEW, { x: 120, y: 240 })).toEqual({ x: 120, y: 240 })
+  })
+
+  it("subtracts pan at zoom 1", () => {
+    const v: ViewTransform = { panX: 50, panY: -30, zoom: 1 }
+    expect(screenToWorld(v, { x: 150, y: 70 })).toEqual({ x: 100, y: 100 })
+  })
+
+  it("divides by zoom (no pan)", () => {
+    const v: ViewTransform = { panX: 0, panY: 0, zoom: 2 }
+    expect(screenToWorld(v, { x: 200, y: 100 })).toEqual({ x: 100, y: 50 })
+  })
+
+  it("inverts the COMBINED case (zoom ≠ 1 AND panned) — where a naive inverse breaks", () => {
+    const v: ViewTransform = { panX: 80, panY: 40, zoom: 1.5 }
+    // (260 − 80)/1.5 = 120 ; (190 − 40)/1.5 = 100
+    expect(screenToWorld(v, { x: 260, y: 190 })).toEqual({ x: 120, y: 100 })
+  })
+
+  it("round-trips worldToScreen → screenToWorld for arbitrary views", () => {
+    const views: ViewTransform[] = [
+      { panX: 0, panY: 0, zoom: 1 },
+      { panX: 137, panY: -64, zoom: 0.25 },
+      { panX: -300, panY: 210, zoom: 2 },
+    ]
+    for (const v of views) {
+      for (const w of [{ x: 0, y: 0 }, { x: 320, y: 480 }, { x: -90, y: 12 }]) {
+        const back = screenToWorld(v, worldToScreen(v, w))
+        expect(back.x).toBeCloseTo(w.x, 9)
+        expect(back.y).toBeCloseTo(w.y, 9)
+      }
+    }
   })
 })
