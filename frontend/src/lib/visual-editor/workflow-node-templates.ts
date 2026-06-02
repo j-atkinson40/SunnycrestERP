@@ -134,6 +134,37 @@ export function templateFor(nodeType: string): string | undefined {
   return NODE_LABEL_TEMPLATES[nodeType]
 }
 
+/**
+ * UN-SLOTTED params (inline-params P3a) — a node type's configurableProp
+ * keys that are NEITHER inspector-hidden NOR already slotted in its sentence
+ * template. These edit ONLY in the inspector today; the card's expand panel
+ * surfaces them as editable rows so every config param has an inline home
+ * (the precondition for retiring the inspector in P3c). Pure, registry-backed
+ * (mirrors `semanticParams`). Returns `[]` for the 6 fully-slotted types
+ * (start, end, send_document, generate_document, cross_tenant_acknowledgment,
+ * branch).
+ *
+ * TWO-TIER discipline: this DELIBERATELY excludes the template-slotted params
+ * (which edit via their sentence tokens) so each param is editable in exactly
+ * ONE place — no duplication between the sentence and the panel. It reuses the
+ * SAME `INSPECTOR_HIDDEN_PARAMS` set the inspector filters
+ * (RegistryDrivenConfig), so the retired-visual + not-yet-built indicator
+ * params stay out of the panel too.
+ */
+export function unslottedParams(nodeType: string): string[] {
+  const tmpl = templateFor(nodeType)
+  const slotted = new Set(
+    tmpl === undefined
+      ? []
+      : parseTemplate(tmpl)
+          .filter((s): s is { kind: "slot"; param: string } => s.kind === "slot")
+          .map((s) => s.param),
+  )
+  return Object.keys(nodeConfigProps(nodeType)).filter(
+    (k) => !INSPECTOR_HIDDEN_PARAMS.has(k) && !slotted.has(k),
+  )
+}
+
 // ─── Pure engine: parse + interpolate (DOM-free) ────────────────────
 
 /** A parsed template segment: literal prose or a `{param}` slot. */

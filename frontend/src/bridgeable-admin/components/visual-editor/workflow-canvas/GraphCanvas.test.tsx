@@ -954,3 +954,198 @@ describe("GraphCanvas — P2a inline param edit", () => {
     expect(onSelectNode).not.toHaveBeenCalled()
   })
 })
+
+// ── P3a — un-slotted-param expand panel + inline label edit ──────────
+
+function p3aCanvas(): CanvasState {
+  return {
+    version: 1,
+    nodes: [
+      // schedule: slots scheduleMode; cronExpression + delaySeconds un-slotted.
+      { id: "n_sch", type: "schedule", label: "", position: { x: 40, y: 40 }, config: {} },
+      // start: zero un-slotted params (no expand affordance).
+      { id: "n_st", type: "start", label: "Begin", position: { x: 40, y: 240 }, config: {} },
+    ],
+    edges: [],
+  }
+}
+
+describe("GraphCanvas — P3a un-slotted-param expand panel", () => {
+  it("renders the expand toggle ONLY for types with un-slotted params", () => {
+    render(
+      <GraphCanvas
+        canvas={p3aCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={vi.fn()}
+      />,
+    )
+    // schedule has 2 un-slotted (cronExpression, delaySeconds) → toggle present.
+    const toggle = screen.getByTestId("canvas-node-n_sch-expand-toggle")
+    expect(toggle).toHaveTextContent("2 more fields")
+    // start has 0 un-slotted → no toggle.
+    expect(screen.queryByTestId("canvas-node-n_st-expand-toggle")).toBeNull()
+  })
+
+  it("does NOT render the toggle without an onUpdateNodeConfig editor", () => {
+    render(
+      <GraphCanvas
+        canvas={p3aCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.queryByTestId("canvas-node-n_sch-expand-toggle")).toBeNull()
+  })
+
+  it("toggling reveals the un-slotted params; slotted params are NOT duplicated (two-tier)", () => {
+    render(
+      <GraphCanvas
+        canvas={p3aCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId("canvas-node-n_sch-expand-panel")).toBeNull()
+    fireEvent.click(screen.getByTestId("canvas-node-n_sch-expand-toggle"))
+    expect(screen.getByTestId("canvas-node-n_sch-expand-panel")).toBeInTheDocument()
+    // un-slotted params surfaced…
+    expect(screen.getByTestId("canvas-node-n_sch-field-cronExpression")).toBeInTheDocument()
+    expect(screen.getByTestId("canvas-node-n_sch-field-delaySeconds")).toBeInTheDocument()
+    // …the SLOTTED param (scheduleMode) is NOT in the panel (it edits via its token).
+    expect(screen.queryByTestId("canvas-node-n_sch-field-scheduleMode")).toBeNull()
+  })
+
+  it("editing a panel field persists via onUpdateNodeConfig (whole-key merge)", () => {
+    const onUpdateNodeConfig = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={p3aCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={onUpdateNodeConfig}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-node-n_sch-expand-toggle"))
+    // cronExpression is a string control → its input carries the -input suffix.
+    fireEvent.change(
+      screen.getByTestId("canvas-node-n_sch-field-editor-cronExpression-input"),
+      { target: { value: "0 9 * * *" } },
+    )
+    expect(onUpdateNodeConfig).toHaveBeenCalledWith(
+      "n_sch",
+      expect.objectContaining({ cronExpression: "0 9 * * *" }),
+    )
+  })
+
+  it("clicking the expand toggle does NOT select the node (stopPropagation)", () => {
+    const onSelectNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={p3aCanvas()}
+        selectedNodeId={null}
+        onSelectNode={onSelectNode}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-node-n_sch-expand-toggle"))
+    expect(onSelectNode).not.toHaveBeenCalled()
+  })
+})
+
+describe("GraphCanvas — P3a inline label edit", () => {
+  it("double-click a label → input → Enter persists via onRenameNode", () => {
+    const onRenameNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onRenameNode={onRenameNode}
+      />,
+    )
+    fireEvent.doubleClick(screen.getByTestId("canvas-node-n_node_1-label"))
+    const input = screen.getByTestId("canvas-node-n_node_1-label-input")
+    fireEvent.change(input, { target: { value: "Kickoff" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(onRenameNode).toHaveBeenCalledWith("n_node_1", "Kickoff")
+  })
+
+  it("Escape cancels the label edit (onRenameNode NOT called)", () => {
+    const onRenameNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onRenameNode={onRenameNode}
+      />,
+    )
+    fireEvent.doubleClick(screen.getByTestId("canvas-node-n_node_1-label"))
+    const input = screen.getByTestId("canvas-node-n_node_1-label-input")
+    fireEvent.change(input, { target: { value: "Discard me" } })
+    fireEvent.keyDown(input, { key: "Escape" })
+    expect(onRenameNode).not.toHaveBeenCalled()
+  })
+
+  it("an empty-label node shows the 'name this node' placeholder ONLY when selected", () => {
+    const canvas: CanvasState = {
+      version: 1,
+      nodes: [{ id: "n_x", type: "action", label: "", position: { x: 40, y: 40 }, config: {} }],
+      edges: [],
+    }
+    const { rerender } = render(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onRenameNode={vi.fn()}
+      />,
+    )
+    // Not selected → no placeholder.
+    expect(screen.queryByTestId("canvas-node-n_x-label-placeholder")).toBeNull()
+    // Selected → placeholder appears (so the empty node can gain a name).
+    rerender(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId="n_x"
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onRenameNode={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-n_x-label-placeholder")).toBeInTheDocument()
+  })
+
+  it("label title is read-only when onRenameNode is absent (no double-click edit)", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    fireEvent.doubleClick(screen.getByTestId("canvas-node-n_node_1-label"))
+    expect(screen.queryByTestId("canvas-node-n_node_1-label-input")).toBeNull()
+  })
+})

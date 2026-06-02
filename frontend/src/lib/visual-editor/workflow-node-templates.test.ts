@@ -15,6 +15,8 @@ import {
   isTokenInlineEditable,
   EDITABLE_TOKEN_TYPES,
   BESPOKE_NAMESPACE_TYPES,
+  INSPECTOR_HIDDEN_PARAMS,
+  unslottedParams,
   NOT_YET_IMPLEMENTED_PARAMS,
   parseTemplate,
   resolveSlot,
@@ -242,6 +244,47 @@ describe("workflow-node-templates — semanticParams", () => {
     expect([...NOT_YET_IMPLEMENTED_PARAMS].sort()).toEqual(
       ["failureIndicatorStyle", "successIndicatorStyle"],
     )
+  })
+})
+
+describe("workflow-node-templates — unslottedParams (P3a expand-panel source)", () => {
+  it("returns [] for the 6 fully-slotted types (nothing to surface in the panel)", () => {
+    for (const t of [
+      "start",
+      "end",
+      "send_document",
+      "generate_document",
+      "cross_tenant_acknowledgment",
+      "branch",
+    ]) {
+      expect(unslottedParams(t)).toEqual([])
+    }
+  })
+
+  it("returns the un-slotted semantic params (excludes the template-slotted ones)", () => {
+    // ai_prompt slots promptKey + model; temperature + maxTokens are un-slotted.
+    expect(unslottedParams("ai_prompt").sort()).toEqual(["maxTokens", "temperature"])
+    // schedule slots scheduleMode; cronExpression + delaySeconds un-slotted.
+    expect(unslottedParams("schedule").sort()).toEqual(["cronExpression", "delaySeconds"])
+  })
+
+  it("excludes INSPECTOR_HIDDEN_PARAMS (retired-visual + not-yet-built indicators)", () => {
+    const un = unslottedParams("generation-focus-invocation")
+    // The un-slotted semantic params ARE surfaced…
+    expect(un.sort()).toEqual(["inputBinding", "reviewMode", "timeoutSeconds"])
+    // …and NONE of the inspector-hidden params leak into the panel.
+    for (const h of INSPECTOR_HIDDEN_PARAMS) expect(un).not.toContain(h)
+  })
+
+  it("TWO-TIER: the panel set is DISJOINT from the sentence-slotted set (no duplication)", () => {
+    for (const type of Object.keys(NODE_LABEL_TEMPLATES)) {
+      const slots = new Set(
+        [...NODE_LABEL_TEMPLATES[type].matchAll(/\{(\w+)\}/g)].map((m) => m[1]),
+      )
+      for (const p of unslottedParams(type)) {
+        expect(slots.has(p)).toBe(false)
+      }
+    }
   })
 })
 

@@ -987,6 +987,7 @@ export default function WorkflowEditorPage() {
             // Inline-params P2a: clickable sentence tokens persist config
             // edits through the SAME handleUpdateNode({config}) path the
             // inspector uses — one mutation path, one source of truth.
+            onRenameNode={(id, label) => handleUpdateNode(id, { label })}
             onUpdateNodeConfig={(id, nextConfig) =>
               handleUpdateNode(id, { config: nextConfig })
             }

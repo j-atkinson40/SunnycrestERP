@@ -52,7 +52,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
-import { Maximize2, Route, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronUp, Maximize2, Route, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import type {
@@ -88,6 +88,17 @@ import {
 // (read-only token spans). Replaces the raw label render; node.label
 // becomes an optional bold title above it.
 import { NodeLabelSentence } from "./NodeLabelSentence"
+// Inline-params P3a — un-slotted-param expand panel (the inspector-retirement
+// precondition). The card surfaces params NOT slotted in its sentence as
+// editable PropControlDispatcher rows, reusing the P2a/P2b mutation path. The
+// panel's data source is `unslottedParams` (= configurableProps − inspector-
+// hidden − slotted), so each param edits in exactly one place (two-tier).
+import {
+  unslottedParams,
+  nodeConfigProps,
+  humanizeParam,
+} from "@/lib/visual-editor/workflow-node-templates"
+import { PropControlDispatcher } from "@/lib/visual-editor/components/PropControls"
 import { useThemeMode, type ThemeMode } from "@/lib/theme-mode"
 // Phase B sub-arc B-4 — execution-trace reachability overlay.
 import {
@@ -127,6 +138,12 @@ export interface GraphCanvasProps {
    * hand). Omitted → sentence tokens render read-only (P1 behavior).
    */
   onUpdateNodeConfig?: (id: string, nextConfig: Record<string, unknown>) => void
+  /**
+   * Inline-params P3a (additive): rename a node from its card title (inline
+   * double-click edit). Persists the FULL next label via the page's
+   * `handleUpdateNode(id, {label})`. Omitted → the card title is read-only.
+   */
+  onRenameNode?: (id: string, label: string) => void
 }
 
 
@@ -141,6 +158,7 @@ export function GraphCanvas({
   onSelectEdge,
   onSelectBackground,
   onUpdateNodeConfig,
+  onRenameNode,
 }: GraphCanvasProps) {
   // A3: current theme mode selects each node's family tone (light/dark).
   // Read once; thread to every GraphCanvasNode. Reactive via useThemeMode.
@@ -547,6 +565,7 @@ export function GraphCanvas({
                   mode={mode}
                   onMeasure={reportHeight}
                   onUpdateNodeConfig={onUpdateNodeConfig}
+                  onRenameNode={onRenameNode}
                   traceState={
                     trace === null
                       ? undefined
@@ -628,6 +647,11 @@ interface GraphCanvasNodeProps {
    * node.config is in hand). Omitted → tokens render read-only.
    */
   onUpdateNodeConfig?: (id: string, nextConfig: Record<string, unknown>) => void
+  /**
+   * Inline-params P3a: rename this node from its card title (double-click →
+   * input → Enter/blur commits {label}). Omitted → title read-only.
+   */
+  onRenameNode?: (id: string, label: string) => void
   /** B-4 trace overlay state for this node (undefined = overlay off). */
   traceState?: NodeTraceState
   /** B-4: node is a terminal (`end`) node + overlay is on. */
@@ -642,6 +666,7 @@ function GraphCanvasNode({
   mode,
   onMeasure,
   onUpdateNodeConfig,
+  onRenameNode,
   traceState,
   traceTerminal,
 }: GraphCanvasNodeProps) {
@@ -684,6 +709,41 @@ function GraphCanvasNode({
   // commit when the page re-renders with the new position).
   const left = node.position.x + (transform?.x ?? 0)
   const top = node.position.y + (transform?.y ?? 0)
+
+  // P3a — stopPropagation guard (mirror of the remove button + the
+  // NodeLabelSentence token): a card-interaction must neither select the
+  // node (card onClick) nor start a dnd-kit drag ({...listeners}).
+  const stop = (ev: { stopPropagation: () => void }) => ev.stopPropagation()
+
+  // P3a — un-slotted-param expand panel. `hidden` = the params NOT in this
+  // type's sentence (inspector-only today); the panel surfaces them as
+  // editable PropControlDispatcher rows so every config param has an inline
+  // home. `expanded` is per-node EPHEMERAL (never persisted — same category
+  // as the B-4 trace toggle). Two-tier: slotted params edit via tokens, these
+  // via the panel — no overlap (unslottedParams excludes the slotted set).
+  const [expanded, setExpanded] = useState(false)
+  const unslotted = unslottedParams(node.type)
+  const configProps = nodeConfigProps(node.type)
+
+  // P3a — inline label edit. Double-click the title → input → Enter/blur
+  // commits via onRenameNode ({label}); Escape cancels. The title slot
+  // renders when the node HAS a label OR is selected+empty (so an unnamed
+  // node can gain a name from the card).
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [labelDraft, setLabelDraft] = useState(node.label ?? "")
+  const beginLabelEdit = () => {
+    setLabelDraft(node.label ?? "")
+    setEditingLabel(true)
+  }
+  const commitLabel = () => {
+    setEditingLabel(false)
+    const next = labelDraft.trim()
+    if (next !== (node.label ?? "")) onRenameNode?.(node.id, next)
+  }
+  const cancelLabel = () => {
+    setEditingLabel(false)
+    setLabelDraft(node.label ?? "")
+  }
 
   // A3 shape-treatment (replaces the B-3b silhouette system): every node
   // is a uniform rounded-rect card. Type is signalled by a per-type Lucide
@@ -781,14 +841,59 @@ function GraphCanvasNode({
             </span>
             <div className="min-w-0 flex-1">
               <Badge variant="outline">{node.type}</Badge>
-              {node.label && (
+              {/* P3a — inline-editable title. Editing → input; else a label
+                  (when set) or a faint "name this node" placeholder (when
+                  selected+empty). Double-click enters edit; the stopPropagation
+                  family keeps it clear of select + dnd-kit drag. */}
+              {editingLabel ? (
+                <input
+                  autoFocus
+                  value={labelDraft}
+                  onChange={(e) => setLabelDraft(e.target.value)}
+                  onClick={stop}
+                  onPointerDown={stop}
+                  onBlur={commitLabel}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      commitLabel()
+                    } else if (e.key === "Escape") {
+                      e.preventDefault()
+                      cancelLabel()
+                    }
+                  }}
+                  data-testid={`canvas-node-${node.id}-label-input`}
+                  className="mt-1 w-full rounded-sm border border-accent bg-surface-raised px-1 py-0.5 text-caption font-semibold text-content-strong"
+                />
+              ) : node.label ? (
                 <p
-                  className="mt-1 whitespace-normal break-words text-caption font-semibold text-content-strong"
+                  className={`mt-1 whitespace-normal break-words text-caption font-semibold text-content-strong${
+                    onRenameNode ? " cursor-text" : ""
+                  }`}
                   data-testid={`canvas-node-${node.id}-label`}
+                  onDoubleClick={
+                    onRenameNode
+                      ? (ev) => {
+                          ev.stopPropagation()
+                          beginLabelEdit()
+                        }
+                      : undefined
+                  }
                 >
                   {node.label}
                 </p>
-              )}
+              ) : selected && onRenameNode ? (
+                <p
+                  className="mt-1 cursor-text text-caption italic text-content-muted/70"
+                  data-testid={`canvas-node-${node.id}-label-placeholder`}
+                  onDoubleClick={(ev) => {
+                    ev.stopPropagation()
+                    beginLabelEdit()
+                  }}
+                >
+                  name this node
+                </p>
+              ) : null}
               <p className="mt-1 whitespace-normal break-words">
                 <NodeLabelSentence
                   nodeId={node.id}
@@ -809,6 +914,77 @@ function GraphCanvasNode({
                   }
                 />
               </p>
+
+              {/* P3a — un-slotted-param expand panel. Surfaces the params NOT
+                  in the sentence (inspector-only today) as editable rows that
+                  reuse PropControlDispatcher + the SAME onUpdateNodeConfig
+                  whole-key merge as the tokens. Inline-grow: rows are card
+                  content, so grow-to-fit measures the taller card + the edge
+                  source-anchor settles. Only rendered when there ARE un-slotted
+                  params + an editor callback (the 6 fully-slotted types show
+                  nothing). The toggle + panel stopPropagation so neither
+                  selects the node nor starts a drag. */}
+              {unslotted.length > 0 && onUpdateNodeConfig && (
+                <div className="mt-1.5">
+                  <button
+                    type="button"
+                    onClick={(ev) => {
+                      ev.stopPropagation()
+                      setExpanded((x) => !x)
+                    }}
+                    onPointerDown={stop}
+                    data-testid={`canvas-node-${node.id}-expand-toggle`}
+                    aria-expanded={expanded}
+                    className="inline-flex items-center gap-1 rounded-sm border border-border-base bg-surface-raised px-1.5 py-0.5 text-micro text-content-muted hover:bg-accent-subtle hover:text-accent"
+                  >
+                    {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                    {expanded
+                      ? "Fewer fields"
+                      : `${unslotted.length} more field${
+                          unslotted.length === 1 ? "" : "s"
+                        }`}
+                  </button>
+                  {expanded && (
+                    <div
+                      className="mt-1.5 flex flex-col gap-2 rounded-sm border border-border-subtle bg-surface-base/60 p-2"
+                      data-testid={`canvas-node-${node.id}-expand-panel`}
+                      onClick={stop}
+                      onPointerDown={stop}
+                    >
+                      {unslotted.map((param) => {
+                        const schema = configProps[param]
+                        if (!schema) return null
+                        const current =
+                          param in node.config
+                            ? node.config[param]
+                            : schema.default
+                        return (
+                          <div
+                            key={param}
+                            className="flex flex-col gap-1"
+                            data-testid={`canvas-node-${node.id}-field-${param}`}
+                          >
+                            <label className="text-micro uppercase tracking-wider text-content-muted">
+                              {humanizeParam(param)}
+                            </label>
+                            <PropControlDispatcher
+                              schema={schema}
+                              value={current}
+                              onChange={(next) =>
+                                onUpdateNodeConfig(node.id, {
+                                  ...node.config,
+                                  [param]: next,
+                                })
+                              }
+                              data-testid={`canvas-node-${node.id}-field-editor-${param}`}
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <button
