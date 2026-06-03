@@ -1047,31 +1047,36 @@ registerComponent({
   verticals: ["all"],
   userParadigms: ["operator-power-user"],
   consumedTokens: ["surface-raised", "border-accent", "accent", "accent-subtle", "radius-base", "text-body", "text-caption"],
+  // Inline-params reconciliation P1 (2026-06-02): configurableProps now
+  // declare the REAL keys the bespoke InvokeGenerationFocusConfig writes +
+  // the backend `_handle_invoke_generation_focus` reads (focus_id / op_id /
+  // kwargs) — replacing the stranded Phase-1 props (focusTemplateName /
+  // inputBinding / reviewMode / timeoutSeconds, which nothing wrote or read).
+  // focus_id is a HEADLESS_DISPATCH id (not a focus-template name); op_id's
+  // options depend on focus_id + kwargs is a binding-row list, which is why
+  // this type stays bespoke-edited (P3, gated on the editor shape, ungates it
+  // from BESPOKE_NAMESPACE_TYPES).
   configurableProps: {
-    focusTemplateName: {
-      type: "componentReference",
-      default: "arrangement-scribe",
-      componentTypes: ["focus-template"],
-      displayLabel: "Generation Focus template",
+    focus_id: {
+      type: "string",
+      default: "",
+      displayLabel: "Generation Focus id",
+      description:
+        "HEADLESS_DISPATCH focus id (e.g. burial_vault_personalization_studio). Authored via the bespoke InvokeGenerationFocusConfig.",
       required: true,
     },
-    inputBinding: {
+    op_id: {
+      type: "string",
+      default: "",
+      displayLabel: "Operation id",
+      description:
+        "Operation on the focus (e.g. extract_decedent_info); valid options depend on focus_id.",
+    },
+    kwargs: {
       type: "object",
       default: {},
-      displayLabel: "Input binding",
-      description: "Maps workflow variables into the Focus extraction context.",
-    },
-    reviewMode: {
-      type: "enum",
-      default: "review-by-default",
-      bounds: ["review-by-default", "auto-commit-on-high-confidence"],
-      displayLabel: "Review mode",
-    },
-    timeoutSeconds: {
-      type: "number",
-      default: 600,
-      bounds: [30, 7200],
-      displayLabel: "Timeout (seconds)",
+      displayLabel: "Operation kwargs",
+      description: "Source-binding rows passed to the dispatch callable.",
     },
   },
   schemaVersion: 1,
@@ -1090,31 +1095,46 @@ registerComponent({
   verticals: ["all"],
   userParadigms: ["operator-power-user"],
   consumedTokens: ["surface-raised", "border-accent", "accent", "accent-subtle", "radius-base", "text-body"],
+  // Inline-params reconciliation P1 (2026-06-02): configurableProps now
+  // declare the REAL keys the bespoke InvokeReviewFocusConfig writes
+  // (review_focus_id / input_data_binding / reviewer_role / decision_actions)
+  // — replacing the stranded Phase-1 props (focusTemplateName / inputBinding /
+  // routingMode / nodeShape). `review_focus_id` matches the backend handler;
+  // `input_data_binding` is the {prefix.path} binding the editor authors —
+  // the binding→resolved-`input_data` step is the DEFERRED #7 sub-divergence
+  // (a future-runtime layer, not this rename). Still bespoke-edited (P3).
   configurableProps: {
-    focusTemplateName: {
-      type: "componentReference",
+    review_focus_id: {
+      type: "string",
       default: "",
-      componentTypes: ["focus-template"],
-      displayLabel: "Review Focus template",
+      displayLabel: "Review Focus id",
       required: true,
     },
-    inputBinding: {
-      type: "object",
-      default: {},
-      displayLabel: "Input binding",
+    input_data_binding: {
+      type: "string",
+      default: "",
+      displayLabel: "Input data binding",
+      description:
+        "A {prefix.path} binding the engine resolves to input_data at runtime (the binding→dict resolution is the deferred #7 concern).",
     },
-    routingMode: {
+    reviewer_role: {
       type: "enum",
-      default: "outcome-routed",
-      bounds: ["outcome-routed", "single-continue"],
-      displayLabel: "Routing mode",
-      description: "Outcome-routed selects the outgoing edge by the review outcome; single-continue always proceeds.",
+      default: "",
+      bounds: [
+        "admin",
+        "office",
+        "fh_director",
+        "production_manager",
+        "production",
+        "accountant",
+        "support",
+      ],
+      displayLabel: "Reviewer role",
     },
-    nodeShape: {
-      type: "enum",
-      default: "rounded-rect",
-      bounds: ["rounded-rect", "diamond"],
-      displayLabel: "Node shape on canvas",
+    decision_actions: {
+      type: "array",
+      default: ["approve", "edit_and_approve", "reject"],
+      displayLabel: "Decision actions",
     },
   },
   schemaVersion: 1,

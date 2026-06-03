@@ -181,37 +181,39 @@ describe("NodeLabelSentence", () => {
   })
 
   // ── THE GUARD — bespoke-namespace types stay read-only ──
-  // invoke_generation_focus / invoke_review_focus author config.focus_id /
-  // config.review_focus_id; their {focusTemplateName} token maps to a key
-  // the authoring path never writes. Inline-editing it would write a
-  // phantom key the backend ignores → these tokens MUST stay read-only.
-  // Locks the divergence so a future patch can't silently re-enable it.
+  // invoke_generation_focus / invoke_review_focus are bespoke-edited
+  // (dependent op_id + kwargs / binding shapes). Post-reconciliation-P1 their
+  // template slots are the REAL keys ({focus_id} / {review_focus_id}); these
+  // tokens MUST stay read-only because the types are in BESPOKE_NAMESPACE_TYPES
+  // (P3, gated on the editor shape, ungates them). Locks the gate so a future
+  // patch can't silently re-enable inline editing before the bespoke shape is
+  // handled.
 
-  it("GUARD: invoke_generation_focus {focusTemplateName} stays read-only (phantom-key)", () => {
+  it("GUARD: invoke_generation_focus {focus_id} stays read-only (bespoke shape)", () => {
     render(
       <NodeLabelSentence
         nodeId="ig"
         nodeType="invoke_generation_focus"
-        config={{ focusTemplateName: "some-tpl" }}
+        config={{ focus_id: "burial_vault_personalization_studio" }}
         onEditParam={vi.fn()}
       />,
     )
     expect(
-      screen.getByTestId("node-token-ig-focusTemplateName").getAttribute("data-token-editable"),
+      screen.getByTestId("node-token-ig-focus_id").getAttribute("data-token-editable"),
     ).toBe("false")
   })
 
-  it("GUARD: invoke_review_focus {focusTemplateName} stays read-only (phantom-key)", () => {
+  it("GUARD: invoke_review_focus {review_focus_id} stays read-only (bespoke shape)", () => {
     render(
       <NodeLabelSentence
         nodeId="ir"
         nodeType="invoke_review_focus"
-        config={{ focusTemplateName: "some-tpl" }}
+        config={{ review_focus_id: "decedent_info_review" }}
         onEditParam={vi.fn()}
       />,
     )
     expect(
-      screen.getByTestId("node-token-ir-focusTemplateName").getAttribute("data-token-editable"),
+      screen.getByTestId("node-token-ir-review_focus_id").getAttribute("data-token-editable"),
     ).toBe("false")
   })
 

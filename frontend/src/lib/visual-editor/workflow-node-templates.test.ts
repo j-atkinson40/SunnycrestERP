@@ -24,6 +24,7 @@ import {
   humanizeParam,
   renderModelFor,
   templateFor,
+  nodeConfigProps,
 } from "./workflow-node-templates"
 import { getByType } from "@/lib/visual-editor/registry"
 import type { ConfigPropSchema } from "@/lib/visual-editor/registry/types"
@@ -307,5 +308,49 @@ describe("workflow-node-templates — 32-template guard", () => {
       }
     }
     expect(bad).toEqual([])
+  })
+})
+
+describe("workflow-node-templates — focus-invocation namespace reconciliation (P1)", () => {
+  it("invoke_generation_focus declares the REAL keys (focus_id/op_id/kwargs); no stranded Phase-1 props", () => {
+    const props = nodeConfigProps("invoke_generation_focus")
+    expect(Object.keys(props).sort()).toEqual(["focus_id", "kwargs", "op_id"])
+    // the stranded Phase-1 keys are gone (config wrote none of them)
+    for (const stale of ["focusTemplateName", "inputBinding", "reviewMode", "timeoutSeconds"]) {
+      expect(props[stale]).toBeUndefined()
+    }
+    expect(Object.keys(props).length).toBeGreaterThanOrEqual(3) // ≥3 rule holds
+  })
+
+  it("invoke_review_focus declares the REAL keys the bespoke config writes", () => {
+    const props = nodeConfigProps("invoke_review_focus")
+    expect(Object.keys(props).sort()).toEqual([
+      "decision_actions",
+      "input_data_binding",
+      "review_focus_id",
+      "reviewer_role",
+    ])
+    expect(props.focusTemplateName).toBeUndefined()
+    expect(Object.keys(props).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it("the templates slot the reconciled headline keys (not the stranded focusTemplateName)", () => {
+    expect(templateFor("invoke_generation_focus")).toBe("Invoke generation focus {focus_id}")
+    expect(templateFor("invoke_review_focus")).toBe("Invoke review focus {review_focus_id}")
+  })
+
+  it("the reconciled slots are SEMANTIC params of their type (32-guard holds post-rename)", () => {
+    expect(semanticParams("invoke_generation_focus")).toContain("focus_id")
+    expect(semanticParams("invoke_review_focus")).toContain("review_focus_id")
+  })
+
+  it("the 2 types remain bespoke-excluded (P1 reconciles the namespace; P3 ungates editing)", () => {
+    expect(BESPOKE_NAMESPACE_TYPES.has("invoke_generation_focus")).toBe(true)
+    expect(BESPOKE_NAMESPACE_TYPES.has("invoke_review_focus")).toBe(true)
+  })
+
+  it("the hyphenated generation-focus-invocation is UNTOUCHED (still focusTemplateName — P2's dedupe)", () => {
+    expect(templateFor("generation-focus-invocation")).toBe("Generate via {focusTemplateName}")
+    expect(nodeConfigProps("generation-focus-invocation").focusTemplateName).toBeDefined()
   })
 })
