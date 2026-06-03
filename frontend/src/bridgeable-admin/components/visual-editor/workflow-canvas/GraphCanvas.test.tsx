@@ -1377,3 +1377,122 @@ describe("GraphCanvas — P3b-2 canvas edge delete", () => {
     expect(onSelectBackground).not.toHaveBeenCalled()
   })
 })
+
+// ── P3 (E-3) — bespoke focus configs host in the card expand panel ───
+// The 2 invoke_* types edit their bespoke config IN the expand panel (the
+// dependent op_id + binding-list kwargs need richer editing than dispatcher
+// rows). The dumb un-slotted rows (op_id/kwargs) the panel would otherwise
+// render for these types are replaced by the bespoke config; the slotted
+// {focus_id}/{review_focus_id} token stays read-only (display).
+
+function e3Canvas(): CanvasState {
+  return {
+    version: 1,
+    nodes: [
+      { id: "n_gen", type: "invoke_generation_focus", label: "Gen", position: { x: 40, y: 40 }, config: {} },
+      { id: "n_rev", type: "invoke_review_focus", label: "Rev", position: { x: 40, y: 240 }, config: {} },
+      // P2's migrated obituary node: a TODO focus_id not in the catalog.
+      {
+        id: "n_todo",
+        type: "invoke_generation_focus",
+        label: "Obituary",
+        position: { x: 40, y: 440 },
+        config: { focus_id: "TODO_obituary_generation", op_id: "TODO", kwargs: { extraction_template: "obituary" } },
+      },
+    ],
+    edges: [],
+  }
+}
+
+describe("GraphCanvas — P3 (E-3) bespoke config hosted in the expand panel", () => {
+  it("a bespoke type's toggle reads 'Configure' (not 'N more fields')", () => {
+    render(
+      <GraphCanvas
+        canvas={e3Canvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-n_gen-expand-toggle")).toHaveTextContent("Configure")
+  })
+
+  it("expanding a bespoke node hosts the bespoke config (NOT the dumb op_id/kwargs rows)", () => {
+    render(
+      <GraphCanvas
+        canvas={e3Canvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-node-n_gen-expand-toggle"))
+    // The bespoke config (via BespokeNodePane) is hosted in the panel…
+    expect(screen.getByTestId("bespoke-node-pane")).toBeInTheDocument()
+    expect(screen.getByTestId("wf-invoke-generation-focus-config")).toBeInTheDocument()
+    // …and the DUMB un-slotted rows are NOT rendered for the bespoke type.
+    expect(screen.queryByTestId("canvas-node-n_gen-field-op_id")).toBeNull()
+    expect(screen.queryByTestId("canvas-node-n_gen-field-kwargs")).toBeNull()
+  })
+
+  it("editing the hosted bespoke config persists via onUpdateNodeConfig (full config)", () => {
+    const onUpdateNodeConfig = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={e3Canvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={onUpdateNodeConfig}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-node-n_rev-expand-toggle"))
+    // review_focus_id is a plain Input in InvokeReviewFocusConfig — drivable.
+    fireEvent.change(screen.getByTestId("wf-invoke-review-focus-slug"), {
+      target: { value: "decedent_info_review" },
+    })
+    expect(onUpdateNodeConfig).toHaveBeenCalledWith(
+      "n_rev",
+      expect.objectContaining({ review_focus_id: "decedent_info_review" }),
+    )
+  })
+
+  it("a non-bespoke type still renders the dumb un-slotted rows (regression)", () => {
+    render(
+      <GraphCanvas
+        canvas={p3aCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-node-n_sch-expand-toggle"))
+    expect(screen.getByTestId("canvas-node-n_sch-field-cronExpression")).toBeInTheDocument()
+    expect(screen.queryByTestId("bespoke-node-pane")).toBeNull()
+  })
+
+  it("the TODO-focus_id node (P2's migrated obituary) hosts the config gracefully (no crash)", () => {
+    render(
+      <GraphCanvas
+        canvas={e3Canvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateNodeConfig={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-node-n_todo-expand-toggle"))
+    // The bespoke config renders even though focus_id isn't in the catalog
+    // (the focus Select shows its placeholder; the op dropdown is disabled).
+    expect(screen.getByTestId("bespoke-node-pane")).toBeInTheDocument()
+    expect(screen.getByTestId("wf-invoke-generation-focus-config")).toBeInTheDocument()
+  })
+})

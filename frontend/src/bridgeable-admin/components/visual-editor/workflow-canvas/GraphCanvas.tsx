@@ -104,8 +104,17 @@ import {
   unslottedParams,
   nodeConfigProps,
   humanizeParam,
+  BESPOKE_NAMESPACE_TYPES,
 } from "@/lib/visual-editor/workflow-node-templates"
 import { PropControlDispatcher } from "@/lib/visual-editor/components/PropControls"
+// Focus-invocation reconciliation P3 (E-3, arc close): the 2 bespoke focus
+// types edit via their bespoke config hosted IN the card expand panel (not
+// the rail) — the dependent op_id + binding-list kwargs need richer editing
+// than dispatcher rows. BespokeNodePane is the {node, onChange} router
+// (relocated here from the WorkflowEditorPage rail; the rail-pane exception
+// is gone). Tokens stay read-only (BESPOKE_NAMESPACE_TYPES still gates them);
+// only the editing surface moved rail → card.
+import { BespokeNodePane } from "./BespokeNodePane"
 import { useThemeMode, type ThemeMode } from "@/lib/theme-mode"
 // Phase B sub-arc B-4 — execution-trace reachability overlay.
 import {
@@ -908,6 +917,11 @@ function GraphCanvasNode({
   const [expanded, setExpanded] = useState(false)
   const unslotted = unslottedParams(node.type)
   const configProps = nodeConfigProps(node.type)
+  // P3 (E-3): bespoke focus types host their bespoke config in this panel
+  // instead of the un-slotted rows (op_id is a dependent enum, kwargs a
+  // binding-list — richer than dispatcher rows). The slotted token stays
+  // read-only; the panel is the editing surface.
+  const isBespoke = BESPOKE_NAMESPACE_TYPES.has(node.type)
 
   // P3a — inline label edit. Double-click the title → input → Enter/blur
   // commits via onRenameNode ({label}); Escape cancels. The title slot
@@ -1148,7 +1162,7 @@ function GraphCanvasNode({
                   params + an editor callback (the 6 fully-slotted types show
                   nothing). The toggle + panel stopPropagation so neither
                   selects the node nor starts a drag. */}
-              {unslotted.length > 0 && onUpdateNodeConfig && (
+              {(unslotted.length > 0 || isBespoke) && onUpdateNodeConfig && (
                 <div className="mt-1.5">
                   <button
                     type="button"
@@ -1162,11 +1176,13 @@ function GraphCanvasNode({
                     className="inline-flex items-center gap-1 rounded-sm border border-border-base bg-surface-raised px-1.5 py-0.5 text-micro text-content-muted hover:bg-accent-subtle hover:text-accent"
                   >
                     {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                    {expanded
-                      ? "Fewer fields"
-                      : `${unslotted.length} more field${
-                          unslotted.length === 1 ? "" : "s"
-                        }`}
+                    {isBespoke
+                      ? "Configure"
+                      : expanded
+                        ? "Fewer fields"
+                        : `${unslotted.length} more field${
+                            unslotted.length === 1 ? "" : "s"
+                          }`}
                   </button>
                   {expanded && (
                     <div
@@ -1175,36 +1191,48 @@ function GraphCanvasNode({
                       onClick={stop}
                       onPointerDown={stop}
                     >
-                      {unslotted.map((param) => {
-                        const schema = configProps[param]
-                        if (!schema) return null
-                        const current =
-                          param in node.config
-                            ? node.config[param]
-                            : schema.default
-                        return (
-                          <div
-                            key={param}
-                            className="flex flex-col gap-1"
-                            data-testid={`canvas-node-${node.id}-field-${param}`}
-                          >
-                            <label className="text-micro uppercase tracking-wider text-content-muted">
-                              {humanizeParam(param)}
-                            </label>
-                            <PropControlDispatcher
-                              schema={schema}
-                              value={current}
-                              onChange={(next) =>
-                                onUpdateNodeConfig(node.id, {
-                                  ...node.config,
-                                  [param]: next,
-                                })
-                              }
-                              data-testid={`canvas-node-${node.id}-field-editor-${param}`}
-                            />
-                          </div>
-                        )
-                      })}
+                      {isBespoke ? (
+                        // P3 (E-3): host the bespoke config (dependent op_id +
+                        // binding-list kwargs) here — replaces the dumb
+                        // unslotted rows the panel would otherwise render for
+                        // these types. onChange emits the FULL next config →
+                        // the same whole-config persist the rail pane used.
+                        <BespokeNodePane
+                          node={node}
+                          onChange={(cfg) => onUpdateNodeConfig(node.id, cfg)}
+                        />
+                      ) : (
+                        unslotted.map((param) => {
+                          const schema = configProps[param]
+                          if (!schema) return null
+                          const current =
+                            param in node.config
+                              ? node.config[param]
+                              : schema.default
+                          return (
+                            <div
+                              key={param}
+                              className="flex flex-col gap-1"
+                              data-testid={`canvas-node-${node.id}-field-${param}`}
+                            >
+                              <label className="text-micro uppercase tracking-wider text-content-muted">
+                                {humanizeParam(param)}
+                              </label>
+                              <PropControlDispatcher
+                                schema={schema}
+                                value={current}
+                                onChange={(next) =>
+                                  onUpdateNodeConfig(node.id, {
+                                    ...node.config,
+                                    [param]: next,
+                                  })
+                                }
+                                data-testid={`canvas-node-${node.id}-field-editor-${param}`}
+                              />
+                            </div>
+                          )
+                        })
+                      )}
                     </div>
                   )}
                 </div>

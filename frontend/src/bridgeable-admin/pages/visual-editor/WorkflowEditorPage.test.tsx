@@ -342,14 +342,15 @@ describe("WorkflowEditorPage — B-2 registry-driven palette", () => {
 })
 
 
-// ── B-5 + P3c — selection-driven right-rail dispatch ─────────────────
+// ── B-5 + P3c + E-3 — selection-driven right-rail dispatch ───────────
 //
 // 4-state selection (none/node/edge/background) drives the right rail.
-// P3c retired NodeConfigForm from the card-editor rail: node-selection now
-// shows the palette (edits happen on the card) — or BespokeNodePane for the
-// 2 invoke_* types. none → palette; node(normal) → palette; edge →
-// EdgeConditionInspector; background → TriggerInspector. (NodeConfigForm
-// lives on for the runtime-host WorkflowsTab, tested separately.)
+// P3c retired NodeConfigForm from the card-editor rail; E-3 relocated the 2
+// bespoke invoke_* types' config into the card expand panel. So node-selection
+// now shows the palette for ALL types (edits happen on the card). none →
+// palette; node → palette; edge → EdgeConditionInspector; background →
+// TriggerInspector. (NodeConfigForm lives on for the runtime-host WorkflowsTab,
+// tested separately.)
 
 describe("WorkflowEditorPage — B-5/P3c selection-driven inspector dispatch", () => {
   it("initial selection is 'none' → the rail action palette renders", async () => {
