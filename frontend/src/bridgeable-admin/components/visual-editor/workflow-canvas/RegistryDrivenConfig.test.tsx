@@ -88,38 +88,24 @@ describe("RegistryDrivenConfig — control mapping per ConfigPropType", () => {
     expect(screen.getByTestId("registry-driven-config-empty")).toBeInTheDocument()
   })
 
-  it("filters inspector-hidden params (vestigial + not-yet-built) but renders real config", () => {
-    // generation-focus-invocation: 8 props → hides nodeShape/labelPosition/
-    // accentToken (vestigial) + successIndicatorStyle/failureIndicatorStyle
-    // (not-yet-built); keeps focusTemplateName/inputBinding/reviewMode/timeoutSeconds.
+  it("filters inspector-hidden (vestigial) params but renders real config", () => {
+    // send-communication: hides nodeShape/labelPosition/accentToken
+    // (vestigial); keeps channel/templateKey/recipientBinding/maxRetries/
+    // retryBackoffSeconds. (Re-pointed off the retired generation-focus-invocation
+    // in P2; the componentReference-control coverage moved to a direct
+    // ComponentReferenceControl test in the PropControls suite.)
     render(
       <RegistryDrivenConfig
-        nodeName="generation-focus-invocation"
+        nodeName="send-communication"
         config={{}}
         onChange={noop}
       />,
     )
-    for (const hidden of [
-      "prop-nodeShape",
-      "prop-labelPosition",
-      "prop-successIndicatorStyle",
-      "prop-failureIndicatorStyle",
-    ]) {
+    for (const hidden of ["prop-nodeShape", "prop-labelPosition", "prop-accentToken"]) {
       expect(screen.queryByTestId(hidden)).not.toBeInTheDocument()
     }
-    expect(screen.getByTestId("prop-focusTemplateName")).toBeInTheDocument()
-    expect(screen.getByTestId("prop-reviewMode")).toBeInTheDocument()
-  })
-
-  it("renders a componentReference control (generation-focus-invocation.focusTemplateName)", () => {
-    render(
-      <RegistryDrivenConfig
-        nodeName="generation-focus-invocation"
-        config={{}}
-        onChange={noop}
-      />,
-    )
-    expect(screen.getByTestId("prop-focusTemplateName")).toBeInTheDocument()
+    expect(screen.getByTestId("prop-templateKey")).toBeInTheDocument()
+    expect(screen.getByTestId("prop-channel")).toBeInTheDocument()
   })
 
   it("renders the empty-state for an unknown node type (no registry entry)", () => {

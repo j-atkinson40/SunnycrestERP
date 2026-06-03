@@ -40,11 +40,12 @@ export const VESTIGIAL_VISUAL_PARAMS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * NOT-YET-IMPLEMENTED props — declared (on generation-focus-invocation)
- * but with NO render yet (a future per-node success/failure status
- * indicator). Hidden from the inspector for now — a DISTINCT reason from
- * the retired props above: these are NOT removal targets and may light up
- * when the status-indicator feature lands.
+ * NOT-YET-IMPLEMENTED props — a future per-node success/failure status
+ * indicator (successIndicatorStyle / failureIndicatorStyle): no render yet,
+ * reserved. (These were declared on the now-retired generation-focus-invocation
+ * node — focus-invocation reconciliation P2; no registration declares them
+ * today. The set persists as a forward-looking exclusion for when the
+ * status-indicator feature lands — DISTINCT from the retired-visual set above.)
  */
 export const NOT_YET_IMPLEMENTED_PARAMS: ReadonlySet<string> = new Set([
   "successIndicatorStyle",
@@ -94,7 +95,6 @@ export const NODE_LABEL_TEMPLATES: Record<string, string> = {
   log_vault_item: "Log {itemType}: {titleBinding}",
   generate_document: "Generate {templateKey} for {entityBinding} as {outputFormat}",
   call_service_method: "Call {serviceMethodKey}",
-  "generation-focus-invocation": "Generate via {focusTemplateName}",
   invoke_generation_focus: "Invoke generation focus {focus_id}",
   invoke_review_focus: "Invoke review focus {review_focus_id}",
   cross_tenant_order: "Order to {targetTenantBinding}",
@@ -240,24 +240,23 @@ export const EDITABLE_TOKEN_TYPES: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Node types whose AUTHORING namespace diverges from their TEMPLATE
- * namespace — their tokens are NEVER inline-editable, regardless of
- * propType. Both use bespoke inspector configs
- * (InvokeGenerationFocusConfig / InvokeReviewFocusConfig) that author
- * `config.focus_id` / `config.review_focus_id`, while the registry
- * declares + the template slots `{focusTemplateName}`. So
- * `config.focusTemplateName` is NEVER written by the bespoke path —
- * inline-editing that token would write a PHANTOM key the backend
- * handler ignores (worse than read-only: a silent operational no-op).
- * They stay read-only until the namespace is reconciled.
+ * Node types whose tokens are NEVER inline-editable, regardless of propType.
+ * Both use bespoke inspector configs (InvokeGenerationFocusConfig /
+ * InvokeReviewFocusConfig).
  *
- * Filed-forward as its own arc ("Focus-invocation namespace
- * reconciliation + dedupe", backend-contract grounded) — NOT here.
+ * The namespace divergence that originally motivated this set was RESOLVED in
+ * the focus-invocation reconciliation arc: P1 reshaped the registry + template
+ * to the real keys (focus_id / op_id / kwargs ; review_focus_id /
+ * input_data_binding / …), so registry/template/config/backend now agree —
+ * there is no longer a phantom-key risk. These two types stay read-only for a
+ * DIFFERENT reason: their editor SHAPE is genuinely bespoke (op_id's options
+ * depend on focus_id; kwargs is a dynamic binding-row list) — a plain inline
+ * token / expand-panel control can't express it. P3 (E-3: host the bespoke
+ * config in the card's expand panel) ungates them from this set.
  *
- * NOTE: `generation-focus-invocation` (the hyphenated Phase-1 node) is
- * deliberately NOT in this set — it dispatches to RegistryDrivenConfig,
- * which authors `focusTemplateName` directly, so its token round-trips
- * cleanly and IS inline-editable.
+ * (The redundant hyphenated `generation-focus-invocation` twin was retired in
+ * reconciliation P2; `invoke_generation_focus` is now the sole generation
+ * focus node.)
  */
 export const BESPOKE_NAMESPACE_TYPES: ReadonlySet<string> = new Set([
   "invoke_generation_focus",

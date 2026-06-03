@@ -298,7 +298,7 @@ describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
 // without GraphCanvas changes (§2.B.2 invariant).
 
 describe("WorkflowEditorPage — B-2 registry-driven palette", () => {
-  it("renders all 32 registered workflow-node types in the rail palette", async () => {
+  it("renders all 31 registered workflow-node types in the rail palette (32 minus the retired generation-focus-invocation, P2)", async () => {
     const result = renderWithTemplate()
     await waitFor(() => {
       expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument()
@@ -308,7 +308,7 @@ describe("WorkflowEditorPage — B-2 registry-driven palette", () => {
       .filter((b) =>
         b.getAttribute("data-testid")?.startsWith("node-palette-item-"),
       )
-    expect(items.length).toBe(32)
+    expect(items.length).toBe(31)
   })
 
   it("exposes node types absent from the pre-B-2 16-tuple (create_record, wait, output)", async () => {

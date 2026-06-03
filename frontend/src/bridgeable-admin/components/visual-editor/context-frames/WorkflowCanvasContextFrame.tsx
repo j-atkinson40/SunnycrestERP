@@ -4,7 +4,7 @@
  * selected one in the middle.
  *
  * Upstream and downstream node placeholders are inferred from the
- * node type — `generation-focus-invocation` typically follows a
+ * node type — `invoke_generation_focus` typically follows a
  * trigger and feeds a communication; `send-communication` is the
  * common downstream of many node types. The canvas chrome (subtle
  * grid, soft background) makes the context legible.
@@ -27,7 +27,7 @@ type Adjacency = { upstream: string; downstream: string }
 
 function adjacencyFor(nodeType: string): Adjacency {
   switch (nodeType) {
-    case "generation-focus-invocation":
+    case "invoke_generation_focus":
       return { upstream: "trigger", downstream: "send-communication" }
     case "send-communication":
       return { upstream: "decision", downstream: "log" }

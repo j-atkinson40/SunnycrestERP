@@ -121,7 +121,7 @@ describe("DocumentContextFrame", () => {
 describe("WorkflowCanvasContextFrame", () => {
   it("renders 3-node canvas with adjacency labels", () => {
     render(
-      <WorkflowCanvasContextFrame nodeType="generation-focus-invocation">
+      <WorkflowCanvasContextFrame nodeType="invoke_generation_focus">
         <div data-testid="my-node">node</div>
       </WorkflowCanvasContextFrame>,
     )

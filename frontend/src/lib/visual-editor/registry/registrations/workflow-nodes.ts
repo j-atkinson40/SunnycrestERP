@@ -16,95 +16,12 @@ import { registerComponent } from "../register"
 import { makePlaceholder } from "./_placeholders"
 
 
-registerComponent({
-  type: "workflow-node",
-  name: "generation-focus-invocation",
-  displayName: "Generation Focus Invocation",
-  description:
-    "Workflow step that invokes a Generation Focus in headless mode. Input: extraction context + target entity. Output: drafted vault item routed to the Focus's review queue.",
-  category: "workflow-nodes",
-  verticals: ["all"],
-  userParadigms: ["operator-power-user"],
-  consumedTokens: [
-    "surface-raised",
-    "surface-elevated",
-    "border-base",
-    "border-accent",
-    "accent",
-    "accent-subtle",
-    "radius-base",
-    "shadow-level-2",
-    "text-body",
-    "text-caption",
-  ],
-  configurableProps: {
-    focusTemplateName: {
-      type: "componentReference",
-      default: "arrangement-scribe",
-      componentTypes: ["focus-template"],
-      displayLabel: "Generation Focus template",
-      description:
-        "Which Generation Focus template to invoke. Editor picker filtered to focus-template entries with extensions.focusType === 'generation'.",
-      required: true,
-    },
-    inputBinding: {
-      type: "object",
-      default: {},
-      displayLabel: "Input binding",
-      description:
-        "Map workflow variables ({input.*}, {output.*}) into the Focus's extraction context.",
-    },
-    reviewMode: {
-      type: "enum",
-      default: "review-by-default",
-      bounds: ["review-by-default", "auto-commit-on-high-confidence"],
-      displayLabel: "Review mode",
-      description:
-        "Review-by-default queues the output for human review. Auto-commit (deferred to 2028+ per arc canon) requires per-tenant configurability + audit transparency.",
-    },
-    nodeShape: {
-      type: "enum",
-      default: "rounded-rect",
-      bounds: ["rounded-rect", "diamond", "hexagon"],
-      displayLabel: "Node shape on canvas",
-      description: "Visual shape used when this node renders in workflow builder.",
-    },
-    labelPosition: {
-      type: "enum",
-      default: "inside",
-      bounds: ["inside", "above", "below"],
-      displayLabel: "Label position",
-    },
-    successIndicatorStyle: {
-      type: "enum",
-      default: "checkmark-badge",
-      bounds: ["checkmark-badge", "color-fill", "border-glow"],
-      displayLabel: "Success indicator style",
-    },
-    failureIndicatorStyle: {
-      type: "enum",
-      default: "warning-badge",
-      bounds: ["warning-badge", "color-fill", "border-glow"],
-      displayLabel: "Failure indicator style",
-    },
-    timeoutSeconds: {
-      type: "number",
-      default: 600,
-      bounds: [30, 7200],
-      displayLabel: "Timeout (seconds)",
-      description:
-        "Max time the headless generation can run before the workflow marks the step failed.",
-    },
-  },
-  schemaVersion: 1,
-  componentVersion: 2,
-  extensions: {
-    workflowStepType: "invoke_generation_focus",
-    serviceMethodKey: null,
-  },
-})(makePlaceholder("Generation Focus Invocation Node"))
-
-
+// NOTE (focus-invocation reconciliation P2, 2026-06-02): the Phase-1
+// `generation-focus-invocation` registration was retired here — it was the
+// redundant twin of `invoke_generation_focus` (both declared
+// `extensions.workflowStepType: "invoke_generation_focus"`, one runtime
+// operation). The keeper is `invoke_generation_focus` (correct runtime
+// namespace: focus_id / op_id / kwargs, reconciled in P1).
 registerComponent({
   type: "workflow-node",
   name: "send-communication",
@@ -1042,7 +959,7 @@ registerComponent({
   name: "invoke_generation_focus",
   displayName: "Invoke Generation Focus",
   description:
-    "Engine action_type that invokes a Generation Focus headless. Sibling of the Phase-1 'generation-focus-invocation' registry node; this entry registers the engine action_type name itself per VALID_NODE_TYPES.",
+    "Engine action_type that invokes a Generation Focus headless. The sole generation-focus canvas node (the redundant Phase-1 'generation-focus-invocation' twin was retired in focus-invocation reconciliation P2). Config: focus_id / op_id / kwargs (the runtime + bespoke-config shape).",
   category: "workflow-nodes",
   verticals: ["all"],
   userParadigms: ["operator-power-user"],

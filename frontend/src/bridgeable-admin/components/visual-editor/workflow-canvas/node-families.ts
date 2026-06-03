@@ -85,9 +85,8 @@ export const TYPE_ICON: Record<string, LucideIcon> = {
   // AI-generation
   ai_prompt: Sparkles,
   generate_document: FileText,
-  // Cluster C — near-duplicate (same workflowStepType "invoke_generation_focus");
-  // both get Wand2 this arc. Dedupe filed forward (see CLAUDE.md / STATE.md).
-  "generation-focus-invocation": Wand2,
+  // Generation/review focus (the redundant generation-focus-invocation twin
+  // was retired in focus-invocation reconciliation P2 — keeper below).
   invoke_generation_focus: Wand2,
   invoke_review_focus: ClipboardCheck,
   // Communication
@@ -144,7 +143,6 @@ export const NODE_FAMILY: Record<string, NodeFamily> = {
   // AI-generation
   ai_prompt: "ai-generation",
   generate_document: "ai-generation",
-  "generation-focus-invocation": "ai-generation",
   invoke_generation_focus: "ai-generation",
   invoke_review_focus: "ai-generation",
   // Communication

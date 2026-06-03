@@ -205,14 +205,12 @@ describe("workflow-node-templates — isTokenInlineEditable (P2b namespace gate)
   it("non-bespoke type + editable propType → inline-editable (simple AND complex)", () => {
     expect(isTokenInlineEditable("action", mk("string"))).toBe(true)
     expect(isTokenInlineEditable("decision", mk("array"))).toBe(true)
-    // generation-focus-invocation (RegistryDrivenConfig) IS in scope —
-    // its focusTemplateName round-trips cleanly.
-    expect(
-      isTokenInlineEditable("generation-focus-invocation", mk("componentReference")),
-    ).toBe(true)
+    // componentReference is editable on a non-bespoke type (the gate is
+    // propType + non-bespoke; the registry subject is irrelevant here).
+    expect(isTokenInlineEditable("action", mk("componentReference"))).toBe(true)
   })
 
-  it("bespoke-namespace types → NOT editable for ANY propType (phantom-key guard)", () => {
+  it("bespoke-namespace types → NOT editable for ANY propType (bespoke-shape guard)", () => {
     for (const nodeType of BESPOKE_NAMESPACE_TYPES) {
       expect(isTokenInlineEditable(nodeType, mk("componentReference"))).toBe(false)
       expect(isTokenInlineEditable(nodeType, mk("string"))).toBe(false)
@@ -226,16 +224,16 @@ describe("workflow-node-templates — isTokenInlineEditable (P2b namespace gate)
 })
 
 describe("workflow-node-templates — semanticParams", () => {
-  it("excludes ONLY the retired-visual props; not-yet-built indicators STAY semantic", () => {
-    // generation-focus-invocation carries all 5 inspector-hidden params +
-    // real config. The sentence engine excludes only the 3 RETIRED props;
-    // the 2 not-yet-built indicators remain semantic (inspector-hidden ≠
-    // engine-retired — locks the distinction so the drift can't recur).
-    const sem = semanticParams("generation-focus-invocation")
-    expect(sem).toContain("focusTemplateName")
+  it("excludes the retired-visual props (VESTIGIAL) from the sentence engine", () => {
+    // send-communication carries the 3 vestigial visual props
+    // (nodeShape/labelPosition/accentToken) + real config; the sentence
+    // engine excludes ONLY the vestigial set. (The not-yet-built indicator
+    // enums — successIndicatorStyle/failureIndicatorStyle — were only ever
+    // declared on the now-retired generation-focus-invocation node, so no
+    // type carries them today; the set membership is asserted below.)
+    const sem = semanticParams("send-communication")
+    expect(sem).toContain("templateKey")
     for (const v of VESTIGIAL_VISUAL_PARAMS) expect(sem).not.toContain(v)
-    // The indicator enums are NOT engine-excluded — present in semanticParams.
-    for (const v of NOT_YET_IMPLEMENTED_PARAMS) expect(sem).toContain(v)
   })
 
   it("VESTIGIAL_VISUAL_PARAMS = the 3 A3-retired props; NOT_YET_IMPLEMENTED = the 2 indicators", () => {
@@ -269,11 +267,14 @@ describe("workflow-node-templates — unslottedParams (P3a expand-panel source)"
     expect(unslottedParams("schedule").sort()).toEqual(["cronExpression", "delaySeconds"])
   })
 
-  it("excludes INSPECTOR_HIDDEN_PARAMS (retired-visual + not-yet-built indicators)", () => {
-    const un = unslottedParams("generation-focus-invocation")
-    // The un-slotted semantic params ARE surfaced…
-    expect(un.sort()).toEqual(["inputBinding", "reviewMode", "timeoutSeconds"])
-    // …and NONE of the inspector-hidden params leak into the panel.
+  it("excludes INSPECTOR_HIDDEN_PARAMS (retired-visual props) from the panel", () => {
+    // send-communication carries the 3 vestigial visual props
+    // (nodeShape/labelPosition/accentToken) + un-slotted real config.
+    const un = unslottedParams("send-communication")
+    // The un-slotted semantic params ARE surfaced (channel/templateKey/
+    // recipientBinding are slotted; these two are not)…
+    expect(un.sort()).toEqual(["maxRetries", "retryBackoffSeconds"])
+    // …and NONE of the inspector-hidden (vestigial) params leak into the panel.
     for (const h of INSPECTOR_HIDDEN_PARAMS) expect(un).not.toContain(h)
   })
 
@@ -344,13 +345,13 @@ describe("workflow-node-templates — focus-invocation namespace reconciliation 
     expect(semanticParams("invoke_review_focus")).toContain("review_focus_id")
   })
 
-  it("the 2 types remain bespoke-excluded (P1 reconciles the namespace; P3 ungates editing)", () => {
+  it("the 2 types remain bespoke-excluded (namespace reconciled in P1; P3 ungates editing)", () => {
     expect(BESPOKE_NAMESPACE_TYPES.has("invoke_generation_focus")).toBe(true)
     expect(BESPOKE_NAMESPACE_TYPES.has("invoke_review_focus")).toBe(true)
   })
 
-  it("the hyphenated generation-focus-invocation is UNTOUCHED (still focusTemplateName — P2's dedupe)", () => {
-    expect(templateFor("generation-focus-invocation")).toBe("Generate via {focusTemplateName}")
-    expect(nodeConfigProps("generation-focus-invocation").focusTemplateName).toBeDefined()
+  it("the redundant generation-focus-invocation twin is RETIRED (P2 dedupe — no template, no registration)", () => {
+    expect(templateFor("generation-focus-invocation")).toBeUndefined()
+    expect(Object.keys(nodeConfigProps("generation-focus-invocation"))).toEqual([])
   })
 })

@@ -88,8 +88,9 @@ VALID_NODE_TYPES: tuple[str, ...] = (
     "invoke_review_focus",
     # Phase 1 registry workflow-node names (canonical admin
     # vocabulary; these subsume the engine's step types when
-    # rendering in the admin canvas)
-    "generation-focus-invocation",
+    # rendering in the admin canvas). NOTE: the redundant
+    # "generation-focus-invocation" twin was retired in focus-invocation
+    # reconciliation P2 (keeper = "invoke_generation_focus").
     "send-communication",
     # Phase 4 cross-tenant workflow primitives
     "cross_tenant_order",

@@ -1000,8 +1000,10 @@ export const PREVIEW_RENDERERS: Record<string, () => ReactNode> = {
   "document-block:header-block": () => <HeaderBlockStandIn />,
   "document-block:signature-block": () => <SignatureBlockStandIn />,
 
-  // Workflow nodes
-  "workflow-node:generation-focus-invocation": () => <GenerationNodeStandIn />,
+  // Workflow nodes (re-keyed to the keeper invoke_generation_focus in
+  // focus-invocation reconciliation P2; the retired generation-focus-invocation
+  // twin's stand-in carries over).
+  "workflow-node:invoke_generation_focus": () => <GenerationNodeStandIn />,
   "workflow-node:send-communication": () => <CommunicationNodeStandIn />,
 }
 

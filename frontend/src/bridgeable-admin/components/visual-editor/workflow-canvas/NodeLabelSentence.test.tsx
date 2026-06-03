@@ -160,25 +160,12 @@ describe("NodeLabelSentence", () => {
     expect(onEditParam).toHaveBeenCalledWith("branches", ["a", ""])
   })
 
-  it("a componentReference token (generation-focus-invocation.focusTemplateName) is editable + persists", () => {
-    const onEditParam = vi.fn()
-    render(
-      <NodeLabelSentence
-        nodeId="g"
-        nodeType="generation-focus-invocation"
-        config={{}}
-        onEditParam={onEditParam}
-      />,
-    )
-    const token = screen.getByTestId("node-token-g-focusTemplateName")
-    expect(token.getAttribute("data-token-editable")).toBe("true")
-    fireEvent.click(token)
-    // ComponentReferenceControl is a <select> (the empty option always
-    // exists); changing it fires the whole-value onEditParam.
-    const select = screen.getByTestId("node-token-editor-g-focusTemplateName")
-    fireEvent.change(select, { target: { value: "" } })
-    expect(onEditParam).toHaveBeenCalledWith("focusTemplateName", "")
-  })
+  // (The componentReference-token render exemplar was retired with
+  // generation-focus-invocation in reconciliation P2 — no workflow-node
+  // declares a componentReference prop now. The ComponentReferenceControl
+  // render coverage moved to a direct test in PropControls.componentRef.test.tsx;
+  // the token-editability gate for non-bespoke types is covered by the
+  // simple-type token tests above.)
 
   // ── THE GUARD — bespoke-namespace types stay read-only ──
   // invoke_generation_focus / invoke_review_focus are bespoke-edited
@@ -217,17 +204,8 @@ describe("NodeLabelSentence", () => {
     ).toBe("false")
   })
 
-  it("DISTINCTION: generation-focus-invocation {focusTemplateName} IS editable (in-scope)", () => {
-    render(
-      <NodeLabelSentence
-        nodeId="gfi"
-        nodeType="generation-focus-invocation"
-        config={{ focusTemplateName: "arrangement-scribe" }}
-        onEditParam={vi.fn()}
-      />,
-    )
-    expect(
-      screen.getByTestId("node-token-gfi-focusTemplateName").getAttribute("data-token-editable"),
-    ).toBe("true")
-  })
+  // (The DISTINCTION test — generation-focus-invocation's focusTemplateName IS
+  // editable, contrasted against the bespoke invoke_* guards above — was
+  // retired with generation-focus-invocation in reconciliation P2. The
+  // bespoke guards above stand on their own.)
 })

@@ -604,9 +604,10 @@ class TestRegistryEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert "components" in body
-        # Phase 1 ships 17 components; Phase 3 backfill leaves the
-        # count at 17 (no new registrations, just expanded props).
-        assert len(body["components"]) == 17
+        # Phase 1 shipped 17 snapshot components; Phase 3 backfill kept it at
+        # 17. Focus-invocation reconciliation P2 retired the redundant
+        # generation-focus-invocation workflow-node snapshot entry → 16.
+        assert len(body["components"]) == 16
 
 
 class TestApiCrud:

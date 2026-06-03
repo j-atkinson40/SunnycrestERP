@@ -290,26 +290,10 @@ _DOC_SIGNATURE: ComponentProps = {
 
 # ─── Workflow nodes ──────────────────────────────────────────────
 
-
-_WORKFLOW_GENERATION_INVOCATION: ComponentProps = {
-    "focusTemplateName": {"type": "componentReference"},
-    "inputBinding": {"type": "object"},
-    "reviewMode": {
-        "type": "enum",
-        "bounds": ["review-by-default", "auto-commit-on-high-confidence"],
-    },
-    "nodeShape": {"type": "enum", "bounds": ["rounded-rect", "diamond", "hexagon"]},
-    "labelPosition": {"type": "enum", "bounds": ["inside", "above", "below"]},
-    "successIndicatorStyle": {
-        "type": "enum",
-        "bounds": ["checkmark-badge", "color-fill", "border-glow"],
-    },
-    "failureIndicatorStyle": {
-        "type": "enum",
-        "bounds": ["warning-badge", "color-fill", "border-glow"],
-    },
-    "timeoutSeconds": {"type": "number", "bounds": [30, 7200]},
-}
+# NOTE (focus-invocation reconciliation P2, 2026-06-02): the
+# `_WORKFLOW_GENERATION_INVOCATION` snapshot was retired with its registration
+# — the redundant `generation-focus-invocation` twin of
+# `invoke_generation_focus`. (The invoke_* types are not snapshot-mirrored.)
 
 _WORKFLOW_SEND_COMMUNICATION: ComponentProps = {
     "channel": {"type": "enum", "bounds": ["email", "sms", "phone", "messaging"]},
@@ -342,7 +326,6 @@ REGISTRY_SNAPSHOT: dict[tuple[str, str], ComponentProps] = {
     ("focus-template", "arrangement-scribe"): _TEMPLATE_ARRANGEMENT_SCRIBE,
     ("document-block", "header-block"): _DOC_HEADER,
     ("document-block", "signature-block"): _DOC_SIGNATURE,
-    ("workflow-node", "generation-focus-invocation"): _WORKFLOW_GENERATION_INVOCATION,
     ("workflow-node", "send-communication"): _WORKFLOW_SEND_COMMUNICATION,
 }
 

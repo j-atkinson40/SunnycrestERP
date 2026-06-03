@@ -216,12 +216,21 @@ def funeral_cascade_canvas() -> dict[str, Any]:
         _node("n_join", "parallel_join", label="Paths converge", x=0, y=900),
         _node(
             "n_generate_obituary_draft",
-            "generation-focus-invocation",
+            # focus-invocation reconciliation P2: migrated from the retired
+            # generation-focus-invocation twin to the keeper invoke_generation_focus
+            # (the runtime-shaped focus_id / op_id / kwargs config). focus_id is a
+            # TODO placeholder — no obituary HEADLESS_DISPATCH op is registered yet
+            # (only burial_vault_personalization_studio + its 3 vault ops); the
+            # obituary intent rides in kwargs.extraction_template until the
+            # filed-forward "register a HEADLESS_DISPATCH obituary op" lands, at
+            # which point this node lights up. The canvas does not execute today
+            # (disconnected substrate), so the placeholder is honest, not broken.
+            "invoke_generation_focus",
             label="Generate obituary draft",
             config={
-                "focusTemplateName": "arrangement-scribe",
-                "extraction_template": "obituary",
-                "reviewMode": "review-by-default",
+                "focus_id": "TODO_obituary_generation",
+                "op_id": "TODO",
+                "kwargs": {"extraction_template": "obituary"},
             },
             x=0,
             y=1020,

@@ -26,8 +26,8 @@ describe("workflow-nodes registry — B-2 backfill validation", () => {
     registeredNames = new Set(entries.map((e) => e.metadata.name))
   })
 
-  it("registers exactly 32 workflow-node types (count-corrected from build-prompt's 28)", () => {
-    expect(entries.length).toBe(32)
+  it("registers exactly 31 workflow-node types (32 minus the retired generation-focus-invocation twin, P2)", () => {
+    expect(entries.length).toBe(31)
   })
 
   it("registry count matches the canonical VALID_NODE_TYPES vocabulary", () => {
@@ -105,13 +105,14 @@ describe("workflow-nodes registry — B-2 backfill validation", () => {
     expect(offenders).toEqual([])
   })
 
-  it("preserves the 2 Phase-1 entries at componentVersion 2 (not mutated by B-2)", () => {
-    const gen = entries.find(
-      (e) => e.metadata.name === "generation-focus-invocation",
-    )
+  it("preserves the surviving Phase-1 entry (send-communication) at componentVersion 2", () => {
+    // The other Phase-1 entry, generation-focus-invocation, was retired in
+    // focus-invocation reconciliation P2 (redundant twin of invoke_generation_focus).
     const comm = entries.find((e) => e.metadata.name === "send-communication")
-    expect(gen?.metadata.componentVersion).toBe(2)
     expect(comm?.metadata.componentVersion).toBe(2)
+    expect(
+      entries.find((e) => e.metadata.name === "generation-focus-invocation"),
+    ).toBeUndefined()
   })
 
   it("lifecycle markers carry genuine visual-config props (start=3, end>=3)", () => {
