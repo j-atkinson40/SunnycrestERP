@@ -288,15 +288,72 @@ describe("validateCanvasState — containers overlay", () => {
     expect(() => validateCanvasState(base({}))).toThrow(/must be an array/)
   })
 
-  it("accepts kind:'container' members without ref-checking (nesting-ready, P3 validates)", () => {
-    // P1 produces no container-members, but the discriminated shape is
-    // type-allowed; ref-integrity + nesting-cycle detection is a Phase 3 add.
+  // ── Container-arc Phase 3a — nested-container validation ──
+  // (P2 accept-but-skip'd kind:"container" members; P3a validates them.)
+
+  it("accepts a valid nested container (member references a real container)", () => {
     expect(() =>
       validateCanvasState(
         base([
           { id: "c_outer", members: [{ kind: "container", id: "c_inner" }], collapsed: false },
+          { id: "c_inner", members: [{ kind: "node", id: "n_a" }], collapsed: false },
         ]),
       ),
     ).not.toThrow()
+  })
+
+  it("resolves a FORWARD container-ref (member → a container declared LATER)", () => {
+    // Two-pass: c_outer's member c_inner is declared after c_outer.
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_outer", members: [{ kind: "container", id: "c_inner" }], collapsed: false },
+          { id: "c_inner", members: [], collapsed: false },
+        ]),
+      ),
+    ).not.toThrow()
+  })
+
+  it("rejects a container-member referencing a non-existent container", () => {
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_outer", members: [{ kind: "container", id: "c_ghost" }], collapsed: false },
+        ]),
+      ),
+    ).toThrow(/doesn't reference a declared container id/)
+  })
+
+  it("rejects a container that is a member of itself", () => {
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_self", members: [{ kind: "container", id: "c_self" }], collapsed: false },
+        ]),
+      ),
+    ).toThrow(/cannot be a member of itself/)
+  })
+
+  it("rejects a container that is a member of two parents (≤1-parent)", () => {
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_a", members: [{ kind: "container", id: "c_shared" }], collapsed: false },
+          { id: "c_b", members: [{ kind: "container", id: "c_shared" }], collapsed: false },
+          { id: "c_shared", members: [], collapsed: false },
+        ]),
+      ),
+    ).toThrow(/more than one container/)
+  })
+
+  it("rejects a nesting cycle (A ⊃ B ⊃ A)", () => {
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_a", members: [{ kind: "container", id: "c_b" }], collapsed: false },
+          { id: "c_b", members: [{ kind: "container", id: "c_a" }], collapsed: false },
+        ]),
+      ),
+    ).toThrow(/nesting contains a cycle/)
   })
 })

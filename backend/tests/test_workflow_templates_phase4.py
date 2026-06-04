@@ -424,10 +424,11 @@ class TestCanvasValidator:
         with pytest.raises(CanvasValidationError):
             validate_canvas_state(canvas)
 
-    def test_container_member_kind_accepted_without_ref_check(self):
-        # P1 produces no container-members, but the discriminated shape is
-        # type-allowed; ref-integrity + nesting-cycle detection is a Phase 3
-        # add (don't over-build a case P1 can't produce).
+    # ── Container-arc Phase 3a — nested-container validation ──
+    # (P2 accept-but-skip'd kind="container" members; P3a validates them.
+    # Lockstep with frontend canvas-validator.test.ts nesting cases.)
+
+    def test_valid_nested_container(self):
         from app.services.workflow_templates import validate_canvas_state
 
         canvas = _minimal_canvas()
@@ -436,9 +437,92 @@ class TestCanvasValidator:
                 "id": "c_outer",
                 "members": [{"kind": "container", "id": "c_inner"}],
                 "collapsed": False,
-            }
+            },
+            {
+                "id": "c_inner",
+                "members": [{"kind": "node", "id": "n_start"}],
+                "collapsed": False,
+            },
         ]
         validate_canvas_state(canvas)  # no raise
+
+    def test_forward_container_ref_resolves_two_pass(self):
+        # c_outer's member c_inner is declared AFTER c_outer.
+        from app.services.workflow_templates import validate_canvas_state
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {
+                "id": "c_outer",
+                "members": [{"kind": "container", "id": "c_inner"}],
+                "collapsed": False,
+            },
+            {"id": "c_inner", "members": [], "collapsed": False},
+        ]
+        validate_canvas_state(canvas)  # no raise
+
+    def test_nonexistent_container_ref_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {
+                "id": "c_outer",
+                "members": [{"kind": "container", "id": "c_ghost"}],
+                "collapsed": False,
+            }
+        ]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_self_membership_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {
+                "id": "c_self",
+                "members": [{"kind": "container", "id": "c_self"}],
+                "collapsed": False,
+            }
+        ]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_container_in_two_parents_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {"id": "c_a", "members": [{"kind": "container", "id": "c_shared"}], "collapsed": False},
+            {"id": "c_b", "members": [{"kind": "container", "id": "c_shared"}], "collapsed": False},
+            {"id": "c_shared", "members": [], "collapsed": False},
+        ]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_nesting_cycle_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {"id": "c_a", "members": [{"kind": "container", "id": "c_b"}], "collapsed": False},
+            {"id": "c_b", "members": [{"kind": "container", "id": "c_a"}], "collapsed": False},
+        ]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
 
 
 # ─── Service-layer tests ────────────────────────────────────────

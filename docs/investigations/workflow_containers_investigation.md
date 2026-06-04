@@ -341,3 +341,104 @@ When **expanded**, bounds = `bbox(memberNodes, NODE_WIDTH, heightOf)` + 18px pad
 | `isDirty` autosave (collapse persists) | `WorkflowEditorPage.tsx:309`, `:393-409` |
 
 **No code. No canon. No build. No dispatch.** Phase 2 map only — uncommitted until P2a.
+
+---
+
+# Phase 3 — nested containers (the last feature phase) — INVESTIGATION
+
+**Date:** 2026-06-04 · **HEAD:** `49823ba` (P2 complete — collapse live). Appended to the committed doc; **uncommitted until P3a.** No code, no canon, no build.
+
+**The schema is already nesting-ready** (P1, DECISIONS 2026-06-04): `ContainerMember = { kind:"node"|"container"; id }`. P3 adds the **behavior** — `kind:"container"` members, the ancestor-chain logic, box-inside-box rendering, the deferred validation — with **NO schema change, NO migration.** Motivating case: "decision-inside-loop-inside-parallel" — a container whose member is another container.
+
+## P3.1 — Creating a nested container (the authoring gesture) — the gating UX question
+
+**You cannot select a container today — so nesting authoring needs a NEW gesture.** The selection model (`WorkflowEditorPage.tsx:120-130`) is `none | node | nodes | edge | background`; the multi-selection `{kind:"nodes"; ids:string[]}` carries **node ids only** — `handleSelectNode` (`:615`) accumulates node ids from node-card clicks (`GraphCanvas.tsx` node `onClick`). Containers handle their **own inline clicks** (expand/collapse/ungroup/label — P2 inline-on-box, deliberately NO `{kind:"container"}` union kind). `handleCreateContainer` (`:557`) builds `members: memberNodeIds.map(nid => ({kind:"node", id:nid}))` — purely node-members from `selection.ids`.
+
+The motivating case requires selecting a CONTAINER (wrap the existing "decision" container in a "loop" container). Options (Type-B):
+- **(a) Extend multi-select to a mixed node+container selection.** Shift/⌘-click a container (frame or collapsed card) adds its id to the selection; "group" emits mixed `{kind:"node"}` + `{kind:"container"}` members. **Touches the P0 selection union** (the protected invariant) — the `{kind:"nodes"}` shape must carry typed ids (or a parallel container-id set), container clicks must participate in multi-select (today they're inline-only), and `handleCreateContainer` must emit both member kinds. The most direct path; the biggest risk surface.
+- **(b) A bespoke "wrap" / "move into" action.** A container-chrome action ("wrap in new container") or a drag-into gesture. Avoids the union change but adds bespoke UI/gesture infra.
+- **(c) Assign-existing-into-existing.** A "move to container" menu on a selection. Heavier.
+
+**Lean: (a) is the necessary core** (nesting fundamentally needs container selection), but because it touches the P0 union it's the riskiest piece → **isolate it as the LAST P3 sub-phase** (render first against hand-authored nested state, add authoring last). Surfaced as the gating Type-B.
+
+**≤1-parent invariant.** P1's "a node is a member of ≤1 container" (`canvas-validator.ts:251-257`, `nodeMemberOwner`) extends to **"a node OR container is a member of ≤1 parent container"** — same map, keyed on all member ids (node + container). Confirmed extends.
+
+## P3.2 — Nested membership + classification (the core — outermost-collapsed-ancestor)
+
+**This is the heart of nesting.** `buildCollapsedMembership` (`canvas-layout.ts:523-535`) is FLAT — it maps a collapsed container's node-members → that container's id, one level. With nesting, **a node's render home is its OUTERMOST collapsed ancestor**: if node N ∈ B ∈ A and A is collapsed, N hides into **A's** box (A collapsed hides everything inside, incl. B); if only B is collapsed (A expanded), N hides into **B's** box (B's collapsed card renders inside A's expanded frame). The render home depends on the **collapse-states of N's whole ancestor chain.**
+
+Extension (two new pure helpers + a rework of `buildCollapsedMembership`):
+- **`buildParentMap(containers) → Map<childId, parentContainerId>`** — childId is a node OR container id; built from every container's members (both kinds). One pass.
+- **`outermostCollapsedAncestor(childId, parentMap, containersById) → containerId | undefined`** — walk childId → parent → grandparent…, tracking the **highest (outermost) ancestor that is `collapsed`**; return it (or undefined if no ancestor is collapsed). O(depth).
+- **`buildCollapsedMembership` becomes nesting-aware** — for each node, map it → `outermostCollapsedAncestor(node)`. **Backward-compatible for the flat case** (no nesting → a node's only ancestor is its direct container → outermost-collapsed-ancestor == today's flat result), so **P2b's behavior is preserved unchanged** when no container is nested. This is load-bearing: the P3a helper rework must keep the flat case byte-identical (a P2b regression guard).
+
+**`classifyEdge` (`:570-588`) needs NO logic change** — it reads "which collapsed container is each endpoint hidden in" from the membership map. Once the map encodes outermost-collapsed-ancestor, `classifyEdge` consumes it as-is: box-to-box = endpoints with **different** outermost-collapsed-ancestors; interior = same; crossing = one endpoint has one. The nesting intelligence lives entirely in `buildCollapsedMembership` + the ancestor walk; the classifier is unchanged. **Genuinely new** vs flat (there was no ancestor chain), but contained to the membership builder. **Size: MEDIUM** (the parent-map + ancestor walk + the backward-compat rework + their unit tests).
+
+## P3.3 — Nested bounds + box-inside-box rendering (extending P2b)
+
+**Containers are a FLAT array (`canvas.containers`), and an inner container is BOTH a top-level array entry AND a `{kind:"container"}` member of its parent.** So box-inside-box doesn't need a recursive component — each container renders from the same `.map` (`GraphCanvas.tsx:860-881`) at its own computed bounds; if bounds are correct, the inner box sits inside the outer frame. Three extensions:
+
+1. **Recursive bounds for EXPANDED containers.** `collapsedBoxBounds` (`:605-621`) + the expanded-bounds inline computation (`GraphCanvas.tsx:866-876`, `bbox(memberNodes)`) consider **only node-members** today. An expanded container with container-members must enclose the inner boxes too. New: `containerBounds(container, nodes, containersById, heightOf)` — expanded: bbox over (node-members' rects ∪ container-members' **recursive** bounds); collapsed: the fixed card (unchanged — innards hidden, no recursion). The recursion terminates (the cycle validator guarantees a DAG).
+2. **Container-render filter (mirrors the node-map hidden-member filter).** The container `.map` must SKIP a container hidden inside a collapsed ancestor: render container C iff C has **no collapsed ancestor strictly above it** (reuse the ancestor walk). C's own `collapsed` then picks expanded-frame vs collapsed-card. So: A collapsed → B (inside A) doesn't render at all; A expanded + B collapsed → B renders as a collapsed card inside A's frame.
+3. **Z-order by nesting depth.** Inner boxes must paint above outer frames — `zIndex` increases with depth (the expanded frame is `zIndex:0` today, collapsed card `zIndex:1`; nested needs depth-scaled z so an inner expanded frame sits above its outer frame, and inner collapsed cards above that). Compute depth from the parent-map.
+
+The node-map hidden-member filter (`GraphCanvas.tsx:884-889`, `!collapsedMembership.has(n.id)`) **already extends for free** — once `buildCollapsedMembership` is nesting-aware, a node hidden inside a collapsed ANY-level ancestor is in the map. **Size: MEDIUM-LARGE** — the recursive bounds + the container-render filter + depth-z + box-inside-box visual polish (nested padding so an inner frame doesn't kiss the outer frame's edge).
+
+## P3.4 — The deferred validation (container-member ref-integrity + cycle-detection)
+
+P1/P2 validate node-members; `kind:"container"` members are **accept-but-skip** (`canvas-validator.ts:242-244` / `canvas_validator.py` mirror). P3 closes this — three additions to `validateContainers` (both files, **lockstep**):
+1. **Container-member ref-integrity:** a `kind:"container"` member id must reference a declared container — mirror the node-ref check (`:246-250`) against `seenContainerIds` (`:196`, already built). **Ordering subtlety:** `seenContainerIds` is populated as the loop walks containers, so a forward-reference (member points at a container declared LATER) would miss — P3 must build the full container-id set in a FIRST pass, then validate member refs in a second (or collect-then-check). Flag.
+2. **≤1-parent (extend `nodeMemberOwner`):** rename to `memberOwner`, track ALL member ids (node + container) → a member (node or container) in two parents → reject.
+3. **Nesting cycle-detection (NEW logic).** A contains B contains A → reject. Build container→container-members adjacency, run three-color DFS — **mirror the existing node-graph `detectCycles` (`canvas-validator.ts:264+` / `canvas_validator.py`)**, which already implements the three-color back-edge pattern. The cycle check makes the recursion in P3.3's `containerBounds` safe (guaranteed DAG). **Size: MEDIUM** — the cycle DFS is new but bounded + has a working pattern to mirror; the two-pass ref ordering is the fiddly bit.
+
+## P3.5 — Nested collapse interaction
+
+- **Collapse cascade.** Collapsing an OUTER container with an expanded inner one: the inner's members AND the inner box all hide (P3.3's container-render filter + P3.2's nesting-aware node filter — everything whose outermost-collapsed-ancestor is the outer). The outer's collapsed card replaces the whole subtree.
+- **Inner state preserved on outer expand — confirmed, automatic.** `collapsed` is per-container persisted (P1). Collapsing the OUTER does NOT mutate the inner's `collapsed` flag — it only affects RENDERING (via the ancestor logic). Expanding the outer → the inner returns in its stored state (collapsed card or expanded frame). No special preservation code needed; it falls out of per-container persisted state + render-time ancestor resolution.
+- **Drag-to-connect + nesting.** P2b's hidden-member exclusion (`handleDrawEnd` → `dropDecision({ nodes: canvas.nodes.filter(n => !collapsedMembership.has(n.id)) })`, `GraphCanvas.tsx`) **extends for free** — once `buildCollapsedMembership` is nesting-aware, a node hidden inside any-level collapsed ancestor is excluded. Confirmed.
+
+## P3.6 — P3 internal phasing (the deliverable)
+
+Three sub-phases (the riskiest — the selection-union authoring change — isolated LAST):
+
+**P3a — pure helpers + validation (de-risk + gate).**
+- `buildParentMap`, `outermostCollapsedAncestor`, nesting-aware `buildCollapsedMembership` (backward-compat flat case — the P2b regression guard), recursive `containerBounds`. Pure, unit-tested in isolation (the P2a precedent).
+- Validator extension (both files, lockstep): container-member ref-integrity (two-pass), ≤1-parent, nesting cycle-detection. Gates malformed nesting BEFORE the rendering/authoring exist.
+- **Caveat vs P2a's "consumed by nothing":** P3a REWORKS `buildCollapsedMembership` (a P2b-consumed helper). The rework is backward-compatible (flat case identical), so P2b is preserved — but it's not "consumed by nothing." The de-risk is "the nesting-aware helpers are unit-proven + the flat case is regression-locked." **Size: MEDIUM.**
+
+**P3b — nested rendering (consumes P3a; validated against hand-authored nested state).**
+- Recursive bounds wired into the container `.map`; the container-render filter (skip hidden-in-collapsed-ancestor); depth-z; box-inside-box padding. The node-filter + classifier extend for free.
+- **Testable WITHOUT the authoring gesture** — a test fixture with a hand-authored nested container proves the render. **Size: MEDIUM-LARGE.**
+
+**P3c — the authoring gesture (the riskiest; isolated last).**
+- Container selection (extend the multi-select union to mixed node+container — §P3.1 option a) + `handleCreateContainer` emitting `{kind:"container"}` members. Touches the P0 selection union → isolated so the union change is the only moving part.
+- **Size: MEDIUM.** Could merge into P3b if the union change proves small, but the protected-invariant risk argues for its own phase.
+
+Each leaves the builder working: P3a (helpers/validation, flat behavior intact) → P3b (nested render, but no gesture to create nesting → P2 behavior unless hand-authored) → P3c (the gesture lights it up).
+
+## P3.7 — Type-B decisions surfaced (NOT resolved)
+
+1. **Nested-creation gesture** (§P3.1): mixed multi-select (option a, lean — touches the union) vs a bespoke wrap/assign action (b/c). The gating UX call.
+2. **≤1-parent invariant** (§P3.1/P3.4): confirmed extends — but confirm "a container in ≤1 parent" is the intended rule (vs allowing a container in multiple parents, which would break the tree + the recursion).
+3. **Nesting depth limit** (§P3.3): unlimited (lean — the cycle check + recursion handle it) vs a cap (e.g. 5) to bound bounds/render complexity + the O(depth) ancestor walk.
+4. **Inner-collapsed-state on outer-expand** (§P3.5): confirmed auto-preserved (per-container persisted state) — flag only to confirm that's the intended UX (vs "expanding the outer also expands all inners").
+5. **P3 phasing** (§P3.6): the 3a/3b/3c split; whether 3b+3c merge.
+
+## Appendix — Phase 3 file:line index
+
+| Concern | File:line |
+|---|---|
+| Selection union (mixed node+container — the authoring change) | `WorkflowEditorPage.tsx:120-130` |
+| `handleSelectNode` (node-ids only today) | `WorkflowEditorPage.tsx:615-639` |
+| `handleCreateContainer` (node-members only — extend to container-members) | `WorkflowEditorPage.tsx:557-565` |
+| `buildCollapsedMembership` (FLAT → nesting-aware outermost-collapsed-ancestor) | `canvas-layout.ts:523-535` |
+| `classifyEdge` (consumes the map — NO logic change) | `canvas-layout.ts:570-588` |
+| `collapsedBoxBounds` / expanded-bounds inline (→ recursive `containerBounds`) | `canvas-layout.ts:605-621`; `GraphCanvas.tsx:866-876` |
+| Container `.map` (→ render-filter hidden-in-collapsed-ancestor + depth-z) | `GraphCanvas.tsx:860-881` |
+| Node-map hidden-member filter (extends for free) | `GraphCanvas.tsx:884-889` |
+| Drag-to-connect hidden-member exclusion (extends for free) | `GraphCanvas.tsx` `handleDrawEnd` |
+| `validateContainers` (container-ref + ≤1-parent + cycle) — lockstep both files | `canvas-validator.ts:186-261`; `canvas_validator.py` mirror |
+| Node-graph `detectCycles` (three-color pattern to mirror for nesting cycles) | `canvas-validator.ts:264+`; `canvas_validator.py` mirror |
+| `GraphCanvasContainer` (box-inside-box render; per-depth z) | `GraphCanvas.tsx:1465-` |
+
+**No code. No canon. No build. No dispatch.** Phase 3 map only — uncommitted until P3a.

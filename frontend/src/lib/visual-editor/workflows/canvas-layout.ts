@@ -64,6 +64,16 @@ export const COLLAPSED_CONTAINER_WIDTH = 200
 export const COLLAPSED_CONTAINER_HEIGHT = 64
 
 /**
+ * Container-arc Phase 3a — padding between an EXPANDED container's member
+ * extent and its enclosing frame, used by the recursive `containerBounds`.
+ * Mirrors GraphCanvas.tsx's `CONTAINER_PADDING` (18) so the recursive helper
+ * produces bounds identical to P1/P2's inline expanded-bbox computation for
+ * the flat case; the two constants unify when 3b swaps the inline math for
+ * `containerBounds`.
+ */
+export const CONTAINER_EXPANDED_PADDING = 18
+
+/**
  * Default canvas dimensions. The canvas is a scrollable surface; these
  * are the minimum logical bounds used for drag-clamp + the SVG edge
  * layer's viewBox when the authored graph fits within them. When the
@@ -512,23 +522,92 @@ export function dropDecision(input: DropDecisionInput): DropDecision {
 // skipped (P2 produces none; nested membership is Phase 3).
 
 
+// ─── buildParentMap (Phase 3a — nested containers) ──────────────────
+
+/**
+ * Map each MEMBER id (node OR container) → its PARENT container id. Built from
+ * every container's members (both kinds), all containers — not just collapsed.
+ * The child→parent relation backing the ancestor-chain walk. A top-level
+ * container (member of nothing) is absent. Pure.
+ */
+export function buildParentMap(
+  containers: readonly WorkflowContainer[] | undefined,
+): Map<string, string> {
+  const parent = new Map<string, string>()
+  if (!containers) return parent
+  for (const container of containers) {
+    for (const member of container.members) {
+      parent.set(member.id, container.id)
+    }
+  }
+  return parent
+}
+
+
+// ─── outermostCollapsedAncestor (Phase 3a — nested containers) ──────
+
+/**
+ * Walk UP the parent chain from `id` (a node or container) and return the
+ * HIGHEST (outermost) ancestor that is `collapsed`, or null if none is. The
+ * outermost wins because a collapsed outer container hides EVERYTHING inside
+ * it regardless of inner collapse-states (A⊃B⊃N: A collapsed → A, even if B
+ * is too; only B collapsed → B; neither → null).
+ *
+ * Cycle-safe by construction (the validator proves the nesting graph is a DAG)
+ * AND defensively via a visited-set so a malformed-but-unvalidated input can't
+ * loop forever. Pure.
+ */
+export function outermostCollapsedAncestor(
+  id: string,
+  parentMap: ReadonlyMap<string, string>,
+  containersById: ReadonlyMap<string, WorkflowContainer>,
+): string | null {
+  let outermost: string | null = null
+  const visited = new Set<string>()
+  let current = parentMap.get(id)
+  while (current !== undefined && !visited.has(current)) {
+    visited.add(current)
+    const container = containersById.get(current)
+    if (container?.collapsed) outermost = current
+    current = parentMap.get(current)
+  }
+  return outermost
+}
+
+
 // ─── buildCollapsedMembership ───────────────────────────────────────
 
 /**
- * Map each hidden member node-id → its containing container id, for COLLAPSED
- * containers only. Expanded containers hide nothing → they contribute no
- * entries. Only `kind:"node"` members are mapped (`kind:"container"` is
- * skipped — P2 can't produce it). The result feeds `classifyEdge`.
+ * Map each hidden node-id → the collapsed container it renders into. Phase 3a
+ * REWORK: nesting-aware — a node maps to its OUTERMOST collapsed ancestor (not
+ * just its direct container), so a node hidden inside any-level collapsed
+ * container is captured. Iterates `kind:"node"` members across all containers
+ * (a node must be a member of some container to be hidden) and resolves each
+ * via the parent-chain walk; only nodes WITH a collapsed ancestor are mapped.
+ *
+ * FLAT-CASE OUTPUT-IDENTICAL (the regression guard — P2b consumes this): with
+ * no nesting, a node's only ancestor is its direct container, so its outermost
+ * collapsed ancestor is that container (if collapsed) else null — exactly the
+ * pre-P3 flat result. The P2 collapse render is byte-identical for non-nested
+ * canvases. `kind:"container"` members are not nodes → never a node→home entry
+ * here (an inner container's hiding is the 3b container-render-filter's job).
  */
 export function buildCollapsedMembership(
   containers: readonly WorkflowContainer[] | undefined,
 ): Map<string, string> {
   const membership = new Map<string, string>()
   if (!containers) return membership
+  const parentMap = buildParentMap(containers)
+  const containersById = new Map(containers.map((c) => [c.id, c] as const))
   for (const container of containers) {
-    if (!container.collapsed) continue
     for (const member of container.members) {
-      if (member.kind === "node") membership.set(member.id, container.id)
+      if (member.kind !== "node") continue
+      const home = outermostCollapsedAncestor(
+        member.id,
+        parentMap,
+        containersById,
+      )
+      if (home !== null) membership.set(member.id, home)
     }
   }
   return membership
@@ -617,5 +696,93 @@ export function collapsedBoxBounds(
     y: b.minY,
     width: COLLAPSED_CONTAINER_WIDTH,
     height: COLLAPSED_CONTAINER_HEIGHT,
+  }
+}
+
+
+// ─── containerBounds (Phase 3a — nested, recursive) ─────────────────
+
+/**
+ * The bounds of a container, nesting-aware. COLLAPSED → the fixed compact card
+ * (`collapsedBoxBounds`; innards hidden, no recursion). EXPANDED → a frame
+ * enclosing its member NODES' rects AND its member CONTAINERS' (recursive)
+ * bounds, padded by `CONTAINER_EXPANDED_PADDING` — so an expanded outer box
+ * encloses inner boxes (whether the inner is expanded [its own bbox] or
+ * collapsed [its fixed card]).
+ *
+ * FLAT-CASE IDENTICAL: a container with only node-members + expanded produces
+ * the SAME bounds as P1/P2's inline `bbox(memberNodes) ± padding` (3b swaps
+ * that inline math for this helper). Cycle-safe: the validator proves a DAG,
+ * and a defensive `_visited` set breaks any unvalidated cycle. Consumed by
+ * NOTHING in 3a (tests only); 3b wires it into the render. Pure.
+ */
+export function containerBounds(
+  container: WorkflowContainer,
+  nodes: readonly CanvasNode[],
+  containersById: ReadonlyMap<string, WorkflowContainer>,
+  heightOf: (n: PositionedNode) => number = () => NODE_HEIGHT,
+  _visited: Set<string> = new Set(),
+): BoxBounds {
+  if (container.collapsed) {
+    return collapsedBoxBounds(container, nodes, heightOf)
+  }
+  // Defensive cycle break (validator guarantees a DAG; this guards against an
+  // unvalidated hand-authored cycle so the recursion can't stack-overflow).
+  if (_visited.has(container.id)) {
+    return {
+      x: 0,
+      y: 0,
+      width: COLLAPSED_CONTAINER_WIDTH,
+      height: COLLAPSED_CONTAINER_HEIGHT,
+    }
+  }
+  _visited.add(container.id)
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  let any = false
+  for (const member of container.members) {
+    if (member.kind === "node") {
+      const n = nodes.find((x) => x.id === member.id)
+      if (!n) continue
+      any = true
+      minX = Math.min(minX, n.position.x)
+      minY = Math.min(minY, n.position.y)
+      maxX = Math.max(maxX, n.position.x + NODE_WIDTH)
+      maxY = Math.max(maxY, n.position.y + heightOf(n))
+    } else {
+      const inner = containersById.get(member.id)
+      if (!inner) continue
+      const ib = containerBounds(
+        inner,
+        nodes,
+        containersById,
+        heightOf,
+        _visited,
+      )
+      any = true
+      minX = Math.min(minX, ib.x)
+      minY = Math.min(minY, ib.y)
+      maxX = Math.max(maxX, ib.x + ib.width)
+      maxY = Math.max(maxY, ib.y + ib.height)
+    }
+  }
+  // No resolvable members → degenerate fixed box (the render filters empty
+  // containers, mirroring collapsedBoxBounds — never visually used).
+  if (!any) {
+    return {
+      x: 0,
+      y: 0,
+      width: COLLAPSED_CONTAINER_WIDTH,
+      height: COLLAPSED_CONTAINER_HEIGHT,
+    }
+  }
+  return {
+    x: minX - CONTAINER_EXPANDED_PADDING,
+    y: minY - CONTAINER_EXPANDED_PADDING,
+    width: maxX - minX + CONTAINER_EXPANDED_PADDING * 2,
+    height: maxY - minY + CONTAINER_EXPANDED_PADDING * 2,
   }
 }

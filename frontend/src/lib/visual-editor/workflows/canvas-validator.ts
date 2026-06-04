@@ -177,12 +177,13 @@ export function validateCanvasState(
 
 
 /** Validate the optional `containers` overlay. No-op when absent.
- * Rules (Phase 1, flat behavior): container-id uniqueness; every
- * `kind:"node"` member references a declared node; a node appears as a
- * node-member in AT MOST ONE container (disjoint groups). `kind:"container"`
- * members are type-allowed but UNPRODUCED in P1 — their ref-integrity +
- * nesting-cycle checks are deferred to Phase 3 (don't over-build a case P1
- * can't produce). Empty member-list is valid. */
+ * Rules: container-id uniqueness; every `kind:"node"` member references a
+ * declared node; every `kind:"container"` member references a declared
+ * container (Phase 3a — TWO-PASS so a forward-ref to a container declared
+ * LATER resolves); a node OR container is a member of AT MOST ONE parent
+ * container (≤1-parent — extends P1's ≤1-container to container-members); the
+ * container-nesting graph is ACYCLIC (Phase 3a — A⊃B⊃A rejected). Empty
+ * member-list is valid. */
 function validateContainers(
   c: CanvasState,
   seenNodeIds: Set<string>,
@@ -193,9 +194,10 @@ function validateContainers(
     throw new CanvasValidationError("canvas_state.containers must be an array")
   }
 
+  // ── Pass 1 — container-level structure + collect ALL container ids ──
+  // (the full id set is needed BEFORE member-ref validation so a
+  // container-member referencing a container declared LATER resolves.)
   const seenContainerIds = new Set<string>()
-  const nodeMemberOwner = new Map<string, string>()
-
   containers.forEach((container, idx) => {
     if (typeof container !== "object" || container === null) {
       throw new CanvasValidationError(`containers[${idx}] must be a mapping`)
@@ -222,7 +224,12 @@ function validateContainers(
         `containers[${idx}].members must be an array`,
       )
     }
+  })
 
+  // ── Pass 2 — member structure + ref-integrity + ≤1-parent ──
+  // `memberOwner` tracks BOTH kinds (a node OR container in >1 parent rejects).
+  const memberOwner = new Map<string, string>()
+  containers.forEach((container, idx) => {
     container.members.forEach((member, mIdx) => {
       if (typeof member !== "object" || member === null) {
         throw new CanvasValidationError(
@@ -239,25 +246,82 @@ function validateContainers(
           `containers[${idx}].members[${mIdx}].id must be a non-empty string`,
         )
       }
-      // Phase 1: validate node-members strictly. Container-members are
-      // type-allowed but UNPRODUCED in P1 — ref-integrity + nesting-cycle
-      // detection are a Phase 3 add (skip them here, don't over-build).
       if (member.kind === "node") {
         if (!seenNodeIds.has(member.id)) {
           throw new CanvasValidationError(
             `containers[${idx}].members[${mIdx}] "${member.id}" doesn't reference a declared node id`,
           )
         }
-        const owner = nodeMemberOwner.get(member.id)
-        if (owner !== undefined) {
+      } else {
+        // Phase 3a — container-member ref-integrity (forward-refs resolve via
+        // the full pass-1 id set). A container can't be a member of itself.
+        if (!seenContainerIds.has(member.id)) {
           throw new CanvasValidationError(
-            `node "${member.id}" is a member of more than one container (${owner} and ${container.id})`,
+            `containers[${idx}].members[${mIdx}] "${member.id}" doesn't reference a declared container id`,
           )
         }
-        nodeMemberOwner.set(member.id, container.id)
+        if (member.id === container.id) {
+          throw new CanvasValidationError(
+            `container "${container.id}" cannot be a member of itself`,
+          )
+        }
       }
+      const owner = memberOwner.get(member.id)
+      if (owner !== undefined) {
+        throw new CanvasValidationError(
+          `"${member.id}" is a member of more than one container (${owner} and ${container.id})`,
+        )
+      }
+      memberOwner.set(member.id, container.id)
     })
   })
+
+  // ── Pass 3 — nesting must be ACYCLIC (Phase 3a) ──
+  detectContainerCycles(containers)
+}
+
+
+/** Three-color DFS over the container-nesting graph (container → its
+ * `kind:"container"` member ids). Rejects a nesting cycle (A⊃B⊃A). Mirrors
+ * the node-graph `detectCycles` pattern; distinct error message. Runs after
+ * pass 2 (all container-member refs proven), so every adjacency target is a
+ * declared container. */
+function detectContainerCycles(
+  containers: NonNullable<CanvasState["containers"]>,
+): void {
+  const adj = new Map<string, string[]>()
+  for (const container of containers) {
+    adj.set(
+      container.id,
+      container.members
+        .filter((m) => m.kind === "container")
+        .map((m) => m.id),
+    )
+  }
+
+  const WHITE = 0
+  const GRAY = 1
+  const BLACK = 2
+  const color = new Map<string, number>()
+  for (const id of adj.keys()) color.set(id, WHITE)
+
+  function visit(id: string, path: string[]): void {
+    if (color.get(id) === GRAY) {
+      throw new CanvasValidationError(
+        `container nesting contains a cycle: ${[...path, id].join(" → ")}`,
+      )
+    }
+    if (color.get(id) === BLACK) return
+    color.set(id, GRAY)
+    for (const child of adj.get(id) ?? []) {
+      visit(child, [...path, id])
+    }
+    color.set(id, BLACK)
+  }
+
+  for (const id of color.keys()) {
+    if (color.get(id) === WHITE) visit(id, [])
+  }
 }
 
 

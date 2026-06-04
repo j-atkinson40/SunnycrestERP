@@ -246,12 +246,14 @@ def _validate_containers(
 ) -> None:
     """Validate the optional `containers` overlay. No-op when absent.
 
-    Rules (Phase 1, flat behavior): container-id uniqueness; every
-    ``kind="node"`` member references a declared node; a node appears as a
-    node-member in AT MOST ONE container (disjoint groups). ``kind="container"``
-    members are type-allowed but UNPRODUCED in P1 — their ref-integrity +
-    nesting-cycle checks are deferred to Phase 3 (don't over-build a case P1
-    can't produce). Empty member-list is valid.
+    Rules: container-id uniqueness; every ``kind="node"`` member references a
+    declared node; every ``kind="container"`` member references a declared
+    container (Phase 3a — TWO-PASS so a forward-ref to a container declared
+    LATER resolves); a node OR container is a member of AT MOST ONE parent
+    container (≤1-parent — extends P1's ≤1-container to container-members); the
+    container-nesting graph is ACYCLIC (Phase 3a — A⊃B⊃A rejected). Empty
+    member-list is valid. Lockstep mirror of frontend
+    `canvas-validator.ts` validateContainers.
     """
     if "containers" not in canvas_state:
         return
@@ -259,9 +261,10 @@ def _validate_containers(
     if not isinstance(containers, list):
         raise CanvasValidationError("canvas_state.containers must be a list")
 
+    # ── Pass 1 — container-level structure + collect ALL container ids ──
+    # (the full id set is needed BEFORE member-ref validation so a
+    # container-member referencing a container declared LATER resolves.)
     seen_container_ids: set[str] = set()
-    node_member_owner: dict[str, str] = {}
-
     for idx, container in enumerate(containers):
         if not isinstance(container, dict):
             raise CanvasValidationError(f"containers[{idx}] must be a mapping")
@@ -283,13 +286,17 @@ def _validate_containers(
                 f"containers[{idx}].collapsed must be a boolean"
             )
 
-        members = container.get("members")
-        if not isinstance(members, list):
+        if not isinstance(container.get("members"), list):
             raise CanvasValidationError(
                 f"containers[{idx}].members must be a list"
             )
 
-        for m_idx, member in enumerate(members):
+    # ── Pass 2 — member structure + ref-integrity + ≤1-parent ──
+    # `member_owner` tracks BOTH kinds (a node OR container in >1 parent rejects).
+    member_owner: dict[str, str] = {}
+    for idx, container in enumerate(containers):
+        container_id = container["id"]
+        for m_idx, member in enumerate(container["members"]):
             if not isinstance(member, dict):
                 raise CanvasValidationError(
                     f"containers[{idx}].members[{m_idx}] must be a mapping"
@@ -306,22 +313,68 @@ def _validate_containers(
                     f"containers[{idx}].members[{m_idx}].id must be a "
                     f"non-empty string"
                 )
-            # Phase 1: validate node-members strictly. Container-members are
-            # type-allowed but UNPRODUCED in P1 — ref-integrity + nesting-cycle
-            # detection are a Phase 3 add (skip them here, don't over-build).
             if kind == "node":
                 if member_id not in seen_node_ids:
                     raise CanvasValidationError(
                         f"containers[{idx}].members[{m_idx}] {member_id!r} "
                         f"doesn't reference a declared node id"
                     )
-                owner = node_member_owner.get(member_id)
-                if owner is not None:
+            else:
+                # Phase 3a — container-member ref-integrity (forward-refs
+                # resolve via the full pass-1 id set). No self-membership.
+                if member_id not in seen_container_ids:
                     raise CanvasValidationError(
-                        f"node {member_id!r} is a member of more than one "
-                        f"container ({owner} and {container_id})"
+                        f"containers[{idx}].members[{m_idx}] {member_id!r} "
+                        f"doesn't reference a declared container id"
                     )
-                node_member_owner[member_id] = container_id
+                if member_id == container_id:
+                    raise CanvasValidationError(
+                        f"container {container_id!r} cannot be a member of itself"
+                    )
+            owner = member_owner.get(member_id)
+            if owner is not None:
+                raise CanvasValidationError(
+                    f"{member_id!r} is a member of more than one container "
+                    f"({owner} and {container_id})"
+                )
+            member_owner[member_id] = container_id
+
+    # ── Pass 3 — nesting must be ACYCLIC (Phase 3a) ──
+    _detect_container_cycles(containers)
+
+
+def _detect_container_cycles(containers: list) -> None:
+    """Three-color DFS over the container-nesting graph (container → its
+    ``kind="container"`` member ids). Rejects a nesting cycle (A⊃B⊃A). Mirrors
+    the node-graph ``_detect_cycles`` pattern; distinct error message. Runs
+    after pass 2 (all container-member refs proven), so every adjacency target
+    is a declared container.
+    """
+    adj: dict[str, list[str]] = {}
+    for container in containers:
+        adj[container["id"]] = [
+            m["id"] for m in container["members"] if m.get("kind") == "container"
+        ]
+
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[str, int] = {cid: WHITE for cid in adj}
+
+    def visit(cid: str, path: list[str]) -> None:
+        if color.get(cid) == GRAY:
+            cycle = " → ".join([*path, cid])
+            raise CanvasValidationError(
+                f"container nesting contains a cycle: {cycle}"
+            )
+        if color.get(cid) == BLACK:
+            return
+        color[cid] = GRAY
+        for child in adj.get(cid, []):
+            visit(child, [*path, cid])
+        color[cid] = BLACK
+
+    for cid in list(color.keys()):
+        if color[cid] == WHITE:
+            visit(cid, [])
 
 
 def _detect_cycles(nodes: list, edges: list) -> None:

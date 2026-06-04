@@ -34,6 +34,11 @@ import {
   buildCollapsedMembership,
   classifyEdge,
   collapsedBoxBounds,
+  // Container-arc Phase 3a — nested-container helpers.
+  buildParentMap,
+  outermostCollapsedAncestor,
+  containerBounds,
+  CONTAINER_EXPANDED_PADDING,
   type PositionedNode,
 } from "./canvas-layout"
 import type {
@@ -578,5 +583,177 @@ describe("canvas-layout — collapsedBoxBounds", () => {
       width: COLLAPSED_CONTAINER_WIDTH,
       height: COLLAPSED_CONTAINER_HEIGHT,
     })
+  })
+})
+
+
+// ── Container-arc Phase 3a — nested-container helpers ─────────────────
+
+// A container with mixed members (node + container) — flat `container()`
+// above only builds node-members.
+function nested(
+  id: string,
+  members: Array<{ kind: "node" | "container"; id: string }>,
+  collapsed: boolean,
+): WorkflowContainer {
+  return { id, members, collapsed }
+}
+
+describe("canvas-layout — buildParentMap", () => {
+  it("maps node-members AND container-members to their parent container", () => {
+    const containers = [
+      nested("A", [{ kind: "container", id: "B" }, { kind: "node", id: "n_x" }], false),
+      nested("B", [{ kind: "node", id: "n_y" }], false),
+    ]
+    const p = buildParentMap(containers)
+    expect(p.get("B")).toBe("A") // container-member → parent
+    expect(p.get("n_x")).toBe("A") // node-member → parent
+    expect(p.get("n_y")).toBe("B")
+  })
+
+  it("a top-level container (member of nothing) is absent", () => {
+    const p = buildParentMap([nested("A", [{ kind: "node", id: "n_x" }], false)])
+    expect(p.has("A")).toBe(false)
+  })
+
+  it("undefined / empty → empty map", () => {
+    expect(buildParentMap(undefined).size).toBe(0)
+    expect(buildParentMap([]).size).toBe(0)
+  })
+})
+
+describe("canvas-layout — outermostCollapsedAncestor", () => {
+  // A ⊃ B ⊃ N (A contains B, B contains node n).
+  function chain(aCollapsed: boolean, bCollapsed: boolean) {
+    const containers = [
+      nested("A", [{ kind: "container", id: "B" }], aCollapsed),
+      nested("B", [{ kind: "node", id: "n" }], bCollapsed),
+    ]
+    return {
+      parentMap: buildParentMap(containers),
+      containersById: new Map(containers.map((c) => [c.id, c] as const)),
+    }
+  }
+
+  it("A collapsed → A (outermost wins, even if B is too)", () => {
+    const { parentMap, containersById } = chain(true, true)
+    expect(outermostCollapsedAncestor("n", parentMap, containersById)).toBe("A")
+  })
+
+  it("A collapsed, B expanded → A", () => {
+    const { parentMap, containersById } = chain(true, false)
+    expect(outermostCollapsedAncestor("n", parentMap, containersById)).toBe("A")
+  })
+
+  it("only B collapsed → B (the inner collapsed home)", () => {
+    const { parentMap, containersById } = chain(false, true)
+    expect(outermostCollapsedAncestor("n", parentMap, containersById)).toBe("B")
+  })
+
+  it("neither collapsed → null", () => {
+    const { parentMap, containersById } = chain(false, false)
+    expect(outermostCollapsedAncestor("n", parentMap, containersById)).toBeNull()
+  })
+
+  it("a node with no ancestors → null", () => {
+    expect(
+      outermostCollapsedAncestor("orphan", new Map(), new Map()),
+    ).toBeNull()
+  })
+
+  it("terminates safely on a cyclic parent map (defensive visited-set)", () => {
+    // Malformed (the validator would reject this) — A→B→A. Must not loop.
+    const parentMap = new Map([
+      ["A", "B"],
+      ["B", "A"],
+    ])
+    const containersById = new Map([
+      ["A", nested("A", [], false)],
+      ["B", nested("B", [], false)],
+    ])
+    expect(
+      outermostCollapsedAncestor("A", parentMap, containersById),
+    ).toBeNull()
+  })
+})
+
+describe("canvas-layout — buildCollapsedMembership (nesting-aware)", () => {
+  // The FLAT-case tests above (the prior describe) are the regression guard —
+  // they must stay green unchanged. These add the nested cases.
+  it("a node hidden in a COLLAPSED OUTER (expanded inner) maps to the OUTER", () => {
+    const containers = [
+      nested("A", [{ kind: "container", id: "B" }], true), // outer collapsed
+      nested("B", [{ kind: "node", id: "n" }], false), // inner expanded
+    ]
+    const m = buildCollapsedMembership(containers)
+    expect(m.get("n")).toBe("A")
+  })
+
+  it("a node hidden in only a COLLAPSED INNER (expanded outer) maps to the INNER", () => {
+    const containers = [
+      nested("A", [{ kind: "container", id: "B" }], false), // outer expanded
+      nested("B", [{ kind: "node", id: "n" }], true), // inner collapsed
+    ]
+    const m = buildCollapsedMembership(containers)
+    expect(m.get("n")).toBe("B")
+  })
+
+  it("neither collapsed → the node is not hidden (absent)", () => {
+    const containers = [
+      nested("A", [{ kind: "container", id: "B" }], false),
+      nested("B", [{ kind: "node", id: "n" }], false),
+    ]
+    expect(buildCollapsedMembership(containers).has("n")).toBe(false)
+  })
+})
+
+describe("canvas-layout — containerBounds (recursive)", () => {
+  const nodes = [cnode("n_x", 100, 100), cnode("n_y", 400, 500)]
+
+  it("collapsed → the fixed compact card (delegates to collapsedBoxBounds)", () => {
+    const b = containerBounds(
+      nested("A", [{ kind: "node", id: "n_x" }], true),
+      nodes,
+      new Map(),
+    )
+    expect(b.width).toBe(COLLAPSED_CONTAINER_WIDTH)
+    expect(b.height).toBe(COLLAPSED_CONTAINER_HEIGHT)
+  })
+
+  it("expanded node-only → bbox over node rects + padding (flat-identical)", () => {
+    const b = containerBounds(
+      nested("A", [{ kind: "node", id: "n_x" }, { kind: "node", id: "n_y" }], false),
+      nodes,
+      new Map(),
+    )
+    // minX=100,minY=100; maxX=400+200=600, maxY=500+72=572.
+    expect(b.x).toBe(100 - CONTAINER_EXPANDED_PADDING)
+    expect(b.y).toBe(100 - CONTAINER_EXPANDED_PADDING)
+    expect(b.width).toBe(600 - 100 + CONTAINER_EXPANDED_PADDING * 2)
+    expect(b.height).toBe(572 - 100 + CONTAINER_EXPANDED_PADDING * 2)
+  })
+
+  it("expanded outer ENCLOSES an expanded inner container's bounds", () => {
+    const A = nested("A", [{ kind: "container", id: "B" }, { kind: "node", id: "n_x" }], false)
+    const B = nested("B", [{ kind: "node", id: "n_y" }], false)
+    const containersById = new Map([["A", A], ["B", B]] as const)
+    const inner = containerBounds(B, nodes, containersById)
+    const outer = containerBounds(A, nodes, containersById)
+    // The outer frame fully contains the inner frame.
+    expect(outer.x).toBeLessThanOrEqual(inner.x)
+    expect(outer.y).toBeLessThanOrEqual(inner.y)
+    expect(outer.x + outer.width).toBeGreaterThanOrEqual(inner.x + inner.width)
+    expect(outer.y + outer.height).toBeGreaterThanOrEqual(inner.y + inner.height)
+  })
+
+  it("expanded outer encloses a COLLAPSED inner's fixed card", () => {
+    const A = nested("A", [{ kind: "container", id: "B" }], false)
+    const B = nested("B", [{ kind: "node", id: "n_y" }], true) // collapsed inner
+    const containersById = new Map([["A", A], ["B", B]] as const)
+    const inner = containerBounds(B, nodes, containersById)
+    const outer = containerBounds(A, nodes, containersById)
+    expect(inner.width).toBe(COLLAPSED_CONTAINER_WIDTH)
+    expect(outer.width).toBeGreaterThanOrEqual(inner.width)
+    expect(outer.x + outer.width).toBeGreaterThanOrEqual(inner.x + inner.width)
   })
 })
