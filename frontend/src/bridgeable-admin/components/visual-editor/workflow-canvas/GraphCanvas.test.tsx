@@ -1936,3 +1936,147 @@ describe("GraphCanvas — Container-arc Phase 2b (collapse rendering)", () => {
     expect(screen.getByTestId("edge-e_n_node_1_n_node_2")).toBeInTheDocument()
   })
 })
+
+
+describe("GraphCanvas — Container-arc Phase 3b (nested rendering)", () => {
+  const cb = {
+    onSelectNode: noop,
+    onMoveNode: noop,
+    onRemoveNode: noop,
+    onUpdateContainer: vi.fn(),
+    onRemoveContainer: vi.fn(),
+  }
+  const px = (el: HTMLElement, prop: "left" | "top" | "width" | "height") =>
+    parseFloat(el.style[prop] || "0")
+  const z = (el: HTMLElement) => parseFloat(el.style.zIndex || "0")
+
+  // Outer A ⊃ inner B ⊃ { n_node_1, n_node_2 } (the makeCanvas nodes).
+  function nestedCanvas(aCollapsed: boolean, bCollapsed: boolean) {
+    return makeCanvas({
+      containers: [
+        { id: "A", label: "Outer", members: [{ kind: "container" as const, id: "B" }], collapsed: aCollapsed },
+        {
+          id: "B",
+          label: "Inner",
+          members: [
+            { kind: "node" as const, id: "n_node_1" },
+            { kind: "node" as const, id: "n_node_2" },
+          ],
+          collapsed: bCollapsed,
+        },
+      ],
+    })
+  }
+
+  it("an expanded outer ENCLOSES an expanded inner box (recursive bounds)", () => {
+    render(<GraphCanvas canvas={nestedCanvas(false, false)} selectedNodeId={null} {...cb} />)
+    const outer = screen.getByTestId("canvas-container-A")
+    const inner = screen.getByTestId("canvas-container-B")
+    expect(outer).toHaveAttribute("data-collapsed", "false")
+    expect(inner).toHaveAttribute("data-collapsed", "false")
+    // Outer frame fully contains the inner frame.
+    expect(px(outer, "left")).toBeLessThan(px(inner, "left"))
+    expect(px(outer, "top")).toBeLessThan(px(inner, "top"))
+    expect(px(outer, "left") + px(outer, "width")).toBeGreaterThan(
+      px(inner, "left") + px(inner, "width"),
+    )
+    // Members visible (nothing collapsed).
+    expect(screen.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
+  })
+
+  it("expanded frames share z=0 (below the node band z=1, so nodes stay on top)", () => {
+    // CSS z-index is integer-only with no value between 0 and the node band —
+    // so all expanded frames share z=0 (== P2); nesting reads via the recursive
+    // bounds. The depth-z lives on the opaque collapsed cards (next test).
+    render(<GraphCanvas canvas={nestedCanvas(false, false)} selectedNodeId={null} {...cb} />)
+    expect(z(screen.getByTestId("canvas-container-A"))).toBe(0)
+    expect(z(screen.getByTestId("canvas-container-B"))).toBe(0)
+  })
+
+  it("depth-scaled z on the OPAQUE collapsed card: inner (1+depth) paints above the outer frame", () => {
+    // Inner B collapsed at depth 1 → z = 2; outer A expanded → z = 0.
+    render(<GraphCanvas canvas={nestedCanvas(false, true)} selectedNodeId={null} {...cb} />)
+    const outer = screen.getByTestId("canvas-container-A")
+    const inner = screen.getByTestId("canvas-container-B")
+    expect(z(outer)).toBe(0) // expanded outer
+    expect(z(inner)).toBe(2) // collapsed inner, 1 + depth(1)
+    expect(z(inner)).toBeGreaterThan(z(outer))
+  })
+
+  it("collapsing the OUTER hides the inner box AND its member nodes", () => {
+    render(<GraphCanvas canvas={nestedCanvas(true, false)} selectedNodeId={null} {...cb} />)
+    // Outer shows as a collapsed card; inner box + member nodes are gone.
+    expect(screen.getByTestId("canvas-container-A")).toHaveAttribute(
+      "data-collapsed",
+      "true",
+    )
+    expect(screen.queryByTestId("canvas-container-B")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("canvas-node-n_node_1")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("canvas-node-n_node_2")).not.toBeInTheDocument()
+  })
+
+  it("collapsing only the INNER renders its collapsed card inside the expanded outer", () => {
+    render(<GraphCanvas canvas={nestedCanvas(false, true)} selectedNodeId={null} {...cb} />)
+    const outer = screen.getByTestId("canvas-container-A")
+    const inner = screen.getByTestId("canvas-container-B")
+    expect(outer).toHaveAttribute("data-collapsed", "false")
+    expect(inner).toHaveAttribute("data-collapsed", "true")
+    // The outer encloses the inner's collapsed card.
+    expect(px(outer, "left")).toBeLessThanOrEqual(px(inner, "left"))
+    expect(px(outer, "left") + px(outer, "width")).toBeGreaterThanOrEqual(
+      px(inner, "left") + px(inner, "width"),
+    )
+    // Member nodes hidden (inside collapsed inner).
+    expect(screen.queryByTestId("canvas-node-n_node_1")).not.toBeInTheDocument()
+    // Inner collapsed card in the node band, above the outer frame.
+    expect(z(inner)).toBeGreaterThan(z(outer))
+  })
+
+  it("a PURE-NESTING outer (only container-members, no direct nodes) renders", () => {
+    // The P2 empty-member guard counted node-members only → would skip this.
+    render(<GraphCanvas canvas={nestedCanvas(false, false)} selectedNodeId={null} {...cb} />)
+    // A has only a container-member (B) — it must still render.
+    expect(screen.getByTestId("canvas-container-A")).toBeInTheDocument()
+  })
+
+  it("REGRESSION — a non-nested (flat) container renders byte-identical to P2", () => {
+    // Flat expanded container → z=0 frame; flat collapsed → z=1 card.
+    const flatExpanded = makeCanvas({
+      containers: [
+        {
+          id: "c1",
+          members: [
+            { kind: "node" as const, id: "n_node_1" },
+            { kind: "node" as const, id: "n_node_2" },
+          ],
+          collapsed: false,
+        },
+      ],
+    })
+    const { rerender } = render(
+      <GraphCanvas canvas={flatExpanded} selectedNodeId={null} {...cb} />,
+    )
+    const frame = screen.getByTestId("canvas-container-c1")
+    expect(frame).toHaveAttribute("data-collapsed", "false")
+    expect(z(frame)).toBe(0) // P2 expanded z
+    expect(screen.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
+
+    const flatCollapsed = makeCanvas({
+      containers: [
+        {
+          id: "c1",
+          members: [
+            { kind: "node" as const, id: "n_node_1" },
+            { kind: "node" as const, id: "n_node_2" },
+          ],
+          collapsed: true,
+        },
+      ],
+    })
+    rerender(<GraphCanvas canvas={flatCollapsed} selectedNodeId={null} {...cb} />)
+    const card = screen.getByTestId("canvas-container-c1")
+    expect(card).toHaveAttribute("data-collapsed", "true")
+    expect(z(card)).toBe(1) // P2 collapsed z
+    expect(screen.queryByTestId("canvas-node-n_node_1")).not.toBeInTheDocument()
+  })
+})

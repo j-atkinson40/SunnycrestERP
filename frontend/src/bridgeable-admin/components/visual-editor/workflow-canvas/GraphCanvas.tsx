@@ -81,6 +81,14 @@ import {
   bezierBetween,
   collapsedBoxBounds,
   type BoxBounds,
+  // Container-arc Phase 3b — wires the P3a nesting helpers into the container
+  // render (first consumer): recursive bounds (outer encloses inner boxes),
+  // the parent map + ancestor walk (the container-render hidden-filter +
+  // depth-scaled z). The edge-map + node-filter extend for free off the
+  // already-nesting-aware buildCollapsedMembership (P3a) — untouched here.
+  buildParentMap,
+  outermostCollapsedAncestor,
+  containerBounds,
 } from "@/lib/visual-editor/workflows/canvas-layout"
 // Phase B integration-phase — pan + zoom view transform (self-owned).
 import {
@@ -136,10 +144,6 @@ import {
 
 /** Per-node trace overlay state (undefined = overlay off). */
 type NodeTraceState = "reachable" | "unreachable" | undefined
-
-/** Container-arc Phase 1 — padding (canvas px) between a container's member
- *  bounding box and its enclosing labeled box. */
-const CONTAINER_PADDING = 18
 
 
 export interface GraphCanvasProps {
@@ -312,6 +316,38 @@ export function GraphCanvas({
       return collapsedBoxBounds(container, canvas.nodes, heightOf)
     },
     [containersById, canvas.nodes, heightOf],
+  )
+
+  // ── Container-arc Phase 3b — nesting render lookups (consume P3a) ──
+  // `parentMap` (child id → parent container id) backs the container-render
+  // hidden-filter + depth. `containerIsHidden`: a container is hidden iff an
+  // ANCESTOR is collapsed (its collapsed card replaces the whole subtree) —
+  // outermostCollapsedAncestor walks from the PARENT, so non-null ⟺ a
+  // collapsed ancestor exists (mirrors the node-map hidden-member filter).
+  // `containerDepth`: ancestor-chain length (0 = top-level) → depth-scaled z.
+  const parentMap = useMemo(
+    () => buildParentMap(canvas.containers),
+    [canvas.containers],
+  )
+  const containerIsHidden = useCallback(
+    (containerId: string): boolean =>
+      outermostCollapsedAncestor(containerId, parentMap, containersById) !==
+      null,
+    [parentMap, containersById],
+  )
+  const containerDepth = useCallback(
+    (containerId: string): number => {
+      let depth = 0
+      const visited = new Set<string>()
+      let current = parentMap.get(containerId)
+      while (current !== undefined && !visited.has(current)) {
+        visited.add(current)
+        depth += 1
+        current = parentMap.get(current)
+      }
+      return depth
+    },
+    [parentMap],
   )
 
   // ── Phase B integration-phase — pan + zoom (self-owned view state) ──
@@ -858,35 +894,44 @@ export function GraphCanvas({
                   read yet (Phase 2). Containers with no resolvable node-member
                   render nothing (empty container = no box). */}
               {canvas.containers?.map((container) => {
+                // Container-arc Phase 3b — skip a container hidden inside a
+                // COLLAPSED ancestor (the ancestor's collapsed card replaces
+                // the whole subtree). Mirrors the node-map hidden-member
+                // filter; non-null ⟺ a collapsed ancestor exists.
+                if (containerIsHidden(container.id)) return null
                 const memberNodes = container.members
                   .filter((m) => m.kind === "node")
                   .map((m) => canvas.nodes.find((n) => n.id === m.id))
                   .filter((n): n is CanvasNode => n !== undefined)
-                if (memberNodes.length === 0) return null
-                // Container-arc Phase 2b — bounds differ by state. Expanded:
-                // the member bbox + padding (the P1 frame around visible
-                // members). Collapsed: the compact fixed-size box at the
-                // members' bbox top-left (members are hidden — see
-                // collapsedBoxBounds). The component branches its render on
-                // container.collapsed; here we just feed the right bounds.
-                let bounds: { x: number; y: number; width: number; height: number }
-                if (container.collapsed) {
-                  bounds = collapsedBoxBounds(container, canvas.nodes, heightOf)
-                } else {
-                  const b = bbox(memberNodes, NODE_WIDTH, heightOf)
-                  bounds = {
-                    x: b.minX - CONTAINER_PADDING,
-                    y: b.minY - CONTAINER_PADDING,
-                    width: b.maxX - b.minX + CONTAINER_PADDING * 2,
-                    height: b.maxY - b.minY + CONTAINER_PADDING * 2,
-                  }
+                // Container-arc Phase 3b — render if there's ≥1 resolvable
+                // member of EITHER kind. The P2 guard counted node-members
+                // only → it wrongly skipped a pure-nesting outer (whose members
+                // are all kind:"container"). A truly-empty container still
+                // skips (matches the P1 empty-renders-nothing stance).
+                const resolvableContainerMembers = container.members.filter(
+                  (m) => m.kind === "container" && containersById.has(m.id),
+                ).length
+                if (memberNodes.length + resolvableContainerMembers === 0) {
+                  return null
                 }
+                // Container-arc Phase 3b — bounds via the recursive
+                // containerBounds (handles BOTH states: collapsed → the fixed
+                // card [== P2 collapsedBoxBounds]; expanded → bbox enclosing
+                // member nodes AND inner container boxes). Replaces the P2
+                // inline bbox; flat-case byte-identical.
+                const bounds = containerBounds(
+                  container,
+                  canvas.nodes,
+                  containersById,
+                  heightOf,
+                )
                 return (
                   <GraphCanvasContainer
                     key={container.id}
                     container={container}
                     bounds={bounds}
                     memberCount={memberNodes.length}
+                    depth={containerDepth(container.id)}
                     onUpdateContainer={onUpdateContainer}
                     onRemoveContainer={onRemoveContainer}
                   />
@@ -1472,6 +1517,15 @@ interface GraphCanvasContainerProps {
   bounds: { x: number; y: number; width: number; height: number }
   /** Number of (resolved node) members — shown on the collapsed card. */
   memberCount: number
+  /**
+   * Container-arc Phase 3b — nesting depth (0 = top-level). Drives depth-scaled
+   * z so an inner box paints ABOVE its outer: expanded frames at
+   * `min(0.9, depth·0.1)` (all stay BELOW the nodes' z=1 so nodes remain
+   * interactive on top); collapsed cards at `1 + depth` (node band). Both
+   * reduce to the P2 values at depth 0 (expanded 0, collapsed 1) → non-nested
+   * rendering byte-identical.
+   */
+  depth?: number
   onUpdateContainer?: (id: string, patch: Partial<WorkflowContainer>) => void
   onRemoveContainer?: (id: string) => void
 }
@@ -1494,9 +1548,20 @@ function GraphCanvasContainer({
   container,
   bounds,
   memberCount,
+  depth = 0,
   onUpdateContainer,
   onRemoveContainer,
 }: GraphCanvasContainerProps) {
+  // Container-arc Phase 3b — z bands. CSS z-index is INTEGER-only, and there's
+  // no integer strictly between an expanded frame (must stay < the node band,
+  // z=1, so nodes stay interactive on top) and the nodes — so all EXPANDED
+  // frames share z=0 (== P2; their translucent backdrops don't need
+  // depth-layering, and nesting reads fine via the recursive bounds + DOM
+  // order). The OPAQUE COLLAPSED cards — where layering actually matters — get
+  // the integer depth-z `1 + depth` (depth 0 → 1 == P2; an inner collapsed
+  // card paints above its outer + above the node baseline).
+  const expandedZ = 0
+  const collapsedZ = 1 + depth
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelDraft, setLabelDraft] = useState(container.label ?? "")
   const stop = (ev: { stopPropagation: () => void }) => ev.stopPropagation()
@@ -1533,7 +1598,9 @@ function GraphCanvasContainer({
           width: bounds.width,
           height: bounds.height,
           // Node z-band — the collapsed box sits among the cards it replaces.
-          zIndex: 1,
+          // Depth-scaled (1 + depth): an inner collapsed card paints above its
+          // outer; depth 0 → z=1 (== P2).
+          zIndex: collapsedZ,
         }}
       >
         <div className="flex items-center justify-between gap-1 px-2">
@@ -1599,7 +1666,10 @@ function GraphCanvasContainer({
         width: bounds.width,
         height: bounds.height,
         // Behind the node cards (z 1/2) but above the surface background.
-        zIndex: 0,
+        // Depth-scaled (min(0.9, depth·0.1)): an inner frame paints above its
+        // outer, yet ALL expanded frames stay < 1 so nodes remain interactive
+        // on top; depth 0 → z=0 (== P2).
+        zIndex: expandedZ,
       }}
     >
       {/* Chrome — top-left label chip + collapse + ungroup. pointer-events:auto
