@@ -289,6 +289,85 @@ describe("WorkflowEditorPage — B-1 graph-canvas integration", () => {
 })
 
 
+// ── Container-arc Phase 0 — multi-node selection (shift/⌘+click) ───────
+//
+// End-to-end through the page: drives the real union-transition handler
+// (handleSelectNode). Rule: plain click → single { kind:"node" }
+// (data-selected); shift/⌘+click → { kind:"nodes" } (data-multi-selected,
+// data-selected false — card editing dormant). A subsequent plain click
+// demotes to single. The single-select path is byte-identical.
+
+describe("WorkflowEditorPage — Container-arc Phase 0 multi-select", () => {
+  it("shift+click accumulates a second node into a multi-selection", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    // Single-select n1.
+    fireEvent.click(n1)
+    await waitFor(() =>
+      expect(n1).toHaveAttribute("data-selected", "true"),
+    )
+    // Shift-click n2 → both become multi-members; neither is single-selected.
+    fireEvent.click(n2, { shiftKey: true })
+    await waitFor(() => {
+      expect(n1).toHaveAttribute("data-multi-selected", "true")
+      expect(n2).toHaveAttribute("data-multi-selected", "true")
+    })
+    expect(n1).toHaveAttribute("data-selected", "false")
+    expect(n2).toHaveAttribute("data-selected", "false")
+  })
+
+  it("shift+clicking an existing member toggles it out of the selection", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    fireEvent.click(n1)
+    fireEvent.click(n2, { shiftKey: true })
+    await waitFor(() =>
+      expect(n2).toHaveAttribute("data-multi-selected", "true"),
+    )
+    // Shift-click n2 again → removed; n1 stays in the multi-of-1.
+    fireEvent.click(n2, { shiftKey: true })
+    await waitFor(() =>
+      expect(n2).toHaveAttribute("data-multi-selected", "false"),
+    )
+    expect(n1).toHaveAttribute("data-multi-selected", "true")
+  })
+
+  it("a plain click while multi-selected demotes to single-select", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    fireEvent.click(n1)
+    fireEvent.click(n2, { shiftKey: true })
+    await waitFor(() =>
+      expect(n1).toHaveAttribute("data-multi-selected", "true"),
+    )
+    // Plain click n2 → single-select n2; the multi clears.
+    fireEvent.click(n2)
+    await waitFor(() => {
+      expect(n2).toHaveAttribute("data-selected", "true")
+    })
+    expect(n2).toHaveAttribute("data-multi-selected", "false")
+    expect(n1).toHaveAttribute("data-multi-selected", "false")
+    expect(n1).toHaveAttribute("data-selected", "false")
+  })
+
+  it("under multi-select the right rail stays on the palette (no card-editing rail)", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    fireEvent.click(n1)
+    fireEvent.click(n2, { shiftKey: true })
+    await waitFor(() =>
+      expect(n1).toHaveAttribute("data-multi-selected", "true"),
+    )
+    // selectedNode is null under multi → the none→palette arm renders.
+    expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument()
+  })
+})
+
+
 // ── Phase B sub-arc B-2 — registry-driven palette (16 → 32) ───────────
 //
 // Asserts the palette renders from getByType("workflow-node") (all 32

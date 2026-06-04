@@ -131,7 +131,20 @@ type NodeTraceState = "reachable" | "unreachable" | undefined
 export interface GraphCanvasProps {
   canvas: CanvasState
   selectedNodeId: string | null
-  onSelectNode: (id: string | null) => void
+  /**
+   * Container-arc Phase 0 (additive): node selection. `additive` is set
+   * when shift/⌘ was held on the click — the page's union-transition handler
+   * accumulates instead of replacing. Omitting `additive` (the pre-P0 call
+   * shape) is single-select, byte-identical.
+   */
+  onSelectNode: (id: string | null, additive?: boolean) => void
+  /**
+   * Container-arc Phase 0 (additive): the multi-node selection set. Each
+   * member renders the selected-ring WITHOUT the single-node card-editing
+   * affordances (those gate on selectedNodeId, which is null under multi).
+   * Omitted/empty → no multi-selection (pre-P0 behavior).
+   */
+  selectedNodeIds?: string[]
   /** Commit a node's new position (wraps the page's handleUpdateNode). */
   onMoveNode: (id: string, position: { x: number; y: number }) => void
   onRemoveNode: (id: string) => void
@@ -183,6 +196,7 @@ export interface GraphCanvasProps {
 export function GraphCanvas({
   canvas,
   selectedNodeId,
+  selectedNodeIds,
   onSelectNode,
   onMoveNode,
   onRemoveNode,
@@ -729,6 +743,9 @@ export function GraphCanvas({
                   key={node.id}
                   node={node}
                   selected={selectedNodeId === node.id}
+                  // Container-arc Phase 0 — ring-only multi-selection state
+                  // (distinct from `selected` so card editing stays dormant).
+                  multiSelected={selectedNodeIds?.includes(node.id) ?? false}
                   onSelect={onSelectNode}
                   onRemove={onRemoveNode}
                   mode={mode}
@@ -811,7 +828,18 @@ export function GraphCanvas({
 interface GraphCanvasNodeProps {
   node: CanvasNode
   selected: boolean
-  onSelect: (id: string | null) => void
+  /**
+   * Container-arc Phase 0 — this node is in the multi-node selection.
+   * Drives ONLY the selected-ring (border/outline/z-raise); the single-node
+   * card-editing affordances (connect-handle full-visibility, label
+   * placeholder) stay keyed on `selected` so they remain dormant here.
+   */
+  multiSelected?: boolean
+  /**
+   * Container-arc Phase 0 — `additive` reports shift/⌘ on the click so the
+   * page accumulates instead of replacing. Single-click omits it.
+   */
+  onSelect: (id: string | null, additive?: boolean) => void
   onRemove: (id: string) => void
   /** A3: current theme mode selects the family tone (light/dark). */
   mode: ThemeMode
@@ -849,6 +877,7 @@ interface GraphCanvasNodeProps {
 function GraphCanvasNode({
   node,
   selected,
+  multiSelected,
   onSelect,
   onRemove,
   mode,
@@ -969,6 +998,8 @@ function GraphCanvasNode({
       data-node-type={node.type}
       data-node-family={family ?? "none"}
       data-selected={selected}
+      // Container-arc Phase 0 — multi-selection membership (ring-only).
+      data-multi-selected={multiSelected ?? false}
       data-trace-state={traceState}
       className={isDragging ? "group absolute opacity-80" : "group absolute"}
       style={{
@@ -980,7 +1011,7 @@ function GraphCanvasNode({
         // height feeds bbox + the outgoing-edge source-anchor (see effect).
         minHeight: NODE_HEIGHT,
         cursor: isDragging ? "grabbing" : "grab",
-        zIndex: selected || isDragging ? 2 : 1,
+        zIndex: selected || multiSelected || isDragging ? 2 : 1,
         opacity: !isDragging && traceDimmed ? 0.35 : undefined,
         filter: isDragging
           ? "drop-shadow(var(--shadow-level-2))"
@@ -988,7 +1019,11 @@ function GraphCanvasNode({
       }}
       {...listeners}
       {...attributes}
-      onClick={() => onSelect(node.id)}
+      // Container-arc Phase 0 — shift/⌘+click reports `additive`; the page's
+      // union-transition handler accumulates. A plain click is single-select
+      // (the pre-P0 path). Inner interactive elements (remove, expand toggle,
+      // tokens, label) stopPropagation, so they don't reach this onClick.
+      onClick={(ev) => onSelect(node.id, ev.shiftKey || ev.metaKey)}
     >
       {/* Drag-to-connect P3b-1b — outgoing connection handle (bottom-center,
           matching the height-aware source anchor). Child of the OUTER card
@@ -1037,9 +1072,15 @@ function GraphCanvasNode({
         className="relative flex min-h-full w-full flex-col overflow-hidden rounded-md border"
         style={{
           background: tone.bg,
-          borderColor: selected ? "var(--accent)" : "var(--border-base)",
-          outline: selected ? "2px solid var(--accent)" : undefined,
-          outlineOffset: selected ? "1px" : undefined,
+          // Container-arc Phase 0 — the ring is the shared selection channel:
+          // single-select (selected) OR multi-select membership (multiSelected)
+          // both show the terracotta ring. The connect-handle + label
+          // placeholder below stay on `selected` alone, so card EDITING is
+          // single-only — multi-members get a ring, not an editor.
+          borderColor:
+            selected || multiSelected ? "var(--accent)" : "var(--border-base)",
+          outline: selected || multiSelected ? "2px solid var(--accent)" : undefined,
+          outlineOffset: selected || multiSelected ? "1px" : undefined,
         }}
       >
         {/* Family left-stripe (always present — the quiet family channel). */}

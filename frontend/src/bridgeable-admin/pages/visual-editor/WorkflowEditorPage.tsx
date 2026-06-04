@@ -116,10 +116,18 @@ function generateNodeId(canvas: CanvasState): string {
 
 
 
-// Phase B sub-arc B-5 — 4-state selection-context discriminated union.
+// Phase B sub-arc B-5 — selection-context discriminated union.
+// Container-arc Phase 0 (2026-06-04) — added a FIFTH kind `nodes` for
+// multi-node selection (shift/⌘+click accumulate). The existing single
+// `node` kind is UNCHANGED — it keeps its exact card-editing behavior. The
+// new `nodes` kind is the selection MECHANISM only; its first consumer
+// (group-into-container) arrives in Phase 1. `selectedNodeId` stays
+// single-only (null under `nodes`), so every single-select card affordance
+// goes dormant under multi-select for free.
 type WorkflowSelection =
   | { kind: "none" }
   | { kind: "node"; id: string }
+  | { kind: "nodes"; ids: string[] }
   | { kind: "edge"; id: string }
   | { kind: "background" }
 
@@ -196,6 +204,11 @@ export default function WorkflowEditorPage() {
   })
   const selectedNodeId = selection.kind === "node" ? selection.id : null
   const selectedEdgeId = selection.kind === "edge" ? selection.id : null
+  // Container-arc Phase 0 — the multi-node selection set (drives the
+  // per-member ring in GraphCanvas). Empty unless kind === "nodes". Distinct
+  // from selectedNodeId (single) so the ring renders WITHOUT reactivating the
+  // single-node card-editing affordances.
+  const selectedNodeIds = selection.kind === "nodes" ? selection.ids : []
 
   // ── Loading + save state ─────────────────────────────
   const [, setIsLoading] = useState(false)
@@ -521,6 +534,47 @@ export default function WorkflowEditorPage() {
       handleUpdateNode(nodeId, { position })
     },
     [handleUpdateNode],
+  )
+
+  // Container-arc Phase 0 — node-selection transition. The page owns the
+  // union logic (the canvas just reports id + whether shift/⌘ was held).
+  // Rule: plain click → single { kind:"node" } (byte-identical to pre-P0);
+  // shift/⌘+click → ALWAYS a { kind:"nodes" } multi-selection (even at 1
+  // member), so curating a set never surprise-reactivates card editing
+  // mid-gesture. A subsequent plain click demotes back to single-select.
+  //   - prev "nodes" → toggle the id (remove if present; clearing the last
+  //     member returns to "none").
+  //   - prev "node"  → promote to "nodes" [prev.id, id] (dedup'd — shift on
+  //     the already-single node yields a multi-of-1 of that node).
+  //   - prev none/edge/background → start a multi-of-1.
+  // id === null clears (preserves the pre-P0 null-clears contract).
+  const handleSelectNode = useCallback(
+    (id: string | null, additive?: boolean) => {
+      if (id === null) {
+        setSelection({ kind: "none" })
+        return
+      }
+      if (!additive) {
+        setSelection({ kind: "node", id })
+        return
+      }
+      setSelection((prev) => {
+        if (prev.kind === "nodes") {
+          const ids = prev.ids.includes(id)
+            ? prev.ids.filter((x) => x !== id)
+            : [...prev.ids, id]
+          return ids.length === 0 ? { kind: "none" } : { kind: "nodes", ids }
+        }
+        if (prev.kind === "node") {
+          return {
+            kind: "nodes",
+            ids: prev.id === id ? [id] : [prev.id, id],
+          }
+        }
+        return { kind: "nodes", ids: [id] }
+      })
+    },
+    [],
   )
 
   const selectedNode = useMemo(
@@ -966,9 +1020,13 @@ export default function WorkflowEditorPage() {
           <GraphCanvas
             canvas={draftCanvas}
             selectedNodeId={selectedNodeId}
-            onSelectNode={(id) =>
-              setSelection(id ? { kind: "node", id } : { kind: "none" })
-            }
+            // Container-arc Phase 0 — multi-node selection. `selectedNodeIds`
+            // drives the per-member ring; `onSelectNode`'s additive flag
+            // (shift/⌘) routes through the union-transition handler. The
+            // single `selectedNodeId` prop is unchanged (single-select stays
+            // byte-identical).
+            selectedNodeIds={selectedNodeIds}
+            onSelectNode={handleSelectNode}
             onMoveNode={handleMoveNode}
             onRemoveNode={handleRemoveNode}
             validationError={validationError}

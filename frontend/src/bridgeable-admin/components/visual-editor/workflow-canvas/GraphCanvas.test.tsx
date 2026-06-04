@@ -226,7 +226,10 @@ describe("GraphCanvas — non-drag affordances", () => {
       />,
     )
     fireEvent.click(screen.getByTestId("canvas-node-n_node_1"))
-    expect(onSelectNode).toHaveBeenCalledWith("n_node_1")
+    // Container-arc Phase 0 — onSelectNode now carries an additive flag
+    // (false for a plain click → single-select; the page maps it to the
+    // unchanged { kind:"node" } path). Signature widened additively.
+    expect(onSelectNode).toHaveBeenCalledWith("n_node_1", false)
   })
 
   it("fires onRemoveNode (not onSelectNode) when the trash button is clicked", () => {
@@ -630,7 +633,8 @@ describe("GraphCanvas — B-5 edge + background selection", () => {
     // A node click does NOT bubble to background (target !== surface).
     onSelectBackground.mockClear()
     fireEvent.click(screen.getByTestId("canvas-node-n_node_1"))
-    expect(onSelectNode).toHaveBeenCalledWith("n_node_1")
+    // P0: plain click carries additive=false (single-select, unchanged path).
+    expect(onSelectNode).toHaveBeenCalledWith("n_node_1", false)
     expect(onSelectBackground).not.toHaveBeenCalled()
   })
 
@@ -651,7 +655,8 @@ describe("GraphCanvas — B-5 edge + background selection", () => {
     // target. The node remains clickable/selectable.
     expect(screen.getByTestId("graph-canvas-edges")).toHaveClass("pointer-events-none")
     fireEvent.click(screen.getByTestId("canvas-node-n_node_2"))
-    expect(onSelectNode).toHaveBeenCalledWith("n_node_2")
+    // P0: plain click carries additive=false (single-select, unchanged path).
+    expect(onSelectNode).toHaveBeenCalledWith("n_node_2", false)
   })
 
   it("edge selection composes with the B-4 overlay (dim + selected highlight coexist)", () => {
@@ -1494,5 +1499,123 @@ describe("GraphCanvas — P3 (E-3) bespoke config hosted in the expand panel", (
     // (the focus Select shows its placeholder; the op dropdown is disabled).
     expect(screen.getByTestId("bespoke-node-pane")).toBeInTheDocument()
     expect(screen.getByTestId("wf-invoke-generation-focus-config")).toBeInTheDocument()
+  })
+})
+
+
+describe("GraphCanvas — Container-arc Phase 0 (multi-node selection)", () => {
+  // The selection MECHANISM only: shift/⌘+click reports `additive`, multi
+  // members render the ring (data-multi-selected), card editing stays
+  // dormant under multi. The union-transition logic lives in the PAGE; here
+  // we assert the canvas reports the additive flag + renders the ring from
+  // the selectedNodeIds prop.
+
+  it("reports additive=true on a shift+click", () => {
+    const onSelectNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={onSelectNode}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-node-n_node_2"), { shiftKey: true })
+    expect(onSelectNode).toHaveBeenCalledWith("n_node_2", true)
+  })
+
+  it("reports additive=true on a ⌘(meta)+click", () => {
+    const onSelectNode = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={onSelectNode}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-node-n_node_1"), { metaKey: true })
+    expect(onSelectNode).toHaveBeenCalledWith("n_node_1", true)
+  })
+
+  it("renders the ring on every selectedNodeIds member via data-multi-selected", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        selectedNodeIds={["n_node_1", "n_node_2"]}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-n_node_1")).toHaveAttribute(
+      "data-multi-selected",
+      "true",
+    )
+    expect(screen.getByTestId("canvas-node-n_node_2")).toHaveAttribute(
+      "data-multi-selected",
+      "true",
+    )
+  })
+
+  it("non-members read data-multi-selected=false", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        selectedNodeIds={["n_node_1"]}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-n_node_2")).toHaveAttribute(
+      "data-multi-selected",
+      "false",
+    )
+  })
+
+  it("multi-selection does NOT mark a node single-selected (card editing dormant)", () => {
+    // selectedNodeId is null under multi → data-selected stays false, so the
+    // single-node card-editing channel (connect-handle full-visibility, label
+    // placeholder) never activates. The ring is the only multi affordance.
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        selectedNodeIds={["n_node_1", "n_node_2"]}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.getByTestId("canvas-node-n_node_1")).toHaveAttribute(
+      "data-selected",
+      "false",
+    )
+    // No single-select label placeholder appears for a multi member.
+    expect(
+      screen.queryByTestId("canvas-node-n_node_1-label-placeholder"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("single-select is unperturbed by the multi props (selectedNodeIds omitted)", () => {
+    // The pre-P0 single-select render: selectedNodeId marks data-selected;
+    // no multi prop → data-multi-selected defaults false.
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId="n_node_2"
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    const node2 = screen.getByTestId("canvas-node-n_node_2")
+    expect(node2).toHaveAttribute("data-selected", "true")
+    expect(node2).toHaveAttribute("data-multi-selected", "false")
   })
 })
