@@ -225,3 +225,119 @@ Each phase leaves the builder fully working. Frontend-only except a small backen
 | WorkflowsTab uses NodeConfigForm (panel, no canvas) → untouched | CLAUDE.md §4 + `WorkflowEditorPage.tsx:40-49` |
 
 **No code. No canon. No build. No dispatch.** Map only.
+
+---
+
+# Phase 2 — collapse / expand + edge-rerouting (the LARGE phase) — INVESTIGATION
+
+**Date:** 2026-06-04 · **HEAD:** `628972d` (P1 shipped — expanded labeled containers live). Appended to the committed investigation; **uncommitted until P2a lands.** No code, no canon, no build.
+
+**Proxy-port model LOCKED: side-bucketed** — crossing-IN edges route to the box TOP-center, crossing-OUT to the box BOTTOM-center (matching `computeEdgePath`'s source-bottom→target-top convention; the collapsed box anchors like a big node). **Flat only** (P1/P2 produce only `kind:"node"` members; nesting/box-inside-box is P3).
+
+## P2.1 — The edge classifier (the core logic)
+
+A pure helper consumed by the edge `.map` (`GraphCanvas.tsx:593`). Given `edges` + the collapsed-membership lookup, classify each edge into five cases:
+
+| Case | Condition | Render |
+|---|---|---|
+| **interior** | source ∈ M and target ∈ M, **same** collapsed container | **hidden** (both endpoints inside the box) |
+| **box↔box** | source ∈ M and target ∈ M, **different** collapsed containers | route boxA-**bottom** → boxB-**top** (both endpoints re-anchored) |
+| **crossing-out** | source ∈ M (collapsed), target ∉ any collapsed | route boxA-**bottom** → target node-**top** (existing node anchor) |
+| **crossing-in** | source ∉ any collapsed, target ∈ M (collapsed) | route source node-**bottom** → boxB-**top** |
+| **external** | neither endpoint in a collapsed container | **unchanged** (P1 path) |
+
+where **M = the set of node-ids that are `kind:"node"` members of a COLLAPSED container.** (An expanded container hides nothing → its members render normally → their edges are external.)
+
+**The member→container lookup.** `buildCollapsedMembership(containers): Map<nodeId, containerId>` — iterate `containers.filter(c => c.collapsed)`, map each `kind:"node"` member id → its container id. Built in `GraphCanvas` render as a `useMemo` over `canvas.containers` (the collapsed subset). Reactivity: a `collapsed` toggle → `handleUpdateContainer` → `setDraftCanvas` → re-render → the memo rebuilds → reclassify. The classifier reads `membership.get(edge.source)` / `.get(edge.target)` — same container id on both ⇒ interior; both present + different ⇒ box↔box; one present ⇒ crossing; neither ⇒ external.
+
+**Cases the classifier must handle (enumerated):**
+- Member with only interior edges → those hide; the member vanishes with the box. Fine.
+- Container with **no** crossing edges (fully self-contained) → collapses to a box with no external edges. Fine.
+- Member of collapsed-A ↔ member of collapsed-B → **box↔box** (NOT interior — different containers).
+- Member of collapsed-A ↔ member of an **expanded** container → the expanded member is a visible node → **crossing** (node anchor on the expanded side; box anchor on the collapsed side).
+- Self-loop on a member (source===target, same collapsed container) → interior → hidden.
+- A node that is a member of NO container → never in M → its edges are external/crossing depending on the OTHER endpoint.
+
+## P2.2 — The anchor generalization (side-bucketed) — does `computeEdgePath` generalize?
+
+**Partially — the bezier CURVE reuses; the per-endpoint ANCHOR resolution is the new pure helper.** `computeEdgePath` (`canvas-layout.ts:221-239`) computes BOTH anchors from a SINGLE `nodeWidth`/`nodeHeight` pair: `sx = source.x + nodeWidth/2; sy = source.y + nodeHeight` (source bottom-center), `tx = target.x + nodeWidth/2; ty = target.y` (target top-center). A crossing edge has **mismatched per-endpoint dims** (one end a node `NODE_WIDTH×heightOf`, the other a box `boxW×boxH`), so the single-dims signature does NOT cover it.
+
+**Clean generalization (the P2a deliverable):** extract the curve core + a per-endpoint anchor resolver:
+- `bezierBetween(sourcePt: Point, targetPt: Point): string` — the existing control-point math from `computeEdgePath:234-238` (`ctrl = max(40, |dy|/2)`, the cubic `M…C…`), lifted to operate on two already-resolved points. `computeEdgePath` becomes a thin caller (resolve node anchors → `bezierBetween`); `computeEdgePreviewPath` (`canvas-layout.ts:331-344`, already a bare-point variant) folds onto the same core. So the codebase's three bezier variants (node-target, point-target, box-target) unify on one core.
+- `boxAnchor(bounds: {x,y,w,h}, side: "top"|"bottom"): Point` — `top` → `(x + w/2, y)`; `bottom` → `(x + w/2, y + h)`. This is EXACTLY the node top/bottom-center math at box dims — confirming the lean: **same top/bottom-center geometry, different box.** No new curve math.
+
+A crossing-out edge: `bezierBetween(boxAnchor(boxBounds,"bottom"), nodeTopCenter(target))`. A box↔box edge: `bezierBetween(boxAnchor(boxA,"bottom"), boxAnchor(boxB,"top"))`. The arrow marker + the midpoint helper (`computeEdgeMidpoint:247-259`, used for labels + the P3b-2 delete-×) follow the new anchors once they read the resolved endpoints.
+
+## P2.3 — The COLLAPSED BOX POSITION + SIZE (the real open question)
+
+When **expanded**, bounds = `bbox(memberNodes, NODE_WIDTH, heightOf)` + 18px padding (`GraphCanvas.tsx:775` — P1). When **collapsed**, members are hidden → `bbox(members)` is the wrong SIZE (occupying the full member footprint defeats the tangle-tidying purpose). The collapsed box needs a definite compact `(x,y,w,h)` for the side-bucketed anchor.
+
+**Options (Type-B — surface, lean stated):**
+- **POSITION (a, lean):** the members' bbox **top-left** (`{x: b.minX, y: b.minY}`) — computed from the still-present member positions (members exist in `canvas_state`, just unrendered), so collapse shrinks the region toward its top-left corner. No schema change; deterministic; stable while collapsed (hidden members can't move).
+- POSITION (b): members' **centroid** (collapse toward center). Computed; the box overlaps where members were.
+- POSITION (c): a **stored** `position?: {x,y}` on `WorkflowContainer` (set at first collapse; draggable thereafter). Makes the collapsed box a first-class movable card — but adds a field + "set on first collapse" logic + drag handling.
+- **SIZE (a, lean):** a **fixed** collapsed-card size — a dedicated `COLLAPSED_CONTAINER_WIDTH/HEIGHT` (≈ a node card, perhaps a touch wider to fit the label + a member count). Predictable; the anchor math has a definite box.
+- SIZE (b): label-hugging (variable). More layout work; little benefit.
+
+**Lean for P2: computed position (members' bbox top-left) + fixed size — NO schema change.** Trade: the collapsed box is **not independently draggable** (it's pinned to the members' bbox top-left); making it draggable needs the stored `position` (option c) — **deferred refinement**, flagged. This gives `boxAnchor` a definite box without a schema migration and keeps `collapsed` the only P2 state read.
+
+## P2.4 — The collapsed box as a surface (render + hit + expand)
+
+- **Render — branch `GraphCanvasContainer` on `collapsed` (one component, two modes).** Expanded → the current P1 behind-nodes labeled frame (`pointer-events:none` body, chrome auto — `GraphCanvas.tsx:1372+`). Collapsed → an **opaque card** at the P2.3 collapsed bounds, `pointer-events:auto`, **z-index in the node band** (so it paints among the cards it replaces). The container layer (`:758-790`) renders BEFORE the node layer (`:792-793`), but z-index (not DOM order) governs paint within the transform surface — a collapsed box with node-band z-index reads as on-top. **The node `.map` (`:793`) must SKIP hidden members** (filter out any node in M) so the collapsed box visually replaces them. Keeping ALL container rendering in `GraphCanvasContainer` (branched) is cleaner than promoting collapsed boxes into the node layer.
+- **Hit-testing — DOM card, NO `nodeAtPoint` change.** The collapsed box is a real DOM element with its own `onClick` (like the node card), so clicks are handled in the DOM — `nodeAtPoint` (`canvas-layout.ts:358-377`) stays node-only. **BUT a real interaction to fix in P2b:** `nodeAtPoint` iterates ALL `canvas.nodes` (incl. hidden members); `dropDecision` (`canvas-layout.ts:416-438`, drag-to-connect) could therefore resolve a DROP onto a HIDDEN member while a container is collapsed. **P2b must exclude hidden members from the drop hit-test** (pass only-visible nodes, or filter M out before `nodeAtPoint`). Flagged — it's the one place collapse touches an existing gesture.
+- **Collapse/expand toggle.** Expanded chrome gets a **collapse** button (alongside label + ungroup); the collapsed card gets an **expand** button. Both call `handleUpdateContainer(id, { collapsed: !collapsed })` → `setDraftCanvas` → persists + autosaves (P1 established `collapsed` as authored state). Maps cleanly onto the existing P1 `handleUpdateContainer`.
+- **Container selection (Type-B).** P1 does label-edit + ungroup **inline on the box chrome** — no selection needed. P2 can keep that (expand/collapse/ungroup/label all chrome buttons) → **no new selection kind**, consistent with P1, and P2 doesn't touch the selection union again. The alternative — a new `{ kind:"container"; id }` (6th union kind) — buys a container rail panel + a selection ring, at the cost of touching the union (`WorkflowEditorPage.tsx:120-130`) + the rail dispatch. **Lean: keep interactions inline-on-box for P2; defer `{kind:"container"}` unless a container rail is wanted.**
+
+## P2.5 — Composition + reactivity
+
+- **`collapsed` is authored/persisted** (P1 shipped the field; it's in `canvas_state`). Toggling → `handleUpdateContainer` → `setDraftCanvas` → re-render + autosave (`WorkflowEditorPage.tsx:309/393-409` dirty+autosave). The membership map + edge classification + box render are `useMemo`'d on `canvas.containers`/`canvas.edges` → recompute on the toggle.
+- **Surface bbox / pan bounds:** keep counting ALL nodes (incl. hidden members) toward the surface-sizing `bbox` so collapse doesn't shrink the scroll surface or jump pan. Minor — flag.
+- **grow-to-fit:** the collapsed box is **fixed size** → it doesn't depend on the measured-heights `Map`; hidden members stop re-measuring (not rendered) but their stale heights are harmless (the collapsed box position uses member bbox top-left, position-based not height-based). The collapsed box does not report a measured height (it's not a node).
+- **pan/zoom:** the collapsed box + rerouted edges are children of the transform surface (`GraphCanvas.tsx` surface div) → transform-composed for free, like everything.
+- **Transition (Type-B, polish):** expanded↔collapsed as an instant swap (lean) vs an animated shrink/grow — deferred polish, not required for P2.
+
+## P2.6 — P2 internal phasing (mirrors the P3b-1a/1b de-risk)
+
+**P2a — pure helpers (de-risked first, consumed by nothing; mirrors P3b-1a `canvas-layout` pure functions).**
+- `buildCollapsedMembership(containers): Map<nodeId, containerId>`
+- `classifyEdge(edge, membership): { kind: "interior"|"crossing-in"|"crossing-out"|"external"|"box-box"; sourceContainerId?; targetContainerId? }`
+- `bezierBetween(sourcePt, targetPt)` (extract `computeEdgePath`'s curve core; fold in `computeEdgePreviewPath`) + `boxAnchor(bounds, "top"|"bottom")`
+- `collapsedBoxBounds(container, members, heightOf): {x,y,w,h}` (members' bbox top-left + fixed size)
+- All unit-testable in `canvas-layout.test.ts` with no DOM (the Q-40 JSDOM-weakness pattern). **Size: SMALL-MEDIUM.** Consumed by nothing → builder unaffected.
+
+**P2b — rendering (consumes P2a; mirrors P3b-1b).**
+- node `.map` filters hidden members; edge `.map` consumes `classifyEdge` (hide interior; reroute crossing/box↔box via `bezierBetween`+`boxAnchor`; external unchanged).
+- `GraphCanvasContainer` branches on `collapsed` (expanded frame ↔ collapsed opaque card + expand button); collapse button on the expanded chrome.
+- the drop-hit-test-excludes-hidden-members fix (P2.4).
+- **Size: LARGE.** Behind the `collapsed` flag → default-false = P1 behavior, so the builder stays working throughout.
+
+**2a/2b confirmed.** The collapsed-box surface + the edge-rerouting are visually interdependent (rerouting targets the box), so they belong in one rendering phase (P2b); splitting them would show half a feature. If P2b proves too large mid-build, the natural seam is collapsed-box-render-+-toggle FIRST (members hide, box shows, edges temporarily hidden), THEN edge-rerouting — but lean: one P2b.
+
+## P2.7 — Type-B decisions surfaced (NOT resolved)
+
+1. **Collapsed box position + size** (§P2.3): computed members'-bbox-top-left + fixed size (lean, no schema) vs stored `position` (draggable, +field). Draggability-when-collapsed deferred.
+2. **Multiple crossing edges per side** (§P2.2 sub-question): all-in at top-center / all-out at bottom-center (lean, simplest) vs spread along the box edge (a pure `N→N points` refinement). P2b polish — center first.
+3. **Container-selection kind** (§P2.4): keep interactions inline-on-box, no new union kind (lean, consistent with P1) vs add `{kind:"container"}` for a container rail + ring.
+4. **Expand/collapse transition** (§P2.5): instant (lean) vs animated. Polish.
+5. **P2a/2b split** (§P2.6): confirmed; the in-build fallback seam noted.
+
+## Appendix — Phase 2 file:line index
+
+| Concern | File:line |
+|---|---|
+| Edge render loop (consumes the classifier) | `GraphCanvas.tsx:593` |
+| `computeEdgePath` (curve core to extract + node anchors) | `canvas-layout.ts:221-239` |
+| `computeEdgePreviewPath` (bare-point variant — folds onto `bezierBetween`) | `canvas-layout.ts:331-344` |
+| `computeEdgeMidpoint` (follows the new anchors) | `canvas-layout.ts:247-259` |
+| `nodeAtPoint` (node-only; stays — but drop hit-test must exclude hidden) | `canvas-layout.ts:358-377` |
+| `dropDecision` (drag-to-connect; exclude-hidden-members fix) | `canvas-layout.ts:416-438` |
+| `bbox` (expanded bounds; surface sizing counts all nodes) | `canvas-layout.ts:270-305` |
+| Container render layer (`canvas.containers?.map`; `const b = bbox(memberNodes…)`) | `GraphCanvas.tsx:758-790`, `:775` |
+| Node layer (must filter hidden members) | `GraphCanvas.tsx:792-793` |
+| `GraphCanvasContainer` (branch on `collapsed`; add collapse/expand chrome) | `GraphCanvas.tsx:1372+` |
+| Container chrome (label + ungroup; add collapse toggle) | `GraphCanvas.tsx:1435-1480` |
+| `handleUpdateContainer` (collapse toggle → setDraftCanvas → persist) | `WorkflowEditorPage.tsx` (P1 container CRUD) |
+| Selection union (Type-B: add `{kind:"container"}` or not) | `WorkflowEditorPage.tsx:120-130` |
+| `isDirty` autosave (collapse persists) | `WorkflowEditorPage.tsx:309`, `:393-409` |
+
+**No code. No canon. No build. No dispatch.** Phase 2 map only — uncommitted until P2a.

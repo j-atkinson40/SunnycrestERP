@@ -26,11 +26,20 @@ import {
   computeEdgePreviewPath,
   nodeAtPoint,
   dropDecision,
+  // Container-arc Phase 2a — collapse/rerouting pure helpers (de-risk).
+  COLLAPSED_CONTAINER_WIDTH,
+  COLLAPSED_CONTAINER_HEIGHT,
+  boxAnchor,
+  bezierBetween,
+  buildCollapsedMembership,
+  classifyEdge,
+  collapsedBoxBounds,
   type PositionedNode,
 } from "./canvas-layout"
 import type {
   CanvasNode,
   CanvasEdge,
+  WorkflowContainer,
 } from "@/bridgeable-admin/services/workflow-templates-service"
 
 
@@ -363,5 +372,211 @@ describe("canvas-layout — dropDecision", () => {
     expect(
       dropDecision({ nodes, edges, heights, sourceId: "a", cursorWorld: inside("c") }),
     ).toEqual({ action: "create", target: "c" })
+  })
+})
+
+
+// ── Container-arc Phase 2a — collapse/rerouting pure helpers ──────────
+
+function container(
+  id: string,
+  memberNodeIds: string[],
+  collapsed: boolean,
+): WorkflowContainer {
+  return {
+    id,
+    members: memberNodeIds.map((nid) => ({ kind: "node" as const, id: nid })),
+    collapsed,
+  }
+}
+
+describe("canvas-layout — boxAnchor", () => {
+  it("top = (x + width/2, y)", () => {
+    expect(boxAnchor({ x: 10, y: 20, width: 200, height: 64 }, "top")).toEqual({
+      x: 110,
+      y: 20,
+    })
+  })
+
+  it("bottom = (x + width/2, y + height)", () => {
+    expect(
+      boxAnchor({ x: 10, y: 20, width: 200, height: 64 }, "bottom"),
+    ).toEqual({ x: 110, y: 84 })
+  })
+})
+
+describe("canvas-layout — bezierBetween", () => {
+  it("reproduces the cubic-bezier curve between two points", () => {
+    // ctrl = max(40, |400-72|/2) = 164. M sx sy C sx sy+ctrl, tx ty-ctrl, tx ty
+    expect(bezierBetween({ x: 100, y: 72 }, { x: 100, y: 400 })).toBe(
+      "M 100 72 C 100 236, 100 236, 100 400",
+    )
+  })
+
+  it("floors the control offset at 40 for near-horizontal pairs", () => {
+    // |10-0|/2 = 5 → floored to 40.
+    expect(bezierBetween({ x: 0, y: 0 }, { x: 300, y: 10 })).toBe(
+      "M 0 0 C 0 40, 300 -30, 300 10",
+    )
+  })
+})
+
+describe("canvas-layout — computeEdgePath refactor is OUTPUT-IDENTICAL", () => {
+  // The Phase 2a decomposition (boxAnchor + bezierBetween) must reproduce the
+  // exact prior node→node strings. These pin byte-identical output.
+  it("node→node path matches the known string", () => {
+    const d = computeEdgePath({ source: { x: 0, y: 0 }, target: { x: 0, y: 200 } })
+    // sx=100 sy=72 tx=100 ty=200; ctrl=max(40,128/2)=64.
+    expect(d).toBe("M 100 72 C 100 136, 100 136, 100 200")
+  })
+
+  it("respects an injected (tall) source height", () => {
+    const d = computeEdgePath({
+      source: { x: 0, y: 0 },
+      target: { x: 0, y: 400 },
+      nodeHeight: 160,
+    })
+    // sy=160; ctrl=max(40,240/2)=120.
+    expect(d).toBe("M 100 160 C 100 280, 100 280, 100 400")
+  })
+
+  it("preview path (node→cursor) matches the known string", () => {
+    const d = computeEdgePreviewPath({ x: 0, y: 0 }, NODE_HEIGHT, { x: 0, y: 400 })
+    // sy=72; ctrl=max(40,328/2)=164.
+    expect(d).toBe("M 100 72 C 100 236, 0 236, 0 400")
+  })
+})
+
+describe("canvas-layout — buildCollapsedMembership", () => {
+  it("maps members of a collapsed container to its id", () => {
+    const m = buildCollapsedMembership([container("c1", ["n_a", "n_b"], true)])
+    expect(m.get("n_a")).toBe("c1")
+    expect(m.get("n_b")).toBe("c1")
+    expect(m.size).toBe(2)
+  })
+
+  it("ignores EXPANDED containers (they hide nothing)", () => {
+    const m = buildCollapsedMembership([container("c1", ["n_a"], false)])
+    expect(m.has("n_a")).toBe(false)
+    expect(m.size).toBe(0)
+  })
+
+  it("a node in no collapsed container is absent", () => {
+    const m = buildCollapsedMembership([container("c1", ["n_a"], true)])
+    expect(m.has("n_other")).toBe(false)
+  })
+
+  it("undefined / empty containers → empty map", () => {
+    expect(buildCollapsedMembership(undefined).size).toBe(0)
+    expect(buildCollapsedMembership([]).size).toBe(0)
+  })
+
+  it("skips kind:'container' members (flat — P2 produces none)", () => {
+    const c: WorkflowContainer = {
+      id: "c1",
+      members: [
+        { kind: "node", id: "n_a" },
+        { kind: "container", id: "c_inner" },
+      ],
+      collapsed: true,
+    }
+    const m = buildCollapsedMembership([c])
+    expect(m.get("n_a")).toBe("c1")
+    expect(m.has("c_inner")).toBe(false)
+    expect(m.size).toBe(1)
+  })
+})
+
+describe("canvas-layout — classifyEdge", () => {
+  const membership = buildCollapsedMembership([
+    container("c1", ["n_a", "n_b"], true),
+    container("c2", ["n_c"], true),
+    container("c3", ["n_exp"], false), // expanded — members NOT hidden
+  ])
+
+  it("interior: both endpoints in the SAME collapsed container", () => {
+    const r = classifyEdge({ source: "n_a", target: "n_b" }, membership)
+    expect(r.kind).toBe("interior")
+    expect(r.sourceContainerId).toBe("c1")
+    expect(r.targetContainerId).toBe("c1")
+  })
+
+  it("box-to-box: endpoints in DIFFERENT collapsed containers", () => {
+    const r = classifyEdge({ source: "n_a", target: "n_c" }, membership)
+    expect(r.kind).toBe("box-to-box")
+    expect(r.sourceContainerId).toBe("c1")
+    expect(r.targetContainerId).toBe("c2")
+  })
+
+  it("crossing-in: only the TARGET is a hidden member", () => {
+    const r = classifyEdge({ source: "n_out", target: "n_a" }, membership)
+    expect(r.kind).toBe("crossing-in")
+    expect(r.targetContainerId).toBe("c1")
+    expect(r.sourceContainerId).toBeUndefined()
+  })
+
+  it("crossing-out: only the SOURCE is a hidden member", () => {
+    const r = classifyEdge({ source: "n_a", target: "n_out" }, membership)
+    expect(r.kind).toBe("crossing-out")
+    expect(r.sourceContainerId).toBe("c1")
+    expect(r.targetContainerId).toBeUndefined()
+  })
+
+  it("external: neither endpoint is a hidden member", () => {
+    expect(classifyEdge({ source: "n_x", target: "n_y" }, membership).kind).toBe(
+      "external",
+    )
+  })
+
+  it("collapsed-A member → EXPANDED-B member = crossing (NOT box-to-box)", () => {
+    // n_exp is in an expanded container → not in the collapsed-membership map,
+    // so only one endpoint (n_a) is hidden → crossing-out.
+    const r = classifyEdge({ source: "n_a", target: "n_exp" }, membership)
+    expect(r.kind).toBe("crossing-out")
+    expect(r.sourceContainerId).toBe("c1")
+  })
+
+  it("a self-contained collapsed container's edges are all interior", () => {
+    const r = classifyEdge({ source: "n_a", target: "n_b" }, membership)
+    expect(r.kind).toBe("interior")
+  })
+})
+
+describe("canvas-layout — collapsedBoxBounds", () => {
+  const nodes = [
+    cnode("n_a", 100, 200),
+    cnode("n_b", 400, 500),
+    cnode("n_c", 50, 50),
+  ]
+
+  it("position = members' bbox top-left; size = the fixed collapsed dims", () => {
+    const c = container("c1", ["n_a", "n_b"], true)
+    const b = collapsedBoxBounds(c, nodes)
+    expect(b).toEqual({
+      x: 100, // min member x
+      y: 200, // min member y
+      width: COLLAPSED_CONTAINER_WIDTH,
+      height: COLLAPSED_CONTAINER_HEIGHT,
+    })
+  })
+
+  it("size is fixed regardless of how spread the members are", () => {
+    const c = container("c1", ["n_a", "n_b", "n_c"], true)
+    const b = collapsedBoxBounds(c, nodes)
+    expect(b.width).toBe(COLLAPSED_CONTAINER_WIDTH)
+    expect(b.height).toBe(COLLAPSED_CONTAINER_HEIGHT)
+    expect(b.x).toBe(50) // min of 100/400/50
+    expect(b.y).toBe(50)
+  })
+
+  it("empty-member container → degenerate (0,0) fixed box (P2b filters first)", () => {
+    const c = container("c_empty", [], true)
+    const b = collapsedBoxBounds(c, nodes)
+    expect(b).toEqual({
+      x: 0,
+      y: 0,
+      width: COLLAPSED_CONTAINER_WIDTH,
+      height: COLLAPSED_CONTAINER_HEIGHT,
+    })
   })
 })

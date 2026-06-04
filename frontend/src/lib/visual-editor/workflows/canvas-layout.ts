@@ -39,6 +39,7 @@ import type {
   CanvasNode,
   CanvasEdge,
   CanvasState,
+  WorkflowContainer,
 } from "@/bridgeable-admin/services/workflow-templates-service"
 
 // ─── Canvas + node geometry constants ───────────────────────────────
@@ -50,6 +51,17 @@ import type {
  */
 export const NODE_WIDTH = 200
 export const NODE_HEIGHT = 72
+
+/**
+ * Container-arc Phase 2a — fixed dimensions of a COLLAPSED container card.
+ * When collapsed, member nodes are hidden, so the box is NOT sized to the
+ * member bbox (that would defeat the tangle-tidying purpose) — it's a compact
+ * fixed-size card positioned at the members' bbox top-left (see
+ * `collapsedBoxBounds`). Width matches a node card; height is a touch shorter
+ * (the collapsed card shows the label + a member count, not a sentence body).
+ */
+export const COLLAPSED_CONTAINER_WIDTH = 200
+export const COLLAPSED_CONTAINER_HEIGHT = 64
 
 /**
  * Default canvas dimensions. The canvas is a scrollable surface; these
@@ -116,6 +128,18 @@ export interface BBox {
   minY: number
   maxX: number
   maxY: number
+  width: number
+  height: number
+}
+
+/**
+ * Container-arc Phase 2a — a top-left-origin box (matches the
+ * GraphCanvasContainer bounds prop shape, so `collapsedBoxBounds` output
+ * flows straight into the render in P2b). `boxAnchor` anchors edges on it.
+ */
+export interface BoxBounds {
+  x: number
+  y: number
   width: number
   height: number
 }
@@ -225,17 +249,53 @@ export function computeEdgePath(input: EdgePathInput): string {
     nodeWidth = NODE_WIDTH,
     nodeHeight = NODE_HEIGHT,
   } = input
-  const sx = source.x + nodeWidth / 2
-  const sy = source.y + nodeHeight
-  const tx = target.x + nodeWidth / 2
-  const ty = target.y
-  // Vertical control-point offset: half the vertical gap, floored so
-  // near-horizontal edges still bow rather than collapsing to a line.
-  const dy = ty - sy
+  // Container-arc Phase 2a — decomposed into the reusable anchor + curve
+  // helpers (OUTPUT-IDENTICAL to the prior inline math; the canvas-layout
+  // tests lock the node→node string). Source departs its bottom-center,
+  // target arrives at its top-center — exactly what `boxAnchor` computes for
+  // a node-sized box.
+  return bezierBetween(
+    boxAnchor(
+      { x: source.x, y: source.y, width: nodeWidth, height: nodeHeight },
+      "bottom",
+    ),
+    boxAnchor(
+      { x: target.x, y: target.y, width: nodeWidth, height: nodeHeight },
+      "top",
+    ),
+  )
+}
+
+
+// ─── boxAnchor + bezierBetween (Phase 2a — the anchor split) ────────────
+
+/**
+ * The top-center or bottom-center point of a box. Side-bucketed edge
+ * rerouting (P2b) anchors crossing-IN edges at a container's "top" and
+ * crossing-OUT at its "bottom" — the same top-in/bottom-out convention nodes
+ * use, generalized to an arbitrary box (node OR collapsed container).
+ *   top    = (x + width/2, y)
+ *   bottom = (x + width/2, y + height)
+ */
+export function boxAnchor(bounds: BoxBounds, side: "top" | "bottom"): Point {
+  const cx = bounds.x + bounds.width / 2
+  return side === "top"
+    ? { x: cx, y: bounds.y }
+    : { x: cx, y: bounds.y + bounds.height }
+}
+
+/**
+ * The cubic-bezier `d` string between two already-resolved anchor points.
+ * The curve core extracted (unchanged) from the prior `computeEdgePath` /
+ * `computeEdgePreviewPath` inline math: a vertical control offset of half the
+ * vertical gap, floored at 40 so near-horizontal edges still bow. Both former
+ * callers now compose this — node→node (computeEdgePath), node→cursor
+ * (computeEdgePreviewPath), and P2b's box-anchored crossing edges.
+ */
+export function bezierBetween(src: Point, tgt: Point): string {
+  const dy = tgt.y - src.y
   const ctrl = Math.max(40, Math.abs(dy) / 2)
-  const c1y = sy + ctrl
-  const c2y = ty - ctrl
-  return `M ${sx} ${sy} C ${sx} ${c1y}, ${tx} ${c2y}, ${tx} ${ty}`
+  return `M ${src.x} ${src.y} C ${src.x} ${src.y + ctrl}, ${tgt.x} ${tgt.y - ctrl}, ${tgt.x} ${tgt.y}`
 }
 
 /**
@@ -334,13 +394,17 @@ export function computeEdgePreviewPath(
   cursorWorld: Point,
   nodeWidth: number = NODE_WIDTH,
 ): string {
-  const sx = sourcePos.x + nodeWidth / 2
-  const sy = sourcePos.y + sourceHeight
-  const tx = cursorWorld.x
-  const ty = cursorWorld.y
-  const dy = ty - sy
-  const ctrl = Math.max(40, Math.abs(dy) / 2)
-  return `M ${sx} ${sy} C ${sx} ${sy + ctrl}, ${tx} ${ty - ctrl}, ${tx} ${ty}`
+  // Container-arc Phase 2a — folded onto the shared curve core (OUTPUT-
+  // IDENTICAL to the prior inline math; the preview tests lock the
+  // node→cursor string). Source departs its bottom-center; the target is the
+  // bare cursor point (NOT a box — no top-center adjustment).
+  return bezierBetween(
+    boxAnchor(
+      { x: sourcePos.x, y: sourcePos.y, width: nodeWidth, height: sourceHeight },
+      "bottom",
+    ),
+    cursorWorld,
+  )
 }
 
 
@@ -435,4 +499,123 @@ export function dropDecision(input: DropDecisionInput): DropDecision {
     return { action: "cancel", reason: "cycle" }
   }
   return { action: "create", target: hit.id }
+}
+
+
+// ─── Collapse helpers (Phase 2a — pure, consumed by P2b) ────────────
+//
+// The geometry + classification a collapsed container's edge-rerouting needs,
+// de-risked + unit-tested in isolation BEFORE P2b wires them into the live
+// edge-map + node-map (mirrors the P3b-1a pure-helper precedent). NONE touch
+// the DOM or React. Side-bucketed model: crossing-IN → box top, crossing-OUT
+// → box bottom (via `boxAnchor`). FLAT only — `kind:"container"` members are
+// skipped (P2 produces none; nested membership is Phase 3).
+
+
+// ─── buildCollapsedMembership ───────────────────────────────────────
+
+/**
+ * Map each hidden member node-id → its containing container id, for COLLAPSED
+ * containers only. Expanded containers hide nothing → they contribute no
+ * entries. Only `kind:"node"` members are mapped (`kind:"container"` is
+ * skipped — P2 can't produce it). The result feeds `classifyEdge`.
+ */
+export function buildCollapsedMembership(
+  containers: readonly WorkflowContainer[] | undefined,
+): Map<string, string> {
+  const membership = new Map<string, string>()
+  if (!containers) return membership
+  for (const container of containers) {
+    if (!container.collapsed) continue
+    for (const member of container.members) {
+      if (member.kind === "node") membership.set(member.id, container.id)
+    }
+  }
+  return membership
+}
+
+
+// ─── classifyEdge ───────────────────────────────────────────────────
+
+export type EdgeClassKind =
+  | "interior"
+  | "crossing-in"
+  | "crossing-out"
+  | "box-to-box"
+  | "external"
+
+export interface EdgeClassification {
+  kind: EdgeClassKind
+  /** The collapsed container the SOURCE is a hidden member of (when it is). */
+  sourceContainerId?: string
+  /** The collapsed container the TARGET is a hidden member of (when it is). */
+  targetContainerId?: string
+}
+
+/**
+ * Classify an edge against the collapsed-membership map (side-bucketed model):
+ *   - both endpoints in the SAME collapsed container → "interior" (P2b hides)
+ *   - both in DIFFERENT collapsed containers          → "box-to-box"
+ *     (P2b reroutes boxA-bottom → boxB-top)
+ *   - only the TARGET is a hidden member              → "crossing-in"
+ *     (P2b reroutes the target to its box top)
+ *   - only the SOURCE is a hidden member              → "crossing-out"
+ *     (P2b reroutes the source from its box bottom)
+ *   - neither                                          → "external" (unchanged)
+ *
+ * A member of a collapsed container connected to a member of an EXPANDED
+ * container resolves as crossing (the expanded member isn't in the map → only
+ * one endpoint is hidden), NOT box-to-box. Pure.
+ */
+export function classifyEdge(
+  edge: { source: string; target: string },
+  collapsedMembership: ReadonlyMap<string, string>,
+): EdgeClassification {
+  const sourceContainerId = collapsedMembership.get(edge.source)
+  const targetContainerId = collapsedMembership.get(edge.target)
+  if (sourceContainerId !== undefined && targetContainerId !== undefined) {
+    return sourceContainerId === targetContainerId
+      ? { kind: "interior", sourceContainerId, targetContainerId }
+      : { kind: "box-to-box", sourceContainerId, targetContainerId }
+  }
+  if (targetContainerId !== undefined) {
+    return { kind: "crossing-in", targetContainerId }
+  }
+  if (sourceContainerId !== undefined) {
+    return { kind: "crossing-out", sourceContainerId }
+  }
+  return { kind: "external" }
+}
+
+
+// ─── collapsedBoxBounds ─────────────────────────────────────────────
+
+/**
+ * The bounds of a COLLAPSED container's box: position = the members' bbox
+ * top-left (members' positions are still in canvas_state, just unrendered);
+ * size = the FIXED `COLLAPSED_CONTAINER_WIDTH/HEIGHT` (NOT the member bbox
+ * span — the box is a compact card, not the full footprint). No schema change
+ * (no stored container position; draggable-when-collapsed is deferred).
+ *
+ * Degenerate input: a container with zero resolvable node-members → bbox's
+ * empty branch yields (0,0), so this returns a (0,0)-positioned fixed box.
+ * P2b never renders a zero-member container (it filters first, mirroring P1),
+ * so this fallback keeps the function total without being visually used.
+ */
+export function collapsedBoxBounds(
+  container: WorkflowContainer,
+  nodes: readonly CanvasNode[],
+  heightOf: (n: PositionedNode) => number = () => NODE_HEIGHT,
+): BoxBounds {
+  const memberNodes = container.members
+    .filter((m) => m.kind === "node")
+    .map((m) => nodes.find((n) => n.id === m.id))
+    .filter((n): n is CanvasNode => n !== undefined)
+  const b = bbox(memberNodes, NODE_WIDTH, heightOf)
+  return {
+    x: b.minX,
+    y: b.minY,
+    width: COLLAPSED_CONTAINER_WIDTH,
+    height: COLLAPSED_CONTAINER_HEIGHT,
+  }
 }
