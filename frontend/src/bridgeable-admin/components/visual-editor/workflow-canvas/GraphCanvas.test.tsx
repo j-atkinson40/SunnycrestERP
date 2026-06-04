@@ -2080,3 +2080,142 @@ describe("GraphCanvas — Container-arc Phase 3b (nested rendering)", () => {
     expect(screen.queryByTestId("canvas-node-n_node_1")).not.toBeInTheDocument()
   })
 })
+
+
+describe("GraphCanvas — Container-arc Phase 3c (container selection)", () => {
+  const baseCb = {
+    onSelectNode: noop,
+    onMoveNode: noop,
+    onRemoveNode: noop,
+    onUpdateContainer: vi.fn(),
+    onRemoveContainer: vi.fn(),
+  }
+  function flatContainer(collapsed: boolean) {
+    return makeCanvas({
+      containers: [
+        {
+          id: "c1",
+          label: "Group A",
+          members: [
+            { kind: "node" as const, id: "n_node_1" },
+            { kind: "node" as const, id: "n_node_2" },
+          ],
+          collapsed,
+        },
+      ],
+    })
+  }
+
+  it("expanded container: the chrome select handle fires onSelectContainer (plain + shift/⌘)", () => {
+    const onSelectContainer = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={flatContainer(false)}
+        selectedNodeId={null}
+        {...baseCb}
+        onSelectContainer={onSelectContainer}
+      />,
+    )
+    const handle = screen.getByTestId("canvas-container-c1-select")
+    fireEvent.click(handle)
+    expect(onSelectContainer).toHaveBeenCalledWith("c1", false)
+    fireEvent.click(handle, { shiftKey: true })
+    expect(onSelectContainer).toHaveBeenCalledWith("c1", true)
+    fireEvent.click(handle, { metaKey: true })
+    expect(onSelectContainer).toHaveBeenCalledWith("c1", true)
+  })
+
+  it("collapsed container: the card body click selects (plain + shift/⌘)", () => {
+    const onSelectContainer = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={flatContainer(true)}
+        selectedNodeId={null}
+        {...baseCb}
+        onSelectContainer={onSelectContainer}
+      />,
+    )
+    const card = screen.getByTestId("canvas-container-c1")
+    fireEvent.click(card)
+    expect(onSelectContainer).toHaveBeenCalledWith("c1", false)
+    fireEvent.click(card, { shiftKey: true })
+    expect(onSelectContainer).toHaveBeenCalledWith("c1", true)
+  })
+
+  it("multiSelected drives data-multi-selected + the CheckSquare on the expanded handle", () => {
+    render(
+      <GraphCanvas
+        canvas={flatContainer(false)}
+        selectedNodeId={null}
+        selectedContainerIds={["c1"]}
+        {...baseCb}
+        onSelectContainer={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("canvas-container-c1")).toHaveAttribute(
+      "data-multi-selected",
+      "true",
+    )
+  })
+
+  it("a non-selected container reads data-multi-selected=false", () => {
+    render(
+      <GraphCanvas
+        canvas={flatContainer(false)}
+        selectedNodeId={null}
+        selectedContainerIds={[]}
+        {...baseCb}
+        onSelectContainer={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("canvas-container-c1")).toHaveAttribute(
+      "data-multi-selected",
+      "false",
+    )
+  })
+
+  it("chrome buttons stopPropagation — ungroup does NOT also select (expanded)", () => {
+    const onSelectContainer = vi.fn()
+    const onRemoveContainer = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={flatContainer(false)}
+        selectedNodeId={null}
+        {...baseCb}
+        onRemoveContainer={onRemoveContainer}
+        onSelectContainer={onSelectContainer}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-container-c1-ungroup"))
+    expect(onRemoveContainer).toHaveBeenCalledWith("c1")
+    expect(onSelectContainer).not.toHaveBeenCalled()
+  })
+
+  it("collapsed expand button stopPropagation — does NOT also select", () => {
+    const onSelectContainer = vi.fn()
+    const onUpdateContainer = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={flatContainer(true)}
+        selectedNodeId={null}
+        {...baseCb}
+        onUpdateContainer={onUpdateContainer}
+        onSelectContainer={onSelectContainer}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-container-c1-expand"))
+    expect(onUpdateContainer).toHaveBeenCalledWith("c1", { collapsed: false })
+    expect(onSelectContainer).not.toHaveBeenCalled()
+  })
+
+  it("regression — no onSelectContainer → no select handle; selection is opt-in", () => {
+    render(
+      <GraphCanvas canvas={flatContainer(false)} selectedNodeId={null} {...baseCb} />,
+    )
+    expect(
+      screen.queryByTestId("canvas-container-c1-select"),
+    ).not.toBeInTheDocument()
+    // The container still renders (label, ungroup) — only selection is absent.
+    expect(screen.getByTestId("canvas-container-c1")).toBeInTheDocument()
+  })
+})

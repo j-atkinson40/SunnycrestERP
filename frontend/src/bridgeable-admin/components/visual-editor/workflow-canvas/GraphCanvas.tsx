@@ -52,7 +52,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
-import { ChevronDown, ChevronUp, Maximize2, Minimize2, Route, Trash2, Ungroup } from "lucide-react"
+import { CheckSquare, ChevronDown, ChevronUp, Maximize2, Minimize2, Route, Square, Trash2, Ungroup } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import type {
@@ -211,6 +211,19 @@ export interface GraphCanvasProps {
    */
   onRemoveContainer?: (id: string) => void
   /**
+   * Container-arc Phase 3c (additive): the multi-CONTAINER selection set —
+   * each member renders the selection ring (parallels selectedNodeIds for
+   * nodes). Omitted/empty → no container selected.
+   */
+  selectedContainerIds?: string[]
+  /**
+   * Container-arc Phase 3c (additive): select a container (mirrors
+   * onSelectNode). Collapsed card → body click; expanded frame → the chrome
+   * select handle. `additive` (shift/⌘) accumulates. Omitted → containers
+   * aren't selectable (pre-3c).
+   */
+  onSelectContainer?: (id: string, additive?: boolean) => void
+  /**
    * Canvas edge-delete P3b-2 (additive): remove the SELECTED edge from the
    * canvas via its midpoint-× affordance. The page removes the edge + clears
    * the selection (so EdgeConditionInspector closes). Omitted → no ×
@@ -238,6 +251,8 @@ export function GraphCanvas({
   onCreateEdge,
   onUpdateContainer,
   onRemoveContainer,
+  selectedContainerIds,
+  onSelectContainer,
   onDeleteEdge,
 }: GraphCanvasProps) {
   // A3: current theme mode selects each node's family tone (light/dark).
@@ -932,6 +947,11 @@ export function GraphCanvas({
                     bounds={bounds}
                     memberCount={memberNodes.length}
                     depth={containerDepth(container.id)}
+                    // Container-arc Phase 3c — selection ring + select handler.
+                    multiSelected={
+                      selectedContainerIds?.includes(container.id) ?? false
+                    }
+                    onSelect={onSelectContainer}
                     onUpdateContainer={onUpdateContainer}
                     onRemoveContainer={onRemoveContainer}
                   />
@@ -1526,6 +1546,12 @@ interface GraphCanvasContainerProps {
    * rendering byte-identical.
    */
   depth?: number
+  /** Container-arc Phase 3c — this container is in the multi-selection (drives
+   *  the selection ring; mirrors the node `multiSelected`). */
+  multiSelected?: boolean
+  /** Container-arc Phase 3c — select this container (collapsed → body click;
+   *  expanded → the chrome select handle). `additive` = shift/⌘. */
+  onSelect?: (id: string, additive?: boolean) => void
   onUpdateContainer?: (id: string, patch: Partial<WorkflowContainer>) => void
   onRemoveContainer?: (id: string) => void
 }
@@ -1549,6 +1575,8 @@ function GraphCanvasContainer({
   bounds,
   memberCount,
   depth = 0,
+  multiSelected,
+  onSelect,
   onUpdateContainer,
   onRemoveContainer,
 }: GraphCanvasContainerProps) {
@@ -1591,6 +1619,8 @@ function GraphCanvasContainer({
       <div
         data-testid={`canvas-container-${container.id}`}
         data-collapsed="true"
+        // Container-arc Phase 3c — multi-selection state (drives the ring).
+        data-multi-selected={multiSelected ?? false}
         className="pointer-events-auto absolute flex flex-col justify-center rounded-md border border-accent/60 bg-surface-elevated shadow-level-1"
         style={{
           left: bounds.x,
@@ -1601,7 +1631,18 @@ function GraphCanvasContainer({
           // Depth-scaled (1 + depth): an inner collapsed card paints above its
           // outer; depth 0 → z=1 (== P2).
           zIndex: collapsedZ,
+          // Container-arc Phase 3c — selection ring (mirrors the node ring).
+          outline: multiSelected ? "2px solid var(--accent)" : undefined,
+          outlineOffset: multiSelected ? "1px" : undefined,
         }}
+        // Container-arc Phase 3c — body click selects (the opaque card is
+        // pointer-events:auto; chrome buttons stopPropagation so they act, not
+        // select). shift/⌘ accumulates into the multi-selection.
+        onClick={
+          onSelect
+            ? (ev) => onSelect(container.id, ev.shiftKey || ev.metaKey)
+            : undefined
+        }
       >
         <div className="flex items-center justify-between gap-1 px-2">
           <div className="min-w-0">
@@ -1659,6 +1700,8 @@ function GraphCanvasContainer({
     <div
       data-testid={`canvas-container-${container.id}`}
       data-collapsed="false"
+      // Container-arc Phase 3c — multi-selection state (drives the ring).
+      data-multi-selected={multiSelected ?? false}
       className="pointer-events-none absolute rounded-lg border border-dashed border-accent/50 bg-accent-subtle/15"
       style={{
         left: bounds.x,
@@ -1670,15 +1713,43 @@ function GraphCanvasContainer({
         // outer, yet ALL expanded frames stay < 1 so nodes remain interactive
         // on top; depth 0 → z=0 (== P2).
         zIndex: expandedZ,
+        // Container-arc Phase 3c — selection ring. The frame body stays
+        // pointer-events:none (drag passes through to pan, unchanged — the
+        // E1 decision); selection happens via the chrome handle below.
+        outline: multiSelected ? "2px solid var(--accent)" : undefined,
+        outlineOffset: multiSelected ? "1px" : undefined,
       }}
     >
-      {/* Chrome — top-left label chip + collapse + ungroup. pointer-events:auto
-          so it's interactive even though the box body is pointer-events:none. */}
+      {/* Chrome — top-left select handle + label chip + collapse + ungroup.
+          pointer-events:auto so it's interactive even though the box body is
+          pointer-events:none. */}
       <div
         className="pointer-events-auto absolute left-2 top-1.5 flex items-center gap-1"
         onPointerDown={stop}
         onClick={stop}
       >
+        {/* Container-arc Phase 3c — the EXPANDED-container select handle (E1).
+            The frame body is pointer-events:none (drag passes through to pan,
+            unchanged), so selection lives on this chrome affordance — a
+            checkbox-style toggle that doubles as the selection indicator.
+            shift/⌘ accumulates into the multi-selection. */}
+        {onSelect && (
+          <button
+            type="button"
+            onClick={(ev) => {
+              ev.stopPropagation()
+              onSelect(container.id, ev.shiftKey || ev.metaKey)
+            }}
+            onPointerDown={stop}
+            data-testid={`canvas-container-${container.id}-select`}
+            aria-label={multiSelected ? "Deselect container" : "Select container"}
+            aria-pressed={multiSelected ?? false}
+            title="Select (for grouping)"
+            className="rounded-sm border border-border-base bg-surface-raised p-0.5 text-content-muted hover:bg-accent-subtle hover:text-accent"
+          >
+            {multiSelected ? <CheckSquare size={12} /> : <Square size={12} />}
+          </button>
+        )}
         {editingLabel ? (
           <input
             autoFocus

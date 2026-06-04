@@ -132,7 +132,13 @@ function generateNodeId(canvas: CanvasState): string {
 type WorkflowSelection =
   | { kind: "none" }
   | { kind: "node"; id: string }
-  | { kind: "nodes"; ids: string[] }
+  // Container-arc Phase 3c — the multi member carries an OPTIONAL containerIds
+  // alongside node ids (option (a): additive, so existing producers/consumers
+  // stay valid). A mixed node+container selection is the authoring substrate
+  // for nesting — grouping it emits a parent referencing the selected
+  // containers by id. `containerIds` absent/empty ⟺ the pre-3c node-only multi
+  // (byte-identical). The single-select { kind:"node" } member is UNTOUCHED.
+  | { kind: "nodes"; ids: string[]; containerIds?: string[] }
   | { kind: "edge"; id: string }
   | { kind: "background" }
 
@@ -224,6 +230,11 @@ export default function WorkflowEditorPage() {
   // from selectedNodeId (single) so the ring renders WITHOUT reactivating the
   // single-node card-editing affordances.
   const selectedNodeIds = selection.kind === "nodes" ? selection.ids : []
+  // Container-arc Phase 3c — the multi-container selection set (parallels
+  // selectedNodeIds; drives the container-ring channel in GraphCanvas). Empty
+  // unless kind === "nodes" with containerIds.
+  const selectedContainerIds =
+    selection.kind === "nodes" ? selection.containerIds ?? [] : []
 
   // ── Loading + save state ─────────────────────────────
   const [, setIsLoading] = useState(false)
@@ -554,20 +565,35 @@ export default function WorkflowEditorPage() {
   // through setDraftCanvas → the SAME dirty/auto-save path (no new mutation
   // API), mirroring the edge handlers. P1 produces FLAT containers (every
   // member kind:"node"); the discriminated shape is nesting-ready (Phase 3).
-  const handleCreateContainer = useCallback((memberNodeIds: string[]) => {
-    setDraftCanvas((prev) => {
-      const id = generateContainerId(prev)
-      const container: WorkflowContainer = {
-        id,
-        members: memberNodeIds.map((nid) => ({ kind: "node", id: nid })),
-        collapsed: false,
-      }
-      return { ...prev, containers: [...(prev.containers ?? []), container] }
-    })
-    // Clear selection — P1 has no container-selection kind; the new box's
-    // label is double-click-editable directly on the canvas.
-    setSelection({ kind: "none" })
-  }, [])
+  // Container-arc Phase 3c — accepts container ids alongside node ids. A
+  // selected container becomes a kind:"container" member BY REFERENCE (the
+  // child keeps its own members — that IS the nesting); node ids become
+  // kind:"node" members. Node-only callers (memberContainerIds defaulted to
+  // []) behave exactly as P1/P2 (byte-identical). The P3a ≤1-parent + cycle
+  // validators gate the result; P3b renders the produced nesting.
+  const handleCreateContainer = useCallback(
+    (memberNodeIds: string[], memberContainerIds: string[] = []) => {
+      setDraftCanvas((prev) => {
+        const id = generateContainerId(prev)
+        const container: WorkflowContainer = {
+          id,
+          members: [
+            ...memberNodeIds.map((nid) => ({ kind: "node" as const, id: nid })),
+            ...memberContainerIds.map((cid) => ({
+              kind: "container" as const,
+              id: cid,
+            })),
+          ],
+          collapsed: false,
+        }
+        return { ...prev, containers: [...(prev.containers ?? []), container] }
+      })
+      // Clear selection — the new box's label is double-click-editable directly
+      // on the canvas.
+      setSelection({ kind: "none" })
+    },
+    [],
+  )
 
   const handleUpdateContainer = useCallback(
     (id: string, patch: Partial<WorkflowContainer>) => {
@@ -627,7 +653,13 @@ export default function WorkflowEditorPage() {
           const ids = prev.ids.includes(id)
             ? prev.ids.filter((x) => x !== id)
             : [...prev.ids, id]
-          return ids.length === 0 ? { kind: "none" } : { kind: "nodes", ids }
+          // Container-arc Phase 3c — preserve any selected containers; clear to
+          // "none" only when BOTH the node + container sets empty.
+          const containerIds = prev.containerIds ?? []
+          if (ids.length === 0 && containerIds.length === 0) {
+            return { kind: "none" }
+          }
+          return { kind: "nodes", ids, containerIds }
         }
         if (prev.kind === "node") {
           return {
@@ -636,6 +668,39 @@ export default function WorkflowEditorPage() {
           }
         }
         return { kind: "nodes", ids: [id] }
+      })
+    },
+    [],
+  )
+
+  // Container-arc Phase 3c — container-selection transition (mirrors
+  // handleSelectNode for containers; the authoring substrate for nesting).
+  // Plain click → a one-item multi-selection of the container ({kind:"nodes",
+  // ids:[], containerIds:[id]}) — a container has no single-select/card path,
+  // so its "single" IS the group panel. shift/⌘ accumulates into containerIds,
+  // preserving any selected nodes. A subsequent plain NODE click → {kind:"node"}
+  // clears the container selection (clean transition; no lingering container).
+  const handleSelectContainer = useCallback(
+    (id: string, additive?: boolean) => {
+      if (!additive) {
+        setSelection({ kind: "nodes", ids: [], containerIds: [id] })
+        return
+      }
+      setSelection((prev) => {
+        if (prev.kind === "nodes") {
+          const prevContainers = prev.containerIds ?? []
+          const containerIds = prevContainers.includes(id)
+            ? prevContainers.filter((x) => x !== id)
+            : [...prevContainers, id]
+          if (prev.ids.length === 0 && containerIds.length === 0) {
+            return { kind: "none" }
+          }
+          return { kind: "nodes", ids: prev.ids, containerIds }
+        }
+        if (prev.kind === "node") {
+          return { kind: "nodes", ids: [prev.id], containerIds: [id] }
+        }
+        return { kind: "nodes", ids: [], containerIds: [id] }
       })
     },
     [],
@@ -1130,6 +1195,11 @@ export default function WorkflowEditorPage() {
             // path as every other edit.
             onUpdateContainer={handleUpdateContainer}
             onRemoveContainer={handleRemoveContainer}
+            // Container-arc Phase 3c: mixed node+container selection. The ring
+            // channel parallels selectedNodeIds; onSelectContainer mirrors
+            // onSelectNode (plain → select, shift/⌘ → accumulate).
+            selectedContainerIds={selectedContainerIds}
+            onSelectContainer={handleSelectContainer}
           />
         </div>
 
@@ -1155,26 +1225,46 @@ export default function WorkflowEditorPage() {
           {selectedNode ? (
             <WorkflowNodePalette onAdd={handleAddNode} />
           ) : selection.kind === "nodes" ? (
-            // Container-arc Phase 1 — the multi-selection group panel. The
-            // first consumer of the P0 multi-selection: group the selected
-            // nodes into a labeled container.
+            // Container-arc Phase 1 — the multi-selection group panel; the
+            // first consumer of the P0 multi-selection. Phase 3c — the
+            // selection can now also carry CONTAINERS (containerIds): grouping
+            // a mixed node+container selection nests the selected containers
+            // inside the new parent (by reference; each child keeps its own
+            // members). The selection count + the group call carry both kinds.
             <div
               className="flex flex-col gap-3"
               data-testid="workflow-multi-selection-panel"
             >
               <div>
                 <h2 className="text-body font-medium text-content-strong">
-                  {selection.ids.length} node
-                  {selection.ids.length === 1 ? "" : "s"} selected
+                  {selection.ids.length > 0 && (
+                    <>
+                      {selection.ids.length} node
+                      {selection.ids.length === 1 ? "" : "s"}
+                    </>
+                  )}
+                  {selection.ids.length > 0 &&
+                    selectedContainerIds.length > 0 &&
+                    " + "}
+                  {selectedContainerIds.length > 0 && (
+                    <>
+                      {selectedContainerIds.length} group
+                      {selectedContainerIds.length === 1 ? "" : "s"}
+                    </>
+                  )}{" "}
+                  selected
                 </h2>
                 <p className="mt-1 text-caption text-content-muted">
                   Group them into a labeled container — a visual region on the
-                  canvas. The nodes and connections stay exactly as they are.
+                  canvas. Members and connections stay exactly as they are; a
+                  selected group nests inside the new container.
                 </p>
               </div>
               <Button
                 size="sm"
-                onClick={() => handleCreateContainer(selection.ids)}
+                onClick={() =>
+                  handleCreateContainer(selection.ids, selectedContainerIds)
+                }
                 data-testid="workflow-group-into-container"
               >
                 <Group size={14} className="mr-1" />

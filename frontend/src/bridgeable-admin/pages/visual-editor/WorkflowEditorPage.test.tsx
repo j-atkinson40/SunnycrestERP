@@ -486,6 +486,106 @@ describe("WorkflowEditorPage — Container-arc Phase 1 containers", () => {
 })
 
 
+// ── Container-arc Phase 3c — the authoring gesture (mixed node+container) ──
+//
+// End-to-end through the page: make nesting AUTHORABLE. Group nodes → a
+// container; then mix-select a loose node + that container → group → a parent
+// nesting the child by reference (the child keeps its own members). Proves the
+// union extension + handleSelectContainer + handleCreateContainer mixed
+// emission produce state P3a validates + P3b renders.
+
+describe("WorkflowEditorPage — Container-arc Phase 3c authoring gesture", () => {
+  it("groups a MIXED node+container selection → a parent nesting the child by reference", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    // Group n_node_1 alone → c_group_1 (n_node_2 stays loose).
+    fireEvent.click(n1, { shiftKey: true })
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("workflow-group-into-container")),
+    )
+    await waitFor(() =>
+      expect(result.getByTestId("canvas-container-c_group_1")).toBeInTheDocument(),
+    )
+    // Mixed-select: shift-click loose n_node_2 + shift-click c_group_1's select
+    // handle → { nodes, ids:[n_node_2], containerIds:[c_group_1] }.
+    fireEvent.click(result.getByTestId("canvas-node-n_node_2"), { shiftKey: true })
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("canvas-container-c_group_1-select")),
+      { shiftKey: true },
+    )
+    // The panel reflects the mixed selection (1 node + 1 group).
+    expect(
+      result.getByTestId("workflow-multi-selection-panel"),
+    ).toHaveTextContent(/1 node.*1 group/)
+    // Group → c_group_2 = [node n_node_2, container c_group_1].
+    fireEvent.click(result.getByTestId("workflow-group-into-container"))
+    await waitFor(() =>
+      expect(result.getByTestId("canvas-container-c_group_2")).toBeInTheDocument(),
+    )
+    // The child container persists (nested), keeping its own member n_node_1.
+    expect(result.getByTestId("canvas-container-c_group_1")).toBeInTheDocument()
+    expect(result.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
+    // No validation error (the produced nesting passes P3a's validators).
+    expect(
+      result.queryByTestId("workflow-editor-validation-badge"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("a plain NODE click clears a container selection (clean transition)", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    // Make a container, then select it (plain → one-item multi).
+    fireEvent.click(n1, { shiftKey: true })
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("workflow-group-into-container")),
+    )
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("canvas-container-c_group_1-select")),
+    )
+    await waitFor(() =>
+      expect(
+        result.getByTestId("workflow-multi-selection-panel"),
+      ).toBeInTheDocument(),
+    )
+    // Plain-click the loose node → single-select; the container selection clears.
+    fireEvent.click(result.getByTestId("canvas-node-n_node_2"))
+    await waitFor(() =>
+      expect(result.getByTestId("canvas-node-n_node_2")).toHaveAttribute(
+        "data-selected",
+        "true",
+      ),
+    )
+    expect(
+      result.queryByTestId("workflow-multi-selection-panel"),
+    ).not.toBeInTheDocument()
+    expect(
+      result.getByTestId("canvas-container-c_group_1"),
+    ).toHaveAttribute("data-multi-selected", "false")
+  })
+
+  it("REGRESSION — a node-only group still produces a flat container (no nesting)", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    fireEvent.click(n1)
+    fireEvent.click(n2, { shiftKey: true })
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("workflow-group-into-container")),
+    )
+    // The container renders; both nodes are its (flat node) members — visible,
+    // no nested container, no validation error (P1/P2 behavior unchanged).
+    await waitFor(() =>
+      expect(result.getByTestId("canvas-container-c_group_1")).toBeInTheDocument(),
+    )
+    expect(result.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
+    expect(result.getByTestId("canvas-node-n_node_2")).toBeInTheDocument()
+    expect(
+      result.queryByTestId("workflow-editor-validation-badge"),
+    ).not.toBeInTheDocument()
+  })
+})
+
+
 // ── Phase B sub-arc B-2 — registry-driven palette (16 → 32) ───────────
 //
 // Asserts the palette renders from getByType("workflow-node") (all 32
