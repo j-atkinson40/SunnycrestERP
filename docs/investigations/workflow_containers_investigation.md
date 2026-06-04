@@ -442,3 +442,46 @@ Each leaves the builder working: P3a (helpers/validation, flat behavior intact) 
 | `GraphCanvasContainer` (box-inside-box render; per-depth z) | `GraphCanvas.tsx:1465-` |
 
 **No code. No canon. No build. No dispatch.** Phase 3 map only — uncommitted until P3a.
+
+---
+
+# AS-BUILT — P3a/P3b/P3c shipped, ARC COMPLETE (2026-06-04)
+
+The sections above are the *investigation* (the forward map). This section folds in what actually shipped and closes the arc. **No behavior is described here that isn't on `main`.**
+
+## The arc, shipped (P0 → P3c)
+
+| Phase | What shipped | Commit |
+|---|---|---|
+| P0 | Multi-node select (`{kind:"nodes"}`, shift/⌘ accumulate) | `4cc85d0` |
+| P1 | Expanded labeled containers; nesting-ready discriminated `ContainerMember` shape, flat behavior | `628972d` |
+| P2a | Pure collapse helpers (membership, classify, anchor split, collapsed bounds) — de-risked in isolation | `779c87b` |
+| P2b | Collapse rendering (hide members + interior edges; side-bucketed crossing/box↔box rerouting; collapsed card + toggle) | `49823ba` |
+| P3a | Nested helpers (parent map, outermost-collapsed-ancestor, nesting-aware membership flat-identical, recursive bounds) + validators (container-ref, ≤1-parent, cycle) | `76079bd` |
+| P3b | Nested rendering (recursive bounds, container-render filter, depth-z; box-inside-box) | `4786dd5` |
+| P3c | **The authoring gesture — nesting authorable end-to-end** | `85fdedf` |
+
+## P3c as-built (CLOSED)
+
+The Phase 3 sections above proposed three sub-phases; all three shipped. The P3c grounding (`/tmp/workflow_containers_p3c_grounding.md`, ephemeral) established the as-built shape:
+
+- **§3 finding — there was NO inline container selection to absorb.** `GraphCanvasContainer` had no body `onClick`, no select wiring — containers were interacted with only via chrome buttons (collapse/expand/ungroup) + label double-click. So P3c **introduced** container selection from scratch (not "absorbed an existing inline-select").
+- **Union extension = option (a) (additive, single-select untouched).** The existing multi member was extended to `{ kind:"nodes"; ids: string[]; containerIds?: string[] }`. Node-only producers/consumers stay byte-identical; the single-select `{kind:"node"}` → card-editing/inline-params chain is unchanged. A new `selectedContainerIds` derivation parallels `selectedNodeIds`; a container-ring channel parallels the node ring.
+- **Gesture = mixed-select-then-group (shipped).** `handleSelectContainer(id, additive)` mirrors `handleSelectNode` (plain → a one-item multi `{nodes, ids:[], containerIds:[id]}`; shift/⌘ accumulates, preserving selected nodes); a plain NODE click → `{kind:"node"}` clears the container selection. `handleCreateContainer(memberNodeIds, memberContainerIds=[])` emits `{kind:"node"}` + `{kind:"container"}` members — a selected container becomes a CHILD member **by reference** (it keeps its own members; that is the nesting). The P3a validators gate the result; the P3b render draws it.
+- **Select-affordance resolution (E1).** The §P2.4-style tension surfaced concretely at the P3c audit: the expanded frame is `pointer-events:none` (so a drag passes through to pan, unchanged), which means its body cannot capture a select click. Resolved per operator decision **E1**: the COLLAPSED card selects by body click (`pe:auto`); the EXPANDED frame selects via a chrome **checkbox handle** (`Square`/`CheckSquare`), leaving the frame body `pe:none` (pan-through preserved). Chrome buttons `stopPropagation` so they act, not select.
+
+This **closes the §P3.1 "nested-creation gesture" Type-B** (resolved: mixed-select-then-group, option-(a) union) and the §P3.5 "container-selection kind" question for the arc (resolved: extend `{kind:"nodes"}`, do NOT add a `{kind:"container"}` kind now).
+
+## Forward refinements (deferred — see DECISIONS 2026-06-04)
+
+The Type-B items flagged across the investigation that were consciously deferred are now recorded as canon in **DECISIONS.md, "2026-06-04 — Container arc filed-forward refinements (deliberated, deferred)"** — do not re-litigate them here as gaps:
+
+1. **assign-into gesture** (vs the shipped mixed-select-then-group).
+2. **collapsed-box draggability** (needs a stored container position; bounds are computed today).
+3. **multiple-crossing-per-side spread** (collapse rerouting centers crossings on a box side today — §2.2/§P2.2 sub-question; readability polish).
+4. **collapse animation** (instant today — §P2.5).
+5. **a dedicated `{kind:"container"}`/`{kind:"mixed"}` selection union kind** — promote only if single-container affordances outgrow the shared `{kind:"nodes"}.containerIds` member. (Corrects the earlier "inline vs union kind" framing in §P2.4/§P3.x: there was no inline container selection; P3c introduced it via `containerIds`.)
+
+The overlay model (flat graph stays the single source of truth; containers are additive metadata with zero runtime semantics) and the de-risk-then-render + protected-invariant phasing disciplines are likewise canonized in **DECISIONS.md 2026-06-04** ("…additive overlay, not a graph change" and "…the reference for phasing a risky additive canvas feature").
+
+**ARC COMPLETE.** Nesting is authorable, renders (box-inside-box), reroutes (side-bucketed collapse), and validates (ref + ≤1-parent + cycle) end-to-end. No further feature phases planned; refinements await concrete operator signal.
