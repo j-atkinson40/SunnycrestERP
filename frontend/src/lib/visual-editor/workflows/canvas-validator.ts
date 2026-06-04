@@ -168,6 +168,96 @@ export function validateCanvasState(
 
   // Cycle check (excluding edges with is_iteration=true)
   detectCycles(c.nodes, c.edges)
+
+  // Container overlay validation (container-arc Phase 1). `containers` is
+  // OPTIONAL — absent → nothing to check (back-compat). Mirrors the backend
+  // `canvas_validator.py` container block in lockstep.
+  validateContainers(c, seenNodeIds)
+}
+
+
+/** Validate the optional `containers` overlay. No-op when absent.
+ * Rules (Phase 1, flat behavior): container-id uniqueness; every
+ * `kind:"node"` member references a declared node; a node appears as a
+ * node-member in AT MOST ONE container (disjoint groups). `kind:"container"`
+ * members are type-allowed but UNPRODUCED in P1 — their ref-integrity +
+ * nesting-cycle checks are deferred to Phase 3 (don't over-build a case P1
+ * can't produce). Empty member-list is valid. */
+function validateContainers(
+  c: CanvasState,
+  seenNodeIds: Set<string>,
+): void {
+  const containers = c.containers
+  if (containers === undefined) return
+  if (!Array.isArray(containers)) {
+    throw new CanvasValidationError("canvas_state.containers must be an array")
+  }
+
+  const seenContainerIds = new Set<string>()
+  const nodeMemberOwner = new Map<string, string>()
+
+  containers.forEach((container, idx) => {
+    if (typeof container !== "object" || container === null) {
+      throw new CanvasValidationError(`containers[${idx}] must be a mapping`)
+    }
+    if (typeof container.id !== "string" || container.id.length === 0) {
+      throw new CanvasValidationError(
+        `containers[${idx}].id must be a non-empty string`,
+      )
+    }
+    if (seenContainerIds.has(container.id)) {
+      throw new CanvasValidationError(
+        `containers[${idx}].id duplicates an earlier container: ${container.id}`,
+      )
+    }
+    seenContainerIds.add(container.id)
+
+    if (typeof container.collapsed !== "boolean") {
+      throw new CanvasValidationError(
+        `containers[${idx}].collapsed must be a boolean`,
+      )
+    }
+    if (!Array.isArray(container.members)) {
+      throw new CanvasValidationError(
+        `containers[${idx}].members must be an array`,
+      )
+    }
+
+    container.members.forEach((member, mIdx) => {
+      if (typeof member !== "object" || member === null) {
+        throw new CanvasValidationError(
+          `containers[${idx}].members[${mIdx}] must be a mapping`,
+        )
+      }
+      if (member.kind !== "node" && member.kind !== "container") {
+        throw new CanvasValidationError(
+          `containers[${idx}].members[${mIdx}].kind must be "node" or "container"`,
+        )
+      }
+      if (typeof member.id !== "string" || member.id.length === 0) {
+        throw new CanvasValidationError(
+          `containers[${idx}].members[${mIdx}].id must be a non-empty string`,
+        )
+      }
+      // Phase 1: validate node-members strictly. Container-members are
+      // type-allowed but UNPRODUCED in P1 — ref-integrity + nesting-cycle
+      // detection are a Phase 3 add (skip them here, don't over-build).
+      if (member.kind === "node") {
+        if (!seenNodeIds.has(member.id)) {
+          throw new CanvasValidationError(
+            `containers[${idx}].members[${mIdx}] "${member.id}" doesn't reference a declared node id`,
+          )
+        }
+        const owner = nodeMemberOwner.get(member.id)
+        if (owner !== undefined) {
+          throw new CanvasValidationError(
+            `node "${member.id}" is a member of more than one container (${owner} and ${container.id})`,
+          )
+        }
+        nodeMemberOwner.set(member.id, container.id)
+      }
+    })
+  })
 }
 
 

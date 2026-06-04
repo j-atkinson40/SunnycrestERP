@@ -46,11 +46,42 @@ export interface CanvasTrigger {
 }
 
 
+// ─── Container overlay (visual-containers arc) ───────────────────
+//
+// Container-arc Phase 1 (2026-06-04) — visual grouping overlay on the
+// flat graph. Containers do NOT change nodes/edges (they stay the truth);
+// a container is additive metadata enclosing a set of members.
+//
+// The member shape is a DISCRIMINATED union — nesting-READY from Phase 1.
+// Phases 1/2 produce ONLY `kind:"node"` members (FLAT behavior); the
+// `kind:"container"` case is type-allowed but UNPRODUCED until Phase 3
+// (nested containers) — so Phase 3 adds nesting with no schema change /
+// migration. See DECISIONS.md 2026-06-04 + docs/investigations/
+// workflow_containers_investigation.md §2.
+export interface ContainerMember {
+  kind: "node" | "container"
+  id: string
+}
+
+
+export interface WorkflowContainer {
+  id: string
+  label?: string
+  members: ContainerMember[]
+  // Expanded (false) vs collapsed (true). Phase 1 ships the field but
+  // does NOT read it (containers render as expanded labeled regions);
+  // Phase 2 adds collapse/edge-rerouting behavior — schema already here.
+  collapsed: boolean
+}
+
+
 export interface CanvasState {
   version: number
   trigger?: CanvasTrigger
   nodes: CanvasNode[]
   edges: CanvasEdge[]
+  // Optional overlay — omitted on every pre-container draft (back-compat).
+  containers?: WorkflowContainer[]
 }
 
 

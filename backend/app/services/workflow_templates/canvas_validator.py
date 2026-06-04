@@ -38,6 +38,19 @@ declare `"is_iteration": true` — those edges are excluded from
 the cycle check. Phase 4 doesn't render iteration loops in the
 admin canvas; the flag is reserved for Phase 5+.
 
+Optional `"containers"` overlay (container-arc Phase 1): a list of
+visual grouping regions over the flat graph (nodes/edges stay the
+truth). Each container is
+    {
+      "id": "<unique>",
+      "label": "<optional>",
+      "members": [ { "kind": "node" | "container", "id": "<id>" }, ... ],
+      "collapsed": <bool>            # P1 ships it; P2 reads it
+    }
+Members use a DISCRIMINATED shape — nesting-ready. P1/P2 produce only
+`kind="node"`; `kind="container"` is type-allowed but unproduced until
+Phase 3. Absent `containers` is valid (back-compat).
+
 Validation runs at WRITE time (create_template + update_template +
 fork_for_tenant). Resolution at READ time assumes a valid payload.
 """
@@ -221,6 +234,94 @@ def validate_canvas_state(canvas_state: Mapping[str, Any]) -> None:
 
     # ── Cycle check (excluding edges flagged as iteration) ──
     _detect_cycles(nodes, edges)
+
+    # ── Container overlay validation (container-arc Phase 1) ──
+    # `containers` is OPTIONAL — absent → nothing to check (back-compat).
+    # Lockstep mirror of frontend `canvas-validator.ts` validateContainers.
+    _validate_containers(canvas_state, seen_node_ids)
+
+
+def _validate_containers(
+    canvas_state: Mapping[str, Any], seen_node_ids: set[str]
+) -> None:
+    """Validate the optional `containers` overlay. No-op when absent.
+
+    Rules (Phase 1, flat behavior): container-id uniqueness; every
+    ``kind="node"`` member references a declared node; a node appears as a
+    node-member in AT MOST ONE container (disjoint groups). ``kind="container"``
+    members are type-allowed but UNPRODUCED in P1 — their ref-integrity +
+    nesting-cycle checks are deferred to Phase 3 (don't over-build a case P1
+    can't produce). Empty member-list is valid.
+    """
+    if "containers" not in canvas_state:
+        return
+    containers = canvas_state["containers"]
+    if not isinstance(containers, list):
+        raise CanvasValidationError("canvas_state.containers must be a list")
+
+    seen_container_ids: set[str] = set()
+    node_member_owner: dict[str, str] = {}
+
+    for idx, container in enumerate(containers):
+        if not isinstance(container, dict):
+            raise CanvasValidationError(f"containers[{idx}] must be a mapping")
+
+        container_id = container.get("id")
+        if not isinstance(container_id, str) or not container_id:
+            raise CanvasValidationError(
+                f"containers[{idx}].id must be a non-empty string"
+            )
+        if container_id in seen_container_ids:
+            raise CanvasValidationError(
+                f"containers[{idx}].id duplicates an earlier container: "
+                f"{container_id!r}"
+            )
+        seen_container_ids.add(container_id)
+
+        if not isinstance(container.get("collapsed"), bool):
+            raise CanvasValidationError(
+                f"containers[{idx}].collapsed must be a boolean"
+            )
+
+        members = container.get("members")
+        if not isinstance(members, list):
+            raise CanvasValidationError(
+                f"containers[{idx}].members must be a list"
+            )
+
+        for m_idx, member in enumerate(members):
+            if not isinstance(member, dict):
+                raise CanvasValidationError(
+                    f"containers[{idx}].members[{m_idx}] must be a mapping"
+                )
+            kind = member.get("kind")
+            if kind not in ("node", "container"):
+                raise CanvasValidationError(
+                    f"containers[{idx}].members[{m_idx}].kind must be "
+                    f'"node" or "container"'
+                )
+            member_id = member.get("id")
+            if not isinstance(member_id, str) or not member_id:
+                raise CanvasValidationError(
+                    f"containers[{idx}].members[{m_idx}].id must be a "
+                    f"non-empty string"
+                )
+            # Phase 1: validate node-members strictly. Container-members are
+            # type-allowed but UNPRODUCED in P1 — ref-integrity + nesting-cycle
+            # detection are a Phase 3 add (skip them here, don't over-build).
+            if kind == "node":
+                if member_id not in seen_node_ids:
+                    raise CanvasValidationError(
+                        f"containers[{idx}].members[{m_idx}] {member_id!r} "
+                        f"doesn't reference a declared node id"
+                    )
+                owner = node_member_owner.get(member_id)
+                if owner is not None:
+                    raise CanvasValidationError(
+                        f"node {member_id!r} is a member of more than one "
+                        f"container ({owner} and {container_id})"
+                    )
+                node_member_owner[member_id] = container_id
 
 
 def _detect_cycles(nodes: list, edges: list) -> None:

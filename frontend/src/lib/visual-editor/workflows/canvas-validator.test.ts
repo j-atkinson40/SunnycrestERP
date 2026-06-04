@@ -189,3 +189,114 @@ describe("summarizeCanvas", () => {
     expect(summary.branchingNodes).toBe(0)
   })
 })
+
+
+// ── Container-arc Phase 1 — `containers` overlay validation ───────────
+// Lockstep with backend test_workflow_templates_phase4.py::TestCanvasValidator
+// container cases. Every canvas valid here must be valid on the backend.
+
+describe("validateCanvasState — containers overlay", () => {
+  function base(containers: unknown): CanvasState {
+    return {
+      version: 1,
+      nodes: [minimalNode("n_a"), minimalNode("n_b")],
+      edges: [],
+      // cast — some tests pass deliberately-malformed shapes
+      containers: containers as CanvasState["containers"],
+    }
+  }
+
+  it("accepts a canvas with no containers field (back-compat)", () => {
+    expect(() =>
+      validateCanvasState({ version: 1, nodes: [minimalNode("n_a")], edges: [] }),
+    ).not.toThrow()
+  })
+
+  it("accepts a valid flat container (node members reference declared nodes)", () => {
+    expect(() =>
+      validateCanvasState(
+        base([
+          {
+            id: "c_1",
+            label: "Group",
+            members: [
+              { kind: "node", id: "n_a" },
+              { kind: "node", id: "n_b" },
+            ],
+            collapsed: false,
+          },
+        ]),
+      ),
+    ).not.toThrow()
+  })
+
+  it("accepts an empty member-list container", () => {
+    expect(() =>
+      validateCanvasState(base([{ id: "c_1", members: [], collapsed: false }])),
+    ).not.toThrow()
+  })
+
+  it("rejects an orphan node-member (id not a declared node)", () => {
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_1", members: [{ kind: "node", id: "n_ghost" }], collapsed: false },
+        ]),
+      ),
+    ).toThrow(/doesn't reference a declared node id/)
+  })
+
+  it("rejects a node appearing in two containers", () => {
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_1", members: [{ kind: "node", id: "n_a" }], collapsed: false },
+          { id: "c_2", members: [{ kind: "node", id: "n_a" }], collapsed: false },
+        ]),
+      ),
+    ).toThrow(/more than one container/)
+  })
+
+  it("rejects duplicate container ids", () => {
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_1", members: [], collapsed: false },
+          { id: "c_1", members: [], collapsed: false },
+        ]),
+      ),
+    ).toThrow(/duplicates an earlier container/)
+  })
+
+  it("rejects a non-boolean collapsed", () => {
+    expect(() =>
+      validateCanvasState(
+        base([{ id: "c_1", members: [], collapsed: "no" }]),
+      ),
+    ).toThrow(/collapsed must be a boolean/)
+  })
+
+  it("rejects a bad member kind", () => {
+    expect(() =>
+      validateCanvasState(
+        base([{ id: "c_1", members: [{ kind: "widget", id: "n_a" }], collapsed: false }]),
+      ),
+    ).toThrow(/kind must be/)
+  })
+
+  it("rejects a non-array containers", () => {
+    expect(() => validateCanvasState(base({}))).toThrow(/must be an array/)
+  })
+
+  it("accepts kind:'container' members without ref-checking (nesting-ready, P3 validates)", () => {
+    // P1 produces no container-members, but the discriminated shape is
+    // type-allowed; ref-integrity + nesting-cycle detection is a Phase 3 add.
+    expect(() =>
+      validateCanvasState(
+        base([
+          { id: "c_outer", members: [{ kind: "container", id: "c_inner" }], collapsed: false },
+        ]),
+      ),
+    ).not.toThrow()
+  })
+})

@@ -1619,3 +1619,137 @@ describe("GraphCanvas — Container-arc Phase 0 (multi-node selection)", () => {
     expect(node2).toHaveAttribute("data-multi-selected", "false")
   })
 })
+
+
+describe("GraphCanvas — Container-arc Phase 1 (expanded labeled regions)", () => {
+  function withContainer(overrides = {}) {
+    return makeCanvas({
+      containers: [
+        {
+          id: "c_group_1",
+          label: "Burial path",
+          members: [
+            { kind: "node" as const, id: "n_node_1" },
+            { kind: "node" as const, id: "n_node_2" },
+          ],
+          collapsed: false,
+        },
+      ],
+      ...overrides,
+    })
+  }
+
+  it("renders a labeled box for a container enclosing its member nodes", () => {
+    render(
+      <GraphCanvas
+        canvas={withContainer()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateContainer={vi.fn()}
+        onRemoveContainer={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("canvas-container-c_group_1")).toBeInTheDocument()
+    expect(screen.getByTestId("canvas-container-c_group_1-label")).toHaveTextContent(
+      "Burial path",
+    )
+  })
+
+  it("a canvas with no containers renders no container box (back-compat)", () => {
+    render(
+      <GraphCanvas
+        canvas={makeCanvas()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+      />,
+    )
+    expect(screen.queryByTestId(/^canvas-container-/)).not.toBeInTheDocument()
+  })
+
+  it("a container with no resolvable node-member renders nothing", () => {
+    const canvas = makeCanvas({
+      containers: [
+        { id: "c_empty", members: [], collapsed: false },
+      ],
+    })
+    render(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateContainer={vi.fn()}
+        onRemoveContainer={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId("canvas-container-c_empty")).not.toBeInTheDocument()
+  })
+
+  it("ungroup button fires onRemoveContainer", () => {
+    const onRemoveContainer = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={withContainer()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateContainer={vi.fn()}
+        onRemoveContainer={onRemoveContainer}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-container-c_group_1-ungroup"))
+    expect(onRemoveContainer).toHaveBeenCalledWith("c_group_1")
+  })
+
+  it("double-clicking the label opens an inline editor that commits via onUpdateContainer", () => {
+    const onUpdateContainer = vi.fn()
+    render(
+      <GraphCanvas
+        canvas={withContainer()}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateContainer={onUpdateContainer}
+        onRemoveContainer={vi.fn()}
+      />,
+    )
+    fireEvent.doubleClick(screen.getByTestId("canvas-container-c_group_1-label"))
+    const input = screen.getByTestId("canvas-container-c_group_1-label-input")
+    fireEvent.change(input, { target: { value: "Renamed" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(onUpdateContainer).toHaveBeenCalledWith("c_group_1", { label: "Renamed" })
+  })
+
+  it("an unlabeled container shows the 'name this group' placeholder", () => {
+    const canvas = makeCanvas({
+      containers: [
+        {
+          id: "c_group_1",
+          members: [{ kind: "node" as const, id: "n_node_1" }],
+          collapsed: false,
+        },
+      ],
+    })
+    render(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId={null}
+        onSelectNode={noop}
+        onMoveNode={noop}
+        onRemoveNode={noop}
+        onUpdateContainer={vi.fn()}
+        onRemoveContainer={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getByTestId("canvas-container-c_group_1-label-placeholder"),
+    ).toBeInTheDocument()
+  })
+})

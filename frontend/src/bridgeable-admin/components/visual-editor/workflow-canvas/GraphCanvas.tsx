@@ -52,12 +52,13 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
-import { ChevronDown, ChevronUp, Maximize2, Route, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronUp, Maximize2, Route, Trash2, Ungroup } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import type {
   CanvasNode,
   CanvasState,
+  WorkflowContainer,
 } from "@/bridgeable-admin/services/workflow-templates-service"
 import {
   NODE_WIDTH,
@@ -127,6 +128,10 @@ import {
 /** Per-node trace overlay state (undefined = overlay off). */
 type NodeTraceState = "reachable" | "unreachable" | undefined
 
+/** Container-arc Phase 1 — padding (canvas px) between a container's member
+ *  bounding box and its enclosing labeled box. */
+const CONTAINER_PADDING = 18
+
 
 export interface GraphCanvasProps {
   canvas: CanvasState
@@ -182,6 +187,17 @@ export interface GraphCanvasProps {
    */
   onCreateEdge?: (source: string, target: string) => void
   /**
+   * Container-arc Phase 1 (additive): update a container (label edit).
+   * Omitted → the container label is read-only. Mirrors onRenameNode.
+   */
+  onUpdateContainer?: (id: string, patch: Partial<WorkflowContainer>) => void
+  /**
+   * Container-arc Phase 1 (additive): ungroup — remove the container
+   * (its member nodes stay; only the grouping is deleted). Omitted → no
+   * ungroup affordance. Mirrors onRemoveNode.
+   */
+  onRemoveContainer?: (id: string) => void
+  /**
    * Canvas edge-delete P3b-2 (additive): remove the SELECTED edge from the
    * canvas via its midpoint-× affordance. The page removes the edge + clears
    * the selection (so EdgeConditionInspector closes). Omitted → no ×
@@ -207,6 +223,8 @@ export function GraphCanvas({
   onUpdateNodeConfig,
   onRenameNode,
   onCreateEdge,
+  onUpdateContainer,
+  onRemoveContainer,
   onDeleteEdge,
 }: GraphCanvasProps) {
   // A3: current theme mode selects each node's family tone (light/dark).
@@ -736,6 +754,40 @@ export function GraphCanvas({
                     )
                   })()}
               </svg>
+
+              {/* Container layer (container-arc Phase 1) — labeled boxes
+                  drawn AFTER the SVG edge layer + BEFORE the node layer, so
+                  they paint over edges but UNDER the node cards (nodes stay on
+                  top + clickable). Each box encloses its member nodes; bounds
+                  come from the measured-height bbox corners (recomputed
+                  reactively as members move). The box body is
+                  pointer-events:none (enclosed nodes stay clickable through
+                  it); only its chrome (label + ungroup) is interactive.
+                  Phase 1 renders EXPANDED regions only — `collapsed` is not
+                  read yet (Phase 2). Containers with no resolvable node-member
+                  render nothing (empty container = no box). */}
+              {canvas.containers?.map((container) => {
+                const memberNodes = container.members
+                  .filter((m) => m.kind === "node")
+                  .map((m) => canvas.nodes.find((n) => n.id === m.id))
+                  .filter((n): n is CanvasNode => n !== undefined)
+                if (memberNodes.length === 0) return null
+                const b = bbox(memberNodes, NODE_WIDTH, heightOf)
+                return (
+                  <GraphCanvasContainer
+                    key={container.id}
+                    container={container}
+                    bounds={{
+                      x: b.minX - CONTAINER_PADDING,
+                      y: b.minY - CONTAINER_PADDING,
+                      width: b.maxX - b.minX + CONTAINER_PADDING * 2,
+                      height: b.maxY - b.minY + CONTAINER_PADDING * 2,
+                    }}
+                    onUpdateContainer={onUpdateContainer}
+                    onRemoveContainer={onRemoveContainer}
+                  />
+                )
+              })}
 
               {/* Node layer — draggable cards above the edge layer. */}
               {canvas.nodes.map((node) => (
@@ -1294,6 +1346,140 @@ function GraphCanvasNode({
             <Trash2 size={12} />
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+interface GraphCanvasContainerProps {
+  container: WorkflowContainer
+  /** Computed enclosing bounds (canvas px) from the member bbox + padding. */
+  bounds: { x: number; y: number; width: number; height: number }
+  onUpdateContainer?: (id: string, patch: Partial<WorkflowContainer>) => void
+  onRemoveContainer?: (id: string) => void
+}
+
+/**
+ * Container-arc Phase 1 — a labeled box enclosing its member nodes. Renders
+ * BEHIND the node layer (paints under the cards). The box body is
+ * pointer-events:none so the enclosed nodes stay clickable through it; only
+ * the chrome (label chip + ungroup button, top-left) re-enables pointer
+ * events. Label is inline-editable on double-click (reuses the node-title
+ * idiom). Phase 1 ships EXPANDED regions only — `collapsed` is not read here
+ * (Phase 2 adds collapse/edge-rerouting).
+ */
+function GraphCanvasContainer({
+  container,
+  bounds,
+  onUpdateContainer,
+  onRemoveContainer,
+}: GraphCanvasContainerProps) {
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [labelDraft, setLabelDraft] = useState(container.label ?? "")
+  const stop = (ev: { stopPropagation: () => void }) => ev.stopPropagation()
+
+  const beginLabelEdit = () => {
+    setLabelDraft(container.label ?? "")
+    setEditingLabel(true)
+  }
+  const commitLabel = () => {
+    setEditingLabel(false)
+    const next = labelDraft.trim()
+    if (next !== (container.label ?? "")) {
+      onUpdateContainer?.(container.id, { label: next })
+    }
+  }
+  const cancelLabel = () => {
+    setEditingLabel(false)
+    setLabelDraft(container.label ?? "")
+  }
+
+  return (
+    <div
+      data-testid={`canvas-container-${container.id}`}
+      className="pointer-events-none absolute rounded-lg border border-dashed border-accent/50 bg-accent-subtle/15"
+      style={{
+        left: bounds.x,
+        top: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        // Behind the node cards (z 1/2) but above the surface background.
+        zIndex: 0,
+      }}
+    >
+      {/* Chrome — top-left label chip + ungroup. pointer-events:auto so it's
+          interactive even though the box body is pointer-events:none. */}
+      <div
+        className="pointer-events-auto absolute left-2 top-1.5 flex items-center gap-1"
+        onPointerDown={stop}
+        onClick={stop}
+      >
+        {editingLabel ? (
+          <input
+            autoFocus
+            value={labelDraft}
+            onChange={(e) => setLabelDraft(e.target.value)}
+            onClick={stop}
+            onPointerDown={stop}
+            onBlur={commitLabel}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                commitLabel()
+              } else if (e.key === "Escape") {
+                e.preventDefault()
+                cancelLabel()
+              }
+            }}
+            data-testid={`canvas-container-${container.id}-label-input`}
+            className="rounded-sm border border-accent bg-surface-raised px-1 py-0.5 text-caption font-semibold text-content-strong"
+          />
+        ) : container.label ? (
+          <span
+            data-testid={`canvas-container-${container.id}-label`}
+            className={`rounded-sm bg-surface-raised/80 px-1.5 py-0.5 text-caption font-semibold text-content-strong${
+              onUpdateContainer ? " cursor-text" : ""
+            }`}
+            onDoubleClick={
+              onUpdateContainer
+                ? (ev) => {
+                    ev.stopPropagation()
+                    beginLabelEdit()
+                  }
+                : undefined
+            }
+          >
+            {container.label}
+          </span>
+        ) : onUpdateContainer ? (
+          <span
+            data-testid={`canvas-container-${container.id}-label-placeholder`}
+            className="cursor-text rounded-sm bg-surface-raised/60 px-1.5 py-0.5 text-caption italic text-content-muted/70"
+            onDoubleClick={(ev) => {
+              ev.stopPropagation()
+              beginLabelEdit()
+            }}
+          >
+            name this group
+          </span>
+        ) : null}
+        {onRemoveContainer && (
+          <button
+            type="button"
+            onClick={(ev) => {
+              ev.stopPropagation()
+              onRemoveContainer(container.id)
+            }}
+            onPointerDown={stop}
+            data-testid={`canvas-container-${container.id}-ungroup`}
+            aria-label="Ungroup container"
+            title="Ungroup (keeps the nodes)"
+            className="rounded-sm border border-border-base bg-surface-raised p-0.5 text-content-muted hover:bg-status-error-muted hover:text-status-error"
+          >
+            <Ungroup size={12} />
+          </button>
+        )}
       </div>
     </div>
   )

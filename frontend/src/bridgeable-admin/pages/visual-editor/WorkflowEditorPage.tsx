@@ -26,6 +26,7 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   GitBranch,
+  Group,
   History,
   Loader2,
   Plus,
@@ -67,6 +68,7 @@ import {
   type CanvasEdge,
   type CanvasState,
   type CanvasTrigger,
+  type WorkflowContainer,
   type TenantWorkflowFork,
   type WorkflowScope,
   type WorkflowTemplateFull,
@@ -103,6 +105,9 @@ function ensureCanvasState(
     trigger: c.trigger,
     nodes: c.nodes,
     edges: c.edges,
+    // Container-arc Phase 1 — carry the optional containers overlay through
+    // load (omitted on pre-container drafts → stays undefined).
+    ...(c.containers !== undefined ? { containers: c.containers } : {}),
   }
 }
 
@@ -141,6 +146,16 @@ function generateEdgeId(canvas: CanvasState, source: string, target: string): st
     i += 1
   }
   return candidate
+}
+
+
+// Container-arc Phase 1 — deterministic container id (`c_group_N`), unique
+// against existing containers.
+function generateContainerId(canvas: CanvasState): string {
+  const existing = canvas.containers ?? []
+  let i = existing.length + 1
+  while (existing.some((c) => c.id === `c_group_${i}`)) i += 1
+  return `c_group_${i}`
 }
 
 
@@ -439,8 +454,10 @@ export default function WorkflowEditorPage() {
     (nodeType: string) => {
       setDraftCanvas((prev) => {
         const next: CanvasState = {
+          // Spread prev so the optional containers overlay (+ any future
+          // field) is preserved — only nodes/edges are rebuilt here.
+          ...prev,
           version: prev.version || 1,
-          trigger: prev.trigger,
           nodes: [...prev.nodes],
           edges: [...prev.edges],
         }
@@ -463,26 +480,39 @@ export default function WorkflowEditorPage() {
   )
 
   const handleRemoveNode = useCallback((nodeId: string) => {
-    setDraftCanvas((prev) => ({
-      version: prev.version,
-      trigger: prev.trigger,
-      nodes: prev.nodes.filter((n) => n.id !== nodeId),
-      edges: prev.edges.filter(
-        (e) => e.source !== nodeId && e.target !== nodeId,
-      ),
-    }))
+    setDraftCanvas((prev) => {
+      // Container-arc Phase 1 — removing a node must also prune it from any
+      // container's members (else the deleted id orphans a member → the
+      // validator would reject). A container emptied by the prune is dropped
+      // (debris cleanup; empty containers are valid but invisible). Containers
+      // omitted → undefined stays undefined.
+      const nextContainers = prev.containers
+        ?.map((c) => ({
+          ...c,
+          members: c.members.filter(
+            (m) => !(m.kind === "node" && m.id === nodeId),
+          ),
+        }))
+        .filter((c) => c.members.length > 0)
+      return {
+        ...prev,
+        nodes: prev.nodes.filter((n) => n.id !== nodeId),
+        edges: prev.edges.filter(
+          (e) => e.source !== nodeId && e.target !== nodeId,
+        ),
+        ...(nextContainers !== undefined ? { containers: nextContainers } : {}),
+      }
+    })
     setSelection({ kind: "none" })
   }, [])
 
   const handleUpdateNode = useCallback(
     (nodeId: string, patch: Partial<CanvasNode>) => {
       setDraftCanvas((prev) => ({
-        version: prev.version,
-        trigger: prev.trigger,
+        ...prev,
         nodes: prev.nodes.map((n) =>
           n.id === nodeId ? { ...n, ...patch } : n,
         ),
-        edges: prev.edges,
       }))
     },
     [],
@@ -496,9 +526,7 @@ export default function WorkflowEditorPage() {
 
   const handleRemoveEdge = useCallback((edgeId: string) => {
     setDraftCanvas((prev) => ({
-      version: prev.version,
-      trigger: prev.trigger,
-      nodes: prev.nodes,
+      ...prev,
       edges: prev.edges.filter((e) => e.id !== edgeId),
     }))
   }, [])
@@ -509,19 +537,55 @@ export default function WorkflowEditorPage() {
   // TriggerInspector emits the full next trigger.
   const handleUpdateEdge = useCallback((next: CanvasEdge) => {
     setDraftCanvas((prev) => ({
-      version: prev.version,
-      trigger: prev.trigger,
-      nodes: prev.nodes,
+      ...prev,
       edges: prev.edges.map((e) => (e.id === next.id ? next : e)),
     }))
   }, [])
 
   const handleUpdateTrigger = useCallback((next: CanvasTrigger) => {
     setDraftCanvas((prev) => ({
-      version: prev.version,
+      ...prev,
       trigger: next,
-      nodes: prev.nodes,
-      edges: prev.edges,
+    }))
+  }, [])
+
+  // ── Container operations (container-arc Phase 1) ─────
+  // group-selected → create; label edit → update; ungroup → remove. All flow
+  // through setDraftCanvas → the SAME dirty/auto-save path (no new mutation
+  // API), mirroring the edge handlers. P1 produces FLAT containers (every
+  // member kind:"node"); the discriminated shape is nesting-ready (Phase 3).
+  const handleCreateContainer = useCallback((memberNodeIds: string[]) => {
+    setDraftCanvas((prev) => {
+      const id = generateContainerId(prev)
+      const container: WorkflowContainer = {
+        id,
+        members: memberNodeIds.map((nid) => ({ kind: "node", id: nid })),
+        collapsed: false,
+      }
+      return { ...prev, containers: [...(prev.containers ?? []), container] }
+    })
+    // Clear selection — P1 has no container-selection kind; the new box's
+    // label is double-click-editable directly on the canvas.
+    setSelection({ kind: "none" })
+  }, [])
+
+  const handleUpdateContainer = useCallback(
+    (id: string, patch: Partial<WorkflowContainer>) => {
+      setDraftCanvas((prev) => ({
+        ...prev,
+        containers: (prev.containers ?? []).map((c) =>
+          c.id === id ? { ...c, ...patch } : c,
+        ),
+      }))
+    },
+    [],
+  )
+
+  const handleRemoveContainer = useCallback((id: string) => {
+    // Ungroup — remove the container only; its member nodes stay untouched.
+    setDraftCanvas((prev) => ({
+      ...prev,
+      containers: (prev.containers ?? []).filter((c) => c.id !== id),
     }))
   }, [])
 
@@ -1061,15 +1125,23 @@ export default function WorkflowEditorPage() {
               handleRemoveEdge(id)
               setSelection({ kind: "none" })
             }}
+            // Container-arc Phase 1: edit a container's label / ungroup. Both
+            // flow through the container CRUD handlers → the same dirty/save
+            // path as every other edit.
+            onUpdateContainer={handleUpdateContainer}
+            onRemoveContainer={handleRemoveContainer}
           />
         </div>
 
-        {/* ── Right pane — selection-driven inspector (B-5 + P3c + E-3) ──
+        {/* ── Right pane — selection-driven inspector (B-5 + P3c + E-3 + P1) ──
             Dispatches by selection kind:
               node (ALL types) → palette (edits happen ON THE CARD — tokens +
                                P3a expand panel incl. the bespoke focus config
                                for invoke_*, hosted in the panel per E-3; label
                                inline; edges on the canvas)
+              nodes (multi)    → group panel (container-arc Phase 1 — the first
+                               consumer of multi-selection; "Group into
+                               container")
               edge             → EdgeConditionInspector (unchanged)
               background       → TriggerInspector (unchanged)
               none             → palette (unchanged)
@@ -1082,6 +1154,33 @@ export default function WorkflowEditorPage() {
         >
           {selectedNode ? (
             <WorkflowNodePalette onAdd={handleAddNode} />
+          ) : selection.kind === "nodes" ? (
+            // Container-arc Phase 1 — the multi-selection group panel. The
+            // first consumer of the P0 multi-selection: group the selected
+            // nodes into a labeled container.
+            <div
+              className="flex flex-col gap-3"
+              data-testid="workflow-multi-selection-panel"
+            >
+              <div>
+                <h2 className="text-body font-medium text-content-strong">
+                  {selection.ids.length} node
+                  {selection.ids.length === 1 ? "" : "s"} selected
+                </h2>
+                <p className="mt-1 text-caption text-content-muted">
+                  Group them into a labeled container — a visual region on the
+                  canvas. The nodes and connections stay exactly as they are.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => handleCreateContainer(selection.ids)}
+                data-testid="workflow-group-into-container"
+              >
+                <Group size={14} className="mr-1" />
+                Group into container
+              </Button>
+            </div>
           ) : selectedEdge ? (
             <EdgeConditionInspector
               edge={selectedEdge}
@@ -1095,7 +1194,7 @@ export default function WorkflowEditorPage() {
           ) : (
             // none-state → the searchable, family-grouped action palette
             // (Shortcuts model). Reuses handleAddNode verbatim. The other
-            // three inspector arms above are untouched.
+            // inspector arms above are untouched.
             <WorkflowNodePalette onAdd={handleAddNode} />
           )}
         </aside>

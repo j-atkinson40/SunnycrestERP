@@ -299,6 +299,147 @@ class TestCanvasValidator:
 
         validate_canvas_state(quote_to_pour_canvas())
 
+    # ── Container overlay (container-arc Phase 1) ──
+    # Lockstep with frontend canvas-validator.test.ts container cases.
+
+    def test_canvas_with_no_containers_is_valid(self):
+        from app.services.workflow_templates import validate_canvas_state
+
+        # _minimal_canvas omits "containers" entirely — back-compat.
+        validate_canvas_state(_minimal_canvas())  # no raise
+
+    def test_valid_flat_container(self):
+        from app.services.workflow_templates import validate_canvas_state
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {
+                "id": "c_1",
+                "label": "Group",
+                "members": [
+                    {"kind": "node", "id": "n_start"},
+                    {"kind": "node", "id": "n_end"},
+                ],
+                "collapsed": False,
+            }
+        ]
+        validate_canvas_state(canvas)  # no raise
+
+    def test_empty_member_list_container_is_valid(self):
+        from app.services.workflow_templates import validate_canvas_state
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [{"id": "c_1", "members": [], "collapsed": False}]
+        validate_canvas_state(canvas)  # no raise
+
+    def test_orphan_node_member_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {
+                "id": "c_1",
+                "members": [{"kind": "node", "id": "n_ghost"}],
+                "collapsed": False,
+            }
+        ]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_node_in_two_containers_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {
+                "id": "c_1",
+                "members": [{"kind": "node", "id": "n_start"}],
+                "collapsed": False,
+            },
+            {
+                "id": "c_2",
+                "members": [{"kind": "node", "id": "n_start"}],
+                "collapsed": False,
+            },
+        ]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_duplicate_container_id_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {"id": "c_1", "members": [], "collapsed": False},
+            {"id": "c_1", "members": [], "collapsed": False},
+        ]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_non_boolean_collapsed_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [{"id": "c_1", "members": [], "collapsed": "no"}]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_bad_member_kind_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {
+                "id": "c_1",
+                "members": [{"kind": "widget", "id": "n_start"}],
+                "collapsed": False,
+            }
+        ]
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_non_list_containers_rejected(self):
+        from app.services.workflow_templates import (
+            CanvasValidationError,
+            validate_canvas_state,
+        )
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = {}
+        with pytest.raises(CanvasValidationError):
+            validate_canvas_state(canvas)
+
+    def test_container_member_kind_accepted_without_ref_check(self):
+        # P1 produces no container-members, but the discriminated shape is
+        # type-allowed; ref-integrity + nesting-cycle detection is a Phase 3
+        # add (don't over-build a case P1 can't produce).
+        from app.services.workflow_templates import validate_canvas_state
+
+        canvas = _minimal_canvas()
+        canvas["containers"] = [
+            {
+                "id": "c_outer",
+                "members": [{"kind": "container", "id": "c_inner"}],
+                "collapsed": False,
+            }
+        ]
+        validate_canvas_state(canvas)  # no raise
+
 
 # ─── Service-layer tests ────────────────────────────────────────
 

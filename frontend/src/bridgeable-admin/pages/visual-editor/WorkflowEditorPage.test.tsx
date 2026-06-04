@@ -353,7 +353,10 @@ describe("WorkflowEditorPage — Container-arc Phase 0 multi-select", () => {
     expect(n1).toHaveAttribute("data-selected", "false")
   })
 
-  it("under multi-select the right rail stays on the palette (no card-editing rail)", async () => {
+  it("under multi-select the right rail shows the group panel (P1 — the first multi consumer)", async () => {
+    // P0 shipped multi-select with the rail falling through to the palette;
+    // P1 adds the first consumer — the {kind:"nodes"} rail arm now shows the
+    // group panel instead of the palette.
     const result = renderWithTemplate()
     const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
     const n2 = result.getByTestId("canvas-node-n_node_2")
@@ -362,8 +365,92 @@ describe("WorkflowEditorPage — Container-arc Phase 0 multi-select", () => {
     await waitFor(() =>
       expect(n1).toHaveAttribute("data-multi-selected", "true"),
     )
-    // selectedNode is null under multi → the none→palette arm renders.
+    expect(
+      result.getByTestId("workflow-multi-selection-panel"),
+    ).toBeInTheDocument()
+    expect(
+      result.queryByTestId("workflow-node-palette"),
+    ).not.toBeInTheDocument()
+  })
+})
+
+
+// ── Container-arc Phase 1 — group / render / ungroup (end-to-end) ──────
+//
+// Drives the real container CRUD through the page: multi-select → group →
+// a labeled box renders around the members → ungroup removes it (nodes stay).
+
+describe("WorkflowEditorPage — Container-arc Phase 1 containers", () => {
+  it("groups a multi-selection into a container that renders a box around the members", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    fireEvent.click(n1)
+    fireEvent.click(n2, { shiftKey: true })
+    const groupBtn = await waitFor(() =>
+      result.getByTestId("workflow-group-into-container"),
+    )
+    fireEvent.click(groupBtn)
+    // A container box appears (first id c_group_1); selection clears → palette.
+    await waitFor(() => {
+      expect(
+        result.getByTestId("canvas-container-c_group_1"),
+      ).toBeInTheDocument()
+    })
+    // Selection cleared → the rail returns to the palette (none-state).
     expect(result.getByTestId("workflow-node-palette")).toBeInTheDocument()
+    // The box's label placeholder is editable inline on the canvas.
+    expect(
+      result.getByTestId("canvas-container-c_group_1-label-placeholder"),
+    ).toBeInTheDocument()
+  })
+
+  it("ungroup removes the container but keeps the member nodes", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    fireEvent.click(n1)
+    fireEvent.click(n2, { shiftKey: true })
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("workflow-group-into-container")),
+    )
+    const ungroup = await waitFor(() =>
+      result.getByTestId("canvas-container-c_group_1-ungroup"),
+    )
+    fireEvent.click(ungroup)
+    // Container gone; the nodes remain on the canvas.
+    await waitFor(() => {
+      expect(
+        result.queryByTestId("canvas-container-c_group_1"),
+      ).not.toBeInTheDocument()
+    })
+    expect(result.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
+    expect(result.getByTestId("canvas-node-n_node_2")).toBeInTheDocument()
+  })
+
+  it("editing a container label commits via inline double-click", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    fireEvent.click(n1)
+    fireEvent.click(n2, { shiftKey: true })
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("workflow-group-into-container")),
+    )
+    const placeholder = await waitFor(() =>
+      result.getByTestId("canvas-container-c_group_1-label-placeholder"),
+    )
+    fireEvent.doubleClick(placeholder)
+    const input = await waitFor(() =>
+      result.getByTestId("canvas-container-c_group_1-label-input"),
+    )
+    fireEvent.change(input, { target: { value: "Burial path" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    await waitFor(() => {
+      expect(
+        result.getByTestId("canvas-container-c_group_1-label"),
+      ).toHaveTextContent("Burial path")
+    })
   })
 })
 
