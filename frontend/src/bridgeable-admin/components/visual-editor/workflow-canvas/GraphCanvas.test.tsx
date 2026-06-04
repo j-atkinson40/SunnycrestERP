@@ -1753,3 +1753,186 @@ describe("GraphCanvas — Container-arc Phase 1 (expanded labeled regions)", () 
     ).toBeInTheDocument()
   })
 })
+
+
+describe("GraphCanvas — Container-arc Phase 2b (collapse rendering)", () => {
+  const cbProps = {
+    onSelectNode: noop,
+    onMoveNode: noop,
+    onRemoveNode: noop,
+    onUpdateContainer: vi.fn(),
+    onRemoveContainer: vi.fn(),
+  }
+
+  it("a collapsed container hides its member nodes + interior edge, shows the collapsed card", () => {
+    // makeCanvas: n_node_1 → n_node_2, both members of c1 (collapsed) → the
+    // edge is interior (hidden); both member cards hidden; the box collapses.
+    const canvas = makeCanvas({
+      containers: [
+        {
+          id: "c1",
+          label: "Group A",
+          members: [
+            { kind: "node" as const, id: "n_node_1" },
+            { kind: "node" as const, id: "n_node_2" },
+          ],
+          collapsed: true,
+        },
+      ],
+    })
+    render(<GraphCanvas canvas={canvas} selectedNodeId={null} {...cbProps} />)
+    // Members hidden.
+    expect(screen.queryByTestId("canvas-node-n_node_1")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("canvas-node-n_node_2")).not.toBeInTheDocument()
+    // Interior edge hidden.
+    expect(
+      screen.queryByTestId("edge-e_n_node_1_n_node_2"),
+    ).not.toBeInTheDocument()
+    // Collapsed card present.
+    const box = screen.getByTestId("canvas-container-c1")
+    expect(box).toHaveAttribute("data-collapsed", "true")
+    expect(screen.getByTestId("canvas-container-c1-label")).toHaveTextContent(
+      "Group A",
+    )
+    expect(screen.getByTestId("canvas-container-c1-expand")).toBeInTheDocument()
+  })
+
+  it("crossing edges render (rerouted, not skipped); interior is skipped", () => {
+    const canvas = makeCanvas({
+      nodes: [
+        { id: "n_node_1", type: "start", position: { x: 40, y: 40 }, config: {} },
+        { id: "n_node_2", type: "action", position: { x: 40, y: 200 }, config: {} },
+        { id: "n_out", type: "end", position: { x: 400, y: 400 }, config: {} },
+      ],
+      edges: [
+        { id: "e_in", source: "n_out", target: "n_node_1" }, // crossing-in
+        { id: "e_out", source: "n_node_2", target: "n_out" }, // crossing-out
+        { id: "e_int", source: "n_node_1", target: "n_node_2" }, // interior
+      ],
+      containers: [
+        {
+          id: "c1",
+          members: [
+            { kind: "node" as const, id: "n_node_1" },
+            { kind: "node" as const, id: "n_node_2" },
+          ],
+          collapsed: true,
+        },
+      ],
+    })
+    render(<GraphCanvas canvas={canvas} selectedNodeId={null} {...cbProps} />)
+    // The outside node renders; the members are hidden.
+    expect(screen.getByTestId("canvas-node-n_out")).toBeInTheDocument()
+    expect(screen.queryByTestId("canvas-node-n_node_1")).not.toBeInTheDocument()
+    // Crossing edges render; interior is skipped.
+    expect(screen.getByTestId("edge-e_in")).toBeInTheDocument()
+    expect(screen.getByTestId("edge-e_out")).toBeInTheDocument()
+    expect(screen.queryByTestId("edge-e_int")).not.toBeInTheDocument()
+  })
+
+  it("box-to-box: an edge between two collapsed containers renders", () => {
+    const canvas = makeCanvas({
+      nodes: [
+        { id: "n_a", type: "start", position: { x: 40, y: 40 }, config: {} },
+        { id: "n_b", type: "end", position: { x: 400, y: 400 }, config: {} },
+      ],
+      edges: [{ id: "e_bb", source: "n_a", target: "n_b" }],
+      containers: [
+        { id: "c1", members: [{ kind: "node" as const, id: "n_a" }], collapsed: true },
+        { id: "c2", members: [{ kind: "node" as const, id: "n_b" }], collapsed: true },
+      ],
+    })
+    render(<GraphCanvas canvas={canvas} selectedNodeId={null} {...cbProps} />)
+    expect(screen.queryByTestId("canvas-node-n_a")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("canvas-node-n_b")).not.toBeInTheDocument()
+    expect(screen.getByTestId("edge-e_bb")).toBeInTheDocument()
+    expect(screen.getByTestId("canvas-container-c1")).toHaveAttribute(
+      "data-collapsed",
+      "true",
+    )
+    expect(screen.getByTestId("canvas-container-c2")).toHaveAttribute(
+      "data-collapsed",
+      "true",
+    )
+  })
+
+  it("default (collapsed:false) is identical to P1 — members + edge render, no collapsed card", () => {
+    const canvas = makeCanvas({
+      containers: [
+        {
+          id: "c1",
+          members: [
+            { kind: "node" as const, id: "n_node_1" },
+            { kind: "node" as const, id: "n_node_2" },
+          ],
+          collapsed: false,
+        },
+      ],
+    })
+    render(<GraphCanvas canvas={canvas} selectedNodeId={null} {...cbProps} />)
+    // Members + edge render (P1 behavior).
+    expect(screen.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
+    expect(screen.getByTestId("canvas-node-n_node_2")).toBeInTheDocument()
+    expect(screen.getByTestId("edge-e_n_node_1_n_node_2")).toBeInTheDocument()
+    // The expanded frame carries data-collapsed=false + a collapse button.
+    expect(screen.getByTestId("canvas-container-c1")).toHaveAttribute(
+      "data-collapsed",
+      "false",
+    )
+    expect(screen.getByTestId("canvas-container-c1-collapse")).toBeInTheDocument()
+  })
+
+  it("the expand toggle fires onUpdateContainer({collapsed:false})", () => {
+    const onUpdateContainer = vi.fn()
+    const canvas = makeCanvas({
+      containers: [
+        {
+          id: "c1",
+          members: [{ kind: "node" as const, id: "n_node_1" }],
+          collapsed: true,
+        },
+      ],
+    })
+    render(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId={null}
+        {...cbProps}
+        onUpdateContainer={onUpdateContainer}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-container-c1-expand"))
+    expect(onUpdateContainer).toHaveBeenCalledWith("c1", { collapsed: false })
+  })
+
+  it("the collapse toggle (expanded chrome) fires onUpdateContainer({collapsed:true})", () => {
+    const onUpdateContainer = vi.fn()
+    const canvas = makeCanvas({
+      containers: [
+        {
+          id: "c1",
+          members: [{ kind: "node" as const, id: "n_node_1" }],
+          collapsed: false,
+        },
+      ],
+    })
+    render(
+      <GraphCanvas
+        canvas={canvas}
+        selectedNodeId={null}
+        {...cbProps}
+        onUpdateContainer={onUpdateContainer}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("canvas-container-c1-collapse"))
+    expect(onUpdateContainer).toHaveBeenCalledWith("c1", { collapsed: true })
+  })
+
+  it("a canvas with no collapsed container renders every node + edge (no hidden members)", () => {
+    // No containers at all — the membership map is empty → nothing filtered.
+    render(<GraphCanvas canvas={makeCanvas()} selectedNodeId={null} {...cbProps} />)
+    expect(screen.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
+    expect(screen.getByTestId("canvas-node-n_node_2")).toBeInTheDocument()
+    expect(screen.getByTestId("edge-e_n_node_1_n_node_2")).toBeInTheDocument()
+  })
+})

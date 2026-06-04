@@ -452,6 +452,37 @@ describe("WorkflowEditorPage — Container-arc Phase 1 containers", () => {
       ).toHaveTextContent("Burial path")
     })
   })
+
+  it("Phase 2b — collapse hides members; expand restores them (round-trip through the page)", async () => {
+    const result = renderWithTemplate()
+    const n1 = await waitFor(() => result.getByTestId("canvas-node-n_node_1"))
+    const n2 = result.getByTestId("canvas-node-n_node_2")
+    fireEvent.click(n1)
+    fireEvent.click(n2, { shiftKey: true })
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("workflow-group-into-container")),
+    )
+    // Collapse via the expanded chrome's collapse button.
+    fireEvent.click(
+      await waitFor(() => result.getByTestId("canvas-container-c_group_1-collapse")),
+    )
+    // Members hidden; the collapsed card shows.
+    await waitFor(() => {
+      expect(
+        result.queryByTestId("canvas-node-n_node_1"),
+      ).not.toBeInTheDocument()
+    })
+    expect(result.getByTestId("canvas-container-c_group_1")).toHaveAttribute(
+      "data-collapsed",
+      "true",
+    )
+    // Expand restores the members.
+    fireEvent.click(result.getByTestId("canvas-container-c_group_1-expand"))
+    await waitFor(() => {
+      expect(result.getByTestId("canvas-node-n_node_1")).toBeInTheDocument()
+    })
+    expect(result.getByTestId("canvas-node-n_node_2")).toBeInTheDocument()
+  })
 })
 
 

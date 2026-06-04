@@ -52,7 +52,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
-import { ChevronDown, ChevronUp, Maximize2, Route, Trash2, Ungroup } from "lucide-react"
+import { ChevronDown, ChevronUp, Maximize2, Minimize2, Route, Trash2, Ungroup } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import type {
@@ -72,6 +72,15 @@ import {
   // by dropDecision). Used AS-IS, not reimplemented.
   computeEdgePreviewPath,
   dropDecision,
+  // Container-arc Phase 2b — wires the P2a collapse/rerouting pure helpers
+  // (consumed AS-IS, not reimplemented). Side-bucketed: crossing-in → box
+  // top, crossing-out → box bottom, box↔box → boxA bottom → boxB top.
+  buildCollapsedMembership,
+  classifyEdge,
+  boxAnchor,
+  bezierBetween,
+  collapsedBoxBounds,
+  type BoxBounds,
 } from "@/lib/visual-editor/workflows/canvas-layout"
 // Phase B integration-phase — pan + zoom view transform (self-owned).
 import {
@@ -273,7 +282,37 @@ export function GraphCanvas({
     [heights],
   )
 
+  // Surface sizing counts ALL nodes (incl. hidden members of collapsed
+  // containers) so collapsing never shrinks the scroll surface / jumps pan
+  // (container-arc Phase 2b — investigation §P2.5).
   const surface = bbox(canvas.nodes, NODE_WIDTH, heightOf)
+
+  // ── Container-arc Phase 2b — collapse lookups (consume P2a helpers) ──
+  // `collapsedMembership` = node-id → its collapsed container's id (the node
+  // is a HIDDEN member). Drives: the node-map filter (hidden members don't
+  // render), the edge classifier (interior/crossing/box↔box), and the
+  // drag-to-connect drop exclusion. `containersById` resolves a classified
+  // container id → the container row for `collapsedBoxBounds`. Both rebuild
+  // reactively when a collapse toggles (canvas.containers changes).
+  const collapsedMembership = useMemo(
+    () => buildCollapsedMembership(canvas.containers),
+    [canvas.containers],
+  )
+  const containersById = useMemo(
+    () =>
+      new Map((canvas.containers ?? []).map((c) => [c.id, c] as const)),
+    [canvas.containers],
+  )
+  // Resolve a collapsed container id → its collapsed-box bounds (for edge
+  // re-anchoring). Memo-free helper (cheap; reads the reactive maps above).
+  const collapsedBoundsFor = useCallback(
+    (containerId: string): BoxBounds | null => {
+      const container = containersById.get(containerId)
+      if (!container) return null
+      return collapsedBoxBounds(container, canvas.nodes, heightOf)
+    },
+    [containersById, canvas.nodes, heightOf],
+  )
 
   // ── Phase B integration-phase — pan + zoom (self-owned view state) ──
   // {panX, panY, zoom} is EPHEMERAL view state, NEVER persisted in
@@ -350,7 +389,12 @@ export function GraphCanvas({
         y: screenPt.y - (rect?.top ?? 0),
       })
       const decision = dropDecision({
-        nodes: canvas.nodes,
+        // Container-arc Phase 2b — exclude HIDDEN members (members of a
+        // collapsed container) from the drop hit-test, so a drag-to-connect
+        // can't resolve onto an invisible node. (Dropping onto a collapsed
+        // BOX is out of scope for P2b — the box isn't a dropDecision target;
+        // such a drop falls through to cancel/empty.)
+        nodes: canvas.nodes.filter((n) => !collapsedMembership.has(n.id)),
         edges: canvas.edges,
         heights,
         sourceId: d.sourceId,
@@ -369,7 +413,7 @@ export function GraphCanvas({
         window.setTimeout(() => setCancelFlash(null), 200)
       }
     },
-    [canvas.nodes, canvas.edges, heights, onCreateEdge],
+    [canvas.nodes, canvas.edges, heights, onCreateEdge, collapsedMembership],
   )
 
   const viewportSize = useCallback(
@@ -600,16 +644,63 @@ export function GraphCanvas({
                   // not y+72. The target anchor is the card top (height-
                   // independent) — incoming edges were always correct.
                   const sourceHeight = heights.get(source.id) ?? NODE_HEIGHT
-                  const d = computeEdgePath({
-                    source: source.position,
-                    target: target.position,
-                    nodeHeight: sourceHeight,
-                  })
-                  const mid = computeEdgeMidpoint({
-                    source: source.position,
-                    target: target.position,
-                    nodeHeight: sourceHeight,
-                  })
+                  // Container-arc Phase 2b — classify against collapsed
+                  // membership (side-bucketed). external → the UNTOUCHED P1
+                  // path (byte-identical; when nothing is collapsed every edge
+                  // is external → zero change). interior → skip (both endpoints
+                  // hidden). crossing/box↔box → re-anchor the hidden endpoint(s)
+                  // to the collapsed box (in→top, out→bottom).
+                  const klass = classifyEdge(edge, collapsedMembership)
+                  if (klass.kind === "interior") return null
+                  let d: string
+                  let mid: { x: number; y: number }
+                  if (klass.kind === "external") {
+                    d = computeEdgePath({
+                      source: source.position,
+                      target: target.position,
+                      nodeHeight: sourceHeight,
+                    })
+                    mid = computeEdgeMidpoint({
+                      source: source.position,
+                      target: target.position,
+                      nodeHeight: sourceHeight,
+                    })
+                  } else {
+                    const srcBounds = klass.sourceContainerId
+                      ? collapsedBoundsFor(klass.sourceContainerId)
+                      : null
+                    const tgtBounds = klass.targetContainerId
+                      ? collapsedBoundsFor(klass.targetContainerId)
+                      : null
+                    // Source anchor: the collapsed box BOTTOM (crossing-out /
+                    // box↔box) else the source node's bottom-center. Target
+                    // anchor: the collapsed box TOP (crossing-in / box↔box)
+                    // else the target node's top-center (height-independent).
+                    const sa = srcBounds
+                      ? boxAnchor(srcBounds, "bottom")
+                      : boxAnchor(
+                          {
+                            x: source.position.x,
+                            y: source.position.y,
+                            width: NODE_WIDTH,
+                            height: sourceHeight,
+                          },
+                          "bottom",
+                        )
+                    const ta = tgtBounds
+                      ? boxAnchor(tgtBounds, "top")
+                      : boxAnchor(
+                          {
+                            x: target.position.x,
+                            y: target.position.y,
+                            width: NODE_WIDTH,
+                            height: NODE_HEIGHT,
+                          },
+                          "top",
+                        )
+                    d = bezierBetween(sa, ta)
+                    mid = { x: (sa.x + ta.x) / 2, y: (sa.y + ta.y) / 2 }
+                  }
                   const edgeLabel = edge.label ?? edge.condition
                   // B-4 overlay: dim edges not traversed in the reachable
                   // subgraph. Overlay off (trace === null) → no change.
@@ -772,25 +863,44 @@ export function GraphCanvas({
                   .map((m) => canvas.nodes.find((n) => n.id === m.id))
                   .filter((n): n is CanvasNode => n !== undefined)
                 if (memberNodes.length === 0) return null
-                const b = bbox(memberNodes, NODE_WIDTH, heightOf)
+                // Container-arc Phase 2b — bounds differ by state. Expanded:
+                // the member bbox + padding (the P1 frame around visible
+                // members). Collapsed: the compact fixed-size box at the
+                // members' bbox top-left (members are hidden — see
+                // collapsedBoxBounds). The component branches its render on
+                // container.collapsed; here we just feed the right bounds.
+                let bounds: { x: number; y: number; width: number; height: number }
+                if (container.collapsed) {
+                  bounds = collapsedBoxBounds(container, canvas.nodes, heightOf)
+                } else {
+                  const b = bbox(memberNodes, NODE_WIDTH, heightOf)
+                  bounds = {
+                    x: b.minX - CONTAINER_PADDING,
+                    y: b.minY - CONTAINER_PADDING,
+                    width: b.maxX - b.minX + CONTAINER_PADDING * 2,
+                    height: b.maxY - b.minY + CONTAINER_PADDING * 2,
+                  }
+                }
                 return (
                   <GraphCanvasContainer
                     key={container.id}
                     container={container}
-                    bounds={{
-                      x: b.minX - CONTAINER_PADDING,
-                      y: b.minY - CONTAINER_PADDING,
-                      width: b.maxX - b.minX + CONTAINER_PADDING * 2,
-                      height: b.maxY - b.minY + CONTAINER_PADDING * 2,
-                    }}
+                    bounds={bounds}
+                    memberCount={memberNodes.length}
                     onUpdateContainer={onUpdateContainer}
                     onRemoveContainer={onRemoveContainer}
                   />
                 )
               })}
 
-              {/* Node layer — draggable cards above the edge layer. */}
-              {canvas.nodes.map((node) => (
+              {/* Node layer — draggable cards above the edge layer.
+                  Container-arc Phase 2b — HIDDEN members (nodes that are
+                  members of a COLLAPSED container) don't render; the collapsed
+                  box replaces them. When nothing is collapsed the membership
+                  map is empty → every node renders (P1 behavior). */}
+              {canvas.nodes
+                .filter((node) => !collapsedMembership.has(node.id))
+                .map((node) => (
                 <GraphCanvasNode
                   key={node.id}
                   node={node}
@@ -1354,30 +1464,45 @@ function GraphCanvasNode({
 
 interface GraphCanvasContainerProps {
   container: WorkflowContainer
-  /** Computed enclosing bounds (canvas px) from the member bbox + padding. */
+  /**
+   * Computed bounds (canvas px). Expanded: the member bbox + padding.
+   * Collapsed: the compact fixed-size box at the members' bbox top-left
+   * (`collapsedBoxBounds`). The parent feeds the right bounds per state.
+   */
   bounds: { x: number; y: number; width: number; height: number }
+  /** Number of (resolved node) members — shown on the collapsed card. */
+  memberCount: number
   onUpdateContainer?: (id: string, patch: Partial<WorkflowContainer>) => void
   onRemoveContainer?: (id: string) => void
 }
 
 /**
- * Container-arc Phase 1 — a labeled box enclosing its member nodes. Renders
- * BEHIND the node layer (paints under the cards). The box body is
- * pointer-events:none so the enclosed nodes stay clickable through it; only
- * the chrome (label chip + ungroup button, top-left) re-enables pointer
- * events. Label is inline-editable on double-click (reuses the node-title
- * idiom). Phase 1 ships EXPANDED regions only — `collapsed` is not read here
- * (Phase 2 adds collapse/edge-rerouting).
+ * Container-arc Phase 1 + 2b — a container box, in one of two states.
+ *
+ * EXPANDED (`collapsed:false`, P1): a labeled frame drawn BEHIND the node
+ * layer (pointer-events:none body so enclosed nodes stay clickable through
+ * it; chrome — label chip + collapse + ungroup — is pointer-events:auto).
+ * Label inline-editable on double-click.
+ *
+ * COLLAPSED (`collapsed:true`, P2b): an OPAQUE card in the node z-band that
+ * REPLACES the hidden members (the parent filters them out of the node-map),
+ * showing the label + member count + an expand toggle. Crossing edges reroute
+ * to this box's top/bottom (see the edge-map). Label-edit is available on the
+ * expanded chrome (expand to rename) — kept off the collapsed card for P2b.
  */
 function GraphCanvasContainer({
   container,
   bounds,
+  memberCount,
   onUpdateContainer,
   onRemoveContainer,
 }: GraphCanvasContainerProps) {
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelDraft, setLabelDraft] = useState(container.label ?? "")
   const stop = (ev: { stopPropagation: () => void }) => ev.stopPropagation()
+
+  const toggleCollapsed = () =>
+    onUpdateContainer?.(container.id, { collapsed: !container.collapsed })
 
   const beginLabelEdit = () => {
     setLabelDraft(container.label ?? "")
@@ -1395,9 +1520,78 @@ function GraphCanvasContainer({
     setLabelDraft(container.label ?? "")
   }
 
+  // ── COLLAPSED — opaque card in the node z-band (replaces the members) ──
+  if (container.collapsed) {
+    return (
+      <div
+        data-testid={`canvas-container-${container.id}`}
+        data-collapsed="true"
+        className="pointer-events-auto absolute flex flex-col justify-center rounded-md border border-accent/60 bg-surface-elevated shadow-level-1"
+        style={{
+          left: bounds.x,
+          top: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          // Node z-band — the collapsed box sits among the cards it replaces.
+          zIndex: 1,
+        }}
+      >
+        <div className="flex items-center justify-between gap-1 px-2">
+          <div className="min-w-0">
+            <p
+              data-testid={`canvas-container-${container.id}-label`}
+              className="truncate text-caption font-semibold text-content-strong"
+            >
+              {container.label || "Group"}
+            </p>
+            <p className="text-micro text-content-muted">
+              {memberCount} node{memberCount === 1 ? "" : "s"} · collapsed
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {onUpdateContainer && (
+              <button
+                type="button"
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  toggleCollapsed()
+                }}
+                onPointerDown={stop}
+                data-testid={`canvas-container-${container.id}-expand`}
+                aria-label="Expand container"
+                title="Expand"
+                className="rounded-sm border border-border-base bg-surface-raised p-0.5 text-content-muted hover:bg-accent-subtle hover:text-accent"
+              >
+                <Maximize2 size={12} />
+              </button>
+            )}
+            {onRemoveContainer && (
+              <button
+                type="button"
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onRemoveContainer(container.id)
+                }}
+                onPointerDown={stop}
+                data-testid={`canvas-container-${container.id}-ungroup`}
+                aria-label="Ungroup container"
+                title="Ungroup (keeps the nodes)"
+                className="rounded-sm border border-border-base bg-surface-raised p-0.5 text-content-muted hover:bg-status-error-muted hover:text-status-error"
+              >
+                <Ungroup size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── EXPANDED — labeled frame behind the nodes (P1) + a collapse button ──
   return (
     <div
       data-testid={`canvas-container-${container.id}`}
+      data-collapsed="false"
       className="pointer-events-none absolute rounded-lg border border-dashed border-accent/50 bg-accent-subtle/15"
       style={{
         left: bounds.x,
@@ -1408,8 +1602,8 @@ function GraphCanvasContainer({
         zIndex: 0,
       }}
     >
-      {/* Chrome — top-left label chip + ungroup. pointer-events:auto so it's
-          interactive even though the box body is pointer-events:none. */}
+      {/* Chrome — top-left label chip + collapse + ungroup. pointer-events:auto
+          so it's interactive even though the box body is pointer-events:none. */}
       <div
         className="pointer-events-auto absolute left-2 top-1.5 flex items-center gap-1"
         onPointerDown={stop}
@@ -1464,6 +1658,22 @@ function GraphCanvasContainer({
             name this group
           </span>
         ) : null}
+        {onUpdateContainer && (
+          <button
+            type="button"
+            onClick={(ev) => {
+              ev.stopPropagation()
+              toggleCollapsed()
+            }}
+            onPointerDown={stop}
+            data-testid={`canvas-container-${container.id}-collapse`}
+            aria-label="Collapse container"
+            title="Collapse"
+            className="rounded-sm border border-border-base bg-surface-raised p-0.5 text-content-muted hover:bg-accent-subtle hover:text-accent"
+          >
+            <Minimize2 size={12} />
+          </button>
+        )}
         {onRemoveContainer && (
           <button
             type="button"
