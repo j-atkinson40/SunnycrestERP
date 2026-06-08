@@ -2219,3 +2219,46 @@ describe("GraphCanvas — Container-arc Phase 3c (container selection)", () => {
     expect(screen.getByTestId("canvas-container-c1")).toBeInTheDocument()
   })
 })
+
+
+describe("GraphCanvas — negative-coordinate support (the funeral_cascade burial-path class of bug)", () => {
+  const cb = { onSelectNode: noop, onMoveNode: noop, onRemoveNode: noop }
+
+  // A left (negative-x) node + a right node + an edge between them — the
+  // funeral_cascade shape (burial path at x=-300, decision/cremation at >=0).
+  const negCanvas = {
+    version: 1,
+    nodes: [
+      { id: "n_left", type: "start", position: { x: -300, y: 40 }, config: {} },
+      { id: "n_right", type: "action", position: { x: 200, y: 240 }, config: {} },
+    ],
+    edges: [{ id: "e_lr", source: "n_left", target: "n_right" }],
+  }
+
+  it("renders a negative-x node ON-SURFACE (shifted by -origin, not off at left<0)", () => {
+    render(<GraphCanvas canvas={negCanvas} selectedNodeId={null} {...cb} />)
+    const left = screen.getByTestId("canvas-node-n_left")
+    // origin.x = min(0,-300) = -300 → left = -300 - (-300) = 0 (on-surface, not clipped).
+    expect(left.style.left).toBe("0px")
+    expect(left.style.top).toBe("40px") // origin.y = min(0,40) = 0 → unshifted
+    // The positive node shifts by the same +300.
+    expect(screen.getByTestId("canvas-node-n_right").style.left).toBe("500px")
+  })
+
+  it("the edge SVG viewBox starts at the negative origin (so x<0 geometry is in-viewport, not clipped)", () => {
+    render(<GraphCanvas canvas={negCanvas} selectedNodeId={null} {...cb} />)
+    const svg = screen.getByTestId("graph-canvas-edges")
+    expect(svg.getAttribute("viewBox")?.startsWith("-300 0 ")).toBe(true)
+    // The leftward edge renders (it would have been clipped pre-fix).
+    expect(screen.getByTestId("edge-e_lr")).toBeInTheDocument()
+  })
+
+  it("REGRESSION — a non-negative canvas is byte-identical (origin 0; viewBox 0 0; raw left/top)", () => {
+    render(<GraphCanvas canvas={makeCanvas()} selectedNodeId={null} {...cb} />)
+    // makeCanvas nodes are at x=40 → origin 0 → unshifted left.
+    expect(screen.getByTestId("canvas-node-n_node_1").style.left).toBe("40px")
+    expect(
+      screen.getByTestId("graph-canvas-edges").getAttribute("viewBox")?.startsWith("0 0 "),
+    ).toBe(true)
+  })
+})

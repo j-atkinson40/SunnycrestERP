@@ -121,6 +121,10 @@ export interface DragCommitInput {
   /** Node-box dimensions. */
   nodeWidth?: number
   nodeHeight?: number
+  /** Negative-coordinate support — lower clamp bound (the content origin).
+   *  Default 0 → pre-support behavior (byte-identical). */
+  minX?: number
+  minY?: number
 }
 
 export interface EdgePathInput {
@@ -140,6 +144,20 @@ export interface BBox {
   maxY: number
   width: number
   height: number
+  /**
+   * Negative-coordinate support — the content ORIGIN to SUBTRACT when mapping
+   * content coords → on-surface (DOM/SVG) coords: `dom = content - origin`.
+   * `originX = min(0, minX)`, `originY = min(0, minY)` — so it is **0 for any
+   * canvas whose content is entirely at non-negative coordinates**, making the
+   * whole offset a no-op (byte-identical to pre-support rendering). It is < 0
+   * only when content extends into negative space (e.g. a node at x=-300),
+   * shifting that content back on-surface. Consumers: node/container `left/top`
+   * (subtract), the edge-SVG `viewBox` (origin top-left), the pan-clamp bounds,
+   * the drag-to-connect hit-test (add back to recover raw content), and the
+   * node-drag clamp lower bound.
+   */
+  originX: number
+  originY: number
 }
 
 /**
@@ -204,10 +222,16 @@ export function clampToCanvas(
   canvasHeight: number,
   nodeWidth: number = NODE_WIDTH,
   nodeHeight: number = NODE_HEIGHT,
+  // Negative-coordinate support — the lower clamp bound (the content origin).
+  // Defaults to 0 → pre-support behavior (byte-identical); passed the bbox
+  // `originX/originY` (< 0) so a node legitimately at negative coords isn't
+  // snapped to 0 on drag.
+  minX: number = 0,
+  minY: number = 0,
 ): Point {
   return {
-    x: Math.max(0, Math.min(x, canvasWidth - nodeWidth)),
-    y: Math.max(0, Math.min(y, canvasHeight - nodeHeight)),
+    x: Math.max(minX, Math.min(x, canvasWidth - nodeWidth)),
+    y: Math.max(minY, Math.min(y, canvasHeight - nodeHeight)),
   }
 }
 
@@ -229,6 +253,8 @@ export function computeNodeDragCommit(input: DragCommitInput): Point {
     canvasHeight,
     nodeWidth = NODE_WIDTH,
     nodeHeight = NODE_HEIGHT,
+    minX = 0,
+    minY = 0,
   } = input
   return clampToCanvas(
     currentX + dx,
@@ -237,6 +263,8 @@ export function computeNodeDragCommit(input: DragCommitInput): Point {
     canvasHeight,
     nodeWidth,
     nodeHeight,
+    minX,
+    minY,
   )
 }
 
@@ -355,6 +383,8 @@ export function bbox(
       maxY: CANVAS_MIN_HEIGHT,
       width: CANVAS_MIN_WIDTH,
       height: CANVAS_MIN_HEIGHT,
+      originX: 0,
+      originY: 0,
     }
   }
   let minX = Infinity
@@ -367,11 +397,16 @@ export function bbox(
     maxX = Math.max(maxX, n.position.x + nodeWidth)
     maxY = Math.max(maxY, n.position.y + heightOf(n))
   }
-  // Graph origin is always (0,0) for the scroll surface; pad the far
-  // edges so the bottom-right node isn't flush against the boundary.
-  const width = Math.max(CANVAS_MIN_WIDTH, maxX + CANVAS_BBOX_PADDING)
-  const height = Math.max(CANVAS_MIN_HEIGHT, maxY + CANVAS_BBOX_PADDING)
-  return { minX, minY, maxX, maxY, width, height }
+  // Negative-coordinate support — the content origin to subtract so negative
+  // content maps back on-surface. `min(0, …)` makes it 0 for non-negative
+  // content (no-op; byte-identical) and < 0 only when content goes negative.
+  const originX = Math.min(0, minX)
+  const originY = Math.min(0, minY)
+  // The surface spans the full content extent (origin → max) + padding. With a
+  // non-negative origin (== 0) this is the pre-support `max(MIN, maxX + pad)`.
+  const width = Math.max(CANVAS_MIN_WIDTH, maxX - originX + CANVAS_BBOX_PADDING)
+  const height = Math.max(CANVAS_MIN_HEIGHT, maxY - originY + CANVAS_BBOX_PADDING)
+  return { minX, minY, maxX, maxY, width, height, originX, originY }
 }
 
 

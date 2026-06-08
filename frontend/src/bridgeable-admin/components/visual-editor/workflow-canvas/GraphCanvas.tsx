@@ -305,6 +305,13 @@ export function GraphCanvas({
   // containers) so collapsing never shrinks the scroll surface / jumps pan
   // (container-arc Phase 2b — investigation §P2.5).
   const surface = bbox(canvas.nodes, NODE_WIDTH, heightOf)
+  // Negative-coordinate support — the content origin (≤ 0; 0 for non-negative
+  // content → every offset below is a no-op, byte-identical). `dom = content -
+  // origin`: node/container `left/top` subtract it; the edge-SVG viewBox starts
+  // at it; the pan-clamp bounds + the drag-to-connect hit-test + the node-drag
+  // clamp are all corrected by it.
+  const originX = surface.originX
+  const originY = surface.originY
 
   // ── Container-arc Phase 2b — collapse lookups (consume P2a helpers) ──
   // `collapsedMembership` = node-id → its collapsed container's id (the node
@@ -377,11 +384,14 @@ export function GraphCanvas({
   const viewRef = useRef(view)
   viewRef.current = view
   const boundsRef = useRef({ minX: 0, minY: 0, maxX: 0, maxY: 0 })
+  // Negative-coordinate support — the pan-clamp works in on-surface (DOM)
+  // space, so shift the content bounds by -origin. With origin 0 this is the
+  // raw bbox (byte-identical).
   boundsRef.current = {
-    minX: surface.minX,
-    minY: surface.minY,
-    maxX: surface.maxX,
-    maxY: surface.maxY,
+    minX: surface.minX - originX,
+    minY: surface.minY - originY,
+    maxX: surface.maxX - originX,
+    maxY: surface.maxY - originY,
   }
   const viewportRef = useRef<HTMLDivElement>(null)
   const surfaceRef = useRef<HTMLDivElement>(null)
@@ -435,10 +445,14 @@ export function GraphCanvas({
       setDrawing(null)
       if (!d) return
       const rect = viewportRef.current?.getBoundingClientRect()
-      const cursorWorld = screenToWorld(viewRef.current, {
+      const domPt = screenToWorld(viewRef.current, {
         x: screenPt.x - (rect?.left ?? 0),
         y: screenPt.y - (rect?.top ?? 0),
       })
+      // Negative-coordinate support — screenToWorld yields the on-surface (DOM)
+      // point; nodes are hit-tested in RAW content coords, so add the origin
+      // back (dom + origin = content). With origin 0 this is a no-op.
+      const cursorWorld = { x: domPt.x + originX, y: domPt.y + originY }
       const decision = dropDecision({
         // Container-arc Phase 2b — exclude HIDDEN members (members of a
         // collapsed container) from the drop hit-test, so a drag-to-connect
@@ -464,7 +478,7 @@ export function GraphCanvas({
         window.setTimeout(() => setCancelFlash(null), 200)
       }
     },
-    [canvas.nodes, canvas.edges, heights, onCreateEdge, collapsedMembership],
+    [canvas.nodes, canvas.edges, heights, onCreateEdge, collapsedMembership, originX, originY],
   )
 
   const viewportSize = useCallback(
@@ -587,6 +601,10 @@ export function GraphCanvas({
         canvasHeight: surface.height,
         // A3 grow-to-fit: clamp lower-bound against the node's real height.
         nodeHeight: heights.get(nodeId) ?? NODE_HEIGHT,
+        // Negative-coordinate support — let a node legitimately at negative
+        // coords stay there (don't snap to 0). origin 0 → pre-support [0,…].
+        minX: originX,
+        minY: originY,
       })
       // Skip a no-op commit (keyboard cancel / sub-3px residue).
       if (committed.x === node.position.x && committed.y === node.position.y) {
@@ -594,7 +612,7 @@ export function GraphCanvas({
       }
       onMoveNode(nodeId, committed)
     },
-    [canvas.nodes, surface.width, surface.height, onMoveNode, heights],
+    [canvas.nodes, surface.width, surface.height, onMoveNode, heights, originX, originY],
   )
 
   return (
@@ -667,6 +685,11 @@ export function GraphCanvas({
                 className="pointer-events-none absolute inset-0"
                 width={surface.width}
                 height={surface.height}
+                // Negative-coordinate support — the viewBox starts at the
+                // content origin so geometry at negative coords is in-viewport
+                // (no longer clipped at x<0/y<0). With origin 0 this is
+                // "0 0 width height", identical to the prior no-viewBox 1:1 map.
+                viewBox={`${originX} ${originY} ${surface.width} ${surface.height}`}
                 data-testid="graph-canvas-edges"
               >
                 <defs>
@@ -875,10 +898,18 @@ export function GraphCanvas({
                     const src = canvas.nodes.find((n) => n.id === drawing.sourceId)
                     if (!src) return null
                     const rect = viewportRef.current?.getBoundingClientRect()
-                    const cursorWorld = screenToWorld(view, {
+                    const domPt = screenToWorld(view, {
                       x: drawing.cursorScreen.x - (rect?.left ?? 0),
                       y: drawing.cursorScreen.y - (rect?.top ?? 0),
                     })
+                    // Negative-coordinate support — recover raw content coords
+                    // (dom + origin) so the preview, drawn in the origin-based
+                    // viewBox alongside the raw source anchor, aligns. No-op at
+                    // origin 0.
+                    const cursorWorld = {
+                      x: domPt.x + originX,
+                      y: domPt.y + originY,
+                    }
                     const d = computeEdgePreviewPath(
                       src.position,
                       heights.get(src.id) ?? NODE_HEIGHT,
@@ -945,6 +976,10 @@ export function GraphCanvas({
                     key={container.id}
                     container={container}
                     bounds={bounds}
+                    // Negative-coordinate support — render shift (dom = content
+                    // - origin); 0 → unchanged.
+                    originX={originX}
+                    originY={originY}
                     memberCount={memberNodes.length}
                     depth={containerDepth(container.id)}
                     // Container-arc Phase 3c — selection ring + select handler.
@@ -969,6 +1004,10 @@ export function GraphCanvas({
                 <GraphCanvasNode
                   key={node.id}
                   node={node}
+                  // Negative-coordinate support — render shift (dom = content
+                  // - origin); 0 → unchanged.
+                  originX={originX}
+                  originY={originY}
                   selected={selectedNodeId === node.id}
                   // Container-arc Phase 0 — ring-only multi-selection state
                   // (distinct from `selected` so card editing stays dormant).
@@ -1054,6 +1093,10 @@ export function GraphCanvas({
 
 interface GraphCanvasNodeProps {
   node: CanvasNode
+  /** Negative-coordinate support — the content origin (≤ 0) subtracted from
+   *  the node's content position to get its on-surface left/top. 0 → unchanged. */
+  originX: number
+  originY: number
   selected: boolean
   /**
    * Container-arc Phase 0 — this node is in the multi-node selection.
@@ -1103,6 +1146,8 @@ interface GraphCanvasNodeProps {
 
 function GraphCanvasNode({
   node,
+  originX,
+  originY,
   selected,
   multiSelected,
   onSelect,
@@ -1156,8 +1201,10 @@ function GraphCanvasNode({
 
   // Position = canvas_state coordinate + live drag transform (cleared on
   // commit when the page re-renders with the new position).
-  const left = node.position.x + (transform?.x ?? 0)
-  const top = node.position.y + (transform?.y ?? 0)
+  // Negative-coordinate support — on-surface left/top = content - origin
+  // (+ the live drag transform). origin 0 → byte-identical to pre-support.
+  const left = node.position.x - originX + (transform?.x ?? 0)
+  const top = node.position.y - originY + (transform?.y ?? 0)
 
   // P3a — stopPropagation guard (mirror of the remove button + the
   // NodeLabelSentence token): a card-interaction must neither select the
@@ -1535,6 +1582,10 @@ interface GraphCanvasContainerProps {
    * (`collapsedBoxBounds`). The parent feeds the right bounds per state.
    */
   bounds: { x: number; y: number; width: number; height: number }
+  /** Negative-coordinate support — content origin (≤ 0) subtracted from the
+   *  box bounds to get on-surface left/top. 0 → unchanged. */
+  originX: number
+  originY: number
   /** Number of (resolved node) members — shown on the collapsed card. */
   memberCount: number
   /**
@@ -1573,6 +1624,8 @@ interface GraphCanvasContainerProps {
 function GraphCanvasContainer({
   container,
   bounds,
+  originX,
+  originY,
   memberCount,
   depth = 0,
   multiSelected,
@@ -1580,6 +1633,10 @@ function GraphCanvasContainer({
   onUpdateContainer,
   onRemoveContainer,
 }: GraphCanvasContainerProps) {
+  // Negative-coordinate support — on-surface left/top = bounds - origin.
+  // origin 0 → byte-identical. Used in both the collapsed + expanded returns.
+  const left = bounds.x - originX
+  const top = bounds.y - originY
   // Container-arc Phase 3b — z bands. CSS z-index is INTEGER-only, and there's
   // no integer strictly between an expanded frame (must stay < the node band,
   // z=1, so nodes stay interactive on top) and the nodes — so all EXPANDED
@@ -1623,8 +1680,8 @@ function GraphCanvasContainer({
         data-multi-selected={multiSelected ?? false}
         className="pointer-events-auto absolute flex flex-col justify-center rounded-md border border-accent/60 bg-surface-elevated shadow-level-1"
         style={{
-          left: bounds.x,
-          top: bounds.y,
+          left,
+          top,
           width: bounds.width,
           height: bounds.height,
           // Node z-band — the collapsed box sits among the cards it replaces.
@@ -1704,8 +1761,8 @@ function GraphCanvasContainer({
       data-multi-selected={multiSelected ?? false}
       className="pointer-events-none absolute rounded-lg border border-dashed border-accent/50 bg-accent-subtle/15"
       style={{
-        left: bounds.x,
-        top: bounds.y,
+        left,
+        top,
         width: bounds.width,
         height: bounds.height,
         // Behind the node cards (z 1/2) but above the surface background.

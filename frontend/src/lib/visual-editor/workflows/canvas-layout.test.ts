@@ -240,6 +240,8 @@ describe("canvas-layout — bbox", () => {
       maxY: CANVAS_MIN_HEIGHT,
       width: CANVAS_MIN_WIDTH,
       height: CANVAS_MIN_HEIGHT,
+      originX: 0,
+      originY: 0,
     })
   })
 
@@ -269,6 +271,62 @@ describe("canvas-layout — bbox", () => {
   it("A3 grow-to-fit: default heightOf reproduces the fixed-height bound", () => {
     const out = bbox([pnode("a", 100, 100)], NODE_WIDTH)
     expect(out.maxY).toBe(100 + NODE_HEIGHT)
+  })
+
+  // ── Negative-coordinate support ──
+  it("BYTE-IDENTICAL guard: non-negative content yields origin (0,0)", () => {
+    // Every node at x>=0,y>=0 → origin 0 → the whole offset is a no-op.
+    const out = bbox([pnode("a", 0, 40), pnode("b", 500, 800)])
+    expect(out.originX).toBe(0)
+    expect(out.originY).toBe(0)
+    // …and width/height are the pre-support `max(MIN, maxX/maxY + pad)`.
+    expect(out.width).toBe(CANVAS_MIN_WIDTH) // 500+200+pad < MIN
+  })
+
+  it("a node entirely at non-negative x but minX>0 still yields originX 0 (no left-shift of positive canvases)", () => {
+    const out = bbox([pnode("a", 500, 0)])
+    expect(out.originX).toBe(0) // min(0, 500) = 0 — positive content is NOT shifted
+  })
+
+  it("negative content yields a negative origin = min(0, minX/minY)", () => {
+    const out = bbox([pnode("a", -300, -120), pnode("b", 200, 400)])
+    expect(out.originX).toBe(-300)
+    expect(out.originY).toBe(-120)
+    // The surface spans origin→max + padding: width = maxX - originX + pad.
+    expect(out.width).toBe(Math.max(CANVAS_MIN_WIDTH, 200 + NODE_WIDTH - -300 + CANVAS_BBOX_PADDING))
+  })
+})
+
+describe("canvas-layout — clampToCanvas negative lower bound", () => {
+  it("default lower bound is 0 (byte-identical to pre-support)", () => {
+    expect(clampToCanvas(-50, -10, 1600, 1000)).toEqual({ x: 0, y: 0 })
+  })
+
+  it("honors a negative lower bound (a node legitimately at negative coords isn't snapped to 0)", () => {
+    // minX=-300, minY=-120: a node dragged toward -250 stays negative.
+    expect(clampToCanvas(-250, -100, 1600, 1000, NODE_WIDTH, NODE_HEIGHT, -300, -120)).toEqual({
+      x: -250,
+      y: -100,
+    })
+    // …but still clamps below the (negative) origin.
+    expect(clampToCanvas(-400, -200, 1600, 1000, NODE_WIDTH, NODE_HEIGHT, -300, -120)).toEqual({
+      x: -300,
+      y: -120,
+    })
+  })
+
+  it("computeNodeDragCommit threads the minX/minY lower bound", () => {
+    const out = computeNodeDragCommit({
+      currentX: -300,
+      currentY: 0,
+      dx: 10,
+      dy: 0,
+      canvasWidth: 2000,
+      canvasHeight: 1000,
+      minX: -300,
+      minY: -120,
+    })
+    expect(out.x).toBe(-290) // -300 + 10, not snapped to 0
   })
 })
 
