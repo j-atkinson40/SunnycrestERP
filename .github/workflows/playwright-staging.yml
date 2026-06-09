@@ -128,20 +128,11 @@ jobs:
         env:
           BACKEND_URL: ${{ env.STAGING_BACKEND }}
 
-      # Claude-API e2e specs (real-model proofs) live at the top level, NOT
-      # under runtime-editor/. Run them as a discrete step that fires even when
-      # the runtime-editor specs above failed (those are routinely red on
-      # transient staging 502s) — `!cancelled()` runs after, win or lose, while
-      # still respecting an explicit cancel. A genuine failure here (e.g. the
-      # workflow-authoring validator-pass assertion) DOES go red; an
-      # unconfigured-AI deploy skips gracefully (ai_status="error" → test.skip).
-      - name: Run Playwright Claude-API e2e specs
-        if: ${{ !cancelled() }}
-        # 1a = tenant-realm generation; 1b = platform-realm generation (the
-        # realm the Studio editor consumer actually runs in).
-        run: npx playwright test tests/e2e/workflow-authoring.spec.ts tests/e2e/workflow-authoring-1b.spec.ts --project=chromium --reporter=list
-        env:
-          BACKEND_URL: ${{ env.STAGING_BACKEND }}
+      # NOTE: the Claude-API e2e specs (real-model generation proofs) moved to
+      # their OWN job (`claude-api`, below) so their green verdict reads green
+      # at the JOB level, independent of this runtime-editor suite's flakiness
+      # (which routinely drags this job red on transient staging 502s). The two
+      # jobs run in parallel; neither `needs` the other.
 
       - name: Upload Playwright report on failure
         if: failure()
@@ -156,6 +147,127 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-artifacts-${{ github.run_number }}
+          path: |
+            frontend/tests/e2e/screenshots
+            frontend/test-results
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Claude-API e2e specs — their OWN job (CI hygiene, 2026-06-09).
+  #
+  # The real-model generation proofs (1a tenant-realm + 1b platform-realm) used
+  # to run as a step inside the runtime-editor job, where that suite's routine
+  # flakiness (staging 502s / waitFor timeouts) dragged the WHOLE run red even
+  # when the Claude-API step reported green. Moving them here makes a green
+  # Claude-API verdict read green at the JOB level, fully independent of the
+  # runtime-editor job. No `needs:` — the two jobs run in parallel; the
+  # runtime-editor job's conclusion can no longer mask this one.
+  #
+  # This job has its OWN deploy-gate (same poll), its OWN timeout, and the
+  # CI-bot secrets the 1b platform-realm spec needs for platform-admin login.
+  # ANTHROPIC_API_KEY is configured on STAGING (server-side) — the specs reach
+  # it by hitting staging; no CI secret is needed here. No frontend build step:
+  # these specs are API-level (request context + page.request), not bundle-
+  # dependent, so the build the runtime-editor job needs (spec 11 bundle-delta)
+  # is irrelevant here.
+  # ---------------------------------------------------------------------------
+  claude-api:
+    name: Playwright (Claude-API e2e) against staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      STAGING_BACKEND: https://sunnycresterp-staging.up.railway.app
+      STAGING_CI_BOT_EMAIL: ${{ secrets.STAGING_CI_BOT_EMAIL }}
+      STAGING_CI_BOT_PASSWORD: ${{ secrets.STAGING_CI_BOT_PASSWORD }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Cache Playwright browser binaries
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.playwright-browsers
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Playwright browsers (chromium only)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Deploy gate — wait for staging to match ${{ github.sha }}
+        # Same gate as the runtime-editor job (duplicated, not shared — no
+        # composite action). Polls /api/health until the deployed commit
+        # matches the just-pushed SHA, with the same bootstrap fallback.
+        run: |
+          set -e
+          GH_SHA="${{ github.sha }}"
+          GH_SHA_SHORT="${GH_SHA:0:7}"
+          DEADLINE=$(( $(date +%s) + 900 ))   # 15 min
+          BOOTSTRAP_DEADLINE=$(( $(date +%s) + 300 ))  # 5 min for first run
+          echo "Waiting for staging to deploy commit ${GH_SHA_SHORT}…"
+          while true; do
+            HEALTH=$(curl -s "${STAGING_BACKEND}/api/health" || echo '{}')
+            DEPLOYED=$(echo "$HEALTH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('commit') or 'null')" 2>/dev/null || echo "null")
+
+            if [ "$DEPLOYED" = "$GH_SHA" ]; then
+              echo "  → staging at ${DEPLOYED:0:7}, matches ${GH_SHA_SHORT}. Proceeding."
+              break
+            fi
+
+            NOW=$(date +%s)
+            if [ "$NOW" -gt "$DEADLINE" ]; then
+              echo "ERROR: staging did not match ${GH_SHA_SHORT} within 15 min (last seen: ${DEPLOYED:0:7})."
+              exit 1
+            fi
+
+            if [ "$DEPLOYED" = "null" ] && [ "$NOW" -gt "$BOOTSTRAP_DEADLINE" ]; then
+              echo "WARN: staging /api/health does not expose 'commit' field (pre-R-1.6 deploy?)."
+              echo "WARN: bootstrap fallback — proceeding without strict commit-match."
+              break
+            fi
+
+            echo "  → staging at ${DEPLOYED:0:7}, waiting for ${GH_SHA_SHORT}…"
+            sleep 15
+          done
+
+      - name: Run Playwright Claude-API e2e specs
+        # 1a = tenant-realm generation; 1b = platform-realm generation (the
+        # realm the Studio editor consumer actually runs in). This is the job's
+        # primary step — its result IS the job conclusion. A real failure here
+        # (validator-pass assertion) goes red; an unconfigured-AI deploy skips
+        # gracefully (ai_status="error" → test.skip), and the service never 5xx.
+        run: npx playwright test tests/e2e/workflow-authoring.spec.ts tests/e2e/workflow-authoring-1b.spec.ts --project=chromium --reporter=list,html
+        env:
+          BACKEND_URL: ${{ env.STAGING_BACKEND }}
+
+      - name: Upload Claude-API report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-api-report-${{ github.run_number }}
+          path: frontend/tests/e2e/report
+          retention-days: 14
+
+      - name: Upload Claude-API traces + screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-api-artifacts-${{ github.run_number }}
           path: |
             frontend/tests/e2e/screenshots
             frontend/test-results
