@@ -459,7 +459,7 @@ export function FocusBuilderCanvas(props: FocusBuilderCanvasProps) {
                 ? "2px solid var(--accent)"
                 : "2px solid transparent",
               outlineOffset: "4px",
-              transition: "outline-color 120ms ease-out",
+              transition: "outline-color var(--duration-instant) var(--ease-settle)",
               cursor: "pointer",
             }}
             className="flex flex-col gap-2"

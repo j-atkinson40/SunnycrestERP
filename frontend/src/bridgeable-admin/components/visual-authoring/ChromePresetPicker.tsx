@@ -64,7 +64,7 @@ export function ChromePresetPicker({
             onClick={() => onChange(active ? null : p.slug)}
             className={cn(
               "rounded-full border px-3 py-1 text-[11px] tracking-wide",
-              "transition-[background-color,border-color,color] duration-150 ease-out",
+              "transition-[background-color,border-color,color] duration-quick ease-settle",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-brass,#9C5640)]/40",
               active
                 ? "border-[color:var(--accent-brass,#9C5640)] bg-[color:var(--accent-brass,#9C5640)] text-[color:var(--content-on-brass,#ffffff)]"

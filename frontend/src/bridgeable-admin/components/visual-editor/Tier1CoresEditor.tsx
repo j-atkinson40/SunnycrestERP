@@ -173,7 +173,7 @@ export function Tier1CoresEditor({
       view.backdrop_blur && view.backdrop_blur > 25
         ? `blur(${blurToPx(view.backdrop_blur ?? null)}px)`
         : undefined,
-    transition: "all 200ms ease-out",
+    transition: "all var(--duration-quick) var(--ease-settle)",
   }
 
   return (

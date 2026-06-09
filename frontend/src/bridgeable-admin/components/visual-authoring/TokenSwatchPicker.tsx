@@ -193,7 +193,7 @@ export function TokenSwatchPicker({
           "flex w-full items-center justify-between gap-3 rounded-md border px-3 py-1.5",
           "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]",
           "text-[color:var(--content-base)] hover:border-[color:var(--border-base)]",
-          "transition-[border-color] duration-150 ease-out",
+          "transition-[border-color] duration-quick ease-settle",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-brass,#9C5640)]/40 focus-visible:border-[color:var(--accent-brass,#9C5640)]",
           open && "border-[color:var(--accent-brass,#9C5640)]",
         )}

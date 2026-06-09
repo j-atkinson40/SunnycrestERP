@@ -149,7 +149,7 @@ export function PlacedWidgetCore(props: PlacedWidgetCoreProps) {
           ? "2px solid var(--accent)"
           : "2px solid transparent",
         outlineOffset: "2px",
-        transition: "outline-color 120ms ease-out",
+        transition: "outline-color var(--duration-instant) var(--ease-settle)",
         cursor: "pointer",
         minHeight: outerStyle.minHeight ?? 56,
       }}

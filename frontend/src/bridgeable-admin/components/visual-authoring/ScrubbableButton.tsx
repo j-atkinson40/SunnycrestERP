@@ -179,7 +179,7 @@ export function ScrubbableButton({
         "select-none text-left",
         "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]",
         "text-[color:var(--content-base)]",
-        "transition-[border-color,box-shadow] duration-150 ease-out",
+        "transition-[border-color,box-shadow] duration-quick ease-settle",
         // Hover: subtle elevation hint via border-base.
         "hover:border-[color:var(--border-base)]",
         // Focus-visible: brass accent ring (DESIGN_LANGUAGE §6 focus canon).

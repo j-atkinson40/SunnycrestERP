@@ -259,7 +259,7 @@ export function FreeFormPlacedWidget(props: FreeFormPlacedWidgetProps) {
           : undefined,
         transition: isDragging
           ? "none"
-          : "opacity 120ms ease-out, box-shadow 120ms ease-out",
+          : "opacity var(--duration-instant) var(--ease-settle), box-shadow var(--duration-instant) var(--ease-settle)",
         // No padding/margin — the PlacedWidgetCore fills the shell.
       }}
     >
