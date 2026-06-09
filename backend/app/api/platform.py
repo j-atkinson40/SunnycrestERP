@@ -33,6 +33,7 @@ from app.api.routes.admin import (
     visual_editor_themes,
     visual_editor_components,
     visual_editor_workflows,
+    visual_editor_workflow_authoring,
     visual_editor_classes,
     visual_editor_dashboard_layouts,
     visual_editor_widgets,
@@ -149,6 +150,15 @@ platform_router.include_router(
     visual_editor_workflows.router,
     prefix="/admin/visual-editor/workflows",
     tags=["Visual Editor — Workflows"],
+)
+# Builder AI Assistant Phase 1b — platform-realm workflow-authoring generation.
+# Thin route over the realm-agnostic 1a service (company_id=None). The Studio
+# Workflow editor (platform realm) consumes THIS; the tenant route at
+# /api/v1/workflow-authoring/* stays untouched (still serves the 1a e2e).
+platform_router.include_router(
+    visual_editor_workflow_authoring.router,
+    prefix="/admin/visual-editor/workflow-authoring",
+    tags=["Visual Editor — Workflow Authoring"],
 )
 platform_router.include_router(
     visual_editor_classes.router,

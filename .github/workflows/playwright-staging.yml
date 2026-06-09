@@ -137,7 +137,9 @@ jobs:
       # unconfigured-AI deploy skips gracefully (ai_status="error" → test.skip).
       - name: Run Playwright Claude-API e2e specs
         if: ${{ !cancelled() }}
-        run: npx playwright test tests/e2e/workflow-authoring.spec.ts --project=chromium --reporter=list
+        # 1a = tenant-realm generation; 1b = platform-realm generation (the
+        # realm the Studio editor consumer actually runs in).
+        run: npx playwright test tests/e2e/workflow-authoring.spec.ts tests/e2e/workflow-authoring-1b.spec.ts --project=chromium --reporter=list
         env:
           BACKEND_URL: ${{ env.STAGING_BACKEND }}
 

@@ -169,6 +169,16 @@ export interface GraphCanvasProps {
   /** Validation message rendered above the canvas; null hides the banner. */
   validationError?: string | null
   /**
+   * Builder AI Assistant Phase 1b — "Proposed" preview treatment (additive).
+   * When true, the canvas root gains a distinct dashed-accent "proposed" frame
+   * so a rendered candidate reads unmistakably as a PROPOSAL awaiting
+   * accept/reject, not committed work. Purely visual — the caller wraps the
+   * preview in a `pointer-events-none` container to make it read-only (the 1b
+   * accept/reject lives in the assistant rail, not on the preview). Omitted /
+   * false → the root is byte-identical to the normal authoring canvas.
+   */
+  proposed?: boolean
+  /**
    * B-5 selection-context (additive — node selection via selectedNodeId
    * is unchanged). When an edge is selected its id is passed here for the
    * selected-edge highlight; edge-click + empty-canvas (background) click
@@ -243,6 +253,7 @@ export function GraphCanvas({
   onMoveNode,
   onRemoveNode,
   validationError,
+  proposed,
   selectedEdgeId,
   onSelectEdge,
   onSelectBackground,
@@ -616,7 +627,14 @@ export function GraphCanvas({
   )
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div
+      className={
+        proposed
+          ? "flex flex-1 flex-col overflow-hidden rounded-md border-2 border-dashed border-accent bg-accent-subtle/20"
+          : "flex flex-1 flex-col overflow-hidden"
+      }
+      data-proposed={proposed ? "true" : undefined}
+    >
       {validationError && (
         <p
           className="mx-4 mt-3 rounded-sm border border-status-error bg-status-error-muted px-2 py-1 text-caption text-status-error"

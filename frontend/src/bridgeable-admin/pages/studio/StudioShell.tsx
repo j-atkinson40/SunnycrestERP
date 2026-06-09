@@ -40,6 +40,13 @@ import {
 import { StudioTopBar } from "@/bridgeable-admin/components/studio/StudioTopBar"
 import { StudioRail } from "@/bridgeable-admin/components/studio/StudioRail"
 import { StudioRailContext } from "@/bridgeable-admin/components/studio/StudioRailContext"
+// Builder AI Assistant Phase 1b — additive docked assistant-rail slot.
+// Provider renders no DOM; the slot is null for every editor except the
+// Workflow editor → byte-identical shell for the other 6 builders.
+import {
+  StudioAssistantSlotProvider,
+  useStudioAssistantSlot,
+} from "@/bridgeable-admin/components/studio/StudioAssistantSlotContext"
 import StudioOverviewPage from "./StudioOverviewPage"
 import StudioLiveModeWrap from "./StudioLiveModeWrap"
 
@@ -199,6 +206,7 @@ export default function StudioShell() {
   }
 
   return (
+    <StudioAssistantSlotProvider>
     <StudioRailContext.Provider
       value={{ railExpanded, inStudioContext: true }}
     >
@@ -283,10 +291,28 @@ export default function StudioShell() {
               </Routes>
             </Suspense>
           </main>
+          {/* Phase 1b — additive docked assistant-rail slot. Null for every
+              editor except Workflow → renders nothing → byte-identical shell
+              for the other 6 builders. Rendered as a flex sibling after
+              <main> so the rail docks to the right when present. */}
+          <AssistantSlotOutlet />
         </div>
       </div>
     </StudioRailContext.Provider>
+    </StudioAssistantSlotProvider>
   )
+}
+
+
+/**
+ * Renders the Phase 1b assistant-rail slot. A separate component so it can read
+ * the slot context (which lives INSIDE StudioAssistantSlotProvider — the
+ * StudioShell body is the provider's parent and can't read it directly).
+ * `rail` is null unless the active editor pushed one → byte-identical when empty.
+ */
+function AssistantSlotOutlet() {
+  const { rail } = useStudioAssistantSlot()
+  return <>{rail}</>
 }
 
 

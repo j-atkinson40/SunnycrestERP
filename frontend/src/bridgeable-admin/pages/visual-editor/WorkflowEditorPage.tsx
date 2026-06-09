@@ -31,6 +31,7 @@ import {
   Loader2,
   Plus,
   Save,
+  Sparkles,
   Undo2,
 } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
@@ -89,6 +90,12 @@ import {
   validateCanvasState,
 } from "@/lib/visual-editor/workflows/canvas-validator"
 import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailContext"
+// Builder AI Assistant Phase 1b — the docked assistant rail + the from-scratch
+// generation path. The rail mounts via the additive StudioShell slot; the 1a
+// generation is consumed via the platform-realm service.
+import { useStudioAssistantSlot } from "@/bridgeable-admin/components/studio/StudioAssistantSlotContext"
+import { WorkflowAssistantRail } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/WorkflowAssistantRail"
+import { useWorkflowCandidate } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/useWorkflowCandidate"
 
 
 const VERTICALS = ["funeral_home", "manufacturing", "cemetery", "crematory"] as const
@@ -459,6 +466,64 @@ export default function WorkflowEditorPage() {
     }
     setSaveError(null)
   }, [activeTemplate])
+
+  // ── Builder AI Assistant Phase 1b — candidate slot (hook) ──
+  // The proposal lands in `candidate`, held NEXT TO draftCanvas (never written
+  // directly — non-destructive). applyProposal (accept) replaces the draft via
+  // onAccept → the existing validate/autosave/persist pipeline takes over.
+  // Reject leaves the draft untouched. From-scratch only (edit = filed
+  // follow-on). The hook owns the transitions; see useWorkflowCandidate.
+  const {
+    candidate,
+    generating,
+    error: generateError,
+    generateWorkflow: handleGenerateWorkflow,
+    acceptCandidate: handleAcceptCandidate,
+    rejectCandidate: handleRejectCandidate,
+  } = useWorkflowCandidate({
+    vertical,
+    workflowType,
+    onAccept: (accepted) => {
+      setDraftCanvas(ensureCanvasState(accepted))
+      setSelection({ kind: "none" })
+    },
+  })
+
+  // ── Push the assistant rail into the additive StudioShell slot ──
+  // Only the Workflow editor fills the slot → byte-identical shell for the
+  // other 6 builders. The rail is re-pushed on relevant state changes; because
+  // the shell renders it at a stable slot position with a stable component
+  // type, React reconciles (no remount) so the rail's own input text persists.
+  const { setRail } = useStudioAssistantSlot()
+  useEffect(() => {
+    setRail(
+      <WorkflowAssistantRail
+        vertical={vertical}
+        workflowType={workflowType}
+        isDraftDirty={isDirty}
+        generating={generating}
+        error={generateError}
+        candidate={candidate}
+        onGenerate={(nl) => void handleGenerateWorkflow(nl)}
+        onAccept={handleAcceptCandidate}
+        onReject={handleRejectCandidate}
+      />,
+    )
+  }, [
+    setRail,
+    vertical,
+    workflowType,
+    isDirty,
+    generating,
+    generateError,
+    candidate,
+    handleGenerateWorkflow,
+    handleAcceptCandidate,
+    handleRejectCandidate,
+  ])
+  // Clear the slot ONLY on unmount (leaving the Workflow editor) — never on a
+  // per-change cleanup, so the rail instance is never torn down mid-session.
+  useEffect(() => () => setRail(null), [setRail])
 
   // ── Node operations ─────────────────────────────────
   const handleAddNode = useCallback(
@@ -1146,6 +1211,38 @@ export default function WorkflowEditorPage() {
           className="flex flex-col overflow-hidden"
           data-testid="workflow-editor-canvas-pane"
         >
+          {candidate ? (
+            // Phase 1b — the candidate renders as a full "Proposed" PREVIEW on
+            // the canvas, read-only (pointer-events-none wrapper + the
+            // GraphCanvas `proposed` treatment). Accept/Reject live in the
+            // assistant rail. When candidate === null the else-branch below is
+            // BYTE-IDENTICAL to the pre-1b canvas (the normal draft editor).
+            <div
+              className="flex flex-1 flex-col overflow-hidden"
+              data-testid="workflow-editor-proposed-preview"
+            >
+              <div className="flex items-center gap-1.5 border-b border-border-subtle bg-accent-subtle/30 px-4 py-2 text-caption text-content-strong">
+                <Sparkles size={13} className="text-accent" />
+                Proposed workflow — review here, then Accept or Reject in the
+                assistant rail.
+              </div>
+              <div
+                className="pointer-events-none flex flex-1 flex-col overflow-hidden"
+                data-testid="workflow-editor-proposed-canvas"
+              >
+                <GraphCanvas
+                  canvas={candidate}
+                  proposed
+                  selectedNodeId={null}
+                  selectedNodeIds={[]}
+                  onSelectNode={() => {}}
+                  onMoveNode={() => {}}
+                  onRemoveNode={() => {}}
+                  validationError={null}
+                />
+              </div>
+            </div>
+          ) : (
           <GraphCanvas
             canvas={draftCanvas}
             selectedNodeId={selectedNodeId}
@@ -1201,6 +1298,7 @@ export default function WorkflowEditorPage() {
             selectedContainerIds={selectedContainerIds}
             onSelectContainer={handleSelectContainer}
           />
+          )}
         </div>
 
         {/* ── Right pane — selection-driven inspector (B-5 + P3c + E-3 + P1) ──
