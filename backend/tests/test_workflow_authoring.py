@@ -155,6 +155,32 @@ def test_gate_handles_non_object_output(db_session, monkeypatch):
     assert "not a canvas_state object" in out["validation_error"]
 
 
+def test_generate_response_model_accepts_the_guard_error_shape():
+    """The route's GenerateResponse MUST serialize the service's graceful
+    failure shape. Regression: GenerateResponse.ai_execution_id was declared
+    `str` (non-optional), so when execute() raised and the guard returned
+    ai_execution_id=None, GenerateResponse(**result) raised a Pydantic
+    ValidationError -> HTTP 500 — defeating the guard on EVERY failure mode
+    (missing prompt / route / key). The 3-shape staging e2e caught this; this
+    test pins it. The service and the route response model must agree on shape."""
+    from app.api.routes.workflow_authoring import GenerateResponse
+
+    # The exact dict the guard returns on a raised execute().
+    guard_error = {
+        "ai_status": "error",
+        "ai_execution_id": None,
+        "ai_latency_ms": None,
+        "model_used": None,
+        "canvas_state": None,
+        "valid": False,
+        "validation_error": "generation could not run (PromptNotFoundError: ...)",
+    }
+    resp = GenerateResponse(**guard_error)  # must NOT raise
+    assert resp.valid is False
+    assert resp.ai_status == "error"
+    assert resp.ai_execution_id is None
+
+
 def test_a_branching_acyclic_canvas_passes_the_gate(db_session, monkeypatch):
     # A multi-branch funeral-shaped structure (the e2e's shape, hand-built):
     # commit → case → decision → {burial, cremation} → join → obituary → end.

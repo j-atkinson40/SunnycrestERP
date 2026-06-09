@@ -53,9 +53,14 @@ class GenerateResponse(BaseModel):
     valid: bool
     validation_error: str | None
     ai_status: str
-    ai_execution_id: str
-    ai_latency_ms: int | None
-    model_used: str | None
+    # Optional: the service's graceful failure path (execute() raised — missing
+    # prompt / route / key) returns ai_execution_id=None. Declaring this `str`
+    # (non-optional) made Pydantic reject the guard's own output -> 500, the
+    # exact thing the guard exists to prevent. None is the honest value when no
+    # execution row was created.
+    ai_execution_id: str | None = None
+    ai_latency_ms: int | None = None
+    model_used: str | None = None
 
 
 @router.post("/generate", response_model=GenerateResponse)
