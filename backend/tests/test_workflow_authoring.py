@@ -125,6 +125,27 @@ def test_gate_handles_a_failed_generation(db_session, monkeypatch):
     assert "rate_limited" in out["validation_error"]
 
 
+def test_gate_handles_execute_raising(db_session, monkeypatch):
+    """execute() RAISES (not returns) on a missing prompt / model route /
+    variable / unconfigured AI (AllModelsFailedError). The service must turn
+    that into a graceful valid=False verdict, NOT propagate to an HTTP 500.
+    This is the staging-500 regression: pre-fix, an unseeded prompt or an
+    unset ANTHROPIC_API_KEY 500'd the /generate endpoint."""
+
+    def _boom(*a, **k):
+        raise RuntimeError("PromptNotFoundError: authoring.workflow_canvas")
+
+    monkeypatch.setattr(wa_service.intelligence_service, "execute", _boom)
+    out = workflow_authoring.generate_workflow_canvas(
+        db_session, company_id=None, nl="x", vertical="funeral_home", workflow_type="t",
+    )
+    assert out["valid"] is False
+    assert out["canvas_state"] is None
+    assert out["ai_status"] == "error"
+    assert "generation could not run" in out["validation_error"]
+    assert "PromptNotFoundError" in out["validation_error"]
+
+
 def test_gate_handles_non_object_output(db_session, monkeypatch):
     _patch_execute(monkeypatch, _fake_result(parsed=["not", "an", "object"]))
     out = workflow_authoring.generate_workflow_canvas(

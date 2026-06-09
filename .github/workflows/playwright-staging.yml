@@ -128,6 +128,19 @@ jobs:
         env:
           BACKEND_URL: ${{ env.STAGING_BACKEND }}
 
+      # Claude-API e2e specs (real-model proofs) live at the top level, NOT
+      # under runtime-editor/. Run them as a discrete step that fires even when
+      # the runtime-editor specs above failed (those are routinely red on
+      # transient staging 502s) — `!cancelled()` runs after, win or lose, while
+      # still respecting an explicit cancel. A genuine failure here (e.g. the
+      # workflow-authoring validator-pass assertion) DOES go red; an
+      # unconfigured-AI deploy skips gracefully (ai_status="error" → test.skip).
+      - name: Run Playwright Claude-API e2e specs
+        if: ${{ !cancelled() }}
+        run: npx playwright test tests/e2e/workflow-authoring.spec.ts --project=chromium --reporter=list
+        env:
+          BACKEND_URL: ${{ env.STAGING_BACKEND }}
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4

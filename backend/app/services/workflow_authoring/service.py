@@ -104,13 +104,34 @@ def generate_workflow_canvas(
         ),
     }
 
-    result = intelligence_service.execute(
-        db,
-        prompt_key=AUTHORING_PROMPT_KEY,
-        variables=variables,
-        company_id=company_id,
-        caller_module="workflow_authoring",
-    )
+    # execute() RAISES (not returns) on a missing prompt
+    # (PromptNotFoundError), missing model route (ModelRouteNotFoundError), a
+    # missing template variable (MissingVariableError), or a model-call failure
+    # (AllModelsFailedError — e.g. ANTHROPIC_API_KEY unset on this deploy). The
+    # "never raises" contract above means we MUST guard it: any raise becomes a
+    # graceful valid=False verdict the caller (1b's review loop) can surface,
+    # NOT an HTTP 500. The most common real-world cause is an unconfigured AI
+    # environment, which should read as ai_status="error", not a crash.
+    try:
+        result = intelligence_service.execute(
+            db,
+            prompt_key=AUTHORING_PROMPT_KEY,
+            variables=variables,
+            company_id=company_id,
+            caller_module="workflow_authoring",
+        )
+    except Exception as exc:  # noqa: BLE001 — contract: never raise to the caller
+        return {
+            "ai_status": "error",
+            "ai_execution_id": None,
+            "ai_latency_ms": None,
+            "model_used": None,
+            "canvas_state": None,
+            "valid": False,
+            "validation_error": (
+                f"generation could not run ({type(exc).__name__}: {exc})"
+            ),
+        }
 
     base = {
         "ai_status": result.status,
