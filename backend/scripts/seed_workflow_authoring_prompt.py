@@ -85,7 +85,9 @@ HARD RULES (the server validator rejects violations — your output MUST satisfy
 
 CONFIG + BINDINGS = PLACEHOLDERS: for config values and data bindings, emit a \
 short placeholder the author can replace, e.g. {{ "template_key": "TODO:choose-template" }} \
-or a binding like "{{{{binding: deceased_name}}}}". Prefer entity/field names from \
+or a data binding as a "BIND:<entity>.<field>" token like "BIND:deceased.full_name" \
+(a plain string the author wires to a real field — NOT a {{}}/handlebars expression). \
+Prefer entity/field names from \
 the provided NL-entity catalog when a binding is obviously implied. Do not invent \
 config keys you are unsure of — a minimal valid config beats a wrong one.
 
@@ -108,24 +110,19 @@ Current canvas_state to EDIT (if generating fresh, this says "none"):
 
 Emit the complete canvas_state JSON now."""
 
+# The platform's variable_schema shape is a FLAT {var_name: {type, required,
+# description}} map (see prompt_renderer._required_variables) — NOT JSON Schema.
+# Using a JSON-Schema object here made _required_variables iterate its top-level
+# keys (type/properties/required) as phantom required vars -> MissingVariableError
+# at render time. (Caught by the staging e2e after the response-model fix made
+# the failure graceful instead of a 500.)
 _VARIABLE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "nl_request": {"type": "string"},
-        "vertical": {"type": "string"},
-        "workflow_type": {"type": "string"},
-        "existing_workflow_types": {"type": "string"},
-        "nl_entities": {"type": "string"},
-        "current_canvas_state": {"type": "string"},
-    },
-    "required": [
-        "nl_request",
-        "vertical",
-        "workflow_type",
-        "existing_workflow_types",
-        "nl_entities",
-        "current_canvas_state",
-    ],
+    "nl_request": {"type": "string", "required": True, "description": "Natural-language workflow spec"},
+    "vertical": {"type": "string", "required": True, "description": "Tenant vertical"},
+    "workflow_type": {"type": "string", "required": True, "description": "Workflow type/slug being authored"},
+    "existing_workflow_types": {"type": "string", "required": True, "description": "JSON of active workflow types (grounding)"},
+    "nl_entities": {"type": "string", "required": True, "description": "JSON of the NL-entity catalog (binding hints)"},
+    "current_canvas_state": {"type": "string", "required": True, "description": "Current canvas_state to edit, or a 'none' sentinel"},
 }
 
 

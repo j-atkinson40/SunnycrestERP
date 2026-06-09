@@ -155,6 +155,50 @@ def test_gate_handles_non_object_output(db_session, monkeypatch):
     assert "not a canvas_state object" in out["validation_error"]
 
 
+def test_seeded_prompt_renders_with_the_service_variables():
+    """The seeded prompt MUST validate + render against the EXACT variables the
+    service passes — the gap the mocked-execute unit tests left open and the
+    staging e2e caught. Two bugs lived here: (1) variable_schema stored as JSON
+    Schema instead of the platform's flat {var: {type,required}} map, so
+    _required_variables read schema meta-keys (type/properties/required) as
+    phantom required vars -> MissingVariableError; (2) a literal
+    "{{binding: ...}}" placeholder in the system prompt that Jinja tried to
+    EVALUATE at render -> TemplateSyntaxError. Both surface only by actually
+    running validate_variables + render against the seeded artifact."""
+    from types import SimpleNamespace as _NS
+
+    from app.services.intelligence import prompt_renderer
+    from scripts.seed_workflow_authoring_prompt import (
+        _USER_TEMPLATE,
+        _VARIABLE_SCHEMA,
+        _system_prompt,
+    )
+
+    version = _NS(
+        system_prompt=_system_prompt(),
+        user_template=_USER_TEMPLATE,
+        variable_schema=_VARIABLE_SCHEMA,
+        supports_vision=False,
+    )
+    # The exact keys generate_workflow_canvas assembles.
+    variables = {
+        "nl_request": "When X happens, do A then B.",
+        "vertical": "funeral_home",
+        "workflow_type": "t",
+        "existing_workflow_types": "[]",
+        "nl_entities": "[]",
+        "current_canvas_state": "(none — generate a brand-new workflow)",
+    }
+    # Must not raise MissingVariableError (schema-shape) …
+    prompt_renderer.validate_variables(version, variables)
+    # … and must not raise TemplateSyntaxError/UndefinedError (render).
+    system, user = prompt_renderer.render(version, variables)
+    assert isinstance(system, str) and len(system) > 100
+    assert isinstance(user, str) and "When X happens" in user
+    # No live Jinja expression leaked into the system prompt.
+    assert "{{" not in system
+
+
 def test_generate_response_model_accepts_the_guard_error_shape():
     """The route's GenerateResponse MUST serialize the service's graceful
     failure shape. Regression: GenerateResponse.ai_execution_id was declared
