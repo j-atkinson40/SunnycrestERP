@@ -18,6 +18,7 @@ from app.api.routes import (
     spaces,
     themes_tenant,
     nl_creation,
+    workflow_authoring,
     peek,
     portal,
     portal_admin,
@@ -374,6 +375,13 @@ v1_router.include_router(
 # NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
 v1_router.include_router(
     nl_creation.router, prefix="/nl-creation", tags=["NL Creation"]
+)
+# Builder AI Assistant Phase 1a — backend workflow-authoring generation path
+# (NL → validated canvas_state). UI review loop = Phase 1b.
+v1_router.include_router(
+    workflow_authoring.router,
+    prefix="/workflow-authoring",
+    tags=["Workflow Authoring"],
 )
 # Tasks — Phase 5 (deferred from Phase 4). Generic task entity.
 v1_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
