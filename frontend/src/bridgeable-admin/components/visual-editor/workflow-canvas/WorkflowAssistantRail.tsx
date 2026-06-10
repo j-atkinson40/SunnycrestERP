@@ -30,6 +30,16 @@ import { AlertCircle, Bot, ChevronRight, Loader2, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+// Builder Craft 1a — shared chrome adoption: PanelHeader/PanelTitle/PanelBody
+// (the rail's bespoke header/body matched the Panel defaults verbatim),
+// Tooltip replaces title=, Icon lands the §7 stroke rule.
+import { Icon } from "@/components/ui/icon"
+import { PanelHeader, PanelTitle, PanelBody } from "@/components/ui/panel"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { summarizeCanvas } from "@/lib/visual-editor/workflows/canvas-validator"
 import type { CanvasState } from "@/bridgeable-admin/services/workflow-templates-service"
 
@@ -84,16 +94,22 @@ export function WorkflowAssistantRail({
         data-testid="workflow-assistant-rail"
         data-collapsed="true"
       >
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          className="rounded-sm p-1.5 text-content-muted hover:bg-accent-subtle hover:text-content-strong"
-          title="Expand AI assistant"
-          data-testid="workflow-assistant-rail-expand"
-          aria-label="Expand AI assistant"
-        >
-          <Bot size={18} />
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={() => setCollapsed(false)}
+                className="rounded-sm p-1.5 text-content-muted hover:bg-accent-subtle hover:text-content-strong"
+                data-testid="workflow-assistant-rail-expand"
+                aria-label="Expand AI assistant"
+              >
+                <Icon icon={Bot} size={18} />
+              </button>
+            }
+          />
+          <TooltipContent side="left">Expand AI assistant</TooltipContent>
+        </Tooltip>
       </aside>
     )
   }
@@ -104,26 +120,34 @@ export function WorkflowAssistantRail({
       data-testid="workflow-assistant-rail"
       data-collapsed="false"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3">
-        <div className="flex items-center gap-2 text-body-sm font-medium text-content-strong">
-          <Sparkles size={14} className="text-accent" />
+      {/* Header — shared PanelHeader/PanelTitle (defaults match the prior
+          bespoke classes verbatim: border-b border-border-subtle px-4 py-3 +
+          body-sm/medium/content-strong title). */}
+      <PanelHeader>
+        <PanelTitle className="flex items-center gap-2">
+          <Icon icon={Sparkles} size={14} className="text-accent" />
           Bridgeable AI
-        </div>
-        <button
-          type="button"
-          onClick={() => setCollapsed(true)}
-          className="rounded-sm p-1 text-content-muted hover:bg-accent-subtle hover:text-content-strong"
-          title="Collapse"
-          data-testid="workflow-assistant-rail-collapse"
-          aria-label="Collapse AI assistant"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
+        </PanelTitle>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={() => setCollapsed(true)}
+                className="rounded-sm p-1 text-content-muted hover:bg-accent-subtle hover:text-content-strong"
+                data-testid="workflow-assistant-rail-collapse"
+                aria-label="Collapse AI assistant"
+              >
+                <Icon icon={ChevronRight} size={16} />
+              </button>
+            }
+          />
+          <TooltipContent side="left">Collapse</TooltipContent>
+        </Tooltip>
+      </PanelHeader>
 
       {/* Body — three states: candidate (review) > generating > prompt input */}
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <PanelBody className="flex flex-col gap-3">
         {candidate ? (
           // ── Candidate review zone ──────────────────────────────
           <div
@@ -132,7 +156,7 @@ export function WorkflowAssistantRail({
           >
             <div className="rounded-md border border-dashed border-accent bg-accent-subtle/20 p-3">
               <p className="flex items-center gap-1.5 text-body-sm font-medium text-content-strong">
-                <Sparkles size={13} className="text-accent" />
+                <Icon icon={Sparkles} size={13} className="text-accent" />
                 Proposed workflow
               </p>
               <p className="mt-1 text-caption text-content-muted">
@@ -181,7 +205,7 @@ export function WorkflowAssistantRail({
             className="flex items-center gap-2 text-body-sm text-content-muted"
             data-testid="workflow-assistant-generating"
           >
-            <Loader2 size={14} className="animate-spin" />
+            <Icon icon={Loader2} size={14} className="animate-spin" />
             Generating a workflow…
           </div>
         ) : (
@@ -207,7 +231,7 @@ export function WorkflowAssistantRail({
             />
             {error && (
               <Alert variant="warning" data-testid="workflow-assistant-error">
-                <AlertCircle size={14} />
+                <Icon icon={AlertCircle} size={14} />
                 <AlertTitle>Couldn't generate that</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
@@ -218,7 +242,7 @@ export function WorkflowAssistantRail({
               disabled={!canGenerate}
               data-testid="workflow-assistant-generate"
             >
-              <Sparkles size={14} className="mr-1" />
+              <Icon icon={Sparkles} size={14} className="mr-1" />
               Generate
             </Button>
             {!workflowType && (
@@ -229,7 +253,7 @@ export function WorkflowAssistantRail({
             )}
           </>
         )}
-      </div>
+      </PanelBody>
     </aside>
   )
 }

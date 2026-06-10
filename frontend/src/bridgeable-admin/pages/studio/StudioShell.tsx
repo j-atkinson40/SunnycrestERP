@@ -47,6 +47,11 @@ import {
   StudioAssistantSlotProvider,
   useStudioAssistantSlot,
 } from "@/bridgeable-admin/components/studio/StudioAssistantSlotContext"
+// Builder Craft 1a — TooltipProvider gives the admin tree the canonical
+// 150ms tooltip delay (the tenant tree mounts it in TenantProviders; the
+// admin tree never did). Context-only: renders NO DOM — the other builders
+// stay byte-identical until they adopt ui/Tooltip themselves.
+import { TooltipProvider } from "@/components/ui/tooltip"
 import StudioOverviewPage from "./StudioOverviewPage"
 import StudioLiveModeWrap from "./StudioLiveModeWrap"
 
@@ -206,6 +211,7 @@ export default function StudioShell() {
   }
 
   return (
+    <TooltipProvider>
     <StudioAssistantSlotProvider>
     <StudioRailContext.Provider
       value={{ railExpanded, inStudioContext: true }}
@@ -300,6 +306,7 @@ export default function StudioShell() {
       </div>
     </StudioRailContext.Provider>
     </StudioAssistantSlotProvider>
+    </TooltipProvider>
   )
 }
 

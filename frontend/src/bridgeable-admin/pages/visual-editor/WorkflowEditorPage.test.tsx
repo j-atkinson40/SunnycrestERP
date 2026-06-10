@@ -733,3 +733,37 @@ describe("WorkflowEditorPage — B-5/P3c selection-driven inspector dispatch", (
     expect(after).toBe(before)
   })
 })
+
+describe("WorkflowEditorPage — Builder Craft 1a shared chrome (smoke)", () => {
+  it("renders with the shared chrome mounted: PanelHeader top bar + role=toolbar + shared Select trigger", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() =>
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument(),
+    )
+    // Shared PanelHeader chrome hosts the top bar.
+    const header = document.querySelector('[data-slot="panel-header"]')
+    expect(header).toBeTruthy()
+    // The actions cluster is a real toolbar (AT grouping semantics).
+    expect(
+      result.getByRole("toolbar", { name: "Workflow editor actions" }),
+    ).toBeInTheDocument()
+    // Existing action testids preserved through the adoption (parity guard).
+    expect(result.getByTestId("workflow-editor-save")).toBeInTheDocument()
+    expect(result.getByTestId("workflow-editor-discard")).toBeInTheDocument()
+    expect(result.getByTestId("workflow-editor-save-notify")).toBeInTheDocument()
+  })
+
+  it("the vertical picker is the shared Select (combobox trigger, testid preserved)", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() =>
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument(),
+    )
+    // scope defaults to platform_default in this fixture URL; switch to
+    // vertical_default so the picker renders.
+    fireEvent.click(result.getByTestId("scope-vertical_default"))
+    const trigger = await waitFor(() => result.getByTestId("vertical-select"))
+    // base-ui Select trigger is a button with combobox-style semantics,
+    // not a native <select> — the raw-select drift is gone.
+    expect(trigger.tagName.toLowerCase()).not.toBe("select")
+  })
+})

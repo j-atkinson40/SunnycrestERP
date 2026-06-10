@@ -55,6 +55,15 @@ import {
 import { CheckSquare, ChevronDown, ChevronUp, Maximize2, Minimize2, Route, Square, Trash2, Ungroup } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+// Builder Craft 1a — shared chrome on the VIEWPORT controls only (Tooltip
+// replaces title=; Icon lands the §7 stroke rule). Canvas-internal card
+// affordances keep their native title= until the canvas-feel phase.
+import { Icon } from "@/components/ui/icon"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type {
   CanvasNode,
   CanvasState,
@@ -1090,17 +1099,27 @@ export function GraphCanvas({
             >
               {formatZoomPercent(view.zoom)}
             </span>
-            <button
-              type="button"
-              onClick={handleResetView}
-              data-testid="canvas-zoom-reset"
-              aria-label="Reset view"
-              title="Reset view"
-              className="inline-flex items-center gap-1 rounded-sm border border-border-base bg-surface-base px-1.5 py-0.5 text-content-muted hover:bg-accent-subtle hover:text-accent"
-            >
-              <Maximize2 size={12} />
-              Reset
-            </button>
+            {/* Builder Craft 1a — title= → shared Tooltip on the VIEWPORT
+                chrome only. The canvas-internal title= affordances (container
+                expand/collapse/ungroup on cards) are canvas content under the
+                protected-path invariant — they stay for the canvas-feel phase. */}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={handleResetView}
+                    data-testid="canvas-zoom-reset"
+                    aria-label="Reset view"
+                    className="inline-flex items-center gap-1 rounded-sm border border-border-base bg-surface-base px-1.5 py-0.5 text-content-muted hover:bg-accent-subtle hover:text-accent"
+                  >
+                    <Icon icon={Maximize2} size={12} />
+                    Reset
+                  </button>
+                }
+              />
+              <TooltipContent>Reset view</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       )}

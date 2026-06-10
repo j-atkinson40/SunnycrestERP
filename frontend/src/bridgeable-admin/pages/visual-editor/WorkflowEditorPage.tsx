@@ -39,6 +39,26 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+// Builder Craft Arc Phase 1a — shared Studio chrome adoption (pilot).
+// PanelHeader + Toolbar consolidate the bespoke top bar; Icon lands the §7
+// stroke rule (1.5px at ≤16px); Tooltip replaces title=; Select/Textarea
+// replace the raw chrome-level form elements.
+import { Icon } from "@/components/ui/icon"
+import { PanelHeader } from "@/components/ui/panel"
+import { Toolbar, ToolbarGroup } from "@/components/ui/toolbar"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 // Inline-params P3c + focus-invocation reconciliation P3 (E-3, arc close,
 // 2026-06-02) — the card editor's rail no longer renders ANY node-config form:
 // EVERY node-edit lives on the card/canvas. Through P1→P3b-2 the general types
@@ -828,8 +848,15 @@ export default function WorkflowEditorPage() {
           </span>
         </div>
       )}
-      {/* ── Top bar ───────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 border-b border-border-subtle bg-surface-elevated px-6 py-3">
+      {/* ── Top bar — Builder Craft 1a: shared PanelHeader + Toolbar chrome.
+          Visual parity held via className merge (px-6 + gap-4 overrides on the
+          header; gap-2 on the toolbar matching the prior uniform spacing — no
+          separators added, that would be redesign). The page h1 stays as-is
+          (PanelTitle's body-sm type is for pane titles, not the page title).
+          Icons ride the shared <Icon> wrapper — the one canon-conformance
+          correction this adopts: 1.5px stroke at ≤16px sizes (was lucide's
+          2px default, the §7 anti-pattern). title= → shared Tooltip. ── */}
+      <PanelHeader className="gap-4 bg-surface-elevated px-6">
         <div>
           <h1 className="text-h3 font-plex-serif font-medium text-content-strong">
             Workflow editor
@@ -839,103 +866,118 @@ export default function WorkflowEditorPage() {
             workflows.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Cross-link nav */}
-          <Link
-            to="/admin/themes"
-            className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
-            data-testid="nav-to-themes"
-          >
-            <ArrowLeftRight size={12} />
-            Theme
-          </Link>
-          <Link
-            to="/admin/components"
-            className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
-            data-testid="nav-to-components"
-          >
-            <ArrowLeftRight size={12} />
-            Components
-          </Link>
-          <Link
-            to="/admin/registry"
-            className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
-            data-testid="nav-to-registry"
-          >
-            <ArrowLeftRight size={12} />
-            Registry
-          </Link>
-          {isDirty && (
-            <Badge
-              variant="warning"
-              data-testid="workflow-editor-unsaved-badge"
+        <Toolbar aria-label="Workflow editor actions" className="gap-2">
+          <ToolbarGroup className="gap-2">
+            {/* Cross-link nav */}
+            <Link
+              to="/admin/themes"
+              className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
+              data-testid="nav-to-themes"
             >
-              unsaved
-            </Badge>
-          )}
-          {validationError && (
-            <Badge
-              variant="destructive"
-              data-testid="workflow-editor-validation-badge"
+              <Icon icon={ArrowLeftRight} size={12} />
+              Theme
+            </Link>
+            <Link
+              to="/admin/components"
+              className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
+              data-testid="nav-to-components"
             >
-              invalid canvas
-            </Badge>
-          )}
-          {isSaving && (
-            <span className="flex items-center gap-1 text-caption text-content-muted">
-              <Loader2 size={12} className="animate-spin" />
-              Saving…
-            </span>
-          )}
-          {saveError && (
-            <span
-              className="flex items-center gap-1 text-caption text-status-error"
-              data-testid="workflow-editor-save-error"
+              <Icon icon={ArrowLeftRight} size={12} />
+              Components
+            </Link>
+            <Link
+              to="/admin/registry"
+              className="flex items-center gap-1 text-caption text-content-muted hover:text-content-strong"
+              data-testid="nav-to-registry"
             >
-              <AlertCircle size={12} />
-              {saveError}
-            </span>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDiscard}
-            disabled={!isDirty}
-            data-testid="workflow-editor-discard"
-          >
-            <Undo2 size={14} className="mr-1" />
-            Discard
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => void performSave(false)}
-            disabled={!isDirty || isSaving || validationError !== null}
-            data-testid="workflow-editor-save"
-          >
-            <Save size={14} className="mr-1" />
-            Save
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void performSave(true)}
-            disabled={!isDirty || isSaving || validationError !== null}
-            data-testid="workflow-editor-save-notify"
-            title="Save and explicitly flag dependent tenant forks for merge review"
-          >
-            Save and notify forks
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            data-testid="workflow-editor-history"
-          >
-            <History size={14} className="mr-1" />
-            History
-          </Button>
-        </div>
-      </div>
+              <Icon icon={ArrowLeftRight} size={12} />
+              Registry
+            </Link>
+          </ToolbarGroup>
+          <ToolbarGroup className="gap-2">
+            {isDirty && (
+              <Badge
+                variant="warning"
+                data-testid="workflow-editor-unsaved-badge"
+              >
+                unsaved
+              </Badge>
+            )}
+            {validationError && (
+              <Badge
+                variant="destructive"
+                data-testid="workflow-editor-validation-badge"
+              >
+                invalid canvas
+              </Badge>
+            )}
+            {isSaving && (
+              <span className="flex items-center gap-1 text-caption text-content-muted">
+                <Icon icon={Loader2} size={12} className="animate-spin" />
+                Saving…
+              </span>
+            )}
+            {saveError && (
+              <span
+                className="flex items-center gap-1 text-caption text-status-error"
+                data-testid="workflow-editor-save-error"
+              >
+                <Icon icon={AlertCircle} size={12} />
+                {saveError}
+              </span>
+            )}
+          </ToolbarGroup>
+          <ToolbarGroup className="gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDiscard}
+              disabled={!isDirty}
+              data-testid="workflow-editor-discard"
+            >
+              <Icon icon={Undo2} size={14} className="mr-1" />
+              Discard
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void performSave(false)}
+              disabled={!isDirty || isSaving || validationError !== null}
+              data-testid="workflow-editor-save"
+            >
+              <Icon icon={Save} size={14} className="mr-1" />
+              Save
+            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void performSave(true)}
+                    disabled={!isDirty || isSaving || validationError !== null}
+                    data-testid="workflow-editor-save-notify"
+                  >
+                    Save and notify forks
+                  </Button>
+                }
+              />
+              <TooltipContent>
+                Save and explicitly flag dependent tenant forks for merge
+                review
+              </TooltipContent>
+            </Tooltip>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              data-testid="workflow-editor-history"
+            >
+              <Icon icon={History} size={14} className="mr-1" />
+              History
+            </Button>
+          </ToolbarGroup>
+        </Toolbar>
+      </PanelHeader>
 
       {/* ── Mode indicator strip ─────────────────────── */}
       <div
@@ -1010,19 +1052,27 @@ export default function WorkflowEditorPage() {
               >
                 Vertical
               </label>
-              <select
-                id="vertical-select"
-                value={vertical}
-                onChange={(e) => setVertical(e.target.value)}
-                data-testid="vertical-select"
-                className="w-full rounded-md border border-border-base bg-surface-raised px-2 py-1.5 text-body-sm text-content-strong"
-              >
-                {VERTICALS.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
+              {/* Builder Craft 1a — raw <select> → shared ui/Select (the same
+                  pattern the canvas's invoke_* configs already use). Keyboard
+                  (arrows/Home/End/typeahead/Esc) + the overlay-family popup
+                  come from the shared primitive. testid preserved. */}
+              <Select value={vertical} onValueChange={(v) => setVertical(v as string)}>
+                <SelectTrigger
+                  id="vertical-select"
+                  data-testid="vertical-select"
+                  size="sm"
+                  className="w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VERTICALS.map((v) => (
+                    <SelectItem key={v} value={v}>
+                      {v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
@@ -1141,13 +1191,16 @@ export default function WorkflowEditorPage() {
             >
               Description
             </label>
-            <textarea
+            {/* Builder Craft 1a — raw <textarea> → shared ui/Textarea (gains
+                the accent focus ring + canonical form chrome). Compact paddings
+                kept via className for visual parity with the dense left rail. */}
+            <Textarea
               id="description-input"
               value={draftDescription}
               onChange={(e) => setDraftDescription(e.target.value)}
               data-testid="description-input"
               rows={3}
-              className="w-full rounded-md border border-border-base bg-surface-raised px-2 py-1.5 font-plex-sans text-caption text-content-strong"
+              className="min-h-0 px-2 py-1.5 text-caption"
             />
           </div>
 
