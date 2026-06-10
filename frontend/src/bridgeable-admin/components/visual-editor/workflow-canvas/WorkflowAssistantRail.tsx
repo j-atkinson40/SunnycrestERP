@@ -38,6 +38,7 @@ import { PanelHeader, PanelTitle, PanelBody } from "@/components/ui/panel"
 import {
   Tooltip,
   TooltipContent,
+  TooltipShortcut,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { summarizeCanvas } from "@/lib/visual-editor/workflows/canvas-validator"
@@ -233,18 +234,33 @@ export function WorkflowAssistantRail({
               <Alert variant="warning" data-testid="workflow-assistant-error">
                 <Icon icon={AlertCircle} size={14} />
                 <AlertTitle>Couldn't generate that</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
+                {/* 1b §18.1 — the triad's "what survived" line joins the
+                    what-happened + what-to-do the message already carried. */}
+                <AlertDescription>
+                  {error} Your canvas is untouched.
+                </AlertDescription>
               </Alert>
             )}
-            <Button
-              size="sm"
-              onClick={handleGenerate}
-              disabled={!canGenerate}
-              data-testid="workflow-assistant-generate"
-            >
-              <Icon icon={Sparkles} size={14} className="mr-1" />
-              Generate
-            </Button>
+            {/* 1b §18.3 — the shortcut is shown where its action lives. */}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    onClick={handleGenerate}
+                    disabled={!canGenerate}
+                    data-testid="workflow-assistant-generate"
+                  >
+                    <Icon icon={Sparkles} size={14} className="mr-1" />
+                    Generate
+                  </Button>
+                }
+              />
+              <TooltipContent>
+                Generate workflow
+                <TooltipShortcut>⌘ ↵</TooltipShortcut>
+              </TooltipContent>
+            </Tooltip>
             {!workflowType && (
               <p className="text-caption text-content-muted">
                 Tip: pick or name a workflow type on the left for better-grounded

@@ -767,3 +767,67 @@ describe("WorkflowEditorPage — Builder Craft 1a shared chrome (smoke)", () => 
     expect(trigger.tagName.toLowerCase()).not.toBe("select")
   })
 })
+
+describe("WorkflowEditorPage — Builder Craft 1b state design (§18)", () => {
+  it("FILTERED-empty: no-match filter shows 'No matches' + clear-filter, NOT the create-invitation", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() =>
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument(),
+    )
+    fireEvent.change(result.getByTestId("hierarchical-browser-search"), {
+      target: { value: "zzz-no-such-type" },
+    })
+    const filtered = await waitFor(() =>
+      result.getByTestId("workflow-browser-filtered-empty"),
+    )
+    expect(filtered).toHaveTextContent("No matches")
+    expect(filtered).toHaveTextContent('zzz-no-such-type')
+    // The create-invitation must NOT show over an active filter (§18.1).
+    expect(result.queryByTestId("workflow-browser-empty-create")).toBeNull()
+    // Clear-filter restores the list.
+    fireEvent.click(result.getByTestId("workflow-browser-clear-filters"))
+    await waitFor(() =>
+      expect(result.queryByTestId("workflow-browser-filtered-empty")).toBeNull(),
+    )
+  })
+
+  it("? opens the shortcut overlay (and is suppressed while typing)", async () => {
+    const result = renderWithTemplate()
+    await waitFor(() =>
+      expect(result.getByTestId("graph-canvas-surface")).toBeInTheDocument(),
+    )
+    // Suppressed in inputs.
+    const search = result.getByTestId("hierarchical-browser-search")
+    search.focus()
+    fireEvent.keyDown(search, { key: "?" })
+    expect(result.queryByTestId("shortcut-overlay")).toBeNull()
+    // Opens from the body.
+    ;(search as HTMLElement).blur()
+    fireEvent.keyDown(document.body, { key: "?" })
+    const overlay = await waitFor(() => result.getByTestId("shortcut-overlay"))
+    expect(overlay).toHaveTextContent("Workflow editor shortcuts")
+    expect(overlay).toHaveTextContent("Generate workflow from prompt")
+  })
+
+  it("the load error renders the §18.1 triad, raw string only behind Details", async () => {
+    vi.mocked(workflowTemplatesService.list).mockRejectedValueOnce(
+      new Error("Request failed with status code 500"),
+    )
+    const result = render(
+      <MemoryRouter initialEntries={["/visual-editor/workflows"]}>
+        <WorkflowEditorPage />
+      </MemoryRouter>,
+    )
+    const err = await waitFor(() =>
+      result.getByTestId("workflow-editor-load-error"),
+    )
+    expect(err).toHaveTextContent("Couldn't load the workflows")
+    expect(err).toHaveTextContent("Your draft is intact.")
+    // Raw string is NOT primary copy.
+    expect(result.queryByTestId("error-state-details")).toBeNull()
+    fireEvent.click(result.getByTestId("error-state-details-toggle"))
+    expect(result.getByTestId("error-state-details")).toHaveTextContent(
+      "status code 500",
+    )
+  })
+})

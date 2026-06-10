@@ -59,6 +59,18 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+// Builder Craft 1b — §18 state design (pilot adoption): designed empty /
+// filtered-empty / loading / error states + the ? shortcut overlay.
+import { EmptyState } from "@/components/ui/empty-state"
+import { ErrorState } from "@/components/ui/error-state"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  ShortcutOverlay,
+  useShortcutOverlayKey,
+  type ShortcutGroup,
+} from "@/components/ui/shortcut-overlay"
+import { useDelayedLoading } from "@/hooks/use-delayed-loading"
+import { SearchX, Workflow } from "lucide-react"
 // Inline-params P3c + focus-invocation reconciliation P3 (E-3, arc close,
 // 2026-06-02) — the card editor's rail no longer renders ANY node-config form:
 // EVERY node-edit lives on the card/canvas. Through P1→P3b-2 the general types
@@ -119,6 +131,37 @@ import { useWorkflowCandidate } from "@/bridgeable-admin/components/visual-edito
 
 
 const VERTICALS = ["funeral_home", "manufacturing", "cemetery", "crematory"] as const
+
+// Builder Craft 1b — §18.3 the editor's REAL shortcuts, grouped by task,
+// for the ? overlay. Only bindings that actually exist today; the canvas
+// wheel/pan entries describe current behavior (the §18.2 trackpad-pan
+// migration is Phase 2 and updates these labels when it lands).
+const WORKFLOW_EDITOR_SHORTCUTS: ShortcutGroup[] = [
+  {
+    title: "Canvas",
+    shortcuts: [
+      { keys: "⇧ click", label: "Multi-select nodes / groups" },
+      { keys: "Space, ↑↓←→", label: "Move focused node (keyboard)" },
+      { keys: "Wheel", label: "Zoom (at cursor)" },
+      { keys: "Drag background", label: "Pan" },
+    ],
+  },
+  {
+    title: "Editing",
+    shortcuts: [
+      { keys: "Enter", label: "Commit label edit" },
+      { keys: "Esc", label: "Cancel edit / close" },
+    ],
+  },
+  {
+    title: "Assistant",
+    shortcuts: [{ keys: "⌘ ↵", label: "Generate workflow from prompt" }],
+  },
+  {
+    title: "Help",
+    shortcuts: [{ keys: "?", label: "Toggle this overlay" }],
+  },
+]
 
 
 function ensureCanvasState(
@@ -264,7 +307,11 @@ export default function WorkflowEditorPage() {
     selection.kind === "nodes" ? selection.containerIds ?? [] : []
 
   // ── Loading + save state ─────────────────────────────
-  const [, setIsLoading] = useState(false)
+  // 1b: the list-load flag now drives a §18.1 delayed skeleton (150ms arm /
+  // 300ms min-display) over the workflow-type browser. Pre-1b the setter's
+  // value was discarded.
+  const [isLoading, setIsLoading] = useState(false)
+  const showListSkeleton = useDelayedLoading(isLoading)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -274,6 +321,12 @@ export default function WorkflowEditorPage() {
   const [creatingNewType, setCreatingNewType] = useState(false)
   const [newTypeInput, setNewTypeInput] = useState<string>("")
   const [browserSearch, setBrowserSearch] = useState("")
+
+  // ── Builder Craft 1b — §18.3 the ? shortcut overlay ──
+  // Opens on ? when no input is focused (the hook applies the established
+  // input-suppression discipline); Esc/backdrop close via ui/dialog.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  useShortcutOverlayKey(setShortcutsOpen)
 
   // ── Load available templates for current scope/vertical ──
   const refreshTemplateList = useCallback(async () => {
@@ -434,9 +487,10 @@ export default function WorkflowEditorPage() {
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error("[workflow-editor] save failed", err)
-        setSaveError(
-          err instanceof Error ? err.message : "Failed to save",
-        )
+        // 1b §18.1 — plain language at the point of action; the raw error
+        // stays in the console for support. (Raw API strings never reach
+        // the pane as primary copy.)
+        setSaveError("Couldn't save — your draft is intact, try again")
       } finally {
         setIsSaving(false)
       }
@@ -819,6 +873,13 @@ export default function WorkflowEditorPage() {
       className="flex h-[calc(100vh-3rem)] flex-col"
       data-testid="workflow-editor-page"
     >
+      {/* 1b §18.3 — the ? cheat sheet (one screen, grouped by task). */}
+      <ShortcutOverlay
+        groups={WORKFLOW_EDITOR_SHORTCUTS}
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+        surface="Workflow editor"
+      />
       {/* Arc-3.x-deep-link-retrofit: return-to banner — visible only
           when launched via inspector deep-link. Mirrors Arc 3a
           FocusEditorPage banner shape verbatim (icon, copy, placement). */}
@@ -1131,6 +1192,23 @@ export default function WorkflowEditorPage() {
                   className="-mx-4 mb-1 h-72 overflow-hidden border-y border-border-subtle bg-surface-elevated"
                   data-testid="workflow-hierarchical-browser-container"
                 >
+                  {showListSkeleton ? (
+                    // 1b §18.1 — skeleton mirroring the list it becomes
+                    // (craft variant: surface-elevated bars, token-timed
+                    // pulse), shown only past the 150ms arm.
+                    <div
+                      className="flex flex-col gap-2 p-3"
+                      data-testid="workflow-browser-skeleton"
+                    >
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Skeleton
+                          key={i}
+                          variant="craft"
+                          className={i % 2 === 0 ? "h-7 w-full" : "h-7 w-5/6"}
+                        />
+                      ))}
+                    </div>
+                  ) : (
                   <HierarchicalEditorBrowser
                     categories={
                       availableTemplates.map((t) => ({
@@ -1153,7 +1231,54 @@ export default function WorkflowEditorPage() {
                         Active version on canvas.
                       </span>
                     )}
+                    // 1b §18.1 — true-empty vs FILTERED-empty. With an
+                    // active filter: "No matches" + clear-filters, and the
+                    // create-invitation MUST NOT show (the platform never
+                    // lies about state). True-empty: the coaching state
+                    // with ONE action (the primary entry point).
+                    noResultsState={
+                      browserSearch ? (
+                        <EmptyState
+                          variant="quiet"
+                          tone="filtered"
+                          icon={SearchX}
+                          title="No matches"
+                          description={`No workflow types match "${browserSearch}".`}
+                          action={
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setBrowserSearch("")}
+                              data-testid="workflow-browser-clear-filters"
+                            >
+                              Clear filter
+                            </Button>
+                          }
+                          data-testid="workflow-browser-filtered-empty"
+                        />
+                      ) : (
+                        <EmptyState
+                          variant="quiet"
+                          icon={Workflow}
+                          title="Workflow types"
+                          description="Create a workflow type to start authoring for this scope."
+                          action={
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setCreatingNewType(true)}
+                              data-testid="workflow-browser-empty-create"
+                            >
+                              <Plus size={12} className="mr-1" />
+                              New workflow type
+                            </Button>
+                          }
+                          data-testid="workflow-browser-true-empty"
+                        />
+                      )
+                    }
                   />
+                  )}
                 </div>
                 <Button
                   size="sm"
@@ -1251,7 +1376,15 @@ export default function WorkflowEditorPage() {
           )}
 
           {loadError && (
-            <p className="text-caption text-status-error">{loadError}</p>
+            // 1b §18.1 — the error triad replaces the raw {loadError} string;
+            // the raw message moves behind the collapsed Details disclosure.
+            <ErrorState
+              what="Couldn't load the workflows"
+              survived="Your draft is intact."
+              onRetry={() => void refreshTemplateList()}
+              details={loadError}
+              data-testid="workflow-editor-load-error"
+            />
           )}
         </aside>
         )}

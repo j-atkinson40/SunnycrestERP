@@ -83,6 +83,12 @@ export interface HierarchicalEditorBrowserProps {
   emptyStateForCategory?: (category: HierarchicalCategory) => React.ReactNode
   /** Optional override for the search-placeholder copy. */
   searchPlaceholder?: string
+  /** Builder Craft 1b — optional ADDITIVE override for the no-categories
+   *  rendering (true-empty or filtered-empty; the CALLER knows its own
+   *  search state and passes the §18.1-appropriate state). Omitted →
+   *  the original "No categories match." caption renders byte-identical
+   *  (the Focus editor and other consumers are unchanged). */
+  noResultsState?: React.ReactNode
 }
 
 
@@ -97,6 +103,7 @@ export function HierarchicalEditorBrowser({
   onSelectTemplate,
   emptyStateForCategory,
   searchPlaceholder = "Filter categories + templates",
+  noResultsState,
 }: HierarchicalEditorBrowserProps) {
   // Group templates by their category id for fast lookup.
   const templatesByCategory = useMemo(() => {
@@ -176,11 +183,12 @@ export function HierarchicalEditorBrowser({
 
       {/* Categories + templates */}
       <div className="flex-1 overflow-y-auto" data-testid="hierarchical-browser-list">
-        {filtered.categories.length === 0 && (
-          <div className="px-3 py-6 text-center text-caption text-content-muted">
-            No categories match.
-          </div>
-        )}
+        {filtered.categories.length === 0 &&
+          (noResultsState ?? (
+            <div className="px-3 py-6 text-center text-caption text-content-muted">
+              No categories match.
+            </div>
+          ))}
         {filtered.categories.map((category) => {
           const categoryTemplates =
             filtered.templatesByCategory.get(category.id) ?? []

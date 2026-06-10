@@ -55,6 +55,8 @@ import {
 import { CheckSquare, ChevronDown, ChevronUp, Maximize2, Minimize2, Route, Square, Trash2, Ungroup } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+// Builder Craft 1b — §18.1 designed empty state for the empty canvas.
+import { EmptyState } from "@/components/ui/empty-state"
 // Builder Craft 1a — shared chrome on the VIEWPORT controls only (Tooltip
 // replaces title=; Icon lands the §7 stroke rule). Canvas-internal card
 // affordances keep their native title= until the canvas-feel phase.
@@ -653,10 +655,22 @@ export function GraphCanvas({
         </p>
       )}
       {canvas.nodes.length === 0 ? (
-        <div className="px-4 py-3" data-testid="canvas-node-list">
-          <p className="text-body-sm text-content-muted">
-            No nodes yet. Add one from the palette above to start.
-          </p>
+        // Builder Craft 1b — §18.1 designed empty state (the coaching
+        // moment) replaces the bare caption. Headline names the surface;
+        // the guidance line keeps "No nodes yet" (and names BOTH paths
+        // forward — the palette and the assistant — so the state never
+        // dead-ends; no action button needed, the affordances are adjacent).
+        <div
+          className="flex flex-1 flex-col justify-center"
+          data-testid="canvas-node-list"
+        >
+          <EmptyState
+            variant="quiet"
+            icon={Route}
+            title="Workflow canvas"
+            description="No nodes yet — add one from the palette on the right, or ask the AI assistant to draft a workflow."
+            data-testid="canvas-empty-state"
+          />
         </div>
       ) : (
         <div
