@@ -19,6 +19,7 @@ from app.api.routes import (
     themes_tenant,
     nl_creation,
     workflow_authoring,
+    coordination_focus,
     peek,
     portal,
     portal_admin,
@@ -382,6 +383,13 @@ v1_router.include_router(
     workflow_authoring.router,
     prefix="/workflow-authoring",
     tags=["Workflow Authoring"],
+)
+
+# JCF-1 — Job Coordination Focus (the assembly substrate; tenant realm).
+v1_router.include_router(
+    coordination_focus.router,
+    prefix="/coordination-focus",
+    tags=["Coordination Focus"],
 )
 # Tasks — Phase 5 (deferred from Phase 4). Generic task entity.
 v1_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
