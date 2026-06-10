@@ -25,6 +25,23 @@ import type { LucideIcon } from "lucide-react";
 
 export type EmptyStateTone = "neutral" | "positive" | "filtered";
 export type EmptyStateSize = "default" | "sm" | "xs";
+/**
+ * Builder Craft 1b — DESIGN_LANGUAGE §18.1 variant.
+ *
+ *   - "panel" (default) — the Phase 7 look: dashed-bordered box, size-scaled
+ *     icons. Existing consumers are byte-identical (no prop = no change).
+ *   - "quiet" — the §18.1 canon anatomy: NO border box; icon 24px / 1.5px
+ *     stroke / content-subtle (§18's deliberate large-quiet-glyph exception);
+ *     headline text-body w500 content-base; ONE guidance line body-sm
+ *     content-muted; AT MOST ONE action (the canon ceiling — when both
+ *     action props are passed, `action` wins and secondaryAction is
+ *     dropped); space-3 gaps; ≤280px wide; ≥space-8 breathing room.
+ *
+ * The quiet variant is the canon spec; "panel" defaults flip to it in the
+ * coordinated follower sweep, not here (other consumers must stay
+ * byte-identical this phase).
+ */
+export type EmptyStateVariant = "panel" | "quiet";
 
 export interface EmptyStateProps {
   icon?: LucideIcon;
@@ -36,6 +53,7 @@ export interface EmptyStateProps {
   secondaryAction?: React.ReactNode;
   tone?: EmptyStateTone;
   size?: EmptyStateSize;
+  variant?: EmptyStateVariant;
   className?: string;
   /** Test hook for Playwright. */
   "data-testid"?: string;
@@ -73,9 +91,45 @@ export function EmptyState({
   secondaryAction,
   tone = "neutral",
   size = "default",
+  variant = "panel",
   className,
   ...props
 }: EmptyStateProps) {
+  if (variant === "quiet") {
+    // §18.1 canon anatomy. At most ONE action (canon ceiling): `action`
+    // wins; for filtered-empty the caller passes the clear-filters action
+    // AS `action` (the create-invitation must not show over a filter).
+    const theAction = action ?? secondaryAction ?? null;
+    return (
+      <div
+        className={cn(
+          "flex flex-col items-center justify-center gap-3 p-8 text-center font-sans",
+        )}
+        data-testid={props["data-testid"] ?? "empty-state"}
+        data-tone={tone}
+        data-variant="quiet"
+      >
+        <div className="flex max-w-[280px] flex-col items-center gap-3">
+          {Icon ? (
+            <Icon
+              size={24}
+              strokeWidth={1.5}
+              className="text-content-subtle"
+              aria-hidden="true"
+            />
+          ) : null}
+          <div className="text-body font-medium text-content-base">
+            {title}
+          </div>
+          {description ? (
+            <div className="text-body-sm text-content-muted">{description}</div>
+          ) : null}
+          {theAction ? <div className="mt-2">{theAction}</div> : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(

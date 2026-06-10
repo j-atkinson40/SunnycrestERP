@@ -18,15 +18,27 @@ import { cn } from "@/lib/utils";
 
 export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string;
+  /**
+   * Builder Craft 1b — DESIGN_LANGUAGE §18.1 loading variant.
+   *   - "default" — the Phase 7 look (surface-sunken, Tailwind pulse).
+   *     Existing consumers byte-identical (no prop = no change).
+   *   - "craft" — the §18.1 canon: bars in surface-elevated / radius-sm with
+   *     an opacity pulse at duration-considered + ease-gentle (no shimmer).
+   *     Defaults flip in the coordinated follower sweep, not here.
+   */
+  variant?: "default" | "craft";
 }
 
-export function Skeleton({ className, ...props }: SkeletonProps) {
+export function Skeleton({ className, variant = "default", ...props }: SkeletonProps) {
   return (
     <div
       data-slot="skeleton"
       aria-hidden="true"
+      data-variant={variant}
       className={cn(
-        "rounded bg-surface-sunken motion-safe:animate-pulse",
+        variant === "craft"
+          ? "rounded-sm bg-surface-elevated motion-safe:animate-pulse motion-safe:[animation-duration:var(--duration-considered)] motion-safe:[animation-timing-function:var(--ease-gentle)]"
+          : "rounded bg-surface-sunken motion-safe:animate-pulse",
         className,
       )}
       {...props}

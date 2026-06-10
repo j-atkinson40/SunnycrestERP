@@ -135,8 +135,14 @@ function TooltipShortcut({
   return (
     <span
       data-slot="tooltip-shortcut"
+      // Builder Craft 1b — conformed to the DESIGN_LANGUAGE §18.3 kbd spec
+      // (per §18.3: "The shipped TooltipShortcut primitive conforms to this
+      // spec"): bg-surface-sunken (recessed key cap, was surface-base) +
+      // text-micro (was the arbitrary text-[10px]). Padding already
+      // conformed (py-0.5 px-1 = the §18.3 "2px 4px"). Visual-only; zero
+      // consumers existed at conformance time (enumerated in the 1b report).
       className={cn(
-        "ml-2 rounded-sm border border-border-subtle bg-surface-base px-1 py-0.5 font-mono text-[10px] text-content-muted",
+        "ml-2 rounded-sm border border-border-subtle bg-surface-sunken px-1 py-0.5 font-mono text-micro text-content-muted",
         className,
       )}
       {...props}
