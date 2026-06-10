@@ -7563,4 +7563,113 @@ Clicking into a template type opens dedicated authoring surface within Workshop 
 
 ---
 
+---
+
+## Section 18 — Interaction Craft
+
+Interaction craft is the layer of quality that shows up *between* the states the visual system already specifies — what the user sees before content arrives, when nothing exists yet, when something fails, and how the platform responds to their hands. The visual language makes Bridgeable look considered; interaction craft makes it feel considered. The standard throughout is the platform's coaching thesis: a good coach is prepared for every moment of the interaction, including the awkward ones. An unstyled empty pane, a raw error string, or a janky drag is the coach shrugging.
+
+### 18.1 State design
+
+Every content surface has four states: populated, empty, loading, and error. The populated state is what the rest of this document specifies. The other three are designed states, not defaults. A surface that has only designed its populated state is an incomplete surface.
+
+#### Empty states
+
+An empty state is a coaching moment — the coworker pointing across the room. It answers three questions in order: what this surface is, why it's empty, and what to do first.
+
+**Anatomy (top to bottom, vertically centered in the pane):**
+
+| Element | Spec |
+|---|---|
+| Icon | Lucide, 24px, 1.5px stroke, `content-subtle`. Semantic to the surface (not decorative). A deliberate exception to the Icon-wrapper defaults (2px above 16px): large *quiet* glyphs use the lighter stroke — quietness outranks the size rule here. |
+| Headline | `text-body` weight 500, `content-base`. Names what belongs here, not the absence ("Workflow templates", not "Nothing here"). |
+| Guidance | One line, `text-body-sm`, `content-muted`. The coaching line: what to do first, or why this is empty. |
+| Action | Optional. ONE action maximum, secondary-button treatment unless the empty state is the surface's primary entry point. |
+
+Spacing: `space-3` between elements; the block sits centered with at least `space-8` of breathing room. The whole composition stays under ~280px wide — empty states are quiet, not heroic.
+
+**Rule — distinguish true-empty from filtered-empty.** A surface emptied by a search or filter is not empty; it's filtered. The filtered-empty state says "No matches for {query}" with a clear-filters action, and never shows the create-invitation. Showing "Create your first workflow" when a filter is hiding forty workflows is the platform lying to the user.
+
+**Rule — no terminal dead ends.** Every empty state either offers an action or explains why none is available ("Templates appear here when the vertical publishes one"). An empty pane with no path forward is a dead end; coaching never dead-ends.
+
+**Rationale:** Empty states are disproportionately first-run states — they are the platform's first impression for every new surface. "No items" treats the moment as an error; the designed empty state treats it as onboarding. This is the cheapest place in the entire platform to demonstrate care.
+
+#### Loading states
+
+**Rule — skeletons for content, spinners for actions.** A pane that will fill with content shows a skeleton mirroring the layout it will become (bars and blocks in `surface-elevated`, `radius-sm`, no text). A discrete action in flight (a button submitting, a generation running) shows an inline indicator at the point of action. Spinners centered in content panes are forbidden — they communicate "wait" without communicating "for what."
+
+**Rule — never flash a skeleton.** Loading UI appears only after a 150ms delay (fast responses render directly), and once shown, persists at least 300ms before being replaced (no single-frame flicker). The pair makes fast loads feel instant and slow loads feel stable.
+
+**Rule — optimistic by default for local, reversible mutations.** When the platform can predict the outcome (rename, toggle, reorder, draft edit), the UI commits immediately and reconciles on response; on failure it reverts and surfaces a toast. Operations the platform knows are local or synchronous never arm the loading timer at all — the 150ms delay above is the only threshold; there is no second one. Blocking the user to confirm what they just did is the platform refusing to trust its own draft state.
+
+**Skeleton motion:** a subtle opacity pulse (`duration-considered`, `ease-gentle`, looping) — no shimmer sweeps, no gradient animations. Restraint applies to waiting, too.
+
+#### Error states
+
+An error state answers three questions, in the user's language: what happened, what survived, and what to do.
+
+| Element | Spec |
+|---|---|
+| What happened | Plain language, specific ("Couldn't save the workflow"), never a raw API string, never a status code as headline. |
+| What survived | The reassurance line: "Your draft is intact." State preservation is the platform's promise; say it. |
+| What to do | A retry affordance, or the path forward. Pane-level errors get a Retry action; field-level errors follow the form canon (Section 8). |
+
+Tone is calm and unblaming. The error state never says "you" did something wrong, never exclaims, and never apologizes theatrically. It reads like the coworker saying "that didn't go through — your work's safe, try it again."
+
+**Rule — raw error strings never reach a pane.** API messages, stack fragments, and status codes may appear in a collapsed "details" affordance for support purposes, never as the primary message.
+
+### 18.2 Canvas feel
+
+Canvas surfaces (the Workflow editor, Focus composition, and — forward-scoped — any future canvas-based dashboard editor; today's dashboard editor is form-based) are where the platform is most physical, and where craft is most legible. The standard is trackpad-native: the canvas responds the way the operating system has taught hands to expect.
+
+**Zoom:**
+
+| Rule | Spec |
+|---|---|
+| Zoom centers on the cursor | Always. Wheel-zoom and pinch-zoom both anchor at the pointer position. Zoom-to-center is forbidden — it teleports the content the user was looking at. |
+| Multiplicative steps | Zoom scales by a constant factor per increment (~1.1 per wheel notch), not linear addition. Linear zoom feels fast when zoomed out and dead when zoomed in. |
+| Clamped range | Each canvas defines min/max scale; hitting the clamp is silent (no bounce, no jolt). |
+
+**Pan:**
+
+| Rule | Spec |
+|---|---|
+| Cursor states are mandatory | Pannable background shows `grab` on hover; `grabbing` while panning. The cursor is the affordance. |
+| Trackpad pans naturally | Two-finger scroll pans the canvas in the system's natural direction; pinch zooms. Mouse users: wheel pans vertically, Shift+wheel horizontally, Ctrl/Cmd+wheel zooms (to cursor). The canvas behaves like every other scrollable surface the user owns. |
+| Edges resist, never wall | If pan bounds exist, approach is damped — content slows near the limit rather than hitting a hard stop. |
+
+**Drag:**
+
+**Rule — drags are transform-pure.** During a drag, the moving element is positioned by transform only; no layout-affecting re-render occurs per pointer move. The commit (state write, persistence) happens on release. The budget is 60fps; a drag that stutters is a drag that fails this section, regardless of how it looks at rest.
+
+**Rule — feedback is instant-tier.** Hover affordances, snap guides, and drop-target highlights on canvas appear and disappear at `duration-instant` with `ease-settle`. Canvas feedback that arrives at `duration-settle` feels like lag, not motion design.
+
+**Reduced motion:** momentum, damping animations, and zoom transitions collapse per Section 6's reduced-motion rule. Cursor states and instant feedback remain — they are affordances, not motion.
+
+### 18.3 Keyboard discoverability
+
+Section 8 makes the platform keyboard-*operable*. Craft makes it keyboard-*discoverable*: a shortcut that exists but is invisible serves only the person who already knows it.
+
+**Rule — every shortcut is shown where its action lives.** Tooltips on shortcut-bearing controls carry the shortcut; menus right-align shortcuts on their items. A shortcut with no visible home anywhere in the UI does not exist.
+
+**The `kbd` treatment:** shortcuts render in key caps — `font-mono`, `text-micro`, `content-muted`, `surface-sunken` background, `border-subtle` 1px, `radius-sm`, `2px 4px` padding. Modifier symbols use the platform's symbols (⌘ ⇧ ⌥ ⌃) on macOS and text (Ctrl, Shift, Alt) elsewhere. The shipped `TooltipShortcut` primitive conforms to this spec.
+
+**Rule — `?` opens the shortcut overlay.** Every major surface answers `?` (when no input is focused) with a one-screen cheat sheet of that surface's shortcuts, grouped by task. One screen — if it scrolls, the surface has too many shortcuts or the sheet is padding itself.
+
+**Rule — single-key tools only on canvas surfaces.** Canvas tools may bind single keys (the established pattern: V select, H hand) only when no text input is focused, and never overriding browser or OS reserved combinations. Non-canvas surfaces use modified shortcuts exclusively.
+
+### 18.4 Anti-patterns
+
+- **The blank pane.** A content surface with no designed empty state. The single most common craft failure.
+- **The create-invitation over a filter.** Showing first-run onboarding when a filter or search emptied the view. The platform lying about state.
+- **The centered spinner.** A spinner where content will appear. Communicates waiting without communicating what for; use a skeleton.
+- **The skeleton flash.** Loading UI appearing for one frame on a fast response. Apply the 150ms/300ms pair.
+- **The raw error.** `Request failed with status code 500` as user-facing copy. The platform has a voice; status codes aren't it.
+- **Zoom-to-center.** Wheel zoom that ignores the cursor. Teleports the user's focal point on every notch.
+- **The layout-thrash drag.** Re-rendering layout per pointer move. Fails the 60fps budget and feels broken even when it works.
+- **The invisible shortcut.** A binding that appears nowhere in tooltips, menus, or the `?` overlay. Undiscoverable is unbuilt.
+- **The scrolling cheat sheet.** A `?` overlay that doesn't fit one screen. Curation is part of the craft.
+
+---
+
 *End of DESIGN_LANGUAGE.md v1.0.*
