@@ -100,7 +100,7 @@ def ensure_instance_for_order(
 
     row = db.execute(
         sql_text(
-            "SELECT company_id, order_number, deceased_name "
+            "SELECT company_id, number, deceased_name "
             "FROM sales_orders WHERE id = :id"
         ),
         {"id": sales_order_id},
@@ -114,7 +114,7 @@ def ensure_instance_for_order(
         sales_order_id=sales_order_id,
         source_fh_company_id=source_fh_company_id,
         title=title
-        or f"Job coordination — {row.order_number or sales_order_id[:8]}"
+        or f"Job coordination — {row.number or sales_order_id[:8]}"
         + (f" ({row.deceased_name})" if row.deceased_name else ""),
         status="active",
         task_id=task_id,
