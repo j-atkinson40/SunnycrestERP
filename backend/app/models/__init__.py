@@ -71,6 +71,12 @@ from app.models.document_template import (
     DocumentTemplateVersion,
 )
 from app.models.document_template_block import DocumentTemplateBlock
+from app.models.coordination_focus import (
+    CoordinationFocusInstance,
+    FocusShare,
+    FocusShareEvent,
+    JCFThreadMessage,
+)
 from app.models.document_share import (
     DocumentShare,
     DocumentShareEvent,
@@ -465,6 +471,10 @@ from app.models.triage import TriageSession, TriageSnooze
 from app.models.briefing import Briefing, BRIEFING_TYPES
 
 __all__ = [
+    "CoordinationFocusInstance",
+    "FocusShare",
+    "FocusShareEvent",
+    "JCFThreadMessage",
     "Task",
     "TASK_PRIORITIES",
     "TASK_STATUSES",
