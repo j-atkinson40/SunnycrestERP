@@ -75,7 +75,10 @@ test.describe("Maps of Content — Phase 1 @moc", () => {
     page,
   }) => {
     await page.goto(MFG_PAGE)
-    await expect(page.getByText("Manufacturing")).toBeVisible()
+    // Scope to the unique page wrapper — "Manufacturing" as bare text also
+    // matches the title + two descriptions (Playwright strict-mode violation
+    // that aborted this test pre-fix, before it reached the round-trips).
+    await expect(page.getByTestId("moc-page")).toBeVisible()
 
     // Read each row's href from the DOM — focus + document carry
     // env-specific uuids, so they can't be hardcoded.
@@ -96,9 +99,12 @@ test.describe("Maps of Content — Phase 1 @moc", () => {
     await expect(page.getByText("Quote to Pour")).toBeVisible()
     await expect(page.getByText("Funeral Cascade")).toHaveCount(0)
 
-    // 2) Focus → the Job Coordination template loaded.
+    // 2) Focus → the Job Coordination template loaded. ".first()" because
+    //    the focus editor renders the name in several places (browser list,
+    //    selected header, "Inherits from… Core") — a bare getByText would
+    //    strict-mode-fail on the multi-match.
     await page.goto(focusHref)
-    await expect(page.getByText("Job Coordination")).toBeVisible()
+    await expect(page.getByText("Job Coordination").first()).toBeVisible()
 
     // 3) Widget → the ar_summary widget builder mounts + loads (no 403/
     //    empty-error). Witnessed for real on staging via the PROD_API
