@@ -42,6 +42,7 @@ from app.api.routes.admin import (
     plugin_registry as admin_plugin_registry,
     studio_inventory as admin_studio_inventory,
     verticals as admin_verticals,
+    moc as admin_moc,
 )
 
 platform_router = APIRouter()
@@ -173,6 +174,14 @@ platform_router.include_router(
     visual_editor_dashboard_layouts.router,
     prefix="/admin/visual-editor/dashboard-layouts",
     tags=["Visual Editor — Dashboard Layouts"],
+)
+# Maps of Content (MoC Phase 1) — artifact-first admin navigation. Thin
+# realm layer over the realm-agnostic maps_of_content service; a future
+# tenant router reuses the same service unchanged.
+platform_router.include_router(
+    admin_moc.router,
+    prefix="/admin/moc",
+    tags=["Maps of Content"],
 )
 # WB-cycle-followup-2 (May 2026) — Widget Builder auth-realm fix.
 # Mirrors tenant /api/v1/widget-definitions/* + /widgets/composed-definitions
