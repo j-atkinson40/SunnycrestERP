@@ -34,8 +34,9 @@ import {
   Sparkles,
   Undo2,
 } from "lucide-react"
-import { Link, useNavigate, useSearchParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom"
 
+import { parseStudioPath } from "@/bridgeable-admin/lib/studio-routes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -256,10 +257,20 @@ export default function WorkflowEditorPage() {
   // directly (no return_to), the affordance is hidden and behavior is
   // identical to pre-retrofit. Mirrors Arc 3a FocusEditorPage canon.
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   const navigate = useNavigate()
   const returnTo = searchParams.get("return_to")
   const initialWorkflowType = searchParams.get("workflow_type")
   const initialScope = searchParams.get("scope")
+  // Deep-link vertical: the editor receives no props (StudioShell renders
+  // <EditorPage/> bare), so a /studio/:vertical/workflows deep-link's
+  // vertical lives only in the path. Read it the same way StudioShell does
+  // and seed the initial vertical from it — otherwise a manufacturing
+  // deep-link (e.g. a Maps-of-Content row → quote_to_pour) would land on
+  // the hardcoded funeral_home default and mount the wrong workflow.
+  const pathVertical = parseStudioPath(
+    location.pathname.replace(/^\/bridgeable-admin/, ""),
+  ).vertical
 
   // ── Template selection ───────────────────────────────
   const [scope, setScope] = useState<WorkflowScope>(
@@ -267,7 +278,9 @@ export default function WorkflowEditorPage() {
       ? (initialScope as WorkflowScope)
       : "vertical_default",
   )
-  const [vertical, setVertical] = useState<string>("funeral_home")
+  const [vertical, setVertical] = useState<string>(
+    pathVertical ?? "funeral_home",
+  )
   const [workflowType, setWorkflowType] = useState<string>(
     initialWorkflowType ?? "",
   )
