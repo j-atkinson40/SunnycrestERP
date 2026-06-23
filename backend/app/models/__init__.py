@@ -173,6 +173,7 @@ from app.models.mix_design import MixDesign
 from app.models.module_definition import ModuleDefinition
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
+from app.models.moc_page import MoCPage
 from app.models.notification import Notification
 from app.models.onboarding import OnboardingChecklist, OnboardingTemplate
 from app.models.onboarding_checklist import TenantOnboardingChecklist
@@ -472,6 +473,7 @@ from app.models.briefing import Briefing, BRIEFING_TYPES
 
 __all__ = [
     "CoordinationFocusInstance",
+    "MoCPage",
     "FocusShare",
     "FocusShareEvent",
     "JCFThreadMessage",
