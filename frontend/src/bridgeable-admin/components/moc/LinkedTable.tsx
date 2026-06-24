@@ -30,6 +30,15 @@ export interface LinkedTableRow {
   icon?: LucideIcon
   /** Right-column kind tag (e.g. "Workflow", "Map"). */
   kindLabel?: string
+  /**
+   * Why a non-available row is non-linkable — drives an HONEST caption:
+   *   "orphan"    → the reference pointed at something now gone
+   *                 ("no longer available")
+   *   "not-built" → nothing was ever built here yet ("no map yet")
+   * These are different truths (a broken reference vs. an unbuilt one); the
+   * not-built state must NOT read as failure. Defaults to "orphan".
+   */
+  unavailableReason?: "orphan" | "not-built"
 }
 
 export interface LinkedTableSection {
@@ -121,7 +130,11 @@ function LinkedRow({ row }: { row: LinkedTableRow }) {
         ) : (
           <span className="flex items-center gap-2 text-content-subtle">
             {row.label}
-            <span className="text-caption">· no longer available</span>
+            <span className="text-caption">
+              {row.unavailableReason === "not-built"
+                ? "· no map yet"
+                : "· no longer available"}
+            </span>
           </span>
         )}
       </TableCell>

@@ -25,23 +25,53 @@ import { ErrorState } from "@/components/ui/error-state"
 import { SkeletonLines } from "@/components/ui/skeleton"
 import { useDelayedLoading } from "@/hooks/use-delayed-loading"
 
+// The platform verticals (the 4 presets; mirrors the `verticals` table —
+// manufacturing / funeral_home / cemetery / crematory). A constant, not a
+// fetch: the front door's first load shouldn't depend on a second request,
+// and the set is stable. If verticals grow, this list follows (a dynamic
+// fetch is a deliberate follow-up, not Phase-1.1 scope).
+const KNOWN_VERTICALS: ReadonlyArray<{ slug: string; label: string }> = [
+  { slug: "manufacturing", label: "Manufacturing" },
+  { slug: "funeral_home", label: "Funeral Home" },
+  { slug: "cemetery", label: "Cemetery" },
+  { slug: "crematory", label: "Crematory" },
+]
+
+// All four verticals always render: a seeded one is a LIVE link to its map;
+// an unseeded one is an honest §18 "no map yet" row (muted, non-link) — an
+// UNBUILT truth, distinct from the orphan "no longer available" state. The
+// front door looks intentional on first load, never half-seeded.
 function toSections(pages: MoCPageRecord[]): LinkedTableSection[] {
-  if (pages.length === 0) return [{ section_id: "maps", title: "Maps", rows: [] }]
+  const bySlug = new Map(
+    pages.filter((p) => p.vertical).map((p) => [p.vertical as string, p]),
+  )
   return [
     {
       section_id: "maps",
       title: "Maps",
       description: "Authored navigation, one per vertical.",
-      rows: pages
-        .filter((p) => p.vertical)
-        .map((p) => ({
-          row_id: p.id,
-          label: p.title,
-          href: adminPath(`/maps/${p.vertical}`),
-          available: true,
+      rows: KNOWN_VERTICALS.map((v) => {
+        const page = bySlug.get(v.slug)
+        if (page) {
+          return {
+            row_id: page.id,
+            label: page.title,
+            href: adminPath(`/maps/${v.slug}`),
+            available: true,
+            icon: MapIcon,
+            kindLabel: "Map",
+          }
+        }
+        return {
+          row_id: `not-built-${v.slug}`,
+          label: v.label,
+          href: null,
+          available: false,
+          unavailableReason: "not-built" as const,
           icon: MapIcon,
           kindLabel: "Map",
-        })),
+        }
+      }),
     },
   ]
 }
