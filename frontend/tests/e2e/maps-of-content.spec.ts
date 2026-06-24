@@ -145,9 +145,12 @@ test.describe("Maps of Content — Phase 1 @moc", () => {
   test("front door: admin landing is the MoC home; map reachable by CLICK; deep-link still mounts", async ({
     page,
   }) => {
-    // Land by DEFAULT — the admin root (no specific route) is the MoC home,
-    // not the old Health landing.
-    await page.goto("/bridgeable-admin")
+    // Land by DEFAULT — the admin root IS the MoC home, not the old Health
+    // landing. Use the trailing-slash form: that's where login actually lands
+    // (adminPath("/") = "/bridgeable-admin/") and where test 1's /maps→"/"
+    // redirect provably renders MoCHome on staging. The bare, no-slash form
+    // resolves on the Vite dev server but hits a staging SPA-serving edge.
+    await page.goto("/bridgeable-admin/")
     await expect(page.getByTestId("moc-home")).toBeVisible()
     await expect(page.getByText("Platform Health")).toHaveCount(0) // not Health
 
@@ -170,8 +173,9 @@ test.describe("Maps of Content — Phase 1 @moc", () => {
   }) => {
     // The hard guard: repointing "/" to the MoC home must not orphan the
     // HealthDashboard (its only prior mount was "/"). It now lives at
-    // /health and is reachable via its nav link.
-    await page.goto("/bridgeable-admin")
+    // /health and is reachable via its nav link. Trailing slash for the same
+    // staging-serving reason as the test above.
+    await page.goto("/bridgeable-admin/")
     const healthLink = page.getByRole("link", { name: "Health", exact: true })
     await expect(healthLink).toHaveAttribute("href", /\/health$/)
     await healthLink.click()
