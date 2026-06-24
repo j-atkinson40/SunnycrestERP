@@ -74,7 +74,18 @@ export function BridgeableAdminApp() {
   const operationalPages = (
     <AdminLayout>
       <Routes>
-        <Route path="/" element={<HealthDashboard />} />
+        {/* MoC Phase 1.1 — the front door. The admin landing is now the
+            Maps-of-Content home (was HealthDashboard). HealthDashboard
+            relocates to /health (its only prior mount was "/", so this move
+            keeps it reachable — the "Health" nav link repoints there). The
+            logo and the catch-all (path="*" → "/") consequently now land on
+            the MoC home instead of Health — both INTENTIONAL front-door
+            changes, not side effects. */}
+        <Route path="/" element={<MoCHome />} />
+        <Route path="/health" element={<HealthDashboard />} />
+        {/* Phase 1 served the home at /maps; preserve that URL as a redirect
+            so prior links don't strand. */}
+        <Route path="/maps" element={<Navigate to="/" replace />} />
         <Route path="/tenants" element={<TenantKanban />} />
         <Route path="/tenants/:id" element={<TenantKanban />} />
         <Route path="/audit" element={<AuditRunner />} />
@@ -87,7 +98,6 @@ export function BridgeableAdminApp() {
         <Route path="/telemetry" element={<ArcTelemetry />} />
         {/* Verticals-lite precursor — first-class verticals registry. */}
         <Route path="/verticals" element={<VerticalsAdminPage />} />
-        <Route path="/maps" element={<MoCHome />} />
         <Route path="/maps/:vertical" element={<MoCPage />} />
       </Routes>
     </AdminLayout>

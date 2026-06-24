@@ -31,7 +31,16 @@ export function AdminHeader() {
             <span className="font-semibold text-base">Bridgeable Admin</span>
           </Link>
           <nav className="flex items-center gap-4 text-sm">
-            <Link to={adminPath("/")} className="hover:text-amber-300">Health</Link>
+            {/* MoC Phase 1.1 — the front door reads as first in the nav. */}
+            <Link
+              to={adminPath("/")}
+              className="hover:text-amber-300"
+              data-testid="admin-nav-maps"
+            >
+              Maps
+            </Link>
+            {/* Health relocated from "/" to "/health" (front-door repoint). */}
+            <Link to={adminPath("/health")} className="hover:text-amber-300">Health</Link>
             <Link to={adminPath("/tenants")} className="hover:text-amber-300">Tenants</Link>
             <Link to={adminPath("/audit")} className="hover:text-amber-300">Audit</Link>
             <Link to={adminPath("/migrations")} className="hover:text-amber-300">Migrations</Link>
