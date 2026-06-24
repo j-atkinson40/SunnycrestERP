@@ -135,4 +135,48 @@ test.describe("Maps of Content — Phase 1 @moc", () => {
       page.locator('[data-testid^="moc-row-"][data-available="true"]'),
     ).toHaveCount(4)
   })
+
+  // ── Phase 1.1 — the front door (reachability close) ────────────────
+  // The original gap: the MoC surfaces existed but had no nav door — the
+  // tests above reach them by goto; a human had none. These assert the
+  // door: the admin landing IS the MoC home, the map is reachable by CLICK
+  // from it, and Health (relocated off "/") stays reachable at /health.
+
+  test("front door: admin landing is the MoC home; map reachable by CLICK; deep-link still mounts", async ({
+    page,
+  }) => {
+    // Land by DEFAULT — the admin root (no specific route) is the MoC home,
+    // not the old Health landing.
+    await page.goto("/bridgeable-admin")
+    await expect(page.getByTestId("moc-home")).toBeVisible()
+    await expect(page.getByText("Platform Health")).toHaveCount(0) // not Health
+
+    // Reach the Manufacturing map BY CLICK from the home's vertical list
+    // (this is the gap Phase 1.1 closes — reachable-by-user, not by goto).
+    await page.getByRole("link", { name: "Manufacturing" }).click()
+    await expect(page).toHaveURL(/\/maps\/manufacturing/)
+    await expect(page.getByTestId("moc-page")).toBeVisible()
+
+    // A deep-link row still mounts its builder (the Phase-1 capability
+    // remains intact behind the new front door).
+    const wfLink = page.locator('a[href*="workflow_type=quote_to_pour"]')
+    await expect(wfLink).toBeVisible()
+    await wfLink.click()
+    await expect(page.getByText("Quote to Pour")).toBeVisible()
+  })
+
+  test("reachability guard: Health stays reachable at /health after the repoint", async ({
+    page,
+  }) => {
+    // The hard guard: repointing "/" to the MoC home must not orphan the
+    // HealthDashboard (its only prior mount was "/"). It now lives at
+    // /health and is reachable via its nav link.
+    await page.goto("/bridgeable-admin")
+    const healthLink = page.getByRole("link", { name: "Health", exact: true })
+    await expect(healthLink).toHaveAttribute("href", /\/health$/)
+    await healthLink.click()
+    await expect(page).toHaveURL(/\/health$/)
+    await expect(page.getByText("Platform Health")).toBeVisible()
+    await expect(page.getByTestId("moc-home")).toHaveCount(0)
+  })
 })
