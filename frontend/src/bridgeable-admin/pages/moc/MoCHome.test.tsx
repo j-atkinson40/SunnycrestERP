@@ -7,7 +7,7 @@
  * available" wording. These tests pin that distinction.
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 
 import MoCHome from "./MoCHome"
