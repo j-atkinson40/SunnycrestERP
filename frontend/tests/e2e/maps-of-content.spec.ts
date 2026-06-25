@@ -183,4 +183,31 @@ test.describe("Maps of Content — Phase 1 @moc", () => {
     await expect(page.getByText("Platform Health")).toBeVisible()
     await expect(page.getByTestId("moc-home")).toHaveCount(0)
   })
+
+  // ── Phase 1.2 — two-pane layout ────────────────────────────────────
+  test("two-pane: Verticals rail beside content on the home; rail persists + map shows on the vertical page", async ({
+    page,
+  }) => {
+    await page.goto("/bridgeable-admin/")
+    // Home is two-pane: the Verticals rail beside a content area.
+    await expect(page.getByTestId("moc-verticals-rail")).toBeVisible()
+    await expect(page.getByTestId("moc-home-content")).toBeVisible()
+    // The unseeded verticals show the §18 "no map yet" not-built state.
+    await expect(
+      page.locator('[data-testid^="moc-rail-item-"][data-available="false"]'),
+    ).toHaveCount(3)
+
+    // Selecting a vertical from the rail navigates to its map (existing
+    // route — routing unchanged); the rail persists beside the map.
+    await page.getByRole("link", { name: "Manufacturing" }).click()
+    await expect(page).toHaveURL(/\/maps\/manufacturing/)
+    await expect(page.getByTestId("moc-verticals-rail")).toBeVisible()
+    await expect(page.getByTestId("moc-page-content")).toBeVisible()
+
+    // The deep-link rows in the content still open their builder.
+    const wf = page.locator('a[href*="workflow_type=quote_to_pour"]')
+    await expect(wf).toBeVisible()
+    await wf.click()
+    await expect(page.getByText("Quote to Pour")).toBeVisible()
+  })
 })

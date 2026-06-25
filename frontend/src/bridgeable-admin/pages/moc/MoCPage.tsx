@@ -31,6 +31,7 @@ import {
   LinkedTable,
   type LinkedTableSection,
 } from "@/bridgeable-admin/components/moc/LinkedTable"
+import { MoCVerticalsRail } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -129,51 +130,34 @@ export default function MoCPage() {
     await load()
   }
 
+  // The two-pane content varies by state; the rail is always beside it.
+  let body: React.ReactNode = null
   if (loading && showSkeleton) {
-    return (
-      <div className="p-6">
-        <SkeletonLines count={5} />
-      </div>
+    body = <SkeletonLines count={5} />
+  } else if (error) {
+    body = (
+      <ErrorState
+        what={error}
+        survived="Nothing was changed."
+        onRetry={() => void load()}
+        data-testid="moc-page-error"
+      />
     )
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <ErrorState
-          what={error}
-          survived="Nothing was changed."
-          onRetry={() => void load()}
-          data-testid="moc-page-error"
-        />
-      </div>
+  } else if (notFound) {
+    body = (
+      <EmptyState
+        variant="panel"
+        title={`No map for ${vertical} yet`}
+        description="Create a starter page, then add references from the builders (MoC-2)."
+        action={
+          <Button onClick={() => void createStarter()} data-testid="moc-create-starter">
+            Create starter page
+          </Button>
+        }
+      />
     )
-  }
-
-  if (notFound) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          variant="panel"
-          title={`No map for ${vertical} yet`}
-          description="Create a starter page, then add references from the builders (MoC-2)."
-          action={
-            <Button onClick={() => void createStarter()} data-testid="moc-create-starter">
-              Create starter page
-            </Button>
-          }
-        />
-      </div>
-    )
-  }
-
-  if (!page) return null
-
-  return (
-    <div
-      className="min-h-[calc(100vh-7rem)] space-y-6 rounded-lg bg-surface-base p-6"
-      data-testid="moc-page"
-    >
+  } else if (page) {
+    body = (
       <Panel>
         <PanelHeader>
           {renaming ? (
@@ -226,6 +210,18 @@ export default function MoCPage() {
           />
         </PanelBody>
       </Panel>
+    )
+  }
+
+  return (
+    <div
+      className="flex min-h-[calc(100vh-7rem)] overflow-hidden rounded-lg border border-border-subtle bg-surface-base"
+      data-testid="moc-page"
+    >
+      <MoCVerticalsRail />
+      <div className="flex-1 space-y-6 p-6" data-testid="moc-page-content">
+        {body}
+      </div>
     </div>
   )
 }
