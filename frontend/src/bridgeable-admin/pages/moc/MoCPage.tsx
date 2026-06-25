@@ -170,7 +170,10 @@ export default function MoCPage() {
   if (!page) return null
 
   return (
-    <div className="space-y-6 p-6" data-testid="moc-page">
+    <div
+      className="min-h-[calc(100vh-7rem)] space-y-6 rounded-lg bg-surface-base p-6"
+      data-testid="moc-page"
+    >
       <Panel>
         <PanelHeader>
           {renaming ? (

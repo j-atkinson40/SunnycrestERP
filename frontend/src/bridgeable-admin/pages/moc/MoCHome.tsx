@@ -99,7 +99,10 @@ export default function MoCHome() {
   }, [load])
 
   return (
-    <div className="space-y-6 p-6" data-testid="moc-home">
+    <div
+      className="min-h-[calc(100vh-7rem)] space-y-6 rounded-lg bg-surface-base p-6"
+      data-testid="moc-home"
+    >
       <Panel>
         <PanelHeader>
           <PanelTitle>Maps of Content</PanelTitle>
