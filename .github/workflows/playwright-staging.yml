@@ -90,7 +90,10 @@ jobs:
         # not-ready surface times out with a surface-specific message, never
         # proceeds. (Replaces the old backend-only poll + bootstrap-fallback
         # that ran tests against stale/erroring services — see deploy-gate.sh.)
-        run: bash .github/scripts/deploy-gate.sh --sha "${{ github.sha }}" --backend "$STAGING_BACKEND" --frontend "$STAGING_FRONTEND"
+        # Absolute path via $GITHUB_WORKSPACE — these jobs run with
+        # working-directory: frontend, so a repo-root-relative path would
+        # resolve under frontend/ and 127 (the bug the first gate run hit).
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/deploy-gate.sh" --sha "${{ github.sha }}" --backend "$STAGING_BACKEND" --frontend "$STAGING_FRONTEND"
 
       - name: Run Playwright runtime-editor specs
         run: npx playwright test tests/e2e/runtime-editor/ --project=chromium --reporter=list,html
@@ -184,7 +187,10 @@ jobs:
         # backend takes >5 min to stabilize post-deploy, so a single match
         # could catch it mid-flap → the 502-at-login false reds this fixes).
         # Fail-closed: times out LOUD if the backend never reaches the SHA.
-        run: bash .github/scripts/deploy-gate.sh --sha "${{ github.sha }}" --backend "$STAGING_BACKEND"
+        # Absolute path via $GITHUB_WORKSPACE — these jobs run with
+        # working-directory: frontend, so a repo-root-relative path would
+        # resolve under frontend/ and 127 (the bug the first gate run hit).
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/deploy-gate.sh" --sha "${{ github.sha }}" --backend "$STAGING_BACKEND"
 
       - name: Run Playwright Claude-API e2e specs
         # 1a = tenant-realm generation; 1b = platform-realm generation (the
@@ -272,7 +278,10 @@ jobs:
         # pushed SHA (frontend via its build-stamped /version.json); N
         # consecutive healthy matches absorb the backend's >5 min stabilization.
         # Fail-closed with surface-specific messages — see deploy-gate.sh.
-        run: bash .github/scripts/deploy-gate.sh --sha "${{ github.sha }}" --backend "$STAGING_BACKEND" --frontend "$STAGING_FRONTEND"
+        # Absolute path via $GITHUB_WORKSPACE — these jobs run with
+        # working-directory: frontend, so a repo-root-relative path would
+        # resolve under frontend/ and 127 (the bug the first gate run hit).
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/deploy-gate.sh" --sha "${{ github.sha }}" --backend "$STAGING_BACKEND" --frontend "$STAGING_FRONTEND"
 
       - name: Run Playwright Maps-of-Content e2e specs
         # The four deep-link round-trips + the full home→Manufacturing→click
