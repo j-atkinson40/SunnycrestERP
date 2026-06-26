@@ -166,7 +166,10 @@ def get_current_run_endpoint(
     run = get_current(db, current_user.company_id)
     if not run:
         return {"run": None, "items": []}
-    from app.models.statement_run import StatementRunItem
+    # Health Triage P2: app.models.statement_run never existed → this endpoint
+    # 500'd on hit. StatementRunItem lives in app.models.statement
+    # (statement_run_id present, verified).
+    from app.models.statement import StatementRunItem
     from app.models.customer import Customer
     items = db.query(StatementRunItem).filter(StatementRunItem.statement_run_id == run.id).all()
     return {

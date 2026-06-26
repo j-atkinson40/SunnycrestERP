@@ -531,7 +531,10 @@ def inventory_key_items(
     db: Session = Depends(get_db),
 ):
     """Key inventory levels for the InventoryWidget."""
-    from app.models.inventory import InventoryItem
+    # Health Triage P2: app.models.inventory never existed → this endpoint 500'd
+    # on hit. Model is inventory_item.InventoryItem (company_id/is_active/
+    # quantity_on_hand all present, verified).
+    from app.models.inventory_item import InventoryItem
 
     items = (
         db.query(InventoryItem)
@@ -641,7 +644,11 @@ def safety_dashboard_summary(
     db: Session = Depends(get_db),
 ):
     """Safety dashboard for the SafetyWidget."""
-    from app.models.safety import SafetyIncident, SafetyInspection
+    # Health Triage P2: app.models.safety never existed → this endpoint 500'd on
+    # hit. The two models live in separate modules (both carry company_id/id/
+    # status, verified).
+    from app.models.safety_incident import SafetyIncident
+    from app.models.safety_inspection import SafetyInspection
 
     open_incidents = (
         db.query(func.count(SafetyIncident.id))
