@@ -261,7 +261,10 @@ def _create_discount_journal_entry(
 def _find_ar_account(db: Session, tenant_id: str) -> str | None:
     """Find the AR GL account for this tenant."""
     try:
-        from app.models.gl_mapping import TenantGLMapping
+        # Health Triage P2: app.models.gl_mapping never existed → AR GL lookup
+        # silently fell through. TenantGLMapping lives in
+        # app.models.accounting_analysis (tenant_id/platform_category, verified).
+        from app.models.accounting_analysis import TenantGLMapping
 
         ar = (
             db.query(TenantGLMapping)

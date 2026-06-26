@@ -72,7 +72,12 @@ def get_board_summary(
 
     # Payments received today
     try:
-        from app.models.payment import Payment
+        # Health Triage P2: app.models.payment never existed → "payments today"
+        # silently read zero. Model is customer_payment.CustomerPayment; aliased
+        # to Payment to keep the call sites below (company_id/payment_date,
+        # verified). No tenant_id on customer_payments — this site uses
+        # company_id, which is correct (unlike the stale payment sites).
+        from app.models.customer_payment import CustomerPayment as Payment
         payments_today = db.query(Payment).filter(
             Payment.company_id == tid,
             func.date(Payment.payment_date) == today,

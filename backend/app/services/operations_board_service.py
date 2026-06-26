@@ -445,7 +445,11 @@ def _check_spare_component_pairing(
             product = db.query(Product).filter(Product.id == product_id).first()
             name = product.name if product else "Unknown"
             try:
-                from app.models.agent_alert import AgentAlert
+                # Health Triage P2: app.models.agent_alert never existed →
+                # this spare-pairing alert was silently never created. AgentAlert
+                # lives in app.models.agent (all 8 constructor kwargs below are
+                # valid columns, verified).
+                from app.models.agent import AgentAlert
                 import uuid
 
                 alert = AgentAlert(

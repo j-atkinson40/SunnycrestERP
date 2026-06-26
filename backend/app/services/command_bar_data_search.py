@@ -647,9 +647,13 @@ def _try_answer_inventory(
     if not product_name:
         return None
 
-    # Try InventoryItem model — may not exist in all environments
+    # Health Triage P2: app.models.inventory never existed — the "may not exist
+    # in all environments" comment + bare `# type: ignore` masked a dead import
+    # that silently disabled inventory search. Model is inventory_item.
+    # InventoryItem (company_id/product_id present, verified). try/except kept as
+    # a defensive guard around the query.
     try:
-        from app.models.inventory import InventoryItem  # type: ignore
+        from app.models.inventory_item import InventoryItem
     except Exception:
         return None
 
