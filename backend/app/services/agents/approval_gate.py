@@ -77,7 +77,11 @@ class ApprovalGateService:
         )
         for admin in admins:
             if admin.email and admin.email not in recipients:
-                if admin.role and admin.role.slug in ("admin", "accounting"):
+                # User has role_id + the `role_obj` relationship, NOT `.role`
+                # (Health Triage P2 — `admin.role` raised AttributeError every
+                # approval-email send, ~every 15 min). PlatformUser.role is a
+                # valid string column; User's is the relationship.
+                if admin.role_obj and admin.role_obj.slug in ("admin", "accounting"):
                     recipients.append(admin.email)
 
         if not recipients:
