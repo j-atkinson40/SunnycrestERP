@@ -695,7 +695,7 @@ def update_sales_order(
 
 
 def create_invoice_from_order(
-    db: Session, company_id: str, user_id: str, order_id: str
+    db: Session, company_id: str, user_id: str | None, order_id: str
 ) -> Invoice:
     order = get_sales_order(db, company_id, order_id)
 

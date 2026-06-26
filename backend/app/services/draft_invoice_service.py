@@ -266,7 +266,10 @@ def _generate_auto_confirm_mode(
 
         try:
             invoice = sales_service.create_invoice_from_order(
-                db, tenant_id, "system", order.id
+                # System-generated draft (no human actor): nullable attribution,
+                # matching create_vault_order. "system" is not a users row →
+                # FK violation; created_by + audit actor are both None-tolerant.
+                db, tenant_id, None, order.id
             )
 
             invoice.status = "draft"
@@ -372,7 +375,10 @@ def _generate_require_driver_mode(
     for order in confirmed:
         try:
             invoice = sales_service.create_invoice_from_order(
-                db, tenant_id, "system", order.id
+                # System-generated draft (no human actor): nullable attribution,
+                # matching create_vault_order. "system" is not a users row →
+                # FK violation; created_by + audit actor are both None-tolerant.
+                db, tenant_id, None, order.id
             )
 
             invoice.status = "draft"
