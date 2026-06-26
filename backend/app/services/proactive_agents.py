@@ -349,7 +349,11 @@ def run_missing_entry_detector(db: Session, tenant_id: str) -> dict:
 
 def run_uncleared_check_monitor(db: Session, tenant_id: str) -> dict:
     """Flag checks outstanding for 45+ days."""
-    from app.models.reconciliation import ReconciliationAdjustment
+    # Health Triage P1: model moved app.models.reconciliation →
+    # app.models.financial_account (clean rename — same class, same fields:
+    # tenant_id + adjustment_type + created_at, verified). The old module
+    # never existed; this crashed run_uncleared_check_monitor every fire.
+    from app.models.financial_account import ReconciliationAdjustment
 
     results = {"flagged": 0}
     cutoff = date.today() - timedelta(days=45)
