@@ -241,9 +241,37 @@ def _cleanup_company_id(db: Session, cid: str):
     _run_cleanup_deletes(db, cid)
 
 
+_CLEANUP_MAX_PASSES = 25
+
+# Identity-root tables the seed UPDATEs in place (idempotent, keyed by id/email/slug)
+# rather than re-inserting — so the cleanup must NOT delete them, and surviving rows
+# here are EXPECTED, not poison. Preserving them also avoids the users←roles +
+# user_widget_layouts←users FK chains that are tied to durable identity, not to the
+# per-deploy business data the cleanup exists to refresh. Excluded from both the
+# delete attempts and the residue check.
+_CLEANUP_PRESERVE_TABLES = {"companies", "users", "roles"}
+
+
 def _run_cleanup_deletes(db: Session, cid: str):
-    """Delete all tenant data. Uses dynamic FK discovery to catch every referencing table."""
-    # First, discover ALL tables that reference companies via company_id or tenant_id
+    """Clear ALL of ONE tenant's data, recovering from any residual (partial-abort) state.
+
+    Tenant-scoped cascade recovery (Seed Idempotency Arc P0). Every delete is bounded
+    to `WHERE <col> = :cid` (this tenant only) — NOT a raw TRUNCATE, which would wipe
+    every tenant and cascade cross-tenant. The fix replaces the prior
+    alphabetical-order + SAVEPOINT-swallow cleanup, whose silent swallow let
+    FK-blocked rows survive and poison the next deploy (the self-perpetuating 20-min
+    boot loop).
+
+    Mechanism: fixpoint iteration. Run every tenant-scoped delete repeatedly; an
+    FK-blocked delete this pass simply clears once its children are gone in a later
+    pass, so dependency order resolves itself without a precomputed topological sort
+    (and a genuine cycle stalls → the residue check below fails loud, naming it).
+    Mid-pass FK errors are RECORDED (not silently swallowed) and only matter if
+    residue survives convergence. Every cleared table + count is logged; genuine
+    residue raises (fail-loud seed → the deploy aborts VISIBLY with the real error,
+    instead of silently poisoning the next run).
+    """
+    # Discover every table that references companies via a company_id / tenant_id FK.
     fk_rows = db.execute(text("""
         SELECT DISTINCT tc.table_name, kcu.column_name
         FROM information_schema.table_constraints tc
@@ -256,9 +284,10 @@ def _run_cleanup_deletes(db: Session, cid: str):
           AND ccu.column_name = 'id'
         ORDER BY tc.table_name
     """)).fetchall()
+    fk_pairs = [(r[0], r[1]) for r in fk_rows if r[0] not in _CLEANUP_PRESERVE_TABLES]
 
-    # Build ordered delete list: leaf tables first, then parent tables
-    # Start with known deep children that reference other tenant tables (not companies directly)
+    # Deep children: rows scoped to the tenant THROUGH a parent (no direct company FK).
+    # Tenant-bounded via the subquery's company_id — cannot touch another tenant.
     deep_children = [
         "DELETE FROM kb_chunks WHERE tenant_id = :cid",
         "DELETE FROM kb_pricing_entries WHERE tenant_id = :cid",
@@ -274,27 +303,58 @@ def _run_cleanup_deletes(db: Session, cid: str):
         "DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE company_id = :cid)",
         "DELETE FROM user_ai_preferences WHERE user_id IN (SELECT id FROM users WHERE company_id = :cid)",
     ]
+    all_stmts = deep_children + [f"DELETE FROM {t} WHERE {c} = :cid" for t, c in fk_pairs]
 
-    # Then delete from all FK-referencing tables discovered dynamically
-    fk_deletes = []
-    for row in fk_rows:
-        tbl, col = row[0], row[1]
-        if tbl == "companies":
-            continue  # skip self-references
-        fk_deletes.append(f"DELETE FROM {tbl} WHERE {col} = :cid")
-
-    all_stmts = deep_children + fk_deletes
-
-    for stmt in all_stmts:
-        try:
+    last_error: dict[str, str] = {}
+    cleared_total: dict[str, int] = {}
+    passes = 0
+    for passes in range(1, _CLEANUP_MAX_PASSES + 1):
+        cleared_this_pass = 0
+        for stmt in all_stmts:
+            # SAVEPOINT here is a RETRY mechanism (keep the txn alive when an
+            # FK blocks a delete this pass), NOT a swallow — failures are recorded
+            # and surfaced by the residue check, never silently dropped.
             db.execute(text("SAVEPOINT cleanup_sp"))
-            db.execute(text(stmt), {"cid": cid})
-            db.execute(text("RELEASE SAVEPOINT cleanup_sp"))
-        except Exception:
             try:
+                res = db.execute(text(stmt), {"cid": cid})
+                db.execute(text("RELEASE SAVEPOINT cleanup_sp"))
+                n = res.rowcount or 0
+                if n:
+                    tbl = stmt.split()[2]  # "DELETE FROM <tbl> ..."
+                    cleared_this_pass += n
+                    cleared_total[tbl] = cleared_total.get(tbl, 0) + n
+                    print(f"  [cleanup] pass {passes}: cleared {n} from {tbl}")
+            except Exception as e:  # noqa: BLE001 — recorded, not swallowed
                 db.execute(text("ROLLBACK TO SAVEPOINT cleanup_sp"))
-            except Exception:
-                pass
+                last_error[stmt] = str(e).splitlines()[0]
+        if cleared_this_pass == 0:
+            break  # fixpoint reached — nothing left this pass
+
+    # Residue check — fail loud on anything genuinely unclearable (poison rows /
+    # a true FK cycle / an unknown child not in the delete set). Only the
+    # directly-company-scoped tables need checking: a surviving deep-child would
+    # block its parent's delete, so the parent shows residue here, carrying the
+    # FK error that names the blocking child.
+    remaining = []
+    for tbl, col in fk_pairs:
+        try:
+            cnt = db.execute(
+                text(f"SELECT COUNT(*) FROM {tbl} WHERE {col} = :cid"), {"cid": cid}
+            ).scalar() or 0
+        except Exception:  # noqa: BLE001 — table genuinely gone/unqueryable: skip
+            continue
+        if cnt:
+            remaining.append((tbl, cnt, last_error.get(f"DELETE FROM {tbl} WHERE {col} = :cid")))
+    if remaining:
+        raise RuntimeError(
+            f"[cleanup] FAILED to clear tenant {cid} after {passes} pass(es) — "
+            f"residue remains (poison rows / FK cycle / unknown child): {remaining}"
+        )
+
+    print(
+        f"  [cleanup] tenant {cid} fully cleared in {passes} pass(es): "
+        f"{sum(cleared_total.values())} rows across {len(cleared_total)} tables"
+    )
     db.flush()
 
 
