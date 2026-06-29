@@ -30,6 +30,7 @@ from app.database import get_db
 from app.models.moc_page import MoCPage
 from app.models.platform_user import PlatformUser
 from app.services import maps_of_content as moc
+from app.services.maps_of_content.task_catalog import resolve_task_catalog
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -117,6 +118,21 @@ def admin_read_for_context(
     if view is None:
         raise HTTPException(status_code=404, detail="no MoC page for context")
     return view
+
+
+@router.get("/tasks")
+def admin_read_task_catalog(
+    vertical: str = Query(...),
+    tenant_id: str | None = Query(None),
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The vertical's task catalog (MoC-2b). Each task's ONE workflow + MANY
+    focuses are resolved through the SAME `BUILDERS` path the cards use, so the
+    frontend's `mocDeepLink` produces byte-identical hrefs. A reference that
+    doesn't exist yet resolves orphan-tolerant (workflow null / focus
+    available=False) — never errors. Empty list when no tasks are seeded."""
+    return resolve_task_catalog(db, vertical=vertical, tenant_id=tenant_id)
 
 
 @router.post("/", response_model=_PageResponse, status_code=201)
