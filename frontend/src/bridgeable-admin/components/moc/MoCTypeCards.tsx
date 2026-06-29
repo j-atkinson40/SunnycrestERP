@@ -52,8 +52,8 @@ export function MoCTypeCards({
   emptyDescription,
   "data-testid": testId,
 }: MoCTypeCardsProps) {
-  const hasAny = cards.some((c) => c.entries.length > 0)
-  if (!hasAny) {
+  const visibleCards = cards.filter((c) => c.entries.length > 0)
+  if (visibleCards.length === 0) {
     return (
       <EmptyState
         variant="quiet"
@@ -65,15 +65,20 @@ export function MoCTypeCards({
   }
 
   return (
+    // All type-cards on ONE row at EQUAL width: N equal columns where N = the
+    // number of cards present (data-driven — a 5th type stays equal-width 1/5,
+    // never wraps). gap-4 = the dashboard 16px grid gap. minmax(0,1fr) lets
+    // columns shrink rather than overflow on narrower-but-still-wide viewports.
     <div
-      className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+      className="grid gap-4"
+      style={{
+        gridTemplateColumns: `repeat(${visibleCards.length}, minmax(0, 1fr))`,
+      }}
       data-testid={testId}
     >
-      {cards
-        .filter((c) => c.entries.length > 0)
-        .map((card) => (
-          <TypeCard key={card.builder} card={card} />
-        ))}
+      {visibleCards.map((card) => (
+        <TypeCard key={card.builder} card={card} />
+      ))}
     </div>
   )
 }

@@ -183,6 +183,30 @@ describe("MoCTypeCards — render", () => {
     expect(link.getAttribute("href")).toContain("workflow_type=quote_to_pour")
   })
 
+  it("lays all 4 type-cards in ONE row at EQUAL width (4 equal columns)", () => {
+    renderCards()
+    expect(screen.getByTestId("moc-type-cards").style.gridTemplateColumns).toBe(
+      "repeat(4, minmax(0, 1fr))",
+    )
+  })
+
+  it("is data-driven: a 5th type → 5 equal columns, still one row (no wrap)", () => {
+    renderCards(
+      mfgPage([
+        row({
+          row_id: "r-extra",
+          builder: "saved_views",
+          artifact_id: "sv-1",
+          label: "A Saved View",
+          resolution: { exists: true, available: true, label: "A Saved View", routing: {} },
+        }),
+      ]),
+    )
+    expect(screen.getByTestId("moc-type-cards").style.gridTemplateColumns).toBe(
+      "repeat(5, minmax(0, 1fr))",
+    )
+  })
+
   it("renders an orphan entry muted (data-available=false), never a link", () => {
     renderCards(
       mfgPage([
