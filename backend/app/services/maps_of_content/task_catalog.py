@@ -33,14 +33,25 @@ _FOCUSES = "focuses"
 def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
     """One catalog row → its rendered shape, with workflow + focuses resolved
     through the cards' BUILDERS path ({exists, available, label, routing})."""
+    # Include artifact_id alongside the resolved {exists,available,label,
+    # routing}: the frontend's mocDeepLink keys the FOCUS route on artifact_id
+    # (tier=2&template=<id>), so the cell needs the template id, not just
+    # routing. Same shape the cards' rows carry (builder + artifact_id +
+    # routing).
     workflow = (
-        BUILDERS[_WORKFLOWS](db, task.workflow_template_id, task.name)
+        {
+            **BUILDERS[_WORKFLOWS](db, task.workflow_template_id, task.name),
+            "artifact_id": task.workflow_template_id,
+        }
         if task.workflow_template_id
         else None
     )
     focuses = [
         # authored label "" → the resolver returns the template's display_name.
-        BUILDERS[_FOCUSES](db, f.focus_template_id, "")
+        {
+            **BUILDERS[_FOCUSES](db, f.focus_template_id, ""),
+            "artifact_id": f.focus_template_id,
+        }
         for f in task.focuses
     ]
     return {

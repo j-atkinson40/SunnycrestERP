@@ -32,13 +32,16 @@ import { mocDeepLink } from "@/bridgeable-admin/lib/moc-deep-link"
 import {
   createPage,
   readForContext,
+  readTaskCatalog,
   updatePage,
   type MoCResolvedPage,
+  type MoCTask,
 } from "@/bridgeable-admin/services/moc-service"
 import {
   MoCTypeCards,
   type MoCTypeCard,
 } from "@/bridgeable-admin/components/moc/MoCTypeCards"
+import { MoCTaskTable } from "@/bridgeable-admin/components/moc/MoCTaskTable"
 import { MoCVerticalsRail } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -98,6 +101,7 @@ export function toTypeCards(page: MoCResolvedPage): MoCTypeCard[] {
 export default function MoCPage() {
   const { vertical = "" } = useParams<{ vertical: string }>()
   const [page, setPage] = React.useState<MoCResolvedPage | null>(null)
+  const [tasks, setTasks] = React.useState<MoCTask[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [notFound, setNotFound] = React.useState(false)
@@ -112,6 +116,13 @@ export default function MoCPage() {
     try {
       const data = await readForContext({ vertical })
       setPage(data)
+      // The task catalog is independent of the page; a failure here must not
+      // break the cards. Empty array → the table self-hides.
+      try {
+        setTasks(await readTaskCatalog({ vertical }))
+      } catch {
+        setTasks([])
+      }
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number } })?.response?.status
       if (status === 404) {
@@ -222,6 +233,7 @@ export default function MoCPage() {
           emptyDescription="Add references from the builders (MoC-2 authoring)."
           data-testid="moc-type-cards"
         />
+        <MoCTaskTable tasks={tasks} data-testid="moc-task-table" />
       </div>
     )
   }

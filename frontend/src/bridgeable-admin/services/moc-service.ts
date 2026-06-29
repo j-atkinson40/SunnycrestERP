@@ -46,6 +46,28 @@ export interface MoCResolvedSection {
   rows: MoCResolvedRow[]
 }
 
+/** A resolved workflow/focus reference on a task (MoC-2b): the resolver's
+ * {exists, available, label, routing} + the artifact_id mocDeepLink needs to
+ * build the href (the focus route keys on artifact_id). */
+export interface MoCResolvedArtifact extends MoCRowResolution {
+  artifact_id: string
+}
+
+/** A task-catalog row — descriptive cells + resolved relational cells. The
+ * workflow may be null and focuses may be empty (orphan-tolerant: the
+ * referenced template isn't seeded yet). */
+export interface MoCTask {
+  id: string
+  name: string
+  icon?: string | null
+  frequency?: string | null
+  task_type?: string | null
+  description?: string | null
+  display_order: number
+  workflow: MoCResolvedArtifact | null
+  focuses: MoCResolvedArtifact[]
+}
+
 /** A page with references resolved for rendering (the /read shapes). */
 export interface MoCResolvedPage {
   id: string
@@ -91,6 +113,16 @@ export async function readForContext(params: {
   const { data } = await adminApi.get<MoCResolvedPage>(`${BASE}/read`, {
     params,
   })
+  return data
+}
+
+/** A vertical's task catalog (MoC-2b), each task's workflow + focuses resolved
+ * through the cards' resolver. Empty array when no tasks are seeded. */
+export async function readTaskCatalog(params: {
+  vertical: string
+  tenant_id?: string
+}): Promise<MoCTask[]> {
+  const { data } = await adminApi.get<MoCTask[]>(`${BASE}/tasks`, { params })
   return data
 }
 
