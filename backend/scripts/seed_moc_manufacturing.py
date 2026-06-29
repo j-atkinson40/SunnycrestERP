@@ -31,11 +31,110 @@ from sqlalchemy import text as sql_text  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
 from app.services import maps_of_content as moc  # noqa: E402
+from app.services.maps_of_content.task_catalog import upsert_task  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 VERTICAL = "manufacturing"
 SLUG = "manufacturing-map"
+
+# MoC-2a task catalog (option 1): the two Notion-example tasks. Their workflow/
+# focus references are resolved by NAME at seed time — resolve-or-warn: a
+# reference that doesn't exist yet (the four are queued option-3 artifacts)
+# seeds an empty relational cell + logs, and AUTO-POPULATES on a later run once
+# the template is seeded (the resolver is dynamic). Descriptive cells always
+# populate. Platform-canonical (real platform artifacts; no demo guard).
+TASK_CATALOG = [
+    {
+        "name": "Funeral Home Billing",
+        "frequency": "End of Month",
+        "task_type": "Accounting",
+        "description": (
+            "End of month billing for funeral homes with charge accounts. "
+            "Includes all invoices from the month as well as a statement."
+        ),
+        "icon": "receipt",
+        "workflow_name": "Invoice and Statement Run",
+        "focus_names": ["Decision Triage"],
+    },
+    {
+        "name": "New Legacy Order",
+        "frequency": "On demand",
+        "task_type": "Funeral Service Operations",
+        "description": (
+            "Creates a legacy proof using the legacy generator focus headless "
+            "that then gets added to a decision triage queue for approval. "
+            "After approval it is emailed to the print shop and the funeral "
+            "home is alerted through preferred notification method."
+        ),
+        "icon": "sparkles",
+        "workflow_name": "Legacy Order",
+        # The two-focus case — lights up when both templates are seeded.
+        "focus_names": ["Legacy Generation", "Decision Triage"],
+    },
+]
+
+
+def _resolve_workflow_id(db, name: str) -> str | None:
+    """Resolve a workflow by display_name (preferring this vertical) → id, or
+    warn + None if absent (orphan-tolerant; never hard-fails the seed)."""
+    row = db.execute(
+        sql_text(
+            "SELECT id FROM workflow_templates WHERE display_name = :n "
+            "ORDER BY (vertical = :v) DESC LIMIT 1"
+        ),
+        {"n": name, "v": VERTICAL},
+    ).first()
+    if row is None:
+        logger.warning(
+            "[moc-task-seed] workflow %r not found — task seeded with empty "
+            "workflow cell, will populate when the template is seeded",
+            name,
+        )
+        return None
+    return row[0]
+
+
+def _resolve_focus_ids(db, names: list[str]) -> list[str]:
+    """Resolve focuses by display_name → ids, warning + skipping any absent
+    (orphan-tolerant). Returns only the ids that resolved (0..N)."""
+    ids: list[str] = []
+    for name in names:
+        row = db.execute(
+            sql_text(
+                "SELECT id FROM focus_templates WHERE display_name = :n LIMIT 1"
+            ),
+            {"n": name},
+        ).first()
+        if row is None:
+            logger.warning(
+                "[moc-task-seed] focus %r not found — task seeded without that "
+                "focus pill, will populate when the template is seeded",
+                name,
+            )
+        else:
+            ids.append(row[0])
+    return ids
+
+
+def _seed_task_catalog(db) -> str:
+    """Idempotent (find-or-create by name+vertical via upsert_task) seed of the
+    manufacturing task catalog. Commits."""
+    for order, t in enumerate(TASK_CATALOG):
+        upsert_task(
+            db,
+            vertical=VERTICAL,
+            name=t["name"],
+            frequency=t["frequency"],
+            task_type=t["task_type"],
+            description=t["description"],
+            icon=t["icon"],
+            workflow_template_id=_resolve_workflow_id(db, t["workflow_name"]),
+            focus_template_ids=_resolve_focus_ids(db, t["focus_names"]),
+            display_order=order,
+        )
+    db.commit()
+    return f"{len(TASK_CATALOG)} tasks"
 
 
 def _resolve_artifacts(db) -> list[dict]:
@@ -142,7 +241,8 @@ def seed(db) -> str:
             description="Artifact-first navigation for the manufacturing floor.",
             sections=sections,
         )
-        return f"updated ({len(rows)} refs)"
+        tasks = _seed_task_catalog(db)
+        return f"updated ({len(rows)} refs, {tasks})"
 
     moc.create_page(
         db,
@@ -153,7 +253,8 @@ def seed(db) -> str:
         description="Artifact-first navigation for the manufacturing floor.",
         sections=sections,
     )
-    return f"created ({len(rows)} refs)"
+    tasks = _seed_task_catalog(db)
+    return f"created ({len(rows)} refs, {tasks})"
 
 
 def main() -> None:
