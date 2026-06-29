@@ -92,3 +92,11 @@ Everything else is config (seed rows) + thin composition wiring (adapter wrapper
 - **Everything else is config + thin composition** — no new primitives, no migrations. The "demo-grade = real and works" bar is met by seeding artifacts + the two small wiring tasks (the Legacy Generation headless wrapper, the invoice/statement adapters), assembly-tested for the workflows.
 
 **STOP.** Read-only; not committed. No build, migration, or seed performed — the plan is the deliverable. The only two decisions that gate scope (the notify node type; the triage core stub) are the operator's.
+
+---
+
+## KNOWN DESIGN NOTES / FRAGILITIES (surfaced during 3a/3b-seed — flag, not fix)
+
+**1. The MoC is dynamic at the CELL, authored at the CARD.** Seeding an artifact auto-fills the task-table *relational cell* purely via the dynamic resolver (zero change — the pure keystone). But the *type-CARD* does NOT auto-gain it: the cards render the **authored `moc_pages` refs**, not all of a vertical's artifacts. So lighting up the card requires an authoring step (adding the artifact to the page's section refs — done in `seed_moc_manufacturing` for the two focuses). This is the design (table = derived, card = curated), not a bug — but hold it clearly: **"seed an artifact → everything lights up" is fully true for cells, semi-true for cards (cards need the ref-authoring).** Applies to 3c/3d: the Workflow *cells* will auto-fill, but the Workflows *card* needs the same page-ref authoring to show the new workflows.
+
+**2. `_resolve_focus_ids` (and the workflow resolver) bind by `display_name`, `LIMIT 1` — name-fragile.** `seed_moc_manufacturing` resolves its focus/workflow refs by display_name (focuses: name-only; workflows: name, vertical-preferred). Once an artifact is seeded persistently, **anything else with the same display_name is ambiguous** — `LIMIT 1` picks one arbitrarily. The 2a auto-populate test hit exactly this (it created a second "Decision Triage") and was re-pointed to workflow-only to dodge it. Fine for the demo (controlled, unique names) — but a real coupling at scale: two verticals each with a "Decision Triage", or a tenant-override sharing a name, would collide. **Flag, don't fix** — the demo doesn't need it; tighten to (name, vertical, scope) binding when the catalog grows.
