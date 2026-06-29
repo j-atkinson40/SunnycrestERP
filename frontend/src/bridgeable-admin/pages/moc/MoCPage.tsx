@@ -227,11 +227,14 @@ export default function MoCPage() {
   }
 
   return (
-    // Full-bleed: cancel AdminLayout's px-6/py-6 so the dark two-pane reaches
-    // the content-area edges (the rail keeps its sunken tone; content is the
-    // base surface). No rounded card box.
+    // A.1 full-page: AdminLayout marks /maps/:vertical full-bleed, so its
+    // <main> is `flex min-h-0 flex-1` (full width, fills height below the nav).
+    // This two-pane fills that main — flex-1 takes the full width past the
+    // (now-absent) 1600px cap, and stretch fills the height so the dark surface
+    // reaches the bottom edge (no light page showing through). Rail keeps its
+    // sunken tone; content is the base surface. No centered card box.
     <div
-      className="-mx-6 -my-6 flex min-h-[calc(100vh-7rem)] bg-surface-base"
+      className="flex flex-1 bg-surface-base"
       data-testid="moc-page"
     >
       <MoCVerticalsRail />
