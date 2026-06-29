@@ -1,12 +1,20 @@
 /**
- * Maps of Content — per-vertical page surface (MoC Phase 1).
+ * Maps of Content — per-vertical page surface (MoC Phase 1 → manufacturing
+ * polish Phase A).
  *
  * Mounted at /maps/:vertical (admin tree, AdminLayout). Fetches the
- * context-resolved page (3-tier walk + reference resolution), maps each
- * builder row to a LinkedTable row — computing the deep-link href via
- * mocDeepLink → adminPath, null when the artifact resolved unavailable —
- * and renders it. Minimal authoring this phase: rename + "create starter"
- * when no page exists yet; row/artifact-picker authoring is MoC-2.
+ * context-resolved page (3-tier walk + reference resolution), then GROUPS the
+ * rows by builder TYPE into titled per-type cards (Phase A — the Notion model:
+ * full-bleed two-pane + a card per builder type present, each entry a deep-link
+ * into that artifact's builder). The grouping is data-driven: a new builder
+ * type or a 2nd artifact-in-a-type renders with no code change. Minimal
+ * authoring this phase: rename + "create starter"; row/artifact-picker
+ * authoring + the task table are later arcs.
+ *
+ * Full-bleed: the two-pane breaks out of AdminLayout's px-6/py-6 wrapper
+ * (-mx-6/-my-6) so the dark surface fills the content area edge-to-edge
+ * (the "plant floor" treatment), bounded only by AdminLayout's shared
+ * max-w-[1600px]. No centered card box.
  */
 
 import * as React from "react"
@@ -28,11 +36,10 @@ import {
   type MoCResolvedPage,
 } from "@/bridgeable-admin/services/moc-service"
 import {
-  LinkedTable,
-  type LinkedTableSection,
-} from "@/bridgeable-admin/components/moc/LinkedTable"
+  MoCTypeCards,
+  type MoCTypeCard,
+} from "@/bridgeable-admin/components/moc/MoCTypeCards"
 import { MoCVerticalsRail } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
-import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -40,24 +47,25 @@ import { ErrorState } from "@/components/ui/error-state"
 import { SkeletonLines } from "@/components/ui/skeleton"
 import { useDelayedLoading } from "@/hooks/use-delayed-loading"
 
-const BUILDER_PRESENTATION: Record<
-  string,
-  { icon: LucideIcon; label: string }
-> = {
-  workflows: { icon: Workflow, label: "Workflow" },
-  focuses: { icon: Layers, label: "Focus" },
-  widgets: { icon: LayoutGrid, label: "Widget" },
-  documents: { icon: FileText, label: "Document" },
+/** Builder type → card presentation (plural title + glyph). */
+const CARD_TYPE: Record<string, { title: string; icon: LucideIcon }> = {
+  workflows: { title: "Workflows", icon: Workflow },
+  focuses: { title: "Focuses", icon: Layers },
+  widgets: { title: "Widgets", icon: LayoutGrid },
+  documents: { title: "Documents", icon: FileText },
 }
+/** Canonical card order; unknown builders render after, in first-seen order. */
+const TYPE_ORDER = ["workflows", "focuses", "widgets", "documents"]
 
-/** Resolved page → LinkedTable sections (href computed, orphan → null). */
-function toLinkedSections(page: MoCResolvedPage): LinkedTableSection[] {
-  return page.sections.map((s) => ({
-    section_id: s.section_id,
-    title: s.title,
-    description: s.description,
-    rows: s.rows.map((r) => {
-      const presentation = BUILDER_PRESENTATION[r.builder]
+/**
+ * Resolved page → per-type cards. Flattens every section's rows and groups by
+ * builder, computing each entry's deep-link (orphan → null → muted). Data-
+ * driven: N artifacts in a type → N entries; an unknown builder → its own card.
+ */
+export function toTypeCards(page: MoCResolvedPage): MoCTypeCard[] {
+  const byBuilder = new Map<string, MoCTypeCard["entries"]>()
+  for (const section of page.sections) {
+    for (const r of section.rows) {
       const path = r.resolution.available
         ? mocDeepLink({
             builder: r.builder,
@@ -65,15 +73,25 @@ function toLinkedSections(page: MoCResolvedPage): LinkedTableSection[] {
             routing: r.resolution.routing,
           })
         : null
-      return {
+      const entry = {
         row_id: r.row_id,
         label: r.resolution.label || r.label,
         href: path ? adminPath(path) : null,
         available: r.resolution.available && path !== null,
-        icon: presentation?.icon,
-        kindLabel: presentation?.label ?? r.builder,
+        unavailableReason: "orphan" as const,
       }
-    }),
+      const list = byBuilder.get(r.builder)
+      if (list) list.push(entry)
+      else byBuilder.set(r.builder, [entry])
+    }
+  }
+  const known = TYPE_ORDER.filter((b) => byBuilder.has(b))
+  const extra = [...byBuilder.keys()].filter((b) => !TYPE_ORDER.includes(b))
+  return [...known, ...extra].map((builder) => ({
+    builder,
+    title: CARD_TYPE[builder]?.title ?? builder,
+    icon: CARD_TYPE[builder]?.icon,
+    entries: byBuilder.get(builder) ?? [],
   }))
 }
 
@@ -158,64 +176,62 @@ export default function MoCPage() {
     )
   } else if (page) {
     body = (
-      <Panel>
-        <PanelHeader>
-          {renaming ? (
-            <div className="flex items-center gap-2">
-              <Input
-                value={draftTitle}
-                onChange={(e) => setDraftTitle(e.target.value)}
-                className="max-w-xs"
-                data-testid="moc-rename-input"
-              />
-              <Button size="sm" onClick={() => void saveRename()}>
-                Save
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setRenaming(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <PanelTitle data-testid="moc-page-title">{page.title}</PanelTitle>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setDraftTitle(page.title)
-                  setRenaming(true)
-                }}
-                data-testid="moc-rename"
-              >
-                Rename
-              </Button>
-            </div>
-          )}
-        </PanelHeader>
-        <PanelBody>
-          {page.description ? (
-            <p className="mb-4 text-body-sm text-content-muted">
-              {page.description}
-            </p>
-          ) : null}
-          <LinkedTable
-            sections={toLinkedSections(page)}
-            emptyTitle="No references yet"
-            emptyDescription="Add references from the builders (MoC-2 authoring)."
-            data-testid="moc-linked-table"
-          />
-        </PanelBody>
-      </Panel>
+      <div className="space-y-6">
+        {renaming ? (
+          <div className="flex items-center gap-2">
+            <Input
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              className="max-w-xs"
+              data-testid="moc-rename-input"
+            />
+            <Button size="sm" onClick={() => void saveRename()}>
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setRenaming(false)}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <h1
+              className="text-h2 font-semibold text-content-strong"
+              data-testid="moc-page-title"
+            >
+              {page.title}
+            </h1>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setDraftTitle(page.title)
+                setRenaming(true)
+              }}
+              data-testid="moc-rename"
+            >
+              Rename
+            </Button>
+          </div>
+        )}
+        {page.description ? (
+          <p className="text-body-sm text-content-muted">{page.description}</p>
+        ) : null}
+        <MoCTypeCards
+          cards={toTypeCards(page)}
+          emptyTitle="No references yet"
+          emptyDescription="Add references from the builders (MoC-2 authoring)."
+          data-testid="moc-type-cards"
+        />
+      </div>
     )
   }
 
   return (
+    // Full-bleed: cancel AdminLayout's px-6/py-6 so the dark two-pane reaches
+    // the content-area edges (the rail keeps its sunken tone; content is the
+    // base surface). No rounded card box.
     <div
-      className="flex min-h-[calc(100vh-7rem)] overflow-hidden rounded-lg border border-border-subtle bg-surface-base"
+      className="-mx-6 -my-6 flex min-h-[calc(100vh-7rem)] bg-surface-base"
       data-testid="moc-page"
     >
       <MoCVerticalsRail />
