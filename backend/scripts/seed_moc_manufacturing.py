@@ -180,6 +180,32 @@ def _resolve_artifacts(db) -> list[dict]:
     else:
         logger.warning("seed_moc_manufacturing: job-coordination focus absent")
 
+    # Demo-artifact focuses (option-3 3a/3b) — surface them in the Focuses CARD
+    # too (the task-table focus cells populate separately, via the task-catalog
+    # joins). Resolve-or-skip: seed_demo_artifact_focuses seeds them and runs
+    # earlier (alphabetical), so they resolve in the same deploy.
+    for slug, label in (
+        ("decision-triage", "Decision Triage"),
+        ("legacy-generation", "Legacy Generation"),
+    ):
+        f = db.execute(
+            sql_text(
+                "SELECT id FROM focus_templates WHERE template_slug = :ts "
+                "AND vertical = :v LIMIT 1"
+            ),
+            {"ts": slug, "v": VERTICAL},
+        ).first()
+        if f:
+            rows.append(
+                {"builder": "focuses", "artifact_id": f.id, "label": label,
+                 "icon": "focus"}
+            )
+        else:
+            logger.warning(
+                "seed_moc_manufacturing: %s focus absent (run "
+                "seed_demo_artifact_focuses first)", slug
+            )
+
     wid = db.execute(
         sql_text(
             "SELECT id FROM widget_definitions WHERE widget_id = 'ar_summary' "

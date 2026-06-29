@@ -86,30 +86,27 @@ def test_seed_idempotent_and_orphan_tolerant(db, caplog):
     assert billing.frequency == "End of Month"
     assert billing.task_type == "Accounting"
     assert "charge accounts" in billing.description
+
+    # Orphan-tolerance witnessed via the WORKFLOWS — reliably absent until
+    # 3c/3d (the focuses are seeded by seed_demo_artifact_focuses since 3a/3b,
+    # so they no longer exercise the absent path; the workflows still do).
     assert billing.workflow_template_id is None  # "Invoice and Statement Run" absent
+    legacy = _task(db, "New Legacy Order")
+    assert legacy.workflow_template_id is None  # "Legacy Order" absent
 
-    # No focus joins yet (the focuses are absent — orphan-tolerant, not a fail).
-    joins = db.execute(
-        sql_text(
-            "SELECT COUNT(*) FROM moc_task_catalog_focuses j "
-            "JOIN moc_task_catalog t ON t.id = j.task_catalog_id "
-            "WHERE t.vertical = :v"
-        ),
-        {"v": VERT},
-    ).scalar()
-    assert joins == 0
-
-    # The resolve-or-warn warnings fired (proving orphan-tolerance works).
+    # The resolve-or-warn warnings for the absent WORKFLOWS fired (proving
+    # orphan-tolerance — a missing ref logs + seeds an empty cell, never fails).
     warned = " ".join(r.message for r in caplog.records)
     assert "Legacy Order" in warned
-    assert "Decision Triage" in warned
+    assert "Invoice and Statement Run" in warned
 
 
-def test_seed_auto_populates_when_template_appears(db, caplog):
-    """Create the referenced 'Invoice and Statement Run' workflow + 'Decision
-    Triage' focus, then run the SAME seed — it now resolves them. Proves
-    option-3's artifacts will light up the cells automatically."""
-    # Real workflow_template named exactly as the seed references it.
+def test_seed_auto_populates_when_template_appears(db):
+    """Create the referenced 'Invoice and Statement Run' workflow (reliably the
+    only one — workflows are absent until 3c), then run the SAME seed — it now
+    resolves it. Proves option-3's artifacts light up the cells automatically.
+    (The FOCUS auto-populate is covered by test_demo_artifact_focuses_seed,
+    which seeds the real Decision Triage / Legacy Generation focuses.)"""
     wf_id = str(uuid.uuid4())
     db.execute(
         sql_text(
@@ -120,42 +117,10 @@ def test_seed_auto_populates_when_template_appears(db, caplog):
         {"id": wf_id, "wt": f"inv_stmt_{uuid.uuid4().hex[:6]}", "v": VERT},
     )
     db._created_artifacts.append(("workflow_templates", wf_id))
-
-    # Real focus_template named 'Decision Triage' (reuse an existing core).
-    core = db.execute(
-        sql_text(
-            "SELECT inherits_from_core_id, inherits_from_core_version "
-            "FROM focus_templates LIMIT 1"
-        )
-    ).first()
-    fc_id = str(uuid.uuid4())
-    db.execute(
-        sql_text(
-            "INSERT INTO focus_templates (id, scope, template_slug, "
-            "display_name, inherits_from_core_id, inherits_from_core_version, "
-            "vertical, is_active) VALUES (:id, 'vertical_default', :slug, "
-            "'Decision Triage', :core, :cver, :v, true)"
-        ),
-        {"id": fc_id, "slug": f"decision-triage-{uuid.uuid4().hex[:6]}",
-         "core": core[0], "cver": core[1], "v": VERT},
-    )
-    db._created_artifacts.append(("focus_templates", fc_id))
     db.commit()
 
     _seed_task_catalog(db)
 
-    # "Funeral Home Billing" now resolves its workflow + its Decision Triage focus.
+    # "Funeral Home Billing" now resolves its workflow (was empty before).
     billing = _task(db, "Funeral Home Billing")
     assert billing.workflow_template_id == wf_id
-
-    billing_focus_ids = [
-        r[0]
-        for r in db.execute(
-            sql_text(
-                "SELECT focus_template_id FROM moc_task_catalog_focuses "
-                "WHERE task_catalog_id = :tid"
-            ),
-            {"tid": billing.id},
-        )
-    ]
-    assert fc_id in billing_focus_ids
