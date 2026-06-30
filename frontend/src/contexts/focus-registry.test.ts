@@ -22,12 +22,13 @@ import {
 describe("focus-registry — seeded stubs", () => {
   it("has all 5 canonical core modes registered as test focuses", () => {
     const configs = listFocusConfigs()
-    const modes = configs.map((c) => c.mode).sort()
-    // Five canonical modes — order-independent because the registry
-    // is a Map and we sort on read. Matches the CoreMode union.
-    expect(modes).toEqual(
-      ["editCanvas", "kanban", "matrix", "singleRecord", "triageQueue"],
-    )
+    const modes = new Set(configs.map((c) => c.mode))
+    // All five canonical modes are present (at least one focus each).
+    // Set, not exact list — real focuses (e.g. decision-triage, a second
+    // triageQueue) register alongside the stubs. Matches the CoreMode union.
+    for (const m of ["editCanvas", "kanban", "matrix", "singleRecord", "triageQueue"]) {
+      expect(modes.has(m as (typeof configs)[number]["mode"])).toBe(true)
+    }
   })
 
   it("each seeded stub has the expected id + mode pairing", () => {
@@ -36,6 +37,14 @@ describe("focus-registry — seeded stubs", () => {
     expect(getFocusConfig("test-edit-canvas")?.mode).toBe("editCanvas")
     expect(getFocusConfig("test-triage-queue")?.mode).toBe("triageQueue")
     expect(getFocusConfig("test-matrix")?.mode).toBe("matrix")
+  })
+
+  it("decision-triage focus binds to the workflow_review_triage queue (queueId as data)", () => {
+    const decision = getFocusConfig("decision-triage")
+    expect(decision?.mode).toBe("triageQueue")
+    expect(decision?.displayName).toBe("Decision Triage")
+    // The Decide-as-Focus binding lives in config, not hardcode (3a.1-B).
+    expect(decision?.queueId).toBe("workflow_review_triage")
   })
 
   it("returns null for unknown focus ids", () => {

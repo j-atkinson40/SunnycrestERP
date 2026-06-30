@@ -223,6 +223,14 @@ export interface FocusConfig {
    *  composition's `focus_type="scheduling"` row resolves
    *  regardless of the descriptive id. */
   compositionFocusType?: string
+  /** Which triage queue a `mode: "triageQueue"` Focus renders. The
+   *  Decide-primitive binding as DATA, not hardcode: TriageQueueCore
+   *  reads this to mount the real Phase 5 triage workspace scoped to
+   *  the queue (3a.1-B). The next triage Focus (cash receipts,
+   *  month-end) sets its own `queueId` — same core renders it. Maps to
+   *  a backend `triage_queues.queue_id` (e.g. "workflow_review_triage").
+   *  Ignored by non-triageQueue modes. */
+  queueId?: string
 }
 
 
@@ -328,6 +336,17 @@ registerFocus({
   id: "test-triage-queue",
   mode: "triageQueue",
   displayName: "Triage-queue stub",
+})
+
+// Decision Triage — the Decide-primitive-as-Focus (3a.1-B). Bound to the
+// workflow_review_triage queue, where the Legacy Order workflow stages its
+// proof for approval. Open via ?focus=decision-triage. The next triage Focus
+// (cash receipts, month-end) registers the same way with its own queueId.
+registerFocus({
+  id: "decision-triage",
+  mode: "triageQueue",
+  displayName: "Decision Triage",
+  queueId: "workflow_review_triage",
 })
 
 registerFocus({

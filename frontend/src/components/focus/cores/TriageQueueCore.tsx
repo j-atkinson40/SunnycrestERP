@@ -1,65 +1,52 @@
 /**
- * TriageQueueCore — stub renderer for Focus `triageQueue` mode.
+ * TriageQueueCore — the Decide-primitive-as-Focus (3a.1-B).
  *
- * Phase A Session 2 stub. Renders 4–5 placeholder rows with keyboard-
- * shortcut badges (1 / 2 / 3 / 4 / 5) on the left — visually matches
- * the superhuman-style queue-processing pattern described in PA §5.2.
- * The mode is what PO Review Focus + Personalization Request
- * Processing Focus + Compliance Gap Resolution Focus will use.
+ * Renders a REAL triage queue inside the Focus shell by mounting the existing
+ * Phase 5 triage workspace (TriageSessionProvider + the shared
+ * `TriageWorkspace`), scoped to the queue named by `config.queueId`. Not a
+ * reimplementation — the decision logic + the workflow_review approve wiring
+ * (approve → commitWorkflowReviewDecision → the run advances) live inside the
+ * mounted Phase 5 components and come along for free.
  *
- * Real triage keyboard handling (approve / skip / snooze shortcuts,
- * auto-advance to next item, queue depletion UI) lands when the first
- * real triage-queue Focus ships. Existing Phase 5 triage-workspace
- * surfaces (/triage/*) are a separate non-Focus implementation — the
- * triageQueue core mode will subsume them in post-September cleanup.
+ * Binding is DATA: a triageQueue Focus declares its queue via
+ * `FocusConfig.queueId`. `decision-triage` binds to `workflow_review_triage`
+ * (where the Legacy Order workflow stages its proof). The next triage Focus
+ * (cash receipts, month-end) sets its own queueId — same core renders it.
  *
- * Distinct from backend `"triage_queue"` pin_type literal: that's a
- * pinnable-target-kind namespace (what you can pin to a space);
- * `triageQueue` is a core-mode namespace (how a Focus renders). Same
- * word, different concepts.
+ * A triageQueue Focus with no queueId renders a deliberate "not bound" state
+ * (§18 graceful empty) rather than the old hardcoded placeholder rows.
  */
 
+import { TriageSessionProvider } from "@/contexts/triage-session-context"
+import { TriageWorkspace } from "@/components/triage/TriageWorkspace"
 import { CoreHeader, EscToDismissHint, type CoreProps } from "./_shared"
 
 
-const ITEMS = [
-  { title: "Review PO #1042", subtitle: "Acme Supplies · $3,200" },
-  { title: "Approve proof — Hopkins FH", subtitle: "Monticello · engraving v2" },
-  { title: "Resolve compliance gap", subtitle: "OSHA 300 log — missing Q2 entries" },
-  { title: "Personalization request — Andersen", subtitle: "Vault customization" },
-  { title: "Check cash-receipt mismatch", subtitle: "Invoice 2026-0033 · $4,750" },
-]
-
-
 export function TriageQueueCore({ config }: CoreProps) {
+  if (!config.queueId) {
+    return (
+      <div className="flex h-full flex-col gap-4">
+        <CoreHeader modeLabel="triageQueue" title={config.displayName} />
+        <div className="flex flex-1 items-center justify-center rounded-md border border-border-subtle bg-surface-sunken/40 p-8">
+          <p className="max-w-sm text-center text-body-sm text-content-muted">
+            This triage Focus isn&rsquo;t bound to a queue. Register it with a{" "}
+            <code className="font-mono text-micro">queueId</code> to render a
+            live decision queue.
+          </p>
+        </div>
+        <EscToDismissHint />
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col gap-4">
       <CoreHeader modeLabel="triageQueue" title={config.displayName} />
-
-      <div className="flex flex-1 flex-col overflow-auto rounded-md border border-border-subtle bg-surface-sunken/40">
-        {ITEMS.map((item, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 border-b border-border-subtle/60 px-4 py-3 last:border-b-0 hover:bg-surface-elevated/60"
-          >
-            <span
-              aria-label={`Shortcut ${i + 1}`}
-              className="flex h-6 w-6 flex-none items-center justify-center rounded-md border border-border-subtle bg-surface-elevated font-mono text-micro text-content-strong"
-            >
-              {i + 1}
-            </span>
-            <div className="flex flex-1 flex-col">
-              <span className="text-body-sm font-medium text-content-strong">
-                {item.title}
-              </span>
-              <span className="text-body-sm text-content-muted">
-                {item.subtitle}
-              </span>
-            </div>
-          </div>
-        ))}
+      <div className="min-h-0 flex-1 overflow-auto">
+        <TriageSessionProvider queueId={config.queueId}>
+          <TriageWorkspace variant="focus" />
+        </TriageSessionProvider>
       </div>
-
       <EscToDismissHint />
     </div>
   )
