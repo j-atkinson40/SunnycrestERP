@@ -21,6 +21,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from app.models.moc_task_catalog import MoCTaskCatalog, MoCTaskCatalogFocus
@@ -142,3 +143,167 @@ def upsert_task(
     ]
     db.flush()
     return task
+
+
+# ── Full CRUD (Task Editing 2a) — the editable write path ──────────────
+
+_UNSET: Any = object()
+
+
+class TaskValidationError(ValueError):
+    """A rejected task write (bad vocabulary value / unresolved ref) — HTTP 400."""
+
+
+def _validate_task_refs(
+    db: Session,
+    *,
+    vertical: str | None,
+    frequency: str | None,
+    task_type: str | None,
+    workflow_template_id: str | None,
+    focus_template_ids: Sequence[str],
+) -> None:
+    """Referential guard (NOT a silent-accept): frequency/type must exist in the
+    vocabulary visible to `vertical`; the workflow/focus refs must resolve. None
+    skips (clearing a field is valid)."""
+    from app.services.maps_of_content import vocabulary
+
+    if frequency is not None and not vocabulary.value_exists(
+        db, kind="frequency", value=frequency, vertical=vertical
+    ):
+        raise TaskValidationError(
+            f"frequency {frequency!r} is not in the vocabulary for vertical "
+            f"{vertical!r} — add it to the vocabulary first"
+        )
+    if task_type is not None and not vocabulary.value_exists(
+        db, kind="type", value=task_type, vertical=vertical
+    ):
+        raise TaskValidationError(
+            f"task_type {task_type!r} is not in the vocabulary for vertical "
+            f"{vertical!r} — add it to the vocabulary first"
+        )
+    if workflow_template_id is not None and db.execute(
+        sql_text("SELECT 1 FROM workflow_templates WHERE id = :id"),
+        {"id": workflow_template_id},
+    ).first() is None:
+        raise TaskValidationError(
+            f"workflow_template_id {workflow_template_id!r} does not resolve"
+        )
+    for fid in focus_template_ids:
+        if db.execute(
+            sql_text("SELECT 1 FROM focus_templates WHERE id = :id"), {"id": fid}
+        ).first() is None:
+            raise TaskValidationError(f"focus_template_id {fid!r} does not resolve")
+
+
+def get_task(db: Session, *, task_id: str) -> MoCTaskCatalog | None:
+    return db.get(MoCTaskCatalog, task_id)
+
+
+def create_task(
+    db: Session,
+    *,
+    vertical: str,
+    name: str,
+    scope: str = "vertical_default",
+    tenant_id: str | None = None,
+    icon: str | None = None,
+    frequency: str | None = None,
+    task_type: str | None = None,
+    description: str | None = None,
+    workflow_template_id: str | None = None,
+    focus_template_ids: Sequence[str] = (),
+    display_order: int = 0,
+    actor_id: str | None = None,
+) -> MoCTaskCatalog:
+    """Validate + insert a NEW task (rejects a duplicate name in the same scope —
+    distinct from upsert_task's find-or-create). Caller commits."""
+    dup = (
+        db.query(MoCTaskCatalog)
+        .filter(
+            MoCTaskCatalog.scope == scope,
+            MoCTaskCatalog.vertical == vertical,
+            MoCTaskCatalog.tenant_id == tenant_id,
+            MoCTaskCatalog.name == name,
+            MoCTaskCatalog.is_active.is_(True),
+        )
+        .first()
+    )
+    if dup is not None:
+        raise TaskValidationError(f"a task named {name!r} already exists in this scope")
+    _validate_task_refs(
+        db, vertical=vertical, frequency=frequency, task_type=task_type,
+        workflow_template_id=workflow_template_id, focus_template_ids=focus_template_ids,
+    )
+    return upsert_task(
+        db, vertical=vertical, name=name, scope=scope, tenant_id=tenant_id,
+        icon=icon, frequency=frequency, task_type=task_type, description=description,
+        workflow_template_id=workflow_template_id,
+        focus_template_ids=focus_template_ids, display_order=display_order,
+        actor_id=actor_id,
+    )
+
+
+def patch_task(
+    db: Session,
+    *,
+    task_id: str,
+    name: Any = _UNSET,
+    icon: Any = _UNSET,
+    frequency: Any = _UNSET,
+    task_type: Any = _UNSET,
+    description: Any = _UNSET,
+    workflow_template_id: Any = _UNSET,
+    focus_template_ids: Any = _UNSET,
+    display_order: Any = _UNSET,
+    actor_id: str | None = None,
+) -> MoCTaskCatalog:
+    """Partial update by id. _UNSET = leave alone; None = clear. Validates only
+    the fields being SET. Caller commits."""
+    task = db.get(MoCTaskCatalog, task_id)
+    if task is None or not task.is_active:
+        raise TaskValidationError(f"task {task_id!r} not found")
+
+    new_focus = None if focus_template_ids is _UNSET else list(focus_template_ids)
+    _validate_task_refs(
+        db,
+        vertical=task.vertical,
+        frequency=None if frequency is _UNSET else frequency,
+        task_type=None if task_type is _UNSET else task_type,
+        workflow_template_id=None if workflow_template_id is _UNSET else workflow_template_id,
+        focus_template_ids=new_focus or (),
+    )
+
+    if name is not _UNSET:
+        task.name = name
+    if icon is not _UNSET:
+        task.icon = icon
+    if frequency is not _UNSET:
+        task.frequency = frequency
+    if task_type is not _UNSET:
+        task.task_type = task_type
+    if description is not _UNSET:
+        task.description = description
+    if workflow_template_id is not _UNSET:
+        task.workflow_template_id = workflow_template_id
+    if display_order is not _UNSET:
+        task.display_order = display_order
+    if new_focus is not None:
+        task.focuses = [
+            MoCTaskCatalogFocus(focus_template_id=fid, display_order=i)
+            for i, fid in enumerate(new_focus)
+        ]
+    task.updated_by = actor_id
+    db.flush()
+    return task
+
+
+def delete_task(db: Session, *, task_id: str) -> bool:
+    """Hard-delete the task; the focus-join rows clear via delete-orphan cascade.
+    Returns False if the task didn't exist. Caller commits."""
+    task = db.get(MoCTaskCatalog, task_id)
+    if task is None:
+        return False
+    db.delete(task)
+    db.flush()
+    return True

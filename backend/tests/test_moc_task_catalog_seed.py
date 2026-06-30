@@ -50,12 +50,15 @@ def db():
 
 
 def _count_tasks(db) -> int:
+    # Scope to the two demo tasks this seed owns. The workflow-backfill (Build
+    # 1+1b) legitimately adds 18 more manufacturing tasks, so a total count is no
+    # longer "2" — this test asserts THESE two seed idempotently, not the total.
     return db.execute(
         sql_text(
             "SELECT COUNT(*) FROM moc_task_catalog WHERE vertical = :v "
-            "AND scope = 'vertical_default'"
+            "AND scope = 'vertical_default' AND name = ANY(:names)"
         ),
-        {"v": VERT},
+        {"v": VERT, "names": list(TASK_NAMES)},
     ).scalar()
 
 

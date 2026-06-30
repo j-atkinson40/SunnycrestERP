@@ -30,12 +30,181 @@ from app.database import get_db
 from app.models.moc_page import MoCPage
 from app.models.platform_user import PlatformUser
 from app.services import maps_of_content as moc
-from app.services.maps_of_content.task_catalog import resolve_task_catalog
+from app.services.maps_of_content import vocabulary as vocab
+from app.services.maps_of_content.task_catalog import (
+    TaskValidationError,
+    create_task,
+    delete_task,
+    patch_task,
+    resolve_task_catalog,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 Scope = Literal["platform_default", "vertical_default", "tenant_override"]
+
+
+# ─── Task vocabulary (Task Editing 2a) — constrained-editable value store ──
+
+
+class _CreateVocab(BaseModel):
+    kind: Literal["frequency", "type"]
+    value: str
+    scope: Scope = "platform_default"
+    vertical: str | None = None
+    display_order: int = 0
+
+
+@router.get("/vocabulary")
+def admin_list_vocabulary(
+    kind: Literal["frequency", "type"] | None = Query(None),
+    vertical: str | None = Query(None),
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The active vocabulary for the picker — platform values + (if given) the
+    vertical's. The constrained set a task's frequency/type must come from."""
+    rows = vocab.list_values(db, kind=kind, vertical=vertical)
+    return [
+        {"id": r.id, "kind": r.kind, "value": r.value, "scope": r.scope,
+         "vertical": r.vertical, "display_order": r.display_order,
+         "is_active": r.is_active}
+        for r in rows
+    ]
+
+
+@router.post("/vocabulary", status_code=201)
+def admin_add_vocabulary(
+    body: _CreateVocab,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Add a value (find-or-create; reactivates a soft-deleted match). The
+    editable part — a new value is a row, no code change."""
+    try:
+        row = vocab.add_value(
+            db, kind=body.kind, value=body.value, scope=body.scope,
+            vertical=body.vertical, display_order=body.display_order,
+            actor_id=admin.id,
+        )
+        db.commit()
+    except vocab.VocabularyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"id": row.id, "kind": row.kind, "value": row.value, "scope": row.scope,
+            "vertical": row.vertical, "is_active": row.is_active}
+
+
+@router.delete("/vocabulary/{value_id}", status_code=200)
+def admin_deactivate_vocabulary(
+    value_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Soft-delete (is_active=False) — tasks referencing the value don't orphan."""
+    try:
+        row = vocab.deactivate_value(db, value_id=value_id, actor_id=admin.id)
+        db.commit()
+    except vocab.VocabularyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"id": row.id, "is_active": row.is_active}
+
+
+# ─── Task catalog CRUD (Task Editing 2a) ──────────────────────────────
+
+
+class _CreateTask(BaseModel):
+    vertical: str
+    name: str
+    scope: Scope = "vertical_default"
+    tenant_id: str | None = None
+    icon: str | None = None
+    frequency: str | None = None
+    task_type: str | None = None
+    description: str | None = None
+    workflow_template_id: str | None = None
+    focus_template_ids: list[str] = []
+    display_order: int = 0
+
+
+class _PatchTask(BaseModel):
+    # All optional; only the fields the client SENDS are applied (model_fields_set).
+    name: str | None = None
+    icon: str | None = None
+    frequency: str | None = None
+    task_type: str | None = None
+    description: str | None = None
+    workflow_template_id: str | None = None
+    focus_template_ids: list[str] | None = None
+    display_order: int | None = None
+
+
+def _task_payload(task) -> dict:
+    return {
+        "id": task.id, "vertical": task.vertical, "scope": task.scope,
+        "name": task.name, "icon": task.icon, "frequency": task.frequency,
+        "task_type": task.task_type, "description": task.description,
+        "workflow_template_id": task.workflow_template_id,
+        "focus_template_ids": [f.focus_template_id for f in task.focuses],
+        "display_order": task.display_order,
+    }
+
+
+@router.post("/tasks", status_code=201)
+def admin_create_task(
+    body: _CreateTask,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Create a task (validates frequency/type against the vocabulary + the
+    workflow/focus refs). 400 on a bad value (never silently accepted)."""
+    try:
+        task = create_task(
+            db, vertical=body.vertical, name=body.name, scope=body.scope,
+            tenant_id=body.tenant_id, icon=body.icon, frequency=body.frequency,
+            task_type=body.task_type, description=body.description,
+            workflow_template_id=body.workflow_template_id,
+            focus_template_ids=body.focus_template_ids,
+            display_order=body.display_order, actor_id=admin.id,
+        )
+        db.commit()
+    except TaskValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _task_payload(task)
+
+
+@router.patch("/tasks/{task_id}")
+def admin_patch_task(
+    task_id: str,
+    body: _PatchTask,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Partial update — only the sent fields apply (a sent null clears a field)."""
+    kwargs = {k: getattr(body, k) for k in body.model_fields_set}
+    try:
+        task = patch_task(db, task_id=task_id, actor_id=admin.id, **kwargs)
+        db.commit()
+    except TaskValidationError as exc:
+        db.rollback()
+        code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=code, detail=str(exc))
+    return _task_payload(task)
+
+
+@router.delete("/tasks/{task_id}", status_code=200)
+def admin_delete_task(
+    task_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a task; the focus-join rows clear via delete-orphan cascade."""
+    deleted = delete_task(db, task_id=task_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="task not found")
+    db.commit()
+    return {"deleted": True, "id": task_id}
 
 
 # ─── Pydantic shapes ─────────────────────────────────────────────
