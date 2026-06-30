@@ -175,6 +175,7 @@ from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.moc_page import MoCPage
 from app.models.moc_task_catalog import MoCTaskCatalog, MoCTaskCatalogFocus
+from app.models.moc_task_vocabulary import MoCTaskVocabulary
 from app.models.notification import Notification
 from app.models.onboarding import OnboardingChecklist, OnboardingTemplate
 from app.models.onboarding_checklist import TenantOnboardingChecklist
@@ -477,6 +478,7 @@ __all__ = [
     "MoCPage",
     "MoCTaskCatalog",
     "MoCTaskCatalogFocus",
+    "MoCTaskVocabulary",
     "FocusShare",
     "FocusShareEvent",
     "JCFThreadMessage",
