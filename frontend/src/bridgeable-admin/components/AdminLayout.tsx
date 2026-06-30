@@ -4,7 +4,6 @@ import { useAdminAuth } from "../lib/admin-auth-context"
 import { adminPath } from "../lib/admin-routes"
 import { AdminHeader } from "./AdminHeader"
 import { EnvironmentBanner } from "./EnvironmentBanner"
-import { AdminCommandBarProvider } from "./AdminCommandBar"
 
 /**
  * Routes that fill the frame below the nav (full width + height, no centered
@@ -30,7 +29,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const fullBleed = isFullBleedRoute(pathname)
 
   return (
-    <AdminCommandBarProvider>
+    // The command-bar provider + the omnipresent AuthoringAssistantBar are
+    // hoisted ABOVE the top-level <Routes> in BridgeableAdminApp (Shell-1) so
+    // they survive MoC↔Studio navigation — this layout no longer mounts them.
+    <>
       {/* Full-bleed routes get a flex column so <main> can flex-1 to fill the
           height below the nav. Non-full-bleed routes keep the EXACT pre-A.1
           shell + <main> (block parent, centered 1600 box) — byte-identical, so
@@ -51,6 +53,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           <main className="px-6 py-6 max-w-[1600px] mx-auto">{children}</main>
         )}
       </div>
-    </AdminCommandBarProvider>
+    </>
   )
 }

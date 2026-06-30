@@ -24,11 +24,22 @@ interface CommandBarContextValue {
 
 const CommandBarContext = createContext<CommandBarContextValue | null>(null)
 
-export function AdminCommandBarProvider({ children }: { children: ReactNode }) {
+export function AdminCommandBarProvider({
+  children,
+  active = true,
+}: {
+  children: ReactNode
+  /** When false, the Cmd+K listener no-ops + the dialog never renders. Shell-1
+   *  hoists this provider above the top-level <Routes> (omnipresent) and passes
+   *  `active={authed}` so the bar stays inert on the login route — preserving the
+   *  pre-hoist behavior where the command bar only existed for authed pages. */
+  active?: boolean
+}) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<"command" | "chat">("command")
 
   useEffect(() => {
+    if (!active) return
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault()
@@ -41,12 +52,12 @@ export function AdminCommandBarProvider({ children }: { children: ReactNode }) {
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [])
+  }, [active])
 
   return (
     <CommandBarContext.Provider value={{ open, setOpen, mode }}>
       {children}
-      {open && <CommandBarDialog />}
+      {active && open && <CommandBarDialog />}
     </CommandBarContext.Provider>
   )
 }

@@ -1,6 +1,8 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, type ReactNode } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
-import { AdminAuthProvider } from "./lib/admin-auth-context"
+import { AdminAuthProvider, useAdminAuth } from "./lib/admin-auth-context"
+import { AdminCommandBarProvider } from "./components/AdminCommandBar"
+import { AuthoringAssistantBar } from "./components/AuthoringAssistantBar"
 import { AdminLayout } from "./components/AdminLayout"
 import { VisualEditorLayout } from "./components/VisualEditorLayout"
 import ChromePrimitivesDemoPage from "./pages/visual-editor/ChromePrimitivesDemoPage"
@@ -181,6 +183,7 @@ export function BridgeableAdminApp() {
 
   return (
     <AdminAuthProvider>
+      <AdminShellChrome>
       <Routes>
         {/* Login is unauthenticated — handled before either layout. */}
         <Route path="/bridgeable-admin/login" element={<AdminLogin />} />
@@ -249,7 +252,25 @@ export function BridgeableAdminApp() {
         {/* Catch-all redirect to home */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </AdminShellChrome>
     </AdminAuthProvider>
+  )
+}
+
+/**
+ * AdminShellChrome — the Authoring Assistant Shell-1 mount. Hoists the
+ * command-bar provider + the omnipresent AuthoringAssistantBar ABOVE the
+ * top-level <Routes>, so both survive navigation across the sibling layout
+ * branches (MoC / Studio / operational) instead of unmounting with AdminLayout.
+ * Gated on auth: the bar hides + the Cmd+K listener is inert on the login route.
+ */
+function AdminShellChrome({ children }: { children: ReactNode }) {
+  const { user } = useAdminAuth()
+  return (
+    <AdminCommandBarProvider active={!!user}>
+      {user ? <AuthoringAssistantBar /> : null}
+      {children}
+    </AdminCommandBarProvider>
   )
 }
 
