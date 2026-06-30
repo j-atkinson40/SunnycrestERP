@@ -1,5 +1,5 @@
 /**
- * Maps of Content — Tasks table (MoC-2c).
+ * Maps of Content — Tasks table (MoC-2c read; MoC-2b editable).
  *
  * A Bridgeable-native database table under the type-cards: one row per
  * vertical task (the moc_task_catalog). Descriptive columns (Task / Frequency /
@@ -7,22 +7,36 @@
  * cells are deep-link pills built with the SAME mocDeepLink → adminPath path
  * the cards use — byte-identical hrefs, same brass-link treatment.
  *
- * ORPHAN-TOLERANT empty state (the §18 graceful-empty discipline, getting its
- * first real render): a task whose workflow/focus reference isn't seeded yet
- * (the queued option-3 artifacts) renders a DELIBERATE muted em-dash, never a
- * blank that reads as a render bug. Read-only this phase (authoring deferred).
+ * MoC-2b — HYBRID EDITING. The constrained/text fields edit inline: Frequency +
+ * Type are VocabCell quick-picks reading the editable vocabulary (with +Add-
+ * value in the menu); Description edits in place. Relationships (Workflow single,
+ * Focuses multi) + create-new + delete live in the TaskEditorPanel. Every write
+ * goes through 2a's referentially-validated API; a rejected PATCH surfaces the
+ * server's reason and the cell reverts (no silent swallow at the UI layer).
+ *
+ * ORPHAN-TOLERANT empty state (the §18 graceful-empty discipline): a task whose
+ * workflow/focus reference isn't seeded yet renders a DELIBERATE muted em-dash,
+ * never a blank that reads as a render bug.
  */
+import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowUpRight, type LucideIcon } from "lucide-react"
+import { ArrowUpRight, Pencil, Plus, Trash2, type LucideIcon } from "lucide-react"
 import { FileText, Receipt, Sparkles } from "lucide-react"
 
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import { mocDeepLink } from "@/bridgeable-admin/lib/moc-deep-link"
 import { Icon } from "@/components/ui/icon"
-import type {
-  MoCResolvedArtifact,
-  MoCTask,
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  deleteTask,
+  patchTask,
+  type MoCResolvedArtifact,
+  type MoCTask,
+  type PatchTaskInput,
 } from "@/bridgeable-admin/services/moc-service"
+import { VocabCell } from "./task-editing/VocabCell"
+import { TaskEditorPanel, errMsg } from "./task-editing/TaskEditorPanel"
 
 const TASK_ICONS: Record<string, LucideIcon> = {
   receipt: Receipt,
@@ -57,45 +71,137 @@ function EmptyCell() {
 
 export interface MoCTaskTableProps {
   tasks: MoCTask[]
+  vertical: string
+  /** Refetch after any write (the pending-then-refetch contract). */
+  onChanged: () => void
   "data-testid"?: string
 }
 
-export function MoCTaskTable({ tasks, "data-testid": testId }: MoCTaskTableProps) {
-  if (tasks.length === 0) return null
+export function MoCTaskTable({
+  tasks, vertical, onChanged, "data-testid": testId,
+}: MoCTaskTableProps) {
+  const [error, setError] = useState<string | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [editingTask, setEditingTask] = useState<MoCTask | null>(null)
 
+  function openCreate() {
+    setEditingTask(null)
+    setPanelOpen(true)
+  }
+  function openEdit(task: MoCTask) {
+    setEditingTask(task)
+    setPanelOpen(true)
+  }
+
+  // The section self-hid pre-2b when empty; now it always renders so the
+  // "Add task" affordance is reachable on an empty vertical.
   return (
     <section data-testid={testId} className="space-y-3">
-      <h2 className="text-h4 font-semibold text-content-strong">Tasks</h2>
-      <div className="overflow-hidden rounded-lg border border-border-subtle bg-surface-elevated">
-        <table className="w-full border-collapse text-body-sm">
-          <thead>
-            <tr className="border-b border-border-subtle bg-surface-sunken text-left">
-              {["Task", "Frequency", "Workflow Used", "Focus's Used", "Type", "Description"].map(
-                (h) => (
-                  <th
-                    key={h}
-                    className="px-3 py-2 font-medium text-content-muted"
-                  >
-                    {h}
-                  </th>
-                ),
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map((task) => (
-              <TaskRow key={task.id} task={task} />
-            ))}
-          </tbody>
-        </table>
+      <div className="flex items-center justify-between">
+        <h2 className="text-h4 font-semibold text-content-strong">Tasks</h2>
+        <Button size="sm" variant="outline" onClick={openCreate} data-testid="moc-task-add">
+          <Plus size={15} /> Add task
+        </Button>
       </div>
+
+      {error ? (
+        <div
+          className="flex items-start justify-between gap-3 rounded-md border border-status-error/30 bg-status-error-muted px-3 py-2 text-body-sm text-status-error"
+          data-testid="moc-task-error"
+        >
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="font-medium underline">
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {tasks.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border-base bg-surface-elevated px-4 py-8 text-center text-body-sm text-content-subtle">
+          No tasks yet. Add one to start mapping this vertical's work.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border-subtle bg-surface-elevated">
+          <table className="w-full border-collapse text-body-sm">
+            <thead>
+              <tr className="border-b border-border-subtle bg-surface-sunken text-left">
+                {["Task", "Frequency", "Workflow Used", "Focus's Used", "Type", "Description", ""].map(
+                  (h, i) => (
+                    <th
+                      key={h || `actions-${i}`}
+                      className="px-3 py-2 font-medium text-content-muted"
+                    >
+                      {h}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  vertical={vertical}
+                  onChanged={onChanged}
+                  onError={setError}
+                  onEdit={() => openEdit(task)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <TaskEditorPanel
+        isOpen={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        vertical={vertical}
+        task={editingTask}
+        onSaved={onChanged}
+        onError={setError}
+      />
     </section>
   )
 }
 
-function TaskRow({ task }: { task: MoCTask }) {
+function TaskRow({
+  task, vertical, onChanged, onError, onEdit,
+}: {
+  task: MoCTask
+  vertical: string
+  onChanged: () => void
+  onError: (msg: string) => void
+  onEdit: () => void
+}) {
   const TaskIcon = (task.icon && TASK_ICONS[task.icon]) || FileText
   const wfHref = task.workflow ? artifactHref("workflows", task.workflow) : null
+  const [deleting, setDeleting] = useState(false)
+
+  /** Pending-then-refetch: PATCH, then refetch on success; on failure surface
+   * the server's reason — no refetch, so the cell keeps showing the old value
+   * (the revert). */
+  async function patchField(input: PatchTaskInput) {
+    try {
+      await patchTask(task.id, input)
+      onChanged()
+    } catch (e) {
+      onError(errMsg(e))
+    }
+  }
+
+  async function remove() {
+    if (!window.confirm(`Delete task "${task.name}"? This can't be undone.`)) return
+    setDeleting(true)
+    try {
+      await deleteTask(task.id)
+      onChanged()
+    } catch (e) {
+      onError(errMsg(e))
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <tr
@@ -109,11 +215,18 @@ function TaskRow({ task }: { task: MoCTask }) {
           {task.name}
         </span>
       </td>
-      {/* Frequency */}
+      {/* Frequency — inline quick-pick */}
       <td className="px-3 py-2 text-content-muted">
-        {task.frequency || <EmptyCell />}
+        <VocabCell
+          kind="frequency"
+          value={task.frequency ?? null}
+          vertical={vertical}
+          onSelect={(v) => void patchField({ frequency: v })}
+        >
+          {task.frequency || <EmptyCell />}
+        </VocabCell>
       </td>
-      {/* Workflow Used — deep-link or deliberate em-dash */}
+      {/* Workflow Used — deep-link or deliberate em-dash (edit via panel) */}
       <td className="px-3 py-2" data-testid={`moc-task-workflow-${task.id}`}>
         {!task.workflow ? (
           <EmptyCell />
@@ -160,24 +273,111 @@ function TaskRow({ task }: { task: MoCTask }) {
           </span>
         )}
       </td>
-      {/* Type — colored pill */}
+      {/* Type — inline quick-pick rendering the colored pill */}
       <td className="px-3 py-2">
-        {task.task_type ? (
-          <span
-            className={`inline-block rounded-full px-2 py-0.5 text-caption font-medium ${
-              TYPE_PILL[task.task_type] ?? TYPE_PILL_DEFAULT
-            }`}
-          >
-            {task.task_type}
-          </span>
-        ) : (
-          <EmptyCell />
-        )}
+        <VocabCell
+          kind="type"
+          value={task.task_type ?? null}
+          vertical={vertical}
+          onSelect={(v) => void patchField({ task_type: v })}
+        >
+          {task.task_type ? (
+            <span
+              className={`inline-block rounded-full px-2 py-0.5 text-caption font-medium ${
+                TYPE_PILL[task.task_type] ?? TYPE_PILL_DEFAULT
+              }`}
+            >
+              {task.task_type}
+            </span>
+          ) : (
+            <EmptyCell />
+          )}
+        </VocabCell>
       </td>
-      {/* Description */}
+      {/* Description — inline text edit */}
       <td className="px-3 py-2 text-content-muted">
-        {task.description || <EmptyCell />}
+        <DescriptionCell
+          value={task.description ?? null}
+          onCommit={(v) => patchField({ description: v })}
+        />
+      </td>
+      {/* Row actions — edit relationships / delete */}
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Edit relationships"
+            data-testid={`moc-task-edit-${task.id}`}
+            className="focus-ring-accent rounded-sm p-1 text-content-subtle hover:bg-surface-sunken hover:text-content-base"
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void remove()}
+            disabled={deleting}
+            title="Delete task"
+            data-testid={`moc-task-delete-${task.id}`}
+            className="focus-ring-accent rounded-sm p-1 text-content-subtle hover:bg-status-error-muted hover:text-status-error disabled:opacity-40"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </td>
     </tr>
+  )
+}
+
+/** Click-to-edit description: shows text (or em-dash), becomes a textarea on
+ * click, commits on blur / Enter, cancels on Escape. */
+function DescriptionCell({
+  value, onCommit,
+}: {
+  value: string | null
+  onCommit: (v: string | null) => Promise<void> | void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState("")
+
+  function start() {
+    setDraft(value ?? "")
+    setEditing(true)
+  }
+  function commit() {
+    setEditing(false)
+    const next = draft.trim() || null
+    if (next !== (value ?? null)) void onCommit(next)
+  }
+
+  if (editing) {
+    return (
+      <Textarea
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault()
+            commit()
+          }
+          if (e.key === "Escape") setEditing(false)
+        }}
+        rows={2}
+        className="min-w-[180px] text-body-sm"
+        data-testid="moc-task-description-input"
+      />
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={start}
+      data-testid="moc-task-description-cell"
+      className="-mx-1 block w-full rounded-sm px-1 text-left hover:bg-surface-sunken"
+    >
+      {value || <EmptyCell />}
+    </button>
   )
 }

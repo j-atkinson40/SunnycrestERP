@@ -136,6 +136,17 @@ export default function MoCPage() {
     }
   }, [vertical])
 
+  // After a task write (2b), refetch only the catalog — the page/cards are
+  // untouched, so no need to re-walk the 3-tier resolver. Empty array on
+  // failure keeps the table coherent.
+  const reloadTasks = React.useCallback(async () => {
+    try {
+      setTasks(await readTaskCatalog({ vertical }))
+    } catch {
+      setTasks([])
+    }
+  }, [vertical])
+
   React.useEffect(() => {
     void load()
   }, [load])
@@ -233,7 +244,12 @@ export default function MoCPage() {
           emptyDescription="Add references from the builders (MoC-2 authoring)."
           data-testid="moc-type-cards"
         />
-        <MoCTaskTable tasks={tasks} data-testid="moc-task-table" />
+        <MoCTaskTable
+          tasks={tasks}
+          vertical={vertical}
+          onChanged={() => void reloadTasks()}
+          data-testid="moc-task-table"
+        />
       </div>
     )
   }
