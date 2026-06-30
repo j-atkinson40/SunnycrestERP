@@ -162,6 +162,28 @@ def _resolve_artifacts(db) -> list[dict]:
     else:
         logger.warning("seed_moc_manufacturing: quote_to_pour workflow absent")
 
+    # Demo-artifact workflow (option-3 3c) — surface "Invoice and Statement Run"
+    # in the Workflows CARD too (the task-table Workflow cell populates via the
+    # task-catalog ref). Resolve-or-skip: seed_demo_artifact_workflows seeds it
+    # and runs earlier (alphabetical), so it resolves same-deploy.
+    isr = db.execute(
+        sql_text(
+            "SELECT id FROM workflow_templates WHERE workflow_type = "
+            "'invoice_and_statement_run' AND vertical = :v LIMIT 1"
+        ),
+        {"v": VERTICAL},
+    ).first()
+    if isr:
+        rows.append(
+            {"builder": "workflows", "artifact_id": isr.id,
+             "label": "Invoice and Statement Run", "icon": "workflow"}
+        )
+    else:
+        logger.warning(
+            "seed_moc_manufacturing: invoice_and_statement_run workflow absent "
+            "(run seed_demo_artifact_workflows first)"
+        )
+
     foc = db.execute(
         sql_text(
             "SELECT id FROM focus_templates WHERE template_slug = "

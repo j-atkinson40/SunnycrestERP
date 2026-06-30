@@ -1076,6 +1076,16 @@ _SERVICE_METHOD_REGISTRY: dict[str, tuple[str, tuple[str, ...]]] = {
         "app.services.workflows.safety_program_adapter:run_generation_pipeline",
         ("dry_run", "trigger_source"),
     ),
+    # Invoice & Statement Run (demo artifacts 3c) — composition over the
+    # existing (P0-corrected) invoice + statement services.
+    "invoice_statement.run_invoice_generation": (
+        "app.services.workflows.invoice_statement_adapter:run_invoice_generation",
+        (),
+    ),
+    "invoice_statement.run_statement_run": (
+        "app.services.workflows.invoice_statement_adapter:run_statement_run",
+        ("period_start", "period_end"),
+    ),
 }
 
 
