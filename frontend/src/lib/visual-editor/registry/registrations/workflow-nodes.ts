@@ -823,6 +823,44 @@ registerComponent({
 
 registerComponent({
   type: "workflow-node",
+  name: "notify_via_contact_preference",
+  displayName: "Notify via Contact Preference",
+  description:
+    "Notifies a target customer via THEIR preferred channel (email or sms, per the customer's preferred_delivery_method). Raises on channels with no automated send path — never silently falls back to email. The reusable contact-preference primitive (3a.1).",
+  category: "workflow-nodes",
+  verticals: ["all"],
+  userParadigms: ["operator-power-user"],
+  consumedTokens: ["surface-raised", "border-base", "accent", "status-info", "radius-base", "text-body", "text-caption"],
+  configurableProps: {
+    customerBinding: {
+      type: "string",
+      default: "{customer.id}",
+      displayLabel: "Target customer binding",
+      required: true,
+      bounds: { maxLength: 128 },
+    },
+    bodyBinding: {
+      type: "string",
+      default: "",
+      displayLabel: "Message body binding",
+      required: true,
+      bounds: { maxLength: 512 },
+    },
+    subjectBinding: {
+      type: "string",
+      default: "",
+      displayLabel: "Subject binding (email only)",
+      bounds: { maxLength: 128 },
+    },
+  },
+  schemaVersion: 1,
+  componentVersion: 1,
+  extensions: { workflowStepType: "notify_via_contact_preference" },
+})(makePlaceholder("Notify via Contact Preference Node"))
+
+
+registerComponent({
+  type: "workflow-node",
   name: "log_vault_item",
   displayName: "Log Vault Item",
   description:

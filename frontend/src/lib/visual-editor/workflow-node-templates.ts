@@ -84,6 +84,7 @@ export const NODE_LABEL_TEMPLATES: Record<string, string> = {
   ai_prompt: "Run AI prompt {promptKey} ({model})",
   send_document: "Send {templateKey} to {recipientBinding} via {deliveryChannel}",
   send_email: "Email {templateKey} to {recipientBinding}",
+  notify_via_contact_preference: "Notify {customerBinding} via their preferred channel",
   send_notification: "Notify {recipientBinding} via {channel}",
   "send-communication": "Send {templateKey} to {recipientBinding} via {channel}",
   notification: "Notify {recipientRole}: {message}",

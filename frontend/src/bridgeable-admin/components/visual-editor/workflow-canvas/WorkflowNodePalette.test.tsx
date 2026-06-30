@@ -20,14 +20,14 @@ import {
 } from "@/lib/visual-editor/workflow-node-palette"
 
 describe("WorkflowNodePalette", () => {
-  it("renders all 31 node types as click-to-add items (32 minus the retired generation-focus-invocation, P2)", () => {
+  it("renders all 32 node types as click-to-add items (incl. notify_via_contact_preference, 3a.1; the retired generation-focus-invocation twin stays out)", () => {
     render(<WorkflowNodePalette onAdd={vi.fn()} />)
     const items = screen
       .getAllByRole("button")
       .filter((b) =>
         b.getAttribute("data-testid")?.startsWith("node-palette-item-"),
       )
-    expect(items.length).toBe(31)
+    expect(items.length).toBe(32)
   })
 
   it("groups types into the 6 families, ordered + labeled", () => {

@@ -26,8 +26,8 @@ describe("workflow-nodes registry — B-2 backfill validation", () => {
     registeredNames = new Set(entries.map((e) => e.metadata.name))
   })
 
-  it("registers exactly 31 workflow-node types (32 minus the retired generation-focus-invocation twin, P2)", () => {
-    expect(entries.length).toBe(31)
+  it("registers exactly 32 workflow-node types (31 + notify_via_contact_preference, 3a.1; the retired generation-focus-invocation twin from P2 stays out)", () => {
+    expect(entries.length).toBe(32)
   })
 
   it("registry count matches the canonical VALID_NODE_TYPES vocabulary", () => {
