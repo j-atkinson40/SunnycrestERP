@@ -93,6 +93,7 @@ VALID_NODE_TYPES: tuple[str, ...] = (
     "show_confirmation",
     "send_notification",
     "send_email",
+    "notify_via_contact_preference",
     "log_vault_item",
     "generate_document",
     "call_service_method",

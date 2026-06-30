@@ -661,6 +661,8 @@ def _execute_action(
         return _handle_send_notification(db, resolved_config, run)
     if action_type == "send_email":
         return {"type": "email_queued", "to": resolved_config.get("to"), "subject": resolved_config.get("subject")}
+    if action_type == "notify_via_contact_preference":
+        return _execute_notify_via_contact_preference(db, resolved_config, run)
     if action_type == "log_vault_item":
         return _handle_log_vault_item(db, resolved_config, run)
     if action_type == "generate_document":
@@ -2000,6 +2002,108 @@ def validate_ai_prompt_steps(
 # ═══════════════════════════════════════════════════════════════════════
 # Phase D-7 — send_document step type
 # ═══════════════════════════════════════════════════════════════════════
+
+
+def _execute_notify_via_contact_preference(
+    db: Session,
+    resolved_config: dict,
+    run: WorkflowRun,
+) -> dict:
+    """Notify a target customer via THEIR preferred channel (the reusable
+    contact-preference primitive — every customer-facing workflow composes it).
+
+    Reads the target customer's preference and dispatches via the matching
+    `delivery_service` channel.
+
+    FIELD NOTE — `preferred_delivery_method` is reused here as the
+    *notification-preference* proxy. The customer model carries no dedicated
+    `preferred_notification_method` today, and how a customer likes a thing
+    delivered ≈ how they like to be reached. If a true
+    `preferred_notification_method` is ever added, repoint this node to it.
+    (Recording the borrow so it isn't silently load-bearing.)
+
+    CHANNELS — only `email` + `sms` have real send paths (delivery_service's
+    email + Twilio-backed sms channels). Any other preference (`phone`, `mail`,
+    …) has NO automated send path → this RAISES a clear error. It never
+    silently falls back to email — a silent fallback would claim "notified via
+    preference" while ignoring the preference, defeating the node's purpose.
+
+    Config:
+        {"customer_id": "<uuid>" | "{output...}",  (the notify target)
+         "subject": "..."  (optional; email only),
+         "body": "..."}
+    Output: {delivery_id, status, channel, preferred_method, recipient}.
+    """
+    from app.models.customer import Customer
+    from app.services.delivery import delivery_service
+
+    cfg = resolved_config or {}
+    customer_id = cfg.get("customer_id")
+    if not customer_id:
+        raise ValueError(
+            "notify_via_contact_preference requires customer_id"
+        )
+    body = cfg.get("body")
+    if not body:
+        raise ValueError("notify_via_contact_preference requires body")
+
+    customer = (
+        db.query(Customer)
+        .filter(
+            Customer.id == customer_id,
+            Customer.company_id == run.company_id,
+        )
+        .first()
+    )
+    if customer is None:
+        raise ValueError(
+            f"notify_via_contact_preference: customer {customer_id!r} not "
+            "found for this tenant"
+        )
+
+    pref = (customer.preferred_delivery_method or "email").strip().lower()
+    if pref == "email":
+        channel, rtype, rvalue = "email", "email_address", customer.email
+    elif pref in ("sms", "text"):
+        channel, rtype, rvalue = "sms", "phone_number", customer.phone
+    else:
+        # No automated send path — surface loudly. NOT a silent email fallback.
+        raise ValueError(
+            f"notify_via_contact_preference: no send path for channel {pref!r} "
+            "(supported: email, sms). Notification NOT sent — the customer "
+            f"({customer_id!r}) prefers a channel the platform can't dispatch."
+        )
+    if not rvalue:
+        raise ValueError(
+            f"notify_via_contact_preference: customer {customer_id!r} prefers "
+            f"{pref!r} but has no {rtype} on file"
+        )
+
+    params = delivery_service.SendParams(
+        company_id=run.company_id,
+        channel=channel,
+        recipient=delivery_service.RecipientInput(
+            type=rtype, value=rvalue, name=customer.name,
+        ),
+        subject=cfg.get("subject"),
+        body=body,
+        caller_module=(
+            f"workflow_engine.{run.workflow_id}.notify_via_contact_preference"
+        ),
+        caller_workflow_run_id=run.id,
+    )
+    try:
+        delivery = delivery_service.send(db, params)
+    except delivery_service.DeliveryError as exc:
+        raise ValueError(f"notify_via_contact_preference rejected: {exc}")
+
+    return {
+        "delivery_id": delivery.id,
+        "status": delivery.status,
+        "channel": delivery.channel,
+        "preferred_method": pref,
+        "recipient": delivery.recipient_value,
+    }
 
 
 def _execute_send_document(
