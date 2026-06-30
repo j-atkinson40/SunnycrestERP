@@ -176,3 +176,121 @@ export async function updatePage(
 export async function deletePage(pageId: string): Promise<void> {
   await adminApi.delete(`${BASE}/${pageId}`)
 }
+
+// ── Task Editing (2a write API + 2b picker sources) ────────────────────
+
+export interface MoCVocabValue {
+  id: string
+  kind: "frequency" | "type"
+  value: string
+  scope: string
+  vertical: string | null
+  display_order: number
+  is_active: boolean
+}
+
+/** The constrained-editable vocabulary for the picker (platform + vertical). */
+export async function listVocabulary(params?: {
+  kind?: "frequency" | "type"
+  vertical?: string
+}): Promise<MoCVocabValue[]> {
+  const { data } = await adminApi.get<MoCVocabValue[]>(`${BASE}/vocabulary`, {
+    params,
+  })
+  return data
+}
+
+/** Add a value (the +Add-value-in-the-picker payoff). Platform-scope by default. */
+export async function addVocabularyValue(input: {
+  kind: "frequency" | "type"
+  value: string
+  scope?: MoCScope
+  vertical?: string | null
+}): Promise<MoCVocabValue> {
+  const { data } = await adminApi.post<MoCVocabValue>(`${BASE}/vocabulary`, input)
+  return data
+}
+
+/** The raw write payload from create/patch (ids, not resolved pills — re-read
+ * /tasks for the resolved view). */
+export interface MoCTaskWrite {
+  id: string
+  vertical: string
+  scope: string
+  name: string
+  icon: string | null
+  frequency: string | null
+  task_type: string | null
+  description: string | null
+  workflow_template_id: string | null
+  focus_template_ids: string[]
+  display_order: number
+}
+
+export interface CreateTaskInput {
+  vertical: string
+  name: string
+  scope?: MoCScope
+  icon?: string | null
+  frequency?: string | null
+  task_type?: string | null
+  description?: string | null
+  workflow_template_id?: string | null
+  focus_template_ids?: string[]
+  display_order?: number
+}
+
+export async function createTask(input: CreateTaskInput): Promise<MoCTaskWrite> {
+  const { data } = await adminApi.post<MoCTaskWrite>(`${BASE}/tasks`, input)
+  return data
+}
+
+/** PATCH — only the keys present are applied; a sent null clears a field. */
+export type PatchTaskInput = Partial<{
+  name: string
+  icon: string | null
+  frequency: string | null
+  task_type: string | null
+  description: string | null
+  workflow_template_id: string | null
+  focus_template_ids: string[]
+  display_order: number
+}>
+
+export async function patchTask(
+  taskId: string,
+  input: PatchTaskInput,
+): Promise<MoCTaskWrite> {
+  const { data } = await adminApi.patch<MoCTaskWrite>(
+    `${BASE}/tasks/${taskId}`,
+    input,
+  )
+  return data
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  await adminApi.delete(`${BASE}/tasks/${taskId}`)
+}
+
+/** A real template option for the relationship pickers (the artifacts the
+ * resolver deep-links — incl. the 18 workflow mirrors). */
+export interface MoCArtifactOption {
+  id: string
+  display_name: string
+  scope?: string
+  vertical?: string | null
+}
+
+export async function listWorkflowTemplateOptions(): Promise<MoCArtifactOption[]> {
+  const { data } = await adminApi.get<MoCArtifactOption[]>(
+    "/api/platform/admin/visual-editor/workflows/",
+  )
+  return data
+}
+
+export async function listFocusTemplateOptions(): Promise<MoCArtifactOption[]> {
+  const { data } = await adminApi.get<MoCArtifactOption[]>(
+    "/api/platform/admin/focus-template-inheritance/templates",
+  )
+  return data
+}
