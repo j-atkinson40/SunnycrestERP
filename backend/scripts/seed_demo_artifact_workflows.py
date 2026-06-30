@@ -94,16 +94,20 @@ LEGACY_ORDER_CANVAS = {
          },
          "position": {"x": 0, "y": 120}},
         {"id": "n_triage", "type": "action",
-         "label": "Stage proof for approval (Decision Triage)",
+         "label": "Stage proof for review (Decision Triage)",
          "config": {
-             "action_type": "create_task",
-             "title": "Approve legacy proof",
-             "task_type_key": "review_approval_task",
-             "description": "Review the generated legacy proof before it goes "
-                            "to the print shop.",
-             # review_approval_task is cohort-routed → must carry the
-             # permission key naming the approver cohort.
-             "metadata": {"notification_permission_key": "admin"},
+             # invoke_review_focus (NOT create_task): pauses the run on a
+             # WorkflowReviewItem that surfaces in workflow_review_triage — the
+             # queue the Decision Triage focus renders. Approving there resumes
+             # the run (send_document + notify below). create_task staged into a
+             # lifecycle state no triage queue reads (3a.1 repair).
+             "action_type": "invoke_review_focus",
+             "review_focus_id": "legacy_proof_review",
+             "input_data": {
+                 "deceased_name": "{output.n_proof.deceased_name}",
+                 "proof_size_bytes": "{output.n_proof.proof_size_bytes}",
+                 "sales_order_id": "{trigger.sales_order_id}",
+             },
          },
          "position": {"x": 0, "y": 240}},
         {"id": "n_email", "type": "send_document",
