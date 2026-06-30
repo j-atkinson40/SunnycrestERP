@@ -127,6 +127,7 @@ import { useStudioRail } from "@/bridgeable-admin/components/studio/StudioRailCo
 // generation path. The rail mounts via the additive StudioShell slot; the 1a
 // generation is consumed via the platform-realm service.
 import { useStudioAssistantSlot } from "@/bridgeable-admin/components/studio/StudioAssistantSlotContext"
+import { useAuthoringRequest } from "@/bridgeable-admin/contexts/AuthoringRequestContext"
 import { WorkflowAssistantRail } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/WorkflowAssistantRail"
 import { useWorkflowCandidate } from "@/bridgeable-admin/components/visual-editor/workflow-canvas/useWorkflowCandidate"
 
@@ -576,6 +577,14 @@ export default function WorkflowEditorPage() {
     },
   })
 
+  // ── Shell-2 — a workflow-draft request handed in from the omnipresent bar ──
+  // Carried by the shared AuthoringRequestContext (not route state — same-path
+  // in-place navigation does not reliably re-fire useLocation). The rail
+  // delivers once per nonce; `onDelivered` consumes the request so a remount
+  // can't re-deliver.
+  const { request: authoringRequest, consume: consumeAuthoringRequest } =
+    useAuthoringRequest()
+
   // ── Push the assistant rail into the additive StudioShell slot ──
   // Only the Workflow editor fills the slot → byte-identical shell for the
   // other 6 builders. The rail is re-pushed on relevant state changes; because
@@ -594,6 +603,9 @@ export default function WorkflowEditorPage() {
         onGenerate={(nl) => void handleGenerateWorkflow(nl)}
         onAccept={handleAcceptCandidate}
         onReject={handleRejectCandidate}
+        initialNl={authoringRequest?.nl ?? null}
+        deliveryNonce={authoringRequest?.nonce ?? null}
+        onDelivered={consumeAuthoringRequest}
       />,
     )
   }, [
@@ -604,6 +616,8 @@ export default function WorkflowEditorPage() {
     generating,
     generateError,
     candidate,
+    authoringRequest,
+    consumeAuthoringRequest,
     handleGenerateWorkflow,
     handleAcceptCandidate,
     handleRejectCandidate,

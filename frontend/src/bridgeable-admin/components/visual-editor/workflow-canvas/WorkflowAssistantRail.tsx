@@ -24,7 +24,7 @@
  * input, a "generating" spinner, a graceful error message (never a crash — the
  * 1a service returns valid=false gracefully), and the result/actions zone.
  */
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AlertCircle, Bot, ChevronRight, Loader2, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -62,6 +62,16 @@ export interface WorkflowAssistantRailProps {
   onAccept: () => void
   /** Discard the candidate; the draft is untouched. */
   onReject: () => void
+  /** Shell-2 — an NL request delivered from the omnipresent AuthoringAssistantBar
+   *  (from OUTSIDE the editor, across the navigation). When `deliveryNonce`
+   *  changes to a new value, the rail pre-fills its input with `initialNl` and
+   *  auto-runs `onGenerate` ONCE (deliver-once, guarded by the nonce) — feeding
+   *  the existing 1b generate→validate→candidate path, not rebuilding it. */
+  initialNl?: string | null
+  deliveryNonce?: number | null
+  /** Called once after a delivered request is consumed (pre-filled + run), so the
+   *  carrier can clear it — preventing re-delivery on a remount. */
+  onDelivered?: () => void
 }
 
 export function WorkflowAssistantRail({
@@ -74,9 +84,31 @@ export function WorkflowAssistantRail({
   onGenerate,
   onAccept,
   onReject,
+  initialNl = null,
+  deliveryNonce = null,
+  onDelivered,
 }: WorkflowAssistantRailProps) {
   const [input, setInput] = useState("")
   const [collapsed, setCollapsed] = useState(false)
+
+  // Shell-2 deliver-once: a new deliveryNonce (a draft request handed in from the
+  // bar) pre-fills + auto-runs generation a single time. The ref persists across
+  // the rail's re-pushes into the slot (no remount), so the same nonce never
+  // double-runs; a fresh request from the bar carries a new nonce.
+  const deliveredNonceRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (
+      deliveryNonce != null &&
+      initialNl &&
+      deliveredNonceRef.current !== deliveryNonce &&
+      !generating
+    ) {
+      deliveredNonceRef.current = deliveryNonce
+      setInput(initialNl)
+      onGenerate(initialNl)
+      onDelivered?.()
+    }
+  }, [deliveryNonce, initialNl, generating, onGenerate, onDelivered])
 
   const canGenerate = input.trim().length > 0 && !generating
 

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom"
 import { AdminAuthProvider, useAdminAuth } from "./lib/admin-auth-context"
 import { AdminCommandBarProvider } from "./components/AdminCommandBar"
 import { AuthoringAssistantBar } from "./components/AuthoringAssistantBar"
+import { AuthoringRequestProvider } from "./contexts/AuthoringRequestContext"
 import { AdminLayout } from "./components/AdminLayout"
 import { VisualEditorLayout } from "./components/VisualEditorLayout"
 import ChromePrimitivesDemoPage from "./pages/visual-editor/ChromePrimitivesDemoPage"
@@ -267,10 +268,12 @@ export function BridgeableAdminApp() {
 function AdminShellChrome({ children }: { children: ReactNode }) {
   const { user } = useAdminAuth()
   return (
-    <AdminCommandBarProvider active={!!user}>
-      {user ? <AuthoringAssistantBar /> : null}
-      {children}
-    </AdminCommandBarProvider>
+    <AuthoringRequestProvider>
+      <AdminCommandBarProvider active={!!user}>
+        {user ? <AuthoringAssistantBar /> : null}
+        {children}
+      </AdminCommandBarProvider>
+    </AuthoringRequestProvider>
   )
 }
 
