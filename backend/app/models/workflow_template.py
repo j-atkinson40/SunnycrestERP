@@ -88,6 +88,17 @@ class WorkflowTemplate(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # MoC workflow backfill (Build 1): when set, this template is an INERT
+    # snapshot-mirror of the runtime workflow with this id (canvas faithfully
+    # reproduces its steps, but does NOT execute + may drift). NULL for
+    # authored/seeded templates. The queryable debt-handle: the future
+    # canvas↔runtime bridge finds mirrors via this column to retire them.
+    mirrored_from_workflow_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workflows.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     __table_args__ = (
         CheckConstraint(
