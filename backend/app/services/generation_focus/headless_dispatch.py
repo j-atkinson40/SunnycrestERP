@@ -23,8 +23,10 @@ from interactive UI).
 
 from __future__ import annotations
 
+import io
 from typing import Any, Callable
 
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from app.services.personalization_studio import ai_extraction_review
@@ -103,6 +105,69 @@ def _bvps_suggest_text_style(
     )
 
 
+# ── Legacy Generation dispatch entry (option-3 3b.1) ──────────────
+
+
+def _legacy_generate_proof(
+    db: Session,
+    *,
+    company_id: str,
+    sales_order_id: str | None = None,
+    deceased_name: str | None = None,
+    dates: str | None = None,
+    **_ignored: Any,
+) -> dict[str, Any]:
+    """Headless legacy-proof generation — composite the order's text onto a
+    proof background via the PURE ``legacy_compositor.composite_layout`` (no R2,
+    no persisted instance, no schema). Produces the proof OUTPUT: the rendered
+    bytes prove a real proof was made. Returns a JSON-able payload (the engine
+    stores step output as JSON, so we return metadata, not raw bytes).
+
+    Refinements (NOT 3b.1): real Wilbert-template backgrounds via R2, and
+    persisting the proof to a Document so 3d's email step can attach it. This
+    produces a real rendered proof headless, which is what unblocks 3d's
+    ``invoke_generation_focus(focus_id='legacy_proof_generation')``.
+    """
+    from PIL import Image
+
+    from app.services import legacy_compositor as compositor
+
+    name = deceased_name
+    if name is None and sales_order_id:
+        row = db.execute(
+            sql_text(
+                "SELECT deceased_name FROM sales_orders "
+                "WHERE id = :id AND company_id = :cid"
+            ),
+            {"id": sales_order_id, "cid": company_id},
+        ).first()
+        name = row.deceased_name if row else None
+    name = name or "In Loving Memory"
+
+    # A neutral proof background (real templates via R2 are the 3b.2 refinement).
+    bg = Image.new("RGB", (2400, 1600), (28, 24, 22))
+    buf = io.BytesIO()
+    bg.save(buf, format="JPEG")
+
+    layout = {
+        "photos": [],
+        "text": {
+            "name": name, "dates": dates or "", "x": 0.5, "y": 0.5,
+            "font_size": 0.08, "color": "white",
+        },
+    }
+    proof_bytes = compositor.composite_layout(
+        buf.getvalue(), layout, output_width=2400
+    )
+    return {
+        "focus_id": "legacy_proof_generation",
+        "op": "generate_proof",
+        "proof_generated": True,
+        "proof_size_bytes": len(proof_bytes),
+        "deceased_name": name,
+    }
+
+
 # ── Registry ──────────────────────────────────────────────────────
 
 
@@ -111,6 +176,9 @@ HEADLESS_DISPATCH: dict[str, dict[str, _DispatchFn]] = {
         "extract_decedent_info": _bvps_extract_decedent_info,
         "suggest_layout": _bvps_suggest_layout,
         "suggest_text_style": _bvps_suggest_text_style,
+    },
+    "legacy_proof_generation": {
+        "generate_proof": _legacy_generate_proof,
     },
 }
 
