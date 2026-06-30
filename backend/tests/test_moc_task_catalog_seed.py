@@ -1,15 +1,15 @@
 """MoC-2a seed — manufacturing task catalog (option 1: descriptive + resolve-or-warn).
 
-Two witnesses:
-1. Idempotency + orphan-tolerance: the seed runs twice → exactly 2 catalog rows
-   (no dup-key), descriptive cells always populate, and the absent workflow/
-   focus references log resolve-or-warn warnings (never hard-fail). Join count
-   is whatever resolved (0 today — the four referenced templates are queued
-   option-3 artifacts), so we assert idempotency + row count, NOT a hardcoded
-   join count.
-2. Auto-populate (the forward-looking witness): once a referenced template
-   EXISTS, the SAME seed resolves it — proving the relational cells light up
-   automatically when option-3 lands, the same dynamic the cards use.
+Witnesses (post-3d, all four real demo artifacts now exist, so the
+mechanism tests use SYNTHETIC guaranteed-absent names — independent of seed state):
+1. Idempotency + descriptive cells: the seed runs twice → exactly 2 catalog
+   rows (no dup-key), descriptive cells always populate.
+2. Orphan-tolerance: a reference to an absent template resolves to None / []
+   + warns (never hard-fails) — exercised via the resolve-or-warn helpers with
+   a synthetic absent name.
+3. Auto-populate (the forward-looking witness): a task referencing an absent
+   template seeds an empty cell, then resolves it once the template EXISTS —
+   the same dynamic the cards use, exercised with a synthetic task + workflow.
 """
 from __future__ import annotations
 
@@ -69,58 +69,81 @@ def _task(db, name: str):
     ).first()
 
 
-def test_seed_idempotent_and_orphan_tolerant(db, caplog):
-    with caplog.at_level(logging.WARNING):
-        _seed_task_catalog(db)
-        first = _count_tasks(db)
-        _seed_task_catalog(db)  # re-run: must not dup-key
-        second = _count_tasks(db)
+def test_seed_idempotent_and_descriptive(db):
+    """Idempotency + descriptive cells always populate. (The relational cells
+    resolve whatever's seeded; post-3d the real demo workflows/focuses exist,
+    so they populate — orphan-tolerance + auto-populate get their own synthetic
+    tests below, robust to seed state.)"""
+    _seed_task_catalog(db)
+    first = _count_tasks(db)
+    _seed_task_catalog(db)  # re-run: must not dup-key
+    second = _count_tasks(db)
 
-    # Idempotent: two runs, still exactly the two tasks.
     assert first == 2
     assert second == 2
 
-    # Descriptive cells ALWAYS populate (relational cells may be empty).
     billing = _task(db, "Funeral Home Billing")
     assert billing is not None
     assert billing.frequency == "End of Month"
     assert billing.task_type == "Accounting"
     assert "charge accounts" in billing.description
 
-    # Orphan-tolerance witnessed via the WORKFLOWS — reliably absent until
-    # 3c/3d (the focuses are seeded by seed_demo_artifact_focuses since 3a/3b,
-    # so they no longer exercise the absent path; the workflows still do).
-    assert billing.workflow_template_id is None  # "Invoice and Statement Run" absent
-    legacy = _task(db, "New Legacy Order")
-    assert legacy.workflow_template_id is None  # "Legacy Order" absent
 
-    # The resolve-or-warn warnings for the absent WORKFLOWS fired (proving
-    # orphan-tolerance — a missing ref logs + seeds an empty cell, never fails).
+def test_orphan_tolerance_resolve_or_warn(db, caplog):
+    """A reference to an ABSENT template resolves to None / [] + warns — never
+    hard-fails. Synthetic guaranteed-absent name → robust to seed state."""
+    from scripts.seed_moc_manufacturing import (
+        _resolve_focus_ids,
+        _resolve_workflow_id,
+    )
+
+    absent = f"DEFINITELY-ABSENT-{uuid.uuid4().hex}"
+    with caplog.at_level(logging.WARNING):
+        assert _resolve_workflow_id(db, absent) is None
+        assert _resolve_focus_ids(db, [absent]) == []
     warned = " ".join(r.message for r in caplog.records)
-    assert "Legacy Order" in warned
-    assert "Invoice and Statement Run" in warned
+    assert absent in warned
 
 
 def test_seed_auto_populates_when_template_appears(db):
-    """Create the referenced 'Invoice and Statement Run' workflow (reliably the
-    only one — workflows are absent until 3c), then run the SAME seed — it now
-    resolves it. Proves option-3's artifacts light up the cells automatically.
-    (The FOCUS auto-populate is covered by test_demo_artifact_focuses_seed,
-    which seeds the real Decision Triage / Legacy Generation focuses.)"""
+    """A task referencing an absent workflow seeds an empty cell, then resolves
+    it once the template EXISTS — option-3's auto-populate dynamic. Synthetic
+    unique task + workflow name → isolated from the now-seeded real demo
+    workflows (which would otherwise collide on the LIMIT-1 resolve)."""
+    from app.services.maps_of_content.task_catalog import upsert_task
+    from scripts.seed_moc_manufacturing import _resolve_workflow_id
+
+    task_name = f"Synthetic Task {uuid.uuid4().hex[:8]}"
+    wf_name = f"Synthetic WF {uuid.uuid4().hex[:8]}"
+
+    def _upsert():
+        return upsert_task(
+            db, vertical=VERT, name=task_name, frequency="On demand",
+            task_type="Synthetic", description="synthetic", icon="receipt",
+            workflow_template_id=_resolve_workflow_id(db, wf_name),
+            focus_template_ids=[], display_order=99,
+        )
+
+    # 1) Workflow absent → the task seeds an empty workflow cell.
+    t = _upsert()
+    db._created_artifacts.append(("moc_task_catalog", t.id))
+    db.commit()
+    assert _task(db, task_name).workflow_template_id is None
+
+    # 2) The workflow appears.
     wf_id = str(uuid.uuid4())
     db.execute(
         sql_text(
             "INSERT INTO workflow_templates (id, scope, workflow_type, "
             "display_name, vertical, is_active) VALUES (:id, 'vertical_default', "
-            ":wt, 'Invoice and Statement Run', :v, true)"
+            ":wt, :dn, :v, true)"
         ),
-        {"id": wf_id, "wt": f"inv_stmt_{uuid.uuid4().hex[:6]}", "v": VERT},
+        {"id": wf_id, "wt": f"syn_{uuid.uuid4().hex[:6]}", "dn": wf_name, "v": VERT},
     )
     db._created_artifacts.append(("workflow_templates", wf_id))
     db.commit()
 
-    _seed_task_catalog(db)
-
-    # "Funeral Home Billing" now resolves its workflow (was empty before).
-    billing = _task(db, "Funeral Home Billing")
-    assert billing.workflow_template_id == wf_id
+    # 3) Re-seed the SAME task → it now resolves the workflow (cell lit).
+    _upsert()
+    db.commit()
+    assert _task(db, task_name).workflow_template_id == wf_id

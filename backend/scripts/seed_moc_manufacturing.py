@@ -184,6 +184,27 @@ def _resolve_artifacts(db) -> list[dict]:
             "(run seed_demo_artifact_workflows first)"
         )
 
+    # Demo-artifact workflow (option-3 3d) — "Legacy Order" on the Workflows
+    # CARD (the four-artifact composition; the task-table Workflow cell for
+    # "New Legacy Order" populates via the task-catalog ref). Resolve-or-skip.
+    lo = db.execute(
+        sql_text(
+            "SELECT id FROM workflow_templates WHERE workflow_type = "
+            "'legacy_order' AND vertical = :v LIMIT 1"
+        ),
+        {"v": VERTICAL},
+    ).first()
+    if lo:
+        rows.append(
+            {"builder": "workflows", "artifact_id": lo.id,
+             "label": "Legacy Order", "icon": "workflow"}
+        )
+    else:
+        logger.warning(
+            "seed_moc_manufacturing: legacy_order workflow absent "
+            "(run seed_demo_artifact_workflows first)"
+        )
+
     foc = db.execute(
         sql_text(
             "SELECT id FROM focus_templates WHERE template_slug = "

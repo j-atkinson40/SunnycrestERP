@@ -11,7 +11,12 @@ from sqlalchemy import text as sql_text
 from app.database import SessionLocal
 from app.services.workflow_templates.canvas_validator import validate_canvas_state
 
-from scripts.seed_demo_artifact_workflows import CANVAS, WORKFLOW_TYPE, seed
+from scripts.seed_demo_artifact_workflows import (
+    CANVAS,
+    LEGACY_ORDER_WORKFLOW_TYPE,
+    WORKFLOW_TYPE,
+    seed,
+)
 
 VERT = "manufacturing"
 
@@ -21,11 +26,13 @@ def db():
     s = SessionLocal()
     yield s
     s.rollback()
+    # seed() now seeds BOTH demo workflows — clean both.
     s.execute(
         sql_text(
-            "DELETE FROM workflow_templates WHERE workflow_type = :wt AND vertical = :v"
+            "DELETE FROM workflow_templates WHERE workflow_type IN "
+            "(:wt, :lo) AND vertical = :v"
         ),
-        {"wt": WORKFLOW_TYPE, "v": VERT},
+        {"wt": WORKFLOW_TYPE, "lo": LEGACY_ORDER_WORKFLOW_TYPE, "v": VERT},
     )
     s.commit()
     s.close()

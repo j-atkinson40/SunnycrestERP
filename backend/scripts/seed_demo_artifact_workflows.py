@@ -71,16 +71,89 @@ CANVAS = {
 }
 
 
-def seed(db) -> str:
-    validate_canvas_state(CANVAS)  # fail loud if the canvas is malformed
-    canvas_json = json.dumps(CANVAS)
+# ── Legacy Order (option-3 3d) — the four-artifact composition ────
+# proof (Legacy Generation HEADLESS via 3b.1) → triage (create_task into the
+# Decision Triage queue) → email the approved proof to the print shop →
+# notify the funeral home via its preferred method (3d Part 1's node).
+LEGACY_ORDER_WORKFLOW_TYPE = "legacy_order"
+LEGACY_ORDER_DISPLAY_NAME = "Legacy Order"  # MUST match the MoC ref exactly
+
+LEGACY_ORDER_CANVAS = {
+    "version": 1,
+    "trigger": {"type": "manual"},
+    "nodes": [
+        {"id": "n_start", "type": "start", "label": "Start", "config": {},
+         "position": {"x": 0, "y": 0}},
+        {"id": "n_proof", "type": "action",
+         "label": "Generate legacy proof (headless)",
+         "config": {
+             "action_type": "invoke_generation_focus",
+             "focus_id": "legacy_proof_generation",
+             "op_id": "generate_proof",
+             "kwargs": {"sales_order_id": "{trigger.sales_order_id}"},
+         },
+         "position": {"x": 0, "y": 120}},
+        {"id": "n_triage", "type": "action",
+         "label": "Stage proof for approval (Decision Triage)",
+         "config": {
+             "action_type": "create_task",
+             "title": "Approve legacy proof",
+             "task_type_key": "review_approval_task",
+             "description": "Review the generated legacy proof before it goes "
+                            "to the print shop.",
+             # review_approval_task is cohort-routed → must carry the
+             # permission key naming the approver cohort.
+             "metadata": {"notification_permission_key": "admin"},
+         },
+         "position": {"x": 0, "y": 240}},
+        {"id": "n_email", "type": "send_document",
+         "label": "Email approved proof to the print shop",
+         "config": {
+             "channel": "email",
+             "recipient": {"type": "email_address",
+                           "value": "{trigger.print_shop_email}"},
+             "subject": "Approved legacy proof",
+             "body": "The attached legacy proof has been approved for print.",
+         },
+         "position": {"x": 0, "y": 360}},
+        {"id": "n_notify", "type": "action",
+         "label": "Notify funeral home (preferred method)",
+         "config": {
+             "action_type": "notify_via_contact_preference",
+             "customer_id": "{trigger.funeral_home_customer_id}",
+             "body": "Your legacy proof has been approved and sent to the "
+                     "print shop.",
+         },
+         "position": {"x": 0, "y": 480}},
+        {"id": "n_end", "type": "end", "label": "End", "config": {},
+         "position": {"x": 0, "y": 600}},
+    ],
+    "edges": [
+        {"id": "e1", "source": "n_start", "target": "n_proof", "label": ""},
+        {"id": "e2", "source": "n_proof", "target": "n_triage", "label": ""},
+        {"id": "e3", "source": "n_triage", "target": "n_email", "label": ""},
+        {"id": "e4", "source": "n_email", "target": "n_notify", "label": ""},
+        {"id": "e5", "source": "n_notify", "target": "n_end", "label": ""},
+    ],
+}
+
+# All demo-artifact workflows seeded by this script: (workflow_type, name, canvas)
+_WORKFLOWS = [
+    (WORKFLOW_TYPE, DISPLAY_NAME, CANVAS),
+    (LEGACY_ORDER_WORKFLOW_TYPE, LEGACY_ORDER_DISPLAY_NAME, LEGACY_ORDER_CANVAS),
+]
+
+
+def _seed_one(db, workflow_type: str, display_name: str, canvas: dict) -> str:
+    validate_canvas_state(canvas)  # fail loud if the canvas is malformed
+    canvas_json = json.dumps(canvas)
 
     row = db.execute(
         sql_text(
             "SELECT id FROM workflow_templates WHERE scope = 'vertical_default' "
             "AND vertical = :v AND workflow_type = :wt"
         ),
-        {"v": VERTICAL, "wt": WORKFLOW_TYPE},
+        {"v": VERTICAL, "wt": workflow_type},
     ).first()
     if row:
         db.execute(
@@ -89,7 +162,7 @@ def seed(db) -> str:
                 "canvas_state = CAST(:cs AS jsonb), is_active = true, "
                 "updated_at = now() WHERE id = :id"
             ),
-            {"d": DISPLAY_NAME, "cs": canvas_json, "id": row.id},
+            {"d": display_name, "cs": canvas_json, "id": row.id},
         )
         outcome = "updated"
     else:
@@ -100,13 +173,17 @@ def seed(db) -> str:
                 "created_at, updated_at) VALUES (:id, 'vertical_default', :v, "
                 ":wt, :d, CAST(:cs AS jsonb), 1, true, now(), now())"
             ),
-            {"id": str(uuid.uuid4()), "v": VERTICAL, "wt": WORKFLOW_TYPE,
-             "d": DISPLAY_NAME, "cs": canvas_json},
+            {"id": str(uuid.uuid4()), "v": VERTICAL, "wt": workflow_type,
+             "d": display_name, "cs": canvas_json},
         )
         outcome = "created"
     db.commit()
-    logger.info("[demo-workflow-seed] %r %s", DISPLAY_NAME, outcome)
-    return f"{DISPLAY_NAME} {outcome}"
+    logger.info("[demo-workflow-seed] %r %s", display_name, outcome)
+    return f"{display_name} {outcome}"
+
+
+def seed(db) -> str:
+    return "; ".join(_seed_one(db, wt, dn, cv) for wt, dn, cv in _WORKFLOWS)
 
 
 def main() -> None:
