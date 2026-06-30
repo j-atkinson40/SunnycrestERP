@@ -205,6 +205,29 @@ def _resolve_artifacts(db) -> list[dict]:
             "(run seed_demo_artifact_workflows first)"
         )
 
+    # Workflow backfill (Build 1b) — the faithful runtime mirrors created by
+    # seed_moc_backfill_workflow_mirrors (runs earlier: seed_moc_b… < seed_moc_m…).
+    # Author every mirror as a Workflows-card ref; the resolver reads by id, so
+    # the 6 core mirrors (platform_default scope) surface on the manufacturing
+    # card alongside the 12 vertical_default ones. Resolve-or-skip.
+    mirror_rows = db.execute(
+        sql_text(
+            "SELECT id, display_name FROM workflow_templates "
+            "WHERE mirrored_from_workflow_id IS NOT NULL ORDER BY display_name"
+        )
+    ).fetchall()
+    if mirror_rows:
+        for m in mirror_rows:
+            rows.append(
+                {"builder": "workflows", "artifact_id": m.id,
+                 "label": m.display_name, "icon": "workflow"}
+            )
+    else:
+        logger.warning(
+            "seed_moc_manufacturing: no workflow mirrors found "
+            "(run seed_moc_backfill_workflow_mirrors first)"
+        )
+
     foc = db.execute(
         sql_text(
             "SELECT id FROM focus_templates WHERE template_slug = "
