@@ -100,6 +100,18 @@ class WorkflowTemplate(Base):
         index=True,
     )
 
+    # Compiled-workflow cache (T-2.1a): the runtime workflow this template's
+    # canvas compiled to, cached per version so the schedule sweep doesn't
+    # recompile every tick. `compiled_version` == `version` means the cache is
+    # valid; a version bump (or the compiled workflow being deleted → SET NULL)
+    # invalidates it. Only draft/authored templates use this (mirrors re-point).
+    compiled_workflow_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workflows.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    compiled_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     __table_args__ = (
         CheckConstraint(
             "scope IN ('platform_default', 'vertical_default')",

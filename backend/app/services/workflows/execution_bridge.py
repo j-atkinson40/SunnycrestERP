@@ -80,8 +80,17 @@ def resolve_executable_workflow(
     db: Session, *, template_id: str, company_id: str, actor_user_id: str | None = None
 ) -> str:
     """A workflow_template → a runnable runtime workflow id. Mirrors RE-POINT to
-    their source; drafts COMPILE (linear subset). Raises loudly on a missing
-    template, a dangling mirror, or an out-of-subset canvas. Caller commits."""
+    their source; drafts COMPILE (linear subset) — with a per-version CACHE so a
+    repeated caller (the schedule sweep) doesn't recompile every fire (§7).
+    Raises loudly on a missing template, a dangling mirror, or an out-of-subset
+    canvas. Caller commits.
+
+    The cached compiled workflow is company-AGNOSTIC (company_id=None) — the
+    canvas is a template, its compiled form is shared across tenants; the RUN
+    scopes the company (start_run's company_id). So a vertical_default template
+    compiles ONCE and is reused for every company in the vertical."""
+    from app.models.workflow import Workflow
+
     template = db.get(WorkflowTemplate, template_id)
     if template is None:
         raise ExecutionBridgeError(f"workflow_template {template_id!r} not found")
@@ -89,14 +98,28 @@ def resolve_executable_workflow(
     if template.mirrored_from_workflow_id:
         return repoint_mirror(db, template)
 
+    # Cache hit: compiled at the current version + the compiled workflow still
+    # exists → reuse (no recompile). A version bump or a deleted compiled
+    # workflow (FK SET NULL) invalidates it.
+    if (
+        template.compiled_workflow_id
+        and template.compiled_version == template.version
+    ):
+        cached = db.get(Workflow, template.compiled_workflow_id)
+        if cached is not None:
+            return cached.id
+
     wf = compile_canvas_to_workflow(
         db,
         canvas_state=template.canvas_state or {},
-        company_id=company_id,
+        company_id=None,  # shared compiled definition; the RUN scopes the company
         name=template.display_name or f"Compiled {template.workflow_type}",
         source_template_id=template.id,
         actor_user_id=actor_user_id,
     )
+    template.compiled_workflow_id = wf.id
+    template.compiled_version = template.version
+    db.flush()
     return wf.id
 
 
