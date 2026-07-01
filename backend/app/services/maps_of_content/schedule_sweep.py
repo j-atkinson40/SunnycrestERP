@@ -1,4 +1,4 @@
-"""MoC schedule sweep (Canvas↔Runtime Bridge T-2.1a) — the first live caller, DRY-RUN.
+"""MoC schedule sweep (Canvas↔Runtime Bridge T-2.1a/b) — the first live caller.
 
 A PARALLEL sweep (its own iteration over `moc_task_trigger` schedule rows — a
 different entity than the workflow scheduler's loop) that fires DUE MoC schedule-
@@ -7,14 +7,15 @@ helpers (`_resolve_tenant_tz`, `_matches_time_of_day`, `_intended_scheduled_fire
 and mirrors its idempotency pattern (re-keyed on the TRIGGER, since compiled
 workflows are ephemeral).
 
-THE SAFETY INVARIANT (T-2.1a): every fire is DRY-RUN. `go_live` has ONE source —
-the module constant `_SWEEP_GO_LIVE = False` — so no code path fires live. The
-engine (T-2.0b) suppresses every real effect; a due trigger produces an
-observable "would do X" WorkflowRun, never a real invoice/notification. T-2.1b
-replaces the constant with `trigger.is_live` (per-trigger promotion) — until then,
-NOTHING the sweep fires can touch a real side-effect. This is why T-2.1a is safe
-for ALL triggers (mirror + compiled): dry-run has no effect to double (§6 hazard
-is a live-only concern).
+THE SAFETY INVARIANT: `go_live` has ONE source — `_resolve_go_live(trig, template)`
+(T-2.1b; was the constant False in T-2.1a). Live requires BOTH, both explicit:
+the trigger is PROMOTED (`is_live`, default FALSE — a deliberate per-trigger act)
+AND its task resolves to a COMPILED (single-owner) workflow. A MIRROR task NEVER
+fires live (§6 double-fire hazard vs its independently-scheduled source) — it
+fires DRY-RUN even when is_live=True. So the DEFAULT is dry-run (unpromoted or
+mirror), and a real effect requires the deliberate promotion of a compiled task.
+No scattered convenience True; a promoted trigger cannot fire live through any
+other path. The engine (T-2.0b) suppresses every real effect in dry-run.
 
 Correctness (inherited + one fix):
 - IDEMPOTENCY: a due trigger fires ONCE per intended-fire tick, deduped on
@@ -40,6 +41,7 @@ from app.models.company import Company
 from app.models.moc_task_catalog import MoCTaskCatalog
 from app.models.moc_task_trigger import MoCTaskTrigger
 from app.models.workflow import WorkflowRun, WorkflowRunStep
+from app.models.workflow_template import WorkflowTemplate
 from app.services.workflow_scheduler import (
     _intended_scheduled_fire,
     _matches_time_of_day,
@@ -50,10 +52,30 @@ from app.services.workflows.execution_bridge import ExecutionBridgeError, execut
 
 logger = logging.getLogger(__name__)
 
-# THE SAFETY INVARIANT — go_live has ONE source. This phase: the constant False
-# (every fire dry-run). T-2.1b replaces this with `trigger.is_live`. NEVER a
-# convenience True.
-_SWEEP_GO_LIVE = False
+
+def _resolve_go_live(
+    trig: MoCTaskTrigger, template: WorkflowTemplate | None
+) -> bool:
+    """THE ONE SOURCE of go_live (T-2.1b — the safety-critical derivation). Live
+    requires BOTH, both explicit:
+      1. the trigger is PROMOTED (`is_live`) — a deliberate per-trigger act; AND
+      2. its task resolves to a COMPILED (single-owner) workflow.
+
+    A MIRROR task (§6 double-fire hazard: re-point runs the runtime source, which
+    is independently scheduled) NEVER fires live — it fires DRY-RUN with a logged
+    reason, even when is_live=True. Mirror live-scheduling is deferred to its own
+    arc. This is the SOLE place go_live is derived — never a scattered convenience
+    True; a promoted trigger cannot fire live through any other path."""
+    if not trig.is_live:
+        return False
+    if template is not None and template.mirrored_from_workflow_id is not None:
+        logger.info(
+            "MoC trigger %s is is_live but its task is a MIRROR — firing DRY-RUN "
+            "(mirror live-scheduling deferred, §6 double-fire hazard).",
+            trig.id,
+        )
+        return False
+    return True
 
 _TRIGGER_SOURCE = "moc_task_schedule"
 
@@ -126,12 +148,16 @@ def _already_fired(
     return existing is not None
 
 
-def _fire_dry_run(
+def _fire(
     db: Session, *, trig: MoCTaskTrigger, task: MoCTaskCatalog,
     company: Company, intended_fire: datetime,
 ) -> WorkflowRun:
-    """Fire the task's workflow DRY-RUN through the T-2.0b engine. go_live comes
-    ONLY from `_SWEEP_GO_LIVE` (False this phase)."""
+    """Fire the task's workflow through the T-2.0b engine. go_live comes ONLY from
+    `_resolve_go_live` (is_live AND compiled) — never a convenience True. Loads
+    the template so the compiled-vs-mirror discriminator is available to the
+    guard (the SAME `mirrored_from_workflow_id` the resolver uses)."""
+    template = db.get(WorkflowTemplate, task.workflow_template_id)
+    go_live = _resolve_go_live(trig, template)
     return execute_template(
         db,
         template_id=task.workflow_template_id,
@@ -144,7 +170,7 @@ def _fire_dry_run(
         },
         triggered_by_user_id=None,
         allow_run=True,
-        go_live=_SWEEP_GO_LIVE,  # ← ONE source; never a convenience True
+        go_live=go_live,  # ← ONE source: _resolve_go_live(is_live AND compiled)
     )
 
 
@@ -180,7 +206,7 @@ def check_moc_task_schedules(now: datetime | None = None) -> dict:
                         continue  # not due this tick (or backlog outside the window → skipped)
                     if _already_fired(db, trigger_id=trig.id, company_id=company.id, intended_fire=intended):
                         continue  # idempotent — already fired this window
-                    _fire_dry_run(db, trig=trig, task=task, company=company, intended_fire=intended)
+                    _fire(db, trig=trig, task=task, company=company, intended_fire=intended)
                     fired += 1
                 except (ExecutionBridgeError, CanvasCompileError) as exc:
                     logger.error(
