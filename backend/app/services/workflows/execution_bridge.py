@@ -14,15 +14,18 @@ execute it via the existing engine. TWO mechanisms:
     source → compile its canvas → runtime steps (LINEAR subset only, see
     `canvas_compiler`).
 
-SAFETY (T-2.0, per the operator split):
-  - EXECUTION IS GATED OFF. The engine has no dry-run mode yet (that's T-2.0b);
-    executing hits REAL side-effects. `execute_template` therefore requires an
-    explicit `allow_live_execution=True` — test-only until T-2.0b threads the
-    engine dry-run + a real trigger. No production caller wires this yet.
+SAFETY (T-2.0b — the safe middle now exists):
+  - TWO FLAGS, DEFINED PRECEDENCE. `allow_run` (default False) is the tripwire —
+    must be True to run at all. `go_live` (default False) picks DRY-RUN (no real
+    effects — the engine suppresses them at the step-executor) vs LIVE. The only
+    path to real side-effects is allow_run=True AND go_live=True, both explicit;
+    every other combination refuses-or-runs-dry, NEVER live. So the default when
+    running is SAFE (dry-run) — a caller wired without go_live cannot fire a real
+    invoice/notification.
   - FAILURE IS LOUD. Resolve failures (bad template / dangling mirror / an
-    out-of-subset canvas) RAISE. A run that fails mid-execution is recorded
-    loudly by the engine on WorkflowRun.status="failed" + error_message (the
-    auto-escalation hook is T-2.1; the loud RECORD is inherited now).
+    out-of-subset canvas) RAISE. A run that fails mid-execution is surfaced loudly
+    on WorkflowRun.status="failed" + error_message (the auto-escalation hook is
+    T-2.1; the loud RECORD is here).
 """
 from __future__ import annotations
 
@@ -105,22 +108,32 @@ def execute_template(
     trigger_source: str = "manual",
     trigger_context: dict[str, Any] | None = None,
     triggered_by_user_id: str | None = None,
-    allow_live_execution: bool = False,
+    allow_run: bool = False,
+    go_live: bool = False,
 ) -> WorkflowRun:
     """THE SPINE: resolve a template → a runnable workflow (re-point OR compile)
     → execute it via the engine → a WorkflowRun.
 
-    GATED: `allow_live_execution` must be True. T-2.0 has NO engine dry-run
-    (T-2.0b), so this runs with REAL side-effects — only tests opt in until the
-    dry-run gate + a real trigger land. Loud failure: resolve errors raise; a
-    failed run comes back with status="failed" + error_message (not swallowed).
-    Caller commits (start_run commits internally)."""
-    if not allow_live_execution:
+    TWO FLAGS with DEFINED PRECEDENCE (T-2.0b — the safe middle):
+      - `allow_run` (default False): the tripwire against accidental wiring — must
+        be True to execute at all.
+      - `go_live` (default False): when running, False = DRY-RUN (the engine
+        suppresses every real effect — see start_run), True = LIVE (real effects).
+
+    PRECEDENCE — the only path to real side-effects is BOTH explicit:
+      - allow_run=False           → REFUSE (go_live is meaningless without it —
+                                     nothing runs, so it's ignored).
+      - allow_run=True, go_live=F → RUNS DRY (no real effects — the safe default
+                                     when running).
+      - allow_run=True, go_live=T → runs LIVE (real effects).
+    A missing/False flag NEVER yields live. Loud failure: resolve errors raise; a
+    failed run comes back status="failed" + error_message (not swallowed)."""
+    if not allow_run:
         raise ExecutionGatedError(
-            "canvas execution is gated until T-2.0b (engine dry-run) lands — no "
-            "production trigger may fire this yet. Pass allow_live_execution=True "
-            "only from tests."
+            "canvas execution is gated — pass allow_run=True to execute. "
+            "(go_live is ignored without allow_run: no run, nothing to make live.)"
         )
+    dry_run = not go_live  # allow_run=True + go_live omitted → DRY (safe default)
     workflow_id = resolve_executable_workflow(
         db, template_id=template_id, company_id=company_id,
         actor_user_id=triggered_by_user_id,
@@ -132,6 +145,7 @@ def execute_template(
         triggered_by_user_id=triggered_by_user_id,
         trigger_source=trigger_source,
         trigger_context=trigger_context,
+        dry_run=dry_run,
     )
     _surface_run_failures(db, run)
     return run
