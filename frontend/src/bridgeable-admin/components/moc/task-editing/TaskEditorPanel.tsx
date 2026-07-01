@@ -8,22 +8,30 @@
  * deep-links. Submit POSTs/PATCHes via 2a's API; delete removes the task.
  */
 import { useEffect, useState } from "react"
-import { Check, Trash2 } from "lucide-react"
+import { Check, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { SlideOver } from "@/components/ui/SlideOver"
 import {
+  addTaskTrigger,
   createTask,
   deleteTask,
+  deleteTrigger,
   listFocusTemplateOptions,
+  listTriggerEvents,
   listWorkflowTemplateOptions,
   patchTask,
   type MoCArtifactOption,
   type MoCTask,
+  type MoCTrigger,
+  type MoCTriggerEvent,
+  type MoCTriggerKind,
 } from "@/bridgeable-admin/services/moc-service"
 import { VocabCell } from "./VocabCell"
+import { TriggerChips } from "./TriggerChips"
+import { TriggerEditor } from "./TriggerEditor"
 
 export function errMsg(e: unknown): string {
   const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -118,18 +126,46 @@ export function TaskEditorPanel({
   const [workflows, setWorkflows] = useState<MoCArtifactOption[]>([])
   const [focuses, setFocuses] = useState<MoCArtifactOption[]>([])
   const [saving, setSaving] = useState(false)
+  // Triggers (edit mode only — they attach to an existing task_catalog_id).
+  const [triggers, setTriggers] = useState<MoCTrigger[]>([])
+  const [triggerEvents, setTriggerEvents] = useState<MoCTriggerEvent[]>([])
+  const [addingTrigger, setAddingTrigger] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
     listWorkflowTemplateOptions().then(setWorkflows).catch(() => setWorkflows([]))
     listFocusTemplateOptions().then(setFocuses).catch(() => setFocuses([]))
+    listTriggerEvents(vertical).then(setTriggerEvents).catch(() => setTriggerEvents([]))
     setName(task?.name ?? "")
     setFrequency(task?.frequency ?? null)
     setTaskType(task?.task_type ?? null)
     setDescription(task?.description ?? "")
     setWorkflowId(task?.workflow?.artifact_id ?? null)
     setFocusIds(task ? task.focuses.map((f) => f.artifact_id) : [])
-  }, [isOpen, task])
+    setTriggers(task?.triggers ?? [])
+    setAddingTrigger(false)
+  }, [isOpen, task, vertical])
+
+  // Add/remove ride T-1a's trigger CRUD; local state updates immediately (the
+  // POST response carries `summary`, no TS drift), and onSaved refreshes the
+  // table's read shape (derived Frequency + chips). Errors propagate to the
+  // TriggerEditor (which shows the validator's reason) — never swallowed.
+  async function addTrigger(kind: MoCTriggerKind, config: Record<string, unknown>) {
+    const created = await addTaskTrigger(task!.id, { kind, config })
+    setTriggers((cur) => [...cur, created])
+    setAddingTrigger(false)
+    onSaved()
+  }
+
+  async function removeTrigger(triggerId: string) {
+    try {
+      await deleteTrigger(triggerId)
+      setTriggers((cur) => cur.filter((t) => t.id !== triggerId))
+      onSaved()
+    } catch (e) {
+      onError(errMsg(e))
+    }
+  }
 
   async function save() {
     if (!name.trim()) { onError("Name is required"); return }
@@ -229,6 +265,41 @@ export function TaskEditorPanel({
             onChange={setFocusIds} placeholder="Search focuses…"
             testId="task-panel-focuses" />
         </Field>
+
+        {/* Triggers — descriptive (do NOT fire). Edit mode only: a trigger
+            attaches to a saved task. */}
+        {editing ? (
+          <div className="space-y-2 border-t border-border-subtle pt-4" data-testid="task-panel-triggers">
+            <div className="flex items-center justify-between">
+              <label className="text-body-sm font-medium text-content-base">Triggers</label>
+              {!addingTrigger ? (
+                <Button size="sm" variant="outline" onClick={() => setAddingTrigger(true)}
+                  data-testid="trigger-add-open">
+                  <Plus size={14} /> Add trigger
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-caption text-content-subtle">
+              Descriptive — triggers are legible metadata; they don’t fire yet.
+            </p>
+            {triggers.length > 0 ? (
+              <TriggerChips triggers={triggers} onRemove={removeTrigger} />
+            ) : !addingTrigger ? (
+              <p className="text-body-sm text-content-subtle">No triggers — this task is run manually.</p>
+            ) : null}
+            {addingTrigger ? (
+              <TriggerEditor
+                events={triggerEvents}
+                onAdd={addTrigger}
+                onCancel={() => setAddingTrigger(false)}
+              />
+            ) : null}
+          </div>
+        ) : (
+          <p className="border-t border-border-subtle pt-4 text-caption text-content-subtle">
+            Save the task first to add triggers.
+          </p>
+        )}
       </div>
     </SlideOver>
   )

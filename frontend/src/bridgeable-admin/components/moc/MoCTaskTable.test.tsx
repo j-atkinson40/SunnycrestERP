@@ -32,6 +32,9 @@ vi.mock("@/bridgeable-admin/services/moc-service", async (importOriginal) => {
     createTask: vi.fn(),
     listWorkflowTemplateOptions: vi.fn(),
     listFocusTemplateOptions: vi.fn(),
+    listTriggerEvents: vi.fn(),
+    addTaskTrigger: vi.fn(),
+    deleteTrigger: vi.fn(),
   }
 })
 
@@ -215,10 +218,108 @@ describe("MoCTaskTable — edit (2b)", () => {
   it("the Add-task button opens the create panel", () => {
     vi.mocked(mocService.listWorkflowTemplateOptions).mockResolvedValue([])
     vi.mocked(mocService.listFocusTemplateOptions).mockResolvedValue([])
+    vi.mocked(mocService.listTriggerEvents).mockResolvedValue([])
     renderTable([])
     // Panel closed → SlideOver returns null → its name input is absent.
     expect(screen.queryByTestId("task-panel-name")).toBeNull()
     fireEvent.click(screen.getByTestId("moc-task-add"))
     expect(screen.getByTestId("task-panel-name")).toBeTruthy()
+  })
+})
+
+const ORDER_EVENT: mocService.MoCTriggerEvent = {
+  id: "ev-1",
+  event_key: "order.created",
+  label: "Order created",
+  entity: "sales_order",
+  filterable_fields: [
+    { field: "order_type", type: "enum", values: ["funeral", "retail", "wholesale"] },
+    { field: "status", type: "string" },
+  ],
+}
+
+describe("MoCTaskTable — triggers + derived frequency (T-1b)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(mocService.listWorkflowTemplateOptions).mockResolvedValue([])
+    vi.mocked(mocService.listFocusTemplateOptions).mockResolvedValue([])
+    vi.mocked(mocService.listTriggerEvents).mockResolvedValue([ORDER_EVENT])
+  })
+
+  it("renders trigger chips per kind, with the backend summary", () => {
+    const withTriggers: MoCTask = {
+      ...EMPTY,
+      id: "t-trig",
+      triggers: [
+        { id: "tr1", kind: "schedule", config: {}, display_order: 0, summary: "Monthly · 1st" },
+        { id: "tr2", kind: "event", config: {}, display_order: 1, summary: "order.created: funeral" },
+        { id: "tr3", kind: "manual", config: {}, display_order: 2, summary: "Manual" },
+      ],
+    }
+    renderTable([withTriggers])
+    const cell = screen.getByTestId("moc-task-triggers-t-trig")
+    expect(within(cell).getByTestId("trigger-chip-schedule")).toBeTruthy()
+    expect(within(cell).getByTestId("trigger-chip-event")).toBeTruthy()
+    expect(within(cell).getByTestId("trigger-chip-manual")).toBeTruthy()
+    expect(cell.textContent).toContain("Monthly · 1st")
+    expect(cell.textContent).toContain("order.created: funeral")
+  })
+
+  it("the triggers cell is a deliberate em-dash when a task has none", () => {
+    renderTable([{ ...EMPTY, id: "t-none", triggers: [] }])
+    expect(screen.getByTestId("moc-task-triggers-t-none").textContent).toBe("—")
+  })
+
+  it("shows the DERIVED frequency when a schedule-trigger exists (manual pick suppressed)", () => {
+    const derived: MoCTask = { ...POPULATED, id: "t-deriv", derived_frequency: "End of Month · 6:00 PM" }
+    renderTable([derived])
+    const cell = screen.getByTestId("moc-task-frequency-t-deriv")
+    expect(within(cell).getByTestId("moc-task-frequency-derived-t-deriv")).toBeTruthy()
+    expect(cell.textContent).toContain("End of Month · 6:00 PM")
+    // The manual quick-pick is NOT rendered in the derived case.
+    expect(within(cell).queryByTestId("vocab-cell-frequency")).toBeNull()
+  })
+
+  it("keeps the manual frequency quick-pick when there is NO schedule-trigger (coexist)", () => {
+    renderTable([{ ...POPULATED, id: "t-manual", derived_frequency: null }])
+    const cell = screen.getByTestId("moc-task-frequency-t-manual")
+    expect(within(cell).getByTestId("vocab-cell-frequency")).toBeTruthy()
+    expect(within(cell).queryByTestId("moc-task-frequency-derived-t-manual")).toBeNull()
+  })
+
+  it("the panel's kind-switched form builds a STRUCTURED list-of-one event condition", async () => {
+    vi.mocked(mocService.addTaskTrigger).mockResolvedValue(
+      { id: "new", kind: "event", config: {}, display_order: 0, summary: "order.created: funeral" },
+    )
+    renderTable([POPULATED])
+    // Open the panel (edit), open the trigger editor.
+    fireEvent.click(screen.getByTestId("moc-task-edit-t-pop"))
+    fireEvent.click(await screen.findByTestId("trigger-add-open"))
+    // Pick EVENT kind → event → the condition builder reads filterable_fields.
+    fireEvent.click(screen.getByTestId("trigger-kind-event"))
+    fireEvent.change(await screen.findByTestId("event-select"), { target: { value: "order.created" } })
+    fireEvent.change(await screen.findByTestId("condition-field"), { target: { value: "order_type" } })
+    fireEvent.change(await screen.findByTestId("condition-value"), { target: { value: "funeral" } })
+    fireEvent.click(screen.getByTestId("trigger-editor-add"))
+
+    await waitFor(() => expect(mocService.addTaskTrigger).toHaveBeenCalled())
+    const [, payload] = vi.mocked(mocService.addTaskTrigger).mock.calls[0]
+    expect(payload.kind).toBe("event")
+    const conditions = (payload.config as { conditions: unknown }).conditions
+    expect(Array.isArray(conditions)).toBe(true) // a LIST, not a string
+    expect(conditions).toEqual([{ field: "order_type", operator: "==", value: "funeral" }])
+  })
+
+  it("a rejected trigger write surfaces the validator's reason (no swallow)", async () => {
+    vi.mocked(mocService.addTaskTrigger).mockRejectedValue({
+      response: { data: { detail: "condition field 'bogus' is not exposed by event 'order.created'" } },
+    })
+    renderTable([POPULATED])
+    fireEvent.click(screen.getByTestId("moc-task-edit-t-pop"))
+    fireEvent.click(await screen.findByTestId("trigger-add-open"))
+    fireEvent.click(screen.getByTestId("trigger-kind-manual")) // simplest valid kind to submit
+    fireEvent.click(screen.getByTestId("trigger-editor-add"))
+    const err = await screen.findByTestId("trigger-editor-error")
+    expect(err.textContent).toContain("not exposed by event")
   })
 })
