@@ -175,10 +175,13 @@ def patch_trigger(
     label: Any = _UNSET,
     display_order: Any = _UNSET,
     is_active: Any = _UNSET,
+    is_live: Any = _UNSET,
     actor_id: str | None = None,
 ) -> MoCTaskTrigger:
     """Partial update. _UNSET = leave alone. Re-validates the RESULTING (kind,
-    config). Caller commits."""
+    config). `is_live` is the T-2.1b live-promotion (default FALSE; the sweep only
+    fires live when is_live AND the task is compiled — the mirror guard is in the
+    sweep, not here). Caller commits."""
     trig = db.get(MoCTaskTrigger, trigger_id)
     if trig is None:
         raise TriggerValidationError(f"trigger {trigger_id!r} not found")
@@ -199,6 +202,8 @@ def patch_trigger(
         trig.display_order = display_order
     if is_active is not _UNSET:
         trig.is_active = is_active
+    if is_live is not _UNSET:
+        trig.is_live = is_live
     trig.updated_by = actor_id
     db.flush()
     return trig

@@ -297,6 +297,9 @@ class _PatchTrigger(BaseModel):
     label: str | None = None
     display_order: int | None = None
     is_active: bool | None = None
+    # T-2.1b live-promotion. Setting true does NOT alone make a fire live — the
+    # sweep additionally requires the task to be a COMPILED (non-mirror) workflow.
+    is_live: bool | None = None
 
 
 def _trigger_payload(trig) -> dict:
@@ -304,6 +307,7 @@ def _trigger_payload(trig) -> dict:
         "id": trig.id, "task_catalog_id": trig.task_catalog_id, "kind": trig.kind,
         "config": trig.config, "label": trig.label,
         "display_order": trig.display_order, "is_active": trig.is_active,
+        "is_live": trig.is_live,
         # The chip label (reuses the shipped humanize helper — same summary the
         # task-read path computes, so the panel + table agree with no TS drift).
         "summary": triggers_svc.summarize_trigger(trig.kind, trig.config),
