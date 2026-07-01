@@ -20,7 +20,7 @@
  */
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowUpRight, Pencil, Plus, Trash2, type LucideIcon } from "lucide-react"
+import { ArrowUpRight, Clock, Pencil, Plus, Trash2, type LucideIcon } from "lucide-react"
 import { FileText, Receipt, Sparkles } from "lucide-react"
 
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
@@ -37,6 +37,7 @@ import {
 } from "@/bridgeable-admin/services/moc-service"
 import { VocabCell } from "./task-editing/VocabCell"
 import { TaskEditorPanel, errMsg } from "./task-editing/TaskEditorPanel"
+import { TriggerChips } from "./task-editing/TriggerChips"
 
 const TASK_ICONS: Record<string, LucideIcon> = {
   receipt: Receipt,
@@ -125,7 +126,7 @@ export function MoCTaskTable({
           <table className="w-full border-collapse text-body-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-surface-sunken text-left">
-                {["Task", "Frequency", "Workflow Used", "Focus's Used", "Type", "Description", ""].map(
+                {["Task", "Frequency", "Workflow Used", "Focus's Used", "Type", "Description", "Triggers", ""].map(
                   (h, i) => (
                     <th
                       key={h || `actions-${i}`}
@@ -215,16 +216,29 @@ function TaskRow({
           {task.name}
         </span>
       </td>
-      {/* Frequency — inline quick-pick */}
-      <td className="px-3 py-2 text-content-muted">
-        <VocabCell
-          kind="frequency"
-          value={task.frequency ?? null}
-          vertical={vertical}
-          onSelect={(v) => void patchField({ frequency: v })}
-        >
-          {task.frequency || <EmptyCell />}
-        </VocabCell>
+      {/* Frequency — DERIVED from a schedule-trigger when present (read-only,
+          marked "from schedule"); otherwise the manual 2a quick-pick stands +
+          stays editable (the non-destructive coexistence). */}
+      <td className="px-3 py-2 text-content-muted" data-testid={`moc-task-frequency-${task.id}`}>
+        {task.derived_frequency ? (
+          <span
+            className="inline-flex items-center gap-1 text-content-base"
+            title="Derived from this task's schedule trigger"
+            data-testid={`moc-task-frequency-derived-${task.id}`}
+          >
+            <Clock size={12} className="text-status-info" />
+            {task.derived_frequency}
+          </span>
+        ) : (
+          <VocabCell
+            kind="frequency"
+            value={task.frequency ?? null}
+            vertical={vertical}
+            onSelect={(v) => void patchField({ frequency: v })}
+          >
+            {task.frequency || <EmptyCell />}
+          </VocabCell>
+        )}
       </td>
       {/* Workflow Used — deep-link or deliberate em-dash (edit via panel) */}
       <td className="px-3 py-2" data-testid={`moc-task-workflow-${task.id}`}>
@@ -300,6 +314,10 @@ function TaskRow({
           value={task.description ?? null}
           onCommit={(v) => patchField({ description: v })}
         />
+      </td>
+      {/* Triggers — chips (summary); editing happens in the panel */}
+      <td className="px-3 py-2" data-testid={`moc-task-triggers-${task.id}`}>
+        <TriggerChips triggers={task.triggers ?? []} />
       </td>
       {/* Row actions — edit relationships / delete */}
       <td className="px-3 py-2">

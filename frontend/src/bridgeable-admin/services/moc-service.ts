@@ -53,19 +53,60 @@ export interface MoCResolvedArtifact extends MoCRowResolution {
   artifact_id: string
 }
 
-/** A task-catalog row — descriptive cells + resolved relational cells. The
- * workflow may be null and focuses may be empty (orphan-tolerant: the
- * referenced template isn't seeded yet). */
+/** A DESCRIPTIVE trigger (MoC Triggers T-1b) — legible metadata, does NOT fire.
+ * `config` is kind-specific; `summary` is the backend-computed chip label
+ * (reuses the shipped humanize helper — no frontend re-implementation). */
+export type MoCTriggerKind = "schedule" | "event" | "manual"
+
+export interface MoCTrigger {
+  id: string
+  task_catalog_id?: string
+  kind: MoCTriggerKind
+  config: Record<string, unknown>
+  label?: string | null
+  display_order: number
+  is_active?: boolean
+  /** Present on the task-read shape; the chip label. */
+  summary?: string
+}
+
+/** A field a condition can reference, carried on the catalog event (drives the
+ * condition builder). `values` present for enum fields (e.g. order_type). */
+export interface MoCFilterableField {
+  field: string
+  type: string
+  values?: string[]
+}
+
+/** A curated catalog event for the event-trigger picker. */
+export interface MoCTriggerEvent {
+  id: string
+  event_key: string
+  label: string
+  entity?: string | null
+  filterable_fields: MoCFilterableField[]
+  scope?: string
+  vertical?: string | null
+  is_active?: boolean
+  display_order?: number
+}
+
+/** A task-catalog row — descriptive cells + resolved relational cells + the
+ * DESCRIPTIVE triggers (T-1b). The workflow may be null and focuses may be empty
+ * (orphan-tolerant). `derived_frequency` is the first schedule-trigger's
+ * humanized summary (null → the manual `frequency` stands — non-destructive). */
 export interface MoCTask {
   id: string
   name: string
   icon?: string | null
   frequency?: string | null
+  derived_frequency?: string | null
   task_type?: string | null
   description?: string | null
   display_order: number
   workflow: MoCResolvedArtifact | null
   focuses: MoCResolvedArtifact[]
+  triggers?: MoCTrigger[]
 }
 
 /** A page with references resolved for rendering (the /read shapes). */
@@ -293,4 +334,62 @@ export async function listFocusTemplateOptions(): Promise<MoCArtifactOption[]> {
     "/api/platform/admin/focus-template-inheritance/templates",
   )
   return data
+}
+
+// ── Task triggers (MoC Triggers T-1b) — descriptive, does NOT fire ─────
+
+/** The curated event catalog for the event-trigger picker. Each event carries
+ * its filterable_fields (the condition builder's field vocabulary). */
+export async function listTriggerEvents(
+  vertical?: string,
+): Promise<MoCTriggerEvent[]> {
+  const { data } = await adminApi.get<MoCTriggerEvent[]>(
+    `${BASE}/trigger-events`,
+    { params: vertical ? { vertical } : undefined },
+  )
+  return data
+}
+
+export interface AddTriggerInput {
+  kind: MoCTriggerKind
+  config: Record<string, unknown>
+  label?: string | null
+  display_order?: number
+}
+
+/** Attach a trigger. The event condition is a structured LIST-OF-ONE in config
+ * — never flattened to a string (the expansion-ready shape). A rejected shape
+ * throws (the validator's reason surfaces; the caller shows it). */
+export async function addTaskTrigger(
+  taskId: string,
+  input: AddTriggerInput,
+): Promise<MoCTrigger> {
+  const { data } = await adminApi.post<MoCTrigger>(
+    `${BASE}/tasks/${taskId}/triggers`,
+    input,
+  )
+  return data
+}
+
+export type PatchTriggerInput = Partial<{
+  kind: MoCTriggerKind
+  config: Record<string, unknown>
+  label: string | null
+  display_order: number
+  is_active: boolean
+}>
+
+export async function patchTrigger(
+  triggerId: string,
+  input: PatchTriggerInput,
+): Promise<MoCTrigger> {
+  const { data } = await adminApi.patch<MoCTrigger>(
+    `${BASE}/triggers/${triggerId}`,
+    input,
+  )
+  return data
+}
+
+export async function deleteTrigger(triggerId: string): Promise<void> {
+  await adminApi.delete(`${BASE}/triggers/${triggerId}`)
 }
