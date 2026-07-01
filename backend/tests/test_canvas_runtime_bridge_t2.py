@@ -133,7 +133,7 @@ def test_repoint_mirror_runs_the_source(env):
     assert resolved == source_id
 
     run = bridge.execute_template(
-        s, template_id=tmpl.id, company_id=env["company_id"], allow_live_execution=True)
+        s, template_id=tmpl.id, company_id=env["company_id"], allow_run=True, go_live=True)
     assert run.workflow_id == source_id  # ran the source, not a compiled copy
     assert run.status == "completed"
 
@@ -147,7 +147,7 @@ def test_compile_linear_runs_and_reflects_shape(env):
     s.commit()
 
     run = bridge.execute_template(
-        s, template_id=tmpl.id, company_id=env["company_id"], allow_live_execution=True)
+        s, template_id=tmpl.id, company_id=env["company_id"], allow_run=True, go_live=True)
     env["workflows"].append(run.workflow_id)  # the compiled workflow
     assert run.status == "completed"
 
@@ -302,7 +302,7 @@ def test_run_failure_is_recorded_loudly(env, monkeypatch):
     monkeypatch.setattr("app.services.workflow_engine._execute_action", _boom)
 
     run = bridge.execute_template(
-        s, template_id=tmpl.id, company_id=env["company_id"], allow_live_execution=True)
+        s, template_id=tmpl.id, company_id=env["company_id"], allow_run=True, go_live=True)
     env["workflows"].append(run.workflow_id)
     assert run.status == "failed"  # recorded loudly, not swallowed
     assert run.error_message and "boom in a step" in run.error_message
