@@ -377,6 +377,24 @@ def admin_delete_trigger(
     return {"deleted": True, "id": trigger_id}
 
 
+# ─── Schedule-fire run log (T-2.1a observability) — see what fired dry-run ──
+
+
+@router.get("/schedule-runs")
+def admin_list_schedule_runs(
+    limit: int = Query(50, ge=1, le=200),
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Recent MoC schedule fires + their "would do X" records. Every fire is
+    DRY-RUN this phase (T-2.1a) — this is how an operator validates fires before
+    T-2.1b promotes any to live. (Fidelity caveat: a dry-run fire whose branching
+    depends on a suppressed effect-step's output may not perfectly predict live.)"""
+    from app.services.maps_of_content.schedule_sweep import list_schedule_runs
+
+    return list_schedule_runs(db, limit=limit)
+
+
 # ─── Pydantic shapes ─────────────────────────────────────────────
 
 

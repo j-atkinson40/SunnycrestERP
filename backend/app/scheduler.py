@@ -696,6 +696,30 @@ def register_all_jobs():
         misfire_grace_time=300,
     )
 
+    # EVERY 15 MINUTES — MoC schedule sweep (Canvas↔Runtime Bridge T-2.1a).
+    # A SEPARATE, isolated APScheduler job (its own try/except) so a MoC-sweep
+    # failure never touches the workflow scheduler above. Fires DUE MoC schedule-
+    # triggers DRY-RUN through the T-2.0b engine — every fire is dry-run this
+    # phase (go_live sourced from a constant False; no real effects). T-2.1b adds
+    # the is_live promotion.
+    def _run_moc_schedule_sweep():
+        try:
+            from app.services.maps_of_content.schedule_sweep import check_moc_task_schedules
+            result = check_moc_task_schedules()
+            logger.info(f"MoC schedule sweep (dry-run): {result}")
+        except Exception as e:
+            logger.error(f"MoC schedule sweep failed: {e}")
+
+    scheduler.add_job(
+        _run_moc_schedule_sweep,
+        "interval",
+        minutes=15,
+        id="moc_schedule_sweep",
+        name="moc_schedule_sweep",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     # EVERY 15 MINUTES — Phase 6 per-user briefing sweep.
     # First per-user scheduled pattern on the platform — see
     # `app.services.briefings.scheduler_integration` for the window-fire
