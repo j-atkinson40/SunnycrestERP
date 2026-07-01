@@ -30,6 +30,8 @@ from app.database import get_db
 from app.models.moc_page import MoCPage
 from app.models.platform_user import PlatformUser
 from app.services import maps_of_content as moc
+from app.services.maps_of_content import trigger_events as trigger_events_svc
+from app.services.maps_of_content import triggers as triggers_svc
 from app.services.maps_of_content import vocabulary as vocab
 from app.services.maps_of_content.task_catalog import (
     TaskValidationError,
@@ -199,12 +201,177 @@ def admin_delete_task(
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a task; the focus-join rows clear via delete-orphan cascade."""
+    """Delete a task; the focus-join rows + triggers clear via delete-orphan +
+    the FK's ON DELETE CASCADE."""
     deleted = delete_task(db, task_id=task_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="task not found")
     db.commit()
     return {"deleted": True, "id": task_id}
+
+
+# ─── Trigger event catalog (MoC Triggers T-1a) — curated editable vocabulary ──
+# (declared before the page `/{page_id}` catch-all so `/trigger-events` resolves)
+
+
+class _AddEvent(BaseModel):
+    event_key: str
+    label: str
+    entity: str | None = None
+    filterable_fields: list[dict[str, Any]] = []
+    scope: Scope = "platform_default"
+    vertical: str | None = None
+    display_order: int = 0
+
+
+def _event_payload(ev) -> dict:
+    return {
+        "id": ev.id, "event_key": ev.event_key, "label": ev.label,
+        "entity": ev.entity, "filterable_fields": ev.filterable_fields,
+        "scope": ev.scope, "vertical": ev.vertical, "is_active": ev.is_active,
+        "display_order": ev.display_order,
+    }
+
+
+@router.get("/trigger-events")
+def admin_list_trigger_events(
+    vertical: str | None = Query(None),
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The curated event menu for the event-trigger picker — platform events +
+    (if given) the vertical's. Each carries its filterable_fields."""
+    return [_event_payload(e) for e in trigger_events_svc.list_events(db, vertical=vertical)]
+
+
+@router.post("/trigger-events", status_code=201)
+def admin_add_trigger_event(
+    body: _AddEvent,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Add a catalog event (find-or-create). The editable vocabulary — a new
+    event is a row, no code change. (It does NOT fire — descriptive metadata.)"""
+    try:
+        ev = trigger_events_svc.add_event(
+            db, event_key=body.event_key, label=body.label, entity=body.entity,
+            filterable_fields=body.filterable_fields, scope=body.scope,
+            vertical=body.vertical, display_order=body.display_order,
+            actor_id=admin.id,
+        )
+        db.commit()
+    except trigger_events_svc.EventCatalogError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _event_payload(ev)
+
+
+@router.delete("/trigger-events/{event_id}", status_code=200)
+def admin_deactivate_trigger_event(
+    event_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Soft-delete — triggers referencing the event don't orphan."""
+    try:
+        ev = trigger_events_svc.deactivate_event(db, event_id=event_id, actor_id=admin.id)
+        db.commit()
+    except trigger_events_svc.EventCatalogError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"id": ev.id, "is_active": ev.is_active}
+
+
+# ─── Task triggers CRUD (MoC Triggers T-1a) — the descriptive trigger collection
+
+
+class _AddTrigger(BaseModel):
+    kind: Literal["schedule", "event", "manual"]
+    config: dict[str, Any] = {}
+    label: str | None = None
+    display_order: int = 0
+
+
+class _PatchTrigger(BaseModel):
+    kind: Literal["schedule", "event", "manual"] | None = None
+    config: dict[str, Any] | None = None
+    label: str | None = None
+    display_order: int | None = None
+    is_active: bool | None = None
+
+
+def _trigger_payload(trig) -> dict:
+    return {
+        "id": trig.id, "task_catalog_id": trig.task_catalog_id, "kind": trig.kind,
+        "config": trig.config, "label": trig.label,
+        "display_order": trig.display_order, "is_active": trig.is_active,
+    }
+
+
+@router.get("/tasks/{task_id}/triggers")
+def admin_list_task_triggers(
+    task_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """A task's DESCRIPTIVE triggers (schedule|event|manual). They do NOT fire —
+    metadata for the deferred execution bridge."""
+    return [_trigger_payload(t) for t in triggers_svc.list_triggers(db, task_catalog_id=task_id)]
+
+
+@router.post("/tasks/{task_id}/triggers", status_code=201)
+def admin_add_task_trigger(
+    task_id: str,
+    body: _AddTrigger,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Attach a trigger (validates SHAPE — schedule spec / event+conditions-list /
+    manual). 400 on a bad shape (never silently accepted); 404 if the task is
+    unknown."""
+    try:
+        trig = triggers_svc.add_trigger(
+            db, task_catalog_id=task_id, kind=body.kind, config=body.config,
+            label=body.label, display_order=body.display_order, actor_id=admin.id,
+        )
+        db.commit()
+    except triggers_svc.TriggerValidationError as exc:
+        db.rollback()
+        code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=code, detail=str(exc))
+    return _trigger_payload(trig)
+
+
+@router.patch("/triggers/{trigger_id}")
+def admin_patch_trigger(
+    trigger_id: str,
+    body: _PatchTrigger,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Partial update — only the sent fields apply; re-validates the resulting
+    (kind, config)."""
+    kwargs = {k: getattr(body, k) for k in body.model_fields_set}
+    try:
+        trig = triggers_svc.patch_trigger(db, trigger_id=trigger_id, actor_id=admin.id, **kwargs)
+        db.commit()
+    except triggers_svc.TriggerValidationError as exc:
+        db.rollback()
+        code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=code, detail=str(exc))
+    return _trigger_payload(trig)
+
+
+@router.delete("/triggers/{trigger_id}", status_code=200)
+def admin_delete_trigger(
+    trigger_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a trigger."""
+    if not triggers_svc.delete_trigger(db, trigger_id=trigger_id):
+        raise HTTPException(status_code=404, detail="trigger not found")
+    db.commit()
+    return {"deleted": True, "id": trigger_id}
 
 
 # ─── Pydantic shapes ─────────────────────────────────────────────
