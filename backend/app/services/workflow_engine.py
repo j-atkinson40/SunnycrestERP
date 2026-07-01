@@ -341,8 +341,17 @@ def start_run(
     trigger_source: str,
     trigger_context: dict | None = None,
     initial_inputs: dict | None = None,
+    dry_run: bool = False,
 ) -> WorkflowRun:
-    """Create a run and execute steps until it pauses for input or completes."""
+    """Create a run and execute steps until it pauses for input or completes.
+
+    dry_run (T-2.0b — the engine's safe-by-default execution mode): when True, no
+    step commits a real effect. Only `condition` steps run their (pure, read-only)
+    handler so branching stays real; every other step type (incl. any new/unknown
+    one — safe-by-default) is SUPPRESSED and RECORDED ("would do X") instead of
+    executed, and pauses are skipped so the run stays terminal + observable. The
+    flag threads to the bottom (`_execute_step`) — it is HONORED at the executor,
+    not merely accepted at the top."""
     run = WorkflowRun(
         workflow_id=workflow_id,
         company_id=company_id,
@@ -351,13 +360,15 @@ def start_run(
         trigger_context=trigger_context,
         status="running",
         input_data=dict(initial_inputs or {}),
-        output_data={},
+        # Stamp the mode on the run so the trace is self-describing (no column —
+        # a marker in output_data; observable per proof #5).
+        output_data={"__dry_run__": True} if dry_run else {},
     )
     db.add(run)
     db.commit()
     db.refresh(run)
 
-    _drive_run(db, run)
+    _drive_run(db, run, dry_run=dry_run)
     return run
 
 
@@ -460,8 +471,10 @@ def advance_run(db: Session, run_id: str, step_input: dict) -> WorkflowRun:
     return run
 
 
-def _drive_run(db: Session, run: WorkflowRun) -> None:
-    """Execute steps from current_step_id onwards until pause or completion."""
+def _drive_run(db: Session, run: WorkflowRun, dry_run: bool = False) -> None:
+    """Execute steps from current_step_id onwards until pause or completion.
+
+    dry_run threads to `_execute_step` — HONORED at the executor (see start_run)."""
     workflow = db.query(Workflow).filter(Workflow.id == run.workflow_id).first()
     if not workflow:
         _fail_run(db, run, "Workflow not found")
@@ -499,7 +512,7 @@ def _drive_run(db: Session, run: WorkflowRun) -> None:
         outputs_by_key = _step_outputs_by_key(db, run)
         result = _execute_step(
             db, run, current, outputs_by_key, current_user, current_company,
-            previous_step_key=previous_step_key,
+            previous_step_key=previous_step_key, dry_run=dry_run,
         )
         if result.get("pause"):
             # Awaiting input — record paused step, return
@@ -565,6 +578,26 @@ def _resolve_next_step(
     return _next_by_order(steps, current)
 
 
+def _dry_run_suppressed_output(step: WorkflowStep, resolved_config: dict) -> dict:
+    """The RECORD a suppressed step emits in dry-run — what it WOULD have done
+    (observable trace; no real effect). Config is previewed by keys only (bounded,
+    no data dump)."""
+    cfg = resolved_config or {}
+    action_type = cfg.get("action_type")
+    label = step.step_type + (f":{action_type}" if action_type else "")
+    would = f"would execute {label}"
+    if cfg.get("method_name"):
+        would += f" ({cfg['method_name']})"
+    return {
+        "dry_run": True,
+        "suppressed": True,
+        "step_type": step.step_type,
+        "action_type": action_type,
+        "would": would,
+        "config_keys": sorted(k for k in cfg.keys()),
+    }
+
+
 def _execute_step(
     db: Session,
     run: WorkflowRun,
@@ -574,8 +607,17 @@ def _execute_step(
     current_company: Company | None,
     *,
     previous_step_key: str | None = None,
+    dry_run: bool = False,
 ) -> dict:
-    """Execute one step. Returns dict with pause / output / condition_result."""
+    """Execute one step. Returns dict with pause / output / condition_result.
+
+    dry_run (T-2.0b): the SAFE-BY-DEFAULT executor interception. Only `condition`
+    steps run their real (pure, read-only) handler so branching stays real; every
+    OTHER step type — action/output/notification/ai_prompt/send_document AND any
+    unknown/new one (deny-by-default) — is SUPPRESSED and RECORDED, never
+    executed. `input` pauses are also suppressed (recorded, no pause) so the run
+    stays terminal + observable. No real effect (DB write, external call, send)
+    can occur in dry-run because the effect-producing handler is never invoked."""
     # Record the run step
     rs = WorkflowRunStep(
         run_id=run.id,
@@ -588,21 +630,29 @@ def _execute_step(
     db.refresh(rs)
 
     try:
-        if step.step_type == "input":
-            # Pause for input. Config describes what to ask.
+        if step.step_type == "input" and not dry_run:
+            # Pause for input (LIVE only). Config describes what to ask.
             # Don't mark step completed yet — advance_run will do that.
+            # In dry-run the pause is suppressed below so the run stays terminal.
             rs.status = "pending"
             rs.output_data = {"awaiting_input": True, "prompt": step.config}
             db.commit()
             return {"pause": True, "prompt": step.config}
 
-        # Resolve variables in the step config
+        # Resolve variables in the step config (READ-only — happens in both modes
+        # so the run reflects real resolved shape).
         resolved_config = resolve_variables(
             step.config, run, outputs_by_key, current_user, current_company,
             previous_step_key=previous_step_key,
         )
 
-        if step.step_type == "action" or step.step_type == "output" or step.step_type == "notification":
+        if dry_run and step.step_type != "condition":
+            # SAFE-BY-DEFAULT SUPPRESSION: the effect-producing handler is NOT
+            # invoked. A newly-added effectful step type falls here automatically
+            # (deny-by-default). `condition` is the sole exception — it's a pure
+            # read, needed for real branching (below).
+            output = _dry_run_suppressed_output(step, resolved_config)
+        elif step.step_type == "action" or step.step_type == "output" or step.step_type == "notification":
             output = _execute_action(db, resolved_config, run, current_company, run_step_id=rs.id)
         elif step.step_type == "condition":
             output = _evaluate_condition(resolved_config)
