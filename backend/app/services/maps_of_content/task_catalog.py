@@ -55,16 +55,46 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         }
         for f in task.focuses
     ]
+    # The DESCRIPTIVE triggers (MoC Triggers T-1b) + the derived Frequency —
+    # both reuse the shipped `summarize_trigger` / `humanize_schedule` helpers so
+    # the frontend never re-implements the humanize logic. `derived_frequency`
+    # is the first ACTIVE schedule trigger's summary (None → the manual 2a
+    # frequency stands; the non-destructive coexistence). Lazy import mirrors the
+    # vocabulary import in _validate_task_refs (avoids an import cycle).
+    from app.services.maps_of_content import triggers as _triggers
+
+    active_triggers = sorted(
+        (t for t in task.triggers if t.is_active), key=lambda t: t.display_order
+    )
+    trigger_payloads = [
+        {
+            "id": t.id,
+            "kind": t.kind,
+            "config": t.config,
+            "label": t.label,
+            "display_order": t.display_order,
+            "summary": _triggers.summarize_trigger(t.kind, t.config),
+        }
+        for t in active_triggers
+    ]
+    schedule_trigger = next((t for t in active_triggers if t.kind == "schedule"), None)
+    derived_frequency = (
+        _triggers.humanize_schedule(schedule_trigger.config)
+        if schedule_trigger
+        else None
+    )
     return {
         "id": task.id,
         "name": task.name,
         "icon": task.icon,
         "frequency": task.frequency,
+        "derived_frequency": derived_frequency,
         "task_type": task.task_type,
         "description": task.description,
         "display_order": task.display_order,
         "workflow": workflow,
         "focuses": focuses,
+        "triggers": trigger_payloads,
     }
 
 

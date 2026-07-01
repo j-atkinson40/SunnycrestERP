@@ -258,6 +258,23 @@ def _humanize_cron(cron: str) -> str:
     return cron
 
 
+def summarize_trigger(kind: str, config: dict) -> str:
+    """A one-line chip summary for a trigger — the display label the cell/panel
+    render. Schedule reuses humanize_schedule (no frontend drift); event reads
+    the key + first condition; manual is fixed. Non-firing; purely for display."""
+    config = config or {}
+    if kind == "schedule":
+        return humanize_schedule(config)
+    if kind == "event":
+        event = config.get("event", "")
+        conditions = config.get("conditions") or []
+        if conditions and isinstance(conditions[0], dict):
+            c = conditions[0]
+            return f"{event}: {c.get('value')}"
+        return event or "Event"
+    return "Manual"
+
+
 def humanize_schedule(config: dict) -> str:
     """A schedule config → a human summary label (the Frequency derivation).
     Non-firing; purely for display."""

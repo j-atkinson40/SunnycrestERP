@@ -304,6 +304,9 @@ def _trigger_payload(trig) -> dict:
         "id": trig.id, "task_catalog_id": trig.task_catalog_id, "kind": trig.kind,
         "config": trig.config, "label": trig.label,
         "display_order": trig.display_order, "is_active": trig.is_active,
+        # The chip label (reuses the shipped humanize helper — same summary the
+        # task-read path computes, so the panel + table agree with no TS drift).
+        "summary": triggers_svc.summarize_trigger(trig.kind, trig.config),
     }
 
 
