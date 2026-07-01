@@ -86,6 +86,16 @@ class MoCTaskCatalog(Base):
         back_populates="task",
     )
 
+    # The 0..N DESCRIPTIVE triggers (schedule|event|manual — MoC Triggers T-1a).
+    # ORM cascade mirrors focuses; the DB FK also carries ON DELETE CASCADE so a
+    # task delete never orphans a trigger regardless of load path.
+    triggers: Mapped[list["MoCTaskTrigger"]] = relationship(  # noqa: F821
+        "MoCTaskTrigger",
+        cascade="all, delete-orphan",
+        order_by="MoCTaskTrigger.display_order",
+        primaryjoin="MoCTaskCatalog.id == MoCTaskTrigger.task_catalog_id",
+    )
+
 
 class MoCTaskCatalogFocus(Base):
     __tablename__ = "moc_task_catalog_focuses"
