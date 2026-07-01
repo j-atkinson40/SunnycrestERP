@@ -715,6 +715,8 @@ def _execute_action(
         return _execute_notify_via_contact_preference(db, resolved_config, run)
     if action_type == "log_vault_item":
         return _handle_log_vault_item(db, resolved_config, run)
+    if action_type == "record_marker":
+        return _handle_record_marker(db, resolved_config, run)
     if action_type == "generate_document":
         return _handle_generate_document(db, resolved_config, run)
     if action_type == "playwright_action":
@@ -1668,6 +1670,33 @@ def _handle_log_vault_item(db: Session, config: dict, run: WorkflowRun) -> dict:
     except Exception as e:
         db.rollback()
         return {"type": "vault_item", "status": "error", "error": str(e)[:200]}
+
+
+def _handle_record_marker(db: Session, config: dict, run: WorkflowRun) -> dict:
+    """Write a benign-but-real MoC witness marker row (Canvas↔Runtime Bridge
+    T-2.1b-WITNESS). The ONLY writer of `moc_witness_marker`. Real (a persisted,
+    attributable row → this is what proves a LIVE fire end-to-end) but benign
+    (nothing reads it → safe to delete). Suppressed automatically in dry-run (the
+    executor's deny-by-default gate never dispatches here), so a marker row exists
+    IFF the fire was live.
+
+    Deliberately does NOT swallow: unlike `_handle_log_vault_item`, a failed
+    INSERT propagates so the step fails LOUDLY (the T-2.1b "recorded loudly"
+    invariant) rather than silently writing nothing. Attribution (trigger + run +
+    company) is read from the run so a marker is fully traceable to which trigger
+    fired it, when."""
+    from app.models.moc_witness_marker import MoCWitnessMarker
+
+    ctx = run.trigger_context or {}
+    marker = MoCWitnessMarker(
+        company_id=run.company_id,
+        run_id=run.id,
+        moc_task_trigger_id=ctx.get("moc_task_trigger_id"),
+        note=config.get("note") or config.get("title") or "MoC witness marker",
+    )
+    db.add(marker)
+    db.commit()
+    return {"type": "witness_marker", "id": marker.id, "note": marker.note}
 
 
 def _evaluate_condition(config: dict) -> dict:

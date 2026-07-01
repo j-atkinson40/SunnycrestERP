@@ -177,6 +177,7 @@ from app.models.moc_page import MoCPage
 from app.models.moc_task_catalog import MoCTaskCatalog, MoCTaskCatalogFocus
 from app.models.moc_task_trigger import MoCTaskTrigger, MoCTriggerEventCatalog
 from app.models.moc_task_vocabulary import MoCTaskVocabulary
+from app.models.moc_witness_marker import MoCWitnessMarker
 from app.models.notification import Notification
 from app.models.onboarding import OnboardingChecklist, OnboardingTemplate
 from app.models.onboarding_checklist import TenantOnboardingChecklist
@@ -480,6 +481,7 @@ __all__ = [
     "MoCTaskCatalog",
     "MoCTaskCatalogFocus",
     "MoCTaskTrigger",
+    "MoCWitnessMarker",
     "MoCTriggerEventCatalog",
     "MoCTaskVocabulary",
     "FocusShare",

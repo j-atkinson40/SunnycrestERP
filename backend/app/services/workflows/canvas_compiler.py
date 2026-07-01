@@ -65,6 +65,10 @@ _ACTION_TYPE_NODE_NAMES = frozenset({
     "send_email", "send_notification", "open_slide_over", "show_confirmation",
     "create_task", "wait_for_task_completion", "route_on_task_outcome",
     "send-communication",
+    # Canvas↔Runtime Bridge T-2.1b-WITNESS — the benign marker action (writes a
+    # moc_witness_marker row; real but harmless). Lets a canvas author a compiled
+    # task whose only effect is a witness marker.
+    "record_marker",
 })
 
 
