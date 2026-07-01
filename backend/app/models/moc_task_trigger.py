@@ -70,6 +70,11 @@ class MoCTaskTrigger(Base):
     label: Mapped[str | None] = mapped_column(String(200), nullable=True)
     display_order: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    # Live-promotion gate (T-2.1b): default FALSE = unpromoted (dry-run). The
+    # schedule sweep fires LIVE only when is_live AND the task's workflow is
+    # COMPILED (single-owner) — a MIRROR task never fires live (§6 double-fire
+    # hazard). Promotion is a deliberate per-trigger act.
+    is_live: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     updated_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
