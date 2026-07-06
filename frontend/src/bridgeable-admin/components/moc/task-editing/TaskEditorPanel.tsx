@@ -108,11 +108,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function TaskEditorPanel({
-  isOpen, onClose, vertical, task, onSaved, onError,
+  isOpen, onClose, vertical, activeTenant = null, task, onSaved, onError,
 }: {
   isOpen: boolean
   onClose: () => void
   vertical: string
+  /** Tenant View: non-null = the page is tenant-scoped, so CREATE authors that
+   * tenant's override (scope="tenant_override" + tenant_id) — never silently a
+   * vertical-wide default. Edits are unaffected (they PATCH the existing row,
+   * whatever its scope). */
+  activeTenant?: { id: string; slug: string; name: string } | null
   /** null = create mode. */
   task: MoCTask | null
   onSaved: () => void
@@ -201,7 +206,17 @@ export function TaskEditorPanel({
         workflow_template_id: workflowId, focus_template_ids: focusIds,
       }
       if (editing) await patchTask(task!.id, body)
-      else await createTask({ vertical, icon: "workflow", ...body })
+      else
+        await createTask({
+          vertical,
+          icon: "workflow",
+          // Tenant View: creating while a tenant is selected authors THAT
+          // tenant's override — never silently a vertical-wide default.
+          ...(activeTenant
+            ? { scope: "tenant_override" as const, tenant_id: activeTenant.id }
+            : {}),
+          ...body,
+        })
       onSaved()
       onClose()
     } catch (e) {
@@ -230,7 +245,13 @@ export function TaskEditorPanel({
     <SlideOver
       isOpen={isOpen}
       onClose={onClose}
-      title={editing ? "Edit task" : "Add task"}
+      title={
+        editing
+          ? "Edit task"
+          : activeTenant
+            ? `Add task for ${activeTenant.name}`
+            : "Add task"
+      }
       footer={
         <div className="flex items-center justify-between">
           {editing ? (

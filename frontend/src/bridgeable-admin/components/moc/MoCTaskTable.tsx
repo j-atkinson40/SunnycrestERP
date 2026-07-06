@@ -73,13 +73,17 @@ function EmptyCell() {
 export interface MoCTaskTableProps {
   tasks: MoCTask[]
   vertical: string
+  /** Tenant View: the page's selected tenant. Rows scoped to it carry a pill
+   * (never confusable with the defaults); Add-task creates THAT tenant's
+   * override. Null = the defaults view (today's behavior). */
+  activeTenant?: { id: string; slug: string; name: string } | null
   /** Refetch after any write (the pending-then-refetch contract). */
   onChanged: () => void
   "data-testid"?: string
 }
 
 export function MoCTaskTable({
-  tasks, vertical, onChanged, "data-testid": testId,
+  tasks, vertical, activeTenant = null, onChanged, "data-testid": testId,
 }: MoCTaskTableProps) {
   const [error, setError] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -144,6 +148,9 @@ export function MoCTaskTable({
                   key={task.id}
                   task={task}
                   vertical={vertical}
+                  tenantLabel={
+                    task.scope === "tenant_override" ? activeTenant?.name ?? "Tenant" : null
+                  }
                   onChanged={onChanged}
                   onError={setError}
                   onEdit={() => openEdit(task)}
@@ -158,6 +165,7 @@ export function MoCTaskTable({
         isOpen={panelOpen}
         onClose={() => setPanelOpen(false)}
         vertical={vertical}
+        activeTenant={activeTenant}
         task={editingTask}
         onSaved={onChanged}
         onError={setError}
@@ -167,10 +175,13 @@ export function MoCTaskTable({
 }
 
 function TaskRow({
-  task, vertical, onChanged, onError, onEdit,
+  task, vertical, tenantLabel, onChanged, onError, onEdit,
 }: {
   task: MoCTask
   vertical: string
+  /** Non-null = a tenant_override row in the tenant view; renders the scope
+   * pill so it's never confused with a vertical default. */
+  tenantLabel: string | null
   onChanged: () => void
   onError: (msg: string) => void
   onEdit: () => void
@@ -214,6 +225,15 @@ function TaskRow({
         <span className="flex items-center gap-2 font-medium text-content-base">
           <Icon icon={TaskIcon} size={15} className="text-content-muted" />
           {task.name}
+          {tenantLabel ? (
+            <span
+              className="inline-flex items-center rounded-full bg-accent-subtle px-1.5 py-0.5 text-caption font-medium text-accent"
+              data-testid={`moc-task-tenant-pill-${task.id}`}
+              title="This task belongs to the selected tenant (a tenant override), not the vertical defaults."
+            >
+              {tenantLabel}
+            </span>
+          ) : null}
         </span>
       </td>
       {/* Frequency — DERIVED from a schedule-trigger when present (read-only,

@@ -111,6 +111,10 @@ export interface MoCTask {
   task_type?: string | null
   description?: string | null
   display_order: number
+  /** Scope identity (MoC Tenant View): the merged tenant view labels
+   * tenant_override rows so they're never confused with the defaults. */
+  scope?: MoCScope
+  tenant_id?: string | null
   workflow: MoCResolvedArtifact | null
   focuses: MoCResolvedArtifact[]
   triggers?: MoCTrigger[]
@@ -279,6 +283,10 @@ export interface CreateTaskInput {
   vertical: string
   name: string
   scope?: MoCScope
+  /** Tenant View: an Add-task while a tenant is selected creates that tenant's
+   * override (scope="tenant_override" + tenant_id) — never silently a
+   * vertical-wide default. */
+  tenant_id?: string | null
   icon?: string | null
   frequency?: string | null
   task_type?: string | null
