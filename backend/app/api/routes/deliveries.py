@@ -634,6 +634,21 @@ def complete_delivery(
                 order.driver_exceptions = exceptions_data
                 order.has_driver_exception = True
 
+    # T-2.2a — transactional-outbox emission (same transaction as the
+    # completion: the event commits iff the status flip does). This route is
+    # the delivery-level completion chokepoint (stops complete via
+    # delivery_service.update_stop_status; the DELIVERY completes here).
+    from app.services.maps_of_content.domain_events import emit_event
+
+    emit_event(
+        db,
+        company_id=current_user.company_id,
+        event_key="delivery.completed",
+        entity_type="delivery",
+        entity_id=delivery.id,
+        payload={"status": delivery.status},
+    )
+
     db.commit()
     db.refresh(delivery)
 

@@ -195,6 +195,19 @@ class UrnEngravingService:
             now + timedelta(days=lead_days)
         ).date()
 
+        # T-2.2a — transactional-outbox emission (same transaction as the
+        # status flip: the event commits iff the transition does).
+        from app.services.maps_of_content.domain_events import emit_event
+
+        emit_event(
+            db,
+            company_id=tenant_id,
+            event_key="urn_order.proof_pending",
+            entity_type="urn_order",
+            entity_id=order_id,
+            payload={"status": order.status},
+        )
+
         db.commit()
         db.refresh(order)
         return order

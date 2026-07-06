@@ -162,6 +162,20 @@ def create_case(
         author_id=director_id,
     ))
 
+    # T-2.2a — transactional-outbox emission (same transaction as the case:
+    # the event commits iff the case does). Payload = the catalog's
+    # filterable_fields snapshot for case.opened.
+    from app.services.maps_of_content.domain_events import emit_event
+
+    emit_event(
+        db,
+        company_id=company_id,
+        event_key="case.opened",
+        entity_type="fh_case",
+        entity_id=case.id,
+        payload={"status": case.status},
+    )
+
     db.commit()
     db.refresh(case)
     return case

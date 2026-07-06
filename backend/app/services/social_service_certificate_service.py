@@ -220,6 +220,20 @@ class SocialServiceCertificateService:
         cert.status = "approved"
         cert.approved_at = datetime.now(timezone.utc)
         cert.approved_by_id = approved_by_user_id
+
+        # T-2.2a — transactional-outbox emission (same transaction as the
+        # approval: the event commits iff the approval does).
+        from app.services.maps_of_content.domain_events import emit_event
+
+        emit_event(
+            db,
+            company_id=cert.company_id,
+            event_key="certificate.approved",
+            entity_type="social_service_certificate",
+            entity_id=cert.id,
+            payload={"status": cert.status},
+        )
+
         db.commit()
 
         # Send email (non-fatal)
