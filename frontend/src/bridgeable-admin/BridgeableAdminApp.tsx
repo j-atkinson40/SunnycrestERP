@@ -52,6 +52,7 @@ import { ArcTelemetry } from "./pages/ArcTelemetry"
 import VerticalsAdminPage from "./pages/admin/VerticalsAdminPage"
 import MoCHome from "./pages/moc/MoCHome"
 import MoCPage from "./pages/moc/MoCPage"
+import MoCTenantPage from "./pages/moc/MoCTenantPage"
 // Visual editor pages — imported inside StudioShell. The Studio shell
 // is now the canonical mount point for these editors; the legacy
 // /visual-editor/* routes redirect into Studio.
@@ -102,6 +103,8 @@ export function BridgeableAdminApp() {
         {/* Verticals-lite precursor — first-class verticals registry. */}
         <Route path="/verticals" element={<VerticalsAdminPage />} />
         <Route path="/maps/:vertical" element={<MoCPage />} />
+        {/* MoC Hierarchy H-1 — the tenant as a DESTINATION (route = state). */}
+        <Route path="/maps/:vertical/:tenantSlug" element={<MoCTenantPage />} />
       </Routes>
     </AdminLayout>
   )

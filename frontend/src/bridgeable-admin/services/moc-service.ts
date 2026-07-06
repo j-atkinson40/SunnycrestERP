@@ -427,6 +427,22 @@ export interface MoCScheduleRun {
   intended_fire: string | null
   started_at: string | null
   would_do: string[]
+  /** T-2.2b — the unified fires log: which path fired it + event provenance. */
+  source?: "schedule" | "event"
+  event_key?: string | null
+  event_id?: string | null
+}
+
+/** MoC fires (schedule + event), optionally scoped to one tenant — the tenant
+ * MoC's fires card (H-1). */
+export async function listMoCFires(params?: {
+  limit?: number
+  company_id?: string
+}): Promise<MoCScheduleRun[]> {
+  const { data } = await adminApi.get<MoCScheduleRun[]>(`${BASE}/schedule-runs`, {
+    params,
+  })
+  return data
 }
 
 /** The LATEST schedule-run for a trigger (or null if it has never fired) —
