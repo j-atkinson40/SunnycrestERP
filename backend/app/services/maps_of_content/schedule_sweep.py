@@ -223,19 +223,23 @@ def check_moc_task_schedules(now: datetime | None = None) -> dict:
 # ── Observability — the dry-run run-log (see what fired) ───────────────
 
 
-def list_schedule_runs(db: Session, *, limit: int = 50) -> list[dict]:
+def list_schedule_runs(
+    db: Session, *, limit: int = 50, trigger_id: str | None = None
+) -> list[dict]:
     """Recent MoC schedule fires + their "would do X" records — so an operator
     SEES what fired dry-run and what it would have done (validate before T-2.1b
-    promotes any to live). FIDELITY CAVEAT (canon): a dry-run fire whose branching
-    depends on a suppressed effect-step's output takes a synthetic branch — a
-    preview may not perfectly predict live for such tasks."""
-    runs = (
-        db.query(WorkflowRun)
-        .filter(WorkflowRun.trigger_source == _TRIGGER_SOURCE)
-        .order_by(WorkflowRun.started_at.desc())
-        .limit(limit)
-        .all()
-    )
+    promotes any to live). `trigger_id` (T-2.1c) scopes to ONE trigger — the
+    go-live confirm fetches the LATEST preview for the trigger being promoted
+    (limit=1) so the confirm shows the real previewed effect, not a description.
+    FIDELITY CAVEAT (canon): a dry-run fire whose branching depends on a
+    suppressed effect-step's output takes a synthetic branch — a preview may not
+    perfectly predict live for such tasks."""
+    q = db.query(WorkflowRun).filter(WorkflowRun.trigger_source == _TRIGGER_SOURCE)
+    if trigger_id is not None:
+        q = q.filter(
+            WorkflowRun.trigger_context["moc_task_trigger_id"].astext == trigger_id
+        )
+    runs = q.order_by(WorkflowRun.started_at.desc()).limit(limit).all()
     out: list[dict] = []
     for r in runs:
         steps = (

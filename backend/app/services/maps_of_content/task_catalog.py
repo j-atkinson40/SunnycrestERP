@@ -47,6 +47,19 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         if task.workflow_template_id
         else None
     )
+    # is_mirror (T-2.1c): the compiled-vs-mirror discriminator the Live toggle
+    # needs — a MIRROR task can't go live (the §6 double-fire guard; the sweep's
+    # `_resolve_go_live` forces dry-run even when is_live=True), so the frontend
+    # must DISABLE the toggle rather than render a control that silently stays
+    # dry. Same discriminator the resolver + sweep use:
+    # template.mirrored_from_workflow_id.
+    if workflow is not None:
+        from app.models.workflow_template import WorkflowTemplate
+
+        tmpl = db.get(WorkflowTemplate, task.workflow_template_id)
+        workflow["is_mirror"] = (
+            tmpl is not None and tmpl.mirrored_from_workflow_id is not None
+        )
     focuses = [
         # authored label "" → the resolver returns the template's display_name.
         {
@@ -73,6 +86,10 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
             "config": t.config,
             "label": t.label,
             "display_order": t.display_order,
+            # T-2.1c: the live-promotion state (r117) — drives the Live/Dry-run
+            # badge + toggle. The sweep only fires live when this AND the task
+            # is compiled (see workflow.is_mirror above).
+            "is_live": t.is_live,
             "summary": _triggers.summarize_trigger(t.kind, t.config),
         }
         for t in active_triggers

@@ -387,16 +387,18 @@ def admin_delete_trigger(
 @router.get("/schedule-runs")
 def admin_list_schedule_runs(
     limit: int = Query(50, ge=1, le=200),
+    trigger_id: str | None = Query(None),
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ):
-    """Recent MoC schedule fires + their "would do X" records. Every fire is
-    DRY-RUN this phase (T-2.1a) — this is how an operator validates fires before
-    T-2.1b promotes any to live. (Fidelity caveat: a dry-run fire whose branching
+    """Recent MoC schedule fires + their "would do X" records. `trigger_id`
+    (T-2.1c) scopes to one trigger — the go-live confirm fetches the latest
+    preview (limit=1) for the trigger being promoted, so the confirm shows the
+    REAL previewed effect. (Fidelity caveat: a dry-run fire whose branching
     depends on a suppressed effect-step's output may not perfectly predict live.)"""
     from app.services.maps_of_content.schedule_sweep import list_schedule_runs
 
-    return list_schedule_runs(db, limit=limit)
+    return list_schedule_runs(db, limit=limit, trigger_id=trigger_id)
 
 
 # ─── Pydantic shapes ─────────────────────────────────────────────
