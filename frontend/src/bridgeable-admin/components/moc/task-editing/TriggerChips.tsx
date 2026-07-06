@@ -145,7 +145,9 @@ export function TriggerChips({
                 </button>
               ) : null}
             </span>
-            {t.kind === "schedule" ? (
+            {t.kind === "schedule" || t.kind === "event" ? (
+              // T-2.2c: EVENT chips carry the live state too — event-fires
+              // respect the same is_live + §6 guard as schedule fires.
               <LiveBadge trigger={t} liveCapable={liveCapable} onToggle={onToggleLive} />
             ) : null}
           </span>

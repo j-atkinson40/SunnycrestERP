@@ -82,13 +82,28 @@ describe("Live badge (TriggerChips)", () => {
     expect(dry.innerHTML).not.toContain("bg-accent ")
   })
 
-  it("non-schedule triggers carry no live badge (only schedule triggers fire)", () => {
+  it("EVENT chips carry the live badge too (T-2.2c); manual chips do not", () => {
     render(<TriggerChips triggers={[
-      { id: "ev", kind: "event", config: {}, display_order: 0, summary: "order.created" },
+      { id: "ev", kind: "event", config: {}, display_order: 0, summary: "order.created", is_live: false },
       { id: "man", kind: "manual", config: {}, display_order: 1, summary: "Manual" },
     ]} />)
-    expect(screen.queryByTestId("trigger-live-badge-ev")).toBeNull()
+    const evBadge = screen.getByTestId("trigger-live-badge-ev")
+    expect(evBadge.getAttribute("data-live")).toBe("false")
+    expect(evBadge.textContent).toContain("Dry-run")
     expect(screen.queryByTestId("trigger-live-badge-man")).toBeNull()
+  })
+
+  it("a MIRROR task's EVENT-trigger toggle is disabled with the §6 reason", () => {
+    const onToggle = vi.fn()
+    render(<TriggerChips
+      triggers={[{ id: "ev", kind: "event", config: {}, display_order: 0, summary: "order.created", is_live: false }]}
+      liveCapable={false} onToggleLive={onToggle}
+    />)
+    const toggle = screen.getByTestId("trigger-live-toggle-ev")
+    expect(toggle.hasAttribute("disabled")).toBe(true)
+    expect(toggle.getAttribute("title")).toBe(MIRROR_LIVE_REASON)
+    fireEvent.click(toggle)
+    expect(onToggle).not.toHaveBeenCalled()
   })
 
   it("a MIRROR task's badge NEVER shows Live — even if is_live is set (§6 effective state)", () => {
@@ -172,6 +187,41 @@ describe("Go-live flow (TaskEditorPanel)", () => {
       expect(mocService.patchTrigger).toHaveBeenCalledWith("tr-live", { is_live: false }),
     )
     expect(screen.queryByTestId("go-live-confirm")).toBeNull()
+  })
+
+  it("an EVENT trigger's confirm words the consequence by event, with provenance (T-2.2c)", async () => {
+    vi.mocked(mocService.getLatestScheduleRun).mockResolvedValue({
+      run_id: "r2", task_name: "Witness Task", moc_task_trigger_id: "tr-ev",
+      company_id: "c1", status: "completed", is_dry_run: true,
+      intended_fire: null, started_at: "2026-07-06T12:00:00+00:00",
+      would_do: ["would execute action:record_marker"],
+    })
+    const EVENT_TRIG: MoCTrigger = {
+      id: "tr-ev", kind: "event", config: { event: "order.created", conditions: [] },
+      display_order: 0, is_live: false, summary: "order.created: funeral",
+    }
+    renderPanel(task({ triggers: [EVENT_TRIG] }))
+    fireEvent.click(await screen.findByTestId("trigger-live-toggle-tr-ev"))
+    const consequence = await screen.findByTestId("go-live-consequence")
+    expect(consequence.textContent).toContain("whenever")
+    expect(consequence.textContent).toContain("order.created: funeral")
+    expect(consequence.textContent).not.toContain("on schedule")
+    // the evidence still comes from the unified fires log (trigger-scoped)
+    const preview = await screen.findByTestId("go-live-preview")
+    expect(preview.textContent).toContain("action:record_marker")
+  })
+
+  it("a never-matched EVENT trigger's confirm shows the event-worded fallback", async () => {
+    vi.mocked(mocService.getLatestScheduleRun).mockResolvedValue(null)
+    const EVENT_TRIG: MoCTrigger = {
+      id: "tr-ev2", kind: "event", config: { event: "order.created", conditions: [] },
+      display_order: 0, is_live: false, summary: "order.created",
+    }
+    renderPanel(task({ triggers: [EVENT_TRIG] }))
+    fireEvent.click(await screen.findByTestId("trigger-live-toggle-tr-ev2"))
+    const fallback = await screen.findByTestId("go-live-no-preview")
+    expect(fallback.textContent).toContain("hasn’t matched-and-previewed yet")
+    expect(fallback.textContent).toContain("when the event occurs")
   })
 
   it("a mirror task's panel toggle is disabled (wired from workflow.is_mirror)", async () => {

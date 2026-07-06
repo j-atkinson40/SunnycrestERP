@@ -51,7 +51,16 @@ export function GoLiveConfirm({
     return () => { cancelled = true }
   }, [trigger.id])
 
-  const schedule = trigger.summary ?? trigger.label ?? "its schedule"
+  const summary = trigger.summary ?? trigger.label ?? "its trigger"
+  // T-2.2c: kind-aware consequence wording — a schedule fires on the clock; an
+  // event fires WHEN the domain event occurs (the event provenance is the
+  // event-specific bit of the evidence).
+  const consequence =
+    trigger.kind === "event" ? (
+      <>whenever <strong>{summary}</strong> occurs</>
+    ) : (
+      <>on schedule ({summary})</>
+    )
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
@@ -61,9 +70,9 @@ export function GoLiveConfirm({
             <Radio size={16} className="flex-none text-accent" />
             Go live: {taskName}
           </DialogTitle>
-          <DialogDescription>
-            This will fire <strong>real effects</strong> on schedule ({schedule}) —
-            not a dry-run preview.
+          <DialogDescription data-testid="go-live-consequence">
+            This will fire <strong>real effects</strong> {consequence} — not a
+            dry-run preview.
           </DialogDescription>
         </DialogHeader>
 
@@ -96,9 +105,9 @@ export function GoLiveConfirm({
           >
             <AlertTriangle size={15} className="mt-0.5 flex-none text-status-warning" />
             <p className="text-body-sm text-status-warning">
-              This task hasn’t previewed yet — it will run its workflow live on
-              schedule. Consider letting it run dry-run first (the next sweep
-              tick) to see what it does before going live.
+              {trigger.kind === "event"
+                ? "This trigger hasn’t matched-and-previewed yet — it will run its workflow live when the event occurs. Consider letting a matching event fire dry-run first to see what it does before going live."
+                : "This task hasn’t previewed yet — it will run its workflow live on schedule. Consider letting it run dry-run first (the next sweep tick) to see what it does before going live."}
             </p>
           </div>
         )}
