@@ -226,15 +226,19 @@ def check_moc_task_schedules(now: datetime | None = None) -> dict:
 def list_schedule_runs(
     db: Session, *, limit: int = 50, trigger_id: str | None = None
 ) -> list[dict]:
-    """Recent MoC schedule fires + their "would do X" records — so an operator
-    SEES what fired dry-run and what it would have done (validate before T-2.1b
-    promotes any to live). `trigger_id` (T-2.1c) scopes to ONE trigger — the
-    go-live confirm fetches the LATEST preview for the trigger being promoted
-    (limit=1) so the confirm shows the real previewed effect, not a description.
+    """Recent MoC fires — SCHEDULE and EVENT (T-2.2b) — + their "would do X"
+    records, so an operator SEES what fired dry-run and what it would have done.
+    One unified log: schedule fires (trigger_source=moc_task_schedule) and
+    event fires (moc_task_event) with a `source` discriminator; event rows
+    carry their provenance (event_key + event_id — WHAT fired them, the new
+    bit vs schedule). `trigger_id` (T-2.1c) scopes to ONE trigger — the go-live
+    confirm's latest-preview fetch — and works identically for event triggers.
     FIDELITY CAVEAT (canon): a dry-run fire whose branching depends on a
     suppressed effect-step's output takes a synthetic branch — a preview may not
     perfectly predict live for such tasks."""
-    q = db.query(WorkflowRun).filter(WorkflowRun.trigger_source == _TRIGGER_SOURCE)
+    q = db.query(WorkflowRun).filter(
+        WorkflowRun.trigger_source.in_((_TRIGGER_SOURCE, "moc_task_event"))
+    )
     if trigger_id is not None:
         q = q.filter(
             WorkflowRun.trigger_context["moc_task_trigger_id"].astext == trigger_id
@@ -264,5 +268,10 @@ def list_schedule_runs(
             "intended_fire": ctx.get("intended_fire"),
             "started_at": r.started_at.isoformat() if r.started_at else None,
             "would_do": would_do,
+            # T-2.2b — the source discriminator + event provenance ("event
+            # order.created matched trigger X" — null for schedule fires).
+            "source": "event" if r.trigger_source == "moc_task_event" else "schedule",
+            "event_key": ctx.get("event_key"),
+            "event_id": ctx.get("event_id"),
         })
     return out
