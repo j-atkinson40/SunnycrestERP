@@ -23,6 +23,7 @@ import {
   listTriggerEvents,
   listWorkflowTemplateOptions,
   patchTask,
+  patchTrigger,
   type MoCArtifactOption,
   type MoCTask,
   type MoCTrigger,
@@ -32,6 +33,7 @@ import {
 import { VocabCell } from "./VocabCell"
 import { TriggerChips } from "./TriggerChips"
 import { TriggerEditor } from "./TriggerEditor"
+import { GoLiveConfirm } from "./GoLiveConfirm"
 
 export function errMsg(e: unknown): string {
   const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -130,6 +132,8 @@ export function TaskEditorPanel({
   const [triggers, setTriggers] = useState<MoCTrigger[]>([])
   const [triggerEvents, setTriggerEvents] = useState<MoCTriggerEvent[]>([])
   const [addingTrigger, setAddingTrigger] = useState(false)
+  // T-2.1c: the trigger awaiting the go-live confirm (null = no confirm open).
+  const [confirmingLive, setConfirmingLive] = useState<MoCTrigger | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -165,6 +169,26 @@ export function TaskEditorPanel({
     } catch (e) {
       onError(errMsg(e))
     }
+  }
+
+  // T-2.1c live toggle. TO live → the evidence-backed confirm (a beat of
+  // gravity). BACK to dry-run → immediate, no confirm (the safe direction is
+  // friction-free — a live fire can always be killed fast).
+  async function setTriggerLive(triggerId: string, isLive: boolean) {
+    try {
+      const updated = await patchTrigger(triggerId, { is_live: isLive })
+      setTriggers((cur) =>
+        cur.map((t) => (t.id === triggerId ? { ...t, is_live: updated.is_live } : t)),
+      )
+      onSaved()
+    } catch (e) {
+      onError(errMsg(e))
+    }
+  }
+
+  function requestLiveToggle(trigger: MoCTrigger, next: boolean) {
+    if (next) setConfirmingLive(trigger) // going live → confirm first
+    else void setTriggerLive(trigger.id, false) // back to dry-run → immediate
   }
 
   async function save() {
@@ -280,10 +304,16 @@ export function TaskEditorPanel({
               ) : null}
             </div>
             <p className="text-caption text-content-subtle">
-              Descriptive — triggers are legible metadata; they don’t fire yet.
+              Schedule triggers fire dry-run by default; going Live fires real
+              effects on schedule.
             </p>
             {triggers.length > 0 ? (
-              <TriggerChips triggers={triggers} onRemove={removeTrigger} />
+              <TriggerChips
+                triggers={triggers}
+                onRemove={removeTrigger}
+                liveCapable={!(task?.workflow?.is_mirror ?? false)}
+                onToggleLive={requestLiveToggle}
+              />
             ) : !addingTrigger ? (
               <p className="text-body-sm text-content-subtle">No triggers — this task is run manually.</p>
             ) : null}
@@ -301,6 +331,21 @@ export function TaskEditorPanel({
           </p>
         )}
       </div>
+
+      {/* T-2.1c: the evidence-backed go-live confirm (shows the latest dry-run
+          preview; the no-preview fallback nudges dry-run-first). */}
+      {confirmingLive ? (
+        <GoLiveConfirm
+          trigger={confirmingLive}
+          taskName={task?.name ?? ""}
+          onConfirm={() => {
+            const id = confirmingLive.id
+            setConfirmingLive(null)
+            void setTriggerLive(id, true)
+          }}
+          onCancel={() => setConfirmingLive(null)}
+        />
+      ) : null}
     </SlideOver>
   )
 }
