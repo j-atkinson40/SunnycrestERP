@@ -720,6 +720,34 @@ def register_all_jobs():
         misfire_grace_time=300,
     )
 
+    # EVERY MINUTE — MoC event-matcher sweep (Canvas↔Runtime Bridge T-2.2b).
+    # The outbox consumer: reads unprocessed moc_domain_event rows, matches
+    # them against event-kind MoC triggers, fires matches DRY-RUN through the
+    # T-2.0b engine (go_live = a constant False this phase; T-2.2c converts to
+    # is_live). Its own isolated job — a matcher failure never touches the
+    # schedule sweep or the workflow scheduler. 1-min cadence per the T-2.2
+    # investigation (events deserve tighter latency than the schedule sweep's
+    # window-derived 15 min); the queue scan rides the r119 partial index and
+    # is ~free when empty. Per-sweep cap inside the sweep (500 events/tick).
+    def _run_moc_event_matcher():
+        try:
+            from app.services.maps_of_content.event_matcher import check_moc_domain_events
+            result = check_moc_domain_events()
+            if result.get("processed"):
+                logger.info(f"MoC event matcher (dry-run): {result}")
+        except Exception as e:
+            logger.error(f"MoC event matcher failed: {e}")
+
+    scheduler.add_job(
+        _run_moc_event_matcher,
+        "interval",
+        minutes=1,
+        id="moc_event_matcher",
+        name="moc_event_matcher",
+        replace_existing=True,
+        misfire_grace_time=120,
+    )
+
     # EVERY 15 MINUTES — Phase 6 per-user briefing sweep.
     # First per-user scheduled pattern on the platform — see
     # `app.services.briefings.scheduler_integration` for the window-fire
