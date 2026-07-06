@@ -147,6 +147,43 @@ def _find_or_create_trigger(db, task_id: str) -> tuple[MoCTaskTrigger, bool]:
     return trig, True
 
 
+# T-2.2c: the benign EVENT→marker path. A SYNTHETIC event key nothing organic
+# ever emits — the witness emits it deliberately (fully controlled), the
+# matcher fires the marker task. Unconditional (conditions: []) — the key
+# alone is the match.
+WITNESS_EVENT_KEY = "witness.marker_requested"
+
+
+def _find_or_create_event_trigger(db, task_id: str) -> tuple[MoCTaskTrigger, bool]:
+    """Find-or-create the EVENT trigger (T-2.2c witness). PRESERVES is_live on
+    re-run, same as the schedule trigger."""
+    trig = (
+        db.query(MoCTaskTrigger)
+        .filter(
+            MoCTaskTrigger.task_catalog_id == task_id,
+            MoCTaskTrigger.kind == "event",
+        )
+        .first()
+    )
+    if trig is not None:
+        trig.config = {"event": WITNESS_EVENT_KEY, "conditions": []}
+        trig.is_active = True
+        db.flush()
+        return trig, False
+    trig = MoCTaskTrigger(
+        id=str(uuid.uuid4()),
+        task_catalog_id=task_id,
+        kind="event",
+        config={"event": WITNESS_EVENT_KEY, "conditions": []},
+        label="On witness event (T-2.2c)",
+        is_active=True,
+        is_live=False,  # ships UNPROMOTED — a matching event fires dry-run
+    )
+    db.add(trig)
+    db.flush()
+    return trig, True
+
+
 def seed(db, *, company_slug: str = TESTCO_SLUG) -> dict:
     if os.getenv("ENVIRONMENT", "dev") == "production":
         logger.info("ENVIRONMENT=production — refusing to seed a witness artifact.")
@@ -174,16 +211,19 @@ def seed(db, *, company_slug: str = TESTCO_SLUG) -> dict:
         workflow_template_id=tmpl.id,
     )
     trig, created = _find_or_create_trigger(db, task.id)
+    ev_trig, ev_created = _find_or_create_event_trigger(db, task.id)
     db.commit()
 
     logger.info("")
     logger.info("MoC witness marker seeded (tenant_override → testco %s):", testco.id)
-    logger.info("  task_id     = %s", task.id)
-    logger.info("  template_id = %s (compiled — NOT a mirror)", tmpl.id)
-    logger.info("  trigger_id  = %s  (is_live=%s, cron=%s)", trig.id, trig.is_live, CRON_EVERY_15)
+    logger.info("  task_id       = %s", task.id)
+    logger.info("  template_id   = %s (compiled — NOT a mirror)", tmpl.id)
+    logger.info("  sched trigger = %s  (is_live=%s, cron=%s)", trig.id, trig.is_live, CRON_EVERY_15)
+    logger.info("  event trigger = %s  (is_live=%s, event=%s)", ev_trig.id, ev_trig.is_live, WITNESS_EVENT_KEY)
     logger.info("")
-    logger.info("  PROMOTE to witness the first REAL fire:")
-    logger.info("    PATCH /api/platform/admin/moc/triggers/%s  {\"is_live\": true}", trig.id)
+    logger.info("  PROMOTE to witness a REAL fire (schedule or event):")
+    logger.info("    PATCH /api/platform/admin/moc/triggers/<id>  {\"is_live\": true}")
+    logger.info("  EVENT witness: emit %s for testco (emit_event) → the 1-min matcher fires it.", WITNESS_EVENT_KEY)
     logger.info("  then watch /api/platform/admin/moc/schedule-runs + query moc_witness_marker.")
     return {
         "task_id": task.id,
@@ -191,6 +231,10 @@ def seed(db, *, company_slug: str = TESTCO_SLUG) -> dict:
         "trigger_id": trig.id,
         "is_live": trig.is_live,
         "trigger_created": created,
+        "event_trigger_id": ev_trig.id,
+        "event_trigger_is_live": ev_trig.is_live,
+        "event_trigger_created": ev_created,
+        "witness_event_key": WITNESS_EVENT_KEY,
     }
 
 
