@@ -18,21 +18,20 @@
  */
 
 import * as React from "react"
-import { useParams, useSearchParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 import {
   Building2,
   FileText,
   LayoutGrid,
   Layers,
   Workflow,
-  X,
   type LucideIcon,
 } from "lucide-react"
 
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import { mocDeepLink } from "@/bridgeable-admin/lib/moc-deep-link"
-import { TenantPicker, type TenantSummary } from "@/bridgeable-admin/components/TenantPicker"
+import type { TenantSummary } from "@/bridgeable-admin/components/TenantPicker"
 import {
   createPage,
   readForContext,
@@ -102,9 +101,83 @@ export function toTypeCards(page: MoCResolvedPage): MoCTypeCard[] {
   }))
 }
 
+/** The vertical's tenants as LINKS to their pages (MoC Hierarchy H-1 —
+ * tenants are destinations, superseding the selector; the route is the state).
+ * SEARCHABLE: the lookup caps at 100 rows, so a raw dump is unusable at scale
+ * (the 2089-tenant dev DB made the investigation's ≤100-row caveat real) —
+ * the search (server-side ILIKE via `q`) is how you reach any tenant. */
+function TenantsCard({ vertical }: { vertical: string }) {
+  const [tenants, setTenants] = React.useState<TenantSummary[]>([])
+  const [q, setQ] = React.useState("")
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  React.useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    let cancelled = false
+    debounceRef.current = setTimeout(() => {
+      adminApi
+        .get<TenantSummary[]>("/api/platform/admin/tenants/lookup", {
+          params: { q: q || undefined, limit: 100 },
+        })
+        .then(({ data }) => {
+          if (cancelled) return
+          setTenants(
+            data.filter((t) => (t.vertical ?? "").toLowerCase() === vertical.toLowerCase()),
+          )
+        })
+        .catch(() => { if (!cancelled) setTenants([]) })
+    }, q ? 250 : 0)
+    return () => { cancelled = true }
+  }, [vertical, q])
+
+  const shown = tenants.slice(0, 30)
+  return (
+    <section className="space-y-2" data-testid="moc-tenants-card">
+      <div className="flex items-center gap-3">
+        <h2 className="flex items-center gap-1.5 text-h4 font-semibold text-content-strong">
+          <Building2 size={16} className="text-content-muted" /> Tenants
+        </h2>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search tenants…"
+          data-testid="moc-tenants-search"
+          className="w-56 rounded-md border border-border-base bg-surface-raised px-2.5 py-1 text-body-sm text-content-base placeholder:text-content-subtle focus-visible:border-accent focus-visible:outline-none"
+        />
+      </div>
+      {shown.length === 0 ? (
+        <p className="text-body-sm text-content-subtle">
+          {q ? `No tenants matching “${q}” in this vertical.` : "No tenants in this vertical yet."}
+        </p>
+      ) : (
+        <>
+          <ul className="flex flex-wrap gap-2">
+            {shown.map((t) => (
+              <li key={t.id}>
+                <Link
+                  to={adminPath(`/maps/${vertical}/${t.slug}`)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-elevated px-3 py-1.5 text-body-sm text-content-base hover:border-accent hover:text-accent"
+                  data-testid={`moc-tenant-link-${t.slug}`}
+                >
+                  {t.name}
+                  <span className="text-caption text-content-subtle">{t.slug}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {tenants.length > shown.length ? (
+            <p className="text-caption text-content-subtle">
+              Showing {shown.length} — search to narrow.
+            </p>
+          ) : null}
+        </>
+      )}
+    </section>
+  )
+}
+
 export default function MoCPage() {
   const { vertical = "" } = useParams<{ vertical: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = React.useState<MoCResolvedPage | null>(null)
   const [tasks, setTasks] = React.useState<MoCTask[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -114,59 +187,22 @@ export default function MoCPage() {
   const [draftTitle, setDraftTitle] = React.useState("")
   const showSkeleton = useDelayedLoading(loading)
 
-  // Tenant View: the page-scoped tenant context. null = today's default view
-  // (vertical_default only — no tenant_id is passed to either read). The
-  // selection lives in the URL (?tenant=<slug>) so a tenant view is linkable.
-  const [activeTenant, setActiveTenant] = React.useState<TenantSummary | null>(null)
-  const tenantSlugParam = searchParams.get("tenant")
-
-  // Restore ?tenant=<slug> → TenantSummary via the lookup (exact slug match).
-  React.useEffect(() => {
-    if (!tenantSlugParam) {
-      setActiveTenant(null)
-      return
-    }
-    if (activeTenant?.slug === tenantSlugParam) return
-    let cancelled = false
-    adminApi
-      .get<TenantSummary[]>("/api/platform/admin/tenants/lookup", {
-        params: { q: tenantSlugParam },
-      })
-      .then(({ data }) => {
-        if (cancelled) return
-        const hit = data.find((t) => t.slug === tenantSlugParam) ?? null
-        setActiveTenant(hit) // unknown slug → null (default view, param stays)
-      })
-      .catch(() => { if (!cancelled) setActiveTenant(null) })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantSlugParam])
-
-  function selectTenant(t: TenantSummary | null) {
-    setActiveTenant(t)
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (t) next.set("tenant", t.slug)
-        else next.delete("tenant")
-        return next
-      },
-      { replace: true },
-    )
-  }
-
-  const tenantId = activeTenant?.id
+  // H-1 supersession: the vertical page is ALWAYS the defaults view (the
+  // tenant selector + ?tenant= param retired). Tenant context is a
+  // DESTINATION now — /maps/:vertical/:tenantSlug (MoCTenantPage), linked
+  // from the Tenants card below. The default read path is unchanged
+  // (non-regression pinned by test_no_tenant_returns_defaults_only).
   const load = React.useCallback(async () => {
     setLoading(true)
     setError(null)
     setNotFound(false)
     try {
-      const data = await readForContext({ vertical, tenant_id: tenantId })
+      const data = await readForContext({ vertical })
       setPage(data)
       // The task catalog is independent of the page; a failure here must not
       // break the cards. Empty array → the table self-hides.
       try {
-        setTasks(await readTaskCatalog({ vertical, tenant_id: tenantId }))
+        setTasks(await readTaskCatalog({ vertical }))
       } catch {
         setTasks([])
       }
@@ -181,18 +217,18 @@ export default function MoCPage() {
     } finally {
       setLoading(false)
     }
-  }, [vertical, tenantId])
+  }, [vertical])
 
   // After a task write (2b), refetch only the catalog — the page/cards are
   // untouched, so no need to re-walk the 3-tier resolver. Empty array on
   // failure keeps the table coherent.
   const reloadTasks = React.useCallback(async () => {
     try {
-      setTasks(await readTaskCatalog({ vertical, tenant_id: tenantId }))
+      setTasks(await readTaskCatalog({ vertical }))
     } catch {
       setTasks([])
     }
-  }, [vertical, tenantId])
+  }, [vertical])
 
   React.useEffect(() => {
     void load()
@@ -286,61 +322,19 @@ export default function MoCPage() {
           <p className="text-body-sm text-content-muted">{page.description}</p>
         ) : null}
 
-        {/* Tenant View — the page-scoped tenant context. Null = the vertical's
-            defaults (today's view, unchanged). Selecting recontextualizes BOTH
-            reads: the page walk (a tenant page replaces the cards when one
-            exists) and the task catalog (defaults + that tenant's overrides). */}
-        <div className="flex items-center gap-3" data-testid="moc-tenant-scope">
-          <span className="flex items-center gap-1.5 text-caption font-medium uppercase tracking-wide text-content-subtle">
-            <Building2 size={13} /> Viewing
-          </span>
-          {activeTenant ? (
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full bg-accent-subtle px-2.5 py-1 text-body-sm font-medium text-accent"
-              data-testid="moc-tenant-active"
-            >
-              {activeTenant.name}
-              <button
-                type="button"
-                onClick={() => selectTenant(null)}
-                title="Back to the vertical defaults"
-                data-testid="moc-tenant-clear"
-                className="rounded-full p-0.5 hover:bg-black/10"
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ) : (
-            <div className="w-72" data-testid="moc-tenant-picker">
-              <TenantPicker
-                selected={null}
-                onSelect={selectTenant}
-                placeholder={`${vertical} defaults — select a tenant…`}
-                verticalFilter={vertical}
-              />
-            </div>
-          )}
-        </div>
-        {activeTenant && page.scope === "tenant_override" ? (
-          <p
-            className="rounded-md border border-accent/30 bg-accent-subtle px-3 py-2 text-body-sm text-accent"
-            data-testid="moc-tenant-page-banner"
-          >
-            {activeTenant.name} has its own map page — it replaces the {vertical}{" "}
-            default below.
-          </p>
-        ) : null}
-
         <MoCTypeCards
           cards={toTypeCards(page)}
           emptyTitle="No references yet"
           emptyDescription="Add references from the builders (MoC-2 authoring)."
           data-testid="moc-type-cards"
         />
+
+        {/* H-1 — tenants as DESTINATIONS: links down to each tenant's page. */}
+        <TenantsCard vertical={vertical} />
+
         <MoCTaskTable
           tasks={tasks}
           vertical={vertical}
-          activeTenant={activeTenant}
           onChanged={() => void reloadTasks()}
           data-testid="moc-task-table"
         />
