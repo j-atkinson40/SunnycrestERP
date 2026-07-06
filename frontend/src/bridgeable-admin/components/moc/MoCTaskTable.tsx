@@ -315,9 +315,14 @@ function TaskRow({
           onCommit={(v) => patchField({ description: v })}
         />
       </td>
-      {/* Triggers — chips (summary); editing happens in the panel */}
+      {/* Triggers — chips (summary) + Live/Dry-run badge; editing + the live
+          toggle happen in the panel. liveCapable keeps a mirror task's badge
+          honest (a mirror never fires live — §6). */}
       <td className="px-3 py-2" data-testid={`moc-task-triggers-${task.id}`}>
-        <TriggerChips triggers={task.triggers ?? []} />
+        <TriggerChips
+          triggers={task.triggers ?? []}
+          liveCapable={!(task.workflow?.is_mirror ?? false)}
+        />
       </td>
       {/* Row actions — edit relationships / delete */}
       <td className="px-3 py-2">

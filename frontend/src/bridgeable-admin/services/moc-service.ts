@@ -48,9 +48,12 @@ export interface MoCResolvedSection {
 
 /** A resolved workflow/focus reference on a task (MoC-2b): the resolver's
  * {exists, available, label, routing} + the artifact_id mocDeepLink needs to
- * build the href (the focus route keys on artifact_id). */
+ * build the href (the focus route keys on artifact_id). `is_mirror` (T-2.1c,
+ * workflow refs only): the §6 compiled-vs-mirror discriminator — a mirror
+ * task's Live toggle must be DISABLED (the sweep forces dry-run for mirrors). */
 export interface MoCResolvedArtifact extends MoCRowResolution {
   artifact_id: string
+  is_mirror?: boolean
 }
 
 /** A DESCRIPTIVE trigger (MoC Triggers T-1b) — legible metadata, does NOT fire.
@@ -66,6 +69,10 @@ export interface MoCTrigger {
   label?: string | null
   display_order: number
   is_active?: boolean
+  /** Live-promotion state (T-2.1b r117; surfaced T-2.1c). True = the sweep
+   * fires this trigger with REAL effects (when the task is compiled — a mirror
+   * fires dry-run regardless, the §6 guard). Drives the Live/Dry-run badge. */
+  is_live?: boolean
   /** Present on the task-read shape; the chip label. */
   summary?: string
 }
@@ -377,6 +384,9 @@ export type PatchTriggerInput = Partial<{
   label: string | null
   display_order: number
   is_active: boolean
+  /** T-2.1c live promotion — true = the sweep fires REAL effects (compiled
+   * tasks only; mirrors stay dry-run per the §6 guard). */
+  is_live: boolean
 }>
 
 export async function patchTrigger(
@@ -392,4 +402,34 @@ export async function patchTrigger(
 
 export async function deleteTrigger(triggerId: string): Promise<void> {
   await adminApi.delete(`${BASE}/triggers/${triggerId}`)
+}
+
+// ── Schedule-run previews (T-2.1a log; T-2.1c per-trigger latest) ──────
+
+/** One MoC schedule fire from the run log — the "would do X" records are the
+ * engine's own dry-run preview (the honest effect content the go-live confirm
+ * shows). */
+export interface MoCScheduleRun {
+  run_id: string
+  task_name: string | null
+  moc_task_trigger_id: string | null
+  company_id: string
+  status: string
+  is_dry_run: boolean
+  intended_fire: string | null
+  started_at: string | null
+  would_do: string[]
+}
+
+/** The LATEST schedule-run for a trigger (or null if it has never fired) —
+ * feeds the go-live confirm's evidence. A dry-run preview is the honest
+ * content; no run yet → the confirm shows the no-preview fallback (never a
+ * fabricated effect description). */
+export async function getLatestScheduleRun(
+  triggerId: string,
+): Promise<MoCScheduleRun | null> {
+  const { data } = await adminApi.get<MoCScheduleRun[]>(`${BASE}/schedule-runs`, {
+    params: { trigger_id: triggerId, limit: 1 },
+  })
+  return data[0] ?? null
 }
