@@ -282,6 +282,13 @@ export default function MoCPage() {
   } else if (page) {
     body = (
       <div className="space-y-6">
+        <Link
+          to={adminPath("/")}
+          className="inline-flex items-center gap-1 text-body-sm text-content-muted hover:text-content-base"
+          data-testid="moc-vertical-up-link"
+        >
+          ← platform map
+        </Link>
         {renaming ? (
           <div className="flex items-center gap-2">
             <Input

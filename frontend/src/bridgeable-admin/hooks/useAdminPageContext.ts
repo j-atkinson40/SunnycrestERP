@@ -94,9 +94,9 @@ export function derive(pathname: string): AdminPageContext {
       canAuthor: true, label: `${moc[1]} · MoC`,
     }
   }
-  // MoC home (admin root).
+  // The PLATFORM MoC (admin root — the hierarchy's top, H-2).
   if (clean === "/") {
-    return { surface: "moc", vertical: null, editorKind: null, canAuthor: false, label: "MoC home" }
+    return { surface: "moc", vertical: null, editorKind: null, canAuthor: false, label: "Platform · MoC" }
   }
 
   // Operational admin (health, tenants, migrations, telemetry, …).
