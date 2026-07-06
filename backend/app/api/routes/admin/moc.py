@@ -388,6 +388,7 @@ def admin_delete_trigger(
 def admin_list_schedule_runs(
     limit: int = Query(50, ge=1, le=200),
     trigger_id: str | None = Query(None),
+    company_id: str | None = Query(None),
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ):
@@ -398,7 +399,9 @@ def admin_list_schedule_runs(
     depends on a suppressed effect-step's output may not perfectly predict live.)"""
     from app.services.maps_of_content.schedule_sweep import list_schedule_runs
 
-    return list_schedule_runs(db, limit=limit, trigger_id=trigger_id)
+    return list_schedule_runs(
+        db, limit=limit, trigger_id=trigger_id, company_id=company_id
+    )
 
 
 # ─── Pydantic shapes ─────────────────────────────────────────────

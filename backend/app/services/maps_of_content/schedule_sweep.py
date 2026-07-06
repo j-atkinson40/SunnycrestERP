@@ -224,7 +224,11 @@ def check_moc_task_schedules(now: datetime | None = None) -> dict:
 
 
 def list_schedule_runs(
-    db: Session, *, limit: int = 50, trigger_id: str | None = None
+    db: Session,
+    *,
+    limit: int = 50,
+    trigger_id: str | None = None,
+    company_id: str | None = None,
 ) -> list[dict]:
     """Recent MoC fires — SCHEDULE and EVENT (T-2.2b) — + their "would do X"
     records, so an operator SEES what fired dry-run and what it would have done.
@@ -243,6 +247,9 @@ def list_schedule_runs(
         q = q.filter(
             WorkflowRun.trigger_context["moc_task_trigger_id"].astext == trigger_id
         )
+    if company_id is not None:
+        # MoC Hierarchy H-1 — the tenant MoC's fires card: THIS tenant's fires.
+        q = q.filter(WorkflowRun.company_id == company_id)
     runs = q.order_by(WorkflowRun.started_at.desc()).limit(limit).all()
     out: list[dict] = []
     for r in runs:

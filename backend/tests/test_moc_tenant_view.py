@@ -112,3 +112,42 @@ def test_read_shape_carries_scope_and_tenant_id(env):
     assert by_id[env["ids"]["da"]]["tenant_id"] is None
     assert by_id[env["ids"]["t1"]]["scope"] == "tenant_override"
     assert by_id[env["ids"]["t1"]]["tenant_id"] == env["t1"].id
+
+
+# ── H-1: the fires log's company filter (the tenant page's fires card) ──
+
+
+def test_fires_log_company_filter(env):
+    import uuid as _uuid
+
+    from app.models.workflow import Workflow, WorkflowRun
+    from app.services.maps_of_content.schedule_sweep import list_schedule_runs
+
+    s = env["db"]
+    wf = Workflow(id=str(_uuid.uuid4()), company_id=env["t1"].id, name="h1 probe",
+                  trigger_type="manual", scope="tenant", tier=4, is_active=True)
+    s.add(wf)
+    s.flush()
+    run_ids = []
+    for co in (env["t1"], env["t2"]):
+        r = WorkflowRun(id=str(_uuid.uuid4()), workflow_id=wf.id, company_id=co.id,
+                        trigger_source="moc_task_schedule",
+                        trigger_context={"moc_task_trigger_id": f"trig-{co.slug}",
+                                         "task_name": "probe"},
+                        status="completed", output_data={"__dry_run__": True})
+        s.add(r)
+        s.flush()
+        run_ids.append(r.id)
+    s.commit()
+    try:
+        # scoped to t1 → t1's run only (t2's excluded)
+        mine = [r for r in list_schedule_runs(s, limit=200, company_id=env["t1"].id)
+                if r["run_id"] in run_ids]
+        assert [r["run_id"] for r in mine] == [run_ids[0]]
+        # unscoped still sees both
+        both = [r for r in list_schedule_runs(s, limit=200) if r["run_id"] in run_ids]
+        assert {r["run_id"] for r in both} == set(run_ids)
+    finally:
+        s.execute(sql_text("DELETE FROM workflow_runs WHERE id = ANY(:r)"), {"r": run_ids})
+        s.execute(sql_text("DELETE FROM workflows WHERE id = :w"), {"w": wf.id})
+        s.commit()
