@@ -176,6 +176,7 @@ from app.models.inventory_transaction import InventoryTransaction
 from app.models.moc_page import MoCPage
 from app.models.moc_task_catalog import MoCTaskCatalog, MoCTaskCatalogFocus
 from app.models.moc_task_trigger import MoCTaskTrigger, MoCTriggerEventCatalog
+from app.models.moc_domain_event import MoCDomainEvent
 from app.models.moc_task_vocabulary import MoCTaskVocabulary
 from app.models.moc_witness_marker import MoCWitnessMarker
 from app.models.notification import Notification
@@ -481,6 +482,7 @@ __all__ = [
     "MoCTaskCatalog",
     "MoCTaskCatalogFocus",
     "MoCTaskTrigger",
+    "MoCDomainEvent",
     "MoCWitnessMarker",
     "MoCTriggerEventCatalog",
     "MoCTaskVocabulary",
