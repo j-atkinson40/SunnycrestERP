@@ -32,6 +32,7 @@ import {
   type MoCScheduleRun,
   type MoCTask,
 } from "@/bridgeable-admin/services/moc-service"
+import { MoCFiresCard } from "@/bridgeable-admin/components/moc/MoCFiresCard"
 import { MoCTypeCards } from "@/bridgeable-admin/components/moc/MoCTypeCards"
 import { MoCTaskTable } from "@/bridgeable-admin/components/moc/MoCTaskTable"
 import { MoCVerticalsRail } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
@@ -39,44 +40,6 @@ import { toTypeCards } from "./MoCPage"
 import { ErrorState } from "@/components/ui/error-state"
 import { SkeletonLines } from "@/components/ui/skeleton"
 import { useDelayedLoading } from "@/hooks/use-delayed-loading"
-
-/** Compact recent-fires list for THIS tenant (schedule + event, dry-run/live). */
-function TenantFiresCard({ fires }: { fires: MoCScheduleRun[] }) {
-  return (
-    <section className="space-y-2" data-testid="moc-tenant-fires">
-      <h2 className="text-h4 font-semibold text-content-strong">Recent fires</h2>
-      {fires.length === 0 ? (
-        <p className="text-body-sm text-content-subtle">
-          Nothing has fired for this tenant yet — schedule and event fires land
-          here (dry-run and live).
-        </p>
-      ) : (
-        <ul className="divide-y divide-border-subtle rounded-md border border-border-subtle">
-          {fires.map((f) => (
-            <li key={f.run_id} className="flex items-center gap-2 px-3 py-1.5 text-body-sm">
-              <span
-                className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-caption ${
-                  f.is_dry_run
-                    ? "bg-surface-sunken text-content-muted"
-                    : "bg-accent text-content-on-accent font-semibold"
-                }`}
-              >
-                {f.is_dry_run ? "Dry-run" : "LIVE"}
-              </span>
-              <span className="text-content-base">{f.task_name ?? "—"}</span>
-              <span className="text-content-subtle">
-                {f.source === "event" ? `event ${f.event_key ?? ""}` : "schedule"}
-              </span>
-              <span className="ml-auto text-caption text-content-subtle">
-                {f.started_at ? new Date(f.started_at).toLocaleString() : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  )
-}
 
 export default function MoCTenantPage() {
   const { vertical = "", tenantSlug = "" } = useParams<{
@@ -219,7 +182,11 @@ export default function MoCTenantPage() {
           data-testid="moc-tenant-task-table"
         />
 
-        <TenantFiresCard fires={fires} />
+        <MoCFiresCard
+          fires={fires}
+          emptyText="Nothing has fired for this tenant yet — schedule and event fires land here (dry-run and live)."
+          data-testid="moc-tenant-fires"
+        />
       </div>
     )
   }

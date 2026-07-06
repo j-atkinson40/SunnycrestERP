@@ -108,11 +108,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function TaskEditorPanel({
-  isOpen, onClose, vertical, activeTenant = null, task, onSaved, onError,
+  isOpen, onClose, vertical, platformScope = false, activeTenant = null, task, onSaved, onError,
 }: {
   isOpen: boolean
   onClose: () => void
   vertical: string
+  /** H-2: the platform page's panel — CREATE authors a platform_default
+   * (vertical-less) task. Mutually exclusive with activeTenant. */
+  platformScope?: boolean
   /** Tenant View: non-null = the page is tenant-scoped, so CREATE authors that
    * tenant's override (scope="tenant_override" + tenant_id) — never silently a
    * vertical-wide default. Edits are unaffected (they PATCH the existing row,
@@ -144,7 +147,7 @@ export function TaskEditorPanel({
     if (!isOpen) return
     listWorkflowTemplateOptions().then(setWorkflows).catch(() => setWorkflows([]))
     listFocusTemplateOptions().then(setFocuses).catch(() => setFocuses([]))
-    listTriggerEvents(vertical).then(setTriggerEvents).catch(() => setTriggerEvents([]))
+    listTriggerEvents(platformScope ? undefined : vertical).then(setTriggerEvents).catch(() => setTriggerEvents([]))
     setName(task?.name ?? "")
     setFrequency(task?.frequency ?? null)
     setTaskType(task?.task_type ?? null)
@@ -206,6 +209,15 @@ export function TaskEditorPanel({
         workflow_template_id: workflowId, focus_template_ids: focusIds,
       }
       if (editing) await patchTask(task!.id, body)
+      else if (platformScope)
+        // H-2: the platform page authors a platform_default (vertical-less)
+        // task — the coherence guard at platform scope.
+        await createTask({
+          vertical: null,
+          scope: "platform_default",
+          icon: "workflow",
+          ...body,
+        })
       else
         await createTask({
           vertical,
@@ -248,9 +260,11 @@ export function TaskEditorPanel({
       title={
         editing
           ? "Edit task"
-          : activeTenant
-            ? `Add task for ${activeTenant.name}`
-            : "Add task"
+          : platformScope
+            ? "Add platform task"
+            : activeTenant
+              ? `Add task for ${activeTenant.name}`
+              : "Add task"
       }
       footer={
         <div className="flex items-center justify-between">
@@ -277,7 +291,7 @@ export function TaskEditorPanel({
         <div className="grid grid-cols-2 gap-3">
           <Field label="Frequency">
             <div className="rounded-md border border-border-base px-2.5 py-1.5">
-              <VocabCell kind="frequency" value={frequency} vertical={vertical}
+              <VocabCell kind="frequency" value={frequency} vertical={platformScope ? undefined : vertical}
                 onSelect={setFrequency}>
                 <span className={frequency ? "text-content-base" : "text-content-subtle"}>
                   {frequency ?? "Select…"}
@@ -287,7 +301,7 @@ export function TaskEditorPanel({
           </Field>
           <Field label="Type">
             <div className="rounded-md border border-border-base px-2.5 py-1.5">
-              <VocabCell kind="type" value={taskType} vertical={vertical}
+              <VocabCell kind="type" value={taskType} vertical={platformScope ? undefined : vertical}
                 onSelect={setTaskType}>
                 <span className={taskType ? "text-content-base" : "text-content-subtle"}>
                   {taskType ?? "Select…"}

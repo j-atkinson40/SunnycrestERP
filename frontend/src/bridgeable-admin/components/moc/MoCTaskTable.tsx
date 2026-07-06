@@ -73,6 +73,9 @@ function EmptyCell() {
 export interface MoCTaskTableProps {
   tasks: MoCTask[]
   vertical: string
+  /** H-2: the platform page's table — Add-task creates a platform_default
+   * (vertical-less) task. Mutually exclusive with activeTenant. */
+  platformScope?: boolean
   /** Tenant View: the page's selected tenant. Rows scoped to it carry a pill
    * (never confusable with the defaults); Add-task creates THAT tenant's
    * override. Null = the defaults view (today's behavior). */
@@ -83,7 +86,7 @@ export interface MoCTaskTableProps {
 }
 
 export function MoCTaskTable({
-  tasks, vertical, activeTenant = null, onChanged, "data-testid": testId,
+  tasks, vertical, platformScope = false, activeTenant = null, onChanged, "data-testid": testId,
 }: MoCTaskTableProps) {
   const [error, setError] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -165,6 +168,7 @@ export function MoCTaskTable({
         isOpen={panelOpen}
         onClose={() => setPanelOpen(false)}
         vertical={vertical}
+        platformScope={platformScope}
         activeTenant={activeTenant}
         task={editingTask}
         onSaved={onChanged}

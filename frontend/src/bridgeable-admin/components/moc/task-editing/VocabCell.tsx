@@ -20,7 +20,7 @@ import {
 export interface VocabCellProps {
   kind: "frequency" | "type"
   value: string | null
-  vertical: string
+  vertical?: string
   disabled?: boolean
   /** Selecting a value, clearing (null), or adding (then selecting). */
   onSelect: (value: string | null) => void

@@ -169,10 +169,13 @@ export async function readForContext(params: {
 }
 
 /** A vertical's task catalog (MoC-2b), each task's workflow + focuses resolved
- * through the cards' resolver. Empty array when no tasks are seeded. */
+ * through the cards' resolver. Empty array when no tasks are seeded.
+ * H-2: `scope="platform_default"` (vertical omitted) reads the platform's
+ * vertical-less tasks — the platform page's table. */
 export async function readTaskCatalog(params: {
-  vertical: string
+  vertical?: string
   tenant_id?: string
+  scope?: MoCScope
 }): Promise<MoCTask[]> {
   const { data } = await adminApi.get<MoCTask[]>(`${BASE}/tasks`, { params })
   return data
@@ -280,7 +283,8 @@ export interface MoCTaskWrite {
 }
 
 export interface CreateTaskInput {
-  vertical: string
+  /** Omit/null for a platform_default (vertical-less) task — H-2. */
+  vertical?: string | null
   name: string
   scope?: MoCScope
   /** Tenant View: an Add-task while a tenant is selected creates that tenant's
