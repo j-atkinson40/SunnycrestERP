@@ -1,6 +1,13 @@
 /**
  * MoC Tenant View — the table's tenant labeling + the tenant-aware Add-task.
  *
+ * H-1 NOTE (MoC Hierarchy): the machinery these tests pin TRANSFERRED hosts —
+ * the vertical page's tenant selector retired; the tenant MoC page
+ * (/maps/:vertical/:tenantSlug) now passes activeTenant. The pins are
+ * TABLE-level (MoCTaskTable + panel), so they hold unchanged — the pills and
+ * the coherence guard are the tenant page's machinery now. Route-level
+ * coverage lives in MoCTenantPage.test.tsx.
+ *
  * Coverage:
  * - a tenant_override row renders the scope pill (the tenant's name); a
  *   vertical_default row does NOT (defaults stay calm, overrides are marked);
