@@ -14,6 +14,16 @@ Assembly tests:
      the cached compiled workflow (no per-fire bloat, §7).
   6. OBSERVABILITY: the dry-run fires are visible in the run-log with their
      "would do X" records.
+
+STATE-IMMUNITY DISCIPLINE (2026-07-06): every assertion is scoped to THIS
+test's fixture trigger ids (`_runs_for`), never to the sweep's GLOBAL result
+counts. The shared dev DB legitimately carries other active schedule triggers
+(e.g. the seeded witness marker's cron */15, due in EVERY window) — a global
+`fired_dry_run == N` assertion breaks under any of them. The suite must pass
+with the witness seed present. Where "the sweep reported my fire" matters, the
+global count is asserted as `>= 1` (foreign fires only inflate it). Same class
+as the R-7-δ order-coupling lesson: tests sharing a DB are state-coupled unless
+their assertions are self-scoped.
 """
 from __future__ import annotations
 
@@ -160,7 +170,9 @@ def test_due_trigger_fires_dry_run_no_real_effect(env, monkeypatch):
     )
 
     result = check_moc_task_schedules(now=DUE_NOW)
-    assert result["fired_dry_run"] == 1     # fired for the one tenant
+    # ≥1, not ==1: foreign due triggers on the shared DB inflate the global
+    # count; MY fire is asserted trigger-scoped below.
+    assert result["fired_dry_run"] >= 1
 
     runs = _runs_for(env["db"], trig.id)
     assert len(runs) == 1
@@ -188,12 +200,14 @@ def test_time_of_day_is_tenant_local(env):
     task = _mk_task(env, scope="tenant_override", tenant_id=env["companies"][0].id)
     trig = _mk_time_of_day_trigger(env, task)
 
-    # UTC 18:05 (= 14:05 tenant EDT) → NOT the tenant's 6pm → no fire.
-    assert check_moc_task_schedules(now=UTC_6PM)["fired_dry_run"] == 0
+    # UTC 18:05 (= 14:05 tenant EDT) → NOT the tenant's 6pm → MY trigger did
+    # not fire (trigger-scoped — a foreign trigger due at this tick is fine).
+    check_moc_task_schedules(now=UTC_6PM)
     assert len(_runs_for(env["db"], trig.id)) == 0
 
-    # Tenant 18:05 (= 22:05 UTC) → the tenant's 6pm → fires.
-    assert check_moc_task_schedules(now=DUE_NOW)["fired_dry_run"] == 1
+    # Tenant 18:05 (= 22:05 UTC) → the tenant's 6pm → MY trigger fires.
+    check_moc_task_schedules(now=DUE_NOW)
+    assert len(_runs_for(env["db"], trig.id)) == 1
 
 
 # ── 4. CATCH-UP — backlog outside the window is skipped ────────────────
@@ -203,8 +217,9 @@ def test_backlog_outside_window_is_skipped(env):
     task = _mk_task(env, scope="tenant_override", tenant_id=env["companies"][0].id)
     trig = _mk_time_of_day_trigger(env, task)
 
-    # 19:30 tenant-local — past the 18:00 window → not fired (no backlog storm).
-    assert check_moc_task_schedules(now=BACKLOG_NOW)["fired_dry_run"] == 0
+    # 19:30 tenant-local — past the 18:00 window → MY trigger not fired (no
+    # backlog storm). Trigger-scoped: a foreign trigger due at 19:30 is fine.
+    check_moc_task_schedules(now=BACKLOG_NOW)
     assert len(_runs_for(env["db"], trig.id)) == 0
 
 
