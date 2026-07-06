@@ -6,11 +6,13 @@ structured conditions evaluated against the event's emit-time payload), and
 fires matches DRY-RUN through the T-2.0b engine. Mirrors the T-2.1a schedule
 sweep exactly, one layer over the emission substrate.
 
-THE SAFETY INVARIANT (the T-2.1a choreography, replayed): `go_live` is the
-constant `_MATCH_GO_LIVE = False` — EVERY event-fire is dry-run this phase,
-regardless of any trigger's is_live (which the schedule path honors but the
-event path deliberately does not yet). T-2.2c converts this constant to
-`_resolve_go_live` (the T-2.1b move). Dry-run makes the §6 mirror hazard moot.
+THE SAFETY INVARIANT (T-2.2c — the T-2.1b conversion, replayed for events):
+`go_live` comes ONLY from `_resolve_go_live(trig, template)` — the SAME single
+source the schedule path uses. Live requires BOTH, both explicit: the trigger
+PROMOTED (`is_live` — the kind-agnostic r117 column, shared with schedule
+triggers) AND the task COMPILED (§6: a mirror-task event-trigger fires DRY-RUN
+even when promoted). The default is dry-run; a real event-driven effect
+requires the deliberate promotion of a compiled task's trigger.
 
 CONDITION MATCHING (fail-closed — the blast-radius guard):
 - conditions is the structured list of {field, operator, value}; ALL elements
@@ -53,15 +55,19 @@ from app.models.moc_domain_event import MoCDomainEvent
 from app.models.moc_task_catalog import MoCTaskCatalog
 from app.models.moc_task_trigger import MoCTaskTrigger
 from app.models.workflow import WorkflowRun
+from app.models.workflow_template import WorkflowTemplate
+from app.services.maps_of_content.schedule_sweep import _resolve_go_live
 from app.services.workflows.canvas_compiler import CanvasCompileError
 from app.services.workflows.execution_bridge import ExecutionBridgeError, execute_template
 
 logger = logging.getLogger(__name__)
 
-# THE ONE SOURCE of go_live for event fires this phase (T-2.1a's pattern):
-# every fire is DRY-RUN. T-2.2c replaces this constant with _resolve_go_live
-# (is_live AND compiled — the §6 guard), exactly as T-2.1b did for schedules.
-_MATCH_GO_LIVE = False
+# T-2.2c: go_live comes from `_resolve_go_live` — THE SAME single source the
+# schedule path uses (T-2.1b): live requires the trigger PROMOTED (`is_live`,
+# the kind-agnostic r117 column event-triggers share) AND the task COMPILED
+# (the §6 mirror guard — a mirror-task event-trigger fires DRY-RUN even
+# promoted). The T-2.2b constant `_MATCH_GO_LIVE = False` is gone; no other
+# derivation exists on the event path.
 
 _TRIGGER_SOURCE = "moc_task_event"
 
@@ -180,6 +186,10 @@ def _fire(
     db: Session, *, trig: MoCTaskTrigger, task: MoCTaskCatalog,
     event: MoCDomainEvent,
 ) -> WorkflowRun:
+    """Fire via T-2.1's spine. go_live comes ONLY from `_resolve_go_live`
+    (is_live AND compiled — shared with the schedule path; §6 forces a mirror
+    to dry-run). Loads the template so the discriminator is available."""
+    template = db.get(WorkflowTemplate, task.workflow_template_id)
     return execute_template(
         db,
         template_id=task.workflow_template_id,
@@ -195,7 +205,7 @@ def _fire(
         },
         triggered_by_user_id=None,
         allow_run=True,
-        go_live=_MATCH_GO_LIVE,  # ← constant False this phase (T-2.2c converts)
+        go_live=_resolve_go_live(trig, template),  # ← ONE source, shared with schedule
     )
 
 
