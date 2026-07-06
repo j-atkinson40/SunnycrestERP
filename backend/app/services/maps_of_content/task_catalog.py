@@ -122,7 +122,7 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
 def resolve_task_catalog(
     db: Session,
     *,
-    vertical: str,
+    vertical: str | None,
     scope: str = "vertical_default",
     tenant_id: str | None = None,
 ) -> list[dict[str, Any]]:
@@ -175,7 +175,7 @@ def resolve_task_catalog(
 def upsert_task(
     db: Session,
     *,
-    vertical: str,
+    vertical: str | None,
     name: str,
     scope: str = "vertical_default",
     tenant_id: str | None = None,
@@ -284,7 +284,7 @@ def get_task(db: Session, *, task_id: str) -> MoCTaskCatalog | None:
 def create_task(
     db: Session,
     *,
-    vertical: str,
+    vertical: str | None,
     name: str,
     scope: str = "vertical_default",
     tenant_id: str | None = None,
@@ -298,7 +298,19 @@ def create_task(
     actor_id: str | None = None,
 ) -> MoCTaskCatalog:
     """Validate + insert a NEW task (rejects a duplicate name in the same scope —
-    distinct from upsert_task's find-or-create). Caller commits."""
+    distinct from upsert_task's find-or-create). Caller commits.
+
+    SCOPE COHERENCE (MoC Hierarchy H-2): a platform_default task is
+    vertical-LESS (it fans out to every tenant — `_fanout_companies`); a
+    vertical/tenant task requires its vertical. Validated here so the platform
+    page's Add-task can't author an incoherent row."""
+    if scope == "platform_default":
+        if vertical is not None:
+            raise TaskValidationError(
+                "a platform_default task is vertical-less — omit `vertical`"
+            )
+    elif vertical is None:
+        raise TaskValidationError(f"scope {scope!r} requires a vertical")
     dup = (
         db.query(MoCTaskCatalog)
         .filter(

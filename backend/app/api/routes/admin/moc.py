@@ -116,7 +116,8 @@ def admin_deactivate_vocabulary(
 
 
 class _CreateTask(BaseModel):
-    vertical: str
+    # None = a platform_default (vertical-less) task — H-2's platform page.
+    vertical: str | None = None
     name: str
     scope: Scope = "vertical_default"
     tenant_id: str | None = None
@@ -488,8 +489,9 @@ def admin_read_for_context(
 
 @router.get("/tasks")
 def admin_read_task_catalog(
-    vertical: str = Query(...),
+    vertical: str | None = Query(None),
     tenant_id: str | None = Query(None),
+    scope: str = Query("vertical_default"),
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ):
@@ -498,7 +500,7 @@ def admin_read_task_catalog(
     frontend's `mocDeepLink` produces byte-identical hrefs. A reference that
     doesn't exist yet resolves orphan-tolerant (workflow null / focus
     available=False) — never errors. Empty list when no tasks are seeded."""
-    return resolve_task_catalog(db, vertical=vertical, tenant_id=tenant_id)
+    return resolve_task_catalog(db, vertical=vertical, tenant_id=tenant_id, scope=scope)
 
 
 @router.post("/", response_model=_PageResponse, status_code=201)
