@@ -109,6 +109,10 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         "task_type": task.task_type,
         "description": task.description,
         "display_order": task.display_order,
+        # Scope identity (MoC Tenant View): the merged tenant view labels
+        # tenant_override rows so they're never confused with the defaults.
+        "scope": task.scope,
+        "tenant_id": task.tenant_id,
         "workflow": workflow,
         "focuses": focuses,
         "triggers": trigger_payloads,
@@ -123,18 +127,48 @@ def resolve_task_catalog(
     tenant_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """A vertical's active task catalog, each task resolved (workflow + focuses
-    via the cards' resolver). Ordered by display_order then name."""
-    rows = (
-        db.query(MoCTaskCatalog)
-        .filter(
-            MoCTaskCatalog.scope == scope,
-            MoCTaskCatalog.vertical == vertical,
-            MoCTaskCatalog.tenant_id == tenant_id,
-            MoCTaskCatalog.is_active.is_(True),
-        )
-        .order_by(MoCTaskCatalog.display_order, MoCTaskCatalog.name)
-        .all()
+    via the cards' resolver). Ordered by display_order then name.
+
+    TENANT VIEW (MoC Tenant View, 2026-07): passing `tenant_id` returns the
+    MERGED set — the vertical's default rows PLUS that tenant's tenant_override
+    rows — mirroring the schedule sweep's own fan-out (`_fanout_companies`): the
+    honest "what fires for this tenant". Defaults order first, then the tenant's
+    rows (each group display_order, name). Without `tenant_id`, byte-identical
+    to the pre-tenant-view behavior (vertical_default only — non-regressive).
+
+    (Pre-2026-07 the tenant_id param was an EXACT-match filter — vertical_default
+    AND tenant_id=X, which matches nothing since default rows carry tenant_id
+    NULL. Nothing depended on that always-empty path.)"""
+    from sqlalchemy import and_, or_
+
+    q = db.query(MoCTaskCatalog).filter(
+        MoCTaskCatalog.vertical == vertical,
+        MoCTaskCatalog.is_active.is_(True),
     )
+    if tenant_id is None:
+        q = q.filter(
+            MoCTaskCatalog.scope == scope,
+            MoCTaskCatalog.tenant_id.is_(None),
+        )
+    else:
+        q = q.filter(
+            or_(
+                and_(
+                    MoCTaskCatalog.scope == "vertical_default",
+                    MoCTaskCatalog.tenant_id.is_(None),
+                ),
+                and_(
+                    MoCTaskCatalog.scope == "tenant_override",
+                    MoCTaskCatalog.tenant_id == tenant_id,
+                ),
+            )
+        )
+    rows = q.order_by(
+        # defaults first, then the tenant's overrides; stable within each group
+        (MoCTaskCatalog.scope == "tenant_override").asc(),
+        MoCTaskCatalog.display_order,
+        MoCTaskCatalog.name,
+    ).all()
     return [resolve_task(db, t) for t in rows]
 
 
