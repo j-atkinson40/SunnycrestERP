@@ -190,7 +190,14 @@ def patch_trigger(
 
     new_kind = trig.kind if kind is _UNSET else kind
     new_config = trig.config if config is _UNSET else (config or {})
-    validate_trigger(db, kind=new_kind, config=new_config, vertical=vertical)
+    # Re-validate ONLY when the (kind, config) shape is actually being changed.
+    # Validating an UNCHANGED config against the live catalog means catalog
+    # drift bricks unrelated patches — an event removed from the catalog would
+    # make its triggers impossible to deactivate or promote/de-promote
+    # (T-2.2c surfaced this via the synthetic witness event key). Shape
+    # validation gates writes TO the shape, not writes near it.
+    if kind is not _UNSET or config is not _UNSET:
+        validate_trigger(db, kind=new_kind, config=new_config, vertical=vertical)
 
     if kind is not _UNSET:
         trig.kind = kind
