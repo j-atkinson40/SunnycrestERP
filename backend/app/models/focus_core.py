@@ -112,6 +112,16 @@ class FocusCore(Base):
         Boolean, nullable=False, default=True
     )
 
+    # Focus Variations V-2 (r121): the PUBLISH boundary. NULL = never
+    # published — the resolver keeps the live cascade (status quo). Set =
+    # the last explicitly-published version; downstream templates resolve
+    # at their pinned `inherits_from_core_version` snapshot until they
+    # ACCEPT an offer (the software-update model). Carried forward across
+    # version bumps by update_core.
+    published_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

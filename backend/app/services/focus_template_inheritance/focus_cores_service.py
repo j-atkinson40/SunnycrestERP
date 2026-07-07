@@ -470,6 +470,9 @@ def update_core(
         updated_by=updated_by,
         last_edit_session_id=edit_session_id,
         last_edit_session_at=now if edit_session_id is not None else None,
+        # V-2: the publish boundary rides the ACTIVE row — losing it on a
+        # bump would silently flip downstream templates back to live cascade.
+        published_version=prior.published_version,
     )
     db.add(new_row)
     db.commit()
