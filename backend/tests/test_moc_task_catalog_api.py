@@ -52,12 +52,21 @@ def ctx():
         ),
         {"id": wf_id, "wt": f"moc2b_{suffix}", "v": VERT},
     )
-    core = db.execute(
+    # HERMETIC core (state-immunity): the old 'borrow a core from any
+    # focus_templates row' broke whenever the focus tables were empty (e.g.
+    # after suites whose fixtures wipe them). Create our own; delete in
+    # teardown after the template that references it.
+    core_id = str(uuid.uuid4())
+    db.execute(
         sql_text(
-            "SELECT inherits_from_core_id, inherits_from_core_version "
-            "FROM focus_templates LIMIT 1"
-        )
-    ).first()
+            "INSERT INTO focus_cores (id, core_slug, display_name, "
+            "registered_component_kind, registered_component_name) "
+            "VALUES (:id, :slug, 'MoC2b Core', 'focus-core', "
+            "'SchedulingKanbanCore')"
+        ),
+        {"id": core_id, "slug": f"moc2b-core-{suffix}"},
+    )
+    core = (core_id, 1)
     fc_id = str(uuid.uuid4())
     db.execute(
         sql_text(
@@ -94,6 +103,7 @@ def ctx():
         {"v": VERT, "a": real_name, "b": empty_name},
     )
     db.execute(sql_text("DELETE FROM focus_templates WHERE id = :id"), {"id": fc_id})
+    db.execute(sql_text("DELETE FROM focus_cores WHERE id = :id"), {"id": core_id})
     db.execute(sql_text("DELETE FROM workflow_templates WHERE id = :id"), {"id": wf_id})
     db.execute(sql_text("DELETE FROM platform_users WHERE id = :id"), {"id": pu.id})
     db.commit()

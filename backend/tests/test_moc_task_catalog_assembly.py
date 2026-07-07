@@ -64,15 +64,26 @@ def _real_focus(db, core_id: str, core_ver, label: str) -> tuple[str, str]:
     return fid, slug
 
 
-def test_task_with_workflow_and_two_focuses_round_trips(db):
-    # Reuse an existing focus's core to satisfy the inherits_from_core FK.
-    core = db.execute(
+def _hermetic_core(db) -> tuple[str, int]:
+    """A Tier 1 core created HERE (state-immunity): the old 'borrow a core
+    from any focus_templates row' broke whenever the focus tables were empty
+    (e.g. after suites whose fixtures wipe them). Raw INSERT, no commit —
+    the db fixture's rollback cleans it with everything else."""
+    cid = str(uuid.uuid4())
+    db.execute(
         sql_text(
-            "SELECT inherits_from_core_id, inherits_from_core_version "
-            "FROM focus_templates LIMIT 1"
-        )
-    ).first()
-    assert core is not None, "need an existing focus_template to borrow a core"
+            "INSERT INTO focus_cores (id, core_slug, display_name, "
+            "registered_component_kind, registered_component_name) "
+            "VALUES (:id, :slug, 'Assembly Core', 'focus-core', "
+            "'SchedulingKanbanCore')"
+        ),
+        {"id": cid, "slug": f"assembly-core-{uuid.uuid4().hex[:8]}"},
+    )
+    return cid, 1
+
+
+def test_task_with_workflow_and_two_focuses_round_trips(db):
+    core = _hermetic_core(db)
 
     wf_id, wf_type = _real_workflow(db)
     f1_id, f1_slug = _real_focus(db, core[0], core[1], "Legacy Generation")

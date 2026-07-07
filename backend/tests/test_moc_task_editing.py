@@ -30,7 +30,7 @@ VERT = "manufacturing"
 @pytest.fixture
 def db():
     s = SessionLocal()
-    s._created = {"tasks": [], "focuses": [], "workflows": []}
+    s._created = {"tasks": [], "focuses": [], "workflows": [], "cores": []}
     yield s
     s.rollback()
     for tid in s._created["tasks"]:
@@ -39,6 +39,8 @@ def db():
         s.execute(sql_text("DELETE FROM focus_templates WHERE id = :id"), {"id": fid})
     for wid in s._created["workflows"]:
         s.execute(sql_text("DELETE FROM workflow_templates WHERE id = :id"), {"id": wid})
+    for cid in s._created["cores"]:
+        s.execute(sql_text("DELETE FROM focus_cores WHERE id = :id"), {"id": cid})
     s.execute(sql_text("DELETE FROM moc_task_vocabulary WHERE value = 'Weekly'"))
     s.commit()
     s.close()
@@ -60,12 +62,27 @@ def _refs(db) -> tuple[str, list[str]]:
          "cs": '{"version":1,"nodes":[],"edges":[]}'},
     )
     db._created["workflows"].append(wf)
-    core = db.execute(
-        sql_text(
-            "SELECT inherits_from_core_id, inherits_from_core_version "
-            "FROM focus_templates LIMIT 1"
-        )
-    ).first()
+    # HERMETIC core (state-immunity): the old `SELECT ... FROM focus_templates
+    # LIMIT 1` piggybacked on other seeds' rows — running after a suite whose
+    # fixtures wipe the focus tables left core=None and every test here
+    # TypeError'd. Create our own Tier 1 core instead.
+    from app.services.focus_template_inheritance import create_core
+
+    own_core = create_core(
+        db,
+        core_slug=f"task-edit-core-{uuid.uuid4().hex[:8]}",
+        display_name="Task Editing Core",
+        registered_component_kind="focus-core",
+        registered_component_name="SchedulingKanbanCore",
+        default_starting_column=0,
+        default_column_span=12,
+        default_row_index=0,
+        min_column_span=8,
+        max_column_span=12,
+        canvas_config={},
+    )
+    db._created["cores"].append(own_core.id)
+    core = (own_core.id, own_core.version)
     focs: list[str] = []
     for i in range(2):
         fid = str(uuid.uuid4())
