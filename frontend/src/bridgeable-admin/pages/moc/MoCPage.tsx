@@ -44,6 +44,7 @@ import {
   MoCTypeCards,
   type MoCTypeCard,
 } from "@/bridgeable-admin/components/moc/MoCTypeCards"
+import { MoCBreadcrumb } from "@/bridgeable-admin/components/moc/MoCBreadcrumb"
 import { MoCTaskTable } from "@/bridgeable-admin/components/moc/MoCTaskTable"
 import { MoCVerticalsRail } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
 import { Button } from "@/components/ui/button"
@@ -282,13 +283,19 @@ export default function MoCPage() {
   } else if (page) {
     body = (
       <div className="space-y-6">
-        <Link
-          to={adminPath("/")}
-          className="inline-flex items-center gap-1 text-body-sm text-content-muted hover:text-content-base"
-          data-testid="moc-vertical-up-link"
-        >
-          ← platform map
-        </Link>
+        {/* H-3: the breadcrumb spine (replaces the H-2 up-link stub) + the
+            vertical-level Studio hang (the links audit — per-artifact editors
+            are the cards' deep-links; this reaches the REST of Studio). */}
+        <div className="flex items-center justify-between">
+          <MoCBreadcrumb vertical={vertical} />
+          <Link
+            to={adminPath(`/studio/${vertical}`)}
+            className="text-caption text-content-subtle hover:text-accent"
+            data-testid="moc-vertical-studio-link"
+          >
+            Author in Studio →
+          </Link>
+        </div>
         {renaming ? (
           <div className="flex items-center gap-2">
             <Input

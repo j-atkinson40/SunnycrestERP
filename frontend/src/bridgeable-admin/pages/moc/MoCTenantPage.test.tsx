@@ -8,7 +8,7 @@
  *   its pills/coherence behavior is pinned in TenantView.test.tsx, unchanged);
  * - the fires card fetches company-scoped and renders provenance;
  * - the honest cards-source note for the fall-through case;
- * - the up-link points at the vertical map;
+ * - the breadcrumb spine renders from the route (H-3 — cold deep-link);
  * - an unknown slug → the missing state, no reads fired with a bogus tenant.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest"
@@ -111,10 +111,15 @@ describe("MoCTenantPage — route-driven tenant context", () => {
     expect(card.textContent).toContain("schedule")
   })
 
-  it("the up-link points at the vertical map", async () => {
+  it("the breadcrumb spine renders from the ROUTE (cold deep-link honesty)", async () => {
+    // rendered at the direct URL — no navigation history; the crumb derives
+    // from the route + the resolved tenant (H-3 replaced the up-link stub).
     renderAt("/maps/manufacturing/testco")
-    const up = await screen.findByTestId("moc-tenant-up-link")
-    expect(up.getAttribute("href")).toContain("/maps/manufacturing")
+    const crumb = await screen.findByTestId("moc-breadcrumb")
+    expect(crumb.textContent).toContain("Platform")
+    expect(screen.getByTestId("moc-crumb-platform").getAttribute("href")).toContain("/")
+    expect(screen.getByTestId("moc-crumb-vertical").getAttribute("href")).toContain("/maps/manufacturing")
+    expect(screen.getByTestId("moc-crumb-current").textContent).toBe("Test Vault Co")
   })
 
   it("an unknown slug shows the missing state and fires NO tenant reads", async () => {

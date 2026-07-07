@@ -18,11 +18,10 @@
  */
 
 import * as React from "react"
-import { Link, useParams } from "react-router-dom"
-import { ArrowLeft, Building2, Radio } from "lucide-react"
+import { useParams } from "react-router-dom"
+import { Building2, Radio } from "lucide-react"
 
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
-import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import type { TenantSummary } from "@/bridgeable-admin/components/TenantPicker"
 import {
   listMoCFires,
@@ -32,6 +31,7 @@ import {
   type MoCScheduleRun,
   type MoCTask,
 } from "@/bridgeable-admin/services/moc-service"
+import { MoCBreadcrumb } from "@/bridgeable-admin/components/moc/MoCBreadcrumb"
 import { MoCFiresCard } from "@/bridgeable-admin/components/moc/MoCFiresCard"
 import { MoCTypeCards } from "@/bridgeable-admin/components/moc/MoCTypeCards"
 import { MoCTaskTable } from "@/bridgeable-admin/components/moc/MoCTaskTable"
@@ -112,8 +112,6 @@ export default function MoCTenantPage() {
     void load()
   }, [load])
 
-  const upHref = adminPath(`/maps/${vertical}`)
-
   let body: React.ReactNode = null
   if (tenantMissing) {
     body = (
@@ -135,13 +133,8 @@ export default function MoCTenantPage() {
       <div className="space-y-6">
         {/* Identity strip + the up-link (the H-1 breadcrumb stub). */}
         <div>
-          <Link
-            to={upHref}
-            className="inline-flex items-center gap-1 text-body-sm text-content-muted hover:text-content-base"
-            data-testid="moc-tenant-up-link"
-          >
-            <ArrowLeft size={14} /> {vertical} map
-          </Link>
+          {/* H-3: the breadcrumb spine (replaces the H-1 up-link stub). */}
+          <MoCBreadcrumb vertical={vertical} tenantLabel={tenant.name} />
           <div className="mt-2 flex items-center gap-3">
             <Building2 size={20} className="text-accent" />
             <h1 className="text-h2 font-semibold text-content-strong" data-testid="moc-tenant-title">
