@@ -89,10 +89,16 @@ export function toTypeCards(page: MoCResolvedPage): MoCTypeCard[] {
         href: path ? adminPath(path) : null,
         available: r.resolution.available && path !== null,
         unavailableReason: "orphan" as const,
+        builder: r.builder,
+        artifact_id: r.resolution.artifact_id ?? r.artifact_id,
       }
-      const list = byBuilder.get(r.builder)
+      // focus-cores rows fold into the ONE Focuses card (the platform map
+      // shows Tier 1 defaults + platform_default templates together); the
+      // entry keeps its own builder for per-entry affordances (fork menu).
+      const cardKey = r.builder === "focus-cores" ? "focuses" : r.builder
+      const list = byBuilder.get(cardKey)
       if (list) list.push(entry)
-      else byBuilder.set(r.builder, [entry])
+      else byBuilder.set(cardKey, [entry])
     }
   }
   const known = TYPE_ORDER.filter((b) => byBuilder.has(b))

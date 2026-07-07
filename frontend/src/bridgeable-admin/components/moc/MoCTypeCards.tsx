@@ -28,6 +28,11 @@ export interface MoCTypeCardEntry {
   href: string | null
   available: boolean
   unavailableReason?: "orphan" | "not-built"
+  /** The entry's OWN builder (may differ from the card's — focus-cores rows
+   * fold into the Focuses card). Lets per-entry affordances (the fork menu)
+   * discriminate without a second lookup. */
+  builder?: string
+  artifact_id?: string
 }
 
 export interface MoCTypeCard {

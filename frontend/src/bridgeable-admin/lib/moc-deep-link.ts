@@ -27,7 +27,12 @@
 
 import { studioPath, type StudioEditorKey } from "@/bridgeable-admin/lib/studio-routes"
 
-export type MoCBuilder = "workflows" | "focuses" | "widgets" | "documents"
+export type MoCBuilder =
+  | "workflows"
+  | "focuses"
+  | "focus-cores"
+  | "widgets"
+  | "documents"
 
 /** The builder-specific routing fields the resolver hands back. */
 export interface MoCRowRouting {
@@ -38,6 +43,8 @@ export interface MoCRowRouting {
   vertical?: string | null
   // focuses
   template_slug?: string | null
+  // focus-cores (Focus Variations V-1 — Tier 1 defaults on the platform map)
+  core_slug?: string | null
   // widgets
   widget_id?: string | null
   // documents
@@ -53,6 +60,7 @@ export interface MoCDeepLinkInput {
 const WIRED: ReadonlySet<string> = new Set<MoCBuilder>([
   "workflows",
   "focuses",
+  "focus-cores",
   "widgets",
   "documents",
 ])
@@ -85,6 +93,16 @@ export function mocDeepLink(row: MoCDeepLinkInput): string | null {
         vertical,
         editor: "focuses" as StudioEditorKey,
         query: { tier: "2", template: row.artifact_id },
+      })
+    }
+    case "focus-cores": {
+      // tier "1" = core; `core` param is the focus_cores row id (the Focus
+      // editor's ?tier=1&core=<id> contract, witnessed in FocusEditorPage).
+      if (!row.artifact_id) return null
+      return studioPath({
+        vertical,
+        editor: "focuses" as StudioEditorKey,
+        query: { tier: "1", core: row.artifact_id },
       })
     }
     case "documents": {

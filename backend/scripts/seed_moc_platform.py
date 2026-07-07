@@ -32,6 +32,8 @@ if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
 from app.database import SessionLocal  # noqa: E402
+from app.models.focus_core import FocusCore  # noqa: E402
+from app.models.focus_template import FocusTemplate  # noqa: E402
 from app.models.moc_page import MoCPage  # noqa: E402
 from app.models.workflow_template import WorkflowTemplate  # noqa: E402
 
@@ -68,8 +70,56 @@ def _core_workflow_rows(db) -> list[dict]:
     ]
 
 
+def _focus_default_rows(db) -> list[dict]:
+    """The platform's default Focus shapes (Focus Variations V-1): every
+    ACTIVE Tier 1 core (builder 'focus-cores' — the fork-menu targets) +
+    every ACTIVE platform_default Tier 2 template. Query-built — correct on
+    any DB, content-agnostic (dev holds job-coordination, staging holds
+    scheduling-kanban; the seed hardcodes neither)."""
+    rows: list[dict] = []
+    cores = (
+        db.query(FocusCore)
+        .filter(FocusCore.is_active.is_(True))
+        .order_by(FocusCore.display_name)
+        .all()
+    )
+    for c in cores:
+        rows.append(
+            {
+                "row_id": f"fcore-{c.core_slug}",
+                "builder": "focus-cores",
+                "artifact_id": c.id,
+                "label": c.display_name,
+                "icon": "focus",
+                "order": len(rows),
+            }
+        )
+    templates = (
+        db.query(FocusTemplate)
+        .filter(
+            FocusTemplate.scope == "platform_default",
+            FocusTemplate.is_active.is_(True),
+        )
+        .order_by(FocusTemplate.display_name)
+        .all()
+    )
+    for t in templates:
+        rows.append(
+            {
+                "row_id": f"ftmpl-{t.template_slug}",
+                "builder": "focuses",
+                "artifact_id": t.id,
+                "label": t.display_name,
+                "icon": "focus",
+                "order": len(rows),
+            }
+        )
+    return rows
+
+
 def seed(db) -> dict:
     rows = _core_workflow_rows(db)
+    focus_rows = _focus_default_rows(db)
     sections = [
         {
             "section_id": "core-workflows",
@@ -77,7 +127,17 @@ def seed(db) -> dict:
             "description": "Cross-vertical machinery — runs for every tenant.",
             "order": 0,
             "rows": rows,
-        }
+        },
+        {
+            "section_id": "focus-defaults",
+            "title": "Focuses",
+            "description": (
+                "The default Focus shapes — fork a variation or edit the "
+                "default (edits reach every inheritor)."
+            ),
+            "order": 1,
+            "rows": focus_rows,
+        },
     ]
     page = (
         db.query(MoCPage)
@@ -109,10 +169,16 @@ def seed(db) -> dict:
         created = False
     db.commit()
     logger.info(
-        "MoC platform page %s: %s (%d core workflow rows)",
+        "MoC platform page %s: %s (%d core workflow rows, %d focus rows)",
         "created" if created else "refreshed", page.id, len(rows),
+        len(focus_rows),
     )
-    return {"page_id": page.id, "created": created, "core_rows": len(rows)}
+    return {
+        "page_id": page.id,
+        "created": created,
+        "core_rows": len(rows),
+        "focus_rows": len(focus_rows),
+    }
 
 
 def main() -> None:

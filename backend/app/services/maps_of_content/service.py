@@ -26,6 +26,10 @@ _WORKFLOWS = "workflows"
 _FOCUSES = "focuses"
 _WIDGETS = "widgets"
 _DOCUMENTS = "documents"
+# Focus Variations V-1: Tier 1 focus cores as first-class refs — the platform
+# map's Focuses card shows the canonical default shapes (the fork-menu
+# targets). Deep-links to the Focus Builder's tier-1 view (?tier=1&core=<id>).
+_FOCUS_CORES = "focus-cores"
 
 
 class InvalidReference(Exception):
@@ -119,6 +123,42 @@ def _resolve_focus(db: Session, artifact_id: str, authored: str) -> dict:
     }
 
 
+def _resolve_focus_core(db: Session, artifact_id: str, authored: str) -> dict:
+    """Tier 1 core refs. Same rebind semantics as _resolve_focus: core
+    version bumps mint new row ids; core_slug is the stable identity."""
+    row = db.execute(
+        sql_text(
+            "SELECT id, display_name, is_active, core_slug "
+            "FROM focus_cores WHERE id = :id"
+        ),
+        {"id": artifact_id},
+    ).first()
+    if row is None:
+        return _gone(authored)
+    if not row.is_active:
+        active = db.execute(
+            sql_text(
+                "SELECT id, display_name, core_slug FROM focus_cores "
+                "WHERE core_slug = :slug AND is_active = true"
+            ),
+            {"slug": row.core_slug},
+        ).first()
+        if active is not None:
+            return {
+                "exists": True,
+                "available": True,
+                "label": active.display_name or authored,
+                "artifact_id": active.id,
+                "routing": {"core_slug": active.core_slug},
+            }
+    return {
+        "exists": True,
+        "available": bool(row.is_active),
+        "label": row.display_name or authored,
+        "routing": {"core_slug": row.core_slug},
+    }
+
+
 def _resolve_widget(db: Session, artifact_id: str, authored: str) -> dict:
     # widget_definitions has no is_active — presence is liveness.
     row = db.execute(
@@ -169,6 +209,7 @@ def _gone(authored: str) -> dict:
 BUILDERS: dict[str, Callable[[Session, str, str], dict]] = {
     _WORKFLOWS: _resolve_workflow,
     _FOCUSES: _resolve_focus,
+    _FOCUS_CORES: _resolve_focus_core,
     _WIDGETS: _resolve_widget,
     _DOCUMENTS: _resolve_document,
 }
