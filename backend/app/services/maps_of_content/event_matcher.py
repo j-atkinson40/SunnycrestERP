@@ -212,15 +212,31 @@ def _fire(
 # ── The sweep ──────────────────────────────────────────────────────────
 
 
-def check_moc_domain_events(cap: int = 500) -> dict:
+# SWEEP HARDENING (task_0daaafd0): the per-tick FIRE cap (distinct from the
+# events-read `cap`) — a runaway bound. Capped work DEFERS cleanly on the
+# event path: an event not fully handled keeps processed_at NULL and re-sweeps
+# next tick; the (trigger, event) pair-dedup makes re-processing exact-once.
+_EVENT_FIRE_CAP = 500
+
+
+def check_moc_domain_events(cap: int = 500, fire_cap: int = _EVENT_FIRE_CAP) -> dict:
     """The matcher sweep — runs on its own APScheduler cadence. Reads up to
-    `cap` unprocessed outbox events, fires every (trigger, event) match
-    DRY-RUN, marks events processed. Fresh DB session; per-event try/except
-    (one bad event never blocks the sweep)."""
+    `cap` unprocessed outbox events, fires every (trigger, event) match,
+    marks events processed. Fresh DB session; per-event try/except
+    (one bad event never blocks the sweep).
+
+    THE FIRE CAP: at most `fire_cap` fires per tick. CRITICAL partial-handling
+    contract — `processed_at` is set ONLY when an event's match pass ran to
+    COMPLETION: an event capped mid-matches stays unprocessed and re-sweeps
+    next tick (already-fired pairs dedup-skip; the remainder fires — nothing
+    lost, nothing doubled). Errors still mark processed (the poison-event
+    protection — only CAP deferral skips the marking). Tripping is LOUD."""
     db = SessionLocal()
     fired = 0
     processed = 0
     errors = 0
+    cap_tripped = False
+    deferred_events = 0
     try:
         events = (
             db.query(MoCDomainEvent)
@@ -230,7 +246,8 @@ def check_moc_domain_events(cap: int = 500) -> dict:
             .all()
         )
         if not events:
-            return {"processed": 0, "fired_dry_run": 0, "errors": 0}
+            return {"processed": 0, "fired_dry_run": 0, "errors": 0,
+                    "cap_tripped": False, "deferred_events": 0}
         backlog_note = (
             db.query(MoCDomainEvent).filter(MoCDomainEvent.processed_at.is_(None)).count()
             if len(events) == cap
@@ -243,6 +260,14 @@ def check_moc_domain_events(cap: int = 500) -> dict:
             )
 
         for event in events:
+            if fired >= fire_cap:
+                # THE CAP — stop starting new events; everything from here
+                # stays UNPROCESSED and defers to the next tick (natural
+                # backpressure: processed_at NULL = still in the work queue).
+                cap_tripped = True
+                deferred_events = len(events) - processed
+                break
+            completed = True  # processed_at is set ONLY when this stays True
             try:
                 company = db.get(Company, event.company_id)
                 triggers = (
@@ -255,6 +280,13 @@ def check_moc_domain_events(cap: int = 500) -> dict:
                     .all()
                 )
                 for trig in triggers:
+                    if fired >= fire_cap:
+                        # Capped MID-event: the remaining matches must NOT be
+                        # lost — leave the event unprocessed; next tick the
+                        # already-fired pairs dedup-skip and the rest fire.
+                        completed = False
+                        cap_tripped = True
+                        break
                     task = db.get(MoCTaskCatalog, trig.task_catalog_id)
                     if task is None or not task.is_active or not task.workflow_template_id:
                         continue
@@ -278,13 +310,25 @@ def check_moc_domain_events(cap: int = 500) -> dict:
                 logger.error("MoC event matching failed (event %s): %s", event.id, exc)
                 errors += 1
                 db.rollback()
+                # completed stays True: errors MARK processed (poison-event
+                # protection) — only CAP deferral skips the marking.
             finally:
-                # POISON-EVENT PROTECTION: processed even when a fire errored —
-                # a bad event must not wedge the queue; the pair-dedup keeps a
-                # re-run from double-firing the successes.
-                event.processed_at = datetime.now(timezone.utc)
-                db.commit()
-                processed += 1
-        return {"processed": processed, "fired_dry_run": fired, "errors": errors}
+                if completed:
+                    event.processed_at = datetime.now(timezone.utc)
+                    db.commit()
+                    processed += 1
+                else:
+                    db.commit()  # keep the fired runs; the event re-sweeps
+                    deferred_events += 1
+        if cap_tripped:
+            logger.warning(
+                "MoC event matcher FIRE CAP tripped at %s fires this tick — "
+                "%s event(s) deferred unprocessed to the next tick (the pair-"
+                "dedup makes re-processing exact-once). A trip is a runaway "
+                "signal: inspect the matching triggers' breadth.",
+                fire_cap, deferred_events,
+            )
+        return {"processed": processed, "fired_dry_run": fired, "errors": errors,
+                "cap_tripped": cap_tripped, "deferred_events": deferred_events}
     finally:
         db.close()
