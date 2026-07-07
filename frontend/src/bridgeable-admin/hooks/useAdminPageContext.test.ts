@@ -8,6 +8,13 @@ import { describe, it, expect } from "vitest"
 import { derive } from "./useAdminPageContext"
 
 describe("derive — admin page context", () => {
+  it("MoC TENANT page → moc + vertical + tenant-aware label (H-3)", () => {
+    const c = derive("/maps/manufacturing/testco")
+    expect(c.surface).toBe("moc")
+    expect(c.vertical).toBe("manufacturing")
+    expect(c.label).toBe("manufacturing › testco · MoC")
+  })
+
   it("MoC vertical page → moc + vertical + armed", () => {
     const c = derive("/maps/manufacturing")
     expect(c.surface).toBe("moc")

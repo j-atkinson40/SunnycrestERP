@@ -86,6 +86,14 @@ export function derive(pathname: string): AdminPageContext {
     }
   }
 
+  // MoC TENANT page (/maps/:vertical/:tenantSlug) — H-3: the tenant level.
+  const mocTenant = clean.match(/^\/maps\/([^/]+)\/([^/]+)/)
+  if (mocTenant) {
+    return {
+      surface: "moc", vertical: mocTenant[1], editorKind: null,
+      canAuthor: true, label: `${mocTenant[1]} › ${mocTenant[2]} · MoC`,
+    }
+  }
   // MoC vertical page (/maps/:vertical).
   const moc = clean.match(/^\/maps\/([^/]+)/)
   if (moc) {
