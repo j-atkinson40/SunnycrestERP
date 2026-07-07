@@ -35,6 +35,7 @@ from app.services.focus_template_inheritance.focus_cores_service import (  # noq
     get_active_core_by_slug,
     get_core_by_id,
     get_core_by_slug,
+    get_core_by_slug_and_version,
     get_core_slug_by_id,
     list_cores,
     update_core,

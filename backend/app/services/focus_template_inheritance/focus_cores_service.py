@@ -176,6 +176,25 @@ def get_core_by_slug(db: Session, core_slug: str) -> FocusCore | None:
     )
 
 
+def get_core_by_slug_and_version(
+    db: Session, core_slug: str, version: int
+) -> FocusCore | None:
+    """The RETAINED snapshot at a specific version (active or not) —
+    version bumps keep prior rows is_active=false, so every version's
+    final state is addressable. Consumed by the V-2 pin-honoring
+    resolver branch (a template resolves the core AS OF its pinned
+    `inherits_from_core_version`) and the offer diff builder."""
+    return (
+        db.query(FocusCore)
+        .filter(
+            FocusCore.core_slug == core_slug,
+            FocusCore.version == version,
+        )
+        .order_by(FocusCore.updated_at.desc())
+        .first()
+    )
+
+
 def _find_active_by_slug(db: Session, core_slug: str) -> FocusCore | None:
     return get_core_by_slug(db, core_slug)
 

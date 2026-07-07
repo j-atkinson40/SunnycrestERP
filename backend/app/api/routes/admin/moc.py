@@ -256,6 +256,132 @@ def admin_create_focus_variation(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+# ─── Offered updates (Focus Variations V-2) — publish / offers ───────────
+# (declared before the page `/{page_id}` catch-all)
+
+
+class _PublishCore(BaseModel):
+    core_id: str
+    patch_notes: str | None = None
+
+
+class _AcceptOffer(BaseModel):
+    # {chrome_field: "keep" | "take"} — take-new drops the target's override
+    # so the new default shows through; keep-mine (default) touches nothing.
+    choices: dict[str, str] = {}
+
+
+def _translate_update_error(exc) -> HTTPException:
+    detail: Any = str(exc)
+    if getattr(exc, "latest_offer_id", None):
+        detail = {"message": str(exc), "latest_offer_id": exc.latest_offer_id}
+    code = 404 if "not found" in str(exc) else 409
+    return HTTPException(status_code=code, detail=detail)
+
+
+@router.get("/focus-publishes/preview")
+def admin_focus_publish_preview(
+    core_id: str = Query(...),
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The unpublished delta + the derived patch-notes scaffold."""
+    from app.services.artifact_updates import (
+        ArtifactUpdateError,
+        get_publish_preview,
+    )
+
+    try:
+        return get_publish_preview(db, core_id=core_id)
+    except ArtifactUpdateError as exc:
+        raise _translate_update_error(exc)
+
+
+@router.post("/focus-publishes", status_code=201)
+def admin_publish_core(
+    body: _PublishCore,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The explicit release: records the publish, stamps the boundary,
+    creates one pending offer per downstream variation (superseding any
+    prior live offers — the chain-collapse rule)."""
+    from app.services.artifact_updates import (
+        ArtifactUpdateError,
+        publish_core_update,
+    )
+
+    try:
+        return publish_core_update(
+            db, core_id=body.core_id, patch_notes=body.patch_notes,
+            actor_id=admin.id,
+        )
+    except ArtifactUpdateError as exc:
+        db.rollback()
+        raise _translate_update_error(exc)
+
+
+@router.get("/update-offers/state")
+def admin_offer_states(
+    target_slugs: str = Query(..., description="comma-separated template slugs"),
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Per-slug offer state for the map's pills (badge = pending; gap
+    chip = behind-but-quiet)."""
+    from app.services.artifact_updates import offer_states_for_targets
+
+    slugs = [s.strip() for s in target_slugs.split(",") if s.strip()]
+    return offer_states_for_targets(db, target_slugs=slugs)
+
+
+@router.get("/update-offers/{offer_id}")
+def admin_get_offer(
+    offer_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.artifact_updates import ArtifactUpdateError, get_offer
+
+    try:
+        return get_offer(db, offer_id)
+    except ArtifactUpdateError as exc:
+        raise _translate_update_error(exc)
+
+
+@router.post("/update-offers/{offer_id}/accept")
+def admin_accept_offer(
+    offer_id: str,
+    body: _AcceptOffer,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.artifact_updates import ArtifactUpdateError, accept_offer
+
+    try:
+        return accept_offer(
+            db, offer_id=offer_id, choices=body.choices, actor_id=admin.id
+        )
+    except ArtifactUpdateError as exc:
+        db.rollback()
+        raise _translate_update_error(exc)
+
+
+@router.post("/update-offers/{offer_id}/decline")
+def admin_decline_offer(
+    offer_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.artifact_updates import ArtifactUpdateError, decline_offer
+
+    try:
+        return decline_offer(db, offer_id=offer_id, actor_id=admin.id)
+    except ArtifactUpdateError as exc:
+        db.rollback()
+        raise _translate_update_error(exc)
+
+
 # ─── Trigger event catalog (MoC Triggers T-1a) — curated editable vocabulary ──
 # (declared before the page `/{page_id}` catch-all so `/trigger-events` resolves)
 
