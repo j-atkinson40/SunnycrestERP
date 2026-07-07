@@ -62,6 +62,7 @@ from app.services.focus_template_inheritance.chrome_validation import (
 )
 from app.services.focus_template_inheritance.focus_cores_service import (
     get_active_core_by_slug,
+    get_core_by_slug_and_version,
     get_core_slug_by_id,
 )
 from app.services.focus_template_inheritance.substrate_validation import (
@@ -644,6 +645,30 @@ def resolve_focus(
             f"core slug {core_slug!r} has no active version "
             f"(orphan reference from template {template.id!r})"
         )
+
+    # Focus Variations V-2 — the PIN-HONORING branch (the Option B seam
+    # locked decision 2 reserved). Once a core is under the PUBLISH regime
+    # (published_version set — the explicit opt-in boundary), a template
+    # resolves the core AS OF its pinned `inherits_from_core_version`
+    # snapshot: unaccepted updates never reach a variation (the software-
+    # update guarantee). Accepting an offer moves the pin. Cores never
+    # published keep the live cascade — zero behavior change for existing
+    # content. Missing snapshot (pre-retention rows) → stay live + log.
+    if (
+        core.published_version is not None
+        and template.inherits_from_core_version < core.version
+    ):
+        pinned = get_core_by_slug_and_version(
+            db, core_slug, template.inherits_from_core_version
+        )
+        if pinned is not None:
+            core = pinned
+        else:
+            logger.debug(
+                "pin-honoring: no snapshot for %s v%s (template %s) — "
+                "falling back to the active core",
+                core_slug, template.inherits_from_core_version, template.id,
+            )
 
     composition: FocusComposition | None = None
     if tenant_id is not None:
