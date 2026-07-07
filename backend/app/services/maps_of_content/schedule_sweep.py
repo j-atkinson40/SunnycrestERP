@@ -174,14 +174,35 @@ def _fire(
     )
 
 
-def check_moc_task_schedules(now: datetime | None = None) -> dict:
+# SWEEP HARDENING (task_0daaafd0): the per-tick fire cap — a RUNAWAY BOUND,
+# not a throughput limiter. Sized above legitimate Wilbert-scale load (~200
+# licensees × a handful of same-window triggers ≲ 1000/tick) and far below the
+# incident shape (one vertical_default trigger × 13k dev tenants = 39k pairs
+# in one window, which ground a single sweep invocation for ~8 hours).
+# Dry-run fires COUNT (the incident was 28.5k dry-run runs — bloat IS harm).
+_SCHEDULE_FIRE_CAP = 1000
+
+
+def check_moc_task_schedules(
+    now: datetime | None = None, fire_cap: int = _SCHEDULE_FIRE_CAP
+) -> dict:
     """The sweep — runs on the 15-min APScheduler cadence. Fires every DUE MoC
     schedule-trigger DRY-RUN. Fresh DB session (scheduler jobs must not share
-    sessions). Per-fire try/except: one bad trigger never blocks the sweep."""
+    sessions). Per-fire try/except: one bad trigger never blocks the sweep.
+
+    THE FIRE CAP: at most `fire_cap` fires per tick. Capped work DEFERS via
+    the unclaimed idempotency key — an unfired (trigger, company, window) pair
+    re-evaluates next tick and fires IF STILL IN-WINDOW. When no further tick
+    lands in the window (the common 15-min-window/15-min-cadence case), the
+    excess follows the EXISTING missed-window semantics (the T-2.1a catch-up
+    rule: skipped, fires at its next scheduled occurrence) — the cap converts
+    a runaway into 'treated like a missed window'. Tripping is LOUD (warning
+    log + cap_tripped in the return) — it is a signal, never routine."""
     db = SessionLocal()
     now = now or datetime.now(timezone.utc)
     fired = 0
     errors = 0
+    cap_tripped = False
     try:
         triggers = (
             db.query(MoCTaskTrigger)
@@ -192,14 +213,30 @@ def check_moc_task_schedules(now: datetime | None = None) -> dict:
             .all()
         )
         if not triggers:
-            return {"fired_dry_run": 0, "errors": 0}
+            return {"fired_dry_run": 0, "errors": 0, "cap_tripped": False}
         companies = db.query(Company).filter(Company.is_active.is_(True)).all()
 
         for trig in triggers:
+            if cap_tripped:
+                break
             task = db.get(MoCTaskCatalog, trig.task_catalog_id)
             if task is None or not task.is_active or not task.workflow_template_id:
                 continue  # nothing runnable to fire
             for company in _fanout_companies(task, companies):
+                if fired >= fire_cap:
+                    # THE CAP — loud, once, then stop firing this tick. The
+                    # unfired remainder defers (in-window) or follows the
+                    # missed-window skip (see the docstring).
+                    cap_tripped = True
+                    logger.warning(
+                        "MoC schedule sweep FIRE CAP tripped at %s fires this "
+                        "tick — remaining due work is deferred to the next "
+                        "tick if still in-window, else follows the "
+                        "missed-window skip. A trip is a runaway signal: "
+                        "inspect the due-trigger fan-out.",
+                        fire_cap,
+                    )
+                    break
                 try:
                     intended = _due_intended_fire(trig, company, now)
                     if intended is None:
@@ -215,7 +252,7 @@ def check_moc_task_schedules(now: datetime | None = None) -> dict:
                     )
                     errors += 1
                     db.rollback()
-        return {"fired_dry_run": fired, "errors": errors}
+        return {"fired_dry_run": fired, "errors": errors, "cap_tripped": cap_tripped}
     finally:
         db.close()
 
