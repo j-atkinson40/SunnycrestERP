@@ -48,6 +48,10 @@ export interface MoCTypeCardsProps {
   cards: MoCTypeCard[]
   emptyTitle?: string
   emptyDescription?: string
+  /** Focus Variations V-1: when provided, an entry may render through a
+   * custom element (the platform map hands focus-cores entries to the fork
+   * menu). Return null to fall through to the default link rendering. */
+  renderEntry?: (entry: MoCTypeCardEntry) => React.ReactNode | null
   "data-testid"?: string
 }
 
@@ -55,6 +59,7 @@ export function MoCTypeCards({
   cards,
   emptyTitle = "Nothing here yet",
   emptyDescription,
+  renderEntry,
   "data-testid": testId,
 }: MoCTypeCardsProps) {
   const visibleCards = cards.filter((c) => c.entries.length > 0)
@@ -82,13 +87,19 @@ export function MoCTypeCards({
       data-testid={testId}
     >
       {visibleCards.map((card) => (
-        <TypeCard key={card.builder} card={card} />
+        <TypeCard key={card.builder} card={card} renderEntry={renderEntry} />
       ))}
     </div>
   )
 }
 
-function TypeCard({ card }: { card: MoCTypeCard }) {
+function TypeCard({
+  card,
+  renderEntry,
+}: {
+  card: MoCTypeCard
+  renderEntry?: (entry: MoCTypeCardEntry) => React.ReactNode | null
+}) {
   const TypeIcon = card.icon ?? FileText
   return (
     <section
@@ -112,7 +123,9 @@ function TypeCard({ card }: { card: MoCTypeCard }) {
             data-testid={`moc-row-${entry.row_id}`}
             data-available={entry.available}
           >
-            <TypeCardEntry entry={entry} />
+            {(renderEntry && renderEntry(entry)) ?? (
+              <TypeCardEntry entry={entry} />
+            )}
           </li>
         ))}
       </ul>

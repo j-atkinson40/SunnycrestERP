@@ -450,22 +450,32 @@ def admin_core_usage(
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ) -> CoreUsageResponse:
-    if get_core_by_id(db, core_id) is None:
+    core = get_core_by_id(db, core_id)
+    if core is None:
         raise _translate(CoreNotFound(core_id))
-    count = count_templates_referencing(db, core_id)
-    # Build the listing alongside the count — small lists, single query.
+    # LINEAGE-aware (Focus Variations V-1): templates pin the core row id
+    # they were created against, and core version bumps mint new ids — an
+    # exact-id filter undercounts to zero after the core's first edit. The
+    # fork menu's blast radius must be REAL: match templates referencing ANY
+    # version row of this core's slug lineage (the C-2.1.2 canon).
+    from app.models.focus_core import FocusCore as _FC
     from app.models.focus_template import FocusTemplate as _FT
 
+    lineage_ids = (
+        db.query(_FC.id)
+        .filter(_FC.core_slug == core.core_slug)
+        .scalar_subquery()
+    )
     rows = (
         db.query(_FT)
         .filter(
-            _FT.inherits_from_core_id == core_id,
+            _FT.inherits_from_core_id.in_(lineage_ids),
             _FT.is_active.is_(True),
         )
         .all()
     )
     return CoreUsageResponse(
-        templates_count=count,
+        templates_count=len(rows),
         templates=[
             {
                 "id": r.id,

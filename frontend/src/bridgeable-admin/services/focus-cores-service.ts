@@ -78,11 +78,29 @@ export interface CoreUpdatePayload {
   edit_session_id?: string
 }
 
+/** Blast-radius data for the fork menu (Focus Variations V-1): how many
+ * templates inherit this core, and which. LINEAGE-aware server-side (counts
+ * survive core version bumps). */
+export interface CoreUsage {
+  templates_count: number
+  templates: Array<{
+    id: string
+    template_slug: string
+    scope: string
+    vertical: string | null
+  }>
+}
+
 const BASE = "/api/platform/admin/focus-template-inheritance/cores"
 
 export const focusCoresService = {
   async list(): Promise<CoreRecord[]> {
     const res = await adminApi.get<CoreRecord[]>(BASE)
+    return res.data
+  },
+
+  async usage(id: string): Promise<CoreUsage> {
+    const res = await adminApi.get<CoreUsage>(`${BASE}/${id}/usage`)
     return res.data
   },
 
