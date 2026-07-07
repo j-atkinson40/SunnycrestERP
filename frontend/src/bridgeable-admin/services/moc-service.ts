@@ -17,6 +17,10 @@ export interface MoCRowResolution {
   exists: boolean
   available: boolean
   label: string
+  /** The ref-decay rebind: when the stored ref's row id went inactive under
+   * a version bump, the resolver re-binds to the lineage's ACTIVE row and
+   * returns its id here — deep-links must prefer this over the stored id. */
+  artifact_id?: string
   routing: {
     workflow_type?: string | null
     scope?: string | null

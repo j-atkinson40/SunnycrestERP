@@ -70,13 +70,43 @@ def _resolve_workflow(db: Session, artifact_id: str, authored: str) -> dict:
 def _resolve_focus(db: Session, artifact_id: str, authored: str) -> dict:
     row = db.execute(
         sql_text(
-            "SELECT display_name, is_active, template_slug, scope, vertical "
+            "SELECT id, display_name, is_active, template_slug, scope, vertical "
             "FROM focus_templates WHERE id = :id"
         ),
         {"id": artifact_id},
     ).first()
     if row is None:
         return _gone(authored)
+    if not row.is_active:
+        # Slug-translation rebind (the C-2.1.2 pattern applied to MoC refs):
+        # focus_template version bumps mint NEW row ids, so an authored ref's
+        # stored id goes inactive on the template's next edit. The slug tuple
+        # (scope, vertical, template_slug) is the stable identity — re-bind to
+        # the lineage's ACTIVE row so refs survive version rotation. The
+        # rebound id rides back in `artifact_id` so deep-links open the live
+        # version, not the retained snapshot.
+        active = db.execute(
+            sql_text(
+                "SELECT id, display_name, template_slug, scope, vertical "
+                "FROM focus_templates WHERE scope = :scope "
+                "AND vertical IS NOT DISTINCT FROM :vertical "
+                "AND template_slug = :slug AND is_active = true"
+            ),
+            {"scope": row.scope, "vertical": row.vertical,
+             "slug": row.template_slug},
+        ).first()
+        if active is not None:
+            return {
+                "exists": True,
+                "available": True,
+                "label": active.display_name or authored,
+                "artifact_id": active.id,
+                "routing": {
+                    "template_slug": active.template_slug,
+                    "scope": active.scope,
+                    "vertical": active.vertical,
+                },
+            }
     return {
         "exists": True,
         "available": bool(row.is_active),

@@ -62,9 +62,13 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         )
     focuses = [
         # authored label "" → the resolver returns the template's display_name.
+        # Stored id FIRST, then the resolution spread: the resolver's rebound
+        # `artifact_id` (the lineage's ACTIVE row after a version bump — the
+        # ref-decay rebind) must win over the stored, possibly-stale join id
+        # so the cell's deep-link opens the live version.
         {
-            **BUILDERS[_FOCUSES](db, f.focus_template_id, ""),
             "artifact_id": f.focus_template_id,
+            **BUILDERS[_FOCUSES](db, f.focus_template_id, ""),
         }
         for f in task.focuses
     ]

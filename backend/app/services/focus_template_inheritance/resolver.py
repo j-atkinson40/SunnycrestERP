@@ -647,13 +647,33 @@ def resolve_focus(
 
     composition: FocusComposition | None = None
     if tenant_id is not None:
+        # Lineage-wide lookup (the ref-decay rebind, Tier 3 rider): template
+        # version bumps mint NEW row ids, so a composition keyed to the id the
+        # tenant customized against would be ORPHANED by the template's next
+        # edit if we matched only the active row's id. Match the composition
+        # against ANY version row of the same (scope, vertical, template_slug)
+        # lineage — the slug tuple is the stable identity (C-2.1.2 canon).
+        # Newest-updated wins if a tenant somehow holds compositions against
+        # multiple version rows.
+        lineage_ids = (
+            db.query(FocusTemplate.id)
+            .filter(
+                FocusTemplate.scope == template.scope,
+                FocusTemplate.vertical.is_(None)
+                if template.vertical is None
+                else FocusTemplate.vertical == template.vertical,
+                FocusTemplate.template_slug == template.template_slug,
+            )
+            .scalar_subquery()
+        )
         composition = (
             db.query(FocusComposition)
             .filter(
                 FocusComposition.tenant_id == tenant_id,
-                FocusComposition.inherits_from_template_id == template.id,
+                FocusComposition.inherits_from_template_id.in_(lineage_ids),
                 FocusComposition.is_active.is_(True),
             )
+            .order_by(FocusComposition.updated_at.desc())
             .first()
         )
 

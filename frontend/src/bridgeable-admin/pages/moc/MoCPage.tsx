@@ -76,7 +76,10 @@ export function toTypeCards(page: MoCResolvedPage): MoCTypeCard[] {
       const path = r.resolution.available
         ? mocDeepLink({
             builder: r.builder,
-            artifact_id: r.artifact_id,
+            // Prefer the resolver's rebound id (the ref-decay rebind): after
+            // a version bump the stored id points at a retained snapshot; the
+            // rebound id opens the lineage's ACTIVE row.
+            artifact_id: r.resolution.artifact_id ?? r.artifact_id,
             routing: r.resolution.routing,
           })
         : null
