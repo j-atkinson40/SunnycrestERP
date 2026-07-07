@@ -75,10 +75,10 @@ export function ForkMenu({ entry, onCreateVariation }: ForkMenuProps) {
           </button>
         }
       />
-      <DropdownMenuContent align="start" className="max-w-xs">
+      <DropdownMenuContent align="start" className="w-80">
         <DropdownMenuItem
           disabled={entry.href === null}
-          onSelect={() => {
+          onClick={() => {
             if (entry.href) navigate(entry.href)
           }}
           data-testid={`fork-menu-edit-${entry.row_id}`}
@@ -97,7 +97,7 @@ export function ForkMenu({ entry, onCreateVariation }: ForkMenuProps) {
           </div>
         </DropdownMenuItem>
         <DropdownMenuItem
-          onSelect={() => onCreateVariation(entry)}
+          onClick={() => onCreateVariation(entry)}
           data-testid={`fork-menu-variation-${entry.row_id}`}
         >
           <div className="flex items-start gap-2">
