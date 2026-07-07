@@ -107,8 +107,19 @@ def create_focus_variation(
         created_by=actor_id,
     )
 
-    # 2. The multi-vertical join (slug-keyed, home included).
+    # 2. The multi-vertical join (slug-keyed, home included). Append-if-
+    #    absent like steps 3+4 — a retry after a mid-flow failure (or a
+    #    recreated lineage whose slug-keyed joins outlived a deleted
+    #    template) converges instead of tripping the unique pair.
+    existing_joins = {
+        j.vertical
+        for j in db.query(FocusTemplateVertical).filter(
+            FocusTemplateVertical.template_slug == slug
+        )
+    }
     for v in verticals:
+        if v in existing_joins:
+            continue
         db.add(
             FocusTemplateVertical(
                 template_slug=slug, vertical=v, created_by=actor_id
