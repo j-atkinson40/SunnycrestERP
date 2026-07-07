@@ -86,24 +86,51 @@ function VerticalsCards({ seededSlugs }: { seededSlugs: Set<string> }) {
   )
 }
 
-/** Counts-as-links: the map linking to non-map destinations (the spine
- * principle) — tenants (the kanban) + health. Quiet numbers, real links. */
+/** Counts-as-links + the OPERATIONS row (the H-3 links audit): every
+ * platform-level admin destination hangs off the map (the spine principle —
+ * the map links to things; things stay themselves). These DUPLICATE the
+ * header deliberately: the header is the task-interrupt shortcut layer; the
+ * map is where they belong in the structure. */
+const PLATFORM_DESTINATIONS: ReadonlyArray<{ label: string; path: string }> = [
+  { label: "Studio", path: "/studio" },
+  { label: "Migrations", path: "/migrations" },
+  { label: "Deployments", path: "/deployments" },
+  { label: "Staging", path: "/staging" },
+  { label: "Audit", path: "/audit" },
+  { label: "Feature flags", path: "/feature-flags" },
+  { label: "Telemetry", path: "/telemetry" },
+  { label: "Verticals registry", path: "/verticals" },
+]
+
 function PlatformLinksStrip({ tenantTotal }: { tenantTotal: number | null }) {
   return (
-    <div className="flex items-center gap-4" data-testid="moc-platform-links">
-      <Link
-        to={adminPath("/tenants")}
-        className="inline-flex items-center gap-1.5 text-body-sm text-content-muted hover:text-accent"
-      >
-        <Building2 size={14} />
-        {tenantTotal !== null ? `${tenantTotal} tenants` : "Tenants"}
-      </Link>
-      <Link
-        to={adminPath("/health")}
-        className="inline-flex items-center gap-1.5 text-body-sm text-content-muted hover:text-accent"
-      >
-        <Activity size={14} /> Health
-      </Link>
+    <div className="space-y-1.5" data-testid="moc-platform-links">
+      <div className="flex items-center gap-4">
+        <Link
+          to={adminPath("/tenants")}
+          className="inline-flex items-center gap-1.5 text-body-sm text-content-muted hover:text-accent"
+        >
+          <Building2 size={14} />
+          {tenantTotal !== null ? `${tenantTotal} tenants` : "Tenants"}
+        </Link>
+        <Link
+          to={adminPath("/health")}
+          className="inline-flex items-center gap-1.5 text-body-sm text-content-muted hover:text-accent"
+        >
+          <Activity size={14} /> Health
+        </Link>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="moc-platform-operations">
+        {PLATFORM_DESTINATIONS.map((d) => (
+          <Link
+            key={d.path}
+            to={adminPath(d.path)}
+            className="text-caption text-content-subtle hover:text-accent"
+          >
+            {d.label}
+          </Link>
+        ))}
+      </div>
     </div>
   )
 }

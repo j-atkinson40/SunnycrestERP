@@ -31,14 +31,13 @@ export function AdminHeader() {
             <span className="font-semibold text-base">Bridgeable Admin</span>
           </Link>
           <nav className="flex items-center gap-4 text-sm">
-            {/* MoC Phase 1.1 — the front door reads as first in the nav. */}
-            <Link
-              to={adminPath("/")}
-              className="hover:text-amber-300"
-              data-testid="admin-nav-maps"
-            >
-              Maps
-            </Link>
+            {/* H-3 nav rationalization: the "Maps" item RETIRED — the landing
+                IS the map and the logo is the way home (pure duplication).
+                The rest SURVIVES as the task-interrupt shortcut layer (the
+                investigation's keep-as-shortcut call); shrink-later-on-evidence
+                = drop items whose header clicks go to ~zero once the platform
+                map's Operations row carries the traffic (telemetry-checked,
+                not vibes). */}
             {/* Health relocated from "/" to "/health" (front-door repoint). */}
             <Link to={adminPath("/health")} className="hover:text-amber-300">Health</Link>
             <Link to={adminPath("/tenants")} className="hover:text-amber-300">Tenants</Link>

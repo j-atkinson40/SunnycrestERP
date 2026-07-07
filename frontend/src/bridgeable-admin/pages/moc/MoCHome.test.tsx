@@ -108,6 +108,14 @@ describe("MoCHome — the platform MoC (H-2)", () => {
     expect(fires.textContent).toContain("Platform activity lands here")
   })
 
+  it("the Operations row hangs every platform destination off the map (H-3 links audit)", async () => {
+    renderHome()
+    const ops = await screen.findByTestId("moc-platform-operations")
+    for (const label of ["Studio", "Migrations", "Deployments", "Staging", "Audit"]) {
+      expect(ops.textContent).toContain(label)
+    }
+  })
+
   it("the not-authored state is deliberate (names the seed), not an error", async () => {
     vi.mocked(mocService.readForContext).mockRejectedValue({ response: { status: 404 } })
     renderHome()
