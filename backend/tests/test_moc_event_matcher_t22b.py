@@ -281,6 +281,58 @@ def test_event_fire_visible_with_provenance_in_fires_log(env):
     assert any("would execute action:log_vault_item" in w for w in entry["would_do"])
 
 
+# ── 7. THE FIRE CAP (sweep hardening — deferral-safe processed_at) ─────
+
+
+def test_partially_capped_event_defers_remaining_matches(env):
+    """THE CRITICAL CONTRACT: an event capped MID-matches stays UNPROCESSED —
+    the remaining matches fire next tick (pair-dedup holds: nothing lost,
+    nothing doubled); processed_at is set only when the pass COMPLETED."""
+    trig_a = _mk_trigger(env, conditions=[])
+    trig_b = _mk_trigger(env, conditions=[])
+    ev = _mk_event(env, payload={})
+
+    r1 = check_moc_domain_events(fire_cap=1)
+    assert r1["cap_tripped"] is True                      # loud
+    env["db"].expire_all()
+    assert env["db"].get(MoCDomainEvent, ev.id).processed_at is None  # NOT lost
+    fired_1 = len(_runs_for_pair(env["db"], trig_a.id, ev.id)) + \
+              len(_runs_for_pair(env["db"], trig_b.id, ev.id))
+    assert fired_1 == 1                                   # exactly the cap
+
+    r2 = check_moc_domain_events(fire_cap=100)            # next tick
+    assert r2["cap_tripped"] is False
+    env["db"].expire_all()
+    assert env["db"].get(MoCDomainEvent, ev.id).processed_at is not None  # complete
+    assert len(_runs_for_pair(env["db"], trig_a.id, ev.id)) == 1
+    assert len(_runs_for_pair(env["db"], trig_b.id, ev.id)) == 1  # both, once each
+
+
+def test_capped_events_defer_whole(env):
+    """Events beyond the cap are not started — they stay unprocessed and fire
+    next tick."""
+    trig = _mk_trigger(env, conditions=[])
+    ev1 = _mk_event(env, payload={})
+    ev2 = _mk_event(env, payload={})
+
+    r1 = check_moc_domain_events(fire_cap=1)
+    assert r1["cap_tripped"] is True and r1["deferred_events"] >= 1
+    env["db"].expire_all()
+    states = sorted(
+        env["db"].get(MoCDomainEvent, e.id).processed_at is not None
+        for e in (ev1, ev2)
+    )
+    assert states == [False, True]                        # one done, one deferred
+
+    check_moc_domain_events(fire_cap=100)
+    env["db"].expire_all()
+    assert all(env["db"].get(MoCDomainEvent, e.id).processed_at is not None
+               for e in (ev1, ev2))
+    # one trigger × two events = two distinct pairs, once each
+    assert len(_runs_for_pair(env["db"], trig.id, ev1.id)) == 1
+    assert len(_runs_for_pair(env["db"], trig.id, ev2.id)) == 1
+
+
 # ── unit: conditions_match (pure) ──────────────────────────────────────
 
 

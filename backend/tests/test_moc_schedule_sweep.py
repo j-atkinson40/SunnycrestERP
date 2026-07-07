@@ -268,7 +268,40 @@ def test_dry_run_fires_are_visible_in_run_log(env):
     assert any("would execute action:log_vault_item" in w for w in entry["would_do"])
 
 
-# ── 7. FAN-OUT scoping (pure function — no real-tenant fires) ──────────
+# ── 7. THE FIRE CAP (sweep hardening — the runaway bound) ──────────────
+
+
+def test_fire_cap_defers_within_window_exactly_once(env):
+    """Over-cap load: exactly `fire_cap` fire this tick; the capped remainder
+    DEFERS via the unclaimed idempotency key and fires on the next in-window
+    tick — total exactly N+k, nothing lost, nothing doubled. The trip is LOUD
+    (cap_tripped in the return)."""
+    trigs = []
+    for _ in range(3):
+        task = _mk_task(env, scope="tenant_override", tenant_id=env["companies"][0].id)
+        trigs.append(_mk_time_of_day_trigger(env, task))
+
+    r1 = check_moc_task_schedules(now=DUE_NOW, fire_cap=2)
+    assert r1["cap_tripped"] is True                      # loud
+    mine_after_1 = sum(len(_runs_for(env["db"], t.id)) for t in trigs)
+    assert mine_after_1 == 2                              # exactly the cap
+
+    r2 = check_moc_task_schedules(now=DUE_NOW_2, fire_cap=100)  # same window
+    assert r2["cap_tripped"] is False
+    per_trigger = [len(_runs_for(env["db"], t.id)) for t in trigs]
+    assert sorted(per_trigger) == [1, 1, 1]               # all fired, none doubled
+
+
+def test_under_cap_is_invisible(env):
+    """Under-cap load: zero behavior change — the cap only exists when needed."""
+    task = _mk_task(env, scope="tenant_override", tenant_id=env["companies"][0].id)
+    trig = _mk_time_of_day_trigger(env, task)
+    r = check_moc_task_schedules(now=DUE_NOW)             # default cap
+    assert r["cap_tripped"] is False
+    assert len(_runs_for(env["db"], trig.id)) == 1
+
+
+# ── 8. FAN-OUT scoping (pure function — no real-tenant fires) ──────────
 
 
 def test_fanout_scoping():
