@@ -34,16 +34,19 @@ import { mocDeepLink } from "@/bridgeable-admin/lib/moc-deep-link"
 import type { TenantSummary } from "@/bridgeable-admin/components/TenantPicker"
 import {
   createPage,
+  getOfferStates,
   readForContext,
   readTaskCatalog,
   updatePage,
   type MoCResolvedPage,
   type MoCTask,
+  type OfferState,
 } from "@/bridgeable-admin/services/moc-service"
 import {
   MoCTypeCards,
   type MoCTypeCard,
 } from "@/bridgeable-admin/components/moc/MoCTypeCards"
+import { OfferDialog } from "@/bridgeable-admin/components/moc/OfferDialog"
 import { MoCBreadcrumb } from "@/bridgeable-admin/components/moc/MoCBreadcrumb"
 import { MoCTaskTable } from "@/bridgeable-admin/components/moc/MoCTaskTable"
 import { MoCVerticalsRail } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
@@ -91,6 +94,7 @@ export function toTypeCards(page: MoCResolvedPage): MoCTypeCard[] {
         unavailableReason: "orphan" as const,
         builder: r.builder,
         artifact_id: r.resolution.artifact_id ?? r.artifact_id,
+        template_slug: r.resolution.routing.template_slug ?? null,
       }
       // focus-cores rows fold into the ONE Focuses card (the platform map
       // shows Tier 1 defaults + platform_default templates together); the
@@ -195,6 +199,16 @@ export default function MoCPage() {
   const [notFound, setNotFound] = React.useState(false)
   const [renaming, setRenaming] = React.useState(false)
   const [draftTitle, setDraftTitle] = React.useState("")
+  // V-2 offered updates: per-slug offer state for the Focuses pills
+  // (pending → badge; declined/behind → quiet gap chip, recallable) +
+  // the open offer dialog.
+  const [offerStates, setOfferStates] = React.useState<
+    Record<string, OfferState>
+  >({})
+  const [activeOffer, setActiveOffer] = React.useState<{
+    offerId: string
+    label: string
+  } | null>(null)
   const showSkeleton = useDelayedLoading(loading)
 
   // H-1 supersession: the vertical page is ALWAYS the defaults view (the
@@ -243,6 +257,30 @@ export default function MoCPage() {
   React.useEffect(() => {
     void load()
   }, [load])
+
+  // Offer states follow the page's focuses refs (slug-keyed — lineage
+  // identity survives version rotation). Quiet on failure: badges are
+  // an enrichment, never a load blocker.
+  const refreshOfferStates = React.useCallback(async (p: MoCResolvedPage) => {
+    const slugs = [
+      ...new Set(
+        p.sections
+          .flatMap((s) => s.rows)
+          .filter((r) => r.builder === "focuses")
+          .map((r) => r.resolution.routing.template_slug)
+          .filter((s): s is string => Boolean(s)),
+      ),
+    ]
+    try {
+      setOfferStates(await getOfferStates(slugs))
+    } catch {
+      setOfferStates({})
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (page) void refreshOfferStates(page)
+  }, [page, refreshOfferStates])
 
   const createStarter = async () => {
     await createPage({
@@ -349,8 +387,77 @@ export default function MoCPage() {
           cards={toTypeCards(page)}
           emptyTitle="No references yet"
           emptyDescription="Add references from the builders (MoC-2 authoring)."
+          renderEntry={(entry) => {
+            // V-2: only focuses entries with an offer state render custom —
+            // everything else falls through to the default link.
+            const state = entry.template_slug
+              ? offerStates[entry.template_slug]
+              : undefined
+            if (!state || !entry.available || !entry.href) return null
+            const pending = state.offer_status === "pending"
+            return (
+              <span className="flex items-center gap-2">
+                <Link
+                  to={entry.href}
+                  className="focus-ring-accent rounded-sm py-0.5 text-body-sm text-content-base hover:text-accent"
+                >
+                  {entry.label}
+                </Link>
+                {pending ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      state.offer_id &&
+                      setActiveOffer({
+                        offerId: state.offer_id,
+                        label: entry.label,
+                      })
+                    }
+                    className="focus-ring-accent inline-flex items-center gap-1 rounded-full bg-accent-subtle px-2 py-0.5 text-caption text-accent hover:bg-accent-muted"
+                    title={`Update available — v${state.pinned_version} → v${state.core_version}`}
+                    data-testid={`offer-badge-${entry.template_slug}`}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                    update
+                  </button>
+                ) : (
+                  // Declined or quietly behind: the gap DISCOVERABLE, not
+                  // nagging — muted chip; click re-opens the offer (recall).
+                  <button
+                    type="button"
+                    onClick={() =>
+                      state.offer_id &&
+                      setActiveOffer({
+                        offerId: state.offer_id,
+                        label: entry.label,
+                      })
+                    }
+                    disabled={!state.offer_id}
+                    className="rounded-sm text-caption text-content-subtle hover:text-content-muted disabled:cursor-default"
+                    title="Based on an older default — click to review the offered update"
+                    data-testid={`offer-gap-${entry.template_slug}`}
+                  >
+                    v{state.pinned_version} · core v{state.core_version}
+                  </button>
+                )}
+              </span>
+            )
+          }}
           data-testid="moc-type-cards"
         />
+
+        {/* V-2: the offer review — the diff IS the evidence-backed confirm. */}
+        {activeOffer ? (
+          <OfferDialog
+            offerId={activeOffer.offerId}
+            targetLabel={activeOffer.label}
+            onClose={() => setActiveOffer(null)}
+            onDecided={() => {
+              setActiveOffer(null)
+              void load() // labels/pins may have moved (accept version-bumps)
+            }}
+          />
+        ) : null}
 
         {/* H-1 — tenants as DESTINATIONS: links down to each tenant's page. */}
         <TenantsCard vertical={vertical} />

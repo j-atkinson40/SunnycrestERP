@@ -33,6 +33,9 @@ export interface MoCTypeCardEntry {
    * discriminate without a second lookup. */
   builder?: string
   artifact_id?: string
+  /** V-2: the focus template's slug (lineage identity) — offer states key
+   * on it (row ids rotate; slugs don't). */
+  template_slug?: string | null
 }
 
 export interface MoCTypeCard {

@@ -14,7 +14,7 @@
 
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import { GitBranch, Pencil } from "lucide-react"
+import { GitBranch, Pencil, UploadCloud } from "lucide-react"
 
 import {
   DropdownMenu,
@@ -31,6 +31,8 @@ import type { MoCTypeCardEntry } from "@/bridgeable-admin/components/moc/MoCType
 export interface ForkMenuProps {
   entry: MoCTypeCardEntry
   onCreateVariation: (entry: MoCTypeCardEntry) => void
+  /** V-2: opens the publish dialog (the explicit release boundary). */
+  onPublish?: (entry: MoCTypeCardEntry) => void
 }
 
 function blastRadius(usage: CoreUsage | null, failed: boolean): string {
@@ -47,7 +49,7 @@ function blastRadius(usage: CoreUsage | null, failed: boolean): string {
   } — edits reach them all.`
 }
 
-export function ForkMenu({ entry, onCreateVariation }: ForkMenuProps) {
+export function ForkMenu({ entry, onCreateVariation, onPublish }: ForkMenuProps) {
   const navigate = useNavigate()
   const [usage, setUsage] = React.useState<CoreUsage | null>(null)
   const [failed, setFailed] = React.useState(false)
@@ -111,6 +113,23 @@ export function ForkMenu({ entry, onCreateVariation }: ForkMenuProps) {
             </span>
           </div>
         </DropdownMenuItem>
+        {onPublish ? (
+          <DropdownMenuItem
+            onClick={() => onPublish(entry)}
+            data-testid={`fork-menu-publish-${entry.row_id}`}
+          >
+            <div className="flex items-start gap-2">
+              <UploadCloud size={14} className="mt-0.5 shrink-0 text-content-muted" />
+              <span>
+                <span className="block font-medium">Publish update…</span>
+                <span className="block text-caption text-content-muted">
+                  Release your edits — inheriting variations get an offer
+                  with the patch notes.
+                </span>
+              </span>
+            </div>
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )

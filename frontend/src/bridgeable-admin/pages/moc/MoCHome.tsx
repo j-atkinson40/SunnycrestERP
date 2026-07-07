@@ -19,6 +19,7 @@
 
 import * as React from "react"
 import { Link, useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 import { Activity, ArrowUpRight, Building2, Map as MapIcon } from "lucide-react"
 
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
@@ -42,6 +43,7 @@ import {
   type MoCTypeCardEntry,
 } from "@/bridgeable-admin/components/moc/MoCTypeCards"
 import { ForkMenu } from "@/bridgeable-admin/components/moc/ForkMenu"
+import { PublishDialog } from "@/bridgeable-admin/components/moc/PublishDialog"
 import { VariationFlowDialog } from "@/bridgeable-admin/components/moc/VariationFlowDialog"
 import { mocDeepLink } from "@/bridgeable-admin/lib/moc-deep-link"
 import { toTypeCards } from "./MoCPage"
@@ -154,6 +156,9 @@ export default function MoCHome() {
   // guided flow dialog consumes this (Focus Variations V-1).
   const [variationSource, setVariationSource] =
     React.useState<MoCTypeCardEntry | null>(null)
+  // V-2: the publish dialog's target (null = closed).
+  const [publishSource, setPublishSource] =
+    React.useState<MoCTypeCardEntry | null>(null)
   const showSkeleton = useDelayedLoading(loading)
 
   const loadTasks = React.useCallback(async () => {
@@ -236,6 +241,7 @@ export default function MoCHome() {
                     <ForkMenu
                       entry={entry}
                       onCreateVariation={setVariationSource}
+                      onPublish={setPublishSource}
                     />
                   ) : null
                 }
@@ -273,6 +279,24 @@ export default function MoCHome() {
               emptyText="Platform activity lands here — every MoC schedule and event fire, across all tenants."
               data-testid="moc-platform-fires"
             />
+
+            {/* V-2: the publish dialog — the explicit release boundary. */}
+            {publishSource ? (
+              <PublishDialog
+                source={publishSource}
+                onClose={() => setPublishSource(null)}
+                onPublished={(offersCreated) => {
+                  setPublishSource(null)
+                  toast.success(
+                    offersCreated === 0
+                      ? "Published — no downstream variations to offer."
+                      : `Published — ${offersCreated} variation${
+                          offersCreated === 1 ? "" : "s"
+                        } offered the update.`,
+                  )
+                }}
+              />
+            ) : null}
 
             {/* The guided variation flow — lands the operator in the editor
                 on the new variation; the refs are already on the maps. */}

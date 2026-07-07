@@ -492,3 +492,110 @@ export async function createFocusVariation(payload: {
   )
   return data
 }
+
+// ── Offered updates (Focus Variations V-2) ──────────────────────────
+
+/** One field's delta in a derived diff. `target_state="customized"` marks
+ * a field the variation has overridden — the apply's keep-mine/take-new
+ * chooser renders exactly these rows (keep-mine is the cascade's free
+ * default; take-new drops the override). */
+export interface UpdateDiffField {
+  family: "identity" | "component" | "geometry" | "chrome" | "canvas"
+  field: string
+  from: unknown
+  to: unknown
+  target_state?: "inherited" | "customized"
+  target_value?: unknown
+}
+
+export interface UpdateDiff {
+  fields: UpdateDiffField[]
+  summary: string
+}
+
+export interface PublishPreview {
+  core_slug: string
+  current_version: number
+  published_version: number | null
+  already_published: boolean
+  derived_diff: UpdateDiff
+  scaffold: string
+  downstream_count: number
+}
+
+export interface UpdateOffer {
+  id: string
+  source_slug: string
+  source_version_from: number
+  source_version_to: number
+  target_slug: string
+  target_vertical: string | null
+  patch_notes: string | null
+  derived_diff: UpdateDiff
+  status: "pending" | "accepted" | "declined" | "superseded"
+  created_at: string
+  decided_at: string | null
+}
+
+/** Per-slug offer state for the map's pills: pending → badge; declined →
+ * quiet gap chip (recallable); no live offer but behind → gap chip. */
+export interface OfferState {
+  target_slug: string
+  pinned_version: number
+  core_version: number
+  offer_id: string | null
+  offer_status: "pending" | "declined" | null
+}
+
+export async function getPublishPreview(coreId: string): Promise<PublishPreview> {
+  const { data } = await adminApi.get<PublishPreview>(
+    `${BASE}/focus-publishes/preview`,
+    { params: { core_id: coreId } },
+  )
+  return data
+}
+
+export async function publishCoreUpdate(payload: {
+  core_id: string
+  patch_notes: string | null
+}): Promise<{ publish_id: string; version: number; offers_created: number }> {
+  const { data } = await adminApi.post(`${BASE}/focus-publishes`, payload)
+  return data
+}
+
+export async function getOfferStates(
+  targetSlugs: string[],
+): Promise<Record<string, OfferState>> {
+  if (targetSlugs.length === 0) return {}
+  const { data } = await adminApi.get<Record<string, OfferState>>(
+    `${BASE}/update-offers/state`,
+    { params: { target_slugs: targetSlugs.join(",") } },
+  )
+  return data
+}
+
+export async function getUpdateOffer(offerId: string): Promise<UpdateOffer> {
+  const { data } = await adminApi.get<UpdateOffer>(
+    `${BASE}/update-offers/${offerId}`,
+  )
+  return data
+}
+
+export async function acceptUpdateOffer(
+  offerId: string,
+  choices: Record<string, "keep" | "take">,
+): Promise<{ template_id: string; pinned_version: number }> {
+  const { data } = await adminApi.post(
+    `${BASE}/update-offers/${offerId}/accept`,
+    { choices },
+  )
+  return data
+}
+
+export async function declineUpdateOffer(offerId: string): Promise<UpdateOffer> {
+  const { data } = await adminApi.post(
+    `${BASE}/update-offers/${offerId}/decline`,
+    {},
+  )
+  return data
+}
