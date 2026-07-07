@@ -183,8 +183,11 @@ export default function MoCHome() {
   }, [loadTasks])
 
   return (
+    // Hierarchy polish: the SAME full-bleed treatment as the vertical/tenant
+    // maps (AdminLayout's isFullBleedRoute now matches the exact root) — the
+    // level transition doesn't change the frame. The §18 surface stays.
     <div
-      className="flex min-h-[calc(100vh-7rem)] overflow-hidden rounded-lg border border-border-subtle bg-surface-base"
+      className="flex flex-1 bg-surface-base"
       data-testid="moc-home"
     >
       <MoCVerticalsRail />

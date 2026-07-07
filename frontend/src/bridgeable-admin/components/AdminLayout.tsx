@@ -7,12 +7,18 @@ import { EnvironmentBanner } from "./EnvironmentBanner"
 
 /**
  * Routes that fill the frame below the nav (full width + height, no centered
- * box) instead of the default max-w-[1600px] padded box. OPT-IN — only the MoC
- * vertical page today (the "plant floor" treatment). Every other admin page is
- * unaffected: its <main> string is byte-identical to the pre-A.1 layout.
+ * box) instead of the default max-w-[1600px] padded box. OPT-IN — the three
+ * MoC hierarchy levels (the "plant floor" treatment): the vertical + tenant
+ * maps (/maps/*) and the PLATFORM landing at the EXACT root (hierarchy
+ * polish — all three levels render identically). The root match is
+ * deliberately exact (both entry forms), never a prefix — every other admin
+ * page keeps its byte-identical pre-A.1 <main>.
  */
-function isFullBleedRoute(pathname: string): boolean {
-  return /\/maps\/[^/]+/.test(pathname)
+export function isFullBleedRoute(pathname: string): boolean {
+  if (/\/maps\/[^/]+/.test(pathname)) return true
+  // the MoC landing (the platform level) — exact root only, both entry forms
+  const clean = pathname.replace(/^\/bridgeable-admin/, "") || "/"
+  return clean === "/"
 }
 
 export function AdminLayout({ children }: { children: ReactNode }) {
