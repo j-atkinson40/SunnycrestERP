@@ -18,7 +18,7 @@
  */
 
 import * as React from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Activity, ArrowUpRight, Building2, Map as MapIcon } from "lucide-react"
 
 import { adminApi } from "@/bridgeable-admin/lib/admin-api"
@@ -37,7 +37,13 @@ import {
   KNOWN_VERTICALS,
   MoCVerticalsRail,
 } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
-import { MoCTypeCards } from "@/bridgeable-admin/components/moc/MoCTypeCards"
+import {
+  MoCTypeCards,
+  type MoCTypeCardEntry,
+} from "@/bridgeable-admin/components/moc/MoCTypeCards"
+import { ForkMenu } from "@/bridgeable-admin/components/moc/ForkMenu"
+import { VariationFlowDialog } from "@/bridgeable-admin/components/moc/VariationFlowDialog"
+import { mocDeepLink } from "@/bridgeable-admin/lib/moc-deep-link"
 import { toTypeCards } from "./MoCPage"
 import { SkeletonLines } from "@/components/ui/skeleton"
 import { useDelayedLoading } from "@/hooks/use-delayed-loading"
@@ -136,6 +142,7 @@ function PlatformLinksStrip({ tenantTotal }: { tenantTotal: number | null }) {
 }
 
 export default function MoCHome() {
+  const navigate = useNavigate()
   const [page, setPage] = React.useState<MoCResolvedPage | null>(null)
   const [notAuthored, setNotAuthored] = React.useState(false)
   const [tasks, setTasks] = React.useState<MoCTask[]>([])
@@ -143,6 +150,10 @@ export default function MoCHome() {
   const [tenantTotal, setTenantTotal] = React.useState<number | null>(null)
   const [seededSlugs, setSeededSlugs] = React.useState<Set<string>>(new Set())
   const [loading, setLoading] = React.useState(true)
+  // The fork menu's "Create a variation" target (null = flow closed). The
+  // guided flow dialog consumes this (Focus Variations V-1).
+  const [variationSource, setVariationSource] =
+    React.useState<MoCTypeCardEntry | null>(null)
   const showSkeleton = useDelayedLoading(loading)
 
   const loadTasks = React.useCallback(async () => {
@@ -211,12 +222,23 @@ export default function MoCHome() {
 
             <VerticalsCards seededSlugs={seededSlugs} />
 
-            {/* The core workflows' canonical home — the authored rows. */}
+            {/* The core workflows' canonical home — the authored rows. The
+                Focuses card's Tier 1 defaults render through the FORK MENU
+                (Focus Variations V-1): edit-with-blast-radius vs create a
+                variation — the consequence legible at the moment of choice. */}
             {page ? (
               <MoCTypeCards
                 cards={toTypeCards(page)}
                 emptyTitle="Core machinery lives here"
                 emptyDescription="Cross-vertical workflows — Month-End Close, AR Collections — get their canonical home on this map when authored."
+                renderEntry={(entry: MoCTypeCardEntry) =>
+                  entry.builder === "focus-cores" && entry.available ? (
+                    <ForkMenu
+                      entry={entry}
+                      onCreateVariation={setVariationSource}
+                    />
+                  ) : null
+                }
                 data-testid="moc-platform-cards"
               />
             ) : notAuthored ? (
@@ -251,6 +273,27 @@ export default function MoCHome() {
               emptyText="Platform activity lands here — every MoC schedule and event fire, across all tenants."
               data-testid="moc-platform-fires"
             />
+
+            {/* The guided variation flow — lands the operator in the editor
+                on the new variation; the refs are already on the maps. */}
+            {variationSource ? (
+              <VariationFlowDialog
+                source={variationSource}
+                onClose={() => setVariationSource(null)}
+                onCreated={(r) => {
+                  setVariationSource(null)
+                  const path = mocDeepLink({
+                    builder: "focuses",
+                    artifact_id: r.template_id,
+                    routing: {
+                      vertical: r.home_vertical,
+                      template_slug: r.template_slug,
+                    },
+                  })
+                  if (path) navigate(adminPath(path))
+                }}
+              />
+            ) : null}
           </>
         )}
       </div>

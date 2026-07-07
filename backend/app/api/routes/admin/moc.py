@@ -211,6 +211,51 @@ def admin_delete_task(
     return {"deleted": True, "id": task_id}
 
 
+# ─── Focus variations (Focus Variations V-1) — the guided flow ──────────
+# (declared before the page `/{page_id}` catch-all so `/focus-variations`
+# resolves)
+
+
+class _CreateFocusVariation(BaseModel):
+    core_id: str
+    display_name: str
+    verticals: list[str]
+    task_ids: list[str] = []
+
+
+@router.post("/focus-variations", status_code=201)
+def admin_create_focus_variation(
+    body: _CreateFocusVariation,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """One call materializes the guided flow: the Tier 2 variation (core-
+    version pinned), the multi-vertical join rows, the task wiring (the focus
+    join from the FOCUS side), and the auto-authored refs on each chosen
+    vertical's map — creation lights the maps."""
+    from app.services.maps_of_content.focus_variations import (
+        FocusVariationError,
+        create_focus_variation,
+    )
+
+    try:
+        return create_focus_variation(
+            db,
+            core_id=body.core_id,
+            display_name=body.display_name,
+            verticals=body.verticals,
+            task_ids=body.task_ids,
+            actor_id=admin.id,
+        )
+    except FocusVariationError as exc:
+        db.rollback()
+        code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=code, detail=str(exc))
+    except TaskValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 # ─── Trigger event catalog (MoC Triggers T-1a) — curated editable vocabulary ──
 # (declared before the page `/{page_id}` catch-all so `/trigger-events` resolves)
 

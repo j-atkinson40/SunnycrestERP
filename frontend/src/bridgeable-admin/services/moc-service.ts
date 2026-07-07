@@ -465,3 +465,30 @@ export async function getLatestScheduleRun(
   })
   return data[0] ?? null
 }
+
+/** Focus Variations V-1 — the guided flow's one-call materialization:
+ * creates the Tier 2 variation (core-version pinned), writes the
+ * multi-vertical join, wires the chosen tasks (the focus join from the
+ * focus side), and auto-authors the refs onto each chosen vertical's map. */
+export interface FocusVariationResult {
+  template_id: string
+  template_slug: string
+  display_name: string
+  home_vertical: string
+  verticals: string[]
+  wired_task_ids: string[]
+  authored_verticals: string[]
+}
+
+export async function createFocusVariation(payload: {
+  core_id: string
+  display_name: string
+  verticals: string[]
+  task_ids: string[]
+}): Promise<FocusVariationResult> {
+  const { data } = await adminApi.post<FocusVariationResult>(
+    `${BASE}/focus-variations`,
+    payload,
+  )
+  return data
+}
