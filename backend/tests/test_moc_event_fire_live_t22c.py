@@ -237,6 +237,13 @@ def test_seed_event_trigger_unpromoted_and_promotion_preserved(env):
     from scripts import seed_moc_witness_marker as seed_mod
 
     db = env["db"]
+    # The seed ADOPTS an existing (vertical_default, manufacturing,
+    # moc_witness_marker) template (e.g. testco's real dev seed) — only delete
+    # the template/compiled workflow in cleanup if THIS test created it.
+    tmpl_preexisting = db.execute(sql_text(
+        "SELECT 1 FROM workflow_templates WHERE scope='vertical_default' "
+        "AND vertical='manufacturing' AND workflow_type='moc_witness_marker' LIMIT 1"
+    )).fetchone() is not None
     r1 = seed_mod.seed(db, company_slug=env["company"].slug)
     try:
         assert r1["witness_event_key"] == EVENT_KEY
@@ -256,11 +263,18 @@ def test_seed_event_trigger_unpromoted_and_promotion_preserved(env):
                    {"a": r1["trigger_id"], "b": r1["event_trigger_id"]})
         db.execute(sql_text("DELETE FROM moc_task_trigger WHERE task_catalog_id = :t"), {"t": r1["task_id"]})
         db.execute(sql_text("DELETE FROM moc_task_catalog WHERE id = :t"), {"t": r1["task_id"]})
-        tmpl = db.get(WorkflowTemplate, r1["template_id"])
-        if tmpl and tmpl.compiled_workflow_id:
-            cw = tmpl.compiled_workflow_id
-            db.execute(sql_text("UPDATE workflow_templates SET compiled_workflow_id=NULL WHERE id=:t"), {"t": tmpl.id})
-            db.execute(sql_text("DELETE FROM workflow_steps WHERE workflow_id=:w"), {"w": cw})
-            db.execute(sql_text("DELETE FROM workflows WHERE id=:w"), {"w": cw})
-        db.execute(sql_text("DELETE FROM workflow_templates WHERE id = :t"), {"t": r1["template_id"]})
+        if not tmpl_preexisting:
+            tmpl = db.get(WorkflowTemplate, r1["template_id"])
+            if tmpl and tmpl.compiled_workflow_id:
+                cw = tmpl.compiled_workflow_id
+                db.execute(sql_text("UPDATE workflow_templates SET compiled_workflow_id=NULL WHERE id=:t"), {"t": tmpl.id})
+                # Runs created by a concurrent sweep firing the seeded */15
+                # cron mid-test — delete before steps (FK order).
+                db.execute(sql_text(
+                    "DELETE FROM workflow_run_steps WHERE run_id IN "
+                    "(SELECT id FROM workflow_runs WHERE workflow_id=:w)"), {"w": cw})
+                db.execute(sql_text("DELETE FROM workflow_runs WHERE workflow_id=:w"), {"w": cw})
+                db.execute(sql_text("DELETE FROM workflow_steps WHERE workflow_id=:w"), {"w": cw})
+                db.execute(sql_text("DELETE FROM workflows WHERE id=:w"), {"w": cw})
+            db.execute(sql_text("DELETE FROM workflow_templates WHERE id = :t"), {"t": r1["template_id"]})
         db.commit()

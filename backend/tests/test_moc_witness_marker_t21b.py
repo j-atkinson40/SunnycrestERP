@@ -242,24 +242,46 @@ def test_record_marker_does_not_swallow(env):
 # ── 5. the seed — compiled + benign + unpromoted, idempotent, preserves promotion ─
 
 
-def _cleanup_seed(db, result: dict):
+def _witness_template_exists(db) -> bool:
+    """The seed ADOPTS an existing (vertical_default, manufacturing,
+    moc_witness_marker) template — e.g. testco's real dev witness seed. Snapshot
+    before seed() so cleanup deletes the template ONLY when this test created it
+    (deleting an adopted, shared template would destroy the dev seed AND trip the
+    run_steps FK on runs other suites' sweeps fired against its compiled workflow)."""
+    return db.execute(sql_text(
+        "SELECT 1 FROM workflow_templates WHERE scope='vertical_default' "
+        "AND vertical='manufacturing' AND workflow_type='moc_witness_marker' LIMIT 1"
+    )).fetchone() is not None
+
+
+def _cleanup_seed(db, result: dict, *, template_preexisting: bool):
     if "trigger_id" not in result:
         return
     db.execute(sql_text("DELETE FROM moc_witness_marker WHERE moc_task_trigger_id = :t"), {"t": result["trigger_id"]})
     db.execute(sql_text("DELETE FROM moc_task_trigger WHERE task_catalog_id = :t"), {"t": result["task_id"]})
     db.execute(sql_text("DELETE FROM moc_task_catalog WHERE id = :t"), {"t": result["task_id"]})
-    tmpl = db.get(WorkflowTemplate, result["template_id"])
-    if tmpl and tmpl.compiled_workflow_id:
-        cwid = tmpl.compiled_workflow_id
-        db.execute(sql_text("UPDATE workflow_templates SET compiled_workflow_id=NULL WHERE id=:t"), {"t": tmpl.id})
-        db.execute(sql_text("DELETE FROM workflow_steps WHERE workflow_id=:w"), {"w": cwid})
-        db.execute(sql_text("DELETE FROM workflows WHERE id=:w"), {"w": cwid})
-    db.execute(sql_text("DELETE FROM workflow_templates WHERE id = :t"), {"t": result["template_id"]})
+    if not template_preexisting:
+        tmpl = db.get(WorkflowTemplate, result["template_id"])
+        if tmpl and tmpl.compiled_workflow_id:
+            cwid = tmpl.compiled_workflow_id
+            db.execute(sql_text("UPDATE workflow_templates SET compiled_workflow_id=NULL WHERE id=:t"), {"t": tmpl.id})
+            # A concurrent sweep (another test in this process, or a running dev
+            # backend) can fire the seeded */15 cron mid-test, creating runs
+            # against the compiled workflow. Delete those BEFORE the steps or
+            # the step delete trips the workflow_run_steps FK.
+            db.execute(sql_text(
+                "DELETE FROM workflow_run_steps WHERE run_id IN "
+                "(SELECT id FROM workflow_runs WHERE workflow_id=:w)"), {"w": cwid})
+            db.execute(sql_text("DELETE FROM workflow_runs WHERE workflow_id=:w"), {"w": cwid})
+            db.execute(sql_text("DELETE FROM workflow_steps WHERE workflow_id=:w"), {"w": cwid})
+            db.execute(sql_text("DELETE FROM workflows WHERE id=:w"), {"w": cwid})
+        db.execute(sql_text("DELETE FROM workflow_templates WHERE id = :t"), {"t": result["template_id"]})
     db.commit()
 
 
 def test_seed_produces_compiled_benign_unpromoted(env):
     db = env["db"]
+    tmpl_preexisting = _witness_template_exists(db)
     result = seed_mod.seed(db, company_slug=env["company"].slug)
     try:
         assert result.get("trigger_id")
@@ -272,11 +294,12 @@ def test_seed_produces_compiled_benign_unpromoted(env):
         assert trig.is_live is False                        # ships UNPROMOTED
         assert trig.config.get("cron") == "*/15 * * * *"    # witnessable cadence
     finally:
-        _cleanup_seed(db, result)
+        _cleanup_seed(db, result, template_preexisting=tmpl_preexisting)
 
 
 def test_seed_rerun_preserves_is_live(env):
     db = env["db"]
+    tmpl_preexisting = _witness_template_exists(db)
     r1 = seed_mod.seed(db, company_slug=env["company"].slug)
     try:
         # operator promotes
@@ -290,4 +313,4 @@ def test_seed_rerun_preserves_is_live(env):
         db.refresh(trig)
         assert trig.is_live is True                         # promotion PRESERVED
     finally:
-        _cleanup_seed(db, r1)
+        _cleanup_seed(db, r1, template_preexisting=tmpl_preexisting)
