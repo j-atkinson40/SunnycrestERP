@@ -67,6 +67,9 @@ SCHEDULING_KANBAN_CORE = {
     "min_column_span": 8,
     "max_column_span": 12,
     "canvas_config": {},
+    # Focus family icons (r122): the Kanban family's mark. Assign-if-null
+    # on existing rows — an operator's later choice is never clobbered.
+    "icon": "kanban",
     # Sub-arc E-1.1: full canonical mockup chrome state. E-1 shipped
     # delta updates (corner_radius / padding_token / backdrop_blur)
     # but preserved pre-E-1 preset / elevation / background / border
@@ -133,6 +136,11 @@ SCHEDULING_FH_TEMPLATE = {
 def _seed_core(db) -> str:
     existing = get_core_by_slug(db, SCHEDULING_KANBAN_CORE["core_slug"])
     if existing is not None:
+        # r122 family icon: assign-if-null only (never clobber the operator).
+        if existing.icon is None and SCHEDULING_KANBAN_CORE.get("icon"):
+            existing.icon = SCHEDULING_KANBAN_CORE["icon"]
+            db.add(existing)
+            db.commit()
         # Sub-arc E-1: if seeded content drifted from the canonical
         # values (e.g. earlier seeds shipped `chrome: {"preset": "card"}`
         # without the corner_radius / padding_token / backdrop_blur

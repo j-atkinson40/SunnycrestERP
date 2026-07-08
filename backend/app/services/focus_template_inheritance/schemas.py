@@ -117,6 +117,8 @@ class CoreCreateRequest(BaseModel):
     max_column_span: int = 12
     canvas_config: dict[str, Any] = Field(default_factory=dict)
     chrome: dict[str, Any] = Field(default_factory=dict)
+    # r122: the family icon (curated lucide name; family identity).
+    icon: str | None = Field(default=None, max_length=48)
 
 
 class CoreUpdateRequest(BaseModel):
@@ -132,6 +134,9 @@ class CoreUpdateRequest(BaseModel):
     max_column_span: int | None = None
     canvas_config: dict[str, Any] | None = None
     chrome: dict[str, Any] | None = None
+    # r122: the family icon. Omitted = preserve; explicit null = clear
+    # (the route maps presence via model_fields_set).
+    icon: str | None = Field(default=None, max_length=48)
     # Sub-arc C-2.1.1: optional edit-session token (UUID v4 string).
     # When present AND matches `focus_cores.last_edit_session_id` AND
     # `last_edit_session_at` is within 5 minutes, the update mutates
@@ -153,6 +158,8 @@ class CoreResponse(BaseModel):
     max_column_span: int
     canvas_config: dict[str, Any]
     chrome: dict[str, Any]
+    # r122: the family icon (lineage-resolved onto every variation at read).
+    icon: str | None = None
     version: int
     is_active: bool
     created_at: str

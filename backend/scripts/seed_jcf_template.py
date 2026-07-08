@@ -57,6 +57,8 @@ JCF_CORE = {
     "min_column_span": 6,
     "max_column_span": 12,
     "canvas_config": {},
+    # r122 family icon (people/coordination family). Assign-if-null.
+    "icon": "users",
     "chrome": {
         "preset": "frosted",
         "elevation": 50,
@@ -135,6 +137,11 @@ def seed(db) -> str:
     if core is None:
         core = create_core(db, **JCF_CORE)
         logger.info("created FocusCore %s", CORE_SLUG)
+    elif core.icon is None and JCF_CORE.get("icon"):
+        # r122 family icon: assign-if-null only (never clobber the operator).
+        core.icon = JCF_CORE["icon"]
+        db.add(core)
+        db.commit()
 
     existing = (
         db.query(FocusTemplate)

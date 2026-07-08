@@ -49,6 +49,7 @@ FOCUSES = [
         "core_slug": "decision-triage-core",
         "core_display": "Decision Triage Core",
         "core_component": "TriageQueueCore",
+        "core_icon": "scale",
         "template_slug": "decision-triage",
         "display_name": "Decision Triage",
         "description": (
@@ -62,6 +63,7 @@ FOCUSES = [
         # Canvas-authoring core as the generation-surface stand-in; the real
         # legacy-proof generation surface + headless dispatch are 3b.1.
         "core_component": "EditCanvasCore",
+        "core_icon": "sparkles",
         "template_slug": "legacy-generation",
         "display_name": "Legacy Generation",
         "description": (
@@ -72,7 +74,9 @@ FOCUSES = [
 ]
 
 
-def _upsert_core(db, *, slug: str, display: str, component: str) -> tuple[str, int]:
+def _upsert_core(
+    db, *, slug: str, display: str, component: str, icon: str | None = None
+) -> tuple[str, int]:
     """find-or-create a focus_cores row by core_slug → (id, version)."""
     # Prefer the ACTIVE row; fall back to the newest snapshot only when the
     # whole lineage is deactivated (FH-stamp fix: version bumps retain prior
@@ -91,20 +95,23 @@ def _upsert_core(db, *, slug: str, display: str, component: str) -> tuple[str, i
                 "UPDATE focus_cores SET display_name = :d, "
                 "registered_component_kind = 'focus-core', "
                 "registered_component_name = :c, is_active = true, "
+                # r122 family icon: assign-if-NULL only — an operator's
+                # later choice is never clobbered by a deploy re-seed.
+                "icon = COALESCE(icon, :i), "
                 "updated_at = now() WHERE id = :id"
             ),
-            {"d": display, "c": component, "id": row.id},
+            {"d": display, "c": component, "i": icon, "id": row.id},
         )
         return row.id, row.version
     cid = str(uuid.uuid4())
     db.execute(
         sql_text(
             "INSERT INTO focus_cores (id, core_slug, display_name, "
-            "registered_component_kind, registered_component_name, version, "
-            "is_active, created_at, updated_at) VALUES (:id, :s, :d, "
-            "'focus-core', :c, 1, true, now(), now())"
+            "registered_component_kind, registered_component_name, icon, "
+            "version, is_active, created_at, updated_at) VALUES (:id, :s, :d, "
+            "'focus-core', :c, :i, 1, true, now(), now())"
         ),
-        {"id": cid, "s": slug, "d": display, "c": component},
+        {"id": cid, "s": slug, "d": display, "c": component, "i": icon},
     )
     return cid, 1
 
@@ -153,7 +160,7 @@ def seed(db) -> str:
     for f in FOCUSES:
         core_id, core_ver = _upsert_core(
             db, slug=f["core_slug"], display=f["core_display"],
-            component=f["core_component"],
+            component=f["core_component"], icon=f.get("core_icon"),
         )
         _upsert_template(
             db, template_slug=f["template_slug"], display_name=f["display_name"],

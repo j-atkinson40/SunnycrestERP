@@ -112,6 +112,14 @@ class FocusCore(Base):
         Boolean, nullable=False, default=True
     )
 
+    # Focus family icons (r122): the core-TYPE icon (curated lucide name).
+    # FAMILY IDENTITY, lineage-resolved at read: every variation renders its
+    # root core's CURRENT icon — inherited, never copied, not overridable
+    # downstream, and NOT versioned content (doesn't ride offers; changing
+    # it is immediate everywhere). Carried across version bumps by
+    # update_core like published_version.
+    icon: Mapped[str | None] = mapped_column(String(48), nullable=True)
+
     # Focus Variations V-2 (r121): the PUBLISH boundary. NULL = never
     # published — the resolver keeps the live cascade (status quo). Set =
     # the last explicitly-published version; downstream templates resolve

@@ -71,6 +71,25 @@ def _resolve_workflow(db: Session, artifact_id: str, authored: str) -> dict:
     }
 
 
+def _family_icon_for_template(db: Session, template_id: str) -> str | None:
+    """Focus family icons (r122): the lineage ROOT core's CURRENT icon —
+    inherited at read, never copied, not overridable downstream. The
+    template's stored core id may point at a retained snapshot; the
+    slug self-join lands on the ACTIVE core (the C-2.1.2 canon), so an
+    icon change propagates to every variation immediately."""
+    row = db.execute(
+        sql_text(
+            "SELECT c2.icon FROM focus_templates ft "
+            "JOIN focus_cores c1 ON c1.id = ft.inherits_from_core_id "
+            "JOIN focus_cores c2 ON c2.core_slug = c1.core_slug "
+            "  AND c2.is_active = true "
+            "WHERE ft.id = :id"
+        ),
+        {"id": template_id},
+    ).first()
+    return row.icon if row else None
+
+
 def _resolve_focus(db: Session, artifact_id: str, authored: str) -> dict:
     row = db.execute(
         sql_text(
@@ -105,6 +124,7 @@ def _resolve_focus(db: Session, artifact_id: str, authored: str) -> dict:
                 "available": True,
                 "label": active.display_name or authored,
                 "artifact_id": active.id,
+                "icon": _family_icon_for_template(db, active.id),
                 "routing": {
                     "template_slug": active.template_slug,
                     "scope": active.scope,
@@ -115,6 +135,7 @@ def _resolve_focus(db: Session, artifact_id: str, authored: str) -> dict:
         "exists": True,
         "available": bool(row.is_active),
         "label": row.display_name or authored,
+        "icon": _family_icon_for_template(db, row.id),
         "routing": {
             "template_slug": row.template_slug,
             "scope": row.scope,
@@ -128,7 +149,7 @@ def _resolve_focus_core(db: Session, artifact_id: str, authored: str) -> dict:
     version bumps mint new row ids; core_slug is the stable identity."""
     row = db.execute(
         sql_text(
-            "SELECT id, display_name, is_active, core_slug "
+            "SELECT id, display_name, is_active, core_slug, icon "
             "FROM focus_cores WHERE id = :id"
         ),
         {"id": artifact_id},
@@ -138,7 +159,7 @@ def _resolve_focus_core(db: Session, artifact_id: str, authored: str) -> dict:
     if not row.is_active:
         active = db.execute(
             sql_text(
-                "SELECT id, display_name, core_slug FROM focus_cores "
+                "SELECT id, display_name, core_slug, icon FROM focus_cores "
                 "WHERE core_slug = :slug AND is_active = true"
             ),
             {"slug": row.core_slug},
@@ -149,12 +170,14 @@ def _resolve_focus_core(db: Session, artifact_id: str, authored: str) -> dict:
                 "available": True,
                 "label": active.display_name or authored,
                 "artifact_id": active.id,
+                "icon": active.icon,
                 "routing": {"core_slug": active.core_slug},
             }
     return {
         "exists": True,
         "available": bool(row.is_active),
         "label": row.display_name or authored,
+        "icon": row.icon,
         "routing": {"core_slug": row.core_slug},
     }
 

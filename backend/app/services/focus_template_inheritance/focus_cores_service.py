@@ -248,6 +248,7 @@ def create_core(
     canvas_config: Mapping[str, Any] | None = None,
     chrome: Mapping[str, Any] | None = None,
     created_by: str | None = None,
+    icon: str | None = None,
 ) -> FocusCore:
     """Create a new active core. If an active row already exists at
     `core_slug`, raise — use `update_core` to version an existing
@@ -306,6 +307,7 @@ def create_core(
         max_column_span=max_column_span,
         canvas_config=cfg,
         chrome=chrome_blob,
+        icon=icon,
         version=1,
         is_active=True,
         created_by=created_by,
@@ -315,6 +317,10 @@ def create_core(
     db.commit()
     db.refresh(row)
     return row
+
+
+# r122: icon sentinel — omitted preserves; explicit None clears.
+_ICON_UNSET: Any = object()
 
 
 def update_core(
@@ -335,6 +341,7 @@ def update_core(
     chrome: Mapping[str, Any] | None = None,
     core_slug: str | None = None,
     edit_session_id: str | None = None,
+    icon: Any = _ICON_UNSET,
 ) -> FocusCore:
     """Update the core.
 
@@ -458,6 +465,8 @@ def update_core(
         prior.max_column_span = new_max
         prior.canvas_config = new_cfg
         prior.chrome = new_chrome
+        if icon is not _ICON_UNSET:
+            prior.icon = icon
         prior.last_edit_session_id = edit_session_id
         prior.last_edit_session_at = now
         prior.updated_at = now
@@ -492,6 +501,8 @@ def update_core(
         # V-2: the publish boundary rides the ACTIVE row — losing it on a
         # bump would silently flip downstream templates back to live cascade.
         published_version=prior.published_version,
+        # r122: family identity rides the active row too.
+        icon=icon if icon is not _ICON_UNSET else prior.icon,
     )
     db.add(new_row)
     db.commit()

@@ -291,6 +291,7 @@ def _core_to_response(row) -> CoreResponse:
         max_column_span=row.max_column_span,
         canvas_config=dict(row.canvas_config or {}),
         chrome=_normalize_blob(row.chrome, CHROME_FIELDS),
+        icon=getattr(row, "icon", None),
         version=row.version,
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else "",
@@ -405,6 +406,7 @@ def admin_create_core(
             max_column_span=body.max_column_span,
             canvas_config=body.canvas_config,
             chrome=body.chrome,
+            icon=body.icon,
             # PlatformUser id cannot satisfy users.id FK; attribution
             # deferred per relocation-phase note in CLAUDE.md.
             created_by=None,
@@ -438,6 +440,8 @@ def admin_update_core(
             canvas_config=body.canvas_config,
             chrome=body.chrome,
             edit_session_id=body.edit_session_id,
+            # r122: sent-null clears, omitted preserves (model_fields_set).
+            **({"icon": body.icon} if "icon" in body.model_fields_set else {}),
         )
     except Exception as exc:
         raise _translate(exc)
