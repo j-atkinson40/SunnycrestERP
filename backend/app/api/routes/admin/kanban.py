@@ -25,6 +25,7 @@ def kanban(
 def tenant_lookup(
     q: str | None = None,
     limit: int = 25,
+    vertical: str | None = None,
     admin: PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db),
 ):
@@ -34,11 +35,18 @@ def tenant_lookup(
     whose name OR slug matches the query (ILIKE). Empty query
     returns the first `limit` companies sorted by name.
 
+    `vertical` filters SERVER-SIDE (FH map finding P-1): the MoC Tenants
+    card was filtering client-side over a 100-row cross-vertical page —
+    on a vertical with sparse alphabetical presence the default list
+    rendered near-empty while thousands of its tenants existed.
+
     Used by the Visual Editor's tenant_override scope selector
-    (relocation phase, May 2026).
+    (relocation phase, May 2026) and the MoC maps' Tenants cards.
     """
     capped = max(1, min(limit, 100))
     query = db.query(Company).filter(Company.is_active.is_(True))
+    if vertical:
+        query = query.filter(Company.vertical == vertical)
     if q:
         like = f"%{q}%"
         query = query.filter(or_(Company.name.ilike(like), Company.slug.ilike(like)))

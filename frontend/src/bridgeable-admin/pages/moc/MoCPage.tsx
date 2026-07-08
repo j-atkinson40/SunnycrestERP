@@ -131,7 +131,11 @@ function TenantsCard({ vertical }: { vertical: string }) {
     debounceRef.current = setTimeout(() => {
       adminApi
         .get<TenantSummary[]>("/api/platform/admin/tenants/lookup", {
-          params: { q: q || undefined, limit: 100 },
+          // P-1: vertical filters SERVER-SIDE — the old client-side filter
+          // over a 100-row cross-vertical page left sparse verticals with a
+          // near-empty default list. The client filter stays as a cheap
+          // belt-and-suspenders against a stale backend.
+          params: { q: q || undefined, limit: 100, vertical },
         })
         .then(({ data }) => {
           if (cancelled) return
