@@ -175,6 +175,9 @@ def test_schedule_runs_filters_by_trigger(env):
     assert rows[0]["moc_task_trigger_id"] == trig.id
     assert rows[0]["would_do"] == ["would execute action:record_marker"]
 
-    # unfiltered still returns the other trigger's run too
-    all_rows = list_schedule_runs(s, limit=50)
+    # TRIGGER-unfiltered still returns both triggers' runs. Scoped to the
+    # fixture COMPANY (the H-1 param) for state-immunity: the runs here are
+    # backdated, and a dev DB carrying days of real newest-first sweep rows
+    # crowded them out of a global limit-50 window.
+    all_rows = list_schedule_runs(s, limit=50, company_id=env["company"].id)
     assert {r["run_id"] for r in all_rows} >= {older.id, newest.id}
