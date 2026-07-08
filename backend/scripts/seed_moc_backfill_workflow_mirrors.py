@@ -1,11 +1,13 @@
-"""MoC workflow backfill (Build 1 + 1b) — faithful runtime→canvas mirrors.
+"""MoC workflow backfill (Build 1 + 1b; FH stamp) — faithful runtime→canvas mirrors.
 
-For each of the 18 triaged early-development runtime workflows (12 manufacturing +
-6 core), create a `workflow_template` whose canvas_state FAITHFULLY reproduces the
-runtime workflow's steps, plus a thin `moc_task_catalog` row pre-wired to it. Per
-docs/investigations/moc_workflow_backfill_investigation.md: runtime→canvas is a
-clean mechanical transform (all targets linear, no branching, step_types ⊆
-{action,input,output} ⊆ VALID_NODE_TYPES, config carries verbatim).
+For each of the 27 triaged early-development runtime workflows (12 manufacturing +
+9 funeral_home + 6 core), create a `workflow_template` whose canvas_state FAITHFULLY
+reproduces the runtime workflow's steps, plus a thin `moc_task_catalog` row
+pre-wired to it (landing on the owning vertical's map). Per
+docs/investigations/moc_workflow_backfill_investigation.md (+ the FH set per
+fh_map_investigation.md §2): runtime→canvas is a clean mechanical transform
+(all targets linear, no branching, step_types ⊆ {action,input,output} ⊆
+VALID_NODE_TYPES, config carries verbatim).
 
 The mirrors are INERT snapshots (canvas ≠ runtime; they do not execute + may
 drift). `mirrored_from_workflow_id` records the provenance — the queryable
@@ -43,10 +45,10 @@ logger = logging.getLogger(__name__)
 
 VERTICAL = "manufacturing"
 
-# The exact triaged set (the investigation's dedup list). Runtime scope:
-#   'vertical' → template scope 'vertical_default' (vertical=manufacturing)
-#   'core'     → template scope 'platform_default' (vertical=None); surfaced on the
-#                manufacturing card via explicit ref (resolver reads by id).
+# The exact triaged sets (the investigations' dedup lists). Runtime scope:
+#   'vertical' → template scope 'vertical_default' (vertical=<the vertical>)
+#   'core'     → template scope 'platform_default' (vertical=None); surfaced on
+#                each vertical's card via explicit ref (resolver reads by id).
 _MANUFACTURING = [
     "Bridgeable Compose", "New Order", "Order Gloves from Uline",
     "Add Team Certification", "Safety Program Generation",
@@ -54,14 +56,30 @@ _MANUFACTURING = [
     "Social Service Certificate", "Start Disinterment Workflow",
     "Wilbert Catalog Auto-Fetch", "Document Review Reminder",
 ]
+# FH Map stamp — the triaged bring-in 9 (fh_map_investigation.md §1a(a)):
+# the case spine + Plot Reservation (demo-critical five) + the completeness
+# four. The 3 zero-step shells (obituary / insurance / EDRS) are EXCLUDED by
+# triage. All 9 verified inside the clean-transform subset; the validator
+# still fails loud if that verdict ever drifts.
+_FUNERAL_HOME = [
+    "First Call Intake", "Schedule Arrangement Conference",
+    "Arrangement Scribe Processing", "7-Day Aftercare Follow-Up",
+    "Plot Reservation", "Send Family Info Form", "Coordinate Removal",
+    "Anniversary Acknowledgment", "Flag Pre-Need Policy",
+]
 _CORE = [
     "Month-End Close", "AR Collections", "Compliance Sync",
     "Monthly Statement Run", "Expense Categorization", "Training Expiry Monitor",
 ]
-# (name, runtime_scope, template_scope, template_vertical)
+# (name, runtime_scope, template_scope, template_vertical, task_vertical)
+# task_vertical: where the thin task row lands (each vertical's own map).
+# Core mirrors keep their task rows on the manufacturing map (the original
+# backfill's choice — the platform map's task table is vertical-less).
 TARGETS = (
-    [(n, "vertical", "vertical_default", VERTICAL) for n in _MANUFACTURING]
-    + [(n, "core", "platform_default", None) for n in _CORE]
+    [(n, "vertical", "vertical_default", VERTICAL, VERTICAL) for n in _MANUFACTURING]
+    + [(n, "vertical", "vertical_default", "funeral_home", "funeral_home")
+       for n in _FUNERAL_HOME]
+    + [(n, "core", "platform_default", None, VERTICAL) for n in _CORE]
 )
 
 
@@ -96,22 +114,31 @@ def _mirror_canvas(steps: list, trigger_type: str | None) -> dict:
     }
 
 
-def _find_runtime(db, name: str, runtime_scope: str):
+def _find_runtime(db, name: str, runtime_scope: str, vertical: str | None):
     """The canonical runtime workflow (richest by step count — avoids any
-    test-fixture thin copy)."""
+    test-fixture thin copy). Finding P-3: vertical-scope lookups also filter
+    by vertical — today's FH/MFG name sets are disjoint, but a future name
+    collision must not cross-wire a mirror."""
+    where = "w.name = :n AND w.scope = :sc"
+    params: dict = {"n": name, "sc": runtime_scope}
+    if runtime_scope == "vertical" and vertical is not None:
+        where += " AND w.vertical = :v"
+        params["v"] = vertical
     return db.execute(
         sql_text(
             "SELECT w.id, w.name, w.trigger_type, "
             "(SELECT COUNT(*) FROM workflow_steps s WHERE s.workflow_id = w.id) n "
-            "FROM workflows w WHERE w.name = :n AND w.scope = :sc "
+            f"FROM workflows w WHERE {where} "
             "ORDER BY n DESC, w.created_at ASC LIMIT 1"
         ),
-        {"n": name, "sc": runtime_scope},
+        params,
     ).first()
 
 
-def _mirror_one(db, name, runtime_scope, tmpl_scope, tmpl_vertical) -> tuple[str | None, str]:
-    rt = _find_runtime(db, name, runtime_scope)
+def _mirror_one(
+    db, name, runtime_scope, tmpl_scope, tmpl_vertical, task_vertical
+) -> tuple[str | None, str]:
+    rt = _find_runtime(db, name, runtime_scope, tmpl_vertical)
     if rt is None:
         logger.warning("[wf-mirror] runtime workflow %r (%s) not found — skip", name, runtime_scope)
         return None, f"{name}: MISSING"
@@ -159,10 +186,11 @@ def _mirror_one(db, name, runtime_scope, tmpl_scope, tmpl_vertical) -> tuple[str
              "d": name, "desc": desc, "cs": canvas_json, "w": rt.id},
         )
 
-    # 1b — the thin task row (vertical=manufacturing so it lands on the mfg MoC),
-    # workflow pre-wired, descriptive fields BLANK (the operator fills via Build 2).
+    # 1b — the thin task row (task_vertical decides which map's table it
+    # lands on), workflow pre-wired, descriptive fields BLANK (the operator
+    # enriches; the FH demo-critical five first).
     upsert_task(
-        db, vertical=VERTICAL, name=name, frequency=None, task_type=None,
+        db, vertical=task_vertical, name=name, frequency=None, task_type=None,
         description=None, icon="workflow", workflow_template_id=tmpl_id,
         focus_template_ids=[],
     )
@@ -171,8 +199,8 @@ def _mirror_one(db, name, runtime_scope, tmpl_scope, tmpl_vertical) -> tuple[str
 
 def seed(db) -> str:
     made = []
-    for name, rsc, tsc, tv in TARGETS:
-        _id, msg = _mirror_one(db, name, rsc, tsc, tv)
+    for name, rsc, tsc, tv, taskv in TARGETS:
+        _id, msg = _mirror_one(db, name, rsc, tsc, tv, taskv)
         made.append(msg)
     db.commit()
     ok = [m for m in made if "MISSING" not in m]
