@@ -205,16 +205,20 @@ def _resolve_artifacts(db) -> list[dict]:
             "(run seed_demo_artifact_workflows first)"
         )
 
-    # Workflow backfill (Build 1b) — the faithful runtime mirrors created by
-    # seed_moc_backfill_workflow_mirrors (runs earlier: seed_moc_b… < seed_moc_m…).
-    # Author every mirror as a Workflows-card ref; the resolver reads by id, so
-    # the 6 core mirrors (platform_default scope) surface on the manufacturing
-    # card alongside the 12 vertical_default ones. Resolve-or-skip.
+    # Workflow backfill (Build 1b; FH stamp) — the faithful runtime mirrors
+    # created by seed_moc_backfill_workflow_mirrors (runs earlier:
+    # seed_moc_b… < seed_moc_m…). THIS vertical's mirrors + the core mirrors
+    # (platform_default scope, referenced by id). The vertical filter became
+    # load-bearing at the FH stamp — without it the FH nine would pollute
+    # this card. Resolve-or-skip.
     mirror_rows = db.execute(
         sql_text(
             "SELECT id, display_name FROM workflow_templates "
-            "WHERE mirrored_from_workflow_id IS NOT NULL ORDER BY display_name"
-        )
+            "WHERE mirrored_from_workflow_id IS NOT NULL AND is_active = true "
+            "AND (vertical = :v OR scope = 'platform_default') "
+            "ORDER BY display_name"
+        ),
+        {"v": VERTICAL},
     ).fetchall()
     if mirror_rows:
         for m in mirror_rows:
@@ -228,49 +232,22 @@ def _resolve_artifacts(db) -> list[dict]:
             "(run seed_moc_backfill_workflow_mirrors first)"
         )
 
-    foc = db.execute(
-        sql_text(
-            "SELECT id FROM focus_templates WHERE template_slug = "
-            "'job-coordination' LIMIT 1"
-        )
-    ).first()
-    if foc:
-        rows.append(
-            {
-                "builder": "focuses",
-                "artifact_id": foc.id,
-                "label": "Job Coordination",
-                "icon": "focus",
-            }
-        )
-    else:
-        logger.warning("seed_moc_manufacturing: job-coordination focus absent")
+    # FOCUSES — the FH-stamp back-port: QUERY-BUILT from ownership + the
+    # focus_template_verticals join (both maps self-maintaining the same
+    # way). Replaces the hardcoded slug list (job-coordination /
+    # decision-triage / legacy-generation) — every template OWNED by this
+    # vertical or JOINED to it surfaces, including variations created via
+    # the V-1 flow, with zero seed edits.
+    from scripts.seed_moc_funeral_home import focus_rows_for_vertical
 
-    # Demo-artifact focuses (option-3 3a/3b) — surface them in the Focuses CARD
-    # too (the task-table focus cells populate separately, via the task-catalog
-    # joins). Resolve-or-skip: seed_demo_artifact_focuses seeds them and runs
-    # earlier (alphabetical), so they resolve in the same deploy.
-    for slug, label in (
-        ("decision-triage", "Decision Triage"),
-        ("legacy-generation", "Legacy Generation"),
-    ):
-        f = db.execute(
-            sql_text(
-                "SELECT id FROM focus_templates WHERE template_slug = :ts "
-                "AND vertical = :v LIMIT 1"
-            ),
-            {"ts": slug, "v": VERTICAL},
-        ).first()
-        if f:
-            rows.append(
-                {"builder": "focuses", "artifact_id": f.id, "label": label,
-                 "icon": "focus"}
-            )
-        else:
-            logger.warning(
-                "seed_moc_manufacturing: %s focus absent (run "
-                "seed_demo_artifact_focuses first)", slug
-            )
+    focus_rows = focus_rows_for_vertical(db, VERTICAL)
+    if focus_rows:
+        rows.extend(focus_rows)
+    else:
+        logger.warning(
+            "seed_moc_manufacturing: no manufacturing-scoped focus templates "
+            "yet (run the focus seeds first)"
+        )
 
     wid = db.execute(
         sql_text(

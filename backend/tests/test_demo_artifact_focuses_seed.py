@@ -47,13 +47,25 @@ def db():
             {"s": slug, "v": VERT},
         )
     for slug in CORE_SLUGS:
-        s.execute(sql_text("DELETE FROM focus_cores WHERE core_slug = :s"), {"s": slug})
+        # FK-safe (FH stamp): OTHER lineages' templates may pin retained
+        # version rows of these cores (e.g. a V-1 variation created from
+        # decision-triage-core). Delete only the unreferenced rows; the
+        # referenced snapshots stay and the seed re-adopts by slug.
+        s.execute(
+            sql_text(
+                "DELETE FROM focus_cores WHERE core_slug = :s AND id NOT IN "
+                "(SELECT inherits_from_core_id FROM focus_templates)"
+            ),
+            {"s": slug},
+        )
     s.commit()
     s.close()
 
 
 def _count(db, table: str, col: str, val: str, vertical: bool = False) -> int:
-    q = f"SELECT COUNT(*) FROM {table} WHERE {col} = :v"
+    # ACTIVE rows only (post-V-2 world: version bumps retain prior rows
+    # is_active=false — the dup-check invariant is one ACTIVE row per slug).
+    q = f"SELECT COUNT(*) FROM {table} WHERE {col} = :v AND is_active = true"
     params = {"v": val}
     if vertical:
         q += " AND vertical = :vt"
@@ -74,14 +86,14 @@ def test_focus_seed_idempotent(db):
     comp = db.execute(
         sql_text(
             "SELECT registered_component_name FROM focus_cores "
-            "WHERE core_slug = 'decision-triage-core'"
+            "WHERE core_slug = 'decision-triage-core' AND is_active = true"
         )
     ).scalar()
     assert comp == "TriageQueueCore"
     comp2 = db.execute(
         sql_text(
             "SELECT registered_component_name FROM focus_cores "
-            "WHERE core_slug = 'legacy-generation-core'"
+            "WHERE core_slug = 'legacy-generation-core' AND is_active = true"
         )
     ).scalar()
     assert comp2 == "EditCanvasCore"

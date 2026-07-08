@@ -74,8 +74,15 @@ FOCUSES = [
 
 def _upsert_core(db, *, slug: str, display: str, component: str) -> tuple[str, int]:
     """find-or-create a focus_cores row by core_slug → (id, version)."""
+    # Prefer the ACTIVE row; fall back to the newest snapshot only when the
+    # whole lineage is deactivated (FH-stamp fix: version bumps retain prior
+    # rows is_active=false — an unordered SELECT grabbed one and the
+    # is_active=true update tripped the one-active-per-slug partial unique).
     row = db.execute(
-        sql_text("SELECT id, version FROM focus_cores WHERE core_slug = :s"),
+        sql_text(
+            "SELECT id, version FROM focus_cores WHERE core_slug = :s "
+            "ORDER BY is_active DESC, version DESC LIMIT 1"
+        ),
         {"s": slug},
     ).first()
     if row:
@@ -107,10 +114,12 @@ def _upsert_template(
     core_id: str, core_version: int,
 ) -> str:
     """find-or-create a focus_templates row by (scope, vertical, slug)."""
+    # Same active-first discipline as _upsert_core (version rows retained).
     row = db.execute(
         sql_text(
             "SELECT id FROM focus_templates WHERE scope = 'vertical_default' "
-            "AND vertical = :v AND template_slug = :ts"
+            "AND vertical = :v AND template_slug = :ts "
+            "ORDER BY is_active DESC, version DESC LIMIT 1"
         ),
         {"v": VERTICAL, "ts": template_slug},
     ).first()
