@@ -20,6 +20,7 @@ import { ArrowUpRight, FileText, type LucideIcon } from "lucide-react"
 
 import { Icon } from "@/components/ui/icon"
 import { EmptyState } from "@/components/ui/empty-state"
+import { focusIcon } from "@/bridgeable-admin/lib/focus-icons"
 
 export interface MoCTypeCardEntry {
   row_id: string
@@ -36,6 +37,9 @@ export interface MoCTypeCardEntry {
   /** V-2: the focus template's slug (lineage identity) — offer states key
    * on it (row ids rotate; slugs don't). */
   template_slug?: string | null
+  /** r122: the family icon (lineage root core's current icon) — a quiet
+   * family marker beside the name, focuses/focus-cores entries only. */
+  icon?: string | null
 }
 
 export interface MoCTypeCard {
@@ -136,6 +140,21 @@ function TypeCard({
   )
 }
 
+/** r122: the quiet family marker — rendered ONLY when the resolution
+ * carried an icon (focuses / focus-cores rows). */
+export function FocusFamilyGlyph({ icon }: { icon?: string | null }) {
+  if (icon === undefined || icon === null) return null
+  const Glyph = focusIcon(icon)
+  return (
+    <Glyph
+      size={13}
+      className="shrink-0 text-content-muted"
+      data-testid={`focus-family-icon-${icon}`}
+      aria-hidden
+    />
+  )
+}
+
 function TypeCardEntry({ entry }: { entry: MoCTypeCardEntry }) {
   const linkable = entry.available && entry.href !== null
   if (linkable) {
@@ -145,6 +164,7 @@ function TypeCardEntry({ entry }: { entry: MoCTypeCardEntry }) {
         className="focus-ring-accent flex items-center gap-1.5 rounded-sm py-0.5 text-body-sm text-content-base hover:text-accent"
         data-available="true"
       >
+        <FocusFamilyGlyph icon={entry.icon} />
         {entry.label}
         <ArrowUpRight size={12} className="opacity-0 transition-opacity group-hover:opacity-60" />
       </Link>
@@ -155,6 +175,7 @@ function TypeCardEntry({ entry }: { entry: MoCTypeCardEntry }) {
       className="flex items-center gap-2 py-0.5 text-body-sm text-content-subtle"
       data-available="false"
     >
+      <FocusFamilyGlyph icon={entry.icon} />
       {entry.label}
       <span className="text-caption">
         {entry.unavailableReason === "not-built"

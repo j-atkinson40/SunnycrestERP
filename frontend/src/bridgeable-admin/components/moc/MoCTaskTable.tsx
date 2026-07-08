@@ -25,6 +25,7 @@ import { FileText, Receipt, Sparkles } from "lucide-react"
 
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import { mocDeepLink } from "@/bridgeable-admin/lib/moc-deep-link"
+import { FocusFamilyGlyph } from "@/bridgeable-admin/components/moc/MoCTypeCards"
 import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -296,6 +297,7 @@ function TaskRow({
                   to={href}
                   className={`${base} focus-ring-accent bg-accent-subtle text-accent hover:bg-accent-muted`}
                 >
+                  <FocusFamilyGlyph icon={f.icon} />
                   {f.label}
                   <ArrowUpRight size={10} />
                 </Link>
@@ -304,6 +306,7 @@ function TaskRow({
                   key={f.artifact_id}
                   className={`${base} bg-surface-sunken text-content-subtle`}
                 >
+                  <FocusFamilyGlyph icon={f.icon} />
                   {f.label}
                 </span>
               )

@@ -32,7 +32,10 @@ import {
   type MoCTask,
 } from "@/bridgeable-admin/services/moc-service"
 import { KNOWN_VERTICALS } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
-import type { MoCTypeCardEntry } from "@/bridgeable-admin/components/moc/MoCTypeCards"
+import {
+  FocusFamilyGlyph,
+  type MoCTypeCardEntry,
+} from "@/bridgeable-admin/components/moc/MoCTypeCards"
 
 export interface VariationFlowDialogProps {
   /** The default (a focus-cores entry; artifact_id = the ACTIVE core id). */
@@ -110,7 +113,10 @@ export function VariationFlowDialog({
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent className="max-w-lg" data-testid="variation-flow-dialog">
         <DialogHeader>
-          <DialogTitle>Create a variation of {source.label}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <FocusFamilyGlyph icon={source.icon} />
+            Create a variation of {source.label}
+          </DialogTitle>
           <DialogDescription>
             A new template on this shape — name it, pick the verticals it
             serves, wire the tasks that use it. It appears on each chosen

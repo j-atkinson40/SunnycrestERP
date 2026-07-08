@@ -43,6 +43,7 @@ import {
   type OfferState,
 } from "@/bridgeable-admin/services/moc-service"
 import {
+  FocusFamilyGlyph,
   MoCTypeCards,
   type MoCTypeCard,
 } from "@/bridgeable-admin/components/moc/MoCTypeCards"
@@ -95,6 +96,8 @@ export function toTypeCards(page: MoCResolvedPage): MoCTypeCard[] {
         builder: r.builder,
         artifact_id: r.resolution.artifact_id ?? r.artifact_id,
         template_slug: r.resolution.routing.template_slug ?? null,
+        // r122: the family icon (focuses + focus-cores resolutions carry it).
+        icon: r.resolution.icon ?? null,
       }
       // focus-cores rows fold into the ONE Focuses card (the platform map
       // shows Tier 1 defaults + platform_default templates together); the
@@ -403,8 +406,9 @@ export default function MoCPage() {
               <span className="flex items-center gap-2">
                 <Link
                   to={entry.href}
-                  className="focus-ring-accent rounded-sm py-0.5 text-body-sm text-content-base hover:text-accent"
+                  className="focus-ring-accent flex items-center gap-1.5 rounded-sm py-0.5 text-body-sm text-content-base hover:text-accent"
                 >
+                  <FocusFamilyGlyph icon={entry.icon} />
                   {entry.label}
                 </Link>
                 {pending ? (

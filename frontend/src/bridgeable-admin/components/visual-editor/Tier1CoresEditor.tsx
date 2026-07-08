@@ -54,6 +54,7 @@ import {
   expandPreset,
 } from "@/bridgeable-admin/lib/visual-editor/chrome-resolver"
 import { CreateTierOneCoreModal } from "./CreateTierOneCoreModal"
+import { FocusIconPickerRow } from "./FocusIconPickerRow"
 
 interface ResolvedThemeResponse {
   tokens?: Record<string, string>
@@ -371,6 +372,24 @@ export function Tier1CoresEditor({
           </div>
         ) : (
           <PropertyPanel>
+            {/* r122: family identity — the core-type icon, immediate-commit
+                (identity, not versioned content: changing it propagates to
+                every variation everywhere, deliberately). */}
+            <PropertySection title="Identity" defaultExpanded>
+              <FocusIconPickerRow
+                coreId={selectedCoreId}
+                cores={cores}
+                currentIcon={
+                  cores.find((c) => c.id === selectedCoreId)?.icon ?? null
+                }
+                onSaved={(updated) => {
+                  // An icon save without a session token version-bumps →
+                  // new row id; follow it so subsequent edits don't 410.
+                  if (updated.id !== selectedCoreId) onSelectCore(updated.id)
+                  void refreshList()
+                }}
+              />
+            </PropertySection>
             <PropertySection title="Chrome" defaultExpanded>
               <PropertyRow>
                 <ChromePresetPicker

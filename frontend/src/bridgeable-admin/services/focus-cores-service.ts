@@ -22,6 +22,9 @@ export interface CoreRecord {
   max_column_span: number
   canvas_config: Record<string, unknown>
   chrome: Record<string, unknown>
+  /** r122: the family icon (curated lucide name; lineage-resolved onto
+   * every variation at read). */
+  icon?: string | null
   version: number
   is_active: boolean
   created_at: string
@@ -72,6 +75,8 @@ export interface CoreUpdatePayload {
   max_column_span?: number
   canvas_config?: Record<string, unknown>
   chrome?: Record<string, unknown>
+  /** r122: the family icon. Sent-null clears; omitted preserves. */
+  icon?: string | null
   // Sub-arc C-2.1.1: edit-session token. Including this opts updates
   // into in-place-mutate semantics within a 5-minute window; omit to
   // version-bump per B-1 behavior.

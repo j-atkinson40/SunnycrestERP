@@ -26,7 +26,10 @@ import {
   focusCoresService,
   type CoreUsage,
 } from "@/bridgeable-admin/services/focus-cores-service"
-import type { MoCTypeCardEntry } from "@/bridgeable-admin/components/moc/MoCTypeCards"
+import {
+  FocusFamilyGlyph,
+  type MoCTypeCardEntry,
+} from "@/bridgeable-admin/components/moc/MoCTypeCards"
 
 export interface ForkMenuProps {
   entry: MoCTypeCardEntry
@@ -73,6 +76,7 @@ export function ForkMenu({ entry, onCreateVariation, onPublish }: ForkMenuProps)
             className="focus-ring-accent flex items-center gap-1.5 rounded-sm py-0.5 text-body-sm text-content-base hover:text-accent"
             data-testid={`fork-menu-trigger-${entry.row_id}`}
           >
+            <FocusFamilyGlyph icon={entry.icon} />
             {entry.label}
           </button>
         }

@@ -21,6 +21,10 @@ export interface MoCRowResolution {
    * a version bump, the resolver re-binds to the lineage's ACTIVE row and
    * returns its id here — deep-links must prefer this over the stored id. */
   artifact_id?: string
+  /** Focus family icon (r122): the lineage ROOT core's CURRENT icon —
+   * present on focuses + focus-cores resolutions; family identity,
+   * lineage-resolved server-side, never authored per-row. */
+  icon?: string | null
   routing: {
     workflow_type?: string | null
     scope?: string | null
