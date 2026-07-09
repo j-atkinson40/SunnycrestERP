@@ -103,6 +103,13 @@ def any_customer(db, company_id: str) -> Customer | None:
 def pick_tenant(db, tenant_id: str | None = None) -> Company | None:
     if tenant_id:
         return db.query(Company).filter(Company.id == tenant_id).first()
+    # Deterministic demo home: testco is the canonical manufacturing dev
+    # tenant everywhere else (D-4 rider — the unordered first-match pick
+    # was nondeterministic on multi-tenant DBs). When Sunnycrest onboards,
+    # relocate deliberately.
+    testco = db.query(Company).filter(Company.slug == "testco").first()
+    if testco is not None:
+        return testco
     # Find first active tenant with sales module
     tenants = (
         db.query(Company)
@@ -112,9 +119,10 @@ def pick_tenant(db, tenant_id: str | None = None) -> Company | None:
             CompanyModule.module == "sales",
             CompanyModule.enabled.is_(True),
         )
-        .all()
+        .order_by(Company.created_at.asc(), Company.id.asc())
+        .first()
     )
-    return tenants[0] if tenants else None
+    return tenants
 
 
 def seed_for_tenant(db, tenant: Company) -> int:
