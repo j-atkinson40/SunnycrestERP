@@ -194,10 +194,18 @@ class TestSsnEncryption:
 
 
 class TestFhCommandBarActions:
-    def test_fh_actions_registered(self):
+    # The frontend action registry moved src/core/actionRegistry.ts →
+    # src/services/actions/ (funeral_home.ts + registry.ts) in a frontend
+    # reorg; these cross-tree pins went stale-path (FileNotFoundError) and
+    # were repaired to the new locations during Demo Walk G-1 (no behavior
+    # under test changed — the same exports, split across two files).
+    def _actions_dir(self):
         from pathlib import Path
-        p = Path(__file__).resolve().parent.parent.parent / "frontend" / "src" / "core" / "actionRegistry.ts"
-        content = p.read_text()
+        return (Path(__file__).resolve().parent.parent.parent
+                / "frontend" / "src" / "services" / "actions")
+
+    def test_fh_actions_registered(self):
+        content = (self._actions_dir() / "funeral_home.ts").read_text()
         for action_id in [
             "fh_new_arrangement",
             "fh_nav_cases",
@@ -208,11 +216,10 @@ class TestFhCommandBarActions:
             assert f'"{action_id}"' in content, f"Missing: {action_id}"
 
     def test_fh_actions_scoped_to_funeral_home_vertical(self):
-        from pathlib import Path
-        p = Path(__file__).resolve().parent.parent.parent / "frontend" / "src" / "core" / "actionRegistry.ts"
-        content = p.read_text()
+        content = (self._actions_dir() / "funeral_home.ts").read_text()
         # funeralHomeActions block should exist
         assert "export const funeralHomeActions" in content
         assert 'vertical: "funeral_home"' in content
         # getActionsForVertical helper that routes by vertical
-        assert "export function getActionsForVertical" in content
+        registry = (self._actions_dir() / "registry.ts").read_text()
+        assert "export function getActionsForVertical" in registry

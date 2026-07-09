@@ -73,7 +73,15 @@ def _ensure_company(db, slug, defaults) -> Company:
 
 
 def _ensure_user(db, company_id, email, defaults) -> User:
-    u = db.query(User).filter(User.email == email).first()
+    # COMPANY-SCOPED (Demo Walk G-1 fix): the unscoped email lookup matched
+    # test-fixture residue rows with the same email on OTHER companies (dev
+    # carried hundreds), silently skipping the Hopkins user's creation —
+    # "director_missing" downstream. Emails are only meaningful per-tenant.
+    u = (
+        db.query(User)
+        .filter(User.company_id == company_id, User.email == email)
+        .first()
+    )
     if u:
         return u
 
