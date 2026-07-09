@@ -48,6 +48,7 @@ import {
   type MoCTypeCard,
 } from "@/bridgeable-admin/components/moc/MoCTypeCards"
 import { OfferDialog } from "@/bridgeable-admin/components/moc/OfferDialog"
+import { MoCPlanningSection } from "@/bridgeable-admin/components/moc/MoCPlanningSection"
 import { MoCBreadcrumb } from "@/bridgeable-admin/components/moc/MoCBreadcrumb"
 import { MoCTaskTable } from "@/bridgeable-admin/components/moc/MoCTaskTable"
 import { MoCVerticalsRail } from "@/bridgeable-admin/components/moc/MoCVerticalsRail"
@@ -475,6 +476,15 @@ export default function MoCPage() {
           vertical={vertical}
           onChanged={() => void reloadTasks()}
           data-testid="moc-task-table"
+        />
+
+        {/* r123 — the personal build-backlog: what this vertical still
+            NEEDS, the current user's lens (never another user's items). */}
+        <MoCPlanningSection
+          scope="vertical_default"
+          vertical={vertical}
+          contextLabel={page.title}
+          data-testid="moc-planning"
         />
       </div>
     )

@@ -603,3 +603,59 @@ export async function declineUpdateOffer(offerId: string): Promise<UpdateOffer> 
   )
   return data
 }
+
+// ── MoC Planning (r123) — the personal build-backlog ────────────────
+
+export type PlanningKind = "feature" | "workflow" | "focus" | "document"
+export type PlanningStatus = "planned" | "in_progress" | "done"
+
+export interface PlanningItem {
+  id: string
+  scope: MoCScope
+  vertical: string | null
+  kind: PlanningKind
+  title: string
+  description: string | null
+  status: PlanningStatus
+  display_order: number
+  created_artifact_slug: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function listPlanning(params: {
+  scope: "platform_default" | "vertical_default"
+  vertical?: string
+}): Promise<PlanningItem[]> {
+  const { data } = await adminApi.get<PlanningItem[]>(`${BASE}/planning`, {
+    params,
+  })
+  return data
+}
+
+export async function createPlanning(payload: {
+  scope: "platform_default" | "vertical_default"
+  vertical?: string | null
+  kind: PlanningKind
+  title: string
+  description?: string | null
+  status?: PlanningStatus
+}): Promise<PlanningItem> {
+  const { data } = await adminApi.post<PlanningItem>(`${BASE}/planning`, payload)
+  return data
+}
+
+export async function patchPlanning(
+  id: string,
+  patch: Partial<Pick<PlanningItem, "title" | "description" | "kind" | "status" | "display_order">>,
+): Promise<PlanningItem> {
+  const { data } = await adminApi.patch<PlanningItem>(
+    `${BASE}/planning/${id}`,
+    patch,
+  )
+  return data
+}
+
+export async function deletePlanning(id: string): Promise<void> {
+  await adminApi.delete(`${BASE}/planning/${id}`)
+}

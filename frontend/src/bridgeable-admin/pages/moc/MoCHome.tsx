@@ -33,6 +33,7 @@ import {
   type MoCTask,
 } from "@/bridgeable-admin/services/moc-service"
 import { MoCFiresCard } from "@/bridgeable-admin/components/moc/MoCFiresCard"
+import { MoCPlanningSection } from "@/bridgeable-admin/components/moc/MoCPlanningSection"
 import { MoCTaskTable } from "@/bridgeable-admin/components/moc/MoCTaskTable"
 import {
   KNOWN_VERTICALS,
@@ -273,6 +274,13 @@ export default function MoCHome() {
                 </p>
               ) : null}
             </div>
+
+            {/* r123 — the personal build-backlog, platform-scoped items. */}
+            <MoCPlanningSection
+              scope="platform_default"
+              contextLabel="the platform"
+              data-testid="moc-platform-planning"
+            />
 
             <MoCFiresCard
               fires={fires}
