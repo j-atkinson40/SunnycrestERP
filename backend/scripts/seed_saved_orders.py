@@ -63,8 +63,8 @@ def pick_tenant(db, tenant_id: str | None = None) -> Company | None:
         .join(CompanyModule, CompanyModule.company_id == Company.id)
         .filter(
             Company.is_active.is_(True),
-            CompanyModule.module_key == "sales",
-            CompanyModule.is_enabled.is_(True),
+            CompanyModule.module == "sales",
+            CompanyModule.enabled.is_(True),
         )
         .all()
     )
@@ -82,12 +82,12 @@ def pick_user(db, company_id: str) -> User | None:
 
 def pick_workflow(db, company_id: str) -> Workflow | None:
     # Prefer the wf_compose workflow; fall back to any for the tenant.
+    # wf_compose is a PLATFORM row (company_id NULL) whose stable key IS
+    # its id — the model has no `workflow_key` attribute (D-4: this seed
+    # crashed on that stale name on every deploy).
     w = (
         db.query(Workflow)
-        .filter(
-            Workflow.company_id == company_id,
-            Workflow.workflow_key == "wf_compose",
-        )
+        .filter(Workflow.id == "wf_compose")
         .first()
     )
     if w:

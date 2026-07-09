@@ -109,8 +109,8 @@ def pick_tenant(db, tenant_id: str | None = None) -> Company | None:
         .join(CompanyModule, CompanyModule.company_id == Company.id)
         .filter(
             Company.is_active.is_(True),
-            CompanyModule.module_key == "sales",
-            CompanyModule.is_enabled.is_(True),
+            CompanyModule.module == "sales",
+            CompanyModule.enabled.is_(True),
         )
         .all()
     )
