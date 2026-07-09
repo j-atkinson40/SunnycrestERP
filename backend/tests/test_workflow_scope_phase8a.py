@@ -206,22 +206,25 @@ class TestMigrationBackfill:
         )
         assert mismatched == 0
 
-    def test_agent_registry_key_set_on_three_workflows(self, db_session):
+    def test_no_platform_workflow_is_agent_backed(self, db_session):
+        """Post-Phase-8c contract (updated in D-4). The 8a-era version of
+        this test asserted the three pre-migration agent stubs still carried
+        agent_registry_key — but 8b/8c migrated them onto workflow_engine and
+        the seed now declares agent_registry_key=None explicitly, so stale
+        keys are corrected on every seed run. No platform-scoped workflow is
+        agent-backed anymore; a non-NULL key here means a stale badge
+        regression (audit C-6)."""
         from app.models.workflow import Workflow
 
         agent_backed = (
             db_session.query(Workflow.id)
-            .filter(Workflow.agent_registry_key.isnot(None))
+            .filter(
+                Workflow.agent_registry_key.isnot(None),
+                Workflow.company_id.is_(None),
+            )
             .all()
         )
-        ids = {row.id for row in agent_backed}
-        # These three wf_sys_* workflows have registered agents in
-        # AgentRunner.AGENT_REGISTRY. Other agents (unbilled_orders,
-        # cash_receipts, etc.) don't have wf_sys_* stubs yet; they
-        # get added in Phase 8b-8f.
-        assert "wf_sys_month_end_close" in ids
-        assert "wf_sys_ar_collections" in ids
-        assert "wf_sys_expense_categorization" in ids
+        assert {row.id for row in agent_backed} == set()
 
 
 # ── Scope-filter API ───────────────────────────────────────────────
