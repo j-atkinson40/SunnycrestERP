@@ -107,6 +107,15 @@ jobs:
         working-directory: backend
         run: alembic upgrade head
 
+      # C-10 adjacent-class pin: a fresh DB built purely from migrations
+      # must satisfy every model-mapped column — catches "model column no
+      # migration provides". (The edited-after-applied class is caught by
+      # the boot-time check on live DBs; fresh CI can't see that one.)
+      - name: Schema drift check (models vs migrations-built DB)
+        working-directory: backend
+        run: |
+          python -c "from app.database import engine; from app.services.schema_drift import assert_no_schema_drift; assert_no_schema_drift(engine); print('models within migrations-built schema: clean')"
+
       - name: Run seed idempotency double-run
         working-directory: backend
         run: bash scripts/test_seed_idempotency.sh

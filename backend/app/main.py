@@ -206,6 +206,22 @@ if os.path.isdir(_static_dir):
 
 
 @app.on_event("startup")
+def check_schema_drift_on_boot():
+    """Fail-loud schema-drift gate (C-10 heal, 2026-07-09).
+
+    Raises (boot fails, the deploy never serves) if any model-mapped column
+    or table is missing from the live DB — the edited-after-applied
+    migration class that fresh-DB CI structurally cannot catch. See
+    app/services/schema_drift.py for the full rationale. Cost: one
+    information_schema query (~500 ms cold on the largest dev DB).
+    """
+    from app.database import engine
+    from app.services.schema_drift import assert_no_schema_drift
+
+    assert_no_schema_drift(engine)
+
+
+@app.on_event("startup")
 def seed_platform_admin():
     """Create the initial platform admin user if configured via env vars."""
     if settings.PLATFORM_ADMIN_EMAIL and settings.PLATFORM_ADMIN_PASSWORD:
