@@ -211,6 +211,103 @@ def admin_delete_task(
     return {"deleted": True, "id": task_id}
 
 
+# ─── Planning items (r123) — the personal build-backlog ──────────────
+# (declared before the page `/{page_id}` catch-all)
+
+
+class _CreatePlanningItem(BaseModel):
+    scope: Literal["platform_default", "vertical_default"] = "vertical_default"
+    vertical: str | None = None
+    kind: str
+    title: str
+    description: str | None = None
+    status: str = "planned"
+    display_order: int = 0
+
+
+class _PatchPlanningItem(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    kind: str | None = None
+    status: str | None = None
+    display_order: int | None = None
+
+
+@router.get("/planning")
+def admin_list_planning(
+    scope: Scope = Query("vertical_default"),
+    vertical: str | None = Query(None),
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """THE PERSONAL LENS: the authenticated user's items for this map only."""
+    from app.services.maps_of_content import planning
+
+    items = planning.list_items(
+        db, owner_user_id=admin.id, scope=scope, vertical=vertical
+    )
+    return [planning.to_payload(i) for i in items]
+
+
+@router.post("/planning", status_code=201)
+def admin_create_planning(
+    body: _CreatePlanningItem,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content import planning
+
+    try:
+        item = planning.create_item(
+            db, owner_user_id=admin.id, scope=body.scope,
+            vertical=body.vertical, kind=body.kind, title=body.title,
+            description=body.description, status=body.status,
+            display_order=body.display_order,
+        )
+    except planning.PlanningValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    return planning.to_payload(item)
+
+
+@router.patch("/planning/{item_id}")
+def admin_patch_planning(
+    item_id: str,
+    body: _PatchPlanningItem,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Partial update — only sent fields apply; OWNER-CHECKED (yours only)."""
+    from app.services.maps_of_content import planning
+
+    kwargs = {k: getattr(body, k) for k in body.model_fields_set}
+    try:
+        item = planning.patch_item(
+            db, item_id=item_id, owner_user_id=admin.id, **kwargs
+        )
+    except planning.PlanningValidationError as exc:
+        db.rollback()
+        code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=code, detail=str(exc))
+    return planning.to_payload(item)
+
+
+@router.delete("/planning/{item_id}", status_code=200)
+def admin_delete_planning(
+    item_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content import planning
+
+    try:
+        planning.delete_item(db, item_id=item_id, owner_user_id=admin.id)
+    except planning.PlanningValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"deleted": True, "id": item_id}
+
+
 # ─── Focus variations (Focus Variations V-1) — the guided flow ──────────
 # (declared before the page `/{page_id}` catch-all so `/focus-variations`
 # resolves)

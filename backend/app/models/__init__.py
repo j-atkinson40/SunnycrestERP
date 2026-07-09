@@ -174,6 +174,7 @@ from app.models.module_definition import ModuleDefinition
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.moc_page import MoCPage
+from app.models.moc_planning_item import MoCPlanningItem
 from app.models.moc_task_catalog import MoCTaskCatalog, MoCTaskCatalogFocus
 from app.models.moc_task_trigger import MoCTaskTrigger, MoCTriggerEventCatalog
 from app.models.moc_domain_event import MoCDomainEvent
@@ -481,6 +482,7 @@ from app.models.briefing import Briefing, BRIEFING_TYPES
 __all__ = [
     "CoordinationFocusInstance",
     "MoCPage",
+    "MoCPlanningItem",
     "MoCTaskCatalog",
     "MoCTaskCatalogFocus",
     "MoCTaskTrigger",
