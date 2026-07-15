@@ -96,6 +96,10 @@ def fail(db: Session, *, run_id: str, error_message: str) -> None:
     run.status = "failed"
     run.error_message = error_message[:500]
     run.completed_at = datetime.now(timezone.utc)
+    # H1 escalation hook (dormant path — zero callers today, instrumented so
+    # a future caller inherits routing). See workflows/run_escalation.py.
+    from app.services.workflows.run_escalation import route_failed_run
+    route_failed_run(db, run, error_message)
     db.commit()
 
 

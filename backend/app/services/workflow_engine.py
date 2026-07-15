@@ -541,6 +541,16 @@ def _drive_run(db: Session, run: WorkflowRun, dry_run: bool = False) -> None:
             db.commit()
             return
 
+        # H1 witness finding (2026-07-15): _execute_step's except path has
+        # ALREADY _fail_run'd the run (+ routed the escalation) and returns
+        # {"error": ...}. The loop previously ignored that key, kept
+        # executing subsequent steps, and _complete_run then OVERWROTE
+        # status "failed" with "completed" — failed runs masqueraded as
+        # completed with an orphaned error_message. Stop here; the failure
+        # record stands.
+        if result.get("error"):
+            return
+
         # Step completed; figure out next step
         next_step = _resolve_next_step(steps, current, result)
         if next_step is None:
@@ -1726,6 +1736,11 @@ def _fail_run(db: Session, run: WorkflowRun, message: str) -> None:
     run.status = "failed"
     run.error_message = message[:500]
     run.completed_at = datetime.now(timezone.utc)
+    # H1 escalation hook — route the failure into Decision Triage + the
+    # outbox, same transaction, savepoint-isolated (a routing bug can never
+    # roll back this failure record). See workflows/run_escalation.py.
+    from app.services.workflows.run_escalation import route_failed_run
+    route_failed_run(db, run, message)
     db.commit()
 
 

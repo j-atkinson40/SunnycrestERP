@@ -122,6 +122,20 @@ def commit_decision(
     else:  # reject
         resume_payload = {"decision": "reject", "decision_notes": decision_notes}
 
+    # H1 escalation items (review_focus_id="run_failure") wrap a FAILED run —
+    # there is nothing to advance (advance_run correctly rejects failed runs).
+    # Deciding one just closes it: approve = resolved, reject = dismissed.
+    # A later failure of the same workflow creates a FRESH item (the dedup in
+    # run_escalation only folds into OPEN items).
+    from app.services.workflows.run_escalation import RUN_FAILURE_FOCUS_ID
+    if item.review_focus_id == RUN_FAILURE_FOCUS_ID:
+        logger.info(
+            "workflow_review_adapter.commit_decision: escalation item=%s "
+            "decision=%s run_id=%s (no run advance — failed run)",
+            item.id, decision, item.run_id,
+        )
+        return item
+
     step_input = {item.review_focus_id: resume_payload}
 
     logger.info(

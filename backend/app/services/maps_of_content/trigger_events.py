@@ -190,6 +190,18 @@ _SEED: Sequence[dict[str, Any]] = (
         "entity": "social_service_certificate", "display_order": 7,
         "filterable_fields": [{"field": "status", "type": "string"}],
     },
+    {
+        # H1 escalation hook — emitted at the _fail_run chokepoint
+        # (workflows/run_escalation.py). Matchable: operators can author
+        # event-triggers on run failures with zero further work.
+        "event_key": "run.failed", "label": "Workflow run failed",
+        "entity": "workflow_run", "display_order": 8,
+        "filterable_fields": [
+            {"field": "workflow_id", "type": "string"},
+            {"field": "workflow_name", "type": "string"},
+            {"field": "trigger_source", "type": "string"},
+        ],
+    },
 )
 
 
