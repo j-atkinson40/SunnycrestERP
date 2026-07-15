@@ -147,3 +147,89 @@ class TestR124HealGuards:
                 assert set(_quotes_columns(conn)) == before
             finally:
                 trans.rollback()
+
+
+_R125_PATH = _R124_PATH.parent / "r125_heal_missing_tables.py"
+_R125_TABLES = (
+    "legacy_email_settings", "legacy_fh_email_config", "company_migration_reviews",
+)
+
+
+def _load_r125():
+    spec = importlib.util.spec_from_file_location("r125_heal", _R125_PATH)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _existing_tables(conn) -> set[str]:
+    return {
+        r[0] for r in conn.execute(text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema='public'"
+        ))
+    }
+
+
+class TestR125HealGuards:
+    """Round 2 — the three missing tables the drift gate named on its first
+    production-tier run (staging, 2026-07-09)."""
+
+    def test_r125_is_noop_on_healthy_db(self):
+        from alembic.runtime.migration import MigrationContext
+        from alembic.operations import Operations
+
+        mod = _load_r125()
+        with engine.connect() as c0:
+            before = _existing_tables(c0)
+        assert set(_R125_TABLES) <= before  # dev is healthy
+        with engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                ctx = MigrationContext.configure(conn)
+                with Operations.context(ctx):
+                    mod.upgrade()
+                assert _existing_tables(conn) == before
+            finally:
+                trans.rollback()
+
+    def test_r125_heals_missing_tables(self):
+        """Staging in miniature: drop the three tables in a rolled-back
+        transaction, run r125's upgrade(), assert all three are back."""
+        from alembic.runtime.migration import MigrationContext
+        from alembic.operations import Operations
+
+        mod = _load_r125()
+        with engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                for t in _R125_TABLES:
+                    conn.execute(text(f"DROP TABLE {t}"))
+                assert not (set(_R125_TABLES) & _existing_tables(conn))
+
+                ctx = MigrationContext.configure(conn)
+                with Operations.context(ctx):
+                    mod.upgrade()
+
+                after = _existing_tables(conn)
+                for t in _R125_TABLES:
+                    assert t in after, f"r125 failed to heal {t}"
+            finally:
+                trans.rollback()
+
+    def test_r125_downgrade_is_noop(self):
+        from alembic.runtime.migration import MigrationContext
+        from alembic.operations import Operations
+
+        mod = _load_r125()
+        with engine.connect() as c0:
+            before = _existing_tables(c0)
+        with engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                ctx = MigrationContext.configure(conn)
+                with Operations.context(ctx):
+                    mod.downgrade()
+                assert _existing_tables(conn) == before
+            finally:
+                trans.rollback()
