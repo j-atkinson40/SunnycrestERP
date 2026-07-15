@@ -372,7 +372,9 @@ class TestFrontendContract:
 
     def test_command_bar_handles_workflow_type(self):
         from pathlib import Path
-        p = Path(__file__).resolve().parent.parent.parent / "frontend" / "src" / "core" / "actionRegistry.ts"
+        # Registry reorganized src/core/actionRegistry.ts → src/services/actions/
+        # (same repair class as test_fh_cases' G-1 fix).
+        p = Path(__file__).resolve().parent.parent.parent / "frontend" / "src" / "services" / "actions" / "registry.ts"
         content = p.read_text()
         assert '"WORKFLOW"' in content, "WORKFLOW type not added to CommandAction interface"
 
