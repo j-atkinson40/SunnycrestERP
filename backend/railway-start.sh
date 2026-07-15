@@ -1,5 +1,25 @@
 #!/bin/bash
 
+# C-10 postmortem (2026-07-09) — serialize boot prep across overlapping
+# container boots. Railway's restart policy can start boot N+1 while boot N
+# is still seeding; seed_staging's clean+re-seed then races the previous
+# boot's seed_dispatch_demo (witnessed: cemetery rows replaced between a
+# query and its dependent INSERT → FK violation → self-sustaining crash
+# loop). The wrapper holds a Postgres advisory lock for the PREP phase only
+# (migrations + seeds); uvicorn starts after the lock releases, so serving
+# is never serialized. See scripts/with_boot_lock.py.
+if [ -z "${BRIDGEABLE_BOOT_PREP_LOCKED:-}" ]; then
+    export BRIDGEABLE_BOOT_PREP_LOCKED=1
+    if ! python -m scripts.with_boot_lock bash "$0" "$@"; then
+        echo "✗ boot prep FAILED under lock — deploy aborted."
+        exit 1
+    fi
+    echo ""
+    echo "Starting server..."
+    exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+fi
+# From here down we are the LOCKED child: prep only, no server.
+
 echo "=== Railway Startup ==="
 echo "Current alembic revision:"
 alembic current 2>&1 || echo "(could not read current revision)"
@@ -140,6 +160,6 @@ echo ""
 echo "Running canonical platform seeds (D-1)..."
 bash "$(dirname "$0")/scripts/run_canonical_seeds.sh"
 
-echo ""
-echo "Starting server..."
-exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Prep complete — return to the wrapper, which releases the boot lock and
+# execs uvicorn (see the guard at the top of this file).
+exit 0
