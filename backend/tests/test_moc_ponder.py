@@ -378,3 +378,17 @@ class TestArtifactAndAudience:
             assert "PONDER-LIVE-PIN" not in before
         finally:
             db.rollback()
+
+
+class TestFailureBeatExhibit:
+    def test_failure_beat_carries_the_decision_triage_focus(self, db):
+        task, _, _ = _mk_fixture(db)
+        script = build_ponder_script(db, task.id)
+        failure = [b for b in script["beats"] if b["key"] == "downstream:failure"][0]
+        art = failure.get("artifact")
+        if art is None:
+            import pytest as _pytest
+            _pytest.skip("decision-triage template absent on this DB")
+        assert art["type"] == "focus"
+        assert art["template_slug"] == "decision-triage"
+        assert art["display_name"] == "Decision Triage"

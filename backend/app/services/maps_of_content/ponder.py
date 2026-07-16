@@ -268,6 +268,43 @@ def _document_artifact(db: Session, runtime_id: str | None, node: dict) -> dict 
     }
 
 
+def _focus_artifact(db: Session, template_slug: str, vertical: str | None,
+                    display_name: str | None = None) -> dict | None:
+    """Resolve a focus (pin-honoring, lineage-live) → the miniature payload.
+    Unresolvable → None (a missing preview beats a lying one)."""
+    from app.services.focus_template_inheritance.resolver import (
+        FocusTemplateNotFound, resolve_focus,
+    )
+
+    try:
+        resolved = resolve_focus(db, template_slug=template_slug, vertical=vertical)
+    except FocusTemplateNotFound:
+        return None
+    rows_schematic = [
+        {
+            "placements": [
+                {"label": (p.get("component") or {}).get("name")
+                 or p.get("component_name") or p.get("label") or "widget"}
+                for p in (row.get("placements") or [])
+            ]
+        }
+        for row in (resolved.rows or [])
+    ]
+    chrome_title = None
+    if resolved.resolved_chrome:
+        chrome_title = resolved.resolved_chrome.get("title")
+    return {
+        "type": "focus",
+        "template_slug": resolved.template_slug,
+        "display_name": display_name or resolved.template_slug.replace("-", " ").title(),
+        "core_slug": resolved.core_slug,
+        "core_version": resolved.core_version,
+        "template_version": resolved.template_version,
+        "chrome_title": chrome_title,
+        "rows": rows_schematic,
+    }
+
+
 def _focus_beats(db: Session, task: MoCTaskCatalog) -> list[dict[str, Any]]:
     """The task's attached focuses → focus beats with a miniature payload
     derived from the RESOLVED composition (pin-honoring, lineage-live) —
@@ -544,6 +581,10 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
         "downstream:failure", "downstream", _FAILURE_BEAT_TEXT,
         queue_id="workflow_review_triage", queue_label="Decision Triage",
         motif={"kind": "failure", "label": "Decision Triage"},
+        # The queue's bound Focus (the frontend registry binds decision-triage
+        # → workflow_review_triage) — the beat SHOWS where failures land. The
+        # template is vertical-scoped; resolve in the task's vertical.
+        artifact=_focus_artifact(db, "decision-triage", task.vertical, "Decision Triage"),
     )
 
     # GARNISH
