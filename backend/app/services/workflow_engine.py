@@ -501,6 +501,20 @@ def _drive_run(db: Session, run: WorkflowRun, dry_run: bool = False) -> None:
     current_user = db.query(User).filter(User.id == run.triggered_by_user_id).first() if run.triggered_by_user_id else None
     current_company = db.query(Company).filter(Company.id == run.company_id).first()
 
+    # Tenant Ponder-Editor P1 — the param seam. Load the workflow's LIVE
+    # step-param overlays once per drive (explicitly-set values only; the
+    # parity rule — see services/workflows/step_params.py). An INVALID
+    # stored value fails the run LOUDLY here (H1 escalation routes it)
+    # rather than silently falling back to the un-overridden config.
+    from app.services.workflows.step_params import (
+        StepParamValidationError, live_param_overlays,
+    )
+    try:
+        param_overlays = live_param_overlays(db, run.workflow_id, run.company_id)
+    except StepParamValidationError as e:
+        _fail_run(db, run, f"Step-param override invalid: {e}")
+        return
+
     max_iterations = 50
     iteration = 0
     # Phase R-6.0 — track the previous step's key so the canonical
@@ -513,6 +527,7 @@ def _drive_run(db: Session, run: WorkflowRun, dry_run: bool = False) -> None:
         result = _execute_step(
             db, run, current, outputs_by_key, current_user, current_company,
             previous_step_key=previous_step_key, dry_run=dry_run,
+            param_overlays=param_overlays,
         )
         if result.get("pause"):
             # Awaiting input — record paused step, return
@@ -618,6 +633,7 @@ def _execute_step(
     *,
     previous_step_key: str | None = None,
     dry_run: bool = False,
+    param_overlays: dict | None = None,
 ) -> dict:
     """Execute one step. Returns dict with pause / output / condition_result.
 
@@ -649,10 +665,20 @@ def _execute_step(
             db.commit()
             return {"pause": True, "prompt": step.config}
 
+        # Tenant Ponder-Editor P1 — merge the step's LIVE param overlay into
+        # its config BEFORE variable resolution (overlay values may hold
+        # {refs}). merge_overlay returns the SAME config object when the
+        # step has no overlay — the byte-parity guarantee for un-overridden
+        # workflows (pinned in tests/test_step_param_seam.py).
+        from app.services.workflows.step_params import merge_overlay
+        base_config = merge_overlay(
+            step.config, (param_overlays or {}).get(step.step_key)
+        )
+
         # Resolve variables in the step config (READ-only — happens in both modes
         # so the run reflects real resolved shape).
         resolved_config = resolve_variables(
-            step.config, run, outputs_by_key, current_user, current_company,
+            base_config, run, outputs_by_key, current_user, current_company,
             previous_step_key=previous_step_key,
         )
 

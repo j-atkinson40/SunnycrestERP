@@ -93,43 +93,15 @@ def _tenant_verticals(db: Session, company_id: str) -> list[str]:
 
 
 def _load_step_params(db: Session, workflow_id: str, company_id: str) -> list[dict]:
-    """Return merged platform defaults + tenant overrides for a workflow's params."""
-    defaults = (
-        db.query(WorkflowStepParam)
-        .filter(
-            WorkflowStepParam.workflow_id == workflow_id,
-            WorkflowStepParam.company_id.is_(None),
-        )
-        .all()
-    )
-    overrides = {
-        (p.step_key, p.param_key): p
-        for p in db.query(WorkflowStepParam)
-        .filter(
-            WorkflowStepParam.workflow_id == workflow_id,
-            WorkflowStepParam.company_id == company_id,
-        )
-        .all()
-    }
-    out = []
-    for p in defaults:
-        override = overrides.get((p.step_key, p.param_key))
-        out.append({
-            "step_key": p.step_key,
-            "param_key": p.param_key,
-            "label": p.label,
-            "description": p.description,
-            "param_type": p.param_type,
-            "default_value": p.default_value,
-            "current_value": override.current_value if override else None,
-            "effective_value": (
-                override.current_value if override and override.current_value is not None
-                else p.default_value
-            ),
-            "is_configurable": p.is_configurable,
-            "validation": p.validation,
-        })
-    return out
+    """Return merged platform defaults + tenant overrides for a workflow's params.
+
+    Tenant Ponder-Editor P1: delegates to the ONE resolution path
+    (`services/workflows/step_params.describe_step_params`) — the same
+    effective values the engine merges at fire time and the ponder
+    derivation shows. One path, not three."""
+    from app.services.workflows.step_params import describe_step_params
+
+    return describe_step_params(db, workflow_id, company_id)
 
 
 def _serialize_run(run: WorkflowRun, steps: list[WorkflowRunStep]) -> dict:
@@ -997,6 +969,22 @@ def set_param_override(
         raise HTTPException(status_code=404, detail="Param not found")
     if not default.is_configurable:
         raise HTTPException(status_code=400, detail="Param is not configurable")
+
+    # P1 engine seam: this value now MERGES INTO STEP CONFIG AT FIRE TIME —
+    # validate at the boundary so a bad value is rejected loudly here rather
+    # than failing the run later.
+    from app.services.workflows.step_params import (
+        StepParamValidationError, validate_param_value,
+    )
+    try:
+        validate_param_value(
+            param_type=default.param_type,
+            validation=default.validation,
+            value=data.current_value,
+            label=f"{step_key}.{param_key}",
+        )
+    except StepParamValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     override = (
         db.query(WorkflowStepParam)
