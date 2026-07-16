@@ -20,7 +20,7 @@
  */
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowUpRight, Clock, Pencil, Plus, Trash2, type LucideIcon } from "lucide-react"
+import { ArrowUpRight, Clock, Pencil, Play, Plus, Trash2, type LucideIcon } from "lucide-react"
 import { FileText, Receipt, Sparkles } from "lucide-react"
 
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
@@ -39,6 +39,7 @@ import {
 import { VocabCell } from "./task-editing/VocabCell"
 import { TaskEditorPanel, errMsg } from "./task-editing/TaskEditorPanel"
 import { TriggerChips } from "./task-editing/TriggerChips"
+import { PonderOverlay } from "./PonderOverlay"
 
 const TASK_ICONS: Record<string, LucideIcon> = {
   receipt: Receipt,
@@ -91,6 +92,7 @@ export function MoCTaskTable({
 }: MoCTaskTableProps) {
   const [error, setError] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
+  const [ponderTaskId, setPonderTaskId] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState<MoCTask | null>(null)
 
   function openCreate() {
@@ -158,12 +160,17 @@ export function MoCTaskTable({
                   onChanged={onChanged}
                   onError={setError}
                   onEdit={() => openEdit(task)}
+                  onPonder={task.workflow ? () => setPonderTaskId(task.id) : undefined}
                 />
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {ponderTaskId ? (
+        <PonderOverlay taskId={ponderTaskId} onClose={() => setPonderTaskId(null)} />
+      ) : null}
 
       <TaskEditorPanel
         isOpen={panelOpen}
@@ -174,13 +181,18 @@ export function MoCTaskTable({
         task={editingTask}
         onSaved={onChanged}
         onError={setError}
+        onPonder={
+          editingTask?.workflow
+            ? () => { setPanelOpen(false); setPonderTaskId(editingTask.id) }
+            : undefined
+        }
       />
     </section>
   )
 }
 
 function TaskRow({
-  task, vertical, tenantLabel, onChanged, onError, onEdit,
+  task, vertical, tenantLabel, onChanged, onError, onEdit, onPonder,
 }: {
   task: MoCTask
   vertical: string
@@ -190,6 +202,9 @@ function TaskRow({
   onChanged: () => void
   onError: (msg: string) => void
   onEdit: () => void
+  /** The ponder affordance — present only when the task has a workflow.
+   * On the ROW (hover-quiet), per the investigation: never the family icon. */
+  onPonder?: () => void
 }) {
   const TaskIcon = (task.icon && TASK_ICONS[task.icon]) || FileText
   const wfHref = task.workflow ? artifactHref("workflows", task.workflow) : null
@@ -227,9 +242,21 @@ function TaskRow({
     >
       {/* Task */}
       <td className="px-3 py-2">
-        <span className="flex items-center gap-2 font-medium text-content-base">
+        <span className="group flex items-center gap-2 font-medium text-content-base">
           <Icon icon={TaskIcon} size={15} className="text-content-muted" />
           {task.name}
+          {onPonder ? (
+            <button
+              type="button"
+              onClick={onPonder}
+              aria-label={`How ${task.name} works`}
+              title="How this works"
+              className="focus-ring-accent rounded p-0.5 text-content-subtle opacity-0 transition-opacity duration-quick hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
+              data-testid={`moc-task-ponder-${task.id}`}
+            >
+              <Play size={13} />
+            </button>
+          ) : null}
           {tenantLabel ? (
             <span
               className="inline-flex items-center rounded-full bg-accent-subtle px-1.5 py-0.5 text-caption font-medium text-accent"

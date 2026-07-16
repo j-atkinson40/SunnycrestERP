@@ -659,3 +659,49 @@ export async function patchPlanning(
 export async function deletePlanning(id: string): Promise<void> {
   await adminApi.delete(`${BASE}/planning/${id}`)
 }
+
+// ── The Ponder (P1) — the derived walkthrough script + caption authoring ────
+
+export type PonderBeatKind = "when" | "step" | "pause" | "downstream" | "garnish"
+
+export interface PonderBeat {
+  key: string
+  kind: PonderBeatKind
+  /** What the overlay renders — authored if present, else derived. */
+  text: string
+  derived_text: string
+  authored: boolean
+  label?: string
+  node_type?: string
+  queue_id?: string
+  queue_label?: string
+  headline?: string
+  detail?: string | null
+  as_of?: string | null
+}
+
+export interface PonderScript {
+  task_id: string
+  task_name: string
+  workflow_name: string
+  beats: PonderBeat[]
+  orphaned_captions: Record<string, string>
+  mirror_drift: string[]
+}
+
+export async function getPonderScript(taskId: string): Promise<PonderScript> {
+  const { data } = await adminApi.get<PonderScript>(`${BASE}/ponder/${taskId}`)
+  return data
+}
+
+export async function savePonderCaption(
+  taskId: string,
+  beatKey: string,
+  text: string | null,
+): Promise<Record<string, string>> {
+  const { data } = await adminApi.patch<{ captions: Record<string, string> }>(
+    `${BASE}/ponder/${taskId}/captions`,
+    { beat_key: beatKey, text },
+  )
+  return data.captions
+}
