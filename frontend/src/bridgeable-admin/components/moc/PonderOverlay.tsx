@@ -270,7 +270,7 @@ export function PonderOverlay({
               </svg>
             ) : null}
 
-            <div className="flex items-start gap-5">
+            <div className={`flex items-start gap-5 ${beat.artifact ? "justify-center text-center" : ""}`}>
               <div
                 className={`mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${beat.kind === "pause" && !reduced ? "ponder-breathe" : ""}`}
                 style={{
@@ -281,8 +281,8 @@ export function PonderOverlay({
               >
                 <Glyph size={22} strokeWidth={1.6} />
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="mb-1 flex items-center gap-2 text-caption uppercase tracking-wide" style={{ color: STAGE.faint }}>
+              <div className={beat.artifact ? "min-w-0 max-w-lg" : "min-w-0 flex-1"}>
+                <p className={`mb-1 flex items-center gap-2 text-caption uppercase tracking-wide ${beat.artifact ? "justify-center" : ""}`} style={{ color: STAGE.faint }}>
                   {KIND_EYEBROW[beat.kind]}
                   {stepPosition ? (
                     <span>· step {stepPosition} of {stepBeats.length}</span>
@@ -306,7 +306,7 @@ export function PonderOverlay({
                 ) : null}
 
                 {beat.kind !== "pause" ? (
-                  <div className="mt-2">
+                  <div className={`mt-2 ${beat.artifact ? "flex justify-center" : ""}`}>
                     <MotifScene motif={beat.motif} reduced={reduced} />
                   </div>
                 ) : null}
