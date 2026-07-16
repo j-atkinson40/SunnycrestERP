@@ -26,7 +26,7 @@ from scripts.seed_moc_backfill_workflow_mirrors import (
     seed,
 )
 
-TOTAL = 27  # 12 mfg + 9 fh + 6 core
+TOTAL = 28  # Ponder P0: +mirror_cash_receipts_matching  # 12 mfg + 9 fh + 6 core
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def db():
 def test_set_is_exactly_27():
     assert len(_MANUFACTURING) == 12
     assert len(_FUNERAL_HOME) == 9      # the triaged bring-in set; shells excluded
-    assert len(_CORE) == 6
+    assert len(_CORE) == 7  # +Cash Receipts Matching (Ponder P0 — the audit's B-1 gap)
     assert len(TARGETS) == TOTAL
 
 

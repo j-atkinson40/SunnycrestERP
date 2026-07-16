@@ -70,6 +70,9 @@ _FUNERAL_HOME = [
 _CORE = [
     "Month-End Close", "AR Collections", "Compliance Sync",
     "Monthly Statement Run", "Expense Categorization", "Training Expiry Monitor",
+    # Ponder P0 — the fifth accounting artifact joins the mirrored set (it was
+    # the audit's B-1 gap: no mirror = no step beats for its ponder).
+    "Cash Receipts Matching",
 ]
 # (name, runtime_scope, template_scope, template_vertical, task_vertical)
 # task_vertical: where the thin task row lands (each vertical's own map).

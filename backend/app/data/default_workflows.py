@@ -1430,6 +1430,13 @@ TIER_1_WORKFLOWS.extend([
                 "step_key": "run_matching",
                 "step_type": "action",
                 "config": {
+                    # Ponder P0 — inert at execution (call_service_method
+                    # reads method_name/kwargs only); the mirror carries it
+                    # as the step beat's derived caption.
+                    "description": (
+                        "Match incoming payments to open invoices — apply "
+                        "the confident ones, stage the rest for review"
+                    ),
                     "action_type": "call_service_method",
                     "method_name": "cash_receipts.run_match_pipeline",
                     "kwargs": {
