@@ -18,7 +18,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  Clock, FileText, GitBranch, Map as MapIcon, Play, Radio, Sparkles, Zap,
+  ChevronLeft, ChevronRight, Clock, FileText, GitBranch, Map as MapIcon,
+  Play, Radio, Sparkles, Zap,
 } from "lucide-react"
 
 import { useAuth } from "@/contexts/auth-context"
@@ -188,6 +189,17 @@ export default function BridgeableMapPage() {
     [tasks, group],
   )
 
+  // Pages, not a wall: 10 tasks at a time, chevrons underneath. The page
+  // clamps when the filter shrinks the list; switching tabs starts at 1.
+  const PAGE_SIZE = 10
+  const [page, setPage] = useState(0)
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const paged = useMemo(
+    () => visible.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE),
+    [visible, safePage],
+  )
+
   const ponder = useCallback((task: MapTask) => setPonderTaskId(task.id), [])
   const [offerFor, setOfferFor] = useState<MapTask | null>(null)
   const openOffer = useCallback((task: MapTask) => setOfferFor(task), [])
@@ -242,7 +254,7 @@ export default function BridgeableMapPage() {
               <div className="flex gap-1" role="tablist">
                 <button
                   type="button" role="tab" aria-selected={group === null}
-                  onClick={() => setGroup(null)}
+                  onClick={() => { setGroup(null); setPage(0) }}
                   className={`rounded-md px-2.5 py-1 text-body-sm ${group === null ? "bg-accent-subtle font-medium text-accent" : "text-content-muted hover:bg-surface-sunken"}`}
                 >
                   All <span className="text-caption text-content-subtle">{tasks.length}</span>
@@ -250,7 +262,7 @@ export default function BridgeableMapPage() {
                 {groups.map(([g, n]) => (
                   <button
                     key={g} type="button" role="tab" aria-selected={group === g}
-                    onClick={() => setGroup(group === g ? null : g)}
+                    onClick={() => { setGroup(group === g ? null : g); setPage(0) }}
                     className={`rounded-md px-2.5 py-1 text-body-sm capitalize ${group === g ? "bg-accent-subtle font-medium text-accent" : "text-content-muted hover:bg-surface-sunken"}`}
                     data-testid={`map-group-${g}`}
                   >
@@ -279,12 +291,43 @@ export default function BridgeableMapPage() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((t) => (
+                {paged.map((t) => (
                   <TaskRow key={t.id} task={t} onPonder={ponder} onOpenOffer={openOffer} />
                 ))}
               </tbody>
             </table>
           )}
+          {pageCount > 1 ? (
+            <div
+              className="flex items-center justify-center gap-3 border-t border-border-subtle px-4 py-2.5"
+              data-testid="map-pager"
+            >
+              <button
+                type="button"
+                onClick={() => setPage(Math.max(0, safePage - 1))}
+                disabled={safePage === 0}
+                aria-label="Previous page"
+                className="focus-ring-accent rounded-md p-1.5 text-content-muted hover:bg-surface-sunken disabled:opacity-30"
+                data-testid="map-pager-prev"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-caption text-content-subtle" data-testid="map-pager-label">
+                Page {safePage + 1} of {pageCount}
+                <span className="ml-1.5">· {visible.length} tasks</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(Math.min(pageCount - 1, safePage + 1))}
+                disabled={safePage >= pageCount - 1}
+                aria-label="Next page"
+                className="focus-ring-accent rounded-md p-1.5 text-content-muted hover:bg-surface-sunken disabled:opacity-30"
+                data-testid="map-pager-next"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          ) : null}
         </section>
 
         {/* THE ROOM — coming sections read as room, not shrug. */}
