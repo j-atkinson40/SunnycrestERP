@@ -319,6 +319,64 @@ def admin_save_ponder_caption(
     return {"captions": captions}
 
 
+class _SetWorkflowParam(BaseModel):
+    value: Any = None
+
+
+@router.put("/ponder/workflows/{workflow_id}/params/{step_key}/{param_key}")
+def admin_set_workflow_param(
+    workflow_id: str,
+    step_key: str,
+    param_key: str,
+    body: _SetWorkflowParam,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Tenant Ponder-Editor P1 — set (or clear, value=null) the PLATFORM-level
+    live value of a declared step param. Writes `current_value` on the
+    company_id-NULL row: the engine seam merges it into step config at fire
+    time for every tenant without their own override; the ponder derivation
+    reflects it immediately (one resolution path). Only DECLARED,
+    is_configurable params accept a value; validation failures are LOUD
+    (400 with the named reason — never a silent fallback)."""
+    from app.models.workflow import WorkflowStepParam
+    from app.services.workflows.step_params import (
+        StepParamValidationError, validate_param_value,
+    )
+
+    row = (
+        db.query(WorkflowStepParam)
+        .filter(
+            WorkflowStepParam.workflow_id == workflow_id,
+            WorkflowStepParam.step_key == step_key,
+            WorkflowStepParam.param_key == param_key,
+            WorkflowStepParam.company_id.is_(None),
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Param not declared on this step")
+    if not row.is_configurable:
+        raise HTTPException(status_code=400, detail="Param is not configurable")
+    try:
+        validate_param_value(
+            param_type=row.param_type, validation=row.validation,
+            value=body.value, label=f"{step_key}.{param_key}",
+        )
+    except StepParamValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    row.current_value = body.value
+    db.commit()
+    return {
+        "saved": True,
+        "platform_value": row.current_value,
+        "effective_value": (
+            row.current_value if row.current_value is not None else row.default_value
+        ),
+        "live": row.current_value is not None,
+    }
+
+
 class _CreatePlanningItem(BaseModel):
     scope: Literal["platform_default", "vertical_default"] = "vertical_default"
     vertical: str | None = None

@@ -34,6 +34,9 @@ import {
 } from "@/bridgeable-admin/services/moc-service"
 import { MotifScene } from "./ponder-motifs"
 import { ArtifactPreview, AudienceLine } from "./PonderArtifacts"
+import { LiveEditConfirm, useLiveEditGate } from "./LiveEditConfirm"
+import { PonderParamFields } from "./PonderParamFields"
+import { PonderTriggerEditor } from "./PonderTriggerEditor"
 
 const BEAT_HOLD_MS = 4500
 
@@ -92,6 +95,9 @@ export function PonderOverlay({
   const [saving, setSaving] = useState(false)
   const reduced = usePrefersReducedMotion()
   const timerRef = useRef<number | null>(null)
+  // The live-edit gravity: one confirm gate, all editors. Dry-run tasks
+  // pass straight through (no dialog).
+  const { confirmGate, pending, settle } = useLiveEditGate(script?.is_live)
 
   useEffect(() => {
     getPonderScript(taskId)
@@ -355,6 +361,31 @@ export function PonderOverlay({
                 ) : null}
 
                 <AudienceLine audience={beat.audience} />
+
+                {/* Tenant Ponder-Editor P1 — the WHEN beat's trigger editor.
+                    Editing happens where the teaching lives; on save the
+                    script refetches and the beat visibly re-derives. */}
+                {editMode && beat.kind === "when" && beat.editable && script ? (
+                  <PonderTriggerEditor
+                    taskId={script.task_id}
+                    vertical={script.vertical}
+                    triggers={beat.triggers ?? []}
+                    onSaved={async () => setScript(await getPonderScript(script.task_id))}
+                    confirmGate={confirmGate}
+                  />
+                ) : null}
+
+                {/* Step beats: the declared params as fields (email settings,
+                    audience roles, thresholds) — write-what-you-read; the
+                    beat re-derives on save. */}
+                {editMode && beat.kind === "step" && beat.params && script?.workflow_id ? (
+                  <PonderParamFields
+                    workflowId={script.workflow_id}
+                    params={beat.params}
+                    onSaved={async () => setScript(await getPonderScript(script.task_id))}
+                    confirmGate={confirmGate}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
@@ -436,6 +467,13 @@ export function PonderOverlay({
           )}
         </div>
       </div>
+
+      {/* The live-edit confirm — evidence before a live task's settings change */}
+      <LiveEditConfirm
+        taskName={script?.task_name ?? "this task"}
+        pending={pending}
+        onSettle={settle}
+      />
 
       {/* Drift honesty — edit mode only (a content bug for the author, not the viewer) */}
       {editMode && script && script.mirror_drift.length > 0 ? (
