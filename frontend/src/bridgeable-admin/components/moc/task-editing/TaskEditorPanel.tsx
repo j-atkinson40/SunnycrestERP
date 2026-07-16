@@ -8,7 +8,7 @@
  * deep-links. Submit POSTs/PATCHes via 2a's API; delete removes the task.
  */
 import { useEffect, useState } from "react"
-import { Check, Plus, Trash2 } from "lucide-react"
+import { Check, Play, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -108,7 +108,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function TaskEditorPanel({
-  isOpen, onClose, vertical, platformScope = false, activeTenant = null, task, onSaved, onError,
+  isOpen, onClose, vertical, platformScope = false, activeTenant = null, task, onSaved, onError, onPonder,
 }: {
   isOpen: boolean
   onClose: () => void
@@ -123,6 +123,9 @@ export function TaskEditorPanel({
   activeTenant?: { id: string; slug: string; name: string } | null
   /** null = create mode. */
   task: MoCTask | null
+  /** The ponder affordance (P1) — the second surface per the investigation.
+   * Present only when editing a task that has a workflow to walk through. */
+  onPonder?: () => void
   onSaved: () => void
   onError: (msg: string) => void
 }) {
@@ -268,12 +271,20 @@ export function TaskEditorPanel({
       }
       footer={
         <div className="flex items-center justify-between">
-          {editing ? (
-            <Button variant="ghost" onClick={remove} disabled={saving}
-              className="text-status-error hover:bg-status-error-muted">
-              <Trash2 size={15} /> Delete
-            </Button>
-          ) : <span />}
+          <div className="flex items-center gap-1">
+            {editing ? (
+              <Button variant="ghost" onClick={remove} disabled={saving}
+                className="text-status-error hover:bg-status-error-muted">
+                <Trash2 size={15} /> Delete
+              </Button>
+            ) : null}
+            {editing && onPonder ? (
+              <Button variant="ghost" onClick={onPonder} disabled={saving}
+                data-testid="task-panel-ponder">
+                <Play size={15} /> How this works
+              </Button>
+            ) : null}
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button onClick={save} disabled={saving} data-testid="task-panel-save">
