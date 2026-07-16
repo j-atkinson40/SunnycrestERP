@@ -250,6 +250,15 @@ export function PonderOverlay({
             className={`w-full max-w-2xl ${reduced ? "ponder-beat-enter-reduced" : "ponder-beat-enter"}`}
             data-testid={`ponder-beat-${beat.key}`}
           >
+            {/* Ponder Enrichment — the artifact ABOVE everything: the real
+                document/focus floats on top; the beloved beat block below,
+                exactly as it always was, nudged a little lower. */}
+            {beat.artifact ? (
+              <div className="mb-8 flex justify-center">
+                <ArtifactPreview artifact={beat.artifact} />
+              </div>
+            ) : null}
+
             {/* Connector line-draw (skipped under reduced motion) */}
             {!reduced && (beat.kind === "step" || beat.kind === "pause") && index > 1 ? (
               <svg width="2" height="48" className="mx-auto mb-2 block" aria-hidden>
@@ -295,11 +304,6 @@ export function PonderOverlay({
                     {beat.label}
                   </p>
                 ) : null}
-
-                {/* Ponder Enrichment: the real artifact FIRST — the
-                    centerpiece, directly under the label; the motif and the
-                    description follow, untouched. */}
-                <ArtifactPreview artifact={beat.artifact} />
 
                 {beat.kind !== "pause" ? (
                   <div className="mt-2">
