@@ -400,16 +400,21 @@ function TaskRow({
       {/* Task */}
       <td className="px-3 py-2">
         <span
-          className="group flex items-center gap-2 font-medium text-content-base"
+          className="group relative flex items-center gap-2 font-medium text-content-base"
           {...(onPonder ? hold.hoverProps : {})}
         >
           <Icon icon={TaskIcon} size={15} className="text-content-muted" />
           {task.name}
           {onPonder && hold.hovered ? (
+            /* Floats OUT of layout flow (absolute off the name's right edge)
+               so the hint never wraps text or grows the row — a tooltip-like
+               whisper, not a cell citizen. */
             <span
-              className="inline-flex items-center gap-1.5 rounded-full bg-surface-sunken px-2 py-0.5 text-caption text-content-subtle"
+              className="pointer-events-none absolute left-full top-1/2 z-10 ml-2 inline-flex -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border-subtle bg-surface-raised px-2 py-0.5 text-caption text-content-subtle shadow-level-1"
+              style={{ animation: "ponder-hint-in var(--duration-quick, 150ms) var(--ease-settle, cubic-bezier(0.2,0,0.1,1)) both" }}
               data-testid={`moc-task-hold-hint-${task.id}`}
             >
+              <style>{`@keyframes ponder-hint-in { from { opacity: 0; transform: translate(-3px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }`}</style>
               <HoldRing holding={hold.holding} reduced={hold.reduced} />
               Hold <kbd className="rounded border border-border-subtle px-1 font-mono text-micro">P</kbd> to ponder
             </span>
