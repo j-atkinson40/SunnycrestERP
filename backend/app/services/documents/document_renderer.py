@@ -522,6 +522,21 @@ def render_html(
     return _render_non_pdf(db, template_key, context, company_id, "html")
 
 
+def render_preview_html(
+    db: Session | None,
+    *,
+    template_key: str,
+    context: dict[str, Any],
+    company_id: str | None = None,
+) -> str:
+    """Ponder Enrichment — the smallest honest preview: the template's REAL
+    body rendered to HTML with a sample context. NO persistence, NO delivery,
+    NO PDF stage (a PDF template's body IS HTML — WeasyPrint is only its
+    print step). Raises on a missing template — a missing preview beats a
+    lying one, and the caller decides how to degrade."""
+    return _render_non_pdf(db, template_key, context, company_id, "html").rendered_content
+
+
 def render_text(
     db: Session | None,
     *,

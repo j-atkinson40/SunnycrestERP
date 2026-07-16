@@ -218,6 +218,70 @@ def admin_delete_task(
 # ── The Ponder (P1) — the derived walkthrough script + caption authoring ────
 
 
+_PREVIEW_SAMPLE_CONTEXT = {
+    # Mirrors the Studio Documents editor's default sample shape; a version's
+    # own sample_context (when authored) overlays this.
+    "company_name": "Sunnycrest Precast",
+    "company_logo_url": "",
+    "document_title": "Preview",
+    "document_date": "2026-06-01",
+    "customer_name": "Hopkins Funeral Home",
+    "customer_address": "123 Genesee St, Auburn, NY",
+    "invoice_number": "INV-2026-0147",
+    "statement_number": "ST-2026-06",
+    "period_start": "2026-06-01",
+    "period_end": "2026-06-30",
+    "previous_balance": "$1,250.00",
+    "new_charges": "$3,400.00",
+    "payments_received": "$1,250.00",
+    "balance_due": "$3,400.00",
+    "items": [
+        {"description": "Monticello vault", "quantity": 1,
+         "unit_price": "$1,700.00", "line_total": "$1,700.00"},
+        {"description": "Graveside setup", "quantity": 1,
+         "unit_price": "$1,700.00", "line_total": "$1,700.00"},
+    ],
+    "subtotal": "$3,400.00", "tax": "$0.00", "total": "$3,400.00",
+}
+
+
+@router.get("/ponder/document-preview")
+def admin_ponder_document_preview(
+    template_key: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Lazy live-render of a template's REAL body for the ponder's document
+    beat (Ponder Enrichment). Resolved at request time — never cached stale;
+    a template edit in Studio reflects on the next open."""
+    from app.models.document_template import DocumentTemplate, DocumentTemplateVersion
+    from app.services.documents import document_renderer
+
+    tpl = (
+        db.query(DocumentTemplate)
+        .filter(
+            DocumentTemplate.template_key == template_key,
+            DocumentTemplate.company_id.is_(None),
+            DocumentTemplate.is_active.is_(True),
+        )
+        .first()
+    )
+    if tpl is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    context = dict(_PREVIEW_SAMPLE_CONTEXT)
+    if tpl.current_version_id:
+        v = db.get(DocumentTemplateVersion, tpl.current_version_id)
+        if v is not None and isinstance(v.sample_context, dict):
+            context.update(v.sample_context)
+    try:
+        html = document_renderer.render_preview_html(
+            db, template_key=template_key, context=context
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Preview render failed: {e}")
+    return {"template_key": template_key, "html": html}
+
+
 class _SaveCaption(BaseModel):
     beat_key: str
     text: str | None = None  # None/blank clears → derived fallback returns

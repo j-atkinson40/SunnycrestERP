@@ -217,6 +217,162 @@ def _garnish(db: Session, workflow: Workflow) -> dict | None:
     return None
 
 
+# ── Artifact previews + audience attribution (Ponder Enrichment) ────────────
+# DOCUMENT_REGISTRY: like QUEUE_REGISTRY, an AUTHORED map that mirrors real
+# adapter behavior — the accounting adapters render documents by convention
+# (statement_pdf_service._resolve_template_key → statement.professional), not
+# via step config, so the ref isn't derivable from the canvas. Steps whose
+# config DOES carry a template ref (generate_document / send_document) derive
+# directly and never consult this map.
+DOCUMENT_REGISTRY: dict[tuple[str, str], str] = {
+    ("wf_sys_statement_run", "generate_statements"): "statement.professional",
+    ("wf_sys_statement_run", "send_statements"): "email.statement",
+    ("wf_sys_month_end_close", "statement_run"): "statement.professional",
+}
+
+
+def _document_artifact(db: Session, runtime_id: str | None, node: dict) -> dict | None:
+    """A step's document ref → the artifact-preview payload (type+identity).
+    The HTML itself renders lazily via the preview endpoint — never at
+    script-build time."""
+    cfg = node.get("config") or {}
+    template_key = cfg.get("template_key") or cfg.get("template")
+    if not template_key and runtime_id:
+        template_key = DOCUMENT_REGISTRY.get((runtime_id, node.get("id") or ""))
+    if not template_key:
+        return None
+    from app.models.document_template import DocumentTemplate, DocumentTemplateVersion
+
+    tpl = (
+        db.query(DocumentTemplate)
+        .filter(
+            DocumentTemplate.template_key == template_key,
+            DocumentTemplate.company_id.is_(None),
+            DocumentTemplate.is_active.is_(True),
+        )
+        .first()
+    )
+    if tpl is None:
+        return None  # a missing preview beats a lying one
+    version = None
+    if tpl.current_version_id:
+        v = db.get(DocumentTemplateVersion, tpl.current_version_id)
+        version = v.version_number if v else None
+    return {
+        "type": "document",
+        "template_key": template_key,
+        "label": template_key.split(".", 1)[-1].replace("_", " ").title(),
+        "document_type": tpl.document_type,
+        "version": version,
+        "authored_source": (node.get("config") or {}).get("template_key") is None,
+    }
+
+
+def _focus_beats(db: Session, task: MoCTaskCatalog) -> list[dict[str, Any]]:
+    """The task's attached focuses → focus beats with a miniature payload
+    derived from the RESOLVED composition (pin-honoring, lineage-live) —
+    never a generic picture. Unresolvable → skipped (missing beats lying)."""
+    from app.services.focus_template_inheritance.resolver import (
+        FocusTemplateNotFound, resolve_focus,
+    )
+    from app.models.focus_template import FocusTemplate
+
+    beats: list[dict[str, Any]] = []
+    for join in task.focuses:
+        tpl = db.get(FocusTemplate, join.focus_template_id)
+        if tpl is None:
+            # stale id — rebind by nothing here; the MoC resolver's rebind
+            # happens at card level. Skip honestly.
+            continue
+        try:
+            resolved = resolve_focus(
+                db, template_slug=tpl.template_slug, vertical=tpl.vertical
+            )
+        except FocusTemplateNotFound:
+            continue
+        rows_schematic = [
+            {
+                "placements": [
+                    {"label": (p.get("component") or {}).get("name")
+                     or p.get("component_name") or p.get("label") or "widget"}
+                    for p in (row.get("placements") or [])
+                ]
+            }
+            for row in (resolved.rows or [])
+        ]
+        chrome_title = None
+        if resolved.resolved_chrome:
+            chrome_title = resolved.resolved_chrome.get("title")
+        beats.append({
+            "kind": "focus",
+            "key": f"focus:{resolved.template_slug}",
+            "derived": (
+                f"The work happens in {tpl.display_name} — "
+                f"this task opens it ready to go."
+            ),
+            "artifact": {
+                "type": "focus",
+                "template_slug": resolved.template_slug,
+                "display_name": tpl.display_name,
+                "core_slug": resolved.core_slug,
+                "core_version": resolved.core_version,
+                "template_version": resolved.template_version,
+                "chrome_title": chrome_title,
+                "rows": rows_schematic,
+            },
+        })
+    return beats
+
+
+def _audience_for_queue(db: Session, queue_id: str) -> dict | None:
+    """Queue → who can act on it, from the REAL config (queue permissions +
+    the action palette's required_permission). Plus a capped live count."""
+    from app.services.triage.registry import _PLATFORM_CONFIGS
+    from app.services.triage import platform_defaults  # noqa: F401 — ensure registered
+
+    cfg = _PLATFORM_CONFIGS.get(queue_id)
+    if cfg is None:
+        return None
+    perm = None
+    for action in getattr(cfg, "action_palette", []) or []:
+        if getattr(action, "required_permission", None):
+            perm = action.required_permission
+            break
+    if perm is None:
+        perms = getattr(cfg, "permissions", None) or []
+        perm = perms[0] if perms else None
+    if perm is None:
+        return None
+    # Capped live count — users whose role grants the permission. Capped at
+    # 500 so the garnish never becomes a heavy scan (dev has fixture noise).
+    from sqlalchemy import text as _sql
+
+    n = db.execute(_sql(
+        "SELECT count(*) FROM ("
+        " SELECT u.id FROM users u"
+        " JOIN role_permissions rp ON rp.role_id = u.role_id"
+        " WHERE rp.permission_key = :perm AND u.is_active = true"
+        " LIMIT 501) x"
+    ), {"perm": perm}).scalar() or 0
+    return {
+        "text": f"anyone with the {perm} permission",
+        "permission": perm,
+        "count": min(n, 500),
+        "count_capped": n > 500,
+    }
+
+
+def _audience_for_step(db: Session, node: dict) -> dict | None:
+    """Notify-shaped steps whose config names roles → the roles, verbatim.
+    No honest audience in the config → None (never guess)."""
+    cfg = node.get("config") or {}
+    roles = cfg.get("roles") or cfg.get("notify_roles")
+    if isinstance(roles, list) and roles:
+        pretty = ", ".join(str(r).replace("_", " ") for r in roles)
+        return {"text": f"the {pretty} role" + ("s" if len(roles) > 1 else "")}
+    return None
+
+
 # ── The motif grammar (Ponder Polish Set 3) ─────────────────────────────────
 # Beat semantics → a scene HINT the overlay's motif library renders. Chosen
 # from step type + config words — never hand-illustrated per workflow. A step
@@ -349,17 +505,31 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
         )
         label = (node.get("label") or node["id"]).replace("_", " ")
         if node.get("type") == "input":
+            # The pause's audience = whoever can act on the workflow's
+            # review queue (the registry link → the queue's real config).
+            pause_audience = None
+            if runtime is not None and runtime.id in QUEUE_REGISTRY:
+                pause_audience = _audience_for_queue(
+                    db, QUEUE_REGISTRY[runtime.id]["queue_id"]
+                )
             _beat(
                 f"pause:{node['id']}", "pause", derived,
                 label=label, node_type=node.get("type"),
                 motif={"kind": "pause"},
+                audience=pause_audience,
             )
         else:
             _beat(
                 f"step:{node['id']}", "step", derived,
                 label=label, node_type=node.get("type") or "action",
                 motif=motif_for_step(node),
+                artifact=_document_artifact(db, runtime.id if runtime else None, node),
+                audience=_audience_for_step(db, node),
             )
+
+    # FOCUS beats — the task's attached focuses, resolved live (pin-honoring)
+    for fb in _focus_beats(db, task):
+        _beat(fb["key"], "focus", fb["derived"], artifact=fb["artifact"])
 
     # DOWNSTREAM — the business-exception queue (registry) + H1's failure truth
     reg = QUEUE_REGISTRY.get(runtime.id) if runtime is not None else None
@@ -368,6 +538,7 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
             "downstream:queue", "downstream", reg["note"],
             queue_id=reg["queue_id"], queue_label=reg["queue_label"],
             motif={"kind": "queue", "label": reg["queue_label"]},
+            audience=_audience_for_queue(db, reg["queue_id"]),
         )
     _beat(
         "downstream:failure", "downstream", _FAILURE_BEAT_TEXT,

@@ -252,3 +252,129 @@ class TestMotifGrammar:
         assert by_key["step:send_statements"]["motif"] == {"kind": "send", "entity": "statement"}
         assert by_key["step:identify_customers"].get("motif") is None  # typographic
         assert by_key["downstream:failure"]["motif"] == {"kind": "failure", "label": "Decision Triage"}
+
+
+class TestArtifactAndAudience:
+    """Ponder Enrichment — artifact previews + audience attribution."""
+
+    def test_document_artifact_derives_from_config_then_registry(self, db):
+        from app.services.maps_of_content.ponder import _document_artifact
+
+        # 1. config-carried template ref (derived)
+        art = _document_artifact(db, None, {
+            "id": "make_doc", "type": "action",
+            "config": {"action_type": "generate_document", "template_key": "statement.professional"},
+        })
+        assert art and art["type"] == "document"
+        assert art["template_key"] == "statement.professional"
+        assert art["version"] >= 1
+        # 2. the authored registry (mirrors real adapter behavior)
+        art2 = _document_artifact(db, "wf_sys_statement_run", {
+            "id": "generate_statements", "type": "action", "config": {}})
+        assert art2 and art2["template_key"] == "statement.professional"
+        assert art2["authored_source"] is True
+        # 3. no ref anywhere → None (a missing preview beats a lying one)
+        assert _document_artifact(db, "wf_not_registered", {
+            "id": "x", "type": "action", "config": {}}) is None
+        # 4. a ref to a template that doesn't exist → None
+        assert _document_artifact(db, None, {
+            "id": "x", "type": "action",
+            "config": {"template_key": "no.such.template"}}) is None
+
+    def test_audience_from_queue_and_step_config_and_honest_absence(self, db):
+        from app.services.maps_of_content.ponder import (
+            _audience_for_queue, _audience_for_step,
+        )
+
+        aud = _audience_for_queue(db, "month_end_close_triage")
+        assert aud and "invoice.approve" in aud["text"]
+        assert isinstance(aud["count"], int)
+        assert _audience_for_queue(db, "no_such_queue") is None
+
+        step_aud = _audience_for_step(db, {
+            "id": "notify", "config": {"roles": ["safety_trainer", "admin"]}})
+        assert step_aud and "safety trainer" in step_aud["text"]
+        assert _audience_for_step(db, {"id": "x", "config": {}}) is None
+
+    def test_beats_carry_artifacts_and_audience_on_the_registry_workflow(self, db):
+        # Build the fixture AS wf_sys_statement_run's shape via the registry id
+        # trick — a fresh runtime with the registry's exact id would collide
+        # with the seeded row, so pin through the seeded task instead when
+        # present; else skip gracefully (hermetic-first, seeded-second).
+        from app.models.moc_task_catalog import MoCTaskCatalog
+
+        task = (
+            db.query(MoCTaskCatalog)
+            .filter(MoCTaskCatalog.name == "Monthly Statement Run",
+                    MoCTaskCatalog.vertical == "manufacturing",
+                    MoCTaskCatalog.is_active.is_(True))
+            .first()
+        )
+        if task is None or not task.workflow_template_id:
+            import pytest as _pytest
+            _pytest.skip("seeded Statement Run task absent on this DB")
+        script = build_ponder_script(db, task.id)
+        by_key = {b["key"]: b for b in script["beats"]}
+        gen = by_key["step:generate_statements"]
+        assert gen["artifact"]["template_key"] == "statement.professional"
+        pause = by_key["pause:approval_gate"]
+        assert pause["audience"] and "invoice.approve" in pause["audience"]["text"]
+        q = by_key["downstream:queue"]
+        assert q["audience"] and "invoice.approve" in q["audience"]["text"]
+        assert by_key["when"].get("audience") is None  # never a guessed line
+
+    def test_focus_beat_from_attached_focus_resolved_live(self, db):
+        from app.models.focus_template import FocusTemplate
+        from app.models.moc_task_catalog import MoCTaskCatalogFocus
+
+        tpl = (
+            db.query(FocusTemplate)
+            .filter(FocusTemplate.is_active.is_(True),
+                    FocusTemplate.template_slug == "decision-triage")
+            .first()
+        )
+        if tpl is None:
+            import pytest as _pytest
+            _pytest.skip("decision-triage template absent on this DB")
+        task, _, _ = _mk_fixture(db)
+        db.add(MoCTaskCatalogFocus(task_catalog_id=task.id,
+                                   focus_template_id=tpl.id, display_order=0))
+        db.commit()
+        db.refresh(task)
+
+        script = build_ponder_script(db, task.id)
+        focus_beats = [b for b in script["beats"] if b["kind"] == "focus"]
+        assert len(focus_beats) == 1
+        art = focus_beats[0]["artifact"]
+        assert art["type"] == "focus"
+        assert art["template_slug"] == "decision-triage"
+        assert art["core_slug"]  # the lineage, resolved live
+        assert isinstance(art["rows"], list)
+        # the derived description below the miniature — preserved shape
+        assert "The work happens in" in focus_beats[0]["text"]
+
+    def test_preview_render_is_live_never_stale(self, db):
+        """The live-resolution pin: edit the template body → the preview
+        changes on the next render (rolled back — dev untouched)."""
+        from app.models.document_template import DocumentTemplate, DocumentTemplateVersion
+        from app.services.documents.document_renderer import render_preview_html
+
+        tpl = (
+            db.query(DocumentTemplate)
+            .filter(DocumentTemplate.template_key == "statement.professional",
+                    DocumentTemplate.company_id.is_(None)).first()
+        )
+        assert tpl is not None
+        before = render_preview_html(db, template_key="statement.professional",
+                                     context={"company_name": "X", "items": []})
+        v = db.get(DocumentTemplateVersion, tpl.current_version_id)
+        original = v.body_template
+        try:
+            v.body_template = original + "\n<!-- PONDER-LIVE-PIN -->"
+            db.flush()
+            after = render_preview_html(db, template_key="statement.professional",
+                                        context={"company_name": "X", "items": []})
+            assert "PONDER-LIVE-PIN" in after
+            assert "PONDER-LIVE-PIN" not in before
+        finally:
+            db.rollback()
