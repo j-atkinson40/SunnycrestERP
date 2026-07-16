@@ -100,45 +100,85 @@ function DocumentPreview({ artifact }: { artifact: PonderArtifact }) {
   )
 }
 
+/** Schematic content lines — generic structure, never fake specifics. */
+function ContentLines({ n = 3 }: { n?: number }) {
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      {Array.from({ length: n }, (_, i) => (
+        <div
+          key={i}
+          className="rounded-full"
+          style={{
+            height: 4,
+            width: `${88 - i * 16}%`,
+            background: "rgba(234,227,218,0.10)",
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 function FocusMiniature({ artifact }: { artifact: PonderArtifact }) {
   const rows = artifact.rows ?? []
   return (
-    <div className="mt-3" data-testid="ponder-artifact-focus">
+    <div data-testid="ponder-artifact-focus">
+      {/* A focus looks like a focus: a landscape screen — chrome bar on top,
+          the resolved rows/widgets filling the surface. */}
       <div
-        className="rounded-lg p-2.5"
-        style={{ border: `1px solid ${EDGE}`, background: CARD, width: 320 }}
+        className="flex flex-col overflow-hidden rounded-lg shadow-level-2"
+        style={{
+          border: `1px solid ${EDGE}`,
+          background: "rgba(255,251,245,0.035)",
+          width: 560, height: 330,
+        }}
       >
         {/* chrome bar */}
-        <div className="mb-2 flex items-center gap-1.5 border-b pb-1.5" style={{ borderColor: EDGE }}>
+        <div
+          className="flex items-center gap-2 border-b px-3 py-2"
+          style={{ borderColor: EDGE, background: CARD }}
+        >
           <span style={{ color: "var(--accent)" }}>
             <FocusFamilyGlyph icon={artifact.icon ?? null} />
           </span>
-          <span className="text-caption font-medium" style={{ color: MUTED }}>
+          <span className="text-body-sm font-medium" style={{ color: MUTED }}>
             {artifact.chrome_title || artifact.display_name}
           </span>
         </div>
-        {/* the resolved rows/placements, schematically */}
-        <div className="space-y-1.5">
+        {/* the resolved composition */}
+        <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
           {rows.length === 0 ? (
-            <div className="rounded-sm py-4 text-center text-micro" style={{ background: "rgba(255,251,245,0.03)", color: FAINT }}>
-              the core surface
+            <div
+              className="flex flex-1 flex-col justify-center rounded-md px-4"
+              style={{ background: "rgba(255,251,245,0.03)", border: `1px solid ${EDGE}` }}
+            >
+              <span className="text-caption" style={{ color: FAINT }}>the core surface</span>
+              <ContentLines n={4} />
             </div>
-          ) : rows.map((row, i) => (
-            <div key={i} className="flex gap-1.5">
-              {(row.placements?.length ? row.placements : [{ label: "…" }]).map((p, j) => (
-                <div
-                  key={j}
-                  className="flex-1 truncate rounded-sm px-1.5 py-2 text-center text-micro"
-                  style={{ background: "rgba(255,251,245,0.04)", border: `1px solid ${EDGE}`, color: FAINT }}
-                >
-                  {p.label ?? "widget"}
-                </div>
-              ))}
-            </div>
-          ))}
+          ) : (
+            rows.map((row, i) => (
+              <div key={i} className="flex min-h-0 flex-1 gap-2">
+                {(row.placements?.length ? row.placements : [{ label: "…" }]).map((p, j) => (
+                  <div
+                    key={j}
+                    className="flex min-w-0 flex-1 flex-col rounded-md px-3 py-2"
+                    style={{
+                      background: "rgba(255,251,245,0.04)",
+                      border: `1px solid ${EDGE}`,
+                    }}
+                  >
+                    <span className="truncate text-caption font-medium" style={{ color: MUTED }}>
+                      {p.label ?? "widget"}
+                    </span>
+                    <ContentLines n={rows.length > 2 ? 2 : 4} />
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
         </div>
       </div>
-      <p className="mt-1.5 text-caption" style={{ color: FAINT }} data-testid="ponder-focus-lineage">
+      <p className="mt-1.5 text-center text-caption" style={{ color: FAINT }} data-testid="ponder-focus-lineage">
         {artifact.display_name}
         {artifact.core_slug ? (
           <span> · from {artifact.core_slug.replace(/-/g, " ").replace(/ ?core$/, "")} core v{artifact.core_version}</span>
