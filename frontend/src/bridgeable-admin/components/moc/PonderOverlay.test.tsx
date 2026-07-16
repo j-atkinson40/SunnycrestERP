@@ -23,6 +23,15 @@ const savePonderCaption = vi.fn()
 vi.mock("@/bridgeable-admin/services/moc-service", () => ({
   getPonderScript: (...a: unknown[]) => getPonderScript(...a),
   savePonderCaption: (...a: unknown[]) => savePonderCaption(...a),
+  // The ponder-service-context default (P2) binds every service export —
+  // stub the rest so the module graph resolves.
+  getPonderDocumentPreview: vi.fn().mockResolvedValue({ html: "" }),
+  addTaskTrigger: vi.fn(),
+  patchTrigger: vi.fn(),
+  deleteTrigger: vi.fn(),
+  listTriggerEvents: vi.fn().mockResolvedValue([]),
+  setPonderWorkflowParam: vi.fn(),
+  searchPonderUsers: vi.fn().mockResolvedValue([]),
 }))
 
 beforeEach(() => {

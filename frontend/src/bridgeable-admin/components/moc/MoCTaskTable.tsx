@@ -275,7 +275,7 @@ export function MoCTaskTable({
 const HOLD_MS = 650
 const HOLD_MS_REDUCED = 400
 
-function useHoldToPonder(enabled: boolean, onComplete: () => void) {
+export function useHoldToPonder(enabled: boolean, onComplete: () => void) {
   const [hovered, setHovered] = useState(false)
   const [holding, setHolding] = useState(false)
   const timerRef = useRef<number | null>(null)
@@ -323,7 +323,7 @@ function useHoldToPonder(enabled: boolean, onComplete: () => void) {
   }
 }
 
-function HoldRing({ holding, reduced }: { holding: boolean; reduced: boolean }) {
+export function HoldRing({ holding, reduced }: { holding: boolean; reduced: boolean }) {
   // A 16px ring whose stroke fills over the hold. CSS transition on
   // stroke-dashoffset — the settle curve; reduced motion renders no ring.
   if (reduced) return null

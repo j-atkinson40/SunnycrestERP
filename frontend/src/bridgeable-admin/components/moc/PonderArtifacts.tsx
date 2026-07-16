@@ -21,9 +21,9 @@ import { ArrowUpRight, FileText } from "lucide-react"
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
 import { FocusFamilyGlyph } from "@/bridgeable-admin/components/moc/MoCTypeCards"
 import {
-  getPonderDocumentPreview,
   type PonderArtifact,
 } from "@/bridgeable-admin/services/moc-service"
+import { usePonderService } from "./ponder-service-context"
 
 const MUTED = "#A79B8E"
 const FAINT = "#6E6459"
@@ -38,16 +38,18 @@ export function ArtifactPreview({ artifact }: { artifact?: PonderArtifact | null
 }
 
 function DocumentPreview({ artifact }: { artifact: PonderArtifact }) {
+  const svc = usePonderService()
   const [html, setHtml] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let live = true
     if (!artifact.template_key) return
-    getPonderDocumentPreview(artifact.template_key)
+    svc.getPonderDocumentPreview(artifact.template_key)
       .then((r) => { if (live) setHtml(r.html) })
       .catch(() => { if (live) setFailed(true) })
     return () => { live = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artifact.template_key])
 
   if (failed) return null // degrade typographic — never a lying preview
@@ -60,14 +62,16 @@ function DocumentPreview({ artifact }: { artifact: PonderArtifact }) {
         <span style={{ color: MUTED }}>
           {artifact.label}{artifact.version ? ` v${artifact.version}` : ""}
         </span>
-        <a
-          href={adminPath("visual-editor/documents")}
-          className="focus-ring-accent inline-flex items-center gap-0.5 rounded-sm hover:text-white"
-          style={{ color: FAINT }}
-          title="Open in Studio"
-        >
-          Studio <ArrowUpRight size={10} />
-        </a>
+        {svc.studioLinks ? (
+          <a
+            href={adminPath("visual-editor/documents")}
+            className="focus-ring-accent inline-flex items-center gap-0.5 rounded-sm hover:text-white"
+            style={{ color: FAINT }}
+            title="Open in Studio"
+          >
+            Studio <ArrowUpRight size={10} />
+          </a>
+        ) : null}
       </p>
       {/* A document looks like a document: a full portrait page, whole and
           legible-at-a-glance (US-letter aspect, scaled). */}
@@ -205,7 +209,8 @@ export function AudienceLine({ audience }: {
           className="rounded-full px-1.5 py-0.5 text-micro"
           style={{ background: CARD, border: `1px solid ${EDGE}`, color: FAINT }}
         >
-          {audience.count_capped ? `${audience.count}+` : audience.count} users today
+          {audience.count_capped ? `${audience.count}+` : audience.count}{" "}
+          {audience.count === 1 && !audience.count_capped ? "user" : "users"} today
         </span>
       ) : null}
     </p>

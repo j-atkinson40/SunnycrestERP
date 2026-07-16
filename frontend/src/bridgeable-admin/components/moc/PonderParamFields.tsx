@@ -20,11 +20,10 @@ import { useEffect, useRef, useState } from "react"
 import { AtSign, RotateCcw, X } from "lucide-react"
 
 import {
-  searchPonderUsers,
-  setPonderWorkflowParam,
   type PonderStepParam,
   type PonderUserHit,
 } from "@/bridgeable-admin/services/moc-service"
+import { usePonderService } from "./ponder-service-context"
 
 const MUTED = "#A79B8E"
 const FAINT = "#6E6459"
@@ -62,6 +61,7 @@ function UserChips({
   onChange: (ids: string[], labels: Record<string, string>) => void
   paramKey: string
 }) {
+  const svc = usePonderService()
   const [query, setQuery] = useState("")
   const [hits, setHits] = useState<PonderUserHit[]>([])
   const [searching, setSearching] = useState(false)
@@ -73,12 +73,13 @@ function UserChips({
     if (q.length < 2) { setHits([]); return }
     timer.current = window.setTimeout(() => {
       setSearching(true)
-      searchPonderUsers(q)
+      svc.searchPonderUsers(q)
         .then((r) => setHits(r.filter((h) => !value.includes(h.id))))
         .catch(() => setHits([]))
         .finally(() => setSearching(false))
     }, 250)
     return () => { if (timer.current) window.clearTimeout(timer.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, value])
 
   return (
@@ -158,6 +159,7 @@ function ParamField({
   onSaved: () => Promise<void> | void
   confirmGate?: (detail: string) => Promise<boolean>
 }) {
+  const svc = usePonderService()
   const [draft, setDraft] = useState<unknown>(param.effective_value)
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -173,7 +175,7 @@ function ParamField({
     if (confirmGate && !(await confirmGate(detail))) return
     setBusy(true)
     try {
-      await setPonderWorkflowParam(workflowId, param.step_key, param.param_key, value)
+      await svc.setPonderWorkflowParam(workflowId, param.step_key, param.param_key, value)
       await onSaved()
       setDirty(false)
     } catch (e) {

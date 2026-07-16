@@ -29,9 +29,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  getPonderScript, savePonderCaption,
   type PonderBeat, type PonderScript,
 } from "@/bridgeable-admin/services/moc-service"
+import { usePonderService } from "./ponder-service-context"
 import { MotifScene } from "./ponder-motifs"
 import { ArtifactPreview, AudienceLine } from "./PonderArtifacts"
 import { LiveEditConfirm, useLiveEditGate } from "./LiveEditConfirm"
@@ -81,11 +81,17 @@ function usePrefersReducedMotion(): boolean {
 }
 
 export function PonderOverlay({
-  taskId, onClose,
+  taskId, onClose, canEdit = true, onRequestEdit,
 }: {
   taskId: string
   onClose: () => void
+  /** P2 — role mirror-honesty: false renders ZERO edit affordances. */
+  canEdit?: boolean
+  /** P2 — the fork gate: asked before ENTERING edit mode (resolve false →
+   * stay in view mode; the tenant page forks + swaps taskId on accept). */
+  onRequestEdit?: () => Promise<boolean>
 }) {
+  const svc = usePonderService()
   const [script, setScript] = useState<PonderScript | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [index, setIndex] = useState(0)
@@ -100,9 +106,10 @@ export function PonderOverlay({
   const { confirmGate, pending, settle } = useLiveEditGate(script?.is_live)
 
   useEffect(() => {
-    getPonderScript(taskId)
+    svc.getPonderScript(taskId)
       .then(setScript)
       .catch(() => setError("Couldn't derive this walkthrough."))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId])
 
   const beats = script?.beats ?? []
@@ -148,8 +155,8 @@ export function PonderOverlay({
     if (!script || !beat) return
     setSaving(true)
     try {
-      await savePonderCaption(script.task_id, beat.key, text)
-      const fresh = await getPonderScript(script.task_id)
+      await svc.savePonderCaption(script.task_id, beat.key, text)
+      const fresh = await svc.getPonderScript(script.task_id)
       setScript(fresh)
       setDraft(null)
     } catch {
@@ -161,8 +168,8 @@ export function PonderOverlay({
 
   async function reclaimOrphan(key: string) {
     if (!script) return
-    await savePonderCaption(script.task_id, key, null)
-    setScript(await getPonderScript(script.task_id))
+    await svc.savePonderCaption(script.task_id, key, null)
+    setScript(await svc.getPonderScript(script.task_id))
   }
 
   const stepBeats = useMemo(
@@ -221,16 +228,23 @@ export function PonderOverlay({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => { setEditMode((m) => !m); setPlaying(false); setDraft(null) }}
-            className="focus-ring-accent inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-body-sm transition-colors duration-quick"
-            style={{ color: editMode ? "var(--accent)" : STAGE.muted }}
-            data-testid="ponder-edit-toggle"
-          >
-            <Pencil size={14} />
-            {editMode ? "Done editing" : "Edit captions"}
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (editMode) { setEditMode(false); setDraft(null); return }
+                const enter = () => { setEditMode(true); setPlaying(false); setDraft(null) }
+                if (onRequestEdit) { void onRequestEdit().then((ok) => { if (ok) enter() }) }
+                else enter()
+              }}
+              className="focus-ring-accent inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-body-sm transition-colors duration-quick"
+              style={{ color: editMode ? "var(--accent)" : STAGE.muted }}
+              data-testid="ponder-edit-toggle"
+            >
+              <Pencil size={14} />
+              {editMode ? "Done editing" : "Edit"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -370,7 +384,7 @@ export function PonderOverlay({
                     taskId={script.task_id}
                     vertical={script.vertical}
                     triggers={beat.triggers ?? []}
-                    onSaved={async () => setScript(await getPonderScript(script.task_id))}
+                    onSaved={async () => setScript(await svc.getPonderScript(script.task_id))}
                     confirmGate={confirmGate}
                   />
                 ) : null}
@@ -382,7 +396,7 @@ export function PonderOverlay({
                   <PonderParamFields
                     workflowId={script.workflow_id}
                     params={beat.params}
-                    onSaved={async () => setScript(await getPonderScript(script.task_id))}
+                    onSaved={async () => setScript(await svc.getPonderScript(script.task_id))}
                     confirmGate={confirmGate}
                   />
                 ) : null}

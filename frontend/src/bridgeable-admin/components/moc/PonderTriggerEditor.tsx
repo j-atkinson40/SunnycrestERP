@@ -19,9 +19,9 @@ import { useEffect, useMemo, useState } from "react"
 import { Clock, Pencil, Play, Plus, Radio, Trash2, Zap } from "lucide-react"
 
 import {
-  addTaskTrigger, deleteTrigger, listTriggerEvents, patchTrigger,
   type MoCTrigger, type MoCTriggerEvent, type MoCTriggerKind,
 } from "@/bridgeable-admin/services/moc-service"
+import { usePonderService, type PonderService } from "./ponder-service-context"
 import { scheduleProse, type ScheduleConfig } from "./schedule-prose"
 
 const MUTED = "#A79B8E"
@@ -248,13 +248,14 @@ function ScheduleComposer({
 }
 
 function EventComposer({
-  vertical, initial, onSave, onCancel, busy,
+  vertical, initial, onSave, onCancel, busy, svc,
 }: {
   vertical: string | null | undefined
   initial: Record<string, unknown>
   onSave: (config: Record<string, unknown>) => void
   onCancel: () => void
   busy: boolean
+  svc: PonderService
 }) {
   const [events, setEvents] = useState<MoCTriggerEvent[]>([])
   const initialCond = (initial.conditions as { field?: string; operator?: string; value?: string }[] | undefined)?.[0]
@@ -264,7 +265,8 @@ function EventComposer({
   const [condValue, setCondValue] = useState(String(initialCond?.value ?? ""))
 
   useEffect(() => {
-    listTriggerEvents(vertical ?? undefined).then(setEvents).catch(() => setEvents([]))
+    svc.listTriggerEvents(vertical ?? undefined).then(setEvents).catch(() => setEvents([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vertical])
 
   const selected = useMemo(() => events.find((e) => e.event_key === eventKey), [events, eventKey])
@@ -340,6 +342,7 @@ export function PonderTriggerEditor({
   /** The live-edit confirm (commit set 3). Resolves false → abort the write. */
   confirmGate?: (detail: string) => Promise<boolean>
 }) {
+  const svc = usePonderService()
   const [editing, setEditing] = useState<string | null>(null) // trigger id or "new:<kind>"
   const [addingKind, setAddingKind] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -408,7 +411,7 @@ export function PonderTriggerEditor({
                 <button type="button" aria-label="Remove trigger"
                   onClick={() => void guarded(
                     `Remove the trigger “${t.summary ?? t.kind}”`,
-                    () => deleteTrigger(t.id),
+                    () => svc.deleteTrigger(t.id),
                   )}
                   className="focus-ring-accent rounded p-1" style={{ color: FAINT }}
                   data-testid={`ponder-trigger-delete-${t.id}`}>
@@ -423,7 +426,7 @@ export function PonderTriggerEditor({
                     onCancel={() => setEditing(null)}
                     onSave={(config) => void guarded(
                       `Change the schedule to “${scheduleProse(config as ScheduleConfig)}”`,
-                      async () => { await patchTrigger(t.id, { config }) },
+                      async () => { await svc.patchTrigger(t.id, { config }) },
                     )}
                   />
                 </div>
@@ -431,13 +434,14 @@ export function PonderTriggerEditor({
               {editing === t.id && t.kind === "event" ? (
                 <div className="mt-2 border-l pl-3" style={{ borderColor: EDGE }}>
                   <EventComposer
+                    svc={svc}
                     vertical={vertical}
                     initial={t.config}
                     busy={busy}
                     onCancel={() => setEditing(null)}
                     onSave={(config) => void guarded(
                       `Change the event trigger to “${String(config.event)}”`,
-                      async () => { await patchTrigger(t.id, { config }) },
+                      async () => { await svc.patchTrigger(t.id, { config }) },
                     )}
                   />
                 </div>
@@ -457,18 +461,19 @@ export function PonderTriggerEditor({
               onCancel={() => setEditing(null)}
               onSave={(config) => void guarded(
                 `Add the schedule “${scheduleProse(config as ScheduleConfig)}”`,
-                async () => { await addTaskTrigger(taskId, { kind: "schedule", config }) },
+                async () => { await svc.addTaskTrigger(taskId, { kind: "schedule", config }) },
               )}
             />
           ) : editing === "new:event" ? (
             <EventComposer
+              svc={svc}
               vertical={vertical}
               initial={{}}
               busy={busy}
               onCancel={() => setEditing(null)}
               onSave={(config) => void guarded(
                 `Add an event trigger on “${String(config.event)}”`,
-                async () => { await addTaskTrigger(taskId, { kind: "event", config }) },
+                async () => { await svc.addTaskTrigger(taskId, { kind: "event", config }) },
               )}
             />
           ) : (
@@ -479,7 +484,7 @@ export function PonderTriggerEditor({
               <button type="button" disabled={busy}
                 onClick={() => void guarded(
                   "Add a manual trigger",
-                  async () => { await addTaskTrigger(taskId, { kind: "manual", config: {} }) },
+                  async () => { await svc.addTaskTrigger(taskId, { kind: "manual", config: {} }) },
                 )}
                 className="rounded-md px-2 py-1 text-body-sm font-medium"
                 style={{ background: "var(--accent)", color: "#1a1512" }}
