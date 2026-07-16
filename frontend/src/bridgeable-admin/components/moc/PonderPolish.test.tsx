@@ -129,3 +129,30 @@ describe("motif dispatch (Set 3)", () => {
     expect(screen.getByTestId("ponder-motif-create").className).toContain("motif-static")
   })
 })
+
+describe("artifact previews + audience (Enrichment)", () => {
+  it("focus miniature: lineage label without core-core duplication; audience line honest", async () => {
+    const { ArtifactPreview, AudienceLine } = await import("./PonderArtifacts")
+    const { render: r2, screen: s2 } = await import("@testing-library/react")
+
+    r2(<ArtifactPreview artifact={{
+      type: "focus", template_slug: "decision-triage", display_name: "Decision Triage",
+      core_slug: "decision-triage-core", core_version: 4, template_version: 1,
+      chrome_title: "Decision Triage", icon: "kanban",
+      rows: [{ placements: [{ label: "TriageQueueCore" }] }],
+    }} />)
+    expect(s2.getByTestId("ponder-focus-lineage").textContent).toBe(
+      "Decision Triage · from decision triage core v4",
+    )
+    expect(s2.getByText("TriageQueueCore")).toBeTruthy()
+
+    r2(<AudienceLine audience={{ text: "anyone with the invoice.approve permission", count: 4 }} />)
+    expect(s2.getByTestId("ponder-audience").textContent).toContain("4 users today")
+
+    // not derivable → NO line; unknown artifact type → NOTHING
+    const { container } = r2(<AudienceLine audience={null} />)
+    expect(container.querySelector('[data-testid="ponder-audience"]')).toBeNull()
+    const { container: c2 } = r2(<ArtifactPreview artifact={{ type: "widget-of-the-future" }} />)
+    expect(c2.querySelector('[data-testid^="ponder-artifact-"]')).toBeNull()
+  })
+})

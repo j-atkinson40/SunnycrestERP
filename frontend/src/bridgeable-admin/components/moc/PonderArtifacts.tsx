@@ -1,0 +1,171 @@
+/**
+ * Ponder Enrichment — artifact previews on the stage.
+ *
+ * DOCUMENT: the template's REAL face, lazy-fetched at beat mount (live-
+ * resolved server-side — a Studio edit reflects on the next open), scaled
+ * into a clipped card via a sandboxed iframe. The name line carries the
+ * resolved identity ("using: Statement · Professional v3") + a Studio
+ * deep-link.
+ *
+ * FOCUS: a static miniature SCHEMATIC derived from the task's RESOLVED
+ * composition (pin-honoring rows/placements + chrome title) — never a
+ * generic picture. Labeled with the lineage ("Cemetery Triage · from
+ * decision-triage core v3") + the family icon.
+ *
+ * A payload the renderer can't place renders NOTHING — a missing preview
+ * beats a lying one.
+ */
+import { useEffect, useState } from "react"
+import { ArrowUpRight, FileText } from "lucide-react"
+
+import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
+import { FocusFamilyGlyph } from "@/bridgeable-admin/components/moc/MoCTypeCards"
+import {
+  getPonderDocumentPreview,
+  type PonderArtifact,
+} from "@/bridgeable-admin/services/moc-service"
+
+const MUTED = "#A79B8E"
+const FAINT = "#6E6459"
+const CARD = "rgba(255,251,245,0.055)"
+const EDGE = "rgba(234,227,218,0.16)"
+
+export function ArtifactPreview({ artifact }: { artifact?: PonderArtifact | null }) {
+  if (!artifact) return null
+  if (artifact.type === "document") return <DocumentPreview artifact={artifact} />
+  if (artifact.type === "focus") return <FocusMiniature artifact={artifact} />
+  return null // unknown artifact types render nothing — never a wrong preview
+}
+
+function DocumentPreview({ artifact }: { artifact: PonderArtifact }) {
+  const [html, setHtml] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    if (!artifact.template_key) return
+    getPonderDocumentPreview(artifact.template_key)
+      .then((r) => { if (live) setHtml(r.html) })
+      .catch(() => { if (live) setFailed(true) })
+    return () => { live = false }
+  }, [artifact.template_key])
+
+  if (failed) return null // degrade typographic — never a lying preview
+
+  return (
+    <div className="mt-3" data-testid="ponder-artifact-document">
+      <p className="mb-1.5 flex items-center gap-1.5 text-caption" style={{ color: FAINT }}>
+        <FileText size={11} />
+        using:{" "}
+        <span style={{ color: MUTED }}>
+          {artifact.label}{artifact.version ? ` v${artifact.version}` : ""}
+        </span>
+        <a
+          href={adminPath("visual-editor/documents")}
+          className="focus-ring-accent inline-flex items-center gap-0.5 rounded-sm hover:text-white"
+          style={{ color: FAINT }}
+          title="Open in Studio"
+        >
+          Studio <ArrowUpRight size={10} />
+        </a>
+      </p>
+      <div
+        className="overflow-hidden rounded-md"
+        style={{
+          border: `1px solid ${EDGE}`, background: "#F5F1EA",
+          width: 300, height: 180,
+        }}
+      >
+        {html ? (
+          <iframe
+            title={`${artifact.label} preview`}
+            sandbox=""
+            srcDoc={html}
+            scrolling="no"
+            style={{
+              width: 800, height: 1035, border: 0,
+              transform: "scale(0.375)", transformOrigin: "top left",
+              pointerEvents: "none",
+            }}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-caption" style={{ color: "#8a8178" }}>
+            rendering…
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FocusMiniature({ artifact }: { artifact: PonderArtifact }) {
+  const rows = artifact.rows ?? []
+  return (
+    <div className="mt-3" data-testid="ponder-artifact-focus">
+      <div
+        className="rounded-lg p-2.5"
+        style={{ border: `1px solid ${EDGE}`, background: CARD, width: 320 }}
+      >
+        {/* chrome bar */}
+        <div className="mb-2 flex items-center gap-1.5 border-b pb-1.5" style={{ borderColor: EDGE }}>
+          <span style={{ color: "var(--accent)" }}>
+            <FocusFamilyGlyph icon={artifact.icon ?? null} />
+          </span>
+          <span className="text-caption font-medium" style={{ color: MUTED }}>
+            {artifact.chrome_title || artifact.display_name}
+          </span>
+        </div>
+        {/* the resolved rows/placements, schematically */}
+        <div className="space-y-1.5">
+          {rows.length === 0 ? (
+            <div className="rounded-sm py-4 text-center text-micro" style={{ background: "rgba(255,251,245,0.03)", color: FAINT }}>
+              the core surface
+            </div>
+          ) : rows.map((row, i) => (
+            <div key={i} className="flex gap-1.5">
+              {(row.placements?.length ? row.placements : [{ label: "…" }]).map((p, j) => (
+                <div
+                  key={j}
+                  className="flex-1 truncate rounded-sm px-1.5 py-2 text-center text-micro"
+                  style={{ background: "rgba(255,251,245,0.04)", border: `1px solid ${EDGE}`, color: FAINT }}
+                >
+                  {p.label ?? "widget"}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="mt-1.5 text-caption" style={{ color: FAINT }} data-testid="ponder-focus-lineage">
+        {artifact.display_name}
+        {artifact.core_slug ? (
+          <span> · from {artifact.core_slug.replace(/-/g, " ").replace(/ ?core$/, "")} core v{artifact.core_version}</span>
+        ) : null}
+      </p>
+    </div>
+  )
+}
+
+export function AudienceLine({ audience }: {
+  audience?: { text: string; count?: number; count_capped?: boolean } | null
+}) {
+  if (!audience) return null // not derivable → no line, never a guess
+  return (
+    <p
+      className="mt-2 inline-flex flex-wrap items-center gap-1.5 text-body-sm"
+      style={{ color: MUTED }}
+      data-testid="ponder-audience"
+    >
+      <span style={{ color: FAINT }}>→</span>
+      {audience.text}
+      {typeof audience.count === "number" && audience.count > 0 ? (
+        <span
+          className="rounded-full px-1.5 py-0.5 text-micro"
+          style={{ background: CARD, border: `1px solid ${EDGE}`, color: FAINT }}
+        >
+          {audience.count_capped ? `${audience.count}+` : audience.count} users today
+        </span>
+      ) : null}
+    </p>
+  )
+}

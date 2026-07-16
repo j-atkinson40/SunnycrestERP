@@ -662,7 +662,7 @@ export async function deletePlanning(id: string): Promise<void> {
 
 // ── The Ponder (P1) — the derived walkthrough script + caption authoring ────
 
-export type PonderBeatKind = "when" | "step" | "pause" | "downstream" | "garnish"
+export type PonderBeatKind = "when" | "step" | "pause" | "focus" | "downstream" | "garnish"
 
 /** The motif grammar's scene hint (Ponder Polish Set 3) — chosen server-side
  * from step type + config words. Absent/unknown → typographic treatment. */
@@ -674,10 +674,40 @@ export interface PonderMotif {
   label?: string | null
 }
 
+/** Ponder Enrichment — the generic artifact-preview slot. documents +
+ * focuses populate it this arc; other artifact types slot in with zero
+ * model change. */
+export interface PonderArtifact {
+  type: "document" | "focus" | string
+  // document
+  template_key?: string
+  label?: string
+  document_type?: string
+  version?: number | null
+  // focus (the RESOLVED identity — pin-honoring)
+  template_slug?: string
+  display_name?: string
+  core_slug?: string
+  core_version?: number
+  template_version?: number
+  chrome_title?: string | null
+  icon?: string | null
+  rows?: { placements: { label?: string | null }[] }[]
+}
+
+export interface PonderAudience {
+  text: string
+  permission?: string
+  count?: number
+  count_capped?: boolean
+}
+
 export interface PonderBeat {
   key: string
   kind: PonderBeatKind
   motif?: PonderMotif | null
+  artifact?: PonderArtifact | null
+  audience?: PonderAudience | null
   /** What the overlay renders — authored if present, else derived. */
   text: string
   derived_text: string
@@ -715,4 +745,14 @@ export async function savePonderCaption(
     { beat_key: beatKey, text },
   )
   return data.captions
+}
+
+export async function getPonderDocumentPreview(
+  templateKey: string,
+): Promise<{ template_key: string; html: string }> {
+  const { data } = await adminApi.get<{ template_key: string; html: string }>(
+    `${BASE}/ponder/document-preview`,
+    { params: { template_key: templateKey } },
+  )
+  return data
 }

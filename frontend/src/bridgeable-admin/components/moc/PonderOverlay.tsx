@@ -22,8 +22,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  BarChart3, ChevronLeft, ChevronRight, Clock, Inbox, Pause, PauseCircle,
-  Pencil, Play, RotateCcw, Trash2, Workflow as WorkflowIcon, X,
+  BarChart3, ChevronLeft, ChevronRight, Clock, Inbox, LayoutPanelTop, Pause,
+  PauseCircle, Pencil, Play, RotateCcw, Trash2, Workflow as WorkflowIcon, X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,7 @@ import {
   type PonderBeat, type PonderScript,
 } from "@/bridgeable-admin/services/moc-service"
 import { MotifScene } from "./ponder-motifs"
+import { ArtifactPreview, AudienceLine } from "./PonderArtifacts"
 
 const BEAT_HOLD_MS = 4500
 
@@ -49,6 +50,7 @@ const KIND_GLYPH = {
   when: Clock,
   step: WorkflowIcon,
   pause: PauseCircle,
+  focus: LayoutPanelTop,
   downstream: Inbox,
   garnish: BarChart3,
 } as const
@@ -57,6 +59,7 @@ const KIND_EYEBROW: Record<PonderBeat["kind"], string> = {
   when: "When",
   step: "Then",
   pause: "The run pauses for you",
+  focus: "Where you work",
   downstream: "Where it lands",
   garnish: "Last time it ran",
 }
@@ -299,6 +302,10 @@ export function PonderOverlay({
                   </div>
                 ) : null}
 
+                {/* Ponder Enrichment: the real artifact, ABOVE the text —
+                    the description below stays exactly as it was. */}
+                <ArtifactPreview artifact={beat.artifact} />
+
                 {editMode && draft !== null ? (
                   <div className="mt-2" data-testid="ponder-caption-editor">
                     <Textarea
@@ -341,6 +348,8 @@ export function PonderOverlay({
                     → {beat.queue_label}
                   </p>
                 ) : null}
+
+                <AudienceLine audience={beat.audience} />
               </div>
             </div>
           </div>
