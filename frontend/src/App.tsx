@@ -61,6 +61,7 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import HomePage from "@/pages/home/HomePage";
+import BridgeableMapPage from "@/pages/bridgeable-map";
 import FocusTestPage from "@/pages/dev/focus-test";
 import FuneralSchedulePage from "@/pages/dispatch/funeral-schedule";
 import UserManagement from "@/pages/admin/user-management";
@@ -592,6 +593,14 @@ export function renderTenantSlugRoutes(
                       Home system space with default_home_route=/home).
                       Coexists with /dashboard until W-5. */}
                   <Route path="home" element={<HomePage />} />
+
+                  {/* The Bridgeable Map (Tenant Ponder-Editor P2) — the
+                      map of what the platform does. VIEW for every
+                      authenticated user (no permission gate — same
+                      reasoning as /home: it's a comprehension surface);
+                      editing is gated in-page by role + server-side by
+                      require_admin on the write routes. */}
+                  <Route path="bridgeable-map" element={<BridgeableMapPage />} />
 
                   {/* Phase A Session 1 — dev-only test page for the
                       Focus primitive. Not in nav. Any authenticated

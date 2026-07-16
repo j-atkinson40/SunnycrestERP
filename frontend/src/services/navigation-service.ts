@@ -95,6 +95,9 @@ function getManufacturingNav(
   // ── Primary ──
   const primaryItems: NavItem[] = [
     { label: "Home", href: "/dashboard", icon: "Home" },
+    // The Bridgeable Map (Tenant Ponder-Editor P2) — the map of what the
+    // platform does; view for every user, editing gated in-page by role.
+    { label: "Bridgeable Map", href: "/bridgeable-map", icon: "Map" },
     {
       label: "Order Station",
       href: "/order-station",
