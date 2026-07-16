@@ -133,17 +133,37 @@ CALLER_MODULES = [
     "workflows.interpret_transcript",
 ]
 
-# Entity type samples for linkage
+# Entity type samples for linkage. The linkage columns carry REAL FK
+# constraints — sampled ids must be REAL rows (perf pass, 2026-07: the
+# flip-flop's root was random UUIDs stuffed into FK columns; a run failed
+# whenever the random batch happened to include an FK-linked sample). The
+# pools are fetched once from the live tables; an empty table honestly
+# yields NO linkage (NULL column, sentinel entity type) rather than an
+# invented id.
 ENTITY_TYPE_SAMPLES = [
-    ("fh_case", "caller_fh_case_id"),
-    ("agent_job", "caller_agent_job_id"),
-    ("ringcentral_call_log", "caller_ringcentral_call_log_id"),
-    ("kb_document", "caller_kb_document_id"),
-    ("price_list_import", "caller_price_list_import_id"),
-    ("user", None),
-    (None, None),
-    (None, None),  # many executions have no specific entity
+    ("fh_case", "caller_fh_case_id", "fh_cases"),
+    ("agent_job", "caller_agent_job_id", "agent_jobs"),
+    ("ringcentral_call_log", "caller_ringcentral_call_log_id", "ringcentral_call_log"),
+    ("kb_document", "caller_kb_document_id", "kb_documents"),
+    ("price_list_import", "caller_price_list_import_id", "price_list_imports"),
+    ("user", None, None),
+    (None, None, None),
+    (None, None, None),  # many executions have no specific entity
 ]
+
+
+def _linkage_pools(db) -> dict:
+    """table -> up to 100 real ids (empty list = no linkage possible)."""
+    from sqlalchemy import text as _t
+
+    pools = {}
+    for _, linkage_field, table in ENTITY_TYPE_SAMPLES:
+        if not table or table in pools:
+            continue
+        pools[table] = [
+            r[0] for r in db.execute(_t(f"SELECT id FROM {table} LIMIT 100"))
+        ]
+    return pools
 
 ERROR_MESSAGES = [
     "Request timed out after 60s",
@@ -277,6 +297,7 @@ def seed_executions(db: Session, company: Company) -> int:
 
     db.flush()
 
+    pools = _linkage_pools(db)  # real ids only — FK-safe by construction
     created = 0
     random.seed(42)  # deterministic runs
 
@@ -313,7 +334,7 @@ def seed_executions(db: Session, company: Company) -> int:
         days_ago = random.randint(0, 29)
         created_at = _business_hour_timestamp(days_ago)
 
-        entity_type, linkage_field = random.choice(ENTITY_TYPE_SAMPLES)
+        entity_type, linkage_field, linkage_table = random.choice(ENTITY_TYPE_SAMPLES)
         variables = {
             "context": random.choice(["order", "case", "invoice", "transcript"]),
             "size": random.randint(100, 2000),
@@ -348,10 +369,18 @@ def seed_executions(db: Session, company: Company) -> int:
             linkage_kwargs: dict = {}
         else:
             exec_entity_type = entity_type
-            exec_entity_id = str(uuid.uuid4()) if entity_type else None
             linkage_kwargs = {}
-            if linkage_field and exec_entity_id:
+            # A REAL row id from the pool — or no linkage at all (never an
+            # invented id into an FK column).
+            pool = pools.get(linkage_table) if linkage_table else None
+            if linkage_field and pool:
+                exec_entity_id = random.choice(pool)
                 linkage_kwargs[linkage_field] = exec_entity_id
+            elif entity_type == "user":
+                exec_entity_id = str(uuid.uuid4())  # no linkage column
+            else:
+                exec_entity_id = None
+                exec_entity_type = None  # falls to the sentinel below
             # Always flag it as a dev row via the sentinel on caller_entity_type
             # — we do this on the _remainder_ only if entity_type is None, so
             # we can identify them for cleanup. If entity_type is set we rely

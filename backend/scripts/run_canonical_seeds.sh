@@ -78,6 +78,27 @@ _is_skipped() {
     return 1
 }
 
+# Perf pass (2026-07) — THE SEED MANIFEST: declared tiers per seed
+# (local-only / manual), each with a one-line justification. The manifest
+# is asked once per boot; every skip is logged WITH its reason — a
+# skipped seed is visible in the boot log, never silently absent.
+# See scripts/seed_manifest.py for the tier semantics.
+MANIFEST_SKIPS=""
+if [ -f "${SEEDS_DIR}/seed_manifest.py" ]; then
+    MANIFEST_SKIPS=$(cd "${BACKEND_DIR}" && "${PYTHON_BIN}" -m scripts.seed_manifest --skips 2>/dev/null)
+fi
+
+_manifest_skip_reason() {
+    # Prints "tier<TAB>why" when the seed is manifest-skipped; rc 1 otherwise.
+    local name="$1"
+    [ -z "${MANIFEST_SKIPS}" ] && return 1
+    local line
+    line=$(printf '%s\n' "${MANIFEST_SKIPS}" | awk -F'\t' -v n="${name}" '$1 == n {print $2 "\t" $3; exit}')
+    [ -z "${line}" ] && return 1
+    printf '%s' "${line}"
+    return 0
+}
+
 attempted=0
 succeeded=0
 failed=0
@@ -104,19 +125,46 @@ for seed_path in "${SEED_PATHS[@]}"; do
         continue
     fi
 
+    if [ "${seed_name}" = "seed_manifest" ]; then
+        continue  # the manifest itself is not a seed
+    fi
+    manifest_reason=$(_manifest_skip_reason "${seed_name}")
+    if [ $? -eq 0 ] && [ -n "${manifest_reason}" ]; then
+        tier="${manifest_reason%%$'\t'*}"
+        why="${manifest_reason#*$'\t'}"
+        echo "[seed-runner] Skip: ${seed_name} (tier ${tier} — ${why})"
+        skipped=$((skipped + 1))
+        continue
+    fi
+
     attempted=$((attempted + 1))
     echo "[seed-runner] Running seed: ${seed_name}"
 
     # Run from backend/ so `python -m scripts.<name>` resolves the
     # scripts package consistently with the explicit invocations in
     # railway-start.sh.
+    seed_start=$(date +%s)
     (cd "${BACKEND_DIR}" && "${PYTHON_BIN}" -m "scripts.${seed_name}")
     rc=$?
+    seed_secs=$(( $(date +%s) - seed_start ))
 
+    # Perf pass (2026-07): the PERMANENT per-seed timing — one line per
+    # seed in every boot log, so any future sweep regression is
+    # diagnosable from the log alone (grep '\[seed-timing\]').
     if [ ${rc} -eq 0 ]; then
+        echo "[seed-timing] ${seed_name}: ${seed_secs}s (ok)"
         echo "[seed-runner] Completed: ${seed_name} (success)"
         succeeded=$((succeeded + 1))
+    elif [ ${rc} -eq 3 ]; then
+        # Exit 3 = the seed's own DECLARED skip (tier-scoped or
+        # prereq-absent — the reason is in the seed's own output).
+        # Counted separately: a skip is never a failure and never
+        # inflates the warn tally.
+        echo "[seed-timing] ${seed_name}: ${seed_secs}s (skipped by seed)"
+        echo "[seed-runner] Skipped by seed: ${seed_name} (declared skip, exit 3)"
+        skipped=$((skipped + 1))
     else
+        echo "[seed-timing] ${seed_name}: ${seed_secs}s (FAILED rc=${rc})"
         echo "[seed-runner] WARN: ${seed_name} failed with exit code ${rc} — continuing"
         failed=$((failed + 1))
     fi
