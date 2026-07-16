@@ -314,6 +314,52 @@ def admin_save_ponder_caption(
     return {"captions": captions}
 
 
+# ─── Task offer-reach (Tenant Ponder-Editor P3) — the deliberate boundary ────
+
+
+@router.get("/tasks/{task_id}/offer-preview")
+def admin_task_offer_preview(
+    task_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """What 'offer this change to tenant versions' would do — the forks +
+    each one's field diff, shown BEFORE the deliberate act."""
+    from app.services.maps_of_content import task_offers
+
+    try:
+        return task_offers.offer_preview(db, task_id=task_id)
+    except task_offers.TaskOfferError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class _PublishTaskOffer(BaseModel):
+    patch_notes: str | None = None
+
+
+@router.post("/tasks/{task_id}/offer", status_code=201)
+def admin_publish_task_offer(
+    task_id: str,
+    body: _PublishTaskOffer,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """THE DELIBERATE MOMENT (the V-2 publish pattern at the task tier):
+    an explicit act with a note — never offer-on-every-save. Creates one
+    pending offer per fork that actually differs; supersedes prior live
+    offers per edge. Task-row fields only — the WORKFLOW is shared under
+    forks and needs no offer."""
+    from app.services.maps_of_content import task_offers
+
+    try:
+        return task_offers.publish_task_update(
+            db, task_id=task_id, patch_notes=body.patch_notes, actor_id=admin.id,
+        )
+    except task_offers.TaskOfferError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 class _SetWorkflowParam(BaseModel):
     value: Any = None
 

@@ -576,6 +576,84 @@ class PonderError(ValueError):
     pass
 
 
+# ── The fires strip (P3 — the monitoring leg) ────────────────────────────────
+
+
+def recent_fires(
+    db: Session, *, runtime_workflow_id: str, company_id: str, limit: int = 8
+) -> list[dict]:
+    """What did this machine actually DO lately — THIS tenant's recent runs
+    of the task's runtime workflow (mirror fires re-point to the same id, so
+    one query covers scheduler fires AND sweep fires). A ledger, not a
+    dashboard: when, dry-run/live (honest — read from the run's own marker),
+    outcome, event provenance where event-fired, and the H1 review item for
+    a FAILED fire (the deep link the frontend renders for roles that can
+    follow it). Empty list = hasn't run — the strip says so plainly, never
+    a fabricated history."""
+    from app.models.workflow_review_item import WorkflowReviewItem
+
+    runs = (
+        db.query(WorkflowRun)
+        .filter(
+            WorkflowRun.workflow_id == runtime_workflow_id,
+            WorkflowRun.company_id == company_id,
+        )
+        .order_by(WorkflowRun.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+    if not runs:
+        return []
+    failed_ids = [r.id for r in runs if r.status == "failed"]
+    review_by_run: dict[str, str] = {}
+    if failed_ids:
+        rows = (
+            db.query(WorkflowReviewItem.run_id, WorkflowReviewItem.id)
+            .filter(
+                WorkflowReviewItem.run_id.in_(failed_ids),
+                WorkflowReviewItem.company_id == company_id,
+            )
+            .all()
+        )
+        review_by_run = {run_id: item_id for run_id, item_id in rows}
+    out = []
+    for r in runs:
+        ctx = r.trigger_context or {}
+        out.append({
+            "run_id": r.id,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "status": r.status,
+            "is_dry_run": bool((r.output_data or {}).get("__dry_run__")),
+            "source": r.trigger_source,
+            "event_key": ctx.get("event_key"),
+            "review_item_id": review_by_run.get(r.id),
+        })
+    return out
+
+
+def user_can_follow_reviews(db: Session, user) -> bool:
+    """Can this tenant user follow a failed fire into Decision Triage? Read
+    from the QUEUE'S OWN config (workflow_review_triage permissions) — empty
+    permissions = any authenticated tenant user (today's honest answer);
+    if the queue later gains a permission, this mapping follows it."""
+    from app.services.triage import platform_defaults  # noqa: F401 — ensure registered
+    from app.services.triage.registry import _PLATFORM_CONFIGS
+
+    cfg = _PLATFORM_CONFIGS.get("workflow_review_triage")
+    if cfg is None:
+        return False
+    perms = list(getattr(cfg, "permissions", None) or [])
+    if not perms:
+        return True
+    from sqlalchemy import text as _sql
+
+    n = db.execute(_sql(
+        "SELECT count(*) FROM role_permissions WHERE role_id = :rid "
+        "AND permission_key = ANY(:perms)"
+    ), {"rid": user.role_id, "perms": perms}).scalar() or 0
+    return n > 0
+
+
 # ── The document-preview render (one path, both realms — P2) ────────────────
 # Mirrors the Studio Documents editor's default sample shape; a version's own
 # sample_context (when authored) overlays this.
@@ -846,6 +924,13 @@ def build_ponder_script(
         # uses edited settings); vertical scopes the event-catalog picker;
         # workflow_id is the param editors' write target.
         "is_live": any(t.is_live for t in task_triggers),
+        # P3 — the fires strip (the tenant read only: THEIR history; the
+        # platform read keeps its garnish). Empty list = hasn't run yet.
+        "fires": (
+            recent_fires(db, runtime_workflow_id=runtime.id, company_id=company_id)
+            if company_id is not None and runtime is not None
+            else None
+        ),
         "task_scope": task.scope,
         "owned": task.scope == "tenant_override" and task.tenant_id == company_id
         if company_id is not None else True,

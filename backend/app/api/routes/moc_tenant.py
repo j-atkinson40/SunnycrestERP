@@ -93,12 +93,19 @@ def tenant_list_tasks(
     """The tenant's MERGED task view — their vertical's defaults (forked ones
     yielding to their versions) + their own rows, each resolved."""
     company = _company(db, current_user)
-    return {
-        "vertical": company.vertical,
-        "tasks": resolve_task_catalog(
-            db, vertical=company.vertical, tenant_id=company.id
-        ),
-    }
+    tasks = resolve_task_catalog(db, vertical=company.vertical, tenant_id=company.id)
+    # P3 offer-reach: the quiet badge state on THEIR forked rows (pending →
+    # badge; declined → the recallable gap chip). Their offers only.
+    from app.services.maps_of_content import task_offers
+
+    fork_ids = [t["id"] for t in tasks if t["scope"] == "tenant_override"]
+    states = task_offers.offer_states_for_forks(
+        db, company_id=company.id, fork_task_ids=fork_ids
+    )
+    for t in tasks:
+        if t["id"] in states:
+            t["offer_state"] = states[t["id"]]
+    return {"vertical": company.vertical, "tasks": tasks}
 
 
 @router.get("/ponder/users")
@@ -164,9 +171,14 @@ def tenant_get_ponder_script(
     company = _company(db, current_user)
     task = _visible_task(db, task_id, company)
     try:
-        return ponder.build_ponder_script(db, task.id, company_id=company.id)
+        script = ponder.build_ponder_script(db, task.id, company_id=company.id)
     except ponder.PonderError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    # P3 — the H1 composition: can THIS user follow a failed fire into
+    # Decision Triage? Mapped from the queue's own config; the frontend
+    # renders the deep link iff true (never a dead link).
+    script["can_follow_reviews"] = ponder.user_can_follow_reviews(db, current_user)
+    return script
 
 
 # ─── The edit grammar (tenant admins; owned rows only) ─────────────────────
@@ -219,6 +231,74 @@ def tenant_fork_task(
         code = 404 if "not found" in str(e) else 400
         raise HTTPException(status_code=code, detail=str(e))
     return resolve_task(db, fork)
+
+
+# ─── Offer-reach (P3) — the standard's improvements reach their version ─────
+
+
+@router.get("/offers/{offer_id}")
+def tenant_get_offer(
+    offer_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """One offer, THEIRS only (target_tenant_id — not-found semantics).
+    Viewing is for everyone (the badge is on their map); deciding is admin."""
+    from app.services.maps_of_content import task_offers
+
+    company = _company(db, current_user)
+    try:
+        return task_offers.get_offer(db, offer_id=offer_id, company_id=company.id)
+    except task_offers.TaskOfferError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class _AcceptOffer(BaseModel):
+    # {field: "keep"} keeps their value; unspecified diff fields apply.
+    choices: dict[str, str] = {}
+
+
+@router.post("/offers/{offer_id}/accept")
+def tenant_accept_offer(
+    offer_id: str,
+    body: _AcceptOffer,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content import task_offers
+
+    company = _company(db, current_user)
+    try:
+        return task_offers.accept_offer(
+            db, offer_id=offer_id, company_id=company.id,
+            choices=body.choices, actor_id=current_user.id,
+        )
+    except task_offers.TaskOfferError as e:
+        db.rollback()
+        code = 404 if "not found" in str(e) else 409
+        detail = {"message": str(e)}
+        if e.latest_offer_id:
+            detail["latest_offer_id"] = e.latest_offer_id
+        raise HTTPException(status_code=code, detail=detail)
+
+
+@router.post("/offers/{offer_id}/decline")
+def tenant_decline_offer(
+    offer_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content import task_offers
+
+    company = _company(db, current_user)
+    try:
+        return task_offers.decline_offer(
+            db, offer_id=offer_id, company_id=company.id, actor_id=current_user.id,
+        )
+    except task_offers.TaskOfferError as e:
+        db.rollback()
+        code = 404 if "not found" in str(e) else 409
+        raise HTTPException(status_code=code, detail=str(e))
 
 
 class _AddTrigger(BaseModel):

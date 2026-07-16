@@ -85,7 +85,10 @@ def world():
     an authored caption — the fork's raw material."""
     a_admin = _make_ctx(role_slug="admin")
     a_office = _make_ctx(role_slug="office")
-    # the office user must be in A's company — rebuild it there
+    # the office user must be in A's company — rebuild it there. Track the
+    # ORIGINAL company for teardown (moving the user abandons it — the
+    # one-MAP-row-per-run leak otherwise).
+    office_origin_company = a_office["company_id"]
     db = SessionLocal()
     from app.models.user import User
 
@@ -176,9 +179,13 @@ def world():
     s.execute(sql_text("DELETE FROM workflows WHERE id = :w"), {"w": ids["wf_id"]})
     for ctx in (a_admin, a_office, b_admin):
         s.execute(sql_text("DELETE FROM users WHERE id = :u"), {"u": ctx["user_id"]})
-    for ctx in (a_admin, b_admin):
-        s.execute(sql_text("DELETE FROM roles WHERE company_id = :c"), {"c": ctx["company_id"]})
-        s.execute(sql_text("DELETE FROM companies WHERE id = :c"), {"c": ctx["company_id"]})
+    for cid in (a_admin["company_id"], b_admin["company_id"], office_origin_company):
+        s.execute(sql_text("DELETE FROM roles WHERE company_id = :c"), {"c": cid})
+        # company_modules rows get seeded when the API is exercised — without
+        # this delete the company row survives its own teardown (the MAP-*
+        # residue class, purged from dev during P3).
+        s.execute(sql_text("DELETE FROM company_modules WHERE company_id = :c"), {"c": cid})
+        s.execute(sql_text("DELETE FROM companies WHERE id = :c"), {"c": cid})
     s.commit()
     s.close()
 
