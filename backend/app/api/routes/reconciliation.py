@@ -267,30 +267,63 @@ def trigger_matching(
         ReconciliationTransaction.reconciliation_run_id == run_id,
     ).order_by(ReconciliationTransaction.sort_order).all()
 
-    # Load platform records for matching
-    try:
-        from app.models.payment import Payment
-        payments = db.query(Payment).filter(
-            Payment.company_id == current_user.company_id,
-            Payment.payment_date >= run.period_start,
-            Payment.payment_date <= run.statement_date,
-        ).all()
-    except Exception:
-        payments = []
+    # Load platform records for matching — REAL models, LOUD (D-3).
+    # Pre-rework both sides were dead: the customer side imported the dead
+    # app.models.payment inside a swallow (→ payments = [] on every run),
+    # and the vendor list, even when loaded, was NEVER consulted by the
+    # matching loop. Reconciliation was structurally unable to match a
+    # payment in either direction; every run reported everything unmatched.
+    # LOUD-FAILURE CONTRACT: no fallback — a matcher that cannot read its
+    # inputs refuses (an "everything's unmatched" screen from a broken read
+    # is the lie; refusal is the truth).
+    from app.models.customer_payment import CustomerPayment
+    from app.models.vendor_payment import VendorPayment
 
-    try:
-        from app.models.bill_payment import BillPayment
-        bill_payments = db.query(BillPayment).filter(
-            BillPayment.tenant_id == current_user.company_id,
-        ).all()
-    except Exception:
-        bill_payments = []
+    from datetime import timedelta as _td
 
-    # Build lookup: amount → list of platform records
-    payment_by_amount: dict[str, list] = {}
+    # Payment dates are timestamptz; statement dates are DATE. End-inclusive
+    # at day granularity (statement_date + 1, exclusive). period_start is
+    # nullable — filter only when present; never invent a window.
+    upper = run.statement_date + _td(days=1)
+    cp_q = db.query(CustomerPayment).filter(
+        CustomerPayment.company_id == current_user.company_id,
+        CustomerPayment.deleted_at.is_(None),
+        CustomerPayment.payment_date < upper,
+    )
+    vp_q = db.query(VendorPayment).filter(
+        VendorPayment.company_id == current_user.company_id,
+        VendorPayment.deleted_at.is_(None),
+        VendorPayment.payment_date < upper,
+    )
+    if run.period_start:
+        cp_q = cp_q.filter(CustomerPayment.payment_date >= run.period_start)
+        vp_q = vp_q.filter(VendorPayment.payment_date >= run.period_start)
+    payments = cp_q.all()
+    vendor_payments = vp_q.all()
+
+    # Direction-honest candidate pools (what the data carries): a credit
+    # statement line (deposit) matches CUSTOMER payments; a debit
+    # (withdrawal) matches VENDOR payments; an untyped line consults both.
+    # Dates normalized to .date() — the (DATE − timestamptz) TypeError class.
+    customer_by_amount: dict[str, list] = {}
     for p in payments:
-        key = str(round(float(p.amount), 2))
-        payment_by_amount.setdefault(key, []).append(("customer_payment", p.id, p.payment_date, getattr(p, "reference_number", None)))
+        key = str(round(float(p.total_amount), 2))
+        customer_by_amount.setdefault(key, []).append(
+            ("customer_payment", p.id, p.payment_date.date() if p.payment_date else None, p.reference_number)
+        )
+    vendor_by_amount: dict[str, list] = {}
+    for vp in vendor_payments:
+        key = str(round(float(vp.total_amount), 2))
+        vendor_by_amount.setdefault(key, []).append(
+            ("vendor_payment", vp.id, vp.payment_date.date() if vp.payment_date else None, vp.reference_number)
+        )
+
+    def _pools_for(txn_type: str | None) -> list[dict[str, list]]:
+        if txn_type == "credit":
+            return [customer_by_amount]
+        if txn_type == "debit":
+            return [vendor_by_amount]
+        return [customer_by_amount, vendor_by_amount]
 
     auto_count = 0
     suggested_count = 0
@@ -320,8 +353,11 @@ def trigger_matching(
             suggested_count += 1
             continue
 
-        # Exact amount match
-        candidates = payment_by_amount.get(amt_key, [])
+        # Exact amount match — direction-honest pool(s)
+        pools = _pools_for(txn.transaction_type)
+        candidates = []
+        for pool in pools:
+            candidates.extend(pool.get(amt_key, []))
         if len(candidates) == 1:
             rec_type, rec_id, rec_date, rec_ref = candidates[0]
             days_diff = abs((txn.transaction_date - rec_date).days) if rec_date else 999
@@ -333,12 +369,15 @@ def trigger_matching(
                 txn.matched_record_id = rec_id
                 auto_count += 1
                 cleared_total += txn.amount
-                candidates.clear()  # consumed
+                for pool in pools:  # consumed — remove from its source pool
+                    if candidates[0] in pool.get(amt_key, []):
+                        pool[amt_key].remove(candidates[0])
                 continue
 
-        # Reference match
+        # Reference match — within the direction-honest pool(s)
         if txn.reference_number:
-            for cands in payment_by_amount.values():
+            _ref_pools = [c for pool in pools for c in pool.values()]
+            for cands in _ref_pools:
                 for c in cands:
                     if c[3] and c[3] == txn.reference_number:
                         txn.match_status = "auto_cleared"
