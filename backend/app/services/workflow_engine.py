@@ -1659,6 +1659,9 @@ def _handle_send_notification(db: Session, config: dict, run: WorkflowRun) -> di
             "description": config.get("body"),
             "metadata": {
                 "notify_user_id": config.get("notify_user_id"),
+                # The audience grammar's specific-people list (a declared
+                # user_multi_select param merges here at fire time).
+                "notify_user_ids": config.get("notify_user_ids"),
                 "notify_roles": config.get("notify_roles"),
                 "link": config.get("link"),
             },

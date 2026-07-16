@@ -717,6 +717,24 @@ export interface PonderStepParam {
   live: boolean
   is_configurable: boolean
   validation?: Record<string, unknown> | null
+  /** user_multi_select params: {user_id: display name} for the effective
+   * value's chips — resolved server-side (unresolvable ids absent). */
+  value_labels?: Record<string, string>
+}
+
+/** A typeahead hit for the audience picker's specific-people chips. */
+export interface PonderUserHit {
+  id: string
+  name: string
+  email: string
+  company_name?: string | null
+}
+
+export async function searchPonderUsers(q: string): Promise<PonderUserHit[]> {
+  const { data } = await adminApi.get<PonderUserHit[]>(`${BASE}/ponder/users`, {
+    params: { q },
+  })
+  return data
 }
 
 export interface PonderBeat {

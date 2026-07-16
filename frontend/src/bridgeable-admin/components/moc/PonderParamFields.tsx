@@ -16,12 +16,14 @@
  * Audience picker: `role_multi_select` params (notify_roles) render as role
  * chips — writing the exact config key the audience derivation reads.
  */
-import { useState } from "react"
-import { AtSign, RotateCcw } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { AtSign, RotateCcw, X } from "lucide-react"
 
 import {
+  searchPonderUsers,
   setPonderWorkflowParam,
   type PonderStepParam,
+  type PonderUserHit,
 } from "@/bridgeable-admin/services/moc-service"
 
 const MUTED = "#A79B8E"
@@ -44,6 +46,106 @@ function _errMsg(e: unknown): string {
 const EMAILISH_TYPES = new Set(["email", "email_list"])
 const EMAILISH_KEYS = new Set(["from_name", "reply_to", "to_email", "cc_emails"])
 
+/**
+ * UserChips — the specific-people half of the audience picker. Roles cover
+ * the common case; this covers the fringe cases roles don't. Selected users
+ * render as removable chips (names resolved server-side via value_labels;
+ * a picked hit carries its own name); "Add a person…" is a typeahead over
+ * the platform user search. Writes user IDS — the exact config shape the
+ * derivation + send_notification consumer read.
+ */
+function UserChips({
+  value, labels, onChange, paramKey,
+}: {
+  value: string[]
+  labels: Record<string, string>
+  onChange: (ids: string[], labels: Record<string, string>) => void
+  paramKey: string
+}) {
+  const [query, setQuery] = useState("")
+  const [hits, setHits] = useState<PonderUserHit[]>([])
+  const [searching, setSearching] = useState(false)
+  const timer = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (timer.current) window.clearTimeout(timer.current)
+    const q = query.trim()
+    if (q.length < 2) { setHits([]); return }
+    timer.current = window.setTimeout(() => {
+      setSearching(true)
+      searchPonderUsers(q)
+        .then((r) => setHits(r.filter((h) => !value.includes(h.id))))
+        .catch(() => setHits([]))
+        .finally(() => setSearching(false))
+    }, 250)
+    return () => { if (timer.current) window.clearTimeout(timer.current) }
+  }, [query, value])
+
+  return (
+    <div className="flex flex-col gap-1.5" data-testid={`ponder-param-users-${paramKey}`}>
+      {value.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {value.map((id) => (
+            <span
+              key={id}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption"
+              style={{ background: "rgba(156,86,64,0.22)", color: "var(--accent)" }}
+              data-testid={`ponder-user-chip-${id}`}
+            >
+              {labels[id] ?? id}
+              <button
+                type="button" aria-label={`Remove ${labels[id] ?? id}`}
+                onClick={() => onChange(value.filter((x) => x !== id), labels)}
+                className="focus-ring-accent rounded-full"
+                data-testid={`ponder-user-remove-${id}`}
+              >
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="relative">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Add a person…"
+          className={`${inputCls} w-56`} style={inputStyle}
+          data-testid={`ponder-user-search-${paramKey}`}
+        />
+        {hits.length > 0 ? (
+          <div
+            className="absolute z-10 mt-1 w-64 overflow-hidden rounded-md py-1 shadow-level-2"
+            style={{ background: "#26201b", border: `1px solid ${EDGE}` }}
+            data-testid={`ponder-user-hits-${paramKey}`}
+          >
+            {hits.map((h) => (
+              <button
+                key={h.id} type="button"
+                onClick={() => {
+                  onChange([...value, h.id], { ...labels, [h.id]: h.name })
+                  setQuery("")
+                  setHits([])
+                }}
+                className="flex w-full flex-col px-2.5 py-1.5 text-left hover:bg-white/5"
+                data-testid={`ponder-user-hit-${h.id}`}
+              >
+                <span className="text-body-sm" style={{ color: "#EAE3DA" }}>{h.name}</span>
+                <span className="text-micro" style={{ color: FAINT }}>
+                  {h.email}{h.company_name ? ` · ${h.company_name}` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {searching ? (
+          <span className="absolute right-2 top-1.5 text-micro" style={{ color: FAINT }}>…</span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 export function isEmailish(p: PonderStepParam): boolean {
   return EMAILISH_TYPES.has(p.param_type) || EMAILISH_KEYS.has(p.param_key)
 }
@@ -60,6 +162,11 @@ function ParamField({
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // user_multi_select: names for the chips — server-resolved for the
+  // effective value; a freshly-picked hit brings its own.
+  const [userLabels, setUserLabels] = useState<Record<string, string>>(
+    param.value_labels ?? {},
+  )
 
   async function save(value: unknown, detail: string) {
     setError(null)
@@ -117,6 +224,13 @@ function ParamField({
             className={`${inputCls} w-24`} style={inputStyle}
             data-testid={`ponder-param-input-${param.param_key}`}
           />
+        ) : param.param_type === "user_multi_select" ? (
+          <UserChips
+            value={Array.isArray(draft) ? (draft as string[]) : []}
+            labels={userLabels}
+            paramKey={param.param_key}
+            onChange={(ids, labels) => { setUserLabels(labels); set(ids) }}
+          />
         ) : param.param_type === "role_multi_select" ? (
           <div className="flex flex-wrap gap-1" data-testid={`ponder-param-roles-${param.param_key}`}>
             {ROLE_SUGGESTIONS.map((r) => {
@@ -160,7 +274,9 @@ function ParamField({
             type="button" disabled={busy}
             onClick={() => void save(
               draft,
-              `Set “${label}” to ${JSON.stringify(draft)}`,
+              param.param_type === "user_multi_select" && Array.isArray(draft)
+                ? `Set “${label}” to ${(draft as string[]).map((id) => userLabels[id] ?? id).join(", ") || "(nobody)"}`
+                : `Set “${label}” to ${JSON.stringify(draft)}`,
             )}
             data-testid={`ponder-param-save-${param.param_key}`}
             className="rounded-md px-2 py-1 text-body-sm font-medium"

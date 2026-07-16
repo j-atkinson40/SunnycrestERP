@@ -46,7 +46,11 @@ class StepParamValidationError(ValueError):
 # ── Value validation (shared by the write endpoints + the fire-time merge) ──
 
 _BOOL_TYPES = ("boolean", "toggle")
-_LIST_TYPES = ("email_list", "role_multi_select")
+# user_multi_select holds user UUIDs — the audience grammar's "specific
+# people" escape hatch (roles aren't always exact). Existence is checked at
+# the WRITE boundary (the admin route, where a db session lives); here the
+# shape check keeps fire-time resolution pure.
+_LIST_TYPES = ("email_list", "role_multi_select", "user_multi_select")
 
 
 def _is_template_ref(value: str) -> bool:

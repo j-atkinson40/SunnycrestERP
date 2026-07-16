@@ -143,18 +143,28 @@ def _bytes(cfg) -> str:
 
 
 class TestParityPin:
-    def test_fleet_has_no_live_overlays(self, env):
-        """Every workflow in the DB resolves to ZERO live overlays — the seam
-        provably does not touch the seeded fleet (seeds never set
-        current_value)."""
-        db = env["db"]
-        wf_ids = [r[0] for r in db.query(Workflow.id).all()]
-        touched = {}
-        for wf_id in wf_ids:
-            overlays = live_param_overlays(db, wf_id, env["company_id"])
-            if overlays:
-                touched[wf_id] = overlays
-        assert touched == {}, f"fleet workflows carry live overlays: {touched}"
+    def test_seeds_never_ship_live_values(self):
+        """The durable fleet invariant: no seed dict declares current_value,
+        and the seed writer never sets it — so a FRESH install has zero live
+        overlays and the seam provably does not touch the seeded fleet.
+
+        (Deliberately NOT a DB-emptiness scan: the moment an operator
+        legitimately sets a param — which happened on dev the day this
+        shipped — a live overlay is correct state, not a regression.)"""
+        import inspect
+
+        from app.data import default_workflows as dw
+        from app.data import seed_workflows as sw
+
+        declared = []
+        for wf in dw.ALL_DEFAULT_WORKFLOWS:
+            for p in wf.get("params", []) or []:
+                if p.get("current_value") is not None:
+                    declared.append((wf.get("id"), p.get("param_key")))
+        assert declared == [], f"seed dicts declare live values: {declared}"
+        # And the seed writer's upsert record never carries current_value.
+        src = inspect.getsource(sw.seed_default_workflows)
+        assert '"current_value"' not in src
 
     def test_unoverridden_resolved_configs_byte_identical(self, env, monkeypatch):
         """The representative sample — action + condition-branch + declared-

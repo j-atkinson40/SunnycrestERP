@@ -245,6 +245,92 @@ class TestWhenBeatTriggers:
         # The audience derivation reads the SAME merged config:
         assert send["audience"]["text"] == "the office, accountant roles"
 
+    def test_specific_people_join_the_audience(self, db):
+        """The fringe-case escape hatch: a user_multi_select param's live
+        value composes into the audience line as REAL NAMES (roles +
+        people); unresolvable ids are skipped, never guessed; the beat's
+        param carries value_labels for the chips."""
+        from app.models.user import User
+
+        users = db.query(User).filter(User.is_active.is_(True)).limit(2).all()
+        if len(users) < 2:
+            pytest.skip("dev DB has fewer than 2 active users")
+        u1, u2 = users
+        task, wf_id = _mk_task(db, params=[
+            {"step_key": "send_statements", "param_key": "notify_roles",
+             "param_type": "role_multi_select", "default_value": ["admin"]},
+            {"step_key": "send_statements", "param_key": "notify_user_ids",
+             "param_type": "user_multi_select", "default_value": []},
+        ])
+        row = (
+            db.query(WorkflowStepParam)
+            .filter(WorkflowStepParam.workflow_id == wf_id,
+                    WorkflowStepParam.param_key == "notify_user_ids",
+                    WorkflowStepParam.company_id.is_(None))
+            .one()
+        )
+        row.current_value = [u1.id, u2.id, "not-a-real-user-id"]
+        db.commit()
+
+        # Roles also need a live value for the composed line (defaults never
+        # merge — the parity rule).
+        roles_row = (
+            db.query(WorkflowStepParam)
+            .filter(WorkflowStepParam.workflow_id == wf_id,
+                    WorkflowStepParam.param_key == "notify_roles",
+                    WorkflowStepParam.company_id.is_(None))
+            .one()
+        )
+        roles_row.current_value = ["office"]
+        db.commit()
+
+        script = build_ponder_script(db, task.id)
+        send = next(b for b in script["beats"] if b["key"] == "step:send_statements")
+        n1 = f"{u1.first_name} {u1.last_name}".strip() or u1.email
+        n2 = f"{u2.first_name} {u2.last_name}".strip() or u2.email
+        assert send["audience"]["text"] == f"the office role + {n1}, {n2}"
+        p = next(x for x in send["params"] if x["param_key"] == "notify_user_ids")
+        assert p["value_labels"] == {u1.id: n1, u2.id: n2}  # ghost id absent
+
+    def test_users_only_audience_needs_no_roles(self, db):
+        from app.models.user import User
+
+        u = db.query(User).filter(User.is_active.is_(True)).first()
+        if u is None:
+            pytest.skip("dev DB has no active users")
+        task, wf_id = _mk_task(db, params=[
+            {"step_key": "send_statements", "param_key": "notify_user_ids",
+             "param_type": "user_multi_select", "default_value": []},
+        ])
+        row = (
+            db.query(WorkflowStepParam)
+            .filter(WorkflowStepParam.workflow_id == wf_id,
+                    WorkflowStepParam.company_id.is_(None))
+            .one()
+        )
+        row.current_value = [u.id]
+        db.commit()
+        script = build_ponder_script(db, task.id)
+        send = next(b for b in script["beats"] if b["key"] == "step:send_statements")
+        expected = f"{u.first_name} {u.last_name}".strip() or u.email
+        assert send["audience"]["text"] == expected
+
+    def test_user_multi_select_shape_validation(self, db):
+        from app.services.workflows.step_params import (
+            StepParamValidationError, validate_param_value,
+        )
+
+        validate_param_value(param_type="user_multi_select", validation=None,
+                             value=["some-id"], label="t")
+        validate_param_value(param_type="user_multi_select", validation=None,
+                             value=None, label="t")
+        with pytest.raises(StepParamValidationError):
+            validate_param_value(param_type="user_multi_select", validation=None,
+                                 value="flat-string", label="t")
+        with pytest.raises(StepParamValidationError):
+            validate_param_value(param_type="user_multi_select", validation=None,
+                                 value=["ok", ""], label="t")
+
     def test_when_caption_still_overlays(self, db):
         """Authored captions keep winning over derived text — keying intact."""
         from app.services.maps_of_content.ponder import save_caption

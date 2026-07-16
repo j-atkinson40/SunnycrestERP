@@ -459,15 +459,47 @@ def _audience_for_queue(db: Session, queue_id: str) -> dict | None:
     }
 
 
+def _user_name_map(db: Session, user_ids: list) -> dict[str, str]:
+    """User ids → {id: display name}. An id that doesn't resolve is simply
+    ABSENT (a missing name beats a guessed one)."""
+    ids = [str(u) for u in user_ids if u]
+    if not ids:
+        return {}
+    from app.models.user import User
+
+    rows = db.query(User).filter(User.id.in_(ids)).all()
+    return {u.id: f"{u.first_name} {u.last_name}".strip() or u.email for u in rows}
+
+
+def _resolve_user_names(db: Session, user_ids: list) -> list[str]:
+    """User ids → display names, input order, unresolvable skipped."""
+    by_id = _user_name_map(db, user_ids)
+    return [by_id[str(u)] for u in user_ids if u and str(u) in by_id]
+
+
 def _audience_for_step(db: Session, node: dict) -> dict | None:
-    """Notify-shaped steps whose config names roles → the roles, verbatim.
-    No honest audience in the config → None (never guess)."""
+    """Notify-shaped steps → their honest audience: roles named in config
+    plus SPECIFIC PEOPLE (user_multi_select params — the fringe cases roles
+    don't cover), names resolved live. Nothing honest in the config → None
+    (never guess)."""
     cfg = node.get("config") or {}
     roles = cfg.get("roles") or cfg.get("notify_roles")
+    user_ids = cfg.get("user_ids") or cfg.get("notify_user_ids")
+
+    parts: list[str] = []
     if isinstance(roles, list) and roles:
         pretty = ", ".join(str(r).replace("_", " ") for r in roles)
-        return {"text": f"the {pretty} role" + ("s" if len(roles) > 1 else "")}
-    return None
+        parts.append(f"the {pretty} role" + ("s" if len(roles) > 1 else ""))
+    if isinstance(user_ids, list) and user_ids:
+        names = _resolve_user_names(db, user_ids)
+        if names:
+            shown = ", ".join(names[:3])
+            if len(names) > 3:
+                shown += f" +{len(names) - 3} more"
+            parts.append(shown)
+    if not parts:
+        return None
+    return {"text": " + ".join(parts)}
 
 
 # ── The motif grammar (Ponder Polish Set 3) ─────────────────────────────────
@@ -578,6 +610,11 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
         from app.services.workflows.step_params import describe_step_params
 
         for p in describe_step_params(db, runtime.id):
+            if p["param_type"] == "user_multi_select":
+                # The editor's chips need names, resolved with the same
+                # honesty as the audience line (unresolvable → absent).
+                ids = p["effective_value"] if isinstance(p["effective_value"], list) else []
+                p = {**p, "value_labels": _user_name_map(db, ids)}
             params_by_step.setdefault(p["step_key"], []).append(p)
             if p["live"] and p["is_configurable"]:
                 live_by_step.setdefault(p["step_key"], {})[p["param_key"]] = (

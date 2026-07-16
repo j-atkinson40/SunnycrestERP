@@ -287,6 +287,46 @@ class _SaveCaption(BaseModel):
     text: str | None = None  # None/blank clears → derived fallback returns
 
 
+@router.get("/ponder/users")
+def admin_ponder_user_search(
+    q: str = "",
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Typeahead for the audience picker's specific-people chips (Tenant
+    Ponder-Editor P1 rider). Active users by name/email, capped at 8."""
+    from app.models.company import Company
+    from app.models.user import User
+
+    term = (q or "").strip()
+    if len(term) < 2:
+        return []
+    query = (
+        db.query(User, Company.name)
+        .outerjoin(Company, Company.id == User.company_id)
+        .filter(User.is_active.is_(True))
+    )
+    # Every typed word must match SOME field — "alex acc" finds Alex
+    # Accountant (natural first-last typing), not nothing.
+    for word in term.split():
+        like = f"%{word}%"
+        query = query.filter(
+            (User.first_name.ilike(like))
+            | (User.last_name.ilike(like))
+            | (User.email.ilike(like)),
+        )
+    rows = query.order_by(User.first_name, User.last_name).limit(8).all()
+    return [
+        {
+            "id": u.id,
+            "name": f"{u.first_name} {u.last_name}".strip() or u.email,
+            "email": u.email,
+            "company_name": company_name,
+        }
+        for u, company_name in rows
+    ]
+
+
 @router.get("/ponder/{task_id}")
 def admin_get_ponder_script(
     task_id: str,
@@ -365,6 +405,21 @@ def admin_set_workflow_param(
         )
     except StepParamValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # user_multi_select: existence-check at the boundary (a db lives here;
+    # fire-time validation stays pure). An unknown id is rejected LOUDLY —
+    # never stored to resolve-to-nothing later.
+    if row.param_type == "user_multi_select" and isinstance(body.value, list) and body.value:
+        from app.models.user import User
+
+        found = {
+            u for (u,) in db.query(User.id).filter(User.id.in_([str(v) for v in body.value]))
+        }
+        unknown = [v for v in body.value if str(v) not in found]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{step_key}.{param_key}: unknown user id(s) {unknown}",
+            )
     row.current_value = body.value
     db.commit()
     return {

@@ -17,7 +17,11 @@ import type { PonderStepParam } from "@/bridgeable-admin/services/moc-service"
 
 vi.mock("@/bridgeable-admin/services/moc-service", async () => {
   const actual = await vi.importActual<typeof svc>("@/bridgeable-admin/services/moc-service")
-  return { ...actual, setPonderWorkflowParam: vi.fn().mockResolvedValue({ saved: true }) }
+  return {
+    ...actual,
+    setPonderWorkflowParam: vi.fn().mockResolvedValue({ saved: true }),
+    searchPonderUsers: vi.fn().mockResolvedValue([]),
+  }
 })
 
 function param(over: Partial<PonderStepParam>): PonderStepParam {
@@ -112,6 +116,60 @@ describe("PonderParamFields", () => {
       expect(screen.getByTestId("ponder-param-error-reply_to").textContent)
         .toContain("not an email address"),
     )
+  })
+
+  it("specific-people chips: render from value_labels, pick a hit, save ids", async () => {
+    vi.mocked(svc.searchPonderUsers).mockResolvedValue([
+      { id: "u-new", name: "Pat Fringe", email: "pat@testco.com", company_name: "Test Vault Co" },
+    ])
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(
+      <PonderParamFields
+        workflowId="wf-1"
+        params={[param({
+          param_key: "notify_user_ids", param_type: "user_multi_select",
+          effective_value: ["u-1"], live: true,
+          value_labels: { "u-1": "Jane Smith" },
+        })]}
+        onSaved={() => {}}
+      />,
+    )
+    // The existing person renders as a NAMED chip (server-resolved label).
+    expect(screen.getByTestId("ponder-user-chip-u-1").textContent).toContain("Jane Smith")
+    // Type-ahead → pick Pat → chip appears with the hit's own name.
+    fireEvent.change(screen.getByTestId("ponder-user-search-notify_user_ids"), {
+      target: { value: "pat" },
+    })
+    await vi.advanceTimersByTimeAsync(300)
+    await waitFor(() => expect(screen.getByTestId("ponder-user-hit-u-new")).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId("ponder-user-hit-u-new"))
+    expect(screen.getByTestId("ponder-user-chip-u-new").textContent).toContain("Pat Fringe")
+    // Save writes the exact id list the derivation + consumer read.
+    fireEvent.click(screen.getByTestId("ponder-param-save-notify_user_ids"))
+    await waitFor(() => expect(svc.setPonderWorkflowParam).toHaveBeenCalledWith(
+      "wf-1", "send_statements", "notify_user_ids", ["u-1", "u-new"],
+    ))
+    vi.useRealTimers()
+  })
+
+  it("removing a person's chip drops their id", async () => {
+    render(
+      <PonderParamFields
+        workflowId="wf-1"
+        params={[param({
+          param_key: "notify_user_ids", param_type: "user_multi_select",
+          effective_value: ["u-1", "u-2"], live: true,
+          value_labels: { "u-1": "Jane Smith", "u-2": "Bob Jones" },
+        })]}
+        onSaved={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("ponder-user-remove-u-1"))
+    expect(screen.queryByTestId("ponder-user-chip-u-1")).toBeNull()
+    fireEvent.click(screen.getByTestId("ponder-param-save-notify_user_ids"))
+    await waitFor(() => expect(svc.setPonderWorkflowParam).toHaveBeenCalledWith(
+      "wf-1", "send_statements", "notify_user_ids", ["u-2"],
+    ))
   })
 
   it("blocked by the confirm gate — no write", async () => {
