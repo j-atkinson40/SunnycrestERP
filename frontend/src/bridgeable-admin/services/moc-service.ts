@@ -702,6 +702,23 @@ export interface PonderAudience {
   count_capped?: boolean
 }
 
+/** A declared step param surfaced on a step beat (Tenant Ponder-Editor P1) —
+ * the same effective values fire time merges (one resolution path). */
+export interface PonderStepParam {
+  step_key: string
+  param_key: string
+  label: string
+  description?: string | null
+  param_type: string
+  default_value: unknown
+  platform_value: unknown
+  current_value: unknown
+  effective_value: unknown
+  live: boolean
+  is_configurable: boolean
+  validation?: Record<string, unknown> | null
+}
+
 export interface PonderBeat {
   key: string
   kind: PonderBeatKind
@@ -719,6 +736,12 @@ export interface PonderBeat {
   headline?: string
   detail?: string | null
   as_of?: string | null
+  /** Tenant Ponder-Editor P1 — the WHEN beat's editable trigger collection
+   * (the T-1b rows; editing the beat edits these + re-derives). */
+  triggers?: MoCTrigger[]
+  editable?: boolean
+  /** Step beats: the declared params (the editing grammar's fields). */
+  params?: PonderStepParam[]
 }
 
 export interface PonderScript {
@@ -728,6 +751,10 @@ export interface PonderScript {
   beats: PonderBeat[]
   orphaned_captions: Record<string, string>
   mirror_drift: string[]
+  /** P1 editors: live gating + event-catalog scope + param write target. */
+  is_live?: boolean
+  vertical?: string | null
+  workflow_id?: string | null
 }
 
 export async function getPonderScript(taskId: string): Promise<PonderScript> {
@@ -745,6 +772,21 @@ export async function savePonderCaption(
     { beat_key: beatKey, text },
   )
   return data.captions
+}
+
+/** Set (or clear, value=null) the PLATFORM-level live value of a declared
+ * step param — the engine seam merges it at fire time; the beat re-derives. */
+export async function setPonderWorkflowParam(
+  workflowId: string,
+  stepKey: string,
+  paramKey: string,
+  value: unknown,
+): Promise<{ saved: boolean; effective_value: unknown; live: boolean }> {
+  const { data } = await adminApi.put(
+    `${BASE}/ponder/workflows/${workflowId}/params/${stepKey}/${paramKey}`,
+    { value },
+  )
+  return data
 }
 
 export async function getPonderDocumentPreview(

@@ -120,6 +120,66 @@ def cron_to_prose(cron: str, timezone_name: str | None = None) -> str:
     return f"On the schedule `{cron}`{tz}"
 
 
+_ORDINAL_WORDS = {1: "first", 2: "second", 3: "third", 4: "fourth", "last": "last"}
+
+
+def schedule_trigger_to_prose(config: dict) -> str:
+    """A MoC schedule-trigger config → the WHEN beat's own sentence (no
+    trailing period). The same grammar the editor's live readback mirrors —
+    the user composing a schedule is writing this sentence in reverse."""
+    cfg = config or {}
+    spec = cfg.get("spec_kind")
+    if spec == "cron" and cfg.get("cron"):
+        return cron_to_prose(cfg["cron"], cfg.get("timezone"))
+    if spec == "time_of_day" and cfg.get("time"):
+        try:
+            hh, mm = str(cfg["time"]).split(":", 1)
+            clock = _clock(int(hh), int(mm))
+        except (ValueError, AttributeError):
+            return "On a schedule"
+        days = cfg.get("days") or []
+        if not days or len(days) >= 7:
+            return f"Every night at {clock}" if int(hh) >= 20 else f"Every day at {clock}"
+        return f"At {clock} on {', '.join(str(d).capitalize() for d in days)}"
+    if spec == "ordinal_weekday":
+        word = _ORDINAL_WORDS.get(cfg.get("ordinal"))
+        weekday_abbrev = str(cfg.get("weekday", ""))
+        full = {
+            "mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thursday",
+            "fri": "Friday", "sat": "Saturday", "sun": "Sunday",
+        }.get(weekday_abbrev)
+        try:
+            hh, mm = str(cfg.get("time")).split(":", 1)
+            clock = _clock(int(hh), int(mm))
+        except (ValueError, AttributeError):
+            clock = None
+        if word and full:
+            base = f"The {word} {full} of every month"
+            return f"{base} at {clock}" if clock else base
+        return "On a monthly schedule"
+    if spec == "time_after_event":
+        n = cfg.get("offset_days", 0)
+        return f"{n} day{'s' if n != 1 else ''} after {cfg.get('field', 'the event')}"
+    return "On a schedule"
+
+
+def _trigger_prose(kind: str, config: dict) -> str:
+    """One MoC task trigger → its WHEN sentence (no trailing period)."""
+    if kind == "manual":
+        return "When you run it — this one waits for a person to start it"
+    if kind == "schedule":
+        return schedule_trigger_to_prose(config)
+    if kind == "event":
+        event = str(config.get("event", "an event"))
+        base = f"Whenever {event.replace('.', ' ').replace('_', ' ')} occurs"
+        conditions = config.get("conditions") or []
+        if conditions and isinstance(conditions[0], dict):
+            c = conditions[0]
+            base += f" (where {c.get('field')} {c.get('operator')} {c.get('value')})"
+        return base
+    return "On a trigger"
+
+
 def _when_text(workflow: Workflow) -> str:
     cfg = workflow.trigger_config or {}
     t = workflow.trigger_type
@@ -507,6 +567,23 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
                     "; ".join(drift),
                 )
 
+    # Tenant Ponder-Editor P1 — SYMMETRY: the derivation reads the SAME
+    # effective param values fire time merges (one resolution path — see
+    # services/workflows/step_params.py). Beats below derive from node config
+    # WITH live overlays applied, and step beats carry their declared params
+    # so the editor renders fields for exactly what the platform declared.
+    params_by_step: dict[str, list[dict]] = {}
+    live_by_step: dict[str, dict[str, Any]] = {}
+    if runtime is not None:
+        from app.services.workflows.step_params import describe_step_params
+
+        for p in describe_step_params(db, runtime.id):
+            params_by_step.setdefault(p["step_key"], []).append(p)
+            if p["live"] and p["is_configurable"]:
+                live_by_step.setdefault(p["step_key"], {})[p["param_key"]] = (
+                    p["effective_value"]
+                )
+
     captions: dict[str, str] = {}
     if isinstance(task.ponder, dict):
         captions = dict(task.ponder.get("captions") or {})
@@ -524,18 +601,55 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
             **extra,
         })
 
-    # WHEN
-    if runtime is not None:
+    # WHEN — the task's OWN triggers first (the T-1b collection the ponder's
+    # trigger editor writes; editing the beat edits these rows and the beat
+    # re-derives). Tasks with no declared triggers fall back to the runtime
+    # workflow's trigger config (still editable — an edit ADDS a task trigger).
+    from app.services.maps_of_content import triggers as triggers_svc
+
+    task_triggers = triggers_svc.list_triggers(db, task_catalog_id=task.id)
+    active_triggers = [t for t in task_triggers if t.is_active]
+    trigger_payloads = [
+        {
+            "id": t.id, "kind": t.kind, "config": t.config, "label": t.label,
+            "is_active": t.is_active, "is_live": t.is_live,
+            "summary": triggers_svc.summarize_trigger(t.kind, t.config),
+        }
+        for t in task_triggers
+    ]
+    if active_triggers:
+        sentences = []
+        for t in active_triggers:
+            sentences.append(_trigger_prose(t.kind, t.config or {}))
+        derived_when = ". ".join(sentences) + "."
+        kinds = {t.kind for t in active_triggers}
+        _when_motif = None
+        if "schedule" in kinds:
+            _when_motif = {"kind": "clock"}
+        elif "event" in kinds:
+            _when_motif = {"kind": "signal"}
+        _beat(
+            "when", "when", derived_when, motif=_when_motif,
+            triggers=trigger_payloads, editable=True,
+        )
+    elif runtime is not None:
         _when_motif = None
         if runtime.trigger_type in ("scheduled", "time_of_day"):
             _when_motif = {"kind": "clock"}
         elif runtime.trigger_type == "event":
             _when_motif = {"kind": "signal"}
-        _beat("when", "when", _when_text(runtime), motif=_when_motif)
+        _beat(
+            "when", "when", _when_text(runtime), motif=_when_motif,
+            triggers=trigger_payloads, editable=True,
+        )
 
     # STEPS / PAUSES from the mirror canvas
     for node in _ordered_nodes(template.canvas_state or {}):
-        cfg = node.get("config") or {}
+        # SYMMETRY: derive from the node config WITH live param overlays
+        # merged — the beat shows what the fire would do, by construction.
+        overlay = live_by_step.get(node["id"]) or {}
+        cfg = {**(node.get("config") or {}), **overlay}
+        node = {**node, "config": cfg}
         derived = (
             cfg.get("description") or cfg.get("prompt")
             or node.get("label") or node["id"]
@@ -562,6 +676,10 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
                 motif=motif_for_step(node),
                 artifact=_document_artifact(db, runtime.id if runtime else None, node),
                 audience=_audience_for_step(db, node),
+                # The declared params — the editing grammar's fields. Empty
+                # list omitted to keep un-parameterized beats lean.
+                **({"params": params_by_step[node["id"]], "editable": True}
+                   if params_by_step.get(node["id"]) else {}),
             )
 
     # FOCUS beats — the task's attached focuses, resolved live (pin-honoring)
@@ -610,6 +728,13 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
         "beats": beats,
         "orphaned_captions": {k: captions[k] for k in orphaned},
         "mirror_drift": drift,
+        # Tenant Ponder-Editor P1 — the editors' gravity + context:
+        # is_live gates the confirm-with-evidence (a live task's next fire
+        # uses edited settings); vertical scopes the event-catalog picker;
+        # workflow_id is the param editors' write target.
+        "is_live": any(t.is_live for t in task_triggers),
+        "vertical": task.vertical,
+        "workflow_id": runtime.id if runtime else None,
     }
 
 

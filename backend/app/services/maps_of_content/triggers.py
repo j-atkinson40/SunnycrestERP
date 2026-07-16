@@ -34,7 +34,12 @@ from app.services.maps_of_content import trigger_events
 _UNSET: Any = object()
 
 KINDS = ("schedule", "event", "manual")
-SCHEDULE_SPEC_KINDS = ("time_of_day", "cron", "time_after_event")
+SCHEDULE_SPEC_KINDS = ("time_of_day", "cron", "time_after_event", "ordinal_weekday")
+# Tenant Ponder-Editor P1 — the ordinal-weekday rider ("the first Monday of
+# every month"). Standard cron can't express it (dom/dow OR-semantics), so
+# it's a first-class spec_kind the sweep evaluates tenant-local.
+ORDINALS = (1, 2, 3, 4, "last")
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 # Condition operators (filtered now; the list-of-conditions grows to rich later).
 OPERATORS = ("==", "!=", "in", ">", "<", ">=", "<=", "contains")
 
@@ -69,6 +74,26 @@ def _validate_schedule(config: dict) -> None:
         offset = config.get("offset_days", 0)
         if not isinstance(offset, int):
             raise TriggerValidationError("time_after_event 'offset_days' must be an int")
+    elif spec == "ordinal_weekday":
+        ordinal = config.get("ordinal")
+        if ordinal not in ORDINALS:
+            raise TriggerValidationError(
+                f"ordinal_weekday 'ordinal' must be one of {ORDINALS} (got {ordinal!r})"
+            )
+        weekday = config.get("weekday")
+        if weekday not in WEEKDAYS:
+            raise TriggerValidationError(
+                f"ordinal_weekday 'weekday' must be one of {WEEKDAYS} (got {weekday!r})"
+            )
+        time_str = config.get("time")
+        try:
+            hh, mm = str(time_str).split(":", 1)
+            if not (0 <= int(hh) <= 23 and 0 <= int(mm) <= 59):
+                raise ValueError
+        except (ValueError, AttributeError):
+            raise TriggerValidationError(
+                f"ordinal_weekday requires 'time' as HH:MM (got {time_str!r})"
+            )
 
 
 def _validate_event(db: Session, *, config: dict, vertical: str | None) -> None:
@@ -303,6 +328,12 @@ def humanize_schedule(config: dict) -> str:
         return f"{day_part} · {at}" if at else day_part
     if spec == "cron":
         return _humanize_cron(config.get("cron", ""))
+    if spec == "ordinal_weekday":
+        ordinal = config.get("ordinal")
+        ord_label = "Last" if ordinal == "last" else {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}.get(ordinal, str(ordinal))
+        day = str(config.get("weekday", "")).capitalize()
+        at = _fmt_time(config.get("time", ""))
+        return f"Monthly · {ord_label} {day}" + (f", {at}" if at else "")
     if spec == "time_after_event":
         n = config.get("offset_days", 0)
         return f"{n} day{'s' if n != 1 else ''} after {config.get('field', 'event')}"

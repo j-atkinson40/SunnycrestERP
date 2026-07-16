@@ -130,7 +130,9 @@ def test_event_catalog_seed_idempotent_and_carries_fields(db):
     n = db.execute(
         sql_text("SELECT COUNT(*) FROM moc_trigger_event_catalog WHERE scope = 'platform_default'")
     ).scalar()
-    assert n == 8  # no dups
+    # 9 platform events since H1 added run.failed (91688bad) — the count was
+    # stale at 8 (the H1 arc bumped the seed, not this pin; fixed P1 session).
+    assert n == 9  # no dups
 
     order_created = trigger_events.get_event(db, event_key="order.created", vertical=VERT)
     assert order_created is not None

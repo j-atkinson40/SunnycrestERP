@@ -93,6 +93,47 @@ def _fanout_companies(task: MoCTaskCatalog, companies: list[Company]) -> list[Co
     return []
 
 
+_SWEEP_WINDOW_MINUTES = 15  # mirrors the workflow_scheduler window
+_WEEKDAY_INDEX = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+
+def _ordinal_weekday_intended(cfg: dict, now_local: datetime) -> datetime | None:
+    """Tenant Ponder-Editor P1 — the ordinal-weekday matcher ("the first
+    Monday of every month at 4:00 PM"). Standard cron can't express this
+    (dom/dow OR-semantics); the sweep is custom Python, so it's a first-class
+    spec. Window semantics INHERIT the existing sweep rules: due when
+    now_local is inside [target, target + window) on a matching day — the
+    intended fire is the target clock-time (the idempotency key), so a due
+    trigger fires exactly once across the N sweep ticks in its window, and a
+    missed window is skipped (the T-2.1a catch-up rule)."""
+    idx = _WEEKDAY_INDEX.get(str(cfg.get("weekday")))
+    ordinal = cfg.get("ordinal")
+    if idx is None or now_local.weekday() != idx:
+        return None
+    dom = now_local.day
+    if ordinal == "last":
+        import calendar
+        days_in_month = calendar.monthrange(now_local.year, now_local.month)[1]
+        if dom + 7 <= days_in_month:
+            return None  # a later same-weekday exists this month
+    else:
+        occurrence = (dom - 1) // 7 + 1  # 1..5
+        if not isinstance(ordinal, int) or occurrence != ordinal:
+            return None
+    try:
+        hh, mm = str(cfg.get("time")).split(":", 1)
+        target_minutes = int(hh) * 60 + int(mm)
+    except (ValueError, AttributeError):
+        logger.warning(
+            "MoC ordinal_weekday trigger: invalid time %r — skipped", cfg.get("time")
+        )
+        return None
+    now_minutes = now_local.hour * 60 + now_local.minute
+    if not (0 <= now_minutes - target_minutes < _SWEEP_WINDOW_MINUTES):
+        return None
+    return now_local.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+
+
 def _due_intended_fire(
     trig: MoCTaskTrigger, company: Company, now: datetime
 ) -> datetime | None:
@@ -121,6 +162,11 @@ def _due_intended_fire(
         except ValueError:
             logger.warning("MoC schedule trigger %s: invalid cron %r — skipped", trig.id, cron)
             return None
+
+    if spec == "ordinal_weekday":
+        # Tenant-local like time_of_day — "the first Monday at 4pm" means the
+        # tenant's 4pm, not UTC's.
+        return _ordinal_weekday_intended(cfg, now.astimezone(tz))
 
     # time_after_event (funeral_case-only upstream) is deferred to a later phase.
     return None
