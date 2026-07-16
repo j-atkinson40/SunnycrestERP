@@ -69,11 +69,13 @@ function DocumentPreview({ artifact }: { artifact: PonderArtifact }) {
           Studio <ArrowUpRight size={10} />
         </a>
       </p>
+      {/* A document looks like a document: a full portrait page, whole and
+          legible-at-a-glance (US-letter aspect, scaled). */}
       <div
-        className="overflow-hidden rounded-md"
+        className="overflow-hidden rounded-md shadow-level-2"
         style={{
           border: `1px solid ${EDGE}`, background: "#F5F1EA",
-          width: 300, height: 180,
+          width: 320, height: 414,
         }}
       >
         {html ? (
@@ -84,7 +86,7 @@ function DocumentPreview({ artifact }: { artifact: PonderArtifact }) {
             scrolling="no"
             style={{
               width: 800, height: 1035, border: 0,
-              transform: "scale(0.375)", transformOrigin: "top left",
+              transform: "scale(0.4)", transformOrigin: "top left",
               pointerEvents: "none",
             }}
           />

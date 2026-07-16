@@ -296,15 +296,16 @@ export function PonderOverlay({
                   </p>
                 ) : null}
 
+                {/* Ponder Enrichment: the real artifact FIRST — the
+                    centerpiece, directly under the label; the motif and the
+                    description follow, untouched. */}
+                <ArtifactPreview artifact={beat.artifact} />
+
                 {beat.kind !== "pause" ? (
                   <div className="mt-2">
                     <MotifScene motif={beat.motif} reduced={reduced} />
                   </div>
                 ) : null}
-
-                {/* Ponder Enrichment: the real artifact, ABOVE the text —
-                    the description below stays exactly as it was. */}
-                <ArtifactPreview artifact={beat.artifact} />
 
                 {editMode && draft !== null ? (
                   <div className="mt-2" data-testid="ponder-caption-editor">
