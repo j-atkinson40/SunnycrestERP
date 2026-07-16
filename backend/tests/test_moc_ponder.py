@@ -219,3 +219,36 @@ class TestErrors:
         db.commit()
         with pytest.raises(ponder.PonderError, match="no workflow"):
             build_ponder_script(db, task.id)
+
+
+class TestMotifGrammar:
+    """Ponder Polish Set 3 — beat semantics → scene hints; unplaceable → None
+    (a missing visual beats a lying one)."""
+
+    def test_create_transform_send_and_honest_none(self):
+        from app.services.maps_of_content.ponder import motif_for_step
+
+        assert motif_for_step({"id": "generate_statements", "type": "action",
+                               "config": {"description": "Generate statement PDFs"}}) == \
+            {"kind": "create", "entity": "statement"}
+        assert motif_for_step({"id": "gen_inv", "type": "action",
+                               "config": {"description": "Generate draft invoices from eligible orders"}}) == \
+            {"kind": "transform", "from": "order", "to": "invoice"}
+        assert motif_for_step({"id": "send_statements", "type": "action",
+                               "config": {"description": "Email approved statements"}}) == \
+            {"kind": "send", "entity": "statement"}
+        # The grammar can't place it → None → typographic treatment.
+        assert motif_for_step({"id": "identify_customers", "type": "action",
+                               "config": {"description": "Find charge-account customers with activity"}}) is None
+        assert motif_for_step({"id": "branch_x", "type": "condition", "config": {}}) == {"kind": "branch"}
+
+    def test_beats_carry_motifs(self, db):
+        task, tpl, wf = _mk_fixture(db)
+        script = build_ponder_script(db, task.id)
+        by_key = {b["key"]: b for b in script["beats"]}
+        assert by_key["when"]["motif"] == {"kind": "clock"}  # scheduled fixture
+        assert by_key["pause:approval_gate"]["motif"] == {"kind": "pause"}
+        assert by_key["step:generate_statements"]["motif"] == {"kind": "create", "entity": "statement"}
+        assert by_key["step:send_statements"]["motif"] == {"kind": "send", "entity": "statement"}
+        assert by_key["step:identify_customers"].get("motif") is None  # typographic
+        assert by_key["downstream:failure"]["motif"] == {"kind": "failure", "label": "Decision Triage"}

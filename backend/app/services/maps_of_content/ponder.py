@@ -217,6 +217,67 @@ def _garnish(db: Session, workflow: Workflow) -> dict | None:
     return None
 
 
+# ── The motif grammar (Ponder Polish Set 3) ─────────────────────────────────
+# Beat semantics → a scene HINT the overlay's motif library renders. Chosen
+# from step type + config words — never hand-illustrated per workflow. A step
+# the grammar can't place gets NO motif (the typographic treatment): a
+# missing visual beats a lying one.
+
+import re as _re
+
+_MOTIF_ENTITIES = (
+    "order", "invoice", "statement", "customer", "payment", "case",
+    "document", "certificate", "delivery", "bill", "proof", "expense",
+    "receipt", "anomaly", "report", "reminder", "pour", "vault",
+)
+_CREATE_VERBS = ("generate", "create", "draft", "produce", "compose")
+_SEND_VERBS = ("send", "email", "notify", "dispatch", "deliver")
+
+
+def _entities_in(text: str) -> list[str]:
+    words = _re.findall(r"[a-z]+", text)
+    seen: list[str] = []
+    for w in words:
+        singular = w[:-1] if w.endswith("s") else w
+        if singular in _MOTIF_ENTITIES and singular not in seen:
+            seen.append(singular)
+    return seen
+
+
+def motif_for_step(node: dict) -> dict | None:
+    """The step-beat grammar. Returns {'kind': ..., ...} or None."""
+    cfg = node.get("config") or {}
+    ntype = node.get("type")
+    if ntype in ("condition", "decision", "branch"):
+        return {"kind": "branch"}
+    if ntype == "input":
+        return {"kind": "pause"}
+    text = " ".join(
+        str(x) for x in (
+            node.get("id"), node.get("label"),
+            cfg.get("description"), cfg.get("action_type"), cfg.get("record_type"),
+        ) if x
+    ).lower().replace("_", " ")
+    words = set(_re.findall(r"[a-z]+", text))
+    entities = _entities_in(text)
+    action_type = cfg.get("action_type") or ""
+
+    if words & set(_SEND_VERBS) or action_type in ("send_communication", "send_document", "notification"):
+        return {"kind": "send", "entity": entities[0] if entities else None}
+
+    if words & set(_CREATE_VERBS) or action_type in ("create_record", "generate_document"):
+        # "generate X from Y" → a TRANSFORM (Y becomes X); else a CREATE.
+        if " from " in text and len(entities) >= 2:
+            before, _, after = text.partition(" from ")
+            to_e = _entities_in(before) or entities[:1]
+            from_e = _entities_in(after)
+            if to_e and from_e and to_e[0] != from_e[0]:
+                return {"kind": "transform", "from": from_e[0], "to": to_e[0]}
+        return {"kind": "create", "entity": entities[0] if entities else None}
+
+    return None  # the grammar can't place it — typographic, never a wrong scene
+
+
 class PonderError(ValueError):
     pass
 
@@ -272,7 +333,12 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
 
     # WHEN
     if runtime is not None:
-        _beat("when", "when", _when_text(runtime))
+        _when_motif = None
+        if runtime.trigger_type in ("scheduled", "time_of_day"):
+            _when_motif = {"kind": "clock"}
+        elif runtime.trigger_type == "event":
+            _when_motif = {"kind": "signal"}
+        _beat("when", "when", _when_text(runtime), motif=_when_motif)
 
     # STEPS / PAUSES from the mirror canvas
     for node in _ordered_nodes(template.canvas_state or {}):
@@ -286,11 +352,13 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
             _beat(
                 f"pause:{node['id']}", "pause", derived,
                 label=label, node_type=node.get("type"),
+                motif={"kind": "pause"},
             )
         else:
             _beat(
                 f"step:{node['id']}", "step", derived,
                 label=label, node_type=node.get("type") or "action",
+                motif=motif_for_step(node),
             )
 
     # DOWNSTREAM — the business-exception queue (registry) + H1's failure truth
@@ -299,10 +367,12 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
         _beat(
             "downstream:queue", "downstream", reg["note"],
             queue_id=reg["queue_id"], queue_label=reg["queue_label"],
+            motif={"kind": "queue", "label": reg["queue_label"]},
         )
     _beat(
         "downstream:failure", "downstream", _FAILURE_BEAT_TEXT,
         queue_id="workflow_review_triage", queue_label="Decision Triage",
+        motif={"kind": "failure", "label": "Decision Triage"},
     )
 
     # GARNISH

@@ -67,6 +67,17 @@ _FUNERAL_HOME = [
     "Plot Reservation", "Send Family Info Form", "Coordinate Removal",
     "Anniversary Acknowledgment", "Flag Pre-Need Policy",
 ]
+# Ponder Polish Set 1 — curated task_type DEFAULTS (the group-tab dimension).
+# Applied on CREATE or when the existing row's type is NULL — NEVER clobbers
+# an operator-set type (the upsert-clobber lesson).
+_TASK_TYPES = {
+    "Month-End Close": "Accounting",
+    "AR Collections": "Accounting",
+    "Monthly Statement Run": "Accounting",
+    "Expense Categorization": "Accounting",
+    "Cash Receipts Matching": "Accounting",
+}
+
 _CORE = [
     "Month-End Close", "AR Collections", "Compliance Sync",
     "Monthly Statement Run", "Expense Categorization", "Training Expiry Monitor",
@@ -190,13 +201,37 @@ def _mirror_one(
         )
 
     # 1b — the thin task row (task_vertical decides which map's table it
-    # lands on), workflow pre-wired, descriptive fields BLANK (the operator
-    # enriches; the FH demo-critical five first).
-    upsert_task(
-        db, vertical=task_vertical, name=name, frequency=None, task_type=None,
-        description=None, icon="workflow", workflow_template_id=tmpl_id,
-        focus_template_ids=[],
+    # lands on), workflow pre-wired. PRESERVE-AWARE (Ponder Polish Set 1):
+    # upsert_task overwrites descriptive fields unconditionally, so a re-run
+    # passing None would WIPE operator-curated frequency/type/description on
+    # every deploy (the upsert-clobber class). On an existing row we touch
+    # ONLY workflow_template_id (the re-mirror re-point) + fill task_type
+    # if still NULL from the curated defaults.
+    from app.models.moc_task_catalog import MoCTaskCatalog
+
+    existing_task = (
+        db.query(MoCTaskCatalog)
+        .filter(
+            MoCTaskCatalog.scope == "vertical_default",
+            MoCTaskCatalog.vertical == task_vertical,
+            MoCTaskCatalog.tenant_id.is_(None),
+            MoCTaskCatalog.name == name,
+            MoCTaskCatalog.is_active.is_(True),
+        )
+        .first()
     )
+    if existing_task is not None:
+        existing_task.workflow_template_id = tmpl_id
+        if existing_task.task_type is None and name in _TASK_TYPES:
+            existing_task.task_type = _TASK_TYPES[name]
+        db.flush()
+    else:
+        upsert_task(
+            db, vertical=task_vertical, name=name, frequency=None,
+            task_type=_TASK_TYPES.get(name),
+            description=None, icon="workflow", workflow_template_id=tmpl_id,
+            focus_template_ids=[],
+        )
     return tmpl_id, f"{name}: {len(canvas['nodes'])} nodes"
 
 
