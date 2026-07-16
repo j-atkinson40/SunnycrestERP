@@ -67,6 +67,16 @@ class MoCTaskCatalog(Base):
     display_order: Mapped[int] = mapped_column(
         Integer(), nullable=False, default=0
     )
+    # Tenant Ponder-Editor P2 (r128) — the fork lineage handle. A
+    # tenant_override row born from the prompted fork points at its
+    # vertical-default source: powers the merged-view YIELD (their version
+    # replaces the default in THEIR read only) + P3 offer-reach provenance.
+    forked_from_task_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("moc_task_catalog.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     # Ponder P1 (r127) — authored caption overlay for the walkthrough, keyed
     # by stable beat keys (node slugs; the C-2.1.2 slug-is-identity pattern).
     # {"captions": {"step:<slug>": "...", "when": "...", ...}}. NULL = fully

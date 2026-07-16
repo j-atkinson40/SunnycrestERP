@@ -117,6 +117,7 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         # tenant_override rows so they're never confused with the defaults.
         "scope": task.scope,
         "tenant_id": task.tenant_id,
+        "forked_from_task_id": task.forked_from_task_id,
         "workflow": workflow,
         "focuses": focuses,
         "triggers": trigger_payloads,
@@ -155,11 +156,26 @@ def resolve_task_catalog(
             MoCTaskCatalog.tenant_id.is_(None),
         )
     else:
+        # THE YIELD (Tenant Ponder-Editor P2): a default this tenant has
+        # FORKED is superseded by their version in THEIR merged view —
+        # excluded here and only here. Every other tenant's read (and the
+        # admin vertical read above) is untouched: the fork changes one
+        # tenant's view, never the default itself.
+        forked_source_ids = (
+            db.query(MoCTaskCatalog.forked_from_task_id)
+            .filter(
+                MoCTaskCatalog.scope == "tenant_override",
+                MoCTaskCatalog.tenant_id == tenant_id,
+                MoCTaskCatalog.is_active.is_(True),
+                MoCTaskCatalog.forked_from_task_id.isnot(None),
+            )
+        )
         q = q.filter(
             or_(
                 and_(
                     MoCTaskCatalog.scope == "vertical_default",
                     MoCTaskCatalog.tenant_id.is_(None),
+                    MoCTaskCatalog.id.notin_(forked_source_ids),
                 ),
                 and_(
                     MoCTaskCatalog.scope == "tenant_override",

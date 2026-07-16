@@ -986,6 +986,29 @@ def set_param_override(
     except StepParamValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # user_multi_select (P2): the ids must be THIS tenant's active users —
+    # existence-checked at the boundary (unknown/foreign id → 400 named;
+    # cross-tenant isolation: company A's params can never name company B's
+    # people).
+    if (
+        default.param_type == "user_multi_select"
+        and isinstance(data.current_value, list)
+        and data.current_value
+    ):
+        found = {
+            u for (u,) in db.query(User.id).filter(
+                User.id.in_([str(v) for v in data.current_value]),
+                User.company_id == current_user.company_id,
+                User.is_active.is_(True),
+            )
+        }
+        unknown = [v for v in data.current_value if str(v) not in found]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{step_key}.{param_key}: unknown user id(s) {unknown}",
+            )
+
     override = (
         db.query(WorkflowStepParam)
         .filter(

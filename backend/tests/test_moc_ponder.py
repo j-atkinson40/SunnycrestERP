@@ -9,6 +9,8 @@ import uuid
 
 import pytest
 
+from sqlalchemy import text as sql_text
+
 from app.database import SessionLocal
 from app.models.company import Company
 from app.models.moc_task_catalog import MoCTaskCatalog
@@ -29,6 +31,33 @@ def db():
     s = SessionLocal()
     yield s
     s.rollback()
+    # Residue hygiene (P2): _mk_fixture COMMITS its workflow + mirror + task
+    # rows; a rollback-only teardown left them behind, inflating the fleet
+    # census for any later suite (test_moc_workflow_mirrors' count pin
+    # false-failed on the residue). Clean by the fixture's own patterns —
+    # never touching real rows.
+    s.execute(sql_text(
+        "DELETE FROM moc_task_trigger WHERE task_catalog_id IN "
+        "(SELECT id FROM moc_task_catalog WHERE name LIKE 'Ponder Task %')"
+    ))
+    s.execute(sql_text(
+        "DELETE FROM moc_task_catalog_focuses WHERE task_catalog_id IN "
+        "(SELECT id FROM moc_task_catalog WHERE name LIKE 'Ponder Task %')"
+    ))
+    s.execute(sql_text("DELETE FROM moc_task_catalog WHERE name LIKE 'Ponder Task %'"))
+    s.execute(sql_text(
+        "DELETE FROM workflow_templates WHERE workflow_type LIKE 'mirror_ponder_%'"
+    ))
+    s.execute(sql_text(
+        "DELETE FROM workflow_run_steps WHERE run_id IN "
+        "(SELECT id FROM workflow_runs WHERE workflow_id LIKE 'wf_ponder_%')"
+    ))
+    s.execute(sql_text(
+        "DELETE FROM workflow_runs WHERE workflow_id LIKE 'wf_ponder_%'"
+    ))
+    s.execute(sql_text("DELETE FROM workflow_steps WHERE workflow_id LIKE 'wf_ponder_%'"))
+    s.execute(sql_text("DELETE FROM workflows WHERE id LIKE 'wf_ponder_%'"))
+    s.commit()
     s.close()
 
 

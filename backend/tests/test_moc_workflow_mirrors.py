@@ -47,6 +47,12 @@ def db():
             "DELETE FROM workflow_templates WHERE mirrored_from_workflow_id IS NOT NULL"
         )
     )
+    # RESTORE THE FLEET (P2): the delete above is hermetic on a fresh CI DB
+    # but on dev it nukes the STANDING 28-mirror fleet (the documented
+    # global-wipe incident — the accounting map went "no longer available"
+    # mid-witness). Re-seed so the teardown's end state IS the standing
+    # fleet; the backfill is preserve-aware + idempotent.
+    seed(s)
     s.commit()
     s.close()
 

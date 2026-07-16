@@ -243,15 +243,18 @@ def check_mirror_drift(
     return drift
 
 
-def _garnish(db: Session, workflow: Workflow) -> dict | None:
-    """Last-run numbers, cheap and honest. Absent → None (never fabricated)."""
+def _garnish(
+    db: Session, workflow: Workflow, company_id: str | None = None
+) -> dict | None:
+    """Last-run numbers, cheap and honest. Absent → None (never fabricated).
+    company_id (P2, the tenant read) scopes to THEIR numbers — a tenant's
+    garnish never leaks another tenant's run."""
     if workflow.id == "wf_sys_statement_run":
         from app.models.statement import StatementRun
-        sr = (
-            db.query(StatementRun)
-            .order_by(StatementRun.created_at.desc())
-            .first()
-        )
+        srq = db.query(StatementRun)
+        if company_id is not None:
+            srq = srq.filter(StatementRun.tenant_id == company_id)
+        sr = srq.order_by(StatementRun.created_at.desc()).first()
         if sr and (sr.total_customers or 0) > 0:
             return {
                 "headline": f"{sr.total_customers} customers",
@@ -259,15 +262,13 @@ def _garnish(db: Session, workflow: Workflow) -> dict | None:
                 "as_of": sr.created_at.isoformat() if sr.created_at else None,
             }
     # Generic: the latest completed run of this workflow.
-    run = (
-        db.query(WorkflowRun)
-        .filter(
-            WorkflowRun.workflow_id == workflow.id,
-            WorkflowRun.status == "completed",
-        )
-        .order_by(WorkflowRun.started_at.desc())
-        .first()
+    rq = db.query(WorkflowRun).filter(
+        WorkflowRun.workflow_id == workflow.id,
+        WorkflowRun.status == "completed",
     )
+    if company_id is not None:
+        rq = rq.filter(WorkflowRun.company_id == company_id)
+    run = rq.order_by(WorkflowRun.started_at.desc()).first()
     if run and run.started_at:
         return {
             "headline": "Last completed run",
@@ -421,9 +422,13 @@ def _focus_beats(db: Session, task: MoCTaskCatalog) -> list[dict[str, Any]]:
     return beats
 
 
-def _audience_for_queue(db: Session, queue_id: str) -> dict | None:
+def _audience_for_queue(
+    db: Session, queue_id: str, company_id: str | None = None
+) -> dict | None:
     """Queue → who can act on it, from the REAL config (queue permissions +
-    the action palette's required_permission). Plus a capped live count."""
+    the action palette's required_permission). Plus a capped live count —
+    company-scoped on the tenant read (P2): THEIR people, not the platform's
+    user census."""
     from app.services.triage.registry import _PLATFORM_CONFIGS
     from app.services.triage import platform_defaults  # noqa: F401 — ensure registered
 
@@ -444,13 +449,17 @@ def _audience_for_queue(db: Session, queue_id: str) -> dict | None:
     # 500 so the garnish never becomes a heavy scan (dev has fixture noise).
     from sqlalchemy import text as _sql
 
+    company_clause = " AND u.company_id = :cid" if company_id is not None else ""
+    params: dict = {"perm": perm}
+    if company_id is not None:
+        params["cid"] = company_id
     n = db.execute(_sql(
         "SELECT count(*) FROM ("
         " SELECT u.id FROM users u"
         " JOIN role_permissions rp ON rp.role_id = u.role_id"
-        " WHERE rp.permission_key = :perm AND u.is_active = true"
+        f" WHERE rp.permission_key = :perm AND u.is_active = true{company_clause}"
         " LIMIT 501) x"
-    ), {"perm": perm}).scalar() or 0
+    ), params).scalar() or 0
     return {
         "text": f"anyone with the {perm} permission",
         "permission": perm,
@@ -567,7 +576,74 @@ class PonderError(ValueError):
     pass
 
 
-def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
+# ── The document-preview render (one path, both realms — P2) ────────────────
+# Mirrors the Studio Documents editor's default sample shape; a version's own
+# sample_context (when authored) overlays this.
+PREVIEW_SAMPLE_CONTEXT = {
+    "company_name": "Sunnycrest Precast",
+    "company_logo_url": "",
+    "document_title": "Preview",
+    "document_date": "2026-06-01",
+    "customer_name": "Hopkins Funeral Home",
+    "customer_address": "123 Genesee St, Auburn, NY",
+    "invoice_number": "INV-2026-0147",
+    "statement_number": "ST-2026-06",
+    "period_start": "2026-06-01",
+    "period_end": "2026-06-30",
+    "previous_balance": "$1,250.00",
+    "new_charges": "$3,400.00",
+    "payments_received": "$1,250.00",
+    "balance_due": "$3,400.00",
+    "items": [
+        {"description": "Monticello vault", "quantity": 1,
+         "unit_price": "$1,700.00", "line_total": "$1,700.00"},
+        {"description": "Graveside setup", "quantity": 1,
+         "unit_price": "$1,700.00", "line_total": "$1,700.00"},
+    ],
+    "subtotal": "$3,400.00", "tax": "$0.00", "total": "$3,400.00",
+}
+
+
+def render_document_preview(db: Session, template_key: str) -> dict[str, str]:
+    """Lazy live-render of a PLATFORM template's real body for the ponder's
+    document beat — resolved at request time, never cached stale. Raises
+    PonderError (not-found / render failure); the route layers map it. The
+    ONE preview path — the admin + tenant routers both delegate here."""
+    from app.models.document_template import DocumentTemplate, DocumentTemplateVersion
+    from app.services.documents import document_renderer
+
+    tpl = (
+        db.query(DocumentTemplate)
+        .filter(
+            DocumentTemplate.template_key == template_key,
+            DocumentTemplate.company_id.is_(None),
+            DocumentTemplate.is_active.is_(True),
+        )
+        .first()
+    )
+    if tpl is None:
+        raise PonderError("Template not found")
+    context = dict(PREVIEW_SAMPLE_CONTEXT)
+    if tpl.current_version_id:
+        v = db.get(DocumentTemplateVersion, tpl.current_version_id)
+        if v is not None and isinstance(v.sample_context, dict):
+            context.update(v.sample_context)
+    try:
+        html = document_renderer.render_preview_html(
+            db, template_key=template_key, context=context
+        )
+    except Exception as e:
+        raise PonderError(f"Preview render failed: {e}")
+    return {"template_key": template_key, "html": html}
+
+
+def build_ponder_script(
+    db: Session, task_id: str, company_id: str | None = None
+) -> dict[str, Any]:
+    """The staged walkthrough script. company_id (P2, the tenant read)
+    scopes everything numeric-or-personal to THEIR tenancy: effective params
+    (their overrides in the chain), audience counts (their people), garnish
+    (their fires). None = the platform-admin read, unchanged."""
     task = db.get(MoCTaskCatalog, task_id)
     if task is None or not task.is_active:
         raise PonderError("Task not found")
@@ -609,7 +685,7 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
     if runtime is not None:
         from app.services.workflows.step_params import describe_step_params
 
-        for p in describe_step_params(db, runtime.id):
+        for p in describe_step_params(db, runtime.id, company_id):
             if p["param_type"] == "user_multi_select":
                 # The editor's chips need names, resolved with the same
                 # honesty as the audience line (unresolvable → absent).
@@ -698,7 +774,7 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
             pause_audience = None
             if runtime is not None and runtime.id in QUEUE_REGISTRY:
                 pause_audience = _audience_for_queue(
-                    db, QUEUE_REGISTRY[runtime.id]["queue_id"]
+                    db, QUEUE_REGISTRY[runtime.id]["queue_id"], company_id
                 )
             _beat(
                 f"pause:{node['id']}", "pause", derived,
@@ -730,7 +806,7 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
             "downstream:queue", "downstream", reg["note"],
             queue_id=reg["queue_id"], queue_label=reg["queue_label"],
             motif={"kind": "queue", "label": reg["queue_label"]},
-            audience=_audience_for_queue(db, reg["queue_id"]),
+            audience=_audience_for_queue(db, reg["queue_id"], company_id),
         )
     _beat(
         "downstream:failure", "downstream", _FAILURE_BEAT_TEXT,
@@ -743,7 +819,7 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
     )
 
     # GARNISH
-    garnish = _garnish(db, runtime) if runtime is not None else None
+    garnish = _garnish(db, runtime, company_id) if runtime is not None else None
     if garnish:
         detail = f" — {garnish['detail']}" if garnish.get("detail") else ""
         as_of = ""
@@ -770,6 +846,9 @@ def build_ponder_script(db: Session, task_id: str) -> dict[str, Any]:
         # uses edited settings); vertical scopes the event-catalog picker;
         # workflow_id is the param editors' write target.
         "is_live": any(t.is_live for t in task_triggers),
+        "task_scope": task.scope,
+        "owned": task.scope == "tenant_override" and task.tenant_id == company_id
+        if company_id is not None else True,
         "vertical": task.vertical,
         "workflow_id": runtime.id if runtime else None,
     }

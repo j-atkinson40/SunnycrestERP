@@ -945,3 +945,10 @@ v1_router.include_router(
 v1_router.include_router(
     intelligence_routes.router, prefix="/intelligence", tags=["Intelligence"]
 )
+
+# The Bridgeable Map — tenant MoC surface (Tenant Ponder-Editor P2)
+from app.api.routes import moc_tenant as moc_tenant_routes  # noqa: E402
+
+v1_router.include_router(
+    moc_tenant_routes.router, prefix="/moc", tags=["Bridgeable Map"]
+)
