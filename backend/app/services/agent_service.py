@@ -329,9 +329,24 @@ def _collections_fallback_body(
 
 
 def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
-    """Check upcoming AP bills and create payment alerts."""
-    from app.models.bill import Bill
+    """Check upcoming AP bills and create payment alerts.
+
+    D-3/C-2 rewire (operator's call: REWRITE): pre-rework this imported the
+    dead `app.models.bill` UNWRAPPED — the job crashed with
+    ModuleNotFoundError on every nightly fire since June (audit C-2). Now
+    reads the real payables model: statuses pending/approved/partial
+    (there is no 'overdue' status — overdue IS due_date past, which the
+    day-math below already computes), balance_remaining (partials), soft-
+    deletes excluded, vendor names via the ap_aging resolver. The alert
+    shapes are preserved verbatim. The job-level try/except stays — that is
+    the agent framework's loud-record contract (_complete_job(error)), not
+    a silent-zero.
+    """
+    from sqlalchemy.orm import joinedload
+
     from app.models.vendor import Vendor
+    from app.models.vendor_bill import VendorBill
+    from app.utils.company_name_resolver import resolve_vendor_name
 
     job = _create_job(db, tenant_id, "ap_upcoming_payments")
     try:
@@ -339,12 +354,13 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
         fourteen_days = today + timedelta(days=14)
 
         open_bills = (
-            db.query(Bill)
+            db.query(VendorBill)
+            .options(joinedload(VendorBill.vendor).joinedload(Vendor.company_entity))
             .filter(
-                Bill.tenant_id == tenant_id,
-                Bill.status.in_(["open", "partial", "overdue"]),
-                Bill.due_date.isnot(None),
-                Bill.due_date <= fourteen_days,
+                VendorBill.company_id == tenant_id,
+                VendorBill.deleted_at.is_(None),
+                VendorBill.status.in_(["pending", "approved", "partial"]),
+                VendorBill.due_date <= fourteen_days,
             )
             .all()
         )
@@ -355,17 +371,20 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
         due_soon = []
 
         for bill in open_bills:
-            vendor = db.query(Vendor).filter(Vendor.id == bill.vendor_id).first() if bill.vendor_id else None
-            vendor_name = vendor.vendor_name if vendor else (bill.vendor_name_raw or "Unknown")
-            balance = bill.balance_due or (bill.total_amount - (bill.amount_paid or 0))
-            days_until = (bill.due_date - today).days
+            vendor_name = resolve_vendor_name(bill.vendor)
+            balance = bill.balance_remaining
+            if balance <= 0:
+                continue
+            # due_date is timestamptz; today is a DATE — normalize (the
+            # date−datetime TypeError class, defused).
+            days_until = (bill.due_date.date() - today).days
 
             if days_until < 0:
                 # Overdue
                 overdue_total += Decimal(str(balance))
                 create_alert(
                     db, tenant_id, "ap_overdue", "action_required",
-                    f"{vendor_name} — Bill #{bill.bill_number or bill.id[:8]} overdue",
+                    f"{vendor_name} — Bill #{bill.number or bill.id[:8]} overdue",
                     f"${float(balance):,.2f} was due {abs(days_until)} days ago.",
                     action_label="Record Payment", action_url=f"/ap/bills/{bill.id}",
                 )
@@ -373,14 +392,14 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
             elif days_until <= 3:
                 create_alert(
                     db, tenant_id, "ap_due_soon", "warning",
-                    f"{vendor_name} — Bill #{bill.bill_number or bill.id[:8]} due in {days_until} days",
-                    f"${float(balance):,.2f} due {bill.due_date}.",
+                    f"{vendor_name} — Bill #{bill.number or bill.id[:8]} due in {days_until} days",
+                    f"${float(balance):,.2f} due {bill.due_date.date()}.",
                     action_label="Record Payment", action_url=f"/ap/bills/{bill.id}",
                 )
                 alerts_created += 1
                 due_this_week += Decimal(str(balance))
             else:
-                due_soon.append({"vendor": vendor_name, "amount": float(balance), "due": str(bill.due_date)})
+                due_soon.append({"vendor": vendor_name, "amount": float(balance), "due": str(bill.due_date.date())})
 
         # Digest for 4-14 day bills
         if due_soon:
@@ -395,9 +414,9 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
 
         # Monday payment run suggestion
         if today.weekday() == 0:  # Monday
-            week_bills = [b for b in open_bills if b.due_date and 0 <= (b.due_date - today).days <= 10]
+            week_bills = [b for b in open_bills if b.due_date and 0 <= (b.due_date.date() - today).days <= 10]
             if week_bills:
-                total_run = sum(float((b.balance_due or (b.total_amount - (b.amount_paid or 0)))) for b in week_bills)
+                total_run = sum(float(b.balance_remaining) for b in week_bills)
                 create_alert(
                     db, tenant_id, "ap_payment_run", "action_required",
                     f"Suggested payment run: {len(week_bills)} bills totaling ${total_run:,.2f}",
