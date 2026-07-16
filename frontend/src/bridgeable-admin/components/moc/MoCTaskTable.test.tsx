@@ -99,8 +99,10 @@ describe("MoCTaskTable — read", () => {
     expect(screen.getByTestId("moc-task-row-t-pop")).toBeTruthy()
     expect(screen.getByTestId("moc-task-row-t-empty")).toBeTruthy()
     expect(screen.getByText("End of Month")).toBeTruthy()
-    expect(screen.getByText("Accounting")).toBeTruthy()
-    expect(screen.getByText("Funeral Service Operations")).toBeTruthy()
+    // "Accounting" now also appears in the Set-1 group tab — assert the
+    // row's Type pill specifically (>=2 = pill + tab both present).
+    expect(screen.getAllByText("Accounting").length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText("Funeral Service Operations").length).toBeGreaterThanOrEqual(2)
   })
 
   it("renders the DELIBERATE empty state (em-dash) for absent workflow + focuses", () => {

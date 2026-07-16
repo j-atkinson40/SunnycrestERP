@@ -18,8 +18,8 @@
  * workflow/focus reference isn't seeded yet renders a DELIBERATE muted em-dash,
  * never a blank that reads as a render bug.
  */
-import { useState } from "react"
-import { Link } from "react-router-dom"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Link, useSearchParams } from "react-router-dom"
 import { ArrowUpRight, Clock, Pencil, Play, Plus, Trash2, type LucideIcon } from "lucide-react"
 import { FileText, Receipt, Sparkles } from "lucide-react"
 
@@ -95,6 +95,35 @@ export function MoCTaskTable({
   const [ponderTaskId, setPonderTaskId] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState<MoCTask | null>(null)
 
+  // ── Group tabs (Ponder Polish Set 1) — DERIVED, self-maintaining ──
+  // One tab per vocabulary TYPE that has tasks on THIS map (empty groups
+  // hidden — they materialize when tasks exist). Selection is URL state
+  // (?group=… — deep-linkable, survives refresh). "All" is the default:
+  // the non-regressive first render. Nothing accounting-hardcoded.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const groupParam = searchParams.get("group")
+  const groups = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const t of tasks) {
+      if (t.task_type) counts.set(t.task_type, (counts.get(t.task_type) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [tasks])
+  const groupSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+  const activeGroup = groups.find(([name]) => groupSlug(name) === groupParam)?.[0] ?? null
+  const visibleTasks = activeGroup
+    ? tasks.filter((t) => t.task_type === activeGroup)
+    : tasks
+
+  function selectGroup(name: string | null) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (name) next.set("group", groupSlug(name))
+      else next.delete("group")
+      return next
+    }, { replace: true })
+  }
+
   function openCreate() {
     setEditingTask(null)
     setPanelOpen(true)
@@ -115,6 +144,48 @@ export function MoCTaskTable({
         </Button>
       </div>
 
+      {groups.length > 0 ? (
+        <div
+          className="flex flex-wrap items-center gap-1 border-b border-border-subtle pb-2"
+          data-testid="moc-task-group-rail"
+          role="tablist"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeGroup === null}
+            onClick={() => selectGroup(null)}
+            className={`focus-ring-accent rounded-md px-2.5 py-1 text-body-sm transition-colors duration-quick ${
+              activeGroup === null
+                ? "bg-accent-subtle font-medium text-accent"
+                : "text-content-muted hover:bg-surface-sunken hover:text-content-base"
+            }`}
+            data-testid="moc-task-group-all"
+          >
+            All
+            <span className="ml-1.5 text-caption text-content-subtle">{tasks.length}</span>
+          </button>
+          {groups.map(([name, count]) => (
+            <button
+              key={name}
+              type="button"
+              role="tab"
+              aria-selected={activeGroup === name}
+              onClick={() => selectGroup(name)}
+              className={`focus-ring-accent rounded-md px-2.5 py-1 text-body-sm transition-colors duration-quick ${
+                activeGroup === name
+                  ? "bg-accent-subtle font-medium text-accent"
+                  : "text-content-muted hover:bg-surface-sunken hover:text-content-base"
+              }`}
+              data-testid={`moc-task-group-${groupSlug(name)}`}
+            >
+              {name}
+              <span className="ml-1.5 text-caption text-content-subtle">{count}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {error ? (
         <div
           className="flex items-start justify-between gap-3 rounded-md border border-status-error/30 bg-status-error-muted px-3 py-2 text-body-sm text-status-error"
@@ -127,9 +198,11 @@ export function MoCTaskTable({
         </div>
       ) : null}
 
-      {tasks.length === 0 ? (
+      {visibleTasks.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-base bg-surface-elevated px-4 py-8 text-center text-body-sm text-content-subtle">
-          No tasks yet. Add one to start mapping this vertical's work.
+          {tasks.length === 0
+            ? "No tasks yet. Add one to start mapping this vertical's work."
+            : "No tasks in this group yet."}
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border-subtle bg-surface-elevated">
@@ -149,7 +222,7 @@ export function MoCTaskTable({
               </tr>
             </thead>
             <tbody>
-              {tasks.map((task) => (
+              {visibleTasks.map((task) => (
                 <TaskRow
                   key={task.id}
                   task={task}
@@ -191,6 +264,89 @@ export function MoCTaskTable({
   )
 }
 
+/** Hold-to-ponder (Ponder Polish Set 2 — the Create signature).
+ *
+ * While a PONDERABLE task's name is hovered, "Hold P to ponder" teaches the
+ * gesture; holding P fills a ring (brass, the settle curve) and completion
+ * opens the ponder. Early release cancels clean. Key handling is scoped to
+ * the hover (listeners attach on enter, detach on leave — never a global
+ * listener fighting the command bar). Reduced motion: the fill becomes a
+ * short delay; the hint still teaches. */
+const HOLD_MS = 650
+const HOLD_MS_REDUCED = 400
+
+function useHoldToPonder(enabled: boolean, onComplete: () => void) {
+  const [hovered, setHovered] = useState(false)
+  const [holding, setHolding] = useState(false)
+  const timerRef = useRef<number | null>(null)
+  const reduced =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+
+  useEffect(() => {
+    if (!enabled || !hovered) return
+    function clear() {
+      if (timerRef.current) window.clearTimeout(timerRef.current)
+      timerRef.current = null
+      setHolding(false)
+    }
+    function onDown(e: KeyboardEvent) {
+      if (e.key !== "p" && e.key !== "P") return
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return
+      e.preventDefault()
+      setHolding(true)
+      timerRef.current = window.setTimeout(
+        onComplete,
+        reduced ? HOLD_MS_REDUCED : HOLD_MS,
+      )
+    }
+    function onUp(e: KeyboardEvent) {
+      if (e.key === "p" || e.key === "P") clear()
+    }
+    window.addEventListener("keydown", onDown)
+    window.addEventListener("keyup", onUp)
+    return () => {
+      window.removeEventListener("keydown", onDown)
+      window.removeEventListener("keyup", onUp)
+      clear()
+    }
+  }, [enabled, hovered, onComplete, reduced])
+
+  return {
+    hovered, holding, reduced,
+    hoverProps: {
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+    },
+  }
+}
+
+function HoldRing({ holding, reduced }: { holding: boolean; reduced: boolean }) {
+  // A 16px ring whose stroke fills over the hold. CSS transition on
+  // stroke-dashoffset — the settle curve; reduced motion renders no ring.
+  if (reduced) return null
+  const C = 2 * Math.PI * 6
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden className="-rotate-90">
+      <circle cx="8" cy="8" r="6" fill="none" stroke="var(--border-subtle)" strokeWidth="2" />
+      <circle
+        cx="8" cy="8" r="6" fill="none"
+        stroke="var(--accent)" strokeWidth="2" strokeLinecap="round"
+        strokeDasharray={C}
+        strokeDashoffset={holding ? 0 : C}
+        style={{
+          transition: holding
+            ? `stroke-dashoffset ${HOLD_MS}ms var(--ease-settle, cubic-bezier(0.2,0,0.1,1))`
+            : "none",
+        }}
+      />
+    </svg>
+  )
+}
+
+
 function TaskRow({
   task, vertical, tenantLabel, onChanged, onError, onEdit, onPonder,
 }: {
@@ -209,6 +365,7 @@ function TaskRow({
   const TaskIcon = (task.icon && TASK_ICONS[task.icon]) || FileText
   const wfHref = task.workflow ? artifactHref("workflows", task.workflow) : null
   const [deleting, setDeleting] = useState(false)
+  const hold = useHoldToPonder(Boolean(onPonder), onPonder ?? (() => {}))
 
   /** Pending-then-refetch: PATCH, then refetch on success; on failure surface
    * the server's reason — no refetch, so the cell keeps showing the old value
@@ -242,9 +399,21 @@ function TaskRow({
     >
       {/* Task */}
       <td className="px-3 py-2">
-        <span className="group flex items-center gap-2 font-medium text-content-base">
+        <span
+          className="group flex items-center gap-2 font-medium text-content-base"
+          {...(onPonder ? hold.hoverProps : {})}
+        >
           <Icon icon={TaskIcon} size={15} className="text-content-muted" />
           {task.name}
+          {onPonder && hold.hovered ? (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-sunken px-2 py-0.5 text-caption text-content-subtle"
+              data-testid={`moc-task-hold-hint-${task.id}`}
+            >
+              <HoldRing holding={hold.holding} reduced={hold.reduced} />
+              Hold <kbd className="rounded border border-border-subtle px-1 font-mono text-micro">P</kbd> to ponder
+            </span>
+          ) : null}
           {onPonder ? (
             <button
               type="button"
