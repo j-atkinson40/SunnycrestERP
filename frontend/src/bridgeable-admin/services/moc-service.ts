@@ -664,9 +664,20 @@ export async function deletePlanning(id: string): Promise<void> {
 
 export type PonderBeatKind = "when" | "step" | "pause" | "downstream" | "garnish"
 
+/** The motif grammar's scene hint (Ponder Polish Set 3) — chosen server-side
+ * from step type + config words. Absent/unknown → typographic treatment. */
+export interface PonderMotif {
+  kind: "clock" | "signal" | "create" | "transform" | "send" | "branch" | "queue" | "failure" | "pause" | string
+  entity?: string | null
+  from?: string | null
+  to?: string | null
+  label?: string | null
+}
+
 export interface PonderBeat {
   key: string
   kind: PonderBeatKind
+  motif?: PonderMotif | null
   /** What the overlay renders — authored if present, else derived. */
   text: string
   derived_text: string

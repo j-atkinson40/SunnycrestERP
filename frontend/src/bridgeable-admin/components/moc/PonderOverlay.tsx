@@ -32,6 +32,7 @@ import {
   getPonderScript, savePonderCaption,
   type PonderBeat, type PonderScript,
 } from "@/bridgeable-admin/services/moc-service"
+import { MotifScene } from "./ponder-motifs"
 
 const BEAT_HOLD_MS = 4500
 
@@ -189,6 +190,11 @@ export function PonderOverlay({
           animation: ponder-arrive var(--duration-arrive, 400ms) var(--ease-settle, cubic-bezier(0.2,0,0.1,1)) both;
         }
         .ponder-beat-enter-reduced { animation: ponder-fade 300ms ease both; }
+        @keyframes ponder-breathe {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.06); opacity: 0.82; }
+        }
+        .ponder-breathe { animation: ponder-breathe 2600ms var(--ease-gentle, cubic-bezier(0.4,0,0.4,1)) infinite; }
         .ponder-line-draw {
           stroke-dasharray: 48; stroke-dashoffset: 48;
           animation: ponder-draw 600ms var(--ease-settle, cubic-bezier(0.2,0,0.1,1)) 120ms forwards;
@@ -254,7 +260,7 @@ export function PonderOverlay({
 
             <div className="flex items-start gap-5">
               <div
-                className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
+                className={`mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${beat.kind === "pause" && !reduced ? "ponder-breathe" : ""}`}
                 style={{
                   background: beat.kind === "pause" ? "rgba(156,86,64,0.18)" : STAGE.card,
                   border: `1px solid ${beat.kind === "pause" ? "var(--accent)" : STAGE.cardBorder}`,
@@ -285,6 +291,12 @@ export function PonderOverlay({
                   <p className="text-h4 font-medium capitalize" style={{ color: STAGE.text }}>
                     {beat.label}
                   </p>
+                ) : null}
+
+                {beat.kind !== "pause" ? (
+                  <div className="mt-2">
+                    <MotifScene motif={beat.motif} reduced={reduced} />
+                  </div>
                 ) : null}
 
                 {editMode && draft !== null ? (
