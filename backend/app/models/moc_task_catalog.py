@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -66,6 +67,12 @@ class MoCTaskCatalog(Base):
     display_order: Mapped[int] = mapped_column(
         Integer(), nullable=False, default=0
     )
+    # Ponder P1 (r127) — authored caption overlay for the walkthrough, keyed
+    # by stable beat keys (node slugs; the C-2.1.2 slug-is-identity pattern).
+    # {"captions": {"step:<slug>": "...", "when": "...", ...}}. NULL = fully
+    # derived (the honest default; authored text degrades to derived, never
+    # to stale).
+    ponder: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean(), nullable=False, default=True
     )

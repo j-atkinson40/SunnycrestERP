@@ -215,6 +215,46 @@ def admin_delete_task(
 # (declared before the page `/{page_id}` catch-all)
 
 
+# ── The Ponder (P1) — the derived walkthrough script + caption authoring ────
+
+
+class _SaveCaption(BaseModel):
+    beat_key: str
+    text: str | None = None  # None/blank clears → derived fallback returns
+
+
+@router.get("/ponder/{task_id}")
+def admin_get_ponder_script(
+    task_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The live-derived ponder script for a task's workflow (never baked)."""
+    from app.services.maps_of_content import ponder
+
+    try:
+        return ponder.build_ponder_script(db, task_id)
+    except ponder.PonderError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch("/ponder/{task_id}/captions")
+def admin_save_ponder_caption(
+    task_id: str,
+    body: _SaveCaption,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Author (or clear) one beat's caption — platform pedagogy, admin-scoped."""
+    from app.services.maps_of_content import ponder
+
+    try:
+        captions = ponder.save_caption(db, task_id, body.beat_key, body.text)
+    except ponder.PonderError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"captions": captions}
+
+
 class _CreatePlanningItem(BaseModel):
     scope: Literal["platform_default", "vertical_default"] = "vertical_default"
     vertical: str | None = None
