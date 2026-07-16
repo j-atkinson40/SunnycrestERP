@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 from app.models.customer import Customer
 from app.models.invoice import Invoice
 from app.models.report import AuditHealthCheck, AuditPackage, ReportRun
+from app.models.vendor_bill import VendorBill
+from app.models.vendor_bill_line import VendorBillLine
 
 logger = logging.getLogger(__name__)
 
@@ -104,35 +106,37 @@ def get_ar_aging_report(db: Session, tenant_id: str, as_of: date | None = None, 
 # ---------------------------------------------------------------------------
 
 def get_ap_aging_report(db: Session, tenant_id: str, as_of: date | None = None, user_id: str | None = None) -> dict:
-    """AP aging by vendor."""
-    try:
-        from app.models.bill import Bill
-        from app.models.vendor import Vendor
-    except ImportError:
-        return {"as_of_date": str(as_of or date.today()), "vendors": [], "totals": {}, "vendor_count": 0}
+    """AP aging by vendor — DELEGATES to the canonical ap_aging_service (D-2).
+
+    Pre-rework this site imported the dead `app.models.bill` inside a
+    try/except and confidently returned an EMPTY vendor list on every call
+    (audit C-3). The real aging engine already existed; this report is now a
+    shape adapter over it: due-date buckets, balance_remaining (partials
+    reduce the amount aged), statuses pending/approved/partial, soft-deletes
+    excluded. LOUD-FAILURE CONTRACT: no fallback — if aging cannot compute,
+    this raises (a missing report gets investigated; a wrong one gets read).
+    """
+    from app.services.ap_aging_service import get_ap_aging
 
     as_of = as_of or date.today()
-    bills = db.query(Bill).filter(
-        Bill.tenant_id == tenant_id, Bill.status.in_(["open", "partial", "overdue"]),
-    ).all()
+    # Midnight-UTC of as_of: a bill due ON as_of ages 0 days → current.
+    as_of_dt = datetime(as_of.year, as_of.month, as_of.day, tzinfo=timezone.utc)
 
-    vendor_map: dict[str, dict] = {}
-    for b in bills:
-        vid = b.vendor_id or "unknown"
-        if vid not in vendor_map:
-            v = db.query(Vendor).filter(Vendor.id == vid).first() if vid != "unknown" else None
-            vendor_map[vid] = {
-                "vendor_id": vid, "vendor_name": v.vendor_name if v else "Unknown",
-                "current": 0, "days_1_30": 0, "days_31_60": 0, "days_61_90": 0, "days_over_90": 0, "total": 0,
-            }
-        balance = float(b.total_amount - (b.amount_paid or 0))
-        days = (as_of - b.due_date).days if b.due_date else 0
-        bucket = "current" if days <= 0 else "days_1_30" if days <= 30 else "days_31_60" if days <= 60 else "days_61_90" if days <= 90 else "days_over_90"
-        vendor_map[vid][bucket] += balance
-        vendor_map[vid]["total"] += balance
-
-    vendors = sorted(vendor_map.values(), key=lambda x: x["total"], reverse=True)
-    totals = {k: sum(v[k] for v in vendors) for k in ["current", "days_1_30", "days_31_60", "days_61_90", "days_over_90", "total"]}
+    rows = get_ap_aging(db, tenant_id, as_of_dt)
+    vendors = [
+        {
+            "vendor_id": r["vendor_id"],
+            "vendor_name": r["vendor_name"],
+            "current": float(r["current"]),
+            "days_1_30": float(r["d1_30"]),
+            "days_31_60": float(r["d31_60"]),
+            "days_61_90": float(r["d61_90"]),
+            "days_over_90": float(r["d90_plus"]),
+            "total": float(r["total"]),
+        }
+        for r in rows
+    ]
+    totals = {k: round(sum(v[k] for v in vendors), 2) for k in ["current", "days_1_30", "days_31_60", "days_61_90", "days_over_90", "total"]}
 
     _log_run(db, tenant_id, "ap_aging", {"as_of": str(as_of)}, user_id, len(vendors))
     return {"as_of_date": str(as_of), "vendors": vendors, "totals": totals, "vendor_count": len(vendors)}
@@ -231,7 +235,7 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
                 findings.append({"severity": "amber", "category": "reconciliation", "code": "never_reconciled",
                                   "message": f"{acct.account_name} has never been reconciled", "action_label": "Reconcile", "action_url": "/settings/accounts"})
     except Exception:
-        pass
+        logger.warning("health check 'reconciliation' failed — finding silently absent", exc_info=True)
 
     # Check: stale draft journal entries
     try:
@@ -245,7 +249,7 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
                               "message": f"{stale_count} journal entries in draft for over 7 days",
                               "action_label": "Review Drafts", "action_url": "/journal-entries?status=draft"})
     except Exception:
-        pass
+        logger.warning("health check 'stale_drafts' failed — finding silently absent", exc_info=True)
 
     # Check: exempt customers without certificates
     try:
@@ -258,7 +262,7 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
                               "message": f"{missing_cert} exempt customers without certificate numbers",
                               "action_label": "Review", "action_url": "/settings/tax?tab=exemptions"})
     except Exception:
-        pass
+        logger.warning("health check 'missing_cert' failed — finding silently absent", exc_info=True)
 
     # Check: expired exemptions
     try:
@@ -271,7 +275,7 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
                               "message": f"{expired} tax exemption certificates have expired",
                               "action_label": "Update", "action_url": "/settings/tax?tab=exemptions"})
     except Exception:
-        pass
+        logger.warning("health check 'expired_exemptions' failed — finding silently absent", exc_info=True)
 
     # Check: overdue AR over 90 days
     overdue_90 = db.query(func.count(Invoice.id)).filter(
@@ -335,17 +339,62 @@ def _sum_invoices_by_gl_type(db: Session, tenant_id: str, start: date, end: date
 
 
 def _sum_by_gl_type(db: Session, tenant_id: str, start: date, end: date, gl_type: str) -> list[dict]:
-    """Sum journal entry lines and bill lines by GL account type."""
-    try:
-        from app.models.bill import Bill
-        bills = db.query(Bill).filter(
-            Bill.tenant_id == tenant_id, Bill.bill_date >= start, Bill.bill_date <= end,
-        ).all()
-        total = sum(float(b.total_amount) for b in bills)
-        if gl_type == "expense" and total > 0:
-            return [{"account_number": "6000", "account_name": "General Expenses", "amount": total}]
-        if gl_type == "cogs" and total > 0:
-            return [{"account_number": "5000", "account_name": "Cost of Goods Sold", "amount": total * 0.6}]
-    except Exception:
-        pass
-    return []
+    """Vendor-bill expenses for the period, categorized honestly (D-2).
+
+    Pre-rework this imported the dead `app.models.bill` inside a swallow and
+    returned [] on every call — the P&L overstated profit by ALL vendor-bill
+    expenses (audit C-3). Now: VendorBillLine.amount grouped by
+    expense_category (the REAL category dimension the categorization agent
+    writes; uncategorized → "General Expenses"), bills status ∉ (draft,
+    void), soft-deletes excluded, bill_date in-period END-EXCLUSIVE (the D-1
+    boundary discipline). The tax/uncategorized remainder (Σ bill.total −
+    Σ lines) lands as an honestly-labeled row so the rollup TIES TO BILL
+    TOTALS exactly.
+
+    gl_type == "cogs" returns [] honestly: no COGS dimension exists in the
+    model. (The old `total * 0.6` heuristic was DEAD CODE — the swallow
+    fired before it ever ran — so this changes nothing observed while
+    removing a fabricated ratio.) LOUD-FAILURE: no fallback; errors raise.
+    """
+    if gl_type != "expense":
+        return []
+
+    end_exclusive = end + timedelta(days=1)
+    bill_filters = (
+        VendorBill.company_id == tenant_id,
+        VendorBill.deleted_at.is_(None),
+        VendorBill.status.notin_(("draft", "void")),
+        VendorBill.bill_date >= start,
+        VendorBill.bill_date < end_exclusive,
+    )
+
+    line_rows = (
+        db.query(VendorBillLine.expense_category, func.sum(VendorBillLine.amount))
+        .join(VendorBill, VendorBillLine.bill_id == VendorBill.id)
+        .filter(*bill_filters)
+        .group_by(VendorBillLine.expense_category)
+        .all()
+    )
+    bill_total = db.query(func.coalesce(func.sum(VendorBill.total), 0)).filter(*bill_filters).scalar() or Decimal("0")
+
+    out: list[dict] = []
+    lines_total = Decimal("0")
+    for category, amount in sorted(line_rows, key=lambda r: (r[0] or "")):
+        amt = Decimal(str(amount or 0))
+        lines_total += amt
+        if amt == 0:
+            continue
+        out.append({
+            "account_number": "6000",
+            "account_name": category or "General Expenses",
+            "amount": float(amt),
+        })
+
+    remainder = Decimal(str(bill_total)) - lines_total
+    if remainder > Decimal("0.005"):
+        out.append({
+            "account_number": "6999",
+            "account_name": "Tax & uncategorized remainder",
+            "amount": float(remainder),
+        })
+    return out
