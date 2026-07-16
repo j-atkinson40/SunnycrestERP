@@ -20,8 +20,10 @@ import {
   deleteTrigger,
   getPonderDocumentPreview,
   getPonderScript,
+  getTaskOfferPreview,
   listTriggerEvents,
   patchTrigger,
+  publishTaskOffer,
   savePonderCaption,
   searchPonderUsers,
   setPonderWorkflowParam,
@@ -31,6 +33,7 @@ import {
   type PatchTriggerInput,
   type PonderScript,
   type PonderUserHit,
+  type TaskOfferPreview,
 } from "@/bridgeable-admin/services/moc-service"
 
 export interface PonderService {
@@ -51,6 +54,12 @@ export interface PonderService {
   searchPonderUsers: (q: string) => Promise<PonderUserHit[]>
   /** Deep-link exhibits into Studio? Admin yes; tenant no. */
   studioLinks: boolean
+  /** P3 — the deliberate publish boundary (ADMIN only; absent on the
+   * tenant service, so the offer bar never renders there). */
+  taskOfferPreview?: (taskId: string) => Promise<TaskOfferPreview>
+  publishTaskOffer?: (
+    taskId: string, patchNotes: string | null,
+  ) => Promise<{ version: number; offers_created: number }>
 }
 
 /** The admin default — existing mounts work with no provider. */
@@ -65,6 +74,8 @@ export const adminPonderService: PonderService = {
   setPonderWorkflowParam,
   searchPonderUsers,
   studioLinks: true,
+  taskOfferPreview: getTaskOfferPreview,
+  publishTaskOffer,
 }
 
 export const PonderServiceContext = createContext<PonderService>(adminPonderService)

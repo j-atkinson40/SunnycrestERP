@@ -37,14 +37,16 @@ import {
 import {
   forkTask, getMapTasks, tenantPonderService, type MapTask,
 } from "@/services/moc-map-service"
+import { TaskOfferDialog } from "@/components/moc-map/TaskOfferDialog"
 
 const KIND_ICON = { schedule: Clock, event: Zap, manual: Play } as const
 
 function TaskRow({
-  task, onPonder,
+  task, onPonder, onOpenOffer,
 }: {
   task: MapTask
   onPonder: (task: MapTask) => void
+  onOpenOffer: (task: MapTask) => void
 }) {
   const ponderable = Boolean(task.workflow?.exists)
   // Stable identity: the hook's effect deps include onComplete — an inline
@@ -74,6 +76,26 @@ function TaskRow({
             >
               yours
             </span>
+          ) : null}
+          {task.offer_state?.offer_status === "pending" ? (
+            <button
+              type="button"
+              onClick={() => onOpenOffer(task)}
+              className="focus-ring-accent rounded-full bg-accent px-2 py-0.5 text-micro font-medium text-content-on-accent"
+              data-testid={`map-task-offer-${task.id}`}
+            >
+              standard updated
+            </button>
+          ) : task.offer_state?.offer_status === "declined" ? (
+            <button
+              type="button"
+              onClick={() => onOpenOffer(task)}
+              className="focus-ring-accent rounded-full border border-border-base bg-surface-sunken px-2 py-0.5 text-micro text-content-subtle"
+              data-testid={`map-task-offer-gap-${task.id}`}
+              title="The standard version updated — you passed earlier; still available"
+            >
+              yours · standard updated
+            </button>
           ) : null}
           {ponderable && hovered ? (
             <span
@@ -167,6 +189,8 @@ export default function BridgeableMapPage() {
   )
 
   const ponder = useCallback((task: MapTask) => setPonderTaskId(task.id), [])
+  const [offerFor, setOfferFor] = useState<MapTask | null>(null)
+  const openOffer = useCallback((task: MapTask) => setOfferFor(task), [])
 
   /** THE PROMPTED FORK — asked when an admin enters edit mode on a SHARED
    * task. Accept → fork server-side → the overlay retargets to THEIR row. */
@@ -256,7 +280,7 @@ export default function BridgeableMapPage() {
               </thead>
               <tbody>
                 {visible.map((t) => (
-                  <TaskRow key={t.id} task={t} onPonder={ponder} />
+                  <TaskRow key={t.id} task={t} onPonder={ponder} onOpenOffer={openOffer} />
                 ))}
               </tbody>
             </table>
@@ -304,6 +328,17 @@ export default function BridgeableMapPage() {
             }}
             canEdit={isAdmin}
             onRequestEdit={onRequestEdit}
+          />
+        ) : null}
+
+        {/* P3 — the standard updated: the offer, in the prose grammar. */}
+        {offerFor?.offer_state ? (
+          <TaskOfferDialog
+            offerId={offerFor.offer_state.offer_id}
+            taskName={offerFor.name}
+            canDecide={isAdmin}
+            onClose={() => setOfferFor(null)}
+            onDecided={reload}
           />
         ) : null}
 

@@ -14,6 +14,7 @@ import type {
   MoCTriggerEvent,
   PonderScript,
   PonderUserHit,
+  TaskOffer,
 } from "@/bridgeable-admin/services/moc-service"
 
 /** One merged-view task row (the backend's resolve_task shape, lean view). */
@@ -31,6 +32,28 @@ export interface MapTask {
   forked_from_task_id?: string | null
   workflow?: { exists: boolean; available: boolean; label: string; is_mirror?: boolean } | null
   triggers: MoCTrigger[]
+  /** P3 offer-reach: the live offer on THEIR forked row (pending → badge;
+   * declined → the recallable gap chip). */
+  offer_state?: { offer_id: string; offer_status: "pending" | "declined" }
+}
+
+// ── Offer-reach (P3) — the standard's improvements reach their version ──
+
+export async function getTaskOffer(offerId: string): Promise<TaskOffer> {
+  const { data } = await apiClient.get(`/moc/offers/${offerId}`)
+  return data
+}
+
+export async function acceptTaskOffer(
+  offerId: string, choices: Record<string, "keep" | "take">,
+): Promise<{ task_id: string; applied: string[]; kept: string[] }> {
+  const { data } = await apiClient.post(`/moc/offers/${offerId}/accept`, { choices })
+  return data
+}
+
+export async function declineTaskOffer(offerId: string): Promise<{ status: string }> {
+  const { data } = await apiClient.post(`/moc/offers/${offerId}/decline`)
+  return data
 }
 
 export async function getMapTasks(): Promise<{ vertical: string | null; tasks: MapTask[] }> {

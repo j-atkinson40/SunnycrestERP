@@ -35,8 +35,10 @@ import { usePonderService } from "./ponder-service-context"
 import { MotifScene } from "./ponder-motifs"
 import { ArtifactPreview, AudienceLine } from "./PonderArtifacts"
 import { LiveEditConfirm, useLiveEditGate } from "./LiveEditConfirm"
+import { PonderFiresStrip } from "./PonderFiresStrip"
 import { PonderParamFields } from "./PonderParamFields"
 import { PonderTriggerEditor } from "./PonderTriggerEditor"
+import { TaskOfferPublishBar } from "./TaskOfferPublishBar"
 
 const BEAT_HOLD_MS = 4500
 
@@ -481,6 +483,22 @@ export function PonderOverlay({
           )}
         </div>
       </div>
+
+      {/* P3 — the deliberate boundary: admin edit mode, vertical defaults
+          with forks. The tenant service carries no publish fns → never
+          renders on the tenant read. */}
+      {editMode && script?.task_scope === "vertical_default" ? (
+        <TaskOfferPublishBar taskId={script.task_id} />
+      ) : null}
+
+      {/* P3 — the fires strip: THEIR recent runs (tenant read only) */}
+      {script?.fires != null ? (
+        <PonderFiresStrip
+          fires={script.fires}
+          isLive={script.is_live}
+          canFollowReviews={script.can_follow_reviews}
+        />
+      ) : null}
 
       {/* The live-edit confirm — evidence before a live task's settings change */}
       <LiveEditConfirm

@@ -32,6 +32,11 @@ vi.mock("@/bridgeable-admin/services/moc-service", () => ({
   listTriggerEvents: vi.fn().mockResolvedValue([]),
   setPonderWorkflowParam: vi.fn(),
   searchPonderUsers: vi.fn().mockResolvedValue([]),
+  // P3 — the publish boundary (fork_count 0 → the bar stays hidden).
+  getTaskOfferPreview: vi.fn().mockResolvedValue({
+    task_id: "t", task_name: "T", fork_count: 0, offerable_count: 0, forks: [],
+  }),
+  publishTaskOffer: vi.fn(),
 }))
 
 beforeEach(() => {

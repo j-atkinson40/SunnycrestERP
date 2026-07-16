@@ -762,6 +762,19 @@ export interface PonderBeat {
   params?: PonderStepParam[]
 }
 
+/** One fire in the ponder's history strip (P3 — the monitoring leg).
+ * Present on the TENANT read only; [] = hasn't run yet (honest). */
+export interface PonderFire {
+  run_id: string
+  started_at: string | null
+  status: string
+  is_dry_run: boolean
+  source: string
+  event_key?: string | null
+  /** Set on a FAILED fire that H1 routed into Decision Triage. */
+  review_item_id?: string | null
+}
+
 export interface PonderScript {
   task_id: string
   task_name: string
@@ -773,6 +786,12 @@ export interface PonderScript {
   is_live?: boolean
   vertical?: string | null
   workflow_id?: string | null
+  /** P3 — the fires strip (tenant read; null/absent on the platform read). */
+  fires?: PonderFire[] | null
+  /** Can THIS user follow a failed fire into Decision Triage? */
+  can_follow_reviews?: boolean
+  task_scope?: string
+  owned?: boolean
 }
 
 export async function getPonderScript(taskId: string): Promise<PonderScript> {
@@ -805,6 +824,49 @@ export async function setPonderWorkflowParam(
     { value },
   )
   return data
+}
+
+// ── Task offer-reach (P3) — the deliberate boundary, admin side ──────
+
+export interface TaskOfferPreview {
+  task_id: string
+  task_name: string
+  fork_count: number
+  offerable_count: number
+  forks: { fork_task_id: string; tenant_id: string | null; differs: boolean; summary: string }[]
+}
+
+export async function getTaskOfferPreview(taskId: string): Promise<TaskOfferPreview> {
+  const { data } = await adminApi.get(`${BASE}/tasks/${taskId}/offer-preview`)
+  return data
+}
+
+export async function publishTaskOffer(
+  taskId: string, patchNotes: string | null,
+): Promise<{ version: number; fork_count: number; offers_created: number }> {
+  const { data } = await adminApi.post(`${BASE}/tasks/${taskId}/offer`, {
+    patch_notes: patchNotes,
+  })
+  return data
+}
+
+/** One field's delta in a task offer — `from` is THEIR current value,
+ * `to` the standard's; `schedule` values are the PROSE GRAMMAR. */
+export interface TaskOfferDelta {
+  from: unknown
+  to: unknown
+}
+
+export interface TaskOffer {
+  id: string
+  task_id: string
+  version_from: number
+  version_to: number
+  patch_notes?: string | null
+  diff: { fields: Record<string, TaskOfferDelta>; summary: string }
+  status: "pending" | "accepted" | "declined" | "superseded"
+  created_at: string
+  decided_at?: string | null
 }
 
 export async function getPonderDocumentPreview(
