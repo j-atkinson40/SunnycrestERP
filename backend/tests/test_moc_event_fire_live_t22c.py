@@ -65,7 +65,11 @@ def env():
                              workflow_type=f"t22c_draft_{suffix}", display_name="T-2.2c Draft",
                              canvas_state=_marker_canvas(), version=1, is_active=True)
     src = Workflow(id=str(uuid.uuid4()), company_id=None, name="T-2.2c Source",
-                   trigger_type="manual", scope="core", tier=1, is_active=True)
+                   # T-1: a live runtime schedule on the source keeps this the
+                   # narrowed §6 hazard (a manual source's mirror is now
+                   # live-capable — the adopt's whole point).
+                   trigger_type="scheduled", trigger_config={"cron": "0 3 * * *"},
+                   scope="core", tier=1, is_active=True)
     s.add_all([draft, src])
     s.flush()
     mirror = WorkflowTemplate(id=str(uuid.uuid4()), scope="vertical_default", vertical=VERT,

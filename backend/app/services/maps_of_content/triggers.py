@@ -279,6 +279,12 @@ def _humanize_cron(cron: str) -> str:
     if len(parts) != 5:
         return cron
     minute, hour, dom, month, dow = parts
+    # Sub-daily interval shapes (T-1: the adopted expense-cat cron surfaced
+    # "*/15 * * * *" reading as "Daily" — misleading on the authority chip).
+    if minute.startswith("*/") and hour == "*" and dom == "*" and dow == "*":
+        return f"Every {minute[2:]} minutes"
+    if hour.startswith("*/") and dom == "*" and dow == "*":
+        return f"Every {hour[2:]} hours"
     try:
         at = _fmt_time(f"{int(hour):02d}:{int(minute):02d}") if hour != "*" and minute != "*" else ""
     except ValueError:

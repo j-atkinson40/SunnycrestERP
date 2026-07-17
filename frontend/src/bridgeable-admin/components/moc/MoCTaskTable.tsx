@@ -30,6 +30,7 @@ import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  liveCapableForTask,
   deleteTask,
   patchTask,
   type MoCResolvedArtifact,
@@ -549,7 +550,7 @@ function TaskRow({
       <td className="px-3 py-2" data-testid={`moc-task-triggers-${task.id}`}>
         <TriggerChips
           triggers={task.triggers ?? []}
-          liveCapable={!(task.workflow?.is_mirror ?? false)}
+          liveCapable={liveCapableForTask(task)}
         />
       </td>
       {/* Row actions — edit relationships / delete */}

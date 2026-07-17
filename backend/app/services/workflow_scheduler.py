@@ -243,6 +243,27 @@ def _already_ran_for_record(db: Session, workflow_id: str, record_id: str) -> bo
     return False
 
 
+def _active_time_based_workflows(db) -> list:
+    """THE dispatch population — every workflow the runtime scheduler may
+    fire. The single query the sweep iterates; pinned by test so the retire
+    semantics can't silently regress."""
+    return (
+        db.query(Workflow)
+        .filter(
+            Workflow.is_active == True,  # noqa: E712
+            Workflow.trigger_type.in_(
+                ["time_of_day", "time_after_event", "scheduled"]
+            ),
+            # Transfer T-1 (r129): an ADOPTED schedule is retired here
+            # permanently — the MoC trigger is the firing authority; the
+            # runtime entry never fires again (one-way; the off switch
+            # is de-promoting the MoC trigger, not resurrecting this).
+            Workflow.schedule_retired_at.is_(None),
+        )
+        .all()
+    )
+
+
 def check_time_based_workflows() -> dict:
     """APScheduler job — runs every 15 minutes.
 
@@ -258,16 +279,7 @@ def check_time_based_workflows() -> dict:
     now = datetime.now(timezone.utc)
     try:
         # Load all active time-based workflows (Phase 8b.5 adds "scheduled").
-        workflows = (
-            db.query(Workflow)
-            .filter(
-                Workflow.is_active == True,  # noqa: E712
-                Workflow.trigger_type.in_(
-                    ["time_of_day", "time_after_event", "scheduled"]
-                ),
-            )
-            .all()
-        )
+        workflows = _active_time_based_workflows(db)
         companies = db.query(Company).filter(Company.is_active == True).all()  # noqa: E712
 
         for w in workflows:

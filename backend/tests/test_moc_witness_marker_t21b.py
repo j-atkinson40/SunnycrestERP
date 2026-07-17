@@ -91,7 +91,19 @@ def env():
     s.flush()
     ctx = {"db": s, "company": company, "tmpl": tmpl, "task": task, "wf_id": wf.id}
     s.commit()
+    # T-1 SCOPING: the dev/CI DB legitimately carries ADOPTED LIVE triggers
+    # now (expense-cat's */15) — an unscoped full sweep in a test would fire
+    # real pipelines. Scope the sweep population to THIS fixture's task.
+    from unittest.mock import patch as _patch
+    from app.services.maps_of_content import schedule_sweep as _sweep_mod
+    _orig_pop = _sweep_mod._active_schedule_triggers
+    _pop_patch = _patch.object(
+        _sweep_mod, "_active_schedule_triggers",
+        lambda db: [t for t in _orig_pop(db) if t.task_catalog_id == task.id],
+    )
+    _pop_patch.start()
     yield ctx
+    _pop_patch.stop()
     # teardown
     s.rollback()
     cid = company.id

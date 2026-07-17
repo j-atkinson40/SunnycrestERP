@@ -40,8 +40,11 @@ def env():
                              workflow_type=f"t21c_draft_{suffix}", display_name="T-2.1c Draft",
                              canvas_state={"version": 1, "nodes": [], "edges": []},
                              version=1, is_active=True)
+    # T-1: a LIVE runtime schedule on the source — the narrowed §6 hazard
+    # (a manual source's mirror would now be live-capable).
     src = Workflow(id=str(uuid.uuid4()), company_id=None, name="T-2.1c Source",
-                   trigger_type="manual", scope="core", tier=1, is_active=True)
+                   trigger_type="scheduled", trigger_config={"cron": "0 3 * * *"},
+                   scope="core", tier=1, is_active=True)
     s.add(draft)
     s.add(src)
     s.flush()
@@ -117,17 +120,32 @@ def test_resolve_task_exposes_is_mirror(env):
     assert resolve_task(env["db"], mirror_task)["workflow"]["is_mirror"] is True
 
 
-def test_is_mirror_matches_sweep_discriminator(env):
-    """The UI's is_mirror and the sweep's §6 guard must key off the SAME field —
-    if they diverged, the toggle could enable a trigger the sweep won't fire live."""
+def test_authority_matches_sweep_discriminator(env):
+    """The UI's live-capability read and the sweep's §6 guard must key off the
+    SAME derivation — if they diverged, the toggle could enable a trigger the
+    sweep won't fire live. T-1 narrowed the condition: the shared key is the
+    T-0 schedule_authority discriminator (liveCapableForTask frontend-side),
+    not raw mirror-ness — an ADOPTED mirror is live-capable."""
+    from app.services.maps_of_content.ponder import schedule_authority
     from app.services.maps_of_content.schedule_sweep import _resolve_go_live
+    from app.models.workflow import Workflow as _Wf
 
+    db = env["db"]
     trig = MoCTaskTrigger(id="x", task_catalog_id="t", kind="schedule", config={}, is_live=True)
-    # is_mirror True  ⇔  _resolve_go_live False (for a promoted trigger)
-    assert (env["mirror"].mirrored_from_workflow_id is not None) is True
-    assert _resolve_go_live(trig, env["mirror"]) is False
-    assert (env["draft"].mirrored_from_workflow_id is not None) is False
-    assert _resolve_go_live(trig, env["draft"]) is True
+    src = db.get(_Wf, env["src_id"])
+    # runtime-scheduled source: authority runtime_scheduler ⇔ go_live False
+    assert schedule_authority(src) == "runtime_scheduler"
+    assert _resolve_go_live(trig, env["mirror"], db) is False
+    # compiled: authority side is vacuous; promoted → live
+    assert _resolve_go_live(trig, env["draft"], db) is True
+    # adopted (retired) source: authority moc ⇔ go_live True — same key both sides
+    from datetime import datetime, timezone as _tz
+    src.schedule_retired_at = datetime.now(_tz.utc)
+    db.flush()
+    assert schedule_authority(src) == "moc"
+    assert _resolve_go_live(trig, env["mirror"], db) is True
+    src.schedule_retired_at = None
+    db.flush()
 
 
 # ── 2. list_schedule_runs trigger_id filter (the confirm's preview fetch) ─

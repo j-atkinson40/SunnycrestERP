@@ -592,6 +592,10 @@ def schedule_authority(runtime: Workflow | None) -> str:
         runtime is not None
         and runtime.is_active
         and runtime.trigger_type in _RUNTIME_SCHEDULE_TYPES
+        # Transfer T-1: an adopted (retired) schedule no longer competes —
+        # authority moved to the MoC trigger; the badge/block lift and the
+        # §6 guard narrows, by this one condition.
+        and runtime.schedule_retired_at is None
     ):
         return "runtime_scheduler"
     return "moc"

@@ -126,6 +126,24 @@ export interface MoCTask {
   workflow: MoCResolvedArtifact | null
   focuses: MoCResolvedArtifact[]
   triggers?: MoCTrigger[]
+  /** T-0/T-1 — WHO makes this task fire. "runtime_scheduler" = the standard
+   * scheduler owns the schedule (badged, composer blocked, Live toggle
+   * locked); "moc" = the map's trigger is (or may become) the authority. */
+  schedule_authority?: "runtime_scheduler" | "moc"
+  runtime_schedule_summary?: string | null
+}
+
+/** T-1 — may this task's schedule triggers go live? Keys on the T-0 authority
+ * discriminator (the §6 guard narrowed: the hazard is a competing RUNTIME
+ * schedule, not mirror-ness — an ADOPTED mirror is live-capable; its Live
+ * toggle is the off switch). Falls back to the pre-T-1 is_mirror read for
+ * payloads that predate the authority field. */
+export function liveCapableForTask(task: {
+  schedule_authority?: "runtime_scheduler" | "moc"
+  workflow?: { is_mirror?: boolean } | null
+}): boolean {
+  if (task.schedule_authority) return task.schedule_authority !== "runtime_scheduler"
+  return !(task.workflow?.is_mirror ?? false)
 }
 
 /** A page with references resolved for rendering (the /read shapes). */
@@ -880,6 +898,25 @@ export async function getPonderDocumentPreview(
   const { data } = await adminApi.get<{ template_key: string; html: string }>(
     `${BASE}/ponder/document-preview`,
     { params: { template_key: templateKey } },
+  )
+  return data
+}
+
+/** Transfer T-1 — THE ATOMIC ADOPT: schedule authority moves runtime→moc in
+ * one transaction (carried trigger promotes; runtime schedule retires).
+ * ONE-WAY — de-promoting the trigger is the off switch. */
+export interface AdoptScheduleResult {
+  task_id: string
+  trigger_id: string
+  carried_config: Record<string, unknown>
+  carried_summary: string
+  retired_workflow_id: string
+  schedule_retired_at: string
+}
+
+export async function adoptTaskSchedule(taskId: string): Promise<AdoptScheduleResult> {
+  const { data } = await adminApi.post<AdoptScheduleResult>(
+    `${BASE}/tasks/${taskId}/adopt-schedule`,
   )
   return data
 }

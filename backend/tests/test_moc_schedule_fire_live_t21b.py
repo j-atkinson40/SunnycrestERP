@@ -76,8 +76,13 @@ def env():
         canvas_state=_action_canvas(), version=1, is_active=True,
     )
     # a runtime SOURCE workflow (with an action step) + a MIRROR template of it.
+    # T-1 note: the source carries a LIVE runtime schedule (a 3am cron,
+    # never due at DUE_NOW) — the §6 hazard as originally told ("the runtime
+    # source is independently scheduled"). The T-1 narrowing keys on exactly
+    # this; a manual source would now be live-capable.
     src = Workflow(id=str(uuid.uuid4()), company_id=None, name="T-2.1b Source",
-                   trigger_type="manual", scope="core", tier=1, is_active=True)
+                   trigger_type="scheduled", trigger_config={"cron": "0 3 * * *"},
+                   scope="core", tier=1, is_active=True)
     s.add(draft)
     s.add(src)
     s.flush()
@@ -95,7 +100,19 @@ def env():
     ctx = {"db": s, "company": company, "draft": draft, "mirror": mirror,
            "source_id": src.id, "task_ids": []}
     s.commit()
+        # T-1 SCOPING: the dev/CI DB legitimately carries ADOPTED LIVE triggers
+    # now (expense-cat's */15) — an unscoped full sweep in a test would fire
+    # real pipelines. Scope the sweep population to THIS fixture's tasks.
+    from unittest.mock import patch as _patch
+    from app.services.maps_of_content import schedule_sweep as _sweep_mod
+    _orig_pop = _sweep_mod._active_schedule_triggers
+    _pop_patch = _patch.object(
+        _sweep_mod, "_active_schedule_triggers",
+        lambda db: [t for t in _orig_pop(db) if t.task_catalog_id in ctx["task_ids"]],
+    )
+    _pop_patch.start()
     yield ctx
+    _pop_patch.stop()
     s.rollback()
     tid = [company.id]
     s.execute(sql_text(
@@ -248,16 +265,29 @@ def test_live_failure_recorded_loudly(env, monkeypatch):
 
 
 def test_resolve_go_live_is_the_single_source(env):
+    db = env["db"]
     compiled = env["draft"]   # mirrored_from_workflow_id is None
-    mirror = env["mirror"]    # mirrored_from_workflow_id set
+    mirror = env["mirror"]    # mirrored_from_workflow_id set (scheduled source)
 
     live = MoCTaskTrigger(id="a", task_catalog_id="t", kind="schedule", config={}, is_live=True)
     dry = MoCTaskTrigger(id="b", task_catalog_id="t", kind="schedule", config={}, is_live=False)
 
-    assert _resolve_go_live(live, compiled) is True    # promoted + compiled → LIVE
-    assert _resolve_go_live(live, mirror) is False     # promoted + mirror → dry (§6)
-    assert _resolve_go_live(dry, compiled) is False    # unpromoted → dry
-    assert _resolve_go_live(live, None) is True         # no template resolvable → compiled-ish (not a mirror)
+    assert _resolve_go_live(live, compiled, db) is True    # promoted + compiled → LIVE
+    # §6 NARROWED (T-1): the hazard is the source's LIVE RUNTIME SCHEDULE,
+    # not mirror-ness — this mirror's source is scheduled → dry.
+    assert _resolve_go_live(live, mirror, db) is False
+    assert _resolve_go_live(dry, compiled, db) is False    # unpromoted → dry
+    assert _resolve_go_live(live, None, db) is True         # no template resolvable → compiled-ish (not a mirror)
+
+    # The narrowing's other half: retire the source's schedule (the adopt's
+    # write) → the same mirror becomes live-capable.
+    from datetime import datetime, timezone as _tz
+    src = db.get(Workflow, env["source_id"])
+    src.schedule_retired_at = datetime.now(_tz.utc)
+    db.flush()
+    assert _resolve_go_live(live, mirror, db) is True
+    src.schedule_retired_at = None
+    db.flush()
 
 
 # ── 8. patch_trigger sets is_live (the promotion API) ─────────────────

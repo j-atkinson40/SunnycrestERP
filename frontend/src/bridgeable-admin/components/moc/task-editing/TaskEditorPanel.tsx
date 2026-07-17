@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { SlideOver } from "@/components/ui/SlideOver"
 import {
+  liveCapableForTask,
   addTaskTrigger,
   createTask,
   deleteTask,
@@ -357,7 +358,7 @@ export function TaskEditorPanel({
               <TriggerChips
                 triggers={triggers}
                 onRemove={removeTrigger}
-                liveCapable={!(task?.workflow?.is_mirror ?? false)}
+                liveCapable={task ? liveCapableForTask(task) : true}
                 onToggleLive={requestLiveToggle}
               />
             ) : !addingTrigger ? (

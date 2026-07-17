@@ -37,6 +37,8 @@ vi.mock("@/bridgeable-admin/services/moc-service", () => ({
     task_id: "t", task_name: "T", fork_count: 0, offerable_count: 0, forks: [],
   }),
   publishTaskOffer: vi.fn(),
+  // T-1 — the atomic adopt (the blocked card's affordance).
+  adoptTaskSchedule: vi.fn(),
 }))
 
 beforeEach(() => {

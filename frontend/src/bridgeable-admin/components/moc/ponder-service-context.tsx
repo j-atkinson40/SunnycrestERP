@@ -17,6 +17,7 @@ import { createContext, useContext } from "react"
 
 import {
   addTaskTrigger,
+  adoptTaskSchedule,
   deleteTrigger,
   getPonderDocumentPreview,
   getPonderScript,
@@ -32,6 +33,7 @@ import {
   type MoCTriggerEvent,
   type PatchTriggerInput,
   type PonderScript,
+  type AdoptScheduleResult,
   type PonderUserHit,
   type TaskOfferPreview,
 } from "@/bridgeable-admin/services/moc-service"
@@ -60,6 +62,10 @@ export interface PonderService {
   publishTaskOffer?: (
     taskId: string, patchNotes: string | null,
   ) => Promise<{ version: number; offers_created: number }>
+  /** T-1 — THE ATOMIC ADOPT (ADMIN only; absent on the tenant service, so
+   * the adopt affordance never renders there). One-way: schedule authority
+   * moves runtime→moc; de-promoting the trigger is the off switch. */
+  adoptSchedule?: (taskId: string) => Promise<AdoptScheduleResult>
 }
 
 /** The admin default — existing mounts work with no provider. */
@@ -76,6 +82,7 @@ export const adminPonderService: PonderService = {
   studioLinks: true,
   taskOfferPreview: getTaskOfferPreview,
   publishTaskOffer,
+  adoptSchedule: adoptTaskSchedule,
 }
 
 export const PonderServiceContext = createContext<PonderService>(adminPonderService)

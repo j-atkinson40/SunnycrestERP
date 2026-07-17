@@ -333,6 +333,25 @@ def admin_task_offer_preview(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/tasks/{task_id}/adopt-schedule", status_code=201)
+def admin_adopt_schedule(
+    task_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Transfer T-1 — THE ATOMIC ADOPT: schedule authority moves runtime→moc
+    in one transaction (the carried trigger promotes; the runtime schedule
+    retires). ONE-WAY — de-promoting the MoC trigger is the off switch; the
+    runtime entry does not resurrect. The confirm surface gates this
+    operator-side; per-task, operator-initiated."""
+    from app.services.maps_of_content import adopt
+
+    try:
+        return adopt.adopt_schedule(db, task_id=task_id, actor_id=admin.id)
+    except adopt.AdoptError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 class _PublishTaskOffer(BaseModel):
     patch_notes: str | None = None
 

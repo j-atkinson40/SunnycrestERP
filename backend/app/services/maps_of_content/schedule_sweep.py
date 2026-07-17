@@ -54,27 +54,40 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_go_live(
-    trig: MoCTaskTrigger, template: WorkflowTemplate | None
+    trig: MoCTaskTrigger, template: WorkflowTemplate | None, db: Session
 ) -> bool:
     """THE ONE SOURCE of go_live (T-2.1b — the safety-critical derivation). Live
     requires BOTH, both explicit:
       1. the trigger is PROMOTED (`is_live`) — a deliberate per-trigger act; AND
-      2. its task resolves to a COMPILED (single-owner) workflow.
+      2. its task resolves to a SINGLE-AUTHORITY workflow: a COMPILED one, or
+         (Transfer T-1) a mirror whose runtime source carries NO live runtime
+         schedule.
 
-    A MIRROR task (§6 double-fire hazard: re-point runs the runtime source, which
-    is independently scheduled) NEVER fires live — it fires DRY-RUN with a logged
-    reason, even when is_live=True. Mirror live-scheduling is deferred to its own
-    arc. This is the SOLE place go_live is derived — never a scattered convenience
-    True; a promoted trigger cannot fire live through any other path."""
+    §6 NARROWED PRECISELY (T-1 — the hazard-shaped condition): the double-fire
+    hazard was never mirror-ness, it was the SECOND SCHEDULE AUTHORITY — the
+    runtime source firing independently. So the guard's condition is now
+    "mirror WITH AN ACTIVE RUNTIME SCHEDULE → never live" (dry-run, logged),
+    read through the SAME T-0 discriminator the honesty badges use. An ADOPTED
+    mirror (schedule_retired_at set → authority "moc") fires live — the adopt
+    removed the hazard by construction. This is the SOLE place go_live is
+    derived — never a scattered convenience True; a promoted trigger cannot
+    fire live through any other path."""
+    from app.models.workflow import Workflow
+    from app.services.maps_of_content.ponder import schedule_authority
+
     if not trig.is_live:
         return False
     if template is not None and template.mirrored_from_workflow_id is not None:
-        logger.info(
-            "MoC trigger %s is is_live but its task is a MIRROR — firing DRY-RUN "
-            "(mirror live-scheduling deferred, §6 double-fire hazard).",
-            trig.id,
-        )
-        return False
+        runtime = db.get(Workflow, template.mirrored_from_workflow_id)
+        if schedule_authority(runtime) == "runtime_scheduler":
+            logger.info(
+                "MoC trigger %s is is_live but its task MIRRORS a workflow with "
+                "a live runtime schedule — firing DRY-RUN (§6 double-fire "
+                "hazard: two schedule authorities; adopt the schedule to "
+                "transfer).",
+                trig.id,
+            )
+            return False
     return True
 
 _TRIGGER_SOURCE = "moc_task_schedule"
@@ -194,16 +207,73 @@ def _already_fired(
     return existing is not None
 
 
+def _runtime_fired_same_window(
+    db: Session, *, source_workflow_id: str, company_id: str, intended_fire: datetime
+) -> bool:
+    """Transfer T-1 — THE BOUNDARY GUARD (adopt lands between ticks, no doubles).
+
+    A freshly-adopted trigger's own idempotency space is EMPTY — `_already_fired`
+    keys on moc_task_trigger_id, so a fire the RUNTIME already made in this same
+    window is invisible to it. This cross-authority check closes that: a runtime
+    fire (trigger_source='schedule') of the mirror's SOURCE workflow, for this
+    company, started inside [intended, intended + window) means the window is
+    already served — the MoC fire skips. Runtime fires start in-window (the
+    matcher requires now >= target), so started_at-range covers both runtime
+    shapes (time_of_day records fired_at only; scheduled records intended_fire).
+
+    Scoped to LIVE fires only (the caller checks go_live first): dry-run
+    previews are harmless duplicates and stay unscoped — they are the confirm's
+    evidence. The other boundary direction needs no guard: an adopt BEFORE the
+    window's runtime tick retires the runtime entry (it never fires), and the
+    MoC trigger picks the window up at the sweep's next tick — exactly one."""
+    from datetime import timedelta
+
+    window_end = intended_fire + timedelta(minutes=_SWEEP_WINDOW_MINUTES)
+    existing = (
+        db.query(WorkflowRun)
+        .filter(
+            WorkflowRun.company_id == company_id,
+            WorkflowRun.workflow_id == source_workflow_id,
+            WorkflowRun.trigger_source == "schedule",
+            WorkflowRun.started_at >= intended_fire,
+            WorkflowRun.started_at < window_end,
+        )
+        .first()
+    )
+    return existing is not None
+
+
 def _fire(
     db: Session, *, trig: MoCTaskTrigger, task: MoCTaskCatalog,
     company: Company, intended_fire: datetime,
-) -> WorkflowRun:
+) -> WorkflowRun | None:
     """Fire the task's workflow through the T-2.0b engine. go_live comes ONLY from
-    `_resolve_go_live` (is_live AND compiled) — never a convenience True. Loads
-    the template so the compiled-vs-mirror discriminator is available to the
-    guard (the SAME `mirrored_from_workflow_id` the resolver uses)."""
+    `_resolve_go_live` (is_live AND single-authority) — never a convenience True.
+    Loads the template so the compiled-vs-mirror discriminator is available to
+    the guard (the SAME `mirrored_from_workflow_id` the resolver uses).
+
+    Returns None (no fire) when the T-1 boundary guard finds the runtime
+    already served this window LIVE — the adopt moment's double-fire shield."""
     template = db.get(WorkflowTemplate, task.workflow_template_id)
-    go_live = _resolve_go_live(trig, template)
+    go_live = _resolve_go_live(trig, template, db)
+    if (
+        go_live
+        and template is not None
+        and template.mirrored_from_workflow_id is not None
+        and _runtime_fired_same_window(
+            db,
+            source_workflow_id=template.mirrored_from_workflow_id,
+            company_id=company.id,
+            intended_fire=intended_fire,
+        )
+    ):
+        logger.info(
+            "MoC trigger %s: runtime source already fired this window "
+            "(%s, company %s) — skipping the live MoC fire (T-1 adopt "
+            "boundary, no doubles).",
+            trig.id, intended_fire.isoformat(), company.id,
+        )
+        return None
     return execute_template(
         db,
         template_id=task.workflow_template_id,
@@ -229,6 +299,21 @@ def _fire(
 _SCHEDULE_FIRE_CAP = 1000
 
 
+def _active_schedule_triggers(db: Session) -> list[MoCTaskTrigger]:
+    """THE sweep population — every schedule trigger a tick may evaluate.
+    Extracted (T-1) so full-sweep tests can scope it to their fixtures: a
+    dev/CI DB now legitimately carries ADOPTED LIVE triggers (expense-cat's
+    */15), and an unscoped test sweep would fire real pipelines."""
+    return (
+        db.query(MoCTaskTrigger)
+        .filter(
+            MoCTaskTrigger.kind == "schedule",
+            MoCTaskTrigger.is_active.is_(True),
+        )
+        .all()
+    )
+
+
 def check_moc_task_schedules(
     now: datetime | None = None, fire_cap: int = _SCHEDULE_FIRE_CAP
 ) -> dict:
@@ -250,14 +335,7 @@ def check_moc_task_schedules(
     errors = 0
     cap_tripped = False
     try:
-        triggers = (
-            db.query(MoCTaskTrigger)
-            .filter(
-                MoCTaskTrigger.kind == "schedule",
-                MoCTaskTrigger.is_active.is_(True),
-            )
-            .all()
-        )
+        triggers = _active_schedule_triggers(db)
         if not triggers:
             return {"fired_dry_run": 0, "errors": 0, "cap_tripped": False}
         companies = db.query(Company).filter(Company.is_active.is_(True)).all()
@@ -289,8 +367,9 @@ def check_moc_task_schedules(
                         continue  # not due this tick (or backlog outside the window → skipped)
                     if _already_fired(db, trigger_id=trig.id, company_id=company.id, intended_fire=intended):
                         continue  # idempotent — already fired this window
-                    _fire(db, trig=trig, task=task, company=company, intended_fire=intended)
-                    fired += 1
+                    run = _fire(db, trig=trig, task=task, company=company, intended_fire=intended)
+                    if run is not None:
+                        fired += 1
                 except (ExecutionBridgeError, CanvasCompileError) as exc:
                     logger.error(
                         "MoC schedule fire failed (trigger %s / company %s): %s",

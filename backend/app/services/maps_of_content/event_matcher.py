@@ -7,7 +7,7 @@ fires matches DRY-RUN through the T-2.0b engine. Mirrors the T-2.1a schedule
 sweep exactly, one layer over the emission substrate.
 
 THE SAFETY INVARIANT (T-2.2c — the T-2.1b conversion, replayed for events):
-`go_live` comes ONLY from `_resolve_go_live(trig, template)` — the SAME single
+`go_live` comes ONLY from `_resolve_go_live(trig, template, db)` — the SAME single
 source the schedule path uses. Live requires BOTH, both explicit: the trigger
 PROMOTED (`is_live` — the kind-agnostic r117 column, shared with schedule
 triggers) AND the task COMPILED (§6: a mirror-task event-trigger fires DRY-RUN
@@ -205,7 +205,7 @@ def _fire(
         },
         triggered_by_user_id=None,
         allow_run=True,
-        go_live=_resolve_go_live(trig, template),  # ← ONE source, shared with schedule
+        go_live=_resolve_go_live(trig, template, db),  # ← ONE source, shared with schedule
     )
 
 

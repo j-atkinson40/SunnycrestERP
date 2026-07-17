@@ -29,7 +29,7 @@ const KIND_STYLE: Record<MoCTriggerKind, { icon: LucideIcon; chip: string }> = {
 }
 
 export const MIRROR_LIVE_REASON =
-  "Mirror tasks can’t go live yet — the workflow runs on its own schedule (§6 double-fire guard)."
+  "This task’s schedule is managed by the standard scheduler — going live waits for the schedule transfer (§6 double-fire guard, narrowed T-1: adopt the schedule to transfer authority)."
 
 /** The Live/Dry-run badge for a schedule trigger. Shows the EFFECTIVE state:
  * live requires is_live AND a live-capable (compiled) task. Interactive when

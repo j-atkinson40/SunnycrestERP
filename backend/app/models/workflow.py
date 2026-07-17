@@ -60,6 +60,15 @@ class Workflow(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Transfer T-1 (r129) — the runtime schedule's retire stamp. NULL = the
+    # runtime scheduler owns this workflow's schedule; a timestamp = the
+    # schedule authority was ADOPTED into the MoC trigger at that moment.
+    # ONE-WAY: the adopt sets it; nothing clears it (de-promoting the MoC
+    # trigger is the off switch — the runtime entry does not resurrect).
+    # trigger_type/trigger_config stay untouched (honest authored history).
+    schedule_retired_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
     command_bar_priority: Mapped[int] = mapped_column(Integer, default=10)

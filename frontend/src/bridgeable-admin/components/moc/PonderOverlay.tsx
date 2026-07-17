@@ -38,6 +38,7 @@ import { LiveEditConfirm, useLiveEditGate } from "./LiveEditConfirm"
 import { PonderFiresStrip } from "./PonderFiresStrip"
 import { PonderParamFields } from "./PonderParamFields"
 import { PonderTriggerEditor } from "./PonderTriggerEditor"
+import { AdoptScheduleConfirm } from "./AdoptScheduleConfirm"
 import { TaskOfferPublishBar } from "./TaskOfferPublishBar"
 
 const BEAT_HOLD_MS = 4500
@@ -101,6 +102,7 @@ export function PonderOverlay({
   const [editMode, setEditMode] = useState(false)
   const [draft, setDraft] = useState<string | null>(null) // null = not editing this beat
   const [saving, setSaving] = useState(false)
+  const [adopting, setAdopting] = useState(false) // T-1 — the adopt confirm
   const reduced = usePrefersReducedMotion()
   const timerRef = useRef<number | null>(null)
   // The live-edit gravity: one confirm gate, all editors. Dry-run tasks
@@ -417,6 +419,34 @@ export function PonderOverlay({
                       This task's schedule is managed by the standard
                       scheduler — editing arrives with the transfer.
                     </p>
+                    {/* T-1 — the transfer itself (admin only: the tenant
+                        service carries no adoptSchedule, so the affordance
+                        structurally can't render there). */}
+                    {svc.adoptSchedule && script ? (
+                      <Button
+                        size="sm" variant="outline" className="mt-2"
+                        onClick={() => setAdopting(true)}
+                        data-testid="ponder-adopt-schedule-button"
+                      >
+                        Adopt this schedule…
+                      </Button>
+                    ) : null}
+                    {adopting && svc.adoptSchedule && script ? (
+                      <AdoptScheduleConfirm
+                        taskName={script.task_name}
+                        scheduleProse={beat.text}
+                        onCancel={() => setAdopting(false)}
+                        onConfirm={async () => {
+                          await svc.adoptSchedule!(script.task_id)
+                          // The honesty guard reflects the transfer: refetch —
+                          // the badge flips (authority moc), the composer
+                          // unblocks, the WHEN beat derives from the carried
+                          // trigger.
+                          setScript(await svc.getPonderScript(script.task_id))
+                          setAdopting(false)
+                        }}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
 

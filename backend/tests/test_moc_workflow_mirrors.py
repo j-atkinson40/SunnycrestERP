@@ -35,6 +35,22 @@ def db():
     yield s
     s.rollback()
     names = [t[0] for t in TARGETS]
+    # T-1 OPERATOR-STATE PRESERVATION: the delete below takes the standing
+    # tasks' TRIGGER rows with it (FK cascade) — on a dev DB that includes an
+    # ADOPTED task's live carried trigger, and losing it while the runtime
+    # schedule stays retired means the task silently stops firing (the
+    # "NEITHER authority" state the adopt invariant forbids). Snapshot
+    # triggers by task name; re-attach to the re-seeded rows after seed().
+    preserved_triggers = s.execute(
+        sql_text(
+            "SELECT c.name, t.kind, t.config, t.label, t.display_order, "
+            "t.is_active, t.is_live FROM moc_task_trigger t "
+            "JOIN moc_task_catalog c ON t.task_catalog_id = c.id "
+            "WHERE c.vertical IN ('manufacturing', 'funeral_home') "
+            "AND c.name = ANY(:n)"
+        ),
+        {"n": names},
+    ).fetchall()
     s.execute(
         sql_text(
             "DELETE FROM moc_task_catalog WHERE vertical IN "
@@ -53,6 +69,31 @@ def db():
     # mid-witness). Re-seed so the teardown's end state IS the standing
     # fleet; the backfill is preserve-aware + idempotent.
     seed(s)
+    import json as _json
+    import uuid as _uuid
+    for row in preserved_triggers:
+        new_task = s.execute(
+            sql_text(
+                "SELECT id FROM moc_task_catalog WHERE name = :n "
+                "AND is_active LIMIT 1"
+            ),
+            {"n": row[0]},
+        ).fetchone()
+        if new_task is None:
+            continue  # the task didn't re-seed — nothing to re-attach to
+        s.execute(
+            sql_text(
+                "INSERT INTO moc_task_trigger (id, task_catalog_id, kind, "
+                "config, label, display_order, is_active, is_live) VALUES "
+                "(:id, :task, :kind, CAST(:config AS jsonb), :label, "
+                ":display_order, :is_active, :is_live)"
+            ),
+            {
+                "id": str(_uuid.uuid4()), "task": new_task[0], "kind": row[1],
+                "config": _json.dumps(row[2] or {}), "label": row[3],
+                "display_order": row[4], "is_active": row[5], "is_live": row[6],
+            },
+        )
     s.commit()
     s.close()
 
