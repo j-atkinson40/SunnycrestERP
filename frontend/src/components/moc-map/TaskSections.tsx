@@ -58,7 +58,7 @@ export function deriveSections(tasks: MapTask[]): Array<{
 }
 
 export function TaskSections({
-  tasks, onPonder, onOpenOffer, canAdd, onAdd,
+  tasks, onPonder, onOpenOffer, canAdd, onAdd, sectionTitleOverride,
 }: {
   tasks: MapTask[]
   onPonder: (task: MapTask) => void
@@ -67,6 +67,10 @@ export function TaskSections({
   canAdd: boolean
   /** Opens the add dialog, pre-filled with the section's type. */
   onAdd: (sectionType: string | null) => void
+  /** Reframe R-1 — the area page's single section reads "Automations"
+   * (the truthful name) instead of repeating the area already in the h1.
+   * Applied only when exactly one section renders. */
+  sectionTitleOverride?: string
 }) {
   const sections = useMemo(() => deriveSections(tasks), [tasks])
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
@@ -112,7 +116,9 @@ export function TaskSections({
                   }
                 />
                 <h2 className="text-caption font-medium uppercase tracking-wide text-content-subtle">
-                  {type}
+                  {sections.length === 1 && sectionTitleOverride
+                    ? sectionTitleOverride
+                    : type}
                 </h2>
                 <span className="text-caption text-content-subtle">
                   {sectionTasks.length}

@@ -83,7 +83,7 @@ export function GoLiveConfirm({
         ) : preview && preview.would_do.length > 0 ? (
           <div className="space-y-1.5" data-testid="go-live-preview">
             <p className="text-body-sm text-content-base">
-              On each scheduled run, this task will (from its latest dry-run preview):
+              On each scheduled run, this automation will (from its latest dry-run preview):
             </p>
             <ul className="space-y-1 rounded-md border border-border-base bg-surface-sunken p-2.5">
               {preview.would_do.map((line, i) => (
@@ -107,7 +107,7 @@ export function GoLiveConfirm({
             <p className="text-body-sm text-status-warning">
               {trigger.kind === "event"
                 ? "This trigger hasn’t matched-and-previewed yet — it will run its workflow live when the event occurs. Consider letting a matching event fire dry-run first to see what it does before going live."
-                : "This task hasn’t previewed yet — it will run its workflow live on schedule. Consider letting it run dry-run first (the next sweep tick) to see what it does before going live."}
+                : "This automation hasn’t previewed yet — it will run its workflow live on schedule. Consider letting it run dry-run first (the next sweep tick) to see what it does before going live."}
             </p>
           </div>
         )}

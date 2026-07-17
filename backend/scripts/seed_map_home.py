@@ -23,7 +23,10 @@ from app.models.moc_composition import MoCComposition  # noqa: E402
 
 KEY = "welcome-map"
 
-BEATS = [
+# The R-0 default beats VERBATIM — the preserve-aware update key: an existing
+# row whose beats still equal this default gets the R-1 rename applied; ANY
+# other content is the operator's authoring and is never touched.
+_R0_BEATS = [
     {
         "key": "welcome", "kind": "opening",
         "text": "Welcome to your Bridgeable Map — the home of everything "
@@ -56,6 +59,39 @@ BEATS = [
     },
 ]
 
+BEATS = [
+    {
+        "key": "welcome", "kind": "opening",
+        "text": "Welcome to your Bridgeable Map — the home of everything "
+                "your platform does for you. Every automation lives "
+                "here, grouped into the areas of your business.",
+    },
+    {
+        "key": "areas", "kind": "task",
+        "text": "The cards on the home page are your AREAS — Accounting, "
+                "operations, and the rest. Click one to open its page; "
+                "every automation inside has a card of its own.",
+    },
+    {
+        "key": "hold_p", "kind": "task",
+        "text": "Any card can teach you how it works: hover it and hold P "
+                "— a walkthrough like this one opens, showing what runs, "
+                "when, and what it produces. Click a card does the same.",
+    },
+    {
+        "key": "yours", "kind": "task",
+        "text": "Automations marked “yours” are your company's own "
+                "versions — forked from the standard or added by your "
+                "admins. They gather in the Yours section on the home.",
+    },
+    {
+        "key": "closing", "kind": "closing",
+        "text": "That's the map. It fills in as your platform does more — "
+                "start anywhere.",
+        "link": {"href": "/bridgeable-map", "label": "Open your map"},
+    },
+]
+
 
 def main() -> int:
     db = SessionLocal()
@@ -66,7 +102,14 @@ def main() -> int:
             .first()
         )
         if existing is not None:
-            print(f"[seed_map_home] ok — '{KEY}' present, untouched")
+            if existing.beats == _R0_BEATS:
+                # The R-1 rename, applied ONLY over the unchanged default —
+                # the operator's authoring (any divergence) is never touched.
+                existing.beats = BEATS
+                db.commit()
+                print(f"[seed_map_home] '{KEY}' default text updated (R-1 rename)")
+            else:
+                print(f"[seed_map_home] ok — '{KEY}' present (authored), untouched")
             return 0
         db.add(MoCComposition(
             id=str(uuid.uuid4()), kind="onboarding", key=KEY, vertical=None,

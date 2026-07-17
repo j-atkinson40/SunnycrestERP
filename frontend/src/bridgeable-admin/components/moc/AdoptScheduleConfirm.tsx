@@ -46,7 +46,7 @@ export function AdoptScheduleConfirm({
             Adopt schedule: {taskName}
           </DialogTitle>
           <DialogDescription data-testid="adopt-schedule-consequence">
-            This task will now fire from the map&rsquo;s trigger; the standard
+            This automation will now fire from the map&rsquo;s trigger; the standard
             scheduler entry retires — <strong>this is one-way</strong>.
           </DialogDescription>
         </DialogHeader>
@@ -66,7 +66,7 @@ export function AdoptScheduleConfirm({
           </div>
           <p className="text-caption text-content-muted" data-testid="adopt-schedule-offswitch">
             Afterwards, flipping the trigger to dry-run is the off switch —
-            the task stops firing live and previews instead. The standard
+            the automation stops firing live and previews instead. The standard
             scheduler entry does not come back.
           </p>
           {error ? (

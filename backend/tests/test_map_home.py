@@ -103,7 +103,7 @@ class TestAreaDeriver:
         assert all(k == "task" for k in kinds[1:-1])
         assert len(kinds) == 2 + 3  # opening + 3 tasks + closing
         # The opening's derived-honest placeholder counts truthfully.
-        assert "3 automated tasks" in s["beats"][0]["derived_text"]
+        assert "3 automations" in s["beats"][0]["derived_text"]
 
     def test_task_beat_is_the_card_as_story(self, db, world):
         s = build_area_ponder_script(db, vertical=VERT, area="Accounting")
@@ -148,7 +148,7 @@ class TestAreaDeriver:
         s = build_area_ponder_script(db, vertical=VERT, area="Accounting")
         assert s["beats"][0]["text"] == "The operator's philosophy."
         assert s["beats"][0]["authored"] is True
-        assert "3 automated tasks" in s["beats"][0]["derived_text"]  # never stale
+        assert "3 automations" in s["beats"][0]["derived_text"]  # never stale
         save_area_caption(db, vertical=VERT, area="Accounting",
                           beat_key="opening", text=None)
         s2 = build_area_ponder_script(db, vertical=VERT, area="Accounting")

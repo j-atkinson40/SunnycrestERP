@@ -263,12 +263,12 @@ export function TaskEditorPanel({
       onClose={onClose}
       title={
         editing
-          ? "Edit task"
+          ? "Edit automation"
           : platformScope
             ? "Add platform task"
             : activeTenant
-              ? `Add task for ${activeTenant.name}`
-              : "Add task"
+              ? `Add automation for ${activeTenant.name}`
+              : "Add automation"
       }
       footer={
         <div className="flex items-center justify-between">

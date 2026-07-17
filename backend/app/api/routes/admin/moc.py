@@ -333,6 +333,104 @@ def admin_task_offer_preview(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# ─── JOBS (displayed "Task" — Reframe R-1; code name moc_job, the honest
+# divergence per tasks_reframe_investigation.md §3) ────────────────────────
+
+
+class _CreateJob(BaseModel):
+    name: str
+    scope: Scope = "vertical_default"
+    vertical: str | None = None
+    icon: str | None = None
+    description: str | None = None
+    task_type: str | None = None
+    display_order: int = 0
+
+
+class _AddJobRef(BaseModel):
+    ref_kind: str
+    ref_key: str
+    label: str | None = None
+    display_order: int = 0
+
+
+@router.get("/jobs")
+def admin_list_jobs(
+    vertical: str | None = None,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The jobs for a vertical (+ platform-tier), each with refs RESOLVED
+    per kind — dead refs skipped for viewers, surfaced in dead_refs for
+    the edit surface's reclaim list."""
+    from app.services.maps_of_content import jobs as jobs_svc
+
+    return [
+        jobs_svc.resolve_job(db, j)
+        for j in jobs_svc.list_jobs(db, vertical=vertical)
+    ]
+
+
+@router.post("/jobs", status_code=201)
+def admin_create_job(
+    body: _CreateJob,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content import jobs as jobs_svc
+
+    try:
+        job = jobs_svc.create_job(
+            db, name=body.name, scope=body.scope, vertical=body.vertical,
+            icon=body.icon, description=body.description,
+            task_type=body.task_type, display_order=body.display_order,
+        )
+        db.commit()
+    except jobs_svc.JobValidationError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    return jobs_svc.resolve_job(db, job)
+
+
+@router.post("/jobs/{job_id}/refs", status_code=201)
+def admin_add_job_ref(
+    job_id: str,
+    body: _AddJobRef,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """THE WRITE BOUNDARY — the ref must exist NOW (per-kind checker); a
+    dangling write is refused loudly."""
+    from app.services.maps_of_content import jobs as jobs_svc
+
+    try:
+        ref = jobs_svc.add_ref(
+            db, job_id=job_id, ref_kind=body.ref_kind, ref_key=body.ref_key,
+            label=body.label, display_order=body.display_order,
+        )
+        db.commit()
+    except jobs_svc.JobValidationError as e:
+        db.rollback()
+        code = 404 if "not found" in str(e) else 400
+        raise HTTPException(status_code=code, detail=str(e))
+    return {"id": ref.id, "ref_kind": ref.ref_kind, "ref_key": ref.ref_key}
+
+
+@router.delete("/jobs/refs/{ref_id}", status_code=200)
+def admin_remove_job_ref(
+    ref_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content import jobs as jobs_svc
+
+    found = jobs_svc.remove_ref(db, ref_id=ref_id)
+    db.commit()
+    if not found:
+        raise HTTPException(status_code=404, detail="Ref not found")
+    return {"ok": True}
+
+
 @router.get("/area-ponder/{vertical}/{area}")
 def admin_area_ponder(
     vertical: str,

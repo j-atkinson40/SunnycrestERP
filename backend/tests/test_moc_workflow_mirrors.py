@@ -41,6 +41,29 @@ def db():
     # schedule stays retired means the task silently stops firing (the
     # "NEITHER authority" state the adopt invariant forbids). Snapshot
     # triggers by task name; re-attach to the re-seeded rows after seed().
+    # Reframe R-1 (landmine #2): job→automation refs key on catalog ROW IDS;
+    # this teardown's delete+reseed mints new ids, which would dangle every
+    # ref. Snapshot refs by task NAME; re-attach to the re-seeded rows after
+    # seed() — the trigger-preservation pattern, one tier up.
+    preserved_job_refs = s.execute(
+        sql_text(
+            "SELECT c.name, r.job_id, r.label, r.display_order "
+            "FROM moc_job_ref r "
+            "JOIN moc_task_catalog c ON r.ref_key = c.id "
+            "WHERE r.ref_kind = 'automation' "
+            "AND c.vertical IN ('manufacturing', 'funeral_home') "
+            "AND c.name = ANY(:n)"
+        ),
+        {"n": names},
+    ).fetchall()
+    s.execute(
+        sql_text(
+            "DELETE FROM moc_job_ref WHERE ref_kind = 'automation' AND ref_key IN "
+            "(SELECT id FROM moc_task_catalog WHERE vertical IN "
+            "('manufacturing', 'funeral_home') AND name = ANY(:n))"
+        ),
+        {"n": names},
+    )
     preserved_triggers = s.execute(
         sql_text(
             "SELECT c.name, t.kind, t.config, t.label, t.display_order, "
@@ -93,6 +116,25 @@ def db():
                 "config": _json.dumps(row[2] or {}), "label": row[3],
                 "display_order": row[4], "is_active": row[5], "is_live": row[6],
             },
+        )
+    for row in preserved_job_refs:
+        new_task = s.execute(
+            sql_text(
+                "SELECT id FROM moc_task_catalog WHERE name = :n "
+                "AND is_active LIMIT 1"
+            ),
+            {"n": row[0]},
+        ).fetchone()
+        if new_task is None:
+            continue
+        s.execute(
+            sql_text(
+                "INSERT INTO moc_job_ref (id, job_id, ref_kind, ref_key, "
+                "label, display_order) VALUES (:id, :job, 'automation', "
+                ":key, :label, :display_order) ON CONFLICT DO NOTHING"
+            ),
+            {"id": str(_uuid.uuid4()), "job": row[1], "key": new_task[0],
+             "label": row[2], "display_order": row[3]},
         )
     s.commit()
     s.close()

@@ -64,7 +64,7 @@ export default function BridgeableMapAreaPage() {
             {area}
           </h1>
           <p className="mt-1 max-w-2xl text-body text-content-muted">
-            Every {area} task on your map — hold{" "}
+            Every {area} automation on your map — hold{" "}
             <kbd className="rounded-sm border border-border-base px-1 font-plex-mono text-caption">P</kbd>{" "}
             on a card to walk through it.
             {" "}
@@ -94,6 +94,7 @@ export default function BridgeableMapAreaPage() {
             onOpenOffer={openOffer}
             canAdd={isAdmin}
             onAdd={openAdd}
+            sectionTitleOverride="Automations"
           />
         )}
 

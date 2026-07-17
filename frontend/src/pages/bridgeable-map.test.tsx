@@ -87,7 +87,7 @@ describe("BridgeableMapPage — the three-part home", () => {
     expect(screen.getByTestId("map-area-Accounting")).toBeInTheDocument()
     expect(screen.getByTestId("map-area-Operations")).toBeInTheDocument()
     expect(screen.getByTestId("map-area-count-Accounting").textContent)
-      .toContain("3 tasks")
+      .toContain("3 automations")
     // YOURS — the fork gathered, linked into its area.
     expect(screen.getByTestId("map-yours-section")).toBeInTheDocument()
     expect(screen.getByTestId("map-card-area-link-t-4").getAttribute("href"))

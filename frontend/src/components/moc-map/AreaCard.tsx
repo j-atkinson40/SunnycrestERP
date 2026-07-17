@@ -72,7 +72,7 @@ export function AreaCard({
       </div>
       <div className="mt-2 flex items-center gap-2 text-caption text-content-muted">
         <span data-testid={`map-area-count-${area}`}>
-          {taskCount} {taskCount === 1 ? "task" : "tasks"}
+          {taskCount} {taskCount === 1 ? "automation" : "automations"}
         </span>
         {liveCount > 0 ? (
           <span

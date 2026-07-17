@@ -84,7 +84,7 @@ export default function BridgeableMapPage() {
             The map of what your platform does. Each card is an area of your
             business — hold{" "}
             <kbd className="rounded-sm border border-border-base px-1 font-plex-mono text-caption">P</kbd>{" "}
-            on one for the story, click it for the tasks.
+            on one for the story, click it for its automations.
           </p>
         </div>
 
@@ -98,7 +98,7 @@ export default function BridgeableMapPage() {
           </p>
         ) : areas.length === 0 ? (
           <p className="py-10 text-center text-body-sm text-content-muted">
-            No tasks yet — your vertical's defaults appear here as they ship.
+            No automations yet — your vertical's defaults appear here as they ship.
           </p>
         ) : (
           <section data-testid="map-area-spine">
@@ -145,7 +145,7 @@ export default function BridgeableMapPage() {
               onClick={() => openAdd(null)}
               data-testid="map-add-task-button"
             >
-              <Plus size={14} /> Add a task
+              <Plus size={14} /> Add an automation
             </Button>
           </div>
         ) : null}

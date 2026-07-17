@@ -88,7 +88,7 @@ describe("tenant-aware Add-task", () => {
     vi.mocked(mocService.createTask).mockResolvedValue({} as never)
     renderTable([], TESTCO)
     fireEvent.click(screen.getByTestId("moc-task-add"))
-    expect(screen.getByText("Add task for Test Vault Co")).toBeTruthy()
+    expect(screen.getByText("Add automation for Test Vault Co")).toBeTruthy()
 
     fireEvent.change(screen.getByTestId("task-panel-name"), { target: { value: "New Tenant Task" } })
     fireEvent.click(screen.getByTestId("task-panel-save"))

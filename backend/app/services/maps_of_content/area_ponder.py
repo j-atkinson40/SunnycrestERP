@@ -99,11 +99,11 @@ def build_area_ponder_script(
     # derived-honest placeholder that never pretends to be pedagogy).
     _beat(
         "opening", "opening",
-        f"{area} — {len(tasks)} automated "
-        f"{'task' if len(tasks) == 1 else 'tasks'} run here"
+        f"{area} — {len(tasks)} "
+        f"{'automation' if len(tasks) == 1 else 'automations'} run here"
         + (f", {live_count} live" if live_count else "")
-        + ". Bridgeable brings the work to one place; each task below can "
-        "walk you through itself.",
+        + ". Bridgeable brings the work to one place; each automation below "
+        "can walk you through itself.",
     )
 
     # ONE SHORT DERIVED BEAT PER TASK — the card content as story.

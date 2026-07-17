@@ -29,12 +29,19 @@ import {
 import { AddTaskDialog } from "./AddTaskDialog"
 import { TaskOfferDialog } from "./TaskOfferDialog"
 
-/** The overlay taskId → the engagement keyspace. */
+/** The overlay taskId → the engagement keyspace.
+ *
+ * LANDMINE #1 (Reframe R-1, pinned): `task:` means AUTOMATION ponders —
+ * the data already written says so. The `job:` prefix is RESERVED for the
+ * reframe's new entity (R-2's job ponders) and passes through untouched;
+ * it must never be wrapped into the task: space. */
 export function engagementKey(overlayId: string, vertical: string | null): string {
   if (overlayId.startsWith("area:")) {
     return `area:${vertical}:${overlayId.slice(5)}`
   }
-  if (overlayId.startsWith("onboarding:")) return overlayId
+  if (overlayId.startsWith("onboarding:") || overlayId.startsWith("job:")) {
+    return overlayId
+  }
   return `task:${overlayId}`
 }
 
@@ -144,7 +151,7 @@ export function useMapOverlays({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <GitBranch size={16} className="flex-none text-accent" />
-                Make this task yours?
+                Make this automation yours?
               </DialogTitle>
               <DialogDescription data-testid="fork-prompt-copy">
                 <strong>{forkPrompt.task.name}</strong> is the standard{" "}

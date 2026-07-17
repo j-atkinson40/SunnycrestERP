@@ -463,7 +463,7 @@ export function PonderOverlay({
                     data-testid="ponder-composer-blocked"
                   >
                     <p className="text-body-sm" style={{ color: STAGE.muted }}>
-                      This task's schedule is managed by the standard
+                      This automation's schedule is managed by the standard
                       scheduler — editing arrives with the transfer.
                     </p>
                     {/* T-1 — the transfer itself (admin only: the tenant

@@ -361,7 +361,9 @@ def create_task(
         .first()
     )
     if dup is not None:
-        raise TaskValidationError(f"a task named {name!r} already exists in this scope")
+        raise TaskValidationError(
+            f"an automation named {name!r} already exists in this scope"
+        )
     _validate_task_refs(
         db, vertical=vertical, frequency=frequency, task_type=task_type,
         workflow_template_id=workflow_template_id, focus_template_ids=focus_template_ids,

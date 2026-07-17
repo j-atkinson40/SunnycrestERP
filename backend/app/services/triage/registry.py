@@ -128,6 +128,18 @@ def list_all_configs(
     )
 
 
+def platform_queue_ids() -> set[str]:
+    """The platform-tier queue ids (no tenant context) — the MoC job spine's
+    write-boundary existence check (Reframe R-1)."""
+    return set(_PLATFORM_CONFIGS.keys())
+
+
+def platform_queue_config(queue_id: str):
+    """A platform-tier config by id, or None — the job ref resolver's read
+    (labels/icons; tenant overrides don't change identity fields)."""
+    return _PLATFORM_CONFIGS.get(queue_id)
+
+
 def get_config(
     db: Session, *, company_id: str, queue_id: str
 ) -> TriageQueueConfig:

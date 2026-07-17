@@ -140,9 +140,9 @@ export function MoCTaskTable({
   return (
     <section data-testid={testId} className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-h4 font-semibold text-content-strong">Tasks</h2>
+        <h2 className="text-h4 font-semibold text-content-strong">Automations</h2>
         <Button size="sm" variant="outline" onClick={openCreate} data-testid="moc-task-add">
-          <Plus size={15} /> Add task
+          <Plus size={15} /> Add automation
         </Button>
       </div>
 
@@ -225,7 +225,7 @@ export function MoCTaskTable({
           <table className="w-full border-collapse text-body-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-surface-sunken text-left">
-                {["Task", "Frequency", "Workflow Used", "Focus's Used", "Type", "Description", "Triggers", ""].map(
+                {["Automation", "Frequency", "Workflow Used", "Focus's Used", "Type", "Description", "Triggers", ""].map(
                   (h, i) => (
                     <th
                       key={h || `actions-${i}`}

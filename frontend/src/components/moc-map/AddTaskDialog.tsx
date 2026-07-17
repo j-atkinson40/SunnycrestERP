@@ -50,7 +50,7 @@ export function AddTaskDialog({
 
   async function submit() {
     if (!name.trim()) {
-      setError("Give the task a name.")
+      setError("Give the automation a name.")
       return
     }
     setBusy(true)
@@ -66,7 +66,7 @@ export function AddTaskDialog({
       const detail =
         (e as { response?: { data?: { detail?: string } } })?.response?.data
           ?.detail
-      setError(detail ?? "Couldn't create the task.")
+      setError(detail ?? "Couldn't create the automation.")
       setBusy(false)
     }
   }
@@ -77,7 +77,7 @@ export function AddTaskDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus size={16} className="flex-none text-accent" />
-            Add a task to {companyName}'s map
+            Add an automation to {companyName}'s map
           </DialogTitle>
           <DialogDescription>
             Yours from the start — it appears on your map only, ready for a
@@ -147,7 +147,7 @@ export function AddTaskDialog({
           </Button>
           <Button onClick={() => void submit()} disabled={busy}
             data-testid="map-add-submit">
-            {busy ? "Adding…" : "Add task"}
+            {busy ? "Adding…" : "Add automation"}
           </Button>
         </DialogFooter>
       </DialogContent>
