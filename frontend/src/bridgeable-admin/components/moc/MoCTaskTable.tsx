@@ -20,7 +20,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { ArrowUpRight, Clock, Pencil, Play, Plus, Trash2, type LucideIcon } from "lucide-react"
+import {
+  BookOpen, ArrowUpRight, Clock, Pencil, Play, Plus, Trash2, type LucideIcon } from "lucide-react"
 import { FileText, Receipt, Sparkles } from "lucide-react"
 
 import { adminPath } from "@/bridgeable-admin/lib/admin-routes"
@@ -184,6 +185,20 @@ export function MoCTaskTable({
               <span className="ml-1.5 text-caption text-content-subtle">{count}</span>
             </button>
           ))}
+          {/* Map Home — the AREA OVERVIEW PONDER's authoring mount: open
+              the active area's story (philosophy captions edit in-ponder,
+              platform pedagogy). Present only when a group is active. */}
+          {activeGroup && vertical ? (
+            <button
+              type="button"
+              onClick={() => setPonderTaskId(`area:${vertical}:${activeGroup}`)}
+              className="focus-ring-accent ml-1 flex items-center gap-1 rounded-md px-2 py-1 text-caption text-content-subtle transition-colors duration-quick hover:bg-surface-sunken hover:text-content-muted"
+              title={`Open the ${activeGroup} area's story (authorable)`}
+              data-testid={`moc-area-ponder-${groupSlug(activeGroup)}`}
+            >
+              <BookOpen size={12} /> Story
+            </button>
+          ) : null}
         </div>
       ) : null}
 

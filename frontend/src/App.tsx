@@ -62,6 +62,7 @@ import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import HomePage from "@/pages/home/HomePage";
 import BridgeableMapPage from "@/pages/bridgeable-map";
+import BridgeableMapAreaPage from "@/pages/bridgeable-map-area";
 import FocusTestPage from "@/pages/dev/focus-test";
 import FuneralSchedulePage from "@/pages/dispatch/funeral-schedule";
 import UserManagement from "@/pages/admin/user-management";
@@ -601,6 +602,7 @@ export function renderTenantSlugRoutes(
                       editing is gated in-page by role + server-side by
                       require_admin on the write routes. */}
                   <Route path="bridgeable-map" element={<BridgeableMapPage />} />
+                  <Route path="bridgeable-map/:area" element={<BridgeableMapAreaPage />} />
 
                   {/* Phase A Session 1 — dev-only test page for the
                       Focus primitive. Not in nav. Any authenticated

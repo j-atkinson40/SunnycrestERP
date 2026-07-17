@@ -681,6 +681,10 @@ export async function deletePlanning(id: string): Promise<void> {
 // ── The Ponder (P1) — the derived walkthrough script + caption authoring ────
 
 export type PonderBeatKind = "when" | "step" | "pause" | "focus" | "downstream" | "garnish"
+  // Map Home — the area/onboarding composition kinds.
+  | "opening"
+  | "task"
+  | "closing"
 
 /** The motif grammar's scene hint (Ponder Polish Set 3) — chosen server-side
  * from step type + config words. Absent/unknown → typographic treatment. */
@@ -758,6 +762,8 @@ export async function searchPonderUsers(q: string): Promise<PonderUserHit[]> {
 export interface PonderBeat {
   key: string
   kind: PonderBeatKind
+  /** Map Home — the closing beat's deep link (the overlay renders it). */
+  link?: { href: string; label: string } | null
   motif?: PonderMotif | null
   artifact?: PonderArtifact | null
   audience?: PonderAudience | null
@@ -818,6 +824,15 @@ export interface PonderScript {
 }
 
 export async function getPonderScript(taskId: string): Promise<PonderScript> {
+  // Map Home — the AREA ponder rides the same overlay via the admin key
+  // convention "area:<vertical>:<Area>" (the philosophy authoring surface).
+  if (taskId.startsWith("area:")) {
+    const [, vertical, ...rest] = taskId.split(":")
+    const { data } = await adminApi.get<PonderScript>(
+      `${BASE}/area-ponder/${encodeURIComponent(vertical)}/${encodeURIComponent(rest.join(":"))}`,
+    )
+    return data
+  }
   const { data } = await adminApi.get<PonderScript>(`${BASE}/ponder/${taskId}`)
   return data
 }
@@ -827,6 +842,16 @@ export async function savePonderCaption(
   beatKey: string,
   text: string | null,
 ): Promise<Record<string, string>> {
+  if (taskId.startsWith("area:")) {
+    // Platform pedagogy — the philosophy captions land on the composition
+    // row (created on first authoring), platform-admin only.
+    const [, vertical, ...rest] = taskId.split(":")
+    const { data } = await adminApi.patch<{ captions: Record<string, string> }>(
+      `${BASE}/area-ponder/${encodeURIComponent(vertical)}/${encodeURIComponent(rest.join(":"))}/captions`,
+      { beat_key: beatKey, text },
+    )
+    return data.captions
+  }
   const { data } = await adminApi.patch<{ captions: Record<string, string> }>(
     `${BASE}/ponder/${taskId}/captions`,
     { beat_key: beatKey, text },

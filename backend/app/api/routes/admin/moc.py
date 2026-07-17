@@ -333,6 +333,50 @@ def admin_task_offer_preview(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/area-ponder/{vertical}/{area}")
+def admin_area_ponder(
+    vertical: str,
+    area: str,
+    tenant_id: str | None = None,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The area overview ponder, platform view (optionally through a
+    tenant's merged lens via tenant_id). The caption editor mounts here —
+    the philosophy layer is platform pedagogy."""
+    from app.services.maps_of_content import area_ponder
+
+    try:
+        return area_ponder.build_area_ponder_script(
+            db, vertical=vertical, area=area, company_id=tenant_id,
+        )
+    except area_ponder.AreaPonderError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class _AreaCaption(BaseModel):
+    beat_key: str
+    text: str | None = None
+
+
+@router.patch("/area-ponder/{vertical}/{area}/captions")
+def admin_save_area_caption(
+    vertical: str,
+    area: str,
+    body: _AreaCaption,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """Author (or clear) a philosophy caption — platform-admin only; the
+    composition row is created on first authoring."""
+    from app.services.maps_of_content import area_ponder
+
+    captions = area_ponder.save_area_caption(
+        db, vertical=vertical, area=area, beat_key=body.beat_key, text=body.text,
+    )
+    return {"captions": captions}
+
+
 @router.post("/tasks/{task_id}/adopt-schedule", status_code=201)
 def admin_adopt_schedule(
     task_id: str,

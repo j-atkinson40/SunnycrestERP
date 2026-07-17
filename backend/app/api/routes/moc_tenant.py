@@ -209,6 +209,90 @@ def tenant_save_ponder_caption(
     return {"captions": captions}
 
 
+# ─── The Map Home campaign — area ponders, onboarding, engagement, rail ────
+
+
+@router.get("/area-ponder/{area}")
+def tenant_area_ponder(
+    area: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The AREA OVERVIEW PONDER — philosophy (platform pedagogy, VIEW only
+    tenant-side) → one short beat per task (live-derived from THEIR merged
+    view) → the closing deep link. Everyone views; nobody authors here."""
+    from app.services.maps_of_content import area_ponder
+
+    company = _company(db, current_user)
+    try:
+        return area_ponder.build_area_ponder_script(
+            db, vertical=company.vertical, area=area, company_id=company.id,
+        )
+    except area_ponder.AreaPonderError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/onboarding/{key}")
+def tenant_onboarding_ponder(
+    key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """An onboarding composition, rendered through the same overlay."""
+    from app.services.maps_of_content import area_ponder
+
+    _company(db, current_user)
+    try:
+        return area_ponder.build_onboarding_script(db, key=key)
+    except area_ponder.AreaPonderError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class _Engagement(BaseModel):
+    ponder_key: str
+    event: str  # viewed | completed | dismissed
+
+
+@router.post("/engagement", status_code=201)
+def tenant_record_engagement(
+    body: _Engagement,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """THE QUIET WRITE — one upsert, timestamps set once, nothing else."""
+    from app.services.maps_of_content import engagement
+
+    company = _company(db, current_user)
+    try:
+        engagement.record(
+            db, user_id=current_user.id, company_id=company.id,
+            ponder_key=body.ponder_key, event=body.event,
+        )
+    except engagement.EngagementError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
+
+
+@router.get("/suggestions")
+def tenant_suggestions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The rail — rule-based v1, each card carrying its honest why.
+    Empty-honest when no rule genuinely fires."""
+    from app.models.role import Role
+    from app.services.maps_of_content import engagement
+
+    company = _company(db, current_user)
+    role = db.query(Role).filter(Role.id == current_user.role_id).first()
+    role_slug = role.slug if role else None
+    return engagement.build_suggestions(
+        db, user_id=current_user.id, company_id=company.id,
+        vertical=company.vertical, role_slug=role_slug,
+        is_admin=bool(role and role.is_system and role.slug == "admin"),
+    )
+
+
 @router.get("/vocabulary")
 def tenant_list_vocabulary(
     kind: str | None = None,

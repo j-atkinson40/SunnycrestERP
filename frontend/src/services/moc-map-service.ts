@@ -94,10 +94,30 @@ export async function getMapVocabulary(
 
 export const tenantPonderService: PonderService = {
   getPonderScript: async (taskId: string): Promise<PonderScript> => {
+    // Map Home — the composition ponders ride the same overlay via key
+    // prefixes: "area:<Area>" and "onboarding:<key>" route to their own
+    // derivers; plain ids stay the task ponder.
+    if (taskId.startsWith("area:")) {
+      const { data } = await apiClient.get(
+        `/moc/area-ponder/${encodeURIComponent(taskId.slice(5))}`,
+      )
+      return data
+    }
+    if (taskId.startsWith("onboarding:")) {
+      const { data } = await apiClient.get(
+        `/moc/onboarding/${encodeURIComponent(taskId.slice(11))}`,
+      )
+      return data
+    }
     const { data } = await apiClient.get(`/moc/ponder/${taskId}`)
     return data
   },
   savePonderCaption: async (taskId, beatKey, text) => {
+    if (taskId.startsWith("area:") || taskId.startsWith("onboarding:")) {
+      // Platform pedagogy — tenants VIEW, never author (the overlay's
+      // canEdit is false for these; this is defense in depth).
+      throw new Error("Platform pedagogy is authored platform-side")
+    }
     const { data } = await apiClient.patch(`/moc/ponder/${taskId}/captions`, {
       beat_key: beatKey, text,
     })
@@ -139,4 +159,29 @@ export const tenantPonderService: PonderService = {
     return data
   },
   studioLinks: false, // Studio is a platform door — tenant exhibits don't link out
+}
+
+// ── The Map Home campaign — engagement + suggestions ────────────────────
+
+export interface MapSuggestion {
+  id: string
+  rule: "onboarding" | "role_area" | "recency"
+  title: string
+  /** LOAD-BEARING: the honest reason this card exists. Always present. */
+  why: string
+  ponder_key: string
+}
+
+export async function getSuggestions(): Promise<MapSuggestion[]> {
+  const { data } = await apiClient.get("/moc/suggestions")
+  return data
+}
+
+/** THE QUIET WRITE — fire-and-forget; the UI never waits on it. */
+export function recordEngagement(
+  ponderKey: string, event: "viewed" | "completed" | "dismissed",
+): void {
+  void apiClient
+    .post("/moc/engagement", { ponder_key: ponderKey, event })
+    .catch(() => {})
 }

@@ -24,11 +24,13 @@ import {
 import type { MapTask } from "@/services/moc-map-service"
 
 export function TaskCard({
-  task, onPonder, onOpenOffer,
+  task, onPonder, onOpenOffer, areaHref,
 }: {
   task: MapTask
   onPonder: (task: MapTask) => void
   onOpenOffer: (task: MapTask) => void
+  /** Map Home — the yours-section cards link into their area page. */
+  areaHref?: string
 }) {
   const ponderable = Boolean(task.workflow?.exists)
   const complete = useCallback(() => onPonder(task), [onPonder, task])
@@ -147,6 +149,16 @@ export function TaskCard({
           >
             standard scheduler
           </span>
+        ) : null}
+        {areaHref ? (
+          <a
+            href={areaHref}
+            onClick={(e) => e.stopPropagation()}
+            className="focus-ring-accent flex-none rounded-md text-micro text-content-subtle underline-offset-2 hover:text-content-muted hover:underline"
+            data-testid={`map-card-area-link-${task.id}`}
+          >
+            in {task.task_type || "General"}
+          </a>
         ) : null}
         {/* THE JEWELRY: live gets the accent; dry-run stays quiet. */}
         {anyLive ? (

@@ -175,6 +175,7 @@ from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.moc_page import MoCPage
 from app.models.moc_planning_item import MoCPlanningItem
+from app.models.moc_composition import MoCComposition, PonderEngagement
 from app.models.moc_task_catalog import MoCTaskCatalog, MoCTaskCatalogFocus
 from app.models.moc_task_trigger import MoCTaskTrigger, MoCTriggerEventCatalog
 from app.models.moc_domain_event import MoCDomainEvent
@@ -483,6 +484,8 @@ __all__ = [
     "CoordinationFocusInstance",
     "MoCPage",
     "MoCPlanningItem",
+    "MoCComposition",
+    "PonderEngagement",
     "MoCTaskCatalog",
     "MoCTaskCatalogFocus",
     "MoCTaskTrigger",

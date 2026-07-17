@@ -134,6 +134,8 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         # T-0 authority badges (the map's truth chip).
         "schedule_authority": schedule_authority,
         "runtime_schedule_summary": runtime_schedule_summary,
+        # Map Home — the recency rule reads change-time against engagement.
+        "updated_at": task.updated_at.isoformat() if task.updated_at else None,
         "workflow": workflow,
         "focuses": focuses,
         "triggers": trigger_payloads,

@@ -1,15 +1,19 @@
 /**
- * The Bridgeable Map page — sections-with-cards (The Sunnycrest Workshop;
- * the P3 pager retired by the operator's call — sections ARE the overflow
- * management now). Page-level pins: the sections render from the merged
- * read, every task gets a card (no pagination truncation), the admin add
- * affordance mounts, the room stays.
+ * The Bridgeable Map HOME — the three-part composition's pins (The Map
+ * Home campaign).
+ *
+ *  * THE STABLE SPINE — area cards derived from types-with-content, order
+ *    a pure function of the names (alphabetical, General last): shuffled
+ *    input, same spine — PERSONALIZATION NEVER REORDERS IT (the
+ *    navigation guarantee, pinned).
+ *  * THE YOURS SECTION — forks + additions gathered, area-linked.
+ *  * THE ROOM — stays.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 
-import BridgeableMapPage from "./bridgeable-map"
+import BridgeableMapPage, { deriveAreaSummaries } from "./bridgeable-map"
 import * as svc from "@/services/moc-map-service"
 import type { MapTask } from "@/services/moc-map-service"
 
@@ -19,57 +23,81 @@ vi.mock("@/contexts/auth-context", () => ({
 
 vi.mock("@/services/moc-map-service", async () => {
   const actual = await vi.importActual<typeof svc>("@/services/moc-map-service")
-  return { ...actual, getMapTasks: vi.fn(), forkTask: vi.fn() }
+  return {
+    ...actual,
+    getMapTasks: vi.fn(),
+    forkTask: vi.fn(),
+    getSuggestions: vi.fn().mockResolvedValue([]),
+    recordEngagement: vi.fn(),
+  }
 })
 
-function task(i: number, type: string | null = null): MapTask {
+function task(i: number, type: string | null, scope = "vertical_default"): MapTask {
   return {
-    id: `t-${i}`, name: `Task ${String(i).padStart(2, "0")}`,
-    display_order: i, scope: "vertical_default", triggers: [],
-    task_type: type,
+    id: `t-${i}`, name: `Task ${i}`, display_order: i,
+    scope: scope as MapTask["scope"], triggers: [], task_type: type,
     workflow: { exists: true, available: true, label: "WF" },
   } as MapTask
 }
 
-const TASKS = [
-  ...Array.from({ length: 20 }, (_, i) => task(i + 1)),
-  ...Array.from({ length: 3 }, (_, i) => task(100 + i, "accounting")),
-]
+describe("deriveAreaSummaries — the stable spine", () => {
+  it("order is a pure function of the names — shuffled input, same spine", () => {
+    const a = deriveAreaSummaries([
+      task(1, "Operations"), task(2, "Accounting"), task(3, null),
+    ])
+    const b = deriveAreaSummaries([
+      task(3, null), task(1, "Operations"), task(2, "Accounting"),
+    ])
+    expect(a.map((x) => x.area)).toEqual(["Accounting", "Operations", "General"])
+    expect(b.map((x) => x.area)).toEqual(a.map((x) => x.area))
+  })
 
-function mount() {
-  return render(<MemoryRouter><BridgeableMapPage /></MemoryRouter>)
-}
+  it("counts tasks + the live fleet honestly", () => {
+    const out = deriveAreaSummaries([
+      { ...task(1, "Accounting"), triggers: [{ id: "x", kind: "schedule", config: {}, display_order: 0, is_live: true, is_active: true } as never] },
+      task(2, "Accounting"),
+    ])
+    expect(out[0]).toEqual({ area: "Accounting", taskCount: 2, liveCount: 1 })
+  })
+})
 
-describe("BridgeableMapPage sections", () => {
+describe("BridgeableMapPage — the three-part home", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    vi.mocked(svc.getSuggestions).mockResolvedValue([])
     vi.mocked(svc.getMapTasks).mockResolvedValue({
-      vertical: "manufacturing", tasks: structuredClone(TASKS),
+      vertical: "manufacturing",
+      tasks: [
+        task(1, "Accounting"),
+        task(2, "Accounting"),
+        task(3, "Operations"),
+        task(4, "Accounting", "tenant_override"),
+      ],
     })
   })
 
-  it("renders derived sections with EVERY task carded — no pager, no truncation", async () => {
-    mount()
-    await waitFor(() => screen.getByTestId("map-sections"))
-    // The 23-task stress case lays out whole: 20 untyped under General,
-    // 3 typed under accounting. The pager is gone.
-    expect(screen.getAllByTestId(/^map-card-t-/)).toHaveLength(23)
-    expect(screen.getByTestId("map-section-accounting")).toBeInTheDocument()
-    expect(screen.getByTestId("map-section-General")).toBeInTheDocument()
-    expect(screen.queryByTestId("map-pager")).toBeNull()
-  })
+  function mount() {
+    return render(<MemoryRouter><BridgeableMapPage /></MemoryRouter>)
+  }
 
-  it("mounts the admin add affordances (general + per-section)", async () => {
+  it("renders the spine (area cards) + yours + the room", async () => {
     mount()
-    await waitFor(() => screen.getByTestId("map-sections"))
-    expect(screen.getByTestId("map-add-task-button")).toBeInTheDocument()
-    expect(screen.getByTestId("map-section-add-accounting")).toBeInTheDocument()
-  })
-
-  it("keeps the room — the coming sections read as room, not shrug", async () => {
-    mount()
-    await waitFor(() => screen.getByTestId("map-sections"))
+    await waitFor(() => screen.getByTestId("map-area-spine"))
+    expect(screen.getByTestId("map-area-Accounting")).toBeInTheDocument()
+    expect(screen.getByTestId("map-area-Operations")).toBeInTheDocument()
+    expect(screen.getByTestId("map-area-count-Accounting").textContent)
+      .toContain("3 tasks")
+    // YOURS — the fork gathered, linked into its area.
+    expect(screen.getByTestId("map-yours-section")).toBeInTheDocument()
+    expect(screen.getByTestId("map-card-area-link-t-4").getAttribute("href"))
+      .toBe("/bridgeable-map/Accounting")
     expect(screen.getByTestId("map-room")).toBeInTheDocument()
+  })
+
+  it("the rail's absence leaves the home whole (empty-honest)", async () => {
+    mount()
+    await waitFor(() => screen.getByTestId("map-area-spine"))
+    expect(screen.queryByTestId("map-suggestions-rail")).toBeNull()
   })
 })

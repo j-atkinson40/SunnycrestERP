@@ -22,8 +22,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  BarChart3, ChevronLeft, ChevronRight, Clock, Inbox, LayoutPanelTop, Pause,
-  PauseCircle, Pencil, Play, RotateCcw, Trash2, Workflow as WorkflowIcon, X,
+  ArrowRight, BarChart3, BookOpen, ChevronLeft, ChevronRight, Clock, Inbox,
+  LayoutPanelTop, Pause, PauseCircle, Pencil, Play, RotateCcw, Trash2,
+  Workflow as WorkflowIcon, X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -59,6 +60,10 @@ const KIND_GLYPH = {
   focus: LayoutPanelTop,
   downstream: Inbox,
   garnish: BarChart3,
+  // Map Home — the composition kinds (area/onboarding ponders).
+  opening: BookOpen,
+  task: WorkflowIcon,
+  closing: ArrowRight,
 } as const
 
 const KIND_EYEBROW: Record<PonderBeat["kind"], string> = {
@@ -68,6 +73,10 @@ const KIND_EYEBROW: Record<PonderBeat["kind"], string> = {
   focus: "Where you work",
   downstream: "Where it lands",
   garnish: "Last time it ran",
+  // Map Home — the composition kinds.
+  opening: "How this area thinks",
+  task: "What runs here",
+  closing: "Where to go",
 }
 
 function usePrefersReducedMotion(): boolean {
@@ -84,7 +93,8 @@ function usePrefersReducedMotion(): boolean {
 }
 
 export function PonderOverlay({
-  taskId, onClose, canEdit = true, onRequestEdit,
+  taskId, onClose, canEdit = true, onRequestEdit, onViewed, onCompleted,
+  onNavigate,
 }: {
   taskId: string
   onClose: () => void
@@ -93,6 +103,13 @@ export function PonderOverlay({
   /** P2 — the fork gate: asked before ENTERING edit mode (resolve false →
    * stay in view mode; the tenant page forks + swaps taskId on accept). */
   onRequestEdit?: () => Promise<boolean>
+  /** Map Home — the QUIET engagement hooks: fired once on open / once on
+   * reaching the final beat. Fire-and-forget; the overlay never waits. */
+  onViewed?: () => void
+  onCompleted?: () => void
+  /** Map Home — a beat's deep link (the closing beat). The page supplies
+   * SPA navigation; the overlay closes first. */
+  onNavigate?: (href: string) => void
 }) {
   const svc = usePonderService()
   const [script, setScript] = useState<PonderScript | null>(null)
@@ -113,8 +130,20 @@ export function PonderOverlay({
     svc.getPonderScript(taskId)
       .then(setScript)
       .catch(() => setError("Couldn't derive this walkthrough."))
+    onViewed?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId])
+
+  // Map Home — completion fires ONCE when the final beat is reached.
+  const completedRef = useRef(false)
+  useEffect(() => {
+    if (!script || beats.length === 0) return
+    if (index >= beats.length - 1 && !completedRef.current) {
+      completedRef.current = true
+      onCompleted?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, script])
 
   const beats = script?.beats ?? []
   const beat: PonderBeat | undefined = beats[index]
@@ -379,6 +408,24 @@ export function PonderOverlay({
                 ) : null}
 
                 <AudienceLine audience={beat.audience} />
+
+                {/* Map Home — the closing beat's deep link. */}
+                {beat.link ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const href = beat.link!.href
+                      onClose()
+                      onNavigate?.(href)
+                    }}
+                    className="focus-ring-accent mt-3 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-body-sm font-medium"
+                    style={{ background: STAGE.card, border: `1px solid ${STAGE.cardBorder}`, color: STAGE.text }}
+                    data-testid="ponder-beat-link"
+                  >
+                    {beat.link.label}
+                    <ArrowRight size={13} />
+                  </button>
+                ) : null}
 
                 {/* T-0 — the authority badge: the standard scheduler is the
                     firing truth for this beat (quiet, informative). */}
