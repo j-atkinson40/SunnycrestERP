@@ -10,10 +10,9 @@ A single APScheduler job runs every 15 minutes (registered in
 `backend/app/scheduler.py` as `workflow_time_based_check`) and checks
 three classes of workflows:
 
-  time_of_day:       fires when current UTC wall-clock matches
-                     config.time + days. (Latent TZ bug: doesn't
-                     respect tenant TZ. Flagged for follow-on cleanup
-                     — see Phase 8b.5 session log.)
+  time_of_day:       fires when the TENANT-LOCAL wall-clock matches
+                     config.time + days (T-0 fire-fix 2026-07 — the
+                     8b.5-flagged UTC bug closed at cause).
   time_after_event:  fires for records where record_date + offset_days
                      == today.
   scheduled:         (Phase 8b.5) fires when the cron expression in
@@ -79,8 +78,10 @@ def _matches_time_of_day(trigger_config: dict, now: datetime) -> bool:
     Configs are coarse (15-min scheduler interval). A workflow with time "18:00"
     fires when now is in [18:00, 18:15). Days are 3-letter abbreviations.
 
-    Note: `now` is UTC today — this does NOT apply tenant TZ. That's a
-    latent bug tracked for follow-on cleanup (Phase 8b.5 session log).
+    T-0 fire-fix (2026-07): callers pass TENANT-LOCAL now — the runtime
+    dispatch converts via _resolve_tenant_tz (as the MoC sweep always did).
+    The 8b.5-flagged UTC latent bug is closed; the config's HH:MM means the
+    tenant's wall clock.
     """
     time_str = (trigger_config or {}).get("time")
     days = (trigger_config or {}).get("days") or []
@@ -290,7 +291,16 @@ def check_time_based_workflows() -> dict:
                         continue
 
                 if w.trigger_type == "time_of_day":
-                    if _matches_time_of_day(w.trigger_config or {}, now):
+                    # T-0 fire-fix (2026-07, the 8b.5-flagged latent bug
+                    # corrected at cause): time_of_day matches TENANT-LOCAL
+                    # wall-clock, exactly like the 'scheduled' cron branch
+                    # and the MoC sweep. Pre-fix this compared the config's
+                    # "23:30" against UTC — Cash Receipts fired ≈7:30 PM ET
+                    # while its ponder taught "11:30 PM". Deliberate,
+                    # operator-confirmed: affected fires shift to their
+                    # tenant-local time.
+                    now_local = now.astimezone(_resolve_tenant_tz(company.timezone))
+                    if _matches_time_of_day(w.trigger_config or {}, now_local):
                         workflow_engine.start_run(
                             db=db,
                             workflow_id=w.id,

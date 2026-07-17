@@ -57,7 +57,12 @@ function TaskRow({
   const { hovered, holding, reduced, hoverProps } = useHoldToPonder(
     ponderable, complete,
   )
-  const when = task.derived_frequency || task.frequency
+  // T-0 authority truth: when the standard scheduler owns the firing,
+  // the When column reads the RUNTIME schedule, never a stale caption.
+  const runtimeScheduled = task.schedule_authority === "runtime_scheduler"
+  const when = runtimeScheduled
+    ? task.runtime_schedule_summary || task.derived_frequency || task.frequency
+    : task.derived_frequency || task.frequency
 
   return (
     <tr className="border-b border-border-subtle last:border-b-0">
@@ -116,6 +121,15 @@ function TaskRow({
       </td>
       <td className="px-3 py-3 align-top text-body-sm text-content-muted">
         {when ?? "—"}
+        {runtimeScheduled ? (
+          <span
+            className="ml-1.5 inline-flex rounded-full border border-border-base bg-surface-sunken px-1.5 py-0.5 text-micro text-content-subtle"
+            data-testid={`map-task-managed-${task.id}`}
+            title="This task's schedule is managed by the standard scheduler"
+          >
+            standard scheduler
+          </span>
+        ) : null}
       </td>
       <td className="px-3 py-3 align-top text-body-sm text-content-muted">
         {task.workflow?.label ?? "—"}

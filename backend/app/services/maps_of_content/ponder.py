@@ -572,6 +572,31 @@ def motif_for_step(node: dict) -> dict | None:
     return None  # the grammar can't place it — typographic, never a wrong scene
 
 
+# ── The schedule-authority discriminator (Transfer T-0) ─────────────────────
+# WHO makes this task fire? Discriminated by AUTHORITY, never by task-ness:
+#   "runtime_scheduler" — the task mirrors a runtime workflow that carries a
+#       LIVE runtime schedule (scheduled / time_of_day / time_after_event).
+#       The runtime scheduler is the firing truth; a composed MoC schedule
+#       would be display-only — so the composer BLOCKS (blocked-with-reason
+#       beats allowed-with-caveat) and the WHEN beat reads the RUNTIME
+#       config, until the T-1/T-2 adopt transfers the clock.
+#   "moc" — everything else: compiled tasks (the sweep + is_live govern —
+#       the composer IS write-authoritative), authored drafts, and mirrors
+#       of MANUAL runtime workflows (no competing schedule exists; composed
+#       triggers are honest dry-run previews).
+_RUNTIME_SCHEDULE_TYPES = ("scheduled", "time_of_day", "time_after_event")
+
+
+def schedule_authority(runtime: Workflow | None) -> str:
+    if (
+        runtime is not None
+        and runtime.is_active
+        and runtime.trigger_type in _RUNTIME_SCHEDULE_TYPES
+    ):
+        return "runtime_scheduler"
+    return "moc"
+
+
 class PonderError(ValueError):
     pass
 
@@ -808,7 +833,21 @@ def build_ponder_script(
         }
         for t in task_triggers
     ]
-    if active_triggers:
+    authority = schedule_authority(runtime)
+    is_owned_fork = task.scope == "tenant_override" and company_id is not None
+    if authority == "runtime_scheduler" and not is_owned_fork:
+        # T-0 HONESTY: the runtime scheduler is the firing truth — the beat
+        # teaches ITS schedule, sourced from the authority that makes it
+        # happen, regardless of any composed MoC trigger. The composer is
+        # blocked (editable=False + managed_by); triggers still ride the
+        # payload so nothing is hidden.
+        _when_motif = {"kind": "clock"}
+        _beat(
+            "when", "when", _when_text(runtime), motif=_when_motif,
+            triggers=trigger_payloads, editable=False,
+            managed_by="standard_scheduler",
+        )
+    elif active_triggers:
         sentences = []
         for t in active_triggers:
             sentences.append(_trigger_prose(t.kind, t.config or {}))
@@ -924,6 +963,8 @@ def build_ponder_script(
         # uses edited settings); vertical scopes the event-catalog picker;
         # workflow_id is the param editors' write target.
         "is_live": any(t.is_live for t in task_triggers),
+        # T-0 — WHO makes this task fire (the composer + badges key on it).
+        "schedule_authority": authority,
         # P3 — the fires strip (the tenant read only: THEIR history; the
         # platform read keeps its garnish). Empty list = hasn't run yet.
         "fires": (

@@ -378,6 +378,48 @@ export function PonderOverlay({
 
                 <AudienceLine audience={beat.audience} />
 
+                {/* T-0 — the authority badge: the standard scheduler is the
+                    firing truth for this beat (quiet, informative). */}
+                {beat.kind === "when" && beat.managed_by === "standard_scheduler" ? (
+                  <p
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-caption"
+                    style={{ background: STAGE.card, border: `1px solid ${STAGE.cardBorder}`, color: STAGE.muted }}
+                    data-testid="ponder-when-managed-badge"
+                  >
+                    managed by the standard scheduler
+                  </p>
+                ) : null}
+
+                {/* T-0 — the fork's honest preview line: their composed
+                    schedule previews in dry-run; the standard still runs
+                    the real fires until the transfer. */}
+                {beat.kind === "when" && script?.owned &&
+                 script?.task_scope === "tenant_override" &&
+                 script?.schedule_authority === "runtime_scheduler" ? (
+                  <p className="mt-2 text-caption" style={{ color: STAGE.faint }}
+                    data-testid="ponder-when-fork-preview-note">
+                    Previewing in dry-run — the standard schedule still runs
+                    the real fires until the transfer.
+                  </p>
+                ) : null}
+
+                {/* T-0 — THE COMPOSER BLOCKS on runtime-scheduled mirrors,
+                    with the reason. A composer that writes non-authoritative
+                    schedules is a half-told lie; block until the transfer. */}
+                {editMode && beat.kind === "when" && !beat.editable &&
+                 beat.managed_by === "standard_scheduler" ? (
+                  <div
+                    className="mt-3 rounded-md p-3 text-left"
+                    style={{ background: STAGE.card, border: `1px solid ${STAGE.cardBorder}` }}
+                    data-testid="ponder-composer-blocked"
+                  >
+                    <p className="text-body-sm" style={{ color: STAGE.muted }}>
+                      This task's schedule is managed by the standard
+                      scheduler — editing arrives with the transfer.
+                    </p>
+                  </div>
+                ) : null}
+
                 {/* Tenant Ponder-Editor P1 — the WHEN beat's trigger editor.
                     Editing happens where the teaching lives; on save the
                     script refetches and the beat visibly re-derives. */}

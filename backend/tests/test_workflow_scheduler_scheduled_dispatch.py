@@ -448,16 +448,18 @@ class TestSchedulerSweepIntegration:
             "Invalid cron expression" in rec.message for rec in caplog.records
         )
 
-    def test_time_of_day_dispatch_unchanged(self, db_session):
-        """Regression: existing time_of_day path still fires at its
-        configured UTC wall-clock 15-min window."""
+    def test_time_of_day_dispatch_fires_tenant_local(self, db_session):
+        """T-0 fire-fix: time_of_day fires at the TENANT-LOCAL wall clock
+        (config "14:00" + default America/New_York → 18:00 UTC in EDT),
+        not at raw UTC — the 8b.5-flagged latent bug, closed at cause."""
         from app.services import workflow_scheduler
 
         tenant_id = _make_tenant()
         wf_id = _make_time_of_day_workflow_scoped(
             hhmm="14:00", company_id=tenant_id
         )
-        fake_now = datetime(2026, 4, 21, 14, 5, 0, tzinfo=timezone.utc)
+        # 2026-04-21 is EDT (UTC-4): 18:05 UTC == 14:05 tenant wall clock.
+        fake_now = datetime(2026, 4, 21, 18, 5, 0, tzinfo=timezone.utc)
         with patch.object(
             workflow_scheduler, "datetime", new=_FrozenDatetime(fake_now)
         ):

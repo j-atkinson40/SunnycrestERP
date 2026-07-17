@@ -53,13 +53,26 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
     # must DISABLE the toggle rather than render a control that silently stays
     # dry. Same discriminator the resolver + sweep use:
     # template.mirrored_from_workflow_id.
+    schedule_authority = "moc"
+    runtime_schedule_summary = None
     if workflow is not None:
+        from app.models.workflow import Workflow
         from app.models.workflow_template import WorkflowTemplate
 
         tmpl = db.get(WorkflowTemplate, task.workflow_template_id)
         workflow["is_mirror"] = (
             tmpl is not None and tmpl.mirrored_from_workflow_id is not None
         )
+        # T-0 — WHO makes this task fire (the honesty badges key on it).
+        if workflow["is_mirror"]:
+            from app.services.maps_of_content.ponder import (
+                _when_text, schedule_authority as _authority,
+            )
+
+            runtime = db.get(Workflow, tmpl.mirrored_from_workflow_id)
+            schedule_authority = _authority(runtime)
+            if schedule_authority == "runtime_scheduler":
+                runtime_schedule_summary = _when_text(runtime).rstrip(".")
     focuses = [
         # authored label "" → the resolver returns the template's display_name.
         # Stored id FIRST, then the resolution spread: the resolver's rebound
@@ -118,6 +131,9 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         "scope": task.scope,
         "tenant_id": task.tenant_id,
         "forked_from_task_id": task.forked_from_task_id,
+        # T-0 authority badges (the map's truth chip).
+        "schedule_authority": schedule_authority,
+        "runtime_schedule_summary": runtime_schedule_summary,
         "workflow": workflow,
         "focuses": focuses,
         "triggers": trigger_payloads,

@@ -47,7 +47,11 @@ SLUG = "manufacturing-map"
 TASK_CATALOG = [
     {
         "name": "Funeral Home Billing",
-        "frequency": "End of Month",
+        # T-0 honesty (2026-07): the task's workflow is an authored DRAFT
+        # (never compiled, no triggers, fires nowhere) — a task that fires
+        # nowhere doesn't claim a cadence. The make-it-real lands in
+        # transfer T-2; the frequency returns with the actual schedule.
+        "frequency": None,
         "task_type": "Accounting",
         "description": (
             "End of month billing for funeral homes with charge accounts. "

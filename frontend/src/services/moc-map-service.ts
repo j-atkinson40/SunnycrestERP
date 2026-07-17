@@ -35,6 +35,10 @@ export interface MapTask {
   /** P3 offer-reach: the live offer on THEIR forked row (pending → badge;
    * declined → the recallable gap chip). */
   offer_state?: { offer_id: string; offer_status: "pending" | "declined" }
+  /** T-0 authority: who makes this task fire + the truth sentence when
+   * the standard scheduler does. */
+  schedule_authority?: "runtime_scheduler" | "moc"
+  runtime_schedule_summary?: string | null
 }
 
 // ── Offer-reach (P3) — the standard's improvements reach their version ──

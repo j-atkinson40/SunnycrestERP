@@ -47,8 +47,13 @@ def db():
     s.close()
 
 
-def _mk_task(db, *, steps=None, params=None):
-    """A mirror task over a small runtime workflow (statement-run shaped)."""
+def _mk_task(db, *, steps=None, params=None, trigger_type="scheduled"):
+    """A mirror task over a small runtime workflow (statement-run shaped).
+
+    T-0 note: trigger_type="scheduled" (default) makes the runtime the
+    schedule AUTHORITY — the WHEN beat is badged + blocked. Composer-grammar
+    tests pass trigger_type="manual" (MoC authority — composed triggers own
+    the beat honestly; the block is pinned in test_moc_t0_authority.py)."""
     created = db._ponder_created
     suffix = uuid.uuid4().hex[:8]
     wf_id = f"wf_test_ponder_{suffix}"
@@ -59,8 +64,11 @@ def _mk_task(db, *, steps=None, params=None):
     ]
     db.add(Workflow(
         id=wf_id, company_id=None, name=f"Ponder P1 {suffix}", tier=1,
-        scope="core", trigger_type="scheduled",
-        trigger_config={"cron": "0 6 1 * *", "timezone": "America/New_York"},
+        scope="core", trigger_type=trigger_type,
+        trigger_config=(
+            {"cron": "0 6 1 * *", "timezone": "America/New_York"}
+            if trigger_type == "scheduled" else {}
+        ),
         is_active=True,
     ))
     nodes = []
@@ -105,20 +113,23 @@ def _mk_task(db, *, steps=None, params=None):
 
 
 class TestWhenBeatTriggers:
-    def test_no_task_triggers_falls_back_to_runtime(self, db):
+    def test_runtime_scheduled_mirror_reads_authority_and_blocks(self, db):
+        # T-0: the runtime scheduler is the firing truth for a scheduled
+        # mirror — the beat teaches ITS schedule and the composer blocks.
         task, _ = _mk_task(db)
         script = build_ponder_script(db, task.id)
         when = script["beats"][0]
         assert when["key"] == "when"
         assert "1st of each month at 6:00 AM" in when["text"]
-        assert when["editable"] is True
+        assert when["editable"] is False
+        assert when["managed_by"] == "standard_scheduler"
         assert when["triggers"] == []
 
     def test_task_schedule_trigger_owns_the_beat(self, db):
         """The editing loop's read half: an ordinal trigger on the task row →
         the beat speaks ITS sentence (the readback grammar), not the runtime
         fallback."""
-        task, _ = _mk_task(db)
+        task, _ = _mk_task(db, trigger_type="manual")
         trig = triggers_svc.add_trigger(
             db, task_catalog_id=task.id, kind="schedule",
             config={"spec_kind": "ordinal_weekday", "ordinal": 1,
@@ -136,7 +147,7 @@ class TestWhenBeatTriggers:
     def test_edit_then_rederive_closes_the_loop(self, db):
         """The witness in miniature: patch the trigger through the T-1b
         machinery → the beat's derived sentence changes to match."""
-        task, _ = _mk_task(db)
+        task, _ = _mk_task(db, trigger_type="manual")
         trig = triggers_svc.add_trigger(
             db, task_catalog_id=task.id, kind="schedule",
             config={"spec_kind": "ordinal_weekday", "ordinal": 1,
@@ -153,7 +164,7 @@ class TestWhenBeatTriggers:
         assert when["text"] == "The last Friday of every month at 9:30 AM."
 
     def test_event_trigger_prose_with_condition(self, db):
-        task, _ = _mk_task(db)
+        task, _ = _mk_task(db, trigger_type="manual")
         # Bypass catalog validation (no synthetic catalog event needed) — the
         # prose path is what's under test; write the row directly.
         from app.models.moc_task_trigger import MoCTaskTrigger
@@ -334,7 +345,7 @@ class TestWhenBeatTriggers:
     def test_when_caption_still_overlays(self, db):
         """Authored captions keep winning over derived text — keying intact."""
         from app.services.maps_of_content.ponder import save_caption
-        task, _ = _mk_task(db)
+        task, _ = _mk_task(db, trigger_type="manual")
         triggers_svc.add_trigger(
             db, task_catalog_id=task.id, kind="schedule",
             config={"spec_kind": "ordinal_weekday", "ordinal": 1,

@@ -758,6 +758,8 @@ export interface PonderBeat {
    * (the T-1b rows; editing the beat edits these + re-derives). */
   triggers?: MoCTrigger[]
   editable?: boolean
+  /** T-0 — set when the runtime scheduler owns this beat's schedule. */
+  managed_by?: "standard_scheduler"
   /** Step beats: the declared params (the editing grammar's fields). */
   params?: PonderStepParam[]
 }
@@ -788,6 +790,9 @@ export interface PonderScript {
   workflow_id?: string | null
   /** P3 — the fires strip (tenant read; null/absent on the platform read). */
   fires?: PonderFire[] | null
+  /** T-0 — WHO makes this task fire. "runtime_scheduler" = the standard
+   * scheduler is the firing truth (composer blocked until the transfer). */
+  schedule_authority?: "runtime_scheduler" | "moc"
   /** Can THIS user follow a failed fire into Decision Triage? */
   can_follow_reviews?: boolean
   task_scope?: string
