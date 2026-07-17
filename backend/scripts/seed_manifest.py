@@ -29,6 +29,14 @@ TIERS: dict[str, tuple[str, str]] = {
         "a full 2025 calendar of accounting E2E fixtures (cleanup + rebuild "
         "every run) — dev-scale test data with no staging job",
     ),
+    "seed_agent_test": (
+        "local-only",
+        "a month-end-close agent-test fixture (4 customers with known "
+        "anomaly triggers, clean+rebuild every run) — its cleanup FK-fails "
+        "on staging where seed_dispatch_demo's deliveries reference its "
+        "customers; dev-scale test data with no staging job (the first "
+        "staging [seed-timing] profile caught it)",
+    ),
     "seed_intelligence_dev_executions": (
         "local-only",
         "synthetic intelligence traffic that samples dev-only entities "
