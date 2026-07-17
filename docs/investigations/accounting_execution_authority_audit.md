@@ -62,3 +62,24 @@ The runtime cron keeps firing untouched; the WHEN beat immediately teaches the c
 **Sizing total: ~2.5 sessions to full schedule-authority transfer for the firing five**, with T-0 shippable alone and immediately. The big structural work is already done — the engine, params, dry-run, cap, and H1 all govern real accounting fires today; what transfers is the *clock*.
 
 **STOP-discipline notes:** read-only held except the one witnessed mirror-class write test (cleaned; the compiled class's write authority is witnessed by the marker task's 143 sweep fires rather than a new write). The severity flags above surface ahead of the plan per dispatch: (1) the composer-enabled latent WHEN lie (T-0), (2) Cash Receipts' live UTC divergence (T-0 rider), (3) Funeral Home Billing's cadence claim with no mechanism (T-3).
+
+---
+
+## RESOLUTION (2026-07-17 — the T-2 walk; the table, closed)
+
+The transfer plan executed: T-0 (`1e1274e3`), T-1 (`26e2c0d4`), T-2 (this commit — the operator's guided walk on staging, five adopts + one birth, each behind his explicit confirm). The closing authority table, re-read from staging after the walk:
+
+| Automation | Schedule authority | The schedule (carried/authored) | Adopted/born (UTC) | Fire witnessed |
+|---|---|---|---|---|
+| Expense Categorization | **moc** (adopted) | Every 15 minutes | 2026-07-17 14:56:52 | ✅ sweep tick 15:07, intended 15:00 window, LIVE, `moc_task_schedule`; 0 runtime fires post-retire |
+| Cash Receipts Matching | **moc** (adopted) | Every night at 11:30 PM tenant-local — **the corrected clock** (the T-0 TZ fix's staging graduation) | 2026-07-17 14:57:48 | tonight 11:30 PM ET via the sweep |
+| AR Collections | **moc** (adopted) | Every night at 11:00 PM tenant-local | 2026-07-17 ~15:00 | tonight 11:00 PM ET via the sweep |
+| Monthly Statement Run | **moc** (adopted) | The 1st of each month at 6:00 AM tenant-local | 2026-07-17 ~15:01 | computed next-fire **2026-08-01 06:00 ET** in-zone (monthly — said honestly at its confirm; the T-1 boundary pins cover the shape) |
+| Month-End Close | **moc** (manual — was always honest) | On demand | — (nothing to transfer) | n/a |
+| **Funeral Home Billing** | **moc** (BORN NATIVE) | The last day of each month at 6:00 AM tenant-local (`0 6 last * *` — APScheduler's `last`; cleanly expressible) | authored + PROMOTED (operator's call) 2026-07-17 ~15:05 | first fire **2026-07-31 06:00 ET**, live |
+
+Also walked at the operator's per-step confirms (the grouped mirrors, same shape): Document Review Reminder (Mon 8:00 AM), Compliance Sync (daily 3:00 AM), Training Expiry Monitor (Mon 7:00 AM) — all **moc**, carried verbatim. Deliberately left runtime-scheduled per the operator's scope choice: Safety Program Generation, Wilbert Catalog Auto-Fetch (non-accounting; badged honestly; a later walk).
+
+**The closing state:** every accounting WHEN beat badge-free, composer OPEN — the honesty guard with nothing left to guard against in the area. The runtime scheduler's accounting section: retired (six `schedule_retired_at` stamps; the rows' trigger_type/config preserved as authored history). Dev aligned to match (same adopts + the same promoted birth). The third authority (the APScheduler direct family — AR aging, collections sequence, AP monitor, 5 proactive) remains as scoped at T-3 / Phase 8f — outside this walk, still flagged.
+
+**The definition, met (for the walked area):** every accounting automation authored, taught, edited, fired, monitored, and governed by ONE system — the map's trigger through the sweep + engine + params + H1 — the one the operator built.

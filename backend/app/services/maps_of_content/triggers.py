@@ -290,11 +290,15 @@ def _humanize_cron(cron: str) -> str:
     except ValueError:
         at = ""
     if dom != "*" and dow == "*":
-        # Monthly on a day-of-month.
+        # Monthly on a day-of-month ('last' = APScheduler end-of-month).
+        if dom == "last":
+            return "Monthly · last day" + (f", {at}" if at else "")
         suffix = {"1": "1st", "2": "2nd", "3": "3rd"}.get(dom, f"{dom}th")
         return f"Monthly · {suffix}" + (f", {at}" if at else "")
     if dow != "*" and dom == "*":
-        day = _DAY_ORDER[int(dow) % 7].capitalize() if dow.isdigit() else dow
+        # Standard cron dow: 0=Sun, 1=Mon … 6=Sat; _DAY_ORDER starts at Mon.
+        # (T-2 walk fix: "0 8 * * 1" chipped as "Tue" while firing Monday.)
+        day = _DAY_ORDER[(int(dow) - 1) % 7].capitalize() if dow.isdigit() else dow
         return f"Weekly · {day}" + (f", {at}" if at else "")
     if dom == "*" and dow == "*":
         return "Daily" + (f" · {at}" if at else "")

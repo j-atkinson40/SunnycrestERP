@@ -113,6 +113,10 @@ def cron_to_prose(cron: str, timezone_name: str | None = None) -> str:
                 if month == "*":
                     return f"The {day} of each month at {clock}{tz}"
                 return f"Every {_MONTHS[int(month)]} {day} at {clock}{tz}"
+            if dom == "last" and dow == "*" and month == "*":
+                # T-2 (the FH Billing birth): APScheduler's 'last' —
+                # end-of-month, cleanly expressible + cleanly taught.
+                return f"The last day of each month at {clock}{tz}"
             if dom == "*" and dow.isdigit():
                 return f"Every {_WEEKDAYS[int(dow) % 7 - 1 if int(dow) else 6]} at {clock}{tz}"
     except (ValueError, IndexError):

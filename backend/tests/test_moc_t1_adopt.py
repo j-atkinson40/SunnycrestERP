@@ -504,3 +504,38 @@ class TestOffSwitch:
         adopt_schedule(db, task_id=task.id)
         with pytest.raises(AdoptError, match="nothing to adopt"):
             adopt_schedule(db, task_id=task.id)
+
+
+# ── 8. T-2 walk collateral — the authority chip's prose tells the truth ──
+
+
+class TestScheduleProse:
+    def test_cron_dow_is_standard_numbering(self):
+        # The walk caught "0 8 * * 1" chipping "Tue" while firing Monday
+        # (standard cron 0=Sun; _DAY_ORDER starts at Mon).
+        from app.services.maps_of_content.triggers import summarize_trigger
+        assert summarize_trigger(
+            "schedule", {"spec_kind": "cron", "cron": "0 8 * * 1"}
+        ) == "Weekly · Mon, 8:00 AM"
+        assert summarize_trigger(
+            "schedule", {"spec_kind": "cron", "cron": "0 23 * * 0"}
+        ) == "Weekly · Sun, 11:00 PM"
+
+    def test_last_day_of_month_prose(self):
+        # The FH Billing birth's shape — APScheduler's 'last'.
+        from app.services.maps_of_content.ponder import cron_to_prose
+        from app.services.maps_of_content.triggers import summarize_trigger
+        assert summarize_trigger(
+            "schedule", {"spec_kind": "cron", "cron": "0 6 last * *"}
+        ) == "Monthly · last day, 6:00 AM"
+        assert cron_to_prose("0 6 last * *", "America/New_York") == \
+            "The last day of each month at 6:00 AM (tenant-local)"
+
+    def test_last_day_cron_parses_and_computes_end_of_month(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from apscheduler.triggers.cron import CronTrigger
+        tz = ZoneInfo("America/New_York")
+        t = CronTrigger.from_crontab("0 6 last * *", timezone=tz)
+        nxt = t.get_next_fire_time(None, datetime(2026, 7, 17, tzinfo=tz))
+        assert (nxt.year, nxt.month, nxt.day, nxt.hour) == (2026, 7, 31, 6)
