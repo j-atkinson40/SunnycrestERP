@@ -209,6 +209,70 @@ def tenant_save_ponder_caption(
     return {"captions": captions}
 
 
+@router.get("/vocabulary")
+def tenant_list_vocabulary(
+    kind: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The vocabulary visible to THIS tenant's vertical (platform values +
+    the vertical's) — the add dialog's type/frequency options. Read-only."""
+    from app.services.maps_of_content import vocabulary
+
+    company = _company(db, current_user)
+    try:
+        values = vocabulary.list_values(db, kind=kind, vertical=company.vertical)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return [
+        {"id": v.id, "kind": v.kind, "value": v.value, "vertical": v.vertical}
+        for v in values
+    ]
+
+
+class _CreateTask(BaseModel):
+    name: str
+    description: str | None = None
+    task_type: str | None = None
+    frequency: str | None = None
+    icon: str | None = None
+
+
+@router.post("/tasks", status_code=201)
+def tenant_create_task(
+    body: _CreateTask,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """TENANT ADD (The Sunnycrest Workshop) — a tenant admin authors a NEW
+    task on THEIR map. THE COHERENCE GUARD, server-side and absolute: the
+    scope is FORCED to tenant_override + THIS company — no client field can
+    land a tenant add on the vertical/core tiers (pinned). Born bare
+    (no workflow ref — the ponder honestly refuses until one is attached
+    admin-side); triggers/captions/editors work from the start."""
+    from app.services.maps_of_content import task_catalog as task_svc
+
+    company = _company(db, current_user)
+    try:
+        task = task_svc.create_task(
+            db,
+            vertical=company.vertical,
+            name=body.name,
+            scope="tenant_override",          # forced — never client-chosen
+            tenant_id=company.id,             # forced — always THEIR row
+            description=body.description,
+            task_type=body.task_type,
+            frequency=body.frequency,
+            icon=body.icon,
+            actor_id=current_user.id,
+        )
+        db.commit()
+    except task_svc.TaskValidationError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    return resolve_task(db, task)
+
+
 @router.post("/tasks/{task_id}/fork", status_code=201)
 def tenant_fork_task(
     task_id: str,

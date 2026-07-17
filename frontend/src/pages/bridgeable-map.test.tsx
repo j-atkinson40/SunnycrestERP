@@ -1,9 +1,12 @@
 /**
- * The Bridgeable Map's task pager — 10 per page, chevrons underneath,
- * clamped + reset on tab switch; hidden when one page suffices.
+ * The Bridgeable Map page — sections-with-cards (The Sunnycrest Workshop;
+ * the P3 pager retired by the operator's call — sections ARE the overflow
+ * management now). Page-level pins: the sections render from the merged
+ * read, every task gets a card (no pagination truncation), the admin add
+ * affordance mounts, the room stays.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 
 import BridgeableMapPage from "./bridgeable-map"
@@ -37,42 +40,36 @@ function mount() {
   return render(<MemoryRouter><BridgeableMapPage /></MemoryRouter>)
 }
 
-describe("BridgeableMapPage pager", () => {
+describe("BridgeableMapPage sections", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     vi.mocked(svc.getMapTasks).mockResolvedValue({
       vertical: "manufacturing", tasks: structuredClone(TASKS),
     })
   })
 
-  it("shows 10 tasks per page with the count label", async () => {
+  it("renders derived sections with EVERY task carded — no pager, no truncation", async () => {
     mount()
-    await waitFor(() => screen.getByTestId("map-pager"))
-    expect(screen.getAllByTestId(/^map-task-t-/)).toHaveLength(10)
-    expect(screen.getByTestId("map-pager-label").textContent)
-      .toContain("Page 1 of 3")
-    expect(screen.getByTestId("map-pager-label").textContent).toContain("23 tasks")
-    expect(screen.getByTestId("map-pager-prev")).toBeDisabled()
-  })
-
-  it("chevrons page through; the last page holds the remainder", async () => {
-    mount()
-    await waitFor(() => screen.getByTestId("map-pager"))
-    fireEvent.click(screen.getByTestId("map-pager-next"))
-    expect(screen.getByTestId("map-pager-label").textContent).toContain("Page 2 of 3")
-    expect(screen.getByTestId("map-task-t-11")).toBeInTheDocument()
-    fireEvent.click(screen.getByTestId("map-pager-next"))
-    expect(screen.getAllByTestId(/^map-task-t-/)).toHaveLength(3)
-    expect(screen.getByTestId("map-pager-next")).toBeDisabled()
-  })
-
-  it("switching a group tab resets to page 1 and hides a needless pager", async () => {
-    mount()
-    await waitFor(() => screen.getByTestId("map-pager"))
-    fireEvent.click(screen.getByTestId("map-pager-next"))
-    fireEvent.click(screen.getByTestId("map-group-accounting"))
-    // 3 accounting tasks → one page → the pager disappears entirely.
+    await waitFor(() => screen.getByTestId("map-sections"))
+    // The 23-task stress case lays out whole: 20 untyped under General,
+    // 3 typed under accounting. The pager is gone.
+    expect(screen.getAllByTestId(/^map-card-t-/)).toHaveLength(23)
+    expect(screen.getByTestId("map-section-accounting")).toBeInTheDocument()
+    expect(screen.getByTestId("map-section-General")).toBeInTheDocument()
     expect(screen.queryByTestId("map-pager")).toBeNull()
-    expect(screen.getAllByTestId(/^map-task-t-/)).toHaveLength(3)
+  })
+
+  it("mounts the admin add affordances (general + per-section)", async () => {
+    mount()
+    await waitFor(() => screen.getByTestId("map-sections"))
+    expect(screen.getByTestId("map-add-task-button")).toBeInTheDocument()
+    expect(screen.getByTestId("map-section-add-accounting")).toBeInTheDocument()
+  })
+
+  it("keeps the room — the coming sections read as room, not shrug", async () => {
+    mount()
+    await waitFor(() => screen.getByTestId("map-sections"))
+    expect(screen.getByTestId("map-room")).toBeInTheDocument()
   })
 })

@@ -16,10 +16,9 @@
  * version appears pilled "yours". Forked triggers are born unpromoted
  * (Dry-run) — liveness never inherits.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
-  ChevronLeft, ChevronRight, Clock, FileText, GitBranch, Map as MapIcon,
-  Play, Radio, Sparkles, Zap,
+  FileText, GitBranch, Map as MapIcon, Plus, Sparkles,
 } from "lucide-react"
 
 import { useAuth } from "@/contexts/auth-context"
@@ -33,145 +32,21 @@ import {
 } from "@/bridgeable-admin/components/moc/ponder-service-context"
 import { PonderOverlay } from "@/bridgeable-admin/components/moc/PonderOverlay"
 import {
-  HoldRing, useHoldToPonder,
-} from "@/bridgeable-admin/components/moc/MoCTaskTable"
-import {
   forkTask, getMapTasks, tenantPonderService, type MapTask,
 } from "@/services/moc-map-service"
+import { AddTaskDialog } from "@/components/moc-map/AddTaskDialog"
 import { TaskOfferDialog } from "@/components/moc-map/TaskOfferDialog"
-
-const KIND_ICON = { schedule: Clock, event: Zap, manual: Play } as const
-
-function TaskRow({
-  task, onPonder, onOpenOffer,
-}: {
-  task: MapTask
-  onPonder: (task: MapTask) => void
-  onOpenOffer: (task: MapTask) => void
-}) {
-  const ponderable = Boolean(task.workflow?.exists)
-  // Stable identity: the hook's effect deps include onComplete — an inline
-  // arrow would re-arm (and cancel) the hold timer on every holding
-  // re-render, killing the gesture.
-  const complete = useCallback(() => onPonder(task), [onPonder, task])
-  const { hovered, holding, reduced, hoverProps } = useHoldToPonder(
-    ponderable, complete,
-  )
-  // T-0 authority truth: when the standard scheduler owns the firing,
-  // the When column reads the RUNTIME schedule, never a stale caption.
-  const runtimeScheduled = task.schedule_authority === "runtime_scheduler"
-  const when = runtimeScheduled
-    ? task.runtime_schedule_summary || task.derived_frequency || task.frequency
-    : task.derived_frequency || task.frequency
-
-  return (
-    <tr className="border-b border-border-subtle last:border-b-0">
-      <td className="py-3 pl-4 pr-3 align-top">
-        <div
-          className="relative inline-flex items-center gap-2"
-          {...hoverProps}
-          data-testid={`map-task-${task.id}`}
-        >
-          <span className="text-body font-medium text-content-strong">
-            {task.name}
-          </span>
-          {task.scope === "tenant_override" ? (
-            <span
-              className="rounded-full bg-accent-subtle px-2 py-0.5 text-micro font-medium text-accent"
-              data-testid={`map-task-yours-${task.id}`}
-            >
-              yours
-            </span>
-          ) : null}
-          {task.offer_state?.offer_status === "pending" ? (
-            <button
-              type="button"
-              onClick={() => onOpenOffer(task)}
-              className="focus-ring-accent rounded-full bg-accent px-2 py-0.5 text-micro font-medium text-content-on-accent"
-              data-testid={`map-task-offer-${task.id}`}
-            >
-              standard updated
-            </button>
-          ) : task.offer_state?.offer_status === "declined" ? (
-            <button
-              type="button"
-              onClick={() => onOpenOffer(task)}
-              className="focus-ring-accent rounded-full border border-border-base bg-surface-sunken px-2 py-0.5 text-micro text-content-subtle"
-              data-testid={`map-task-offer-gap-${task.id}`}
-              title="The standard version updated — you passed earlier; still available"
-            >
-              yours · standard updated
-            </button>
-          ) : null}
-          {ponderable && hovered ? (
-            <span
-              className="absolute left-full top-1/2 ml-2 flex -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-md bg-surface-sunken px-2 py-1 text-caption text-content-muted shadow-level-1"
-              data-testid="map-hold-hint"
-            >
-              <HoldRing holding={holding} reduced={reduced} />
-              Hold <kbd className="rounded-sm border border-border-base px-1 font-plex-mono text-micro">P</kbd> to ponder
-            </span>
-          ) : null}
-        </div>
-        {task.description ? (
-          <p className="mt-0.5 max-w-md text-body-sm text-content-muted">
-            {task.description}
-          </p>
-        ) : null}
-      </td>
-      <td className="px-3 py-3 align-top text-body-sm text-content-muted">
-        {when ?? "—"}
-        {runtimeScheduled ? (
-          <span
-            className="ml-1.5 inline-flex rounded-full border border-border-base bg-surface-sunken px-1.5 py-0.5 text-micro text-content-subtle"
-            data-testid={`map-task-managed-${task.id}`}
-            title="This task's schedule is managed by the standard scheduler"
-          >
-            standard scheduler
-          </span>
-        ) : null}
-      </td>
-      <td className="px-3 py-3 align-top text-body-sm text-content-muted">
-        {task.workflow?.label ?? "—"}
-      </td>
-      <td className="px-3 py-3 align-top">
-        <div className="flex flex-wrap gap-1.5">
-          {task.triggers.length === 0 ? (
-            <span className="text-body-sm text-content-subtle">—</span>
-          ) : (
-            task.triggers.map((t) => {
-              const Icon = KIND_ICON[t.kind]
-              return (
-                <span
-                  key={t.id}
-                  className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-surface-sunken px-2 py-0.5 text-caption text-content-muted"
-                >
-                  <Icon size={10} />
-                  {t.summary ?? t.kind}
-                  {t.is_live ? (
-                    <span className="inline-flex items-center gap-0.5 text-accent">
-                      <Radio size={9} /> live
-                    </span>
-                  ) : (
-                    <span className="text-content-subtle">dry-run</span>
-                  )}
-                </span>
-              )
-            })
-          )}
-        </div>
-      </td>
-    </tr>
-  )
-}
+import { TaskSections } from "@/components/moc-map/TaskSections"
 
 export default function BridgeableMapPage() {
   const { company, isAdmin } = useAuth()
   const [tasks, setTasks] = useState<MapTask[]>([])
   const [vertical, setVertical] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [group, setGroup] = useState<string | null>(null)
   const [ponderTaskId, setPonderTaskId] = useState<string | null>(null)
+  // Tenant ADD (The Sunnycrest Workshop) — null = closed; {type} = open,
+  // pre-filled from the section whose Add was clicked.
+  const [adding, setAdding] = useState<{ type: string | null } | null>(null)
   const [forkPrompt, setForkPrompt] = useState<{
     task: MapTask
     resolve: (ok: boolean) => void
@@ -189,30 +64,6 @@ export default function BridgeableMapPage() {
   useEffect(() => {
     reload().finally(() => setLoading(false))
   }, [reload])
-
-  // Group tabs — derived from task_type, empty groups hidden (self-maintaining).
-  const groups = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const t of tasks) {
-      if (t.task_type) counts.set(t.task_type, (counts.get(t.task_type) ?? 0) + 1)
-    }
-    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [tasks])
-  const visible = useMemo(
-    () => (group ? tasks.filter((t) => t.task_type === group) : tasks),
-    [tasks, group],
-  )
-
-  // Pages, not a wall: 10 tasks at a time, chevrons underneath. The page
-  // clamps when the filter shrinks the list; switching tabs starts at 1.
-  const PAGE_SIZE = 10
-  const [page, setPage] = useState(0)
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
-  const safePage = Math.min(page, pageCount - 1)
-  const paged = useMemo(
-    () => visible.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE),
-    [visible, safePage],
-  )
 
   const ponder = useCallback((task: MapTask) => setPonderTaskId(task.id), [])
   const [offerFor, setOfferFor] = useState<MapTask | null>(null)
@@ -257,92 +108,39 @@ export default function BridgeableMapPage() {
           </p>
         </div>
 
-        {/* THE FIRST CARD — the task map */}
-        <section
-          className="rounded-lg bg-surface-elevated shadow-level-1"
-          data-testid="map-tasks-card"
-        >
-          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-            <h2 className="text-h4 font-medium text-content-strong">Tasks</h2>
-            {groups.length > 0 ? (
-              <div className="flex gap-1" role="tablist">
-                <button
-                  type="button" role="tab" aria-selected={group === null}
-                  onClick={() => { setGroup(null); setPage(0) }}
-                  className={`rounded-md px-2.5 py-1 text-body-sm ${group === null ? "bg-accent-subtle font-medium text-accent" : "text-content-muted hover:bg-surface-sunken"}`}
-                >
-                  All <span className="text-caption text-content-subtle">{tasks.length}</span>
-                </button>
-                {groups.map(([g, n]) => (
-                  <button
-                    key={g} type="button" role="tab" aria-selected={group === g}
-                    onClick={() => { setGroup(group === g ? null : g); setPage(0) }}
-                    className={`rounded-md px-2.5 py-1 text-body-sm capitalize ${group === g ? "bg-accent-subtle font-medium text-accent" : "text-content-muted hover:bg-surface-sunken"}`}
-                    data-testid={`map-group-${g}`}
-                  >
-                    {g} <span className="text-caption text-content-subtle">{n}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          {loading ? (
-            <p className="px-4 py-8 text-center text-body-sm text-content-muted">
-              Loading the map…
-            </p>
-          ) : visible.length === 0 ? (
-            <p className="px-4 py-8 text-center text-body-sm text-content-muted">
-              No tasks yet — your vertical's defaults appear here as they ship.
-            </p>
-          ) : (
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-border-subtle text-caption uppercase tracking-wide text-content-subtle">
-                  <th className="py-2 pl-4 pr-3 font-medium">Task</th>
-                  <th className="px-3 py-2 font-medium">When</th>
-                  <th className="px-3 py-2 font-medium">Workflow</th>
-                  <th className="px-3 py-2 font-medium">Triggers</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.map((t) => (
-                  <TaskRow key={t.id} task={t} onPonder={ponder} onOpenOffer={openOffer} />
-                ))}
-              </tbody>
-            </table>
-          )}
-          {pageCount > 1 ? (
-            <div
-              className="flex items-center justify-center gap-3 border-t border-border-subtle px-4 py-2.5"
-              data-testid="map-pager"
+        {/* THE BODY — sections-with-cards, derived from the vocabulary
+            types that HAVE tasks (The Sunnycrest Workshop; tabs/table/pager
+            retired). Sections are the overflow management. */}
+        {loading ? (
+          <p className="py-10 text-center text-body-sm text-content-muted">
+            Loading the map…
+          </p>
+        ) : tasks.length === 0 ? (
+          <p className="py-10 text-center text-body-sm text-content-muted">
+            No tasks yet — your vertical's defaults appear here as they ship.
+          </p>
+        ) : (
+          <TaskSections
+            tasks={tasks}
+            onPonder={ponder}
+            onOpenOffer={openOffer}
+            canAdd={isAdmin}
+            onAdd={(type) => setAdding({ type })}
+          />
+        )}
+
+        {/* The general add — the same dialog, no section pre-fill. */}
+        {isAdmin && !loading ? (
+          <div>
+            <Button
+              variant="outline" size="sm"
+              onClick={() => setAdding({ type: null })}
+              data-testid="map-add-task-button"
             >
-              <button
-                type="button"
-                onClick={() => setPage(Math.max(0, safePage - 1))}
-                disabled={safePage === 0}
-                aria-label="Previous page"
-                className="focus-ring-accent rounded-md p-1.5 text-content-muted hover:bg-surface-sunken disabled:opacity-30"
-                data-testid="map-pager-prev"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-caption text-content-subtle" data-testid="map-pager-label">
-                Page {safePage + 1} of {pageCount}
-                <span className="ml-1.5">· {visible.length} tasks</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setPage(Math.min(pageCount - 1, safePage + 1))}
-                disabled={safePage >= pageCount - 1}
-                aria-label="Next page"
-                className="focus-ring-accent rounded-md p-1.5 text-content-muted hover:bg-surface-sunken disabled:opacity-30"
-                data-testid="map-pager-next"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          ) : null}
-        </section>
+              <Plus size={14} /> Add a task
+            </Button>
+          </div>
+        ) : null}
 
         {/* THE ROOM — coming sections read as room, not shrug. */}
         <section
@@ -396,6 +194,19 @@ export default function BridgeableMapPage() {
             canDecide={isAdmin}
             onClose={() => setOfferFor(null)}
             onDecided={reload}
+          />
+        ) : null}
+
+        {/* TENANT ADD — the card appears in its section immediately. */}
+        {adding ? (
+          <AddTaskDialog
+            presetType={adding.type}
+            companyName={company?.name ?? "your company"}
+            onClose={() => setAdding(null)}
+            onCreated={async () => {
+              setAdding(null)
+              await reload()
+            }}
           />
         ) : null}
 

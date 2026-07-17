@@ -71,6 +71,27 @@ export async function forkTask(taskId: string): Promise<MapTask> {
   return data
 }
 
+/** TENANT ADD (The Sunnycrest Workshop) — scope is the SERVER's decision
+ * (forced tenant_override; the coherence guard). Born bare. */
+export async function createMapTask(input: {
+  name: string
+  description?: string | null
+  task_type?: string | null
+  frequency?: string | null
+}): Promise<MapTask> {
+  const { data } = await apiClient.post("/moc/tasks", input)
+  return data
+}
+
+/** The vocabulary visible to this tenant's vertical (the add dialog's
+ * section options). */
+export async function getMapVocabulary(
+  kind?: "type" | "frequency",
+): Promise<Array<{ id: string; kind: string; value: string; vertical: string | null }>> {
+  const { data } = await apiClient.get("/moc/vocabulary", { params: { kind } })
+  return data
+}
+
 export const tenantPonderService: PonderService = {
   getPonderScript: async (taskId: string): Promise<PonderScript> => {
     const { data } = await apiClient.get(`/moc/ponder/${taskId}`)
