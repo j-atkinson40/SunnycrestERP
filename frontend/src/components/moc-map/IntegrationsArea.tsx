@@ -48,27 +48,42 @@ function IntegrationCard({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); complete() }
       }}
-      className="focus-ring-accent flex cursor-pointer flex-wrap items-center gap-2.5 rounded-md bg-surface-elevated p-4 shadow-level-1 transition-shadow duration-quick ease-settle hover:shadow-level-2"
+      className="group flex min-h-[8rem] cursor-pointer flex-col rounded-md bg-surface-elevated p-4 shadow-level-1 transition-shadow duration-quick ease-settle hover:shadow-level-2 focus-ring-accent"
       data-testid={`integration-card-${ig.key}`}
     >
-      <Plug size={16} className="flex-none text-accent" />
-      <span className="text-body font-medium text-content-strong">{ig.title}</span>
-      <span className={`rounded-full px-2 py-0.5 text-micro font-medium ${FACE_CHIP[ig.face].cls}`}
-        data-testid={`integration-face-${ig.key}`}>
-        {FACE_CHIP[ig.face].label}
-      </span>
+      <div className="flex items-start justify-between gap-2">
+        <p className="flex items-center gap-2 text-body font-medium leading-snug text-content-strong">
+          <Plug size={14} className="flex-none text-accent" /> {ig.title}
+        </p>
+        {hovered ? (
+          <span className="flex flex-none items-center gap-1.5 whitespace-nowrap text-caption text-content-muted">
+            <HoldRing holding={holding} reduced={reduced} />
+            Hold{" "}
+            <kbd className="rounded-sm border border-border-base px-1 font-plex-mono text-micro">P</kbd>
+          </span>
+        ) : null}
+      </div>
+
       {ig.dependents.jobs.length > 0 ? (
-        <span className="text-body-sm text-content-muted" data-testid={`integration-deps-${ig.key}`}>
-          · feeds {ig.dependents.jobs.join(" and ")} · {ig.dependents.automation_count} automation
-          {ig.dependents.automation_count === 1 ? "" : "s"} depend on this
-        </span>
+        <p className="mt-1.5 line-clamp-2 text-body-sm leading-relaxed text-content-muted"
+          data-testid={`integration-deps-${ig.key}`}>
+          Feeds {ig.dependents.jobs.join(" and ")} —{" "}
+          {ig.dependents.automation_count} automation
+          {ig.dependents.automation_count === 1 ? "" : "s"} depend on this.
+        </p>
       ) : null}
-      {hovered ? (
-        <span className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-caption text-content-muted">
-          <HoldRing holding={holding} reduced={reduced} />
-          Hold <kbd className="rounded-sm border border-border-base px-1 font-plex-mono text-micro">P</kbd>
+
+      <div className="mt-auto flex items-center gap-2 pt-3">
+        {ig.institution_name ? (
+          <span className="text-caption text-content-muted">{ig.institution_name}</span>
+        ) : (
+          <span className="text-caption text-content-subtle">no connection yet</span>
+        )}
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-micro font-medium ${FACE_CHIP[ig.face].cls}`}
+          data-testid={`integration-face-${ig.key}`}>
+          {FACE_CHIP[ig.face].label}
         </span>
-      ) : null}
+      </div>
     </div>
   )
 }
@@ -93,24 +108,28 @@ export function IntegrationsArea({
 
   return (
     <div className="space-y-6" data-testid="integrations-area">
-      {integrations.map((ig) => (
-        <section key={ig.key} data-testid={`integration-${ig.key}`}>
-          <IntegrationCard ig={ig} onPonder={onPonder} />
+      <section>
+        <h2 className="text-caption font-medium uppercase tracking-wide text-content-subtle">
+          Connections
+        </h2>
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {integrations.map((ig) => (
+            <IntegrationCard key={ig.key} ig={ig} onPonder={onPonder} />
+          ))}
+        </div>
+      </section>
 
-          {/* THE MANAGEMENT — the grown B-3 card, re-homed whole. */}
-          <div className="mt-3">
-            <ConnectBankCard isAdmin={isAdmin} autoConnect={autoConnect} />
-          </div>
-
-          <Link
-            to="/settings/bank-categories"
-            className="focus-ring-accent mt-2 inline-flex items-center gap-1.5 rounded-md text-body-sm text-accent underline-offset-2 hover:underline"
-            data-testid="integrations-category-link"
-          >
-            <Tags size={13} /> Bank categories — how transactions get named
-          </Link>
-        </section>
-      ))}
+      {/* THE MANAGEMENT — the grown B-3 card, beneath the grid. */}
+      <div>
+        <ConnectBankCard isAdmin={isAdmin} autoConnect={autoConnect} />
+        <Link
+          to="/settings/bank-categories"
+          className="focus-ring-accent mt-2 inline-flex items-center gap-1.5 rounded-md text-body-sm text-accent underline-offset-2 hover:underline"
+          data-testid="integrations-category-link"
+        >
+          <Tags size={13} /> Bank categories — how transactions get named
+        </Link>
+      </div>
     </div>
   )
 }
