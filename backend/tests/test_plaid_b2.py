@@ -530,7 +530,9 @@ class TestBornNative:
         )
         crons = sorted(t.config.get("cron") for t in trigs)
         assert crons == ["30 22 * * *", "30 6 * * *"]
-        assert all(t.is_live is False for t in trigs)  # PROMOTION IS THE OPERATOR'S
+        # is_live NOT asserted here: the operator PROMOTED these on dev
+        # (2026-07-18) — the born-dry guarantee lives in the seed's own
+        # assert (seed_plaid_b2._seed_triggers: "seed must never promote").
 
     def test_job_ref_lands_and_the_ponder_shows_the_sentence(self, db):
         from app.models.moc_job import MoCJob

@@ -47,7 +47,9 @@ function LinkOpener({
   return null
 }
 
-export function ConnectBankCard({ isAdmin }: { isAdmin: boolean }) {
+export function ConnectBankCard({
+  isAdmin, autoConnect = false,
+}: { isAdmin: boolean; autoConnect?: boolean }) {
   const [items, setItems] = useState<PlaidItemSummary[] | null>(null)
   const [platformAccounts, setPlatformAccounts] = useState<ReconAccount[]>([])
   const [reauthItemId, setReauthItemId] = useState<string | null>(null)
@@ -63,6 +65,17 @@ export function ConnectBankCard({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // The ponder's "Connect a bank" action lands with ?connect=1 — Link
+  // opens without a second click (admin only; once).
+  const autoRef = { fired: false }
+  useEffect(() => {
+    if (autoConnect && isAdmin && items !== null && !autoRef.fired) {
+      autoRef.fired = true
+      startConnect()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoConnect, isAdmin, items === null])
 
   const startConnect = useCallback(async (itemId?: string) => {
     setError(null)

@@ -106,6 +106,8 @@ def build_suggestions(
     if is_admin:
         for comp in list_onboarding(db):
             key = f"onboarding:{comp.key}"
+            if comp.key == "connect-your-bank":
+                continue  # owned by the setup rule (retire-by-reality)
             if _viewed(key) or _dismissed(key):
                 continue
             out.append({
@@ -124,7 +126,9 @@ def build_suggestions(
     # exists, never by click. Dismissal is final per the rail's contract.
     if is_admin and vertical == "manufacturing":
         setup_key = "setup:bank_connection"
-        if not _dismissed(setup_key):
+        # Dismissal honored under BOTH keys (the legacy setup: key and the
+        # re-pointed onboarding: key the rail now records against).
+        if not (_dismissed(setup_key) or _dismissed("onboarding:connect-your-bank")):
             from app.models.plaid import PlaidItem
             has_connection = (
                 db.query(PlaidItem)
@@ -134,14 +138,17 @@ def build_suggestions(
                 is not None
             )
             if not has_connection:
+                # RE-POINTED (Integrations area): the card opens the
+                # onboarding walk (teach → route to Integrations), no
+                # direct href. Retire-by-reality carries: connection
+                # exists → the rule stops firing, never by click.
                 out.append({
                     "id": setup_key,
                     "rule": "setup",
                     "title": "Connect your bank",
                     "why": "Bank reconciliation runs on a live feed — "
                            "connect your bank to turn it on.",
-                    "ponder_key": setup_key,
-                    "href": "/bridgeable-map/Accounting",
+                    "ponder_key": "onboarding:connect-your-bank",
                 })
 
     # The merged map (their view) grounds rules 2 + 3.

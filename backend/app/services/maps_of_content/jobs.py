@@ -329,7 +329,7 @@ def build_job_ponder_script(
                     PlaidItem.is_active.is_(True))
             .first()
         )
-        if item is not None:
+        if item is not None and item.status == "active":
             n_accounts = len(item.accounts)
             uncat = (
                 db.query(BankTransaction)
@@ -356,12 +356,28 @@ def build_job_ponder_script(
                 link={"href": "/bridgeable-map/Accounting",
                       "label": "Open the connection card"},
             )
-        else:
+        elif item is not None:  # degraded — active-but-unhealthy status
+            # THE DEGRADED FACE — the honest warning; healing lives on the
+            # Integrations card (the re-connect path).
             _beat(
                 "feed", "setup",
-                "No bank connected yet — the feed starts at the setup card.",
-                link={"href": "/bridgeable-map/Accounting",
-                      "label": "Connect your bank"},
+                f"{item.institution_name or 'The bank'} needs re-connecting "
+                "— the feed is paused until an administrator re-authorizes "
+                "it on the Integrations page.",
+                link={"href": "/bridgeable-map/Integrations",
+                      "label": "Re-connect on Integrations"},
+            )
+        else:
+            # THE NEVER-CONNECTED FACE — the beat TEACHES what the
+            # connection is and routes to onboarding: the job's story
+            # complete and true before the machinery exists.
+            _beat(
+                "feed", "setup",
+                "This job runs on a live bank feed — transactions pull in "
+                "on a schedule and land ready to match. Nothing is "
+                "connected yet; the setup walk starts in onboarding.",
+                ponder_ref={"overlay_id": "onboarding:connect-your-bank",
+                            "label": "Walk the setup"},
             )
 
     # THE AUTOMATION BEATS — the means, each deep-linking its full ponder.

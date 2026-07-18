@@ -273,6 +273,33 @@ def tenant_area_ponder(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/integrations/summary")
+def tenant_integrations_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The Integrations area's cards — status + DERIVED dependents."""
+    from app.services.maps_of_content.integration_ponder import integration_summary
+    _company(db, current_user)
+    return integration_summary(db, tenant_id=current_user.company_id)
+
+
+@router.get("/integration-ponder/{key}")
+def tenant_integration_ponder(
+    key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The per-integration ponder: what it is, requires, the state face,
+    the derived dependents."""
+    from app.services.maps_of_content.integration_ponder import build_integration_ponder
+    _company(db, current_user)
+    try:
+        return build_integration_ponder(db, key=key, tenant_id=current_user.company_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("/onboarding/{key}")
 def tenant_onboarding_ponder(
     key: str,

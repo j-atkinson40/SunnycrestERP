@@ -15,7 +15,7 @@ import {
   getMapJobs, getMapTasks, tenantPonderService,
   type MapJob, type MapTask,
 } from "@/services/moc-map-service"
-import { ConnectBankCard } from "@/components/moc-map/ConnectBankCard"
+import { IntegrationsArea } from "@/components/moc-map/IntegrationsArea"
 import { JobCard } from "@/components/moc-map/JobCard"
 import { TaskSections } from "@/components/moc-map/TaskSections"
 import { useMapOverlays } from "@/components/moc-map/useMapOverlays"
@@ -78,7 +78,8 @@ export default function BridgeableMapAreaPage() {
   )
 
   const {
-    ponderTask, ponderArea, ponderJob, openOffer, openAdd, overlays, isAdmin,
+    ponderTask, ponderArea, ponderJob, ponderKeyed, openOffer, openAdd,
+    overlays, isAdmin,
   } = useMapOverlays({ tasks, vertical, reload })
 
   return (
@@ -118,11 +119,11 @@ export default function BridgeableMapAreaPage() {
           </p>
         </div>
 
-        {/* Plaid B-1 — the accounting area's setup card (the connect
-            moment). Admin-gated CTA; honest states throughout. */}
-        {area === "Accounting" ? <ConnectBankCard isAdmin={isAdmin} /> : null}
-
-        {loading ? (
+        {/* THE INTEGRATIONS AREA (2026-07-18) — the engine room. The
+            B-1 setup card LEFT accounting; management lives here. */}
+        {area === "Integrations" ? (
+          <IntegrationsArea isAdmin={isAdmin} onPonder={ponderKeyed} />
+        ) : loading ? (
           <p className="py-10 text-center text-body-sm text-content-muted">
             Loading…
           </p>

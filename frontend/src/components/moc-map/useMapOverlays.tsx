@@ -39,7 +39,10 @@ export function engagementKey(overlayId: string, vertical: string | null): strin
   if (overlayId.startsWith("area:")) {
     return `area:${vertical}:${overlayId.slice(5)}`
   }
-  if (overlayId.startsWith("onboarding:") || overlayId.startsWith("job:")) {
+  if (
+    overlayId.startsWith("onboarding:") || overlayId.startsWith("job:") ||
+    overlayId.startsWith("integration:")
+  ) {
     return overlayId
   }
   return `task:${overlayId}`
@@ -109,7 +112,7 @@ export function useMapOverlays({
   const isComposition =
     !!ponderId &&
     (ponderId.startsWith("area:") || ponderId.startsWith("onboarding:") ||
-     ponderId.startsWith("job:"))
+     ponderId.startsWith("job:") || ponderId.startsWith("integration:"))
 
   const overlays = (
     <>

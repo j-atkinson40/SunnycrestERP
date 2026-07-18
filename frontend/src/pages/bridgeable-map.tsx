@@ -131,6 +131,30 @@ export default function BridgeableMapPage() {
                   onOpen={(area) => navigate(`/bridgeable-map/${encodeURIComponent(area)}`)}
                 />
               ))}
+              {/* THE INTEGRATIONS ROOM (2026-07-18) — admin-led
+                  visibility; one deliberate card, status at a glance. */}
+              {isAdmin ? (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate("/bridgeable-map/Integrations")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      navigate("/bridgeable-map/Integrations")
+                    }
+                  }}
+                  className="focus-ring-accent flex min-h-[6rem] cursor-pointer flex-col justify-between rounded-md border border-dashed border-border-base bg-surface-elevated/60 p-4 transition-shadow duration-quick ease-settle hover:shadow-level-1"
+                  data-testid="map-integrations-card"
+                >
+                  <p className="text-body font-medium text-content-strong">
+                    Integrations
+                  </p>
+                  <p className="text-body-sm text-content-muted">
+                    The platform's connections — banks today, more to come.
+                  </p>
+                </div>
+              ) : null}
             </div>
           </section>
         )}

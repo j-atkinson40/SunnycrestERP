@@ -201,7 +201,9 @@ class TestSetupSuggestion:
         card = next((s for s in out if s["rule"] == "setup"), None)
         assert card is not None
         assert "live feed" in card["why"]
-        assert card["href"] == "/bridgeable-map/Accounting"
+        # Re-pointed (Integrations area): the card opens the onboarding
+        # walk; no direct href.
+        assert card["ponder_key"] == "onboarding:connect-your-bank"
         # Tenant A HAS a connection → retired by reality, not by click.
         out_a = self._build(db, world, world["a"])
         assert all(s["rule"] != "setup" for s in out_a)
