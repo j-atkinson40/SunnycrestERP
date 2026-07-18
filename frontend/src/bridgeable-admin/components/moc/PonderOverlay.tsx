@@ -406,7 +406,7 @@ export function PonderOverlay({
                 ) : (
                   <p
                     className={`mt-1 text-xl leading-relaxed ${editMode ? "cursor-text rounded-md px-1 -mx-1 transition-colors duration-quick hover:bg-white/5" : ""}`}
-                    style={{ color: STAGE.text, fontWeight: 350 }}
+                    style={{ color: STAGE.text, fontWeight: 350, whiteSpace: "pre-line" }}
                     onClick={editMode ? () => setDraft(beat.authored ? beat.text : "") : undefined}
                     title={editMode ? "Click to author this beat's caption" : undefined}
                   >

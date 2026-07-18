@@ -141,22 +141,25 @@ def build_integration_ponder(
             .all()
         )
         if items:
-            lines = []
+            # A BULLETED LIST — the overlay renders newlines (pre-line).
+            parts = []
             for it in items:
                 face = "healthy" if it.status == "active" else "needs re-connecting"
                 linked = [a for a in it.accounts if a.financial_account_id]
-                acct_bits = ", ".join(
-                    f"{a.name} ····{a.mask}" + (" (credit)" if a.account_type == "credit" else "")
-                    for a in it.accounts[:6]
-                )
-                more = len(it.accounts) - 6
+                head = (f"{it.institution_name or 'Bank'} ({face}) — "
+                        f"{len(linked)} of {len(it.accounts)} feeding "
+                        "reconciliation:")
+                bullets = [
+                    f"•  {a.name} ····{a.mask}"
+                    + (" · credit" if a.account_type == "credit" else "")
+                    + (" · feeds reconciliation" if a.financial_account_id else "")
+                    for a in it.accounts[:8]
+                ]
+                more = len(it.accounts) - 8
                 if more > 0:
-                    acct_bits += f", and {more} more"
-                lines.append(
-                    f"{it.institution_name or 'Bank'} ({face}): {acct_bits}. "
-                    f"{len(linked)} of {len(it.accounts)} feeding reconciliation."
-                )
-            txt = "Your connections — " + " ".join(lines)
+                    bullets.append(f"•  …and {more} more")
+                parts.append("\n".join([head, *bullets]))
+            txt = "\n\n".join(parts)
             beats.append({
                 "key": "connections", "kind": "setup", "text": txt,
                 "derived_text": txt, "authored": False,
