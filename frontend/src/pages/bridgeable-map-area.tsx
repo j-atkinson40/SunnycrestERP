@@ -15,6 +15,7 @@ import {
   getMapJobs, getMapTasks, tenantPonderService,
   type MapJob, type MapTask,
 } from "@/services/moc-map-service"
+import { ConnectBankCard } from "@/components/moc-map/ConnectBankCard"
 import { JobCard } from "@/components/moc-map/JobCard"
 import { TaskSections } from "@/components/moc-map/TaskSections"
 import { useMapOverlays } from "@/components/moc-map/useMapOverlays"
@@ -116,6 +117,10 @@ export default function BridgeableMapAreaPage() {
             </button>
           </p>
         </div>
+
+        {/* Plaid B-1 — the accounting area's setup card (the connect
+            moment). Admin-gated CTA; honest states throughout. */}
+        {area === "Accounting" ? <ConnectBankCard isAdmin={isAdmin} /> : null}
 
         {loading ? (
           <p className="py-10 text-center text-body-sm text-content-muted">

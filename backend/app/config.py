@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # Plaid (optional — bank/credit-card feed; sandbox default. Values are
+    # operator-set in Railway + dev .env, never the repo. The access-token
+    # encryption key is CREDENTIAL_ENCRYPTION_KEY, read from os.environ by
+    # the crypto modules — deliberately NOT declared here.)
+    PLAID_CLIENT_ID: str = ""
+    PLAID_SECRET: str = ""
+    PLAID_ENV: str = "sandbox"
+
     # QuickBooks Online OAuth (optional — only needed if QBO integration is used)
     QBO_CLIENT_ID: str = ""
     QBO_CLIENT_SECRET: str = ""

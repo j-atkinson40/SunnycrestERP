@@ -952,3 +952,9 @@ from app.api.routes import moc_tenant as moc_tenant_routes  # noqa: E402
 v1_router.include_router(
     moc_tenant_routes.router, prefix="/moc", tags=["Bridgeable Map"]
 )
+
+from app.api.routes import plaid as plaid_routes  # noqa: E402
+
+v1_router.include_router(
+    plaid_routes.router, prefix="/plaid", tags=["Plaid"]
+)

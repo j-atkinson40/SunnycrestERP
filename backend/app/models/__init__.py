@@ -177,6 +177,9 @@ from app.models.moc_page import MoCPage
 from app.models.moc_planning_item import MoCPlanningItem
 from app.models.moc_composition import MoCComposition, PonderEngagement
 from app.models.moc_job import MoCJob, MoCJobRef
+from app.models.plaid import (
+    BankAccount, BankTransaction, PlaidCategoryMapping, PlaidItem,
+)
 from app.models.moc_task_catalog import MoCTaskCatalog, MoCTaskCatalogFocus
 from app.models.moc_task_trigger import MoCTaskTrigger, MoCTriggerEventCatalog
 from app.models.moc_domain_event import MoCDomainEvent
@@ -488,6 +491,10 @@ __all__ = [
     "MoCComposition",
     "MoCJob",
     "MoCJobRef",
+    "PlaidItem",
+    "BankAccount",
+    "BankTransaction",
+    "PlaidCategoryMapping",
     "PonderEngagement",
     "MoCTaskCatalog",
     "MoCTaskCatalogFocus",

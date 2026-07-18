@@ -6,6 +6,7 @@ alembic==1.14.1
 pydantic[email]==2.10.4
 pydantic-settings==2.7.1
 python-jose[cryptography]==3.3.0
+cryptography>=42.0  # explicit pin — Fernet at-rest encryption (Plaid tokens + credential_service); was transitive-only via python-jose
 passlib[bcrypt]==1.7.4
 anthropic>=0.42.0
 python-multipart>=0.0.18
