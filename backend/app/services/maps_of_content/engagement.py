@@ -157,4 +157,40 @@ def build_suggestions(
                 "ponder_key": key,
             })
 
+    # RULE 3b — JOB RECENCY (Reframe R-2, only where honest): the user has
+    # WALKED a job's story, and one of its linked automations changed since
+    # — the why-line names WHICH automation changed (never a vague nudge).
+    from app.services.maps_of_content.jobs import list_jobs, resolve_job
+
+    for job in list_jobs(db, vertical=vertical):
+        key = f"job:{job.id}"
+        r = seen.get(key)
+        if not r or not r.viewed_at or r.dismissed_at:
+            continue
+        changed = None
+        for ref in resolve_job(db, job)["refs"]:
+            if ref["kind"] != "automation":
+                continue
+            updated = ref["automation"].get("updated_at")
+            if not updated:
+                continue
+            updated_dt = (
+                datetime.fromisoformat(updated)
+                if isinstance(updated, str) else updated
+            )
+            if updated_dt and updated_dt > r.viewed_at:
+                changed = (ref["automation"]["name"], updated_dt)
+                break
+        if changed:
+            out.append({
+                "id": key,
+                "rule": "job_recency",
+                "title": job.name,
+                "why": (
+                    f"{changed[0]} changed {changed[1].strftime('%A')} — "
+                    "see what's new in this task."
+                ),
+                "ponder_key": key,
+            })
+
     return out[:_MAX_SUGGESTIONS]

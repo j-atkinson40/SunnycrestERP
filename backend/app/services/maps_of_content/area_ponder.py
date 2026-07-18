@@ -95,38 +95,91 @@ def build_area_ponder_script(
         1 for t in tasks
         if any(tr.get("is_live") for tr in (t.get("triggers") or []))
     )
+    # THE MIDDLE'S population decides the OPENING's vocabulary too (Reframe
+    # R-2: where jobs exist, the work leads — the opening speaks tasks with
+    # the automations as the serving count; areas without jobs keep the
+    # per-automation story as the honest fallback).
+    from app.services.maps_of_content.jobs import list_jobs, resolve_job
+
+    area_jobs = [
+        j for j in list_jobs(db, vertical=vertical)
+        if (j.task_type or "General") == area
+    ]
+
     # THE OPENING — the philosophy (authored by the operator; shipped with a
     # derived-honest placeholder that never pretends to be pedagogy).
-    _beat(
-        "opening", "opening",
-        f"{area} — {len(tasks)} "
-        f"{'automation' if len(tasks) == 1 else 'automations'} run here"
-        + (f", {live_count} live" if live_count else "")
-        + ". Bridgeable brings the work to one place; each automation below "
-        "can walk you through itself.",
-    )
-
-    # ONE SHORT DERIVED BEAT PER TASK — the card content as story.
-    head = tasks[:_TASK_BEAT_CAP]
-    for t in head:
-        essence = _first_sentence(t.get("description"))
-        when = t.get("runtime_schedule_summary") if (
-            t.get("schedule_authority") == "runtime_scheduler"
-        ) else (t.get("derived_frequency") or t.get("frequency"))
-        parts = [t["name"]]
-        if essence:
-            parts.append(essence)
-        if when:
-            parts.append(str(when).rstrip("."))
-        _beat(f"task:{t['id']}", "task", ". ".join(parts) + ".")
-
-    # LARGE-AREA HONESTY — the tail clusters, plainly counted.
-    rest = len(tasks) - len(head)
-    if rest > 0:
+    if area_jobs:
+        n_jobs = len(area_jobs)
         _beat(
-            "task_cluster", "task",
-            f"…and {rest} more — the area page holds the whole list.",
+            "opening", "opening",
+            f"{area} — {n_jobs} task{'s' if n_jobs != 1 else ''} here, "
+            f"worked by {len(tasks)} "
+            f"{'automation' if len(tasks) == 1 else 'automations'}"
+            + (f" ({live_count} live)" if live_count else "")
+            + ". Bridgeable brings the work to one place; each task below "
+            "can walk you through itself.",
         )
+    else:
+        _beat(
+            "opening", "opening",
+            f"{area} — {len(tasks)} "
+            f"{'automation' if len(tasks) == 1 else 'automations'} run here"
+            + (f", {live_count} live" if live_count else "")
+            + ". Bridgeable brings the work to one place; each automation "
+            "below can walk you through itself.",
+        )
+    if area_jobs:
+        head_jobs = area_jobs[:_TASK_BEAT_CAP]
+        for j in head_jobs:
+            rj = resolve_job(db, j)
+            n_auto = sum(1 for r in rj["refs"] if r["kind"] == "automation")
+            n_surf = sum(1 for r in rj["refs"] if r["kind"] != "automation")
+            parts = [j.name]
+            essence = _first_sentence(j.description)
+            if essence:
+                parts.append(essence)
+            glance = []
+            if n_auto:
+                glance.append(f"{n_auto} automation{'s' if n_auto != 1 else ''}")
+            if n_surf:
+                glance.append(f"{n_surf} surface{'s' if n_surf != 1 else ''}")
+            if glance:
+                parts.append(", ".join(glance))
+            _beat(f"job:{j.id}", "task", ". ".join(parts) + ".")
+        rest_jobs = len(area_jobs) - len(head_jobs)
+        if rest_jobs > 0:
+            _beat(
+                "task_cluster", "task",
+                f"…and {rest_jobs} more — the area page holds the whole list.",
+            )
+        # THE ENGINE ROOM'S collective mention — the automations, counted.
+        _beat(
+            "engine_room", "task",
+            f"{len(tasks)} automation{'s' if len(tasks) != 1 else ''} serve "
+            "these tasks — the engine room on the area page holds them.",
+        )
+    else:
+        # ONE SHORT DERIVED BEAT PER AUTOMATION — the card content as story.
+        head = tasks[:_TASK_BEAT_CAP]
+        for t in head:
+            essence = _first_sentence(t.get("description"))
+            when = t.get("runtime_schedule_summary") if (
+                t.get("schedule_authority") == "runtime_scheduler"
+            ) else (t.get("derived_frequency") or t.get("frequency"))
+            parts = [t["name"]]
+            if essence:
+                parts.append(essence)
+            if when:
+                parts.append(str(when).rstrip("."))
+            _beat(f"task:{t['id']}", "task", ". ".join(parts) + ".")
+
+        # LARGE-AREA HONESTY — the tail clusters, plainly counted.
+        rest = len(tasks) - len(head)
+        if rest > 0:
+            _beat(
+                "task_cluster", "task",
+                f"…and {rest} more — the area page holds the whole list.",
+            )
 
     # THE CLOSING — the deep link (the overlay renders `link`).
     _beat(

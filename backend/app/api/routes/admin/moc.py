@@ -431,6 +431,47 @@ def admin_remove_job_ref(
     return {"ok": True}
 
 
+@router.get("/job-ponder/{job_id}")
+def admin_job_ponder(
+    job_id: str,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The job ponder, platform view (no tenant user → queue counts are
+    honestly absent). The framing caption editor mounts on this read."""
+    from app.services.maps_of_content import jobs as jobs_svc
+
+    try:
+        return jobs_svc.build_job_ponder_script(db, job_id=job_id)
+    except jobs_svc.JobValidationError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class _JobCaption(BaseModel):
+    beat_key: str
+    text: str | None = None
+
+
+@router.patch("/job-ponder/{job_id}/captions")
+def admin_save_job_caption(
+    job_id: str,
+    body: _JobCaption,
+    admin: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """The framing captions — platform pedagogy (the R-3 authoring pass's
+    write surface), the caption pattern verbatim."""
+    from app.services.maps_of_content import jobs as jobs_svc
+
+    try:
+        captions = jobs_svc.save_job_caption(
+            db, job_id=job_id, beat_key=body.beat_key, text=body.text,
+        )
+    except jobs_svc.JobValidationError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"captions": captions}
+
+
 @router.get("/area-ponder/{vertical}/{area}")
 def admin_area_ponder(
     vertical: str,

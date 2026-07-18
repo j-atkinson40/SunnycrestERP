@@ -92,6 +92,43 @@ describe("PonderOverlay", () => {
     )
   })
 
+  it("R-2: a ponder_ref beat renders the walk button and swaps overlays", async () => {
+    // REGRESSION PIN — the witness caught `onOpenPonder is not defined`
+    // (prop declared in the type but missing from the destructuring).
+    const script = structuredClone(SCRIPT)
+    script.beats[1] = {
+      key: "automation:a1", kind: "task", authored: false,
+      text: "Bank Rec Matching — matches payments nightly. Daily.",
+      derived_text: "same",
+      ponder_ref: { overlay_id: "a1", label: "Walk Bank Rec Matching" },
+    } as (typeof script.beats)[number]
+    getPonderScript.mockResolvedValue(script)
+    const onOpenPonder = vi.fn()
+    render(
+      <PonderOverlay taskId="job:j1" onClose={() => {}} onOpenPonder={onOpenPonder} />,
+    )
+    await waitFor(() => screen.getByTestId("ponder-beat-when"))
+    fireEvent.click(screen.getAllByLabelText(/^Beat \d/)[1])
+    await waitFor(() => screen.getByTestId("ponder-beat-ponder-ref"))
+    fireEvent.click(screen.getByTestId("ponder-beat-ponder-ref"))
+    expect(onOpenPonder).toHaveBeenCalledWith("a1")
+  })
+
+  it("R-2: without onOpenPonder the affordance stays hidden (honest absence)", async () => {
+    const script = structuredClone(SCRIPT)
+    script.beats[1] = {
+      key: "automation:a1", kind: "task", authored: false,
+      text: "Bank Rec Matching.", derived_text: "same",
+      ponder_ref: { overlay_id: "a1", label: "Walk it" },
+    } as (typeof script.beats)[number]
+    getPonderScript.mockResolvedValue(script)
+    render(<PonderOverlay taskId="job:j1" onClose={() => {}} />)
+    await waitFor(() => screen.getByTestId("ponder-beat-when"))
+    fireEvent.click(screen.getAllByLabelText(/^Beat \d/)[1])
+    await waitFor(() => screen.getByTestId("ponder-beat-automation:a1"))
+    expect(screen.queryByTestId("ponder-beat-ponder-ref")).toBeNull()
+  })
+
   it("Escape closes", async () => {
     const onClose = vi.fn()
     render(<PonderOverlay taskId="t1" onClose={onClose} />)

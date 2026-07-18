@@ -370,13 +370,51 @@ def _focus_artifact(db: Session, template_slug: str, vertical: str | None,
     }
 
 
+def focus_miniature(
+    db: Session, *, template_slug: str, vertical: str | None,
+    display_name: str | None = None,
+) -> dict[str, Any] | None:
+    """ONE focus miniature by slug — the resolved composition's schematic
+    (pin-honoring, lineage-live), the exhibit grammar's payload. None when
+    unresolvable (skip honestly, never a generic picture). The Reframe R-2
+    lift: the job ponder's focus beats reuse exactly this."""
+    from app.services.focus_template_inheritance.resolver import (
+        FocusTemplateNotFound, resolve_focus,
+    )
+
+    try:
+        resolved = resolve_focus(db, template_slug=template_slug, vertical=vertical)
+    except FocusTemplateNotFound:
+        return None
+    rows_schematic = [
+        {
+            "placements": [
+                {"label": (p.get("component") or {}).get("name")
+                 or p.get("component_name") or p.get("label") or "widget"}
+                for p in (row.get("placements") or [])
+            ]
+        }
+        for row in (resolved.rows or [])
+    ]
+    chrome_title = None
+    if resolved.resolved_chrome:
+        chrome_title = resolved.resolved_chrome.get("title")
+    return {
+        "type": "focus",
+        "template_slug": resolved.template_slug,
+        "display_name": display_name or resolved.template_slug,
+        "core_slug": resolved.core_slug,
+        "core_version": resolved.core_version,
+        "template_version": resolved.template_version,
+        "chrome_title": chrome_title,
+        "rows": rows_schematic,
+    }
+
+
 def _focus_beats(db: Session, task: MoCTaskCatalog) -> list[dict[str, Any]]:
     """The task's attached focuses → focus beats with a miniature payload
     derived from the RESOLVED composition (pin-honoring, lineage-live) —
     never a generic picture. Unresolvable → skipped (missing beats lying)."""
-    from app.services.focus_template_inheritance.resolver import (
-        FocusTemplateNotFound, resolve_focus,
-    )
     from app.models.focus_template import FocusTemplate
 
     beats: list[dict[str, Any]] = []
@@ -386,42 +424,20 @@ def _focus_beats(db: Session, task: MoCTaskCatalog) -> list[dict[str, Any]]:
             # stale id — rebind by nothing here; the MoC resolver's rebind
             # happens at card level. Skip honestly.
             continue
-        try:
-            resolved = resolve_focus(
-                db, template_slug=tpl.template_slug, vertical=tpl.vertical
-            )
-        except FocusTemplateNotFound:
+        artifact = focus_miniature(
+            db, template_slug=tpl.template_slug, vertical=tpl.vertical,
+            display_name=tpl.display_name,
+        )
+        if artifact is None:
             continue
-        rows_schematic = [
-            {
-                "placements": [
-                    {"label": (p.get("component") or {}).get("name")
-                     or p.get("component_name") or p.get("label") or "widget"}
-                    for p in (row.get("placements") or [])
-                ]
-            }
-            for row in (resolved.rows or [])
-        ]
-        chrome_title = None
-        if resolved.resolved_chrome:
-            chrome_title = resolved.resolved_chrome.get("title")
         beats.append({
             "kind": "focus",
-            "key": f"focus:{resolved.template_slug}",
+            "key": f"focus:{artifact['template_slug']}",
             "derived": (
                 f"The work happens in {tpl.display_name} — "
                 f"this task opens it ready to go."
             ),
-            "artifact": {
-                "type": "focus",
-                "template_slug": resolved.template_slug,
-                "display_name": tpl.display_name,
-                "core_slug": resolved.core_slug,
-                "core_version": resolved.core_version,
-                "template_version": resolved.template_version,
-                "chrome_title": chrome_title,
-                "rows": rows_schematic,
-            },
+            "artifact": artifact,
         })
     return beats
 

@@ -94,7 +94,7 @@ function usePrefersReducedMotion(): boolean {
 
 export function PonderOverlay({
   taskId, onClose, canEdit = true, onRequestEdit, onViewed, onCompleted,
-  onNavigate,
+  onNavigate, onOpenPonder,
 }: {
   taskId: string
   onClose: () => void
@@ -110,6 +110,10 @@ export function PonderOverlay({
   /** Map Home — a beat's deep link (the closing beat). The page supplies
    * SPA navigation; the overlay closes first. */
   onNavigate?: (href: string) => void
+  /** Reframe R-2 — a beat that opens ANOTHER ponder (the job's automation
+   * beats → the automation's full walkthrough). The page swaps the overlay
+   * id; without the prop the affordance stays hidden (honest absence). */
+  onOpenPonder?: (overlayId: string) => void
 }) {
   const svc = usePonderService()
   const [script, setScript] = useState<PonderScript | null>(null)
@@ -122,11 +126,18 @@ export function PonderOverlay({
   const [adopting, setAdopting] = useState(false) // T-1 — the adopt confirm
   const reduced = usePrefersReducedMotion()
   const timerRef = useRef<number | null>(null)
+  const completedRef = useRef(false)
   // The live-edit gravity: one confirm gate, all editors. Dry-run tasks
   // pass straight through (no dialog).
   const { confirmGate, pending, settle } = useLiveEditGate(script?.is_live)
 
   useEffect(() => {
+    // A taskId swap (the R-2 ponder deep-link) is a fresh walkthrough:
+    // rewind, resume autoplay, re-arm completion.
+    setScript(null)
+    setIndex(0)
+    setPlaying(true)
+    completedRef.current = false
     svc.getPonderScript(taskId)
       .then(setScript)
       .catch(() => setError("Couldn't derive this walkthrough."))
@@ -134,8 +145,8 @@ export function PonderOverlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId])
 
-  // Map Home — completion fires ONCE when the final beat is reached.
-  const completedRef = useRef(false)
+  // Map Home — completion fires ONCE when the final beat is reached
+  // (per walkthrough — the taskId effect re-arms it).
   useEffect(() => {
     if (!script || beats.length === 0) return
     if (index >= beats.length - 1 && !completedRef.current) {
@@ -408,6 +419,21 @@ export function PonderOverlay({
                 ) : null}
 
                 <AudienceLine audience={beat.audience} />
+
+                {/* Reframe R-2 — the beat's ponder deep-link (the job's
+                    automation beats walk into the automation's own story). */}
+                {beat.ponder_ref && onOpenPonder ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPonder(beat.ponder_ref!.overlay_id)}
+                    className="focus-ring-accent mt-3 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-body-sm font-medium"
+                    style={{ background: STAGE.card, border: `1px solid ${STAGE.cardBorder}`, color: STAGE.text }}
+                    data-testid="ponder-beat-ponder-ref"
+                  >
+                    {beat.ponder_ref.label}
+                    <ArrowRight size={13} />
+                  </button>
+                ) : null}
 
                 {/* Map Home — the closing beat's deep link. */}
                 {beat.link ? (

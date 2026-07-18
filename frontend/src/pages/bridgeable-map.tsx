@@ -25,7 +25,8 @@ import {
   PonderServiceContext,
 } from "@/bridgeable-admin/components/moc/ponder-service-context"
 import {
-  getMapTasks, tenantPonderService, type MapTask,
+  getMapJobs, getMapTasks, tenantPonderService,
+  type MapJob, type MapTask,
 } from "@/services/moc-map-service"
 import { AreaCard, type AreaSummary } from "@/components/moc-map/AreaCard"
 import { SuggestionsRail } from "@/components/moc-map/SuggestionsRail"
@@ -49,6 +50,7 @@ export default function BridgeableMapPage() {
   const { isAdmin } = useAuth()
   const navigate = useNavigate()
   const [tasks, setTasks] = useState<MapTask[]>([])
+  const [jobs, setJobs] = useState<MapJob[]>([])
   const [vertical, setVertical] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -56,6 +58,11 @@ export default function BridgeableMapPage() {
     const data = await getMapTasks()
     setTasks(data.tasks)
     setVertical(data.vertical)
+    try {
+      setJobs((await getMapJobs()).jobs)
+    } catch {
+      setJobs([])
+    }
   }, [])
 
   useEffect(() => {
@@ -67,6 +74,15 @@ export default function BridgeableMapPage() {
   } = useMapOverlays({ tasks, vertical, reload })
 
   const areas = useMemo(() => deriveAreaSummaries(tasks), [tasks])
+  // Honest arithmetic per area: jobs count where jobs exist (Reframe R-2).
+  const jobCounts = useMemo(() => {
+    const by = new Map<string, number>()
+    for (const j of jobs) {
+      const a = j.task_type || "General"
+      by.set(a, (by.get(a) ?? 0) + 1)
+    }
+    return by
+  }, [jobs])
   const yours = useMemo(
     () => tasks.filter((t) => t.scope === "tenant_override"),
     [tasks],
@@ -84,7 +100,7 @@ export default function BridgeableMapPage() {
             The map of what your platform does. Each card is an area of your
             business — hold{" "}
             <kbd className="rounded-sm border border-border-base px-1 font-plex-mono text-caption">P</kbd>{" "}
-            on one for the story, click it for its automations.
+            on one for the story, click it for the work inside.
           </p>
         </div>
 
@@ -110,6 +126,7 @@ export default function BridgeableMapPage() {
                 <AreaCard
                   key={a.area}
                   summary={a}
+                  jobCount={jobCounts.get(a.area) ?? 0}
                   onPonder={ponderArea}
                   onOpen={(area) => navigate(`/bridgeable-map/${encodeURIComponent(area)}`)}
                 />

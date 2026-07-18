@@ -26,6 +26,7 @@ vi.mock("@/services/moc-map-service", async () => {
   return {
     ...actual,
     getMapTasks: vi.fn(),
+    getMapJobs: vi.fn().mockResolvedValue({ vertical: "manufacturing", jobs: [] }),
     forkTask: vi.fn(),
     getSuggestions: vi.fn().mockResolvedValue([]),
     recordEngagement: vi.fn(),
@@ -93,6 +94,26 @@ describe("BridgeableMapPage — the three-part home", () => {
     expect(screen.getByTestId("map-card-area-link-t-4").getAttribute("href"))
       .toBe("/bridgeable-map/Accounting")
     expect(screen.getByTestId("map-room")).toBeInTheDocument()
+  })
+
+  it("the area glance speaks JOBS when jobs exist — honest arithmetic", async () => {
+    vi.mocked(svc.getMapJobs).mockResolvedValue({
+      vertical: "manufacturing",
+      jobs: [
+        { id: "j1", name: "Close", display_order: 0, task_type: "Accounting",
+          refs: [], dead_refs: [],
+          glance: { automation_count: 2, live_count: 1, queue_pending: null } },
+      ] as never,
+    })
+    mount()
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("map-area-count-Accounting").textContent,
+      ).toContain("1 task · 3 automations"),
+    )
+    // Areas WITHOUT jobs keep the plain automation count.
+    expect(screen.getByTestId("map-area-count-Operations").textContent)
+      .toContain("1 automation")
   })
 
   it("the rail's absence leaves the home whole (empty-honest)", async () => {

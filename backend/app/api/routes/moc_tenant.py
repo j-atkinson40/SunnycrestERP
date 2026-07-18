@@ -212,6 +212,47 @@ def tenant_save_ponder_caption(
 # ─── The Map Home campaign — area ponders, onboarding, engagement, rail ────
 
 
+@router.get("/jobs")
+def tenant_list_jobs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The tenant's JOBS (displayed Tasks) — the area pages' leading unit
+    (Reframe R-2). Refs resolved; the card glance carries the live rollup +
+    the permission-aware queue pending count."""
+    from app.services.maps_of_content import jobs as jobs_svc
+
+    company = _company(db, current_user)
+    return {
+        "vertical": company.vertical,
+        "jobs": [
+            jobs_svc.job_card_payload(db, j, user=current_user)
+            for j in jobs_svc.list_jobs(db, vertical=company.vertical)
+        ],
+    }
+
+
+@router.get("/job-ponder/{job_id}")
+def tenant_job_ponder(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """THE JOB PONDER — the whole job's story (framing → automations →
+    the human-work surfaces → the area). Queue counts are THIS user's
+    permission-aware truth. View for everyone; the framing is platform
+    pedagogy (authored platform-side)."""
+    from app.services.maps_of_content import jobs as jobs_svc
+
+    company = _company(db, current_user)
+    try:
+        return jobs_svc.build_job_ponder_script(
+            db, job_id=job_id, company_id=company.id, user=current_user,
+        )
+    except jobs_svc.JobValidationError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("/area-ponder/{area}")
 def tenant_area_ponder(
     area: str,

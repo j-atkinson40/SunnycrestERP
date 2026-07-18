@@ -41,6 +41,39 @@ export interface MapTask {
   runtime_schedule_summary?: string | null
 }
 
+// ── JOBS (displayed Tasks) — the map's leading unit (Reframe R-2) ────────
+
+export interface MapJobRef {
+  kind: "automation" | "triage_queue" | "focus"
+  key: string
+  label: string
+  ref_id: string
+  href?: string
+  automation?: MapTask
+}
+
+export interface MapJob {
+  id: string
+  name: string
+  icon?: string | null
+  description?: string | null
+  task_type?: string | null
+  display_order: number
+  refs: MapJobRef[]
+  dead_refs: Array<{ id: string; kind: string; key: string }>
+  glance: {
+    automation_count: number
+    live_count: number
+    /** Permission-aware — null renders as honest absence, never zero. */
+    queue_pending: number | null
+  }
+}
+
+export async function getMapJobs(): Promise<{ vertical: string | null; jobs: MapJob[] }> {
+  const { data } = await apiClient.get("/moc/jobs")
+  return data
+}
+
 // ── Offer-reach (P3) — the standard's improvements reach their version ──
 
 export async function getTaskOffer(offerId: string): Promise<TaskOffer> {
@@ -109,11 +142,20 @@ export const tenantPonderService: PonderService = {
       )
       return data
     }
+    if (taskId.startsWith("job:")) {
+      const { data } = await apiClient.get(
+        `/moc/job-ponder/${encodeURIComponent(taskId.slice(4))}`,
+      )
+      return data
+    }
     const { data } = await apiClient.get(`/moc/ponder/${taskId}`)
     return data
   },
   savePonderCaption: async (taskId, beatKey, text) => {
-    if (taskId.startsWith("area:") || taskId.startsWith("onboarding:")) {
+    if (
+      taskId.startsWith("area:") || taskId.startsWith("onboarding:") ||
+      taskId.startsWith("job:")
+    ) {
       // Platform pedagogy — tenants VIEW, never author (the overlay's
       // canEdit is false for these; this is defense in depth).
       throw new Error("Platform pedagogy is authored platform-side")
@@ -165,7 +207,7 @@ export const tenantPonderService: PonderService = {
 
 export interface MapSuggestion {
   id: string
-  rule: "onboarding" | "role_area" | "recency"
+  rule: "onboarding" | "role_area" | "recency" | "job_recency"
   title: string
   /** LOAD-BEARING: the honest reason this card exists. Always present. */
   why: string

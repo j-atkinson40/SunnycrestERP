@@ -67,6 +67,7 @@ export function useMapOverlays({
 
   const ponderTask = useCallback((task: MapTask) => setPonderId(task.id), [])
   const ponderArea = useCallback((area: string) => setPonderId(`area:${area}`), [])
+  const ponderJob = useCallback((jobId: string) => setPonderId(`job:${jobId}`), [])
   const ponderKeyed = useCallback((ponderKey: string) => {
     // A suggestion's ponder_key → the overlay id convention.
     if (ponderKey.startsWith("task:")) setPonderId(ponderKey.slice(5))
@@ -85,7 +86,12 @@ export function useMapOverlays({
     const ok = await new Promise<boolean>((resolve) =>
       setForkPrompt({ task, resolve }),
     )
-    if (!ok) return false
+    if (!ok) {
+      // Decline must clear the prompt too — the early return used to leave
+      // the dialog mounted forever (latent since P2; caught by R-2's witness).
+      setForkPrompt(null)
+      return false
+    }
     setForking(true)
     try {
       const fork = await forkTask(task.id)
@@ -102,7 +108,8 @@ export function useMapOverlays({
 
   const isComposition =
     !!ponderId &&
-    (ponderId.startsWith("area:") || ponderId.startsWith("onboarding:"))
+    (ponderId.startsWith("area:") || ponderId.startsWith("onboarding:") ||
+     ponderId.startsWith("job:"))
 
   const overlays = (
     <>
@@ -120,6 +127,7 @@ export function useMapOverlays({
           onCompleted={() =>
             recordEngagement(engagementKey(ponderId, vertical), "completed")}
           onNavigate={(href) => navigate(href)}
+          onOpenPonder={(overlayId) => setPonderId(overlayId)}
         />
       ) : null}
 
@@ -184,6 +192,7 @@ export function useMapOverlays({
   )
 
   return {
-    ponderTask, ponderArea, ponderKeyed, openOffer, openAdd, overlays, isAdmin,
+    ponderTask, ponderArea, ponderJob, ponderKeyed, openOffer, openAdd,
+    overlays, isAdmin,
   }
 }

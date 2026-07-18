@@ -25,9 +25,12 @@ export interface AreaSummary {
 }
 
 export function AreaCard({
-  summary, onPonder, onOpen,
+  summary, jobCount = 0, onPonder, onOpen,
 }: {
   summary: AreaSummary
+  /** Reframe R-2 — the honest arithmetic: "N tasks · M automations" when
+   * jobs exist in the area; the plain automation count otherwise. */
+  jobCount?: number
   onPonder: (area: string) => void
   onOpen: (area: string) => void
 }) {
@@ -72,7 +75,9 @@ export function AreaCard({
       </div>
       <div className="mt-2 flex items-center gap-2 text-caption text-content-muted">
         <span data-testid={`map-area-count-${area}`}>
-          {taskCount} {taskCount === 1 ? "automation" : "automations"}
+          {jobCount > 0
+            ? `${jobCount} ${jobCount === 1 ? "task" : "tasks"} · ${taskCount} ${taskCount === 1 ? "automation" : "automations"}`
+            : `${taskCount} ${taskCount === 1 ? "automation" : "automations"}`}
         </span>
         {liveCount > 0 ? (
           <span

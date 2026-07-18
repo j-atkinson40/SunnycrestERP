@@ -764,6 +764,9 @@ export interface PonderBeat {
   kind: PonderBeatKind
   /** Map Home — the closing beat's deep link (the overlay renders it). */
   link?: { href: string; label: string } | null
+  /** Reframe R-2 — a beat that deep-links ANOTHER ponder (the job's
+   * automation beats → the automation's full walkthrough). */
+  ponder_ref?: { overlay_id: string; label: string } | null
   motif?: PonderMotif | null
   artifact?: PonderArtifact | null
   audience?: PonderAudience | null
@@ -833,6 +836,12 @@ export async function getPonderScript(taskId: string): Promise<PonderScript> {
     )
     return data
   }
+  if (taskId.startsWith("job:")) {
+    const { data } = await adminApi.get<PonderScript>(
+      `${BASE}/job-ponder/${encodeURIComponent(taskId.slice(4))}`,
+    )
+    return data
+  }
   const { data } = await adminApi.get<PonderScript>(`${BASE}/ponder/${taskId}`)
   return data
 }
@@ -842,6 +851,14 @@ export async function savePonderCaption(
   beatKey: string,
   text: string | null,
 ): Promise<Record<string, string>> {
+  if (taskId.startsWith("job:")) {
+    // The job framings — platform pedagogy on the job row (R-3's surface).
+    const { data } = await adminApi.patch<{ captions: Record<string, string> }>(
+      `${BASE}/job-ponder/${encodeURIComponent(taskId.slice(4))}/captions`,
+      { beat_key: beatKey, text },
+    )
+    return data.captions
+  }
   if (taskId.startsWith("area:")) {
     // Platform pedagogy — the philosophy captions land on the composition
     // row (created on first authoring), platform-admin only.
