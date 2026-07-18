@@ -141,26 +141,37 @@ def build_integration_ponder(
             .all()
         )
         if items:
-            # A BULLETED LIST — the overlay renders newlines (pre-line).
-            parts = []
+            # STRUCTURED — the overlay renders the account list as an
+            # artifact (type pills + linkage pills); the beat text carries
+            # only the header line.
+            conns = []
+            head_lines = []
             for it in items:
                 face = "healthy" if it.status == "active" else "needs re-connecting"
                 linked = [a for a in it.accounts if a.financial_account_id]
-                head = (f"{it.institution_name or 'Bank'} ({face}) — "
-                        f"{len(linked)} of {len(it.accounts)} feeding "
-                        "reconciliation:")
-                # ALL accounts listed — the ponder's stage has the room.
-                bullets = [
-                    f"•  {a.name} ····{a.mask}"
-                    + (" · credit" if a.account_type == "credit" else "")
-                    + (" · feeds reconciliation" if a.financial_account_id else "")
-                    for a in it.accounts
-                ]
-                parts.append("\n".join([head, *bullets]))
-            txt = "\n\n".join(parts)
+                head_lines.append(
+                    f"{it.institution_name or 'Bank'} ({face}) — "
+                    f"{len(linked)} of {len(it.accounts)} feeding reconciliation."
+                )
+                conns.append({
+                    "institution": it.institution_name or "Bank",
+                    "face": face,
+                    "accounts": [
+                        {
+                            "name": a.name,
+                            "mask": a.mask,
+                            "subtype": (a.account_subtype or a.account_type or "account"),
+                            "is_credit": a.account_type == "credit",
+                            "linked": bool(a.financial_account_id),
+                        }
+                        for a in it.accounts
+                    ],
+                })
+            txt = "\n".join(head_lines)
             beats.append({
                 "key": "connections", "kind": "setup", "text": txt,
                 "derived_text": txt, "authored": False,
+                "artifact": {"type": "bank_accounts", "connections": conns},
                 "link": {"href": "/bridgeable-map/Integrations?connect=1",
                          "label": "Connect another bank"},
             })

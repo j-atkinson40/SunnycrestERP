@@ -34,6 +34,7 @@ export function ArtifactPreview({ artifact }: { artifact?: PonderArtifact | null
   if (!artifact) return null
   if (artifact.type === "document") return <DocumentPreview artifact={artifact} />
   if (artifact.type === "focus") return <FocusMiniature artifact={artifact} />
+  if (artifact.type === "bank_accounts") return <BankAccountsList artifact={artifact} />
   return null // unknown artifact types render nothing — never a wrong preview
 }
 
@@ -214,5 +215,65 @@ export function AudienceLine({ audience }: {
         </span>
       ) : null}
     </p>
+  )
+}
+
+
+/** Plaid B-3 follow-up — the connections beat's account list. Colored
+ * pills carry type + linkage so the name and mask read clean. Evening-
+ * stage palette (the overlay's committed look). */
+function BankAccountsList({ artifact }: { artifact: PonderArtifact }) {
+  const conns = (artifact as unknown as {
+    connections?: Array<{
+      institution: string
+      face: string
+      accounts: Array<{
+        name: string; mask: string | null; subtype: string
+        is_credit: boolean; linked: boolean
+      }>
+    }>
+  }).connections
+  if (!conns?.length) return null
+  return (
+    <div className="mx-auto w-full max-w-md space-y-3" data-testid="ponder-bank-accounts">
+      {conns.map((c) => (
+        <ul key={c.institution} className="space-y-1.5">
+          {c.accounts.map((a) => (
+            <li
+              key={`${a.name}-${a.mask}`}
+              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-left"
+              style={{ background: "rgba(255,251,245,0.055)" }}
+            >
+              <span className="text-sm" style={{ color: "#EAE3DA" }}>
+                {a.name}
+              </span>
+              {a.mask ? (
+                <span className="font-plex-mono text-xs" style={{ color: "#A79B8E" }}>
+                  ····{a.mask}
+                </span>
+              ) : null}
+              <span className="ml-auto flex flex-none items-center gap-1.5">
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={a.is_credit
+                    ? { background: "rgba(224,159,98,0.16)", color: "#E0B380" }
+                    : { background: "rgba(234,227,218,0.10)", color: "#A79B8E" }}
+                >
+                  {a.subtype}
+                </span>
+                {a.linked ? (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                    style={{ background: "rgba(156,86,64,0.28)", color: "#E8A18C" }}
+                  >
+                    feeds reconciliation
+                  </span>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ))}
+    </div>
   )
 }
