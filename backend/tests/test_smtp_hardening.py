@@ -154,3 +154,22 @@ class TestNoClientLeak:
         from app.api.routes.price_management import _serialize_email_settings
         assert "smtp_password_encrypted" not in inspect.getsource(
             _serialize_email_settings)
+
+
+class TestMemberFourRingCentral:
+    """The class dies whole: RingCentral OAuth tokens (member four) are
+    encrypted from birth — zero rows ever existed plaintext (the census:
+    dev 0, staging 0)."""
+
+    def test_oauth_write_path_encrypts(self):
+        import inspect
+        from app.api.routes import ringcentral as rc
+        src = inspect.getsource(rc.oauth_callback)
+        assert "encrypt_secret" in src
+        # The raw token never reaches set_setting unencrypted:
+        assert 'set_setting("ringcentral_access_token", tokens.get' not in src
+
+    def test_reader_decrypts_at_use(self):
+        import inspect, pathlib
+        src = pathlib.Path("app/api/routes/ringcentral.py").read_text()
+        assert "decrypt_secret(rc_token)" in src

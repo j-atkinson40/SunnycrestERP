@@ -323,6 +323,12 @@ def _start_after_call_pipeline(call_id: str, tenant_id: str):
             if company:
                 s = company.settings or {}
                 rc_token = s.get("ringcentral_access_token")
+                if rc_token:
+                    # Decrypt at use (encrypted-from-birth; a legacy
+                    # plaintext value would fail loud here — the census
+                    # proved none exist anywhere).
+                    from app.services.email.crypto import decrypt_secret
+                    rc_token = decrypt_secret(rc_token)
 
             result = process_call_after_end(session, call_id, tenant_id, rc_token=rc_token)
 
@@ -491,9 +497,18 @@ async def oauth_callback(
 
     tokens = resp.json()
 
-    # Store tokens in company settings
-    company.set_setting("ringcentral_access_token", tokens.get("access_token"))
-    company.set_setting("ringcentral_refresh_token", tokens.get("refresh_token"))
+    # Store tokens in company settings — ENCRYPTED FROM BIRTH (member four
+    # of the plaintext-credential class, closed 2026-07-18 with zero rows
+    # ever written plaintext; the census confirmed before this landed).
+    from app.services.email.crypto import encrypt_secret
+    company.set_setting(
+        "ringcentral_access_token",
+        encrypt_secret(tokens["access_token"]) if tokens.get("access_token") else None,
+    )
+    company.set_setting(
+        "ringcentral_refresh_token",
+        encrypt_secret(tokens["refresh_token"]) if tokens.get("refresh_token") else None,
+    )
     company.set_setting("ringcentral_token_expires_in", tokens.get("expires_in"))
     company.set_setting("ringcentral_owner_id", tokens.get("owner_id"))
     company.set_setting("ringcentral_connected", True)
