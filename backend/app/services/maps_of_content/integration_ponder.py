@@ -149,15 +149,13 @@ def build_integration_ponder(
                 head = (f"{it.institution_name or 'Bank'} ({face}) — "
                         f"{len(linked)} of {len(it.accounts)} feeding "
                         "reconciliation:")
+                # ALL accounts listed — the ponder's stage has the room.
                 bullets = [
                     f"•  {a.name} ····{a.mask}"
                     + (" · credit" if a.account_type == "credit" else "")
                     + (" · feeds reconciliation" if a.financial_account_id else "")
-                    for a in it.accounts[:8]
+                    for a in it.accounts
                 ]
-                more = len(it.accounts) - 8
-                if more > 0:
-                    bullets.append(f"•  …and {more} more")
                 parts.append("\n".join([head, *bullets]))
             txt = "\n\n".join(parts)
             beats.append({
