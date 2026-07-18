@@ -34,8 +34,6 @@ class AccountingConnection(Base):
     # ── QBO-specific ──────────────────────────────────────────────
     qbo_realm_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     qbo_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    qbo_access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    qbo_refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     qbo_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -53,7 +51,6 @@ class AccountingConnection(Base):
         String(20), nullable=True
     )  # api | csv
     sage_api_endpoint: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    sage_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     sage_csv_schedule: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # ── Sync configuration ────────────────────────────────────────

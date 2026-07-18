@@ -376,8 +376,12 @@ function SelectSoftwareStage({
         provider,
       });
       onUpdate(res.data);
-    } catch {
-      toast.error("Failed to select provider");
+    } catch (e) {
+      // Surface the server's honest sentence when it has one (e.g. the
+      // QBO-retired 410) instead of a generic void.
+      const detail = (e as { response?: { data?: { detail?: unknown } } })
+        .response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Failed to select provider");
     } finally {
       setSaving(false);
     }

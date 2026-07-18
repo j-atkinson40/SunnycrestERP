@@ -217,9 +217,14 @@ def select_provider(
     db: Session = Depends(get_db),
 ):
     """Select the accounting software provider."""
-    valid = {"quickbooks_online", "quickbooks_desktop", "sage_100"}
+    if body.provider == "quickbooks_online":
+        # The QBO decommission (2026-07-18).
+        raise HTTPException(
+            410, "QBO integration is retired — Bridgeable is the accounting system."
+        )
+    valid = {"quickbooks_desktop", "sage_100"}
     if body.provider not in valid:
-        raise HTTPException(400, f"Invalid provider. Must be one of: {', '.join(valid)}")
+        raise HTTPException(400, f"Invalid provider. Must be one of: {', '.join(sorted(valid))}")
 
     conn = _get_or_create_connection(db, current_user.company_id)
     conn.provider = body.provider
@@ -328,21 +333,11 @@ def qbo_connect(
     db: Session = Depends(get_db),
 ):
     """Generate QBO OAuth authorization URL."""
-    conn = _get_or_create_connection(db, current_user.company_id)
-    if conn.provider != "quickbooks_online":
-        raise HTTPException(400, "Provider is not QuickBooks Online")
-
-    try:
-        from app.services.accounting.qbo_oauth_service import generate_auth_url
-
-        url, state = generate_auth_url(current_user.company_id)
-        return {"authorization_url": url, "state": state}
-    except ImportError:
-        # QBO OAuth service not available — return placeholder
-        return {
-            "authorization_url": f"/api/v1/accounting/qbo/callback?mock=true&company={current_user.company_id}",
-            "state": secrets.token_urlsafe(16),
-        }
+    # RETIRED (the QBO decommission, 2026-07-18) — the oauth service is
+    # deleted; r134 purged the plaintext credentials.
+    raise HTTPException(
+        410, "QBO integration is retired — Bridgeable is the accounting system."
+    )
 
 
 @router.post("/qbo/connected", response_model=ConnectionStatusResponse)
@@ -350,21 +345,10 @@ def qbo_mark_connected(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Mark QBO as connected after OAuth callback succeeds."""
-    conn = _get_or_create_connection(db, current_user.company_id)
-    conn.status = "connected"
-    conn.setup_stage = "configure_sync"
-    conn.connected_by = current_user.id
-    conn.connected_at = datetime.now(UTC)
-    conn.updated_at = datetime.now(UTC)
-
-    company = db.query(Company).filter(Company.id == current_user.company_id).first()
-    if company:
-        company.set_setting("accounting_connection_status", "connected")
-
-    db.commit()
-    db.refresh(conn)
-    return _to_response(conn)
+    """RETIRED (the QBO decommission, 2026-07-18)."""
+    raise HTTPException(
+        410, "QBO integration is retired — Bridgeable is the accounting system."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -515,10 +499,6 @@ def disconnect(
 
     conn.status = "disconnected"
     conn.setup_stage = "select_software"
-    # Clear sensitive data
-    conn.qbo_access_token_encrypted = None
-    conn.qbo_refresh_token_encrypted = None
-    conn.sage_api_key_encrypted = None
     conn.updated_at = datetime.now(UTC)
 
     company = db.query(Company).filter(Company.id == current_user.company_id).first()
@@ -658,16 +638,10 @@ def qbo_income_accounts(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Return mock QBO income accounts list for the mapping UI."""
-    return {
-        "accounts": [
-            {"id": "1", "name": "Sales Income", "type": "Income", "number": "4000"},
-            {"id": "2", "name": "Product Sales", "type": "Income", "number": "4100"},
-            {"id": "3", "name": "Delivery Income", "type": "Income", "number": "4300"},
-            {"id": "4", "name": "Other Income", "type": "Income", "number": "4500"},
-            {"id": "5", "name": "Service Revenue", "type": "Income", "number": "4600"},
-        ]
-    }
+    """RETIRED (the QBO decommission, 2026-07-18)."""
+    raise HTTPException(
+        410, "QBO integration is retired — Bridgeable is the accounting system."
+    )
 
 
 # ---------------------------------------------------------------------------

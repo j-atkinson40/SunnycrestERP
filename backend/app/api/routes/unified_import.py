@@ -155,16 +155,11 @@ def connect_qbo(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Initiate QBO OAuth — returns auth URL for frontend redirect."""
-    from app.services.accounting.qbo_oauth_service import generate_auth_url
-    from app.services.onboarding.unified_import_service import get_or_create_session
-
-    session = get_or_create_session(db, current_user.company_id)
-    session.accounting_source = "qbo"
-    db.commit()
-
-    auth_url = generate_auth_url(current_user.company_id)
-    return {"auth_url": auth_url}
+    """RETIRED (the QBO decommission, 2026-07-18)."""
+    raise HTTPException(
+        status_code=410,
+        detail="QBO integration is retired — Bridgeable is the accounting system.",
+    )
 
 
 @router.post("/accounting/skip")

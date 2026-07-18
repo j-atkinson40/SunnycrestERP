@@ -21,9 +21,16 @@ def get_provider(
     provider_key = getattr(company, "accounting_provider", None) or "sage_csv"
 
     if provider_key == "quickbooks_online":
-        from app.services.accounting.qbo_provider import QuickBooksOnlineProvider
+        # The QBO decommission (2026-07-18): the provider is deleted and
+        # r134 reset every company off it — this branch is defense-in-depth
+        # for a hand-edited row, answering honestly rather than erroring
+        # into a void.
+        from fastapi import HTTPException
 
-        return QuickBooksOnlineProvider(db, company_id, actor_id)
+        raise HTTPException(
+            status_code=410,
+            detail="QBO integration is retired — Bridgeable is the accounting system.",
+        )
 
     # Default to Sage CSV
     from app.services.accounting.sage_provider import SageCSVProvider
@@ -45,11 +52,5 @@ def get_available_providers() -> list[dict]:
             "name": "Sage 100 (CSV Export)",
             "description": "Export data as Sage 100-compatible CSV files",
             "supports_sync": False,
-        },
-        {
-            "key": "quickbooks_online",
-            "name": "QuickBooks Online",
-            "description": "Bidirectional sync via QuickBooks Online API",
-            "supports_sync": True,
         },
     ]

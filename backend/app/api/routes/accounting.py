@@ -4,7 +4,7 @@ Unified accounting provider management — provider selection, connection status
 sync operations, chart of accounts, and account mapping.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin, require_permission
@@ -17,7 +17,6 @@ from app.schemas.accounting import (
     AccountMappingResponse,
     AccountMappingUpdate,
     ProviderAccountResponse,
-    QBOConnectResponse,
     SyncRequest,
     SyncResultResponse,
 )
@@ -207,46 +206,31 @@ def set_mapping(
 
 
 # ---------------------------------------------------------------------------
-# QuickBooks Online OAuth flow
+# QuickBooks Online OAuth flow — RETIRED (the QBO decommission, 2026-07-18)
+#
+# The oauth service + provider are DELETED and r134 purged the plaintext
+# credentials from accounting_config. These endpoints answer honestly
+# rather than erroring into a void; Intuit-side revocation is the
+# operator's parallel step.
 # ---------------------------------------------------------------------------
 
+RETIRED_QBO = "QBO integration is retired — Bridgeable is the accounting system."
 
-@router.post("/qbo/connect", response_model=QBOConnectResponse)
-def qbo_connect(
-    current_user: User = Depends(require_admin),
-):
-    """Generate QBO OAuth authorization URL."""
-    from app.services.accounting.qbo_oauth_service import generate_auth_url
 
-    url, state = generate_auth_url(current_user.company_id)
-    return QBOConnectResponse(authorization_url=url, state=state)
+@router.post("/qbo/connect")
+def qbo_connect(current_user: User = Depends(require_admin)):
+    """RETIRED — the QBO decommission."""
+    raise HTTPException(status_code=410, detail=RETIRED_QBO)
 
 
 @router.get("/qbo/callback")
-def qbo_callback(
-    code: str = Query(...),
-    state: str = Query(...),
-    realmId: str = Query(...),
-    db: Session = Depends(get_db),
-):
-    """Handle QBO OAuth callback — exchange code for tokens."""
-    from app.services.accounting.qbo_oauth_service import handle_callback
-
-    result = handle_callback(db, code, state, realmId)
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result.get("error", "OAuth failed"))
-    return result
+def qbo_callback():
+    """RETIRED — the QBO decommission."""
+    raise HTTPException(status_code=410, detail=RETIRED_QBO)
 
 
 @router.post("/qbo/disconnect")
-def qbo_disconnect(
-    current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
-    """Disconnect QuickBooks Online — revokes tokens and resets to Sage."""
-    from app.services.accounting.qbo_oauth_service import disconnect
-
-    result = disconnect(db, current_user.company_id)
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result.get("error", "Disconnect failed"))
-    return result
+def qbo_disconnect(current_user: User = Depends(require_admin)):
+    """RETIRED — tokens were purged by r134; nothing remains to revoke
+    platform-side."""
+    raise HTTPException(status_code=410, detail=RETIRED_QBO)
