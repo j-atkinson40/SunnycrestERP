@@ -41,7 +41,8 @@ export function engagementKey(overlayId: string, vertical: string | null): strin
   }
   if (
     overlayId.startsWith("onboarding:") || overlayId.startsWith("job:") ||
-    overlayId.startsWith("integration:")
+    overlayId.startsWith("integration:") || overlayId.startsWith("platform:") ||
+    overlayId.startsWith("tip:") || overlayId.startsWith("module:")
   ) {
     return overlayId
   }
@@ -112,7 +113,9 @@ export function useMapOverlays({
   const isComposition =
     !!ponderId &&
     (ponderId.startsWith("area:") || ponderId.startsWith("onboarding:") ||
-     ponderId.startsWith("job:") || ponderId.startsWith("integration:"))
+     ponderId.startsWith("job:") || ponderId.startsWith("integration:") ||
+     ponderId.startsWith("platform:") || ponderId.startsWith("tip:") ||
+     ponderId.startsWith("module:"))
 
   const overlays = (
     <>

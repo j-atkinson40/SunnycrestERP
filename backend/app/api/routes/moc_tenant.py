@@ -300,6 +300,136 @@ def tenant_integration_ponder(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/platform-areas")
+def tenant_platform_areas(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The spine's platform rooms (visibility-filtered)."""
+    from app.api.deps import require_admin  # noqa: F401 (gating below is soft)
+    from app.services.maps_of_content.platform_map import PLATFORM_AREAS
+    from app.models.role import Role
+    role = db.query(Role).filter(Role.id == current_user.role_id).first()
+    is_admin = bool(role and role.is_system and role.slug == "admin")
+    _company(db, current_user)
+    return [a for a in PLATFORM_AREAS if is_admin or not a["admin_only"]]
+
+
+@router.get("/platform-ponder/{key}")
+def tenant_platform_ponder(
+    key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import build_platform_ponder
+    co = _company(db, current_user)
+    try:
+        return build_platform_ponder(db, key=key, vertical=co.vertical)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/journey")
+def tenant_journey(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import build_journey
+    _company(db, current_user)
+    return build_journey(db, tenant_id=current_user.company_id)
+
+
+@router.get("/tips/{area}")
+def tenant_tips(
+    area: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import list_tips
+    _company(db, current_user)
+    return list_tips(db, area=area)
+
+
+@router.get("/tip-ponder/{key:path}")
+def tenant_tip_ponder(
+    key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import build_tip_ponder
+    _company(db, current_user)
+    try:
+        return build_tip_ponder(db, key=key)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/showroom")
+def tenant_showroom(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import showroom
+    _company(db, current_user)
+    return showroom(db, tenant_id=current_user.company_id)
+
+
+@router.get("/module-ponder/{key}")
+def tenant_module_ponder(
+    key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import build_module_ponder
+    _company(db, current_user)
+    try:
+        return build_module_ponder(db, key=key, tenant_id=current_user.company_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/showroom/{module_key}/enable")
+def tenant_module_enable(
+    module_key: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import set_module_enabled
+    try:
+        return set_module_enabled(
+            db, tenant_id=current_user.company_id, module_key=module_key,
+            enabled=True, actor_user_id=current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/showroom/{module_key}/disable")
+def tenant_module_disable(
+    module_key: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import set_module_enabled
+    try:
+        return set_module_enabled(
+            db, tenant_id=current_user.company_id, module_key=module_key,
+            enabled=False, actor_user_id=current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/showroom/{module_key}/interest")
+def tenant_module_interest(
+    module_key: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.maps_of_content.platform_map import record_interest
+    return record_interest(
+        db, tenant_id=current_user.company_id, module_key=module_key,
+        actor_user_id=current_user.id)
+
+
 @router.get("/onboarding/{key}")
 def tenant_onboarding_ponder(
     key: str,

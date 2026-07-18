@@ -52,6 +52,11 @@ NOTIFICATION_CATEGORY_REGISTRY: dict[str, dict[str, str]] = {
         "default_icon": "UserCircle",
         "default_color_token": "status-info",
     },
+    "modules": {
+        "description": "Module/showroom changes (enabled, disabled, interest recorded) — the map's toggle-with-terms channel.",
+        "default_icon": "Plug",
+        "default_color_token": "status-info",
+    },
     "pricing": {
         "description": "Price list / pricing notification (price increase scheduled, list activated).",
         "default_icon": "DollarSign",

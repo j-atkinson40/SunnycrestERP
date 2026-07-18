@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { FileText, Map as MapIcon, Plus, Sparkles } from "lucide-react"
 
+import apiClient from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
 import {
@@ -53,6 +54,7 @@ export default function BridgeableMapPage() {
   const [jobs, setJobs] = useState<MapJob[]>([])
   const [vertical, setVertical] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [platformAreas, setPlatformAreas] = useState<Array<{ area: string }>>([])
 
   const reload = useCallback(async () => {
     const data = await getMapTasks()
@@ -67,6 +69,9 @@ export default function BridgeableMapPage() {
 
   useEffect(() => {
     reload().finally(() => setLoading(false))
+    apiClient.get("/moc/platform-areas")
+      .then((r) => setPlatformAreas(r.data))
+      .catch(() => setPlatformAreas([]))
   }, [reload])
 
   const {
@@ -130,6 +135,34 @@ export default function BridgeableMapPage() {
                   onPonder={ponderArea}
                   onOpen={(area) => navigate(`/bridgeable-map/${encodeURIComponent(area)}`)}
                 />
+              ))}
+              {/* THE PLATFORM ROOMS — the spine absorbs them (stable
+                  order after the business areas; the map teaches
+                  Bridgeable, not just the tenant's work). */}
+              {platformAreas.map((pa) => (
+                <div
+                  key={pa.area}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/bridgeable-map/${encodeURIComponent(pa.area)}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      navigate(`/bridgeable-map/${encodeURIComponent(pa.area)}`)
+                    }
+                  }}
+                  className="focus-ring-accent flex min-h-[6rem] cursor-pointer flex-col justify-between rounded-md border border-dashed border-border-base bg-surface-elevated/60 p-4 transition-shadow duration-quick ease-settle hover:shadow-level-1"
+                  data-testid={`map-platform-area-${pa.area}`}
+                >
+                  <p className="text-body font-medium text-content-strong">{pa.area}</p>
+                  <p className="text-body-sm text-content-muted">
+                    {pa.area === "Platform"
+                      ? "How Bridgeable itself works — the primitives."
+                      : pa.area === "Onboarding & Setup"
+                        ? "The path in — every step visible, none locked."
+                        : "What's not turned on yet — and what's coming."}
+                  </p>
+                </div>
               ))}
               {/* THE INTEGRATIONS ROOM (2026-07-18) — admin-led
                   visibility; one deliberate card, status at a glance. */}

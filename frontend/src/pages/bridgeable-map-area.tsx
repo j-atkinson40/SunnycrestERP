@@ -16,6 +16,9 @@ import {
   type MapJob, type MapTask,
 } from "@/services/moc-map-service"
 import { IntegrationsArea } from "@/components/moc-map/IntegrationsArea"
+import {
+  JourneyArea, PlatformArea, ShowroomArea, TipsSection,
+} from "@/components/moc-map/PlatformAreas"
 import { JobCard } from "@/components/moc-map/JobCard"
 import { TaskSections } from "@/components/moc-map/TaskSections"
 import { useMapOverlays } from "@/components/moc-map/useMapOverlays"
@@ -123,6 +126,12 @@ export default function BridgeableMapAreaPage() {
             B-1 setup card LEFT accounting; management lives here. */}
         {area === "Integrations" ? (
           <IntegrationsArea isAdmin={isAdmin} onPonder={ponderKeyed} />
+        ) : area === "Platform" ? (
+          <PlatformArea onPonder={ponderKeyed} />
+        ) : area === "Onboarding & Setup" ? (
+          <JourneyArea onPonder={ponderKeyed} refreshToken={tasks} />
+        ) : area === "Additional features" ? (
+          <ShowroomArea onPonder={ponderKeyed} isAdmin={isAdmin} />
         ) : loading ? (
           <p className="py-10 text-center text-body-sm text-content-muted">
             Loading…
@@ -202,6 +211,11 @@ export default function BridgeableMapAreaPage() {
             ) : null}
           </>
         )}
+
+        {!["Integrations", "Platform", "Onboarding & Setup",
+            "Additional features"].includes(area) ? (
+          <TipsSection area={area} onPonder={ponderKeyed} />
+        ) : null}
 
         {overlays}
       </div>

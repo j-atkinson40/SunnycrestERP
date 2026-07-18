@@ -142,6 +142,24 @@ export const tenantPonderService: PonderService = {
       )
       return data
     }
+    if (taskId.startsWith("platform:")) {
+      const { data } = await apiClient.get(
+        `/moc/platform-ponder/${encodeURIComponent(taskId.slice(9))}`,
+      )
+      return data
+    }
+    if (taskId.startsWith("tip:")) {
+      const { data } = await apiClient.get(
+        `/moc/tip-ponder/${encodeURIComponent(taskId.slice(4))}`,
+      )
+      return data
+    }
+    if (taskId.startsWith("module:")) {
+      const { data } = await apiClient.get(
+        `/moc/module-ponder/${encodeURIComponent(taskId.slice(7))}`,
+      )
+      return data
+    }
     if (taskId.startsWith("integration:")) {
       const { data } = await apiClient.get(
         `/moc/integration-ponder/${encodeURIComponent(taskId.slice(12))}`,
@@ -160,7 +178,9 @@ export const tenantPonderService: PonderService = {
   savePonderCaption: async (taskId, beatKey, text) => {
     if (
       taskId.startsWith("area:") || taskId.startsWith("onboarding:") ||
-      taskId.startsWith("job:") || taskId.startsWith("integration:")
+      taskId.startsWith("job:") || taskId.startsWith("integration:") ||
+      taskId.startsWith("platform:") || taskId.startsWith("tip:") ||
+      taskId.startsWith("module:")
     ) {
       // Platform pedagogy — tenants VIEW, never author (the overlay's
       // canEdit is false for these; this is defense in depth).

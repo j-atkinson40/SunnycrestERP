@@ -33,7 +33,7 @@ def _now() -> datetime:
 class MoCComposition(Base):
     __tablename__ = "moc_composition"
     __table_args__ = (
-        CheckConstraint("kind IN ('area', 'onboarding')", name="ck_moc_composition_kind"),
+        CheckConstraint("kind IN ('area', 'onboarding', 'platform', 'tip', 'module')", name="ck_moc_composition_kind"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
