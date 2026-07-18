@@ -119,6 +119,29 @@ def record_item_from_exchange(
         item.sync_cursor = None
         if inst_name:
             item.institution_name = inst_name
+        # THE STREAM SUPERSESSION (B-2 witness-caught): a new item is a new
+        # transaction stream with NEW transaction ids — the bootstrap sync
+        # would re-ingest history as semantic duplicates. The old stream's
+        # live rows are stamped removed_at here (superseded — NOT a bank
+        # retraction; the removed-while-matched hook deliberately does not
+        # fire) so exactly one live copy stands after re-ingest. Back-refs
+        # from reconciliation lines keep pointing at the retained rows.
+        from datetime import datetime, timezone
+        from app.models.plaid import BankTransaction
+        account_ids = [
+            a.id for a in db.query(BankAccount.id)
+            .filter(BankAccount.plaid_item_id == item.id,
+                    BankAccount.tenant_id == tenant_id)
+        ]
+        if account_ids:
+            db.query(BankTransaction).filter(
+                BankTransaction.tenant_id == tenant_id,
+                BankTransaction.bank_account_id.in_(account_ids),
+                BankTransaction.removed_at.is_(None),
+            ).update(
+                {"removed_at": datetime.now(timezone.utc)},
+                synchronize_session=False,
+            )
     else:
         item = PlaidItem(
             tenant_id=tenant_id,

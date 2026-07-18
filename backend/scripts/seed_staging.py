@@ -275,12 +275,25 @@ def _run_cleanup_deletes(db: Session, cid: str):
         "DELETE FROM user_ai_preferences WHERE user_id IN (SELECT id FROM users WHERE company_id = :cid)",
     ]
 
+    # THE PRESERVE RIDER (Plaid B-2): a witnessed bank connection survives
+    # every deploy. The four Plaid tables are excluded from the clean —
+    # plaid_items, bank_accounts, bank_transactions carry across verbatim,
+    # and any financial_accounts row a bank_account links to survives too
+    # (its delete FK-blocks against the preserved bank_accounts row and the
+    # savepoint rolls it back — deliberate, pinned in test_plaid_b2).
+    PLAID_PRESERVE_TABLES = {
+        "plaid_items", "bank_accounts", "bank_transactions",
+        "plaid_category_mappings",
+    }
+
     # Then delete from all FK-referencing tables discovered dynamically
     fk_deletes = []
     for row in fk_rows:
         tbl, col = row[0], row[1]
         if tbl == "companies":
             continue  # skip self-references
+        if tbl in PLAID_PRESERVE_TABLES:
+            continue  # the preserve rider — the connection stands
         fk_deletes.append(f"DELETE FROM {tbl} WHERE {col} = :cid")
 
     all_stmts = deep_children + fk_deletes

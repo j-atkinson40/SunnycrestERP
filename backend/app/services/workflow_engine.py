@@ -687,7 +687,25 @@ def _execute_step(
             # invoked. A newly-added effectful step type falls here automatically
             # (deny-by-default). `condition` is the sole exception — it's a pure
             # read, needed for real branching (below).
-            output = _dry_run_suppressed_output(step, resolved_config)
+            #
+            # NARROW OPT-IN (Plaid B-2): a call_service_method whose registry
+            # entry declares "dry_run_capable" is invoked WITH dry_run=True —
+            # a contracted read-only call so the dry-run preview carries REAL
+            # counts ("would ingest N"), never a fake placeholder. Everything
+            # undeclared still suppresses.
+            output = None
+            if (resolved_config or {}).get("action_type") == "call_service_method":
+                _entry = _SERVICE_METHOD_REGISTRY.get(
+                    (resolved_config or {}).get("method_name") or ""
+                )
+                if _entry is not None and len(_entry) > 2 and "dry_run_capable" in _entry[2]:
+                    forced = dict(resolved_config)
+                    forced["__force_dry_run__"] = True
+                    output = _handle_call_service_method(db, forced, run, current_company)
+                    output["dry_run"] = True
+                    output["live_effects"] = False
+            if output is None:
+                output = _dry_run_suppressed_output(step, resolved_config)
         elif step.step_type == "action" or step.step_type == "output" or step.step_type == "notification":
             output = _execute_action(db, resolved_config, run, current_company, run_step_id=rs.id)
         elif step.step_type == "condition":
@@ -1168,6 +1186,17 @@ _SERVICE_METHOD_REGISTRY: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
     # Invoice & Statement Run (demo artifacts 3c) — composition over the
     # existing (P0-corrected) invoice + statement services.
+    # Plaid governed sync (B-2) — the reframe's sentence compiled.
+    # DRY_RUN-CAPABLE: under an unpromoted MoC trigger the engine invokes
+    # this read-only with dry_run=True so the preview carries REAL cursor-
+    # peek counts (the narrow opt-in below; deny-by-default stands for
+    # every entry without the flag). INJECT_RUN_ID: the removed-while-
+    # matched hook anchors its Decision Triage item on the live run.
+    "plaid_sync.run_sync_pipeline": (
+        "app.services.plaid.sync:run_sync_pipeline",
+        ("dry_run", "trigger_source"),
+        frozenset({"dry_run_capable", "inject_run_id"}),
+    ),
     "invoice_statement.run_invoice_generation": (
         "app.services.workflows.invoice_statement_adapter:run_invoice_generation",
         (),
@@ -1222,9 +1251,15 @@ def _handle_call_service_method(
             "error": f"method_name {method_name!r} not in registry",
             "method_name": method_name,
         }
-    import_path, allowed_kwargs = entry
+    import_path, allowed_kwargs = entry[0], entry[1]
+    flags = entry[2] if len(entry) > 2 else frozenset()
     raw_kwargs = config.get("kwargs") or {}
     kwargs = {k: v for k, v in raw_kwargs.items() if k in allowed_kwargs}
+    if "inject_run_id" in flags and run is not None:
+        kwargs["workflow_run_id"] = run.id
+    if config.get("__force_dry_run__"):
+        # The dry-run-capable path (below) forces a read-only invocation.
+        kwargs["dry_run"] = True
 
     company_id = run.company_id if run is not None else None
     if current_company is not None:

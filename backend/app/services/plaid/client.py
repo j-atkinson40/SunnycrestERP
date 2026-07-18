@@ -121,6 +121,16 @@ def get_accounts(access_token: str) -> dict[str, Any]:
     return _post("/accounts/get", {"access_token": access_token})
 
 
+def sync_transactions(access_token: str, cursor: str | None,
+                      count: int = 500) -> dict[str, Any]:
+    """transactions/sync — one page. Returns {added, modified, removed,
+    next_cursor, has_more}. Cursor None/"" = full-history bootstrap."""
+    body: dict[str, Any] = {"access_token": access_token, "count": count}
+    if cursor:
+        body["cursor"] = cursor
+    return _post("/transactions/sync", body)
+
+
 def get_institution(institution_id: str) -> dict[str, Any]:
     """institutions/get_by_id → {institution: {name, ...}}."""
     return _post(

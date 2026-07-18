@@ -92,6 +92,13 @@ class ReconciliationTransaction(Base):
     match_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Plaid B-2 (r135): the feed back-reference — set when this statement
+    # line was materialized from bank_transactions (B-3's populate-from-feed);
+    # NULL for CSV-born rows. The removal hook finds matched lines through it.
+    bank_transaction_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("bank_transactions.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     sort_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
