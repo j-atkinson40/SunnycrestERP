@@ -1120,6 +1120,27 @@ function ReconciliationZone() {
     }
   }
 
+
+  const handlePopulateFromFeed = async () => {
+    if (!activeRunId) return
+    setUploading(true)
+    try {
+      const res = await apiClient.post(`/reconciliation/runs/${activeRunId}/populate-from-feed`)
+      toast.success(`${res.data.populated} transactions from the bank feed`)
+      setMatching(true)
+      const matchRes = await apiClient.post(`/reconciliation/runs/${activeRunId}/run-matching`)
+      setRunStatus(matchRes.data)
+      const txnRes = await apiClient.get(`/reconciliation/runs/${activeRunId}/transactions`)
+      setRunTxns(txnRes.data)
+      setMatching(false)
+    } catch (e) {
+      const detail = (e as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
+      toast.error(typeof detail === "string" ? detail : "Failed to populate from the bank feed")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0] || !activeRunId) return
     setUploading(true)
@@ -1276,7 +1297,15 @@ function ReconciliationZone() {
           ) : (
             <div>
               <p className="text-sm text-gray-600 mb-2">Upload your statement CSV</p>
-              <input type="file" accept=".csv" onChange={handleCSVUpload} className="text-xs" disabled={uploading || matching} />
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={handlePopulateFromFeed} disabled={uploading || matching}
+                  className="rounded bg-accent px-2 py-1 text-xs font-medium text-content-on-accent disabled:opacity-60"
+                  data-testid="recon-populate-from-feed">
+                  From bank feed
+                </button>
+                <span className="text-xs text-content-subtle">or</span>
+                <input type="file" accept=".csv" onChange={handleCSVUpload} className="text-xs" disabled={uploading || matching} />
+              </div>
               {uploading && <p className="text-xs text-gray-500 mt-1">Uploading...</p>}
               {matching && <p className="text-xs text-blue-600 mt-1">Matching transactions...</p>}
             </div>

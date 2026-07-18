@@ -117,6 +117,33 @@ def build_suggestions(
             })
             break  # one at a time — the sequence advances on completion
 
+    # RULE 1b — SETUP: CONNECT YOUR BANK (Plaid B-3; the B-1 deferral
+    # lands). NAV-CAPABLE variant: the card navigates (href) instead of
+    # opening a ponder. RETIRE-BY-REALITY: the rule checks the live
+    # connection state every build — it disappears when a connection
+    # exists, never by click. Dismissal is final per the rail's contract.
+    if is_admin and vertical == "manufacturing":
+        setup_key = "setup:bank_connection"
+        if not _dismissed(setup_key):
+            from app.models.plaid import PlaidItem
+            has_connection = (
+                db.query(PlaidItem)
+                .filter(PlaidItem.tenant_id == company_id,
+                        PlaidItem.is_active.is_(True))
+                .first()
+                is not None
+            )
+            if not has_connection:
+                out.append({
+                    "id": setup_key,
+                    "rule": "setup",
+                    "title": "Connect your bank",
+                    "why": "Bank reconciliation runs on a live feed — "
+                           "connect your bank to turn it on.",
+                    "ponder_key": setup_key,
+                    "href": "/bridgeable-map/Accounting",
+                })
+
     # The merged map (their view) grounds rules 2 + 3.
     tasks = resolve_task_catalog(db, vertical=vertical, tenant_id=company_id)
     areas_with_tasks = {(t.get("task_type") or "General") for t in tasks}

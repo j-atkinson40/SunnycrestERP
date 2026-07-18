@@ -48,3 +48,72 @@ export async function exchangePublicToken(input: {
   const { data } = await apiClient.post("/plaid/exchange", input)
   return data
 }
+
+
+export interface ReconAccount {
+  id: string
+  account_name: string
+  account_type: string
+}
+
+export async function getReconciliationAccounts(): Promise<ReconAccount[]> {
+  const { data } = await apiClient.get("/reconciliation/accounts")
+  return data
+}
+
+/** Admin-only. null unlinks (honest). */
+export async function linkBankAccount(
+  accountId: string, financialAccountId: string | null,
+): Promise<void> {
+  await apiClient.patch(`/plaid/accounts/${accountId}/link`, {
+    financial_account_id: financialAccountId,
+  })
+}
+
+/** Admin-only. The feed stops; history and matches remain. */
+export async function disconnectPlaidItem(itemId: string): Promise<void> {
+  await apiClient.post(`/plaid/items/${itemId}/disconnect`)
+}
+
+// ── B-3: the category-map settings surface ──────────────────────────────
+
+export interface CategoryMapping {
+  plaid_category: string
+  expense_category: string
+  source: "seeded" | "yours"
+}
+
+export interface CategoryMapResponse {
+  mappings: CategoryMapping[]
+  uncategorized_count: number
+  expense_categories: string[]
+}
+
+export async function getCategoryMappings(): Promise<CategoryMapResponse> {
+  const { data } = await apiClient.get("/plaid/category-mappings")
+  return data
+}
+
+/** Admin-only; null clears the tenant override (the seeded row returns).
+ * FORWARD-ONLY: changes apply to new transactions. */
+export async function setCategoryOverride(
+  plaidCategory: string, expenseCategory: string | null,
+): Promise<void> {
+  await apiClient.put("/plaid/category-mappings", {
+    plaid_category: plaidCategory, expense_category: expenseCategory,
+  })
+}
+
+export interface UncategorizedTxn {
+  id: string
+  date: string
+  description: string
+  amount: string
+  plaid_category_primary: string | null
+  plaid_category_detailed: string | null
+}
+
+export async function getUncategorized(): Promise<UncategorizedTxn[]> {
+  const { data } = await apiClient.get("/plaid/transactions/uncategorized")
+  return data
+}

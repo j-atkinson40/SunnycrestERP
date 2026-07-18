@@ -175,6 +175,80 @@ def start_run(
     return {"id": run.id, "status": run.status}
 
 
+@router.post("/runs/{run_id}/populate-from-feed")
+def populate_from_feed(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Plaid B-3 — materialize statement lines FROM THE FEED for a linked
+    account. POSTED-only (pending money isn't reconcilable money), not-
+    removed, within [period_start, statement_date]. Idempotent per run via
+    the bank_transaction_id back-ref. THE MATCHER IS UNTOUCHED — these rows
+    flow through run-matching exactly as CSV rows do; CSV stays first-class
+    for unlinked accounts."""
+    from app.models.plaid import BankAccount, BankTransaction
+
+    run = db.query(ReconciliationRun).filter(
+        ReconciliationRun.id == run_id,
+        ReconciliationRun.tenant_id == current_user.company_id,
+    ).first()
+    if not run:
+        raise HTTPException(404, "Run not found")
+    if run.status not in ("importing", "matching"):
+        raise HTTPException(409, f"Run is {run.status} — populate applies to open runs")
+
+    linked = db.query(BankAccount).filter(
+        BankAccount.financial_account_id == run.financial_account_id,
+        BankAccount.tenant_id == current_user.company_id,
+        BankAccount.is_active.is_(True),
+    ).all()
+    if not linked:
+        raise HTTPException(
+            409,
+            "This platform account has no linked bank account — link one on "
+            "the bank connection card, or upload a CSV.",
+        )
+
+    already = {
+        r[0] for r in db.query(ReconciliationTransaction.bank_transaction_id)
+        .filter(ReconciliationTransaction.reconciliation_run_id == run.id,
+                ReconciliationTransaction.bank_transaction_id.isnot(None))
+    }
+    q = db.query(BankTransaction).filter(
+        BankTransaction.tenant_id == current_user.company_id,
+        BankTransaction.bank_account_id.in_([a.id for a in linked]),
+        BankTransaction.is_pending.is_(False),   # POSTED-only
+        BankTransaction.removed_at.is_(None),    # retractions honored
+        BankTransaction.transaction_date <= run.statement_date,
+    )
+    if run.period_start:
+        q = q.filter(BankTransaction.transaction_date >= run.period_start)
+    feed_rows = q.order_by(BankTransaction.transaction_date).all()
+
+    created = 0
+    for i, bt in enumerate(feed_rows):
+        if bt.id in already:
+            continue
+        db.add(ReconciliationTransaction(
+            tenant_id=current_user.company_id,
+            reconciliation_run_id=run.id,
+            transaction_date=bt.transaction_date,
+            description=bt.description,
+            raw_description=bt.raw_description,
+            amount=bt.amount,  # platform sign already — the one negation lives at ingest
+            transaction_type="credit" if bt.amount and bt.amount > 0 else "debit",
+            sort_order=i,
+            bank_transaction_id=bt.id,
+        ))
+        created += 1
+    run.total_statement_transactions = (run.total_statement_transactions or 0) + created
+    run.status = "matching"
+    db.commit()
+    return {"populated": created, "skipped_existing": len(feed_rows) - created,
+            "source": "bank_feed"}
+
+
 @router.post("/runs/{run_id}/upload-csv")
 async def upload_csv(
     run_id: str,

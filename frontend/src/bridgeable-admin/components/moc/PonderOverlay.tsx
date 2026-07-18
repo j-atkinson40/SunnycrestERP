@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowRight, BarChart3, BookOpen, ChevronLeft, ChevronRight, Clock, Inbox,
   LayoutPanelTop, Pause, PauseCircle, Pencil, Play, RotateCcw, Trash2,
-  Workflow as WorkflowIcon, X,
+  Landmark, Workflow as WorkflowIcon, X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -60,6 +60,7 @@ const KIND_GLYPH = {
   focus: LayoutPanelTop,
   downstream: Inbox,
   garnish: BarChart3,
+  setup: Landmark,
   // Map Home — the composition kinds (area/onboarding ponders).
   opening: BookOpen,
   task: WorkflowIcon,
@@ -73,6 +74,7 @@ const KIND_EYEBROW: Record<PonderBeat["kind"], string> = {
   focus: "Where you work",
   downstream: "Where it lands",
   garnish: "Last time it ran",
+  setup: "The feed",
   // Map Home — the composition kinds.
   opening: "How this area thinks",
   task: "What runs here",

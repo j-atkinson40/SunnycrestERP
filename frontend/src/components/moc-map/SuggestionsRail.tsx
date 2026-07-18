@@ -11,6 +11,7 @@
  * spine beneath it (the navigation guarantee).
  */
 import { useCallback, useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Lightbulb, X } from "lucide-react"
 
 import {
@@ -27,6 +28,7 @@ export function SuggestionsRail({
   refreshToken?: unknown
 }) {
   const [cards, setCards] = useState<MapSuggestion[]>([])
+  const navigate = useNavigate()
 
   const load = useCallback(() => {
     getSuggestions().then(setCards).catch(() => setCards([]))
@@ -41,6 +43,19 @@ export function SuggestionsRail({
     setCards((prev) => prev.filter((c) => c.id !== s.id))
   }, [])
 
+  // B-3 — the NAV-CAPABLE variant: an href card navigates (the setup
+  // suggestion); ponder cards keep the page-supplied opener. RETIRE-BY-
+  // REALITY lives server-side — the rule re-checks the live state each
+  // build; the card vanishes on connection, never by click.
+  const activate = (s: MapSuggestion) => {
+    if (s.href) {
+      recordEngagement(s.ponder_key, "viewed")
+      navigate(s.href)
+    } else {
+      onOpen(s)
+    }
+  }
+
   if (cards.length === 0) return null // EMPTY-HONEST — nothing to stretch
 
   return (
@@ -54,11 +69,11 @@ export function SuggestionsRail({
             key={s.id}
             role="button"
             tabIndex={0}
-            onClick={() => onOpen(s)}
+            onClick={() => activate(s)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault()
-                onOpen(s)
+                activate(s)
               }
             }}
             className="group relative cursor-pointer rounded-md bg-surface-elevated p-4 shadow-level-1 transition-shadow duration-quick ease-settle hover:shadow-level-2 focus-ring-accent"

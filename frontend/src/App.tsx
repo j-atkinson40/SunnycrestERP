@@ -93,6 +93,7 @@ import BriefingPreferencesPage from "@/pages/settings/BriefingPreferences";
 import EdgePanelSettingsPage from "@/pages/settings/EdgePanelSettingsPage";
 import ManufacturerPersonalizationStudioFromShareView from "@/pages/personalization-studio/ManufacturerPersonalizationStudioFromShareView";
 import SpacesSettings from "@/pages/settings/SpacesSettings";
+import BankCategoriesSettings from "@/pages/settings/BankCategoriesSettings";
 import PortalUsersSettings from "@/pages/settings/PortalUsersSettings";
 import PortalBrandingSettings from "@/pages/settings/PortalBrandingSettings";
 import EmailAccountsPage from "@/pages/settings/EmailAccountsPage";
@@ -819,6 +820,10 @@ export function renderTenantSlugRoutes(
                   <Route
                     path="settings/spaces"
                     element={<SpacesSettings />}
+                  />
+                  <Route
+                    path="settings/bank-categories"
+                    element={<BankCategoriesSettings />}
                   />
                   {/* R-5.1 — per-user edge panel customization. Renders
                       under same authenticated tenant guard as briefing/

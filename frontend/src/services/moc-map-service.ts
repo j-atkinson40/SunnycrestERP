@@ -207,11 +207,14 @@ export const tenantPonderService: PonderService = {
 
 export interface MapSuggestion {
   id: string
-  rule: "onboarding" | "role_area" | "recency" | "job_recency"
+  rule: "onboarding" | "role_area" | "recency" | "job_recency" | "setup"
   title: string
   /** LOAD-BEARING: the honest reason this card exists. Always present. */
   why: string
   ponder_key: string
+  /** B-3 — the NAV-CAPABLE variant: present = the card navigates instead
+   * of opening a ponder (the setup suggestion). */
+  href?: string
 }
 
 export async function getSuggestions(): Promise<MapSuggestion[]> {

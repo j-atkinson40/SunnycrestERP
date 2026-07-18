@@ -8,6 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 
 import { SuggestionsRail } from "./SuggestionsRail"
 import * as svc from "@/services/moc-map-service"
@@ -37,7 +38,7 @@ describe("SuggestionsRail", () => {
 
   it("renders each card WITH its why-line (load-bearing)", async () => {
     vi.mocked(svc.getSuggestions).mockResolvedValue(structuredClone(CARDS))
-    render(<SuggestionsRail onOpen={() => {}} />)
+    render(<MemoryRouter><SuggestionsRail onOpen={() => {}} /></MemoryRouter>)
     await waitFor(() => screen.getByTestId("map-suggestions-rail"))
     expect(screen.getByTestId("map-suggestion-why-onboarding").textContent)
       .toContain("you haven't walked this yet")
@@ -47,7 +48,7 @@ describe("SuggestionsRail", () => {
 
   it("dismissal records + removes the card", async () => {
     vi.mocked(svc.getSuggestions).mockResolvedValue(structuredClone(CARDS))
-    render(<SuggestionsRail onOpen={() => {}} />)
+    render(<MemoryRouter><SuggestionsRail onOpen={() => {}} /></MemoryRouter>)
     await waitFor(() => screen.getByTestId("map-suggestion-onboarding"))
     fireEvent.click(screen.getByTestId("map-suggestion-dismiss-onboarding"))
     expect(svc.recordEngagement).toHaveBeenCalledWith(
@@ -59,7 +60,7 @@ describe("SuggestionsRail", () => {
   it("clicking a card opens its ponder", async () => {
     vi.mocked(svc.getSuggestions).mockResolvedValue(structuredClone(CARDS))
     const onOpen = vi.fn()
-    render(<SuggestionsRail onOpen={onOpen} />)
+    render(<MemoryRouter><SuggestionsRail onOpen={onOpen} /></MemoryRouter>)
     await waitFor(() => screen.getByTestId("map-suggestion-role_area"))
     fireEvent.click(screen.getByTestId("map-suggestion-role_area"))
     expect(onOpen).toHaveBeenCalledWith(
@@ -69,7 +70,7 @@ describe("SuggestionsRail", () => {
 
   it("EMPTY-HONEST — no cards, no rail at all", async () => {
     vi.mocked(svc.getSuggestions).mockResolvedValue([])
-    render(<SuggestionsRail onOpen={() => {}} />)
+    render(<MemoryRouter><SuggestionsRail onOpen={() => {}} /></MemoryRouter>)
     await new Promise((r) => setTimeout(r, 10))
     expect(screen.queryByTestId("map-suggestions-rail")).toBeNull()
   })

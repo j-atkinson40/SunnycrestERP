@@ -313,6 +313,57 @@ def build_job_ponder_script(
         pieces.append(f"{' and '.join(counts)} work this job")
     _beat("opening", "opening", (". ".join(pieces) + ".") if pieces else job.name)
 
+    # THE FEED BEAT (Plaid B-3 — the map's full story): when this job's
+    # automations include the bank pull, the story opens with the feed's
+    # live state — connection, accounts, and the honest uncategorized
+    # count. Tenant-scoped; HONEST ABSENCE when no tenant context or no
+    # connection (the setup card is the deep link either way).
+    if company_id and any(
+        (r["automation"].get("name") == "Pull Bank Transactions")
+        for r in autos
+    ):
+        from app.models.plaid import BankTransaction, PlaidItem
+        item = (
+            db.query(PlaidItem)
+            .filter(PlaidItem.tenant_id == company_id,
+                    PlaidItem.is_active.is_(True))
+            .first()
+        )
+        if item is not None:
+            n_accounts = len(item.accounts)
+            uncat = (
+                db.query(BankTransaction)
+                .filter(BankTransaction.tenant_id == company_id,
+                        BankTransaction.expense_category.is_(None),
+                        BankTransaction.removed_at.is_(None))
+                .count()
+            )
+            live = (
+                db.query(BankTransaction)
+                .filter(BankTransaction.tenant_id == company_id,
+                        BankTransaction.removed_at.is_(None))
+                .count()
+            )
+            cat_clause = (
+                f" {live - uncat} of {live} categorized; "
+                f"{uncat} awaiting a category." if live else ""
+            )
+            _beat(
+                "feed", "setup",
+                f"The feed: {item.institution_name or 'your bank'} connected "
+                f"— {n_accounts} account{'s' if n_accounts != 1 else ''} "
+                f"feeding.{cat_clause}",
+                link={"href": "/bridgeable-map/Accounting",
+                      "label": "Open the connection card"},
+            )
+        else:
+            _beat(
+                "feed", "setup",
+                "No bank connected yet — the feed starts at the setup card.",
+                link={"href": "/bridgeable-map/Accounting",
+                      "label": "Connect your bank"},
+            )
+
     # THE AUTOMATION BEATS — the means, each deep-linking its full ponder.
     for r in autos:
         a = r["automation"]

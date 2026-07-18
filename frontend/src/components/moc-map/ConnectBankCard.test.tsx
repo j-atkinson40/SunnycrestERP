@@ -18,6 +18,9 @@ vi.mock("@/services/plaid-service", () => ({
   getPlaidItems: (...a: unknown[]) => getPlaidItems(...a),
   createLinkToken: vi.fn(),
   exchangePublicToken: vi.fn(),
+  getReconciliationAccounts: vi.fn().mockResolvedValue([]),
+  linkBankAccount: vi.fn(),
+  disconnectPlaidItem: vi.fn(),
 }))
 
 vi.mock("react-plaid-link", () => ({
@@ -74,7 +77,7 @@ describe("ConnectBankCard", () => {
       screen.getByText(/Connected: First Platypus Bank/).textContent,
     ).toBeTruthy()
     expect(screen.getByText(/2 accounts/)).toBeTruthy()
-    expect(screen.getByText(/credit card/)).toBeTruthy()
+    expect(screen.getAllByText(/credit card/).length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByTestId("connect-bank-degraded")).toBeNull()
   })
 

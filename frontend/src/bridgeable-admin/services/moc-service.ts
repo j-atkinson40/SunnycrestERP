@@ -680,7 +680,7 @@ export async function deletePlanning(id: string): Promise<void> {
 
 // ── The Ponder (P1) — the derived walkthrough script + caption authoring ────
 
-export type PonderBeatKind = "when" | "step" | "pause" | "focus" | "downstream" | "garnish"
+export type PonderBeatKind = "when" | "step" | "pause" | "focus" | "downstream" | "garnish" | "setup"
   // Map Home — the area/onboarding composition kinds.
   | "opening"
   | "task"
