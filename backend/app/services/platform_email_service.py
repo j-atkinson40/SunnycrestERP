@@ -21,7 +21,26 @@ from sqlalchemy.orm import Session
 
 from app.models.email_send import EmailSend
 from app.models.platform_email_settings import PlatformEmailSettings
-from app.services.email_service import EmailService, _wrap_html
+from app.services.email_service import EmailService
+
+
+def _wrap_html(*, subject: str, header_sub: str, body_content: str,
+               footer_text: str) -> str:
+    """LOCAL repair (SMTP hardening rider, 2026-07-18): D-9 deleted
+    email_service._wrap_html (HTML wrapping moved to the managed
+    email.base_wrapper template) while this module still called it — the
+    lazy route-level imports hid a module that could not import at all.
+    This minimal wrapper restores the price-list email path; migrating it
+    onto the D-7 template is flagged follow-up work, not this rider's."""
+    return f"""<!DOCTYPE html><html><body style="font-family: sans-serif; color: #333; margin: 0;">
+<div style="max-width: 640px; margin: 0 auto; padding: 24px;">
+  <h2 style="margin-bottom: 4px;">{subject}</h2>
+  <p style="color: #777; margin-top: 0;">{header_sub}</p>
+  {body_content}
+  <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;" />
+  <p style="color: #999; font-size: 12px;">{footer_text}</p>
+</div>
+</body></html>"""
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +76,16 @@ def update_email_settings(db: Session, tenant_id: str, data: dict) -> PlatformEm
     )
     for key in allowed:
         if key in data:
-            setattr(s, key, data[key])
+            value = data[key]
+            if key == "smtp_password_encrypted" and value:
+                # ENCRYPT AT WRITE — the name stays true from here on.
+                # Already-ciphertext input (a round-tripped read) passes.
+                from app.services.email.crypto import (
+                    encrypt_secret, is_fernet_ciphertext,
+                )
+                if not is_fernet_ciphertext(value):
+                    value = encrypt_secret(value)
+            setattr(s, key, value)
     db.commit()
     db.refresh(s)
     return s
@@ -77,7 +105,8 @@ def verify_smtp(db: Session, tenant_id: str) -> dict:
             server = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10)
 
         if s.smtp_username and s.smtp_password_encrypted:
-            server.login(s.smtp_username, s.smtp_password_encrypted)
+            from app.services.email.crypto import decrypt_secret
+            server.login(s.smtp_username, decrypt_secret(s.smtp_password_encrypted))
         server.quit()
 
         s.smtp_verified = True
@@ -177,7 +206,9 @@ def _send_via_smtp(
             server = smtplib.SMTP(settings_obj.smtp_host, settings_obj.smtp_port, timeout=15)
 
         if settings_obj.smtp_username and settings_obj.smtp_password_encrypted:
-            server.login(settings_obj.smtp_username, settings_obj.smtp_password_encrypted)
+            from app.services.email.crypto import decrypt_secret
+            server.login(settings_obj.smtp_username,
+                         decrypt_secret(settings_obj.smtp_password_encrypted))
 
         server.sendmail(msg["From"], [to_email], msg.as_string())
         server.quit()

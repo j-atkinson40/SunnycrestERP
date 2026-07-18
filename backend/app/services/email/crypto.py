@@ -136,3 +136,35 @@ def redact_for_audit(payload: dict[str, Any]) -> dict[str, Any]:
         key: {"present": True, "length": len(str(value))}
         for key, value in payload.items()
     }
+
+
+# ── Single-string secrets (SMTP hardening, 2026-07-18) ──────────────────
+# PlatformEmailSettings.smtp_password_encrypted held LIVE PLAINTEXT under
+# an _encrypted name (the third sibling of the QBO scan). These helpers
+# make the name true: same master key, same rotation posture. Ciphertext
+# is recognizable by Fernet's "gAAAA" prefix — the idempotency handle the
+# r136 migration and the write path both use.
+
+def encrypt_secret(value: str) -> str:
+    """Encrypt a single secret string to a Fernet token."""
+    if not value:
+        raise EmailCredentialEncryptionError("Refusing to encrypt an empty secret")
+    return _get_fernet().encrypt(value.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_secret(ciphertext: str | None) -> str | None:
+    """Decrypt a Fernet-token secret; None passes through (unset)."""
+    if not ciphertext:
+        return None
+    try:
+        return _get_fernet().decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    except InvalidToken as exc:
+        raise EmailCredentialEncryptionError(
+            "Failed to decrypt SMTP password — the encryption key has "
+            "rotated since it was stored. Re-enter the password to recover."
+        ) from exc
+
+
+def is_fernet_ciphertext(value: str | None) -> bool:
+    """The idempotency handle: Fernet tokens carry the gAAAA prefix."""
+    return bool(value) and value.startswith("gAAAA")
