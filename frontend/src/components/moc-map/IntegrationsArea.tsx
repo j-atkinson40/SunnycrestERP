@@ -100,6 +100,7 @@ export function IntegrationsArea({
   onPonder: (overlayId: string) => void
 }) {
   const [integrations, setIntegrations] = useState<IntegrationSummary[]>([])
+  const [managing, setManaging] = useState(false)
   const [params] = useSearchParams()
   const autoConnect = params.get("connect") === "1"
 
@@ -123,12 +124,26 @@ export function IntegrationsArea({
         </div>
       </section>
 
-      {/* THE MANAGEMENT — the grown B-3 card, beneath the grid. */}
-      <div>
+      {/* THE MANAGEMENT — off the page by default (the accounts are a
+          step in the ponder); reachable via the quiet link below or the
+          ponder's connect action (?connect=1). */}
+      {managing || autoConnect ? (
         <ConnectBankCard isAdmin={isAdmin} autoConnect={autoConnect} />
+      ) : null}
+      <div className="flex items-center gap-4">
+        {isAdmin ? (
+          <button
+            type="button"
+            onClick={() => setManaging((m) => !m)}
+            className="focus-ring-accent rounded-md text-body-sm text-accent underline-offset-2 hover:underline"
+            data-testid="integrations-manage-toggle"
+          >
+            {managing || autoConnect ? "Hide management" : "Manage connection"}
+          </button>
+        ) : null}
         <Link
           to="/settings/bank-categories"
-          className="focus-ring-accent mt-2 inline-flex items-center gap-1.5 rounded-md text-body-sm text-accent underline-offset-2 hover:underline"
+          className="focus-ring-accent inline-flex items-center gap-1.5 rounded-md text-body-sm text-accent underline-offset-2 hover:underline"
           data-testid="integrations-category-link"
         >
           <Tags size={13} /> Bank categories — how transactions get named

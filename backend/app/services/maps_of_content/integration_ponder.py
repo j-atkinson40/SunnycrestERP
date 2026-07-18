@@ -23,7 +23,7 @@ from app.models.plaid import BankTransaction, PlaidItem
 
 _INTEGRATIONS = {
     "plaid": {
-        "title": "Bank feed (Plaid)",
+        "title": "Bank Connections",
         "what": "A live connection to your bank — transactions pull in on "
                 "a schedule, categorize themselves, and land ready to "
                 "reconcile.",
