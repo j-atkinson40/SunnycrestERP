@@ -51,6 +51,7 @@ export function ConnectBankCard({
   isAdmin, autoConnect = false,
 }: { isAdmin: boolean; autoConnect?: boolean }) {
   const [items, setItems] = useState<PlaidItemSummary[] | null>(null)
+  const [managing, setManaging] = useState(false)
   const [platformAccounts, setPlatformAccounts] = useState<ReconAccount[]>([])
   const [reauthItemId, setReauthItemId] = useState<string | null>(null)
   const [linkToken, setLinkToken] = useState<string | null>(null)
@@ -240,9 +241,18 @@ export function ConnectBankCard({
                 ) : null}
               </div>
 
-              {/* THE ACCOUNTS + LINKING MANAGEMENT — which bank account
-                  feeds which platform account. Unlinked is honest, not an
-                  error; the mask/subtype auto-match is editable here. */}
+              {/* THE ACCOUNTS + LINKING MANAGEMENT — collapsed by
+                  default (the readable list lives in the ponder); expand
+                  to edit which bank account feeds which platform account. */}
+              <button
+                type="button"
+                onClick={() => setManaging((m) => !m)}
+                className="focus-ring-accent mt-2 rounded-md text-caption text-content-muted underline-offset-2 hover:underline"
+                data-testid="connect-bank-manage-toggle"
+              >
+                {managing ? "Hide accounts" : `Manage accounts & linking (${item.accounts.length})`}
+              </button>
+              {managing ? (
               <ul className="mt-2 space-y-1" data-testid="connect-bank-accounts">
                 {item.accounts.map((a) => (
                   <li
@@ -288,6 +298,7 @@ export function ConnectBankCard({
                   </li>
                 ))}
               </ul>
+              ) : null}
             </div>
           ))}
           {isAdmin ? (

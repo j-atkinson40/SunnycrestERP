@@ -37,7 +37,11 @@ function IntegrationCard({
   ig: IntegrationSummary
   onPonder: (overlayId: string) => void
 }) {
-  const complete = () => onPonder(`integration:${ig.key}`)
+  // Memoized — a fresh callback each hover re-render re-arms the hold
+  // timer and the hold-P never completes (the JobCard lesson).
+  const complete = useCallback(
+    () => onPonder(`integration:${ig.key}`), [onPonder, ig.key],
+  )
   const { hovered, holding, reduced, hoverProps } = useHoldToPonder(true, complete)
   return (
     <div

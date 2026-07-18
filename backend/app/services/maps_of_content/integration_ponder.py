@@ -144,11 +144,19 @@ def build_integration_ponder(
             lines = []
             for it in items:
                 face = "healthy" if it.status == "active" else "needs re-connecting"
-                lines.append(
-                    f"{it.institution_name or 'Bank'} — "
-                    f"{len(it.accounts)} accounts · {face}"
+                linked = [a for a in it.accounts if a.financial_account_id]
+                acct_bits = ", ".join(
+                    f"{a.name} ····{a.mask}" + (" (credit)" if a.account_type == "credit" else "")
+                    for a in it.accounts[:6]
                 )
-            txt = "Your connections: " + "; ".join(lines) + "."
+                more = len(it.accounts) - 6
+                if more > 0:
+                    acct_bits += f", and {more} more"
+                lines.append(
+                    f"{it.institution_name or 'Bank'} ({face}): {acct_bits}. "
+                    f"{len(linked)} of {len(it.accounts)} feeding reconciliation."
+                )
+            txt = "Your connections — " + " ".join(lines)
             beats.append({
                 "key": "connections", "kind": "setup", "text": txt,
                 "derived_text": txt, "authored": False,
