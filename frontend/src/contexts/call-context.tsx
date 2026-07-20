@@ -200,11 +200,17 @@ export function CallContextProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user || !preferences.rc_overlay_enabled) return;
 
-    function connect() {
+    async function connect() {
       const token = localStorage.getItem("access_token");
       if (!token) return;
 
-      const url = `/api/v1/integrations/ringcentral/events?token=${encodeURIComponent(token)}`;
+      // Map-performance arc (2026-07-20): this was a RELATIVE url — in
+      // dev it hit the Vite origin (5173), 404'd instantly, and the
+      // reconnect loop retried forever (one dead request every 30s in
+      // every tab, plus the initial backoff burst on every load).
+      // Route through the same per-request base the API client uses.
+      const { resolveApiBaseUrl } = await import("@/lib/api-client");
+      const url = `${resolveApiBaseUrl()}/api/v1/integrations/ringcentral/events?token=${encodeURIComponent(token)}`;
       const es = new EventSource(url);
       eventSourceRef.current = es;
 

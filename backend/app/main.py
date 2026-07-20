@@ -109,6 +109,9 @@ cors_kwargs = {
     "allow_credentials": True,
     "allow_methods": ["*"],
     "allow_headers": ["*"],
+    # Map-performance arc: Server-Timing must be exposed for the browser
+    # devtools Timing tab to parse it cross-origin.
+    "expose_headers": ["Server-Timing"],
 }
 # Use explicit regex if set; otherwise default to known patterns in non-dev
 cors_regex = settings.CORS_ORIGIN_REGEX
@@ -118,6 +121,26 @@ if cors_regex:
     cors_kwargs["allow_origin_regex"] = cors_regex
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Server-Timing — every API response self-reports its server time
+# (map-performance arc, 2026-07-20: the [seed-timing] philosophy at the
+# HTTP layer — a permanent instrument, not a one-off probe. Any devtools
+# Network tab now shows where the milliseconds live: `app;dur=NN` is
+# server work; the rest of the bar is network/queueing/browser).
+# ---------------------------------------------------------------------------
+import time as _time  # noqa: E402
+
+
+@app.middleware("http")
+async def _server_timing(request, call_next):
+    t0 = _time.perf_counter()
+    response = await call_next(request)
+    response.headers["Server-Timing"] = (
+        f"app;dur={(_time.perf_counter() - t0) * 1000:.1f}"
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------
