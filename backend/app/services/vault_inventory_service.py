@@ -77,7 +77,7 @@ def project_inventory(
             SalesOrder.company_id == company_id,
             SalesOrder.scheduled_date >= today,
             SalesOrder.scheduled_date <= horizon,
-            SalesOrder.status.notin_(["cancelled", "delivered", "invoiced"]),
+            SalesOrder.status.notin_([*CANCEL_SPELLINGS, "delivered", "invoiced"]),
         ).all()
         for order in orders:
             if not order.scheduled_date:

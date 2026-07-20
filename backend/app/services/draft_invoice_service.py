@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.models.customer import Customer
 from app.models.invoice import Invoice
-from app.models.sales_order import SalesOrder
+from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
 
 logger = logging.getLogger(__name__)
 
@@ -149,8 +149,26 @@ def _try_send_invoice_email(db: Session, inv: Invoice) -> None:
 # Statuses that count as driver-confirmed delivery
 DRIVER_CONFIRMED_STATUSES = {"completed", "shipped", "delivered"}
 
-# Statuses that mean the order is cancelled / won't be invoiced
-SKIP_STATUSES = {"canceled", "cancelled", "postponed"}
+# Statuses that mean the order is cancelled / won't be invoiced.
+# CANCEL_SPELLINGS covers legacy inbound rows defensively; the canonical
+# spelling is STATUS_CANCELLED (see app/models/sales_order.py).
+SKIP_STATUSES = {*CANCEL_SPELLINGS, "postponed"}
+
+# SHIPMENT BILLING POLICY (audit #2, Session Three — Operator Decision 2,
+# pre-staged as option (b) pending the operator's word): orders bill IN
+# FULL at first shipment/delivery. This was always the behavior; now it
+# is EXPLICIT and stated on the invoice's face. Partial-shipment
+# (proportional) billing has no substrate today — quantity_shipped has
+# zero writers and deliveries are one-per-order in practice.
+SHIPMENT_BILLING_POLICY = "bill_in_full_at_first_shipment"
+_POLICY_NOTE = "Billed in full upon shipment."
+
+
+def _stamp_billing_policy(invoice) -> None:
+    """State the shipment-billing policy on the invoice's face."""
+    if invoice.notes and _POLICY_NOTE in invoice.notes:
+        return
+    invoice.notes = f"{invoice.notes}\n{_POLICY_NOTE}" if invoice.notes else _POLICY_NOTE
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +214,14 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
         db.query(SalesOrder)
         .filter(
             SalesOrder.company_id == tenant_id,
-            SalesOrder.status.in_(["confirmed", "processing", "shipped", "delivered"]),
+            # `completed` joined the net (audit #2 D-3): it is set by full
+            # payment (already invoiced — the uninvoiced check skips those)
+            # OR by manual PATCH / seeds (possibly never invoiced — these
+            # were stranded forever, ~$9,942 on dev). The double-invoice
+            # guard + already_invoiced_order_ids make inclusion safe.
+            SalesOrder.status.in_(
+                ["confirmed", "processing", "shipped", "delivered", "completed"]
+            ),
             ~SalesOrder.status.in_(SKIP_STATUSES),
         )
         .filter(
@@ -277,6 +302,7 @@ def _generate_auto_confirm_mode(
             invoice.review_due_date = tomorrow
             invoice.auto_generated = True
             invoice.generation_reason = "end_of_day_batch"
+            _stamp_billing_policy(invoice)
 
             if order.has_driver_exception and order.driver_exceptions:
                 invoice.has_exceptions = True
@@ -386,6 +412,7 @@ def _generate_require_driver_mode(
             invoice.review_due_date = tomorrow
             invoice.auto_generated = True
             invoice.generation_reason = "end_of_day_batch"
+            _stamp_billing_policy(invoice)
 
             if order.has_driver_exception and order.driver_exceptions:
                 invoice.has_exceptions = True

@@ -369,6 +369,7 @@ def convert_quote_to_order(
         quote_id=quote.id,
         status="confirmed",
         order_date=now,
+        payment_terms=quote.payment_terms,
         subtotal=quote.subtotal,
         tax_rate=quote.tax_rate,
         tax_amount=quote.tax_amount,
@@ -406,6 +407,18 @@ def convert_quote_to_order(
 
     db.commit()
     db.refresh(order)
+
+    # THE BYPASS CLOSED (audit #2 D-7 partial, Session Three): this path
+    # creates the order confirmed-on-INSERT, so it never passed through
+    # update_sales_order's confirm hook — delivery auto-creation silently
+    # never fired for Order-Station orders. Fire it here, same
+    # best-effort contract as the PATCH path. Idempotent (the hook
+    # skips if a delivery already references the order) + settings-gated.
+    try:
+        from app.services import order_integration_service
+        order_integration_service.on_order_confirmed(db, order)
+    except Exception as exc:
+        logger.error("Order integration hook failed for %s: %s", order.id, exc)
 
     # V-1f: mirror the conversion into the Quote's VaultItem so the
     # timeline + overview widgets reflect "quote converted → order".

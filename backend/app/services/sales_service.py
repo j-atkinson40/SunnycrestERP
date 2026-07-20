@@ -17,7 +17,12 @@ from app.models.customer import Customer
 from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.quote import Quote, QuoteLine
-from app.models.sales_order import SalesOrder, SalesOrderLine
+from app.models.sales_order import (
+    CANCEL_SPELLINGS,
+    STATUS_CANCELLED,
+    SalesOrder,
+    SalesOrderLine,
+)
 from app.schemas.sales import (
     ARAgingBucket,
     ARAgingCustomer,
@@ -637,11 +642,16 @@ def update_sales_order(
 ) -> SalesOrder:
     order = get_sales_order(db, company_id, order_id)
 
-    if order.status in ("completed", "canceled"):
+    if order.status in ("completed", STATUS_CANCELLED):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot modify order in '{order.status}' status",
         )
+
+    # Normalize inbound cancel spellings to the canonical (D-6 heal):
+    # a client writing "canceled" must not mint a row no comparison sees.
+    if getattr(data, "status", None) in CANCEL_SPELLINGS:
+        data.status = STATUS_CANCELLED
 
     for field in ("status", "required_date", "shipped_date", "notes",
                    "deceased_name", "service_location", "service_location_other",
@@ -705,10 +715,10 @@ def create_invoice_from_order(
 ) -> Invoice:
     order = get_sales_order(db, company_id, order_id)
 
-    if order.status in ("canceled",):
+    if order.status == STATUS_CANCELLED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot invoice a canceled order",
+            detail="Cannot invoice a cancelled order",
         )
 
     # FLANK GUARD (audit #2 D-5): a draft order isn't real yet — refuse.
@@ -1177,7 +1187,7 @@ def _auto_complete_order_on_payment(db, invoice, company_id):
         order = db.query(SalesOrder).filter(SalesOrder.id == invoice.sales_order_id).first()
         if not order:
             return
-        if order.status in ("cancelled", "completed"):
+        if order.status in (STATUS_CANCELLED, "completed"):
             return
         order.status = "completed"
         order.completed_at = datetime.now(timezone.utc)

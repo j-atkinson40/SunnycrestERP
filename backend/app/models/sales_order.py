@@ -20,6 +20,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+# THE CANONICAL SPELLING (audit #2 D-6, Session Three): "cancelled" —
+# double-L, everywhere. The codebase carried both spellings; comparison
+# sites that checked only one silently missed the other. Every
+# SalesOrder-status comparison imports these; writers normalize inbound
+# spellings through CANCEL_SPELLINGS.
+STATUS_CANCELLED = "cancelled"
+CANCEL_SPELLINGS = frozenset({"cancelled", "canceled"})
+
+
 class SalesOrder(Base):
     """Sales order — can be invoiced. Optionally originates from a quote."""
 
@@ -40,8 +49,7 @@ class SalesOrder(Base):
     )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="draft"
-    )  # draft, confirmed, processing, delivered, completed, canceled
-
+    )  # draft, confirmed, processing, delivered, completed, cancelled
     order_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

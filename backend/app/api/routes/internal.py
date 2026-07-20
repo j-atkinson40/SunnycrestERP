@@ -98,14 +98,14 @@ def preview_auto_delivery(
 ):
     """Preview which orders are eligible for auto-delivery today."""
     from datetime import date
-    from app.models.sales_order import SalesOrder
+    from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
     from app.models.invoice import Invoice
     from app.models.customer import Customer
 
     today = date.today()
     tenant_id = current_user.company_id
 
-    skip_statuses = {"canceled", "cancelled", "postponed"}
+    skip_statuses = {*CANCEL_SPELLINGS, "postponed"}
     already_invoiced = set(
         r[0] for r in db.query(Invoice.sales_order_id)
         .filter(Invoice.company_id == tenant_id, Invoice.sales_order_id.isnot(None))

@@ -61,23 +61,23 @@ def calculate_health_score(db: Session, master_company_id: str, tenant_id: str) 
 
     # ── Signal 1: Order recency ──────────────────────────────────────────
     try:
-        from app.models.sales_order import SalesOrder
+        from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
 
         # Order stats
         twelve_months_ago = text("now() - interval '12 months'")
         order_count_12mo = (
             db.query(func.count(SalesOrder.id))
-            .filter(SalesOrder.customer_id == customer_id, SalesOrder.status != "cancelled", SalesOrder.created_at >= twelve_months_ago)
+            .filter(SalesOrder.customer_id == customer_id, SalesOrder.status.notin_(CANCEL_SPELLINGS), SalesOrder.created_at >= twelve_months_ago)
             .scalar() or 0
         )
         total_revenue_12mo = (
             db.query(func.sum(SalesOrder.total))
-            .filter(SalesOrder.customer_id == customer_id, SalesOrder.status != "cancelled", SalesOrder.created_at >= twelve_months_ago)
+            .filter(SalesOrder.customer_id == customer_id, SalesOrder.status.notin_(CANCEL_SPELLINGS), SalesOrder.created_at >= twelve_months_ago)
             .scalar() or Decimal("0")
         )
         last_order_row = (
             db.query(func.max(SalesOrder.created_at))
-            .filter(SalesOrder.customer_id == customer_id, SalesOrder.status != "cancelled")
+            .filter(SalesOrder.customer_id == customer_id, SalesOrder.status.notin_(CANCEL_SPELLINGS))
             .scalar()
         )
 

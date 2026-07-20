@@ -589,7 +589,7 @@ def _sync_sales_order_delivery(db: Session, stop, now) -> None:
     """Mark the associated SalesOrder as delivered when a stop is completed."""
     try:
         from app.models.delivery import Delivery
-        from app.models.sales_order import SalesOrder
+        from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
 
         delivery = db.query(Delivery).filter(Delivery.id == stop.delivery_id).first()
         if not delivery or not delivery.order_id:
@@ -598,7 +598,7 @@ def _sync_sales_order_delivery(db: Session, stop, now) -> None:
         order = db.query(SalesOrder).filter(SalesOrder.id == delivery.order_id).first()
         if not order:
             return
-        if order.status in ("completed", "invoiced", "cancelled"):
+        if order.status in ("completed", "invoiced", *CANCEL_SPELLINGS):
             return
 
         order.status = "delivered"

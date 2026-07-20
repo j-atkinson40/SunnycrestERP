@@ -14,7 +14,7 @@ from app.api.deps import get_current_user, require_module
 from app.database import get_db
 from app.models.quick_quote_template import QuickQuoteTemplate
 from app.models.quote import Quote
-from app.models.sales_order import SalesOrder
+from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
 from app.models.user import User
 from app.schemas.order_station import (
     CreateQuoteRequest,
@@ -316,7 +316,7 @@ def order_station_activity(
         .filter(
             SalesOrder.company_id == tenant_id,
             SalesOrder.is_spring_burial.is_(True),
-            SalesOrder.status.notin_(["canceled", "completed"]),
+            SalesOrder.status.notin_([*CANCEL_SPELLINGS, "completed"]),
         )
         .scalar()
         or 0

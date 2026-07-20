@@ -308,7 +308,7 @@ def _maybe_add_training_reminder(db: Session, user: User, result: dict) -> None:
 def _maybe_add_legacy_photo_tasks(db: Session, user: User, result: dict) -> None:
     """Add legacy photo needed items to the daily context."""
     try:
-        from app.models.sales_order import SalesOrder
+        from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
         from app.models.customer import Customer
 
         today = date.today()
@@ -318,7 +318,7 @@ def _maybe_add_legacy_photo_tasks(db: Session, user: User, result: dict) -> None
                 SalesOrder.company_id == user.company_id,
                 SalesOrder.legacy_photo_pending.is_(True),
                 SalesOrder.scheduled_date >= today,
-                SalesOrder.status.notin_(["cancelled", "void"]),
+                SalesOrder.status.notin_([*CANCEL_SPELLINGS, "void"]),
             )
             .order_by(SalesOrder.scheduled_date)
             .limit(5)
@@ -347,7 +347,7 @@ def _maybe_add_legacy_proof_tasks(db: Session, user: User, result: dict) -> None
     """Add legacy proof review items to the daily context."""
     try:
         from app.models.order_personalization_task import OrderPersonalizationTask
-        from app.models.sales_order import SalesOrder
+        from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
         from app.models.customer import Customer
 
         tasks = (
@@ -399,7 +399,7 @@ def get_daily_context(
         .filter(
             SalesOrder.company_id == current_user.company_id,
             SalesOrder.scheduled_date == today,
-            SalesOrder.status.notin_(["cancelled", "void"]),
+            SalesOrder.status.notin_([*CANCEL_SPELLINGS, "void"]),
         )
         .count()
     )

@@ -35,7 +35,7 @@ def get_personalization_queue(
 ):
     """Get personalization tasks for today's and tomorrow's service dates."""
     from datetime import date, timedelta
-    from app.models.sales_order import SalesOrder, SalesOrderLine
+    from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder, SalesOrderLine
     from app.models.customer import Customer
 
     today = date.today()
@@ -47,7 +47,7 @@ def get_personalization_queue(
         .filter(
             OrderPersonalizationTask.company_id == current_user.company_id,
             SalesOrder.scheduled_date.in_([today, tomorrow]),
-            SalesOrder.status.notin_(["cancelled", "void"]),
+            SalesOrder.status.notin_([*CANCEL_SPELLINGS, "void"]),
         )
         .order_by(SalesOrder.scheduled_date, SalesOrder.service_time)
         .all()
@@ -242,7 +242,7 @@ def waive_legacy_photo(
     db: Session = Depends(get_db),
 ):
     """Clear legacy_photo_pending flag."""
-    from app.models.sales_order import SalesOrder
+    from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
 
     order = (
         db.query(SalesOrder)
