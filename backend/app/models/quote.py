@@ -17,6 +17,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+# THE UNIFIED VOCABULARY (D-11 U-2): one status set, both faces.
+# "rejected" survived (3 consumers vs 1); "declined" is an inbound alias
+# writers normalize — no row ever stores it (r140 proved the no-op).
+QUOTE_STATUSES = frozenset(
+    {"draft", "sent", "accepted", "rejected", "expired", "converted"}
+)
+QUOTE_STATUS_ALIASES = {"declined": "rejected"}
+
+
 class Quote(Base):
     """Sales quote — can be converted to a sales order."""
 
@@ -37,7 +46,7 @@ class Quote(Base):
     )  # For walk-in / quick quotes without a customer record
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="draft"
-    )  # draft, sent, accepted, rejected, expired, converted
+    )  # QUOTE_STATUSES below — the unified vocabulary (D-11 U-2)
 
     quote_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

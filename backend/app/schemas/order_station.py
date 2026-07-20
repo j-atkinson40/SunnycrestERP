@@ -79,7 +79,7 @@ class QuoteResponse(BaseModel):
 
 
 class UpdateQuoteStatusRequest(BaseModel):
-    status: str  # sent, declined, expired
+    status: str  # QUOTE_STATUSES minus converted; "declined" normalizes to "rejected" (U-2)
 
 
 # ---------------------------------------------------------------------------

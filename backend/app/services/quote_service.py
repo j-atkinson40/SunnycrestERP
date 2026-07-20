@@ -361,10 +361,31 @@ def create_quote(
     return _quote_to_dict(quote)
 
 
-def convert_quote_to_order(
-    db: Session, tenant_id: str, user_id: str, quote_id: str
-) -> dict:
-    """Convert an existing quote to a sales order."""
+def convert_quote_to_order_core(
+    db: Session, tenant_id: str, user_id: str | None, quote_id: str,
+    *, target_status: str,
+) -> SalesOrder:
+    """THE ONE CONVERTER (D-11 U-3) — both faces call this.
+
+    `target_status` is THE PARAMETER (the investigation's shape —
+    Session Three's deliberately-deferred divergence resolved here):
+
+      "confirmed" — operational intake (Order-Station): quote-or-order in
+                    one motion; `on_order_confirmed` fires NOW (idempotent,
+                    settings-gated — the Session Three hook discipline).
+      "draft"     — pipeline (Sales): the order awaits review; the hook
+                    fires later when the PATCH confirms it.
+
+    Everything else is IDENTICAL through this one path: the shared
+    allocator, every money field (U-1's tax truth travels on the order's
+    tax_rate/tax_amount — the REASON stays on the quote, reachable via
+    order.quote_id; SalesOrder carries no tax_reason field and none is
+    invented), payment terms, ship-to, deceased, line copies (auto-add
+    provenance included), the VaultItem mirror, the audit trail.
+    """
+    if target_status not in ("draft", "confirmed"):
+        raise ValueError(f"target_status must be draft|confirmed, got {target_status!r}")
+
     quote = _get_quote_or_404(db, tenant_id, quote_id)
 
     if quote.status == "converted":
@@ -372,9 +393,14 @@ def convert_quote_to_order(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Quote has already been converted to an order",
         )
+    if quote.status not in ("draft", "sent", "accepted"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot convert quote in '{quote.status}' status",
+        )
 
-    now = datetime.now(timezone.utc)
     order_number = _next_order_number(db, tenant_id)
+    now = datetime.now(timezone.utc)
 
     order = SalesOrder(
         id=str(uuid.uuid4()),
@@ -382,7 +408,7 @@ def convert_quote_to_order(
         number=order_number,
         customer_id=quote.customer_id,
         quote_id=quote.id,
-        status="confirmed",
+        status=target_status,
         order_date=now,
         payment_terms=quote.payment_terms,
         subtotal=quote.subtotal,
@@ -397,10 +423,10 @@ def convert_quote_to_order(
         created_at=now,
     )
     db.add(order)
+    db.flush()
 
-    # Copy lines (preserve auto-add tracking from quote)
     for ql in quote.lines or []:
-        order_line = SalesOrderLine(
+        db.add(SalesOrderLine(
             id=str(uuid.uuid4()),
             sales_order_id=order.id,
             product_id=ql.product_id,
@@ -411,10 +437,8 @@ def convert_quote_to_order(
             sort_order=ql.sort_order,
             is_auto_added=getattr(ql, "is_auto_added", False),
             auto_add_reason=getattr(ql, "auto_add_reason", None),
-        )
-        db.add(order_line)
+        ))
 
-    # Update quote status
     quote.status = "converted"
     quote.converted_to_order_id = order.id
     quote.modified_by = user_id
@@ -423,24 +447,21 @@ def convert_quote_to_order(
     db.commit()
     db.refresh(order)
 
-    # THE BYPASS CLOSED (audit #2 D-7 partial, Session Three): this path
-    # creates the order confirmed-on-INSERT, so it never passed through
-    # update_sales_order's confirm hook — delivery auto-creation silently
-    # never fired for Order-Station orders. Fire it here, same
-    # best-effort contract as the PATCH path. Idempotent (the hook
-    # skips if a delivery already references the order) + settings-gated.
-    try:
-        from app.services import order_integration_service
-        order_integration_service.on_order_confirmed(db, order)
-    except Exception as exc:
-        logger.error("Order integration hook failed for %s: %s", order.id, exc)
+    # THE PARAMETER'S TRUTH: confirmed-on-INSERT fires the confirm hook
+    # here (Session Three's bypass fix, now the one path's rule); a draft
+    # target defers it to the confirming PATCH.
+    if target_status == "confirmed":
+        try:
+            from app.services import order_integration_service
+            order_integration_service.on_order_confirmed(db, order)
+        except Exception as exc:
+            logger.error("Order integration hook failed for %s: %s", order.id, exc)
 
-    # V-1f: mirror the conversion into the Quote's VaultItem so the
-    # timeline + overview widgets reflect "quote converted → order".
+    # V-1f: mirror the conversion into the Quote's VaultItem — BOTH faces
+    # now (the Q--only mirror asymmetry closed for conversion).
     _update_quote_vault_item(db, quote)
     db.commit()
 
-    # BUGS.md #7 fix (2026-04-20): see create_quote comment.
     audit_service.log_action(
         db,
         tenant_id,
@@ -448,9 +469,20 @@ def convert_quote_to_order(
         "quote",
         quote.id,
         user_id=user_id,
-        changes={"order_id": order.id, "order_number": order_number},
+        changes={"order_id": order.id, "order_number": order_number,
+                 "target_status": target_status},
     )
+    return order
 
+
+def convert_quote_to_order(
+    db: Session, tenant_id: str, user_id: str, quote_id: str
+) -> dict:
+    """Order-Station face: operational intake → CONFIRMED (the parameter)."""
+    order = convert_quote_to_order_core(
+        db, tenant_id, user_id, quote_id, target_status="confirmed"
+    )
+    quote = _get_quote_or_404(db, tenant_id, quote_id)
     return {
         "id": order.id,
         "order_number": order.number,
@@ -486,15 +518,27 @@ def get_quote(db: Session, tenant_id: str, quote_id: str) -> dict:
     return _quote_to_dict(quote)
 
 
-def update_quote_status(
+def transition_quote_status(
     db: Session, tenant_id: str, user_id: str, quote_id: str, new_status: str
-) -> dict:
-    """Update quote status (sent, declined, expired)."""
-    valid_statuses = {"sent", "declined", "expired"}
-    if new_status not in valid_statuses:
+) -> Quote:
+    """THE ONE TRANSITION (D-11 U-2) — both faces' status changes land here.
+
+    Rules, unified from both prior sets:
+      - the vocabulary is QUOTE_STATUSES; inbound "declined" normalizes to
+        "rejected" (the alias never stores — a face may still SAY declined
+        until U-4; the row speaks canon)
+      - "converted" is terminal and only the converter writes it
+      - the VaultItem mirror + audit fire for EVERY face (the Q--only
+        mirror asymmetry closed)
+    """
+    from app.models.quote import QUOTE_STATUS_ALIASES, QUOTE_STATUSES
+
+    new_status = QUOTE_STATUS_ALIASES.get(new_status, new_status)
+    valid = QUOTE_STATUSES - {"converted"}
+    if new_status not in valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
+            detail=f"Invalid status '{new_status}'. Must be one of: {sorted(valid)}",
         )
 
     quote = _get_quote_or_404(db, tenant_id, quote_id)
@@ -518,7 +562,6 @@ def update_quote_status(
     _update_quote_vault_item(db, quote)
     db.commit()
 
-    # BUGS.md #7 fix (2026-04-20): see create_quote comment.
     audit_service.log_action(
         db,
         tenant_id,
@@ -528,7 +571,14 @@ def update_quote_status(
         user_id=user_id,
         changes={"old_status": old_status, "new_status": new_status},
     )
+    return quote
 
+
+def update_quote_status(
+    db: Session, tenant_id: str, user_id: str, quote_id: str, new_status: str
+) -> dict:
+    """Q--face wrapper over THE ONE TRANSITION (kept route contract)."""
+    quote = transition_quote_status(db, tenant_id, user_id, quote_id, new_status)
     return _quote_to_dict(quote)
 
 

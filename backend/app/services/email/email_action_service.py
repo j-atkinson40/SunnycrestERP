@@ -353,12 +353,18 @@ def _commit_handler_quote_approval(
         )
 
     # 2. Map outcome → action_status + Quote.status propagation.
+    # U-2 rule carried: "converted" is terminal — a late token click
+    # records the action but never rewrites a converted quote's status.
+    # (Direct writes kept — this flow owns one transaction; the words
+    # already speak the unified vocabulary.)
     if outcome == "approve":
         new_action_status = "approved"
-        quote.status = "accepted"
+        if quote.status != "converted":
+            quote.status = "accepted"
     elif outcome == "reject":
         new_action_status = "rejected"
-        quote.status = "rejected"
+        if quote.status != "converted":
+            quote.status = "rejected"
     elif outcome == "request_changes":
         new_action_status = "changes_requested"
         # Quote.status NOT changed — request_changes is a non-terminal

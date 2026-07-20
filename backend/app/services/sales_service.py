@@ -277,71 +277,12 @@ def update_quote(
 def convert_quote_to_order(
     db: Session, company_id: str, user_id: str, quote_id: str
 ) -> SalesOrder:
-    quote = get_quote(db, company_id, quote_id)
-
-    if quote.status == "converted":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Quote has already been converted",
-        )
-    if quote.status not in ("draft", "sent", "accepted"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot convert quote in '{quote.status}' status",
-        )
-
-    order_number = _next_number(db, company_id, SalesOrder, "SO")
-    now = datetime.now(timezone.utc)
-
-    order = SalesOrder(
-        id=str(uuid.uuid4()),
-        company_id=company_id,
-        number=order_number,
-        customer_id=quote.customer_id,
-        quote_id=quote.id,
-        status="draft",
-        order_date=now,
-        payment_terms=quote.payment_terms,
-        subtotal=quote.subtotal,
-        tax_rate=quote.tax_rate,
-        tax_amount=quote.tax_amount,
-        total=quote.total,
-        notes=quote.notes,
-        created_by=user_id,
+    """QTE-/Sales face: pipeline → DRAFT (the parameter). One converter,
+    one path — see quote_service.convert_quote_to_order_core (D-11 U-3)."""
+    from app.services.quote_service import convert_quote_to_order_core
+    return convert_quote_to_order_core(
+        db, company_id, user_id, quote_id, target_status="draft"
     )
-    db.add(order)
-    db.flush()
-
-    for ql in quote.lines:
-        sol = SalesOrderLine(
-            id=str(uuid.uuid4()),
-            sales_order_id=order.id,
-            product_id=ql.product_id,
-            description=ql.description,
-            quantity=ql.quantity,
-            unit_price=ql.unit_price,
-            line_total=ql.line_total,
-            sort_order=ql.sort_order,
-        )
-        db.add(sol)
-
-    quote.status = "converted"
-    quote.converted_to_order_id = order.id
-    quote.modified_by = user_id
-    quote.modified_at = now
-
-    audit_service.log_action(
-        db,
-        company_id,
-        "converted",
-        "quote",
-        quote.id,
-        user_id=user_id,
-        changes={"sales_order_id": order.id, "sales_order_number": order.number},
-    )
-    db.commit()
-    db.refresh(order)
-    return order
 
 
 def get_quote_summary(db: Session, company_id: str) -> dict:
@@ -491,37 +432,10 @@ def duplicate_quote(
 def set_quote_status(
     db: Session, company_id: str, user_id: str, quote_id: str, new_status: str
 ) -> Quote:
-    """Simple status transition (used by Send / Reject row actions)."""
-    valid = {"draft", "sent", "accepted", "rejected", "expired"}
-    if new_status not in valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status '{new_status}'. Must be one of: {sorted(valid)}",
-        )
-    quote = get_quote(db, company_id, quote_id)
-    if quote.status == "converted":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot change status of a converted quote",
-        )
-
-    old = quote.status
-    quote.status = new_status
-    quote.modified_by = user_id
-    quote.modified_at = datetime.now(timezone.utc)
-
-    audit_service.log_action(
-        db,
-        company_id,
-        "status_changed",
-        "quote",
-        quote.id,
-        user_id=user_id,
-        changes={"old_status": old, "new_status": new_status},
-    )
-    db.commit()
-    db.refresh(quote)
-    return quote
+    """QTE--face wrapper over THE ONE TRANSITION (D-11 U-2) — one
+    vocabulary, one rule set, one VaultItem mirror for both faces."""
+    from app.services.quote_service import transition_quote_status
+    return transition_quote_status(db, company_id, user_id, quote_id, new_status)
 
 
 def expire_stale_quotes(db: Session, company_id: str) -> int:
