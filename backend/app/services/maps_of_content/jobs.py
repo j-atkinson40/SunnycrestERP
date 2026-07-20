@@ -380,6 +380,24 @@ def build_job_ponder_script(
                             "label": "Walk the setup"},
             )
 
+    # THE STORY BEATS (D-11 U-4 — the capability-ponder grammar): a job
+    # may carry an authored sequence in `ponder.story` — a list of
+    # {key, text, link?} entries seeded derived-honest (the operator's
+    # voice overrides per-beat via the same captions mechanism). Born for
+    # "Enter an order"'s entry-path walk; generic for any job whose story
+    # is bigger than its refs.
+    for entry in (job.ponder or {}).get("story") or []:
+        key = entry.get("key")
+        text = entry.get("text")
+        if not key or not text:
+            continue  # malformed seed content — skip honestly
+        extra = {}
+        if entry.get("link"):
+            extra["link"] = entry["link"]
+        if entry.get("ponder_ref"):
+            extra["ponder_ref"] = entry["ponder_ref"]
+        _beat(f"story:{key}", "story", text, **extra)
+
     # THE AUTOMATION BEATS — the means, each deep-linking its full ponder.
     for r in autos:
         a = r["automation"]

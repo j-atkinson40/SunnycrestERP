@@ -200,6 +200,10 @@ def main():
         print("[14] Seeding product lines (vault baseline)...")
         _seed_product_lines(db)
 
+        # ---- 15. Quotes (D-11 U-4 / D-14 — the unified quote system) ----
+        print("[15] Creating quotes (unified system)...")
+        _seed_quotes(db, customer_ids, admin_id)
+
         db.commit()
         print()
 
@@ -1025,6 +1029,110 @@ def _seed_invoices(db: Session, customer_ids: dict, product_map: dict, admin_id:
                    "invid": inv_id, "amt": price})
 
     db.flush()
+
+
+def _seed_quotes(db: Session, customer_ids: dict, admin_id: str):
+    """D-14 (audit #2): the seeds learn quotes — a small honest set THROUGH
+    the unified system (both faces' real creators, so the rows demonstrate
+    resolved tax + reasons, an explicit override, the keeper vocabulary,
+    and a converted pair with quote→order lineage — not the old duality).
+
+    Idempotent: the SEED MARKER in notes is the natural key — a marked
+    quote present means this step already ran (the operator's edits to
+    those rows survive; re-seeding never duplicates)."""
+    from app.models.quote import Quote
+    from app.models.tax import TaxJurisdiction, TaxRate
+
+    MARK = "[seed:d14]"
+    if (
+        db.query(Quote)
+        .filter(Quote.company_id == CFG["company_id"], Quote.notes.like(f"%{MARK}%"))
+        .first()
+    ):
+        print("    quotes already seeded (marker present) — untouched")
+        return
+
+    # The tax substrate the resolver needs: Auburn NY zips on two
+    # customers + the Cayuga jurisdiction @ 7% (find-or-create).
+    from app.models.customer import Customer
+    resolved_cust = db.query(Customer).filter(
+        Customer.company_id == CFG["company_id"],
+        Customer.name == "Johnson Funeral Home").first()
+    plain_cust = db.query(Customer).filter(
+        Customer.company_id == CFG["company_id"],
+        Customer.name == "Memorial Chapel").first()
+    if resolved_cust is None or plain_cust is None:
+        print("    quote seed skipped — expected customers absent")
+        return
+    if not resolved_cust.zip_code:
+        resolved_cust.zip_code = "13021"  # Auburn, NY → Cayuga County
+    rate = db.query(TaxRate).filter(
+        TaxRate.tenant_id == CFG["company_id"],
+        TaxRate.rate_name == "Cayuga County NY").first()
+    if rate is None:
+        rate = TaxRate(tenant_id=CFG["company_id"], rate_name="Cayuga County NY",
+                       rate_percentage=Decimal("7.0"))
+        db.add(rate)
+        db.flush()
+    if not db.query(TaxJurisdiction).filter(
+            TaxJurisdiction.tenant_id == CFG["company_id"],
+            TaxJurisdiction.county == "Cayuga").first():
+        db.add(TaxJurisdiction(
+            tenant_id=CFG["company_id"], jurisdiction_name="Cayuga County, NY",
+            state="NY", county="Cayuga", tax_rate_id=rate.id))
+    db.commit()
+
+    from app.services import quote_service, sales_service
+
+    # 1. Q- face (Order-Station): jurisdiction-RESOLVED tax with reason.
+    quote_service.create_quote(
+        db, CFG["company_id"], admin_id,
+        customer_name=resolved_cust.name, product_line="funeral_vaults",
+        line_items=[{"description": "Monticello vault", "quantity": 1,
+                     "unit_price": "1295.00"}],
+        customer_id=resolved_cust.id, delivery_charge=125,
+        notes=f"{MARK} resolved-tax demo",
+    )
+
+    # 2. QTE face (Sales): explicit OVERRIDE carried as explicit.
+    class _L:
+        product_id = None; description = "Graveliner"; sort_order = 0
+        quantity = Decimal("1"); unit_price = Decimal("865.00")
+
+    class _D:
+        customer_id = plain_cust.id
+        quote_date = datetime.now(timezone.utc)
+        expiry_date = quote_date + timedelta(days=30)
+        payment_terms = "Net 30"; tax_rate = Decimal("0")
+        notes = f"{MARK} explicit-override demo (0% explicit)"
+        lines = [_L()]
+    sales_service.create_quote(db, CFG["company_id"], admin_id, _D())
+
+    # 3. A REJECTED row (the keeper vocabulary on a stored row).
+    q3 = quote_service.create_quote(
+        db, CFG["company_id"], admin_id,
+        customer_name=resolved_cust.name, product_line="funeral_vaults",
+        line_items=[{"description": "SST Triune", "quantity": 1,
+                     "unit_price": "2150.00"}],
+        customer_id=resolved_cust.id,
+        notes=f"{MARK} rejected demo",
+    )
+    quote_service.transition_quote_status(
+        db, CFG["company_id"], admin_id, q3["id"], "rejected")
+
+    # 4. A CONVERTED pair — quote→order lineage through THE ONE CONVERTER.
+    q4 = quote_service.create_quote(
+        db, CFG["company_id"], admin_id,
+        customer_name=resolved_cust.name, product_line="funeral_vaults",
+        line_items=[{"description": "Venetian vault", "quantity": 1,
+                     "unit_price": "1495.00"}],
+        customer_id=resolved_cust.id, delivery_charge=100,
+        notes=f"{MARK} converted-pair demo",
+    )
+    quote_service.convert_quote_to_order(db, CFG["company_id"], admin_id, q4["id"])
+    db.commit()
+    print("    4 quotes seeded through the unified system "
+          "(resolved / override / rejected / converted pair)")
 
 
 def _seed_price_list(db: Session, product_map: dict, admin_id: str):

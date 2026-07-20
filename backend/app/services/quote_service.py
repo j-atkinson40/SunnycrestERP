@@ -602,8 +602,22 @@ def _get_quote_or_404(db: Session, tenant_id: str, quote_id: str) -> Quote:
     return quote
 
 
+def quote_money_fields(q: Quote) -> dict:
+    """THE SERIALIZER CORE (D-11 U-4): the money block computed ONCE —
+    both faces' serializers consume this; neither re-derives. Raw
+    values out; each face formats for its own wire contract."""
+    return {
+        "subtotal": q.subtotal,
+        "tax_rate": q.tax_rate,
+        "tax_amount": q.tax_amount,
+        "tax_reason": q.tax_reason,
+        "total": q.total,
+    }
+
+
 def _quote_to_dict(q: Quote) -> dict:
     """Convert a Quote ORM instance to a plain dict."""
+    core = quote_money_fields(q)
     return {
         "id": q.id,
         "quote_number": q.number,
@@ -611,14 +625,14 @@ def _quote_to_dict(q: Quote) -> dict:
         "customer_id": q.customer_id,
         "product_line": q.product_line,
         "status": q.status,
-        "subtotal": float(q.subtotal),
-        # Serializer honesty (audit #2 List-3 #8, Session Four): these
-        # three were computed + stored but never returned.
-        "tax_rate": float(q.tax_rate) if q.tax_rate is not None else None,
-        "tax_amount": float(q.tax_amount) if q.tax_amount is not None else None,
-        "tax_reason": q.tax_reason,
+        # THE SERIALIZER CORE (U-4) — the money block from one place;
+        # this face floats it (its wire contract since Session Four).
+        "subtotal": float(core["subtotal"]),
+        "tax_rate": float(core["tax_rate"]) if core["tax_rate"] is not None else None,
+        "tax_amount": float(core["tax_amount"]) if core["tax_amount"] is not None else None,
+        "tax_reason": core["tax_reason"],
         "payment_terms": q.payment_terms,
-        "total": float(q.total),
+        "total": float(core["total"]),
         "permit_number": q.permit_number,
         "permit_jurisdiction": q.permit_jurisdiction,
         "installation_address": q.installation_address,

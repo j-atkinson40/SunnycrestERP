@@ -26,7 +26,12 @@ from typing import Any, Callable, Literal
 
 # ── Enums / literals ─────────────────────────────────────────────────
 
-EntityType = Literal["case", "sales_order", "event", "contact", "task"]
+# D-13 (audit #2, retired 2026-07-20 by the operator's word): "sales_order"
+# was DECLARED here with a resolver but no materialization code ever
+# existed — "new sales order for Hopkins…" resolved entities and created
+# nothing. The declaration is retired; if NL order entry is ever wanted,
+# it returns as a BUILT capability, not a claimed one.
+EntityType = Literal["case", "event", "contact", "task"]
 
 FieldType = Literal[
     "text",          # free text
@@ -201,7 +206,6 @@ class NLEntityConfig:
     `ai_prompt_key` points at a managed Intelligence prompt (see
     `scripts/seed_intelligence.py`). Phase 4 seeds:
       - nl_creation.extract.case
-      - nl_creation.extract.sales_order
       - nl_creation.extract.event
       - nl_creation.extract.contact
 

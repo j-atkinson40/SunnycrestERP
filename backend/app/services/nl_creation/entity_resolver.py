@@ -8,7 +8,7 @@ indexes — same mechanism Phase 1's command-bar resolver uses.
 Why this module exists alongside Phase 1's resolver:
   - Phase 1's `SEARCHABLE_ENTITIES` doesn't include `company_entity`
     (the CRM's company table). Phase 4 needs it for `case.funeral_home`,
-    `sales_order.customer`, `contact.company` fields.
+    `contact.company` and similar entity-typed fields.
   - Phase 1 returns a list of hits for the command bar; Phase 4 wants
     TOP-1 resolution (there's one funeral_home pill per case, not a
     list). Narrower API.
@@ -79,8 +79,8 @@ def resolve_company_entity(
     `filters` is a dict of boolean role flags to AND into the query.
     Common choices:
       - {"is_funeral_home": True} for case.funeral_home
-      - {"is_customer": True} for sales_order.customer (any customer)
-      - {"is_vendor": True} for a sales-order supplier context
+      - {"is_customer": True} for any customer-role entity
+      - {"is_vendor": True} for a vendor/supplier context
       - {} (or None) for any company_entity
 
     Returns the top hit above `similarity_threshold`, or None. Uses

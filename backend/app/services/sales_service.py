@@ -239,6 +239,12 @@ def create_quote(db: Session, company_id: str, user_id: str, data) -> Quote:
     )
     db.commit()
     db.refresh(quote)
+
+    # V-1f SYMMETRY (D-11 U-4): the QTE face's quotes join the Vault
+    # timeline — the Q--only dual-write asymmetry closed at create.
+    from app.services.quote_service import _write_quote_vault_item
+    _write_quote_vault_item(db, quote)
+    db.commit()
     return quote
 
 

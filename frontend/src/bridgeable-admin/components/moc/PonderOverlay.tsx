@@ -61,6 +61,8 @@ const KIND_GLYPH = {
   downstream: Inbox,
   garnish: BarChart3,
   setup: Landmark,
+  // D-11 U-4 — authored story beats (the capability-ponder grammar).
+  story: BookOpen,
   // Map Home — the composition kinds (area/onboarding ponders).
   opening: BookOpen,
   task: WorkflowIcon,
@@ -75,6 +77,7 @@ const KIND_EYEBROW: Record<PonderBeat["kind"], string> = {
   downstream: "Where it lands",
   garnish: "Last time it ran",
   setup: "The feed",
+  story: "One of the ways",
   // Map Home — the composition kinds.
   opening: "How this area thinks",
   task: "What runs here",

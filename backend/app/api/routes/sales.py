@@ -26,7 +26,7 @@ from app.schemas.sales import (
     SalesOrderUpdate,
     SalesStats,
 )
-from app.services import sales_service
+from app.services import quote_service, sales_service
 
 router = APIRouter()
 
@@ -47,11 +47,9 @@ def _quote_to_response(q) -> dict:
         "quote_date": q.quote_date,
         "expiry_date": q.expiry_date,
         "payment_terms": q.payment_terms,
-        "subtotal": q.subtotal,
-        "tax_rate": q.tax_rate,
-        "tax_amount": q.tax_amount,
-        "tax_reason": getattr(q, "tax_reason", None),
-        "total": q.total,
+        # THE SERIALIZER CORE (D-11 U-4) — the money block from one place;
+        # neither face re-derives it.
+        **quote_service.quote_money_fields(q),
         "notes": q.notes,
         "created_by": q.created_by,
         "created_by_name": (
