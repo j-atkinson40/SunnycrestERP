@@ -65,8 +65,9 @@ def _parse_payment_terms_days(terms: str | None) -> int:
 
 
 def _compute_line_total(quantity: Decimal, unit_price: Decimal) -> Decimal:
-    """Round line total to two decimal places."""
-    return (quantity * unit_price).quantize(Decimal("0.01"))
+    """Line boundary — the shared policy (see app/services/money.py)."""
+    from app.services.money import line_total
+    return line_total(quantity, unit_price)
 
 
 def _compute_totals(
@@ -76,7 +77,8 @@ def _compute_totals(
     subtotal = Decimal("0.00")
     for line in lines_data:
         subtotal += _compute_line_total(line.quantity, line.unit_price)
-    tax_amount = (subtotal * tax_rate).quantize(Decimal("0.01"))
+    from app.services.money import round_money
+    tax_amount = round_money(subtotal * tax_rate)
     total = subtotal + tax_amount
     return subtotal, tax_amount, total
 
@@ -167,6 +169,7 @@ def create_quote(db: Session, company_id: str, user_id: str, data) -> Quote:
     db.add(quote)
     db.flush()
 
+    q_lines: list[QuoteLine] = []
     for idx, ld in enumerate(data.lines):
         line = QuoteLine(
             id=str(uuid.uuid4()),
@@ -178,9 +181,28 @@ def create_quote(db: Session, company_id: str, user_id: str, data) -> Quote:
             line_total=_compute_line_total(ld.quantity, ld.unit_price),
             sort_order=ld.sort_order if ld.sort_order else idx,
         )
+        q_lines.append(line)
         db.add(line)
 
     db.flush()
+
+    # CONDITIONAL PRICING AT QUOTE TIME (audit #2 Session Four, D-1.5):
+    # same resolver as the order path — the quoted number IS the
+    # charged number.
+    try:
+        from app.services.money import round_money
+        from app.services.order_pricing_service import (
+            apply_conditional_pricing_to_lines,
+        )
+        if apply_conditional_pricing_to_lines(q_lines, db):
+            quote.subtotal = round_money(
+                sum((ln.line_total or Decimal("0")) for ln in q_lines)
+            )
+            quote.tax_amount = round_money(quote.subtotal * (quote.tax_rate or 0))
+            quote.total = quote.subtotal + quote.tax_amount
+            db.flush()
+    except Exception as _exc:
+        logger.warning("Conditional pricing on quote %s failed: %s", quote.id, _exc)
 
     audit_service.log_action(
         db,
@@ -189,7 +211,7 @@ def create_quote(db: Session, company_id: str, user_id: str, data) -> Quote:
         "quote",
         quote.id,
         user_id=user_id,
-        changes={"number": quote.number, "total": str(total)},
+        changes={"number": quote.number, "total": str(quote.total)},
     )
     db.commit()
     db.refresh(quote)

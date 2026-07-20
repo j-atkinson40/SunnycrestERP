@@ -143,9 +143,9 @@ def _next_order_number(db: Session, company_id: str) -> str:
 
 
 def _compute_line_total(quantity, unit_price) -> Decimal:
-    qty = Decimal(str(quantity))
-    price = Decimal(str(unit_price))
-    return (qty * price).quantize(Decimal("0.01"))
+    """Line boundary — the shared policy (see app/services/money.py)."""
+    from app.services.money import line_total
+    return line_total(quantity, unit_price)
 
 
 # ---------------------------------------------------------------------------
@@ -195,8 +195,6 @@ def create_quote(
                 "must be explicit)."
             )
         price = Decimal(str(item["unit_price"]))
-        line_total = _compute_line_total(qty, price)
-        subtotal += line_total
         quote_lines.append(
             QuoteLine(
                 id=str(uuid.uuid4()),
@@ -204,10 +202,23 @@ def create_quote(
                 product_id=item.get("product_id"),
                 quantity=qty,
                 unit_price=price,
-                line_total=line_total,
+                line_total=_compute_line_total(qty, price),
                 sort_order=idx,
             )
         )
+
+    # CONDITIONAL PRICING AT QUOTE TIME (audit #2 Session Four, D-1.5):
+    # the same resolver the order path uses — the quoted number IS the
+    # charged number; the reprice-on-convert surprise is dead.
+    try:
+        from app.services.order_pricing_service import (
+            apply_conditional_pricing_to_lines,
+        )
+        apply_conditional_pricing_to_lines(quote_lines, db)
+    except Exception as exc:
+        logger.warning("Conditional pricing on quote failed: %s", exc)
+
+    subtotal = sum((ln.line_total or Decimal("0")) for ln in quote_lines)
 
     # Add delivery charge as a separate line if provided
     if delivery_charge and delivery_charge > 0:
@@ -547,6 +558,11 @@ def _quote_to_dict(q: Quote) -> dict:
         "product_line": q.product_line,
         "status": q.status,
         "subtotal": float(q.subtotal),
+        # Serializer honesty (audit #2 List-3 #8, Session Four): these
+        # three were computed + stored but never returned.
+        "tax_rate": float(q.tax_rate) if q.tax_rate is not None else None,
+        "tax_amount": float(q.tax_amount) if q.tax_amount is not None else None,
+        "payment_terms": q.payment_terms,
         "total": float(q.total),
         "permit_number": q.permit_number,
         "permit_jurisdiction": q.permit_jurisdiction,

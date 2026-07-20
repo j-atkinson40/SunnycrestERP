@@ -63,6 +63,44 @@ def get_effective_price(product: Product, order_lines: list, db: Session) -> Opt
         return product.price_without_our_product  # higher standalone price
 
 
+def apply_conditional_pricing_to_lines(lines: list, db: Session) -> bool:
+    """ONE RESOLVER, BOTH CALLERS (audit #2 Session Four, D-1.5).
+
+    Resolve conditional pricing for any line collection — QuoteLine or
+    SalesOrderLine (anything with product_id / quantity / unit_price /
+    line_total). Before this, quotes took the raw caller price and the
+    order path repriced later: the customer saw one number and was
+    charged another. Quotes now resolve through the SAME engine at
+    quote time, so conversion carries the same number.
+
+    Mutates unit_price + line_total in place; returns True if anything
+    changed. Call-office products are never overwritten.
+    """
+    from app.services.money import line_total as _line_total
+
+    any_updated = False
+    for line in lines:
+        if not line.product_id:
+            continue
+        product = db.query(Product).filter(Product.id == line.product_id).first()
+        if not product:
+            continue
+        if not product.has_conditional_pricing:
+            continue
+
+        new_price = get_effective_price(product, lines, db)
+        if new_price is None:
+            continue  # call office — manual entry, don't overwrite
+
+        if line.unit_price != new_price:
+            line.unit_price = new_price
+            if line.quantity:
+                line.line_total = _line_total(line.quantity, new_price)
+            any_updated = True
+
+    return any_updated
+
+
 def recalculate_order_line_prices(order_id: str, db: Session) -> bool:
     """Recalculate prices for all conditional-pricing lines on an order.
 
@@ -91,15 +129,18 @@ def recalculate_order_line_prices(order_id: str, db: Session) -> bool:
 
         if line.unit_price != new_price:
             line.unit_price = new_price
-            # Update line total
             if line.quantity:
-                line.line_total = new_price * Decimal(str(line.quantity))
+                # Rounded at the line boundary (audit #2 Session Four —
+                # this site summed UNROUNDED into order totals).
+                from app.services.money import line_total as _lt
+                line.line_total = _lt(line.quantity, new_price)
             any_updated = True
 
     if any_updated:
         # Recalculate order totals from all lines (reload to get current values)
         all_lines = db.query(SalesOrderLine).filter(SalesOrderLine.sales_order_id == order_id).all()
-        subtotal = sum((line.line_total or Decimal("0")) for line in all_lines)
+        from app.services.money import round_money
+        subtotal = round_money(sum((line.line_total or Decimal("0")) for line in all_lines))
         order.subtotal = subtotal
         # Preserve existing tax
         tax_amount = order.tax_amount or Decimal("0")

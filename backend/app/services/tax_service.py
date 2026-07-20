@@ -74,7 +74,8 @@ def compute_tax(
     """
     if tax_exempt or rate_percentage == Decimal("0"):
         return Decimal("0.00"), Decimal("0.0000")
-    tax = (subtotal * rate_percentage / Decimal("100")).quantize(Decimal("0.01"))
+    from app.services.money import round_money
+    tax = round_money(subtotal * rate_percentage / Decimal("100"))
     return tax, rate_percentage
 
 

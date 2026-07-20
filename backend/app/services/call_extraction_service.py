@@ -228,34 +228,38 @@ def create_draft_order_from_extraction(
     # Generate order number
     from sqlalchemy import func as sa_func
 
-    max_num = (
-        db.query(sa_func.max(SalesOrder.number))
-        .filter(SalesOrder.company_id == tenant_id)
-        .scalar()
+    # Atomic SO number via the shared allocator (audit #2 KILL 3 —
+    # this site was a lexical-max straggler found in Session Four).
+    from app.services.numbering import next_document_number
+    order_number = next_document_number(
+        db, table="sales_orders", company_id=tenant_id, prefix="SO"
     )
-    if max_num:
-        # Parse SO-YYYY-NNNN format
-        try:
-            seq = int(max_num.split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            seq = 1
-    else:
-        seq = 1
-    year = datetime.now(timezone.utc).year
-    order_number = f"SO-{year}-{seq:04d}"
+
+    # BEAT 7 HEAL (audit #2 D-9, Session Four): an unresolvable customer
+    # used to flow as None into a NOT NULL column — IntegrityError → 500.
+    # Refuse loudly with the name the caller can act on.
+    customer_id = _resolve_customer_id(db, tenant_id, extraction.master_company_id)
+    if not customer_id:
+        raise ValueError(
+            "No customer account matches this call's funeral home"
+            + (f" (company entity {extraction.master_company_id})"
+               if extraction.master_company_id else "")
+            + " — link or create the customer first, then create the order."
+        )
 
     order = SalesOrder(
         id=str(uuid.uuid4()),
         company_id=tenant_id,
         number=order_number,
-        customer_id=_resolve_customer_id(db, tenant_id, extraction.master_company_id),
+        customer_id=customer_id,
         status="draft",
         order_date=datetime.now(timezone.utc),
         order_type="funeral",
         deceased_name=extraction.deceased_name,
         cemetery_id=_resolve_cemetery_id(db, tenant_id, extraction.cemetery_name),
         scheduled_date=extraction.burial_date,
-        service_time=extraction.burial_time.isoformat() if extraction.burial_time else None,
+        # Time column takes the time object — not an isoformat string.
+        service_time=extraction.burial_time,
         notes=f"[Created from phone call]\n{extraction.call_summary or ''}".strip(),
     )
     db.add(order)

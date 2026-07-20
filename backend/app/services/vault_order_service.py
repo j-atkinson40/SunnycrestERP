@@ -246,9 +246,9 @@ def submit_vault_order(
         required_date=data.get("requested_delivery_date"),
         ship_to_name=fh_company.name if fh_company else None,
         ship_to_address=data.get("delivery_address"),
-        subtotal=vault_order.unit_price * vault_order.quantity,
+        subtotal=_money_line(vault_order.quantity, vault_order.unit_price),
         tax_amount=Decimal("0.00"),
-        total=vault_order.unit_price * vault_order.quantity,
+        total=_money_line(vault_order.quantity, vault_order.unit_price),
         notes=f"Funeral home portal order: {vault_order.order_number}",
         created_by=performed_by_id,
     )
@@ -263,7 +263,7 @@ def submit_vault_order(
         description=data.get("vault_product_name", "Vault"),
         quantity=vault_order.quantity,
         unit_price=vault_order.unit_price,
-        line_total=vault_order.unit_price * vault_order.quantity,
+        line_total=_money_line(vault_order.quantity, vault_order.unit_price),
         sort_order=1,
     )
     db.add(sol)
