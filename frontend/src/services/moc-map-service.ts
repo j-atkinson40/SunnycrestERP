@@ -70,8 +70,18 @@ export interface MapJob {
 }
 
 export async function getMapJobs(): Promise<{ vertical: string | null; jobs: MapJob[] }> {
-  const { data } = await apiClient.get("/moc/jobs")
-  return data
+  return dedupe("jobs", async () => {
+    const { data } = await apiClient.get("/moc/jobs")
+    return data
+  })
+}
+
+
+export async function getPlatformAreas(): Promise<Array<{ area: string }>> {
+  return dedupe("platform-areas", async () => {
+    const { data } = await apiClient.get("/moc/platform-areas")
+    return data
+  })
 }
 
 // ── Offer-reach (P3) — the standard's improvements reach their version ──
@@ -93,9 +103,32 @@ export async function declineTaskOffer(offerId: string): Promise<{ status: strin
   return data
 }
 
+
+// THE HANGING-JOBS FIX (2026-07-20): in-flight dedupe — concurrent
+// identical reads share ONE request (the dev double-mount fired /tasks,
+// /jobs and /suggestions twice per load). No caching across settles:
+// once a request resolves, the next call hits the network again —
+// staleness stays zero; only true concurrency collapses.
+const _inflight = new Map<string, Promise<unknown>>()
+function dedupe<T>(key: string, fn: () => Promise<T>, shareMs = 0): Promise<T> {
+  const live = _inflight.get(key)
+  if (live) return live as Promise<T>
+  const p = fn().finally(() => {
+    // Optional trailing share: the settled promise stays reusable for
+    // shareMs (seconds of honest staleness — used only where a designed
+    // refresh cycle lands milliseconds after the initial load).
+    if (shareMs > 0) setTimeout(() => _inflight.delete(key), shareMs)
+    else _inflight.delete(key)
+  })
+  _inflight.set(key, p)
+  return p
+}
+
 export async function getMapTasks(): Promise<{ vertical: string | null; tasks: MapTask[] }> {
-  const { data } = await apiClient.get("/moc/tasks")
-  return data
+  return dedupe("tasks", async () => {
+    const { data } = await apiClient.get("/moc/tasks")
+    return data
+  })
 }
 
 /** THE PROMPTED FORK — make the shared task theirs (idempotent). */
@@ -244,8 +277,10 @@ export interface MapSuggestion {
 }
 
 export async function getSuggestions(): Promise<MapSuggestion[]> {
-  const { data } = await apiClient.get("/moc/suggestions")
-  return data
+  return dedupe("suggestions", async () => {
+    const { data } = await apiClient.get("/moc/suggestions")
+    return data
+  }, 1000)
 }
 
 /** THE QUIET WRITE — fire-and-forget; the UI never waits on it. */

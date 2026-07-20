@@ -400,11 +400,18 @@ def _handle_voicemail_event(db: Session, event_body: dict, payload: dict):
 
 
 @router.get("/events")
-async def sse_events(token: str = Query(...), db: Session = Depends(get_db)):
+async def sse_events(token: str = Query(...)):
     """SSE endpoint for real-time call events.
 
     Authenticates via JWT token passed as query parameter (EventSource
     doesn't support Authorization headers).
+
+    THE HANGING-JOBS FIX (2026-07-20): no Depends(get_db) — a dependency
+    session lives until the RESPONSE completes, and an SSE response never
+    completes, so every connected stream pinned one connection from the
+    (size 5 + overflow 10) pool for its whole life. The auth lookup opens
+    and CLOSES its own session before the stream starts; the stream holds
+    nothing but its asyncio queue.
     """
     # Validate JWT
     try:
@@ -415,12 +422,16 @@ async def sse_events(token: str = Query(...), db: Session = Depends(get_db)):
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # Look up user to get tenant
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user or not user.company_id:
-        raise HTTPException(status_code=401, detail="User not found")
-
-    tenant_id = user.company_id
+    # Look up user to get tenant — session opened + closed HERE.
+    from app.database import SessionLocal
+    _db = SessionLocal()
+    try:
+        user = _db.query(User).filter(User.id == user_id).first()
+        if not user or not user.company_id:
+            raise HTTPException(status_code=401, detail="User not found")
+        tenant_id = user.company_id
+    finally:
+        _db.close()
     queue = subscribe(tenant_id, user_id)
 
     async def event_generator():

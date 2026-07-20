@@ -19,14 +19,13 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { FileText, Map as MapIcon, Plus, Sparkles } from "lucide-react"
 
-import apiClient from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
 import {
   PonderServiceContext,
 } from "@/bridgeable-admin/components/moc/ponder-service-context"
 import {
-  getMapJobs, getMapTasks, tenantPonderService,
+  getMapJobs, getMapTasks, getPlatformAreas, tenantPonderService,
   type MapJob, type MapTask,
 } from "@/services/moc-map-service"
 import { AreaCard, type AreaSummary } from "@/components/moc-map/AreaCard"
@@ -57,20 +56,25 @@ export default function BridgeableMapPage() {
   const [platformAreas, setPlatformAreas] = useState<Array<{ area: string }>>([])
 
   const reload = useCallback(async () => {
+    // THE HANGING-JOBS FIX (2026-07-20): tasks and jobs load in
+    // PARALLEL, and the card spine renders on ITS OWN data (tasks) —
+    // never blocked behind the jobs call's fate. Jobs fill their
+    // counts in when they arrive; a jobs failure costs the counts,
+    // never the page.
+    const jobsP = getMapJobs()
+      .then((r) => setJobs(r.jobs))
+      .catch(() => setJobs([]))
     const data = await getMapTasks()
     setTasks(data.tasks)
     setVertical(data.vertical)
-    try {
-      setJobs((await getMapJobs()).jobs)
-    } catch {
-      setJobs([])
-    }
+    setLoading(false)  // the spine renders NOW — jobs only add counts
+    await jobsP
   }, [])
 
   useEffect(() => {
     reload().finally(() => setLoading(false))
-    apiClient.get("/moc/platform-areas")
-      .then((r) => setPlatformAreas(r.data))
+    getPlatformAreas()
+      .then(setPlatformAreas)
       .catch(() => setPlatformAreas([]))
   }, [reload])
 
