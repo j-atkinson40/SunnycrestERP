@@ -4,7 +4,9 @@ import json
 import re
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
@@ -24,6 +26,8 @@ from app.schemas.order_station import (
 from app.services import quote_service
 from app.services import cemetery_service
 from app.services import template_season_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -486,8 +490,19 @@ def create_quote(
                     db.commit()
                 except Exception:
                     pass
-        except Exception:
-            pass  # Quote was created; conversion failure is not fatal
+        except Exception as exc:
+            # KILL 4 (audit #2): a conversion that didn't happen NEVER
+            # reports created. The quote exists (say so honestly); the
+            # order does not — refuse loudly instead of a 201 lie.
+            logger.exception("Order-Station quote→order conversion failed")
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"The quote ({result.get('quote_number')}) was created, "
+                    "but converting it to an order FAILED — no order exists. "
+                    f"Fix and retry from the quote. ({type(exc).__name__})"
+                ),
+            )
 
     return QuoteResponse(
         id=result["id"],

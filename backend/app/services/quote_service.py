@@ -129,49 +129,17 @@ def _update_quote_vault_item(db: Session, quote: Quote) -> None:
 
 
 def _next_quote_number(db: Session, company_id: str) -> str:
-    """Generate next Q-YYYY-NNNN number."""
-    year = datetime.now(timezone.utc).year
-    prefix = f"Q-{year}-"
-    last = (
-        db.query(Quote.number)
-        .filter(
-            Quote.company_id == company_id,
-            Quote.number.like(f"{prefix}%"),
-        )
-        .order_by(Quote.number.desc())
-        .first()
-    )
-    if last and last[0]:
-        try:
-            seq = int(last[0].replace(prefix, "")) + 1
-        except ValueError:
-            seq = 1
-    else:
-        seq = 1
-    return f"{prefix}{seq:04d}"
+    """Atomic Q-YYYY-NNNN (audit #2 KILL 3 — shared allocator)."""
+    from app.services.numbering import next_document_number
+    return next_document_number(db, table="quotes", company_id=company_id,
+                                prefix="Q")
 
 
 def _next_order_number(db: Session, company_id: str) -> str:
-    """Generate next SO-YYYY-NNNN number."""
-    year = datetime.now(timezone.utc).year
-    prefix = f"SO-{year}-"
-    last = (
-        db.query(SalesOrder.number)
-        .filter(
-            SalesOrder.company_id == company_id,
-            SalesOrder.number.like(f"{prefix}%"),
-        )
-        .order_by(SalesOrder.number.desc())
-        .first()
-    )
-    if last and last[0]:
-        try:
-            seq = int(last[0].replace(prefix, "")) + 1
-        except ValueError:
-            seq = 1
-    else:
-        seq = 1
-    return f"{prefix}{seq:04d}"
+    """Atomic SO-YYYY-NNNN (audit #2 KILL 3 — shared allocator)."""
+    from app.services.numbering import next_document_number
+    return next_document_number(db, table="sales_orders", company_id=company_id,
+                                prefix="SO")
 
 
 def _compute_line_total(quantity, unit_price) -> Decimal:
@@ -217,7 +185,16 @@ def create_quote(
     quote_lines: list[QuoteLine] = []
     for idx, item in enumerate(line_items):
         qty = Decimal(str(item.get("quantity", 1)))
-        price = Decimal(str(item.get("unit_price", 0)))
+        if "unit_price" not in item or item["unit_price"] is None:
+            # THE RULE (audit #2 KILL 2): a MISSING price refuses loudly —
+            # the silent $0 line understated quote totals with no error.
+            # An EXPLICIT 0 remains legitimate (included/no-charge lines).
+            raise ValueError(
+                f"Line {idx + 1} ({item.get('description') or 'item'}) has no "
+                "unit_price — every line needs a price (0 is allowed, but "
+                "must be explicit)."
+            )
+        price = Decimal(str(item["unit_price"]))
         line_total = _compute_line_total(qty, price)
         subtotal += line_total
         quote_lines.append(
@@ -317,7 +294,13 @@ def create_quote(
                 tax_amount, effective_rate = compute_tax(quote.subtotal, rate_obj.rate_percentage, tax_exempt)
                 quote.tax_amount = tax_amount
                 quote.tax_rate = effective_rate
-                quote.total = quote.subtotal + tax_amount + (quote.delivery_charge or Decimal("0.00"))
+                # THE FORMULA, stated once (audit #2 KILL 1): delivery is
+                # already INSIDE subtotal (added as its own line above) —
+                # total = subtotal + tax, never + delivery again. The old
+                # `+ delivery_charge` here double-counted delivery on every
+                # tax-resolving quote (hand-proven overcharge; pinned).
+                # Tax base includes delivery (existing policy, unchanged).
+                quote.total = quote.subtotal + tax_amount
         except Exception as exc:
             logger.warning("Tax calculation failed: %s", exc)
 
@@ -326,7 +309,12 @@ def create_quote(
         try:
             from app.services.funeral_home_preference_service import apply_placer_to_quote_lines
             from app.models.quote import QuoteLine as QuoteLineModel
-            # Reload lines after flush so the list is current
+            # Reload lines after flush so the list is current.
+            # FLUSH FIRST (audit #2 session one, caught by the K1 pin):
+            # this session runs autoflush=False, so refresh() would
+            # silently DISCARD the unflushed tax fields set above —
+            # every customer quote lost its tax on the way out.
+            db.flush()
             db.refresh(quote)
             apply_placer_to_quote_lines(db, tenant_id, customer_id, quote, QuoteLineModel)
         except Exception as exc:

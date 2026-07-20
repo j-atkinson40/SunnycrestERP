@@ -36,29 +36,13 @@ logger = logging.getLogger(__name__)
 
 
 def _next_number(db: Session, company_id: str, model_class, prefix: str) -> str:
-    """Generate the next auto-number for a given prefix (e.g. QTE, SO, INV).
-
-    Format: ``{PREFIX}-{YYYY}-{####}``
-    """
-    year = datetime.now(timezone.utc).year
-    full_prefix = f"{prefix}-{year}-"
-    last = (
-        db.query(model_class.number)
-        .filter(
-            model_class.company_id == company_id,
-            model_class.number.like(f"{full_prefix}%"),
-        )
-        .order_by(model_class.number.desc())
-        .first()
+    """Atomic per-tenant numbering (audit #2 KILL 3) — delegates to the
+    shared advisory-locked, numeric-max allocator; r138 uniques backstop."""
+    from app.services.numbering import next_document_number
+    return next_document_number(
+        db, table=model_class.__tablename__, company_id=company_id,
+        prefix=prefix,
     )
-    if last and last[0]:
-        try:
-            seq = int(last[0].replace(full_prefix, "")) + 1
-        except ValueError:
-            seq = 1
-    else:
-        seq = 1
-    return f"{full_prefix}{seq:04d}"
 
 
 def _parse_payment_terms_days(terms: str | None) -> int:
