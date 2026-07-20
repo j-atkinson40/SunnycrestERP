@@ -72,6 +72,8 @@ class QuoteResponse(BaseModel):
     created_at: datetime
     cemetery_id: str | None = None
     cemetery_name: str | None = None
+    # D-11 U-1: the tax resolution's why, rendered wherever tax shows.
+    tax_reason: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

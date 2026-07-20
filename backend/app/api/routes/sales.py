@@ -50,6 +50,7 @@ def _quote_to_response(q) -> dict:
         "subtotal": q.subtotal,
         "tax_rate": q.tax_rate,
         "tax_amount": q.tax_amount,
+        "tax_reason": getattr(q, "tax_reason", None),
         "total": q.total,
         "notes": q.notes,
         "created_by": q.created_by,

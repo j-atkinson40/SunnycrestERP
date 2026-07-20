@@ -54,6 +54,9 @@ class Quote(Base):
     tax_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 4), nullable=False, default=Decimal("0.00")
     )
+    # D-11 U-1: the tax resolution's WHY — "resolved: 7% — Cayuga County,
+    # NY" / "exempt: …" / "override: … (explicit)" / "unresolved: …".
+    tax_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tax_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )

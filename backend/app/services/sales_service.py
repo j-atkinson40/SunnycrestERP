@@ -147,7 +147,30 @@ def get_quote(db: Session, company_id: str, quote_id: str) -> Quote:
 def create_quote(db: Session, company_id: str, user_id: str, data) -> Quote:
     _get_customer_or_404(db, company_id, data.customer_id)
 
-    subtotal, tax_amount, total = _compute_totals(data.lines, data.tax_rate)
+    # THE ONE RESOLUTION (D-11 U-1): this face's silent default-zero died.
+    # Tax is derived through the jurisdiction engine, or explicitly
+    # overridden (data.tax_rate given, 0 allowed) — an unresolvable quote
+    # with no override refuses loudly.
+    from app.services.money import round_money
+    from app.services.tax_service import TaxResolutionError, resolve_quote_tax
+
+    subtotal = Decimal("0.00")
+    for line in data.lines:
+        subtotal += _compute_line_total(line.quantity, line.unit_price)
+    try:
+        resolution = resolve_quote_tax(
+            db, company_id,
+            subtotal=subtotal,
+            customer_id=data.customer_id,
+            override_rate=getattr(data, "tax_rate", None),
+            require_resolution=True,
+        )
+    except TaxResolutionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        )
+    tax_amount = resolution.tax_amount
+    total = subtotal + tax_amount
     number = _next_number(db, company_id, Quote, "QTE")
 
     quote = Quote(
@@ -159,7 +182,8 @@ def create_quote(db: Session, company_id: str, user_id: str, data) -> Quote:
         quote_date=data.quote_date,
         expiry_date=data.expiry_date,
         payment_terms=data.payment_terms,
-        tax_rate=data.tax_rate,
+        tax_rate=resolution.tax_rate,
+        tax_reason=resolution.reason,
         subtotal=subtotal,
         tax_amount=tax_amount,
         total=total,

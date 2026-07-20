@@ -44,7 +44,10 @@ class QuoteCreate(BaseModel):
     quote_date: datetime
     expiry_date: datetime
     payment_terms: str | None = None
-    tax_rate: Decimal = Decimal("0.00")
+    # D-11 U-1: the silent default-zero DIED. None = derive through the
+    # jurisdiction engine; a value = explicit override (0 allowed, but
+    # must be explicit). Unresolvable + no override refuses loudly.
+    tax_rate: Decimal | None = None
     notes: str | None = None
     lines: list[QuoteLineCreate] = []
 
@@ -69,6 +72,8 @@ class QuoteResponse(BaseModel):
     subtotal: Decimal
     tax_rate: Decimal
     tax_amount: Decimal
+    # D-11 U-1: the resolution's why — rendered wherever tax shows.
+    tax_reason: str | None = None
     total: Decimal
     notes: str | None = None
     created_by: str | None = None

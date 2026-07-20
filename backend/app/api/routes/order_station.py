@@ -514,6 +514,7 @@ def create_quote(
         created_at=result["created_at"],
         cemetery_id=result.get("cemetery_id"),
         cemetery_name=result.get("cemetery_name"),
+        tax_reason=result.get("tax_reason"),
     )
 
 

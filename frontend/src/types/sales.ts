@@ -39,6 +39,7 @@ export interface Quote {
   subtotal: string;
   tax_rate: string;
   tax_amount: string;
+  tax_reason?: string | null;
   total: string;
   notes: string | null;
   created_by: string | null;

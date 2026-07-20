@@ -84,8 +84,11 @@ def _mk_quote(db, world, monkeypatch, *, tax=False, delivery=None, lines=None):
 
         class _R:  # rate object
             rate_percentage = Decimal("7.0")
+
+        class _J:  # jurisdiction — U-1's reason string reads these
+            county = "Test"; state = "NY"
         monkeypatch.setattr(tax_service, "get_jurisdiction_for_order",
-                            lambda *a, **k: (object(), _R()))
+                            lambda *a, **k: (_J(), _R()))
         monkeypatch.setattr(
             tax_service, "compute_tax",
             lambda subtotal, rate, exempt: (

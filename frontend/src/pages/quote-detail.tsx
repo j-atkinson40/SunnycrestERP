@@ -81,6 +81,9 @@ function NewQuoteForm() {
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().split("T")[0]);
   const [expiryDate, setExpiryDate] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
+  // D-11 U-1: blank = derive through the tax engine; a value = explicit
+  // override (0 allowed, but must be typed). The silent default died.
+  const [taxRatePct, setTaxRatePct] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<NewLineRow[]>([
     { key: 1, description: "", quantity: "1", unit_price: "" },
@@ -125,6 +128,10 @@ function NewQuoteForm() {
         quote_date: quoteDate,
         expiry_date: expiryDate,
         payment_terms: paymentTerms || undefined,
+        tax_rate:
+          taxRatePct.trim() === ""
+            ? undefined
+            : String(Number(taxRatePct) / 100),
         notes: notes || undefined,
         lines: validLines,
       });
@@ -173,6 +180,15 @@ function NewQuoteForm() {
         <div className="space-y-2">
           <Label>Payment Terms</Label>
           <Input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. Net 30" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Tax rate % (blank = auto-resolve)</Label>
+          <Input
+            value={taxRatePct}
+            onChange={(e) => setTaxRatePct(e.target.value)}
+            placeholder="Resolved from the customer's county"
+            inputMode="decimal"
+          />
         </div>
         <div className="space-y-2">
           <Label>Quote Date *</Label>
@@ -453,9 +469,14 @@ export default function QuoteDetailPage() {
             <p className="text-sm text-muted-foreground">
               Tax Rate:{" "}
               <span className="font-medium text-foreground">
-                {Number(quote.tax_rate)}%
+                {(Number(quote.tax_rate) * 100).toFixed(2).replace(/\.?0+$/, "")}%
               </span>
             </p>
+            {quote.tax_reason ? (
+              <p className="text-xs text-content-subtle" data-testid="quote-tax-reason">
+                {quote.tax_reason}
+              </p>
+            ) : null}
             <p className="text-sm text-muted-foreground">
               Tax Amount:{" "}
               <span className="font-medium text-foreground">

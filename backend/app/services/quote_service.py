@@ -293,27 +293,31 @@ def create_quote(
                 except Exception:
                     pass  # Non-critical
 
-    # --- Tax ---
-    if cemetery_id or customer_id:
-        try:
-            from app.services.tax_service import get_jurisdiction_for_order, compute_tax
-            from app.models.customer import Customer as CustomerModel
-            jur, rate_obj = get_jurisdiction_for_order(db, tenant_id, cemetery_id, customer_id)
-            if jur and rate_obj:
-                cust = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first() if customer_id else None
-                tax_exempt = bool(cust and cust.tax_exempt) if cust else False
-                tax_amount, effective_rate = compute_tax(quote.subtotal, rate_obj.rate_percentage, tax_exempt)
-                quote.tax_amount = tax_amount
-                quote.tax_rate = effective_rate
-                # THE FORMULA, stated once (audit #2 KILL 1): delivery is
-                # already INSIDE subtotal (added as its own line above) —
-                # total = subtotal + tax, never + delivery again. The old
-                # `+ delivery_charge` here double-counted delivery on every
-                # tax-resolving quote (hand-proven overcharge; pinned).
-                # Tax base includes delivery (existing policy, unchanged).
-                quote.total = quote.subtotal + tax_amount
-        except Exception as exc:
-            logger.warning("Tax calculation failed: %s", exc)
+    # --- Tax — THE ONE RESOLUTION (D-11 U-1) ---
+    # Both faces resolve through resolve_quote_tax; the result carries its
+    # why. The Order-Station face tolerates walk-ins (no customer/cemetery
+    # → unresolved-with-reason $0); the Sales face requires resolution.
+    try:
+        from app.services.tax_service import resolve_quote_tax
+        res = resolve_quote_tax(
+            db, tenant_id,
+            subtotal=quote.subtotal,
+            customer_id=customer_id,
+            cemetery_id=quote.cemetery_id,
+        )
+        quote.tax_reason = res.reason
+        if res.resolved:
+            quote.tax_amount = res.tax_amount
+            quote.tax_rate = res.tax_rate
+            # THE FORMULA, stated once (audit #2 KILL 1): delivery is
+            # already INSIDE subtotal (added as its own line above) —
+            # total = subtotal + tax, never + delivery again. The old
+            # `+ delivery_charge` here double-counted delivery on every
+            # tax-resolving quote (hand-proven overcharge; pinned).
+            # Tax base includes delivery (existing policy, unchanged).
+            quote.total = quote.subtotal + res.tax_amount
+    except Exception as exc:
+        logger.warning("Tax calculation failed: %s", exc)
 
     # --- Funeral home preferences (placer auto-add) ---
     if customer_id:
@@ -562,6 +566,7 @@ def _quote_to_dict(q: Quote) -> dict:
         # three were computed + stored but never returned.
         "tax_rate": float(q.tax_rate) if q.tax_rate is not None else None,
         "tax_amount": float(q.tax_amount) if q.tax_amount is not None else None,
+        "tax_reason": q.tax_reason,
         "payment_terms": q.payment_terms,
         "total": float(q.total),
         "permit_number": q.permit_number,
