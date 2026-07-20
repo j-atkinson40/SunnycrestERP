@@ -345,6 +345,14 @@ def post_approved_charges(db: Session, run_id: str, tenant_id: str, user_id: str
         db.add(invoice)
         db.flush()
 
+        # THE ONE POSTING MOMENT (audit #2 D-2): this invoice is born
+        # REAL (status='posted', no draft stage) — creation IS its
+        # issuance, so it posts through the chokepoint here. Before
+        # this, finance charges reached the balance only when the
+        # nightly sweeper noticed the drift.
+        from app.services.sales_service import post_invoice_to_ar
+        post_invoice_to_ar(db, tenant_id, invoice)
+
         item.posted = True
         item.invoice_id = invoice.id
         posted_total += item.final_amount

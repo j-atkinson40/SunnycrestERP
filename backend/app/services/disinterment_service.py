@@ -870,8 +870,8 @@ def _create_invoice_from_case(
     )
     db.add(line)
 
-    # Update customer balance
-    customer.current_balance = (customer.current_balance or Decimal("0.00")) + total
+    # NO AR POST HERE (audit #2 D-2): this invoice is born a DRAFT —
+    # the balance moves once, at approval, via post_invoice_to_ar.
 
     db.flush()
     return invoice

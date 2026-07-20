@@ -441,8 +441,13 @@ def run_incomplete_customer_profile_job(db: Session, tenant_id: str) -> dict:
 def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
     """Reconcile stored customer AR balances against actual invoice totals.
 
-    Detects and corrects balance drift caused by failed transactions,
-    import edge cases, or manual adjustments that bypassed the normal flow.
+    POST-D-2 ROLE (audit #2, 2026-07): with the draft-time double-post
+    dead and every issuance routed through post_invoice_to_ar, this is
+    genuine reconciliation — corrections should trend to ZERO. Any
+    correction it now makes is a REAL drift source (failed transaction,
+    import edge case, direct-SQL adjustment), not the nightly laundering
+    of a known bug. It stays running as the safety net for drift classes
+    we haven't met.
     """
     from app.models import Customer, Invoice
     from app.services.behavioral_analytics_service import generate_insight
@@ -493,8 +498,12 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
                     description=(
                         f"Stored balance was ${float(stored):.2f} but open invoice total was "
                         f"${float(calculated):.2f} (difference: ${diff:.2f}). "
-                        "Automatically corrected. If this recurs, investigate recent "
-                        "payment imports or manual adjustments for this account."
+                        "Automatically corrected. Since the 2026-07 posting fix, "
+                        "every invoice issuance posts through one chokepoint — a "
+                        "correction here means something REAL bypassed it (a failed "
+                        "transaction, a data import, or a direct adjustment). Check "
+                        "this account's invoice and payment audit trail; this alert "
+                        "should be rare."
                     ),
                     action_url=f"/customers/{customer.id}",
                     severity="warning",

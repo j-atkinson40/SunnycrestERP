@@ -943,6 +943,9 @@ def send_invoice(
         inv.sent_at = now
         inv.sent_to_email = to_email
         if inv.status == "draft":
+            # THE ONE POSTING MOMENT (audit #2 D-2): emailing a draft
+            # issues it — the single AR post rides the transition.
+            sales_service.post_invoice_to_ar(db, current_user.company_id, inv)
             inv.status = "sent"
         db.commit()
         _log.info("Invoice %s manually sent to %s", inv.number, to_email)

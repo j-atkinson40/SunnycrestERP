@@ -608,9 +608,10 @@ def approve_invoice(
     inv.approved_at = now
     inv.modified_at = now
 
-    # Post to AR — update customer balance
-    if inv.customer:
-        inv.customer.current_balance = (inv.customer.current_balance or Decimal("0")) + inv.total
+    # THE ONE POSTING MOMENT (audit #2 D-2): approval is when the
+    # invoice becomes real — the single AR post, via the chokepoint.
+    from app.services.sales_service import post_invoice_to_ar
+    post_invoice_to_ar(db, company_id, inv)
 
     # Determine delivery preference and whether to email
     customer = inv.customer
@@ -666,10 +667,10 @@ def approve_all_no_exceptions(
         inv.approved_by = user_id
         inv.approved_at = now
         inv.modified_at = now
-        if inv.customer:
-            inv.customer.current_balance = (
-                inv.customer.current_balance or Decimal("0")
-            ) + inv.total
+        # THE ONE POSTING MOMENT (audit #2 D-2) — same chokepoint as
+        # single approve.
+        from app.services.sales_service import post_invoice_to_ar
+        post_invoice_to_ar(db, company_id, inv)
         delivery_pref = getattr(inv.customer, "invoice_delivery_preference", "statement_only") if inv.customer else "statement_only"
         if delivery_pref in ("invoice_immediately", "both"):
             inv.status = "sent"

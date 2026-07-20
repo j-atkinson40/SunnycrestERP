@@ -678,6 +678,28 @@ def update_sales_order(
     return order
 
 
+def post_invoice_to_ar(db: Session, company_id: str, invoice: Invoice) -> None:
+    """THE ONE POSTING MOMENT (audit #2 D-2).
+
+    AR balance moves when an invoice becomes REAL — exactly once, at the
+    draft→issued transition (approval, or a status PATCH out of draft),
+    or at creation for born-real invoices (finance charges). Nothing
+    else adds invoice totals to `customer.current_balance`. The old
+    draft-time post at creation double-counted with the approval-time
+    post; the 02:00 sweeper laundered the lie nightly.
+    """
+    customer = (
+        db.query(Customer)
+        .filter(Customer.id == invoice.customer_id,
+                Customer.company_id == company_id)
+        .first()
+    )
+    if customer:
+        customer.current_balance = (
+            customer.current_balance or Decimal("0.00")
+        ) + invoice.total
+
+
 def create_invoice_from_order(
     db: Session, company_id: str, user_id: str | None, order_id: str
 ) -> Invoice:
@@ -687,6 +709,34 @@ def create_invoice_from_order(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot invoice a canceled order",
+        )
+
+    # FLANK GUARD (audit #2 D-5): a draft order isn't real yet — refuse.
+    if order.status == "draft":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Order {order.number} is still a draft — confirm it before invoicing.",
+        )
+
+    # FLANK GUARD (audit #2 D-5): one order, one invoice — an existing
+    # non-void invoice refuses with its number named.
+    existing = (
+        db.query(Invoice)
+        .filter(
+            Invoice.company_id == company_id,
+            Invoice.sales_order_id == order.id,
+            Invoice.status != "void",
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Order {order.number} is already invoiced "
+                f"({existing.number}, {existing.status}). Void it first if "
+                "this is a re-issue."
+            ),
         )
 
     # Period lock guard — prevent invoicing into a closed period
@@ -736,9 +786,9 @@ def create_invoice_from_order(
         )
         db.add(il)
 
-    # Update customer balance
-    customer = _get_customer_or_404(db, company_id, order.customer_id)
-    customer.current_balance += invoice.total
+    # NO AR POST HERE (audit #2 D-2): the invoice is a DRAFT — the
+    # balance moves once, at approval, via post_invoice_to_ar. The old
+    # draft-time post here double-counted with the approval-time post.
 
     audit_service.log_action(
         db,
@@ -868,8 +918,8 @@ def create_invoice(db: Session, company_id: str, user_id: str, data) -> Invoice:
         )
         db.add(line)
 
-    # Update customer balance
-    customer.current_balance += total
+    # NO AR POST HERE (audit #2 D-2): drafts don't move the balance —
+    # approval does, once, via post_invoice_to_ar.
 
     db.flush()
 
@@ -897,6 +947,23 @@ def update_invoice(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot modify invoice in '{invoice.status}' status",
         )
+
+    new_status = getattr(data, "status", None)
+    if new_status is not None and new_status != invoice.status:
+        # THE ONE POSTING MOMENT (audit #2 D-2): a PATCH out of draft is
+        # an issuance — it posts, once, through the chokepoint. A PATCH
+        # BACK to draft would un-issue without un-posting: refused.
+        if invoice.status == "draft" and new_status in ("sent", "open"):
+            post_invoice_to_ar(db, company_id, invoice)
+        elif invoice.status != "draft" and new_status == "draft":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Invoice {invoice.number} is already issued "
+                    f"('{invoice.status}') — it can be voided, not returned "
+                    "to draft."
+                ),
+            )
 
     for field in ("status", "notes"):
         val = getattr(data, field, None)
@@ -935,13 +1002,17 @@ def void_invoice(
             detail="Cannot void an invoice with payments applied",
         )
 
+    was_posted = invoice.status != "draft"
     invoice.status = "void"
     invoice.modified_by = user_id
     invoice.modified_at = datetime.now(timezone.utc)
 
-    # Reverse the remaining balance from the customer's current_balance
-    customer = _get_customer_or_404(db, company_id, invoice.customer_id)
-    customer.current_balance -= invoice.balance_remaining
+    # Reverse the remaining balance — but ONLY if it was ever posted
+    # (audit #2 D-2): a voided DRAFT never touched the balance, so
+    # subtracting here would push it below truth.
+    if was_posted:
+        customer = _get_customer_or_404(db, company_id, invoice.customer_id)
+        customer.current_balance -= invoice.balance_remaining
 
     audit_service.log_action(
         db,
@@ -950,7 +1021,7 @@ def void_invoice(
         "invoice",
         invoice.id,
         user_id=user_id,
-        changes={"reversed_balance": str(invoice.balance_remaining)},
+        changes={"reversed_balance": str(invoice.balance_remaining) if was_posted else "0 (draft — never posted)"},
     )
     db.commit()
     db.refresh(invoice)
