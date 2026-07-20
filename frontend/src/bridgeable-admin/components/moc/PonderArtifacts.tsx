@@ -230,6 +230,7 @@ function BankAccountsList({ artifact }: { artifact: PonderArtifact }) {
       accounts: Array<{
         name: string; mask: string | null; subtype: string
         is_credit: boolean; linked: boolean
+        balance?: number | null; balance_as_of?: string | null
       }>
     }>
   }).connections
@@ -250,6 +251,15 @@ function BankAccountsList({ artifact }: { artifact: PonderArtifact }) {
               {a.mask ? (
                 <span className="font-plex-mono text-xs" style={{ color: "#A79B8E" }}>
                   ····{a.mask}
+                </span>
+              ) : null}
+              {a.balance !== null && a.balance !== undefined ? (
+                <span
+                  className="font-plex-mono text-xs"
+                  style={{ color: a.is_credit ? "#E0B380" : "#EAE3DA" }}
+                  title={a.balance_as_of ? `as of ${new Date(a.balance_as_of).toLocaleString()}` : undefined}
+                >
+                  {a.is_credit ? "owes −" : ""}${Math.abs(a.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               ) : null}
               <span className="ml-auto flex flex-none items-center gap-1.5">

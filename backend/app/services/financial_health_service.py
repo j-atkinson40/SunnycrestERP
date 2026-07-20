@@ -90,23 +90,68 @@ def _calculate_ap_discipline(db: Session, tenant_id: str) -> tuple[float, list]:
 
 
 def _calculate_cash_position(db: Session, tenant_id: str) -> tuple[float, list]:
-    """Cash position dimension: 0-100. Defaults to 70 without bank data."""
+    """Cash position dimension: 0-100.
+
+    SESSION-1 CASH WIRE: this component now reads the REAL position —
+    live depository balances from the bank feed (credit excluded)
+    against AP committed in the next 30 days. Before this it scored the
+    mere EXISTENCE of FinancialAccount rows (the old void). Without a
+    bank feed it stays a stated-neutral 70 with the reason in factors —
+    never a number it can't stand behind.
+    """
     factors = []
-    score = 70.0  # Neutral when no bank data
+    score = 70.0
 
     try:
-        from app.models.financial_account import FinancialAccount
-        accounts = (
-            db.query(FinancialAccount)
-            .filter(FinancialAccount.tenant_id == tenant_id, FinancialAccount.is_active.is_(True))
+        from datetime import date, timedelta
+
+        from app.models.plaid import BankAccount, PlaidItem
+
+        rows = (
+            db.query(BankAccount)
+            .join(PlaidItem, PlaidItem.id == BankAccount.plaid_item_id)
+            .filter(BankAccount.tenant_id == tenant_id,
+                    BankAccount.is_active.is_(True),
+                    PlaidItem.is_active.is_(True),
+                    BankAccount.account_type == "depository",
+                    BankAccount.current_balance.isnot(None))
             .all()
         )
-        if accounts:
-            score = 80.0
-            has_reconciled = any(a.last_reconciled_date for a in accounts)
-            if has_reconciled:
-                score += 5
-                factors.append({"factor": "accounts_reconciled", "impact": 5})
+        if not rows:
+            factors.append({"factor": "no_bank_feed",
+                            "note": "neutral score — connect a bank for a real cash read"})
+            return score, factors
+
+        cash_on_hand = float(sum(float(a.current_balance) for a in rows))
+
+        from app.models.vendor_bill import VendorBill
+        horizon = date.today() + timedelta(days=30)
+        ap_30d = float(
+            db.query(func.coalesce(func.sum(VendorBill.total - VendorBill.amount_paid), 0))
+            .filter(VendorBill.company_id == tenant_id,
+                    VendorBill.status.in_(["pending", "approved", "partial"]),
+                    func.date(VendorBill.due_date) <= horizon)
+            .scalar() or 0
+        )
+
+        if ap_30d <= 0:
+            score = 90.0 if cash_on_hand > 0 else 60.0
+            factors.append({"factor": "cash_on_hand", "value": round(cash_on_hand, 2),
+                            "note": "no AP due in 30 days"})
+        else:
+            ratio = cash_on_hand / ap_30d
+            if ratio >= 2:
+                score = 95.0
+            elif ratio >= 1:
+                score = 85.0
+            elif ratio >= 0.5:
+                score = 70.0
+            else:
+                score = 50.0
+            factors.append({"factor": "cash_vs_ap_30d",
+                            "cash_on_hand": round(cash_on_hand, 2),
+                            "ap_due_30d": round(ap_30d, 2),
+                            "ratio": round(ratio, 2)})
     except Exception:
         pass
 
@@ -204,8 +249,10 @@ def run_daily_score(db: Session, tenant_id: str, score_date: date | None = None)
 
     # Collect all factors
     all_factors = ar_factors + ap_factors + cash_factors + ops_factors + growth_factors
-    positive = sorted([f for f in all_factors if f["impact"] > 0], key=lambda x: -x["impact"])[:3]
-    negative = sorted([f for f in all_factors if f["impact"] < 0], key=lambda x: x["impact"])[:3]
+    # Session-1: informational factors (the cash numbers) carry no impact
+    # delta — they inform, they don't rank.
+    positive = sorted([f for f in all_factors if f.get("impact", 0) > 0], key=lambda x: -x["impact"])[:3]
+    negative = sorted([f for f in all_factors if f.get("impact", 0) < 0], key=lambda x: x["impact"])[:3]
 
     # Prior score
     prior = (

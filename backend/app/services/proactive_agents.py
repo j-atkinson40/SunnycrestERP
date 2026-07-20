@@ -368,8 +368,32 @@ def run_uncleared_check_monitor(db: Session, tenant_id: str) -> dict:
         .all()
     )
 
-    # Would cross-reference against subsequent reconciliations to check if cleared
     results["flagged"] = len(stale_checks)
+
+    # Session-1 rider: the count becomes a REAL insight instead of a
+    # discarded return value (the census found this fired nightly and
+    # wrote nothing). One insight per run when anything is stale.
+    if stale_checks:
+        try:
+            from app.services.behavioral_analytics_service import generate_insight
+            total = sum(float(c.amount or 0) for c in stale_checks)
+            generate_insight(
+                db=db,
+                tenant_id=tenant_id,
+                insight_type="uncleared_checks",
+                headline=f"{len(stale_checks)} check(s) outstanding 45+ days",
+                detail=(
+                    f"{len(stale_checks)} outstanding check adjustment(s) "
+                    f"(${total:,.2f}) have not cleared in over 45 days. "
+                    "Review whether they were lost, voided, or need reissue."
+                ),
+                action_url="/financials/board",
+                supporting_data={"count": len(stale_checks),
+                                 "total_amount": total},
+                generated_by_job="uncleared_check_monitor",
+            )
+        except Exception:
+            logger.exception("uncleared_check_monitor: insight write failed")
     return results
 
 

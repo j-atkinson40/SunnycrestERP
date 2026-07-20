@@ -163,6 +163,12 @@ def build_integration_ponder(
                             "subtype": (a.account_subtype or a.account_type or "account"),
                             "is_credit": a.account_type == "credit",
                             "linked": bool(a.financial_account_id),
+                            # Session-1 cash wire: the map glance shows
+                            # the money, as-of honest, credit as owed.
+                            "balance": float(a.current_balance)
+                            if a.current_balance is not None else None,
+                            "balance_as_of": a.balance_as_of.isoformat()
+                            if a.balance_as_of else None,
                         }
                         for a in it.accounts
                     ],

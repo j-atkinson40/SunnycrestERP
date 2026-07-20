@@ -48,6 +48,7 @@ interface APBill {
 
 interface CashFlowWeek {
   week_start: string; label: string; ar_expected: number; ap_committed: number; net: number; has_gap: boolean
+  projected_cash?: number
 }
 
 interface ActivityEntry {
@@ -129,6 +130,9 @@ export default function FinancialsBoardPage() {
         </div>
       </div>
 
+      {/* ZONE — Financial health (Session-1: dormant score wired, calm) */}
+      <HealthScoreStrip />
+
       {/* ZONE 1 — Daily Briefing */}
       {settings.zone_briefing_visible && summary && (
         <DailyBriefingZone summary={summary} briefing={briefing} />
@@ -139,6 +143,9 @@ export default function FinancialsBoardPage() {
         {settings.zone_ar_visible && <ARCommandZone />}
         {settings.zone_ap_visible && <APCommandZone />}
       </div>
+
+      {/* ZONE — Cash Position (Session-1 cash wire: real balances) */}
+      {settings.zone_cashflow_visible && <CashPositionZone />}
 
       {/* ZONE 4 — Cash Flow */}
       {settings.zone_cashflow_visible && <CashFlowZone />}
@@ -518,11 +525,22 @@ function APCommandZone() {
 
 function CashFlowZone() {
   const [weeks, setWeeks] = useState<CashFlowWeek[]>([])
+  const [opening, setOpening] = useState<{
+    cash: number | null; asOf: string | null; accounts: string[]; definition: string
+  }>({ cash: null, asOf: null, accounts: [], definition: "" })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     apiClient.get("/financials/cashflow/forecast")
-      .then((r) => setWeeks(r.data.weeks))
+      .then((r) => {
+        setWeeks(r.data.weeks)
+        setOpening({
+          cash: r.data.opening_cash ?? null,
+          asOf: r.data.opening_as_of ?? null,
+          accounts: r.data.feeding_accounts ?? [],
+          definition: r.data.definition ?? "",
+        })
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -534,7 +552,30 @@ function CashFlowZone() {
   return (
     <Card>
       <CardContent className="p-5">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">5-Week Cash Flow Forecast</h3>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">5-Week Cash Flow Forecast</h3>
+        {opening.cash !== null ? (
+          <p className="mb-3 text-sm text-content-base" data-testid="cashflow-opening">
+            Opening cash{" "}
+            <span className="font-semibold">
+              ${opening.cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
+            {opening.asOf ? (
+              <span className="text-xs text-content-subtle">
+                {" "}as of {new Date(opening.asOf).toLocaleString()}
+              </span>
+            ) : null}
+            <span
+              className="ml-1 text-xs text-content-subtle"
+              title={`${opening.definition} Feeding: ${opening.accounts.join(", ")}`}
+            >
+              · {opening.accounts.length} account{opening.accounts.length === 1 ? "" : "s"} feeding
+            </span>
+          </p>
+        ) : (
+          <p className="mb-3 text-xs text-content-subtle" data-testid="cashflow-no-opening">
+            Timing view only — connect a bank to open the forecast from real cash.
+          </p>
+        )}
         <div className="grid grid-cols-5 gap-3">
           {weeks.map((w) => {
             const arH = Math.max((w.ar_expected / maxVal) * 80, 4)
@@ -549,6 +590,11 @@ function CashFlowZone() {
                 <p className={cn("text-xs font-medium mt-1", w.net >= 0 ? "text-green-600" : "text-red-600")}>
                   {w.net >= 0 ? "+" : ""}${w.net.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </p>
+                {w.projected_cash !== undefined ? (
+                  <p className={cn("text-[10px]", (w.projected_cash ?? 0) < 0 ? "text-red-600 font-medium" : "text-gray-400")}>
+                    ${(w.projected_cash ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                ) : null}
                 {w.has_gap && <span className="text-[10px] text-amber-600">Gap</span>}
               </div>
             )
@@ -560,6 +606,118 @@ function CashFlowZone() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+
+
+// ── Zone: Cash Position (Session-1 cash wire — money shown is money true) ──
+
+function CashPositionZone() {
+  const [pos, setPos] = useState<import("@/services/plaid-service").CashPosition | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    import("@/services/plaid-service")
+      .then((m) => m.getCashPosition())
+      .then(setPos)
+      .catch(() => setPos(null))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return null
+  if (!pos || !pos.connected) {
+    // THE NEVER-FACE: no connection → say so; no fake zeros in cash clothes.
+    return (
+      <Card>
+        <CardContent className="p-5">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Cash Position</h3>
+          <p className="text-sm text-content-muted" data-testid="cash-position-empty">
+            No bank connected — cash on hand appears here once a feed is live.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex items-baseline justify-between mb-3">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cash Position</h3>
+          {pos.as_of ? (
+            <span className="text-[10px] text-content-subtle">as of {new Date(pos.as_of).toLocaleString()}</span>
+          ) : null}
+        </div>
+        <div className="flex items-baseline gap-6 mb-3">
+          <div>
+            <p className="text-2xl font-semibold text-content-strong" data-testid="cash-on-hand">
+              ${pos.cash_on_hand.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-[10px] text-content-subtle" title={pos.definition}>cash on hand</p>
+          </div>
+          {pos.credit_owed > 0 ? (
+            <div>
+              <p className="text-lg font-medium text-status-warning" data-testid="credit-owed">
+                ${pos.credit_owed.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </p>
+              <p className="text-[10px] text-content-subtle">owed on credit — not cash</p>
+            </div>
+          ) : null}
+        </div>
+        <div className="space-y-1" data-testid="cash-position-accounts">
+          {pos.accounts.map((a) => (
+            <div key={a.id} className="flex items-center justify-between text-sm">
+              <span className="text-content-base">
+                {a.name}{a.mask ? <span className="text-content-subtle"> ····{a.mask}</span> : null}
+                {a.is_credit ? (
+                  <span className="ml-1.5 rounded-full bg-status-warning-muted px-1.5 py-0.5 text-[10px] text-status-warning">credit — owed</span>
+                ) : null}
+              </span>
+              <span className={cn("font-medium", a.is_credit ? "text-status-warning" : "text-content-strong")}>
+                {a.current_balance !== null
+                  ? `${a.is_credit ? "−" : ""}$${a.current_balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                  : "—"}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[10px] text-content-subtle">{pos.definition}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Zone: Health score strip (Session-1: dormant #3 wired — small, calm) ──
+
+function HealthScoreStrip() {
+  const [score, setScore] = useState<{
+    score?: number; grade?: string
+    dimensions?: Record<string, { score: number; grade: string }>
+  } | null>(null)
+
+  useEffect(() => {
+    apiClient.get("/health/score")
+      .then((r) => setScore(r.data))
+      .catch(() => setScore(null))
+  }, [])
+
+  if (!score || score.score === undefined || score.score === null) return null
+  const comps = score.dimensions ?? {}
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-md border border-border-subtle bg-surface-elevated px-4 py-2.5"
+      data-testid="health-score-strip"
+    >
+      <span className="text-sm text-content-base">
+        Financial health <span className="font-semibold">{score.grade}</span>
+        <span className="text-content-subtle"> ({Math.round(score.score)})</span>
+      </span>
+      {Object.entries(comps).map(([k, v]) => (
+        <span key={k} className="text-xs text-content-muted">
+          {k.replace(/_/g, " ")} <span className="font-medium text-content-base">{v.grade}</span>
+        </span>
+      ))}
+    </div>
   )
 }
 

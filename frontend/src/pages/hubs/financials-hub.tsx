@@ -5,7 +5,7 @@ import { Breadcrumbs } from "@/components/breadcrumbs";
 import {
   DollarSign, FileText, Receipt, TrendingUp, TrendingDown,
   ClipboardCheck, ClipboardList, CreditCard, PieChart, BookOpen,
-  BarChart3, ArrowRight,
+  BarChart3, ArrowRight, Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import apiClient from "@/lib/api-client";
@@ -166,6 +166,24 @@ export default function FinancialsHub() {
           description="Financial reports & analytics"
           href="/reports"
           icon={PieChart}
+        />
+        <HubTile
+          label="Bank Activity"
+          description="The bank feed, read-only"
+          href="/financials/bank-activity"
+          icon={Landmark}
+        />
+        <HubTile
+          label="BOM Costing"
+          description="Bill-of-materials cost rollups"
+          href="/bom"
+          icon={ClipboardList}
+        />
+        <HubTile
+          label="Sage Exports"
+          description="Accounting CSV exports"
+          href="/inventory/sage-exports"
+          icon={BookOpen}
         />
       </div>
     </div>

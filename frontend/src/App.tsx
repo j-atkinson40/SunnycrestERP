@@ -308,6 +308,7 @@ import CemeteryProfilePage from "@/pages/settings/cemetery-profile";
 import ReportsPage from "@/pages/reports";
 import SocialServiceCertificatesPage from "@/pages/social-service-certificates";
 import FinancialsBoardPage from "@/pages/financials-board";
+import BankActivityPage from "@/pages/bank-activity";
 import AgentDashboard from "@/pages/agents/AgentDashboard";
 import ApprovalReview from "@/pages/agents/ApprovalReview";
 import FinancialsHub from "@/pages/hubs/financials-hub";
@@ -1101,6 +1102,7 @@ export function renderTenantSlugRoutes(
                     <Route path="reports" element={<ReportsPage />} />
                     <Route path="social-service-certificates" element={<SocialServiceCertificatesPage />} />
                     <Route path="financials/board" element={<FinancialsBoardPage />} />
+                    <Route path="financials/bank-activity" element={<BankActivityPage />} />
                     <Route path="agents" element={<AgentDashboard />} />
                     <Route path="agents/:jobId/review" element={<ApprovalReview />} />
                     <Route path="ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />

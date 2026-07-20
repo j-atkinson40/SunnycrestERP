@@ -39,11 +39,13 @@ function item(over: Partial<PlaidItemSummary>): PlaidItemSummary {
         id: "a1", name: "Plaid Checking", mask: "0000",
         account_type: "depository", account_subtype: "checking",
         is_credit: false, financial_account_id: null,
+      current_balance: null, available_balance: null, balance_as_of: null,
       },
       {
         id: "a2", name: "Plaid Credit Card", mask: "3333",
         account_type: "credit", account_subtype: "credit card",
         is_credit: true, financial_account_id: null,
+      current_balance: null, available_balance: null, balance_as_of: null,
       },
     ],
     ...over,

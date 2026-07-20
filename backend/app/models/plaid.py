@@ -89,6 +89,11 @@ class BankAccount(Base):
     account_subtype: Mapped[str | None] = mapped_column(String(48), nullable=True)
     current_balance: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     available_balance: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    # Session-1 cash wire: WHEN these numbers were true (link or last
+    # sync refresh) — the surface states it; no balance pretends freshness.
+    balance_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     financial_account_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("financial_accounts.id"), nullable=True,
     )

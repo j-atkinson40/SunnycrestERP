@@ -20,6 +20,7 @@ fallback so `financial_account_id` links survive. No duplicates.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -126,7 +127,6 @@ def record_item_from_exchange(
         # retraction; the removed-while-matched hook deliberately does not
         # fire) so exactly one live copy stands after re-ingest. Back-refs
         # from reconciliation lines keep pointing at the retained rows.
-        from datetime import datetime, timezone
         from app.models.plaid import BankTransaction
         account_ids = [
             a.id for a in db.query(BankAccount.id)
@@ -198,6 +198,7 @@ def _upsert_accounts(db: Session, *, item: PlaidItem, plaid_accounts: list[dict]
             row.account_subtype = acc.get("subtype")
             row.current_balance = balances.get("current")
             row.available_balance = balances.get("available")
+            row.balance_as_of = datetime.now(timezone.utc)
             row.is_active = True
         else:
             db.add(BankAccount(
@@ -211,6 +212,7 @@ def _upsert_accounts(db: Session, *, item: PlaidItem, plaid_accounts: list[dict]
                 account_subtype=acc.get("subtype"),
                 current_balance=balances.get("current"),
                 available_balance=balances.get("available"),
+                balance_as_of=datetime.now(timezone.utc),
             ))
     db.flush()
 
@@ -232,6 +234,12 @@ def item_summary(item: PlaidItem, accounts: list[BankAccount]) -> dict:
                 "account_subtype": a.account_subtype,
                 "is_credit": a.account_type == "credit",
                 "financial_account_id": a.financial_account_id,
+                # Session-1 cash wire: the strip died — balances travel,
+                # with their as-of. Credit balances are OWED, not owned;
+                # the surface renders the sign honestly.
+                "current_balance": float(a.current_balance) if a.current_balance is not None else None,
+                "available_balance": float(a.available_balance) if a.available_balance is not None else None,
+                "balance_as_of": a.balance_as_of.isoformat() if a.balance_as_of else None,
             }
             for a in accounts
         ],

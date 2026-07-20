@@ -454,10 +454,43 @@ def get_cashflow_forecast(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """5-week forward cash flow view."""
+    """5-week forward cash flow view.
+
+    SESSION-1 CASH WIRE: the forecast now OPENS FROM REAL CASH — the sum
+    of connected depository balances (credit excluded per standard
+    practice; the definition rides the payload for the surface to state).
+    Without a bank connection the opening is null and the zone renders
+    the timing-only view honestly (never a fake zero wearing cash
+    clothes).
+    """
     tid = current_user.company_id
     today = date.today()
     weeks = []
+
+    opening_cash = None
+    opening_as_of = None
+    feeding_accounts = []
+    try:
+        from app.models.plaid import BankAccount, PlaidItem
+        rows = (
+            db.query(BankAccount)
+            .join(PlaidItem, PlaidItem.id == BankAccount.plaid_item_id)
+            .filter(BankAccount.tenant_id == tid,
+                    BankAccount.is_active.is_(True),
+                    PlaidItem.is_active.is_(True),
+                    BankAccount.account_type == "depository",
+                    BankAccount.current_balance.isnot(None))
+            .all()
+        )
+        if rows:
+            opening_cash = round(sum(float(a.current_balance) for a in rows), 2)
+            as_ofs = [a.balance_as_of for a in rows if a.balance_as_of]
+            opening_as_of = min(as_ofs).isoformat() if as_ofs else None
+            feeding_accounts = [
+                f"{a.name}{' ····' + a.mask if a.mask else ''}" for a in rows
+            ]
+    except Exception:
+        pass
 
     for i in range(5):
         week_start = today + timedelta(weeks=i)
@@ -490,7 +523,24 @@ def get_cashflow_forecast(
             "has_gap": net < 0,
         })
 
-    return {"weeks": weeks}
+    # Cumulative projected cash when an opening exists.
+    if opening_cash is not None:
+        running = opening_cash
+        for w in weeks:
+            running = round(running + w["net"], 2)
+            w["projected_cash"] = running
+            w["has_gap"] = running < 0  # the gap is now REAL cash below zero
+
+    return {
+        "weeks": weeks,
+        "opening_cash": opening_cash,
+        "opening_as_of": opening_as_of,
+        "feeding_accounts": feeding_accounts,
+        "definition": (
+            "Opening = depository balances from the bank feed; credit "
+            "excluded. Weeks project AR expected minus AP committed."
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------

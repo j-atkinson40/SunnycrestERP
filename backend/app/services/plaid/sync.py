@@ -213,6 +213,33 @@ def _sync_item(
 
         if not page.get("has_more"):
             break
+
+    # SESSION-1 CASH WIRE: refresh balances once per sync — one
+    # accounts/get call (deterministic regardless of whether the sync
+    # payload carries an accounts block), stamped with balance_as_of so
+    # every surface states when the number was true. Dry-run skips.
+    if not dry_run:
+        try:
+            fresh = plaid_client.get_accounts(access_token)
+            now_ts = datetime.now(timezone.utc)
+            by_id = {a.plaid_account_id: a for a in accounts.values()}
+            for acc in fresh.get("accounts", []):
+                row = by_id.get(acc.get("account_id"))
+                if row is None:
+                    continue
+                bal = acc.get("balances") or {}
+                row.current_balance = bal.get("current")
+                row.available_balance = bal.get("available")
+                row.balance_as_of = now_ts
+            db.commit()
+            counts["balances_refreshed"] = True
+        except Exception as exc:
+            # Balance refresh is best-effort — transactions already
+            # committed; a failed refresh just leaves the older as-of
+            # standing (which the surface states honestly).
+            db.rollback()
+            logger.warning("Balance refresh failed for item %s: %s", item.id, exc)
+            counts["balances_refreshed"] = False
     return counts
 
 

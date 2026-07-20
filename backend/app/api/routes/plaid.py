@@ -318,3 +318,140 @@ def list_uncategorized(
         }
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Session-1 cash wire — the cash position + the browse view
+# ---------------------------------------------------------------------------
+
+
+@router.get("/cash-position")
+def cash_position(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The tenant's real cash, per account, with as-of honesty.
+
+    THE DEFINITION (stated on every surface that renders this):
+    cash on hand = sum of DEPOSITORY current balances. Credit accounts
+    are listed as OWED — they never join cash on hand (standard
+    practice; a credit line is not money you have).
+    """
+    from app.models.plaid import BankAccount, PlaidItem
+
+    rows = (
+        db.query(BankAccount, PlaidItem.institution_name, PlaidItem.status)
+        .join(PlaidItem, PlaidItem.id == BankAccount.plaid_item_id)
+        .filter(BankAccount.tenant_id == current_user.company_id,
+                BankAccount.is_active.is_(True),
+                PlaidItem.is_active.is_(True))
+        .all()
+    )
+    accounts = []
+    cash_on_hand = 0.0
+    credit_owed = 0.0
+    as_ofs = []
+    for acc, inst, item_status in rows:
+        # SIGN HONESTY: cash on hand = DEPOSITORY only. Credit and loans
+        # are OWED. Investments are assets but not cash — they join
+        # neither aggregate (listed per-account with their type).
+        is_credit = acc.account_type in ("credit", "loan")
+        is_cash = acc.account_type == "depository"
+        cur = float(acc.current_balance) if acc.current_balance is not None else None
+        if cur is not None:
+            if is_credit:
+                credit_owed += cur
+            elif is_cash:
+                cash_on_hand += cur
+        if acc.balance_as_of:
+            as_ofs.append(acc.balance_as_of)
+        accounts.append({
+            "id": acc.id,
+            "institution": inst,
+            "item_status": item_status,
+            "name": acc.name,
+            "mask": acc.mask,
+            "account_type": acc.account_type,
+            "account_subtype": acc.account_subtype,
+            "is_credit": is_credit,
+            "current_balance": cur,
+            "available_balance": float(acc.available_balance)
+            if acc.available_balance is not None else None,
+            "balance_as_of": acc.balance_as_of.isoformat() if acc.balance_as_of else None,
+        })
+    return {
+        "connected": bool(rows),
+        "accounts": accounts,
+        "cash_on_hand": round(cash_on_hand, 2),
+        "credit_owed": round(credit_owed, 2),
+        "as_of": min(as_ofs).isoformat() if as_ofs else None,
+        "definition": (
+            "Cash on hand = depository account balances only. Credit and "
+            "loan balances are owed, not owned; investments are assets, "
+            "not cash — all excluded."
+        ),
+    }
+
+
+@router.get("/transactions")
+def browse_transactions(
+    account_id: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    page: int = 1,
+    per_page: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The bank-activity browse view — READ-ONLY (transactions get WORKED
+    in reconciliation; this is where they get read). Pending badged;
+    removed/superseded rows excluded per the B-2 canon (a retraction is
+    surfaced through its own review path, never re-shown as activity)."""
+    from datetime import date as _date
+
+    from app.models.plaid import BankAccount, BankTransaction, PlaidItem
+
+    # LIVE ITEMS ONLY — a disconnected/retired item's history does not
+    # masquerade as current activity (the same rule cash-position keeps).
+    q = (
+        db.query(BankTransaction, BankAccount.name, BankAccount.mask)
+        .join(BankAccount, BankAccount.id == BankTransaction.bank_account_id)
+        .join(PlaidItem, PlaidItem.id == BankAccount.plaid_item_id)
+        .filter(BankTransaction.tenant_id == current_user.company_id,
+                BankTransaction.removed_at.is_(None),
+                PlaidItem.is_active.is_(True))
+    )
+    if account_id:
+        q = q.filter(BankTransaction.bank_account_id == account_id)
+    if start:
+        q = q.filter(BankTransaction.transaction_date >= _date.fromisoformat(start))
+    if end:
+        q = q.filter(BankTransaction.transaction_date <= _date.fromisoformat(end))
+    total = q.count()
+    per_page = min(max(per_page, 1), 200)
+    rows = (
+        q.order_by(BankTransaction.transaction_date.desc(),
+                   BankTransaction.id)
+        .offset((max(page, 1) - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": [
+            {
+                "id": t.id,
+                "date": t.transaction_date.isoformat(),
+                "account_name": name,
+                "account_mask": mask,
+                "description": t.description,
+                "amount": str(t.amount),
+                "pending": t.is_pending,
+                "expense_category": t.expense_category,
+                "plaid_category_primary": t.plaid_category_primary,
+            }
+            for t, name, mask in rows
+        ],
+    }

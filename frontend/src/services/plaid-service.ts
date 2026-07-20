@@ -17,6 +17,10 @@ export interface PlaidBankAccount {
   account_subtype: string | null
   is_credit: boolean
   financial_account_id: string | null
+  // Session-1 cash wire: the strip died — balances travel with as-of.
+  current_balance: number | null
+  available_balance: number | null
+  balance_as_of: string | null
 }
 
 export interface PlaidItemSummary {
@@ -115,5 +119,58 @@ export interface UncategorizedTxn {
 
 export async function getUncategorized(): Promise<UncategorizedTxn[]> {
   const { data } = await apiClient.get("/plaid/transactions/uncategorized")
+  return data
+}
+
+// ── Session-1 cash wire ──────────────────────────────────────────────────
+
+export interface CashPositionAccount {
+  id: string
+  institution: string | null
+  item_status: string
+  name: string
+  mask: string | null
+  account_type: string
+  account_subtype: string | null
+  is_credit: boolean
+  current_balance: number | null
+  available_balance: number | null
+  balance_as_of: string | null
+}
+
+export interface CashPosition {
+  connected: boolean
+  accounts: CashPositionAccount[]
+  cash_on_hand: number
+  credit_owed: number
+  as_of: string | null
+  definition: string
+}
+
+export async function getCashPosition(): Promise<CashPosition> {
+  const { data } = await apiClient.get("/plaid/cash-position")
+  return data
+}
+
+export interface BankActivityItem {
+  id: string
+  date: string
+  account_name: string
+  account_mask: string | null
+  description: string
+  amount: string
+  pending: boolean
+  expense_category: string | null
+  plaid_category_primary: string | null
+}
+
+export async function getBankActivity(params: {
+  account_id?: string
+  start?: string
+  end?: string
+  page?: number
+  per_page?: number
+}): Promise<{ total: number; page: number; per_page: number; items: BankActivityItem[] }> {
+  const { data } = await apiClient.get("/plaid/transactions", { params })
   return data
 }
