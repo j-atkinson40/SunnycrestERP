@@ -67,6 +67,13 @@ export interface MapJob {
     /** Permission-aware — null renders as honest absence, never zero. */
     queue_pending: number | null
   }
+  /** Suite map expression: a declared glance source's live line —
+   * kind "live" carries a real number + as_of; kind "teach" carries the
+   * connect-first face. Absent when the job declares none. */
+  glance_live?: { kind: "live" | "teach"; text: string; as_of?: string | null } | null
+  /** The never-face state — is_coming flips false the moment the arc's
+   * reality check passes (completion-by-reality, never a flag). */
+  coming?: { is_coming: boolean; checker: string } | null
 }
 
 export async function getMapJobs(): Promise<{ vertical: string | null; jobs: MapJob[] }> {

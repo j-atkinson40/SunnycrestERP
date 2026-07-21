@@ -126,6 +126,103 @@ REF_RESOLVERS: dict[str, Callable[[Session, str], dict[str, Any] | None]] = {
 # ── CRUD (caller commits, the house pattern) ────────────────────────────
 
 
+
+# ── Suite map expression (2026-07-20) — glance sources + never-faces ────
+#
+# GLANCE SOURCES: a job may declare `ponder.glance_source` — a key into
+# this dispatch dict (the house pattern). The resolver computes a small
+# LIVE line for the card (e.g. Watch the cash carries the real position).
+# Honest absence: a source that can't stand behind a number returns the
+# teach-face text instead, never a fake zero.
+
+
+def _glance_cash_position(db: Session, tenant_id: str | None) -> dict[str, Any] | None:
+    if not tenant_id:
+        return None
+    try:
+        from app.models.plaid import BankAccount, PlaidItem
+        rows = (
+            db.query(BankAccount)
+            .join(PlaidItem, PlaidItem.id == BankAccount.plaid_item_id)
+            .filter(BankAccount.tenant_id == tenant_id,
+                    BankAccount.is_active.is_(True),
+                    PlaidItem.is_active.is_(True),
+                    BankAccount.account_type == "depository",
+                    BankAccount.current_balance.isnot(None))
+            .all()
+        )
+        if not rows:
+            return {"kind": "teach", "text": "Connect a bank to see cash here"}
+        cash = sum(float(a.current_balance) for a in rows)
+        as_ofs = [a.balance_as_of for a in rows if a.balance_as_of]
+        return {
+            "kind": "live",
+            "text": f"${cash:,.0f} on hand",
+            "as_of": min(as_ofs).isoformat() if as_ofs else None,
+        }
+    except Exception:
+        return None
+
+
+GLANCE_SOURCES: dict[str, Callable[[Session, str | None], dict[str, Any] | None]] = {
+    "cash_position": _glance_cash_position,
+}
+
+
+# NEVER-FACE COMPLETION-BY-REALITY: a coming job declares
+# `ponder.coming = {"checker": <key>, ...}`. The checker READS REALITY —
+# a code-capability probe, never a flag — so the arc landing flips the
+# card real with zero manual steps.
+
+
+def _exceptions_arc_landed(db: Session) -> bool:
+    """Real when the exceptions arc ships its verbs: a credit-memo model
+    OR a write-off verb on the sales service."""
+    try:
+        import app.services.sales_service as ss
+        if hasattr(ss, "write_off_invoice"):
+            return True
+        import importlib
+        importlib.import_module("app.models.credit_memo")
+        return True
+    except Exception:
+        return False
+
+
+def _tax_filing_arc_landed(db: Session) -> bool:
+    """Real when sales-tax accumulation ships: a tax-filing service module
+    or a tax_periods table."""
+    try:
+        import importlib
+        importlib.import_module("app.services.tax_filing_service")
+        return True
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import inspect as sa_inspect
+        return "tax_periods" in sa_inspect(db.get_bind()).get_table_names()
+    except Exception:
+        return False
+
+
+COMING_CHECKERS: dict[str, Callable[[Session], bool]] = {
+    "exceptions_arc": _exceptions_arc_landed,
+    "tax_filing_arc": _tax_filing_arc_landed,
+}
+
+
+def coming_state(db: Session, job: MoCJob) -> dict[str, Any] | None:
+    """None for a normal job; {"is_coming": bool} for a declared
+    never-face — is_coming flips FALSE the moment reality says the arc
+    landed (the card renders real from that boot onward)."""
+    cfg = (job.ponder or {}).get("coming")
+    if not cfg:
+        return None
+    checker = COMING_CHECKERS.get(cfg.get("checker", ""))
+    landed = bool(checker and checker(db))
+    return {"is_coming": not landed, "checker": cfg.get("checker")}
+
+
 def create_job(
     db: Session,
     *,
@@ -543,4 +640,11 @@ def job_card_payload(
         "live_count": live,
         "queue_pending": pending,
     }
+    # Suite map expression: the declared glance source's live line +
+    # the never-face coming state.
+    src = (job.ponder or {}).get("glance_source")
+    if src and src in GLANCE_SOURCES:
+        tenant_id = getattr(user, "company_id", None) if user is not None else None
+        resolved["glance_live"] = GLANCE_SOURCES[src](db, tenant_id)
+    resolved["coming"] = coming_state(db, job)
     return resolved
