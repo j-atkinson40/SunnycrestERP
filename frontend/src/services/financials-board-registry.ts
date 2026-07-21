@@ -1,7 +1,13 @@
 /**
- * FinancialsBoardRegistry — mirrors OperationsBoardRegistry pattern.
- * Each zone is a registered contributor. The board reads from the registry
- * at render time and builds itself from whatever contributors are registered.
+ * FinancialsBoardRegistry — the board's SETTINGS registry.
+ *
+ * Honest role (Suite Session 2): the board renders its zones directly in
+ * financials-board.tsx (explicit JSX per zone, gated by settings flags);
+ * it never consumed the registry's render half, so the dead getZones()
+ * was deleted rather than left to decorate. What IS load-bearing is
+ * getAllSettingsItems() — every registered contributor's settings item
+ * appears in the board's settings panel. A new zone registers here to
+ * gain its visibility toggle, and renders explicitly in the page.
  */
 
 export interface FinancialsZoneDefinition {
@@ -33,13 +39,6 @@ class FinancialsBoardRegistryClass {
   register(contributor: FinancialsBoardContributor): void {
     if (this.contributors.has(contributor.contributor_key)) return
     this.contributors.set(contributor.contributor_key, contributor)
-  }
-
-  getZones(settings: Record<string, boolean | string>): FinancialsZoneDefinition[] {
-    return Array.from(this.contributors.values())
-      .map((c) => c.zone)
-      .filter((z) => settings[`zone_${z.key}_visible`] !== false)
-      .sort((a, b) => a.sort_order - b.sort_order)
   }
 
   getAllSettingsItems(): FinancialsSettingsItem[] {
@@ -128,6 +127,22 @@ FinancialsBoardRegistry.register({
   },
   settings_items: [
     { key: "zone_reconciliation_visible", label: "Reconciliation", default_value: true, group: "zones" },
+  ],
+})
+
+FinancialsBoardRegistry.register({
+  contributor_key: "audit_readiness",
+  zone: {
+    key: "audit",
+    label: "Audit Readiness",
+    component: "AuditReadinessZone",
+    sort_order: 4.7,
+    layout: "full",
+    refresh_interval_ms: 1800000,
+    default_visible: true,
+  },
+  settings_items: [
+    { key: "zone_audit_visible", label: "Audit Readiness", default_value: true, group: "zones" },
   ],
 })
 

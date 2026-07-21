@@ -28,6 +28,20 @@ router = APIRouter()
 REPORT_MODEL = "claude-haiku-4-5-20250514"
 
 
+def _snapshot(db, tenant_id: str, report_type: str, period_start: date, period_end: date, report_data: dict) -> None:
+    """Feed the trend engine (Suite Session 2 — the snapshot wire).
+
+    Every report run leaves a snapshot so /report-intelligence/trends has
+    history to show. save_snapshot is fire-and-forget by contract — a
+    snapshot failure never breaks the report itself.
+    """
+    from app.services.report_intelligence_service import extract_key_metrics, save_snapshot
+
+    metrics = extract_key_metrics(report_type, report_data)
+    if metrics:
+        save_snapshot(db, tenant_id, report_type, period_start, period_end, metrics)
+
+
 # ── Report endpoints ──
 
 @router.get("/income-statement")
@@ -36,12 +50,15 @@ def income_statement(
     comparison_start: str | None = Query(None), comparison_end: str | None = Query(None),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    return get_income_statement(
-        db, current_user.company_id, date.fromisoformat(period_start), date.fromisoformat(period_end),
+    start, end = date.fromisoformat(period_start), date.fromisoformat(period_end)
+    data = get_income_statement(
+        db, current_user.company_id, start, end,
         date.fromisoformat(comparison_start) if comparison_start else None,
         date.fromisoformat(comparison_end) if comparison_end else None,
         current_user.id,
     )
+    _snapshot(db, current_user.company_id, "income_statement", start, end, data)
+    return data
 
 
 @router.get("/ar-aging")
@@ -49,7 +66,10 @@ def ar_aging(
     as_of: str | None = Query(None),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    return get_ar_aging_report(db, current_user.company_id, date.fromisoformat(as_of) if as_of else None, current_user.id)
+    as_of_date = date.fromisoformat(as_of) if as_of else date.today()
+    data = get_ar_aging_report(db, current_user.company_id, as_of_date, current_user.id)
+    _snapshot(db, current_user.company_id, "ar_aging", as_of_date, as_of_date, data)
+    return data
 
 
 @router.get("/ap-aging")
@@ -57,7 +77,10 @@ def ap_aging(
     as_of: str | None = Query(None),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    return get_ap_aging_report(db, current_user.company_id, date.fromisoformat(as_of) if as_of else None, current_user.id)
+    as_of_date = date.fromisoformat(as_of) if as_of else date.today()
+    data = get_ap_aging_report(db, current_user.company_id, as_of_date, current_user.id)
+    _snapshot(db, current_user.company_id, "ap_aging", as_of_date, as_of_date, data)
+    return data
 
 
 @router.get("/sales-by-customer")

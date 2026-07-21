@@ -62,10 +62,15 @@ def world():
         "DELETE FROM audit_logs WHERE company_id = :c",
         "DELETE FROM crm_activities WHERE company_id = :c",
         "DELETE FROM agent_alerts WHERE tenant_id = :c",
+        # agent_activity_log rows are written by the sweeper path;
+        # without this the companies DELETE fails silently and the
+        # fixture litters one LC3 company per run (tripwire catch,
+        # Suite Session 2).
+        "DELETE FROM agent_activity_log WHERE tenant_id = :c",
         "DELETE FROM delivery_settings WHERE company_id = :c",
         "DELETE FROM vaults WHERE company_id = :c",
         "DELETE FROM company_modules WHERE company_id = :c",
-        "DELETE FROM financial_accounts WHERE company_id = :c",
+        "DELETE FROM financial_accounts WHERE tenant_id = :c",
         "DELETE FROM customers WHERE company_id = :c",
         "DELETE FROM users WHERE company_id = :c",
         "DELETE FROM roles WHERE company_id = :c",

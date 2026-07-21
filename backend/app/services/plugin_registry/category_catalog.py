@@ -253,14 +253,13 @@ def _intro_accounting_providers() -> tuple[list[dict], int]:
     # Accounting providers per PLUGIN_CONTRACTS.md §8 enumerated via
     # the provider abstraction. The current canonical set is fixed
     # in `accounting/providers/`. Listing module-level providers:
+    # The QBO decommission (r134, 2026-07-18) deleted qbo_provider; its
+    # ghost import was swept in Suite Session 2 — Sage CSV is the sole
+    # accounting provider registration.
     try:
         from app.services.accounting.providers import sage_csv_provider  # noqa: F401
     except ImportError:
         sage_csv_provider = None
-    try:
-        from app.services.accounting.providers import qbo_provider  # noqa: F401
-    except ImportError:
-        qbo_provider = None
 
     registrations = []
     if sage_csv_provider is not None:
@@ -270,16 +269,6 @@ def _intro_accounting_providers() -> tuple[list[dict], int]:
                 "metadata": {
                     "module": "app.services.accounting.providers.sage_csv_provider",
                     "description": "Sage 100 CSV export provider.",
-                },
-            }
-        )
-    if qbo_provider is not None:
-        registrations.append(
-            {
-                "key": "qbo",
-                "metadata": {
-                    "module": "app.services.accounting.providers.qbo_provider",
-                    "description": "QuickBooks Online OAuth API provider.",
                 },
             }
         )

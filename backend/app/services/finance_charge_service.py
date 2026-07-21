@@ -36,6 +36,35 @@ def get_settings(db: Session, tenant_id: str) -> dict:
     }
 
 
+_SETTINGS_KEYS = {
+    "enabled": "finance_charges_enabled",
+    "rate_monthly": "finance_charge_rate_monthly",
+    "minimum_amount": "finance_charge_minimum_amount",
+    "minimum_balance": "finance_charge_minimum_balance",
+    "balance_basis": "finance_charge_balance_basis",
+    "compound": "finance_charge_compound",
+    "grace_days": "finance_charge_grace_days",
+    "calculation_day": "finance_charge_calculation_day",
+}
+
+
+def update_settings(db: Session, tenant_id: str, values: dict) -> int:
+    """Write whitelisted finance-charge settings onto the company. Returns count changed."""
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    if not company:
+        return 0
+    changed = 0
+    for key, value in values.items():
+        setting_key = _SETTINGS_KEYS.get(key)
+        if setting_key is None:
+            continue
+        company.set_setting(setting_key, value)
+        changed += 1
+    if changed:
+        db.commit()
+    return changed
+
+
 def calculate_eligible_balance(
     db: Session, customer_id: str, tenant_id: str, calc_date: date, settings: dict,
 ) -> dict:
@@ -73,6 +102,12 @@ def calculate_eligible_balance(
 
         if not effective_due:
             effective_due = inv.invoice_date or calc_date
+
+        # Invoice dates are timezone-aware datetimes; calc_date is a date.
+        # Normalize before subtracting — this TypeError kept the engine
+        # from ever completing a run (born-dormant bug #2, Suite Session 2).
+        if isinstance(effective_due, datetime):
+            effective_due = effective_due.date()
 
         days_past = (calc_date - effective_due).days if effective_due else 0
 
@@ -271,8 +306,11 @@ def run_calculation(db: Session, tenant_id: str, calc_date: date, triggered_by: 
     return {"run_id": run.id, "already_exists": False, "customers_charged": total_charged, "total": float(total_calculated)}
 
 
-def approve_item(db: Session, item_id: str, user_id: str) -> bool:
-    item = db.query(FinanceChargeItem).filter(FinanceChargeItem.id == item_id).first()
+def approve_item(db: Session, item_id: str, user_id: str, tenant_id: str | None = None) -> bool:
+    query = db.query(FinanceChargeItem).filter(FinanceChargeItem.id == item_id)
+    if tenant_id is not None:
+        query = query.filter(FinanceChargeItem.tenant_id == tenant_id)
+    item = query.first()
     if not item or item.review_status != "pending":
         return False
     item.review_status = "approved"
@@ -282,8 +320,11 @@ def approve_item(db: Session, item_id: str, user_id: str) -> bool:
     return True
 
 
-def forgive_item(db: Session, item_id: str, user_id: str, note: str | None = None) -> bool:
-    item = db.query(FinanceChargeItem).filter(FinanceChargeItem.id == item_id).first()
+def forgive_item(db: Session, item_id: str, user_id: str, note: str | None = None, tenant_id: str | None = None) -> bool:
+    query = db.query(FinanceChargeItem).filter(FinanceChargeItem.id == item_id)
+    if tenant_id is not None:
+        query = query.filter(FinanceChargeItem.tenant_id == tenant_id)
+    item = query.first()
     if not item or item.review_status != "pending":
         return False
     item.review_status = "forgiven"
@@ -307,7 +348,10 @@ def approve_all_pending(db: Session, run_id: str, user_id: str) -> int:
 
 def post_approved_charges(db: Session, run_id: str, tenant_id: str, user_id: str) -> dict:
     """Post all approved finance charges — creates invoices and JEs."""
-    run = db.query(FinanceChargeRun).filter(FinanceChargeRun.id == run_id).first()
+    run = db.query(FinanceChargeRun).filter(
+        FinanceChargeRun.id == run_id,
+        FinanceChargeRun.tenant_id == tenant_id,
+    ).first()
     if not run:
         return {"error": "Run not found"}
 

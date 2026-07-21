@@ -309,6 +309,8 @@ import ReportsPage from "@/pages/reports";
 import SocialServiceCertificatesPage from "@/pages/social-service-certificates";
 import FinancialsBoardPage from "@/pages/financials-board";
 import BankActivityPage from "@/pages/bank-activity";
+import FinanceChargesPage from "@/pages/financials/finance-charges";
+import FinancialAccountsSettings from "@/pages/settings/financial-accounts";
 import AgentDashboard from "@/pages/agents/AgentDashboard";
 import ApprovalReview from "@/pages/agents/ApprovalReview";
 import FinancialsHub from "@/pages/hubs/financials-hub";
@@ -1103,6 +1105,8 @@ export function renderTenantSlugRoutes(
                     <Route path="social-service-certificates" element={<SocialServiceCertificatesPage />} />
                     <Route path="financials/board" element={<FinancialsBoardPage />} />
                     <Route path="financials/bank-activity" element={<BankActivityPage />} />
+                    <Route path="financials/finance-charges" element={<FinanceChargesPage />} />
+                    <Route path="settings/accounts" element={<FinancialAccountsSettings />} />
                     <Route path="agents" element={<AgentDashboard />} />
                     <Route path="agents/:jobId/review" element={<ApprovalReview />} />
                     <Route path="ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />

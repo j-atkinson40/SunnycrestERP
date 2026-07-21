@@ -57,6 +57,11 @@ def world():
         "DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = :c)",
         "DELETE FROM invoices WHERE company_id = :c",
         "DELETE FROM deliveries WHERE company_id = :c",
+        # delivery_settings is auto-created by the delivery path; without
+        # this line the companies DELETE fails silently (the swallow below)
+        # and the fixture litters one CP4 company per run — caught by the
+        # conftest company-litter tripwire, Suite Session 2.
+        "DELETE FROM delivery_settings WHERE company_id = :c",
         "DELETE FROM sales_order_lines WHERE sales_order_id IN (SELECT id FROM sales_orders WHERE company_id = :c)",
         "DELETE FROM sales_orders WHERE company_id = :c",
         "DELETE FROM quote_lines WHERE quote_id IN (SELECT id FROM quotes WHERE company_id = :c)",
@@ -67,7 +72,7 @@ def world():
         "DELETE FROM products WHERE company_id = :c",
         "DELETE FROM vaults WHERE company_id = :c",
         "DELETE FROM company_modules WHERE company_id = :c",
-        "DELETE FROM financial_accounts WHERE company_id = :c",
+        "DELETE FROM financial_accounts WHERE tenant_id = :c",
         "DELETE FROM customers WHERE company_id = :c",
         "DELETE FROM users WHERE company_id = :c",
         "DELETE FROM roles WHERE company_id = :c",

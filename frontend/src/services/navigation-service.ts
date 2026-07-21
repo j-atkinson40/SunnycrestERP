@@ -343,7 +343,9 @@ function getManufacturingNav(
           ...(hasSyncError ? { badge: "\u2022" } : {}),
         },
         {
-          label: "API Keys",
+          // Honest label (Suite Session 2): /admin/accounting is the
+          // accounting-provider connection page, not API key management.
+          label: "Accounting Sync",
           href: "/admin/accounting",
           icon: "Plug",
           settingsGroup: "Integrations",

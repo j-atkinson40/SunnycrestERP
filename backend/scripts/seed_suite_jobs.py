@@ -119,6 +119,12 @@ JOBS = [
             ("today-void", "TODAY — voiding works, honestly: void an "
              "invoice or a payment; a never-posted draft reverses "
              "nothing.", {"href": "/ar/invoices", "label": "Open Invoices"}),
+            ("today-late-charges", "TODAY — late charges run under human "
+             "eyes: finance charges calculate on demand, and every charge "
+             "is reviewed — approved, or forgiven with a reason — before "
+             "it posts. No clock fires this yet; the automation is "
+             "queued.", {"href": "/financials/finance-charges",
+                         "label": "Review late charges"}),
             ("coming-memos", "COMING — credit memos: a first-class credit "
              "document instead of a hand edit.", None),
             ("coming-writeoff", "COMING — the write-off verb: the status "
@@ -152,6 +158,56 @@ JOBS = [
         {"coming": {"checker": "tax_filing_arc"}},
     ),
 ]
+
+
+# Platform beats that join ALREADY-SEEDED jobs after their first ship.
+# Append-only: a beat is inserted ONLY if its key is absent — existing
+# beats (including operator-edited text) are never rewritten. Each entry:
+# (job_name, beat_key, insert_after_key, beat_dict).
+LATE_BEATS = [
+    (
+        "Handle the exceptions",
+        "today-late-charges",
+        "today-void",
+        {
+            "key": "today-late-charges",
+            "text": "TODAY — late charges run under human eyes: finance "
+                    "charges calculate on demand, and every charge is "
+                    "reviewed — approved, or forgiven with a reason — "
+                    "before it posts. No clock fires this yet; the "
+                    "automation is queued.",
+            "link": {"href": "/financials/finance-charges",
+                     "label": "Review late charges"},
+        },
+    ),
+]
+
+
+def _ensure_late_beats(db) -> int:
+    """Append missing platform beats to existing suite jobs (idempotent)."""
+    added = 0
+    for job_name, beat_key, after_key, beat in LATE_BEATS:
+        job = (
+            db.query(MoCJob)
+            .filter(MoCJob.scope == "vertical_default",
+                    MoCJob.vertical == VERT,
+                    MoCJob.name == job_name,
+                    MoCJob.is_active.is_(True))
+            .first()
+        )
+        if job is None:
+            continue
+        ponder = dict(job.ponder or {})
+        story = list(ponder.get("story") or [])
+        if any(b.get("key") == beat_key for b in story):
+            continue
+        idx = next((i for i, b in enumerate(story)
+                    if b.get("key") == after_key), len(story) - 1)
+        story.insert(idx + 1, beat)
+        ponder["story"] = story
+        job.ponder = ponder
+        added += 1
+    return added
 
 
 def main() -> int:
@@ -208,8 +264,10 @@ def main() -> int:
                 except jobs_svc.JobValidationError as e:
                     print(f"[seed_suite_jobs] skip ref ({name}): {e}")
             created += 1
+        beats_added = _ensure_late_beats(db)
         db.commit()
-        print(f"[seed_suite_jobs] ok — {created} created (existing untouched)")
+        print(f"[seed_suite_jobs] ok — {created} created (existing untouched), "
+              f"{beats_added} late beats appended")
         return 0
     finally:
         db.close()

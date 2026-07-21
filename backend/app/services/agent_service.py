@@ -408,7 +408,7 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
                 db, tenant_id, "ap_upcoming_digest", "info",
                 f"{len(due_soon)} bills totaling ${total_soon:,.2f} due in the next 14 days",
                 "Review your upcoming payment schedule.",
-                action_label="View Payment Schedule", action_url="/ap/bills?tab=ap-aging",
+                action_label="View Payment Schedule", action_url="/financials/board",
             )
             alerts_created += 1
 
@@ -421,7 +421,7 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
                     db, tenant_id, "ap_payment_run", "action_required",
                     f"Suggested payment run: {len(week_bills)} bills totaling ${total_run:,.2f}",
                     "Bills due this week are ready for a batch payment run.",
-                    action_label="Review Payment Run", action_url="/ap/payment-run",
+                    action_label="Review Payment Run", action_url="/financials/board",
                     action_payload={"bill_ids": [b.id for b in week_bills]},
                 )
                 alerts_created += 1

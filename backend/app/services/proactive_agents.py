@@ -137,7 +137,11 @@ def run_balance_reduction_advisor(db: Session, tenant_id: str) -> dict:
     from app.models.customer import Customer
     from app.services.behavioral_analytics_service import generate_insight, get_or_create_profile
 
-    results = {"late_payment_flags": 0, "finance_charge_warnings": 0}
+    # finance_charge_warnings counter removed 2026-07-21 (Suite Session 2):
+    # it never incremented — the warning scenario was never written, and
+    # finance-charge visibility now lives on the charge review surface
+    # (/financials/finance-charges), not this advisor.
+    results = {"late_payment_flags": 0}
 
     # Get monthly statement customers with open balances
     customers = (

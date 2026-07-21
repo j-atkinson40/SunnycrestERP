@@ -145,8 +145,9 @@ class TestCashGlanceFaces:
 class TestTheStories:
     ROUTED = {"/ap/bills", "/ap/payments", "/ap/aging",
               "/financials/bank-activity", "/financials/board",
+              "/financials/finance-charges",
               "/reports", "/ar/statements", "/journal-entries",
-              "/ar/invoices", "/settings/tax"}
+              "/ar/invoices", "/settings/tax", "/settings/accounts"}
 
     def test_ponders_build_with_census_backed_beats(self, db):
         for name, must_contain in (

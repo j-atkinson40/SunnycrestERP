@@ -132,6 +132,12 @@ export default function FinancialsHub() {
               icon={Receipt}
             />
             <HubTile
+              label="AP Payments"
+              description="Payments made to vendors"
+              href="/ap/payments"
+              icon={CreditCard}
+            />
+            <HubTile
               label="Purchase Orders"
               description="Manage purchase orders"
               href="/ap/purchase-orders"
@@ -148,8 +154,8 @@ export default function FinancialsHub() {
         {canInvoice && (
           <>
             <HubTile
-              label="Payments"
-              description="Customer payments received"
+              label="Customer Payments"
+              description="Payments received from customers"
               href="/ar/payments"
               icon={CreditCard}
             />

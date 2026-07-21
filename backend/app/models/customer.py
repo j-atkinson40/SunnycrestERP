@@ -114,6 +114,14 @@ class Customer(Base):
     # --- Billing profile ---
     billing_profile: Mapped[str] = mapped_column(String(20), server_default="cod")
     receives_monthly_statement: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    # --- Finance charges (Suite Session 2) ---
+    # The q6p7 migration added these columns at feature-build time but the
+    # model never declared them, so the engine's customer query raised
+    # AttributeError on its first real run — the engine was dormant since
+    # birth. Columns exist in every DB; this is declaration, not schema.
+    finance_charge_eligible: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    finance_charge_custom_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    finance_charge_excluded_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_terms: Mapped[str] = mapped_column(String(20), server_default="cod")
     preferred_delivery_method: Mapped[str] = mapped_column(String(20), server_default="email")
 

@@ -446,7 +446,9 @@ def seed_module_definitions(db: Session) -> int:
         {"key": "online_payments", "name": "Online Payments", "description": "Stripe integration for online invoice payments and deposit collection.", "category": "addon", "icon": "Wallet", "sort_order": 76, "is_core": False, "dependencies": json.dumps(["invoicing"])},
         {"key": "multi_location", "name": "Multi-Location", "description": "Multi-site management, inter-location transfers, and consolidated reporting.", "category": "addon", "icon": "Building2", "sort_order": 77, "is_core": False, "dependencies": json.dumps(["core"])},
         {"key": "sage_integration", "name": "Sage 100 Integration", "description": "Automated CSV sync with Sage 100 for GL, AP, AR, and inventory.", "category": "addon", "icon": "RefreshCw", "sort_order": 78, "is_core": False, "dependencies": json.dumps(["core"])},
-        {"key": "qbo_integration", "name": "QuickBooks Online", "description": "Direct API integration with QuickBooks Online for accounting sync.", "category": "addon", "icon": "RefreshCw", "sort_order": 79, "is_core": False, "dependencies": json.dumps(["core"])},
+        # qbo_integration removed 2026-07-21 (Suite Session 2) — the QBO
+        # decommission (r134, 2026-07-18) retired the provider; the catalog
+        # no longer advertises it. Stale rows are swept below.
     ]
 
     count = 0
@@ -454,6 +456,12 @@ def seed_module_definitions(db: Session) -> int:
         if m["key"] not in existing:
             db.add(ModuleDefinition(**m))
             count += 1
+
+    # QBO decommission sweep: retire the catalog row on DBs seeded before it.
+    stale_qbo = db.query(ModuleDefinition).filter(ModuleDefinition.key == "qbo_integration").first()
+    if stale_qbo is not None:
+        db.delete(stale_qbo)
+        count += 1
 
     if count:
         db.flush()

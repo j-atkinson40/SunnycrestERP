@@ -39,6 +39,10 @@ class AccountCreate(BaseModel):
     statement_closing_day: int | None = None
 
 
+class AccountUpdate(AccountCreate):
+    is_active: bool | None = None
+
+
 class StartRunRequest(BaseModel):
     account_id: str
     statement_date: str
@@ -123,7 +127,7 @@ def create_account(
 
 @router.patch("/accounts/{account_id}")
 def update_account(
-    account_id: str, body: AccountCreate,
+    account_id: str, body: AccountUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -137,6 +141,8 @@ def update_account(
             setattr(acct, field, getattr(body, field))
     if body.credit_limit is not None:
         acct.credit_limit = Decimal(str(body.credit_limit))
+    if body.is_active is not None:
+        acct.is_active = body.is_active
     db.commit()
     return {"status": "updated"}
 

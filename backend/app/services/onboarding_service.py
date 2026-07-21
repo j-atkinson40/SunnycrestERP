@@ -638,8 +638,8 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "category": "integration",
         "title": "Connect your accounting software",
         "description": (
-            "Connect QuickBooks or set up Sage export so invoices flow to "
-            "your books automatically."
+            "Set up Sage export so invoices flow to your books "
+            "automatically."
         ),
         "estimated_minutes": 30,
         "action_type": "modal",

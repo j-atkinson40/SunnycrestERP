@@ -34,10 +34,17 @@ const REPORT_CATEGORIES = [
   {
     label: "Tax",
     reports: [
-      { key: "tax_summary", label: "Tax Summary", endpoint: "/reports/tax-summary", needsPeriod: true },
+      // Honesty (Suite Session 2): the tax-summary endpoint is a
+      // hardcoded-zero stub — accumulation into filing periods does not
+      // exist yet. The entry stays visible but runs nothing; it dies for
+      // real when the sales-tax filing arc lands.
+      { key: "tax_summary", label: "Tax Summary", endpoint: "/reports/tax-summary", needsPeriod: true, notBuilt: true },
     ],
   },
 ]
+
+// Reports whose runs feed the trend engine (the snapshot wire).
+const TRENDED = new Set(["income_statement", "ar_aging", "ap_aging"])
 
 const QUICK_PERIODS = [
   { label: "This Month", getRange: () => { const d = new Date(); return { start: new Date(d.getFullYear(), d.getMonth(), 1), end: new Date(d.getFullYear(), d.getMonth() + 1, 0) } } },
@@ -61,10 +68,14 @@ export default function ReportsPage() {
   const [pkgName, setPkgName] = useState("")
   const [pkgGenerating, setPkgGenerating] = useState(false)
 
-  const reportDef = REPORT_CATEGORIES.flatMap((c) => c.reports).find((r) => r.key === selectedReport)
+  const [trends, setTrends] = useState<TrendPoint[] | null>(null)
+
+  const reportDef = REPORT_CATEGORIES.flatMap((c) => c.reports).find((r) => r.key === selectedReport) as
+    | { key: string; label: string; endpoint: string; needsPeriod?: boolean; needsAsOf?: boolean; notBuilt?: boolean }
+    | undefined
 
   const runReport = useCallback(async () => {
-    if (!reportDef) return
+    if (!reportDef || reportDef.notBuilt) return
     setLoading(true)
     try {
       const params: Record<string, string> = {}
@@ -72,6 +83,16 @@ export default function ReportsPage() {
       if (reportDef.needsAsOf) { params.as_of = periodEnd }
       const res = await apiClient.get(reportDef.endpoint, { params })
       setReportData(res.data)
+      // The trend strip (Suite Session 2): consume what computes —
+      // snapshot history from the report-intelligence trend engine.
+      // Commentary and preflight stay unconsumed; they don't compute yet.
+      if (TRENDED.has(reportDef.key)) {
+        apiClient.get("/report-intelligence/trends", { params: { report_type: reportDef.key } })
+          .then((t) => setTrends(t.data))
+          .catch(() => setTrends(null))
+      } else {
+        setTrends(null)
+      }
     } catch {
       toast.error("Failed to run report")
     } finally {
@@ -182,8 +203,23 @@ export default function ReportsPage() {
           </Card>
         )}
 
+        {/* Not-built honesty (tax summary) */}
+        {reportDef?.notBuilt && (
+          <Card>
+            <CardContent className="p-8">
+              <p className="text-sm font-medium text-gray-900">Tax Summary — not built yet</p>
+              <p className="mt-1.5 text-xs text-gray-500 max-w-prose">
+                Tax <em>resolution</em> works today — every quote carries its rate and
+                its reason. But accumulation into filing periods doesn't exist yet, so
+                this report has nothing honest to show; it previously rendered zeros
+                that looked like data. It arrives with the sales-tax filing arc.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Parameter controls */}
-        {selectedReport && (
+        {selectedReport && !reportDef?.notBuilt && (
           <Card>
             <CardContent className="p-3 flex items-center gap-3 flex-wrap">
               <span className="text-sm font-medium text-gray-900">{reportDef?.label}</span>
@@ -250,14 +286,50 @@ export default function ReportsPage() {
               {/* Invoice Register */}
               {selectedReport === "invoice_register" && <InvoiceRegisterView data={reportData} />}
 
-              {/* Tax Summary */}
-              {selectedReport === "tax_summary" && (
-                <p className="text-sm text-gray-500">Tax summary data will appear here once tax jurisdictions are configured.</p>
+              {/* Trend strip — history from the snapshot wire, calm and beneath */}
+              {trends && trends.length >= 2 && selectedReport && (
+                <TrendStrip trends={trends} reportKey={selectedReport} />
               )}
             </CardContent>
           </Card>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Trend strip ──
+
+interface TrendPoint {
+  snapshot_date: string
+  period_start: string
+  period_end: string
+  key_metrics: Record<string, number>
+}
+
+const TREND_METRICS: Record<string, { key: string; label: string }> = {
+  income_statement: { key: "net_income", label: "Net income" },
+  ar_aging: { key: "total_outstanding", label: "AR outstanding" },
+  ap_aging: { key: "total_outstanding", label: "AP outstanding" },
+}
+
+function TrendStrip({ trends, reportKey }: { trends: TrendPoint[]; reportKey: string }) {
+  const metric = TREND_METRICS[reportKey]
+  if (!metric) return null
+  const latest = trends[trends.length - 1]
+  const prior = trends[trends.length - 2]
+  const now = latest.key_metrics[metric.key] ?? 0
+  const before = prior.key_metrics[metric.key] ?? 0
+  const delta = now - before
+  return (
+    <div className="mt-5 border-t border-gray-100 pt-3">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Over time</p>
+      <p className="mt-1 text-xs text-gray-600">
+        {metric.label} as of the {latest.period_start} snapshot: $
+        {now.toLocaleString(undefined, { minimumFractionDigits: 2 })} —{" "}
+        {delta === 0 ? "unchanged from" : delta > 0 ? `up $${Math.abs(delta).toLocaleString(undefined, { minimumFractionDigits: 2 })} from` : `down $${Math.abs(delta).toLocaleString(undefined, { minimumFractionDigits: 2 })} from`}{" "}
+        the {prior.period_start} snapshot. {trends.length} snapshots on record.
+      </p>
     </div>
   )
 }
@@ -273,11 +345,17 @@ function IncomeStatementView({ data }: { data: Record<string, unknown> }) {
         {d.revenue.map((r, i) => <div key={i} className="flex justify-between py-0.5"><span>{r.account_name}</span><span>${r.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>)}
         <div className="flex justify-between py-1 font-semibold border-t border-gray-200 mt-1"><span>Total Revenue</span><span>${d.total_revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
       </div>
-      {d.cogs.length > 0 && <div>
+      {d.cogs.length > 0 ? <div>
         <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Cost of Goods Sold</p>
         {d.cogs.map((r, i) => <div key={i} className="flex justify-between py-0.5"><span>{r.account_name}</span><span>${r.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>)}
         <div className="flex justify-between py-1 font-semibold border-t border-gray-200 mt-1"><span>Gross Profit ({d.gross_margin_percent}%)</span><span>${d.gross_profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-      </div>}
+      </div> : (
+        <p className="text-[11px] text-gray-500 border-l-2 border-amber-300 pl-2">
+          No cost dimension exists yet — gross margin reads ~100% and is not
+          meaningful. Read revenue and expenses with confidence, margin with
+          none; the ledger arc is queued.
+        </p>
+      )}
       {d.expenses.length > 0 && <div>
         <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Expenses</p>
         {d.expenses.map((r, i) => <div key={i} className="flex justify-between py-0.5"><span>{r.account_name}</span><span>${r.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>)}
