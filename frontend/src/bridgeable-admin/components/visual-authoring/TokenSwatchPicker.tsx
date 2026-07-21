@@ -43,7 +43,7 @@ const TOKENS_BY_FAMILY: Record<TokenFamily, string[]> = {
     "border-subtle",
     "border-base",
     "border-strong",
-    "border-brass",
+    "border-accent",
   ],
   padding: [
     "space-2",
@@ -93,7 +93,7 @@ function PaddingPreview({ token }: { token: string }) {
       style={{ width: dim, height: dim }}
     >
       <div
-        className="rounded-[2px] bg-[color:var(--accent-brass,#9C5640)]/40"
+        className="rounded-[2px] bg-[color:var(--accent)]/40"
         style={{
           width: Math.max(2, dim - px / 2),
           height: Math.max(2, dim - px / 2),
@@ -194,8 +194,8 @@ export function TokenSwatchPicker({
           "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]",
           "text-[color:var(--content-base)] hover:border-[color:var(--border-base)]",
           "transition-[border-color] duration-quick ease-settle",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-brass,#9C5640)]/40 focus-visible:border-[color:var(--accent-brass,#9C5640)]",
-          open && "border-[color:var(--accent-brass,#9C5640)]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40 focus-visible:border-[color:var(--accent)]",
+          open && "border-[color:var(--accent)]",
         )}
       >
         <span className="flex items-center gap-2">
@@ -240,9 +240,9 @@ export function TokenSwatchPicker({
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-sm border px-2 py-1.5 text-left",
-                  "border-[color:var(--border-subtle)] hover:border-[color:var(--accent-brass,#9C5640)]",
+                  "border-[color:var(--border-subtle)] hover:border-[color:var(--accent)]",
                   value === null
-                    ? "ring-1 ring-[color:var(--accent-brass,#9C5640)]"
+                    ? "ring-1 ring-[color:var(--accent)]"
                     : undefined,
                 )}
               >
@@ -271,9 +271,9 @@ export function TokenSwatchPicker({
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-sm border px-2 py-1.5 text-left",
-                  "border-[color:var(--border-subtle)] hover:border-[color:var(--accent-brass,#9C5640)]",
+                  "border-[color:var(--border-subtle)] hover:border-[color:var(--accent)]",
                   value === tok
-                    ? "ring-1 ring-[color:var(--accent-brass,#9C5640)]"
+                    ? "ring-1 ring-[color:var(--accent)]"
                     : undefined,
                 )}
               >

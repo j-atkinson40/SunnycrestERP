@@ -1,307 +1,225 @@
 /* ============================================================
- * Aesthetic Arc Session 1 — DESIGN_LANGUAGE.md Section 9 tokens
+ * DESIGN_LANGUAGE.md tokens — chrome/steel instrument-grade
+ * language (2026-07-21 pivot; supersedes the aged-brass /
+ * terracotta / IBM Plex-era values in full).
  *
- * Every token value below is copied verbatim from
- * DESIGN_LANGUAGE.md Section 9. Do NOT modify values here;
- * the design language document is the source of truth. If a
- * token needs to change, edit DESIGN_LANGUAGE.md first, then
- * port the change here. Silent drift is a bug.
+ * Every color value below derives from DESIGN_LANGUAGE.md §3–§7.
+ * Do NOT modify values here without editing DESIGN_LANGUAGE.md
+ * first — the design language document is the source of truth.
+ * Silent drift is a bug. Mirror discipline: this file,
+ * token-catalog.ts, and base-tokens.ts move in the SAME commit
+ * (vitest drift gates enforce).
  *
- * Token families (copied from DESIGN_LANGUAGE §3 + §9):
- *   --surface-{base,elevated,raised,sunken}
- *   --content-{strong,base,muted,subtle,on-accent}
- *   --border-{subtle,base,strong,accent}
- *   --shadow-color-{subtle,base,strong} + --shadow-highlight-top (dark only)
- *   --shadow-level-{1,2,3} (composed from color + highlight)
- *   --accent{,-hover,-muted,-subtle}
- *   --status-{error,warning,success,info}{,-muted}
- *   --font-plex-{sans,serif,mono} (session-1 additive names; post
- *     session-2, --font-sans itself in index.css points at
- *     var(--font-plex-sans) so the font-sans Tailwind utility
- *     resolves to Plex Sans platform-wide)
- *   --text-{display-lg,display,h1..h4,body,body-sm,caption,micro}
- *   --radius-{none,sm,base,md,lg,xl,full} (§9 scale; adds -base + -full; -xl drifts +2px)
- *   --duration-{instant,quick,settle,arrive,considered}
- *   --ease-{settle,gentle}
- *   --max-w-{reading,form,content,wide,dashboard}
+ * Token-name mapping (names kept stable so the ~500 Tailwind
+ * utility call sites don't churn; new-doc names in parens):
+ *   --surface-base      (--substrate-base)   page canvas
+ *   --surface-sunken    (--surface-1)        rail / recessed
+ *   --surface-elevated  (--surface-2)        panel / card
+ *   --surface-raised    (--surface-3)        raised / popover
+ *   --content-strong/base/muted/subtle
+ *                       (--text-primary/secondary/muted; strong
+ *                        extends one step above primary)
+ *   --accent / -hover / -active / -disabled
+ *                       (--accent-chrome family) — chrome IS the
+ *                        accent; near-monochrome cool-neutral.
+ *                        State variants ride the LIGHTNESS axis
+ *                        (hover lighter, active dimmer, disabled
+ *                        lower-contrast neutral) — a near-white
+ *                        accent cannot signal state via chroma.
+ *   --content-on-accent (--on-chrome)
+ *   --status-success    (--fn-positive)  true leaf-green
+ *   --status-error      (--fn-negative)  terracotta descendant
+ *   --status-warning    (--fn-caution)   use sparingly
+ *   --status-info       DEMOTED to neutral chrome (info is
+ *                        "note this", not an alarm; keeps steel
+ *                        the ONLY blue on screen)
+ *   --signature-steel / -ring  (NEW ROLE) — the rationed
+ *                        signature tone. Allowed ONLY in: focus/
+ *                        selection ring, link text, one row-hover
+ *                        accent, logo-mark inner detail. Rationing
+ *                        is a convention, not enforced in code.
+ *   --edge-specular     (NEW) 1px inset top-edge highlight — the
+ *                        "machined" catch-light on every panel.
+ *   --panel-gradient / --panel-gradient-raised (NEW) — the §3
+ *                        barely-there vertical gradient. Tokens
+ *                        because Tailwind bg-* utilities emit
+ *                        background-color only; consumed via
+ *                        [background-image:var(--panel-gradient)]
+ *                        in the card-family primitives.
+ *
+ * Dark mode is the HERO (dark-first language, hue anchor 255).
+ * Light-mode values are designed counterparts and are ALL
+ * "provisional — pending mood-anchor calibration": the brass-era
+ * garden photos are retired (circular-calibration trap) and new
+ * anchors are not yet selected (DESIGN_LANGUAGE.md §11).
  *
  * Mode switching: light mode is default at :root; dark mode
  * activates via `[data-mode="dark"]` on the <html> element.
  * See frontend/src/lib/theme-mode.ts for the runtime API.
  *
- * Aesthetic Arc Session 2 (April 2026) — brass → accent rename.
- * Accent is now deepened terracotta (#9C5640), single value
- * across light + dark modes. Replaces brass (oklch hue 73, lightness-
- * shift across modes). See DESIGN_LANGUAGE.md §2 for the
- * "architectural color in either room" rationale; § 3 for the
- * locked token values. Brass tokens retired in this rename;
- * `--accent-brass-*` → `--accent-*`, `--border-brass` →
- * `--border-accent`, `--content-on-brass` → `--content-on-accent`.
+ * Motion tokens (§10): the two-easing-curve system is retained
+ * unchanged from the archived brass-era doc (docs/design-archive/
+ * DESIGN_LANGUAGE_brass-era_superseded-2026-07-21.md).
  * ============================================================ */
 
 :root {
   /* ─── COLORS — SURFACES ───
-   *   Tier-5 (April 2026): --surface-base chroma 0.018 → 0.030.
-   *   Mood-anchor measurement of the linen tablecloth in design-ref-
-   *   light.png showed C=0.037; backed off to 0.030 because token→
-   *   UI-at-scale tends to amplify perceived warmth. Lightness +
-   *   hue unchanged. See DL §1 Tier-5 reconciliation note. */
-  --surface-base: oklch(0.94 0.030 82);
-  --surface-elevated: oklch(0.965 0.014 82);
-  --surface-raised: oklch(0.985 0.010 82);
-  --surface-sunken: oklch(0.91 0.020 82);
-  /* Translucent variant for backdrop-filter glass surfaces (sub-arc
-     C-1.1). Tracks --surface-elevated's L/C/H with alpha 0.60.
-     Alpha is load-bearing — backdrop-filter only produces visible
-     blur when the element's own background is non-opaque. See
-     DESIGN_LANGUAGE.md §3 surface tokens notes + §6 frosted glass
-     card composition pattern. */
-  --surface-frosted: oklch(0.965 0.014 82 / 0.60);
+   *   Light mode: provisional — pending mood-anchor calibration.
+   *   Cool near-white instrument panel. Recessed rail sits BELOW
+   *   the canvas (darker); panels lift ABOVE it (lighter) —
+   *   inverse of dark mode where elevation = lighter. */
+  --surface-base: oklch(0.965 0.004 255);
+  --surface-elevated: oklch(0.985 0.002 255);
+  --surface-raised: oklch(0.995 0.002 255);
+  --surface-sunken: oklch(0.945 0.005 255);
+  /* Translucent variant for backdrop-filter glass surfaces.
+     Tracks --surface-elevated's L/C/H with alpha 0.60. Alpha is
+     load-bearing — backdrop-filter only produces visible blur
+     when the element's own background is non-opaque. */
+  --surface-frosted: oklch(0.985 0.002 255 / 0.60);
 
-  /* ─── COLORS — CONTENT (text + icons) ─── */
-  --content-strong: oklch(0.22 0.015 70);
-  --content-base: oklch(0.30 0.015 70);
-  --content-muted: oklch(0.48 0.014 70);
-  --content-subtle: oklch(0.62 0.012 70);
-  --content-on-accent: oklch(0.98 0.006 82);
+  /* ─── COLORS — CONTENT (text + icons) ───
+   *   provisional — pending mood-anchor calibration */
+  --content-strong: oklch(0.17 0.008 255);
+  --content-base: oklch(0.24 0.008 255);
+  --content-muted: oklch(0.47 0.008 255);
+  --content-subtle: oklch(0.60 0.007 255);
+  /* on-chrome: light-mode chrome accent is ink (dark), so text on
+     it is near-white. Couples to --accent by design. */
+  --content-on-accent: oklch(0.97 0.003 255);
 
-  /* ─── COLORS — BORDERS ─── */
-  --border-subtle: oklch(0.88 0.012 80 / 0.6);
-  --border-base: oklch(0.82 0.015 78 / 0.8);
-  --border-strong: oklch(0.70 0.020 76);
-  --border-accent: rgba(156, 86, 64, 0.70);
+  /* ─── COLORS — BORDERS (hairlines; §9) ─── */
+  --border-subtle: oklch(0.15 0.010 255 / 0.07);
+  --border-base: oklch(0.15 0.010 255 / 0.13);
+  --border-strong: oklch(0.60 0.010 255);
+  --border-accent: rgba(38, 41, 48, 0.70);
 
-  /* ─── COLORS — SHADOWS ───
-   *   Tier-5 (April 2026): shadows calibrated against design-ref-
-   *   light.png under-pergola and under-table shadows. Photo showed
-   *   warmer, softer, more chromatic shadows than prior tokens
-   *   composited. Values lifted in L + C + hue shifted 3° warmer.
-   *   Alphas unchanged (alpha is a composition parameter, not a
-   *   color parameter). See DL §1 Tier-5 reconciliation note. */
-  --shadow-color-subtle: oklch(0.40 0.045 78 / 0.06);
-  --shadow-color-base: oklch(0.40 0.045 78 / 0.10);
-  --shadow-color-strong: oklch(0.37 0.050 75 / 0.16);
+  /* ─── COLORS — SHADOWS (cool neutral; provisional) ─── */
+  --shadow-color-subtle: oklch(0.20 0.010 255 / 0.06);
+  --shadow-color-base: oklch(0.20 0.010 255 / 0.10);
+  --shadow-color-strong: oklch(0.18 0.010 255 / 0.16);
 
-  /* ─── COLORS — ACCENT (deepened terracotta) ───
-   *   Aesthetic Arc Session 2 (April 2026): brass retires; accent is now
-   *   deepened terracotta (#9C5640). Single value across light + dark
-   *   modes — the "architectural color in either room" rule (DL §2).
-   *   Hover brightens (#B46A4D, ~L 0.54) — universal lift signal in both
-   *   modes (replaces brass's asymmetric press-in/glow).
-   *   --accent-active intentionally absent: current Bridgeable
-   *   "active state" semantic is "this is the currently selected item"
-   *   (DateBox active, nav active) implemented via --accent-subtle
-   *   background + --accent border. Not "this button is being pressed
-   *   right now." If momentary press feedback is needed later,
-   *   introduce --accent-active then. */
-  --accent: oklch(0.46 0.10 39);
-  --accent-hover: oklch(0.54 0.10 39);
-  --accent-muted: rgba(156, 86, 64, 0.20);
-  --accent-subtle: rgba(156, 86, 64, 0.10);
+  /* ─── COLORS — ACCENT (chrome; §5) ───
+   *   Chrome is the accent. Light mode expresses chrome as INK —
+   *   a dark cool-neutral fill (the light-instrument counterpart
+   *   of dark mode's bright chrome). State variants on the
+   *   lightness axis: hover lighter, active dimmer, disabled
+   *   lower-contrast neutral.
+   *   provisional — pending mood-anchor calibration */
+  --accent: oklch(0.25 0.010 255);
+  --accent-hover: oklch(0.32 0.010 255);
+  --accent-active: oklch(0.20 0.010 255);
+  --accent-disabled: oklch(0.72 0.006 255);
+  /* Alpha washes re-derived for a near-monochrome accent (the old
+     rgba derivatives assumed a saturated terracotta source): ink
+     washes in light mode, chrome washes in dark. */
+  --accent-muted: rgba(38, 41, 48, 0.12);
+  --accent-subtle: rgba(38, 41, 48, 0.06);
 
-  /* ─── COLORS — STATUS (replaces legacy hex values; drift accepted) ─── */
-  --status-error: oklch(0.55 0.18 25);
-  --status-error-muted: oklch(0.92 0.04 25);
-  --status-warning: oklch(0.70 0.14 65);
-  --status-warning-muted: oklch(0.94 0.04 65);
-  --status-success: oklch(0.58 0.12 135);
-  --status-success-muted: oklch(0.93 0.04 135);
-  --status-info: oklch(0.55 0.08 225);
-  --status-info-muted: oklch(0.93 0.03 225);
+  /* ─── COLORS — SIGNATURE STEEL (§6; NEW ROLE) ───
+   *   The rationed signature. ≤3 uses per screen by convention.
+   *   Light mode runs darker than the §6 dark value so link text
+   *   clears WCAG AA on near-white surfaces.
+   *   provisional — pending mood-anchor calibration */
+  --signature-steel: oklch(0.52 0.09 255);
+  --signature-steel-ring: oklch(0.52 0.09 255 / 0.5);
 
-  /* ─── FOCUS RING ALPHA (Session 4, m2)
-   *   Composable token so the .focus-ring-accent utility can scale the
-   *   ring opacity per mode. Light-mode default matches DESIGN_LANGUAGE
-   *   §6 spec (40%); dark-mode override (0.48) lifts contrast against
-   *   `--surface-raised` — dark-mode focus rings on modals/dropdowns
-   *   were at the 3:1 WCAG 2.4.7 edge (~3.00:1). 48% alpha clears it
-   *   with comfortable margin (~3.5:1). ─── */
-  --focus-ring-alpha: 0.40;
+  /* ─── COLORS — STATUS (functional color; §7) ───
+   *   Green = positive/ready. Terracotta = overdue/danger.
+   *   Caution used sparingly. INFO IS DEMOTED to neutral chrome —
+   *   info is "note this," not an alarm; steel stays the only
+   *   blue on screen. Light values provisional. */
+  --status-error: oklch(0.52 0.11 40);
+  --status-error-muted: oklch(0.94 0.03 40);
+  --status-warning: oklch(0.60 0.11 78);
+  --status-warning-muted: oklch(0.95 0.04 78);
+  --status-success: oklch(0.55 0.12 155);
+  --status-success-muted: oklch(0.94 0.04 155);
+  --status-info: oklch(0.45 0.008 255);
+  --status-info-muted: oklch(0.94 0.004 255);
+
+  /* ─── FOCUS RING ALPHA ───
+   *   Composable token — the .focus-ring-accent utility composes
+   *   --signature-steel at this alpha (focus/selection ring is one
+   *   of steel's four sanctioned uses; §6 ring ships at /0.5). */
+  --focus-ring-alpha: 0.45;
+
+  /* ─── EDGE SPECULAR (§3; NEW) ───
+   *   1px inset top-edge highlight on panels — "brushed steel,
+   *   caught light." Near-invisible on light-mode near-white
+   *   panels by nature; carried anyway for mode symmetry. */
+  --edge-specular: oklch(1 0 0 / 0.65);
+
+  /* ─── NAV ACTIVE (§5) ─── */
+  --nav-active-indicator: var(--accent);
+  --nav-active-text: oklch(0.28 0.008 255);
 
   /* ─── ELEVATION SHADOW COMPOSITIONS ─── */
   --shadow-level-1: 0 2px 8px var(--shadow-color-base);
   --shadow-level-2: 0 8px 24px var(--shadow-color-base), 0 2px 6px var(--shadow-color-subtle);
   --shadow-level-3: 0 16px 40px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base);
 
-  /* ─── CARD MATERIAL TREATMENT (Aesthetic Arc Session 4.6) ───
-   *   DL §11 Pattern 2 card composition tokens. Cards across the
-   *   platform compose all four into a multi-layer box-shadow that
-   *   reads as physical material rather than outlined panel.
-   *
-   *   Session 4.6 — MODE-AWARE values. Session 4.5 shipped single-
-   *   value-across-modes per the architectural-color rule, but
-   *   visual verification showed that approach failed against the
-   *   actual substrate at both ends:
-   *     - Light mode: warm-cream 5% highlight on cream substrate
-   *       is invisible by definition; -4px spread ambient too
-   *       tight to read as "lift"; 0.35 bottom-edge shadow on
-   *       cream reads as a border.
-   *     - Dark mode: 0.35 bottom-edge on charcoal too subtle;
-   *       1px 5% top-edge highlight redundant with shadow-level-1's
-   *       existing 3px 90% top highlight (`--shadow-highlight-top`).
-   *   The architectural-color rule applies to identity-bearing
-   *   tokens (--accent, --accent-confirmed). These shadow-composition
-   *   tokens are PERCEPTUAL — they need different values to PRODUCE
-   *   the same perceptual signal against different substrates. The
-   *   "same physical edge in either room" semantic is preserved by
-   *   tuning values so each mode reads the edge consistently.
-   *
-   *   Light mode (root):
-   *     --card-edge-highlight = white-45% (catches actual light on
-   *       cream; visible bright band at top of card; substrate
-   *       L=0.965 + 45% white = visible perceptual lift)
-   *     --card-edge-shadow = black-20% (produces a soft visible
-   *       hairline without reading as a hard border)
-   *     --card-ambient-shadow = 0 8px 20px -4px black-18% (larger
-   *       blur, less negative spread, lower alpha for cream
-   *       substrate; reads as "object lifted off table" not as
-   *       "panel with tight halo")
-   *     --flag-press-shadow = black-15% (light substrate carries
-   *       less press detail than dark)
-   *
-   *   Dark mode (override below):
-   *     --card-edge-highlight = transparent (no-op; shadow-level-1's
-   *       existing 3px 90% top-edge highlight via --shadow-highlight-
-   *       top carries the catch-light register; this token is
-   *       redundant in dark mode)
-   *     --card-edge-shadow = black-50% (charcoal substrate needs
-   *       stronger contrast for visible bottom-edge cue)
-   *     --card-ambient-shadow = 0 8px 24px -4px black-45% (larger
-   *       softer shadow; charcoal needs more atmospheric halo to
-   *       read as physical lift)
-   *     --flag-press-shadow = black-30% (dark substrate amplifies
-   *       contrast; lift alpha to maintain visible press detail)
-   *
-   *   See DESIGN_LANGUAGE.md §11 Pattern 2 for the composition
-   *   recipe and Pattern 3 for the flag press treatment. ─── */
+  /* ─── PANEL GRADIENTS (§3; NEW) ───
+   *   The barely-there vertical gradient toward the recessed
+   *   surface at the bottom. Flat fills are banned for panels;
+   *   the card-family primitives consume these via
+   *   [background-image:var(--panel-gradient)]. Light mode mixes
+   *   shallower (88%) — near-white surfaces amplify gradients. */
+  --panel-gradient: linear-gradient(180deg, var(--surface-elevated) 0%, color-mix(in oklch, var(--surface-elevated) 88%, var(--surface-sunken)) 100%);
+  --panel-gradient-raised: linear-gradient(180deg, var(--surface-raised) 0%, color-mix(in oklch, var(--surface-raised) 88%, var(--surface-elevated)) 100%);
+
+  /* ─── CARD MATERIAL TREATMENT (perceptual, mode-aware) ───
+   *   Neutral black/white compositions — carried over unchanged
+   *   from the prior language (already hue-free). */
   --card-edge-highlight: rgba(255, 255, 255, 0.45);
   --card-edge-shadow: rgba(0, 0, 0, 0.20);
   --card-ambient-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.18);
   --flag-press-shadow: rgba(0, 0, 0, 0.15);
 
-  /* ─── WIDGET ELEVATION TIER (Aesthetic Arc Session 4.7 + 4.8) ───
-   *   DL §11 Pattern 1 elevation hierarchy: widgets float MORE
-   *   than core elements per PLATFORM_INTERACTION_MODEL — widgets
-   *   are summoned manipulable tablets ON TOP of the work surface,
-   *   not equivalent to it.
-   *
-   *   Hierarchy from bottom up:
-   *     - Substrate (page background): no shadow
-   *     - Core element (kanban core): no widget-tier shadow, just
-   *       the surface treatment
-   *     - Cards within core (DeliveryCard): --card-ambient-shadow
-   *       (mid-tier lift, 8px/20-24px)
-   *     - Widgets (AncillaryPoolPin, future tablets):
-   *       --widget-ambient-shadow (higher-tier lift, layered
-   *       atmospheric shadow + translateY(-2px) transform)
-   *
-   *   Session 4.7 → 4.8 calibration: 4.7's single-shadow values
-   *   (12px y-offset, 28-32px blur, 0.25/0.55 alpha) read as
-   *   "elevated card" not "tablet hovering above operations" —
-   *   Pattern 1 + INTERACTION_MODEL spec calls for the latter.
-   *   Session 4.8 introduces:
-   *     1. Layered atmospheric shadow (3 layers per mode):
-   *        inner tight halo + mid-distance lift + atmospheric haze
-   *     2. translateY(-2px) transform via --widget-tablet-transform
-   *        for genuine physical lift offset
-   *   Together: tablet reads as floating object hovering above the
-   *   work surface, not as a card with stronger shadow.
-   *
-   *   Light-mode (root):
-   *     Layer 1 (inner tight halo):    0 4px 12px -2px black-10%
-   *     Layer 2 (mid-distance lift):   0 16px 32px -4px black-25%
-   *     Layer 3 (atmospheric haze):    0 32px 56px -8px black-30%
-   *
-   *   Dark-mode (override below):
-   *     Layer 1: 0 4px 12px -2px black-30%
-   *     Layer 2: 0 16px 32px -4px black-55%
-   *     Layer 3: 0 32px 56px -8px black-65%
-   *
-   *   --widget-tablet-transform: translateY(-2px) — applied to the
-   *   widget tablet outer element via inline style. Subtle physical
-   *   offset that combined with the layered shadow creates genuine
-   *   "summoned object hovering" register vs static "elevated card"
-   *   register. ─── */
+  /* ─── WIDGET ELEVATION TIER (layered atmospheric shadow) ─── */
   --widget-ambient-shadow:
     0 4px 12px -2px rgba(0, 0, 0, 0.10),
     0 16px 32px -4px rgba(0, 0, 0, 0.25),
     0 32px 56px -8px rgba(0, 0, 0, 0.30);
   --widget-tablet-transform: translateY(-2px);
 
-  /* Widget tablet composite — used by AncillaryPoolPin and future
-     Pattern 1 tablets. Composes shadow-level-1 (existing material
-     edges + dark-mode top highlight + atmospheric halo) + the
-     widget-tier layered atmospheric shadow. Single token for clean
-     Tailwind arbitrary-value usage `shadow-[var(--shadow-widget-
-     tablet)]`. */
+  /* Widget tablet composite — composes level-1 + the widget-tier
+     layered atmospheric shadow. */
   --shadow-widget-tablet: var(--shadow-level-1), var(--widget-ambient-shadow);
 
-  /* ─── JEWEL-SET INSET RING (Aesthetic Arc Session 4.5 + 4.7) ───
-   *   DL §11 Pattern 3 second-channel inset shadow for status
-   *   indicators (HoleDugBadge canonical). Reads as physical
-   *   recessed ring — icon "set into" surface, not "painted on."
-   *
-   *   Session 4.7 strengthening: light-mode 0.15 → 0.25, dark-mode
-   *   0.30 → 0.50. The earlier values were too subtle when paired
-   *   with the Session 4.5 status-*-muted badge backgrounds (only
-   *   0.04 OKLCH delta from card surface). Session 4.7 darkens the
-   *   badge fill itself to bg-surface-base (~0.12 delta below card)
-   *   + strengthens the inset ring on top. Together: visible
-   *   recessed well with icon as inlay.
-   *
-   *   Pre-Session-4.5 was hard-coded inline as
-   *   `[inset_0_1px_2px_rgb(0_0_0/0.15)]` single value;
-   *   Session 4.5 promoted to mode-aware token; Session 4.7
-   *   strengthened both modes for visual fidelity. ─── */
+  /* ─── JEWEL-SET INSET RING ─── */
   --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 
-  /* ─── ACCENT CONFIRMED (Aesthetic Arc Session 4.5) ───
-   *   Sage-green for DL §11 Pattern 3 first-channel left-edge
-   *   flag "confirmed" state. Distinct from --status-success
-   *   (saturated alert-green used by Alert/StatusPill/Banner
-   *   primitives) — flag-confirmed reads as "stamped/approved"
-   *   register: calmer, architectural, like an embossed mark on
-   *   a document. Single value across modes (architectural-color
-   *   rule, same discipline as --accent).
-   *   sRGB hex equivalent: #7d9170. ─── */
+  /* ─── ACCENT CONFIRMED ───
+   *   Sage stamp register — a green, therefore functional-lawful.
+   *   Unchanged in the chrome/steel pivot. */
   --accent-confirmed: oklch(0.58 0.05 138);
 
-  /* ─── TYPOGRAPHY — FAMILIES (Aesthetic Arc Session 4)
-   *   Migration IBM Plex → Fraunces (display) + Geist (body) +
-   *   Geist Mono (data). Per DESIGN_LANGUAGE.md Section 4.
+  /* ─── TYPOGRAPHY — FAMILIES (§8) ───
+   *   SF system stack only; Inter named as the licensed fallback
+   *   for platforms where SF is absent; NO bundled webfont (SF is
+   *   not licensed for web distribution; nothing else is bundled
+   *   either — fonts.css imports are retired).
    *
-   *   Three roles:
-   *     - --font-fraunces  → display, proper-noun engraving,
-   *                          headings, day-switcher labels.
-   *                          Exposed as Tailwind `font-display`.
-   *     - --font-geist     → body sans, default. Exposed as
-   *                          Tailwind `font-sans` via the
-   *                          `--font-sans` alias in index.css.
-   *     - --font-geist-mono → data, numerals, eyebrows. Exposed
-   *                          as Tailwind `font-mono` via the
-   *                          `--font-mono` alias in index.css.
-   *
-   *   Legacy Plex tokens retained for one-release migration
-   *   window. They alias to the new families:
-   *     --font-plex-sans  → var(--font-geist)
-   *     --font-plex-serif → var(--font-fraunces)
-   *     --font-plex-mono  → var(--font-geist-mono)
-   *   This keeps font-plex-* utility usages working during the
-   *   atomic codebase sweep. Plex aliases retire when zero
-   *   references remain.
-   * ─── */
-  --font-fraunces: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman", serif;
-  --font-geist: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-geist-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+   *   Token names --font-geist / --font-fraunces / --font-geist-
+   *   mono are retained as SLOTS (renaming would churn the
+   *   --font-sans/--font-display/--font-mono alias chain + the
+   *   Studio typography presets); their VALUES are now the system
+   *   stack. --font-fraunces no longer resolves to a serif — the
+   *   display-serif role is retired from the UI. Memorial
+   *   documents keep their serif via the backend document-emission
+   *   arc (Fraunces assets retained in package.json, unbundled). */
+  --font-fraunces: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif;
+  --font-geist: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif;
+  --font-geist-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 
-  /* Legacy aliases (retained for migration window) — point at the
-     new families so font-plex-* utility usages continue to render
-     correctly until the codebase sweep replaces them. */
+  /* Legacy aliases (retained for migration window) — the 511
+     font-plex-* utility usages resolve through these. */
   --font-plex-sans: var(--font-geist);
   --font-plex-serif: var(--font-fraunces);
   --font-plex-mono: var(--font-geist-mono);
 
-  /* ─── TYPOGRAPHY — SIZE SCALE (1.25 ratio modular) ─── */
+  /* ─── TYPOGRAPHY — SIZE SCALE (1.25 ratio modular; unchanged) ─── */
   --text-display-lg: 3.052rem;
   --text-display: 2.441rem;
   --text-h1: 1.953rem;
@@ -313,19 +231,19 @@
   --text-caption: 0.75rem;
   --text-micro: 0.6875rem;
 
-  /* ─── BORDER RADIUS (DESIGN_LANGUAGE scale; adds -base + -full; -xl drifts
-   *   +2px from existing 14px to DESIGN_LANGUAGE's 16px — accepted drift) ─── */
+  /* ─── BORDER RADIUS (unchanged this pass; §9 geometry sweep is
+   *   a follow-up decision) ─── */
   --radius-base: 6px;
   --radius-full: 9999px;
 
-  /* ─── MOTION — DURATIONS ─── */
+  /* ─── MOTION — DURATIONS (§10: retained unchanged) ─── */
   --duration-instant: 100ms;
   --duration-quick: 200ms;
   --duration-settle: 300ms;
   --duration-arrive: 400ms;
   --duration-considered: 600ms;
 
-  /* ─── MOTION — EASING ─── */
+  /* ─── MOTION — EASING (§10: two-curve system retained) ─── */
   --ease-settle: cubic-bezier(0.2, 0, 0.1, 1);
   --ease-gentle: cubic-bezier(0.4, 0, 0.4, 1);
 
@@ -336,206 +254,116 @@
   --max-w-wide: 72rem;
   --max-w-dashboard: 96rem;
 
-  /* ─── LAYERING (Phase A Session 1) ───
+  /* ─── LAYERING (unchanged) ───
    *   Overlay tier tokens. Consumed via inline
-   *   `style={{ zIndex: "var(--z-focus)" }}` rather than Tailwind
-   *   `z-*` utilities — see DESIGN_LANGUAGE.md §9 Layering tokens
-   *   for rationale. Existing `z-50` literals in the overlay-family
-   *   components (Dialog, Popover, DropdownMenu, Tooltip) are NOT
-   *   retrofit — natural-touch refactor as those files change. */
+   *   `style={{ zIndex: "var(--z-focus)" }}`. */
   --z-base: 0;
   --z-elevated: 10;
   --z-dropdown: 50;
-  /* Phase A Session 4.2.6 — --z-modal bumped from 80 → 105, which
-   * places standalone Dialogs ABOVE Focus (z-100). Reality dictates
-   * the reordering: a Dialog opened from inside a Focus (e.g. the
-   * Scheduling Focus's QuickEdit dialog) must render above the
-   * Focus Popup, not behind it. The prior 80 value reflected the
-   * original "Focus is above modals" intent, but in practice Focus
-   * is exclusive (when open, no non-nested Dialog is simultaneously
-   * active), so only the nested-dialog case is real. 105 coexists
-   * with Focus-at-100 correctly for nested Dialogs, and doesn't
-   * conflict with standalone Dialogs (no Focus open → nothing else
-   * between 100 and 110 exists). Command-bar (110) stays above.
-   */
   --z-modal: 105;
   --z-focus: 100;
-  /* R-5.0 — edge panel handle + open panel sit above editor chrome
-   * (toggle 91 / selection-overlay 92 / inspector 95) but below
-   * Focus (100). When Focus opens, the handle disappears under
-   * the Focus backdrop; on dismiss it returns. */
   --z-edge-panel: 96;
   --z-command-bar: 110;
   --z-toast: 120;
-  /* Phase A Session 4.2.4 — tooltip tier sits ABOVE every
-   * composed overlay. Rationale: tooltips are temporary, hover-
-   * triggered affordances; when a user points at an icon inside a
-   * Focus core or Dialog, the tooltip must be visible on top. The
-   * existing Tooltip primitive at `z-50` was below --z-focus: 100,
-   * so tooltips in Focus surfaces rendered behind the Popup.
-   * 130 sits above --z-toast (120) — tooltips are the topmost
-   * transient UI feedback. */
   --z-tooltip: 130;
 }
 
 /* ============================================================
- * Dark mode — activated by [data-mode="dark"] on <html>.
- * Runtime API: frontend/src/lib/theme-mode.ts.
+ * Dark mode — THE HERO. Activated by [data-mode="dark"] on
+ * <html>. Values per DESIGN_LANGUAGE.md §3–§7 (oklch, hue
+ * anchor 255). Runtime API: frontend/src/lib/theme-mode.ts.
  * ============================================================ */
 
 [data-mode="dark"] {
-  /* ─── COLORS — SURFACES ───
-   *   Tier-5 (April 2026) — measurement-based correction against
-   *   design-ref-dark.png (cocktail lounge photograph). Supersedes
-   *   Tier-4 on --surface-elevated and --surface-raised; Tier-4
-   *   hue progression (59→81→85) retained because hue directional
-   *   calibration was correct, only lightness needed correction.
-   *
-   *   --surface-elevated lifted L 0.20 → 0.28. Rationale: Tier-4's
-   *   L=0.20 sat in the walnut-grain-dark range of the mood anchor;
-   *   walnut-bulk-under-pendant-light measures L=0.40-0.52; target
-   *   L=0.28 is below bulk (avoids over-bright cards at UI scale)
-   *   but above grain (actually reads as "catching light" per
-   *   §1 dark-anchor-2). Chroma +0.003 to carry material presence.
-   *
-   *   --surface-raised lifted proportionally L 0.24 → 0.32 (+0.08
-   *   matching elevated). Derived per §3 progression.
-   *
-   *   --surface-base (L=0.16) and --surface-sunken (L=0.13)
-   *   UNCHANGED — the "pulled cozier than reference" correction
-   *   in §1 directs these tokens to stay darker than the measured
-   *   charcoal wall (L=0.214). Held per Tier-5 explicit-non-
-   *   correction decision.
-   *
-   *   Post-Tier-5 dark-mode step is NON-UNIFORM: base→elevated
-   *   is 0.12 OKLCH (was 0.04 pre-Tier-5); elevated→raised is
-   *   0.04. This asymmetry is deliberate — the big step from
-   *   base to elevated is where "catching warm light" signals;
-   *   the smaller step to raised is just "one level more lifted
-   *   for overlays." */
-  --surface-base: oklch(0.16 0.010 59);
-  --surface-elevated: oklch(0.28 0.014 81);
-  --surface-raised: oklch(0.32 0.016 85);
-  --surface-sunken: oklch(0.13 0.010 55);
-  /* Dark-mode frosted sits between base (L=0.16) and elevated
-     (L=0.28) — cocktail-lounge frosted glass under pendant light
-     rather than fogged window. Alpha 0.55 for the same load-bearing
-     reason as the light-mode variant. */
-  --surface-frosted: oklch(0.20 0.014 65 / 0.55);
+  /* ─── COLORS — SURFACES (§3 substrate & elevation) ─── */
+  --surface-base: oklch(0.16 0.008 255);
+  --surface-elevated: oklch(0.21 0.009 255);
+  --surface-raised: oklch(0.24 0.010 255);
+  --surface-sunken: oklch(0.18 0.008 255);
+  /* Frosted tracks elevated with load-bearing alpha. */
+  --surface-frosted: oklch(0.21 0.009 255 / 0.55);
 
-  /* ─── COLORS — CONTENT ───
-   *   --content-on-accent: light cream in BOTH modes (Aesthetic Arc
-   *   Session 2). Replaces brass's asymmetric pattern (light cream in
-   *   light, dark charcoal in dark — the "glowing pill with dark text"
-   *   aesthetic). Terracotta at L=0.46 is darker than brass; cream
-   *   text on terracotta clears WCAG AAA in both modes (~6.5:1) and
-   *   pairs naturally with the deeper accent. */
-  --content-strong: oklch(0.96 0.012 80);
-  --content-base: oklch(0.90 0.014 75);
-  --content-muted: oklch(0.72 0.014 70);
-  --content-subtle: oklch(0.55 0.012 68);
-  --content-on-accent: oklch(0.98 0.006 82);
+  /* ─── COLORS — CONTENT (§4 text scale) ───
+   *   base = §4 --text-primary (#EDEDF0); muted = --text-secondary;
+   *   subtle = --text-muted; strong extends one step brighter. */
+  --content-strong: oklch(0.97 0.004 255);
+  --content-base: oklch(0.95 0.004 255);
+  --content-muted: oklch(0.66 0.006 255);
+  --content-subtle: oklch(0.55 0.006 255);
+  /* on-chrome = substrate: dark text on the bright chrome fill. */
+  --content-on-accent: oklch(0.16 0.008 255);
 
-  /* ─── COLORS — BORDERS ─── */
-  --border-subtle: oklch(0.35 0.015 65 / 0.5);
-  --border-base: oklch(0.42 0.018 68 / 0.7);
-  --border-strong: oklch(0.55 0.025 70);
-  --border-accent: rgba(156, 86, 64, 0.70);
+  /* ─── COLORS — BORDERS (§9 hairlines: white @ 5%) ─── */
+  --border-subtle: oklch(1 0 0 / 0.05);
+  --border-base: oklch(1 0 0 / 0.09);
+  --border-strong: oklch(0.48 0.010 255);
+  --border-accent: rgba(233, 234, 238, 0.70);
 
-  /* ─── COLORS — SHADOWS (persist in dark mode + top-edge highlight) ───
-   *   Tier-2 three-layer shadow architecture RETAINED (tight ground +
-   *   soft halo + 3px inset top-edge highlight). Tier-4 --shadow-
-   *   highlight-top value RETAINED.
-   *
-   *   Tier-5 (April 2026): --shadow-color-{subtle,base,strong}
-   *   calibrated against design-ref-dark.png shadow regions (under
-   *   bar, corners, behind leather chairs). Photo measures these
-   *   shadows at L~0.19 H~79 vs prior tokens at L~0.06 H~60 — prior
-   *   tokens composited darker AND cooler than the anchor showed.
-   *   Values lifted L +0.03 (6→9, 8→11, 5→8), chroma doubled
-   *   (0.010→0.020), hue warmed +5° (60→65). Alpha unchanged —
-   *   alpha is composition parameter, not color parameter; shadow
-   *   attenuation behavior preserved. */
-  --shadow-color-subtle: oklch(0.11 0.020 65 / 0.35);
-  --shadow-color-base: oklch(0.09 0.020 65 / 0.45);
-  --shadow-color-strong: oklch(0.08 0.020 65 / 0.55);
-  --shadow-highlight-top: oklch(0.32 0.010 61 / 0.9);
+  /* ─── COLORS — SHADOWS (§3 shadow-panel = black at 0.35) ─── */
+  --shadow-color-subtle: oklch(0.05 0.005 255 / 0.25);
+  --shadow-color-base: oklch(0.05 0.005 255 / 0.35);
+  --shadow-color-strong: oklch(0.03 0.005 255 / 0.50);
+  /* Retired 3px warm band → the §3 1px specular. Kept as a token
+     (legacy name) aliasing the same value as --edge-specular. */
+  --shadow-highlight-top: oklch(1 0 0 / 0.05);
 
-  /* ─── COLORS — ACCENT (deepened terracotta — single value across modes) ───
-   *   Aesthetic Arc Session 2 (April 2026): no lightness shift across
-   *   modes. The architectural color holds identity in either room.
-   *   Reads as ~3.2:1 against L=0.16 charcoal (passes WCAG 2.4.7 3:1
-   *   for non-text accent). Hover brightens — universal lift signal. */
-  --accent: oklch(0.46 0.10 39);
-  --accent-hover: oklch(0.54 0.10 39);
-  --accent-muted: rgba(156, 86, 64, 0.20);
-  --accent-subtle: rgba(156, 86, 64, 0.10);
+  /* ─── COLORS — ACCENT (chrome; §5) ─── */
+  --accent: oklch(0.93 0.004 255);
+  --accent-hover: oklch(0.97 0.004 255);
+  --accent-active: oklch(0.88 0.005 255);
+  --accent-disabled: oklch(0.45 0.006 255);
+  /* Chrome washes — faint white fills for selection/hover tints. */
+  --accent-muted: rgba(235, 237, 242, 0.16);
+  --accent-subtle: rgba(235, 237, 242, 0.08);
 
-  /* ─── COLORS — STATUS
-   *   Session 4 (M1): status-muted backgrounds lowered (lightness
-   *   0.28/0.30 → 0.22/0.24; chroma eased proportionally) so
-   *   `text-status-{X}` on `bg-status-{X}-muted` clears WCAG AA 4.5:1
-   *   for body text. Pre-Session-4 all four status families sat
-   *   ~3.83–4.32:1 (FAIL). Post-adjustment ~5.0–5.4:1 (PASS).
-   *   Visual impact aligns with DESIGN_LANGUAGE §2 dark-mode anchor
-   *   — status callouts feel like lamplight at a low angle.
-   *   Changes also applied verbatim to DESIGN_LANGUAGE.md §3 (mirror
-   *   discipline — both surfaces must stay synchronized). ─── */
-  --status-error: oklch(0.68 0.17 25);
-  --status-error-muted: oklch(0.22 0.07 25);
-  --status-warning: oklch(0.76 0.14 65);
-  --status-warning-muted: oklch(0.24 0.06 65);
-  --status-success: oklch(0.70 0.13 135);
-  --status-success-muted: oklch(0.22 0.05 135);
-  --status-info: oklch(0.70 0.09 225);
-  --status-info-muted: oklch(0.22 0.04 225);
+  /* ─── COLORS — SIGNATURE STEEL (§6 verbatim) ─── */
+  --signature-steel: oklch(0.62 0.08 255);
+  --signature-steel-ring: oklch(0.62 0.08 255 / 0.5);
 
-  /* ─── FOCUS RING ALPHA (Session 4, m2) — dark-mode override ───
-   *   Dark-mode focus ring on `--surface-raised` was ~3.00:1 (WCAG
-   *   edge). 0.40 → 0.48 lifts contrast to ~3.5:1. */
-  --focus-ring-alpha: 0.48;
+  /* ─── COLORS — STATUS (§7 verbatim on the saturated values) ─── */
+  --status-error: oklch(0.70 0.09 40);
+  --status-error-muted: oklch(0.26 0.04 40);
+  --status-warning: oklch(0.80 0.10 78);
+  --status-warning-muted: oklch(0.27 0.05 78);
+  --status-success: oklch(0.74 0.11 155);
+  --status-success-muted: oklch(0.25 0.05 155);
+  --status-info: oklch(0.78 0.006 255);
+  --status-info-muted: oklch(0.26 0.006 255);
 
-  /* ─── ELEVATION SHADOWS (dark mode — three-layer composition:
-   *   tight grounding shadow + soft halo + 3px inset top-edge
-   *   highlight).
-   *
-   *   Tier-4 correction: inset width 1px → 3px per reference
-   *   measurement. The reference shows a 3-pixel-thick highlight
-   *   band at L=0.30; a 1-pixel inset is too thin to read as a
-   *   focused light pool catching the top edge (§1 anchor 2).
-   *   3px × L=0.30 provides ~2.3× the visible-light integral of
-   *   1px × L=0.389 (prior Tier-2 composite).
-   *
-   *   Tight ground shadow + soft halo layers retained from Tier 2
-   *   — they match the reference when blur falloff is accounted
-   *   for in the halo gradient. ─── */
-  --shadow-level-1: 0 1px 3px var(--shadow-color-strong), 0 4px 16px var(--shadow-color-base), inset 0 3px 0 var(--shadow-highlight-top);
-  --shadow-level-2: 0 2px 4px var(--shadow-color-strong), 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 3px 0 var(--shadow-highlight-top);
-  --shadow-level-3: 0 3px 6px var(--shadow-color-strong), 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 3px 0 var(--shadow-highlight-top);
+  /* ─── FOCUS RING ALPHA (§6 ring ships at /0.5) ─── */
+  --focus-ring-alpha: 0.50;
 
-  /* ─── JEWEL-SET INSET RING — dark-mode override (Session 4.5 + 4.7) ───
-   *   Session 4.7 strengthening 0.30 → 0.50. Dark substrate compresses
-   *   low-lightness deltas. Combined with Session 4.7's darker badge
-   *   fill (bg-surface-base, ~0.12 OKLCH below card), the 0.50 inset
-   *   produces an unmistakable recessed-well effect. ─── */
+  /* ─── EDGE SPECULAR (§3 verbatim: white @ 5%, 1px inset) ─── */
+  --edge-specular: oklch(1 0 0 / 0.05);
+
+  /* ─── NAV ACTIVE (§5 verbatim) ─── */
+  --nav-active-indicator: var(--accent);
+  --nav-active-text: oklch(0.82 0.005 255);
+
+  /* ─── ELEVATION SHADOWS (§3 machined stack) ───
+   *   level-1 = the §3 --shadow-panel (0 6px 20px black/0.35 via
+   *   --shadow-color-base) + the 1px inset specular. Levels 2–3
+   *   scale the same recipe up. */
+  --shadow-level-1: 0 6px 20px var(--shadow-color-base), inset 0 1px 0 var(--edge-specular);
+  --shadow-level-2: 0 10px 28px var(--shadow-color-strong), 0 3px 8px var(--shadow-color-base), inset 0 1px 0 var(--edge-specular);
+  --shadow-level-3: 0 20px 48px var(--shadow-color-strong), 0 6px 16px var(--shadow-color-base), inset 0 1px 0 var(--edge-specular);
+
+  /* ─── PANEL GRADIENTS (§3: surface-2 → toward surface-1) ─── */
+  --panel-gradient: linear-gradient(180deg, var(--surface-elevated) 0%, color-mix(in oklch, var(--surface-elevated) 70%, var(--surface-sunken)) 100%);
+  --panel-gradient-raised: linear-gradient(180deg, var(--surface-raised) 0%, color-mix(in oklch, var(--surface-raised) 70%, var(--surface-elevated)) 100%);
+
+  /* ─── JEWEL-SET INSET RING ─── */
   --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.50);
 
-  /* ─── CARD MATERIAL TREATMENT — dark-mode overrides (Session 4.6) ───
-   *   Strengthens light-mode values to carry the same perceptual
-   *   signal against charcoal substrate. See light-mode block
-   *   comment above for the per-token rationale. ─── */
+  /* ─── CARD MATERIAL TREATMENT — dark overrides (neutral) ───
+   *   card-edge-highlight stays transparent: shadow-level-1 already
+   *   carries the 1px specular; doubling reads as a seam. */
   --card-edge-highlight: transparent;
   --card-edge-shadow: rgba(0, 0, 0, 0.50);
   --card-ambient-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
   --flag-press-shadow: rgba(0, 0, 0, 0.30);
 
-  /* Widget ambient shadow — dark-mode override (Session 4.7 + 4.8).
-     Session 4.8 layered atmospheric shadow: charcoal substrate
-     amplifies each layer (0.30 / 0.55 / 0.65 alpha). Combined with
-     --widget-tablet-transform: translateY(-2px), the pin reads as
-     floating object hovering above operations rather than elevated
-     card. See §3 widget elevation tier rationale for the calibration
-     history (Session 4.7 single-shadow → 4.8 layered + transform). */
+  /* Widget ambient shadow — dark override (neutral black). */
   --widget-ambient-shadow:
     0 4px 12px -2px rgba(0, 0, 0, 0.30),
     0 16px 32px -4px rgba(0, 0, 0, 0.55),

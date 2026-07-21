@@ -14,7 +14,7 @@ const themeTokens = {
   "border-subtle": "#e8e3d8",
   "border-base": "#cfc8b8",
   "border-strong": "#a89e88",
-  "border-brass": "#9C5640",
+  "border-accent": "#9C5640",
 }
 
 describe("TokenSwatchPicker", () => {

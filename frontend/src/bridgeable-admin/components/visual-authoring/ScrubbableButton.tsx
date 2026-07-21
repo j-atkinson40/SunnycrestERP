@@ -183,9 +183,9 @@ export function ScrubbableButton({
         // Hover: subtle elevation hint via border-base.
         "hover:border-[color:var(--border-base)]",
         // Focus-visible: brass accent ring (DESIGN_LANGUAGE §6 focus canon).
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-brass,#9C5640)]/40 focus-visible:border-[color:var(--accent-brass,#9C5640)]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40 focus-visible:border-[color:var(--accent)]",
         // Active scrub: brass border, no hover transition shimmer.
-        "data-[scrubbing]:border-[color:var(--accent-brass,#9C5640)] data-[scrubbing]:shadow-[0_0_0_1px_color-mix(in_oklch,_var(--accent-brass,#9C5640)_30%,_transparent)]",
+        "data-[scrubbing]:border-[color:var(--accent)] data-[scrubbing]:shadow-[0_0_0_1px_color-mix(in_oklch,_var(--accent)_30%,_transparent)]",
         // Cursor: scrub-resize idle, grabbing during scrub.
         disabled
           ? "cursor-not-allowed opacity-50"

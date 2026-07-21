@@ -3,56 +3,66 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 /**
- * Bridgeable Card — Aesthetic Arc Session 2 refresh + Tier-4
- * measurement-based correction (April 2026).
+ * Bridgeable Card — chrome/steel machined panel (2026-07-21 pivot).
  *
- * Foundational surface composition per DESIGN_LANGUAGE.md §6:
- *   - bg-surface-elevated   (warm cream lifted from page in light mode /
- *                            warmer-amber charcoal in dark mode — reference
- *                            dark card measures oklch(0.20 0.011 81))
- *   - rounded-md            (Q2: radius-md = 8px default; radius-lg for
- *                            signature/large variants via className override)
- *   - shadow-level-1        (dark mode: three-layer composition of tight
- *                            grounding shadow + soft halo + 3px inset
- *                            top-edge highlight. Light mode: single-layer
- *                            shadow without inset highlight — morning
- *                            light is ambient, not focused.)
- *   - p-6                   (§5 generous-default — 24px padding)
- *   - p-4 for size=sm       (dense variant per §5)
+ * THE machined-panel primitive. DESIGN_LANGUAGE.md §3: every panel =
+ * surface fill + a barely-there vertical gradient toward the recessed
+ * surface at the bottom + a 1px inset top-edge specular + the panel
+ * shadow. Flat fills are banned for panels. The stack is baked HERE,
+ * parameterized by the `elevation` prop, so all ~229 importers flip
+ * through one primitive (utilities drift; primitives don't):
  *
- * NO perimeter border. Tier-2 (April 2026) added `border border-border-
- * subtle` based on inferred anchor-4 prose. Tier-4 reference-measurement
- * showed the canonical design has NO discrete perimeter border — the card
- * edge emerges from the shadow-halo + top-edge highlight + surface-lift
- * stack. Added border was removed in Tier 4.
+ *   elevation="panel" (default) — surface-2 fill, standard gradient
+ *     toward surface-1, shadow-level-1 (which carries the specular
+ *     in dark mode via --edge-specular).
+ *   elevation="raised" — surface-3 fill, lighter gradient toward
+ *     surface-2, shadow-level-2. For popover-grade cards.
+ *   elevation="recessed" — surface-1 (sunken) fill, NO gradient, NO
+ *     shadow. For rail/recessed containers that are part of the
+ *     substrate, not objects on it.
  *
- * Title: text-h3 font-medium text-content-strong (card titles are h3 level
- * per §4 size-weight pairings).
+ * The gradient rides [background-image:var(--panel-gradient)] because
+ * Tailwind bg-* utilities emit background-color only — the gradient
+ * VALUES stay in the token layer (tokens.css), this file just keys
+ * which token off the elevation prop.
+ *
+ * NO perimeter border — the edge emerges from the specular + shadow
+ * + surface-lift stack.
+ *
+ * Title: text-h3 font-medium text-content-strong.
  * Description: text-body-sm text-content-muted.
- * Footer: bg-surface-base + border-t border-border-subtle sinks the footer
- * below the card body. The border-t is explicit (was removed in Tier 2
- * when the parent perimeter border carried footer-separator duty; with
- * Tier 4 removing the perimeter border, the footer separator returns so
- * the footer zone still reads distinct from the card body).
+ * Footer: bg-surface-base + border-t border-border-subtle sinks the
+ * footer below the card body.
  *
  * Interactive card:
  *   <Card className="hover:shadow-level-2 focus-ring-accent ..." tabIndex={0}>
- *
- * No `ring-1` anywhere — elevation communicates via surface-lift + shadow
- * composition + (dark mode) 3px top-edge highlight.
  */
+
+const ELEVATION_CLASSES = {
+  recessed: "bg-surface-sunken",
+  panel:
+    "bg-surface-elevated shadow-level-1 [background-image:var(--panel-gradient)]",
+  raised:
+    "bg-surface-raised shadow-level-2 [background-image:var(--panel-gradient-raised)]",
+} as const
 
 function Card({
   className,
   size = "default",
+  elevation = "panel",
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.ComponentProps<"div"> & {
+  size?: "default" | "sm"
+  elevation?: "recessed" | "panel" | "raised"
+}) {
   return (
     <div
       data-slot="card"
       data-size={size}
+      data-elevation={elevation}
       className={cn(
-        "group/card flex flex-col gap-4 overflow-hidden rounded-md bg-surface-elevated font-sans text-body-sm text-content-base shadow-level-1 data-[size=default]:p-6 data-[size=sm]:gap-3 data-[size=sm]:p-4 has-data-[slot=card-footer]:pb-0 data-[size=sm]:has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-md *:[img:last-child]:rounded-b-md",
+        "group/card flex flex-col gap-4 overflow-hidden rounded-md font-sans text-body-sm text-content-base data-[size=default]:p-6 data-[size=sm]:gap-3 data-[size=sm]:p-4 has-data-[slot=card-footer]:pb-0 data-[size=sm]:has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-md *:[img:last-child]:rounded-b-md",
+        ELEVATION_CLASSES[elevation],
         className
       )}
       {...props}

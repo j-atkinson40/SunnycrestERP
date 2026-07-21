@@ -82,14 +82,11 @@
     --destructive: var(--status-error);
     --border: var(--border-subtle);
     --input: var(--border-base);
-    /* --ring NOT aliased to --accent. Accent (terracotta) at
-     * lightness 0.46 vs cream surface (0.94) is high contrast for
-     * a fill but the focus-ring composition still uses 40% alpha,
-     * so it doesn't reliably clear WCAG 2.4.7 3:1 on every surface.
-     * Components opting INTO the accent focus ring use the
-     * `.focus-ring-accent` utility class; shadcn fallback stays
-     * neutral at oklch(0.48 0 0) — verified at 4.26:1 against cream. */
-    --ring: oklch(0.48 0 0);
+    /* --ring → signature steel (chrome/steel pivot, 2026-07-21).
+     * The focus/selection ring is one of steel's four sanctioned
+     * uses (DESIGN_LANGUAGE §2 law 2). Folds the previously
+     * catalog-orphaned neutral --ring into the signature role. */
+    --ring: var(--signature-steel);
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
@@ -97,26 +94,21 @@
     --chart-5: oklch(0.424 0.199 265.638);
     --radius: 0.625rem;
 
-    /* Semantic status colors — Aesthetic Arc Session 1 migrated from
-     * hex (shadcn defaults) to DESIGN_LANGUAGE oklch (Section 3).
-     * Drift is the one accepted visual change in Session 1: current
-     * values are generic; DESIGN_LANGUAGE values derive from the
-     * warm-hue family and feel native. `--status-danger` is kept as
-     * an alias of `--status-error` during the coexistence window;
-     * Sessions 2-3 migrate refs to `--status-error`. The `-light`
-     * and `-dark` legacy variants stay with their hex values until
-     * Sessions 2-3 migrate consumers to `--status-*-muted` (which
-     * lives in styles/tokens.css). */
-    --status-success: oklch(0.58 0.12 135);
+    /* Semantic status colors — chrome/steel pivot (2026-07-21).
+     * --status-success/-warning/-info are OWNED by tokens.css; the
+     * duplicate :root definitions that used to live here shadowed
+     * the [data-mode="dark"] overrides (same specificity, later in
+     * cascade) — a latent dark-mode bug fixed by removing them.
+     * --status-danger stays as a var alias of --status-error during
+     * the coexistence window. The `-light`/`-dark` legacy hex
+     * variants stay until consumers migrate to `--status-*-muted`. */
     --status-success-light: #DCFCE7;
     --status-success-dark: #14532D;
-    --status-warning: oklch(0.70 0.14 65);
     --status-warning-light: #FEF3C7;
     --status-warning-dark: #78350F;
-    --status-danger: oklch(0.55 0.18 25);
+    --status-danger: var(--status-error);
     --status-danger-light: #FEE2E2;
     --status-danger-dark: #7F1D1D;
-    --status-info: oklch(0.55 0.08 225);
     --status-info-light: #CFFAFE;
     --status-info-dark: #164E63;
 
@@ -172,8 +164,8 @@
     --destructive: var(--status-error);
     --border: var(--border-subtle);
     --input: var(--border-base);
-    /* --ring preserved — see light-mode block rationale */
-    --ring: oklch(0.556 0 0);
+    /* --ring → signature steel — see light-mode block rationale */
+    --ring: var(--signature-steel);
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
@@ -328,8 +320,15 @@
      * tokens.css. */
     --color-accent: var(--accent);
     --color-accent-hover: var(--accent-hover);
+    /* Chrome/steel pivot — state variants on the lightness axis. */
+    --color-accent-active: var(--accent-active);
+    --color-accent-disabled: var(--accent-disabled);
     --color-accent-muted: var(--accent-muted);
     --color-accent-subtle: var(--accent-subtle);
+    /* Signature steel — the rationed tone (focus/selection ring,
+     * link text, one row-hover accent, logo detail — nothing else). */
+    --color-signature-steel: var(--signature-steel);
+    --color-signature-steel-ring: var(--signature-steel-ring);
     /* Aesthetic Arc Session 4.5 — sage-green for Pattern 3 confirmed
      * flag state. Distinct from --status-success (alert-green used by
      * Alert/StatusPill); this is the architectural-stamp register. */

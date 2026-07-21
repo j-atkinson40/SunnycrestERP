@@ -208,7 +208,11 @@ export function WidgetChrome({
       className={cn(
         // `group` drives chrome opacity via group-hover on children.
         "group absolute",
-        "rounded-md border border-border-subtle bg-surface-elevated shadow-level-1",
+        // Machined-panel stack (chrome/steel §3): panel fill +
+        // barely-there vertical gradient + specular-carrying
+        // shadow-level-1. Same treatment as ui/card.tsx elevation
+        // ="panel" — widgets are card-family members.
+        "rounded-md border border-border-subtle bg-surface-elevated shadow-level-1 [background-image:var(--panel-gradient)]",
         "transition-shadow duration-quick ease-settle",
         // Session 3.8.2 — NO transition on left/top/width/height.
         // Session 3.8.3 — position is now on transform, not left/top;

@@ -172,7 +172,7 @@ function ResizeHandle({ placementId, position }: ResizeHandleProps) {
         width: HANDLE_SIZE_PX,
         height: HANDLE_SIZE_PX,
         backgroundColor: "var(--surface-base, #ffffff)",
-        border: "1px solid var(--accent, #9C5640)",
+        border: "1px solid var(--accent)",
         borderRadius: 1,
         cursor: CURSORS[position],
         // Self-assert pointer-events: auto so the handle receives

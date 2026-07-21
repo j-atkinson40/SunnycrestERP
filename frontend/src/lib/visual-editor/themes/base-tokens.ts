@@ -42,12 +42,19 @@ export interface BaseTokenMap {
   "border-base": string
   "border-strong": string
   "border-accent": string
-  // Accent (DL §3)
+  // Accent (DL §5 — chrome)
   accent: string
   "accent-hover": string
+  "accent-active": string
+  "accent-disabled": string
   "accent-muted": string
   "accent-subtle": string
-  // Status (DL §3)
+  // Signature (DL §6 — rationed steel)
+  "signature-steel": string
+  "signature-steel-ring": string
+  // Edge specular (DL §3)
+  "edge-specular": string
+  // Status (DL §7 — functional color)
   "status-error": string
   "status-error-muted": string
   "status-warning": string
@@ -64,78 +71,93 @@ export interface BaseTokenMap {
 
 export const BASE_TOKENS: Record<BaseTokenMode, BaseTokenMap> = {
   light: {
-    // Surfaces
-    "surface-base": "oklch(0.94 0.030 82)",
-    "surface-elevated": "oklch(0.965 0.014 82)",
-    "surface-raised": "oklch(0.985 0.010 82)",
-    "surface-sunken": "oklch(0.91 0.020 82)",
-    "surface-frosted": "oklch(0.965 0.014 82 / 0.60)",
+    // Surfaces (chrome/steel — light values provisional pending
+    // mood-anchor calibration; MUST byte-match tokens.css :root)
+    "surface-base": "oklch(0.965 0.004 255)",
+    "surface-elevated": "oklch(0.985 0.002 255)",
+    "surface-raised": "oklch(0.995 0.002 255)",
+    "surface-sunken": "oklch(0.945 0.005 255)",
+    "surface-frosted": "oklch(0.985 0.002 255 / 0.60)",
     // Content
-    "content-strong": "oklch(0.22 0.015 70)",
-    "content-base": "oklch(0.30 0.015 70)",
-    "content-muted": "oklch(0.48 0.014 70)",
-    "content-subtle": "oklch(0.62 0.012 70)",
-    "content-on-accent": "oklch(0.98 0.006 82)",
+    "content-strong": "oklch(0.17 0.008 255)",
+    "content-base": "oklch(0.24 0.008 255)",
+    "content-muted": "oklch(0.47 0.008 255)",
+    "content-subtle": "oklch(0.60 0.007 255)",
+    "content-on-accent": "oklch(0.97 0.003 255)",
     // Borders
-    "border-subtle": "oklch(0.88 0.012 80 / 0.6)",
-    "border-base": "oklch(0.82 0.015 78 / 0.8)",
-    "border-strong": "oklch(0.70 0.020 76)",
-    "border-accent": "rgba(156, 86, 64, 0.70)",
-    // Accent
-    accent: "oklch(0.46 0.10 39)",
-    "accent-hover": "oklch(0.54 0.10 39)",
-    "accent-muted": "rgba(156, 86, 64, 0.20)",
-    "accent-subtle": "rgba(156, 86, 64, 0.10)",
-    // Status
-    "status-error": "oklch(0.55 0.18 25)",
-    "status-error-muted": "oklch(0.92 0.04 25)",
-    "status-warning": "oklch(0.70 0.14 65)",
-    "status-warning-muted": "oklch(0.94 0.04 65)",
-    "status-success": "oklch(0.58 0.12 135)",
-    "status-success-muted": "oklch(0.93 0.04 135)",
-    "status-info": "oklch(0.55 0.08 225)",
-    "status-info-muted": "oklch(0.93 0.03 225)",
+    "border-subtle": "oklch(0.15 0.010 255 / 0.07)",
+    "border-base": "oklch(0.15 0.010 255 / 0.13)",
+    "border-strong": "oklch(0.60 0.010 255)",
+    "border-accent": "rgba(38, 41, 48, 0.70)",
+    // Accent (chrome — ink in light mode)
+    accent: "oklch(0.25 0.010 255)",
+    "accent-hover": "oklch(0.32 0.010 255)",
+    "accent-active": "oklch(0.20 0.010 255)",
+    "accent-disabled": "oklch(0.72 0.006 255)",
+    "accent-muted": "rgba(38, 41, 48, 0.12)",
+    "accent-subtle": "rgba(38, 41, 48, 0.06)",
+    // Signature steel (rationed)
+    "signature-steel": "oklch(0.52 0.09 255)",
+    "signature-steel-ring": "oklch(0.52 0.09 255 / 0.5)",
+    // Edge specular
+    "edge-specular": "oklch(1 0 0 / 0.65)",
+    // Status (functional)
+    "status-error": "oklch(0.52 0.11 40)",
+    "status-error-muted": "oklch(0.94 0.03 40)",
+    "status-warning": "oklch(0.60 0.11 78)",
+    "status-warning-muted": "oklch(0.95 0.04 78)",
+    "status-success": "oklch(0.55 0.12 155)",
+    "status-success-muted": "oklch(0.94 0.04 155)",
+    "status-info": "oklch(0.45 0.008 255)",
+    "status-info-muted": "oklch(0.94 0.004 255)",
     // Shadows
-    "shadow-color-subtle": "oklch(0.40 0.045 78 / 0.06)",
-    "shadow-color-base": "oklch(0.40 0.045 78 / 0.10)",
-    "shadow-color-strong": "oklch(0.37 0.050 75 / 0.16)",
+    "shadow-color-subtle": "oklch(0.20 0.010 255 / 0.06)",
+    "shadow-color-base": "oklch(0.20 0.010 255 / 0.10)",
+    "shadow-color-strong": "oklch(0.18 0.010 255 / 0.16)",
   },
   dark: {
-    // Surfaces (dark anchors per DL §3 dark-mode table)
-    "surface-base": "oklch(0.17 0.012 65)",
-    "surface-elevated": "oklch(0.20 0.014 65)",
-    "surface-raised": "oklch(0.23 0.014 65)",
-    "surface-sunken": "oklch(0.14 0.010 65)",
-    "surface-frosted": "oklch(0.20 0.014 65 / 0.55)",
-    // Content
-    "content-strong": "oklch(0.96 0.008 82)",
-    "content-base": "oklch(0.88 0.010 82)",
-    "content-muted": "oklch(0.68 0.012 80)",
-    "content-subtle": "oklch(0.52 0.012 78)",
-    "content-on-accent": "oklch(0.18 0.012 65)",
-    // Borders
-    "border-subtle": "oklch(0.32 0.014 78 / 0.7)",
-    "border-base": "oklch(0.42 0.016 76 / 0.85)",
-    "border-strong": "oklch(0.55 0.020 74)",
-    "border-accent": "rgba(180, 106, 77, 0.70)",
-    // Accent
-    accent: "oklch(0.46 0.10 39)",
-    "accent-hover": "oklch(0.54 0.10 39)",
-    "accent-muted": "rgba(180, 106, 77, 0.22)",
-    "accent-subtle": "rgba(180, 106, 77, 0.12)",
-    // Status
-    "status-error": "oklch(0.62 0.18 25)",
-    "status-error-muted": "oklch(0.22 0.07 25)",
-    "status-warning": "oklch(0.74 0.14 65)",
-    "status-warning-muted": "oklch(0.24 0.06 65)",
-    "status-success": "oklch(0.64 0.12 135)",
-    "status-success-muted": "oklch(0.22 0.05 135)",
-    "status-info": "oklch(0.62 0.08 225)",
-    "status-info-muted": "oklch(0.22 0.04 225)",
+    // Surfaces (DL §3 — the hero mode, hue anchor 255)
+    "surface-base": "oklch(0.16 0.008 255)",
+    "surface-elevated": "oklch(0.21 0.009 255)",
+    "surface-raised": "oklch(0.24 0.010 255)",
+    "surface-sunken": "oklch(0.18 0.008 255)",
+    "surface-frosted": "oklch(0.21 0.009 255 / 0.55)",
+    // Content (DL §4)
+    "content-strong": "oklch(0.97 0.004 255)",
+    "content-base": "oklch(0.95 0.004 255)",
+    "content-muted": "oklch(0.66 0.006 255)",
+    "content-subtle": "oklch(0.55 0.006 255)",
+    "content-on-accent": "oklch(0.16 0.008 255)",
+    // Borders (§9 hairlines)
+    "border-subtle": "oklch(1 0 0 / 0.05)",
+    "border-base": "oklch(1 0 0 / 0.09)",
+    "border-strong": "oklch(0.48 0.010 255)",
+    "border-accent": "rgba(233, 234, 238, 0.70)",
+    // Accent (chrome)
+    accent: "oklch(0.93 0.004 255)",
+    "accent-hover": "oklch(0.97 0.004 255)",
+    "accent-active": "oklch(0.88 0.005 255)",
+    "accent-disabled": "oklch(0.45 0.006 255)",
+    "accent-muted": "rgba(235, 237, 242, 0.16)",
+    "accent-subtle": "rgba(235, 237, 242, 0.08)",
+    // Signature steel (DL §6 verbatim)
+    "signature-steel": "oklch(0.62 0.08 255)",
+    "signature-steel-ring": "oklch(0.62 0.08 255 / 0.5)",
+    // Edge specular (DL §3 verbatim)
+    "edge-specular": "oklch(1 0 0 / 0.05)",
+    // Status (DL §7)
+    "status-error": "oklch(0.70 0.09 40)",
+    "status-error-muted": "oklch(0.26 0.04 40)",
+    "status-warning": "oklch(0.80 0.10 78)",
+    "status-warning-muted": "oklch(0.27 0.05 78)",
+    "status-success": "oklch(0.74 0.11 155)",
+    "status-success-muted": "oklch(0.25 0.05 155)",
+    "status-info": "oklch(0.78 0.006 255)",
+    "status-info-muted": "oklch(0.26 0.006 255)",
     // Shadows
-    "shadow-color-subtle": "oklch(0.04 0.012 65 / 0.35)",
-    "shadow-color-base": "oklch(0.04 0.012 65 / 0.45)",
-    "shadow-color-strong": "oklch(0.04 0.012 65 / 0.60)",
+    "shadow-color-subtle": "oklch(0.05 0.005 255 / 0.25)",
+    "shadow-color-base": "oklch(0.05 0.005 255 / 0.35)",
+    "shadow-color-strong": "oklch(0.03 0.005 255 / 0.50)",
   },
 }
 

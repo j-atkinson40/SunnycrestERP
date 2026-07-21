@@ -1,45 +1,22 @@
 /* ============================================================
- * Aesthetic Arc Session 4 — Type system migration
- * IBM Plex → Fraunces (display) + Geist (body) + Geist Mono (data)
+ * Chrome/steel pivot (2026-07-21) — NO bundled webfont.
  *
- * Self-hosted via @fontsource-variable. No Google Fonts CDN.
- * Per DESIGN_LANGUAGE.md Section 4 (Aesthetic Arc Session 4 update):
- *   - Fraunces (variable 100-900) — display typeface; proper-noun
- *     "engraving" register, H1/H2/H3, day-switcher, large display
- *     numerals, signature moments. Tailwind: font-display.
- *   - Geist (variable 100-900) — body typeface; default font-sans.
- *     Body prose, labels, button text, controls, descriptions.
- *   - Geist Mono (variable 100-900) — data typeface; all numerals,
- *     eyebrow uppercase tracking, code, technical literal language.
- *     Tailwind: font-mono.
+ * DESIGN_LANGUAGE.md §8: the UI typeface is the SF system stack
+ * (-apple-system / BlinkMacSystemFont), with Inter named as the
+ * licensed fallback for platforms where SF is absent and
+ * system-ui closing the chain. SF Pro is NOT licensed for web
+ * distribution, and per §8 nothing else is bundled either — all
+ * @fontsource imports (Fraunces, Geist, Geist Mono, IBM Plex)
+ * are retired from the bundle.
  *
- * One file per family thanks to variable-font packaging — covers
- * full weight range (100-900) without per-weight imports.
+ * The @fontsource packages REMAIN in package.json deliberately:
+ * the Fraunces face is retained as an asset for the memorial-
+ * document serif, which rides the separate backend document-
+ * emission mini-arc (documents are rendered server-side and do
+ * not consume this file). Unimported packages are tree-shaken —
+ * zero bundle impact.
  *
- * Migration shape: atomic swap with one-release legacy alias
- * retention. The IBM Plex packages remain in package.json + the
- * Plex tokens (--font-plex-sans / -serif / -mono) remain in
- * tokens.css aliased to the new families during the migration
- * window. The codebase sweep replaces font-plex-* utility usages;
- * Plex packages + token aliases retire when zero references
- * remain (target: end of Aesthetic Arc).
+ * Font tokens live in styles/tokens.css (--font-geist /
+ * --font-fraunces / --font-geist-mono are retained slot names,
+ * all resolving to system stacks now).
  * ============================================================ */
-
-/* Fraunces — humanist serif, display register.
-   Used for proper nouns + headings + day-switcher labels. */
-@import "@fontsource-variable/fraunces";
-
-/* Geist — modern restrained sans, default body typeface. */
-@import "@fontsource-variable/geist";
-
-/* Geist Mono — precision register for data. */
-@import "@fontsource-variable/geist-mono";
-
-/* IBM Plex retained during migration window — legacy callers
-   continue to work via token aliases (see tokens.css). Will be
-   removed when zero font-plex-* utility usages remain in the
-   codebase. */
-@import "@fontsource-variable/ibm-plex-sans/standard.css";
-@import "@fontsource-variable/ibm-plex-sans/standard-italic.css";
-@import "@fontsource/ibm-plex-serif/500.css";
-@import "@fontsource/ibm-plex-mono/400.css";

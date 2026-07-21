@@ -61,9 +61,9 @@ export function SubstratePresetPicker({
             className={cn(
               "rounded-full border px-3 py-1 text-[11px] tracking-wide",
               "transition-[background-color,border-color,color] duration-quick ease-settle",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-brass,#9C5640)]/40",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40",
               active
-                ? "border-[color:var(--accent-brass,#9C5640)] bg-[color:var(--accent-brass,#9C5640)] text-[color:var(--content-on-brass,#ffffff)]"
+                ? "border-[color:var(--accent)] bg-[color:var(--accent)] text-[color:var(--content-on-accent)]"
                 : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--content-base)] hover:border-[color:var(--border-base)]",
             )}
             style={{ fontFamily: "var(--font-plex-sans, ui-sans-serif)" }}

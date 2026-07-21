@@ -161,12 +161,12 @@ describe("parseOklch", () => {
 
 describe("oklchToSrgb", () => {
   it("converts a terracotta oklch into a structurally-correct warm sRGB", () => {
-    // oklch(0.46 0.10 39) is the canonical platform accent —
-    // a deepened terracotta. Ottosson conversion produces an
-    // exact value in the brick-red range; CLAUDE.md's shorthand
-    // "#9C5640" is approximate, so we assert structural
-    // properties (warm-family, R > G > B) instead of an exact
-    // RGB match.
+    // oklch(0.46 0.10 39) is a warm terracotta (the retired
+    // brass-era accent — kept here purely as a color-math
+    // fixture; the platform accent is now chrome). Ottosson
+    // conversion produces a value in the brick-red range; we
+    // assert structural properties (warm-family, R > G > B)
+    // instead of an exact RGB match.
     const [r, g, b] = oklchToSrgb({ l: 0.46, c: 0.1, h: 39, alpha: 1 })
     expect(r).toBeGreaterThan(g)
     expect(g).toBeGreaterThan(b)
@@ -206,23 +206,24 @@ describe("oklchToSrgb", () => {
 describe("catalogDefaultsForMode", () => {
   it("emits a complete map for light mode", () => {
     const m = catalogDefaultsForMode("light")
-    expect(m["accent"]).toBe("oklch(0.46 0.10 39)")
-    expect(m["surface-base"]).toBe("oklch(0.94 0.030 82)")
+    expect(m["accent"]).toBe("oklch(0.25 0.010 255)")
+    expect(m["surface-base"]).toBe("oklch(0.965 0.004 255)")
   })
 
   it("emits a different map for dark mode", () => {
     const m = catalogDefaultsForMode("dark")
     // Dark surface differs from light
-    expect(m["surface-base"]).toBe("oklch(0.16 0.010 59)")
-    // Accent is same in both modes per Aesthetic Arc Session 2
-    expect(m["accent"]).toBe("oklch(0.46 0.10 39)")
+    expect(m["surface-base"]).toBe("oklch(0.16 0.008 255)")
+    // Chrome/steel pivot: accent is mode-asymmetric (bright chrome
+    // in dark, ink in light) — the state axis is lightness.
+    expect(m["accent"]).toBe("oklch(0.93 0.004 255)")
   })
 
   it("light and dark are independent — editing one doesn't affect the other", () => {
     const light = catalogDefaultsForMode("light")
     const dark = catalogDefaultsForMode("dark")
     light["surface-base"] = "modified"
-    expect(dark["surface-base"]).toBe("oklch(0.16 0.010 59)")
+    expect(dark["surface-base"]).toBe("oklch(0.16 0.008 255)")
   })
 })
 
@@ -249,7 +250,7 @@ describe("mergeStack", () => {
 describe("composeEffective", () => {
   it("falls back to catalog defaults when stack is empty", () => {
     const out = composeEffective("light", emptyStack())
-    expect(out["accent"]).toBe("oklch(0.46 0.10 39)")
+    expect(out["accent"]).toBe("oklch(0.25 0.010 255)")
   })
 
   it("stack overrides override catalog defaults", () => {
@@ -297,7 +298,7 @@ describe("stackFromResolved", () => {
       tenant_id: "t1",
       tokens: {
         accent: "oklch(0.55 0.10 39)",
-        "surface-base": "oklch(0.94 0.030 82)",
+        "surface-base": "oklch(0.965 0.004 255)",
       },
       sources: [
         {
@@ -315,7 +316,7 @@ describe("stackFromResolved", () => {
       ],
     }
     const stack = stackFromResolved(resolved)
-    expect(stack.platform["surface-base"]).toBe("oklch(0.94 0.030 82)")
+    expect(stack.platform["surface-base"]).toBe("oklch(0.965 0.004 255)")
     expect(stack.vertical["accent"]).toBe("oklch(0.55 0.10 39)")
     expect(stack.tenant).toEqual({})
     expect(stack.draft).toEqual({})
@@ -377,8 +378,8 @@ describe("inheritance edge cases", () => {
       vertical: "cemetery",
       tenant_id: "t1",
       tokens: {
-        "surface-base": "oklch(0.94 0.030 82)", // from platform
-        accent: "oklch(0.70 0.05 250)", // tenant override (blue, not warm)
+        "surface-base": "oklch(0.965 0.004 255)", // from platform
+        accent: "oklch(0.70 0.05 250)", // tenant override
       },
       sources: [
         {
@@ -402,7 +403,7 @@ describe("inheritance edge cases", () => {
     expect(stack.vertical).toEqual({})
     expect(stack.tenant["accent"]).toBe("oklch(0.70 0.05 250)")
     const out = mergeStack(stack)
-    expect(out["surface-base"]).toBe("oklch(0.94 0.030 82)")
+    expect(out["surface-base"]).toBe("oklch(0.965 0.004 255)")
     expect(out["accent"]).toBe("oklch(0.70 0.05 250)")
   })
 })

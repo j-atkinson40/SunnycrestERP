@@ -72,11 +72,16 @@
  * surface — Session 6 revisit.
  */
 
+/* Chrome/steel pivot (2026-07-21): the ring composes SIGNATURE
+ * STEEL, not the chrome accent — the focus/selection ring is one
+ * of steel's four sanctioned uses (DESIGN_LANGUAGE §2 law 2), and
+ * a near-monochrome chrome accent cannot carry a visible ring.
+ * Class name kept (.focus-ring-accent) so call sites don't churn. */
 .focus-ring-accent:focus-visible {
   outline: none;
   box-shadow:
     0 0 0 2px var(--surface-base),
-    0 0 0 5px color-mix(in oklch, var(--accent) calc(var(--focus-ring-alpha, 0.40) * 100%), transparent);
+    0 0 0 5px color-mix(in oklch, var(--signature-steel) calc(var(--focus-ring-alpha, 0.45) * 100%), transparent);
   transition: box-shadow var(--duration-quick) var(--ease-settle);
 }
 
