@@ -221,6 +221,20 @@ def job_ar_balance_reconciliation():
     _run_per_tenant("AR_BALANCE_RECONCILIATION", run_ar_balance_reconciliation)
 
 
+def job_tax_accumulation():
+    """Daily: rebuild the current sales-tax period's accumulator rows
+    from invoices' stored truth (idempotent recompute-and-replace).
+
+    CLOCK HONESTY (T-0): fired by APScheduler directly — no workflows-
+    table runtime row exists yet; the runtime-row/adopt question joins
+    the standing adopt queue with the other APScheduler residents.
+    """
+    def _accumulate(db, tenant_id):
+        from app.services.tax_filing_service import accumulate_period
+        return accumulate_period(db, tenant_id)
+    _run_per_tenant("TAX_ACCUMULATION", _accumulate)
+
+
 def job_discount_expiry_monitor():
     """Daily at 8am: alert on early payment discounts expiring within 3 days."""
     from app.services.proactive_agents import run_discount_expiry_monitor
@@ -467,6 +481,7 @@ def job_platform_incident_dispatcher():
 # ---------------------------------------------------------------------------
 
 JOB_REGISTRY: dict[str, callable] = {
+    "tax_accumulation": job_tax_accumulation,
     "draft_invoice_generator": job_draft_invoice_generator,
     "network_readiness": job_network_readiness,
     "ar_aging_monitor": job_ar_aging_monitor,
@@ -545,6 +560,16 @@ def register_all_jobs():
         CronTrigger(hour=2, minute=0),
         id="ar_balance_reconciliation",
         name="ar_balance_reconciliation",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # DAILY at 2:30am ET — sales-tax period accumulation (idempotent)
+    scheduler.add_job(
+        job_tax_accumulation,
+        CronTrigger(hour=2, minute=30),
+        id="tax_accumulation",
+        name="tax_accumulation",
         replace_existing=True,
         misfire_grace_time=3600,
     )

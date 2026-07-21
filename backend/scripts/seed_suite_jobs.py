@@ -146,22 +146,27 @@ JOBS = [
     ),
     (
         "File sales tax",
-        "Resolution works beautifully today — every quote carries its tax "
-        "why. Gathering it into filing periods is the arc this card is "
-        "waiting for.",
+        "The whole filing story — three-axis exemptions backed by "
+        "certificates, periods accumulating by jurisdiction, and the "
+        "return that tells you what to fix before filing.",
         [],
         [
-            ("today-resolve", "TODAY — resolution is real: county "
-             "jurisdictions, exemptions, and every quote carrying its "
-             "reason — resolved, exempt, or an explicit override.",
+            ("today-resolve", "TODAY — resolution is real, three axes "
+             "deep: product taxability (nothing exempt without your "
+             "mark), job and blanket certificates with dated validity, "
+             "and the county engine — every answer carrying its "
+             "specific reason. A flag without a certificate resolves "
+             "TAXABLE with the gap listed.",
              {"href": "/settings/tax", "label": "Open Tax Settings"}),
-            ("coming-accumulate", "COMING — accumulation: computed tax "
-             "gathered into periods by jurisdiction, so a return can be "
-             "produced instead of reconstructed.", None),
-            ("coming-filing", "COMING — filing prep with real dollars: "
-             "today's reminder knows WHICH period is due but gathers "
-             "nothing; the arc gives it the numbers. It opens with the "
-             "operator's filing-practice words.", None),
+            ("coming-accumulate", "TODAY — accumulation: invoice tax "
+             "facts gather into periods by jurisdiction on the NY "
+             "sales-tax calendar (Mar–May quarters, by invoice date), "
+             "rebuilt idempotently every night.", None),
+            ("coming-filing", "TODAY — the return: gross, exempt by "
+             "reason class, taxable, and tax computed per jurisdiction "
+             "— plus the gaps list (uncertified flags, unattached "
+             "scans) so the fix happens before the filing.",
+             {"href": "/reports", "label": "Open the return"}),
         ],
         {"coming": {"checker": "tax_filing_arc"}},
     ),
@@ -235,7 +240,56 @@ BEAT_REWRITES = [
     ),
 ]
 
+BEAT_REWRITES += [
+    (
+        "File sales tax", "today-resolve",
+        "TODAY — resolution is real: county jurisdictions, exemptions, "
+        "and every quote carrying its reason — resolved, exempt, or an "
+        "explicit override.",
+        {"key": "today-resolve",
+         "text": "TODAY — resolution is real, three axes deep: product "
+                 "taxability (nothing exempt without your mark), job and "
+                 "blanket certificates with dated validity, and the "
+                 "county engine — every answer carrying its specific "
+                 "reason. A flag without a certificate resolves TAXABLE "
+                 "with the gap listed.",
+         "link": {"href": "/settings/tax", "label": "Open Tax Settings"}},
+    ),
+    (
+        "File sales tax", "coming-accumulate",
+        "COMING — accumulation: computed tax gathered into periods by "
+        "jurisdiction, so a return can be produced instead of "
+        "reconstructed.",
+        {"key": "coming-accumulate",
+         "text": "TODAY — accumulation: invoice tax facts gather into "
+                 "periods by jurisdiction on the NY sales-tax calendar "
+                 "(Mar–May quarters, by invoice date), rebuilt "
+                 "idempotently every night."},
+    ),
+    (
+        "File sales tax", "coming-filing",
+        "COMING — filing prep with real dollars: today's reminder knows "
+        "WHICH period is due but gathers nothing; the arc gives it the "
+        "numbers. It opens with the operator's filing-practice words.",
+        {"key": "coming-filing",
+         "text": "TODAY — the return: gross, exempt by reason class, "
+                 "taxable, and tax computed per jurisdiction — plus the "
+                 "gaps list (uncertified flags, unattached scans) so the "
+                 "fix happens before the filing.",
+         "link": {"href": "/reports", "label": "Open the return"}},
+    ),
+]
+
 DESCRIPTION_REWRITES = [
+    (
+        "File sales tax",
+        "Resolution works beautifully today — every quote carries its tax "
+        "why. Gathering it into filing periods is the arc this card is "
+        "waiting for.",
+        "The whole filing story — three-axis exemptions backed by "
+        "certificates, periods accumulating by jurisdiction, and the "
+        "return that tells you what to fix before filing.",
+    ),
     (
         "Handle the exceptions",
         "When money needs a correction — voids work today; memos, "

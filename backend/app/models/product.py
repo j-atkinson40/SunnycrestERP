@@ -47,6 +47,10 @@ class Product(Base):
     source: Mapped[str] = mapped_column(String(30), default="manual")  # manual, catalog_builder, csv_import
     is_inventory_tracked: Mapped[bool] = mapped_column(Boolean, default=True)
     product_line: Mapped[str | None] = mapped_column(String(100), nullable=True)  # e.g. "Monticello"
+    # Product taxability axis (sales-tax arc): 'inherit' = not yet
+    # reviewed (resolves TAXABLE — the default law); 'taxable'/'exempt'
+    # are the operator's explicit marks. Nothing is guessed exempt.
+    tax_class: Mapped[str] = mapped_column(String(20), nullable=False, server_default="inherit")
     variant_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # e.g. "STD-1P"
 
     # Conditional pricing

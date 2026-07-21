@@ -204,10 +204,48 @@ def get_invoice_register(db: Session, tenant_id: str, period_start: date, period
 # ---------------------------------------------------------------------------
 
 def get_tax_summary(db: Session, tenant_id: str, period_start: date, period_end: date, user_id: str | None = None) -> dict:
-    """Tax collected by jurisdiction for filing."""
-    # This requires invoice_lines with tax fields — query if available
-    result = {"period": {"start": str(period_start), "end": str(period_end)}, "jurisdictions": [], "total_tax": 0, "total_taxable": 0, "exempt_total": 0}
-    _log_run(db, tenant_id, "tax_summary", {"period_start": str(period_start), "period_end": str(period_end)}, user_id, 0)
+    """Tax by jurisdiction for filing — reads the invoices' stored truth
+    through the sales-tax arc's classifier (the hardcoded-zero stub died
+    by replacement). Arbitrary ranges classify live; the period
+    accumulator at /tax/returns is the filing-shaped surface."""
+    from datetime import datetime as _dt, timezone as _tz
+    from decimal import Decimal as _D
+
+    from app.models.invoice import Invoice
+    from app.services.tax_filing_service import FILING_STATUSES, classify_invoice
+
+    invoices = (
+        db.query(Invoice)
+        .filter(
+            Invoice.company_id == tenant_id,
+            Invoice.status.in_(FILING_STATUSES),
+            Invoice.is_finance_charge.is_(False),
+            Invoice.invoice_date >= _dt.combine(period_start, _dt.min.time(), _tz.utc),
+            Invoice.invoice_date <= _dt.combine(period_end, _dt.max.time(), _tz.utc),
+        )
+        .all()
+    )
+    buckets: dict[str, dict] = {}
+    for inv in invoices:
+        c = classify_invoice(db, inv)
+        b = buckets.setdefault(c["jurisdiction"], {"taxable": _D("0"), "exempt": _D("0"), "tax": _D("0")})
+        b["taxable"] += c["taxable"]
+        b["exempt"] += c["exempt"]
+        b["tax"] += c["tax"]
+
+    jurisdictions = [
+        {"jurisdiction": name, "taxable_sales": float(b["taxable"]),
+         "exempt_sales": float(b["exempt"]), "tax_collected": float(b["tax"])}
+        for name, b in sorted(buckets.items())
+    ]
+    result = {
+        "period": {"start": str(period_start), "end": str(period_end)},
+        "jurisdictions": jurisdictions,
+        "total_tax": sum(j["tax_collected"] for j in jurisdictions),
+        "total_taxable": sum(j["taxable_sales"] for j in jurisdictions),
+        "exempt_total": sum(j["exempt_sales"] for j in jurisdictions),
+    }
+    _log_run(db, tenant_id, "tax_summary", {"period_start": str(period_start), "period_end": str(period_end)}, user_id, len(jurisdictions))
     return result
 
 

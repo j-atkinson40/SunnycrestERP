@@ -275,34 +275,36 @@ def run_tax_filing_prep(db: Session, tenant_id: str) -> dict:
     if not settings.get("tax_filing_reminder_enabled", True):
         return {"skipped": True, "reason": "reminders_disabled"}
 
-    # Determine filing period
-    today = date.today()
-    frequency = settings.get("tax_filing_frequency", "monthly")
+    # THE REAL PREP (sales-tax arc — the '# For now, return the prep
+    # structure' stub died by replacement): the period due, its ACTUAL
+    # numbers from the accumulator, and THE GAPS LIST — the return that
+    # tells you what to fix before filing.
+    from datetime import timedelta as _td
 
-    if frequency == "monthly":
-        # Prior month
-        if today.month == 1:
-            period_month, period_year = 12, today.year - 1
-        else:
-            period_month, period_year = today.month - 1, today.year
-    elif frequency == "quarterly":
-        # Prior quarter
-        quarter = (today.month - 1) // 3
-        if quarter == 0:
-            period_month, period_year = 10, today.year - 1  # Q4 of prior year
-        else:
-            period_month = (quarter - 1) * 3 + 1
-            period_year = today.year
-    else:
+    from app.services.tax_filing_service import (
+        accumulate_period, get_return, period_for_date,
+    )
+
+    today = date.today()
+    frequency = settings.get("tax_filing_frequency", "quarterly")
+    if frequency not in ("monthly", "quarterly"):
         return {"skipped": True, "reason": "annual_frequency"}
 
-    # Would call FinancialReportService.getTaxSummary() here
-    # For now, return the prep structure
+    # The period most recently ENDED is the one due for filing.
+    current = period_for_date(today, frequency)
+    prior = period_for_date(current["start"] - _td(days=1), frequency)
+
+    accumulate_period(db, tenant_id, prior["key"])
+    ret = get_return(db, tenant_id, prior["key"])
     return {
-        "period_month": period_month,
-        "period_year": period_year,
+        "period_key": ret["period_key"],
+        "period_label": ret["period_label"],
+        "due_date": ret["due_date"],
         "frequency": frequency,
-        "status": "ready",
+        "totals": ret["totals"],
+        "jurisdictions": ret["jurisdictions"],
+        "gaps": ret["gaps"],
+        "status": "ready" if not ret["gaps"] else "gaps_to_resolve",
     }
 
 

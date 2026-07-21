@@ -115,63 +115,191 @@ class TaxResolution:
     resolved: bool             # True unless the "unresolved" reason
 
 
-def resolve_quote_tax(
+@dataclass
+class LineTaxResolution:
+    """The three-axis chain's full answer (sales-tax arc).
+
+    Extends the U-1 shape with line-level detail: which lines went out
+    product-exempt, which certificate backed a customer/job exemption,
+    and any GAPS (an exemption flag without a backing certificate — the
+    honest strictness: exemption is backed or it's a listed gap, never
+    assumed).
+    """
+    tax_amount: Decimal
+    tax_rate: Decimal
+    reason: str
+    resolved: bool
+    source: str                      # override | product_exempt | job_certificate |
+                                     # customer_certificate | jurisdiction | unresolved
+    taxable_subtotal: Decimal
+    exempt_subtotal: Decimal
+    exempt_lines: list
+    gaps: list
+
+
+def _find_valid_certificate(db, company_id: str, customer_id: str,
+                            sales_order_id: str | None, on):
+    """Job cert first (order-scoped), then the customer's blanket.
+    Dated validity does the work — an expired cert is simply absent."""
+    from app.models.tax_filing import TaxCertificate
+
+    if sales_order_id:
+        for cert in (
+            db.query(TaxCertificate)
+            .filter(TaxCertificate.company_id == company_id,
+                    TaxCertificate.sales_order_id == sales_order_id,
+                    TaxCertificate.is_active.is_(True))
+            .all()
+        ):
+            if cert.is_valid_on(on):
+                return cert, "job"
+    for cert in (
+        db.query(TaxCertificate)
+        .filter(TaxCertificate.company_id == company_id,
+                TaxCertificate.customer_id == customer_id,
+                TaxCertificate.sales_order_id.is_(None),
+                TaxCertificate.is_active.is_(True))
+        .all()
+    ):
+        if cert.is_valid_on(on):
+            return cert, "customer"
+    return None, None
+
+
+def resolve_line_tax(
     db: Session,
     company_id: str,
     *,
-    subtotal: Decimal,
+    lines: list,
     customer_id: str | None = None,
+    sales_order_id: str | None = None,
     cemetery_id: str | None = None,
     override_rate: Decimal | None = None,
     require_resolution: bool = False,
-) -> TaxResolution:
-    """The shared money core's tax step — the only tax path for quotes.
+    on_date=None,
+) -> LineTaxResolution:
+    """THE RESOLUTION ORDER, extended at the line level (sales-tax arc):
 
-    Order of authority: explicit override > exemption > jurisdiction
-    engine > unresolved. `require_resolution=True` (the Sales/QTE face,
-    where a customer is always present) raises TaxResolutionError instead
-    of returning an unresolved zero — the confident-zero rule at tax
-    altitude.
+        explicit override → PRODUCT-EXEMPT (per line) → JOB CERT →
+        CUSTOMER CERT → jurisdiction engine → unresolved
+
+    Each answer carries its SPECIFIC reason. A customer's tax_exempt
+    flag WITHOUT a valid certificate resolves TAXABLE with the gap
+    surfaced — exemption is backed or it's a listed gap, never assumed.
+
+    `lines` items: {"product_id": str|None, "amount": Decimal-ish,
+    "description": str|None}.
     """
+    from datetime import date as _date
     from app.models.customer import Customer
+    from app.models.product import Product
     from app.services.money import round_money
+
+    on = on_date or _date.today()
+    amounts = [Decimal(str(l.get("amount") or 0)) for l in lines]
+    subtotal = sum(amounts, Decimal("0.00"))
 
     if override_rate is not None:
         rate = Decimal(str(override_rate))
         pct = (rate * 100).normalize()
-        return TaxResolution(
-            tax_amount=round_money(subtotal * rate),
-            tax_rate=rate,
-            reason=f"override: {pct}% (explicit)",
-            resolved=True,
+        return LineTaxResolution(
+            tax_amount=round_money(subtotal * rate), tax_rate=rate,
+            reason=f"override: {pct}% (explicit)", resolved=True,
+            source="override", taxable_subtotal=subtotal,
+            exempt_subtotal=Decimal("0.00"), exempt_lines=[], gaps=[],
         )
 
+    # AXIS 1 — product taxability. 'inherit' resolves TAXABLE (the
+    # default law); only the operator's explicit 'exempt' mark exempts.
+    product_ids = [l.get("product_id") for l in lines if l.get("product_id")]
+    products = {
+        p.id: p for p in db.query(Product).filter(
+            Product.id.in_(product_ids), Product.company_id == company_id
+        ).all()
+    } if product_ids else {}
+    exempt_lines, taxable_subtotal, exempt_subtotal = [], Decimal("0.00"), Decimal("0.00")
+    for l, amt in zip(lines, amounts):
+        p = products.get(l.get("product_id"))
+        if p is not None and p.tax_class == "exempt":
+            exempt_lines.append({
+                "description": l.get("description") or p.name,
+                "amount": float(amt),
+                "reason": f"product: {p.name} — exempt class",
+            })
+            exempt_subtotal += amt
+        else:
+            taxable_subtotal += amt
+
+    gaps: list = []
     cust = (
         db.query(Customer)
         .filter(Customer.id == customer_id, Customer.company_id == company_id)
         .first()
         if customer_id else None
     )
-    if cust and cust.tax_exempt:
-        return TaxResolution(
-            tax_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.0000"),
-            reason=f"exempt: {cust.name} is tax-exempt",
-            resolved=True,
+
+    def _all_exempt(reason: str, source: str) -> LineTaxResolution:
+        return LineTaxResolution(
+            tax_amount=Decimal("0.00"), tax_rate=Decimal("0.0000"),
+            reason=reason, resolved=True, source=source,
+            taxable_subtotal=Decimal("0.00"),
+            exempt_subtotal=subtotal, exempt_lines=exempt_lines, gaps=gaps,
         )
 
+    if taxable_subtotal <= Decimal("0.00") and exempt_subtotal > 0:
+        return _all_exempt(
+            f"exempt: all {len(exempt_lines)} line(s) product-exempt", "product_exempt")
+
+    # AXES 2+3 — certificates (job first, then blanket).
+    if cust:
+        cert, scope = _find_valid_certificate(db, company_id, cust.id, sales_order_id, on)
+        if cert:
+            num = cert.cert_number or "no number on record"
+            if scope == "job":
+                reason = f"exempt: job certificate {cert.cert_type} ({num})"
+                source = "job_certificate"
+            else:
+                through = (f"valid through {cert.valid_through.isoformat()}"
+                           if cert.valid_through else "open-dated")
+                reason = f"exempt: customer certificate {cert.cert_type} ({num}), {through}"
+                source = "customer_certificate"
+            if exempt_lines:
+                reason += f" · {len(exempt_lines)} line(s) also product-exempt"
+            gaps_note = list(gaps)
+            return LineTaxResolution(
+                tax_amount=Decimal("0.00"), tax_rate=Decimal("0.0000"),
+                reason=reason, resolved=True, source=source,
+                taxable_subtotal=Decimal("0.00"), exempt_subtotal=subtotal,
+                exempt_lines=exempt_lines, gaps=gaps_note,
+            )
+        if cust.tax_exempt:
+            # THE HONEST STRICTNESS: the flag without a backing
+            # certificate does NOT exempt — taxable, with the gap listed.
+            gaps.append(
+                f"{cust.name} carries an exemption flag but no valid "
+                "certificate on file — resolved TAXABLE; attach the "
+                "certificate to exempt."
+            )
+
+    # Jurisdiction engine on what remains taxable.
     jur, rate_obj = get_jurisdiction_for_order(db, company_id, cemetery_id, customer_id)
     if jur and rate_obj:
-        tax_amount, _pct = compute_tax(subtotal, rate_obj.rate_percentage, False)
+        tax_amount, _pct = compute_tax(taxable_subtotal, rate_obj.rate_percentage, False)
         effective = (rate_obj.rate_percentage / Decimal("100")).quantize(Decimal("0.0001"))
-        return TaxResolution(
-            tax_amount=tax_amount,
-            tax_rate=effective,
-            reason=(
-                f"resolved: {rate_obj.rate_percentage.normalize()}% — "
-                f"{jur.county} County, {jur.state}"
-            ),
-            resolved=True,
+        reason = (
+            f"resolved: {rate_obj.rate_percentage.normalize()}% — "
+            f"{jur.county} County, {jur.state}"
+        )
+        if exempt_lines:
+            reason += (f" · {len(exempt_lines)} line(s) product-exempt "
+                       f"(${float(exempt_subtotal):,.2f})")
+        if gaps:
+            reason += " · GAP: exemption flag without certificate"
+        return LineTaxResolution(
+            tax_amount=tax_amount, tax_rate=effective, reason=reason,
+            resolved=True, source="jurisdiction",
+            taxable_subtotal=taxable_subtotal, exempt_subtotal=exempt_subtotal,
+            exempt_lines=exempt_lines, gaps=gaps,
         )
 
     missing = (
@@ -186,11 +314,41 @@ def resolve_quote_tax(
             "or pass an explicit tax_rate (0 is allowed, but must be "
             "explicit)."
         )
+    return LineTaxResolution(
+        tax_amount=Decimal("0.00"), tax_rate=Decimal("0.0000"),
+        reason=f"unresolved: {missing}", resolved=False, source="unresolved",
+        taxable_subtotal=taxable_subtotal, exempt_subtotal=exempt_subtotal,
+        exempt_lines=exempt_lines, gaps=gaps,
+    )
+
+
+def resolve_quote_tax(
+    db: Session,
+    company_id: str,
+    *,
+    subtotal: Decimal,
+    customer_id: str | None = None,
+    cemetery_id: str | None = None,
+    override_rate: Decimal | None = None,
+    require_resolution: bool = False,
+) -> TaxResolution:
+    """The shared money core's tax step — the U-1 shape, now a thin
+    wrapper over the three-axis line-level chain (one law, one path).
+
+    NOTE (sales-tax arc): the bare tax_exempt flag no longer exempts —
+    a valid certificate does. Flag-without-cert resolves TAXABLE with
+    the gap in the reason. Product exemption needs line detail; callers
+    with lines use resolve_line_tax directly.
+    """
+    out = resolve_line_tax(
+        db, company_id,
+        lines=[{"product_id": None, "amount": subtotal, "description": None}],
+        customer_id=customer_id, cemetery_id=cemetery_id,
+        override_rate=override_rate, require_resolution=require_resolution,
+    )
     return TaxResolution(
-        tax_amount=Decimal("0.00"),
-        tax_rate=Decimal("0.0000"),
-        reason=f"unresolved: {missing}",
-        resolved=False,
+        tax_amount=out.tax_amount, tax_rate=out.tax_rate,
+        reason=out.reason, resolved=out.resolved,
     )
 
 

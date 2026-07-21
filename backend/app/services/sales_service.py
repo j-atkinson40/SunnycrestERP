@@ -152,15 +152,24 @@ def create_quote(db: Session, company_id: str, user_id: str, data) -> Quote:
     # overridden (data.tax_rate given, 0 allowed) — an unresolvable quote
     # with no override refuses loudly.
     from app.services.money import round_money
-    from app.services.tax_service import TaxResolutionError, resolve_quote_tax
+    from app.services.tax_service import TaxResolutionError, resolve_line_tax
 
     subtotal = Decimal("0.00")
+    _tax_lines = []
     for line in data.lines:
-        subtotal += _compute_line_total(line.quantity, line.unit_price)
+        lt = _compute_line_total(line.quantity, line.unit_price)
+        subtotal += lt
+        _tax_lines.append({
+            "product_id": getattr(line, "product_id", None),
+            "amount": lt,
+            "description": getattr(line, "description", None),
+        })
     try:
-        resolution = resolve_quote_tax(
+        # Sales-tax arc: the line-level three-axis chain (product-exempt
+        # lines carry their reason; certificates back exemptions).
+        resolution = resolve_line_tax(
             db, company_id,
-            subtotal=subtotal,
+            lines=_tax_lines,
             customer_id=data.customer_id,
             override_rate=getattr(data, "tax_rate", None),
             require_resolution=True,
@@ -748,6 +757,16 @@ def create_invoice_from_order(
     )
     db.add(invoice)
     db.flush()
+
+    # Sales-tax arc: stamp the structured tax facts on the newborn
+    # invoice (reason carried from the source quote when one exists —
+    # carry-not-recompute; jurisdiction stored as charged). Forward
+    # only; the accumulator never rewrites history.
+    try:
+        from app.services.tax_filing_service import stamp_invoice_tax_facts
+        stamp_invoice_tax_facts(db, invoice, order)
+    except Exception:
+        logger.warning("Tax-fact stamping failed for invoice %s", invoice.number)
 
     for sol in order.lines:
         il = InvoiceLine(

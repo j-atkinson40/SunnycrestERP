@@ -64,6 +64,7 @@ def world():
         "DELETE FROM vault_items WHERE company_id = :c",
         "DELETE FROM audit_logs WHERE company_id = :c",
         "DELETE FROM crm_activities WHERE company_id = :c",
+        "DELETE FROM tax_certificates WHERE company_id = :c",
         "DELETE FROM tax_jurisdictions WHERE tenant_id = :c",
         "DELETE FROM tax_rates WHERE tenant_id = :c",
         "DELETE FROM vaults WHERE company_id = :c",
@@ -140,11 +141,32 @@ class TestTheRefusal:
 
 
 class TestTheExemptionReason:
-    def test_exempt_answers_zero_with_its_why(self, db, world):
+    """EVOLVED by the sales-tax arc: the bare tax_exempt flag no longer
+    exempts — exemption is BACKED by a valid certificate or it's a
+    listed gap. Flag-without-cert resolves TAXABLE with the gap in the
+    reason; flag-with-cert exempts citing the certificate."""
+
+    def test_flag_without_cert_resolves_taxable_with_gap(self, db, world):
         q = _qte(db, world, world["exempt"], lines=[("Vault", "1000.00")])
-        assert Decimal(str(q.tax_amount)) == Decimal("0.00")
-        assert Decimal(str(q.total)) == Decimal("1000.00")
-        assert q.tax_reason == "exempt: Exempt FH is tax-exempt"
+        assert Decimal(str(q.tax_amount)) == Decimal("70.00")  # Cayuga 7%
+        assert Decimal(str(q.total)) == Decimal("1070.00")
+        assert "GAP: exemption flag without certificate" in q.tax_reason
+
+    def test_flag_with_certificate_exempts_citing_it(self, db, world):
+        from app.models.tax_filing import TaxCertificate
+        cert = TaxCertificate(
+            company_id=world["co"], customer_id=world["exempt"],
+            cert_type="resale", cert_number="NY-123456", state="NY",
+        )
+        db.add(cert)
+        db.commit()
+        try:
+            q = _qte(db, world, world["exempt"], lines=[("Vault", "1000.00")])
+            assert Decimal(str(q.tax_amount)) == Decimal("0.00")
+            assert "customer certificate resale (NY-123456)" in q.tax_reason
+        finally:
+            db.delete(cert)
+            db.commit()
 
 
 class TestTheOverride:

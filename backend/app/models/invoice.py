@@ -73,6 +73,22 @@ class Invoice(Base):
         Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
     write_off_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Finance-charge marker (column existed in every DB; the model never
+    # declared it — same born-dormant class as the FC customer columns.
+    # Declared in the sales-tax arc: the accumulator excludes FC
+    # invoices, and the FC posting path's Invoice(is_finance_charge=True)
+    # kwarg now actually works).
+    is_finance_charge: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    # Sales-tax filing facts (structured sources for the accumulator).
+    # History stays NULL and is classified honestly as unclassified.
+    tax_source: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    tax_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tax_jurisdiction: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    exempt_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

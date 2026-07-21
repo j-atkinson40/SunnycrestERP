@@ -1,13 +1,22 @@
 /**
  * Tax Settings — /settings/tax
- * Three tabs: Tax Rates, Jurisdictions, Exemptions
+ * Five tabs: Tax Rates, Jurisdictions, Exemptions, Certificates,
+ * Product Taxability (the sales-tax arc's two: certificates back
+ * exemptions — a flag without one resolves taxable with the gap
+ * listed; product taxability is the operator's markup surface —
+ * nothing ships exempt without his word per product).
  */
 
 import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, Percent, MapPin, ShieldAlert, RefreshCw, Trash2, Star } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
+import { FileCheck2, Plus, Percent, MapPin, Package, ShieldAlert, RefreshCw, Trash2, Star } from "lucide-react"
 import { cn } from "@/lib/utils"
 import apiClient from "@/lib/api-client"
 
@@ -33,6 +42,8 @@ export default function TaxSettingsPage() {
     { key: "rates", label: "Tax Rates", icon: Percent },
     { key: "jurisdictions", label: "Jurisdictions", icon: MapPin },
     { key: "exemptions", label: "Exemptions", icon: ShieldAlert },
+    { key: "certificates", label: "Certificates", icon: FileCheck2 },
+    { key: "products", label: "Product Taxability", icon: Package },
   ]
 
   return (
@@ -56,6 +67,8 @@ export default function TaxSettingsPage() {
       {activeTab === "rates" && <RatesTab />}
       {activeTab === "jurisdictions" && <JurisdictionsTab />}
       {activeTab === "exemptions" && <ExemptionsTab />}
+      {activeTab === "certificates" && <CertificatesTab />}
+      {activeTab === "products" && <ProductTaxabilityTab />}
     </div>
   )
 }
@@ -277,6 +290,216 @@ function ExemptionsTab() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Certificates (sales-tax arc) ──
+
+interface Certificate {
+  id: string; customer_id: string; customer_name: string | null
+  sales_order_id: string | null; scope: string; cert_type: string
+  cert_number: string | null; state: string | null
+  valid_from: string | null; valid_through: string | null
+  attached: boolean; notes: string | null
+}
+
+function CertificatesTab() {
+  const [certs, setCerts] = useState<Certificate[]>([])
+  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([])
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState({
+    customer_id: "", sales_order_id: "", cert_type: "resale",
+    cert_number: "", state: "NY", valid_from: "", valid_through: "",
+  })
+
+  const load = useCallback(() => {
+    apiClient.get("/tax/certificates").then((r) => setCerts(r.data)).catch(() => {})
+    apiClient.get("/customers", { params: { per_page: 200 } })
+      .then((r) => setCustomers((r.data.items ?? r.data).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))))
+      .catch(() => {})
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const save = async () => {
+    if (!form.customer_id) { toast.error("Pick the customer"); return }
+    try {
+      await apiClient.post("/tax/certificates", {
+        ...form,
+        sales_order_id: form.sales_order_id || null,
+        cert_number: form.cert_number || null,
+        valid_from: form.valid_from || null,
+        valid_through: form.valid_through || null,
+      })
+      toast.success("Certificate recorded")
+      setOpen(false)
+      load()
+    } catch { toast.error("Failed to record certificate") }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-gray-500 max-w-prose">
+          Exemption is backed or it's a listed gap: a customer's exemption flag
+          without a valid certificate resolves <em>taxable</em>. Blanket
+          certificates cover the customer; job certificates cover one order.
+          Dated validity does the work — an expired certificate simply stops
+          exempting. Attach the scan via the Vault when you have it; the
+          record stands without it, honestly unattached.
+        </p>
+        <Button size="sm" onClick={() => setOpen(true)} className="gap-1 shrink-0">
+          <Plus className="h-3.5 w-3.5" /> Record certificate
+        </Button>
+      </div>
+      <Card>
+        <CardContent className="p-0 divide-y">
+          {certs.length === 0 && (
+            <p className="p-6 text-sm text-gray-500">No certificates on file.</p>
+          )}
+          {certs.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900">
+                  {c.customer_name} · {c.cert_type}
+                  {c.cert_number && <span className="text-gray-500"> #{c.cert_number}</span>}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {c.scope === "job" ? "Job certificate (one order)" : "Blanket (customer-wide)"}
+                  {c.valid_through ? ` · valid through ${c.valid_through}` : " · open-dated"}
+                  {!c.attached && " · no scan attached"}
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={async () => {
+                await apiClient.delete(`/tax/certificates/${c.id}`)
+                toast.success("Certificate deactivated")
+                load()
+              }}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={(o) => !o && setOpen(false)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Record a certificate</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Customer</Label>
+              <select value={form.customer_id}
+                onChange={(e) => setForm({ ...form, customer_id: e.target.value })}
+                className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-2 text-sm">
+                <option value="">Select…</option>
+                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Type</Label>
+                <select value={form.cert_type}
+                  onChange={(e) => setForm({ ...form, cert_type: e.target.value })}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-2 text-sm">
+                  <option value="resale">Resale</option>
+                  <option value="exempt_org">Exempt organization</option>
+                  <option value="government">Government</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <Label>Certificate #</Label>
+                <Input value={form.cert_number}
+                  onChange={(e) => setForm({ ...form, cert_number: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Valid from</Label>
+                <Input type="date" value={form.valid_from}
+                  onChange={(e) => setForm({ ...form, valid_from: e.target.value })} />
+              </div>
+              <div>
+                <Label>Valid through (blank = open)</Label>
+                <Input type="date" value={form.valid_through}
+                  onChange={(e) => setForm({ ...form, valid_through: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>Job order ID (blank = blanket)</Label>
+              <Input value={form.sales_order_id} placeholder="Scope to one sales order"
+                onChange={(e) => setForm({ ...form, sales_order_id: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={save}>Record</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ── Product taxability — the operator's markup surface ──
+
+interface ProductTaxRow {
+  id: string; name: string; product_line: string | null
+  tax_class: string; effective: string; reviewed: boolean
+}
+
+function ProductTaxabilityTab() {
+  const [rows, setRows] = useState<ProductTaxRow[]>([])
+  const load = useCallback(() => {
+    apiClient.get("/tax/product-taxability").then((r) => setRows(r.data)).catch(() => {})
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const setClass = async (id: string, tax_class: string) => {
+    try {
+      await apiClient.patch(`/tax/product-taxability/${id}`, { tax_class })
+      setRows((prev) => prev.map((r) => r.id === id
+        ? { ...r, tax_class, effective: tax_class === "exempt" ? "exempt" : "taxable", reviewed: tax_class !== "inherit" }
+        : r))
+    } catch { toast.error("Failed to update") }
+  }
+
+  const unreviewed = rows.filter((r) => !r.reviewed).length
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500 max-w-prose">
+        The product axis of tax resolution. Everything defaults to
+        <em> taxable</em> — nothing is guessed exempt; an exempt mark here is
+        your call per product, and exempt lines answer $0 with their product
+        reason on every quote and invoice.
+        {unreviewed > 0 && <> <strong>{unreviewed}</strong> product(s) not yet reviewed.</>}
+      </p>
+      <Card>
+        <CardContent className="p-0 divide-y">
+          {rows.length === 0 && (
+            <p className="p-6 text-sm text-gray-500">No active products.</p>
+          )}
+          {rows.map((r) => (
+            <div key={r.id} className="flex items-center gap-3 px-4 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900">{r.name}</p>
+                <p className="text-xs text-gray-500">
+                  {r.product_line || "—"} · effective: {r.effective}
+                  {!r.reviewed && " · not yet reviewed"}
+                </p>
+              </div>
+              <select value={r.tax_class}
+                onChange={(e) => setClass(r.id, e.target.value)}
+                className="rounded-md border border-gray-300 px-2 py-1.5 text-xs">
+                <option value="inherit">Default (taxable)</option>
+                <option value="taxable">Taxable (reviewed)</option>
+                <option value="exempt">Exempt</option>
+              </select>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
     </div>
   )
 }

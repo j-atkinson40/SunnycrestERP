@@ -14,6 +14,10 @@ from app.models.product import Product
 from app.models.sales_order import SalesOrder, SalesOrderLine
 from app.models.company import Company
 from app.services.case_service import log_activity
+# S4's rounding rewire referenced _money_line but its import was never
+# written — submit_vault_order NameError'd since, undetected because no
+# test ran the path. Caught by the sales-tax arc's cross-tenant pin.
+from app.services.money import line_total as _money_line
 
 # ---------------------------------------------------------------------------
 # Manufacturer status -> vault order status mapping
@@ -235,6 +239,26 @@ def submit_vault_order(
     # Get funeral home company name for ship_to
     fh_company = db.query(Company).filter(Company.id == tenant_id).first()
 
+    # THE CROSS-TENANT $0 DIES (sales-tax arc): the vault-order sale
+    # resolves through the three-axis chain instead of hardcoding zero.
+    # Product-exempt items answer $0 WITH THE DOCUMENTED REASON; a
+    # certificated FH exempts by its certificate; otherwise the
+    # jurisdiction engine taxes honestly. Unresolvable stays a tolerant
+    # zero with its honest 'unresolved' reason (cross-tenant intake
+    # never 500s on tax config).
+    from app.services.tax_service import resolve_line_tax
+    so_subtotal = _money_line(vault_order.quantity, vault_order.unit_price)
+    tax_res = resolve_line_tax(
+        db, manufacturer_tenant_id,
+        lines=[{
+            "product_id": data.get("vault_product_id"),
+            "amount": so_subtotal,
+            "description": data.get("vault_product_name", "Vault"),
+        }],
+        customer_id=tenant_id,  # the FH is the customer in the mfg book
+        require_resolution=False,
+    )
+
     so_id = str(uuid.uuid4())
     sales_order = SalesOrder(
         id=so_id,
@@ -246,10 +270,12 @@ def submit_vault_order(
         required_date=data.get("requested_delivery_date"),
         ship_to_name=fh_company.name if fh_company else None,
         ship_to_address=data.get("delivery_address"),
-        subtotal=_money_line(vault_order.quantity, vault_order.unit_price),
-        tax_amount=Decimal("0.00"),
-        total=_money_line(vault_order.quantity, vault_order.unit_price),
-        notes=f"Funeral home portal order: {vault_order.order_number}",
+        subtotal=so_subtotal,
+        tax_rate=tax_res.tax_rate,
+        tax_amount=tax_res.tax_amount,
+        total=so_subtotal + tax_res.tax_amount,
+        notes=(f"Funeral home portal order: {vault_order.order_number}\n"
+               f"Tax: {tax_res.reason}"),
         created_by=performed_by_id,
     )
     db.add(sales_order)

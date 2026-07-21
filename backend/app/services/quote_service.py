@@ -298,10 +298,19 @@ def create_quote(
     # why. The Order-Station face tolerates walk-ins (no customer/cemetery
     # → unresolved-with-reason $0); the Sales face requires resolution.
     try:
-        from app.services.tax_service import resolve_quote_tax
-        res = resolve_quote_tax(
+        # Sales-tax arc: the LINE-LEVEL chain — product-exempt lines
+        # answer $0 with their product reason; certificates and the
+        # jurisdiction engine handle the rest.
+        from app.services.tax_service import resolve_line_tax
+        _tax_lines = [
+            {"product_id": ql.product_id, "amount": ql.line_total,
+             "description": ql.description}
+            for ql in quote_lines
+        ]
+        res = resolve_line_tax(
             db, tenant_id,
-            subtotal=quote.subtotal,
+            lines=_tax_lines or [{"product_id": None, "amount": quote.subtotal,
+                                  "description": None}],
             customer_id=customer_id,
             cemetery_id=quote.cemetery_id,
         )

@@ -651,3 +651,198 @@ def bulk_create_jurisdictions_onboarding(
         pass
 
     return {"created": created_count, "total_submitted": len(body.jurisdictions)}
+
+
+# ---------------------------------------------------------------------------
+# Sales-tax arc — certificates, product taxability, the return
+# ---------------------------------------------------------------------------
+
+
+class CertificateCreate(BaseModel):
+    customer_id: str
+    sales_order_id: str | None = None  # set = job-level; NULL = blanket
+    cert_type: str = "resale"
+    cert_number: str | None = None
+    state: str | None = None
+    valid_from: str | None = None
+    valid_through: str | None = None
+    vault_document_id: str | None = None
+    notes: str | None = None
+
+
+def _cert_to_dict(c) -> dict:
+    return {
+        "id": c.id, "customer_id": c.customer_id,
+        "customer_name": c.customer.name if c.customer else None,
+        "sales_order_id": c.sales_order_id,
+        "scope": "job" if c.sales_order_id else "blanket",
+        "cert_type": c.cert_type, "cert_number": c.cert_number,
+        "state": c.state,
+        "valid_from": str(c.valid_from) if c.valid_from else None,
+        "valid_through": str(c.valid_through) if c.valid_through else None,
+        "vault_document_id": c.vault_document_id,
+        "attached": c.vault_document_id is not None,
+        "is_active": c.is_active,
+        "notes": c.notes,
+    }
+
+
+@router.get("/certificates")
+def list_certificates(
+    customer_id: str | None = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.tax_filing import TaxCertificate
+    q = db.query(TaxCertificate).filter(
+        TaxCertificate.company_id == current_user.company_id,
+        TaxCertificate.is_active.is_(True),
+    )
+    if customer_id:
+        q = q.filter(TaxCertificate.customer_id == customer_id)
+    return [_cert_to_dict(c) for c in q.order_by(TaxCertificate.created_at.desc()).all()]
+
+
+@router.post("/certificates")
+def create_certificate(
+    body: CertificateCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.tax_filing import CERT_TYPES, TaxCertificate
+
+    if body.cert_type not in CERT_TYPES:
+        raise HTTPException(400, f"cert_type must be one of {CERT_TYPES}")
+    cust = db.query(Customer).filter(
+        Customer.id == body.customer_id,
+        Customer.company_id == current_user.company_id,
+    ).first()
+    if not cust:
+        raise HTTPException(404, "Customer not found")
+    if body.sales_order_id:
+        from app.models.sales_order import SalesOrder
+        so = db.query(SalesOrder).filter(
+            SalesOrder.id == body.sales_order_id,
+            SalesOrder.company_id == current_user.company_id,
+        ).first()
+        if not so:
+            raise HTTPException(404, "Sales order not found")
+    cert = TaxCertificate(
+        company_id=current_user.company_id,
+        customer_id=body.customer_id,
+        sales_order_id=body.sales_order_id,
+        cert_type=body.cert_type,
+        cert_number=body.cert_number,
+        state=(body.state or "").upper()[:2] or None,
+        valid_from=date.fromisoformat(body.valid_from) if body.valid_from else None,
+        valid_through=date.fromisoformat(body.valid_through) if body.valid_through else None,
+        vault_document_id=body.vault_document_id,
+        notes=body.notes,
+        created_by=current_user.id,
+    )
+    db.add(cert)
+    db.commit()
+    db.refresh(cert)
+    return _cert_to_dict(cert)
+
+
+@router.delete("/certificates/{cert_id}")
+def deactivate_certificate(
+    cert_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.tax_filing import TaxCertificate
+    cert = db.query(TaxCertificate).filter(
+        TaxCertificate.id == cert_id,
+        TaxCertificate.company_id == current_user.company_id,
+    ).first()
+    if not cert:
+        raise HTTPException(404, "Certificate not found")
+    cert.is_active = False
+    db.commit()
+    return {"status": "deactivated"}
+
+
+# ── Product taxability (the operator's markup surface) ──
+
+
+@router.get("/product-taxability")
+def list_product_taxability(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.product import Product
+    rows = (
+        db.query(Product)
+        .filter(Product.company_id == current_user.company_id,
+                Product.is_active.is_(True))
+        .order_by(Product.name)
+        .all()
+    )
+    return [
+        {"id": p.id, "name": p.name, "product_line": p.product_line,
+         "tax_class": p.tax_class,
+         "effective": "exempt" if p.tax_class == "exempt" else "taxable",
+         "reviewed": p.tax_class != "inherit"}
+        for p in rows
+    ]
+
+
+class TaxClassUpdate(BaseModel):
+    tax_class: str
+
+
+@router.patch("/product-taxability/{product_id}")
+def set_product_tax_class(
+    product_id: str,
+    body: TaxClassUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.product import Product
+    from app.models.tax_filing import PRODUCT_TAX_CLASSES
+    if body.tax_class not in PRODUCT_TAX_CLASSES:
+        raise HTTPException(400, f"tax_class must be one of {PRODUCT_TAX_CLASSES}")
+    p = db.query(Product).filter(
+        Product.id == product_id,
+        Product.company_id == current_user.company_id,
+    ).first()
+    if not p:
+        raise HTTPException(404, "Product not found")
+    p.tax_class = body.tax_class
+    db.commit()
+    return {"id": p.id, "tax_class": p.tax_class}
+
+
+# ── The return ──
+
+
+@router.get("/returns/periods")
+def list_return_periods(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.tax_filing_service import available_periods
+    return available_periods(db, current_user.company_id)
+
+
+@router.get("/returns/{period_key}")
+def get_tax_return(
+    period_key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.tax_filing_service import get_return
+    return get_return(db, current_user.company_id, period_key)
+
+
+@router.post("/returns/{period_key}/accumulate")
+def accumulate_return_period(
+    period_key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.tax_filing_service import accumulate_period, get_return
+    accumulate_period(db, current_user.company_id, period_key)
+    return get_return(db, current_user.company_id, period_key)

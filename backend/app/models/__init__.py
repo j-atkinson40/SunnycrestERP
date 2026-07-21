@@ -122,6 +122,7 @@ from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
 from app.models.preset_module import PresetModule
 from app.models.credit_memo import CreditMemo, CustomerCreditEntry
+from app.models.tax_filing import TaxCertificate, TaxPeriod
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.training import (
     CoachingObservation,
@@ -628,6 +629,8 @@ __all__ = [
     "PresetModule",
     "ImpersonationSession",
     "CreditMemo",
+    "TaxCertificate",
+    "TaxPeriod",
     "CustomerCreditEntry",
     "Invoice",
     "InvoiceLine",

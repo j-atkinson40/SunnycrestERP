@@ -4,7 +4,7 @@
  * AI command bar + audit package generator
  */
 
-import { useState, useCallback } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,16 @@ import {
 import { cn } from "@/lib/utils"
 import apiClient from "@/lib/api-client"
 
-const REPORT_CATEGORIES = [
+interface ReportDef {
+  key: string
+  label: string
+  endpoint: string
+  needsPeriod?: boolean
+  needsAsOf?: boolean
+  custom?: boolean
+}
+
+const REPORT_CATEGORIES: { label: string; reports: ReportDef[] }[] = [
   {
     label: "Financial Statements",
     reports: [
@@ -34,11 +43,11 @@ const REPORT_CATEGORIES = [
   {
     label: "Tax",
     reports: [
-      // Honesty (Suite Session 2): the tax-summary endpoint is a
-      // hardcoded-zero stub — accumulation into filing periods does not
-      // exist yet. The entry stays visible but runs nothing; it dies for
-      // real when the sales-tax filing arc lands.
-      { key: "tax_summary", label: "Tax Summary", endpoint: "/reports/tax-summary", needsPeriod: true, notBuilt: true },
+      // The sales-tax arc: the interim "not built yet" honesty label
+      // shed for the real thing — the Sales Tax Return reads the period
+      // accumulator (by-jurisdiction, exempt by reason class, the gaps
+      // list). Rendered by TaxReturnPanel, not the generic runner.
+      { key: "tax_summary", label: "Sales Tax Return", endpoint: "", custom: true },
     ],
   },
 ]
@@ -70,12 +79,10 @@ export default function ReportsPage() {
 
   const [trends, setTrends] = useState<TrendPoint[] | null>(null)
 
-  const reportDef = REPORT_CATEGORIES.flatMap((c) => c.reports).find((r) => r.key === selectedReport) as
-    | { key: string; label: string; endpoint: string; needsPeriod?: boolean; needsAsOf?: boolean; notBuilt?: boolean }
-    | undefined
+  const reportDef = REPORT_CATEGORIES.flatMap((c) => c.reports).find((r) => r.key === selectedReport)
 
   const runReport = useCallback(async () => {
-    if (!reportDef || reportDef.notBuilt) return
+    if (!reportDef || reportDef.custom) return
     setLoading(true)
     try {
       const params: Record<string, string> = {}
@@ -203,23 +210,11 @@ export default function ReportsPage() {
           </Card>
         )}
 
-        {/* Not-built honesty (tax summary) */}
-        {reportDef?.notBuilt && (
-          <Card>
-            <CardContent className="p-8">
-              <p className="text-sm font-medium text-gray-900">Tax Summary — not built yet</p>
-              <p className="mt-1.5 text-xs text-gray-500 max-w-prose">
-                Tax <em>resolution</em> works today — every quote carries its rate and
-                its reason. But accumulation into filing periods doesn't exist yet, so
-                this report has nothing honest to show; it previously rendered zeros
-                that looked like data. It arrives with the sales-tax filing arc.
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        {/* The Sales Tax Return — its own surface over the accumulator */}
+        {reportDef?.custom && <TaxReturnPanel />}
 
         {/* Parameter controls */}
-        {selectedReport && !reportDef?.notBuilt && (
+        {selectedReport && !reportDef?.custom && (
           <Card>
             <CardContent className="p-3 flex items-center gap-3 flex-wrap">
               <span className="text-sm font-medium text-gray-900">{reportDef?.label}</span>
@@ -295,6 +290,157 @@ export default function ReportsPage() {
         )}
       </div>
     </div>
+  )
+}
+
+// ── The Sales Tax Return (sales-tax arc) ──
+
+interface TaxReturn {
+  period_key: string
+  period_label: string
+  due_date: string
+  period_rule: string
+  jurisdictions: {
+    jurisdiction: string; gross_sales: number; taxable_sales: number
+    exempt_sales: number; exempt_by_class: Record<string, number>
+    tax_computed: number; invoice_count: number
+  }[]
+  totals: { gross_sales: number; taxable_sales: number; exempt_sales: number; tax_computed: number }
+  gaps: string[]
+  accumulated_at: string | null
+}
+
+const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+
+function TaxReturnPanel() {
+  const [periods, setPeriods] = useState<{ key: string; label: string; due_date: string }[]>([])
+  const [periodKey, setPeriodKey] = useState<string | null>(null)
+  const [ret, setRet] = useState<TaxReturn | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    apiClient.get("/tax/returns/periods").then((r) => {
+      setPeriods(r.data)
+      if (r.data.length > 0) setPeriodKey((k) => k ?? r.data[0].key)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!periodKey) return
+    apiClient.get(`/tax/returns/${periodKey}`).then((r) => setRet(r.data)).catch(() => setRet(null))
+  }, [periodKey])
+
+  const accumulate = async () => {
+    if (!periodKey) return
+    setBusy(true)
+    try {
+      const r = await apiClient.post(`/tax/returns/${periodKey}/accumulate`)
+      setRet(r.data)
+      toast.success("Period accumulated")
+    } catch { toast.error("Accumulation failed") }
+    finally { setBusy(false) }
+  }
+
+  const downloadCsv = () => {
+    if (!ret) return
+    const rows = [
+      ["Jurisdiction", "Gross Sales", "Taxable Sales", "Exempt Sales", "Tax Computed", "Invoices"],
+      ...ret.jurisdictions.map((j) => [
+        j.jurisdiction, j.gross_sales.toFixed(2), j.taxable_sales.toFixed(2),
+        j.exempt_sales.toFixed(2), j.tax_computed.toFixed(2), String(j.invoice_count),
+      ]),
+      ["TOTAL", ret.totals.gross_sales.toFixed(2), ret.totals.taxable_sales.toFixed(2),
+       ret.totals.exempt_sales.toFixed(2), ret.totals.tax_computed.toFixed(2), ""],
+    ]
+    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n")
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }))
+    a.download = `sales-tax-return-${ret.period_key}.csv`
+    a.click()
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-sm font-semibold text-gray-900">Sales Tax Return</h2>
+          <select value={periodKey ?? ""} onChange={(e) => setPeriodKey(e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-xs">
+            {periods.map((p) => <option key={p.key} value={p.key}>{p.label} — due {p.due_date}</option>)}
+          </select>
+          <Button size="sm" variant="outline" className="text-xs h-7" onClick={accumulate} disabled={busy}>
+            {busy ? "Accumulating…" : "Accumulate now"}
+          </Button>
+          {ret && ret.jurisdictions.length > 0 && (
+            <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={downloadCsv}>
+              <Download className="h-3 w-3" /> CSV
+            </Button>
+          )}
+        </div>
+
+        {ret && (
+          <>
+            <p className="text-[11px] text-gray-500">{ret.period_rule}.
+              {ret.accumulated_at
+                ? ` Last accumulated ${new Date(ret.accumulated_at).toLocaleString()} — the nightly clock rebuilds the current period.`
+                : " Not yet accumulated — run Accumulate now, or the nightly clock will."}
+            </p>
+
+            {ret.jurisdictions.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-500">No sales in this period.</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead><tr className="border-b border-gray-200 text-gray-500">
+                  <th className="text-left py-1.5 font-medium">Jurisdiction</th>
+                  <th className="text-right py-1.5 font-medium">Gross</th>
+                  <th className="text-right py-1.5 font-medium">Exempt</th>
+                  <th className="text-right py-1.5 font-medium">Taxable</th>
+                  <th className="text-right py-1.5 font-medium">Tax</th>
+                </tr></thead>
+                <tbody>
+                  {ret.jurisdictions.map((j, i) => (
+                    <tr key={i} className="border-b border-gray-100 align-top">
+                      <td className="py-1.5">
+                        {j.jurisdiction}
+                        {Object.keys(j.exempt_by_class).length > 0 && (
+                          <p className="text-[10px] text-gray-400">
+                            exempt: {Object.entries(j.exempt_by_class)
+                              .map(([k, v]) => `${k.replace(/_/g, " ")} ${fmtUsd(v)}`).join(" · ")}
+                          </p>
+                        )}
+                      </td>
+                      <td className="text-right py-1.5">{fmtUsd(j.gross_sales)}</td>
+                      <td className="text-right py-1.5">{fmtUsd(j.exempt_sales)}</td>
+                      <td className="text-right py-1.5">{fmtUsd(j.taxable_sales)}</td>
+                      <td className="text-right py-1.5 font-medium">{fmtUsd(j.tax_computed)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr className="border-t-2 border-gray-300 font-semibold">
+                  <td className="py-1.5">Total</td>
+                  <td className="text-right py-1.5">{fmtUsd(ret.totals.gross_sales)}</td>
+                  <td className="text-right py-1.5">{fmtUsd(ret.totals.exempt_sales)}</td>
+                  <td className="text-right py-1.5">{fmtUsd(ret.totals.taxable_sales)}</td>
+                  <td className="text-right py-1.5">{fmtUsd(ret.totals.tax_computed)}</td>
+                </tr></tfoot>
+              </table>
+            )}
+
+            {/* THE GAPS LIST — what to fix before filing */}
+            {ret.gaps.length > 0 && (
+              <div className="rounded border-l-2 border-amber-300 bg-amber-50/50 px-3 py-2">
+                <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
+                  Fix before filing ({ret.gaps.length})
+                </p>
+                <ul className="mt-1 space-y-0.5 text-[11px] text-gray-600 list-disc pl-4">
+                  {ret.gaps.map((g, i) => <li key={i}>{g}</li>)}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

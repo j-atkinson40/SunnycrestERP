@@ -46,10 +46,13 @@ class TestTheEleven:
             MoCJob.task_type == "Accounting", MoCJob.is_active).count()
         assert n == 11
 
-    def test_tax_never_face_still_coming_today(self, db):
+    def test_tax_card_woke_by_reality(self, db):
+        """THE SECOND WAKING: the sales-tax arc shipped tax_periods and
+        tax_filing_service — the checker reads them off the codebase and
+        the last never-face is REAL. Nothing on the area is dashed."""
         job = _job(db, "File sales tax")
         state = jobs_svc.coming_state(db, job)
-        assert state is not None and state["is_coming"] is True
+        assert state is not None and state["is_coming"] is False
 
     def test_exceptions_card_woke_by_reality(self, db):
         """THE FIRST CARD THE GRAMMAR EVER FLIPPED: the exceptions arc
@@ -77,12 +80,18 @@ class TestCompletionByReality:
         monkeypatch.setitem(sys.modules, "app.models.credit_memo", None)
         assert jobs_svc.coming_state(db, job)["is_coming"] is True
 
-    def test_tax_arc_flips_on_the_module(self, db, monkeypatch):
+    def test_tax_arc_reverse_flip(self, db, monkeypatch):
+        """Reality-driven both ways for the tax card too: hide the
+        module AND the table probe, and the card goes back to coming."""
+        import sqlalchemy
         job = _job(db, "File sales tax")
-        assert jobs_svc.coming_state(db, job)["is_coming"] is True
-        monkeypatch.setitem(sys.modules, "app.services.tax_filing_service",
-                            types.ModuleType("tax_filing_service"))
         assert jobs_svc.coming_state(db, job)["is_coming"] is False
+        monkeypatch.setitem(sys.modules, "app.services.tax_filing_service", None)
+
+        def _no_inspect(_bind):
+            raise RuntimeError("inspector hidden for the reverse-flip pin")
+        monkeypatch.setattr(sqlalchemy, "inspect", _no_inspect)
+        assert jobs_svc.coming_state(db, job)["is_coming"] is True
 
 
 class TestCashGlanceFaces:
@@ -146,10 +155,9 @@ class TestCashGlanceFaces:
         out = jobs_svc.job_card_payload(db, job, user=_U())
         assert out["glance_live"] is not None  # teach face for the unknown
         assert out["coming"] is None
-        nf = jobs_svc.job_card_payload(db, _job(db, "File sales tax"))
-        assert nf["coming"]["is_coming"] is True
-        woke = jobs_svc.job_card_payload(db, _job(db, "Handle the exceptions"))
-        assert woke["coming"]["is_coming"] is False  # the arc landed
+        for name in ("File sales tax", "Handle the exceptions"):
+            woke = jobs_svc.job_card_payload(db, _job(db, name))
+            assert woke["coming"]["is_coming"] is False  # both arcs landed
 
 
 class TestTheStories:
@@ -166,7 +174,7 @@ class TestTheStories:
             ("Watch the cash", "owed, never as cash"),
             ("Understand the numbers", "subledgers and journals"),
             ("Handle the exceptions", "voiding works"),
-            ("File sales tax", "gathers nothing"),
+            ("File sales tax", "rebuilt idempotently"),
         ):
             script = jobs_svc.build_job_ponder_script(
                 db, job_id=_job(db, name).id)
