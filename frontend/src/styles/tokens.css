@@ -3,7 +3,11 @@
  * language (2026-07-21 pivot; supersedes the aged-brass /
  * terracotta / IBM Plex-era values in full).
  *
- * Every color value below derives from DESIGN_LANGUAGE.md §3–§7.
+ * Color values originate from DESIGN_LANGUAGE.md §3–§7 as
+ * calibrated by the approved console/Braun directions — where the
+ * calibrated values supersede the doc's draft numbers (steel,
+ * status, specular alpha, dark substrate), the DESIGN_LANGUAGE.md
+ * §3–§7 value tables sync at arc-close.
  * Do NOT modify values here without editing DESIGN_LANGUAGE.md
  * first — the design language document is the source of truth.
  * Silent drift is a bug. Mirror discipline: this file,
@@ -48,10 +52,11 @@
  *                        in the card-family primitives.
  *
  * Dark mode is the HERO (dark-first language, hue anchor 255).
- * Light-mode values are designed counterparts and are ALL
- * "provisional — pending mood-anchor calibration": the brass-era
- * garden photos are retired (circular-calibration trap) and new
- * anchors are not yet selected (DESIGN_LANGUAGE.md §11).
+ * Both modes are calibrated to approved console/Braun directions (eyeballed; open to photo-dial):
+ * dark = the console direction, light = Braun's warm-white
+ * deliberately COOLED to neutral paper (hue ~250, near-zero
+ * chroma). Not photo-ground-truth — anchored to the approved
+ * previews; a real-photo dial-in remains available later.
  *
  * Mode switching: light mode is default at :root; dark mode
  * activates via `[data-mode="dark"]` on the <html> element.
@@ -64,37 +69,41 @@
 
 :root {
   /* ─── COLORS — SURFACES ───
-   *   Light mode: provisional — pending mood-anchor calibration.
-   *   Cool near-white instrument panel. Recessed rail sits BELOW
-   *   the canvas (darker); panels lift ABOVE it (lighter) —
-   *   inverse of dark mode where elevation = lighter. */
-  --surface-base: oklch(0.965 0.004 255);
-  --surface-elevated: oklch(0.985 0.002 255);
-  --surface-raised: oklch(0.995 0.002 255);
-  --surface-sunken: oklch(0.945 0.005 255);
+   *   Braun light, calibrated to approved console/Braun directions (eyeballed; open to photo-dial).
+   *   Neutral paper, NOT cream — intentionally cooled off Braun's
+   *   warm white (hue ~250, near-zero chroma); do not "correct"
+   *   it warmer. base #EEEFF0 / rail #E8E9EB / panel #FAFAFB /
+   *   raised #FFFFFF. Recessed rail sits BELOW the canvas
+   *   (darker); panels lift ABOVE it (lighter) — inverse of dark
+   *   mode where elevation = lighter. */
+  --surface-base: oklch(0.94 0.003 250);
+  --surface-elevated: oklch(0.98 0.002 250);
+  --surface-raised: oklch(1 0 0);
+  --surface-sunken: oklch(0.92 0.003 250);
   /* Translucent variant for backdrop-filter glass surfaces.
      Tracks --surface-elevated's L/C/H with alpha 0.60. Alpha is
      load-bearing — backdrop-filter only produces visible blur
      when the element's own background is non-opaque. */
-  --surface-frosted: oklch(0.985 0.002 255 / 0.60);
+  --surface-frosted: oklch(0.98 0.002 250 / 0.60);
 
   /* ─── COLORS — CONTENT (text + icons) ───
-   *   provisional — pending mood-anchor calibration */
-  --content-strong: oklch(0.17 0.008 255);
-  --content-base: oklch(0.24 0.008 255);
-  --content-muted: oklch(0.47 0.008 255);
-  --content-subtle: oklch(0.60 0.007 255);
+   *   Cool ink (#17181A primary); calibrated set. */
+  --content-strong: oklch(0.17 0.004 260);
+  --content-base: oklch(0.22 0.004 260);
+  --content-muted: oklch(0.52 0.006 258);
+  --content-subtle: oklch(0.63 0.006 258);
   /* on-chrome: light-mode chrome accent is ink (dark), so text on
      it is near-white. Couples to --accent by design. */
-  --content-on-accent: oklch(0.97 0.003 255);
+  --content-on-accent: oklch(0.98 0.002 250);
 
   /* ─── COLORS — BORDERS (hairlines; §9) ─── */
-  --border-subtle: oklch(0.15 0.010 255 / 0.07);
-  --border-base: oklch(0.15 0.010 255 / 0.13);
+  --border-subtle: oklch(0 0 0 / 0.08);
+  --border-base: oklch(0 0 0 / 0.14);
   --border-strong: oklch(0.60 0.010 255);
-  --border-accent: rgba(38, 41, 48, 0.70);
+  --border-accent: rgba(23, 24, 26, 0.70);
 
-  /* ─── COLORS — SHADOWS (cool neutral; provisional) ─── */
+  /* ─── COLORS — SHADOWS (cool neutral; calibrated pass kept
+   *   the swap values — re-derive against a photo if dialed) ─── */
   --shadow-color-subtle: oklch(0.20 0.010 255 / 0.06);
   --shadow-color-base: oklch(0.20 0.010 255 / 0.10);
   --shadow-color-strong: oklch(0.18 0.010 255 / 0.16);
@@ -104,37 +113,37 @@
    *   a dark cool-neutral fill (the light-instrument counterpart
    *   of dark mode's bright chrome). State variants on the
    *   lightness axis: hover lighter, active dimmer, disabled
-   *   lower-contrast neutral.
-   *   provisional — pending mood-anchor calibration */
-  --accent: oklch(0.25 0.010 255);
-  --accent-hover: oklch(0.32 0.010 255);
-  --accent-active: oklch(0.20 0.010 255);
-  --accent-disabled: oklch(0.72 0.006 255);
+   *   lower-contrast neutral. Ink #17181A; calibrated to approved
+   *   console/Braun directions (eyeballed; open to photo-dial). */
+  --accent: oklch(0.22 0.004 260);
+  --accent-hover: oklch(0.30 0.005 260);
+  --accent-active: oklch(0.16 0.004 260);
+  --accent-disabled: oklch(0.80 0.004 250);
   /* Alpha washes re-derived for a near-monochrome accent (the old
      rgba derivatives assumed a saturated terracotta source): ink
      washes in light mode, chrome washes in dark. */
-  --accent-muted: rgba(38, 41, 48, 0.12);
-  --accent-subtle: rgba(38, 41, 48, 0.06);
+  --accent-muted: rgba(23, 24, 26, 0.12);
+  --accent-subtle: rgba(23, 24, 26, 0.06);
 
   /* ─── COLORS — SIGNATURE STEEL (§6; NEW ROLE) ───
    *   The rationed signature. ≤3 uses per screen by convention.
-   *   Light mode runs darker than the §6 dark value so link text
-   *   clears WCAG AA on near-white surfaces.
-   *   provisional — pending mood-anchor calibration */
-  --signature-steel: oklch(0.52 0.09 255);
-  --signature-steel-ring: oklch(0.52 0.09 255 / 0.5);
+   *   Light mode runs darker + more chromatic than the dark value
+   *   (#3B6AB0) so link text clears WCAG AA on white surfaces;
+   *   dark mode lifts to #7CA0D8 against the console substrate. */
+  --signature-steel: oklch(0.50 0.13 258);
+  --signature-steel-ring: oklch(0.50 0.13 258 / 0.5);
 
   /* ─── COLORS — STATUS (functional color; §7) ───
    *   Green = positive/ready. Terracotta = overdue/danger.
    *   Caution used sparingly. INFO IS DEMOTED to neutral chrome —
    *   info is "note this," not an alarm; steel stays the only
-   *   blue on screen. Light values provisional. */
-  --status-error: oklch(0.52 0.11 40);
-  --status-error-muted: oklch(0.94 0.03 40);
-  --status-warning: oklch(0.60 0.11 78);
+   *   blue on screen. Calibrated set (LED registers in dark). */
+  --status-error: oklch(0.55 0.13 37);
+  --status-error-muted: oklch(0.94 0.03 37);
+  --status-warning: oklch(0.63 0.11 78);
   --status-warning-muted: oklch(0.95 0.04 78);
-  --status-success: oklch(0.55 0.12 155);
-  --status-success-muted: oklch(0.94 0.04 155);
+  --status-success: oklch(0.56 0.11 156);
+  --status-success-muted: oklch(0.94 0.04 156);
   --status-info: oklch(0.45 0.008 255);
   --status-info-muted: oklch(0.94 0.004 255);
 
@@ -270,34 +279,34 @@
 
 /* ============================================================
  * Dark mode — THE HERO. Activated by [data-mode="dark"] on
- * <html>. Values per DESIGN_LANGUAGE.md §3–§7 (oklch, hue
+ * <html>. Console-calibrated values (oklch, hue
  * anchor 255). Runtime API: frontend/src/lib/theme-mode.ts.
  * ============================================================ */
 
 [data-mode="dark"] {
   /* ─── COLORS — SURFACES (§3 substrate & elevation) ─── */
-  --surface-base: oklch(0.16 0.008 255);
-  --surface-elevated: oklch(0.21 0.009 255);
-  --surface-raised: oklch(0.24 0.010 255);
-  --surface-sunken: oklch(0.18 0.008 255);
+  --surface-base: oklch(0.13 0.004 255);
+  --surface-elevated: oklch(0.21 0.006 255);
+  --surface-raised: oklch(0.25 0.007 255);
+  --surface-sunken: oklch(0.16 0.005 255);
   /* Frosted tracks elevated with load-bearing alpha. */
-  --surface-frosted: oklch(0.21 0.009 255 / 0.55);
+  --surface-frosted: oklch(0.21 0.006 255 / 0.55);
 
   /* ─── COLORS — CONTENT (§4 text scale) ───
-   *   base = §4 --text-primary (#EDEDF0); muted = --text-secondary;
+   *   base = §4 --text-primary (#F2F2F5); muted = --text-secondary;
    *   subtle = --text-muted; strong extends one step brighter. */
-  --content-strong: oklch(0.97 0.004 255);
-  --content-base: oklch(0.95 0.004 255);
-  --content-muted: oklch(0.66 0.006 255);
-  --content-subtle: oklch(0.55 0.006 255);
+  --content-strong: oklch(0.97 0.003 260);
+  --content-base: oklch(0.95 0.003 260);
+  --content-muted: oklch(0.63 0.010 255);
+  --content-subtle: oklch(0.52 0.008 255);
   /* on-chrome = substrate: dark text on the bright chrome fill. */
-  --content-on-accent: oklch(0.16 0.008 255);
+  --content-on-accent: oklch(0.13 0.004 255);
 
   /* ─── COLORS — BORDERS (§9 hairlines: white @ 5%) ─── */
   --border-subtle: oklch(1 0 0 / 0.05);
   --border-base: oklch(1 0 0 / 0.09);
   --border-strong: oklch(0.48 0.010 255);
-  --border-accent: rgba(233, 234, 238, 0.70);
+  --border-accent: rgba(238, 241, 246, 0.70);
 
   /* ─── COLORS — SHADOWS (§3 shadow-panel = black at 0.35) ─── */
   --shadow-color-subtle: oklch(0.05 0.005 255 / 0.25);
@@ -305,36 +314,38 @@
   --shadow-color-strong: oklch(0.03 0.005 255 / 0.50);
   /* Retired 3px warm band → the §3 1px specular. Kept as a token
      (legacy name) aliasing the same value as --edge-specular. */
-  --shadow-highlight-top: oklch(1 0 0 / 0.05);
+  --shadow-highlight-top: oklch(1 0 0 / 0.055);
 
   /* ─── COLORS — ACCENT (chrome; §5) ─── */
-  --accent: oklch(0.93 0.004 255);
+  --accent: oklch(0.94 0.006 255);
   --accent-hover: oklch(0.97 0.004 255);
-  --accent-active: oklch(0.88 0.005 255);
-  --accent-disabled: oklch(0.45 0.006 255);
+  --accent-active: oklch(0.87 0.007 255);
+  --accent-disabled: oklch(0.32 0.005 255);
   /* Chrome washes — faint white fills for selection/hover tints. */
-  --accent-muted: rgba(235, 237, 242, 0.16);
-  --accent-subtle: rgba(235, 237, 242, 0.08);
+  --accent-muted: rgba(238, 241, 246, 0.16);
+  --accent-subtle: rgba(238, 241, 246, 0.08);
 
-  /* ─── COLORS — SIGNATURE STEEL (§6 verbatim) ─── */
-  --signature-steel: oklch(0.62 0.08 255);
-  --signature-steel-ring: oklch(0.62 0.08 255 / 0.5);
+  /* ─── COLORS — SIGNATURE STEEL (calibrated #7CA0D8 — lifts
+   *   the §6 draft value against the console substrate) ─── */
+  --signature-steel: oklch(0.68 0.10 256);
+  --signature-steel-ring: oklch(0.68 0.10 256 / 0.5);
 
-  /* ─── COLORS — STATUS (§7 verbatim on the saturated values) ─── */
-  --status-error: oklch(0.70 0.09 40);
-  --status-error-muted: oklch(0.26 0.04 40);
-  --status-warning: oklch(0.80 0.10 78);
-  --status-warning-muted: oklch(0.27 0.05 78);
-  --status-success: oklch(0.74 0.11 155);
-  --status-success-muted: oklch(0.25 0.05 155);
+  /* ─── COLORS — STATUS (calibrated LED registers — green
+   *   #5BD69A / terracotta #E67A5E / amber, off the §7 draft) ─── */
+  --status-error: oklch(0.68 0.14 38);
+  --status-error-muted: oklch(0.26 0.05 38);
+  --status-warning: oklch(0.76 0.13 75);
+  --status-warning-muted: oklch(0.27 0.05 75);
+  --status-success: oklch(0.79 0.14 158);
+  --status-success-muted: oklch(0.25 0.05 158);
   --status-info: oklch(0.78 0.006 255);
   --status-info-muted: oklch(0.26 0.006 255);
 
   /* ─── FOCUS RING ALPHA (§6 ring ships at /0.5) ─── */
   --focus-ring-alpha: 0.50;
 
-  /* ─── EDGE SPECULAR (§3 verbatim: white @ 5%, 1px inset) ─── */
-  --edge-specular: oklch(1 0 0 / 0.05);
+  /* ─── EDGE SPECULAR (calibrated: white @ 5.5%, 1px inset) ─── */
+  --edge-specular: oklch(1 0 0 / 0.055);
 
   /* ─── NAV ACTIVE (§5 verbatim) ─── */
   --nav-active-indicator: var(--accent);
@@ -349,8 +360,8 @@
   --shadow-level-3: 0 20px 48px var(--shadow-color-strong), 0 6px 16px var(--shadow-color-base), inset 0 1px 0 var(--edge-specular);
 
   /* ─── PANEL GRADIENTS (§3: surface-2 → toward surface-1) ─── */
-  --panel-gradient: linear-gradient(180deg, var(--surface-elevated) 0%, color-mix(in oklch, var(--surface-elevated) 70%, var(--surface-sunken)) 100%);
-  --panel-gradient-raised: linear-gradient(180deg, var(--surface-raised) 0%, color-mix(in oklch, var(--surface-raised) 70%, var(--surface-elevated)) 100%);
+  --panel-gradient: linear-gradient(180deg, var(--surface-elevated) 0%, color-mix(in oklch, var(--surface-elevated) 20%, var(--surface-sunken)) 100%);
+  --panel-gradient-raised: linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-elevated) 100%);
 
   /* ─── JEWEL-SET INSET RING ─── */
   --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.50);

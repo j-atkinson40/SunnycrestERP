@@ -112,11 +112,11 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     category: "surface",
     displayName: "Surface — Base (substrate)",
     description:
-      "Page canvas (new-doc name: --substrate-base). Chrome/steel language: cool neutral at hue anchor 255, dark-first. Light values provisional pending mood-anchor calibration.",
+      "Page canvas (new-doc name: --substrate-base). Chrome/steel language: cool neutral, dark-first. Dark = console black #0B0C0E; light = Braun paper #EEEFF0, deliberately cooled (not cream). Values calibrated to approved console/Braun directions (eyeballed; open to photo-dial).",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.965 0.004 255)",
-      dark: "oklch(0.16 0.008 255)",
+      light: "oklch(0.94 0.003 250)",
+      dark: "oklch(0.13 0.004 255)",
     },
   },
   {
@@ -127,8 +127,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Panel / card body (new-doc name: --surface-2). First lift above the canvas. Panels never render as flat fills — the card family composes --panel-gradient + --edge-specular + shadow on top.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.985 0.002 255)",
-      dark: "oklch(0.21 0.009 255)",
+      light: "oklch(0.98 0.002 250)",
+      dark: "oklch(0.21 0.006 255)",
     },
   },
   {
@@ -139,8 +139,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Modals, dropdowns, popovers, slide-over rails (new-doc name: --surface-3). Second lift above the canvas.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.995 0.002 255)",
-      dark: "oklch(0.24 0.010 255)",
+      light: "oklch(1 0 0)",
+      dark: "oklch(0.25 0.007 255)",
     },
   },
   {
@@ -151,8 +151,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Rail / recessed surface (new-doc name: --surface-1) — sidebar shell, footer regions, skeleton placeholders. Dark mode sits between substrate and panel per §3; light mode recesses below the canvas.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.945 0.005 255)",
-      dark: "oklch(0.18 0.008 255)",
+      light: "oklch(0.92 0.003 250)",
+      dark: "oklch(0.16 0.005 255)",
     },
   },
   {
@@ -163,8 +163,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Translucent variant for backdrop-filter glass surfaces (sub-arc C-1.1 frosted chrome preset). Alpha channel is load-bearing — opaque backgrounds mask backdrop-filter blur. Tracks --surface-elevated.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.985 0.002 255 / 0.60)",
-      dark: "oklch(0.21 0.009 255 / 0.55)",
+      light: "oklch(0.98 0.002 250 / 0.60)",
+      dark: "oklch(0.21 0.006 255 / 0.55)",
     },
   },
 
@@ -176,8 +176,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "Page titles, h1-h3, primary KPIs.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.17 0.008 255)",
-      dark: "oklch(0.97 0.004 255)",
+      light: "oklch(0.17 0.004 260)",
+      dark: "oklch(0.97 0.003 260)",
     },
   },
   {
@@ -187,8 +187,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "Body text, primary readable surfaces (§4 --text-primary).",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.24 0.008 255)",
-      dark: "oklch(0.95 0.004 255)",
+      light: "oklch(0.22 0.004 260)",
+      dark: "oklch(0.95 0.003 260)",
     },
   },
   {
@@ -198,8 +198,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "Secondary text, helper copy, captions (§4 --text-secondary).",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.47 0.008 255)",
-      dark: "oklch(0.66 0.006 255)",
+      light: "oklch(0.52 0.006 258)",
+      dark: "oklch(0.63 0.010 255)",
     },
   },
   {
@@ -209,8 +209,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "Placeholder text, ghost states, fine-print (§4 --text-muted).",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.60 0.007 255)",
-      dark: "oklch(0.55 0.006 255)",
+      light: "oklch(0.63 0.006 258)",
+      dark: "oklch(0.52 0.008 255)",
     },
   },
   {
@@ -221,8 +221,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Text rendered on chrome-filled surfaces (new-doc name: --on-chrome). Dark mode = the substrate value (dark text on bright chrome); light mode = near-white text on the ink fill. Couples to --accent by design.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.97 0.003 255)",
-      dark: "oklch(0.16 0.008 255)",
+      light: "oklch(0.98 0.002 250)",
+      dark: "oklch(0.13 0.004 255)",
     },
   },
 
@@ -234,7 +234,7 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "Whispers — internal section dividers, footer separators.",
     valueType: "oklch-with-alpha",
     defaults: {
-      light: "oklch(0.15 0.010 255 / 0.07)",
+      light: "oklch(0 0 0 / 0.08)",
       dark: "oklch(1 0 0 / 0.05)",
     },
   },
@@ -245,7 +245,7 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "Form input borders, table rules, default outlines.",
     valueType: "oklch-with-alpha",
     defaults: {
-      light: "oklch(0.15 0.010 255 / 0.13)",
+      light: "oklch(0 0 0 / 0.14)",
       dark: "oklch(1 0 0 / 0.09)",
     },
   },
@@ -268,8 +268,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Chrome accent border — selected items, active states. Re-derived for the near-monochrome accent: ink at 70% in light mode, chrome at 70% in dark.",
     valueType: "rgba",
     defaults: {
-      light: "rgba(38, 41, 48, 0.70)",
-      dark: "rgba(233, 234, 238, 0.70)",
+      light: "rgba(23, 24, 26, 0.70)",
+      dark: "rgba(238, 241, 246, 0.70)",
     },
   },
 
@@ -317,7 +317,7 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     valueType: "oklch-with-alpha",
     defaults: {
       light: "transparent",
-      dark: "oklch(1 0 0 / 0.05)",
+      dark: "oklch(1 0 0 / 0.055)",
     },
   },
 
@@ -446,8 +446,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Chrome IS the accent (new-doc name: --accent-chrome). Near-monochrome cool-neutral: bright chrome in dark mode, ink in light mode. State variants ride the LIGHTNESS axis — a near-white accent cannot signal state via chroma. At most ONE chrome-filled primary per view.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.25 0.010 255)",
-      dark: "oklch(0.93 0.004 255)",
+      light: "oklch(0.22 0.004 260)",
+      dark: "oklch(0.94 0.006 255)",
     },
   },
   {
@@ -458,7 +458,7 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Hover state on the lightness axis — LIGHTER than rest in both modes.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.32 0.010 255)",
+      light: "oklch(0.30 0.005 260)",
       dark: "oklch(0.97 0.004 255)",
     },
   },
@@ -470,8 +470,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Momentary press state on the lightness axis — slightly DIMMER than rest in both modes. New in the chrome/steel pivot (the brass era deliberately omitted it).",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.20 0.010 255)",
-      dark: "oklch(0.88 0.005 255)",
+      light: "oklch(0.16 0.004 260)",
+      dark: "oklch(0.87 0.007 255)",
     },
   },
   {
@@ -482,8 +482,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Disabled chrome fill — lower-contrast neutral, still on the lightness axis.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.72 0.006 255)",
-      dark: "oklch(0.45 0.006 255)",
+      light: "oklch(0.80 0.004 250)",
+      dark: "oklch(0.32 0.005 255)",
     },
   },
   {
@@ -494,8 +494,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Alpha accent wash — count badges, secondary chips. Re-derived for the near-monochrome accent: ink wash in light mode, chrome (faint white) wash in dark.",
     valueType: "rgba",
     defaults: {
-      light: "rgba(38, 41, 48, 0.12)",
-      dark: "rgba(235, 237, 242, 0.16)",
+      light: "rgba(23, 24, 26, 0.12)",
+      dark: "rgba(238, 241, 246, 0.16)",
     },
   },
   {
@@ -506,8 +506,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Faint alpha accent wash — selected items, hover backgrounds. Re-derived like accent-muted.",
     valueType: "rgba",
     defaults: {
-      light: "rgba(38, 41, 48, 0.06)",
-      dark: "rgba(235, 237, 242, 0.08)",
+      light: "rgba(23, 24, 26, 0.06)",
+      dark: "rgba(238, 241, 246, 0.08)",
     },
   },
   {
@@ -532,8 +532,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "The rationed signature tone — the ONLY blue on screen. Allowed ONLY in: focus/selection ring, link text, one row-hover accent, and the logo mark's inner detail. Never a button fill, never a large surface. If it appears more than ~3 times on a screen, it's misused. Rationing is a convention, not enforced in code — this dedicated slot exists so uses stay auditable.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.52 0.09 255)",
-      dark: "oklch(0.62 0.08 255)",
+      light: "oklch(0.50 0.13 258)",
+      dark: "oklch(0.68 0.10 256)",
     },
   },
   {
@@ -544,8 +544,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Focus/selection ring flavor of the signature (§6: steel at 50% alpha). The .focus-ring-accent utility composes --signature-steel with --focus-ring-alpha; this token serves consumers that want the pre-composed value.",
     valueType: "oklch-with-alpha",
     defaults: {
-      light: "oklch(0.52 0.09 255 / 0.5)",
-      dark: "oklch(0.62 0.08 255 / 0.5)",
+      light: "oklch(0.50 0.13 258 / 0.5)",
+      dark: "oklch(0.68 0.10 256 / 0.5)",
     },
     derivedFrom: ["signature-steel"],
   },
@@ -589,7 +589,7 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     valueType: "oklch-with-alpha",
     defaults: {
       light: "oklch(1 0 0 / 0.65)",
-      dark: "oklch(1 0 0 / 0.05)",
+      dark: "oklch(1 0 0 / 0.055)",
     },
   },
 
@@ -627,8 +627,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Overdue / danger / attention (§7 --fn-negative). Terracotta hue 40 — the cool-era descendant of the old warm thread.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.52 0.11 40)",
-      dark: "oklch(0.70 0.09 40)",
+      light: "oklch(0.55 0.13 37)",
+      dark: "oklch(0.68 0.14 38)",
     },
   },
   {
@@ -639,8 +639,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "Error background fill — paired with status-error text.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.94 0.03 40)",
-      dark: "oklch(0.26 0.04 40)",
+      light: "oklch(0.94 0.03 37)",
+      dark: "oklch(0.26 0.05 38)",
     },
   },
   {
@@ -651,8 +651,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     description: "§7 --fn-caution — use sparingly.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.60 0.11 78)",
-      dark: "oklch(0.80 0.10 78)",
+      light: "oklch(0.63 0.11 78)",
+      dark: "oklch(0.76 0.13 75)",
     },
   },
   {
@@ -663,7 +663,7 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     valueType: "oklch",
     defaults: {
       light: "oklch(0.95 0.04 78)",
-      dark: "oklch(0.27 0.05 78)",
+      dark: "oklch(0.27 0.05 75)",
     },
   },
   {
@@ -675,8 +675,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
       "Positive / ready / up (§7 --fn-positive). True leaf-green (hue 155) so it never blurs with steel.",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.55 0.12 155)",
-      dark: "oklch(0.74 0.11 155)",
+      light: "oklch(0.56 0.11 156)",
+      dark: "oklch(0.79 0.14 158)",
     },
   },
   {
@@ -686,8 +686,8 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     displayName: "Status — Success Muted",
     valueType: "oklch",
     defaults: {
-      light: "oklch(0.94 0.04 155)",
-      dark: "oklch(0.25 0.05 155)",
+      light: "oklch(0.94 0.04 156)",
+      dark: "oklch(0.25 0.05 158)",
     },
   },
   {

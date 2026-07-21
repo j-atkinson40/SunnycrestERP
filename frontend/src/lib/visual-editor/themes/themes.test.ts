@@ -206,24 +206,24 @@ describe("oklchToSrgb", () => {
 describe("catalogDefaultsForMode", () => {
   it("emits a complete map for light mode", () => {
     const m = catalogDefaultsForMode("light")
-    expect(m["accent"]).toBe("oklch(0.25 0.010 255)")
-    expect(m["surface-base"]).toBe("oklch(0.965 0.004 255)")
+    expect(m["accent"]).toBe("oklch(0.22 0.004 260)")
+    expect(m["surface-base"]).toBe("oklch(0.94 0.003 250)")
   })
 
   it("emits a different map for dark mode", () => {
     const m = catalogDefaultsForMode("dark")
     // Dark surface differs from light
-    expect(m["surface-base"]).toBe("oklch(0.16 0.008 255)")
+    expect(m["surface-base"]).toBe("oklch(0.13 0.004 255)")
     // Chrome/steel pivot: accent is mode-asymmetric (bright chrome
     // in dark, ink in light) — the state axis is lightness.
-    expect(m["accent"]).toBe("oklch(0.93 0.004 255)")
+    expect(m["accent"]).toBe("oklch(0.94 0.006 255)")
   })
 
   it("light and dark are independent — editing one doesn't affect the other", () => {
     const light = catalogDefaultsForMode("light")
     const dark = catalogDefaultsForMode("dark")
     light["surface-base"] = "modified"
-    expect(dark["surface-base"]).toBe("oklch(0.16 0.008 255)")
+    expect(dark["surface-base"]).toBe("oklch(0.13 0.004 255)")
   })
 })
 
@@ -250,7 +250,7 @@ describe("mergeStack", () => {
 describe("composeEffective", () => {
   it("falls back to catalog defaults when stack is empty", () => {
     const out = composeEffective("light", emptyStack())
-    expect(out["accent"]).toBe("oklch(0.25 0.010 255)")
+    expect(out["accent"]).toBe("oklch(0.22 0.004 260)")
   })
 
   it("stack overrides override catalog defaults", () => {
@@ -298,7 +298,7 @@ describe("stackFromResolved", () => {
       tenant_id: "t1",
       tokens: {
         accent: "oklch(0.55 0.10 39)",
-        "surface-base": "oklch(0.965 0.004 255)",
+        "surface-base": "oklch(0.94 0.003 250)",
       },
       sources: [
         {
@@ -316,7 +316,7 @@ describe("stackFromResolved", () => {
       ],
     }
     const stack = stackFromResolved(resolved)
-    expect(stack.platform["surface-base"]).toBe("oklch(0.965 0.004 255)")
+    expect(stack.platform["surface-base"]).toBe("oklch(0.94 0.003 250)")
     expect(stack.vertical["accent"]).toBe("oklch(0.55 0.10 39)")
     expect(stack.tenant).toEqual({})
     expect(stack.draft).toEqual({})
@@ -378,7 +378,7 @@ describe("inheritance edge cases", () => {
       vertical: "cemetery",
       tenant_id: "t1",
       tokens: {
-        "surface-base": "oklch(0.965 0.004 255)", // from platform
+        "surface-base": "oklch(0.94 0.003 250)", // from platform
         accent: "oklch(0.70 0.05 250)", // tenant override
       },
       sources: [
@@ -403,7 +403,7 @@ describe("inheritance edge cases", () => {
     expect(stack.vertical).toEqual({})
     expect(stack.tenant["accent"]).toBe("oklch(0.70 0.05 250)")
     const out = mergeStack(stack)
-    expect(out["surface-base"]).toBe("oklch(0.965 0.004 255)")
+    expect(out["surface-base"]).toBe("oklch(0.94 0.003 250)")
     expect(out["accent"]).toBe("oklch(0.70 0.05 250)")
   })
 })
