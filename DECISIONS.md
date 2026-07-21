@@ -897,3 +897,19 @@ Settled Type-B decisions: (1) ACCESS = a FocusShare grant cloned from the Docume
 Phasing follows de-risk-then-render: JCF-1 is the assembly test in code — every cross-tenant seam exercised server-side before any UI exists.
 
 ---
+
+## 2026-07-21 — Design language pivot: brass → chrome/steel instrument-grade
+
+Replaced the aged-brass / terracotta / IBM Plex language wholesale.
+New language: dark cool-neutral substrate (hue 255), near-monochrome
+"chrome" as the sole interactive accent, steel blue as a rationed
+signature tone, functional color (leaf-green / terracotta) only.
+SF Pro via system stack (Inter fallback); no bundled webfont. Rationale:
+target the Apple *Pro app* tier explicitly; differentiation moves from a
+signature hue to craft-level execution. Open at time of decision:
+light-mode fate, mood-anchor re-selection. See DESIGN_LANGUAGE.md.
+Brass-era doc archived at
+docs/design-archive/DESIGN_LANGUAGE_brass-era_superseded-2026-07-21.md
+(retained for the two-easing-curve motion spec + historical context).
+
+---
