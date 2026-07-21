@@ -63,6 +63,16 @@ class Invoice(Base):
     amount_paid: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
+    # Exceptions arc: credit memos reduce the balance without pretending
+    # to be payments; a write-off moves the remainder off AR with its
+    # reason. balance_remaining derives from all three.
+    amount_credited: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    written_off_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    write_off_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -137,7 +147,15 @@ class Invoice(Base):
 
     @property
     def balance_remaining(self) -> Decimal:
-        return self.total - self.amount_paid
+        # total − paid − credited (memos) − written off. Everything that
+        # honestly reduced what's owed reduces the balance, everywhere
+        # this is read (aging, statements, the sweeper's mirror in SQL).
+        return (
+            self.total
+            - self.amount_paid
+            - (self.amount_credited or Decimal("0.00"))
+            - (self.written_off_amount or Decimal("0.00"))
+        )
 
     # Relationships
     company = relationship("Company")

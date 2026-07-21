@@ -284,12 +284,15 @@ class TestTheMapBeat:
         assert beat is not None
         assert beat["link"]["href"] == "/financials/finance-charges"
         assert "forgiven with a reason" in beat["text"]
-        # the beat sits with the today-void beat, before the COMING beats
+        # the beat sits with the today-void beat, before the arc's beats
         keys = [b.get("key") for b in story]
         assert keys.index("today-late-charges") == keys.index("today-void") + 1
-        # the surface is NOT the arc — the card stays honestly coming
+        # Session 2 pinned "the surface is not the arc — the card stays
+        # coming." The exceptions arc then LANDED, and the checker reads
+        # it off the codebase: the card is real now. The pin evolves with
+        # reality, exactly as the grammar promised.
         state = jobs_svc.coming_state(db, job)
-        assert state is not None and state["is_coming"] is True
+        assert state is not None and state["is_coming"] is False
 
     def test_beat_append_is_idempotent(self, db):
         from app.models.moc_job import MoCJob

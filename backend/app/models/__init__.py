@@ -121,6 +121,7 @@ from app.models.network_transaction import NetworkTransaction
 from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
 from app.models.preset_module import PresetModule
+from app.models.credit_memo import CreditMemo, CustomerCreditEntry
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.training import (
     CoachingObservation,
@@ -626,6 +627,8 @@ __all__ = [
     "PlatformUser",
     "PresetModule",
     "ImpersonationSession",
+    "CreditMemo",
+    "CustomerCreditEntry",
     "Invoice",
     "InvoiceLine",
     "ManufacturerDirectorySelection",

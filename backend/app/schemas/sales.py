@@ -260,6 +260,9 @@ class InvoiceResponse(BaseModel):
     tax_amount: Decimal
     total: Decimal
     amount_paid: Decimal
+    amount_credited: Decimal = Decimal("0.00")
+    written_off_amount: Decimal = Decimal("0.00")
+    write_off_reason: str | None = None
     balance_remaining: Decimal
     notes: str | None = None
     deceased_name: str | None = None

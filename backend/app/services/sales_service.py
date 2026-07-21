@@ -926,6 +926,19 @@ def update_invoice(
 
     new_status = getattr(data, "status", None)
     if new_status is not None and new_status != invoice.status:
+        # Exceptions arc: write_off moves money — the verb is the door.
+        # A PATCH can neither write off (silent AR-less decoration) nor
+        # resurrect (silent un-write-off); use the deliberate verbs with
+        # their reasons.
+        if new_status == "write_off" or invoice.status == "write_off":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Write-off is a money move, not a label — use the "
+                    "write-off / reinstate actions, which carry a reason "
+                    "and move AR."
+                ),
+            )
         # THE ONE POSTING MOMENT (audit #2 D-2): a PATCH out of draft is
         # an issuance — it posts, once, through the chokepoint. A PATCH
         # BACK to draft would un-issue without un-posting: refused.
@@ -1005,6 +1018,392 @@ def void_invoice(
 
 
 # ---------------------------------------------------------------------------
+# The exceptions arc — credit memos, the write-off verb, the credit pocket
+# ---------------------------------------------------------------------------
+#
+# THE BALANCE LAW (found, then followed): the nightly AR reconciliation is
+# the law's auditor — customer.current_balance equals the sum of open
+# invoices' balance_remaining. The credit pocket is tracked separately in
+# customer.credit_balance, NOT netted into current_balance. Every verb
+# below moves AR only when an invoice's open balance actually changes,
+# as the negative face of post_invoice_to_ar: money posts once, at the
+# verb, never twice.
+
+
+def _reduce_customer_ar(db: Session, company_id: str, customer_id: str, amount: Decimal) -> None:
+    """The negative face of the one posting moment.
+
+    Called exactly when an invoice's open balance is honestly reduced by
+    something other than a recorded payment (a credit memo posting, a
+    write-off). Reversals (memo void, reinstate) add back through the
+    same door with a negative amount.
+    """
+    customer = _get_customer_or_404(db, company_id, customer_id)
+    customer.current_balance = (customer.current_balance or Decimal("0.00")) - amount
+
+
+def _recompute_settlement_status(invoice: Invoice) -> None:
+    """Re-derive settlement status from the honest balance.
+
+    Settlement by credit memo counts as settlement (the memo is the
+    settling document — the industry convention): balance zero → 'paid'
+    with paid_at stamped. A reversal that reopens balance walks it back.
+    Never touches draft / void / write_off — those are doors, not math.
+    """
+    if invoice.status in ("draft", "void", "write_off"):
+        return
+    if invoice.balance_remaining <= Decimal("0.00"):
+        invoice.status = "paid"
+        if invoice.paid_at is None:
+            invoice.paid_at = datetime.now(timezone.utc)
+    else:
+        if invoice.status == "paid":
+            invoice.paid_at = None
+        settled_any = (invoice.amount_paid or Decimal("0.00")) > 0 or (
+            invoice.amount_credited or Decimal("0.00")
+        ) > 0
+        invoice.status = "partial" if settled_any else "sent"
+
+
+def create_credit_memo(
+    db: Session, company_id: str, user_id: str, invoice_id: str,
+    amount: Decimal, reason: str,
+) -> "CreditMemo":
+    """Issue a credit memo against an invoice. Born POSTED — creation IS
+    issuance (the finance-charge law; no draft stage exists, so the
+    draft-inert question never arises). Reason required — the
+    forgive-with-reason standard."""
+    from app.models.credit_memo import CreditMemo
+    from app.services.numbering import next_document_number
+
+    if not (reason or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A credit memo carries its reason — say why.",
+        )
+    amount = Decimal(str(amount))
+    if amount <= Decimal("0.00"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credit memo amount must be positive.",
+        )
+
+    invoice = get_invoice(db, company_id, invoice_id)
+    if invoice.status == "draft":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This invoice is still a draft — edit the draft instead of crediting it.",
+        )
+    if invoice.status in ("void", "write_off"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot credit an invoice in '{invoice.status}' status.",
+        )
+    balance = invoice.balance_remaining
+    if amount > balance:
+        # THE OVER-MEMO REFUSAL: a memo can't make an invoice negative.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Memo exceeds the open balance (${float(balance):,.2f}). "
+                "A memo can't make an invoice negative — credit up to the "
+                "balance; anything beyond it is the customer's credit "
+                "pocket, recorded deliberately as an overpayment."
+            ),
+        )
+
+    memo = CreditMemo(
+        company_id=company_id,
+        customer_id=invoice.customer_id,
+        invoice_id=invoice.id,
+        number=next_document_number(db, table="credit_memos", company_id=company_id, prefix="CM"),
+        amount=amount,
+        reason=reason.strip(),
+        status="posted",
+        created_by=user_id,
+    )
+    db.add(memo)
+
+    invoice.amount_credited = (invoice.amount_credited or Decimal("0.00")) + amount
+    invoice.modified_by = user_id
+    invoice.modified_at = datetime.now(timezone.utc)
+    _recompute_settlement_status(invoice)
+
+    # THE ONE POSTING MOMENT, negative face: AR moves once, at issuance.
+    _reduce_customer_ar(db, company_id, invoice.customer_id, amount)
+
+    audit_service.log_action(
+        db, company_id, "created", "credit_memo", memo.id, user_id=user_id,
+        changes={"invoice": invoice.number, "amount": str(amount), "reason": memo.reason},
+    )
+    db.commit()
+    db.refresh(memo)
+    return memo
+
+
+def void_credit_memo(
+    db: Session, company_id: str, user_id: str, memo_id: str,
+    reason: str | None = None,
+) -> "CreditMemo":
+    """Void a memo — S2's void honesty applied to the negative: the memo
+    always posted (born posted), so voiding always reverses. Refused when
+    the invoice has since been written off — reinstate first; money law
+    doesn't resurrect balances behind a write-off's back."""
+    from app.models.credit_memo import CreditMemo
+
+    memo = (
+        db.query(CreditMemo)
+        .filter(CreditMemo.id == memo_id, CreditMemo.company_id == company_id)
+        .first()
+    )
+    if not memo:
+        raise HTTPException(status_code=404, detail="Credit memo not found")
+    if memo.status == "void":
+        raise HTTPException(status_code=400, detail="Credit memo is already void")
+
+    invoice = get_invoice(db, company_id, memo.invoice_id)
+    if invoice.status == "write_off":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Invoice {invoice.number} has been written off — reinstate "
+                "it before voiding this memo, so the balance math stays whole."
+            ),
+        )
+
+    memo.status = "void"
+    memo.voided_at = datetime.now(timezone.utc)
+    memo.voided_by = user_id
+    memo.void_reason = (reason or "").strip() or None
+
+    invoice.amount_credited = (invoice.amount_credited or Decimal("0.00")) - memo.amount
+    invoice.modified_by = user_id
+    invoice.modified_at = datetime.now(timezone.utc)
+    _recompute_settlement_status(invoice)
+
+    # The reversal walks back through the same door.
+    _reduce_customer_ar(db, company_id, invoice.customer_id, -memo.amount)
+
+    audit_service.log_action(
+        db, company_id, "voided", "credit_memo", memo.id, user_id=user_id,
+        changes={"invoice": invoice.number, "amount": str(memo.amount),
+                 "reason": memo.void_reason or "(none given)"},
+    )
+    db.commit()
+    db.refresh(memo)
+    return memo
+
+
+def write_off_invoice(
+    db: Session, company_id: str, user_id: str, invoice_id: str, reason: str,
+) -> Invoice:
+    """The write-off verb the status never had. Moves the remainder off
+    AR — a write-off MOVES money off the customer, it doesn't decorate a
+    status. Reason required. Partial-paid invoices write off the
+    REMAINDER (the paid part stays paid)."""
+    if not (reason or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A write-off carries its reason — say why.",
+        )
+    invoice = get_invoice(db, company_id, invoice_id)
+    if invoice.status == "draft":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A draft was never posted — delete or void it; there is nothing to write off.",
+        )
+    if invoice.status in ("paid", "void", "write_off"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot write off an invoice in '{invoice.status}' status.",
+        )
+    remainder = invoice.balance_remaining
+    if remainder <= Decimal("0.00"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nothing remains to write off on this invoice.",
+        )
+
+    invoice.written_off_amount = remainder
+    invoice.write_off_reason = reason.strip()
+    invoice.status = "write_off"
+    invoice.modified_by = user_id
+    invoice.modified_at = datetime.now(timezone.utc)
+
+    _reduce_customer_ar(db, company_id, invoice.customer_id, remainder)
+
+    audit_service.log_action(
+        db, company_id, "written_off", "invoice", invoice.id, user_id=user_id,
+        changes={"amount": str(remainder), "reason": invoice.write_off_reason,
+                 "note": "remainder written off; payments already received stay received"},
+    )
+    db.commit()
+    db.refresh(invoice)
+    return invoice
+
+
+def reinstate_invoice(
+    db: Session, company_id: str, user_id: str, invoice_id: str, reason: str,
+) -> Invoice:
+    """The un-write-off — a DELIBERATE verb with its own reason (S2's
+    honesty: no silent PATCH resurrection; the generic status PATCH
+    refuses write_off transitions in both directions)."""
+    if not (reason or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reinstating carries its reason — say why the write-off was wrong.",
+        )
+    invoice = get_invoice(db, company_id, invoice_id)
+    if invoice.status != "write_off":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only a written-off invoice can be reinstated.",
+        )
+
+    restored = invoice.written_off_amount or Decimal("0.00")
+    prior_reason = invoice.write_off_reason
+    invoice.written_off_amount = Decimal("0.00")
+    invoice.write_off_reason = None
+    invoice.status = "sent"  # provisional; recompute settles it honestly
+    _recompute_settlement_status(invoice)
+    invoice.modified_by = user_id
+    invoice.modified_at = datetime.now(timezone.utc)
+
+    _reduce_customer_ar(db, company_id, invoice.customer_id, -restored)
+
+    audit_service.log_action(
+        db, company_id, "reinstated", "invoice", invoice.id, user_id=user_id,
+        changes={"amount_restored": str(restored), "reason": reason.strip(),
+                 "original_write_off_reason": prior_reason or ""},
+    )
+    db.commit()
+    db.refresh(invoice)
+    return invoice
+
+
+def apply_customer_credit(
+    db: Session, company_id: str, user_id: str, customer_id: str,
+    invoice_id: str, amount: Decimal,
+) -> dict:
+    """The pocket's first door: apply held credit onto an open invoice.
+
+    The money was already received (that's how it became credit) — so it
+    lands as amount_paid, the invoice's open balance drops, and AR drops
+    with it per the balance law. Over-apply refuses: the remainder stays
+    in the pocket, stated."""
+    from app.models.credit_memo import CustomerCreditEntry
+
+    amount = Decimal(str(amount))
+    if amount <= Decimal("0.00"):
+        raise HTTPException(status_code=400, detail="Amount must be positive.")
+
+    customer = _get_customer_or_404(db, company_id, customer_id)
+    pocket = customer.credit_balance or Decimal("0.00")
+    if amount > pocket:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Only ${float(pocket):,.2f} of credit is held for this customer.",
+        )
+
+    invoice = get_invoice(db, company_id, invoice_id)
+    if invoice.customer_id != customer_id:
+        raise HTTPException(status_code=400, detail="Invoice belongs to a different customer.")
+    if invoice.status in ("draft", "void", "write_off", "paid"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot apply credit to an invoice in '{invoice.status}' status.",
+        )
+    balance = invoice.balance_remaining
+    if amount > balance:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Only ${float(balance):,.2f} remains open on {invoice.number} — "
+                "apply up to the balance; the rest stays in the pocket."
+            ),
+        )
+
+    customer.credit_balance = pocket - amount
+    invoice.amount_paid = (invoice.amount_paid or Decimal("0.00")) + amount
+    invoice.modified_by = user_id
+    invoice.modified_at = datetime.now(timezone.utc)
+    _recompute_settlement_status(invoice)
+    if invoice.status == "paid":
+        _auto_complete_order_on_payment(db, invoice, company_id)
+
+    # Balance law: the invoice's open balance dropped, so AR drops.
+    _reduce_customer_ar(db, company_id, customer_id, amount)
+
+    entry = CustomerCreditEntry(
+        company_id=company_id, customer_id=customer_id, invoice_id=invoice.id,
+        kind="apply", amount=amount, created_by=user_id,
+        note=f"Applied to {invoice.number}",
+    )
+    db.add(entry)
+    audit_service.log_action(
+        db, company_id, "credit_applied", "customer", customer_id, user_id=user_id,
+        changes={"invoice": invoice.number, "amount": str(amount),
+                 "pocket_after": str(customer.credit_balance)},
+    )
+    db.commit()
+    return {
+        "entry_id": entry.id,
+        "invoice_id": invoice.id,
+        "invoice_number": invoice.number,
+        "invoice_status": invoice.status,
+        "invoice_balance_remaining": float(invoice.balance_remaining),
+        "credit_balance": float(customer.credit_balance),
+    }
+
+
+def disburse_customer_credit(
+    db: Session, company_id: str, user_id: str, customer_id: str,
+    amount: Decimal, note: str,
+) -> dict:
+    """The pocket's second door: record a refund of held credit.
+
+    This RECORDS the disbursement — the actual money moves at the bank
+    (a check, an ACH) until the payment-acceptance era; the surface says
+    so honestly. The note is required: a refund without its method is
+    half a record."""
+    from app.models.credit_memo import CustomerCreditEntry
+
+    if not (note or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Record how the refund moves — e.g. 'check #1042, mailed 7/21'.",
+        )
+    amount = Decimal(str(amount))
+    if amount <= Decimal("0.00"):
+        raise HTTPException(status_code=400, detail="Amount must be positive.")
+
+    customer = _get_customer_or_404(db, company_id, customer_id)
+    pocket = customer.credit_balance or Decimal("0.00")
+    if amount > pocket:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Only ${float(pocket):,.2f} of credit is held for this customer.",
+        )
+
+    customer.credit_balance = pocket - amount
+    # Balance law: no invoice changed, so current_balance does not move —
+    # the pocket is not netted into AR.
+
+    entry = CustomerCreditEntry(
+        company_id=company_id, customer_id=customer_id, invoice_id=None,
+        kind="disburse", amount=amount, note=note.strip(), created_by=user_id,
+    )
+    db.add(entry)
+    audit_service.log_action(
+        db, company_id, "credit_disbursed", "customer", customer_id, user_id=user_id,
+        changes={"amount": str(amount), "note": entry.note,
+                 "pocket_after": str(customer.credit_balance)},
+    )
+    db.commit()
+    return {"entry_id": entry.id, "credit_balance": float(customer.credit_balance)}
+
+
+# ---------------------------------------------------------------------------
 # Customer Payments — helper functions
 # ---------------------------------------------------------------------------
 
@@ -1023,10 +1422,14 @@ def _create_short_pay_alert(db, company_id, customer, invoice, amount_paid, diff
                 f"#{invoice.number} but the 5% early payment window expired "
                 f"{days_late} day{'s' if days_late != 1 else ''} ago. "
                 f"Balance remaining: ${difference:.2f}. "
-                f"Decide whether to honor the discount."
+                # Exceptions arc: the resolution paths ARE the arc's verbs,
+                # all on the invoice itself.
+                "Resolve from the invoice: honor the discount, apply held "
+                "credit, memo the difference with a reason, write off the "
+                "remainder, or leave it open."
             ),
-            action_label="Honor discount",
-            action_url=f"/api/v1/sales/invoices/{invoice.id}/honor-discount",
+            action_label="Open the invoice",
+            action_url=f"/ar/invoices/{invoice.id}",
         )
         db.add(alert)
     except Exception as e:
@@ -1223,14 +1626,18 @@ def create_customer_payment(
     if lock:
         raise PeriodLockedError(lock)
 
-    # Validate sum of applications matches total_amount
+    # Applications may not EXCEED the payment. They MAY fall short —
+    # the unapplied excess is an overpayment and lands in the customer's
+    # credit pocket (exceptions arc: pre-arc this required an exact
+    # match, which made the overpayment branch below unreachable — the
+    # pocket had no lawful entrance; now it has doors on both sides).
     app_total = sum(a.amount_applied for a in data.applications)
-    if app_total != data.total_amount:
+    if app_total > data.total_amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"Sum of applications ({app_total}) does not match "
-                f"total amount ({data.total_amount})"
+                f"Applications ({app_total}) exceed the payment amount "
+                f"({data.total_amount})."
             ),
         )
 
@@ -1321,13 +1728,18 @@ def create_customer_payment(
                 db, company_id, customer, invoice, app_data.amount_applied, difference, days_late
             )
 
-    # Subtract payment from customer balance
-    customer.current_balance -= data.total_amount
-
-    # Overpayment detection — any unmatched amount becomes customer credit
+    # THE BALANCE LAW (exceptions arc): current_balance mirrors open
+    # invoice balances; the credit pocket is tracked separately. Only the
+    # APPLIED portion reduces AR — the unapplied excess goes to the
+    # pocket, not to current_balance. (Pre-arc this subtracted the FULL
+    # payment, and the nightly reconciliation silently "corrected" every
+    # overpayment back out — a real drift source, now dead at the root.)
     total_applied = sum(
         float(app_data.amount_applied) for app_data in data.applications
     )
+    customer.current_balance -= Decimal(str(round(total_applied, 2)))
+
+    # Overpayment detection — any unmatched amount becomes customer credit
     if total_applied < float(data.total_amount) - 0.01:
         overpayment = float(data.total_amount) - total_applied
         customer.credit_balance = (customer.credit_balance or Decimal("0.00")) + Decimal(
@@ -2065,6 +2477,29 @@ def void_payment(
         db.query(Customer).filter(Customer.id == payment.customer_id).first()
     )
 
+    # THE BALANCE LAW (exceptions arc): the void is the record's full
+    # inverse — applied portion back onto AR, overpaid portion back OUT
+    # of the credit pocket. If the pocket no longer holds that credit
+    # (it was applied or disbursed since), the void refuses loudly:
+    # unwinding spent credit would falsify other invoices' balances.
+    applied_sum = sum(
+        (app.amount_applied for app in payment.applications), Decimal("0.00")
+    )
+    overpay_portion = payment.total_amount - applied_sum
+    if overpay_portion > Decimal("0.01") and customer:
+        pocket = customer.credit_balance or Decimal("0.00")
+        if pocket < overpay_portion:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"This payment created ${float(overpay_portion):,.2f} of "
+                    "customer credit that has since been spent — the void "
+                    "would falsify balances it can no longer reach. Resolve "
+                    "the credit ledger first."
+                ),
+            )
+        customer.credit_balance = pocket - overpay_portion
+
     # Reverse each application
     for app in payment.applications:
         inv = db.query(Invoice).filter(Invoice.id == app.invoice_id).first()
@@ -2073,16 +2508,13 @@ def void_payment(
                 Decimal("0.00"), inv.amount_paid - app.amount_applied
             )
             inv.discount_amount = Decimal("0.00")
-            inv.paid_at = None
-            # Recalculate status
-            if inv.amount_paid <= Decimal("0.00"):
-                inv.status = "sent"
-            elif inv.amount_paid < inv.total:
-                inv.status = "partial"
+            # Settlement re-derives honestly (memos counted).
+            _recompute_settlement_status(inv)
 
-    # Restore customer balance
+    # Restore customer balance — the applied portion only (the pocket
+    # was never netted into AR).
     if customer:
-        customer.current_balance += payment.total_amount
+        customer.current_balance += applied_sum
 
     # Soft delete the payment
     payment.deleted_at = datetime.now(timezone.utc)

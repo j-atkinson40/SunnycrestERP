@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import apiClient from "@/lib/api-client";
 import { RecordPaymentDialog } from "@/components/record-payment-dialog";
 import ContactListCRM from "@/components/crm/ContactList";
 
@@ -110,6 +111,9 @@ export default function CustomerDetailPage() {
   const [isActive, setIsActive] = useState(true);
   const [currentBalance, setCurrentBalance] = useState(0);
   const [creditBalance, setCreditBalance] = useState(0);
+  const [disburseOpen, setDisburseOpen] = useState(false);
+  const [disburseAmount, setDisburseAmount] = useState("");
+  const [disburseNote, setDisburseNote] = useState("");
 
   // Shipping address
   const [addressLine1, setAddressLine1] = useState("");
@@ -649,15 +653,72 @@ export default function CustomerDetailPage() {
         </div>
       )}
 
-      {/* Credit Balance Banner */}
+      {/* The credit pocket — visible, with its doors (exceptions arc).
+          The old banner promised "will apply to next invoice"; nothing
+          ever did. Now applying happens from an open invoice's Apply
+          Credit action, and refunds are recorded here. */}
       {creditBalance > 0 && (
-        <div className="rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 flex items-center gap-2">
+        <div className="rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 flex items-center gap-3 flex-wrap">
           <span className="text-green-600 font-bold">$</span>
-          <span>
-            <strong>{formatCurrency(creditBalance)}</strong> credit on account — will apply to next invoice
+          <span className="flex-1 min-w-[220px]">
+            <strong>{formatCurrency(creditBalance)}</strong> credit on account —
+            apply it from an open invoice's <em>Apply Credit</em> action, or
+            record a refund here. Every exit leaves a ledger entry.
           </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setDisburseAmount(String(creditBalance)); setDisburseNote(""); setDisburseOpen(true); }}
+          >
+            Record refund
+          </Button>
         </div>
       )}
+
+      {/* Disburse dialog — records the refund; the money moves at the bank */}
+      <Dialog open={disburseOpen} onOpenChange={(o) => !o && setDisburseOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record a credit refund</DialogTitle>
+            <DialogDescription>
+              This records the disbursement — the actual money moves at the
+              bank (a check or ACH you send). Bridgeable keeps the record.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Amount (up to {formatCurrency(creditBalance)})</Label>
+              <Input type="number" min="0.01" step="0.01" value={disburseAmount}
+                onChange={(e) => setDisburseAmount(e.target.value)} />
+            </div>
+            <div>
+              <Label>How it moves (required)</Label>
+              <Input value={disburseNote} placeholder="e.g. check #1042, mailed 7/21"
+                onChange={(e) => setDisburseNote(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDisburseOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!disburseAmount || !disburseNote.trim()}
+              onClick={async () => {
+                try {
+                  const r = await apiClient.post(`/sales/customers/${customerId}/credit/disburse`, {
+                    amount: disburseAmount, note: disburseNote.trim(),
+                  });
+                  toast.success("Refund recorded");
+                  setCreditBalance(Number(r.data.credit_balance ?? 0));
+                  setDisburseOpen(false);
+                } catch (err) {
+                  toast.error(getApiErrorMessage(err, "Failed to record refund"));
+                }
+              }}
+            >
+              Record refund
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Account Summary */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

@@ -1,6 +1,9 @@
 """Sales & AR routes — Quotes, Sales Orders, Invoices, Customer Payments, AR Aging."""
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, Query, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_module, require_permission, get_current_user
@@ -151,6 +154,9 @@ def _invoice_to_response(inv) -> dict:
         "tax_amount": inv.tax_amount,
         "total": inv.total,
         "amount_paid": inv.amount_paid,
+        "amount_credited": inv.amount_credited,
+        "written_off_amount": inv.written_off_amount,
+        "write_off_reason": inv.write_off_reason,
         "balance_remaining": inv.balance_remaining,
         "notes": inv.notes,
         "created_by": inv.created_by,
@@ -548,6 +554,175 @@ def void_invoice(
         db, current_user.company_id, current_user.id, invoice_id
     )
     return _invoice_to_response(invoice)
+
+
+# ---------------------------------------------------------------------------
+# The exceptions arc — credit memos, write-off, the credit pocket
+# ---------------------------------------------------------------------------
+
+
+class CreditMemoCreate(BaseModel):
+    amount: Decimal
+    reason: str
+
+
+class ReasonBody(BaseModel):
+    reason: str
+
+
+class OptionalReasonBody(BaseModel):
+    reason: str | None = None
+
+
+class CreditApplyBody(BaseModel):
+    invoice_id: str
+    amount: Decimal
+
+
+class CreditDisburseBody(BaseModel):
+    amount: Decimal
+    note: str
+
+
+def _memo_to_dict(m) -> dict:
+    return {
+        "id": m.id, "number": m.number, "invoice_id": m.invoice_id,
+        "customer_id": m.customer_id, "amount": float(m.amount),
+        "reason": m.reason, "status": m.status,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+        "voided_at": m.voided_at.isoformat() if m.voided_at else None,
+        "void_reason": m.void_reason,
+    }
+
+
+@router.post("/invoices/{invoice_id}/credit-memos")
+def create_credit_memo(
+    invoice_id: str,
+    body: CreditMemoCreate,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.void")),
+):
+    memo = sales_service.create_credit_memo(
+        db, current_user.company_id, current_user.id, invoice_id,
+        body.amount, body.reason,
+    )
+    return _memo_to_dict(memo)
+
+
+@router.get("/invoices/{invoice_id}/credit-memos")
+def list_invoice_credit_memos(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.credit_memo import CreditMemo
+    sales_service.get_invoice(db, current_user.company_id, invoice_id)  # tenant gate
+    memos = (
+        db.query(CreditMemo)
+        .filter(CreditMemo.company_id == current_user.company_id,
+                CreditMemo.invoice_id == invoice_id)
+        .order_by(CreditMemo.created_at.desc())
+        .all()
+    )
+    return [_memo_to_dict(m) for m in memos]
+
+
+@router.post("/credit-memos/{memo_id}/void")
+def void_credit_memo(
+    memo_id: str,
+    body: OptionalReasonBody,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.void")),
+):
+    memo = sales_service.void_credit_memo(
+        db, current_user.company_id, current_user.id, memo_id, body.reason,
+    )
+    return _memo_to_dict(memo)
+
+
+@router.post("/invoices/{invoice_id}/write-off", response_model=InvoiceResponse)
+def write_off_invoice(
+    invoice_id: str,
+    body: ReasonBody,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.void")),
+):
+    invoice = sales_service.write_off_invoice(
+        db, current_user.company_id, current_user.id, invoice_id, body.reason,
+    )
+    return _invoice_to_response(invoice)
+
+
+@router.post("/invoices/{invoice_id}/reinstate", response_model=InvoiceResponse)
+def reinstate_invoice(
+    invoice_id: str,
+    body: ReasonBody,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.void")),
+):
+    invoice = sales_service.reinstate_invoice(
+        db, current_user.company_id, current_user.id, invoice_id, body.reason,
+    )
+    return _invoice_to_response(invoice)
+
+
+@router.post("/customers/{customer_id}/credit/apply")
+def apply_customer_credit(
+    customer_id: str,
+    body: CreditApplyBody,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.void")),
+):
+    return sales_service.apply_customer_credit(
+        db, current_user.company_id, current_user.id, customer_id,
+        body.invoice_id, body.amount,
+    )
+
+
+@router.post("/customers/{customer_id}/credit/disburse")
+def disburse_customer_credit(
+    customer_id: str,
+    body: CreditDisburseBody,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.void")),
+):
+    return sales_service.disburse_customer_credit(
+        db, current_user.company_id, current_user.id, customer_id,
+        body.amount, body.note,
+    )
+
+
+@router.get("/customers/{customer_id}/credit/entries")
+def list_credit_entries(
+    customer_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.credit_memo import CustomerCreditEntry
+    rows = (
+        db.query(CustomerCreditEntry)
+        .filter(CustomerCreditEntry.company_id == current_user.company_id,
+                CustomerCreditEntry.customer_id == customer_id)
+        .order_by(CustomerCreditEntry.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return [
+        {
+            "id": r.id, "kind": r.kind, "amount": float(r.amount),
+            "invoice_id": r.invoice_id, "note": r.note,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------

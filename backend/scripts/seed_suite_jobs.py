@@ -111,9 +111,9 @@ JOBS = [
     ),
     (
         "Handle the exceptions",
-        "When money needs a correction — voids work today; memos, "
-        "write-offs, and the credit pocket's door are the arc this card "
-        "is waiting for.",
+        "When money needs a correction — voids, credit memos, the "
+        "write-off verb, and the credit pocket's doors, every one "
+        "carrying its reason.",
         [],
         [
             ("today-void", "TODAY — voiding works, honestly: void an "
@@ -125,14 +125,22 @@ JOBS = [
              "it posts. No clock fires this yet; the automation is "
              "queued.", {"href": "/financials/finance-charges",
                          "label": "Review late charges"}),
-            ("coming-memos", "COMING — credit memos: a first-class credit "
-             "document instead of a hand edit.", None),
-            ("coming-writeoff", "COMING — the write-off verb: the status "
-             "exists today but nothing sets it; the arc adds the deliberate "
-             "action with its guards.", None),
-            ("coming-credit", "COMING — the credit pocket's door: "
-             "overpayments already bank on the customer record; applying "
-             "or refunding that credit is the missing verb.", None),
+            ("coming-memos", "TODAY — credit memos: a first-class credit "
+             "document with its required reason, posting as the negative "
+             "through the one chokepoint; over-crediting refuses — the "
+             "excess is the pocket's business.",
+             {"href": "/ar/invoices", "label": "Open Invoices"}),
+            ("coming-writeoff", "TODAY — the write-off verb: writes the "
+             "remainder off AR deliberately, reason required; reinstating "
+             "is its own verb with its own reason — no silent "
+             "resurrection. (This is AR — distinct from inventory "
+             "write-offs.)",
+             {"href": "/ar/invoices", "label": "Open Invoices"}),
+            ("coming-credit", "TODAY — the credit pocket has doors: apply "
+             "held credit onto an open invoice, or record a disbursement "
+             "(the money moves at the bank; Bridgeable records it) — "
+             "every exit leaves a ledger row on the customer's record.",
+             {"href": "/customers", "label": "Open Customers"}),
         ],
         {"coming": {"checker": "exceptions_arc"}},
     ),
@@ -181,6 +189,102 @@ LATE_BEATS = [
         },
     ),
 ]
+
+
+# Platform-authored beat REWRITES for already-seeded jobs — the arc that
+# makes a COMING beat real updates its words. Preserve-aware by exact
+# old-text match: a beat is rewritten ONLY if its current text is
+# byte-identical to the platform's own prior version — an operator-edited
+# beat is never touched. Each entry: (job_name, beat_key, old_text_exact,
+# new_beat_dict). The job description gets the same treatment via
+# DESCRIPTION_REWRITES.
+BEAT_REWRITES = [
+    (
+        "Handle the exceptions", "coming-memos",
+        "COMING — credit memos: a first-class credit document instead of "
+        "a hand edit.",
+        {"key": "coming-memos",
+         "text": "TODAY — credit memos: a first-class credit document "
+                 "with its required reason, posting as the negative "
+                 "through the one chokepoint; over-crediting refuses — "
+                 "the excess is the pocket's business.",
+         "link": {"href": "/ar/invoices", "label": "Open Invoices"}},
+    ),
+    (
+        "Handle the exceptions", "coming-writeoff",
+        "COMING — the write-off verb: the status exists today but nothing "
+        "sets it; the arc adds the deliberate action with its guards.",
+        {"key": "coming-writeoff",
+         "text": "TODAY — the write-off verb: writes the remainder off AR "
+                 "deliberately, reason required; reinstating is its own "
+                 "verb with its own reason — no silent resurrection. "
+                 "(This is AR — distinct from inventory write-offs.)",
+         "link": {"href": "/ar/invoices", "label": "Open Invoices"}},
+    ),
+    (
+        "Handle the exceptions", "coming-credit",
+        "COMING — the credit pocket's door: overpayments already bank on "
+        "the customer record; applying or refunding that credit is the "
+        "missing verb.",
+        {"key": "coming-credit",
+         "text": "TODAY — the credit pocket has doors: apply held credit "
+                 "onto an open invoice, or record a disbursement (the "
+                 "money moves at the bank; Bridgeable records it) — every "
+                 "exit leaves a ledger row on the customer's record.",
+         "link": {"href": "/customers", "label": "Open Customers"}},
+    ),
+]
+
+DESCRIPTION_REWRITES = [
+    (
+        "Handle the exceptions",
+        "When money needs a correction — voids work today; memos, "
+        "write-offs, and the credit pocket's door are the arc this card "
+        "is waiting for.",
+        "When money needs a correction — voids, credit memos, the "
+        "write-off verb, and the credit pocket's doors, every one "
+        "carrying its reason.",
+    ),
+]
+
+
+def _apply_rewrites(db) -> int:
+    """Rewrite platform-authored beats/descriptions whose text is still
+    the platform's own prior version (idempotent; operator edits win)."""
+    changed = 0
+    for job_name, beat_key, old_text, new_beat in BEAT_REWRITES:
+        job = (
+            db.query(MoCJob)
+            .filter(MoCJob.scope == "vertical_default",
+                    MoCJob.vertical == VERT,
+                    MoCJob.name == job_name,
+                    MoCJob.is_active.is_(True))
+            .first()
+        )
+        if job is None:
+            continue
+        ponder = dict(job.ponder or {})
+        story = list(ponder.get("story") or [])
+        for i, b in enumerate(story):
+            if b.get("key") == beat_key and b.get("text") == old_text:
+                story[i] = new_beat
+                ponder["story"] = story
+                job.ponder = ponder
+                changed += 1
+                break
+    for job_name, old_desc, new_desc in DESCRIPTION_REWRITES:
+        job = (
+            db.query(MoCJob)
+            .filter(MoCJob.scope == "vertical_default",
+                    MoCJob.vertical == VERT,
+                    MoCJob.name == job_name,
+                    MoCJob.is_active.is_(True))
+            .first()
+        )
+        if job is not None and job.description == old_desc:
+            job.description = new_desc
+            changed += 1
+    return changed
 
 
 def _ensure_late_beats(db) -> int:
@@ -265,9 +369,11 @@ def main() -> int:
                     print(f"[seed_suite_jobs] skip ref ({name}): {e}")
             created += 1
         beats_added = _ensure_late_beats(db)
+        rewritten = _apply_rewrites(db)
         db.commit()
         print(f"[seed_suite_jobs] ok — {created} created (existing untouched), "
-              f"{beats_added} late beats appended")
+              f"{beats_added} late beats appended, {rewritten} platform beats "
+              f"rewritten (operator edits preserved)")
         return 0
     finally:
         db.close()

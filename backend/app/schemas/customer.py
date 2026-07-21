@@ -177,6 +177,10 @@ class CustomerResponse(BaseModel):
     payment_terms: str | None = None
     account_status: str
     current_balance: Decimal
+    # The credit pocket (exceptions arc): held customer credit from
+    # overpayments — never serialized before, so the pocket was
+    # invisible even on the customer's own record.
+    credit_balance: Decimal = Decimal("0.00")
     # Other
     tax_exempt: bool
     tax_id: str | None = None
@@ -217,6 +221,7 @@ class CustomerListItem(BaseModel):
     state: str | None = None
     account_status: str
     current_balance: Decimal
+    credit_balance: Decimal = Decimal("0.00")
     credit_limit: Decimal | None = None
     payment_terms: str | None = None
     customer_type: str | None = None

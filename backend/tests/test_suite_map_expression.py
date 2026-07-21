@@ -46,11 +46,18 @@ class TestTheEleven:
             MoCJob.task_type == "Accounting", MoCJob.is_active).count()
         assert n == 11
 
-    def test_never_faces_are_coming_today(self, db):
-        for name in ("Handle the exceptions", "File sales tax"):
-            job = _job(db, name)
-            state = jobs_svc.coming_state(db, job)
-            assert state is not None and state["is_coming"] is True
+    def test_tax_never_face_still_coming_today(self, db):
+        job = _job(db, "File sales tax")
+        state = jobs_svc.coming_state(db, job)
+        assert state is not None and state["is_coming"] is True
+
+    def test_exceptions_card_woke_by_reality(self, db):
+        """THE FIRST CARD THE GRAMMAR EVER FLIPPED: the exceptions arc
+        shipped its verbs, and the checker reads them off the codebase —
+        the card is REAL today with zero manual steps taken."""
+        job = _job(db, "Handle the exceptions")
+        state = jobs_svc.coming_state(db, job)
+        assert state is not None and state["is_coming"] is False
 
     def test_real_jobs_are_not_coming(self, db):
         for name in ("Pay the bills", "Watch the cash",
@@ -59,15 +66,16 @@ class TestTheEleven:
 
 
 class TestCompletionByReality:
-    def test_exceptions_arc_flips_on_the_verb(self, db, monkeypatch):
-        """The write-off verb appearing on sales_service IS the arc
-        landing — the card flips real with zero manual steps."""
+    def test_exceptions_arc_reverse_flip(self, db, monkeypatch):
+        """The flip is reality-driven BOTH ways: strip the arc's verbs
+        from the codebase and the card goes back to coming — proving the
+        checker reads capability, never a flag."""
         import app.services.sales_service as ss
         job = _job(db, "Handle the exceptions")
-        assert jobs_svc.coming_state(db, job)["is_coming"] is True
-        monkeypatch.setattr(ss, "write_off_invoice", lambda *a, **k: None,
-                            raising=False)
         assert jobs_svc.coming_state(db, job)["is_coming"] is False
+        monkeypatch.delattr(ss, "write_off_invoice")
+        monkeypatch.setitem(sys.modules, "app.models.credit_memo", None)
+        assert jobs_svc.coming_state(db, job)["is_coming"] is True
 
     def test_tax_arc_flips_on_the_module(self, db, monkeypatch):
         job = _job(db, "File sales tax")
@@ -138,8 +146,10 @@ class TestCashGlanceFaces:
         out = jobs_svc.job_card_payload(db, job, user=_U())
         assert out["glance_live"] is not None  # teach face for the unknown
         assert out["coming"] is None
-        nf = jobs_svc.job_card_payload(db, _job(db, "Handle the exceptions"))
+        nf = jobs_svc.job_card_payload(db, _job(db, "File sales tax"))
         assert nf["coming"]["is_coming"] is True
+        woke = jobs_svc.job_card_payload(db, _job(db, "Handle the exceptions"))
+        assert woke["coming"]["is_coming"] is False  # the arc landed
 
 
 class TestTheStories:
@@ -147,7 +157,8 @@ class TestTheStories:
               "/financials/bank-activity", "/financials/board",
               "/financials/finance-charges",
               "/reports", "/ar/statements", "/journal-entries",
-              "/ar/invoices", "/settings/tax", "/settings/accounts"}
+              "/ar/invoices", "/settings/tax", "/settings/accounts",
+              "/customers"}
 
     def test_ponders_build_with_census_backed_beats(self, db):
         for name, must_contain in (

@@ -243,6 +243,9 @@ export interface Invoice {
   tax_amount: string;
   total: string;
   amount_paid: string;
+  amount_credited?: string;
+  written_off_amount?: string;
+  write_off_reason?: string | null;
   balance_remaining: string;
   notes: string | null;
   deceased_name: string | null;

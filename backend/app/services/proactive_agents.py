@@ -141,7 +141,44 @@ def run_balance_reduction_advisor(db: Session, tenant_id: str) -> dict:
     # it never incremented — the warning scenario was never written, and
     # finance-charge visibility now lives on the charge review surface
     # (/financials/finance-charges), not this advisor.
-    results = {"late_payment_flags": 0}
+    results = {"late_payment_flags": 0, "credit_sitting_flag": 0}
+
+    # THE POCKET'S NOTICE (exceptions arc): overpayment credit used to
+    # accumulate silently on customer records forever. Now it has doors
+    # (apply / disburse) — and this nightly notice, upserted in place.
+    from decimal import Decimal as _D
+    sitting = (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == tenant_id,
+            Customer.is_active.is_(True),
+            Customer.credit_balance > _D("0.00"),
+        )
+        .all()
+    )
+    if sitting:
+        total_credit = sum((c.credit_balance for c in sitting), _D("0.00"))
+        names = ", ".join(c.name for c in sitting[:3])
+        more = f" and {len(sitting) - 3} more" if len(sitting) > 3 else ""
+        insight = generate_insight(
+            db=db,
+            tenant_id=tenant_id,
+            insight_type="credit_sitting",
+            headline=f"${float(total_credit):,.2f} in customer credit is sitting unapplied",
+            detail=(
+                f"{len(sitting)} customer(s) hold credit from overpayments: "
+                f"{names}{more}. Apply it to an open invoice or record a "
+                "refund from the customer's record — every exit leaves a "
+                "ledger entry."
+            ),
+            scope="tenant",
+            action_type="review",
+            action_label="Review customer credit",
+            action_url="/customers",
+            generated_by_job="balance_reduction_advisor",
+        )
+        if insight:
+            results["credit_sitting_flag"] = 1
 
     # Get monthly statement customers with open balances
     customers = (
@@ -491,12 +528,17 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
 
     corrected = 0
     for customer in customers:
+        # The SQL mirror of Invoice.balance_remaining (exceptions arc):
+        # credit memos reduce the balance; write-offs leave the sum by
+        # status. Keep this formula in lockstep with the model property.
         calculated = (
-            db.query(func.sum(Invoice.total - Invoice.amount_paid))
+            db.query(func.sum(
+                Invoice.total - Invoice.amount_paid - Invoice.amount_credited
+            ))
             .filter(
                 Invoice.company_id == tenant_id,
                 Invoice.customer_id == customer.id,
-                Invoice.status.notin_(["paid", "void", "draft"]),
+                Invoice.status.notin_(["paid", "void", "draft", "write_off"]),
             )
             .scalar()
             or Decimal("0.00")
