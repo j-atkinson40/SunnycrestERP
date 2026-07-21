@@ -115,7 +115,7 @@ export default function FinancialsBoardPage() {
                 </span>
               )}
               {summary.alert_counts.warning > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                <span className="inline-flex items-center gap-1 rounded-full bg-status-warning-muted px-2 py-0.5 text-xs font-medium text-status-warning">
                   {summary.alert_counts.warning}
                 </span>
               )}
@@ -239,7 +239,7 @@ function DailyBriefingZone({ summary, briefing }: { summary: BoardSummary; brief
               </span>
             )}
             {summary.alert_counts.warning > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700">
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-status-warning-muted border border-status-warning/30 px-3 py-1.5 text-xs font-medium text-status-warning">
                 <Bell className="h-3.5 w-3.5" /> {summary.alert_counts.warning} Warnings
               </span>
             )}
@@ -317,9 +317,9 @@ function ARCommandZone() {
                 {Object.entries(overdue.buckets).map(([key, val]) => (
                   <span key={key} className={cn(
                     "rounded px-2 py-1",
-                    key === "over_90" && val > 0 ? "bg-red-100 text-red-700" :
-                    key === "days_61_90" && val > 0 ? "bg-orange-100 text-orange-700" :
-                    key === "days_31_60" && val > 0 ? "bg-amber-100 text-amber-700" :
+                    key === "over_90" && val > 0 ? "bg-status-error-muted text-status-error" :
+                    key === "days_61_90" && val > 0 ? "bg-status-error-muted text-status-error" :
+                    key === "days_31_60" && val > 0 ? "bg-status-warning-muted text-status-warning" :
                     "bg-gray-100 text-gray-600"
                   )}>
                     {key.replace("_", " ")}: ${val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -333,9 +333,8 @@ function ARCommandZone() {
                   {overdue.invoices.map((inv) => (
                     <div key={inv.id} className={cn(
                       "rounded-lg border p-3 text-sm",
-                      inv.days_overdue > 90 ? "border-red-200 bg-red-50/50" :
-                      inv.days_overdue > 60 ? "border-orange-200 bg-orange-50/50" :
-                      inv.days_overdue > 30 ? "border-amber-200 bg-amber-50/50" : "border-gray-200"
+                      inv.days_overdue > 60 ? "border-status-error/30" :
+                      inv.days_overdue > 30 ? "border-status-warning/30" : "border-gray-200"
                     )}>
                       <div className="flex items-start justify-between">
                         <div>
@@ -343,7 +342,7 @@ function ARCommandZone() {
                           <span className="text-gray-400 ml-2 text-xs">#{inv.invoice_number}</span>
                         </div>
                         <span className={cn("text-xs font-medium",
-                          inv.days_overdue > 90 ? "text-red-600" : inv.days_overdue > 60 ? "text-orange-600" : "text-amber-600"
+                          inv.days_overdue > 60 ? "text-status-error" : "text-status-warning"
                         )}>{inv.days_overdue}d overdue</span>
                       </div>
                       <div className="flex items-center justify-between mt-1">
@@ -371,7 +370,7 @@ function ARCommandZone() {
               ) : (
                 <div className="space-y-2">
                   {collections.sequences.filter((s) => !s.completed).map((seq) => (
-                    <div key={seq.id} className={cn("rounded-lg border p-3 text-sm", seq.has_draft ? "border-amber-200 bg-amber-50/30" : "border-gray-200")}>
+                    <div key={seq.id} className={cn("rounded-lg border p-3 text-sm", seq.has_draft ? "border-status-warning/30" : "border-gray-200")}>
                       <div className="flex items-start justify-between">
                         <div>
                           <span className="font-medium">{seq.customer_name}</span>
@@ -380,7 +379,7 @@ function ARCommandZone() {
                         <span className="text-xs text-gray-500">Step {seq.step}</span>
                       </div>
                       {seq.has_draft && (
-                        <p className="text-xs text-amber-700 mt-1 truncate">Draft: {seq.draft_subject}</p>
+                        <p className="text-xs text-status-warning mt-1 truncate">Draft: {seq.draft_subject}</p>
                       )}
                       {seq.paused && (
                         <p className="text-xs text-gray-400 mt-1">Paused: {seq.pause_reason}</p>
@@ -463,8 +462,8 @@ function APCommandZone() {
                 {Object.entries(bills.buckets).map(([key, val]) => (
                   <span key={key} className={cn(
                     "rounded px-2 py-1",
-                    key === "overdue" && val > 0 ? "bg-red-100 text-red-700" :
-                    key === "due_today" && val > 0 ? "bg-orange-100 text-orange-700" :
+                    key === "overdue" && val > 0 ? "bg-status-error-muted text-status-error" :
+                    key === "due_today" && val > 0 ? "bg-status-warning-muted text-status-warning" :
                     "bg-gray-100 text-gray-600"
                   )}>
                     {key.replace(/_/g, " ")}: ${val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -478,8 +477,8 @@ function APCommandZone() {
                   {bills.bills.map((bill) => (
                     <div key={bill.id} className={cn(
                       "rounded-lg border p-3 text-sm",
-                      bill.days_until_due < 0 ? "border-red-200 bg-red-50/50" :
-                      bill.days_until_due === 0 ? "border-orange-200 bg-orange-50/50" : "border-gray-200"
+                      bill.days_until_due < 0 ? "border-status-error/30" :
+                      bill.days_until_due === 0 ? "border-status-warning/30" : "border-gray-200"
                     )}>
                       <div className="flex items-start justify-between">
                         <div>
@@ -487,7 +486,7 @@ function APCommandZone() {
                           {bill.bill_number && <span className="text-gray-400 ml-2 text-xs">#{bill.bill_number}</span>}
                         </div>
                         <span className={cn("text-xs font-medium",
-                          bill.days_until_due < 0 ? "text-red-600" : bill.days_until_due <= 3 ? "text-orange-600" : "text-gray-500"
+                          bill.days_until_due < 0 ? "text-status-error" : bill.days_until_due <= 3 ? "text-status-warning" : "text-gray-500"
                         )}>
                           {bill.days_until_due < 0 ? `${Math.abs(bill.days_until_due)}d overdue` : bill.days_until_due === 0 ? "Due today" : `${bill.days_until_due}d`}
                         </span>
@@ -595,7 +594,7 @@ function CashFlowZone() {
                     ${(w.projected_cash ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </p>
                 ) : null}
-                {w.has_gap && <span className="text-[10px] text-amber-600">Gap</span>}
+                {w.has_gap && <span className="text-[10px] text-status-warning">Gap</span>}
               </div>
             )
           })}
@@ -920,9 +919,9 @@ function StatementsSubTab() {
         {/* Flagged items */}
         {flagged.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-amber-700 mb-2">{flagged.length} need review</p>
+            <p className="text-xs font-semibold text-status-warning mb-2">{flagged.length} need review</p>
             {flagged.map((item) => (
-              <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 mb-2">
+              <div key={item.id} className="rounded-lg border border-status-warning/30 p-3 mb-2">
                 <div className="flex items-start justify-between">
                   <div>
                     <span className="text-sm font-medium">{item.customer_name}</span>
@@ -935,7 +934,7 @@ function StatementsSubTab() {
                 </div>
                 <div className="flex gap-1.5 mt-1.5 flex-wrap">
                   {item.flag_reasons.map((f, i) => (
-                    <span key={i} className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">{f.message}</span>
+                    <span key={i} className="text-[10px] bg-status-warning-muted text-status-warning rounded px-1.5 py-0.5">{f.message}</span>
                   ))}
                 </div>
               </div>
@@ -1004,7 +1003,7 @@ interface POData {
 
 const PO_STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-600",
-  pending_approval: "bg-amber-100 text-amber-700",
+  pending_approval: "bg-status-warning-muted text-status-warning",
   approved: "bg-blue-100 text-blue-700",
   sent: "bg-blue-100 text-blue-700",
   partially_received: "bg-purple-100 text-purple-700",
@@ -1089,9 +1088,9 @@ function PurchaseOrdersSubTab() {
       {/* Needs attention */}
       {needsAttention.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-amber-700 mb-2">Needs attention ({needsAttention.length})</p>
+          <p className="text-xs font-semibold text-status-warning mb-2">Needs attention ({needsAttention.length})</p>
           {needsAttention.map((po) => (
-            <div key={po.id} className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 mb-2 text-sm">
+            <div key={po.id} className="rounded-lg border border-status-warning/30 p-3 mb-2 text-sm">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="font-medium">{po.vendor_name}</span>
@@ -1101,7 +1100,7 @@ function PurchaseOrdersSubTab() {
               </div>
               <div className="flex gap-1.5 mt-1">
                 {po.approval_status === "pending" && (
-                  <span className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">Awaiting approval</span>
+                  <span className="text-[10px] bg-status-warning-muted text-status-warning rounded px-1.5 py-0.5">Awaiting approval</span>
                 )}
                 {po.match_status === "discrepancy" && (
                   <span className="text-[10px] bg-red-100 text-red-700 rounded px-1.5 py-0.5">Match discrepancy</span>
@@ -1234,7 +1233,7 @@ interface ReconAccount {
 
 const RECON_STATUS_BADGE: Record<string, { label: string; color: string }> = {
   current: { label: "Current", color: "bg-green-100 text-green-700" },
-  due_soon: { label: "Due soon", color: "bg-amber-100 text-amber-700" },
+  due_soon: { label: "Due soon", color: "bg-status-warning-muted text-status-warning" },
   overdue: { label: "Overdue", color: "bg-red-100 text-red-700" },
   never: { label: "Not reconciled", color: "bg-gray-100 text-gray-500" },
 }
@@ -1365,18 +1364,18 @@ function ReconciliationZone() {
 
           <div className="flex gap-3 text-xs">
             <span className="text-green-600">{rs.auto_cleared} auto-cleared</span>
-            <span className="text-amber-600">{rs.suggested} suggested</span>
+            <span className="text-status-warning">{rs.suggested} suggested</span>
             <span className="text-red-600">{rs.unmatched} unmatched</span>
           </div>
 
           {/* Suggested matches */}
           {suggested.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-amber-700 mb-2">{suggested.length} suggested matches</p>
+              <p className="text-xs font-semibold text-status-warning mb-2">{suggested.length} suggested matches</p>
               {suggested.slice(0, 5).map((t) => {
                 const txn = t as { id: string; date: string; description: string; amount: number; confidence: number | null }
                 return (
-                  <div key={txn.id} className="rounded border border-amber-200 bg-amber-50/30 p-2 mb-1.5 text-xs flex items-center justify-between">
+                  <div key={txn.id} className="rounded border border-status-warning/30 p-2 mb-1.5 text-xs flex items-center justify-between">
                     <div>
                       <span className="text-gray-400">{txn.date}</span> <span className="font-medium">{txn.description}</span> <span className="ml-2">${Math.abs(txn.amount).toFixed(2)}</span>
                       {txn.confidence && <span className="text-gray-400 ml-1">({Math.round(txn.confidence * 100)}%)</span>}
@@ -1520,7 +1519,7 @@ interface HealthCheck {
 
 const SCORE_STYLES = {
   green: { label: "Audit-Ready", bg: "bg-green-50", border: "border-green-200", text: "text-green-700", icon: "✓" },
-  amber: { label: "Needs Attention", bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", icon: "⚠" },
+  amber: { label: "Needs Attention", bg: "bg-surface-sunken", border: "border-status-warning/40", text: "text-status-warning", icon: "⚠" },
   red: { label: "Issues Found", bg: "bg-red-50", border: "border-red-200", text: "text-red-700", icon: "●" },
 }
 
@@ -1588,8 +1587,8 @@ function AuditReadinessZone() {
           </div>
         ))}
         {amberFindings.map((f, i) => (
-          <div key={i} className="rounded-lg border-l-4 border-amber-500 bg-amber-50/50 p-2.5 mb-1.5 text-xs">
-            <p className="text-amber-800">{f.message}</p>
+          <div key={i} className="rounded-lg border-l-4 border-status-warning bg-surface-sunken/50 p-2.5 mb-1.5 text-xs">
+            <p className="text-content-base">{f.message}</p>
           </div>
         ))}
         {greenFindings.length > 0 && (

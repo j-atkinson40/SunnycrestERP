@@ -480,7 +480,7 @@ function BriefingActionItems({ items, onRefresh }: { items: ActionItems; onRefre
                         </span>
                       )}
                       {!order.primary_assignee_id && (
-                        <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                        <Badge variant="outline" className="text-[10px] border-status-warning/40 text-status-warning">
                           No driver
                         </Badge>
                       )}
@@ -538,10 +538,10 @@ function BriefingActionItems({ items, onRefresh }: { items: ActionItems; onRefre
                         className={cn(
                           "text-[10px]",
                           inv.days_overdue > 60
-                            ? "border-red-300 text-red-700"
+                            ? "border-status-error/40 text-status-error"
                             : inv.days_overdue > 30
-                              ? "border-amber-300 text-amber-700"
-                              : "border-yellow-300 text-yellow-700",
+                              ? "border-status-warning/40 text-status-warning"
+                              : "border-border-base text-content-muted",
                         )}
                       >
                         {inv.days_overdue}d overdue
@@ -613,7 +613,7 @@ function BriefingActionItems({ items, onRefresh }: { items: ActionItems; onRefre
                       <span className="text-xs text-gray-500">{inv.customer_name}</span>
                       <span className="text-xs font-medium text-gray-700">{fmtCurrency(inv.total)}</span>
                       {inv.has_exceptions && (
-                        <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                        <Badge variant="outline" className="text-[10px] border-status-warning/40 text-status-warning">
                           Exceptions
                         </Badge>
                       )}
@@ -925,7 +925,7 @@ export function MorningBriefingCard() {
       <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
         Announcements
         {unacknowledgedSafetyCount > 0 && (
-          <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+          <span className="ml-2 inline-flex items-center rounded-full bg-status-warning-muted px-2 py-0.5 text-xs font-medium text-status-warning">
             {unacknowledgedSafetyCount} safety
           </span>
         )}
@@ -942,7 +942,7 @@ export function MorningBriefingCard() {
                 key={a.id}
                 className={cn(
                   "pl-3 pr-2 py-2 rounded-sm border-l-2",
-                  dlStatus === "past" ? "border-l-red-500 bg-red-50/50" : "border-l-amber-500 bg-amber-50/50",
+                  dlStatus === "past" ? "border-l-status-error bg-surface-sunken/50" : "border-l-status-warning bg-surface-sunken/50",
                 )}
               >
                 {isAcknowledging ? (
@@ -983,8 +983,8 @@ export function MorningBriefingCard() {
                   // Normal required safety notice content
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                      <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                      <AlertTriangle className="h-3.5 w-3.5 text-status-warning shrink-0" />
+                      <span className="text-xs font-semibold text-status-warning uppercase tracking-wide">
                         Safety Notice — Action Required
                       </span>
                     </div>
@@ -1012,8 +1012,8 @@ export function MorningBriefingCard() {
                         <span
                           className={cn(
                             "text-xs font-medium",
-                            dlStatus === "past" && "text-red-600",
-                            dlStatus === "approaching" && "text-amber-600",
+                            dlStatus === "past" && "text-status-error",
+                            dlStatus === "approaching" && "text-status-warning",
                             dlStatus === "ok" && "text-gray-500",
                           )}
                         >
@@ -1023,7 +1023,7 @@ export function MorningBriefingCard() {
                     </div>
                     <button
                       onClick={() => setAcknowledgingId(a.id)}
-                      className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors"
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-content-on-accent hover:bg-accent-hover transition-colors"
                     >
                       <Check className="h-3 w-3" />
                       I have read and understood this
@@ -1093,8 +1093,8 @@ export function MorningBriefingCard() {
               key={a.id}
               className={cn(
                 "pl-3 pr-2 py-2 rounded-sm border-l-2",
-                a.priority === "critical" && "border-l-red-500 bg-red-50/50",
-                a.priority === "warning" && "border-l-amber-500 bg-amber-50/50",
+                a.priority === "critical" && "border-l-status-error bg-surface-sunken/50",
+                a.priority === "warning" && "border-l-status-warning bg-surface-sunken/50",
                 a.priority === "info" && "border-l-blue-400 bg-blue-50/50",
               )}
             >
@@ -1276,8 +1276,8 @@ export function MorningBriefingCard() {
         {aiPatterns.length > 0 && (
           <div className="mb-4 space-y-2">
             {aiPatterns.map((p) => (
-              <div key={p.alert_id} className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg border border-amber-100 text-sm">
-                <span className="text-amber-500 mt-0.5">💡</span>
+              <div key={p.alert_id} className="flex items-start gap-2 p-2 bg-surface-sunken rounded-lg border border-border-subtle text-sm">
+                <span className="mt-0.5">💡</span>
                 <div className="flex-1">
                   <p className="text-gray-700">{p.message}</p>
                   {p.action_url && <a href={p.action_url} className="text-xs text-blue-600 hover:underline">View account →</a>}
