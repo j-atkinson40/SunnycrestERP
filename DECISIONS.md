@@ -913,3 +913,40 @@ docs/design-archive/DESIGN_LANGUAGE_brass-era_superseded-2026-07-21.md
 (retained for the two-easing-curve motion spec + historical context).
 
 ---
+
+## 2026-07-22 — Design language calibration: console/Braun anchors, arc close
+
+Closes the brass→chrome/steel pivot (opened 2026-07-21, 3b589e26; token swap
+4dc8868a; warm-hue sweep 56d16ac6; calibration d50f9cab; live on staging 3842c036).
+
+Anchors:
+- DARK (hero) = mixing console — near-black substrate, high contrast, functional
+  color reads as LED meters. Rationale: dark is the internal operator's all-day
+  instrument; bold/alive suits it.
+- LIGHT = Braun/Rams, cooled off its warm-white to neutral paper (hue ~250, ~0
+  chroma) so it does not reintroduce brass-era warmth. Rationale: light
+  disproportionately serves customer-facing surfaces (tenant portals, website
+  builder, emailed documents) where a memorial-adjacent industry wants dignity.
+  The modes serve DIFFERENT audiences, so anchors deliberately do not match in
+  energy — bold instrument (dark) vs dignified face (light).
+
+Provenance: values EYEBALLED to approved directional previews, not calibrated
+against real-world photographs. Ground-truth photo-dial deferred and available.
+Recorded so canon does not overclaim.
+
+Canonical rules set:
+- Chrome accent INVERTS in light (chrome→ink); steel darkens for white; accent
+  state variants move on the lightness axis, never chroma.
+- Light mode RETAINED (parallel token set already existed; editor requires both
+  modes per token — ~90 authored light values, cheaper than a dark-only refactor).
+- --status-info demoted to neutral chrome so --signature-steel is the only blue;
+  steel rationed (≤ ~3/screen).
+- Fonts: SF via system stack only; NO bundled SF webfont (not web-licensed). Plex
+  + Fraunces retired from the UI stack; Fraunces asset PRESERVED for the document/
+  email emission arc (memorial documents are the correct place for a serif).
+
+Deferred (tracked, not done): backend document/email re-skin (carries the Fraunces
+serif decision); ground-truth photo calibration; the ~449 non-primary-surface
+legacy warm classes (separate debt sweep).
+
+---

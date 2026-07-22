@@ -1721,3 +1721,33 @@ Process conventions discovered during the Workflow Builder rebuild + inline-para
 - `StatementRunItem` model added retroactively — verify all service code references it correctly
 - `APP_NAME` used as Redis key prefix in `job_queue_service.py` — key shifts if `APP_NAME` env changes
 
+
+## Design-system conventions (chrome/steel pivot, 2026-07)
+
+- TOKENS ARE THE SINGLE SOURCE. A design change is a token revalue, not a
+  component edit. The pivot re-skinned the whole platform by flipping the token
+  layer; the only sanctioned component touches were the card primitive, the dead
+  brass fallback, and the info badge. If a visual change needs a fourth component
+  edited, the token layer is wrong — stop and fix tokens.
+- MACHINED DEPTH LIVES IN ONE PRIMITIVE. specular-edge + gradient + shadow is baked
+  into ui/card.tsx keyed by an `elevation` prop (recessed/panel/raised) so all
+  importers flip together. Never a per-component `.panel-machined` utility.
+- DERIVED TOKENS EXPRESS RELATIONSHIPS, NOT LITERALS. gradients = color-mix ratios;
+  washes = accent RGB at fixed alphas; rings = steel/0.5 — so they track their
+  anchor when it moves. Never freeze a computed pair as a hardcoded value.
+- SEMANTIC SWEEPS: CLASSIFY, DON'T PURGE. A severity ramp (red>orange>amber) is ONE
+  semantic unit — migrate all tiers together or the most-severe tier keeps the
+  banned style. Buckets: decorative→neutral/chrome token; bad-state→fn-negative
+  (border/text/pill, never a wash); caution→fn-caution (sparingly). Route through
+  tokens, never new literals.
+- "REVALUE-ONLY" DISPATCHES FREEZE STRUCTURE. No new tokens, renames, or slots;
+  STOP if a value change requires a structural one.
+
+## Ground-truth-first (stale-premise discipline)
+
+Before acting on a remembered problem, verify it's still true. The "r125 staging
+heal" was chased for an outage resolved 6 days earlier; staging was serving fine and
+r125 already existed — blind-authoring the migration would have forked the alembic
+head and caused a real outage. A remembered "X is broken/down/blocked" is a
+hypothesis to confirm against live ground truth, not a fact to act on.
+Investigation-first is the cheap path, not the ceremonial one.
