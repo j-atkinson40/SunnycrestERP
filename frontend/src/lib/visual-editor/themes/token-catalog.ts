@@ -345,7 +345,7 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     valueType: "shadow-composition",
     defaults: {
       light: "0 8px 24px var(--shadow-color-base), 0 2px 6px var(--shadow-color-subtle)",
-      dark: "(see tokens.css — three-layer composition)",
+      dark: "0 10px 28px var(--shadow-color-strong), 0 3px 8px var(--shadow-color-base), inset 0 1px 0 var(--edge-specular)",
     },
     derivedFrom: ["shadow-color-base", "shadow-color-subtle", "shadow-color-strong", "edge-specular"],
     editable: false,
@@ -358,7 +358,7 @@ export const TOKEN_CATALOG: TokenEntry[] = [
     valueType: "shadow-composition",
     defaults: {
       light: "0 16px 40px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base)",
-      dark: "(see tokens.css — three-layer composition)",
+      dark: "0 20px 48px var(--shadow-color-strong), 0 6px 16px var(--shadow-color-base), inset 0 1px 0 var(--edge-specular)",
     },
     derivedFrom: ["shadow-color-strong", "shadow-color-base", "edge-specular"],
     editable: false,
