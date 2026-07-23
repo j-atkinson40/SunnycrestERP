@@ -6,7 +6,9 @@ The resolver uses pg_trgm similarity matching backed by GIN trigram
 indexes — same mechanism Phase 1's command-bar resolver uses.
 
 Why this module exists alongside Phase 1's resolver:
-  - Phase 1's `SEARCHABLE_ENTITIES` doesn't include `company_entity`
+  - Historical: Phase 1's `SEARCHABLE_ENTITIES` didn't include
+    `company_entity`; S-1 (2026-07) added it as the 8th type, riding
+    the same r33 trigram index this module introduced
     (the CRM's company table). Phase 4 needs it for `case.funeral_home`,
     `contact.company` and similar entity-typed fields.
   - Phase 1 returns a list of hits for the command bar; Phase 4 wants

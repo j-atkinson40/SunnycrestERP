@@ -235,7 +235,7 @@ class TestVocabularyTranslation:
 
     def test_substrate_to_picker_label_unmapped_passes_through(self):
         """Entity types outside picker subset still render — operators
-        can author tokens for any of the 7 SEARCHABLE_ENTITIES."""
+        can author tokens for any of the 8 SEARCHABLE_ENTITIES."""
         from app.services.documents.mention_filter import (
             substrate_to_picker_ui_label,
         )
@@ -605,7 +605,7 @@ class TestMentionEndpoint:
             MentionResolveRequest(entity_type="invoice", query="x")
 
     def test_schema_rejects_task(self):
-        """Task is in SEARCHABLE_ENTITIES (7 entity types) but NOT in
+        """Task is in SEARCHABLE_ENTITIES (8 entity types) but NOT in
         the picker subset (4 entity types)."""
         from pydantic import ValidationError
 

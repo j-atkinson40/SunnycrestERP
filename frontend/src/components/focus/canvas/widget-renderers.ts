@@ -104,6 +104,18 @@ export interface WidgetRendererProps {
     // pulse_grid than focus_canvas). Existing widgets that ignore
     // `surface` continue to render their canvas-tier shape.
     | "pulse_grid"
+    // S-1 (entity-portal arc) — command-bar Act host. The host
+    // enforces §4.3 Act discipline (ephemeral, non-draggable,
+    // max 2–3); the widget stays host-agnostic and may use this
+    // discriminator only for density. S-3 re-hosts the same widget
+    // as a Focus core; S-5 parks it in WidgetChrome — no rewrite.
+    | "command_bar"
+  /** S-1 — relational-pivot callback (§4.2 "click an order on the
+   *  customer's card → the order's own entity surfaces appear").
+   *  The HOST interprets the pivot (Act host swaps the card; Focus
+   *  hosts may peek or re-anchor). Optional shared prop per the
+   *  registry's future-shared-props rule — NOT a data pipe. */
+  onPivot?: (entityType: string, entityId: string) => void
   /** Phase W-3b — per-instance widget configuration.
    *
    *  Sourced from `PinConfig.config` (Spaces pins) or `WidgetState.config`

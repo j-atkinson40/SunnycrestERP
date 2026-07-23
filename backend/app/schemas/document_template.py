@@ -433,8 +433,8 @@ class DocumentTypeCatalogResponse(BaseModel):
 #
 # Picker subset is enforced via Literal — out-of-subset entity_types
 # (e.g. `invoice`, `document`, `task`) return 422 from FastAPI's
-# request validation. The mention substrate supports all 7 entity
-# types in SEARCHABLE_ENTITIES; the picker shipping subset is
+# request validation. The mention substrate supports all 8 entity
+# types in SEARCHABLE_ENTITIES (company_entity joined in S-1); the picker shipping subset is
 # deliberately narrower at v1. Expansion trigger criteria locked at
 # Arc 4b.2 investigation.
 

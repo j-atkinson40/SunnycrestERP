@@ -167,3 +167,55 @@ def query_command_bar(
         ],
         total=response.total,
     )
+
+
+# ── S-1 — Entity portal hydration (§4.2) ─────────────────────────────
+# Second-call hydration: fired on result HIGHLIGHT (frontend debounces
+# ~150ms + aborts in-flight on highlight move). Deliberately a
+# SEPARATE endpoint so /query's BLOCKING latency gate is untouched.
+# Own BLOCKING gate: tests/test_command_bar_portal_latency.py
+# (p50 < 150 ms / p99 < 400 ms).
+
+
+class PortalResponseBody(BaseModel):
+    entity_type: str
+    entity_id: str
+    display_label: str
+    navigate_url: str
+    portal: dict
+    pivots: list[dict] = Field(default_factory=list)
+    actions: list[dict] = Field(default_factory=list)
+    omitted_sections: list[str] = Field(default_factory=list)
+
+
+@router.get("/portal/{entity_type}/{entity_id}", response_model=PortalResponseBody)
+def get_entity_portal(
+    entity_type: str,
+    entity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hydrate one entity-portal card. Tenant-scoped; permission-gated
+    sections are quietly omitted (listed in `omitted_sections`)."""
+    from fastapi import HTTPException
+
+    from app.services.command_bar.portal import build_portal
+    from app.services.peek.types import EntityNotFound, UnknownEntityType
+
+    try:
+        resp = build_portal(db, current_user, entity_type, entity_id)
+    except UnknownEntityType as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except EntityNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return PortalResponseBody(
+        entity_type=resp.entity_type,
+        entity_id=resp.entity_id,
+        display_label=resp.display_label,
+        navigate_url=resp.navigate_url,
+        portal=resp.portal,
+        pivots=resp.pivots,
+        actions=resp.actions,
+        omitted_sections=resp.omitted_sections,
+    )

@@ -55,6 +55,8 @@ import { DeliveryCardRaw as DeliveryCardRawImpl } from "@/components/dispatch/De
 import { AncillaryCardRaw as AncillaryCardRawImpl } from "@/components/dispatch/AncillaryCard"
 import { OrderCardRaw as OrderCardRawImpl } from "@/components/delivery/OrderCard"
 
+import { EntityPortalCard as EntityPortalCardRawImpl } from "@/components/entity-cards/EntityPortalCard"
+
 import { registerComponent } from "../register"
 
 
@@ -304,3 +306,72 @@ export const OrderCard = registerComponent({
   schemaVersion: 1,
   componentVersion: 1,
 })(OrderCardRawImpl)
+
+
+// ─── portal-card (S-1 — command-bar entity portal, §4.2) ──────────
+// The summonable-surface widget. One registration; per-entity
+// dispatch happens inside via config.entity_type (6 shipped types:
+// company_entity flagship, contact, fh_case, sales_order, invoice,
+// product). Canvas-registry counterpart registered in the component
+// module itself (`entity-card.portal`) per the two-layer rule.
+
+export const PortalEntityCard = registerComponent({
+  type: "entity-card",
+  name: "portal-card",
+  displayName: "Entity Portal Card",
+  description:
+    "Command-bar entity portal card (§4.2) — the Act-side summonable surface. Brief-variant identity + related lists + permission-gated financial standing + relational pivots. Host-agnostic by contract: the same component re-hosts as a Focus core (S-3) and parks in WidgetChrome (S-5). First new UI authored in the calibrated chrome/steel language.",
+  category: "command-bar",
+  verticals: ["manufacturing", "funeral_home", "cemetery", "crematory"],
+  userParadigms: ["operator-power-user", "focused-executor"],
+  consumedTokens: [
+    "surface-raised",
+    "panel-gradient-raised",
+    "shadow-level-2",
+    "border-subtle",
+    "border-base",
+    "border-strong",
+    "accent",
+    "accent-hover",
+    "content-on-accent",
+    "content-strong",
+    "content-base",
+    "content-muted",
+    "content-subtle",
+    "signature-steel",
+    "status-error",
+    "radius-base",
+    "text-body",
+    "text-body-sm",
+    "text-caption",
+    "text-micro",
+    "duration-quick",
+  ],
+  configurableProps: {
+    showPivots: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show relational pivots",
+      description:
+        "Related-entity pivot links (steel, rationed). Hiding leaves the card informational-only.",
+    },
+    showActions: {
+      type: "boolean",
+      default: true,
+      displayLabel: "Show action row",
+      description:
+        "Bottom affordance row: one chrome primary (navigate) + quiet tel/mailto ghosts.",
+    },
+    maxListItems: {
+      type: "number",
+      default: 3,
+      bounds: [1, 5],
+      displayLabel: "Max list items",
+      description:
+        "Cap for contacts / recent-orders / pivot lists on the Brief variant.",
+    },
+  },
+  variants: [{ name: "brief", displayLabel: "Brief" }],
+  schemaVersion: 1,
+  componentVersion: 1,
+})(EntityPortalCardRawImpl)

@@ -537,8 +537,11 @@ _ENTITY_ICON_MAP: dict[str, str] = {
     "sales_order": "ShoppingCart",
     "invoice": "Receipt",
     "contact": "User",
+    # S-1 — company/customer identity (8th searchable type).
+    "company_entity": "Building2",
     "product": "Package",
     "document": "FileText",
+    "task": "ListChecks",
 }
 
 

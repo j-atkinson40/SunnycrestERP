@@ -242,7 +242,7 @@ An overlay appears beneath the input with checkmarks for Deceased name, Date of 
 
 **Frontend:** `types/nl-creation.ts`, `services/nl-creation-service.ts`, `hooks/useNLExtraction.ts` (300ms debounce — wider than the command bar's 100-200ms to amortize AI calls), `components/nl-creation/{NLOverlay,NLField,NLCreationMode,detectNLIntent}`. Voice input reuses Phase 1's `useVoiceInput` — transcript flows into the same text field + same pipeline.
 
-**Migration r33_company_entity_trigram_indexes:** adds a `CREATE INDEX CONCURRENTLY ix_company_entities_name_trgm USING gin (name gin_trgm_ops)`. Required for the entity resolver's <30ms budget. Phase 1 resolver's `SEARCHABLE_ENTITIES` tuple deliberately NOT extended in Phase 4 — that's a coordinated Phase 5 nav/search unification.
+**Migration r33_company_entity_trigram_indexes:** adds a `CREATE INDEX CONCURRENTLY ix_company_entities_name_trgm USING gin (name gin_trgm_ops)`. Required for the entity resolver's <30ms budget. Phase 1 resolver's `SEARCHABLE_ENTITIES` tuple deliberately NOT extended in Phase 4 — that's a coordinated Phase 5 nav/search unification. **SUPERSEDED (S-1, 2026-07):** the command-bar entity-portal arc IS that coordinated work; S-1 deliberately added `company_entity` as the 8th searchable type (r33 index already existed; ruled in the S-1 amendment — see DECISIONS 2026-07-23 park-ratification arc).
 
 **Performance targets:** p50 < 600ms, p99 < 1200ms. BLOCKING CI gate at `backend/tests/test_nl_creation_latency.py`. Actual (no-AI path on dev hardware): **p50=5.9ms, p99=7.2ms** — 100× headroom on p50 without AI. With Haiku in the loop, typical p50 drifts to ~350-450ms.
 
@@ -744,7 +744,7 @@ SURFACE RENDERER  — overlay + result list + shortcut handling
 |---|---|
 | `registry.py` | OWNS `ActionRegistryEntry` type + singleton registry + seed. Pattern mirrors `OperationsBoardRegistry` / `vault.hub_registry`. Phase 2+ adds saved views; Phase 5 adds workflows; Phase 6 adds briefings. |
 | `intent.py` | Rule-based classifier (no AI in Phase 1 — preserves p50 < 100 ms budget). 5 outcomes: navigate / search / create / action / empty. Record-number regex + exact-alias + create-verb + navigate-verb detectors. |
-| `resolver.py` | pg_trgm fuzzy search across 7 entity types (fh_case, sales_order, invoice, contact, product, document, task) via single UNION ALL per query. Recency weighting 1.0 → 0.3 over 180 days. Tenant isolation mandatory. `task` added Phase 5 (Triage Workspace migration r34) — twelfth audit-count recalibration fixed at Arc 4b.2a. |
+| `resolver.py` | pg_trgm fuzzy search across 8 entity types (fh_case, sales_order, invoice, contact, company_entity, product, document, task) via single UNION ALL per query. Recency weighting 1.0 → 0.3 over 180 days. Tenant isolation mandatory. `task` added Phase 5 (Triage Workspace migration r34) — twelfth audit-count recalibration fixed at Arc 4b.2a. `company_entity` added S-1 (entity-portal arc, 2026-07) riding the r33 trigram index — thirteenth recalibration. |
 | `retrieval.py` | Orchestrator. OWNS the `QueryResponse` + `ResultItem` shape contract returned by `/api/v1/command-bar/query`. Frontend callers depend on this shape. Bumping it is a coordinated schema change. |
 
 **New endpoint:** `POST /api/v1/command-bar/query` (contract in `backend/app/api/routes/command_bar.py`). Frontend UI at `frontend/src/components/core/CommandBar.tsx` fires it as a 4th parallel fetch alongside the existing `/core/command` + `/workflows/command-bar` + `/core/command-bar/search` calls. Results merge via type-ranked sort in the existing UI pipeline.
@@ -753,7 +753,7 @@ SURFACE RENDERER  — overlay + result list + shortcut handling
 
 **Performance targets (p50 < 100 ms, p99 < 300 ms) enforced as BLOCKING CI gate** via `backend/tests/test_command_bar_latency.py`. Actual on dev hardware: **p50 = 5.0 ms, p99 = 6.9 ms** (50-sample sequential mixed-shape workload; seeded tenant with ~24 entities).
 
-**Compose-as-registry refactor:** The old `wf_compose` workflow doesn't exist in code (confirmed via audit — only `wf_create_order` exists). Missing create actions (quote, invoice, contact, product) added to both the backend registry and the frontend `actionRegistry.ts` via `crossVerticalCreateActions`. Case creation stays in `funeralHomeActions.fh_new_arrangement` (FH-preset-only). Typing `new sales order` or `create quote` directly surfaces the create action at the top.
+**Compose-as-registry refactor:** The old `wf_compose` workflow doesn't exist in code (confirmed via audit — only `wf_create_order` exists). Missing create actions (quote, invoice, contact, product) added to both the backend registry and the frontend action registry (`frontend/src/services/actions/registry.ts`) via `crossVerticalCreateActions`. Case creation stays in `funeralHomeActions.fh_new_arrangement` (FH-preset-only). Typing `new sales order` or `create quote` directly surfaces the create action at the top.
 
 **Frontend:** `frontend/src/core/commandBarQueryAdapter.ts` is the interface-only adapter translating backend `ResultItem` → frontend `CommandAction`. No added logic. Full frontend registry reshape deferred to **Phase 5 (Triage Workspace)**.
 

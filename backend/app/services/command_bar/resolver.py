@@ -128,6 +128,23 @@ SEARCHABLE_ENTITIES: tuple[_SearchableEntity, ...] = (
         recency_col_expr="updated_at",
         url_template="/vault/crm/companies/{master_company_id}",
     ),
+    # S-1 (2026-07) — company_entity added as the 8th searchable type.
+    # Supersedes the Phase-4 deferral ("coordinated Phase 5 nav/search
+    # unification") — the entity-portal arc IS that coordinated work.
+    # Ruled in the S-1 amendment; §4.9's demo path ("Hopkins") resolves
+    # through this entry. Trigram index already exists (r33,
+    # ix_company_entities_name_trgm, built for NL creation) — no
+    # migration needed. CompanyEntity is the canonical customer/account
+    # identity (Customer joins via master_company_id at hydration).
+    _SearchableEntity(
+        entity_type="company_entity",
+        table="company_entities",
+        search_column="name",
+        primary_label_expr="name",
+        secondary_expr="COALESCE(city, customer_type, '')",
+        recency_col_expr="COALESCE(updated_at, created_at)",
+        url_template="/vault/crm/companies/{id}",
+    ),
     _SearchableEntity(
         entity_type="product",
         table="products",
@@ -220,7 +237,7 @@ def _build_union_query(
         # is_active gate for the entity types that have it. Do this
         # as a string-level check — simple + explicit.
         is_active_filter = ""
-        if ent.entity_type in ("contact", "product"):
+        if ent.entity_type in ("contact", "product", "company_entity"):
             is_active_filter = "AND is_active = TRUE"
 
         # Contact's URL has a non-id substitution (master_company_id).

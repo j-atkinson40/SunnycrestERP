@@ -50,6 +50,10 @@ import { NaturalLanguageOverlay } from "@/components/workflows/NaturalLanguageOv
 // workflow-scoped NaturalLanguageOverlay above; used for case /
 // event / contact entity types that don't have associated workflows.
 import { NLCreationMode } from "@/components/nl-creation/NLCreationMode";
+import {
+  CommandBarSurfaceHost,
+  candidateFromResultId,
+} from "@/components/core/CommandBarSurfaceHost";
 import { detectNLIntent } from "@/components/nl-creation/detectNLIntent";
 import type { NLEntityType } from "@/types/nl-creation";
 import { SlideOver } from "@/components/ui/SlideOver";
@@ -950,6 +954,14 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const showRecent = !query && recentActions.length > 0;
   const displayInterim = isListening && interimTranscript;
 
+  // S-1 (§4.2) — entity-portal candidate from the HIGHLIGHTED result.
+  // Null while any NL/AI mode owns the surface; null for non-entity
+  // results. Hydration (150ms debounce + abort) lives in the card.
+  const portalCandidate =
+    activeNLWorkflow || activeNLEntity || aiMode || activeWorkflow
+      ? null
+      : candidateFromResultId(results[selectedIdx]?.id);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
@@ -960,6 +972,11 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+
+      {/* S-1 — Act-side surface host (§4.3): floats BESIDE the
+          palette; ephemeral with it; additive — the ranked result
+          list below is untouched. */}
+      <CommandBarSurfaceHost highlighted={portalCandidate} />
 
       {/* Modal */}
       <div
