@@ -9,7 +9,7 @@ from sqlalchemy import (
     Numeric, String, Text, Time,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -41,6 +41,16 @@ class FuneralCase(Base):
     casket_manufacturer_company_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("companies.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # One-to-one to the deceased satellite ("always with case" per
+    # FUNERAL_HOME_VERTICAL.md). Read-only + lazy — added for the
+    # saved-view executor's fh_case repoint (2026-07, the data-layer
+    # analogue of the command-bar resolver fix 3a3b5759): the executor
+    # joinedload()s this so its row_serializer can surface decedent
+    # names without an N+1. viewonly so it never participates in writes.
+    deceased: Mapped["CaseDeceased | None"] = relationship(
+        "CaseDeceased", uselist=False, viewonly=True, lazy="select",
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────

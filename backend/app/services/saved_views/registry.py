@@ -254,24 +254,41 @@ def _seed_default_entities() -> None:
     """
 
     # fh_case ────────────────────────────────────────────────────────
+    # fh-case-table-split fix (2026-07): repointed from the legacy
+    # first-gen `fh_cases` table to the canonical FH-1 pair
+    # funeral_cases ⋈ case_deceased — the data-layer analogue of the
+    # command-bar resolver fix 3a3b5759 (a catalog/registry consumer
+    # that was still reading the superseded table, so seeded director
+    # saved-views returned empty). Decedent names live on the
+    # `deceased` satellite; query_builder joinedload()s it (single-
+    # entity query → executor filter/sort/count machinery unchanged;
+    # no N+1). Filter/sort stay on funeral_cases columns; the
+    # satellite name fields are display-only (filterable=False) —
+    # cross-table filtering is out of scope, matching 3a3b5759's
+    # 2-table shape. service/disposition satellites are not surfaced
+    # here (a later enrichment if a saved-view needs them).
     def fh_case_query(db: Session, company_id: str):
-        from app.models.fh_case import FHCase
+        from sqlalchemy.orm import joinedload
 
-        return db.query(FHCase).filter(
-            FHCase.company_id == company_id,
+        from app.models.funeral_case import FuneralCase
+
+        return (
+            db.query(FuneralCase)
+            .options(joinedload(FuneralCase.deceased))
+            .filter(FuneralCase.company_id == company_id)
         )
 
     def fh_case_serialize(row: Any) -> dict:
+        dec = row.deceased
         return {
             "id": row.id,
             "case_number": row.case_number,
             "status": row.status,
-            "deceased_first_name": row.deceased_first_name,
-            "deceased_last_name": row.deceased_last_name,
-            "deceased_date_of_death": _iso_date(row.deceased_date_of_death),
-            "service_type": row.service_type,
-            "service_date": _iso_date(row.service_date),
-            "disposition_type": row.disposition_type,
+            "current_step": row.current_step,
+            "deceased_first_name": dec.first_name if dec else None,
+            "deceased_last_name": dec.last_name if dec else None,
+            "deceased_date_of_death": _iso_date(dec.date_of_death) if dec else None,
+            "opened_at": _iso_dt(row.opened_at),
             "updated_at": _iso_dt(row.updated_at),
         }
 
@@ -279,32 +296,29 @@ def _seed_default_entities() -> None:
         entity_type="fh_case",
         display_name="Cases",
         icon="Folder",
-        navigate_url_template="/cases/{id}",
+        navigate_url_template="/fh/cases/{id}",
         query_builder=fh_case_query,
         row_serializer=fh_case_serialize,
         available_fields=[
             FieldMetadata("id", "ID", "text", filterable=False, groupable=False, hidden_by_default=True),
             FieldMetadata("case_number", "Case number", "text"),
+            # Canonical FuneralCase.status vocabulary (active | completed
+            # | cancelled | on_hold) — supersedes the legacy FHCase enum.
             FieldMetadata(
                 "status", "Status", "enum",
-                enum_values=["first_call", "arranging", "scheduled", "completed", "closed", "cancelled"],
+                enum_values=["active", "completed", "cancelled", "on_hold"],
             ),
-            FieldMetadata("deceased_first_name", "Decedent first name", "text"),
-            FieldMetadata("deceased_last_name", "Decedent last name", "text"),
-            FieldMetadata("deceased_date_of_death", "Date of death", "date"),
-            FieldMetadata(
-                "service_type", "Service type", "enum",
-                enum_values=["traditional", "cremation", "memorial", "graveside", "direct"],
-            ),
-            FieldMetadata("service_date", "Service date", "date"),
-            FieldMetadata(
-                "disposition_type", "Disposition type", "enum",
-                enum_values=["burial", "cremation", "entombment", "other"],
-            ),
+            FieldMetadata("current_step", "Current step", "text"),
+            # Decedent fields live on the case_deceased satellite —
+            # display-only (join-filtering is out of scope this arc).
+            FieldMetadata("deceased_first_name", "Decedent first name", "text", filterable=False, groupable=False),
+            FieldMetadata("deceased_last_name", "Decedent last name", "text", filterable=False, groupable=False),
+            FieldMetadata("deceased_date_of_death", "Date of death", "date", filterable=False, groupable=False),
+            FieldMetadata("opened_at", "Opened", "datetime", groupable=False),
             FieldMetadata("updated_at", "Last updated", "datetime", groupable=False),
         ],
         default_sort=[{"field": "updated_at", "direction": "desc"}],
-        default_columns=["case_number", "deceased_last_name", "status", "service_date"],
+        default_columns=["case_number", "deceased_last_name", "status", "updated_at"],
         # Single-vertical: only funeral homes have FH cases. The
         # canonical example for Pattern A enforcement
         # (BRIDGEABLE_MASTER §3.25 amendment).

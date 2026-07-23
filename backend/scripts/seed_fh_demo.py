@@ -1352,12 +1352,35 @@ def main():
             "role": "director",
             "password": "DemoDirector123!",
         })
-        _ensure_user(db, hopkins.id, "office@hopkinsfh.example.com", {
+        office = _ensure_user(db, hopkins.id, "office@hopkinsfh.example.com", {
             "first_name": "Lisa",
             "last_name": "Johnson",
             "role": "office",
             "password": "DemoOffice123!",
         })
+
+        # fh-case-table-split fix (2026-07): materialize the role-based
+        # saved views for the Hopkins users. seed_fh_demo creates users
+        # via ORM (bypassing the registration flow that normally runs
+        # this seed), so pre-fix the director/admin saved-view *pins*
+        # in the seeded spaces pointed at views that were never
+        # materialized (0 saved_view VaultItems on staging). Must run
+        # AFTER the executor repoint above — otherwise it materializes
+        # views that query the dead fh_cases table. `seed_for_user` is
+        # idempotent (per-role preferences guard) + self-selects the
+        # right templates by role + vertical, so calling it for every
+        # Hopkins user is safe (office role → 0 FH templates → no-op).
+        from app.services.saved_views.seed import (
+            seed_for_user as _seed_saved_views_for_user,
+        )
+        for _u in (admin, torres, chen, office):
+            try:
+                n = _seed_saved_views_for_user(db, user=_u, tenant_vertical="funeral_home")
+                if n:
+                    print(f"  ✓ Seeded {n} saved view(s) for {_u.email}")
+            except Exception as _exc:  # best-effort — never fail the deploy seed
+                print(f"  ⚠ saved-view seed skipped for {_u.email}: {_exc}")
+        db.commit()
 
         # St Mary's Cemetery
         # R-1.6: slug aligned to canonical CLAUDE.md docs ("st-marys" not "stmarys").

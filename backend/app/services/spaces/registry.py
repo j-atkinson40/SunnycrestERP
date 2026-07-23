@@ -103,14 +103,20 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="calendar-heart",
             accent="warm",
             is_default=True,
-            default_home_route="/cases",
+            # fh-case-table-split fix (2026-07): canonical FH-1 list
+            # route. The legacy /cases surface reads the superseded
+            # fh_cases table (0 rows post-repoint); /fh/cases is the
+            # canonical list. The /cases/new pin is DROPPED — there is
+            # no canonical standalone create route (create lives on the
+            # /fh/cases list, and NL creation via the command bar is
+            # the primary path).
+            default_home_route="/fh/cases",
             pins=[
                 # Follow-up 1 — directors get their task triage queue
                 # pinned at the top of Arrangement so the decision
                 # stream is one click from their primary workspace.
                 PinSeed(pin_type="triage_queue", target="task_triage"),
-                PinSeed(pin_type="nav_item", target="/cases"),
-                PinSeed(pin_type="nav_item", target="/cases/new"),
+                PinSeed(pin_type="nav_item", target="/fh/cases"),
                 PinSeed(
                     pin_type="saved_view",
                     target="saved_view_seed:director:my_active_cases",
@@ -155,9 +161,10 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="calendar-heart",
             accent="warm",
             is_default=True,
-            default_home_route="/cases",
+            # fh-case-table-split fix (2026-07) — see director template.
+            default_home_route="/fh/cases",
             pins=[
-                PinSeed(pin_type="nav_item", target="/cases"),
+                PinSeed(pin_type="nav_item", target="/fh/cases"),
                 PinSeed(
                     pin_type="saved_view",
                     target="saved_view_seed:admin:my_active_cases",
@@ -778,6 +785,11 @@ def get_system_space_templates_for_user(
 
 NAV_LABEL_TABLE: dict[str, tuple[str, str]] = {
     # href → (label, icon)
+    # Canonical FH-1 cases list (fh-case-table-split fix, 2026-07).
+    "/fh/cases": ("Active Cases", "FolderOpen"),
+    # Legacy FH-v1 entries retained for label-resolution safety while
+    # existing pins are repointed by the r145 data migration; the seed
+    # no longer emits these. Removed with the FH-v1 retirement arc.
     "/cases": ("Active Cases", "FolderOpen"),
     "/cases/new": ("New Case", "Plus"),
     "/dashboard": ("Home", "Home"),

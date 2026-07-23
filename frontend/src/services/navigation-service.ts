@@ -457,17 +457,19 @@ function getFuneralHomeNav(
   // Primary
   const caseItems: NavItem[] = [
     { label: "Home", href: "/dashboard", icon: "Home" },
+    // fh-case-table-split fix (2026-07): the FH sidebar now wires up
+    // the canonical FH-1 list (/fh/cases → funeral_cases). Previously
+    // it pointed at the legacy /cases surface (superseded fh_cases
+    // table, 0 rows post-repoint) and the canonical route had ZERO
+    // nav references — directors could only reach real cases via the
+    // command bar. "New Case" is dropped: there is no canonical
+    // standalone create route (create lives on the /fh/cases list; NL
+    // creation via the command bar is the primary path).
     {
       label: "Active Cases",
-      href: "/cases",
+      href: "/fh/cases",
       icon: "FolderOpen",
       permission: "fh_cases.view",
-    },
-    {
-      label: "New Case",
-      href: "/cases/new",
-      icon: "Plus",
-      permission: "fh_cases.create",
     },
   ];
   if (modules.has("ai_obituary_builder")) {
@@ -562,7 +564,8 @@ function getFuneralHomeNav(
     sections,
     mobileTabs: [
       { label: "Home", href: "/dashboard", icon: "Home" },
-      { label: "Cases", href: "/cases", icon: "FolderOpen" },
+      // fh-case-table-split fix (2026-07): canonical FH-1 list.
+      { label: "Cases", href: "/fh/cases", icon: "FolderOpen" },
       { label: "Financials", href: "/financials", icon: "BarChart3" },
       // V-1c: CRM tab → Vault (CRM now lives under /vault/crm).
       { label: "Vault", href: "/vault", icon: "Vault" },

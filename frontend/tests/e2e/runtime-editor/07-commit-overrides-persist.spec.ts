@@ -6,23 +6,60 @@
  * Reload re-resolves the theme; the new value must persist via
  * applyThemeToElement on the next mount.
  *
- * Test-residue note: this spec MUTATES vertical_default scope for
- * Hopkins FH's vertical (`funeral_home`). The mutation is authored
- * config (not user data); it persists across spec runs. Subsequent
- * specs that read --accent will see the staged value as the new
- * baseline. This is documented at R-1.6 acceptance: "Spec 07's
- * committed-state cleanup is documented (whether teardown or
- * accepted residue)" — here we accept residue + flag for ops.
+ * Residue discipline (fh-case-table-split fix, 2026-07). This spec
+ * mutates vertical_default scope for the impersonated tenant's vertical
+ * (the runtime writer hardcodes vertical_default). Two protections keep
+ * it from leaving demo-critical residue:
+ *
+ *  1. TEARDOWN (load-bearing): after the commit+reload persistence
+ *     assertion, the afterEach PATCHes the row back to
+ *     `token_overrides: {}`, so the scope resolves to inherited PLATFORM
+ *     tokens. The real write + real reload are preserved — the
+ *     round-trip IS the point of gate 7; only the residue is cleaned.
+ *
+ *  2. SCOPE: runs against **St. Mary's (cemetery)** — the least
+ *     demo-exposed impersonatable vertical. The September hero verticals
+ *     are funeral_home (Hopkins pilot) + manufacturing
+ *     (Sunnycrest/testco, the Wilbert vault narrative); cemetery is a
+ *     supporting cross-tenant actor. crematory has 0 staging tenants so
+ *     it can't be impersonated (the writer scopes to the impersonated
+ *     tenant's vertical). So if a CI wall-clock kill ever skips the
+ *     teardown, a transient blue window lands on cemetery, not a demo
+ *     vertical.
+ *
+ * History: this spec previously wrote funeral_home (Hopkins pilot),
+ * accreting 254 residue rows that rendered Hopkins' light accent blue;
+ * an interim rescope to testco merely relocated the problem onto the
+ * manufacturing demo vertical. The teardown is the actual fix; the
+ * cemetery scope is belt-and-suspenders for the no-teardown case.
+ * The r145 migration clears the historical funeral_home residue.
  */
 import { test, expect } from "@playwright/test"
-import { openEditorForHopkins, readRootCssVariable } from "./_shared"
+import {
+  openEditorForStMarys,
+  readRootCssVariable,
+  resetVerticalThemeOverrides,
+} from "./_shared"
 
 
 test.describe("Gate 7 — commit + reload persistence", () => {
+  // Captured in the test, consumed by the teardown. The load-bearing
+  // residue cleanup — resets cemetery vertical_default back to empty
+  // overrides regardless of whether the assertions passed.
+  let adminToken: string | null = null
+
+  test.afterEach(async ({ page }) => {
+    if (adminToken) {
+      await resetVerticalThemeOverrides(page, adminToken, "cemetery")
+    }
+    adminToken = null
+  })
+
   test("commit theme override → reload → value persists in computed style", async ({
     page,
   }) => {
-    await openEditorForHopkins(page)
+    const sess = await openEditorForStMarys(page)
+    adminToken = sess.adminToken
     await page.getByTestId("runtime-editor-toggle").click()
     await page.locator("[data-component-name]").first().click()
     await expect(page.getByTestId("runtime-inspector-panel")).toBeVisible()

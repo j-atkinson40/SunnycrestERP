@@ -555,7 +555,8 @@ class TestDefaultHomeRoute:
         spaces = get_spaces_for_user(db_session, user=user)
         arr = next((s for s in spaces if s.name == "Arrangement"), None)
         assert arr is not None
-        assert arr.default_home_route == "/cases"
+        # fh-case-table-split fix (2026-07): canonical FH-1 list route.
+        assert arr.default_home_route == "/fh/cases"
 
     def test_round_trip_through_json(self):
         """SpaceConfig.to_dict/from_dict preserves default_home_route."""

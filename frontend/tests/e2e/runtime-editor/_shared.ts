@@ -64,6 +64,20 @@ export const TESTCO_DISPATCHER_EMAIL = "dispatcher@testco.com"
 export const TESTCO_DISPATCHER_PASSWORD = "TestDispatch123!"
 
 
+// St. Mary's Cemetery — the cemetery-vertical dev tenant (seeded by
+// seed_fh_demo alongside Hopkins). Used ONLY by spec 07 as the
+// least-demo-exposed impersonatable vertical for the theme
+// commit+persist round-trip: the September demo hero verticals are
+// funeral_home (Hopkins pilot) + manufacturing (Sunnycrest/testco,
+// the Wilbert narrative), so a transient theme-residue window on
+// cemetery — should a CI wall-clock kill skip the spec's teardown —
+// is harmless. (crematory has 0 staging tenants so it can't be
+// impersonated; the writer scopes to the impersonated tenant's
+// vertical.) fh-case-table-split fix, 2026-07.
+export const ST_MARYS_SLUG = "st-marys"
+export const ST_MARYS_NAME = "St. Mary's Cemetery"
+
+
 // Storage keys mirror frontend canonical keys (admin-api.ts).
 const ADMIN_TOKEN_KEY = "bridgeable-admin-token-staging"
 const ADMIN_ENV_KEY = "bridgeable-admin-env"
@@ -473,6 +487,143 @@ export async function openEditorForTestco(page: Page): Promise<{
   )
   await page.waitForLoadState("networkidle")
   return sess
+}
+
+
+/** fh-case-table-split fix (2026-07): platform admin login + St. Mary's
+ *  (cemetery vertical) impersonation + navigate to the runtime editor.
+ *  Mirrors `openEditorForTestco`, generalizing the impersonate-by-slug
+ *  lookup. Returns the platform-admin token so the caller can reset the
+ *  theme scope in teardown. Used ONLY by spec 07 — see ST_MARYS_SLUG. */
+export async function openEditorForStMarys(page: Page): Promise<{
+  tenantSlug: string
+  impersonatedUserId: string
+  adminToken: string
+}> {
+  const adminToken = await loginAsPlatformAdmin(page)
+
+  const lookup = await page.request.get(
+    `${STAGING_BACKEND}/api/platform/admin/tenants/lookup?q=${encodeURIComponent(
+      ST_MARYS_SLUG,
+    )}`,
+    { headers: { Authorization: `Bearer ${adminToken}` } },
+  )
+  if (!lookup.ok()) {
+    throw new Error(
+      `St. Mary's tenant lookup failed: ${lookup.status()} ${await lookup.text()} ` +
+        `— verify seed_fh_demo ran on staging (creates the st-marys cemetery tenant).`,
+    )
+  }
+  const tenants: Array<{ id: string; slug: string; name: string }> =
+    await lookup.json()
+  const stmarys = tenants.find((t) => t.slug === ST_MARYS_SLUG)
+  if (!stmarys) {
+    throw new Error(
+      `st-marys not found in tenant lookup. Available slugs: ${tenants
+        .map((t) => t.slug)
+        .join(", ")}.`,
+    )
+  }
+
+  const impersonate = await page.request.post(
+    `${STAGING_BACKEND}/api/platform/impersonation/impersonate`,
+    {
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        tenant_id: stmarys.id,
+        user_id: null,
+        reason: "playwright runtime-editor theme commit+persist (spec 07)",
+      },
+    },
+  )
+  if (!impersonate.ok()) {
+    throw new Error(
+      `Impersonation failed: ${impersonate.status()} ${await impersonate.text()}`,
+    )
+  }
+  const data: {
+    access_token: string
+    tenant_slug: string
+    impersonated_user_id: string
+    session_id: string
+  } = await impersonate.json()
+
+  await page.evaluate(
+    ({ token, slug, sessionId, userId }) => {
+      localStorage.setItem("access_token", token)
+      localStorage.setItem("company_slug", slug)
+      localStorage.setItem(
+        "runtime_editor_session",
+        JSON.stringify({
+          session_id: sessionId,
+          tenant_slug: slug,
+          impersonated_user_id: userId,
+        }),
+      )
+    },
+    {
+      token: data.access_token,
+      slug: data.tenant_slug,
+      sessionId: data.session_id,
+      userId: data.impersonated_user_id,
+    },
+  )
+
+  await page.goto(
+    `/bridgeable-admin/runtime-editor/?tenant=${encodeURIComponent(
+      data.tenant_slug,
+    )}&user=${encodeURIComponent(data.impersonated_user_id)}`,
+  )
+  await page.waitForLoadState("networkidle")
+  return {
+    tenantSlug: data.tenant_slug,
+    impersonatedUserId: data.impersonated_user_id,
+    adminToken,
+  }
+}
+
+
+/** fh-case-table-split fix (2026-07): reset a vertical's vertical_default
+ *  theme rows back to empty overrides so the scope resolves to inherited
+ *  PLATFORM tokens — the load-bearing teardown for spec 07. PATCHes every
+ *  active row (both modes) to `token_overrides: {}` via the same admin
+ *  endpoint the runtime-editor writer commits through. Best-effort:
+ *  a teardown failure must not fail the run. */
+export async function resetVerticalThemeOverrides(
+  page: Page,
+  adminToken: string,
+  vertical: string,
+): Promise<void> {
+  for (const mode of ["light", "dark"] as const) {
+    try {
+      const list = await page.request.get(
+        `${STAGING_BACKEND}/api/platform/admin/visual-editor/themes/` +
+          `?scope=vertical_default&vertical=${encodeURIComponent(vertical)}&mode=${mode}`,
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      )
+      if (!list.ok()) continue
+      const rows: Array<{ id: string; token_overrides: Record<string, unknown> }> =
+        await list.json()
+      for (const row of rows) {
+        if (Object.keys(row.token_overrides ?? {}).length === 0) continue
+        await page.request.patch(
+          `${STAGING_BACKEND}/api/platform/admin/visual-editor/themes/${row.id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${adminToken}`,
+              "Content-Type": "application/json",
+            },
+            data: { token_overrides: {} },
+          },
+        )
+      }
+    } catch {
+      // best-effort — never fail the run on teardown
+    }
+  }
 }
 
 
