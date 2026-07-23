@@ -51,6 +51,9 @@ def engine():
     from app.models.customer import Customer  # noqa: F401
     from app.models.company_entity import CompanyEntity  # noqa: F401
     from app.models.fh_case import FHCase  # noqa: F401
+    from app.models.funeral_case import (  # noqa: F401
+        CaseDeceased, FuneralCase,
+    )
     from app.models.invoice import Invoice  # noqa: F401
     from app.models.product import Product  # noqa: F401
     from app.models.role import Role  # noqa: F401
@@ -66,6 +69,8 @@ def engine():
         "customers",
         "contacts",
         "fh_cases",
+        "funeral_cases",
+        "case_deceased",
         "sales_orders",
         "invoices",
         "products",
@@ -130,21 +135,31 @@ def other_tenant(db):
 
 @pytest.fixture
 def fh_case(db, tenant):
-    """Seed an FHCase the resolver can find by id."""
+    """Seed a canonical FuneralCase + CaseDeceased the resolver can
+    find by id (fh-case-table-split fix, 2026-07)."""
     from datetime import date
 
-    from app.models.fh_case import FHCase
+    from app.models.funeral_case import CaseDeceased, FuneralCase
 
-    case = FHCase(
+    case = FuneralCase(
         id=str(uuid.uuid4()),
         company_id=tenant.id,
         case_number="FH-2026-0001",
-        deceased_first_name="John",
-        deceased_last_name="Smith",
-        deceased_date_of_death=date(2026, 1, 1),
+        status="active",
         created_at=datetime.now(timezone.utc),
     )
     db.add(case)
+    db.flush()
+    db.add(
+        CaseDeceased(
+            id=str(uuid.uuid4()),
+            case_id=case.id,
+            company_id=tenant.id,
+            first_name="John",
+            last_name="Smith",
+            date_of_death=date(2026, 1, 1),
+        )
+    )
     db.flush()
     return case
 
@@ -186,18 +201,27 @@ def cross_tenant_case(db, other_tenant):
     cross-tenant isolation tests."""
     from datetime import date
 
-    from app.models.fh_case import FHCase
+    from app.models.funeral_case import CaseDeceased, FuneralCase
 
-    case = FHCase(
+    case = FuneralCase(
         id=str(uuid.uuid4()),
         company_id=other_tenant.id,
         case_number="OTHER-0001",
-        deceased_first_name="Cross",
-        deceased_last_name="Tenant",
-        deceased_date_of_death=date(2026, 1, 1),
+        status="active",
         created_at=datetime.now(timezone.utc),
     )
     db.add(case)
+    db.flush()
+    db.add(
+        CaseDeceased(
+            id=str(uuid.uuid4()),
+            case_id=case.id,
+            company_id=other_tenant.id,
+            first_name="Cross",
+            last_name="Tenant",
+            date_of_death=date(2026, 1, 1),
+        )
+    )
     db.flush()
     return case
 
@@ -346,7 +370,7 @@ class TestSingleEntityResolution:
         assert result.found is True
         assert "Smith" in result.display_name
         # URL substitution uses the resolver's url_template.
-        assert result.url == f"/cases/{fh_case.id}"
+        assert result.url == f"/fh/cases/{fh_case.id}"
 
     def test_cross_tenant_entity_returns_placeholder(
         self, db, tenant, cross_tenant_case,
@@ -445,7 +469,7 @@ class TestJinjaRefFilter:
         assert "Smith" in out
         assert 'class="doc-mention"' in out
         # URL substitution
-        assert f'href="/cases/{fh_case.id}"' in out
+        assert f'href="/fh/cases/{fh_case.id}"' in out
         # Data attributes for traceability + Arc 4b.2b consumer
         assert 'data-entity-type="fh_case"' in out
 
@@ -473,20 +497,29 @@ class TestJinjaRefFilter:
         char must not break HTML rendering."""
         from datetime import date
 
-        from app.models.fh_case import FHCase
+        from app.models.funeral_case import CaseDeceased, FuneralCase
         from app.services.documents.document_renderer import _render_jinja
 
-        case = FHCase(
+        case = FuneralCase(
             id=str(uuid.uuid4()),
             company_id=tenant.id,
             case_number="FH-XSS",
-            # Quote + angle bracket — both must be escaped.
-            deceased_last_name='"><script>',
-            deceased_first_name="X",
-            deceased_date_of_death=date(2026, 1, 1),
+            status="active",
             created_at=datetime.now(timezone.utc),
         )
         db.add(case)
+        db.flush()
+        db.add(
+            CaseDeceased(
+                id=str(uuid.uuid4()),
+                case_id=case.id,
+                company_id=tenant.id,
+                # Quote + angle bracket — both must be escaped.
+                last_name='"><script>',
+                first_name="X",
+                date_of_death=date(2026, 1, 1),
+            )
+        )
         db.flush()
 
         body = '{{ ref("case", "' + case.id + '") }}'

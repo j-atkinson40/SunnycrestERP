@@ -123,17 +123,28 @@ class TestEmptyQuery:
 
 class TestFhCaseSearch:
     def test_case_by_surname(self, db_session, tenant_a):
-        from app.models.fh_case import FHCase
+        # fh-case-table-split fix (2026-07): resolver reads canonical
+        # funeral_cases ⋈ case_deceased, not the legacy fh_cases table.
+        from app.models.funeral_case import CaseDeceased, FuneralCase
 
+        case_id = str(uuid.uuid4())
         db_session.add(
-            FHCase(
-                id=str(uuid.uuid4()),
+            FuneralCase(
+                id=case_id,
                 company_id=tenant_a["company_id"],
                 case_number="CASE-0001",
                 status="active",
-                deceased_first_name="John",
-                deceased_last_name="Hopkins",
-                deceased_date_of_death=date.today(),
+            )
+        )
+        db_session.flush()
+        db_session.add(
+            CaseDeceased(
+                id=str(uuid.uuid4()),
+                case_id=case_id,
+                company_id=tenant_a["company_id"],
+                first_name="John",
+                last_name="Hopkins",
+                date_of_death=date.today(),
             )
         )
         db_session.commit()

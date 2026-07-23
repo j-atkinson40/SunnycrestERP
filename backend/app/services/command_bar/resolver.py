@@ -84,22 +84,48 @@ class _SearchableEntity:
     recency_col_expr: str
     id_col: str = "id"
     url_template: str = "/{id}"
+    # Optional join support (fh-case-table-split fix, 2026-07). When an
+    # entity's searchable text lives on a satellite table (fh_case →
+    # case_deceased.last_name), `from_clause` supplies the full FROM
+    # body including the JOIN, and `tenant_col` the alias-qualified
+    # company_id. Single-table entries leave both defaulted and are
+    # emitted exactly as before. Entries using a from_clause must
+    # alias-qualify every column expression they declare.
+    from_clause: str | None = None
+    tenant_col: str = "company_id"
 
 
 SEARCHABLE_ENTITIES: tuple[_SearchableEntity, ...] = (
+    # fh-case-table-split fix (2026-07-23): repointed from the legacy
+    # first-gen `fh_cases` table (March 2026 FH v1, superseded by the
+    # FH-1 canonical model and absent from FUNERAL_HOME_VERTICAL.md's
+    # 14-table inventory) to canonical funeral_cases ⋈ case_deceased.
+    # Deceased names live on case_deceased; the join is INNER on its
+    # UNIQUE case_id (1:1, created in the same transaction as the case
+    # — and the search predicate is on cd.last_name, so LEFT would
+    # degenerate to INNER regardless). Trigram GIN on
+    # case_deceased.last_name ships in r144; url_template now targets
+    # the mounted FH-1 route. Findings:
+    # docs/investigations/2026-07-23-fh-case-table-split.md
     _SearchableEntity(
         entity_type="fh_case",
-        table="fh_cases",
-        search_column="deceased_last_name",
-        # "SMITH, John" — concat surname + first for context.
+        table="funeral_cases",
+        from_clause=(
+            "funeral_cases fc "
+            "JOIN case_deceased cd ON cd.case_id = fc.id"
+        ),
+        tenant_col="fc.company_id",
+        id_col="fc.id",
+        search_column="cd.last_name",
+        # "Smith, John" — surname-first for scan order.
         primary_label_expr=(
-            "COALESCE(deceased_last_name, '') || ', ' || "
-            "COALESCE(deceased_first_name, '')"
+            "COALESCE(cd.last_name, '') || ', ' || "
+            "COALESCE(cd.first_name, '')"
         ),
         # Case number as secondary label.
-        secondary_expr="case_number",
-        recency_col_expr="COALESCE(updated_at, NOW())",
-        url_template="/cases/{id}",
+        secondary_expr="fc.case_number",
+        recency_col_expr="COALESCE(fc.updated_at, fc.created_at)",
+        url_template="/fh/cases/{id}",
     ),
     _SearchableEntity(
         entity_type="sales_order",
@@ -252,6 +278,10 @@ def _build_union_query(
 
         recency_weight = _recency_weight_expr(ent.recency_col_expr)
 
+        # Joined entities supply their own FROM body + alias-qualified
+        # tenant column; single-table entries emit exactly as before.
+        from_clause = ent.from_clause or ent.table
+
         branch = f"""
             SELECT
                 '{ent.entity_type}'::varchar AS entity_type,
@@ -261,8 +291,8 @@ def _build_union_query(
                 similarity({ent.search_column}, :q) AS sim,
                 {recency_weight} AS recency_weight,
                 {extra_id_col}
-            FROM {ent.table}
-            WHERE company_id = :company_id
+            FROM {from_clause}
+            WHERE {ent.tenant_col} = :company_id
               AND {ent.search_column} IS NOT NULL
               AND {ent.search_column} % :q
               AND similarity({ent.search_column}, :q) >= {_SIMILARITY_THRESHOLD}

@@ -99,7 +99,7 @@ def _seed_tenant_and_user():
     from app.models.company_entity import CompanyEntity
     from app.models.contact import Contact
     from app.models.customer import Customer
-    from app.models.fh_case import FHCase
+    from app.models.funeral_case import CaseDeceased, FuneralCase
     from app.models.invoice import Invoice
     from app.models.product import Product
     from app.models.role import Role
@@ -159,16 +159,27 @@ def _seed_tenant_and_user():
         db.flush()
 
         # Seed ~4 of each entity type.
+        # fh-case-table-split fix (2026-07): cases seed the canonical
+        # funeral_cases ⋈ case_deceased pair the resolver now reads.
         for i in range(4):
+            case_id = str(uuid.uuid4())
             db.add(
-                FHCase(
-                    id=str(uuid.uuid4()),
+                FuneralCase(
+                    id=case_id,
                     company_id=co.id,
                     case_number=f"CASE-LAT-{i:04d}",
                     status="active",
-                    deceased_first_name=f"First{i}",
-                    deceased_last_name=f"Last{i}Smithson",
-                    deceased_date_of_death=date.today(),
+                )
+            )
+            db.flush()
+            db.add(
+                CaseDeceased(
+                    id=str(uuid.uuid4()),
+                    case_id=case_id,
+                    company_id=co.id,
+                    first_name=f"First{i}",
+                    last_name=f"Last{i}Smithson",
+                    date_of_death=date.today(),
                 )
             )
             db.add(
@@ -301,7 +312,38 @@ def _seed_tenant_and_user():
 
 @pytest.fixture(scope="module")
 def seeded_tenant():
-    return _seed_tenant_and_user()
+    out = _seed_tenant_and_user()
+    yield out
+
+    # Teardown — no company litter (per-table commits so one failed
+    # delete doesn't roll back the rest; canonical pattern from
+    # tests/test_so_class_killers.py's world fixture). Added in the
+    # fh-case-table-split fix — this fixture was the known
+    # pre-existing litter offender (one lat-* tenant leaked per run).
+    from sqlalchemy import text as sql_text
+
+    from app.database import SessionLocal as _SL
+
+    db = _SL()
+    try:
+        cid = out["company_id"]
+        for t in (
+            "user_space_affinity", "case_deceased", "funeral_cases",
+            "invoices", "sales_orders", "contacts", "customers",
+            "company_entities", "products", "documents",
+            "users", "roles", "companies",
+        ):
+            try:
+                col = "id" if t == "companies" else "company_id"
+                db.execute(
+                    sql_text(f"DELETE FROM {t} WHERE {col} = :c"),
+                    {"c": cid},
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
+    finally:
+        db.close()
 
 
 @pytest.fixture

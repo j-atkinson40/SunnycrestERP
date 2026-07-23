@@ -168,17 +168,27 @@ class TestSearchIntent:
     def test_search_for_seeded_case_surfaces_case(
         self, db_session, admin_user
     ):
-        from app.models.fh_case import FHCase
+        # fh-case-table-split fix (2026-07): canonical tables.
+        from app.models.funeral_case import CaseDeceased, FuneralCase
 
+        case_id = str(uuid.uuid4())
         db_session.add(
-            FHCase(
-                id=str(uuid.uuid4()),
+            FuneralCase(
+                id=case_id,
                 company_id=admin_user.company_id,
                 case_number="CASE-RESOLVER-001",
                 status="active",
-                deceased_first_name="Mary",
-                deceased_last_name="Washington",
-                deceased_date_of_death=date.today(),
+            )
+        )
+        db_session.flush()
+        db_session.add(
+            CaseDeceased(
+                id=str(uuid.uuid4()),
+                case_id=case_id,
+                company_id=admin_user.company_id,
+                first_name="Mary",
+                last_name="Washington",
+                date_of_death=date.today(),
             )
         )
         db_session.commit()
@@ -197,18 +207,28 @@ class TestSearchIntent:
     def test_search_result_has_navigation_url(
         self, db_session, admin_user
     ):
-        from app.models.fh_case import FHCase
+        # fh-case-table-split fix (2026-07): canonical tables + the
+        # mounted FH-1 route (/fh/cases/{id}), not legacy /cases/{id}.
+        from app.models.funeral_case import CaseDeceased, FuneralCase
 
         case_id = str(uuid.uuid4())
         db_session.add(
-            FHCase(
+            FuneralCase(
                 id=case_id,
                 company_id=admin_user.company_id,
                 case_number="CASE-NAV-001",
                 status="active",
-                deceased_first_name="Alice",
-                deceased_last_name="Kensington",
-                deceased_date_of_death=date.today(),
+            )
+        )
+        db_session.flush()
+        db_session.add(
+            CaseDeceased(
+                id=str(uuid.uuid4()),
+                case_id=case_id,
+                company_id=admin_user.company_id,
+                first_name="Alice",
+                last_name="Kensington",
+                date_of_death=date.today(),
             )
         )
         db_session.commit()
@@ -220,7 +240,7 @@ class TestSearchIntent:
             None,
         )
         assert hit is not None
-        assert hit.url == f"/cases/{case_id}"
+        assert hit.url == f"/fh/cases/{case_id}"
 
 
 # ── Permission gating ─────────────────────────────────────────────────
@@ -256,18 +276,30 @@ class TestTenantIsolation:
     ):
         """Seed a record in a DIFFERENT tenant and verify admin_user's
         query doesn't see it."""
-        from app.models.fh_case import FHCase
+        # fh-case-table-split fix (2026-07): canonical tables. The
+        # tenant filter under test now lives on fc.company_id in the
+        # joined branch.
+        from app.models.funeral_case import CaseDeceased, FuneralCase
 
         other = _make_tenant(db_session, is_admin=True)
+        case_id = str(uuid.uuid4())
         db_session.add(
-            FHCase(
-                id=str(uuid.uuid4()),
+            FuneralCase(
+                id=case_id,
                 company_id=other.company_id,
                 case_number="OTHER-SECRET-001",
                 status="active",
-                deceased_first_name="Secret",
-                deceased_last_name="Zzzzzzzzzzzz",
-                deceased_date_of_death=date.today(),
+            )
+        )
+        db_session.flush()
+        db_session.add(
+            CaseDeceased(
+                id=str(uuid.uuid4()),
+                case_id=case_id,
+                company_id=other.company_id,
+                first_name="Secret",
+                last_name="Zzzzzzzzzzzz",
+                date_of_death=date.today(),
             )
         )
         db_session.commit()

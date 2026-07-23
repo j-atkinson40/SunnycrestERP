@@ -165,20 +165,30 @@ class TestCreate:
 
 class TestSearch:
     def test_search_seeded_case(self, client, admin_headers, admin_ctx):
+        # fh-case-table-split fix (2026-07): canonical tables.
         from app.database import SessionLocal
-        from app.models.fh_case import FHCase
+        from app.models.funeral_case import CaseDeceased, FuneralCase
 
         db = SessionLocal()
         try:
+            case_id = str(uuid.uuid4())
             db.add(
-                FHCase(
-                    id=str(uuid.uuid4()),
+                FuneralCase(
+                    id=case_id,
                     company_id=admin_ctx["company_id"],
                     case_number="API-CASE-001",
                     status="active",
-                    deceased_first_name="Tom",
-                    deceased_last_name="Distinctive",
-                    deceased_date_of_death=date.today(),
+                )
+            )
+            db.flush()
+            db.add(
+                CaseDeceased(
+                    id=str(uuid.uuid4()),
+                    case_id=case_id,
+                    company_id=admin_ctx["company_id"],
+                    first_name="Tom",
+                    last_name="Distinctive",
+                    date_of_death=date.today(),
                 )
             )
             db.commit()

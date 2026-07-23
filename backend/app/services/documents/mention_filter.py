@@ -232,14 +232,24 @@ def _resolve_single_entity(
         else "NULL AS master_company_id"
     )
 
+    # fh-case-table-split fix (2026-07): honor the catalog's optional
+    # join fields (from_clause / tenant_col) exactly as resolver.py
+    # does — fh_case's searchable text lives on case_deceased, so its
+    # entry supplies an alias-qualified FROM body. Single-table
+    # entries emit exactly as before. This also FIXES fh_case mention
+    # rendering: the id-lookup previously ran against the legacy
+    # fh_cases table, so mentions of canonical FH-1 case ids degraded
+    # to placeholders.
+    from_clause = ent_cfg.from_clause or ent_cfg.table
+
     sql = f"""
         SELECT
             {ent_cfg.id_col} AS entity_id,
             ({ent_cfg.primary_label_expr}) AS primary_label,
             {extra_id_col}
-        FROM {ent_cfg.table}
+        FROM {from_clause}
         WHERE {ent_cfg.id_col} = :entity_id
-          AND company_id = :company_id
+          AND {ent_cfg.tenant_col} = :company_id
           {is_active_filter}
         LIMIT 1
     """
