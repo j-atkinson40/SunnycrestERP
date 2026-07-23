@@ -1751,3 +1751,14 @@ r125 already existed — blind-authoring the migration would have forked the ale
 head and caused a real outage. A remembered "X is broken/down/blocked" is a
 hypothesis to confirm against live ground truth, not a fact to act on.
 Investigation-first is the cheap path, not the ceremonial one.
+
+## Act-side spatial discipline (park, 2026-07)
+
+- SUMMON IS INTENT-SHAPED. Never app-launcher grammar. If a command reads "Open X,"
+  it's wrong — surfaces materialize from what the user is doing, not from a menu.
+- THE ~3-OBJECT RULE IS THE ACT/DECIDE BOUNDARY. Past ~3 parked tablets, offer a
+  Focus. Do not use drag-affordance presence as the boundary test.
+- PARK IS SESSION-SCOPED. Anything wanting durable placement gets promoted to a Space
+  pin or Focus layout via observe-and-offer — never silently persisted.
+- ONE DRAG SYSTEM. Park builds on WidgetChrome's shipped @dnd-kit drag/resize/8px-grid
+  machinery and the three-tier mobile cascade. Do not introduce a second window manager.

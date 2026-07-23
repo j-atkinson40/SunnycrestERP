@@ -950,3 +950,41 @@ serif decision); ground-truth photo calibration; the ~449 non-primary-surface
 legacy warm classes (separate debt sweep).
 
 ---
+
+## 2026-07-23 — Park layer ratified and pulled forward; command bar connective-tissue arc
+
+RATIFIES the interaction model's aspirational "spatial parking lot for command-bar-
+summoned cards" as a built layer. No new primitive: park is the Act-side spatial
+affordance for summoned objects, bounded so it cannot become Focus.
+
+DELIBERATE OVERRIDE: PLATFORM_INTERACTION_MODEL.md marks the multi-tablet spatial
+workspace post-September. That is overridden here with reason: park is core to how
+Bridgeable is used, and the Bridgeable Map cannot document accurate steps and
+graphics for a core interaction that does not exist. Recorded as a decision, not
+drift. Accepted cost: September-path items (Job Coordination Focus, website builder,
+demo-script polish) may compress. Chosen knowingly.
+
+Ratified constraint set:
+- Summon grammar intent-shaped, never app-launcher. §4.4-6 stands: you don't "open a
+  calendar"; it appears because you mentioned a date. The Figma concept's "Open
+  Calendar" command is rejected.
+- Persistence session-scoped. Parked tablets survive in-session navigation only.
+  Durable placement promoted via observe-and-offer → Space pin or Focus layout slot.
+  Cross-session floating desktops remain unsanctioned.
+- ~3-object escalation: past ~3 parked tablets, offer a Focus. This is the canonical
+  Act/Decide boundary (supersedes any "drag handle = boundary" heuristic).
+- Mobile translates via the shipped Focus three-tier cascade: desktop free-form drag /
+  tablet card-rail + swipe-to-foreground / phone stacked summoning + vertical card flow.
+- Visual language is calibrated console-dark (surface-3 + specular edge + elevation
+  gradient, chrome primary, rationed steel). macOS window chrome explicitly rejected.
+
+§4.4 rule 2 reconciliation: rule 2 governs the command bar's OWN state, not the
+lifetime of objects it summons. A parked tablet is a distinct object; its persistence
+follows its own mental model, capped at session scope per the peek-pin precedent.
+
+Sequence (dependency-ordered, not preference): S-1 §4.2 entity portal → S-2 §4.3
+contextual surfaces → S-3 §4.5 Focus escalation → S-4 §4.7 chips + §4.8 pause sensor
+→ S-5 park layer. Park consumes summoned objects, so the surfaces that produce them
+must exist first.
+
+---
