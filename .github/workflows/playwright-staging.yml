@@ -106,16 +106,22 @@ jobs:
       # (which routinely drags this job red on transient staging 502s). The two
       # jobs run in parallel; neither `needs` the other.
 
-      - name: Upload Playwright report on failure
-        if: failure()
+      - name: Upload Playwright report on failure or timeout
+        # `failure() || cancelled()` — a job that hits `timeout-minutes` is
+        # CANCELLED, not failed, so a bare `failure()` skips this upload and the
+        # trace is lost. Referencing cancelled() is also required for the step to
+        # run at all on a cancelled job. (This masking hid a wholesale-red
+        # runtime-editor suite for weeks — see docs/investigations/
+        # 2026-07-23-runtime-editor-suite-red.md.)
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ github.run_number }}
           path: frontend/tests/e2e/report
           retention-days: 14
 
-      - name: Upload Playwright traces + screenshots on failure
-        if: failure()
+      - name: Upload Playwright traces + screenshots on failure or timeout
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-artifacts-${{ github.run_number }}
@@ -202,16 +208,16 @@ jobs:
         env:
           BACKEND_URL: ${{ env.STAGING_BACKEND }}
 
-      - name: Upload Claude-API report on failure
-        if: failure()
+      - name: Upload Claude-API report on failure or timeout
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: claude-api-report-${{ github.run_number }}
           path: frontend/tests/e2e/report
           retention-days: 14
 
-      - name: Upload Claude-API traces + screenshots on failure
-        if: failure()
+      - name: Upload Claude-API traces + screenshots on failure or timeout
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: claude-api-artifacts-${{ github.run_number }}
@@ -290,16 +296,16 @@ jobs:
         env:
           BACKEND_URL: ${{ env.STAGING_BACKEND }}
 
-      - name: Upload MoC report on failure
-        if: failure()
+      - name: Upload MoC report on failure or timeout
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: moc-report-${{ github.run_number }}
           path: frontend/tests/e2e/report
           retention-days: 14
 
-      - name: Upload MoC traces + screenshots on failure
-        if: failure()
+      - name: Upload MoC traces + screenshots on failure or timeout
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: moc-artifacts-${{ github.run_number }}
