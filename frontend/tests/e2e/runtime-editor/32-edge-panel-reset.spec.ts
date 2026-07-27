@@ -13,7 +13,7 @@ test.describe("Gate 32 — Edge panel reset clears override", () => {
   test("reset-all confirmation clears all customizations", async ({ page }) => {
     await loginAsTestcoAdmin(page)
     await page.goto(`${STAGING_FRONTEND}/settings/edge-panel`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     const root = page.getByTestId("edge-panel-settings-page")
     await root.waitFor({ state: "visible", timeout: 15_000 })
@@ -81,7 +81,7 @@ test.describe("Gate 32 — Edge panel reset clears override", () => {
 
     // Reload preserves the cleared state.
     await page.reload()
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
     await root.waitFor({ state: "visible", timeout: 15_000 })
     await expect(
       page.locator(

@@ -80,7 +80,7 @@ test.describe("Gate 15 — AncillaryCard click-to-edit", () => {
     await page.goto(
       `/bridgeable-admin/runtime-editor/dispatch/funeral-schedule${params}`,
     )
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Edit mode came up via ?edit=1; no click required (and would
     // be intercepted by the Focus's ancillary-pool-pin Popover

@@ -16,7 +16,7 @@ test.describe("Gate 30 — Edge panel settings page", () => {
   test("settings page mounts + tenant default visible", async ({ page }) => {
     await loginAsTestcoAdmin(page)
     await page.goto(`${STAGING_FRONTEND}/settings/edge-panel`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Page root mounts.
     const root = page.getByTestId("edge-panel-settings-page")
@@ -49,7 +49,7 @@ test.describe("Gate 30 — Edge panel settings page", () => {
   test("hiding a placement, saving, reload preserves state", async ({ page }) => {
     await loginAsTestcoAdmin(page)
     await page.goto(`${STAGING_FRONTEND}/settings/edge-panel`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     const root = page.getByTestId("edge-panel-settings-page")
     await root.waitFor({ state: "visible", timeout: 15_000 })
@@ -77,7 +77,7 @@ test.describe("Gate 30 — Edge panel settings page", () => {
     // Reload and verify the state survived (a placement is still
     // marked as hidden in the page-row attribute layer).
     await page.reload()
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
     await root.waitFor({ state: "visible", timeout: 15_000 })
     // At least one placement should still be in hidden state.
     const hiddenPlacement = page.locator(

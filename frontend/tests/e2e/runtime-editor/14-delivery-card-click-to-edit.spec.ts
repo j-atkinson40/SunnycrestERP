@@ -49,7 +49,7 @@ test.describe("Gate 14 — DeliveryCard click-to-edit", () => {
     await page.goto(
       `/bridgeable-admin/runtime-editor/dispatch/funeral-schedule${params}`,
     )
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Toggle edit mode. Pre-toggle the selection overlay isn't
     // armed — clicks would fall through to widget-level handlers.

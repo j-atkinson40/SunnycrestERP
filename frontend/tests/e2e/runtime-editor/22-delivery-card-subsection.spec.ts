@@ -37,7 +37,7 @@ test.describe("Gate 22 — DeliveryCard sub-section click-to-edit", () => {
     await page.goto(
       `/bridgeable-admin/runtime-editor/dispatch/funeral-schedule${params}`,
     )
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Toggle edit mode.
     await page.getByTestId("runtime-editor-toggle").click()

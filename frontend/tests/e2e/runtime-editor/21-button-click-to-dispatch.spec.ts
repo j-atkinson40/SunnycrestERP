@@ -46,7 +46,7 @@ test.describe("Gate 21 — R-4.0 button registrations validated", () => {
     await loginAsPlatformAdmin(page)
 
     await page.goto(`${STAGING_FRONTEND}/bridgeable-admin/visual-editor/registry`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // All three example button registrations land via the
     // registrations/buttons.ts shim + auto-register barrel; they

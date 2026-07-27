@@ -29,7 +29,7 @@ test.describe("Gate 24 — AncillaryCard.actions optional flag", () => {
   }) => {
     await loginAsPlatformAdmin(page)
     await page.goto("/bridgeable-admin/visual-editor/registry")
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     const actionsRow = page.getByTestId(
       "registry-row-entity-card-section-ancillary-card.actions",
@@ -54,7 +54,7 @@ test.describe("Gate 24 — AncillaryCard.actions optional flag", () => {
   }) => {
     await loginAsPlatformAdmin(page)
     await page.goto("/bridgeable-admin/visual-editor/registry")
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Per /tmp/r2_1_subsection_scope.md Section 1: OrderCard's
     // actions region is informational (countdown + notes), not
@@ -81,7 +81,7 @@ test.describe("Gate 24 — AncillaryCard.actions optional flag", () => {
   }) => {
     await loginAsPlatformAdmin(page)
     await page.goto("/bridgeable-admin/visual-editor/registry")
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // delivery-card.actions registers with optional: false (per
     // /tmp/r2_1_subsection_scope.md Section 1 — DeliveryCard's

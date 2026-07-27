@@ -23,7 +23,7 @@ test.describe("Gate 27 — Edge panel button fire closes panel", () => {
     await setupPage(page)
     await loginAsHopkinsDirector(page)
     await page.goto(`${STAGING_FRONTEND}/home`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     await page.keyboard.press("Meta+Shift+E")
     const panel = page.getByTestId("edge-panel")

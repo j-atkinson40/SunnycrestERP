@@ -25,7 +25,7 @@ test.describe("Gate 29 — Edge panel handle mode-mutex with runtime editor", ()
     await page.goto(
       `${STAGING_FRONTEND}/bridgeable-admin/runtime-editor/home${params}`,
     )
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Pre-edit-mode: handle visible (runtime editor mounted but not
     // yet in edit mode).

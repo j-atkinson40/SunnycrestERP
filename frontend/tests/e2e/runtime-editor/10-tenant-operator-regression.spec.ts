@@ -35,7 +35,7 @@ test.describe("Gate 10 — tenant operator regression", () => {
     // contract: at least one [data-component-name] widget must be
     // present in the DOM, AND the runtime-editor toggle must NOT
     // appear (it's gated to the editor shell only).
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // No runtime-editor toggle on the tenant-side surfaces.
     await expect(page.getByTestId("runtime-editor-toggle")).toHaveCount(0)

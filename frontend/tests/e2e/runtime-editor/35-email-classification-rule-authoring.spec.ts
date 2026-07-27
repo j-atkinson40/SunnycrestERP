@@ -57,7 +57,7 @@ test.describe(
         await page.goto(
           `${STAGING_FRONTEND}/admin/email-classification`,
         )
-        await page.waitForLoadState("networkidle")
+        await page.waitForLoadState("load")
         await expect(
           page.getByTestId("email-classification-page"),
         ).toBeVisible({ timeout: 10_000 })
@@ -83,11 +83,11 @@ test.describe(
 
         // Substrate check 4 — Categories tab navigates + mounts.
         await page.getByTestId("email-classification-tab-categories").click()
-        await page.waitForLoadState("networkidle")
+        await page.waitForLoadState("load")
 
         // Substrate check 5 — Settings tab navigates + mounts.
         await page.getByTestId("email-classification-tab-settings").click()
-        await page.waitForLoadState("networkidle")
+        await page.waitForLoadState("load")
 
         // Substrate check 6 — backend listRules endpoint reachable.
         const rulesResp = await page.request.get(
@@ -120,7 +120,7 @@ test.describe(
         await page.goto(
           `${STAGING_FRONTEND}/admin/email-classification`,
         )
-        await page.waitForLoadState("networkidle")
+        await page.waitForLoadState("load")
         // The section's visible label is the literal "Email triggers"
         // text in the page header. Both this admin page + the
         // WorkflowBuilder section share the same exact string + are

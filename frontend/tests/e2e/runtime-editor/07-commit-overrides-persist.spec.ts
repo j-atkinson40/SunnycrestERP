@@ -103,7 +103,7 @@ test.describe("Gate 7 — commit + reload persistence", () => {
 
     // Reload + re-impersonate (a full page reload re-runs auth +
     // re-resolves theme).
-    await page.reload({ waitUntil: "networkidle" })
+    await page.reload({ waitUntil: "load" })
 
     // Editor shell may re-mount in tenant-loading state; wait for
     // shell-mounted state.

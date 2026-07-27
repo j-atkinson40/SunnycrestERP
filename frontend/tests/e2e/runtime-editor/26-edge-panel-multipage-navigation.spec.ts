@@ -24,7 +24,7 @@ test.describe("Gate 26 — Multi-page edge panel navigation", () => {
     await setupPage(page)
     await loginAsHopkinsDirector(page)
     await page.goto(`${STAGING_FRONTEND}/home`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     await page.keyboard.press("Meta+Shift+E")
     const dots = page.getByTestId("edge-panel-dots")

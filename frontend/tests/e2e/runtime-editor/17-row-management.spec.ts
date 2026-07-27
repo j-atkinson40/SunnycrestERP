@@ -55,7 +55,7 @@ test.describe("R-3.1 spec 17 — row management", () => {
     // Navigate to FocusEditorPage.
     await page.goto(
       `${STAGING_FRONTEND}/bridgeable-admin/visual-editor/focuses`,
-      { waitUntil: "networkidle" },
+      { waitUntil: "load" },
     )
 
     // Verify the page mounts. Composition tab is one of the right-rail

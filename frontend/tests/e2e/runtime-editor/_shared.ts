@@ -288,7 +288,15 @@ export async function openEditorForHopkins(page: Page): Promise<{
   await page.goto(
     `/bridgeable-admin/runtime-editor/?tenant=${encodeURIComponent(sess.tenantSlug)}&user=${encodeURIComponent(sess.impersonatedUserId)}`,
   )
-  await page.waitForLoadState("networkidle")
+  // fh-case-table-split follow-up (2026-07): wait on the SHELL MOUNT
+  // (deterministic) instead of networkidle. The runtime editor holds a
+  // persistent RingCentral SSE open (call-context), so networkidle never
+  // settles and every opener timed out at 30s even though the shell
+  // mounts fine (trace ARIA snapshot confirmed). See docs/investigations/
+  // 2026-07-23-runtime-editor-suite-red.md.
+  await page
+    .getByTestId("runtime-editor-shell")
+    .waitFor({ state: "visible", timeout: 30_000 })
   return sess
 }
 
@@ -318,7 +326,7 @@ export async function loginAsHopkinsDirector(page: Page): Promise<void> {
     localStorage.setItem("company_slug", slug)
   }, HOPKINS_FH_SLUG)
   await page.goto("/login")
-  await page.waitForLoadState("networkidle")
+  await page.waitForLoadState("load")
 
   const identifier = page.locator("#identifier")
   await identifier.waitFor({ state: "visible", timeout: 10_000 })
@@ -485,7 +493,15 @@ export async function openEditorForTestco(page: Page): Promise<{
       sess.tenantSlug,
     )}&user=${encodeURIComponent(sess.impersonatedUserId)}`,
   )
-  await page.waitForLoadState("networkidle")
+  // fh-case-table-split follow-up (2026-07): wait on the SHELL MOUNT
+  // (deterministic) instead of networkidle. The runtime editor holds a
+  // persistent RingCentral SSE open (call-context), so networkidle never
+  // settles and every opener timed out at 30s even though the shell
+  // mounts fine (trace ARIA snapshot confirmed). See docs/investigations/
+  // 2026-07-23-runtime-editor-suite-red.md.
+  await page
+    .getByTestId("runtime-editor-shell")
+    .waitFor({ state: "visible", timeout: 30_000 })
   return sess
 }
 
@@ -577,7 +593,15 @@ export async function openEditorForStMarys(page: Page): Promise<{
       data.tenant_slug,
     )}&user=${encodeURIComponent(data.impersonated_user_id)}`,
   )
-  await page.waitForLoadState("networkidle")
+  // fh-case-table-split follow-up (2026-07): wait on the SHELL MOUNT
+  // (deterministic) instead of networkidle. The runtime editor holds a
+  // persistent RingCentral SSE open (call-context), so networkidle never
+  // settles and every opener timed out at 30s even though the shell
+  // mounts fine (trace ARIA snapshot confirmed). See docs/investigations/
+  // 2026-07-23-runtime-editor-suite-red.md.
+  await page
+    .getByTestId("runtime-editor-shell")
+    .waitFor({ state: "visible", timeout: 30_000 })
   return {
     tenantSlug: data.tenant_slug,
     impersonatedUserId: data.impersonated_user_id,
@@ -638,7 +662,7 @@ export async function loginAsTestcoAdmin(page: Page): Promise<void> {
     localStorage.setItem("company_slug", slug)
   }, TESTCO_SLUG)
   await page.goto("/login")
-  await page.waitForLoadState("networkidle")
+  await page.waitForLoadState("load")
 
   const identifier = page.locator("#identifier")
   await identifier.waitFor({ state: "visible", timeout: 10_000 })

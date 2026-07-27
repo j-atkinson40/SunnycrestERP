@@ -86,7 +86,7 @@ test.describe("Gate 1a — picker click drives full flow to shell @r-1.6.1", () 
     // <TenantUserPicker /> as a child (post-R-1.6.1 architecture).
     await setupPage(page)
     await page.goto("/bridgeable-admin/runtime-editor")
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Step 3: assert picker UI rendered. test-id is on TenantUserPicker's
     // root div.

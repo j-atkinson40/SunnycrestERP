@@ -19,7 +19,7 @@ test.describe("Gate 31 — Override applies to runtime panel", () => {
 
     // Reset to default first to ensure a clean baseline.
     await page.goto(`${STAGING_FRONTEND}/settings/edge-panel`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
     const settingsRoot = page.getByTestId("edge-panel-settings-page")
     await settingsRoot.waitFor({ state: "visible", timeout: 15_000 })
 
@@ -35,7 +35,7 @@ test.describe("Gate 31 — Override applies to runtime panel", () => {
 
     // Reload to ensure baseline override-free state.
     await page.reload()
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Now hide the first placement.
     const hideButtons = page.locator(
@@ -57,7 +57,7 @@ test.describe("Gate 31 — Override applies to runtime panel", () => {
 
     // Navigate to /home and open the runtime panel.
     await page.goto(`${STAGING_FRONTEND}/home`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
     await page.keyboard.press("Meta+Shift+E")
     const panel = page.getByTestId("edge-panel")
     await panel.waitFor({ state: "visible", timeout: 5_000 })

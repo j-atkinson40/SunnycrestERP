@@ -29,7 +29,7 @@ test.describe("Gate 33 — Edge panel tenant-default drag-drop authoring", () =>
     await page.goto(
       `${STAGING_FRONTEND}/bridgeable-admin/visual-editor/edge-panels`,
     )
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // R-5.2 — canvas substrate mounts (third consumer of the R-3.1
     // InteractivePlacementCanvas).

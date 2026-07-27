@@ -48,7 +48,7 @@ test.describe("Gate 34 — Workflow headless extraction substrate", () => {
       )
       // Best-effort wait for the editor; tolerant of network slowness.
       await page
-        .waitForLoadState("networkidle", { timeout: 15_000 })
+        .waitForLoadState("load", { timeout: 15_000 })
         .catch(() => {})
       // The workflow editor page renders an admin-shell scaffold even
       // without a selected template — no crash is the assertion.

@@ -24,7 +24,7 @@ test.describe("Gate 25 — Edge panel handle + Cmd+Shift+E", () => {
     await setupPage(page)
     await loginAsHopkinsDirector(page)
     await page.goto(`${STAGING_FRONTEND}/home`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Handle is the always-visible right-edge tab.
     const handle = page.getByTestId("edge-panel-handle")

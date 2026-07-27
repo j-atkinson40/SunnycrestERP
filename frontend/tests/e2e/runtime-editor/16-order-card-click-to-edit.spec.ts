@@ -51,7 +51,7 @@ test.describe("Gate 16 — OrderCard registration validated", () => {
     // component with stable `registry-row-{kind}-{name}` test-ids per
     // RegistryDebugPage.tsx:292.
     await page.goto(`${STAGING_FRONTEND}/bridgeable-admin/visual-editor/registry`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     const row = page.getByTestId("registry-row-entity-card-order-card")
     await row.waitFor({ state: "visible", timeout: 15_000 })

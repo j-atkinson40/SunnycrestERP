@@ -25,7 +25,7 @@ test.describe("Gate 28 — EdgePanelEditor mounts + saves", () => {
     await page.goto(
       `${STAGING_FRONTEND}/bridgeable-admin/visual-editor/edge-panels`,
     )
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Scope selector + panel key input + page list all render.
     await expect(
@@ -58,7 +58,7 @@ test.describe("Gate 28 — EdgePanelEditor mounts + saves", () => {
     await setupPage(page)
     await loginAsPlatformAdmin(page)
     await page.goto(`${STAGING_FRONTEND}/bridgeable-admin/visual-editor`)
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
     const card = page.getByTestId("studio-overview-card-edge-panels")
     await expect(card).toBeVisible({ timeout: 15_000 })
   })

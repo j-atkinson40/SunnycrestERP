@@ -29,7 +29,7 @@ test.describe("Gate 23 — DeliveryCardActions accepts R-4 buttonSlugs", () => {
   }) => {
     await loginAsPlatformAdmin(page)
     await page.goto("/bridgeable-admin/visual-editor/registry")
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // The registry debug page surfaces every registration via
     // `registry-row-{type}-{slug}` test-ids per RegistryDebugPage's
@@ -65,7 +65,7 @@ test.describe("Gate 23 — DeliveryCardActions accepts R-4 buttonSlugs", () => {
   }) => {
     await loginAsPlatformAdmin(page)
     await page.goto("/bridgeable-admin/visual-editor/registry")
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("load")
 
     // Each entity-card with an actions sub-section has the same
     // buttonSlugs prop schema (defined via shared BUTTON_SLUGS_PROP
