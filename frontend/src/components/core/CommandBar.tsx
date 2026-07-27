@@ -54,6 +54,9 @@ import {
   CommandBarSurfaceHost,
   candidateFromResultId,
 } from "@/components/core/CommandBarSurfaceHost";
+import { surfacesForIntent } from "@/components/command-bar-surfaces/contextual-surfaces";
+import { useContextualSurfaceTrigger } from "@/components/command-bar-surfaces/useContextualSurfaceTrigger";
+import type { ExtractionContext } from "@/components/command-bar-surfaces/types";
 import { detectNLIntent } from "@/components/nl-creation/detectNLIntent";
 import type { NLEntityType } from "@/types/nl-creation";
 import { SlideOver } from "@/components/ui/SlideOver";
@@ -266,6 +269,9 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     name: string
     steps: Array<{ step_order: number; step_key: string; step_type: string; config?: Record<string, unknown> }>
   } | null>(null);
+  // S-2 (§4.3) — the workflow overlay's lifted in-flight extraction,
+  // feeding the contextual surfaces. Cleared when the overlay closes.
+  const [extractionCtx, setExtractionCtx] = useState<ExtractionContext | null>(null);
   // Phase 4 — entity-centric NL overlay state. Mutually exclusive
   // with activeNLWorkflow (those route to the workflow-scoped path).
   const [activeNLEntity, setActiveNLEntity] = useState<{
@@ -949,9 +955,23 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     }
   }, [isListening, requestPermission, startListening, stopListening]);
 
+  // S-2 (§4.3) — the quote overlay lifts its in-flight extraction here
+  // via onExtraction; the trigger seam gates WHEN surfaces show (v1:
+  // extraction-settle); surfacesForIntent maps the committed intent to
+  // the ordered contextual surfaces. All hooks run before the early
+  // return below to keep hook order stable.
+  const surfaceTrigger = useContextualSurfaceTrigger({
+    context: extractionCtx,
+  });
+
   if (!isOpen) return null;
 
   const showRecent = !query && recentActions.length > 0;
+
+  const contextualSurfaces =
+    surfaceTrigger.active && extractionCtx
+      ? surfacesForIntent(extractionCtx.entryIntent, extractionCtx)
+      : [];
   const displayInterim = isListening && interimTranscript;
 
   // S-1 (§4.2) — entity-portal candidate from the HIGHLIGHTED result.
@@ -976,7 +996,10 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
       {/* S-1 — Act-side surface host (§4.3): floats BESIDE the
           palette; ephemeral with it; additive — the ranked result
           list below is untouched. */}
-      <CommandBarSurfaceHost highlighted={portalCandidate} />
+      <CommandBarSurfaceHost
+        highlighted={portalCandidate}
+        surfaces={contextualSurfaces}
+      />
 
       {/* Modal */}
       <div
@@ -1074,6 +1097,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         {activeNLWorkflow && (
           <NaturalLanguageOverlay
             workflow={activeNLWorkflow}
+            onExtraction={setExtractionCtx}
             onComplete={(run) => {
               const outputs = (run.output_data || {}) as Record<string, unknown>;
               let navigated = false;
@@ -1094,10 +1118,12 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
                 }
               }
               setActiveNLWorkflow(null);
+              setExtractionCtx(null);
               setTimeout(() => onClose(), navigated ? 0 : 400);
             }}
             onCancel={() => {
               setActiveNLWorkflow(null);
+              setExtractionCtx(null);
               onClose();
             }}
           />

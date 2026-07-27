@@ -14,6 +14,7 @@ import {
   type ExtractedField,
   type FieldMap,
 } from "@/utils/extractionMerge"
+import type { ExtractionContext } from "@/components/command-bar-surfaces/types"
 import type { WorkflowRunState } from "@/components/workflows/WorkflowController"
 
 // ─── Saved Order types ───────────────────────────────────────────────
@@ -61,6 +62,46 @@ interface Props {
   workflow: WorkflowShape
   onComplete: (run: WorkflowRunState) => void
   onCancel: () => void
+  /** S-2 (§4.3) state-lift (ruled decision 1). Fires on each extraction
+   *  settle with the normalized in-flight context so a SIBLING surface
+   *  (the quote preview / price-list reference) can read it WITHOUT a
+   *  duplicate /extract call. Additive — the overlay's own behavior is
+   *  unchanged; omit it and nothing lifts. */
+  onExtraction?: (ctx: ExtractionContext) => void
+}
+
+/** Normalize the flat FieldMap (ask_customer / ask_product /
+ *  ask_quantity per wf_compose) into the ExtractionContext a sibling
+ *  surface consumes. Products are NAME strings — the NL extract does not
+ *  resolve them to rows; the backend preview resolves them. */
+function normalizeExtraction(
+  fields: FieldMap,
+  entryIntent: "order" | "quote",
+  rawInput: string,
+): ExtractionContext {
+  const cust = fields.ask_customer
+  const customer = cust?.display_value
+    ? { id: cust.matched_id ?? undefined, name: cust.display_value }
+    : null
+
+  const lines: ExtractionContext["lines"] = []
+  const prod = fields.ask_product
+  if (prod?.display_value) {
+    const q = fields.ask_quantity
+    const raw = q
+      ? typeof q.value === "number"
+        ? q.value
+        : Number(q.value ?? q.display_value)
+      : 1
+    const quantity = Number.isFinite(raw) && raw > 0 ? raw : 1
+    lines.push({
+      productRef: prod.display_value,
+      productId: prod.matched_id ?? undefined,
+      quantity,
+    })
+  }
+
+  return { entryIntent, customer, lines, rawInput }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -69,6 +110,7 @@ export function NaturalLanguageOverlay({
   workflow,
   onComplete,
   onCancel,
+  onExtraction,
 }: Props) {
   const [text, setText] = useState("")
   const [fields, setFields] = useState<FieldMap>({})
@@ -345,6 +387,20 @@ export function NaturalLanguageOverlay({
     return () => document.removeEventListener("keydown", h, { capture: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRequiredFilled, text, fields])
+
+  // S-2 state-lift — emit the normalized context on each extraction
+  // settle (fields/intent change, NOT per keystroke). onExtraction + the
+  // current text are read via refs so the fire is tied to the settle,
+  // not to callback/text identity.
+  const onExtractionRef = useRef(onExtraction)
+  onExtractionRef.current = onExtraction
+  const textRef = useRef(text)
+  textRef.current = text
+  useEffect(() => {
+    onExtractionRef.current?.(
+      normalizeExtraction(fields, entryIntent, textRef.current),
+    )
+  }, [fields, entryIntent])
 
   const placeholder = useMemo(() => getPlaceholder(workflow.id), [workflow.id])
 

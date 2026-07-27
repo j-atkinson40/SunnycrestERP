@@ -65,6 +65,12 @@ TRACKED_ENDPOINTS = (
     # payloads, higher call frequency per user (hover spam), and a
     # session cache shield on the client side.
     "peek_fetch",
+    # S-2 (§4.3) — quote-preview contextual surface. Fired on the
+    # extraction-settle trigger while composing a quote; assembles the
+    # order-resolver pricing + renders the real quote document to HTML.
+    # Own key (own BLOCKING gate) because it does money-math + a Jinja
+    # render per fire, unlike the lighter peek/query hot paths.
+    "quote_preview",
 )
 
 

@@ -219,3 +219,137 @@ def get_entity_portal(
         actions=resp.actions,
         omitted_sections=resp.omitted_sections,
     )
+
+
+# ── S-2 — Floating contextual surfaces (§4.3) ────────────────────────
+# Param-keyed (NOT entity-id-keyed) hydration for the quote-preview +
+# price-list-reference surfaces summoned while the user composes a
+# quote. Separate endpoints so /query's BLOCKING latency gate is
+# untouched; own BLOCKING gate at tests/test_quote_preview_latency.py.
+
+
+class _PreviewLineBody(BaseModel):
+    product_ref: str = Field(
+        ..., description="Product name (or sku) from the in-flight extraction"
+    )
+    product_id: str | None = Field(
+        default=None, description="Already-resolved product id, if any"
+    )
+    quantity: float = Field(default=1, description="Line quantity")
+
+
+class QuotePreviewRequest(BaseModel):
+    customer_id: str | None = None
+    customer_name: str | None = None
+    lines: list[_PreviewLineBody] = Field(default_factory=list)
+
+
+class QuotePreviewResponseBody(BaseModel):
+    html: str
+    subtotal_formatted: str
+    # None when tax did not resolve mid-draft — the widget renders
+    # "calculated at order" rather than a fabricated total.
+    total_formatted: str | None = None
+    tax_resolved: bool
+    has_call_office: bool
+    unresolved_products: list[str] = Field(default_factory=list)
+    line_count: int
+
+
+@router.post("/quote-preview", response_model=QuotePreviewResponseBody)
+def quote_preview(
+    body: QuotePreviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> QuotePreviewResponseBody:
+    """Render the in-flight quote as the REAL quote document with the
+    price the order will actually charge. Tenant-scoped; no persistence."""
+    import time as _t_time
+
+    from app.services import arc_telemetry as _arc_t
+    from app.services.command_bar.quote_preview import (
+        DraftLine,
+        assemble_quote_preview,
+    )
+
+    _t0 = _t_time.perf_counter()
+    _errored = False
+    try:
+        result = assemble_quote_preview(
+            db,
+            current_user.company_id,
+            customer_id=body.customer_id,
+            customer_name=body.customer_name,
+            lines=[
+                DraftLine(
+                    product_ref=ln.product_ref,
+                    quantity=ln.quantity,
+                    product_id=ln.product_id,
+                )
+                for ln in body.lines
+            ],
+        )
+    except Exception:
+        _errored = True
+        raise
+    finally:
+        _arc_t.record(
+            "quote_preview",
+            (_t_time.perf_counter() - _t0) * 1000.0,
+            errored=_errored,
+        )
+
+    return QuotePreviewResponseBody(
+        html=result.html,
+        subtotal_formatted=result.subtotal_formatted,
+        total_formatted=result.total_formatted,
+        tax_resolved=result.tax_resolved,
+        has_call_office=result.has_call_office,
+        unresolved_products=result.unresolved_products,
+        line_count=result.line_count,
+    )
+
+
+class PriceListReferenceRequest(BaseModel):
+    products: list[str] = Field(default_factory=list)
+    customer_id: str | None = None
+
+
+class _PriceListRow(BaseModel):
+    product_name: str
+    on_list: bool
+    standard_price_formatted: str
+    contractor_price_formatted: str
+    homeowner_price_formatted: str
+    unit: str
+
+
+class PriceListReferenceResponseBody(BaseModel):
+    version_label: str | None = None
+    rows: list[_PriceListRow] = Field(default_factory=list)
+
+
+@router.post(
+    "/price-list-reference", response_model=PriceListReferenceResponseBody
+)
+def price_list_reference(
+    body: PriceListReferenceRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PriceListReferenceResponseBody:
+    """Return the tenant's PUBLISHED tiered price list for the quoted
+    products (the reference display — tiered columns are correct here)."""
+    from app.services.command_bar.price_list_reference import (
+        build_price_list_reference,
+    )
+
+    data = build_price_list_reference(
+        db,
+        current_user.company_id,
+        product_refs=body.products,
+        customer_id=body.customer_id,
+    )
+    return PriceListReferenceResponseBody(
+        version_label=data["version_label"],
+        rows=[_PriceListRow(**r) for r in data["rows"]],
+    )

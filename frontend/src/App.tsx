@@ -47,6 +47,10 @@ void registerComposedWidgetsFromApi();
 // editor. Side-effect-on-import; mirrors the widget-registration
 // pattern above.
 import "@/lib/visual-editor/registry/auto-register";
+// S-2 (§4.3) — register the command-bar contextual-surface widgets
+// (surface.quote-preview, surface.price-list-reference) in the canvas
+// widget-renderer registry before the command bar dispatches to them.
+import "@/components/command-bar-surfaces/register";
 import { AffinityVisitWatcher } from "@/components/spaces/AffinityVisitWatcher";
 import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";
