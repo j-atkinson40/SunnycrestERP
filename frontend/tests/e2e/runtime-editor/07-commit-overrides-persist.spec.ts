@@ -120,9 +120,19 @@ test.describe("Gate 7 — commit + reload persistence", () => {
     // Chromium returns `oklch(55% .13 240)` for a stored value of
     // `oklch(0.55 0.13 240)` (lightness → percentage, leading-zero
     // stripped on chroma). Regex matches either form.
-    const reloaded = await readRootCssVariable(page, "accent")
-    expect(reloaded).toMatch(
-      /oklch\(\s*(0\.55|55%)\s+(0\.13|\.13)\s+240\s*\)/i,
-    )
+    //
+    // networkidle-removal follow-up (2026-07): POLL the accent instead
+    // of reading it once. The reload now uses `waitUntil: "load"` (the
+    // old `networkidle` hung on the persistent RingCentral SSE), and
+    // `load` fires before the async `/themes/resolve` re-applies the
+    // committed theme to the DOM — a one-shot read caught the
+    // pre-resolve platform default (ink) and failed. The commit DID
+    // persist (cemetery vertical_default v1 = the staged blue, verified
+    // in the DB); the DOM just needs a beat to reflect it. expect.poll
+    // waits for the real async apply — this tests persistence honestly,
+    // it does not paper over it.
+    await expect
+      .poll(() => readRootCssVariable(page, "accent"), { timeout: 15_000 })
+      .toMatch(/oklch\(\s*(0\.55|55%)\s+(0\.13|\.13)\s+240\s*\)/i)
   })
 })
