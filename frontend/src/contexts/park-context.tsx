@@ -128,14 +128,17 @@ function nextTabletId(): string {
   return `pt${_seq}`
 }
 
-/** Simple slice-1 placement: cascade new tablets from the top-left so
- *  they don't fully overlap. Smart-positioning engine deferred (§5.7). */
+/** Simple slice-1 placement: lay new tablets out left-to-right with a
+ *  slight vertical stagger so the working set reads as distinct tablets
+ *  rather than a stack. Wraps to a second row after 3. Smart-positioning
+ *  engine deferred (§5.7). */
 function seedPosition(index: number, size: { width: number; height: number }): WidgetPosition {
-  const step = 32
+  const col = index % 3
+  const row = Math.floor(index / 3)
   return {
     anchor: "top-left",
-    offsetX: 48 + (index % 5) * step,
-    offsetY: 96 + (index % 5) * step,
+    offsetX: 40 + col * 372,
+    offsetY: 88 + row * 300 + (col % 2) * 40,
     width: size.width,
     height: size.height,
   }

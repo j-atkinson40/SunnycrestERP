@@ -40,6 +40,23 @@ describe("seedFromExtraction", () => {
     const d = seedFromExtraction(null)
     expect(d).toEqual({ customer: null, lines: [] })
   })
+
+  it("PARTIAL extraction does not crash (S-5 park handoff guard)", () => {
+    // A park escalation can hand off a still-seeding / minimal draft (no
+    // `lines`, no `customer`). The Focus must degrade to an empty canvas,
+    // never throw on `undefined.map` (the staging witness caught this).
+    expect(seedFromExtraction({} as never)).toEqual({
+      customer: null,
+      lines: [],
+    })
+    expect(
+      seedFromExtraction({ customer: { name: "X" } } as never),
+    ).toEqual({ customer: { name: "X" }, lines: [] })
+    expect(seedFromExtraction(undefined)).toEqual({
+      customer: null,
+      lines: [],
+    })
+  })
 })
 
 describe("draftReducer", () => {

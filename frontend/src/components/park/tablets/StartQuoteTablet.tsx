@@ -46,6 +46,19 @@ export function StartQuoteTablet({ widgetId }: WidgetRendererProps) {
     ExtractionContext
   const [seeded, setSeeded] = useState(false)
 
+  // Ensure the STORED draft is a well-formed extraction from mount, so an
+  // escalation (which hands off the raw stored draft) never passes a
+  // partial `{}` before the async customer-seed lands. Belt-and-suspenders
+  // with seedFromExtraction's guard.
+  useEffect(() => {
+    if (raw && "entryIntent" in raw) return
+    updateDraft(widgetId, (prev) => ({
+      ...emptyExtraction(),
+      ...(prev as unknown as ExtractionContext),
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widgetId])
+
   // Seed a customer once so the re-hosted preview has something to price.
   useEffect(() => {
     if (seeded || draft.customer) return

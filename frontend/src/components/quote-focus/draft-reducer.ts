@@ -56,14 +56,20 @@ export function nextLineId(): string {
 }
 
 /** Build the initial draft from the overlay extraction (fresh
- *  escalation). Empty extraction → an empty editable canvas. */
+ *  escalation). Empty extraction → an empty editable canvas.
+ *
+ *  Defensive against a PARTIAL extraction (missing `lines`/`customer`) —
+ *  an escalation may hand off a still-seeding or minimal draft (e.g. park's
+ *  start-quote tablet before its async customer-seed lands). A Focus must
+ *  never crash on a malformed handoff; missing fields degrade to an empty
+ *  canvas rather than throwing on `undefined.map`. */
 export function seedFromExtraction(
-  extraction: ExtractionContext | null,
+  extraction: ExtractionContext | null | undefined,
 ): QuoteDraft {
   if (!extraction) return { customer: null, lines: [] }
   return {
-    customer: extraction.customer,
-    lines: extraction.lines.map((l) => ({
+    customer: extraction.customer ?? null,
+    lines: (extraction.lines ?? []).map((l) => ({
       lineId: nextLineId(),
       productRef: l.productRef,
       productId: l.productId,
