@@ -19,6 +19,9 @@ import { TenantProviders } from "@/lib/runtime-host/TenantProviders";
 // open it (Cmd+K action, Monitor button). At app bootstrap is the
 // simplest place to guarantee that.
 import "@/components/dispatch/scheduling-focus/register";
+// S-3a (§4.5) — register the quote Focus so command-bar escalation
+// ("Build this out →") can open() it, re-hosting the S-2 surfaces.
+import "@/components/quote-focus/register";
 // Phase W-3a — register cross-vertical foundation widgets (today,
 // operator_profile, recent_activity, anomalies) with the canvas
 // widget renderer registry so PinnedSection + Canvas + dashboard

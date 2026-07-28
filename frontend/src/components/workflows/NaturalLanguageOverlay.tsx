@@ -68,6 +68,11 @@ interface Props {
    *  duplicate /extract call. Additive — the overlay's own behavior is
    *  unchanged; omit it and nothing lifts. */
   onExtraction?: (ctx: ExtractionContext) => void
+  /** S-3a (§4.5) — the "Build this out →" escalation click. The host
+   *  (CommandBar) captures the lifted extraction, opens the quote Focus,
+   *  and closes the bar (§5.15). Shown only on entryIntent==="quote".
+   *  Additive — omit it and no escalation affordance renders. */
+  onEscalate?: () => void
 }
 
 /** Normalize the flat FieldMap (ask_customer / ask_product /
@@ -111,6 +116,7 @@ export function NaturalLanguageOverlay({
   onComplete,
   onCancel,
   onExtraction,
+  onEscalate,
 }: Props) {
   const [text, setText] = useState("")
   const [fields, setFields] = useState<FieldMap>({})
@@ -532,16 +538,31 @@ export function NaturalLanguageOverlay({
                 ? "· We are buying"
                 : "· We are selling"}
           </span>
-          <button
-            onClick={() => {
-              setProductTypeLabel(null)
-              setDirection("sales")
-              setEntryIntent("order")
-            }}
-            className="ml-auto text-[11px] text-slate-400 hover:text-slate-700"
-          >
-            wrong type?
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {/* S-3a (§4.5) — explicit Act→Decide escalation. Offered on
+                a committed quote intent; the trigger is user-initiated by
+                design (§4.5), and "kept building" is undetectable today
+                (single-line extraction). Click → the command bar hands
+                the in-flight draft to a quote Focus and closes. */}
+            {entryIntent === "quote" && onEscalate && (
+              <button
+                onClick={onEscalate}
+                className="rounded bg-purple-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-purple-700"
+              >
+                Build this out →
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setProductTypeLabel(null)
+                setDirection("sales")
+                setEntryIntent("order")
+              }}
+              className="text-[11px] text-slate-400 hover:text-slate-700"
+            >
+              wrong type?
+            </button>
+          </div>
         </div>
       )}
 

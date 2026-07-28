@@ -57,6 +57,8 @@ import {
 import { surfacesForIntent } from "@/components/command-bar-surfaces/contextual-surfaces";
 import { useContextualSurfaceTrigger } from "@/components/command-bar-surfaces/useContextualSurfaceTrigger";
 import type { ExtractionContext } from "@/components/command-bar-surfaces/types";
+import { useFocusOptional } from "@/contexts/focus-context";
+import { QUOTE_FOCUS_ID } from "@/components/quote-focus/register";
 import { detectNLIntent } from "@/components/nl-creation/detectNLIntent";
 import type { NLEntityType } from "@/types/nl-creation";
 import { SlideOver } from "@/components/ui/SlideOver";
@@ -964,6 +966,17 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     context: extractionCtx,
   });
 
+  // S-3a (§4.5) — Act→Decide escalation. Hand the in-flight extraction
+  // to the quote Focus and let the provider close the bar (§5.15
+  // mutual-exclusivity: opening a Focus sets focus.isOpen, which
+  // unmounts CommandBar). No Document is materialized — the draft rides
+  // in-memory via open()'s params, exactly as the preview held it.
+  const focus = useFocusOptional();
+  const handleEscalateToQuoteFocus = useCallback(() => {
+    if (!extractionCtx || !focus) return;
+    focus.open(QUOTE_FOCUS_ID, { params: { extraction: extractionCtx } });
+  }, [extractionCtx, focus]);
+
   if (!isOpen) return null;
 
   const showRecent = !query && recentActions.length > 0;
@@ -1098,6 +1111,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           <NaturalLanguageOverlay
             workflow={activeNLWorkflow}
             onExtraction={setExtractionCtx}
+            onEscalate={handleEscalateToQuoteFocus}
             onComplete={(run) => {
               const outputs = (run.output_data || {}) as Record<string, unknown>;
               let navigated = false;
