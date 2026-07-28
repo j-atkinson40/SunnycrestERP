@@ -54,6 +54,7 @@ from app.models.product import Product
 from app.services import tax_service
 from app.services.documents import document_renderer
 from app.services.money import line_total as money_line_total
+from app.services.money import round_money
 from app.services.order_pricing_service import get_effective_price
 
 # The exact template both the preview and the final quote PDF load. Kept
@@ -88,6 +89,11 @@ class DraftLine:
     product_ref: str
     quantity: float = 1.0
     product_id: Optional[str] = None
+    # S-3b — a director's manual per-line price override. When present,
+    # it REPLACES the catalog get_effective_price for this line (the one
+    # sanctioned deviation from the order resolver — an explicit, visible
+    # human decision, not a silent divergence).
+    unit_price_override: Optional[Decimal] = None
 
 
 @dataclass
@@ -112,6 +118,27 @@ class ProductResolution:
 
 
 @dataclass
+class PreviewLine:
+    """Structured per-line breakdown for the S-3b editable core (the
+    editable UI cannot scrape the rendered HTML for rows). One entry per
+    INPUT line, in order, in every state. `unit_price`/`line_total` are
+    numeric decimal strings (editable-input-ready); the `*_formatted`
+    twins are the display strings."""
+
+    product_ref: str
+    status: str  # "resolved" | "call_office" | "ambiguous" | "unresolved"
+    quantity: float
+    product_id: Optional[str] = None
+    description: str = ""
+    unit_price: Optional[str] = None
+    unit_price_formatted: str = "—"
+    line_total: Optional[str] = None
+    line_total_formatted: str = "—"
+    candidates: list[str] = field(default_factory=list)
+    price_overridden: bool = False
+
+
+@dataclass
 class QuotePreviewResult:
     html: str
     context: dict
@@ -124,6 +151,9 @@ class QuotePreviewResult:
     unresolved_products: list[str]
     ambiguous_products: list[AmbiguousRef]
     line_count: int
+    # S-3b — per-input-line structured breakdown (1:1 with input lines,
+    # in order) so the editable core can render + merge editable rows.
+    lines: list[PreviewLine] = field(default_factory=list)
 
 
 def resolve_product(
@@ -236,46 +266,88 @@ def assemble_quote_preview(
     company = db.query(Company).filter(Company.id == company_id).first()
     company_name = company.name if company else ""
 
-    # Pass 1 — resolve every product. Three outcomes: priced, unresolved
-    # (couldn't find), or ambiguous (multiple candidates — refuse to guess).
-    resolved: list[tuple[DraftLine, Product]] = []
-    unresolved: list[str] = []
-    ambiguous: list[AmbiguousRef] = []
-    for dl in lines:
-        res = resolve_product(db, company_id, dl.product_ref, dl.product_id)
-        ref = (dl.product_ref or "").strip()
-        if res.status == "resolved" and res.product is not None:
-            resolved.append((dl, res.product))
-        elif res.status == "ambiguous" and ref:
-            ambiguous.append(
-                AmbiguousRef(product_ref=ref, candidates=res.candidates)
-            )
-        elif ref:
-            unresolved.append(ref)
-
-    # The line collection conditional pricing / vault detection reads
-    # (get_effective_price → has_vault_on_order inspect line.product_id).
+    # Resolve every input line first — conditional/vault pricing needs the
+    # full set of resolved product_ids before pricing any line.
+    resolutions = [
+        (dl, resolve_product(db, company_id, dl.product_ref, dl.product_id))
+        for dl in lines
+    ]
     order_lines = [
         SimpleNamespace(
-            product_id=product.id,
+            product_id=res.product.id,
             quantity=dl.quantity,
             unit_price=None,
             line_total=None,
         )
-        for dl, product in resolved
+        for dl, res in resolutions
+        if res.status == "resolved" and res.product is not None
     ]
 
+    # One PreviewLine per INPUT line, in order, in every state — the
+    # structured breakdown the editable core merges into its rows.
+    preview_lines: list[PreviewLine] = []
     line_contexts: list[dict] = []
     tax_lines: list[dict] = []
+    unresolved: list[str] = []
+    ambiguous: list[AmbiguousRef] = []
     has_call_office = False
     subtotal = Decimal("0.00")
 
-    for dl, product in resolved:
+    for dl, res in resolutions:
+        ref = (dl.product_ref or "").strip()
         qty = dl.quantity or 0
-        unit = get_effective_price(product, order_lines, db)
+
+        if res.status == "ambiguous":
+            if ref:
+                ambiguous.append(
+                    AmbiguousRef(product_ref=ref, candidates=res.candidates)
+                )
+            preview_lines.append(
+                PreviewLine(
+                    product_ref=ref,
+                    status="ambiguous",
+                    quantity=float(qty),
+                    description=ref,
+                    candidates=res.candidates,
+                )
+            )
+            continue
+        if res.status != "resolved" or res.product is None:
+            if ref:
+                unresolved.append(ref)
+            preview_lines.append(
+                PreviewLine(
+                    product_ref=ref,
+                    status="unresolved",
+                    quantity=float(qty),
+                    description=ref,
+                )
+            )
+            continue
+
+        product = res.product
+        override = dl.unit_price_override
+        if override is not None:
+            # Sanctioned human override — replaces the catalog price.
+            unit: Optional[Decimal] = round_money(override)
+            price_overridden = True
+        else:
+            unit = get_effective_price(product, order_lines, db)
+            price_overridden = False
+
         if unit is None:
-            # Call-office product — price on request, never a fabricated number.
+            # Call-office product — price on request, never fabricated.
             has_call_office = True
+            preview_lines.append(
+                PreviewLine(
+                    product_ref=ref,
+                    status="call_office",
+                    quantity=float(qty),
+                    product_id=product.id,
+                    description=product.name,
+                    unit_price_formatted="Price on request",
+                )
+            )
             line_contexts.append(
                 {
                     "description": product.name,
@@ -285,8 +357,23 @@ def assemble_quote_preview(
                 }
             )
             continue
+
         lt = money_line_total(qty, unit)
         subtotal = subtotal + lt
+        preview_lines.append(
+            PreviewLine(
+                product_ref=ref,
+                status="resolved",
+                quantity=float(qty),
+                product_id=product.id,
+                description=product.name,
+                unit_price=str(unit),
+                unit_price_formatted=_money(unit),
+                line_total=str(lt),
+                line_total_formatted=_money(lt),
+                price_overridden=price_overridden,
+            )
+        )
         line_contexts.append(
             {
                 "description": product.name,
@@ -350,4 +437,5 @@ def assemble_quote_preview(
         unresolved_products=unresolved,
         ambiguous_products=ambiguous,
         line_count=len(line_contexts),
+        lines=preview_lines,
     )

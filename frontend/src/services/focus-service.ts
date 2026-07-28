@@ -21,6 +21,10 @@ export interface FocusSessionDTO {
   id: string
   focus_type: string
   layout_state: Record<string, unknown>
+  /** S-3b — per-user Focus editing draft (e.g. quote line items). null for
+   *  Focus types that don't use it. Hydrates the editable core on
+   *  open/reload. NOT a quote — see focus_session.draft_state. */
+  draft_state: Record<string, unknown> | null
   is_active: boolean
   opened_at: string
   closed_at: string | null
@@ -84,6 +88,23 @@ export async function closeFocusSession(
 ): Promise<FocusSessionDTO> {
   const r = await apiClient.post<FocusSessionDTO>(
     `/focus/sessions/${sessionId}/close`,
+  )
+  return r.data
+}
+
+
+/** S-3b — write the per-user Focus editing draft (e.g. quote line items)
+ *  to this user's active session. Create-or-resume on the server, so the
+ *  first edit persists even before an explicit open. THE INVARIANT: a
+ *  draft is Focus session state, not a quote — this writes nothing to the
+ *  quotes domain; materialization is only ever explicit save. */
+export async function saveFocusDraft(
+  focusType: string,
+  draftState: Record<string, unknown> | null,
+): Promise<FocusSessionDTO> {
+  const r = await apiClient.patch<FocusSessionDTO>(
+    `/focus/${focusType}/draft`,
+    { draft_state: draftState },
   )
   return r.data
 }

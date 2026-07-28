@@ -150,6 +150,24 @@ def update_layout_state(
     return session
 
 
+def update_draft_state(
+    db: Session,
+    session: FocusSession,
+    draft_state: dict | None,
+) -> FocusSession:
+    """S-3b — replace the per-user Focus editing draft (e.g. quote line
+    items) + stamp last_interacted_at. Separate from layout_state; a draft
+    is Focus session state, never a quote. Ownership enforced upstream
+    (the row lookup is the authorization)."""
+    if not session.is_active:
+        return session
+    session.draft_state = draft_state
+    session.last_interacted_at = datetime.now(timezone.utc)
+    db.add(session)
+    db.flush()
+    return session
+
+
 def close_session(db: Session, session: FocusSession) -> FocusSession:
     """Mark the session closed. Idempotent."""
     if not session.is_active:

@@ -51,6 +51,10 @@ class FocusSessionOut(BaseModel):
     id: str
     focus_type: str
     layout_state: dict
+    # S-3b — per-user Focus editing draft (e.g. quote line items). null
+    # for Focus types that don't use it. Hydrates the editable core on
+    # open/reload. NOT a quote — see focus_session.draft_state.
+    draft_state: dict | None = None
     is_active: bool
     opened_at: str
     closed_at: str | None
@@ -62,6 +66,7 @@ class FocusSessionOut(BaseModel):
             id=s.id,
             focus_type=s.focus_type,
             layout_state=dict(s.layout_state or {}),
+            draft_state=s.draft_state,
             is_active=s.is_active,
             opened_at=s.opened_at.isoformat() if s.opened_at else "",
             closed_at=s.closed_at.isoformat() if s.closed_at else None,
@@ -95,6 +100,12 @@ class FocusOpenResponse(BaseModel):
 
 class FocusLayoutUpdateRequest(BaseModel):
     layout_state: dict
+
+
+class FocusDraftUpdateRequest(BaseModel):
+    # S-3b — the per-user Focus editing draft (e.g. quote line items).
+    # null clears it. Opaque to the backend; NOT a quote.
+    draft_state: dict | None = None
 
 
 # ── Resolver helper ─────────────────────────────────────────────────
@@ -194,6 +205,24 @@ def update_layout(
     """Write layout_state to an owned session."""
     session = _get_owned_session(db, session_id, current_user)
     updated = fss.update_layout_state(db, session, body.layout_state)
+    db.commit()
+    return FocusSessionOut.from_model(updated)
+
+
+@router.patch("/{focus_type}/draft", response_model=FocusSessionOut)
+def update_draft(
+    focus_type: str,
+    body: FocusDraftUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FocusSessionOut:
+    """S-3b — write the per-user Focus editing draft (e.g. quote line
+    items) to this user's active session for `focus_type`. Create-or-resume
+    so the first edit persists even before an explicit open. THE INVARIANT:
+    a draft is Focus session state, not a quote — nothing here writes to
+    the quotes domain; materialization is only ever explicit save."""
+    session = fss.create_or_resume_session(db, current_user, focus_type)
+    updated = fss.update_draft_state(db, session, body.draft_state)
     db.commit()
     return FocusSessionOut.from_model(updated)
 

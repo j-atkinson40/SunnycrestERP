@@ -54,6 +54,15 @@ class FocusSession(Base):
     layout_state: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    # S-3b (r146) — per-user, Focus-scoped editing draft (e.g. the quote
+    # edit-canvas line items). DELIBERATELY SEPARATE from layout_state:
+    # layout_state is widget geometry auto-seeded by the tenant-default
+    # cascade; a draft must not be seeded from a team layout or clobbered
+    # by the layout resolver. Nullable — most Focus types never set it.
+    # THE HARD INVARIANT: this is Focus session state, NOT a quote. No
+    # quotes-domain read path ever surfaces it; a quote materializes only
+    # at explicit save (create_quote), never from this column.
+    draft_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )

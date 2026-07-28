@@ -97,6 +97,12 @@ export interface FocusState {
    *  Layout writes are gated on this — we don't fire PATCH until
    *  we know the session ID. */
   sessionId: string | null;
+  /** S-3b — the persisted per-user editing draft (e.g. quote line items),
+   *  as returned by POST /open. Null until the fetch resolves (or when the
+   *  Focus type has no draft). The editable core reads this to hydrate
+   *  after a reload (params carry the fresh handoff; draftState carries
+   *  the survived-reload state). NOT a quote — see focus_session. */
+  draftState: Record<string, unknown> | null;
   /** True while POST /open is in flight. Frontend doesn't use this
    *  for loading spinners (optimistic load renders immediately) but
    *  it's available for diagnostics + tests. */
@@ -242,6 +248,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
           params: pendingParamsRef.current ?? {},
           layoutState: seededLayout,
           sessionId: null,
+          draftState: null,
           isSyncing: true,
         };
         pendingParamsRef.current = null;
@@ -271,6 +278,9 @@ export function FocusProvider({ children }: { children: ReactNode }) {
                 ...prev,
                 sessionId: resp.session.id,
                 isSyncing: false,
+                // S-3b — surface the persisted editing draft so the
+                // editable core can hydrate after a reload.
+                draftState: resp.session.draft_state ?? null,
                 // Use persisted layout if server returned one;
                 // otherwise keep the optimistic registry default.
                 layoutState:

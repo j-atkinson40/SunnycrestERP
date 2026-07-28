@@ -15,6 +15,7 @@ See also:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends
@@ -236,6 +237,8 @@ class _PreviewLineBody(BaseModel):
         default=None, description="Already-resolved product id, if any"
     )
     quantity: float = Field(default=1, description="Line quantity")
+    # S-3b — manual per-line price override (director re-prices off catalog).
+    unit_price_override: float | None = Field(default=None)
 
 
 class QuotePreviewRequest(BaseModel):
@@ -247,6 +250,22 @@ class QuotePreviewRequest(BaseModel):
 class _AmbiguousRefBody(BaseModel):
     product_ref: str
     candidates: list[str] = Field(default_factory=list)
+
+
+class _PreviewLineOut(BaseModel):
+    # S-3b structured per-line breakdown — 1:1 with input lines, in order,
+    # so the editable core renders + merges editable rows.
+    product_ref: str
+    status: str  # resolved | call_office | ambiguous | unresolved
+    quantity: float
+    product_id: str | None = None
+    description: str = ""
+    unit_price: str | None = None  # numeric decimal string (editable input)
+    unit_price_formatted: str = "—"
+    line_total: str | None = None
+    line_total_formatted: str = "—"
+    candidates: list[str] = Field(default_factory=list)
+    price_overridden: bool = False
 
 
 class QuotePreviewResponseBody(BaseModel):
@@ -262,6 +281,8 @@ class QuotePreviewResponseBody(BaseModel):
     # guess a price; the widget asks the user which one they meant.
     ambiguous_products: list[_AmbiguousRefBody] = Field(default_factory=list)
     line_count: int
+    # S-3b — per-input-line structured breakdown for the editable core.
+    lines: list[_PreviewLineOut] = Field(default_factory=list)
 
 
 @router.post("/quote-preview", response_model=QuotePreviewResponseBody)
@@ -293,6 +314,11 @@ def quote_preview(
                     product_ref=ln.product_ref,
                     quantity=ln.quantity,
                     product_id=ln.product_id,
+                    unit_price_override=(
+                        Decimal(str(ln.unit_price_override))
+                        if ln.unit_price_override is not None
+                        else None
+                    ),
                 )
                 for ln in body.lines
             ],
@@ -321,6 +347,22 @@ def quote_preview(
             for a in result.ambiguous_products
         ],
         line_count=result.line_count,
+        lines=[
+            _PreviewLineOut(
+                product_ref=ln.product_ref,
+                status=ln.status,
+                quantity=ln.quantity,
+                product_id=ln.product_id,
+                description=ln.description,
+                unit_price=ln.unit_price,
+                unit_price_formatted=ln.unit_price_formatted,
+                line_total=ln.line_total,
+                line_total_formatted=ln.line_total_formatted,
+                candidates=ln.candidates,
+                price_overridden=ln.price_overridden,
+            )
+            for ln in result.lines
+        ],
     )
 
 

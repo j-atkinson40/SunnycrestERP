@@ -17,6 +17,9 @@ export interface QuotePreviewLineInput {
   product_ref: string
   product_id?: string
   quantity: number
+  /** S-3b — per-line unit-price override. When set, the preview uses this
+   *  price instead of the order resolver's. Absent = resolver price. */
+  unit_price_override?: number
 }
 
 export interface QuotePreviewRequest {
@@ -32,6 +35,23 @@ export interface AmbiguousRef {
   candidates: string[]
 }
 
+/** S-3b — the structured per-line breakdown, 1:1 with the input lines and
+ *  IN ORDER (including unresolved / ambiguous / call-office lines). The
+ *  edit canvas renders each row's price + total + status from this. */
+export interface QuotePreviewLineResult {
+  product_ref: string
+  status: "resolved" | "unresolved" | "ambiguous" | "call_office"
+  quantity: number
+  product_id: string | null
+  description: string
+  unit_price: string | null
+  unit_price_formatted: string
+  line_total: string | null
+  line_total_formatted: string
+  candidates: string[]
+  price_overridden: boolean
+}
+
 export interface QuotePreviewResponse {
   html: string
   subtotal_formatted: string
@@ -42,6 +62,8 @@ export interface QuotePreviewResponse {
   unresolved_products: string[]
   ambiguous_products: AmbiguousRef[]
   line_count: number
+  /** S-3b — structured per-line breakdown for the edit canvas. */
+  lines: QuotePreviewLineResult[]
 }
 
 export async function fetchQuotePreview(
@@ -54,6 +76,26 @@ export async function fetchQuotePreview(
     { signal },
   )
   return data
+}
+
+/** S-3b — a product suggestion for the add-line combobox. */
+export interface ProductSuggestion {
+  id: string
+  name: string
+}
+
+/** S-3b — typeahead for the add-line combobox. Best-effort: on any error
+ *  (e.g. the user lacks products.view) the caller falls back to free-text
+ *  entry — the preview endpoint still resolves + refuses whatever ref the
+ *  user types. */
+export async function searchQuoteProducts(
+  query: string,
+  signal?: AbortSignal,
+): Promise<ProductSuggestion[]> {
+  const { data } = await apiClient.get<{
+    items: { id: string; name: string }[]
+  }>("/products", { params: { search: query, per_page: 8 }, signal })
+  return (data.items ?? []).map((p) => ({ id: p.id, name: p.name }))
 }
 
 export interface PriceListRow {

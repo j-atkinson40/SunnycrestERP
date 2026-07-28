@@ -423,6 +423,219 @@ def test_ambiguous_multi_variant_refuses(db_session, two_variant_world):
     assert "$1,850.00" not in res.html
 
 
+# ── S-3b: multi-line money math + override + structured per-line ─────
+#
+# S-2 proved single-line. S-3b's point is MULTIPLE editable lines — fresh
+# hand-proof of the multi-line subtotal, qty re-price, per-line override,
+# and the structured per-line breakdown the editable core consumes.
+
+
+def test_multiline_subtotal_across_products(db_session, world):
+    # 3-line quote: 2× Monticello ($1,250) + 1× Grave Widget ($500)
+    #             + 1× a call-office product.
+    # HAND-PROOF (banker's rounding, per-line then summed):
+    #   line1 = round_money(2 × 1250.00) = $2,500.00
+    #   line2 = round_money(1 ×  500.00) =   $500.00
+    #   call-office → "Price on request", EXCLUDED from subtotal
+    #   subtotal = 2500.00 + 500.00      = $3,000.00
+    res = assemble_quote_preview(
+        db_session,
+        world["company_id"],
+        lines=[
+            DraftLine(product_ref="Monticello", quantity=2),
+            DraftLine(product_ref="Grave Widget", quantity=1),
+            DraftLine(product_ref="Custom Bronze Memorial", quantity=1),
+        ],
+    )
+    assert res.subtotal == Decimal("3000.00")
+    assert res.subtotal_formatted == "$3,000.00"
+    assert res.has_call_office is True
+    assert res.line_count == 3
+
+    # Structured per-line: 1:1 with input, in order, editable-UI-ready.
+    assert len(res.lines) == 3
+    l0, l1, l2 = res.lines
+    assert l0.status == "resolved" and l0.description == "Monticello"
+    assert l0.unit_price == "1250.00" and l0.line_total == "2500.00"
+    assert l0.product_id is not None  # the editable row keys on this
+    assert l1.status == "resolved" and l1.line_total == "500.00"
+    assert l2.status == "call_office"
+    assert l2.unit_price_formatted == "Price on request"
+    assert l2.unit_price is None  # not priced
+
+
+def test_quantity_edit_reprices_line_and_subtotal(db_session, world):
+    two = assemble_quote_preview(
+        db_session, world["company_id"],
+        lines=[DraftLine(product_ref="Monticello", quantity=2)],
+    )
+    three = assemble_quote_preview(
+        db_session, world["company_id"],
+        lines=[DraftLine(product_ref="Monticello", quantity=3)],
+    )
+    assert two.subtotal == Decimal("2500.00")
+    assert two.lines[0].line_total == "2500.00"
+    assert three.subtotal == Decimal("3750.00")
+    assert three.lines[0].line_total == "3750.00"
+
+
+def test_per_line_price_override(db_session, world):
+    # Director overrides Monticello to $1,200 (catalog is $1,250), qty 2.
+    # HAND-PROOF: round_money(2 × 1200.00) = $2,400.00 (NOT catalog $2,500).
+    res = assemble_quote_preview(
+        db_session,
+        world["company_id"],
+        lines=[
+            DraftLine(
+                product_ref="Monticello",
+                quantity=2,
+                unit_price_override=Decimal("1200.00"),
+            )
+        ],
+    )
+    assert res.subtotal == Decimal("2400.00")
+    ln = res.lines[0]
+    assert ln.unit_price == "1200.00"
+    assert ln.line_total == "2400.00"
+    assert ln.price_overridden is True
+
+
+def test_edited_ambiguous_line_refused_in_structured_lines(
+    db_session, two_variant_world
+):
+    # A resolved line + an EDITED ambiguous line. The ambiguous line is
+    # refused (no price), excluded from the subtotal, and surfaced in the
+    # structured breakdown with its candidates — same as an extracted one.
+    res = assemble_quote_preview(
+        db_session,
+        two_variant_world["company_id"],
+        lines=[
+            DraftLine(product_ref="Monticello", quantity=1),  # exact → resolves
+            DraftLine(product_ref="Monticello Standard", quantity=2),  # ambiguous
+        ],
+    )
+    assert res.subtotal == Decimal("1250.00")  # only the resolved line
+    assert len(res.lines) == 2
+    assert res.lines[0].status == "resolved"
+    assert res.lines[1].status == "ambiguous"
+    assert res.lines[1].unit_price is None  # NOT priced (refused)
+    assert set(res.lines[1].candidates) >= {"Monticello", "Monticello Premium"}
+
+
+@pytest.fixture
+def mixed_world(db_session):
+    """A catalog carrying BOTH ambiguity AND a call-office product — so a
+    single quote can exercise a qty-edit line, an ambiguous edited line,
+    and a call-office line together (the S-3b combined hand-proof)."""
+    from app.models.company import Company
+    from app.models.product import Product
+
+    db = db_session
+    suffix = uuid.uuid4().hex[:6]
+    co = Company(
+        id=str(uuid.uuid4()),
+        name=f"MIX {suffix}",
+        slug=f"mix-{suffix}",
+        is_active=True,
+    )
+    db.add(co)
+    db.flush()
+    db.add_all(
+        [
+            Product(
+                id=str(uuid.uuid4()), company_id=co.id, name="Monticello",
+                sku=f"MON-{suffix}", price=Decimal("1250.00"),
+                is_active=True, product_line="monticello",
+            ),
+            Product(
+                id=str(uuid.uuid4()), company_id=co.id,
+                name="Monticello Premium", sku=f"MONP-{suffix}",
+                price=Decimal("1850.00"), is_active=True,
+                product_line="monticello",
+            ),
+            Product(
+                id=str(uuid.uuid4()), company_id=co.id, name="Grave Widget",
+                sku=f"GW-{suffix}", price=Decimal("500.00"), is_active=True,
+            ),
+            Product(
+                id=str(uuid.uuid4()), company_id=co.id,
+                name="Custom Bronze Memorial", sku=f"CBM-{suffix}",
+                price=None, is_active=True, is_call_office=True,
+            ),
+        ]
+    )
+    db.commit()
+    yield {"company_id": co.id}
+
+    db.query(Product).filter(Product.company_id == co.id).delete(
+        synchronize_session=False
+    )
+    db.query(Company).filter(Company.id == co.id).delete(
+        synchronize_session=False
+    )
+    db.commit()
+
+
+def test_combined_3line_qty_edit_ambiguous_and_call_office(
+    db_session, mixed_world
+):
+    # THE S-3b COMBINED HAND-PROOF — one 3-line quote exercising all three
+    # editable shapes at once, machine-checked against the endpoint:
+    #
+    #   line1  Grave Widget      qty 3  (a qty-edit line)
+    #            → round_money(3 × 500.00)             = $1,500.00   RESOLVED
+    #   line2  "Monticello Standard" qty 2 (edited, ambiguous)
+    #            → fuzzy-matches Monticello + Monticello Premium
+    #            → REFUSED: no price, EXCLUDED from subtotal
+    #   line3  Custom Bronze Memorial qty 1 (call-office)
+    #            → "Price on request", EXCLUDED from subtotal
+    #
+    #   subtotal = 1500.00 (only the one resolved line)  = $1,500.00
+    #   NEITHER ambiguous candidate price ($1,250 / $1,850) may appear.
+    res = assemble_quote_preview(
+        db_session,
+        mixed_world["company_id"],
+        customer_name="Hopkins Funeral Home",
+        lines=[
+            DraftLine(product_ref="Grave Widget", quantity=3),
+            DraftLine(product_ref="Monticello Standard", quantity=2),
+            DraftLine(product_ref="Custom Bronze Memorial", quantity=1),
+        ],
+    )
+
+    # Subtotal is the single resolved line — refused + call-office excluded.
+    assert res.subtotal == Decimal("1500.00")
+    assert res.subtotal_formatted == "$1,500.00"
+    assert res.has_call_office is True
+
+    # Structured per-line: 1:1 with input, IN ORDER, every state present.
+    assert len(res.lines) == 3
+    l0, l1, l2 = res.lines
+    # line1 — qty-edit resolved
+    assert l0.status == "resolved"
+    assert l0.description == "Grave Widget"
+    assert l0.quantity == 3.0
+    assert l0.unit_price == "500.00"
+    assert l0.line_total == "1500.00"
+    # line2 — edited ambiguous → refused (no price), candidates surfaced
+    assert l1.status == "ambiguous"
+    assert l1.product_ref == "Monticello Standard"
+    assert l1.unit_price is None
+    assert l1.line_total is None
+    assert set(l1.candidates) >= {"Monticello", "Monticello Premium"}
+    # line3 — call-office
+    assert l2.status == "call_office"
+    assert l2.unit_price is None
+    assert l2.unit_price_formatted == "Price on request"
+
+    # A wrong price is worse than no price: no candidate price leaks.
+    assert "$1,250.00" not in res.html
+    assert "$1,850.00" not in res.html
+    # The REAL quote template rendered the one real price (drift guard):
+    assert "$1,500.00" in res.html
+    assert "QUOTE" in res.html
+
+
 # ── Price-list reference (tiered display is correct HERE) ─────────────
 
 
