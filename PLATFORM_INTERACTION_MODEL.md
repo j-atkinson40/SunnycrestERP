@@ -78,13 +78,15 @@ This is why Bridgeable canonicalized whole-element drag with no handles ([`PLATF
 
 > *Set objects aside without dismissing them; they remain available.*
 
+**Park is specified in full below** — see [Park — The Spatial Working Set](#park--the-spatial-working-set-a-layer-of-act). This entry is park at a glance (the set-aside facet); the section below is the full spec.
+
 This is the interaction the cinematic model captures most vividly — Tony throws a schematic to the side, returns to it later, throws it again. **Things persist.**
 
 Park is distinct from dismiss. Parked objects are *available* without being *active*. They sit in the workspace's periphery (or in an explicit parking lot) until the user calls them back to attention.
 
 Implementation status (April 2026):
 - **Existing in current Bridgeable:** triage queue items in the AncillaryPoolPin sit in pool state until pulled into a driver lane or attached to a parent. Pinned items in a Space sit in the sidebar until clicked. The return pill on a closed Focus parks the Focus in a bounded countdown — 15 seconds to come back, then the Focus returns to its full-dismiss state.
-- **Aspirational:** spatial parking lot for command-bar-summoned cards. Tony's workshop model would let the user say "actually, hold on this one for a moment" and have the card slide to a parking position. Bridgeable has the architecture for this (the command bar with a parking surface) but the spatial workspace with multi-tablet arrangement is post-September. The four-verb model still holds; the implementation surface evolves.
+- **Now specified — the S-5 build arc:** spatial parking lot for command-bar-summoned cards. Tony's workshop model would let the user say "actually, hold on this one for a moment" and have the card slide to a parking position. Bridgeable has the architecture for this (the command bar with a parking surface); the spatial working-set model is now defined in full — the *Park — The Spatial Working Set* section below — and is the **S-5 build arc** (the ratification that pulled it forward from post-September is recorded in DECISIONS.md 2026-07-23).
 
 ### Dismiss
 
@@ -99,6 +101,87 @@ Dismiss vs Park:
 Dismiss returns the workspace to calm. **Calm is the default.** The platform is *available*, not *engaging*. When the user dismisses everything, they should see a quiet workspace, not a chrome-laden interface demanding attention.
 
 This is why Layer 1's Quietness translation principle ("a quiet workshop is intentional, not empty") and Layer 2's Dismiss verb work together. Dismissal returns to quietness. Quietness is the substrate that makes summoned objects feel intentional rather than chaotic.
+
+---
+
+## Park — The Spatial Working Set (a layer of Act)
+
+Park is the spatial working-set layer of Act. Where the command bar handles a
+single intent as a fast one-shot, park is where a user assembles several surfaces —
+reference tablets and live light acts — and works across them at once. It is
+"summon · arrange" held open: floating tablets, summoned intent-shaped from the
+command bar, arranged freely, worked in concurrently, dismissed as a set.
+
+Park is NOT a fourth primitive. It is a layer within Act — the spatial expression
+of the same Act-shape discipline that governs the command bar's inline contextual
+surfaces, extended to a working set the user composes deliberately.
+
+### Motivating scenario
+A DM arrives: Customer A wants a Monticello price, and asks for a note to drop off
+an updated price list next visit. Handling it fans out into three concurrent acts —
+reply to the sender, email Customer A the price, add a note to their record. The
+user summons three tablets, arranges them, and works all three without navigating
+anywhere. That is park: one request fanning out into several light acts, handled
+together across surfaces.
+
+### Why park is not a Focus (the boundary that keeps the primitives distinct)
+A persistent spatial workspace is exactly the shape §5.14 warns against ("if the
+answer to 'when do you exit' is 'when you're done looking around,' the wrong
+primitive was chosen"). Park earns its distinction on three sides:
+
+- **Not a Focus.** No single bounded decision lives in park. Park holds LIGHT
+  ACTS — atomic gestures done in one step (send a message, look up a price, add a
+  note, open a record). The moment an act becomes a bounded decision — one with a
+  registered Focus — park does not absorb it; it escalates it out. A user building
+  a detailed quote in park is offered the quote-building Focus. Light acts stay;
+  Focus-shaped work leaves. That is the enforced boundary.
+- **Not a dashboard/Space.** Park is ephemeral — session-scoped, dies on exit with
+  a short grace-window relaunch affordance for accidental exits. A dashboard is
+  persistent and lived-in (Monitor); park evaporates. Nothing in park is a place
+  you return to.
+- **Its own thing.** A spatial working set of concurrent light acts and reference
+  surfaces, composed to handle a request that spans surfaces — a capability neither
+  the one-shot command bar nor the bounded Focus provides.
+
+One-sentence form: *Park is where you gather surfaces and do quick things across
+them. The moment something becomes a real decision, it opens into a Focus. Park
+never lets a decision close inside it.*
+
+### Mechanics
+- **Summon.** Tablets summoned from the command bar, intent-shaped — never
+  app-launcher grammar. An inline contextual surface can be lifted into park.
+- **Arrange.** Draggable/arrangeable on the free-form canvas (8px grid) via the
+  shipped drag machinery (WidgetChrome / @dnd-kit). Chrome ghosted by default. Each
+  interactive tablet self-asserts pointer-events per the Focus Canvas tier contract.
+- **Concurrent acts.** Multiple live acts at once, each independently interactive,
+  each with its own draft state. No numeric cap on tablet count. What is capped is
+  not HOW MANY acts but WHAT KIND — light acts coexist freely; Focus-shaped acts
+  escalate.
+- **Escalation (the boundary, enforced).** Predicate: *does this act-type have a
+  registered Focus?* If yes → park offers to open that Focus and hands the in-flight
+  state across (the S-3a escalation crossing, generalized). If no → the act stays
+  light in park. Deterministic and data-driven, keyed to the Focus-type registry —
+  not a complexity heuristic, not a tablet-count cap.
+- **Ephemerality + recovery.** The session ends on exit; a grace-window relaunch
+  affordance appears along the bottom of the screen (the §5.6 return-pill pattern,
+  applied to park). After the window, the session evaporates. Not persisted across
+  sessions.
+- **Per-act commit.** Each parked act commits its own data at its own send/save
+  gesture, and only then. Park act-drafts are session-scoped — they die with the
+  park session (unlike a persistent Focus draft). "No data before commit" applies
+  per act.
+
+### Mobile / tablet translation
+Free-form tablets don't translate to phones. Park degrades via the same three-tier
+cascade as Focus: desktop = free-form drag; tablet = preset zones + "tidy up";
+phone = vertical stack with swipe between surfaces. The working-set concept survives;
+free-form arrangement does not.
+
+### Relationship to inline contextual surfaces
+The command bar's inline contextual surfaces (§4.3) stay capped at 2–3 and vanish
+when their action completes. Park is the escalation target when a user wants more
+than the inline surfaces, or to hold surfaces open across several acts. A surface
+can move from inline context into park; the reverse isn't needed.
 
 ---
 

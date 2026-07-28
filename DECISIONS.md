@@ -988,3 +988,38 @@ contextual surfaces → S-3 §4.5 Focus escalation → S-4 §4.7 chips + §4.8 p
 must exist first.
 
 ---
+
+## 2026-07-27 — Park fully specified: spatial working-set layer of Act
+
+Park specified as a §-level layer in PLATFORM_INTERACTION_MODEL.md — the first full
+park definition (previously only a headline verb in "summon · arrange · park ·
+dismiss"). Park is a spatial working-set LAYER WITHIN ACT, not a fourth primitive.
+
+Identity: ephemeral, session-scoped spatial canvas holding multiple concurrent LIGHT
+ACTS + reference tablets, assembled to handle a request that fans out across
+surfaces. Canonical scenario: a DM fanning out into three concurrent acts (reply /
+email / note) worked side by side without navigation.
+
+Three-sided boundary (the "why isn't this a Focus" the September category claim rests
+on): not a Focus (no bounded decision closes here; any act with a REGISTERED FOCUS
+escalates out); not a dashboard/Space (ephemeral, dies on exit with a grace-window
+relaunch pill); its own thing (concurrent-light-act spatial working set neither the
+one-shot bar nor the bounded Focus provides).
+
+Escalation predicate: "does this act-type have a registered Focus?" — deterministic,
+keyed to the Focus-type registry (the S-3 crossing generalized). NOT a tablet-count
+cap, NOT a complexity heuristic.
+
+SUPERSEDES the ~3-object escalation from the 2026-07-23 park ratification. That rule
+capped park at ~3 tablets and escalated past the cap. The DM fan-out proves a numeric
+cap wrong — three concurrent LIGHT acts is the canonical correct use case. Escalation
+is per-act-TYPE (has-a-Focus), not per-tablet-COUNT. The ~3-object cap remains correct
+for the command bar's INLINE contextual surfaces (§4.3) — a different surface.
+
+Carried forward unchanged from 2026-07-23: intent-shaped summon (never app-launcher),
+session-scoped ephemerality, three-tier mobile cascade, calibrated console-dark visual
+language, one drag system (WidgetChrome/@dnd-kit), pointer-events tier contract.
+
+Per-act commit: each parked act commits at its own send/save; park drafts are
+session-scoped (die with the session, unlike persistent Focus drafts). "No data before
+commit" applies per act.
