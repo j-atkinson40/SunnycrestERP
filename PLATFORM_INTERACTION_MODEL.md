@@ -211,7 +211,10 @@ relationship inverted — park's grace-window relaunch affordance is the return 
 ### Ephemerality, precisely
 
 Park's session lives in client memory (React context/state) — nothing server-
-persisted, no table, no reaper. "Ephemeral" means precisely:
+persisted, no table, no reaper. (Deliberate contrast with S-3b's server-persisted
+`focus_sessions.draft_state` drafts, which carry an unbounded-growth cleanup concern:
+park's session is client-held and self-evaporating, so that reaper concern does not
+apply here — there is nothing to collect.) "Ephemeral" means precisely:
 
 - Survives in-session navigation within the app.
 - On DELIBERATE exit, a grace-window relaunch affordance appears (bottom of screen,
