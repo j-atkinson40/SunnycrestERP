@@ -1023,3 +1023,37 @@ language, one drag system (WidgetChrome/@dnd-kit), pointer-events tier contract.
 Per-act commit: each parked act commits at its own send/save; park drafts are
 session-scoped (die with the session, unlike persistent Focus drafts). "No data before
 commit" applies per act.
+
+---
+
+## 2026-07-27 — Park mechanics settled: peer-layer, suspend-and-return, client-ephemeral
+
+Three park mechanics settled during the S-5 Phase-1 investigation, folded into the
+PLATFORM_INTERACTION_MODEL.md park spec:
+
+1. PEER LAYER. Park is a peer to the command bar and Focus, not a child of either.
+   The bar renders Focus-exclusive ({!focusIsOpen && <CommandBar/>}), so park cannot
+   mount in the Focus tree — it sits alongside. Park and the bar COEXIST (you summon
+   from the bar and keep working). Discovered via the mount-tree analysis in the S-5
+   investigation.
+
+2. SUSPEND-AND-RETURN. When a park act escalates to a Focus, park SUSPENDS behind the
+   Focus (session held, no grace countdown — suspension ≠ exit) and RESUMES on Focus
+   close (same tablets/arrangement/drafts). Rationale: escalation must be reversible
+   or users avoid the escalation prompt to protect their tablets, defeating the
+   boundary that keeps park from being a Focus. Mechanically the §5.6 return-pill
+   inverted. Chosen over "Focus consumes park" and "Focus coexists with live park."
+
+3. CLIENT-EPHEMERAL. Park session lives in client memory; nothing server-persisted,
+   no table, no reaper. Survives in-session navigation; grace-window relaunch on
+   deliberate exit; HARD REFRESH ends it (grace window is client-held). Correct
+   tradeoff — park is scratch; durable needs escalate to Focus or commit their own
+   data. Recurring working sets promote to Monitor via observe-and-offer, not by
+   making park persistent.
+
+Confirmed reusable at the fourth host: getWidgetRenderer mounts any surface widget in
+a park tablet unchanged — the re-host contract (S-1→S-3b) holds at Act-inline / Focus-
+core / Focus-pin / park-tablet. Park is assembly, not greenfield. Per-act commit paths
+(message/email/note/order) already shipped. Escalation predicate = "act-type has a
+registered Focus" (quote yes; reply/email/note/lookup/open-record no), keyed to the
+Focus-type registry, reusing the S-3a crossing from a park trigger.

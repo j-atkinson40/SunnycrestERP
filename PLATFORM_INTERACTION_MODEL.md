@@ -183,6 +183,48 @@ when their action completes. Park is the escalation target when a user wants mor
 than the inline surfaces, or to hold surfaces open across several acts. A surface
 can move from inline context into park; the reverse isn't needed.
 
+### Park's place in the layer stack (peer to bar and Focus)
+
+Park is a peer layer to the command bar and to Focus — not a child of either. This
+matters concretely: the command bar renders under Focus-exclusivity
+(`{!focusIsOpen && <CommandBar/>}`), so park cannot mount inside the Focus tree, or
+summoning park would unmount the bar that summoned it. Park sits alongside both.
+
+- **Park and the command bar coexist.** You summon tablets from the bar and keep
+  working; the bar remains available. This is required by park's nature — a working
+  set assembled from the bar, worked across while the bar stays reachable.
+- **Park and Focus: suspend-and-return.** When a park act escalates to a Focus (or a
+  Focus is opened while park is arranged), park SUSPENDS — it goes dormant behind the
+  Focus, its session held intact, no grace-window countdown running (a suspension is
+  not an exit). On Focus close, park RESUMES: same tablets, same arrangement, same
+  in-flight drafts. The act that escalated reflects its Focus outcome on return
+  (completed → its tablet updates or clears; still-drafting → its tablet syncs the
+  draft state).
+
+Why suspend-and-return, not consume: escalation must be reversible, or users learn to
+fear the escalation prompt ("if I open the quote Focus I lose my other tablets") and
+avoid the very boundary that keeps park distinct from Focus. Reversible escalation
+keeps the boundary frictionless, so it actually gets used, so park stays clean. The
+design reinforces its own discipline. Mechanically this is the §5.6 return-pill
+relationship inverted — park's grace-window relaunch affordance is the return path.
+
+### Ephemerality, precisely
+
+Park's session lives in client memory (React context/state) — nothing server-
+persisted, no table, no reaper. "Ephemeral" means precisely:
+
+- Survives in-session navigation within the app.
+- On DELIBERATE exit, a grace-window relaunch affordance appears (bottom of screen,
+  §5.6 return-pill pattern); after the window, the session evaporates.
+- A HARD BROWSER REFRESH ends the session with no grace window — the grace window is
+  itself client-held. This is the correct tradeoff: park is spatial scratch, not a
+  saved artifact. Anything a user needs to keep survives via its own commit (a sent
+  email, a saved note) or by escalating to a Focus (which has its own persistence).
+
+Park never promises durability it doesn't deliver. If a working set proves worth
+keeping across sessions, the canonical move is observe-and-offer promotion to a
+Space/Pulse composition (Monitor) — not making park persistent.
+
 ---
 
 ## The materialization unit — floating tablets
