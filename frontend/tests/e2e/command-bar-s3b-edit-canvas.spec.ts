@@ -155,8 +155,9 @@ test.describe("@tenant:sunnycrest Command Bar S-3b edit canvas", () => {
     })
 
     // Save is the one chrome primary — present but DEFERRED (no quote
-    // materializes; the invariant is backend-proven).
-    await expect(canvas.getByTestId("quote-save")).toBeDisabled()
+    // materializes; the invariant is backend-proven). It's a host-level
+    // action below the core card, so scope to the page, not the canvas.
+    await expect(page.getByTestId("quote-save")).toBeDisabled()
   })
 
   test("the edited draft SURVIVES a reload (persistence option b)", async ({
