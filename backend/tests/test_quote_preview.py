@@ -306,6 +306,123 @@ def test_plural_product_ref_resolves(db_session, world):
     assert res.context["lines"][0]["description"] == "Monticello"
 
 
+# ── Fuzzy-with-refusal (S-2 staging-witness fix) ─────────────────────
+#
+# The witness caught that the live AI extraction emits qualifier-suffixed
+# product names ("Monticello Standard") that the strict substring match
+# can't resolve. These tests feed the resolver the strings the AI ACTUALLY
+# EMITS — the gap the old money test (clean "Monticello") missed.
+
+
+def test_qualifier_suffixed_name_resolves_via_fuzzy(db_session, world):
+    # The AI emits "Monticello Standard"; the catalog has "Monticello".
+    # Substring fast-path MISSES; the fuzzy fallback finds the SINGLE
+    # candidate and resolves. HAND-PROOF: $1,250.00 × 3 = $3,750.00.
+    res = assemble_quote_preview(
+        db_session,
+        world["company_id"],
+        lines=[DraftLine(product_ref="Monticello Standard", quantity=3)],
+    )
+    assert res.ambiguous_products == []
+    assert res.unresolved_products == []
+    assert res.line_count == 1
+    ln = res.context["lines"][0]
+    assert ln["description"] == "Monticello"
+    assert ln["unit_price_formatted"] == "$1,250.00"
+    assert ln["line_total_formatted"] == "$3,750.00"
+    assert res.subtotal == Decimal("3750.00")
+
+
+def test_resolve_product_three_states(db_session, world):
+    from app.services.command_bar.quote_preview import resolve_product
+
+    # exact → resolved via the fast path (regression: unchanged behavior)
+    r = resolve_product(db_session, world["company_id"], "Monticello")
+    assert r.status == "resolved" and r.product.name == "Monticello"
+
+    # qualifier-suffixed → resolved via fuzzy (single candidate)
+    r = resolve_product(db_session, world["company_id"], "Monticello Standard")
+    assert r.status == "resolved" and r.product.name == "Monticello"
+
+    # nothing close → unresolved (0 candidates clear the threshold)
+    r = resolve_product(db_session, world["company_id"], "Zzqqx Nonexistent")
+    assert r.status == "unresolved" and r.product is None
+
+
+@pytest.fixture
+def two_variant_world(db_session):
+    """A catalog with TWO Monticello variants — the ambiguity case."""
+    from app.models.company import Company
+    from app.models.product import Product
+
+    db = db_session
+    suffix = uuid.uuid4().hex[:6]
+    co = Company(
+        id=str(uuid.uuid4()),
+        name=f"AMB {suffix}",
+        slug=f"amb-{suffix}",
+        is_active=True,
+    )
+    db.add(co)
+    db.flush()
+    db.add_all(
+        [
+            Product(
+                id=str(uuid.uuid4()),
+                company_id=co.id,
+                name="Monticello",
+                sku=f"MON-{suffix}",
+                price=Decimal("1250.00"),
+                is_active=True,
+                product_line="monticello",
+            ),
+            Product(
+                id=str(uuid.uuid4()),
+                company_id=co.id,
+                name="Monticello Premium",
+                sku=f"MONP-{suffix}",
+                price=Decimal("1850.00"),
+                is_active=True,
+                product_line="monticello",
+            ),
+        ]
+    )
+    db.commit()
+    yield {"company_id": co.id}
+
+    db.query(Product).filter(Product.company_id == co.id).delete(
+        synchronize_session=False
+    )
+    db.query(Company).filter(Company.id == co.id).delete(
+        synchronize_session=False
+    )
+    db.commit()
+
+
+def test_ambiguous_multi_variant_refuses(db_session, two_variant_world):
+    # THE CORRECTNESS CORE. Catalog has "Monticello" ($1,250) AND
+    # "Monticello Premium" ($1,850). Input "Monticello Standard" fuzzy-
+    # matches BOTH above the similarity threshold → the resolver REFUSES.
+    # A wrong price is worse than no price: NO line, NO subtotal, and the
+    # ref is surfaced as ambiguous (NOT as "couldn't find").
+    res = assemble_quote_preview(
+        db_session,
+        two_variant_world["company_id"],
+        lines=[DraftLine(product_ref="Monticello Standard", quantity=2)],
+    )
+    assert res.line_count == 0
+    assert res.subtotal_formatted == ""  # no fabricated price
+    assert res.unresolved_products == []  # ambiguous, NOT "couldn't find"
+    assert len(res.ambiguous_products) == 1
+    amb = res.ambiguous_products[0]
+    assert amb.product_ref == "Monticello Standard"
+    # Both variants surfaced as candidates for the user to disambiguate.
+    assert set(amb.candidates) >= {"Monticello", "Monticello Premium"}
+    # And crucially: NEITHER price ($1,250 nor $1,850) appears anywhere.
+    assert "$1,250.00" not in res.html
+    assert "$1,850.00" not in res.html
+
+
 # ── Price-list reference (tiered display is correct HERE) ─────────────
 
 

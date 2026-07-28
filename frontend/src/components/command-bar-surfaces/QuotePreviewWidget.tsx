@@ -157,7 +157,11 @@ function PreviewCaption({ data }: { data: QuotePreviewResponse }) {
     )
   }
 
-  const hasBody = parts.length > 0 || data.has_call_office
+  const hasBody =
+    parts.length > 0 ||
+    data.has_call_office ||
+    data.ambiguous_products.length > 0 ||
+    data.unresolved_products.length > 0
 
   return (
     <div className="flex flex-col gap-1 text-caption text-content-muted">
@@ -174,6 +178,14 @@ function PreviewCaption({ data }: { data: QuotePreviewResponse }) {
       {data.has_call_office && (
         <span>Some items are priced on request.</span>
       )}
+      {data.ambiguous_products.map((amb) => (
+        // Refuse to guess — a wrong price is worse than no price. Same
+        // honesty family as "price on request" / "calculated at order".
+        <span key={amb.product_ref} className="text-status-warning">
+          Couldn't confidently price "{amb.product_ref}" — which:{" "}
+          {amb.candidates.join(", ")}?
+        </span>
+      ))}
       {data.unresolved_products.length > 0 && (
         <span className="text-status-warning">
           Couldn't find: {data.unresolved_products.join(", ")}

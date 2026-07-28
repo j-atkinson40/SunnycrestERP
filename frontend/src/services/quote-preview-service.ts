@@ -25,6 +25,13 @@ export interface QuotePreviewRequest {
   lines: QuotePreviewLineInput[]
 }
 
+/** A ref that matched MULTIPLE catalog products — the preview refuses to
+ *  guess a price and asks the user which one they meant. */
+export interface AmbiguousRef {
+  product_ref: string
+  candidates: string[]
+}
+
 export interface QuotePreviewResponse {
   html: string
   subtotal_formatted: string
@@ -33,6 +40,7 @@ export interface QuotePreviewResponse {
   tax_resolved: boolean
   has_call_office: boolean
   unresolved_products: string[]
+  ambiguous_products: AmbiguousRef[]
   line_count: number
 }
 

@@ -40,7 +40,7 @@ must not create data.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -91,6 +91,27 @@ class DraftLine:
 
 
 @dataclass
+class AmbiguousRef:
+    """A product ref that matched MULTIPLE catalog products above the
+    similarity threshold. The preview refuses to guess — it surfaces the
+    candidates so the user disambiguates."""
+
+    product_ref: str
+    candidates: list[str]
+
+
+@dataclass
+class ProductResolution:
+    """Three-state result of resolving a product ref. ``ambiguous`` is
+    the correctness-critical state: a preview must never guess a product
+    when several could match — a wrong price is worse than no price."""
+
+    status: str  # "resolved" | "unresolved" | "ambiguous"
+    product: Optional[Product] = None
+    candidates: list[str] = field(default_factory=list)
+
+
+@dataclass
 class QuotePreviewResult:
     html: str
     context: dict
@@ -101,6 +122,7 @@ class QuotePreviewResult:
     total_formatted: Optional[str]
     has_call_office: bool
     unresolved_products: list[str]
+    ambiguous_products: list[AmbiguousRef]
     line_count: int
 
 
@@ -109,15 +131,25 @@ def resolve_product(
     company_id: str,
     product_ref: str,
     product_id: Optional[str] = None,
-) -> Optional[Product]:
-    """Resolve a product reference to a tenant-scoped active Product row.
+) -> ProductResolution:
+    """Resolve a product reference to a tenant-scoped active Product row —
+    fuzzy-with-refusal (S-2 staging-witness fix, 2026-07-28).
 
-    Uses the same ``Product.name.ilike`` / ``sku.ilike`` pattern quote
-    creation + the command-bar price answer use (there is no shared
-    name→Product helper in the codebase — the pattern is inlined at each
-    site). Tolerates a trailing plural ("Monticellos" → "Monticello").
-    Returns None when nothing resolves — the caller lists it as an
-    unresolved product rather than inventing a price.
+    Order:
+      1. Exact by product_id (if given).
+      2. FAST PATH — substring ``ilike`` (+ trailing-plural), unchanged.
+         Clean names ("Monticello") still resolve exactly as before.
+      3. On a substring MISS, FUZZY FALLBACK via the shared pg_trgm
+         resolver (``command_bar.resolver.resolve``, the same matcher the
+         command-bar/query search uses — REUSED, not re-implemented; its
+         ``similarity >= threshold`` filter is the "clears the threshold"
+         gate). This handles qualifier-suffixed AI names ("Monticello
+         Standard" → "Monticello") whose substring can't match the shorter
+         catalog name.
+
+    REFUSAL RULE (the correctness core): resolve ONLY if EXACTLY ONE
+    candidate clears the threshold. Zero → unresolved. TWO OR MORE →
+    ``ambiguous`` (DO NOT PICK) — a wrong price is worse than no price.
     """
     if product_id:
         p = (
@@ -130,17 +162,17 @@ def resolve_product(
             .first()
         )
         if p:
-            return p
+            return ProductResolution("resolved", product=p)
 
     name = (product_ref or "").strip()
     if not name:
-        return None
+        return ProductResolution("unresolved")
 
-    candidates = [name]
+    # 2. Fast path — substring / sku match (+ trailing plural). Unchanged.
+    patterns = [name]
     if len(name) > 3 and name.lower().endswith("s"):
-        candidates.append(name[:-1])
-
-    for pat in candidates:
+        patterns.append(name[:-1])
+    for pat in patterns:
         p = (
             db.query(Product)
             .filter(
@@ -155,8 +187,39 @@ def resolve_product(
             .first()
         )
         if p:
-            return p
-    return None
+            return ProductResolution("resolved", product=p)
+
+    # 3. Fuzzy fallback with refusal. Lazy import keeps the resolver off
+    #    the fast (import-time + substring-hit) path.
+    from app.services.command_bar import resolver as _resolver
+
+    hits = _resolver.resolve(
+        db,
+        query_text=name,
+        company_id=company_id,
+        entity_types=("product",),
+        limit=5,
+    )
+    if not hits:
+        return ProductResolution("unresolved")
+    if len(hits) >= 2:
+        # Multiple products cleared the similarity threshold — refuse.
+        return ProductResolution(
+            "ambiguous", candidates=[h.primary_label for h in hits]
+        )
+    only = hits[0]
+    p = (
+        db.query(Product)
+        .filter(
+            Product.id == only.entity_id,
+            Product.company_id == company_id,
+            Product.is_active.is_(True),
+        )
+        .first()
+    )
+    if p:
+        return ProductResolution("resolved", product=p)
+    return ProductResolution("unresolved")
 
 
 def assemble_quote_preview(
@@ -173,15 +236,22 @@ def assemble_quote_preview(
     company = db.query(Company).filter(Company.id == company_id).first()
     company_name = company.name if company else ""
 
-    # Pass 1 — resolve every product; unresolved refs are surfaced, not priced.
+    # Pass 1 — resolve every product. Three outcomes: priced, unresolved
+    # (couldn't find), or ambiguous (multiple candidates — refuse to guess).
     resolved: list[tuple[DraftLine, Product]] = []
     unresolved: list[str] = []
+    ambiguous: list[AmbiguousRef] = []
     for dl in lines:
-        product = resolve_product(db, company_id, dl.product_ref, dl.product_id)
-        if product:
-            resolved.append((dl, product))
-        elif (dl.product_ref or "").strip():
-            unresolved.append(dl.product_ref.strip())
+        res = resolve_product(db, company_id, dl.product_ref, dl.product_id)
+        ref = (dl.product_ref or "").strip()
+        if res.status == "resolved" and res.product is not None:
+            resolved.append((dl, res.product))
+        elif res.status == "ambiguous" and ref:
+            ambiguous.append(
+                AmbiguousRef(product_ref=ref, candidates=res.candidates)
+            )
+        elif ref:
+            unresolved.append(ref)
 
     # The line collection conditional pricing / vault detection reads
     # (get_effective_price → has_vault_on_order inspect line.product_id).
@@ -278,5 +348,6 @@ def assemble_quote_preview(
         total_formatted=(_money(total) if total is not None else None),
         has_call_office=has_call_office,
         unresolved_products=unresolved,
+        ambiguous_products=ambiguous,
         line_count=len(line_contexts),
     )

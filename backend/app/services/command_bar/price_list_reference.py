@@ -60,7 +60,11 @@ def build_price_list_reference(
     seen: set[str] = set()
 
     for ref in product_refs:
-        product = resolve_product(db, company_id, ref)
+        # Only show a published row for a CLEANLY resolved product;
+        # ambiguous / unresolved refs are silently skipped here (the
+        # quote-preview surface owns surfacing those states).
+        res = resolve_product(db, company_id, ref)
+        product = res.product if res.status == "resolved" else None
         if not product or product.id in seen:
             continue
         seen.add(product.id)

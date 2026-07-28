@@ -244,6 +244,11 @@ class QuotePreviewRequest(BaseModel):
     lines: list[_PreviewLineBody] = Field(default_factory=list)
 
 
+class _AmbiguousRefBody(BaseModel):
+    product_ref: str
+    candidates: list[str] = Field(default_factory=list)
+
+
 class QuotePreviewResponseBody(BaseModel):
     html: str
     subtotal_formatted: str
@@ -253,6 +258,9 @@ class QuotePreviewResponseBody(BaseModel):
     tax_resolved: bool
     has_call_office: bool
     unresolved_products: list[str] = Field(default_factory=list)
+    # Refs that matched MULTIPLE catalog products — the preview refuses to
+    # guess a price; the widget asks the user which one they meant.
+    ambiguous_products: list[_AmbiguousRefBody] = Field(default_factory=list)
     line_count: int
 
 
@@ -306,6 +314,12 @@ def quote_preview(
         tax_resolved=result.tax_resolved,
         has_call_office=result.has_call_office,
         unresolved_products=result.unresolved_products,
+        ambiguous_products=[
+            _AmbiguousRefBody(
+                product_ref=a.product_ref, candidates=a.candidates
+            )
+            for a in result.ambiguous_products
+        ],
         line_count=result.line_count,
     )
 

@@ -111,11 +111,18 @@ def seeded():
             "Authorization": f"Bearer {token}",
             "X-Company-Slug": co.slug,
         },
-        # A couple of realistic in-flight shapes.
+        # Realistic in-flight shapes, INCLUDING the miss path: a
+        # qualifier-suffixed ref ("Monticello Standard") that misses the
+        # substring fast path and exercises the pg_trgm fuzzy fallback —
+        # so the gate proves the fallback doesn't breach the budget.
         "payloads": [
             {
                 "customer_name": "Hopkins FH",
                 "lines": [{"product_ref": "Monticello", "quantity": 3}],
+            },
+            {
+                "customer_name": "Hopkins FH",
+                "lines": [{"product_ref": "Monticello Standard", "quantity": 3}],
             },
             {
                 "customer_name": "Murphy FH",
