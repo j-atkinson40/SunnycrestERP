@@ -100,11 +100,15 @@ export function ParkCanvas() {
     <div
       data-slot="park-canvas"
       className="pointer-events-none fixed inset-0"
-      // Park sits above the app content, below the command bar (110) and
-      // FocusPopover (115) so portaled pickers inside tablets paint on
-      // top. Inline literal for slice 1 — tokenize `--z-park` in the
-      // arc-close canon sweep (park conventions accumulate there).
-      style={{ zIndex: 90 }}
+      // Z-ORDER (spec): page content < park tablets < command bar < Focus.
+      // The command bar is z-50 (CommandBar.tsx) and is summoned ON TOP of
+      // the working set — pull the bar up, use it, it recedes, tablets
+      // remain. So park sits BELOW the bar (45 < 50) and below Focus (100,
+      // park suspends behind it) while staying above the default-z app
+      // content. Portaled pickers inside tablets self-lift via FocusPopover
+      // (z-115). Inline literal for slice 1 — tokenize `--z-park` at the
+      // arc-close canon sweep.
+      style={{ zIndex: 45 }}
     >
       {tablets.map((tablet) => {
         const Renderer = getWidgetRenderer(tablet.widgetType)
