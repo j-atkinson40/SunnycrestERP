@@ -54,7 +54,7 @@ import { useDraggable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical, X } from "lucide-react"
 
-import { useFocus } from "@/contexts/focus-context"
+import { useFocusOptional } from "@/contexts/focus-context"
 import type { WidgetId, WidgetPosition } from "@/contexts/focus-registry"
 import { cn } from "@/lib/utils"
 
@@ -70,6 +70,14 @@ export interface WidgetChromeProps {
   minWidth?: number
   minHeight?: number
   onDismiss?: () => void
+  /** S-5 (park) — decouples resize-persistence from FocusContext. When
+   *  provided (park host), a resize commits the new position through this
+   *  callback instead of `useFocus().updateSessionLayout`. Focus callers
+   *  omit it and keep the FocusContext path unchanged (backward-compat).
+   *  This is what lets the SAME chrome host a Focus widget or a park
+   *  tablet — the drag/resize machinery is host-agnostic; only where the
+   *  new geometry lands differs. */
+  onLayoutChange?: (widgetId: WidgetId, position: WidgetPosition) => void
   children: React.ReactNode
 }
 
@@ -147,9 +155,10 @@ export function WidgetChrome({
   minWidth = DEFAULT_MIN_WIDTH,
   minHeight = DEFAULT_MIN_HEIGHT,
   onDismiss,
+  onLayoutChange,
   children,
 }: WidgetChromeProps) {
-  const { updateSessionLayout } = useFocus()
+  const focus = useFocusOptional()
 
   // Phase B Session 4.3b D-1 elevation. The drag id carries a
   // `widget:` prefix so the elevated DndContext (FocusDndProvider)
@@ -170,11 +179,15 @@ export function WidgetChrome({
     canvasWidth,
     canvasHeight,
     onResizeEnd: (next) => {
-      updateSessionLayout({
-        widgets: {
-          [widgetId]: { position: next },
-        },
-      })
+      if (onLayoutChange) {
+        onLayoutChange(widgetId, next)
+      } else {
+        focus?.updateSessionLayout({
+          widgets: {
+            [widgetId]: { position: next },
+          },
+        })
+      }
     },
   })
 

@@ -110,6 +110,11 @@ export interface WidgetRendererProps {
     // discriminator only for density. S-3 re-hosts the same widget
     // as a Focus core; S-5 parks it in WidgetChrome — no rewrite.
     | "command_bar"
+    // S-5 (park arc) — the spatial working-set host. Park mounts any
+    // registered surface in a WidgetChrome tablet via this SAME
+    // registry (the 4th host: Act-inline / Focus-core / Focus-pin /
+    // park-tablet). Density hint only; widgets stay host-agnostic.
+    | "park"
   /** S-1 — relational-pivot callback (§4.2 "click an order on the
    *  customer's card → the order's own entity surfaces appear").
    *  The HOST interprets the pivot (Act host swaps the card; Focus

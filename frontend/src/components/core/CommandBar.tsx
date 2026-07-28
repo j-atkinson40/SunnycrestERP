@@ -58,6 +58,7 @@ import { surfacesForIntent } from "@/components/command-bar-surfaces/contextual-
 import { useContextualSurfaceTrigger } from "@/components/command-bar-surfaces/useContextualSurfaceTrigger";
 import type { ExtractionContext } from "@/components/command-bar-surfaces/types";
 import { useFocusOptional } from "@/contexts/focus-context";
+import { planParkSummon, summonParkAct } from "@/components/park/park-summon";
 import { QUOTE_FOCUS_ID } from "@/components/quote-focus/register";
 import { detectNLIntent } from "@/components/nl-creation/detectNLIntent";
 import type { NLEntityType } from "@/types/nl-creation";
@@ -802,6 +803,26 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           void navigator.clipboard?.writeText(action.excerpt || action.title);
         } catch { /* noop */ }
         onClose();
+        return;
+      }
+
+      // S-5 — park summon. An intent-shaped command-bar action ("reply",
+      // "add a note", "quote") summons a tablet into the park working set
+      // (Act-layer, coexists with the bar — park does NOT set ?focus= so
+      // the mutual-exclusivity gate never closes the bar). The summon
+      // lands through the module-level park bridge (command-bar actions
+      // aren't React-context aware).
+      //
+      // (b) — the palette STAYS OPEN across a park summon so the user can
+      // chain the next one (assemble a working set in one burst). We clear
+      // the input for the next intent but do NOT call onClose — see the
+      // planParkSummon `keepPaletteOpen` contract. Dismiss stays Esc /
+      // click-away (unchanged). A future onClose here is the regression the
+      // park-summon test guards against.
+      const parkPlan = planParkSummon(action.handler);
+      if (parkPlan) {
+        summonParkAct(parkPlan.actType);
+        setQuery("");
         return;
       }
 

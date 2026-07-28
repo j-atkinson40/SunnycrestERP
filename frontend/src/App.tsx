@@ -22,6 +22,8 @@ import "@/components/dispatch/scheduling-focus/register";
 // S-3a (§4.5) — register the quote Focus so command-bar escalation
 // ("Build this out →") can open() it, re-hosting the S-2 surfaces.
 import "@/components/quote-focus/register";
+// S-5 — park: act-type declarations + tablet renderers + summon actions.
+import "@/components/park/register";
 // Phase W-3a — register cross-vertical foundation widgets (today,
 // operator_profile, recent_activity, anomalies) with the canvas
 // widget renderer registry so PinnedSection + Canvas + dashboard

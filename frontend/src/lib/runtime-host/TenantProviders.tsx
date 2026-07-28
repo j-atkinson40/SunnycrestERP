@@ -51,6 +51,8 @@ import { LocationProvider } from "@/contexts/location-context"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { EdgePanelHost } from "@/lib/edge-panel/EdgePanelHost"
 import { EdgePanelProvider } from "@/lib/edge-panel/EdgePanelProvider"
+import { ParkProvider } from "@/contexts/park-context"
+import { ParkHost } from "@/components/park/ParkHost"
 
 
 /** Bridges auth context → DeviceProvider so userId is available. */
@@ -69,6 +71,13 @@ export function TenantProviders({ children }: { children: ReactNode }) {
             <LayoutProvider>
               <AuthDeviceProvider>
                 <FocusProvider>
+                  {/* S-5 — park is a PEER Act-layer: inside FocusProvider
+                      (so it can open/read Focus for escalation +
+                      suspend-and-return) but OUTSIDE the Focus tree, and
+                      wrapping CommandBarProvider so the bar's summon
+                      actions reach park. Park never sets ?focus=, so the
+                      bar's Focus-exclusivity gate never closes it. */}
+                  <ParkProvider>
                   <CommandBarProvider>
                     <CallContextProvider>
                       {/* Aesthetic Arc Session 3 — TooltipProvider
@@ -95,10 +104,15 @@ export function TenantProviders({ children }: { children: ReactNode }) {
                         <TooltipProvider timeout={0}>
                           {children}
                           <EdgePanelHost />
+                          {/* S-5 — park host at app root (sibling of Focus/
+                              command bar), renders the working-set canvas
+                              + relaunch pill. */}
+                          <ParkHost />
                         </TooltipProvider>
                       </EdgePanelProvider>
                     </CallContextProvider>
                   </CommandBarProvider>
+                  </ParkProvider>
                 </FocusProvider>
               </AuthDeviceProvider>
             </LayoutProvider>
