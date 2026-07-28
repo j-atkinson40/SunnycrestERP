@@ -110,11 +110,16 @@ test.describe("@tenant:sunnycrest Command Bar S-3a Focus escalation", () => {
     // §5.15 — the command bar CLOSES (its input unmounts with it).
     await expect(paletteInput).toBeHidden({ timeout: 8_000 })
 
-    // The quote Focus is open, re-hosting the S-2 preview as its core.
+    // The quote Focus is open. S-3b REPLACED the S-3a display core with
+    // the editable edit canvas (same coreComponent, mode editCanvas
+    // unchanged) — so the crossing lands on `quote-edit-canvas`, not the
+    // retired `quote-preview-surface`. The crossing itself (bar closes,
+    // Focus opens, same content) is what this spec witnesses; the core it
+    // opens is now editable.
     const focus = page.locator('[data-slot="quote-focus"]')
     await focus.waitFor({ state: "visible", timeout: 8_000 })
-    const rehosted = focus.getByTestId("quote-preview-surface")
-    await rehosted.waitFor({ state: "visible", timeout: 20_000 })
+    const core = focus.getByTestId("quote-edit-canvas")
+    await core.waitFor({ state: "visible", timeout: 20_000 })
     // Same order-resolver price as in the bar (Monticello ×3 @ $1,405).
     await expect(focus).toContainText("$4,215.00", { timeout: 20_000 })
     // The price-list pin re-hosted alongside.
