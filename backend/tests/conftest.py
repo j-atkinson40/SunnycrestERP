@@ -12,6 +12,20 @@ than it started with. A suite that creates a company must tear it down
 pin suites for the pattern). Set BRIDGEABLE_ALLOW_COMPANY_LITTER=1 to
 bypass deliberately (e.g. a seed-authoring session that MEANS to keep
 rows).
+
+RATCHET CONVENTION (Accounting Substrate Arc, 2026-07-29). This is a
+ratchet, not a courtesy: the net company count per session can only
+stay flat or SHRINK. Every NEW test file that creates a company MUST
+tear its own companies down in a module-scoped teardown fixture (the
+`_cleanup_test_workflows`-style pattern in
+test_workflow_scheduler_pair_isolation.py). "The other files already
+leak" is never a licence to add another leaker — the debt has a
+direction (down), and the offender set is meant to be enumerated and
+drained (routed to S-6 test-hygiene), not grown. NOTE: CI's backend
+job runs imports + migration-heads + `alembic upgrade` only — it does
+NOT run pytest, so this tripwire is a LOCAL guardrail. Its signal is
+only as good as the baseline; pre-existing leakers keep it red, which
+is exactly why new files must not add to the pile.
 """
 from __future__ import annotations
 
