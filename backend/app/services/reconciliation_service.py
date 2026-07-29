@@ -209,7 +209,14 @@ def create_adjustment(
         created_by=created_by,
     )
     db.add(adj)
-    db.flush()  # populate adj.id (Python-default PK) before we return it
+    # LOAD-BEARING flush — do NOT remove, and do NOT let the sum() below run
+    # before it. Two purposes: (1) populates adj.id (Python-default PK) for
+    # the return, and (2) puts the new adjustment in the DB BEFORE the sum,
+    # so `adjustments_total = sum(all adjustments)` is complete. Correctness
+    # must NOT depend on implicit autoflush: with autoflush=False, or the sum
+    # reordered first, the total would go UNDER by this adjustment's amount —
+    # silently, the opposite direction of the double-count this replaced.
+    db.flush()
 
     # Recalculate adjustments total and difference. The new adjustment was
     # flushed above, so the SUM over all of this run's adjustments already
