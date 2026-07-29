@@ -36,6 +36,7 @@ from app.models.customer import Customer
 from app.models.customer_payment import CustomerPayment
 from app.models.financial_account import (
     FinancialAccount,
+    ReconciliationAdjustment,
     ReconciliationRun,
     ReconciliationTransaction,
 )
@@ -43,6 +44,7 @@ from app.models.role import Role
 from app.models.user import User
 
 from app.api.routes.reconciliation import trigger_matching
+from app.services import reconciliation_service
 
 
 _CREATED_COMPANY_IDS: set[str] = set()
@@ -66,6 +68,7 @@ def _cleanup_companies():
     try:
         for model, col in (
             (ReconciliationTransaction, "tenant_id"),
+            (ReconciliationAdjustment, "tenant_id"),
             (ReconciliationRun, "tenant_id"),
             (FinancialAccount, "tenant_id"),
             (CustomerPayment, "company_id"),
@@ -255,3 +258,32 @@ class TestNonIdempotentDoubleClaim:
         assert ta.matched_record_id == pay.id
         assert tb.matched_record_id == pay.id
         assert ta.reconciliation_run_id != tb.reconciliation_run_id
+
+
+class TestCreateAdjustmentDrain:
+    def test_adjustment_created_and_run_recalculated(self, db):
+        # S-5 drain of create_adjustment into reconciliation_service — pinned
+        # behavior-preserving, INCLUDING a pre-existing bug the drain
+        # surfaced.
+        #
+        # WRONGNESS (double-count): adjustments_total = sum(ALL adjustments)
+        # + this_amount. Autoflush inserts the new adjustment before the
+        # sum() query, so `all_adj` already includes it, and `+ amount`
+        # counts it a SECOND time. So one +50 adjustment on an empty run
+        # yields adjustments_total 100, not 50 (over by exactly this_amount).
+        # difference tracks it: 2000 - 1000 - 0 - 0 + 0 + 100 = 1100.
+        # Pinned as current behavior (autoflush-driven, present in the
+        # original route too); the fix is an S-6/Phase-2 item, NOT this move.
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        run = _mk_run(db, co, opening="1000", closing="2000")
+        adj_id = reconciliation_service.create_adjustment(
+            db, run_id=run.id, company_id=co, created_by=user.id,
+            adjustment_type="bank_error", description="test adj", amount=50,
+        )
+        db.commit()
+        adj = db.get(ReconciliationAdjustment, adj_id)
+        assert adj is not None and adj.amount == Decimal("50")
+        db.refresh(run)
+        assert run.adjustments_total == Decimal("100")   # double-counted
+        assert run.difference == Decimal("1100")

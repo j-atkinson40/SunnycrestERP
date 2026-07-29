@@ -449,27 +449,17 @@ def create_adjustment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    adj = ReconciliationAdjustment(
-        tenant_id=current_user.company_id,
-        reconciliation_run_id=run_id,
+    adj_id = reconciliation_service.create_adjustment(
+        db,
+        run_id=run_id,
+        company_id=current_user.company_id,
+        created_by=current_user.id,
         adjustment_type=body.adjustment_type,
         description=body.description,
-        amount=Decimal(str(body.amount)),
-        created_by=current_user.id,
+        amount=body.amount,
     )
-    db.add(adj)
-
-    # Recalculate adjustments total and difference
-    run = db.query(ReconciliationRun).filter(ReconciliationRun.id == run_id).first()
-    if run:
-        all_adj = db.query(func.coalesce(func.sum(ReconciliationAdjustment.amount), 0)).filter(
-            ReconciliationAdjustment.reconciliation_run_id == run_id,
-        ).scalar()
-        run.adjustments_total = all_adj + Decimal(str(body.amount))
-        run.difference = run.statement_closing_balance - (run.opening_balance or Decimal(0)) - (run.platform_cleared_balance or Decimal(0)) - run.outstanding_checks_total + run.outstanding_deposits_total + run.adjustments_total
-
     db.commit()
-    return {"id": adj.id}
+    return {"id": adj_id}
 
 
 @router.post("/runs/{run_id}/confirm")

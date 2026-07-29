@@ -22,9 +22,14 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.financial_account import ReconciliationRun, ReconciliationTransaction
+from app.models.financial_account import (
+    ReconciliationAdjustment,
+    ReconciliationRun,
+    ReconciliationTransaction,
+)
 
 
 def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
@@ -177,3 +182,51 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
         "unmatched": unmatched_count,
         "status": "in_review",
     }
+
+
+def create_adjustment(
+    db: Session,
+    *,
+    run_id: str,
+    company_id: str,
+    created_by: str | None,
+    adjustment_type: str,
+    description: str | None,
+    amount,
+) -> str:
+    """Create a reconciliation adjustment + recompute the run's
+    adjustments_total and difference. Mutates in place; does NOT commit (the
+    caller owns the transaction). Returns the new adjustment id. Pure move
+    from the route — behavior unchanged (S-5 drain, so the route-write
+    ratchet's financial-model allowlist doesn't carry this site)."""
+    amount_dec = Decimal(str(amount))
+    adj = ReconciliationAdjustment(
+        tenant_id=company_id,
+        reconciliation_run_id=run_id,
+        adjustment_type=adjustment_type,
+        description=description,
+        amount=amount_dec,
+        created_by=created_by,
+    )
+    db.add(adj)
+    db.flush()  # populate adj.id (Python-default PK) before we return it
+
+    # Recalculate adjustments total and difference.
+    run = db.query(ReconciliationRun).filter(ReconciliationRun.id == run_id).first()
+    if run:
+        all_adj = db.query(
+            func.coalesce(func.sum(ReconciliationAdjustment.amount), 0)
+        ).filter(
+            ReconciliationAdjustment.reconciliation_run_id == run_id,
+        ).scalar()
+        run.adjustments_total = all_adj + amount_dec
+        run.difference = (
+            run.statement_closing_balance
+            - (run.opening_balance or Decimal(0))
+            - (run.platform_cleared_balance or Decimal(0))
+            - run.outstanding_checks_total
+            + run.outstanding_deposits_total
+            + run.adjustments_total
+        )
+
+    return adj.id
