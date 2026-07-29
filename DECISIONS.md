@@ -1057,3 +1057,133 @@ core / Focus-pin / park-tablet. Park is assembly, not greenfield. Per-act commit
 (message/email/note/order) already shipped. Escalation predicate = "act-type has a
 registered Focus" (quote yes; reply/email/note/lookup/open-record no), keyed to the
 Focus-type registry, reusing the S-3a crossing from a park trigger.
+
+## 2026-07-29 — Accounting substrate arc: service seams, period-lock enforcement, sweep hardening
+
+Closes the substrate arc opened ahead of Books Review Phase 2. Commits `af333551`
+(S-1b) through `b6f1418c` (S-6); `origin/main` at `8d55518f`. Migration head r147.
+
+### The architectural claim
+
+Four defects found across two audits share one root cause: **business logic living in
+route handlers, with no service seam at which a guarantee can be enforced.**
+
+- C-1 (payments silently returning `Decimal(0)`) — accounting audit #1
+- Cross-tenant GL denormalization leak (`create_entry`, unscoped `TenantGLMapping` lookup)
+- Period lock enforced on AR writes only, absent from journal entry creation
+- `adjustments_total` double-count (autoflush includes the uncommitted row, then the
+  code adds it again) — over by exactly the adjustment amount, feeding `difference`,
+  which gates reconciliation confirmation
+
+Each is the same shape: correct-looking arithmetic or a stated guarantee, no error
+signal, wrong books. A guard can only be applied once if there is a place to apply it
+once. Period lock reached AR because `sales_service.py` exists; it never reached
+journal entries because no equivalent service did.
+
+The extractions in this arc are the beginning of the answer, not the whole of it.
+The class is 479 route handlers across 100 files. That number is the roadmap-slot
+measure: this is architectural debt, not cleanup.
+
+### Decisions taken
+
+1. **`PeriodLock` is the journal-entry lifecycle's closed-period authority.** Enforced
+   in `journal_entry_service` (covering manual create, reversal, and EPD at one site)
+   and **added alongside**, not substituted for, the existing `AccountingPeriod` check
+   in `post_entry`. Closed-if-either-says-closed; fails closed. Retiring
+   `AccountingPeriod` is gated on a data question — are there tenants with a closed
+   `AccountingPeriod` and no corresponding `PeriodLock`? Retiring it before that count
+   exists would silently reopen those periods.
+
+2. **`journal_entry_service` is a persistence primitive, not a unifier.** All three
+   callers retain their own numbering scheme (`JE-####` vs `DISC-`), status on write,
+   and period derivation. Unifying them is a separate decision this arc had no standing
+   to make. `reverse_entry` deriving `entry_date` from today is **correct accounting**,
+   not drift — reversing an entry from a closed period posts in the current period.
+   Commented in place so a later unification does not tidy it into a bug.
+
+3. **Scheduled Plaid sync rides the MoC schedule path, not `check_time_based_workflows`.**
+   A twice-daily tenant-local sync already existed (`seed_plaid_b2.py`, 22:30 + 06:30,
+   born dry). No second schedule was seeded — a service method reachable from two live
+   schedule sources is a double-fire, harmless for a cursor-based sync and not harmless
+   for a statement run or a finance-charge post.
+
+4. **Loud failure in scheduled sweeps.** Expected states and unexpected states stay
+   distinguishable: a Plaid re-auth records `login_required`, a bug records
+   `internal_error` and logs at error level. All items failing for expected reasons is
+   a **successful sweep with recorded item states**, not an errored run — most tenants
+   have one bank item, and erroring twice daily on a routine re-auth is cry-wolf that
+   makes run status useless. Same per-pair isolation applied to
+   `check_time_based_workflows`.
+
+5. **The route-write ratchet uses an enumerable predicate** — an explicit list of model
+   names checked by name, never a per-case judgment of what counts as financial. Both
+   numbers are documented in the check itself (479 class size, 5 gated sites) so the
+   small one is never misread as "nearly solved."
+
+### Deliberate non-decisions
+
+- **The reconciliation matcher was extracted unchanged.** Its destructive candidate
+  consumption, single-candidate-only matching, and non-idempotence are pinned in
+  characterization tests as the handoff artifact. Mixing a behavior-preserving move
+  with a behavior-changing rewrite produces an unreviewable commit.
+- **The EPD broad `except` was narrowed only for `PeriodLockedError`.** Full removal is
+  a sweep item across 78 sites.
+- **The `adjustments_total` double-count was pinned, not fixed.** It is the top
+  correctness item for the next arc.
+
+### Principles established
+
+**A guard a caller can swallow is not a guard on that path.** Putting enforcement in a
+shared primitive yields one enforcement site *only if every caller lets it propagate*.
+The EPD path caught and discarded the period-lock error we had just added; the
+single-site claim is only as strong as the weakest caller's error handling.
+
+**Behavior-preserving includes test-observable behavior.** An extraction that moved an
+inline import to module scope broke a test that monkeypatched the model module —
+call-time resolution was itself behavior. The refactor preserved the import location
+rather than editing the test to accommodate the move.
+
+**Existence-first investigation framing.** Investigation questions ask what exists, by
+any mechanism, exhaustively. Never "confirm X does not exist" or "verify A composes
+with B." A dispatch that states its expected answer has primed the investigator toward
+it. Five infrastructure assertions were falsified in this arc — the design language,
+Plaid's existence, which scheduler fires it, whether CI runs pytest, and how many tests
+are red. Each was a premise written into a dispatch rather than a question asked of the
+codebase.
+
+**Hand-proven money math finds what code reading does not.** The double-count was
+surfaced by a drain that forced someone to write down the expected number, not by any
+of the sweeps. The discipline now extends to **any aggregate in a write path** —
+autoflush silently includes uncommitted rows in `sum()` and `count()`.
+
+### Debt snapshot (2026-07-29)
+
+Recorded so direction is measurable, not just presence:
+
+| Class | Count |
+|---|---|
+| Logic in route handlers (any write) | 479 handlers / 100 files |
+| Financial-model construction in routes (gated) | 5 sites / 4 pairs |
+| C-1 signature (broad `except` returning falsy) | 78 |
+| Autoflush-before-aggregate | 26 candidates |
+| Unscoped tenant lookups | ~94 (judgment-heavy) |
+| Status columns without CHECK | 74 of 208 |
+| Backend tests non-passing on a fresh migrated DB | 220 of 5145 |
+
+The last row is not "the suite is red." It is **the suite's green has unknown meaning** —
+roughly 106 failures are one assumption (ambient seed data) expressed many times, and
+9 tests run against a SQLite schema that is not production's. Whatever those assert,
+they assert about a different system.
+
+Constraints and cascades are **uneven, not absent**: `uq_je_number` and
+`ck_plaid_items_status` exist, `match_status` has nothing; `agent_jobs` steps cascade
+while `agent_activity_log`, `agent_schedules`, and `period_locks` do not. The fix is
+applying an existing local convention consistently, not inventing one.
+
+### Handed forward
+
+Roadmap in STATE. Order: the `adjustments_total` double-count first (it is live the
+first time anyone adjusts a reconciliation), then durable non-destructive matching —
+which is the real Phase 2 dependency, since nothing today marks a payment reconciled
+and two runs can clear the same payment. Ranked candidates and the Books Review card
+are downstream of that state, not the point of it.

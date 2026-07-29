@@ -1674,6 +1674,46 @@ Process conventions discovered during the Workflow Builder rebuild + inline-para
 
 **Stale-view-after-deploy — hard-refresh an open staging tab.** Railway's native GitHub-integration deploy does NOT auto-reload an already-open staging tab. After a push, **hard-refresh** the tab before judging behavior — a tab opened against the pre-deploy bundle can show a degraded/"unsaved" or "Network Error" state mid-deploy that looks like a regression but is just the old bundle against the new (or restarting) backend. This is expected deploy choreography, not a bug; confirm against a freshly-loaded tab.
 
+### Characterization before extraction
+
+Any extraction of logic out of a route handler or into a new service follows this order,
+without exception:
+
+1. **Characterization tests first**, pinning current behavior — *including behavior that
+   is wrong*. Tag wrongness explicitly (`# WRONGNESS`) with what is wrong about it.
+   These must pass against the current code before anything moves.
+2. **Extract.** The characterization suite must still pass **unmodified**.
+3. **Fixes get their own visible commits**, after the move, never inside it.
+
+Behavior-preserving includes **test-observable** behavior — import location, flush
+timing, exception type — not only outputs. If a test breaks on a refactor, the default
+is that the refactor changed something, not that the test needs updating.
+
+A refactor commit that also changes behavior is unreviewable, and correctness fixes
+deserve to be visible rather than riding along inside a move.
+
+**Exception — security-adjacent fixes do not queue behind refactors.** A cross-tenant
+read or an unenforced permission ships first, as its own commit, before the extraction
+it was found during.
+
+### Money math is hand-proven — including aggregates
+
+Financial calculations are cross-checked against hand-computed expected values stated
+as literals in the test, with the arithmetic shown. Never compute the expected value
+using the code under test.
+
+This extends to **any aggregate in a write path**. SQLAlchemy autoflush inserts pending
+rows before a `sum()` or `count()` in the same session, so an aggregate that appears to
+exclude the row being created silently includes it. Every such site is a potential wrong
+number with no error signal.
+
+### Test hygiene is a ratchet
+
+New test files clean up their own tenants via `tests/_cleanup.py::purge_companies_by_slug`,
+which encodes the FK-safe deletion order in one place. The company-litter count can only
+shrink. Cascade behavior in this schema is uneven — extend the helper rather than writing
+a local delete list.
+
 ## 12. Business Context
 
 ### Tenant Types
@@ -1751,6 +1791,23 @@ r125 already existed — blind-authoring the migration would have forked the ale
 head and caused a real outage. A remembered "X is broken/down/blocked" is a
 hypothesis to confirm against live ground truth, not a fact to act on.
 Investigation-first is the cheap path, not the ceremonial one.
+
+### Investigation framing — existence-first
+
+Investigation questions ask **what exists, by any mechanism, exhaustively**. They never
+ask to confirm an absence or to verify that two named things compose.
+
+- Wrong: "Expect no Plaid integration — confirm." / "Can a schedule-triggered workflow
+  invoke `plaid_sync`?"
+- Right: "What Plaid integration exists, if any?" / "How is `plaid_sync` scheduled
+  today, by any mechanism?"
+
+A dispatch that states its expected answer has primed the investigator toward it, and
+the investigator will verify the named mechanism while missing the one actually in use.
+Absence is a finding to be established, never a premise to be confirmed.
+
+This applies to remembered state as much as to expectations. A prior session's account
+of the repo is a hypothesis. Ground against HEAD.
 
 ## Act-side spatial discipline (park, 2026-07)
 
