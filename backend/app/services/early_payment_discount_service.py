@@ -200,14 +200,34 @@ def _create_discount_journal_entry(
         return None
 
     try:
-        from app.models.journal_entry import JournalEntry, JournalEntryLine
+        from app.services import journal_entry_service
+        from app.services.journal_entry_service import JournalLineSpec
 
         customer = db.query(Customer).filter(Customer.id == payment.customer_id).first()
         customer_name = customer.name if customer else "Unknown"
 
-        entry = JournalEntry(
-            id=str(uuid.uuid4()),
+        ar_account_id = _find_ar_account(db, tenant_id)
+        specs = [
+            # Debit: Sales Discounts
+            JournalLineSpec(
+                gl_account_id=gl_account_id,
+                description=f"Early payment discount {payment.discount_percentage}% — {customer_name}",
+                debit_amount=Decimal(str(discount_amount)),
+                credit_amount=Decimal("0"),
+            ),
+            # Credit: Accounts Receivable (find AR account; fallback)
+            JournalLineSpec(
+                gl_account_id=ar_account_id or gl_account_id,
+                description=f"Discount applied to {customer_name} balance",
+                debit_amount=Decimal("0"),
+                credit_amount=Decimal(str(discount_amount)),
+            ),
+        ]
+
+        entry = journal_entry_service.create_journal_entry(
+            db,
             tenant_id=tenant_id,
+            entry_id=str(uuid.uuid4()),
             entry_number=f"DISC-{payment.id[:8]}",
             entry_type="adjusting",
             status="posted",
@@ -216,41 +236,11 @@ def _create_discount_journal_entry(
             period_year=(payment.payment_date or date.today()).year,
             description=f"Early payment discount — {customer_name}",
             reference_number=getattr(payment, "reference_number", None),
-            total_debits=Decimal(str(discount_amount)),
-            total_credits=Decimal(str(discount_amount)),
             created_by=user_id,
             posted_by=user_id,
             posted_at=datetime.now(timezone.utc),
+            lines=specs,
         )
-        db.add(entry)
-        db.flush()
-
-        # Debit: Sales Discounts
-        debit_line = JournalEntryLine(
-            id=str(uuid.uuid4()),
-            tenant_id=tenant_id,
-            journal_entry_id=entry.id,
-            line_number=1,
-            gl_account_id=gl_account_id,
-            description=f"Early payment discount {payment.discount_percentage}% — {customer_name}",
-            debit_amount=Decimal(str(discount_amount)),
-            credit_amount=Decimal("0"),
-        )
-        db.add(debit_line)
-
-        # Credit: Accounts Receivable (find AR account)
-        ar_account_id = _find_ar_account(db, tenant_id)
-        credit_line = JournalEntryLine(
-            id=str(uuid.uuid4()),
-            tenant_id=tenant_id,
-            journal_entry_id=entry.id,
-            line_number=2,
-            gl_account_id=ar_account_id or gl_account_id,  # fallback
-            description=f"Discount applied to {customer_name} balance",
-            debit_amount=Decimal("0"),
-            credit_amount=Decimal(str(discount_amount)),
-        )
-        db.add(credit_line)
 
         return entry.id
     except Exception as e:

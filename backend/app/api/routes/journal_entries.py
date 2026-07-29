@@ -4,7 +4,6 @@ import json
 import logging
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -16,6 +15,8 @@ from app.database import get_db
 from app.models.journal_entry import AccountingPeriod, JournalEntry, JournalEntryLine, JournalEntryTemplate
 from app.models.accounting_analysis import TenantGLMapping
 from app.models.user import User
+from app.services import journal_entry_service
+from app.services.journal_entry_service import JournalLineSpec
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -97,10 +98,34 @@ def create_entry(
     entry_number = f"JE-{count + 1001}"
 
     ed = date.fromisoformat(body.entry_date)
-    total_d = sum(Decimal(str(l.debit_amount)) for l in body.lines)
-    total_c = sum(Decimal(str(l.credit_amount)) for l in body.lines)
 
-    entry = JournalEntry(
+    # Resolve + validate each line's GL BEFORE constructing anything.
+    # SCOPE the lookup by tenant_id (a GL id is only meaningful within the
+    # caller's own tenant) AND require a match — an unresolved
+    # gl_account_id is a 400, never a silent fallback. Pre-fix this
+    # filtered on id alone, so a foreign tenant's account_number/name could
+    # be denormalized onto the line (a cross-tenant read), and an unknown
+    # id left silent nulls; both are now rejected. Security-adjacent — see
+    # the JE characterization test.
+    line_specs: list[JournalLineSpec] = []
+    for line in body.lines:
+        gl = db.query(TenantGLMapping).filter(
+            TenantGLMapping.id == line.gl_account_id,
+            TenantGLMapping.tenant_id == current_user.company_id,
+        ).first()
+        if gl is None:
+            raise HTTPException(400, f"Unknown GL account '{line.gl_account_id}' for this tenant")
+        line_specs.append(JournalLineSpec(
+            gl_account_id=line.gl_account_id,
+            gl_account_number=gl.account_number,
+            gl_account_name=gl.account_name,
+            description=line.description,
+            debit_amount=line.debit_amount,
+            credit_amount=line.credit_amount,
+        ))
+
+    entry = journal_entry_service.create_journal_entry(
+        db,
         tenant_id=current_user.company_id,
         entry_number=entry_number,
         entry_type=body.entry_type,
@@ -109,40 +134,11 @@ def create_entry(
         period_year=ed.year,
         description=body.description,
         reference_number=body.reference_number,
-        total_debits=total_d,
-        total_credits=total_c,
         reversal_scheduled=body.reversal_scheduled,
         reversal_date=date.fromisoformat(body.reversal_date) if body.reversal_date else None,
         created_by=current_user.id,
+        lines=line_specs,
     )
-    db.add(entry)
-    db.flush()
-
-    for i, line in enumerate(body.lines):
-        # Denormalize GL account info. SCOPE the lookup by tenant_id (a GL
-        # id is only meaningful within the caller's own tenant) AND require
-        # a match — an unresolved gl_account_id is a 400, never a silent
-        # fallback. Pre-fix this filtered on id alone, so a foreign tenant's
-        # account_number/name could be denormalized onto the line (a
-        # cross-tenant read), and an unknown id left silent nulls; both are
-        # now rejected. Security-adjacent — see the JE characterization test.
-        gl = db.query(TenantGLMapping).filter(
-            TenantGLMapping.id == line.gl_account_id,
-            TenantGLMapping.tenant_id == current_user.company_id,
-        ).first()
-        if gl is None:
-            raise HTTPException(400, f"Unknown GL account '{line.gl_account_id}' for this tenant")
-        db.add(JournalEntryLine(
-            tenant_id=current_user.company_id,
-            journal_entry_id=entry.id,
-            line_number=i + 1,
-            gl_account_id=line.gl_account_id,
-            gl_account_number=gl.account_number,
-            gl_account_name=gl.account_name,
-            description=line.description,
-            debit_amount=Decimal(str(line.debit_amount)),
-            credit_amount=Decimal(str(line.credit_amount)),
-        ))
 
     db.commit()
     db.refresh(entry)
@@ -233,7 +229,24 @@ def reverse_entry(
     rev_number = f"JE-{count + 1001}"
     today = date.today()
 
-    reversal = JournalEntry(
+    # Mirror the original's lines (debit <-> credit). The service computes
+    # the reversal totals from these mirrored specs, which equals the
+    # original's swapped totals exactly.
+    orig_lines = db.query(JournalEntryLine).filter(JournalEntryLine.journal_entry_id == entry_id).all()
+    rev_specs = [
+        JournalLineSpec(
+            gl_account_id=ol.gl_account_id,
+            gl_account_number=ol.gl_account_number,
+            gl_account_name=ol.gl_account_name,
+            description=ol.description,
+            debit_amount=ol.credit_amount,
+            credit_amount=ol.debit_amount,
+        )
+        for ol in orig_lines
+    ]
+
+    reversal = journal_entry_service.create_journal_entry(
+        db,
         tenant_id=current_user.company_id,
         entry_number=rev_number,
         entry_type="reversal",
@@ -244,28 +257,11 @@ def reverse_entry(
         description=f"Reversal of {original.entry_number}: {original.description}",
         is_reversal=True,
         reversal_of_entry_id=original.id,
-        total_debits=original.total_credits,
-        total_credits=original.total_debits,
         created_by=current_user.id,
         posted_by=current_user.id,
         posted_at=datetime.now(timezone.utc),
+        lines=rev_specs,
     )
-    db.add(reversal)
-    db.flush()
-
-    orig_lines = db.query(JournalEntryLine).filter(JournalEntryLine.journal_entry_id == entry_id).all()
-    for i, ol in enumerate(orig_lines):
-        db.add(JournalEntryLine(
-            tenant_id=current_user.company_id,
-            journal_entry_id=reversal.id,
-            line_number=i + 1,
-            gl_account_id=ol.gl_account_id,
-            gl_account_number=ol.gl_account_number,
-            gl_account_name=ol.gl_account_name,
-            description=ol.description,
-            debit_amount=ol.credit_amount,
-            credit_amount=ol.debit_amount,
-        ))
 
     original.status = "reversed"
     db.commit()

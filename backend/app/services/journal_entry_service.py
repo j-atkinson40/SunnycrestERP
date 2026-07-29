@@ -1,0 +1,121 @@
+"""Journal-entry creation — the single persistence primitive.
+
+S-2 extraction. Three sites construct JournalEntry + JournalEntryLine rows
+today: the `journal_entries` route's `create_entry` + `reverse_entry`, and
+the inline JE in `early_payment_discount_service`. This module is the ONE
+place that does the construction, so future guards (S-3's period lock)
+land here once and cover every path.
+
+DELIBERATELY a persistence primitive, NOT a unifier. The three callers
+keep their divergent behaviors — different entry-number schemes
+(`JE-####` vs `DISC-`), different statuses (draft vs posted), different
+period derivations (entry_date vs today vs payment_date). Those
+divergences may encode a real document-type distinction and this
+extraction has no standing to collapse them. The caller computes
+entry_number, status, period, and fully-resolved line specs; this module
+constructs the rows, sets the totals FROM the lines (which reproduces all
+three callers' current totals bit-for-bit), flushes, and returns the
+entry. It does NOT commit — the caller owns the transaction.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy.orm import Session
+
+from app.models.journal_entry import JournalEntry, JournalEntryLine
+
+
+@dataclass
+class JournalLineSpec:
+    """A fully-resolved journal line. The caller is responsible for any
+    GL-account resolution / denormalization (e.g. create_entry's
+    tenant-scoped lookup) before handing specs here — this module does no
+    lookups."""
+
+    gl_account_id: str
+    debit_amount: Decimal | float | str = 0
+    credit_amount: Decimal | float | str = 0
+    gl_account_number: str | None = None
+    gl_account_name: str | None = None
+    description: str | None = None
+
+
+def create_journal_entry(
+    db: Session,
+    *,
+    tenant_id: str,
+    entry_number: str,
+    entry_type: str,
+    entry_date: date,
+    period_month: int,
+    period_year: int,
+    description: str,
+    lines: list[JournalLineSpec],
+    status: str | None = None,
+    reference_number: str | None = None,
+    created_by: str | None = None,
+    posted_by: str | None = None,
+    posted_at: datetime | None = None,
+    is_reversal: bool = False,
+    reversal_of_entry_id: str | None = None,
+    reversal_scheduled: bool = False,
+    reversal_date: date | None = None,
+    entry_id: str | None = None,
+) -> JournalEntry:
+    """Construct + persist a JournalEntry and its lines. Flushes; does NOT
+    commit. Totals are computed from `lines` (matches every current
+    caller). `status` is applied only when provided so the model's
+    server_default ("draft") governs the create path exactly as before;
+    `entry_id` is applied only when provided so the model's default UUID
+    governs otherwise.
+    """
+    # sum(...) over the specs mirrors the route's original computation,
+    # including the empty-lines edge (int 0, coerced by the Numeric column).
+    total_debits = sum(Decimal(str(line.debit_amount)) for line in lines)
+    total_credits = sum(Decimal(str(line.credit_amount)) for line in lines)
+
+    kwargs = dict(
+        tenant_id=tenant_id,
+        entry_number=entry_number,
+        entry_type=entry_type,
+        entry_date=entry_date,
+        period_month=period_month,
+        period_year=period_year,
+        description=description,
+        reference_number=reference_number,
+        total_debits=total_debits,
+        total_credits=total_credits,
+        created_by=created_by,
+        posted_by=posted_by,
+        posted_at=posted_at,
+        is_reversal=is_reversal,
+        reversal_of_entry_id=reversal_of_entry_id,
+        reversal_scheduled=reversal_scheduled,
+        reversal_date=reversal_date,
+    )
+    if status is not None:
+        kwargs["status"] = status
+    if entry_id is not None:
+        kwargs["id"] = entry_id
+
+    entry = JournalEntry(**kwargs)
+    db.add(entry)
+    db.flush()
+
+    for i, line in enumerate(lines):
+        db.add(JournalEntryLine(
+            tenant_id=tenant_id,
+            journal_entry_id=entry.id,
+            line_number=i + 1,
+            gl_account_id=line.gl_account_id,
+            gl_account_number=line.gl_account_number,
+            gl_account_name=line.gl_account_name,
+            description=line.description,
+            debit_amount=Decimal(str(line.debit_amount)),
+            credit_amount=Decimal(str(line.credit_amount)),
+        ))
+
+    return entry
