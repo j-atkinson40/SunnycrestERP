@@ -1,0 +1,437 @@
+"""S-2 — CHARACTERIZATION of journal-entry creation, BEFORE extraction.
+
+These tests pin what the code does RIGHT NOW across the two divergent
+JE-creation paths (the `journal_entries` route + the inline JE in
+`early_payment_discount_service`) so the upcoming `journal_entry_service`
+extraction can be proven behavior-preserving. They characterize, they do
+not judge — several of them pin behavior that is almost certainly WRONG
+(unbalanced drafts permitted, GL denormalization with no tenant scope,
+reversal + EPD bypassing the closed-period guard, EPD's broad
+error-swallow). Per the S-2 discipline those are PINNED + REPORTED here,
+NOT fixed in the extraction commit — a refactor that also changes
+behavior is unreviewable; correctness fixes get their own visible commit.
+
+Each wrongness-pinning test is tagged `# WRONGNESS:` so the fix passes
+can find them and flip the assertion deliberately.
+
+Cleans up its own companies (COMPANY-LITTER ratchet, conftest.py).
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import date, datetime, timezone
+from decimal import Decimal
+
+import pytest
+from fastapi import HTTPException
+
+from app.database import SessionLocal
+from app.models.accounting_analysis import TenantGLMapping
+from app.models.company import Company
+from app.models.customer import Customer
+from app.models.customer_payment import CustomerPayment
+from app.models.journal_entry import (
+    AccountingPeriod,
+    JournalEntry,
+    JournalEntryLine,
+)
+from app.models.role import Role
+from app.models.user import User
+
+from app.api.routes.journal_entries import (
+    JECreate,
+    JELineCreate,
+    create_entry,
+    post_entry,
+    reverse_entry,
+)
+from app.services.early_payment_discount_service import (
+    _create_discount_journal_entry,
+)
+
+
+_CREATED_COMPANY_IDS: set[str] = set()
+
+
+@pytest.fixture
+def db():
+    s = SessionLocal()
+    yield s
+    s.rollback()
+    s.close()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_companies():
+    """Delete every company these tests created (+ dependent rows) at
+    module teardown — the handlers COMMIT, so the function-scoped
+    rollback doesn't reach them. Ratchet compliance."""
+    yield
+    if not _CREATED_COMPANY_IDS:
+        return
+    ids = list(_CREATED_COMPANY_IDS)
+    s = SessionLocal()
+    try:
+        # (model, scope-column) in FK-safe order — children before parents.
+        for model, col in (
+            (JournalEntryLine, "tenant_id"),
+            (JournalEntry, "tenant_id"),
+            (AccountingPeriod, "tenant_id"),
+            (TenantGLMapping, "tenant_id"),
+            (CustomerPayment, "company_id"),
+            (Customer, "company_id"),
+            (User, "company_id"),
+            (Role, "company_id"),
+        ):
+            s.query(model).filter(
+                getattr(model, col).in_(ids)
+            ).delete(synchronize_session=False)
+        s.query(Company).filter(Company.id.in_(ids)).delete(
+            synchronize_session=False
+        )
+        s.commit()
+    finally:
+        s.close()
+
+
+def _mk_company(db) -> str:
+    suffix = uuid.uuid4().hex[:6]
+    co = Company(
+        id=str(uuid.uuid4()),
+        name=f"JES2-{suffix}",
+        slug=f"jes2-{suffix}",
+        is_active=True,
+        vertical="manufacturing",
+    )
+    db.add(co)
+    db.commit()
+    _CREATED_COMPANY_IDS.add(co.id)
+    return co.id
+
+
+def _mk_user(db, co_id) -> User:
+    role = Role(id=str(uuid.uuid4()), company_id=co_id, name="Admin", slug="admin")
+    db.add(role)
+    db.flush()
+    u = User(
+        id=str(uuid.uuid4()),
+        company_id=co_id,
+        role_id=role.id,
+        email=f"jes2-{uuid.uuid4().hex[:6]}@test.local",
+        hashed_password="x",
+        first_name="J",
+        last_name="E",
+        is_active=True,
+    )
+    db.add(u)
+    db.commit()
+    return u
+
+
+def _line(gl_id, *, debit=0.0, credit=0.0, num=None, name=None):
+    return JELineCreate(
+        gl_account_id=gl_id,
+        gl_account_number=num,
+        gl_account_name=name,
+        description="test line",
+        debit_amount=debit,
+        credit_amount=credit,
+    )
+
+
+# ── create_entry ─────────────────────────────────────────────────────
+
+
+class TestCreateEntry:
+    def test_first_entry_number_status_draft_and_period_from_entry_date(
+        self, db
+    ):
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        # entry_date in JANUARY — pins that period is derived from the
+        # entry_date, NOT from "today".
+        body = JECreate(
+            entry_type="manual",
+            entry_date="2026-01-15",
+            description="pin: first entry",
+            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+        )
+        out = create_entry(body=body, current_user=user, db=db)
+        assert out["entry_number"] == "JE-1001"  # count(0) + 1001
+        assert out["status"] == "draft"          # default, not posted
+        row = db.get(JournalEntry, out["id"])
+        assert row.period_month == 1 and row.period_year == 2026
+        assert row.total_debits == Decimal("100")
+        assert row.total_credits == Decimal("100")
+
+    def test_permits_unbalanced_draft(self, db):
+        # WRONGNESS: create_entry never checks debits == credits; an
+        # unbalanced entry is freely created as a draft. Balance is only
+        # enforced at POST time.
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        body = JECreate(
+            entry_type="manual",
+            entry_date="2026-03-10",
+            description="pin: unbalanced draft allowed",
+            lines=[_line("gl-x", debit=100), _line("gl-y", credit=40)],
+        )
+        out = create_entry(body=body, current_user=user, db=db)  # no raise
+        row = db.get(JournalEntry, out["id"])
+        assert row.status == "draft"
+        assert row.total_debits == Decimal("100")
+        assert row.total_credits == Decimal("40")  # persisted unbalanced
+
+    def test_permits_fewer_than_two_lines(self, db):
+        # WRONGNESS: a single-line (or zero-line) draft is creatable; the
+        # >=2-lines rule lives only in post_entry.
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        body = JECreate(
+            entry_type="manual",
+            entry_date="2026-03-10",
+            description="pin: one line allowed",
+            lines=[_line("gl-x", debit=50)],
+        )
+        out = create_entry(body=body, current_user=user, db=db)  # no raise
+        lines = (
+            db.query(JournalEntryLine)
+            .filter(JournalEntryLine.journal_entry_id == out["id"])
+            .all()
+        )
+        assert len(lines) == 1
+
+    def test_gl_denormalization_has_no_tenant_scope(self, db):
+        # WRONGNESS (cross-tenant leak): the GL lookup that denormalizes
+        # account_number/account_name onto the line filters on
+        # TenantGLMapping.id ONLY — no tenant_id scope. A gl_account_id
+        # belonging to ANOTHER tenant is happily denormalized here.
+        other_co = _mk_company(db)
+        foreign_gl = TenantGLMapping(
+            id=str(uuid.uuid4()),
+            tenant_id=other_co,               # belongs to a DIFFERENT tenant
+            platform_category="revenue",
+            account_number="9999-FOREIGN",
+            account_name="Foreign Tenant Account",
+        )
+        db.add(foreign_gl)
+        db.commit()
+
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        body = JECreate(
+            entry_type="manual",
+            entry_date="2026-03-10",
+            description="pin: cross-tenant GL denorm",
+            lines=[
+                _line(foreign_gl.id, debit=10, num="OWN", name="Own"),
+                _line("gl-y", credit=10),
+            ],
+        )
+        out = create_entry(body=body, current_user=user, db=db)
+        leaked = (
+            db.query(JournalEntryLine)
+            .filter(
+                JournalEntryLine.journal_entry_id == out["id"],
+                JournalEntryLine.gl_account_id == foreign_gl.id,
+            )
+            .first()
+        )
+        # The foreign tenant's account_number/name leaked onto our line,
+        # overriding the body-supplied values.
+        assert leaked.gl_account_number == "9999-FOREIGN"
+        assert leaked.gl_account_name == "Foreign Tenant Account"
+
+
+# ── post_entry ───────────────────────────────────────────────────────
+
+
+class TestPostEntry:
+    def _draft(self, db, user, *, lines, entry_date="2026-05-12"):
+        body = JECreate(
+            entry_type="manual",
+            entry_date=entry_date,
+            description="pin",
+            lines=lines,
+        )
+        return create_entry(body=body, current_user=user, db=db)["id"]
+
+    def test_balanced_two_line_open_period_posts(self, db):
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        eid = self._draft(
+            db, user,
+            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+        )
+        out = post_entry(entry_id=eid, current_user=user, db=db)
+        assert out["status"] == "posted"
+        assert db.get(JournalEntry, eid).status == "posted"
+
+    def test_unbalanced_rejected_at_post(self, db):
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        eid = self._draft(
+            db, user,
+            lines=[_line("gl-x", debit=100), _line("gl-y", credit=40)],
+        )
+        with pytest.raises(HTTPException) as ei:
+            post_entry(entry_id=eid, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        assert "not balanced" in str(ei.value.detail)
+
+    def test_fewer_than_two_lines_rejected_at_post(self, db):
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        # balanced (0 == 0) but only one line.
+        eid = self._draft(db, user, lines=[_line("gl-x", debit=0, credit=0)])
+        with pytest.raises(HTTPException) as ei:
+            post_entry(entry_id=eid, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        assert "2 lines" in str(ei.value.detail)
+
+    def test_closed_period_blocks_post(self, db):
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        eid = self._draft(
+            db, user,
+            entry_date="2026-05-12",
+            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+        )
+        db.add(AccountingPeriod(
+            id=str(uuid.uuid4()), tenant_id=co,
+            period_month=5, period_year=2026, status="closed",
+        ))
+        db.commit()
+        with pytest.raises(HTTPException) as ei:
+            post_entry(entry_id=eid, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        assert "closed" in str(ei.value.detail)
+
+
+# ── reverse_entry ────────────────────────────────────────────────────
+
+
+class TestReverseEntry:
+    def _posted(self, db, user, co, *, entry_date="2026-02-12"):
+        body = JECreate(
+            entry_type="manual", entry_date=entry_date, description="orig",
+            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+        )
+        eid = create_entry(body=body, current_user=user, db=db)["id"]
+        post_entry(entry_id=eid, current_user=user, db=db)
+        return eid
+
+    def test_only_posted_entries_reversible(self, db):
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        body = JECreate(
+            entry_type="manual", entry_date="2026-02-12", description="draft",
+            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+        )
+        eid = create_entry(body=body, current_user=user, db=db)["id"]  # draft
+        with pytest.raises(HTTPException) as ei:
+            reverse_entry(entry_id=eid, current_user=user, db=db)
+        assert ei.value.status_code == 400
+
+    def test_reversal_posts_directly_mirrors_lines_period_from_today(self, db):
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        eid = self._posted(db, user, co)
+        out = reverse_entry(entry_id=eid, current_user=user, db=db)
+        rev = db.get(JournalEntry, out["id"])
+        today = date.today()
+        assert rev.status == "posted"          # posted directly, no draft
+        assert rev.is_reversal is True
+        assert rev.entry_type == "reversal"
+        assert rev.reversal_of_entry_id == eid
+        # period from TODAY, not the original entry's period (Feb).
+        assert rev.period_month == today.month and rev.period_year == today.year
+        # totals swapped; lines mirrored (debit<->credit).
+        assert rev.total_debits == Decimal("100")
+        assert rev.total_credits == Decimal("100")
+        rl = (
+            db.query(JournalEntryLine)
+            .filter(JournalEntryLine.journal_entry_id == rev.id)
+            .order_by(JournalEntryLine.line_number)
+            .all()
+        )
+        assert rl[0].credit_amount == Decimal("100") and rl[0].debit_amount == Decimal("0")
+        assert db.get(JournalEntry, eid).status == "reversed"
+
+    def test_reversal_bypasses_closed_period_guard(self, db):
+        # WRONGNESS: reverse_entry writes status="posted" straight into
+        # TODAY's period with NO AccountingPeriod check — unlike
+        # post_entry. Reversing works even when today's period is closed.
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        # original in an OPEN past period so it can be posted first.
+        eid = self._posted(db, user, co, entry_date="2026-02-12")
+        today = date.today()
+        db.add(AccountingPeriod(
+            id=str(uuid.uuid4()), tenant_id=co,
+            period_month=today.month, period_year=today.year, status="closed",
+        ))
+        db.commit()
+        out = reverse_entry(entry_id=eid, current_user=user, db=db)  # no raise
+        assert db.get(JournalEntry, out["id"]).status == "posted"
+
+
+# ── EPD inline JE ────────────────────────────────────────────────────
+
+
+class TestEpdDiscountJournalEntry:
+    def _payment(self, db, co) -> CustomerPayment:
+        cust = Customer(
+            id=str(uuid.uuid4()), company_id=co, name="Discount Customer",
+        )
+        db.add(cust)
+        db.flush()
+        pay = CustomerPayment(
+            id=str(uuid.uuid4()), company_id=co, customer_id=cust.id,
+            payment_date=datetime(2026, 4, 20, 12, 0, tzinfo=timezone.utc),
+            total_amount=Decimal("500"),
+        )
+        db.add(pay)
+        db.commit()
+        # discount_percentage is NOT a column — the EPD function reads it
+        # off the instance; set it so the f-string doesn't AttributeError
+        # into the broad except (see the swallow note below).
+        pay.discount_percentage = 2
+        return pay
+
+    def test_number_status_period_and_balance(self, db):
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        gl = TenantGLMapping(
+            id=str(uuid.uuid4()), tenant_id=co, platform_category="discount",
+            account_number="4100", account_name="Sales Discounts",
+        )
+        db.add(gl)
+        db.commit()
+        pay = self._payment(db, co)
+        entry_id = _create_discount_journal_entry(
+            db, tenant_id=co, payment=pay, discount_amount=10.0,
+            gl_account_id=gl.id, user_id=user.id,
+        )
+        db.commit()
+        assert entry_id is not None
+        row = db.get(JournalEntry, entry_id)
+        assert row.entry_number == f"DISC-{pay.id[:8]}"  # NOT the JE-#### scheme
+        assert row.status == "posted"                    # auto-posted
+        assert row.entry_type == "adjusting"
+        assert row.period_month == 4 and row.period_year == 2026  # from payment_date
+        assert row.total_debits == Decimal("10") == row.total_credits
+
+    def test_returns_none_when_no_gl_account(self, db):
+        # Pins the explicit None-GL contract (early return + warning log).
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        pay = self._payment(db, co)
+        before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
+        entry_id = _create_discount_journal_entry(
+            db, tenant_id=co, payment=pay, discount_amount=10.0,
+            gl_account_id=None, user_id=user.id,
+        )
+        assert entry_id is None
+        after = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
+        assert after == before  # no entry created
