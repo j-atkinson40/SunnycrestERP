@@ -46,55 +46,22 @@ def db_session():
 
 @pytest.fixture(scope="module", autouse=True)
 def _cleanup_test_workflows():
-    """Drop this module's `wf_sched_*` workflows + their runs AND the
-    `pairiso-*` tenants at teardown. Cleaning up our own companies keeps
-    this new file off the COMPANY-LITTER tripwire's ledger — the general
-    suite-rot trajectory is tracked in STATE, but a fresh file shouldn't
-    add to it. (The pre-existing 8b.5 dispatch file's un-cleaned tenants
-    are out of scope for S-1c.)"""
+    """Drop this module's `wf_sched_*` workflows AND everything the full
+    sweep created FOR the `pairiso-*` tenants, then the tenants. The test
+    invokes the REAL `check_time_based_workflows()`, so ambient `wf_sys_*`
+    workflows fire for the test companies and create workflow_runs +
+    agent_jobs (+ period_locks); deleting only our own workflows leaves
+    those dangling and the company DELETE FK-fails (surfaced only on a
+    fresh DB — S-5 CI-clean fix). FK-safe order: period_locks (→ agent_jobs)
+    → agent_jobs (cascades its steps/anomalies) → workflow_runs (cascades
+    run_steps) → our wf_sched_ workflows → companies."""
     yield
     from app.database import SessionLocal
-    from app.models.company import Company
-    from app.models.workflow import (
-        Workflow,
-        WorkflowRun,
-        WorkflowRunStep,
-        WorkflowStep,
-    )
+    from tests._cleanup import purge_companies_by_slug
 
     db = SessionLocal()
     try:
-        stale_ids = [
-            w.id
-            for w in db.query(Workflow)
-            .filter(Workflow.id.like("wf_sched_%"))
-            .all()
-        ]
-        if stale_ids:
-            run_ids = [
-                r.id
-                for r in db.query(WorkflowRun)
-                .filter(WorkflowRun.workflow_id.in_(stale_ids))
-                .all()
-            ]
-            if run_ids:
-                db.query(WorkflowRunStep).filter(
-                    WorkflowRunStep.run_id.in_(run_ids)
-                ).delete(synchronize_session=False)
-                db.query(WorkflowRun).filter(
-                    WorkflowRun.id.in_(run_ids)
-                ).delete(synchronize_session=False)
-            db.query(WorkflowStep).filter(
-                WorkflowStep.workflow_id.in_(stale_ids)
-            ).delete(synchronize_session=False)
-            db.query(Workflow).filter(Workflow.id.in_(stale_ids)).delete(
-                synchronize_session=False
-            )
-        # Workflows/runs gone → the pairiso tenants have no dangling FK.
-        db.query(Company).filter(Company.slug.like("pairiso-%")).delete(
-            synchronize_session=False
-        )
-        db.commit()
+        purge_companies_by_slug(db, "pairiso-%")
     finally:
         db.close()
 

@@ -46,52 +46,21 @@ def db_session():
 
 @pytest.fixture(scope="module", autouse=True)
 def _cleanup_test_workflows():
-    """Drop any lingering `wf_sched_*` / `wf_tod_*` workflows + their
-    runs at module teardown. Prevents accumulation across test runs on
-    the shared dev DB (which would otherwise slow subsequent sweeps
-    and trip the Phase 8a `tier=1 IMPLIES scope=core` invariant if
-    fixtures were ever accidentally misconfigured)."""
+    """Drop this module's `wf_sched_*` / `wf_tod_*` workflows AND everything
+    the full sweep created for the `sched-*` tenants, then the tenants.
+    Like the pair-isolation file, the integration tests call the REAL
+    `check_time_based_workflows()`, so ambient `wf_sys_*` workflows fire for
+    the test companies and create workflow_runs + agent_jobs (+ period_locks)
+    — leaving only our own workflows made the company DELETE FK-fail on a
+    fresh DB (S-5 CI-clean fix). FK-safe order: period_locks → agent_jobs
+    (cascades) → workflow_runs (cascades) → our workflows → companies."""
     yield  # tests run here
     from app.database import SessionLocal
-    from app.models.workflow import (
-        Workflow,
-        WorkflowRun,
-        WorkflowRunStep,
-        WorkflowStep,
-    )
+    from tests._cleanup import purge_companies_by_slug
 
     db = SessionLocal()
     try:
-        stale_ids = [
-            w.id
-            for w in db.query(Workflow)
-            .filter(
-                Workflow.id.like("wf_sched_%") | Workflow.id.like("wf_tod_%")
-            )
-            .all()
-        ]
-        if not stale_ids:
-            return
-        run_ids = [
-            r.id
-            for r in db.query(WorkflowRun)
-            .filter(WorkflowRun.workflow_id.in_(stale_ids))
-            .all()
-        ]
-        if run_ids:
-            db.query(WorkflowRunStep).filter(
-                WorkflowRunStep.run_id.in_(run_ids)
-            ).delete(synchronize_session=False)
-            db.query(WorkflowRun).filter(
-                WorkflowRun.id.in_(run_ids)
-            ).delete(synchronize_session=False)
-        db.query(WorkflowStep).filter(
-            WorkflowStep.workflow_id.in_(stale_ids)
-        ).delete(synchronize_session=False)
-        db.query(Workflow).filter(Workflow.id.in_(stale_ids)).delete(
-            synchronize_session=False
-        )
-        db.commit()
+        purge_companies_by_slug(db, "sched-%")
     finally:
         db.close()
 

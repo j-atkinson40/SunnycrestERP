@@ -34,6 +34,24 @@ def db():
     s.close()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_d3_companies():
+    """Delete this module's `d3-*` tenants + everything FK-referencing them
+    at teardown (S-5 CI-clean fix — this file was a COMPANY-LITTER leaker).
+    The matching tests create reconciliation + customer/vendor payments; the
+    AP test runs the real AP agent, which writes agent_jobs + tenant_alerts.
+    FK-safe order: alerts/agent_jobs → reconciliation → financial_accounts →
+    payments → vendor bills → customers/vendors → users/roles → companies."""
+    yield
+    from tests._cleanup import purge_companies_by_slug
+
+    s = SessionLocal()
+    try:
+        purge_companies_by_slug(s, "d3-%")
+    finally:
+        s.close()
+
+
 def _mk_company(db) -> str:
     suffix = uuid.uuid4().hex[:6]
     co = Company(id=str(uuid.uuid4()), name=f"D3-{suffix}", slug=f"d3-{suffix}",
