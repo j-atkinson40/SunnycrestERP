@@ -23,7 +23,7 @@ from app.models.user import User
 from scripts.wipe_tenant import (
     PRESERVE, COA_TABLES, DOCUMENT_TABLES, TRANSFER_TABLES,
     plan_wipe, execute_deletes, load_schema, build_predicate, derive_delete_set,
-    transfer_predicates,
+    transfer_predicates, verify_state,
 )
 
 DEFAULT_PRESERVE = PRESERVE | COA_TABLES  # default flags: CoA kept, documents deleted
@@ -136,7 +136,11 @@ def test_full_wipe_lifecycle(throwaway):
         n_cust = conn.execute(
             text(f'SELECT count(*) FROM customers WHERE {preds["customers"]}'),
             {"tid": co_id}).scalar()
+        # pre-wipe verify: delete-set NOT empty (has the customer)
+        pre = verify_state(conn, co_id, DEFAULT_PRESERVE)
     assert n_cust == 1
+    assert pre["delete_set_remaining_total"] >= 1
+    assert pre["company_present"] is True
 
     # execute in a single transaction (scoped to the throwaway tenant)
     with engine.begin() as conn:
@@ -155,6 +159,15 @@ def test_full_wipe_lifecycle(throwaway):
                             {"c": co_id}).scalar() == 1  # PRESERVED
         assert conn.execute(text("SELECT count(*) FROM roles WHERE company_id=:c"),
                             {"c": co_id}).scalar() == 1  # PRESERVED
+
+        # post-wipe verify (the standing check): delete-set empty, identity intact
+        post = verify_state(conn, co_id, DEFAULT_PRESERVE)
+    assert post["delete_set_remaining_total"] == 0
+    assert post["delete_set_remaining"] == {}
+    assert post["company_present"] is True
+    assert post["preserved"]["users"] == 1
+    assert post["preserved"]["roles"] == 1
+    assert all(n == 0 for n in post["cycle_backedges_nonnull"].values())
 
 
 def test_transfer_tables_are_mode_controlled_not_auto_scoped():

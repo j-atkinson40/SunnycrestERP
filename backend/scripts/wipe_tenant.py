@@ -324,12 +324,21 @@ def main():
                     help="Two-party cross-tenant transfer records (no default). REQUIRED if the "
                          "tenant is involved in any: skip=leave them; delete-as-home=delete "
                          "transfers this tenant originated; delete-as-recipient=those it received.")
+    ap.add_argument("--verify", action="store_true",
+                    help="Read-only: report the tenant's current delete-set state + preserved/"
+                         "identity, using the tool's OWN predicates. Post-wipe the delete-set should "
+                         "be empty; the same code is the standing pre/post-wipe check.")
     args = ap.parse_args()
 
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         die("DATABASE_URL not set.")
-    eng = create_engine(db_url)
+    # keepalives — belt-and-braces against a proxied SSL connection being reaped
+    # mid-transaction (the real fix is running on the internal host; this is cheap
+    # insurance, no new semantics).
+    eng = create_engine(db_url, connect_args={
+        "keepalives": 1, "keepalives_idle": 10, "keepalives_interval": 5, "keepalives_count": 5,
+    })
 
     with eng.connect() as conn:
         scoped, all_tables, pk, edges = load_schema(conn)
@@ -353,6 +362,29 @@ def main():
         if not row:
             die(f"No tenant with slug '{args.slug}'.")
         tid, name, slug = row
+
+        # --verify: read-only state check (the standing post-wipe verification).
+        # No involvement refuse here — verify never writes; it just reports.
+        if args.verify:
+            r = verify_state(conn, tid, preserve, transfer_mode=args.transfer_records)
+            print("=" * 72)
+            print(f"WIPE VERIFY (read-only) — slug={slug!r}  name={name!r}  id={tid}")
+            print("=" * 72)
+            tot = r["delete_set_remaining_total"]
+            print(f"\nDELETE-SET rows remaining: {tot}")
+            for t, n in sorted(r["delete_set_remaining"].items(), key=lambda x: -x[1])[:12]:
+                print(f"    {t:<42} {n}")
+            print("\ncycle null-break back-edges (non-null; expect 0):")
+            for (ch, col), n in r["cycle_backedges_nonnull"].items():
+                print(f"    {ch}.{col}: {n}")
+            print("\npreserved / identity:")
+            print(f"    company row present: {r['company_present']}")
+            for t, n in r["preserved"].items():
+                print(f"    {t:<22} {n}")
+            print(f"\ntransfer involvement: {r['transfer_involvement'] or 'none'}")
+            print(f"\nVERDICT: " + ("DELETE-SET EMPTY — wipe verified" if tot == 0
+                  else f"DELETE-SET NOT EMPTY — {tot} rows remain (wipe incomplete or not yet run)"))
+            return
 
         # Two-party transfer records: refuse to guess ownership. If this tenant is
         # involved on any side and no mode was chosen, stop — a two-party record
@@ -487,6 +519,54 @@ def execute_deletes(conn, tid, order, preds, break_edges=()) -> tuple[dict, dict
     if remaining:
         raise RuntimeError(f"POST-DELETE non-zero (rolling back): {remaining}")
     return nulled, deleted
+
+
+def verify_state(conn, tid, preserve, transfer_mode=None):
+    """Read-only state check for a tenant, using the tool's OWN predicates so the
+    pre/post-wipe check is the same code every time (never a reconstructed
+    script). Returns a dict; the caller renders it. After a successful wipe,
+    `delete_set_remaining_total` is 0 and the cycle back-edges are 0 non-null;
+    preserved/identity counts confirm the tenant is still usable/seedable."""
+    (delete_set, order, break_edges, unbreakable, blockers,
+     preds, child_only, unconfident) = plan_wipe(conn, preserve, transfer_mode=transfer_mode)
+
+    remaining, total = {}, 0
+    for t in order:
+        sql = preds.get(t)
+        if sql is None:
+            continue
+        n = conn.execute(text(f'SELECT count(*) FROM "{t}" WHERE {sql}'), {"tid": tid}).scalar()
+        total += n
+        if n:
+            remaining[t] = n
+
+    backedges = {}
+    for ch, col, pa in break_edges:
+        sql = preds.get(ch)
+        if sql is None:
+            continue
+        backedges[(ch, col)] = conn.execute(
+            text(f'SELECT count(*) FROM "{ch}" WHERE {sql} AND "{col}" IS NOT NULL'),
+            {"tid": tid}).scalar()
+
+    preserved = {}
+    for t in ("tenant_gl_mappings", "financial_accounts", "users", "roles"):
+        sc = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema='public' "
+            "AND table_name=:t AND column_name IN ('tenant_id','company_id')"), {"t": t}).fetchall()
+        col = sc[0][0] if sc else None
+        preserved[t] = (conn.execute(text(f'SELECT count(*) FROM "{t}" WHERE "{col}"=:t'),
+                                     {"t": tid}).scalar() if col else None)
+
+    return {
+        "delete_set_remaining_total": total,
+        "delete_set_remaining": remaining,
+        "cycle_backedges_nonnull": backedges,
+        "preserved": preserved,
+        "company_present": bool(conn.execute(
+            text("SELECT 1 FROM companies WHERE id=:t"), {"t": tid}).scalar()),
+        "transfer_involvement": transfer_involvement(conn, tid),
+    }
 
 
 def plan_wipe(conn, preserve, transfer_mode=None):
