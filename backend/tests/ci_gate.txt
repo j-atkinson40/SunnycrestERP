@@ -23,3 +23,8 @@ tests/test_route_write_ratchet.py
 # — Scheduler isolation (S-1c) + its neighbor (both teardown-fixed in S-5) —
 tests/test_workflow_scheduler_pair_isolation.py
 tests/test_workflow_scheduler_scheduled_dispatch.py
+
+# — Tenant wipe tool (W-1b): derivation + three guards (against the REAL
+#   preserve-list) + full throwaway-tenant wipe lifecycle. Creates its own
+#   tenant, cleans up after itself (COMPANY-LITTER ratchet). —
+tests/test_wipe_tenant.py
