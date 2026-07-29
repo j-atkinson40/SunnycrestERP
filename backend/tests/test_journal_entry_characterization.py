@@ -36,8 +36,10 @@ from app.models.journal_entry import (
     JournalEntry,
     JournalEntryLine,
 )
+from app.models.period_lock import PeriodLock
 from app.models.role import Role
 from app.models.user import User
+from app.services.agents.period_lock import PeriodLockedError
 
 from app.api.routes.journal_entries import (
     JECreate,
@@ -78,6 +80,7 @@ def _cleanup_companies():
             (JournalEntryLine, "tenant_id"),
             (JournalEntry, "tenant_id"),
             (AccountingPeriod, "tenant_id"),
+            (PeriodLock, "tenant_id"),
             (TenantGLMapping, "tenant_id"),
             (CustomerPayment, "company_id"),
             (Customer, "company_id"),
@@ -393,10 +396,14 @@ class TestReverseEntry:
         assert rl[0].credit_amount == Decimal("100") and rl[0].debit_amount == Decimal("0")
         assert db.get(JournalEntry, eid).status == "reversed"
 
-    def test_reversal_bypasses_closed_period_guard(self, db):
-        # WRONGNESS: reverse_entry writes status="posted" straight into
-        # TODAY's period with NO AccountingPeriod check — unlike
-        # post_entry. Reversing works even when today's period is closed.
+    def test_reversal_bypasses_ACCOUNTING_PERIOD_guard(self, db):
+        # WRONGNESS (AccountingPeriod only): reverse_entry writes
+        # status="posted" straight into TODAY's period without checking
+        # AccountingPeriod — unlike post_entry. Reversing works even when
+        # today's AccountingPeriod is closed. NOTE post-S-3: reverse now
+        # DOES honor PeriodLock (via the shared primitive), so this is
+        # specifically the AccountingPeriod-on-reverse gap; reconciling the
+        # two closed-period tables is the S-6 item.
         co, user, gl_d, gl_c = _co_user_gls(db)
         # original in an OPEN past period so it can be posted first.
         eid = self._posted(db, user, co, gl_d, gl_c, entry_date="2026-02-12")
@@ -464,3 +471,94 @@ class TestEpdDiscountJournalEntry:
         assert entry_id is None
         after = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
         assert after == before  # no entry created
+
+
+# ── S-3 period-lock guard ────────────────────────────────────────────
+
+
+def _lock(db, co, start: date, end: date) -> PeriodLock:
+    pl = PeriodLock(
+        id=str(uuid.uuid4()), tenant_id=co,
+        period_start=start, period_end=end, is_active=True,
+    )
+    db.add(pl)
+    db.commit()
+    return pl
+
+
+class TestPeriodLockGuard:
+    """S-3 — PeriodLock (the authoritative closed-period source) guards JE
+    creation in the shared primitive AND posting in post_entry. Pins that
+    the two 'bypass' paths (reversal, EPD) pass because of WHERE their
+    entry_date lands, not by luck — 'passes trivially' is a claim, and
+    claims in this arc get tests."""
+
+    def test_manual_create_into_locked_period_is_409(self, db):
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        _lock(db, co, date(2026, 3, 1), date(2026, 3, 31))
+        body = JECreate(
+            entry_type="manual", entry_date="2026-03-10", description="pin",
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
+        )
+        with pytest.raises(PeriodLockedError) as ei:
+            create_entry(body=body, current_user=user, db=db)
+        assert ei.value.status_code == 409  # PeriodLockedError is a 409
+
+    def test_create_into_open_period_ok_despite_lock_elsewhere(self, db):
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        _lock(db, co, date(2026, 5, 1), date(2026, 5, 31))  # May locked
+        body = JECreate(
+            entry_type="manual", entry_date="2026-04-30", description="pin",
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
+        )
+        out = create_entry(body=body, current_user=user, db=db)  # Apr 30 open
+        assert db.get(JournalEntry, out["id"]).status == "draft"
+
+    def test_reversal_out_of_a_locked_period_succeeds(self, db):
+        # The claim under test: reversal carries TODAY's entry_date, so it
+        # escapes a lock on the ORIGINAL entry's (past) period. Reverse an
+        # entry whose own period is locked -> succeeds because the reversal
+        # posts today (open).
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        body = JECreate(
+            entry_type="manual", entry_date="2026-02-12", description="orig",
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
+        )
+        eid = create_entry(body=body, current_user=user, db=db)["id"]
+        post_entry(entry_id=eid, current_user=user, db=db)  # Feb still open
+        _lock(db, co, date(2026, 2, 1), date(2026, 2, 28))  # NOW lock Feb
+        out = reverse_entry(entry_id=eid, current_user=user, db=db)  # no raise
+        assert db.get(JournalEntry, out["id"]).status == "posted"
+        assert db.get(JournalEntry, eid).status == "reversed"
+
+    def test_epd_discount_on_unlocked_payment_date_succeeds(self, db):
+        # EPD carries payment_date; a lock on a DIFFERENT period doesn't
+        # block it. (In the live flow the payment itself can't exist in a
+        # locked period — create_customer_payment guards payment_date — so
+        # the discount JE's date is protected upstream.)
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        _lock(db, co, date(2026, 5, 1), date(2026, 5, 31))  # May locked
+        pay = TestEpdDiscountJournalEntry()._payment(db, co)  # payment_date Apr 20
+        entry_id = _create_discount_journal_entry(
+            db, tenant_id=co, payment=pay, discount_amount=10.0,
+            gl_account_id=gl, user_id=user.id,
+        )
+        db.commit()
+        assert entry_id is not None
+        assert db.get(JournalEntry, entry_id).period_month == 4
+
+    def test_post_into_locked_period_is_409_via_periodlock(self, db):
+        # post_entry's NEW PeriodLock check (alongside the AccountingPeriod
+        # one). Create while open, lock, then post -> 409.
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        body = JECreate(
+            entry_type="manual", entry_date="2026-06-15", description="pin",
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
+        )
+        eid = create_entry(body=body, current_user=user, db=db)["id"]  # open
+        _lock(db, co, date(2026, 6, 1), date(2026, 6, 30))
+        with pytest.raises(PeriodLockedError) as ei:
+            post_entry(entry_id=eid, current_user=user, db=db)
+        assert ei.value.status_code == 409

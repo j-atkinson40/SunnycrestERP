@@ -17,6 +17,7 @@ from app.models.accounting_analysis import TenantGLMapping
 from app.models.user import User
 from app.services import journal_entry_service
 from app.services.journal_entry_service import JournalLineSpec
+from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -196,7 +197,16 @@ def post_entry(
     if len(lines) < 2:
         raise HTTPException(400, "At least 2 lines required")
 
-    # Check period status
+    # Check period status — BOTH closed-period sources, closed-if-either
+    # (fail-closed while the two tables coexist). AccountingPeriod is the
+    # JE module's manual month/year close; PeriodLock is the authoritative
+    # platform lock that month-end close writes and every AR write honors.
+    # S-3 ADDED the PeriodLock check ALONGSIDE (not in place of) the
+    # AccountingPeriod one — dropping AccountingPeriod would silently
+    # re-permit posting into a manually-closed period. Reconciling the two
+    # tables (are there closed AccountingPeriods with no PeriodLock?) is an
+    # S-6 item with a data question that must be answered before either is
+    # retired.
     period = db.query(AccountingPeriod).filter(
         AccountingPeriod.tenant_id == current_user.company_id,
         AccountingPeriod.period_month == entry.period_month,
@@ -204,6 +214,11 @@ def post_entry(
     ).first()
     if period and period.status == "closed":
         raise HTTPException(400, f"Period {entry.period_month}/{entry.period_year} is closed")
+    lock = PeriodLockService.check_date_in_locked_period(
+        db, current_user.company_id, entry.entry_date
+    )
+    if lock:
+        raise PeriodLockedError(lock)
 
     entry.status = "posted"
     entry.posted_by = current_user.id
@@ -227,6 +242,14 @@ def reverse_entry(
     # Generate reversal
     count = db.query(func.count(JournalEntry.id)).filter(JournalEntry.tenant_id == current_user.company_id).scalar() or 0
     rev_number = f"JE-{count + 1001}"
+    # A reversal posts in the CURRENT period (today), not the original's
+    # period — standard practice: you reverse a closed-period entry INTO the
+    # open current period, you do not reach back. This `today` is CORRECT,
+    # NOT the entry_date/period-derivation inconsistency to "unify" away. A
+    # later cleanup that copies the original's entry_date here would turn
+    # correct behavior into a bug AND would trip the S-3 period-lock guard on
+    # every reversal of a locked-period entry (making a legitimate operation
+    # impossible). Leave it as today.
     today = date.today()
 
     # Mirror the original's lines (debit <-> credit). The service computes

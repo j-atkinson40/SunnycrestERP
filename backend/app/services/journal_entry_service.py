@@ -26,6 +26,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.journal_entry import JournalEntry, JournalEntryLine
+from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
 
 
 @dataclass
@@ -72,6 +73,21 @@ def create_journal_entry(
     `entry_id` is applied only when provided so the model's default UUID
     governs otherwise.
     """
+    # S-3 period-lock guard. PeriodLock is the authoritative closed-period
+    # source across the platform (month-end close writes it on approval;
+    # every AR write — invoices, payments — already honors it). Guarding in
+    # this ONE primitive covers all three JE-creation callers at once
+    # (manual create_entry, reverse_entry, EPD discount). It reads
+    # entry_date: reversal carries `today` (open), and EPD carries the
+    # payment's date (already lock-checked at payment creation), so in the
+    # normal flow only a manual create into a locked period is actually
+    # blocked. Fail-closed (409). `datetime` is a subclass of `date`, so a
+    # datetime entry_date (EPD passes payment_date) is narrowed to a date.
+    lock_date = entry_date.date() if isinstance(entry_date, datetime) else entry_date
+    lock = PeriodLockService.check_date_in_locked_period(db, tenant_id, lock_date)
+    if lock:
+        raise PeriodLockedError(lock)
+
     # sum(...) over the specs mirrors the route's original computation,
     # including the empty-lines edge (int 0, coerced by the Numeric column).
     total_debits = sum(Decimal(str(line.debit_amount)) for line in lines)
