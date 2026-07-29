@@ -549,6 +549,24 @@ class TestPeriodLockGuard:
         assert entry_id is not None
         assert db.get(JournalEntry, entry_id).period_month == 4
 
+    def test_epd_on_locked_payment_date_RAISES_not_swallowed(self, db):
+        # The hole closed before S-4: the primitive's period-lock guard must
+        # PROPAGATE through EPD's broad `except`, not be swallowed to None.
+        # Reachable TODAY — apply_discounted_payment runs on an EXISTING
+        # payment (separate /discount action), so the period can lock between
+        # payment creation and discount application. Swallowing would leave
+        # AR reduced with no contra-revenue entry (books out of balance).
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        pay = TestEpdDiscountJournalEntry()._payment(db, co)  # payment_date 2026-04-20
+        _lock(db, co, date(2026, 4, 1), date(2026, 4, 30))    # April locked
+        with pytest.raises(PeriodLockedError):
+            _create_discount_journal_entry(
+                db, tenant_id=co, payment=pay, discount_amount=10.0,
+                gl_account_id=gl, user_id=user.id,
+            )
+
     def test_post_into_locked_period_is_409_via_periodlock(self, db):
         # post_entry's NEW PeriodLock check (alongside the AccountingPeriod
         # one). Create while open, lock, then post -> 409.

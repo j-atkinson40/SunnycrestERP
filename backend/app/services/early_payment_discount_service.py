@@ -12,6 +12,7 @@ from app.models.customer import Customer
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.customer_payment import CustomerPayment
 from app.models.user import User
+from app.services.agents.period_lock import PeriodLockedError
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,18 @@ def _create_discount_journal_entry(
         )
 
         return entry.id
+    except PeriodLockedError:
+        # Do NOT swallow our own S-3 period-lock guard. This path is
+        # REACHABLE today: apply_discounted_payment runs on an ALREADY
+        # EXISTING payment (a separate /discount action), so the period can
+        # lock (month-end close) AFTER the payment was created but BEFORE
+        # the discount is applied. A locked period means the contra-revenue
+        # entry can't be posted — so the discount must fail LOUDLY (409),
+        # not apply silently with no JE (AR reduced, no offsetting entry =
+        # books out of balance, the exact failure this arc exists to
+        # prevent). The broad swallow below stays an S-6 sweep item; this
+        # narrows only the case where our new guard would be eaten.
+        raise
     except Exception as e:
         logger.error(f"Failed to create discount JE: {e}")
         return None
