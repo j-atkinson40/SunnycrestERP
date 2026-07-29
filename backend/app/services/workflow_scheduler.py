@@ -269,13 +269,16 @@ def check_time_based_workflows() -> dict:
 
     Creates fresh DB session (scheduler jobs must not share sessions).
     Returns a summary: {"time_of_day_fired": int, "time_after_fired": int,
-    "scheduled_fired": int, "scheduled_skipped_invalid_cron": int}.
+    "scheduled_fired": int, "scheduled_skipped_invalid_cron": int,
+    "start_errors": int}. Raises RuntimeError if start_errors > 0 (a partial
+    sweep is never reported as clean — S-1c per-pair isolation + loud raise).
     """
     db = SessionLocal()
     fired_tod = 0
     fired_tae = 0
     fired_sched = 0
     skipped_invalid_cron = 0
+    start_errors = 0
     now = datetime.now(timezone.utc)
     try:
         # Load all active time-based workflows (Phase 8b.5 adds "scheduled").
@@ -284,48 +287,100 @@ def check_time_based_workflows() -> dict:
 
         for w in workflows:
             for company in companies:
-                # Scope by vertical
-                if w.vertical and company.vertical and w.vertical != (company.vertical or "").lower():
-                    continue
-                if w.company_id and w.company_id != company.id:
-                    continue
-                # Tier 3 requires active enrollment
-                if w.tier == 3:
-                    enrollment = (
-                        db.query(WorkflowEnrollment)
-                        .filter(
-                            WorkflowEnrollment.workflow_id == w.id,
-                            WorkflowEnrollment.company_id == company.id,
-                        )
-                        .first()
-                    )
-                    if not enrollment or not enrollment.is_active:
+                # S-1c — per-pair isolation. One tenant/workflow pair that
+                # raises while firing (a bad start_run, a transient DB error,
+                # a config bug) must NEVER abort the sweep for the remaining
+                # pairs. Same expected-vs-unexpected discipline as the Plaid
+                # sweep (S-1b): the EXPECTED non-fires below stay `continue`s
+                # (not applicable — no error); an UNEXPECTED raise is caught
+                # here loudly (ERROR + trace), counted, isolated, and the run
+                # raises at the END if any pair failed — so a partial sweep
+                # is never reported as clean. Invalid cron keeps its own
+                # narrower handling (skipped_invalid_cron) inside the branch;
+                # it is an expected skip, not a start error.
+                try:
+                    # Scope by vertical
+                    if w.vertical and company.vertical and w.vertical != (company.vertical or "").lower():
                         continue
+                    if w.company_id and w.company_id != company.id:
+                        continue
+                    # Tier 3 requires active enrollment
+                    if w.tier == 3:
+                        enrollment = (
+                            db.query(WorkflowEnrollment)
+                            .filter(
+                                WorkflowEnrollment.workflow_id == w.id,
+                                WorkflowEnrollment.company_id == company.id,
+                            )
+                            .first()
+                        )
+                        if not enrollment or not enrollment.is_active:
+                            continue
 
-                if w.trigger_type == "time_of_day":
-                    # T-0 fire-fix (2026-07, the 8b.5-flagged latent bug
-                    # corrected at cause): time_of_day matches TENANT-LOCAL
-                    # wall-clock, exactly like the 'scheduled' cron branch
-                    # and the MoC sweep. Pre-fix this compared the config's
-                    # "23:30" against UTC — Cash Receipts fired ≈7:30 PM ET
-                    # while its ponder taught "11:30 PM". Deliberate,
-                    # operator-confirmed: affected fires shift to their
-                    # tenant-local time.
-                    now_local = now.astimezone(_resolve_tenant_tz(company.timezone))
-                    if _matches_time_of_day(w.trigger_config or {}, now_local):
-                        workflow_engine.start_run(
-                            db=db,
+                    if w.trigger_type == "time_of_day":
+                        # T-0 fire-fix (2026-07, the 8b.5-flagged latent bug
+                        # corrected at cause): time_of_day matches TENANT-LOCAL
+                        # wall-clock, exactly like the 'scheduled' cron branch
+                        # and the MoC sweep. Pre-fix this compared the config's
+                        # "23:30" against UTC — Cash Receipts fired ≈7:30 PM ET
+                        # while its ponder taught "11:30 PM". Deliberate,
+                        # operator-confirmed: affected fires shift to their
+                        # tenant-local time.
+                        now_local = now.astimezone(_resolve_tenant_tz(company.timezone))
+                        if _matches_time_of_day(w.trigger_config or {}, now_local):
+                            workflow_engine.start_run(
+                                db=db,
+                                workflow_id=w.id,
+                                company_id=company.id,
+                                triggered_by_user_id=None,
+                                trigger_source="schedule",
+                                trigger_context={"fired_at": now.isoformat()},
+                            )
+                            fired_tod += 1
+                    elif w.trigger_type == "time_after_event":
+                        record_ids = _matches_time_after_event(db, w, company.id, now)
+                        for rid in record_ids:
+                            if _already_ran_for_record(db, w.id, rid):
+                                continue
+                            workflow_engine.start_run(
+                                db=db,
+                                workflow_id=w.id,
+                                company_id=company.id,
+                                triggered_by_user_id=None,
+                                trigger_source="schedule",
+                                trigger_context={"record": {"id": rid, "type": "funeral_case"}},
+                            )
+                            fired_tae += 1
+                    elif w.trigger_type == "scheduled":
+                        # Phase 8b.5 — cron-based dispatch per tenant.
+                        cron_expr = (w.trigger_config or {}).get("cron")
+                        if not cron_expr:
+                            # No cron defined — skip silently.
+                            continue
+                        tenant_tz = _resolve_tenant_tz(company.timezone)
+                        try:
+                            intended = _intended_scheduled_fire(
+                                cron_expr, tenant_tz, now
+                            )
+                        except ValueError as exc:
+                            # Malformed cron — log and skip this workflow
+                            # (one bad cron doesn't stop the sweep). Expected
+                            # skip, tracked separately from start_errors.
+                            logger.warning(
+                                "Invalid cron expression for workflow %s "
+                                "(tenant %s): %r — %s",
+                                w.id, company.id, cron_expr, exc,
+                            )
+                            skipped_invalid_cron += 1
+                            continue
+                        if intended is None:
+                            continue
+                        if _already_fired_scheduled(
+                            db,
                             workflow_id=w.id,
                             company_id=company.id,
-                            triggered_by_user_id=None,
-                            trigger_source="schedule",
-                            trigger_context={"fired_at": now.isoformat()},
-                        )
-                        fired_tod += 1
-                elif w.trigger_type == "time_after_event":
-                    record_ids = _matches_time_after_event(db, w, company.id, now)
-                    for rid in record_ids:
-                        if _already_ran_for_record(db, w.id, rid):
+                            intended_fire=intended,
+                        ):
                             continue
                         workflow_engine.start_run(
                             db=db,
@@ -333,57 +388,41 @@ def check_time_based_workflows() -> dict:
                             company_id=company.id,
                             triggered_by_user_id=None,
                             trigger_source="schedule",
-                            trigger_context={"record": {"id": rid, "type": "funeral_case"}},
+                            trigger_context={
+                                "fired_at": now.isoformat(),
+                                "intended_fire": intended.isoformat(),
+                                "cron": cron_expr,
+                            },
                         )
-                        fired_tae += 1
-                elif w.trigger_type == "scheduled":
-                    # Phase 8b.5 — cron-based dispatch per tenant.
-                    cron_expr = (w.trigger_config or {}).get("cron")
-                    if not cron_expr:
-                        # No cron defined — skip silently.
-                        continue
-                    tenant_tz = _resolve_tenant_tz(company.timezone)
-                    try:
-                        intended = _intended_scheduled_fire(
-                            cron_expr, tenant_tz, now
-                        )
-                    except ValueError as exc:
-                        # Malformed cron — log and skip this workflow
-                        # (one bad cron doesn't stop the sweep).
-                        logger.warning(
-                            "Invalid cron expression for workflow %s "
-                            "(tenant %s): %r — %s",
-                            w.id, company.id, cron_expr, exc,
-                        )
-                        skipped_invalid_cron += 1
-                        continue
-                    if intended is None:
-                        continue
-                    if _already_fired_scheduled(
-                        db,
-                        workflow_id=w.id,
-                        company_id=company.id,
-                        intended_fire=intended,
-                    ):
-                        continue
-                    workflow_engine.start_run(
-                        db=db,
-                        workflow_id=w.id,
-                        company_id=company.id,
-                        triggered_by_user_id=None,
-                        trigger_source="schedule",
-                        trigger_context={
-                            "fired_at": now.isoformat(),
-                            "intended_fire": intended.isoformat(),
-                            "cron": cron_expr,
-                        },
+                        fired_sched += 1
+                except Exception as exc:  # noqa: BLE001 — deliberate isolation boundary
+                    # UNEXPECTED failure firing this one pair. Roll back the
+                    # (possibly dirty) session so the next pair starts clean,
+                    # record loudly with the trace + the pair identity, count
+                    # it, and continue the sweep. The run raises at the end.
+                    db.rollback()
+                    start_errors += 1
+                    logger.error(
+                        "check_time_based_workflows: workflow %s failed to "
+                        "fire for tenant %s: %s",
+                        w.id, company.id, exc, exc_info=True,
                     )
-                    fired_sched += 1
+                    continue
     finally:
         db.close()
-    return {
+    summary = {
         "time_of_day_fired": fired_tod,
         "time_after_fired": fired_tae,
         "scheduled_fired": fired_sched,
         "scheduled_skipped_invalid_cron": skipped_invalid_cron,
+        "start_errors": start_errors,
     }
+    if start_errors > 0:
+        # Loud failure: the sweep completed for every other pair and each
+        # failure is durably logged above, but a partial sweep must NOT be
+        # reported as a clean run — surface it to the scheduler/monitor.
+        raise RuntimeError(
+            f"check_time_based_workflows: {start_errors} workflow/tenant "
+            f"pair(s) failed to fire; see logs. summary={summary}"
+        )
+    return summary
