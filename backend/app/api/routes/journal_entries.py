@@ -119,15 +119,26 @@ def create_entry(
     db.flush()
 
     for i, line in enumerate(body.lines):
-        # Denormalize GL account info
-        gl = db.query(TenantGLMapping).filter(TenantGLMapping.id == line.gl_account_id).first()
+        # Denormalize GL account info. SCOPE the lookup by tenant_id (a GL
+        # id is only meaningful within the caller's own tenant) AND require
+        # a match — an unresolved gl_account_id is a 400, never a silent
+        # fallback. Pre-fix this filtered on id alone, so a foreign tenant's
+        # account_number/name could be denormalized onto the line (a
+        # cross-tenant read), and an unknown id left silent nulls; both are
+        # now rejected. Security-adjacent — see the JE characterization test.
+        gl = db.query(TenantGLMapping).filter(
+            TenantGLMapping.id == line.gl_account_id,
+            TenantGLMapping.tenant_id == current_user.company_id,
+        ).first()
+        if gl is None:
+            raise HTTPException(400, f"Unknown GL account '{line.gl_account_id}' for this tenant")
         db.add(JournalEntryLine(
             tenant_id=current_user.company_id,
             journal_entry_id=entry.id,
             line_number=i + 1,
             gl_account_id=line.gl_account_id,
-            gl_account_number=gl.account_number if gl else line.gl_account_number,
-            gl_account_name=gl.account_name if gl else line.gl_account_name,
+            gl_account_number=gl.account_number,
+            gl_account_name=gl.account_name,
             description=line.description,
             debit_amount=Decimal(str(line.debit_amount)),
             credit_amount=Decimal(str(line.credit_amount)),

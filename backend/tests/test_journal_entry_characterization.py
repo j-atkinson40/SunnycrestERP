@@ -1,18 +1,19 @@
 """S-2 — CHARACTERIZATION of journal-entry creation, BEFORE extraction.
 
-These tests pin what the code does RIGHT NOW across the two divergent
-JE-creation paths (the `journal_entries` route + the inline JE in
+These tests pin what the code does across the two divergent JE-creation
+paths (the `journal_entries` route + the inline JE in
 `early_payment_discount_service`) so the upcoming `journal_entry_service`
 extraction can be proven behavior-preserving. They characterize, they do
-not judge — several of them pin behavior that is almost certainly WRONG
-(unbalanced drafts permitted, GL denormalization with no tenant scope,
-reversal + EPD bypassing the closed-period guard, EPD's broad
-error-swallow). Per the S-2 discipline those are PINNED + REPORTED here,
-NOT fixed in the extraction commit — a refactor that also changes
-behavior is unreviewable; correctness fixes get their own visible commit.
+not judge — several still pin behavior that is almost certainly WRONG
+(unbalanced drafts permitted, reversal + EPD bypassing the closed-period
+guard, EPD's broad error-swallow). Per the S-2 discipline those are
+PINNED + REPORTED, NOT fixed in the extraction commit.
 
-Each wrongness-pinning test is tagged `# WRONGNESS:` so the fix passes
-can find them and flip the assertion deliberately.
+The ONE exception, done deliberately as its own commit BEFORE the
+extraction: the GL-denormalization tenant-scope leak. `create_entry` now
+scopes the GL lookup by tenant_id AND raises 400 when unresolved — this
+file pins that CORRECTED behavior (see TestCreateEntryGLLookup). Wrongness
+still-pinned is tagged `# WRONGNESS:` so the later fix passes can find it.
 
 Cleans up its own companies (COMPANY-LITTER ratchet, conftest.py).
 """
@@ -128,6 +129,19 @@ def _mk_user(db, co_id) -> User:
     return u
 
 
+def _mk_gl(db, co_id, *, num, name, cat="general") -> str:
+    """Seed a real GL mapping for this tenant. Post-fix, create_entry
+    REQUIRES every line's gl_account_id to resolve to one of the caller's
+    own tenant's mappings — so tests must provide real ones."""
+    gl = TenantGLMapping(
+        id=str(uuid.uuid4()), tenant_id=co_id,
+        platform_category=cat, account_number=num, account_name=name,
+    )
+    db.add(gl)
+    db.commit()
+    return gl.id
+
+
 def _line(gl_id, *, debit=0.0, credit=0.0, num=None, name=None):
     return JELineCreate(
         gl_account_id=gl_id,
@@ -139,6 +153,15 @@ def _line(gl_id, *, debit=0.0, credit=0.0, num=None, name=None):
     )
 
 
+def _co_user_gls(db):
+    """Common setup: a tenant, an admin, and two of its own GL accounts."""
+    co = _mk_company(db)
+    user = _mk_user(db, co)
+    gl_d = _mk_gl(db, co, num="1000", name="Cash")
+    gl_c = _mk_gl(db, co, num="4000", name="Revenue")
+    return co, user, gl_d, gl_c
+
+
 # ── create_entry ─────────────────────────────────────────────────────
 
 
@@ -146,15 +169,14 @@ class TestCreateEntry:
     def test_first_entry_number_status_draft_and_period_from_entry_date(
         self, db
     ):
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         # entry_date in JANUARY — pins that period is derived from the
         # entry_date, NOT from "today".
         body = JECreate(
             entry_type="manual",
             entry_date="2026-01-15",
             description="pin: first entry",
-            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
         )
         out = create_entry(body=body, current_user=user, db=db)
         assert out["entry_number"] == "JE-1001"  # count(0) + 1001
@@ -168,13 +190,12 @@ class TestCreateEntry:
         # WRONGNESS: create_entry never checks debits == credits; an
         # unbalanced entry is freely created as a draft. Balance is only
         # enforced at POST time.
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         body = JECreate(
             entry_type="manual",
             entry_date="2026-03-10",
             description="pin: unbalanced draft allowed",
-            lines=[_line("gl-x", debit=100), _line("gl-y", credit=40)],
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=40)],
         )
         out = create_entry(body=body, current_user=user, db=db)  # no raise
         row = db.get(JournalEntry, out["id"])
@@ -185,13 +206,12 @@ class TestCreateEntry:
     def test_permits_fewer_than_two_lines(self, db):
         # WRONGNESS: a single-line (or zero-line) draft is creatable; the
         # >=2-lines rule lives only in post_entry.
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         body = JECreate(
             entry_type="manual",
             entry_date="2026-03-10",
             description="pin: one line allowed",
-            lines=[_line("gl-x", debit=50)],
+            lines=[_line(gl_d, debit=50)],
         )
         out = create_entry(body=body, current_user=user, db=db)  # no raise
         lines = (
@@ -201,53 +221,74 @@ class TestCreateEntry:
         )
         assert len(lines) == 1
 
-    def test_gl_denormalization_has_no_tenant_scope(self, db):
-        # WRONGNESS (cross-tenant leak): the GL lookup that denormalizes
-        # account_number/account_name onto the line filters on
-        # TenantGLMapping.id ONLY — no tenant_id scope. A gl_account_id
-        # belonging to ANOTHER tenant is happily denormalized here.
+
+class TestCreateEntryGLLookup:
+    """The GL-scope FIX (its own commit, ahead of the extraction). The
+    lookup is scoped by tenant_id and REQUIRES a match — no silent
+    cross-tenant denorm, no silent-null fallback."""
+
+    def test_same_tenant_gl_denormalizes_from_the_mapping(self, db):
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        # body supplies its own number/name, but the tenant's mapping wins.
+        body = JECreate(
+            entry_type="manual", entry_date="2026-03-10", description="pin",
+            lines=[
+                _line(gl_d, debit=10, num="IGNORED", name="Ignored"),
+                _line(gl_c, credit=10),
+            ],
+        )
+        out = create_entry(body=body, current_user=user, db=db)
+        line = (
+            db.query(JournalEntryLine)
+            .filter(
+                JournalEntryLine.journal_entry_id == out["id"],
+                JournalEntryLine.gl_account_id == gl_d,
+            )
+            .first()
+        )
+        assert line.gl_account_number == "1000"   # from the mapping
+        assert line.gl_account_name == "Cash"     # not the body's "Ignored"
+
+    def test_foreign_tenant_gl_id_is_rejected_not_leaked(self, db):
+        # FIXED (was the cross-tenant leak): referencing another tenant's
+        # GL id is a 400, not a denorm of their account_number/name.
         other_co = _mk_company(db)
         foreign_gl = TenantGLMapping(
-            id=str(uuid.uuid4()),
-            tenant_id=other_co,               # belongs to a DIFFERENT tenant
-            platform_category="revenue",
-            account_number="9999-FOREIGN",
+            id=str(uuid.uuid4()), tenant_id=other_co,
+            platform_category="revenue", account_number="9999",
             account_name="Foreign Tenant Account",
         )
         db.add(foreign_gl)
         db.commit()
 
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         body = JECreate(
-            entry_type="manual",
-            entry_date="2026-03-10",
-            description="pin: cross-tenant GL denorm",
-            lines=[
-                _line(foreign_gl.id, debit=10, num="OWN", name="Own"),
-                _line("gl-y", credit=10),
-            ],
+            entry_type="manual", entry_date="2026-03-10", description="pin",
+            lines=[_line(foreign_gl.id, debit=10), _line(gl_c, credit=10)],
         )
-        out = create_entry(body=body, current_user=user, db=db)
-        leaked = (
-            db.query(JournalEntryLine)
-            .filter(
-                JournalEntryLine.journal_entry_id == out["id"],
-                JournalEntryLine.gl_account_id == foreign_gl.id,
-            )
-            .first()
+        with pytest.raises(HTTPException) as ei:
+            create_entry(body=body, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        assert "Unknown GL account" in str(ei.value.detail)
+
+    def test_unknown_gl_id_is_rejected_not_silent_null(self, db):
+        # FIXED (was the silent-null fallback): an id that resolves to
+        # nothing is a 400, not a line with null account_number/name.
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        body = JECreate(
+            entry_type="manual", entry_date="2026-03-10", description="pin",
+            lines=[_line("does-not-exist", debit=10), _line(gl_c, credit=10)],
         )
-        # The foreign tenant's account_number/name leaked onto our line,
-        # overriding the body-supplied values.
-        assert leaked.gl_account_number == "9999-FOREIGN"
-        assert leaked.gl_account_name == "Foreign Tenant Account"
+        with pytest.raises(HTTPException) as ei:
+            create_entry(body=body, current_user=user, db=db)
+        assert ei.value.status_code == 400
 
 
 # ── post_entry ───────────────────────────────────────────────────────
 
 
 class TestPostEntry:
-    def _draft(self, db, user, *, lines, entry_date="2026-05-12"):
+    def _draft(self, db, user, gl_d, gl_c, *, lines=None, entry_date="2026-05-12"):
         body = JECreate(
             entry_type="manual",
             entry_date=entry_date,
@@ -257,22 +298,20 @@ class TestPostEntry:
         return create_entry(body=body, current_user=user, db=db)["id"]
 
     def test_balanced_two_line_open_period_posts(self, db):
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         eid = self._draft(
-            db, user,
-            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+            db, user, gl_d, gl_c,
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
         )
         out = post_entry(entry_id=eid, current_user=user, db=db)
         assert out["status"] == "posted"
         assert db.get(JournalEntry, eid).status == "posted"
 
     def test_unbalanced_rejected_at_post(self, db):
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         eid = self._draft(
-            db, user,
-            lines=[_line("gl-x", debit=100), _line("gl-y", credit=40)],
+            db, user, gl_d, gl_c,
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=40)],
         )
         with pytest.raises(HTTPException) as ei:
             post_entry(entry_id=eid, current_user=user, db=db)
@@ -280,22 +319,20 @@ class TestPostEntry:
         assert "not balanced" in str(ei.value.detail)
 
     def test_fewer_than_two_lines_rejected_at_post(self, db):
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         # balanced (0 == 0) but only one line.
-        eid = self._draft(db, user, lines=[_line("gl-x", debit=0, credit=0)])
+        eid = self._draft(db, user, gl_d, gl_c, lines=[_line(gl_d, debit=0, credit=0)])
         with pytest.raises(HTTPException) as ei:
             post_entry(entry_id=eid, current_user=user, db=db)
         assert ei.value.status_code == 400
         assert "2 lines" in str(ei.value.detail)
 
     def test_closed_period_blocks_post(self, db):
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         eid = self._draft(
-            db, user,
+            db, user, gl_d, gl_c,
             entry_date="2026-05-12",
-            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
         )
         db.add(AccountingPeriod(
             id=str(uuid.uuid4()), tenant_id=co,
@@ -312,21 +349,20 @@ class TestPostEntry:
 
 
 class TestReverseEntry:
-    def _posted(self, db, user, co, *, entry_date="2026-02-12"):
+    def _posted(self, db, user, co, gl_d, gl_c, *, entry_date="2026-02-12"):
         body = JECreate(
             entry_type="manual", entry_date=entry_date, description="orig",
-            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
         )
         eid = create_entry(body=body, current_user=user, db=db)["id"]
         post_entry(entry_id=eid, current_user=user, db=db)
         return eid
 
     def test_only_posted_entries_reversible(self, db):
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         body = JECreate(
             entry_type="manual", entry_date="2026-02-12", description="draft",
-            lines=[_line("gl-x", debit=100), _line("gl-y", credit=100)],
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
         )
         eid = create_entry(body=body, current_user=user, db=db)["id"]  # draft
         with pytest.raises(HTTPException) as ei:
@@ -334,9 +370,8 @@ class TestReverseEntry:
         assert ei.value.status_code == 400
 
     def test_reversal_posts_directly_mirrors_lines_period_from_today(self, db):
-        co = _mk_company(db)
-        user = _mk_user(db, co)
-        eid = self._posted(db, user, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        eid = self._posted(db, user, co, gl_d, gl_c)
         out = reverse_entry(entry_id=eid, current_user=user, db=db)
         rev = db.get(JournalEntry, out["id"])
         today = date.today()
@@ -362,10 +397,9 @@ class TestReverseEntry:
         # WRONGNESS: reverse_entry writes status="posted" straight into
         # TODAY's period with NO AccountingPeriod check — unlike
         # post_entry. Reversing works even when today's period is closed.
-        co = _mk_company(db)
-        user = _mk_user(db, co)
+        co, user, gl_d, gl_c = _co_user_gls(db)
         # original in an OPEN past period so it can be posted first.
-        eid = self._posted(db, user, co, entry_date="2026-02-12")
+        eid = self._posted(db, user, co, gl_d, gl_c, entry_date="2026-02-12")
         today = date.today()
         db.add(AccountingPeriod(
             id=str(uuid.uuid4()), tenant_id=co,
@@ -402,16 +436,11 @@ class TestEpdDiscountJournalEntry:
     def test_number_status_period_and_balance(self, db):
         co = _mk_company(db)
         user = _mk_user(db, co)
-        gl = TenantGLMapping(
-            id=str(uuid.uuid4()), tenant_id=co, platform_category="discount",
-            account_number="4100", account_name="Sales Discounts",
-        )
-        db.add(gl)
-        db.commit()
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
         pay = self._payment(db, co)
         entry_id = _create_discount_journal_entry(
             db, tenant_id=co, payment=pay, discount_amount=10.0,
-            gl_account_id=gl.id, user_id=user.id,
+            gl_account_id=gl, user_id=user.id,
         )
         db.commit()
         assert entry_id is not None
