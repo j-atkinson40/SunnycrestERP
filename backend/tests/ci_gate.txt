@@ -1,0 +1,25 @@
+# Scoped CI test gate — the curated set of test files known GREEN against a
+# fresh migrated DB (alembic upgrade head, NO seed), one path per line.
+#
+# WHY SCOPED, not the whole suite: an S-5 CI-clean investigation ran all 5145
+# backend tests against a fresh migrated DB and found ~220 non-passing —
+# dominated by seed-dependence (~106 tests `.one()` on rows only a seed
+# creates) and SQLite-schema tests (9, running against a non-Postgres schema).
+# Those are a "how many of our tests are real" problem, not a "make CI green"
+# problem, and are routed to a dedicated CI-clean arc (see STATE.md). A
+# full-suite gate would be red on day one and get bypassed; this gate is green
+# and enforces the arc's work + the ratchets NOW. GROW this list as files are
+# made CI-clean — never add a file that isn't green here.
+
+# — Accounting Substrate Arc (period lock, service seams, Plaid, EPD) —
+tests/test_plaid_sync_loud_failure.py
+tests/test_journal_entry_characterization.py
+tests/test_reconciliation_matching_characterization.py
+tests/test_reconciliation_matching_rework.py
+
+# — Ratchets —
+tests/test_route_write_ratchet.py
+
+# — Scheduler isolation (S-1c) + its neighbor (both teardown-fixed in S-5) —
+tests/test_workflow_scheduler_pair_isolation.py
+tests/test_workflow_scheduler_scheduled_dispatch.py

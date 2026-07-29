@@ -76,6 +76,21 @@ jobs:
       - name: Run Alembic migrations
         run: alembic upgrade head
 
+      # Scoped test gate (S-5). Runs a CURATED set of tests known green
+      # against the fresh migrated DB (see tests/ci_gate.txt for the list +
+      # why it's scoped, not the whole suite). This is the first pytest that
+      # runs in CI at all — it enforces the Accounting Substrate Arc's work
+      # and the route-write ratchet. GROW tests/ci_gate.txt as more files are
+      # made CI-clean; the full-suite CI-clean effort is a separate arc.
+      - name: Install dev/test dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run scoped test gate
+        # `python -m pytest` (not the bare `pytest` script) so backend/ is on
+        # sys.path and the `from tests._cleanup import ...` shared-helper
+        # imports resolve.
+        run: python -m pytest $(grep -vE '^\s*#|^\s*$' tests/ci_gate.txt | tr '\n' ' ') -q
+
   # ---------------------------------------------------------------------------
   # Frontend: typecheck + build
   # ---------------------------------------------------------------------------
