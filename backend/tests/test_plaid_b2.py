@@ -470,13 +470,20 @@ class TestDegradationAndIsolation:
             display_message=None, request_id="req-deg",
         )
         _script_pages(monkeypatch, [err])
-        with pytest.raises(RuntimeError):
-            # The tenant's ONLY item failed → the run fails → H1 routes it.
-            run_sync_pipeline(db, company_id=world["b"])
+        # S-1b behavior change (loud-failure refinement 2): the tenant's ONLY
+        # item needing re-auth is an EXPECTED state — a SUCCESSFUL sweep with
+        # the item degraded + recorded, NOT a run failure. Pre-S-1b this
+        # raised RuntimeError (items_synced==0); that was the cry-wolf case —
+        # a one-item tenant (Hopkins) would error the run twice a day forever
+        # on routine re-auth. The item state is the signal now.
+        summary = run_sync_pipeline(db, company_id=world["b"])
+        assert summary["items_errored"] == 1
+        assert summary["items_errored_unexpected"] == 0
         db.expire_all()
         item = db.get(PlaidItem, world["item_b"])
         assert item.status == "login_required"
         assert item.last_error_code == "ITEM_LOGIN_REQUIRED"
+        assert item.last_error_at is not None  # the "when", stamped
         # Recovery: the next healthy sync flips it back active.
         _script_pages(monkeypatch, [{
             "added": [], "modified": [], "removed": [],

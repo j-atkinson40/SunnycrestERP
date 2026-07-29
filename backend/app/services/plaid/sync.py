@@ -97,11 +97,15 @@ def run_sync_pipeline(
     mapping = cat.load_map(db, company_id)
     summary = {
         "dry_run": dry_run, "items_synced": 0, "items_errored": 0,
+        # S-1b: unexpected (our-code) failures counted separately from the
+        # expected Plaid ones — the run only fails on THESE (below).
+        "items_errored_unexpected": 0,
         "ingested": 0, "updated": 0, "removed": 0, "uncategorized": 0,
         "retractions_surfaced": 0, "items": [],
     }
 
-    errors: list[str] = []
+    errors: list[str] = []            # EXPECTED (Plaid-reported) failures
+    unexpected_errors: list[str] = [] # UNEXPECTED (our-code bug) failures
     for item in items:
         try:
             item_counts = _sync_item(
@@ -114,6 +118,9 @@ def run_sync_pipeline(
                 summary[k] += item_counts.get(k, 0)
             summary["items"].append(item_counts)
         except PlaidApiError as exc:
+            # EXPECTED — login_required / pending_expiration are states of a
+            # WORKING system; a generic Plaid error is a bank/API problem.
+            # Degrade + record, never abort the sweep for other items.
             summary["items_errored"] += 1
             errors.append(f"{item.institution_name}: {exc.error_code}")
             if not dry_run:
@@ -124,6 +131,7 @@ def run_sync_pipeline(
                 else:
                     item.status = "error"
                 item.last_error_code = exc.error_code
+                item.last_error_at = datetime.now(timezone.utc)
                 db.commit()
             logger.warning(
                 "Plaid sync degraded item %s: %s (request %s)",
@@ -133,12 +141,51 @@ def run_sync_pipeline(
                 "item_id": item.id, "institution": item.institution_name,
                 "status": "errored", "error_code": exc.error_code,
             })
+        except Exception as exc:  # noqa: BLE001
+            # UNEXPECTED — a bug in OUR code (constraint violation, null
+            # deref, …), NOT a bank problem. Broadened per-item catch
+            # (S-1b): it must NEVER abort the sweep for other items, and it
+            # must NOT masquerade as a bank error — recorded under the
+            # DISTINCT `internal_error` status so the Phase-2 card writes the
+            # right sentence ("reconnect your bank" is the wrong remedy for
+            # our own fault). The trace goes to the LOG (error level, with
+            # exc_info), never a DB column. The run then fails at the end so
+            # the internal error is surfaced, not swallowed.
+            summary["items_errored"] += 1
+            summary["items_errored_unexpected"] += 1
+            unexpected_errors.append(f"{item.institution_name}: {type(exc).__name__}")
+            if not dry_run:
+                # The failing item may have left a dirty session — roll back,
+                # then re-fetch and stamp the durable failure state.
+                db.rollback()
+                fresh = db.get(PlaidItem, item.id)
+                if fresh is not None:
+                    fresh.status = "internal_error"
+                    fresh.last_error_code = type(exc).__name__[:64]
+                    fresh.last_error_at = datetime.now(timezone.utc)
+                    db.commit()
+            logger.error(
+                "Plaid sync INTERNAL error on item %s (%s): %s",
+                item.id, item.institution_name, exc, exc_info=True,
+            )
+            summary["items"].append({
+                "item_id": item.id, "institution": item.institution_name,
+                "status": "internal_error", "error_code": type(exc).__name__,
+            })
 
-    if summary["items_errored"] and summary["items_synced"] == 0:
-        # EVERY item failed — the run itself fails so _fail_run routes it
-        # into Decision Triage (H1). Partial failure stays a degradation.
+    if summary["items_errored_unexpected"] > 0:
+        # The sweep hit an INTERNAL error — a bug in our code. Raise so the
+        # run status flags it (the per-item failure states are already
+        # committed durably; nothing is lost). NOTE the deliberate change
+        # (S-1b): expected-only failures — even ALL items needing re-auth —
+        # are a SUCCESSFUL sweep with recorded item states, NOT a run
+        # failure. Most tenants have one bank item (Hopkins has one); a
+        # routine re-auth must not error the run twice a day forever. The
+        # item state is the signal; Books Review is where a human sees it.
         raise RuntimeError(
-            "Plaid sync failed for all items: " + "; ".join(errors)
+            "Plaid sync hit internal errors on "
+            f"{summary['items_errored_unexpected']} item(s): "
+            + "; ".join(unexpected_errors)
         )
 
     # The dry-run would-shape (real counts, the confirm's evidence).

@@ -39,8 +39,14 @@ class PlaidItem(Base):
     __tablename__ = "plaid_items"
     __table_args__ = (
         CheckConstraint(
+            # S-1b: 'internal_error' is the DISTINCT marker for an
+            # UNEXPECTED (our-code) failure during the scheduled sweep — kept
+            # separate from the expected Plaid states ('login_required',
+            # 'pending_expiration', 'error') because a bug and a bank
+            # problem need opposite remedies ("reconnect your bank" is wrong
+            # for a constraint violation on our side).
             "status IN ('active', 'login_required', 'pending_expiration', "
-            "'error', 'disconnected')",
+            "'error', 'disconnected', 'internal_error')",
             name="ck_plaid_items_status",
         ),
         Index("ux_plaid_items_item_id", "plaid_item_id", unique=True),
@@ -55,6 +61,13 @@ class PlaidItem(Base):
     sync_cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
     last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # S-1b: WHEN the last failure occurred (the "when" the loud-failure
+    # requirement mandates, alongside last_error_code's "what"). Stamped on
+    # both expected (PlaidApiError) and unexpected (internal_error) failures;
+    # last_synced_at remains the last SUCCESS. A human-facing message column
+    # is deferred to Books Review Phase 2 (its consumer, the stale-connection
+    # card, isn't built yet — and stack traces belong in logs, not the DB).
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=_now)
