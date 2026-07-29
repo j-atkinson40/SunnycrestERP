@@ -262,18 +262,17 @@ class TestNonIdempotentDoubleClaim:
 
 class TestCreateAdjustmentDrain:
     def test_adjustment_created_and_run_recalculated(self, db):
-        # S-5 drain of create_adjustment into reconciliation_service — pinned
-        # behavior-preserving, INCLUDING a pre-existing bug the drain
-        # surfaced.
+        # FIX (was the double-count): adjustments_total is the SUM of all the
+        # run's adjustments. The new adjustment is flushed before the sum, so
+        # the sum already includes it — no `+ amount` on top.
         #
-        # WRONGNESS (double-count): adjustments_total = sum(ALL adjustments)
-        # + this_amount. Autoflush inserts the new adjustment before the
-        # sum() query, so `all_adj` already includes it, and `+ amount`
-        # counts it a SECOND time. So one +50 adjustment on an empty run
-        # yields adjustments_total 100, not 50 (over by exactly this_amount).
-        # difference tracks it: 2000 - 1000 - 0 - 0 + 0 + 100 = 1100.
-        # Pinned as current behavior (autoflush-driven, present in the
-        # original route too); the fix is an S-6/Phase-2 item, NOT this move.
+        # HAND MATH: closing 2000, opening 1000, no matching (cleared None->0),
+        # checks/deposits 0, one adjustment +50.00:
+        #   adjustments_total = sum(adjustments) = 50.00
+        #   difference        = 2000 - 1000 - 0 - 0 + 0 + 50 = 1050.00
+        # The no-adjustment baseline difference is 1000.00, so a single 50.00
+        # adjustment moves difference by exactly 50.00 — NOT 100.00, which is
+        # what the pre-fix double-count produced.
         co = _mk_company(db)
         user = _mk_user(db, co)
         run = _mk_run(db, co, opening="1000", closing="2000")
@@ -285,5 +284,28 @@ class TestCreateAdjustmentDrain:
         adj = db.get(ReconciliationAdjustment, adj_id)
         assert adj is not None and adj.amount == Decimal("50")
         db.refresh(run)
-        assert run.adjustments_total == Decimal("100")   # double-counted
-        assert run.difference == Decimal("1100")
+        assert run.adjustments_total == Decimal("50.00")
+        assert run.difference == Decimal("1050.00")
+
+    def test_two_adjustments_sum_without_double_count(self, db):
+        # The bug was amount-dependent, so a single-adjustment test alone
+        # would not catch a partial fix. Two adjustments, 50.00 then 25.00:
+        #   adjustments_total = 50 + 25 = 75.00  (the actual sum)
+        #   difference        = 2000 - 1000 - 0 - 0 + 0 + 75 = 1075.00
+        # (Pre-fix this produced 100.00 / 1100.00 — the second add double-
+        # counted the second amount.)
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        run = _mk_run(db, co, opening="1000", closing="2000")
+        reconciliation_service.create_adjustment(
+            db, run_id=run.id, company_id=co, created_by=user.id,
+            adjustment_type="bank_error", description="adj1", amount=50,
+        )
+        reconciliation_service.create_adjustment(
+            db, run_id=run.id, company_id=co, created_by=user.id,
+            adjustment_type="bank_error", description="adj2", amount=25,
+        )
+        db.commit()
+        db.refresh(run)
+        assert run.adjustments_total == Decimal("75.00")
+        assert run.difference == Decimal("1075.00")

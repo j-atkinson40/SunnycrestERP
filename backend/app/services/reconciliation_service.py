@@ -211,15 +211,19 @@ def create_adjustment(
     db.add(adj)
     db.flush()  # populate adj.id (Python-default PK) before we return it
 
-    # Recalculate adjustments total and difference.
+    # Recalculate adjustments total and difference. The new adjustment was
+    # flushed above, so the SUM over all of this run's adjustments already
+    # includes it — adjustments_total IS that sum. (The prior code added
+    # amount_dec on top of the sum, double-counting the new adjustment by
+    # exactly its own amount; see the characterization test.)
     run = db.query(ReconciliationRun).filter(ReconciliationRun.id == run_id).first()
     if run:
-        all_adj = db.query(
+        total_adjustments = db.query(
             func.coalesce(func.sum(ReconciliationAdjustment.amount), 0)
         ).filter(
             ReconciliationAdjustment.reconciliation_run_id == run_id,
         ).scalar()
-        run.adjustments_total = all_adj + amount_dec
+        run.adjustments_total = total_adjustments
         run.difference = (
             run.statement_closing_balance
             - (run.opening_balance or Decimal(0))
