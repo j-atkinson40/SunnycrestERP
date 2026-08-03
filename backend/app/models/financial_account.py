@@ -144,11 +144,13 @@ class ReconciliationMatchCandidate(Base):
         UniqueConstraint("reconciliation_transaction_id", "candidate_record_type",
                          "candidate_record_id", name="uq_recon_candidate_per_txn"),
         CheckConstraint(
-            # Must match migration r148. AMOUNT_MISMATCH is the band-era gate (A-2):
-            # in-band but beyond exact-match tolerance — the exact-amount ladder never
-            # had it. NULL = a viable proposal.
+            # Must match the live CHECK: r148 seeded the first four; r149 (A-3)
+            # added PERIOD_LOCKED — an exact match whose transaction date is in a
+            # locked period is viable-but-gated (recorded, never auto-committed).
+            # AMOUNT_MISMATCH is the band-era gate; NULL = a viable proposal.
             "rejection_reason IS NULL OR rejection_reason IN "
-            "('OUTSIDE_DATE_WINDOW', 'DIRECTION_MISMATCH', 'ALREADY_CLAIMED', 'AMOUNT_MISMATCH')",
+            "('OUTSIDE_DATE_WINDOW', 'DIRECTION_MISMATCH', 'ALREADY_CLAIMED', "
+            "'AMOUNT_MISMATCH', 'PERIOD_LOCKED')",
             name="ck_recon_candidate_rejection_reason",
         ),
     )
@@ -209,3 +211,30 @@ class ReconciliationException(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ReconciliationPaymentClaim(Base):
+    """A durable, DB-enforced 1:1 claim that a payment (customer OR vendor) is
+    reconciled to a bank transaction (A-3). UNIQUE(payment_id) is the concurrency
+    guard: two runs racing to clear the same payment resolve at the database —
+    the loser trips the constraint, catches it, and records ALREADY_CLAIMED
+    rather than silently proceeding. Cascades from the transaction: deleting the
+    reconciliation transaction frees the payment to be matched again."""
+
+    __tablename__ = "reconciliation_payment_claims"
+    __table_args__ = (
+        UniqueConstraint("payment_id", name="uq_recon_payment_claim_payment_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False, index=True)
+    payment_type: Mapped[str] = mapped_column(String(30), nullable=False)  # customer_payment | vendor_payment
+    payment_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    reconciliation_transaction_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("reconciliation_transactions.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    reconciliation_run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("reconciliation_runs.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

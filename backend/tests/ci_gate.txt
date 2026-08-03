@@ -37,3 +37,8 @@ tests/test_reconciliation_exception_model.py
 #   persistence, near-amount band, invoice/bill EPD fallback, exception
 #   creation, no-double-clear claim set, idempotent re-run. —
 tests/test_reconciliation_scoring_a2.py
+
+# — Books Review Phase 2 A-3: durable payment-claim table (r149) — UNIQUE(payment_id),
+#   claim-table pool exclusion, race-loser (SAVEPOINT + IntegrityError → not swallowed),
+#   period-lock gate, cascade release. —
+tests/test_reconciliation_claim_a3.py

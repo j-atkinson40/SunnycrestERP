@@ -252,6 +252,7 @@ from app.models.financial_account import (
     ReconciliationAdjustment,
     ReconciliationException,
     ReconciliationMatchCandidate,
+    ReconciliationPaymentClaim,
     ReconciliationRun,
     ReconciliationTransaction,
 )

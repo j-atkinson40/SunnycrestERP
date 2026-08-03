@@ -33,19 +33,25 @@ durable claim signal.
 """
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.financial_account import (
     ReconciliationAdjustment,
     ReconciliationException,
     ReconciliationMatchCandidate,
+    ReconciliationPaymentClaim,
     ReconciliationRun,
     ReconciliationTransaction,
 )
+from app.services.agents.period_lock import PeriodLockService
+
+logger = logging.getLogger(__name__)
 
 # ── A-2 scoring constants ────────────────────────────────────────────────────
 # BOTH OF THESE ARE GUESSES, NOT TUNED VALUES. They are placeholders until real
@@ -102,6 +108,40 @@ def _exact_conf(days: int) -> Decimal:
     if days <= 2:
         return Decimal("0.95")
     return Decimal("0.90")  # days <= DATE_WINDOW_DAYS
+
+
+def _try_claim(db: Session, company_id: str, payment_type: str, payment_id: str,
+               txn_id: str, run_id: str) -> bool:
+    """Attempt a durable UNIQUE(payment_id) claim inside a SAVEPOINT.
+
+    Returns True if the claim was won, False if the race was LOST — another run
+    claimed this payment between our pool load and our insert. The loss is
+    LOGGED and returned, never swallowed: the caller records it as an
+    ALREADY_CLAIMED candidate so the audit trail shows exactly what happened. A
+    bare `except: pass` here would be the double-clear bug wearing a new hat —
+    the loser must proceed as "candidate taken," not as "cleared anyway."
+
+    The nested transaction (SAVEPOINT) is what keeps the OUTER transaction usable
+    after the UNIQUE violation: only the claim insert rolls back, not the run's
+    accumulated candidate/exception writes.
+    """
+    # Flush all prior pending changes OUTSIDE the savepoint first. Otherwise
+    # begin_nested()'s own flush would emit them INSIDE the savepoint, and a claim
+    # rollback would undo the run's accumulated candidate writes along with it.
+    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(ReconciliationPaymentClaim(
+                tenant_id=company_id, payment_type=payment_type, payment_id=payment_id,
+                reconciliation_transaction_id=txn_id, reconciliation_run_id=run_id))
+            db.flush()
+        return True
+    except IntegrityError:
+        logger.warning(
+            "reconciliation: claim race lost for %s %s (txn=%s, tenant=%s) — "
+            "recording ALREADY_CLAIMED, not re-clearing",
+            payment_type, payment_id, txn_id, company_id)
+        return False
 
 
 def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
@@ -206,20 +246,20 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
             return open_bills
         return open_invoices + open_bills
 
-    # The durable claim signal (A-2). Seed from every payment already matched by
-    # an existing auto_cleared transaction for this company — this is what stops
-    # a second run (or a second deposit in the same run) re-clearing the same
-    # payment. A-3 replaces this with a UNIQUE(payment_id) claim table.
+    # The durable claim signal (A-3): the payment-claim table, UNIQUE(payment_id).
+    # Seeded once here so a payment already claimed by ANY run is excluded from
+    # auto-commit up front (recorded as ALREADY_CLAIMED, not re-cleared); the
+    # in-memory set is then extended as this invocation wins new claims, which
+    # covers the within-run case (two deposits, one payment). The migration
+    # backfilled this table from historical auto_cleared transactions, so a
+    # re-run after deploy sees prior matches as claimed. The DB UNIQUE is the
+    # real cross-process guard; this set is the cheap up-front filter.
     claimed: set[tuple[str, str]] = {
-        (t, i)
-        for (t, i) in db.query(
-            ReconciliationTransaction.matched_record_type,
-            ReconciliationTransaction.matched_record_id,
-        ).filter(
-            ReconciliationTransaction.tenant_id == company_id,
-            ReconciliationTransaction.match_status == "auto_cleared",
-            ReconciliationTransaction.matched_record_id.isnot(None),
-        ).all()
+        (pt, pid)
+        for (pt, pid) in db.query(
+            ReconciliationPaymentClaim.payment_type,
+            ReconciliationPaymentClaim.payment_id,
+        ).filter(ReconciliationPaymentClaim.tenant_id == company_id).all()
     }
 
     for txn in transactions:
@@ -232,6 +272,10 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
         # Idempotent rebuild: this txn is being (re)scored, so clear any prior
         # candidates + exception for it before writing the fresh set. Bounded to
         # THIS transaction — resolved transactions (skipped above) keep theirs.
+        # NOTE: payment CLAIMS are deliberately NOT cleared here. Only `unmatched`
+        # transactions reach this point, and an unmatched txn holds no claim (a
+        # claim is created only on auto-commit). Releasing a claim belongs to the
+        # txn-delete cascade or the Arc B revert flow, not to a re-score.
         db.query(ReconciliationMatchCandidate).filter(
             ReconciliationMatchCandidate.reconciliation_transaction_id == txn.id,
         ).delete(synchronize_session=False)
@@ -355,14 +399,37 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
                                 "amount_delta_pct": str(pct.quantize(Decimal("0.0001"))),
                                 "days_diff": _days_diff(txn.transaction_date, rdate)}))
 
-        # ---- commit the decision ---------------------------------------------
+        # ---- commit the decision (period-lock gated, atomically claimed) ------
+        # `accepted` is always a PAYMENT here (invoices/bills never auto-commit).
         if accepted is not None:
-            txn.match_status = "auto_cleared"
-            txn.match_confidence = accepted["score"]
-            txn.matched_record_type = accepted["type"]
-            txn.matched_record_id = accepted["id"]
-            claimed.add((accepted["type"], accepted["id"]))
-        # else: stays "unmatched" — an exception is written below.
+            lock = PeriodLockService.check_date_in_locked_period(
+                db, company_id, txn.transaction_date)
+            if lock is not None:
+                # Viable exact match, but its accounting period is closed. Record
+                # WHY it didn't clear (a policy gate, not a data problem) and
+                # leave the transaction open for review — never write into a
+                # locked period.
+                accepted["reason"] = "PERIOD_LOCKED"
+                accepted["detail"] = {
+                    **(accepted.get("detail") or {}),
+                    "period_start": lock.period_start.isoformat(),
+                    "period_end": lock.period_end.isoformat(),
+                }
+                accepted = None
+            elif _try_claim(db, company_id, accepted["type"], accepted["id"], txn.id, run.id):
+                txn.match_status = "auto_cleared"
+                txn.match_confidence = accepted["score"]
+                txn.matched_record_type = accepted["type"]
+                txn.matched_record_id = accepted["id"]
+                claimed.add((accepted["type"], accepted["id"]))
+            else:
+                # Lost the claim race — mark the candidate ALREADY_CLAIMED (its
+                # reason, persisted below) and fall through to unmatched+exception.
+                accepted["reason"] = "ALREADY_CLAIMED"
+                accepted["detail"] = {**(accepted.get("detail") or {}), "claim_race_lost": True}
+                accepted = None
+        # accepted may now be None (locked / race lost): stays "unmatched", an
+        # exception is written below.
 
         # ---- persist candidates (ranked best-first) + the exception ----------
         for rank, c in enumerate(sorted(cands, key=lambda c: c["score"], reverse=True), start=1):
