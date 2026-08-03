@@ -50,6 +50,14 @@ TIERS: dict[str, tuple[str, str]] = {
         "passed when the previous container still served); an ops tool, "
         "not a boot seed",
     ),
+    "seed_reconciliation_test": (
+        "manual",
+        "W-2 reconciliation matcher test substrate — an on-demand ops tool, "
+        "NOT a boot seed. Bare invocation defaults to --tenant-slug sunnycrest "
+        "and cleanup+re-seeds (would reset the Books Review Phase 2 queue on "
+        "every deploy, and it carries no ENVIRONMENT=production guard). Run "
+        "explicitly with a tenant when you want it.",
+    ),
     # ── The --apply-gated set: the runner passes no flags, so these have
     # only ever DRY-RUN at boot — a scan that seeds nothing and burns
     # minutes. Each is an explicitly-invoked ops moment, not a boot seed.
