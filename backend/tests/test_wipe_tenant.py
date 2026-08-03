@@ -30,7 +30,7 @@ from scripts.wipe_tenant import (
     PRESERVE, COA_TABLES, DOCUMENT_TABLES, TRANSFER_TABLES, TELEMETRY_ROOTS,
     plan_wipe, load_schema, transfer_predicates, verify_state,
     chunked_wipe, delete_table_chunked, assert_disk_floor, DiskFloorError,
-    telemetry_closure, telemetry_books_conflict,
+    telemetry_closure, telemetry_books_conflict, telemetry_conflict_paths,
 )
 
 DEFAULT_PRESERVE = PRESERVE | COA_TABLES  # default flags: CoA kept, documents deleted
@@ -275,6 +275,12 @@ def test_telemetry_closure_guard_fails_on_books_critical():
     closure = telemetry_closure(TELEMETRY_ROOTS, edges, delete_set)
     assert "period_locks" in closure
     assert "period_locks" in telemetry_books_conflict(closure)
+    # the guard message must be DIAGNOSABLE: name the table + the FK path that
+    # pulled it in (root → ... → books table), not just refuse.
+    paths = telemetry_conflict_paths(TELEMETRY_ROOTS, edges, delete_set)
+    assert "period_locks" in paths
+    assert "period_locks.step_id" in paths["period_locks"]
+    assert "agent_run_steps" in paths["period_locks"]
 
 
 def test_telemetry_closure_real_schema_is_clean():

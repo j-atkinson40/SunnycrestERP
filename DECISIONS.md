@@ -1187,3 +1187,60 @@ first time anyone adjusts a reconciliation), then durable non-destructive matchi
 which is the real Phase 2 dependency, since nothing today marks a payment reconciled
 and two runs can clear the same payment. Ranked candidates and the Books Review card
 are downstream of that state, not the point of it.
+
+## 2026-07-30/31 — Tenant wipe: the disk-exhaustion incident (W-1 arc)
+
+**The incident was never about scale.** The tenant-wipe tool (`backend/scripts/wipe_tenant.py`)
+was rehearsed against production `sunnycrest` on disposable pre-cutover data. A single
+`--execute` ran the whole wipe as ONE transaction. It PANICked the production Postgres
+with `No space left on device`, twice, and the second crash left the DB unable to
+complete crash recovery for ~25 hours — it needed to write WAL during recovery and had
+no room, so it crash-looped until the volume was Live-Resized on the Railway dashboard.
+Data survived intact: the transaction never committed, so crash recovery discarded it
+(atomicity held exactly as designed — that is the one thing that made this recoverable).
+
+The numbers are the point. The **entire database was 272 MB** on a **~1 GB volume**. One
+unbounded transaction deleting ~112k rows generated **>500 MB of WAL** — because every
+deleted row version stays pinned for rollback until the transaction commits or aborts,
+and none of it can be recycled while the transaction lives. So WAL grew to multiples of
+the data it touched and filled a volume with no headroom. "112k rows" sounded big; it
+wasn't. A tenth the rows on that volume would have failed the same way; ten times the
+rows with per-batch commits would have been fine. **"The wipe was too big" is the wrong
+lesson and would lead to the wrong fixes** (sampling, top-N caps, "wipe less"). The
+right lesson: transaction SHAPE (unbounded single txn) against no headroom.
+
+**The transport diagnosis was a red herring, and how it fooled us matters.** The failure
+first surfaced as `SSL SYSCALL error: EOF` — which reads as a network/proxy problem. A
+transport theory was built (proxy fragile → run on the internal host) and alternatives
+were never falsified. Two tells were missed: the first crash died on `agent_run_steps`,
+the LARGEST table (a volume signal, not a network one); and the app container's
+`DATABASE_URL` was the proxy anyway, so "run on the internal host" was never in effect.
+Worst, a **read-only dry-run over ssh "confirmed" the transport fix** — but a dry-run
+generates essentially no WAL, so it structurally could not fail the way the real run
+failed. It was evidence of nothing, treated as decisive. That is the existence-first /
+"could this check have produced the failure it's ruling out?" discipline, violated in
+the same session it was written into this file. The EOF was the DB dying underneath the
+connection, not the connection failing.
+
+**The redesign (W-1c): idempotence + resumability, not atomicity.** A complete wipe's
+end state is "everything gone," so partial progress is monotonic toward the goal — a
+half-finished wipe is incomplete, not corrupt, and re-running finishes it. The tool now
+deletes in per-table, ctid-chunked, per-batch-committed transactions (`--batch-size`),
+so committed-batch WAL recycles immediately and never accumulates toward the volume
+size. A disk guard reads true free space and refuses to start / aborts cleanly between
+tables below a floor (`--disk-floor-gb`); a clean mid-wipe abort is a safe, resumable
+state. `--verify` (re-running the tool's own predicates) is the completion signal now
+that the transaction boundary no longer is. Everything else about the tool — preserve-
+list inversion, the three guards, dynamic derivation, cycle null-break — held up; the
+transaction shape was the sole defect.
+
+**Roadmap dependency — the disk guard is coupled to finding #6 (superuser app role).**
+Free space is read via `COPY FROM PROGRAM 'df'`, which is superuser-only. The app
+connects as `postgres` (superuser) — the antipattern filed as finding #6 — so the safety
+mechanism EXISTS BECAUSE OF the security issue. Whoever builds the dedicated,
+least-privilege application role must solve free-space visibility at the same time, or
+the wipe will refuse to start (blind-guard → refuse is deliberate). The non-superuser
+direction is `pg_ls_waldir()` (readable without superuser): it reports WAL size rather
+than filesystem free space — a weaker signal, but not nothing, and the natural fallback
+for a non-superuser guard. Record kept so this is designed for, not discovered when the
+wipe refuses.

@@ -44,10 +44,15 @@ SAFETY MODEL (deliberate):
     cleanly mid-run, below a configurable floor (--disk-floor-gb). A clean abort
     mid-wipe is a SAFE state (resume by re-running). If free space cannot be read
     at all, the tool REFUSES — a disk guard that can't see the disk is not a guard.
-  * TELEMETRY-FIRST. The high-volume execution-log tables (agent_run_steps,
-    workflow_run_steps + their FK-descendant closure) are deleted first, after a
-    guard that the closure reaches nothing books-critical (period_locks
-    especially). Shedding the bulk first means the rest runs against a smaller job.
+  * FIRST-PASS (log subtree + its FK referents). The high-volume execution-log
+    tables (agent_run_steps, workflow_run_steps) + their FK-descendant closure are
+    deleted first. NOTE the closure is broader than "logs" (~18 tables): it pulls
+    in the document/signature/disinterment subtree that transitively REFERENCES
+    the log tables and therefore MUST delete before them regardless — the name is
+    "first pass," not "telemetry only." A guard fails loud if the closure reaches
+    anything books-critical (period_locks especially), naming the offending table
+    and the FK path that pulled it in. Shedding the bulk first means the rest runs
+    against a smaller job.
   * The dry-run output IS the review artifact: because behavior tracks the live
     schema, each run must be re-reviewed. It echoes the preserve-list, per-table
     delete counts, the child-only descendants, the telemetry closure, and disk.
@@ -484,17 +489,18 @@ def main():
         for t in child_only:
             print(f"    ~ {t}")
 
-        print(f"\nTELEMETRY-FIRST closure (deleted first — roots {list(TELEMETRY_ROOTS)}): "
-              f"{len(tel_closure)} tables")
+        print(f"\nFIRST-PASS closure (deleted first — the log subtree + its FK referents, NOT "
+              f"logs only; roots {list(TELEMETRY_ROOTS)}): {len(tel_closure)} tables")
         for t in sorted(tel_closure):
             print(f"    » {t}")
         if tel_conflict:
-            print("\n❌ TELEMETRY GUARD — books-critical tables in the telemetry closure:")
+            paths = telemetry_conflict_paths(TELEMETRY_ROOTS, edges, delete_set)
+            print("\n❌ FIRST-PASS GUARD — books-critical table(s) in the first-pass closure:")
             for t in tel_conflict:
-                print(f"    !! {t} — a log-first phase would sweep a books table")
-            die("Telemetry closure reaches books-critical table(s) — refusing to run. "
-                "A telemetry root now has a books table as a descendant (schema change?); "
-                "resolve before wiping.")
+                print(f"    !! {t}   FK path: {paths.get(t, '(path unknown)')}")
+            die("First-pass (log-subtree) closure reaches books-critical table(s) — refusing to "
+                "run. A telemetry root now has a books table as a descendant (schema change?). "
+                "The FK path(s) above show how; resolve before wiping.")
 
         print(f"\nCYCLE NULL-BREAKS (nullable in-cycle FK → NULL, in-txn, before delete): {len(break_edges)}")
         if not break_edges:
@@ -540,6 +546,7 @@ def main():
             conn.commit()
             print(f"\ndisk: free {free / 1024**3:.2f} GB   floor {args.disk_floor_gb:.2f} GB   "
                   f"batch-size {args.batch_size}   (data_directory={data_dir})")
+            _report_wal_headroom(conn, args.disk_floor_gb)
             if free < floor_bytes:
                 print("    ⚠️  free space is BELOW the floor — --execute would REFUSE to start.")
         except Exception as ex:
@@ -548,8 +555,8 @@ def main():
 
         if not args.execute:
             print(f"\nDRY-RUN complete. Re-run with --execute to delete — chunked in committed "
-                  f"batches of {args.batch_size}, telemetry-first, resumable, disk-guarded. "
-                  "A typed slug confirmation will be required.")
+                  f"batches of {args.batch_size}, first-pass (log subtree) first, resumable, "
+                  "disk-guarded. A typed slug confirmation will be required.")
             return
 
     # ---- EXECUTE (chunked, resumable, disk-guarded — NOT atomic; see docstring) ----
@@ -562,10 +569,12 @@ def main():
         conn.commit()
         print(f"\ndisk pre-flight: free {free / 1024**3:.2f} GB   floor {args.disk_floor_gb:.2f} GB   "
               f"(data_directory={data_dir})")
+        _report_wal_headroom(conn, args.disk_floor_gb)
+        conn.commit()
 
         print(f"\n⚠️  About to PERMANENTLY DELETE ~{total} rows from tenant '{slug}' (id={tid}) "
-              f"in committed batches of {args.batch_size} — telemetry-first, resumable. "
-              f"(Nulls {len(break_edges)} in-cycle FK(s) first.)")
+              f"in committed batches of {args.batch_size} — first-pass (log subtree) first, "
+              f"resumable. (Nulls {len(break_edges)} in-cycle FK(s) first.)")
         typed = input(f"Type the tenant slug ({slug}) to confirm: ").strip()
         if typed != slug:
             die("Confirmation did not match the slug. Aborted — nothing deleted.")
@@ -646,31 +655,89 @@ def assert_disk_floor(conn, data_dir, floor_bytes) -> int:
 
 
 # ── S-2: telemetry-first + chunked, resumable deletion ───────────────────────
+def _closure_with_pred(roots, edges, delete_set):
+    """BFS the FK-descendant closure of `roots` within the delete-set, tracking a
+    predecessor per table (which parent, via which FK column, pulled it in).
+    Returns (closure_set, pred) where pred[child] = (parent, child_col)."""
+    children = defaultdict(list)  # parent -> [(child, child_col)]
+    for ch, ccol, pa, rule, nn in edges:
+        children[pa].append((ch, ccol))
+    seen, pred, dq = set(), {}, deque()
+    for r in roots:
+        if r in delete_set and r not in seen:
+            seen.add(r)
+            dq.append(r)
+    while dq:
+        t = dq.popleft()
+        for ch, ccol in children.get(t, []):
+            if ch in delete_set and ch not in seen:
+                seen.add(ch)
+                pred[ch] = (t, ccol)
+                dq.append(ch)
+    return seen, pred
+
+
 def telemetry_closure(roots, edges, delete_set) -> set:
     """FK-descendant closure of `roots` within the delete-set (roots + everything
-    that transitively references them). Deleted first. FK-safe to delete first:
-    the closure is closed under inbound FKs by construction (any table referencing
-    a member is itself a descendant → a member), so nothing outside references it."""
-    children = defaultdict(list)
-    for ch, ccol, pa, rule, nn in edges:
-        children[pa].append(ch)
-    closure, q = set(), deque(r for r in roots if r in delete_set)
-    while q:
-        t = q.popleft()
-        if t in closure:
-            continue
-        closure.add(t)
-        for ch in children.get(t, []):
-            if ch in delete_set and ch not in closure:
-                q.append(ch)
-    return closure
+    that transitively references them). Deleted first (the FIRST PASS — the log
+    subtree AND its FK referents, NOT logs only; those referents must delete
+    before the log tables they reference). FK-safe to delete first: the closure is
+    closed under inbound FKs by construction (any table referencing a member is
+    itself a descendant → a member), so nothing outside references it."""
+    return _closure_with_pred(roots, edges, delete_set)[0]
 
 
 def telemetry_books_conflict(closure) -> list:
-    """Books-critical tables that landed in the telemetry closure — must be empty.
+    """Books-critical tables that landed in the first-pass closure — must be empty.
     Non-empty means the log-first phase would sweep a books table (e.g. a schema
     change hangs period_locks off a telemetry root); the caller fails loud."""
     return sorted(closure & BOOKS_CRITICAL)
+
+
+def telemetry_conflict_paths(roots, edges, delete_set) -> dict:
+    """For each books-critical table reachable in the first-pass closure, the FK
+    path from a root down to it (each hop `child.col → parent`, i.e. child
+    references parent) — so a guard failure is DIAGNOSABLE (which table, by which
+    FK chain), not just a bare refusal. Returns {books_table: path_str}."""
+    closure, pred = _closure_with_pred(roots, edges, delete_set)
+    out = {}
+    for t in sorted(closure & BOOKS_CRITICAL):
+        hops, cur = [], t
+        while cur in pred:
+            parent, ccol = pred[cur]
+            hops.append(f"{cur}.{ccol} → {parent}")
+            cur = parent
+        out[t] = "  ⟵  ".join(hops) if hops else f"{t} (a telemetry root itself)"
+    return out
+
+
+def read_max_wal_gb(conn):
+    """max_wal_size in GB (or None if unreadable). WAL can transiently grow to
+    ~this before a checkpoint recycles it, so the disk floor should sit above it
+    with margin — else a run can trip its own floor (a safe abort, but avoidable)."""
+    r = conn.execute(text("SELECT setting, unit FROM pg_settings WHERE name='max_wal_size'")).fetchone()
+    if not r:
+        return None
+    setting, unit = r
+    factor = {"B": 1 / 1024**3, "kB": 1 / 1024**2, "MB": 1 / 1024, "GB": 1.0}.get(unit or "MB", 1 / 1024)
+    try:
+        return float(setting) * factor
+    except (TypeError, ValueError):
+        return None
+
+
+def _report_wal_headroom(conn, floor_gb):
+    """Print the floor vs max_wal_size relationship + advise if the floor sits
+    within 1 GB of the WAL ceiling (a run could then trip its own floor as WAL
+    grows toward max_wal_size — a SAFE abort, but avoidable by raising the floor)."""
+    mw = read_max_wal_gb(conn)
+    if mw is None:
+        return
+    margin = floor_gb - mw
+    print(f"    max_wal_size {mw:.2f} GB → floor leaves {margin:.2f} GB above the WAL ceiling")
+    if margin < 1.0:
+        print("    ⚠️  floor is within 1 GB of max_wal_size — WAL growth toward max_wal_size could "
+              "trip the floor mid-run (safe abort). Consider --disk-floor-gb ≥ max_wal_size + 1.")
 
 
 def delete_table_chunked(conn, tid, table, pred, batch_size, progress=True) -> int:
@@ -751,6 +818,11 @@ def chunked_wipe(conn, tid, order, preds, break_edges, first_set=frozenset(),
                 if progress:
                     print(f"\n⚠️  disk read failed between tables ({ex}) — CLEAN ABORT after {t}. "
                           f"Re-run to resume.", flush=True)
+            # Print free space after any table that actually deleted rows, so the
+            # TREND is legible in the log (the pass/fail check alone hides a slow
+            # walk downward). This is the diagnostic the last incident lacked.
+            if progress and free >= 0 and deleted[t]:
+                print(f"      free: {free / 1024**3:.2f} GB", flush=True)
             if free < floor_bytes:
                 if free >= 0 and progress:
                     print(f"\n⚠️  free {free / 1024**3:.2f} GB dropped below floor — CLEAN ABORT "
