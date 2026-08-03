@@ -40,6 +40,11 @@ _PURGE_STATEMENTS = [
     "DELETE FROM workflow_runs WHERE company_id = ANY(:ids)",
     "DELETE FROM workflow_steps WHERE workflow_id IN (SELECT id FROM workflows WHERE company_id = ANY(:ids))",
     "DELETE FROM workflows WHERE company_id = ANY(:ids)",
+    # r148 (Books Review Phase 2 A-1b): these cascade via reconciliation_transactions'
+    # ondelete=CASCADE, but delete them explicitly first so the helper stays honest
+    # if that cascade is ever removed (children-first discipline).
+    "DELETE FROM reconciliation_match_candidates WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM reconciliation_exceptions WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_transactions WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_adjustments WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_runs WHERE tenant_id = ANY(:ids)",

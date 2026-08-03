@@ -250,6 +250,8 @@ from app.models.operations_board import (
 from app.models.financial_account import (
     FinancialAccount,
     ReconciliationAdjustment,
+    ReconciliationException,
+    ReconciliationMatchCandidate,
     ReconciliationRun,
     ReconciliationTransaction,
 )

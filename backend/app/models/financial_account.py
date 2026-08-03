@@ -4,7 +4,11 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import (
+    Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric,
+    String, Text, UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -119,3 +123,89 @@ class ReconciliationAdjustment(Base):
     created_record_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ── Books Review Phase 2 Arc A-1b: durable non-destructive matching ──────────
+# Migration r148_reconciliation_exceptions. See that file's docstring for the
+# decided design (candidates key to the TRANSACTION; the exception carries no
+# match_status copy; card form derives from candidate presence at display).
+
+
+class ReconciliationMatchCandidate(Base):
+    """A scored candidate for a reconciliation transaction. Keys to the
+    TRANSACTION (not the exception), so auto-committed matches retain the audit
+    of what else was considered. `rejection_reason` NULL = a viable/proposed
+    candidate (ranked by `score`); non-NULL = a retained near-miss with its
+    structured reason code + measured value in `rejection_detail`
+    (e.g. {"days_diff": 6}). The scoring pass (A-2) populates these."""
+
+    __tablename__ = "reconciliation_match_candidates"
+    __table_args__ = (
+        UniqueConstraint("reconciliation_transaction_id", "candidate_record_type",
+                         "candidate_record_id", name="uq_recon_candidate_per_txn"),
+        CheckConstraint(
+            # Must match migration r148. AMOUNT_MISMATCH is the band-era gate (A-2):
+            # in-band but beyond exact-match tolerance — the exact-amount ladder never
+            # had it. NULL = a viable proposal.
+            "rejection_reason IS NULL OR rejection_reason IN "
+            "('OUTSIDE_DATE_WINDOW', 'DIRECTION_MISMATCH', 'ALREADY_CLAIMED', 'AMOUNT_MISMATCH')",
+            name="ck_recon_candidate_rejection_reason",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False, index=True)
+    reconciliation_transaction_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("reconciliation_transactions.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    candidate_record_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    candidate_record_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    score: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 = best
+    rejection_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    rejection_detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ReconciliationException(Base):
+    """A transaction that did NOT auto-commit and needs human attention. A
+    workspace object: it carries identity, resolution state, and a flag link,
+    but NOT a copy of the transaction's match_status — the source transaction is
+    authority on whether the item is still open (queue build filters on it). The
+    card form (ranked vs coding) is DERIVED from candidate presence at display,
+    not stored here. Candidates are read through the transaction."""
+
+    __tablename__ = "reconciliation_exceptions"
+    __table_args__ = (
+        UniqueConstraint("reconciliation_transaction_id", name="uq_recon_exception_per_txn"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False, index=True)
+    reconciliation_transaction_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("reconciliation_transactions.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    reconciliation_run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("reconciliation_runs.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    # Flag/park link. FK DELIBERATELY ABSENT (not an oversight): the flag table is
+    # built in Arc B (the workspace). Referential integrity here is UNENFORCED until
+    # that migration adds the FK constraint — do not treat this id as guaranteed-valid
+    # until then. Tracked: Arc B wires flag_id -> <flag_table>.id.
+    flag_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Resolution state (workspace record; NOT the transaction's match_status).
+    # chosen_candidate_id FK DELIBERATELY ABSENT: a FK to reconciliation_match_candidates
+    # would be circular (candidate -> txn <- exception -> candidate) and buys little; the
+    # accepted candidate is resolvable via the transaction's candidate set. Unenforced by
+    # design — set on resolve, read through the candidate set.
+    chosen_candidate_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    resolved_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc))

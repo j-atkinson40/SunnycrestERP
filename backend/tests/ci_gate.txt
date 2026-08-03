@@ -28,3 +28,7 @@ tests/test_workflow_scheduler_scheduled_dispatch.py
 #   preserve-list) + full throwaway-tenant wipe lifecycle. Creates its own
 #   tenant, cleans up after itself (COMPANY-LITTER ratchet). —
 tests/test_wipe_tenant.py
+
+# — Books Review Phase 2 A-1b: reconciliation exception model (r148) — schema
+#   pins (candidates key to txn, no match_status copy, uniqueness, CHECK, cascade). —
+tests/test_reconciliation_exception_model.py
