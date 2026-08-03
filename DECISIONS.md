@@ -1209,6 +1209,20 @@ rows with per-batch commits would have been fine. **"The wipe was too big" is th
 lesson and would lead to the wrong fixes** (sampling, top-N caps, "wipe less"). The
 right lesson: transaction SHAPE (unbounded single txn) against no headroom.
 
+**How the wrong shape got chosen — the reusable part.** Batching was proposed twice
+during design and overruled both times on atomicity grounds. The atomicity argument was
+itself wrong: a complete wipe's end state is total, so partial progress is MONOTONIC
+toward the goal, and a half-finished wipe is incomplete, not corrupt. What was actually
+needed was idempotence + resumability. **Atomicity was defended as a safety property
+when it was in fact a liability** — the all-or-nothing transaction is exactly what
+pinned the WAL that filled the disk. The executor's instinct (batch) was correct against
+the architect's insistence (stay atomic), and was voiced twice before the run. The
+transferable lesson is not "we picked the wrong transaction shape" — it is that a safety
+property was ASSUMED rather than examined, and the person closest to the code flagged it
+twice and was overruled. The next person facing a similar call should ask what property
+they actually need (here: resumability) before defending the one that merely sounds safe
+(here: atomicity).
+
 **The transport diagnosis was a red herring, and how it fooled us matters.** The failure
 first surfaced as `SSL SYSCALL error: EOF` — which reads as a network/proxy problem. A
 transport theory was built (proxy fragile → run on the internal host) and alternatives
