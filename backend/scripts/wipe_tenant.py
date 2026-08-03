@@ -26,14 +26,37 @@ SAFETY MODEL (deliberate):
     (resolves to "dev" on production), so an env-based rail would fire on the
     real DB and block on nothing. The dry-run default + typed confirmation
     are the real rails.
-  * Transactional — a single transaction; any error rolls the whole wipe back.
-  * The dry-run output IS the review artifact: because behavior tracks the
-    live schema, each run must be re-reviewed. It echoes the preserve-list,
-    per-table delete counts, and the child-only descendants pulled in.
+  * CHUNKED + RESUMABLE, NOT ATOMIC (W-1c). Deletion runs as many small
+    committed batches (per table, chunked within tables), NOT one transaction.
+    Rationale — the 2026-07-29/30 incident: a single-transaction delete of
+    ~112k rows pinned all its rollback WAL until commit, exhausted the Postgres
+    volume (PANIC: No space left on device) twice, and left the DB unable to
+    complete crash recovery for ~25 hours. A complete wipe's end state is
+    "everything gone," so partial progress is MONOTONIC toward the goal — a
+    half-finished wipe is incomplete, not corrupt. What the tool needs is
+    IDEMPOTENCE + RESUMABILITY, not atomicity: re-running continues from
+    wherever the data actually is (deleting already-deleted rows is a no-op; FK
+    order is re-derived each pass; no checkpoint file, no state table). Per-batch
+    commits let Postgres checkpoint and recycle WAL between batches, so WAL never
+    accumulates toward the volume size.
+  * DISK GUARD. Free space is read (superuser `COPY FROM PROGRAM 'df'`) before
+    starting and re-checked between tables; the wipe refuses to start, and aborts
+    cleanly mid-run, below a configurable floor (--disk-floor-gb). A clean abort
+    mid-wipe is a SAFE state (resume by re-running). If free space cannot be read
+    at all, the tool REFUSES — a disk guard that can't see the disk is not a guard.
+  * TELEMETRY-FIRST. The high-volume execution-log tables (agent_run_steps,
+    workflow_run_steps + their FK-descendant closure) are deleted first, after a
+    guard that the closure reaches nothing books-critical (period_locks
+    especially). Shedding the bulk first means the rest runs against a smaller job.
+  * The dry-run output IS the review artifact: because behavior tracks the live
+    schema, each run must be re-reviewed. It echoes the preserve-list, per-table
+    delete counts, the child-only descendants, the telemetry closure, and disk.
 
-DELETE ORDER: topological over NO ACTION / RESTRICT FK edges only. SET NULL
-and CASCADE edges impose no ordering (the DB resolves them), which collapses
-the apparent FK "cycle" (verified nominal on this schema).
+DELETE ORDER: topological over NO ACTION / RESTRICT FK edges only (children
+first). SET NULL and CASCADE edges impose no ordering (the DB resolves them),
+which collapses the apparent FK "cycle" (verified nominal on this schema).
+Within that order, telemetry-closure tables delete first — FK-safe because the
+closure is closed under inbound FKs (nothing outside it references it).
 
 Reads DATABASE_URL from the environment (no app import — pure DB tool).
 """
@@ -42,6 +65,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from collections import defaultdict, deque
 
 from sqlalchemy import create_engine, text
@@ -93,6 +117,29 @@ DOCUMENT_TABLES = {
 }
 
 NON_ORDERING_RULES = {"SET NULL", "CASCADE", "SET DEFAULT"}
+
+# TELEMETRY-FIRST (W-1c): the high-volume execution-log tables. Their FK-descendant
+# closure (things that reference them) is deleted FIRST — pure logs, the bulk of the
+# volume (~55% on sunnycrest). Roots are the two big leaf-ish step tables; the closure
+# is computed dynamically. GUARD: the closure must reach nothing books-critical (see
+# BOOKS_CRITICAL) — period_locks in particular hangs off agent_jobs, NOT off these
+# roots, and must never be swept into the fast log-deletion phase.
+TELEMETRY_ROOTS = ("agent_run_steps", "workflow_run_steps")
+
+# Books/financial/master tables that must NEVER appear in the telemetry closure. Not a
+# preserve-list (most of these still delete — in the MAIN phase, visible and counted);
+# this is the tripwire that the telemetry-first optimization never silently sweeps a
+# books table into the log phase. Fail loud if the closure intersects this set.
+BOOKS_CRITICAL = {
+    "period_locks", "journal_entries", "journal_entry_lines",
+    "invoices", "invoice_lines", "customer_payments", "customer_payment_applications",
+    "vendor_bills", "vendor_bill_lines", "vendor_payments", "vendor_payment_applications",
+    "sales_orders", "sales_order_lines", "quotes", "quote_lines",
+    "customers", "vendors", "company_entities",
+    "statements", "statement_run_items", "finance_charges",
+    "reconciliation_runs", "reconciliation_transactions", "reconciliation_adjustments",
+    "tenant_gl_mappings", "financial_accounts", "bank_accounts", "purchase_orders",
+}
 
 # Cross-tenant transfer records — TWO-PARTY, no single owner. A licensee_transfer
 # names a HOME (originating) licensee and an AREA (receiving) licensee; wiping one
@@ -328,6 +375,14 @@ def main():
                     help="Read-only: report the tenant's current delete-set state + preserved/"
                          "identity, using the tool's OWN predicates. Post-wipe the delete-set should "
                          "be empty; the same code is the standing pre/post-wipe check.")
+    ap.add_argument("--batch-size", type=int, default=5000,
+                    help="Rows per committed delete batch (default 5000). Each batch is its own "
+                         "transaction so WAL recycles between batches — never accumulates toward the "
+                         "volume size. Derived from the S-1 baseline, not intuition (see W-1c).")
+    ap.add_argument("--disk-floor-gb", type=float, default=2.0,
+                    help="Refuse to start, and abort cleanly between tables, if free space on the "
+                         "Postgres volume drops below this many GB (default 2.0). A clean mid-wipe "
+                         "abort is a safe state — re-run to resume.")
     args = ap.parse_args()
 
     db_url = os.environ.get("DATABASE_URL")
@@ -401,6 +456,10 @@ def main():
         (delete_set, order, break_edges, unbreakable, blockers,
          preds, child_only, unconfident) = plan_wipe(conn, preserve, transfer_mode=args.transfer_records)
 
+        # telemetry-first closure + its books-critical guard (W-1c)
+        tel_closure = telemetry_closure(TELEMETRY_ROOTS, edges, delete_set)
+        tel_conflict = telemetry_books_conflict(tel_closure)
+
         # cycle null-break counts (rows whose FK would be nulled, this tenant)
         breaks_report = []
         for ch, col, pa in break_edges:
@@ -424,6 +483,18 @@ def main():
         print(f"child-only descendants pulled in (no tenant column — GUARD 2): {len(child_only)}")
         for t in child_only:
             print(f"    ~ {t}")
+
+        print(f"\nTELEMETRY-FIRST closure (deleted first — roots {list(TELEMETRY_ROOTS)}): "
+              f"{len(tel_closure)} tables")
+        for t in sorted(tel_closure):
+            print(f"    » {t}")
+        if tel_conflict:
+            print("\n❌ TELEMETRY GUARD — books-critical tables in the telemetry closure:")
+            for t in tel_conflict:
+                print(f"    !! {t} — a log-first phase would sweep a books table")
+            die("Telemetry closure reaches books-critical table(s) — refusing to run. "
+                "A telemetry root now has a books table as a descendant (schema change?); "
+                "resolve before wiping.")
 
         print(f"\nCYCLE NULL-BREAKS (nullable in-cycle FK → NULL, in-txn, before delete): {len(break_edges)}")
         if not break_edges:
@@ -461,64 +532,232 @@ def main():
                 print(f"    {t:<44} {n}")
         print(f"\nTOTAL rows to delete: {total}")
 
+        # disk status — informative in dry-run; --execute ENFORCES the floor.
+        floor_bytes = int(args.disk_floor_gb * 1024 ** 3)
+        try:
+            data_dir = conn.execute(text("SELECT current_setting('data_directory')")).scalar()
+            free = read_free_bytes(conn, data_dir)
+            conn.commit()
+            print(f"\ndisk: free {free / 1024**3:.2f} GB   floor {args.disk_floor_gb:.2f} GB   "
+                  f"batch-size {args.batch_size}   (data_directory={data_dir})")
+            if free < floor_bytes:
+                print("    ⚠️  free space is BELOW the floor — --execute would REFUSE to start.")
+        except Exception as ex:
+            print(f"\ndisk: could not read free space ({ex}). --execute would REFUSE "
+                  "(a disk guard that can't see the disk is not a guard).")
+
         if not args.execute:
-            print("\nDRY-RUN complete. Re-run with --execute to delete (a typed confirmation will be required).")
+            print(f"\nDRY-RUN complete. Re-run with --execute to delete — chunked in committed "
+                  f"batches of {args.batch_size}, telemetry-first, resumable, disk-guarded. "
+                  "A typed slug confirmation will be required.")
             return
 
-    # ---- EXECUTE ----
-    print(f"\n⚠️  About to PERMANENTLY DELETE {total} rows from tenant '{slug}' (id={tid}), "
-          f"nulling {len(break_edges)} in-cycle FK(s) first (in the same transaction).")
-    typed = input(f"Type the tenant slug ({slug}) to confirm: ").strip()
-    if typed != slug:
-        die("Confirmation did not match the slug. Aborted — nothing deleted.")
+    # ---- EXECUTE (chunked, resumable, disk-guarded — NOT atomic; see docstring) ----
+    with eng.connect() as conn:  # commit-as-you-go: each batch commits on its own
+        data_dir = conn.execute(text("SELECT current_setting('data_directory')")).scalar()
+        try:
+            free = assert_disk_floor(conn, data_dir, floor_bytes)
+        except DiskFloorError as ex:
+            die(f"DISK GUARD — {ex}. Refusing to run.")
+        conn.commit()
+        print(f"\ndisk pre-flight: free {free / 1024**3:.2f} GB   floor {args.disk_floor_gb:.2f} GB   "
+              f"(data_directory={data_dir})")
 
-    with eng.begin() as conn:  # single transaction — all or nothing (null-breaks included)
-        nulled, deleted = execute_deletes(conn, tid, order, preds, break_edges)
+        print(f"\n⚠️  About to PERMANENTLY DELETE ~{total} rows from tenant '{slug}' (id={tid}) "
+              f"in committed batches of {args.batch_size} — telemetry-first, resumable. "
+              f"(Nulls {len(break_edges)} in-cycle FK(s) first.)")
+        typed = input(f"Type the tenant slug ({slug}) to confirm: ").strip()
+        if typed != slug:
+            die("Confirmation did not match the slug. Aborted — nothing deleted.")
+
+        print("\n── executing (chunked, per-batch commits) ──", flush=True)
+        nulled, deleted, aborted = chunked_wipe(
+            conn, tid, order, preds, break_edges, first_set=tel_closure,
+            batch_size=args.batch_size, data_dir=data_dir, floor_bytes=floor_bytes, progress=True)
 
     if nulled:
         print("\n✅ Nulled (in-cycle FK breaks):")
         for (ch, col), n in nulled.items():
             print(f"    {ch}.{col}   {n}")
-    print("\n✅ WIPE COMPLETE (committed). Deleted counts per table:")
-    for t in order:
-        if deleted.get(t):
-            print(f"    {t:<44} {deleted[t]}")
-    print(f"\nTOTAL deleted: {sum(deleted.values())}. Verified 0 remaining in all delete-set tables.")
+    deleted_total = sum(deleted.values())
+    print(f"\nDeleted {deleted_total} rows across {sum(1 for v in deleted.values() if v)} table(s).")
+
+    if aborted:
+        print("\n⚠️  ABORTED mid-wipe on the disk floor. The tenant is PARTIALLY wiped — a safe, "
+              "resumable state. Re-run the same command to continue.")
+        sys.exit(2)
+
+    # Final state check — the transaction boundary no longer proves completion, so
+    # --verify's own predicates are now the completion signal.
+    with eng.connect() as conn:
+        r = verify_state(conn, tid, preserve, transfer_mode=args.transfer_records)
+    rem = r["delete_set_remaining_total"]
+    if rem == 0:
+        p = r["preserved"]
+        print(f"\n✅ WIPE COMPLETE. Verified 0 rows remain in the delete-set. "
+              f"Preserved: tenant_gl_mappings={p.get('tenant_gl_mappings')}, users={p.get('users')}, "
+              f"roles={p.get('roles')}, company_present={r['company_present']}.")
+    else:
+        top = dict(sorted(r["delete_set_remaining"].items(), key=lambda x: -x[1])[:5])
+        print(f"\n⚠️  {rem} rows still remain in the delete-set after this pass (top: {top}). "
+              "Re-run to finish — the wipe is idempotent + resumable.")
+        sys.exit(2)
 
 
-def execute_deletes(conn, tid, order, preds, break_edges=()) -> tuple[dict, dict]:
-    """In one transaction (the caller's): (1) null the in-cycle break edges,
-    (2) delete the tenant's rows in `order`, (3) verify zero remaining. Raises
-    (rolling the whole thing back, null-breaks included) if any delete-set table
-    still holds tenant rows afterward. Returns (nulled, deleted) — nulled is
-    {(table,col): rowcount}, deleted is {table: rowcount}."""
+# ── S-3: disk guard ─────────────────────────────────────────────────────────
+class DiskFloorError(RuntimeError):
+    """Free space below the floor, or unreadable. Either way the wipe must not run."""
+
+
+def read_free_bytes(conn, data_dir) -> int:
+    """True filesystem free bytes on the Postgres data volume, via superuser
+    `COPY FROM PROGRAM 'df'`. The app connects over the proxy and has no
+    filesystem view of the volume, so df must run ON the server — COPY FROM
+    PROGRAM is the only path, and it works solely because the app role is
+    superuser (finding #6; a dedicated role would need pg_read_server_files /
+    pg_execute_server_program or an out-of-band metric). Uses portable `df -Pk`
+    (GNU + BSD) and parses column 4 in Python (no in-shell awk quoting). Raises
+    if it can't produce a number — the caller must treat that as "refuse."""
+    conn.execute(text("DROP TABLE IF EXISTS _wipe_df"))
+    conn.execute(text("CREATE TEMP TABLE _wipe_df (line text)"))
+    conn.execute(text(f"COPY _wipe_df FROM PROGRAM 'df -Pk \"{data_dir}\" | tail -1'"))
+    line = conn.execute(text("SELECT line FROM _wipe_df")).scalar()
+    conn.execute(text("DROP TABLE IF EXISTS _wipe_df"))
+    if not line:
+        raise RuntimeError("df returned no output")
+    parts = line.split()
+    if len(parts) < 4 or not parts[3].isdigit():
+        raise RuntimeError(f"could not parse df output: {line!r}")
+    return int(parts[3]) * 1024  # column 4 = available 1K-blocks
+
+
+def assert_disk_floor(conn, data_dir, floor_bytes) -> int:
+    """Return free bytes if at/above the floor; raise DiskFloorError if below OR
+    unreadable. 'Unreadable → refuse' is deliberate: a disk guard that can't see
+    the disk is not a guard."""
+    try:
+        free = read_free_bytes(conn, data_dir)
+    except Exception as ex:
+        raise DiskFloorError(f"disk guard blind — cannot read free space ({ex})")
+    if free < floor_bytes:
+        raise DiskFloorError(
+            f"free {free / 1024**3:.2f} GB below floor {floor_bytes / 1024**3:.2f} GB")
+    return free
+
+
+# ── S-2: telemetry-first + chunked, resumable deletion ───────────────────────
+def telemetry_closure(roots, edges, delete_set) -> set:
+    """FK-descendant closure of `roots` within the delete-set (roots + everything
+    that transitively references them). Deleted first. FK-safe to delete first:
+    the closure is closed under inbound FKs by construction (any table referencing
+    a member is itself a descendant → a member), so nothing outside references it."""
+    children = defaultdict(list)
+    for ch, ccol, pa, rule, nn in edges:
+        children[pa].append(ch)
+    closure, q = set(), deque(r for r in roots if r in delete_set)
+    while q:
+        t = q.popleft()
+        if t in closure:
+            continue
+        closure.add(t)
+        for ch in children.get(t, []):
+            if ch in delete_set and ch not in closure:
+                q.append(ch)
+    return closure
+
+
+def telemetry_books_conflict(closure) -> list:
+    """Books-critical tables that landed in the telemetry closure — must be empty.
+    Non-empty means the log-first phase would sweep a books table (e.g. a schema
+    change hangs period_locks off a telemetry root); the caller fails loud."""
+    return sorted(closure & BOOKS_CRITICAL)
+
+
+def delete_table_chunked(conn, tid, table, pred, batch_size, progress=True) -> int:
+    """Delete this tenant's rows from `table` in committed batches (ctid-based).
+    `conn` is commit-as-you-go: each batch is its own transaction, so a committed
+    batch's WAL becomes recyclable at once — no single transaction pins more than
+    ~batch_size rows of WAL. Idempotent + resumable: re-running deletes whatever
+    remains; 0 matches → returns 0 without a write. Returns rows deleted.
+
+    ctid batching (not PK-range): `ctid IN (SELECT ctid ... WHERE <pred> LIMIT n)`
+    handles scoped tables AND child-only tables (whose <pred> is an `fk IN
+    (SELECT ...)` subquery) uniformly, and needs no single-column PK or position
+    tracking — each pass re-selects the first n remaining matches."""
+    if pred is None:
+        return 0
+    total, batches = 0, 0
+    t0 = time.monotonic()
+    while True:
+        r = conn.execute(text(
+            f'DELETE FROM "{table}" WHERE ctid IN '
+            f'(SELECT ctid FROM "{table}" WHERE {pred} LIMIT :__lim)'),
+            {"tid": tid, "__lim": batch_size})
+        conn.commit()
+        n = r.rowcount
+        if n == 0:
+            break
+        total += n
+        batches += 1
+        if progress and batches == 1:
+            print(f"    → {table} ...", flush=True)
+        if progress and batches % 10 == 0:
+            print(f"      {table}: {total} rows so far ({batches} batches)", flush=True)
+    if progress and total:
+        print(f"    ✓ {table}: {total} rows in {batches} batch(es), "
+              f"{time.monotonic() - t0:.1f}s", flush=True)
+    return total
+
+
+def chunked_wipe(conn, tid, order, preds, break_edges, first_set=frozenset(),
+                 batch_size=5000, data_dir=None, floor_bytes=0, progress=True):
+    """Execute the wipe as committed batches. `conn` is commit-as-you-go.
+      1. Null the in-cycle break edges (chunked, idempotent) — committed.
+      2. Delete `first_set` (telemetry closure) tables first, then the rest, each
+         in the child-first `order`, each chunked into `batch_size` committed batches.
+      3. If data_dir + floor_bytes are set, re-check free space between tables and
+         ABORT CLEANLY below the floor (a safe state — resume by re-running).
+    Returns (nulled, deleted, aborted). Not atomic by design — see module docstring."""
     nulled = {}
     for ch, col, pa in break_edges:
-        sql = preds.get(ch)
-        if sql is None:
-            continue  # can't scope — leave it; a residual FK would surface post-delete
-        r = conn.execute(
-            text(f'UPDATE "{ch}" SET "{col}" = NULL WHERE {sql} AND "{col}" IS NOT NULL'),
-            {"tid": tid})
-        nulled[(ch, col)] = r.rowcount
-    deleted = {}
-    for t in order:
-        sql = preds.get(t)
-        if sql is None:
+        pred = preds.get(ch)
+        if pred is None:
             continue
-        r = conn.execute(text(f'DELETE FROM "{t}" WHERE {sql}'), {"tid": tid})
-        deleted[t] = r.rowcount
-    remaining = {}
-    for t in order:
-        sql = preds.get(t)
-        if sql is None:
-            continue
-        n = conn.execute(text(f'SELECT count(*) FROM "{t}" WHERE {sql}'), {"tid": tid}).scalar()
+        n = 0
+        while True:
+            r = conn.execute(text(
+                f'UPDATE "{ch}" SET "{col}" = NULL WHERE ctid IN '
+                f'(SELECT ctid FROM "{ch}" WHERE {pred} AND "{col}" IS NOT NULL LIMIT :__lim)'),
+                {"tid": tid, "__lim": batch_size})
+            conn.commit()
+            if r.rowcount == 0:
+                break
+            n += r.rowcount
         if n:
-            remaining[t] = n
-    if remaining:
-        raise RuntimeError(f"POST-DELETE non-zero (rolling back): {remaining}")
-    return nulled, deleted
+            nulled[(ch, col)] = n
+
+    # telemetry-closure tables first, then the rest — child-first within each (a
+    # subset of `order` preserves its ordering).
+    phased = [t for t in order if t in first_set] + [t for t in order if t not in first_set]
+    deleted, aborted = {}, False
+    for t in phased:
+        deleted[t] = delete_table_chunked(conn, tid, t, preds.get(t), batch_size, progress)
+        if data_dir and floor_bytes:
+            try:
+                free = read_free_bytes(conn, data_dir)
+                conn.commit()
+            except Exception as ex:
+                free = -1
+                if progress:
+                    print(f"\n⚠️  disk read failed between tables ({ex}) — CLEAN ABORT after {t}. "
+                          f"Re-run to resume.", flush=True)
+            if free < floor_bytes:
+                if free >= 0 and progress:
+                    print(f"\n⚠️  free {free / 1024**3:.2f} GB dropped below floor — CLEAN ABORT "
+                          f"after {t}. Re-run to resume (idempotent).", flush=True)
+                aborted = True
+                break
+    return nulled, deleted, aborted
 
 
 def verify_state(conn, tid, preserve, transfer_mode=None):
