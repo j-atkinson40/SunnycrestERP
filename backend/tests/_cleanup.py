@@ -50,6 +50,13 @@ _PURGE_STATEMENTS = [
     "DELETE FROM reconciliation_transactions WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_adjustments WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_runs WHERE tenant_id = ANY(:ids)",
+    # Plaid substrate (children-first). bank_accounts.financial_account_id references
+    # financial_accounts, so these precede it; reconciliation_transactions.bank_transaction_id
+    # is ondelete=SET NULL and already deleted above.
+    "DELETE FROM bank_transactions WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM bank_accounts WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM plaid_category_mappings WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM plaid_items WHERE tenant_id = ANY(:ids)",
     "DELETE FROM financial_accounts WHERE tenant_id = ANY(:ids)",
     "DELETE FROM customer_payment_applications WHERE payment_id IN (SELECT id FROM customer_payments WHERE company_id = ANY(:ids))",
     "DELETE FROM customer_payments WHERE company_id = ANY(:ids)",

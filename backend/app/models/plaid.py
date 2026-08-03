@@ -26,6 +26,7 @@ from sqlalchemy import (
     Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric,
     String, Text, text as sql_text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -141,6 +142,23 @@ class BankTransaction(Base):
     authorized_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     raw_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Books Review Arc B B-1: structured counterparty signal from Plaid, previously
+    # discarded — `merchant_name` was flattened into `description` (sync _apply_fields)
+    # and `counterparties` / `merchant_entity_id` were dropped entirely. Persisted RAW,
+    # no merchant→customer resolution (deferred). merchant_entity_id is Plaid's stable
+    # merchant id — the anchor a future resolution pass keys on. counterparties is the
+    # raw Plaid array [{name,type,entity_id,confidence_level,…}] stored verbatim.
+    #
+    # ACCESS PATTERN (both UNINDEXED today — correct at zero rows; the resolution pass
+    # is where the indexes earn their keep, so add them there, not now):
+    #   * merchant_entity_id — looked up BY VALUE (resolution groups txns by stable
+    #     merchant id). Needs a plain btree index when resolution lands.
+    #   * counterparties — JSONB queried by containment (entity_id / name / type of a
+    #     counterparty). Needs a GIN index (jsonb_path_ops) when resolution queries it
+    #     at volume; a table scan before then is fine on a near-empty table.
+    merchant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    merchant_entity_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    counterparties: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     plaid_category_primary: Mapped[str | None] = mapped_column(String(64), nullable=True)
     plaid_category_detailed: Mapped[str | None] = mapped_column(String(128), nullable=True)
     expense_category: Mapped[str | None] = mapped_column(String(100), nullable=True)

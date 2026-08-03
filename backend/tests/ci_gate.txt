@@ -42,3 +42,7 @@ tests/test_reconciliation_scoring_a2.py
 #   claim-table pool exclusion, race-loser (SAVEPOINT + IntegrityError → not swallowed),
 #   period-lock gate, cascade release. —
 tests/test_reconciliation_claim_a3.py
+
+# — Books Review Arc B B-1: Plaid counterparty persisted raw (r150) — merchant_name /
+#   merchant_entity_id / counterparties[] landed by sync, description back-compat kept. —
+tests/test_plaid_counterparty_b1.py

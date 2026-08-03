@@ -309,6 +309,12 @@ def _apply_fields(row: BankTransaction, txn: dict, mapping: dict[str, str]) -> i
     row.authorized_date = _parse_date(txn.get("authorized_date"))
     row.description = txn.get("merchant_name") or txn.get("name") or row.description or "Transaction"
     row.raw_description = txn.get("name")
+    # Books Review Arc B B-1: persist the structured counterparty signal Plaid returns
+    # (RAW — no merchant→customer resolution). description still flattens merchant_name
+    # for display back-compat; these columns keep the structure that was being discarded.
+    row.merchant_name = txn.get("merchant_name")
+    row.merchant_entity_id = txn.get("merchant_entity_id")
+    row.counterparties = txn.get("counterparties")
     row.plaid_category_primary = pfc.get("primary")
     row.plaid_category_detailed = pfc.get("detailed")
     row.expense_category = cat.resolve(mapping, pfc.get("primary"), pfc.get("detailed"))
