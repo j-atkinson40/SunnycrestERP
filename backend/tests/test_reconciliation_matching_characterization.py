@@ -1,26 +1,27 @@
-"""S-4 — CHARACTERIZATION of reconciliation matching, BEFORE extraction.
+"""Reconciliation matching — behavior pins across the S-4 extraction AND the
+Books Review Phase 2 A-2 rewrite.
 
 The precedence ladder (pattern -> exact-amount -> reference -> unmatched),
-direction-honesty, ambiguity-skip, and confidences are already pinned by
-test_reconciliation_matching_rework.py::TestMatchingHandMath. This file adds
-the three pins that file doesn't carry, so the upcoming
-reconciliation_service extraction is proven behavior-preserving across ALL
-of the current behavior — including the parts that are wrong:
+direction-honesty, ambiguity-skip, and confidences are pinned by
+test_reconciliation_matching_rework.py::TestMatchingHandMath. This file carries
+three additional pins:
 
   1. The payroll asymmetry, as ARITHMETIC: `payroll` counts as auto-cleared
      AND flows into cleared_total / platform_cleared_balance / difference;
      `bank_fee` and `nsf` count as suggested and do NOT. Hand-computed so a
      sign error in the money math trips the test, not just a label change.
-  2. Re-running matching CLOBBERS a manual classification when the txn also
-     matches a rule — a reader would otherwise assume manual actions are
-     respected. Pinned explicitly.
-  3. The non-idempotence / double-clear (the Phase-2 handoff artifact): the
-     matcher never durably marks a payment reconciled, so the SAME payment
-     is cleared by two independent runs. This is a LIVE correctness bug the
-     Phase-2 rewrite must fix with durable both-sides state; it is pinned
-     here as current behavior, not endorsed.
+     (Unchanged by A-2 — the keyword ladder is preserved.)
+  2. FLIPPED BY A-2: a re-run must NOT clobber a manual classification. The
+     rewrite is non-destructive (only `unmatched` transactions are rescored),
+     so a manual action survives a re-run even when the txn matches a rule.
+     (Pre-rewrite this pinned the opposite — the clobber — as the live bug.)
+  3. FLIPPED BY A-2: the same payment is NOT cleared by two independent runs.
+     The rewrite seeds a `claimed` set from existing auto_cleared transactions,
+     so a second run sees the payment already claimed and records it as an
+     ALREADY_CLAIMED candidate instead of re-clearing it. (Pre-rewrite this
+     pinned the double-clear as the live bug the Phase-2 rewrite must fix.)
 
-Extract, don't fix. Cleans up its own companies (COMPANY-LITTER ratchet).
+Cleans up its own companies (COMPANY-LITTER ratchet).
 """
 from __future__ import annotations
 
@@ -197,12 +198,12 @@ class TestPayrollAsymmetryArithmetic:
         assert run.platform_cleared_balance == Decimal("-9000")  # -5000 + -4000, fee excluded
 
 
-class TestRerunClobbersManualAction:
-    def test_rerun_overwrites_a_manual_classification_on_a_rule_hit(self, db):
-        # A user manually classifies a transaction; someone re-runs matching;
-        # the classification is silently overwritten because the txn also
-        # matches a pattern rule. Pinned so no reader assumes manual actions
-        # survive a re-run.
+class TestRerunPreservesManualAction:
+    def test_rerun_does_not_overwrite_a_manual_classification(self, db):
+        # A-2 (flipped from the pre-rewrite characterization): a user manually
+        # classifies a transaction; someone re-runs matching. The rewrite is
+        # NON-DESTRUCTIVE — it only (re)scores transactions still `unmatched`, so
+        # the manual action survives even though the txn also matches a rule.
         co = _mk_company(db)
         user = _mk_user(db, co)
         run = _mk_run(db, co)
@@ -219,18 +220,21 @@ class TestRerunClobbersManualAction:
         txn.match_status = "manually_matched"
         db.commit()
 
-        trigger_matching(run.id, current_user=user, db=db)  # run 2 CLOBBERS
+        trigger_matching(run.id, current_user=user, db=db)  # run 2 must NOT clobber
         db.refresh(txn)
-        assert txn.match_status == "bank_fee"  # manual action lost
+        assert txn.match_status == "manually_matched"  # manual action preserved
 
 
-class TestNonIdempotentDoubleClaim:
-    def test_the_same_payment_is_cleared_by_two_independent_runs(self, db):
-        # The Phase-2 handoff artifact. The matcher never durably marks a
-        # payment reconciled (it writes matched_record_id on the TXN, nothing
-        # on the payment), so two overlapping statement runs each clear the
-        # SAME CustomerPayment. Pinned as current behavior; the Phase-2
-        # rewrite fixes it with durable both-sides state.
+class TestNoDoubleClaimAcrossRuns:
+    def test_a_claimed_payment_is_not_cleared_by_a_second_run(self, db):
+        # A-2 (flipped from the pre-rewrite double-clear pin). The rewrite seeds
+        # a `claimed` set from every existing auto_cleared transaction, so a
+        # second overlapping statement run sees the payment already claimed by
+        # the first and does NOT re-clear it — the double-clear is dead. The
+        # claimed payment is still RECORDED as an ALREADY_CLAIMED candidate on
+        # run_b's transaction (audit trail), it just isn't the accepted match.
+        from app.models.financial_account import ReconciliationMatchCandidate
+
         co = _mk_company(db)
         user = _mk_user(db, co)
         cust = Customer(id=str(uuid.uuid4()), company_id=co, name="Hopkins FH", is_active=True)
@@ -254,10 +258,16 @@ class TestNonIdempotentDoubleClaim:
         tb = db.query(ReconciliationTransaction).filter(
             ReconciliationTransaction.reconciliation_run_id == run_b.id
         ).first()
-        # BOTH runs cleared the SAME payment — the double-clear.
+        # run_a claims the payment; run_b does NOT re-clear it.
         assert ta.matched_record_id == pay.id
-        assert tb.matched_record_id == pay.id
+        assert tb.matched_record_id is None
         assert ta.reconciliation_run_id != tb.reconciliation_run_id
+        # run_b still surfaces the payment as an ALREADY_CLAIMED candidate.
+        tb_cands = db.query(ReconciliationMatchCandidate).filter(
+            ReconciliationMatchCandidate.reconciliation_transaction_id == tb.id
+        ).all()
+        assert [c.rejection_reason for c in tb_cands] == ["ALREADY_CLAIMED"]
+        assert tb_cands[0].candidate_record_id == pay.id
 
 
 class TestCreateAdjustmentDrain:

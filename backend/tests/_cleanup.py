@@ -54,6 +54,10 @@ _PURGE_STATEMENTS = [
     "DELETE FROM vendor_payments WHERE company_id = ANY(:ids)",
     "DELETE FROM vendor_bill_lines WHERE bill_id IN (SELECT id FROM vendor_bills WHERE company_id = ANY(:ids))",
     "DELETE FROM vendor_bills WHERE company_id = ANY(:ids)",
+    # Invoices: after customer_payment_applications (which references invoice_id,
+    # deleted above) and before customers (which invoices reference).
+    "DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = ANY(:ids))",
+    "DELETE FROM invoices WHERE company_id = ANY(:ids)",
     "DELETE FROM customers WHERE company_id = ANY(:ids)",
     "DELETE FROM vendors WHERE company_id = ANY(:ids)",
     "DELETE FROM users WHERE company_id = ANY(:ids)",
