@@ -67,6 +67,13 @@ AUTO_COMMIT_THRESHOLD = Decimal("0.90")
 # so a 2% EPD sits comfortably INSIDE the band with margin, not fragile at its
 # edge; too tight and the EPD deposit stops surfacing its invoice at all. GUESS
 # above the 2% floor — the real width comes from cutover EPD/short-pay terms.
+#
+# ASYMMETRY NOTE: the band is applied SYMMETRICALLY (|delta| / candidate), but
+# the 2%-EPD derivation above justifies only the LOWER side (deposit BELOW the
+# candidate = discount / short-pay). A deposit ABOVE the candidate is an
+# overpayment or a different invoice — a distinct signal this reasoning does not
+# cover. Anyone widening this band should widen the lower side and justify the
+# upper side separately (or split it into two bounds).
 AMOUNT_BAND_PCT = Decimal("0.03")
 
 # Ceiling score for a near-amount (band) candidate. DERIVED, not an independent
