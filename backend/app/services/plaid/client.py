@@ -111,6 +111,41 @@ def create_link_token(*, client_user_id: str, client_name: str = "Bridgeable",
     return _post("/link/token/create", body)
 
 
+def create_sandbox_public_token(
+    *,
+    institution_id: str = "ins_109508",
+    initial_products: list[str] | None = None,
+) -> dict[str, Any]:
+    """sandbox/public_token/create — mint a sandbox item WITHOUT the interactive
+    Link widget, so linking a bank feed is a re-runnable script (no browser, no
+    password). Feed the returned ``public_token`` to ``exchange_public_token`` /
+    ``record_item_from_exchange`` exactly as the production Link flow does.
+
+    SANDBOX-ONLY GUARD: refuses unless ``PLAID_ENV`` resolves to ``sandbox``. A
+    sandbox endpoint reachable in production is a foot-gun, and this codebase's
+    history says an unguarded path eventually gets called. ``_base_url`` accepts
+    both envs; this refuses production explicitly.
+
+    Uses Plaid's default sandbox transaction set for the institution (stable per
+    institution — ``ins_109508`` = "First Platypus Bank"). A CUSTOM transaction
+    set is intentionally NOT built here: it needs a Plaid-dashboard
+    ``user_custom`` configuration, not a cheap same-call parameter.
+    """
+    env = (settings.PLAID_ENV or "sandbox").lower()
+    if env != "sandbox":
+        raise PlaidNotConfiguredError(
+            f"create_sandbox_public_token refuses PLAID_ENV={env!r} — "
+            "sandbox-only by design."
+        )
+    return _post(
+        "/sandbox/public_token/create",
+        {
+            "institution_id": institution_id,
+            "initial_products": initial_products or ["transactions"],
+        },
+    )
+
+
 def exchange_public_token(public_token: str) -> dict[str, Any]:
     """item/public_token/exchange → {access_token, item_id, request_id}."""
     return _post("/item/public_token/exchange", {"public_token": public_token})
