@@ -78,6 +78,62 @@ describe("ReconciliationExceptionDisplay — Accept commits the SELECTED candida
   })
 })
 
+function groupItem(entityId = "txn-7"): TriageItem {
+  return {
+    entity_type: "reconciliation_exception",
+    entity_id: entityId,
+    title: "deposit",
+    subtitle: "2026-07-15",
+    extras: {
+      amount: "$4,847.50",
+      candidates: [
+        {
+          id: "g1",
+          candidate_record_type: "payment_group",
+          candidate_record_id: "grp_abc",
+          score: "0.850",
+          rank: 1,
+          rejection_reason: null,
+          rejection_detail: {
+            member_count: 3,
+            member_total: "4847.50",
+            members: [
+              { type: "customer_payment", id: "pay-11111111", amount: "1890.00" },
+              { type: "customer_payment", id: "pay-22222222", amount: "2142.50" },
+              { type: "customer_payment", id: "pay-33333333", amount: "815.00" },
+            ],
+          },
+        },
+      ],
+    },
+  } as unknown as TriageItem
+}
+
+describe("ReconciliationExceptionDisplay — one-to-many (payment_group)", () => {
+  it("shows a group summary; expanding reveals members WITHOUT accepting", () => {
+    render(<ReconciliationExceptionDisplay item={groupItem()} />)
+    expect(screen.getByText(/3 payments totalling/)).toBeInTheDocument()
+    expect(screen.queryByText("2142.50")).not.toBeInTheDocument() // hidden until expanded
+    fireEvent.click(screen.getByText("Show"))
+    expect(screen.getByText("2142.50")).toBeInTheDocument() // member now visible
+    expect(mockAct).not.toHaveBeenCalled() // expanding is not accepting
+  })
+
+  it("clicking the group summary accepts the group", () => {
+    render(<ReconciliationExceptionDisplay item={groupItem()} />)
+    fireEvent.click(screen.getByText(/3 payments totalling/))
+    expect(mockAct).toHaveBeenCalledWith({ action_id: "accept", payload: { candidate_id: "g1" } })
+  })
+
+  it("expanded state does not survive the item changing", () => {
+    const { rerender } = render(<ReconciliationExceptionDisplay item={groupItem("txn-7")} />)
+    fireEvent.click(screen.getByText("Show"))
+    expect(screen.getByText("2142.50")).toBeInTheDocument()
+    rerender(<ReconciliationExceptionDisplay item={groupItem("txn-99")} />)
+    expect(screen.queryByText("2142.50")).not.toBeInTheDocument() // collapsed on the new item
+  })
+})
+
 describe("ReconciliationExceptionDisplay — coding accept", () => {
   it("Accept coding sends the note as payload; disabled until non-empty", () => {
     render(<ReconciliationExceptionDisplay item={codingItem()} />)

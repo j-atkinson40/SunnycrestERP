@@ -1169,39 +1169,66 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
                     "message": "Selected candidate is not a viable match for this transaction.",
                 }
             chosen = match
-        if chosen.candidate_record_type not in ("customer_payment", "vendor_payment"):
+        if chosen.candidate_record_type == "payment_group":
+            # One-to-many (B-5): claim ALL members, ALL-OR-NONE. matched_record_id
+            # becomes the synthetic group key (NOT a payment id — read the members
+            # from the candidate detail / the claim rows, which are the truth).
+            members = (chosen.rejection_detail or {}).get("members") or []
+            if not members:
+                return {"status": "errored", "message": "This combined candidate has no members."}
+            if not reconciliation_service._try_claim_group(
+                db, user.company_id, members, txn.id, txn.reconciliation_run_id
+            ):
+                return {
+                    "status": "errored",
+                    "message": (
+                        "One of these payments was just claimed elsewhere — nothing was "
+                        "claimed. Re-open the item to see the update."
+                    ),
+                }
+            txn.matched_record_type = "payment_group"
+            txn.matched_record_id = chosen.candidate_record_id
+            txn.match_confidence = chosen.score
+            txn.match_status = "manually_matched"
+            txn.reviewed_by = user.id
+            txn.reviewed_at = now
+            if exc is not None:
+                exc.chosen_candidate_id = chosen.id
+            message = f"Matched to {len(members)} payments."
+        elif chosen.candidate_record_type not in ("customer_payment", "vendor_payment"):
             return {
                 "status": "errored",
                 "message": (
                     "This candidate is an open invoice, not a payment — accept it as a "
-                    "reconciling item via Flag (B-4)."
+                    "reconciling item via Flag."
                 ),
             }
-        won = reconciliation_service._try_claim(
-            db,
-            user.company_id,
-            chosen.candidate_record_type,
-            chosen.candidate_record_id,
-            txn.id,
-            txn.reconciliation_run_id,
-        )
-        if not won:
-            return {
-                "status": "errored",
-                "message": (
-                    "That payment was just claimed by another reconciliation. "
-                    "Re-open the item to see the update."
-                ),
-            }
-        txn.matched_record_type = chosen.candidate_record_type
-        txn.matched_record_id = chosen.candidate_record_id
-        txn.match_confidence = chosen.score
-        txn.match_status = "manually_matched"
-        txn.reviewed_by = user.id
-        txn.reviewed_at = now
-        if exc is not None:
-            exc.chosen_candidate_id = chosen.id
-        message = f"Matched to {chosen.candidate_record_type.replace('_', ' ')}."
+        else:
+            won = reconciliation_service._try_claim(
+                db,
+                user.company_id,
+                chosen.candidate_record_type,
+                chosen.candidate_record_id,
+                txn.id,
+                txn.reconciliation_run_id,
+            )
+            if not won:
+                return {
+                    "status": "errored",
+                    "message": (
+                        "That payment was just claimed by another reconciliation. "
+                        "Re-open the item to see the update."
+                    ),
+                }
+            txn.matched_record_type = chosen.candidate_record_type
+            txn.matched_record_id = chosen.candidate_record_id
+            txn.match_confidence = chosen.score
+            txn.match_status = "manually_matched"
+            txn.reviewed_by = user.id
+            txn.reviewed_at = now
+            if exc is not None:
+                exc.chosen_candidate_id = chosen.id
+            message = f"Matched to {chosen.candidate_record_type.replace('_', ' ')}."
     else:
         coding = payload.get("coding") or ctx.get("note")
         if not coding:

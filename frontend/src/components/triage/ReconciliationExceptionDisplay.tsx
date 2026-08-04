@@ -19,7 +19,7 @@
  * text-muted-foreground. Follow THIS for new triage displays (it supersedes
  * EmailUnclassifiedItemDisplay, which still carries the residual Card shell).
  */
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { FlagDestinationPicker, type FlagPayload } from "@/components/triage/FlagDestinationPicker"
@@ -62,13 +62,96 @@ function readCandidates(item: TriageItem): ReconciliationCandidate[] {
   return Array.isArray(raw) ? (raw as ReconciliationCandidate[]) : []
 }
 
+interface GroupMember {
+  type: string
+  id: string
+  amount: string
+}
+
+/**
+ * A one-to-many (payment_group) candidate: a summary the operator can expand to
+ * see the members before accepting — never "accept N payments you can't see".
+ *
+ * The disclosure is CLICK-ONLY, with stopPropagation so expanding never also
+ * accepts the row. It is intentionally not a nested <button> (invalid inside
+ * RankedRows' <button> row) and not keyboard-toggled: RankedRows' global
+ * capture-phase Enter listener would fire "accept" before any in-row keydown,
+ * so a keyboard toggle can't win here without changing the primitive. Keyboard
+ * users see the summary (count + total); the member breakdown is mouse-expand.
+ */
+function GroupRow({
+  candidate,
+  expanded,
+  onToggle,
+}: {
+  candidate: ReconciliationCandidate
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const detail = (candidate.rejection_detail ?? {}) as Record<string, unknown>
+  const members = Array.isArray(detail.members) ? (detail.members as GroupMember[]) : []
+  const total = typeof detail.member_total === "string" ? detail.member_total : ""
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 text-body-sm text-content-base">
+          {members.length} payments totalling{" "}
+          <span className="font-plex-mono tabular-nums">{total}</span>
+        </span>
+        <span
+          role="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggle()
+          }}
+          className="shrink-0 cursor-pointer text-caption text-content-muted underline-offset-2 hover:text-content-base hover:underline"
+        >
+          {expanded ? "Hide" : "Show"}
+        </span>
+      </div>
+      {expanded && (
+        <ul className="mt-1 flex flex-col gap-0.5 border-l border-border-subtle pl-2">
+          {members.map((m) => (
+            <li
+              key={m.id}
+              className="flex items-baseline justify-between gap-3 text-caption text-content-muted"
+            >
+              <span className="min-w-0 truncate">
+                {m.type.replace(/_/g, " ")}
+                <span className="ml-2 font-plex-mono text-content-subtle">{m.id.slice(0, 8)}</span>
+              </span>
+              <span className="shrink-0 font-plex-mono tabular-nums">{m.amount}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function ReconciliationExceptionDisplay({ item }: Props) {
   const { act, status } = useTriageSession()
   const candidates = readCandidates(item)
   const amount = itemField(item, "amount")
   const [coding, setCoding] = useState("")
   const [flagOpen, setFlagOpen] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const working = status === "working"
+
+  // Expanded group rows must NOT survive the item changing — expanding a group
+  // on this item, then the queue advancing, must not leave a group expanded on
+  // the next item.
+  useEffect(() => {
+    setExpandedGroups(new Set())
+  }, [item.entity_id])
+
+  const toggleGroup = (id: string) =>
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   const accept = async (payload: Record<string, unknown>) => {
     try {
@@ -136,25 +219,33 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
           // capture-phase listeners never both fire on the same keystroke.
           enabled={!working && !flagOpen}
           onSelect={(c) => accept({ candidate_id: c.id })}
-          renderItem={(c) => (
-            <div className="flex min-w-0 items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate text-body-sm text-content-base">
-                {c.candidate_record_type.replace(/_/g, " ")}
-                <span className="ml-2 font-plex-mono text-caption text-content-subtle">
-                  {c.candidate_record_id.slice(0, 8)}
+          renderItem={(c) =>
+            c.candidate_record_type === "payment_group" ? (
+              <GroupRow
+                candidate={c}
+                expanded={expandedGroups.has(c.id)}
+                onToggle={() => toggleGroup(c.id)}
+              />
+            ) : (
+              <div className="flex min-w-0 items-baseline justify-between gap-3">
+                <span className="min-w-0 truncate text-body-sm text-content-base">
+                  {c.candidate_record_type.replace(/_/g, " ")}
+                  <span className="ml-2 font-plex-mono text-caption text-content-subtle">
+                    {c.candidate_record_id.slice(0, 8)}
+                  </span>
                 </span>
-              </span>
-              {c.rejection_reason ? (
-                <span className="shrink-0 text-caption text-content-muted">
-                  {REASON_LABEL[c.rejection_reason] ?? c.rejection_reason.toLowerCase()}
-                </span>
-              ) : (
-                <span className="shrink-0 font-plex-mono text-caption tabular-nums text-content-muted">
-                  score {c.score}
-                </span>
-              )}
-            </div>
-          )}
+                {c.rejection_reason ? (
+                  <span className="shrink-0 text-caption text-content-muted">
+                    {REASON_LABEL[c.rejection_reason] ?? c.rejection_reason.toLowerCase()}
+                  </span>
+                ) : (
+                  <span className="shrink-0 font-plex-mono text-caption tabular-nums text-content-muted">
+                    score {c.score}
+                  </span>
+                )}
+              </div>
+            )
+          }
         />
       </div>
     )

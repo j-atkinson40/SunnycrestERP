@@ -144,6 +144,14 @@ class ReconciliationMatchCandidate(Base):
         UniqueConstraint("reconciliation_transaction_id", "candidate_record_type",
                          "candidate_record_id", name="uq_recon_candidate_per_txn"),
         CheckConstraint(
+            # Must match migration r152 (B-5). payment_group is a one-to-many
+            # combined candidate whose members live in rejection_detail; extend
+            # this set deliberately when a new candidate kind appears.
+            "candidate_record_type IN "
+            "('customer_payment', 'vendor_payment', 'invoice', 'vendor_bill', 'payment_group')",
+            name="ck_recon_candidate_record_type",
+        ),
+        CheckConstraint(
             # Must match the live CHECK: r148 seeded the first four; r149 (A-3)
             # added PERIOD_LOCKED — an exact match whose transaction date is in a
             # locked period is viable-but-gated (recorded, never auto-committed).

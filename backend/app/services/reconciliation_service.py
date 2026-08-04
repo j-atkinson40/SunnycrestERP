@@ -33,6 +33,7 @@ durable claim signal.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import timedelta
 from decimal import Decimal
@@ -142,6 +143,80 @@ def _try_claim(db: Session, company_id: str, payment_type: str, payment_id: str,
             "recording ALREADY_CLAIMED, not re-clearing",
             payment_type, payment_id, txn_id, company_id)
         return False
+
+
+def _try_claim_group(db: Session, company_id: str, members: list[dict],
+                     txn_id: str, run_id: str) -> bool:
+    """ALL-OR-NONE claim of N payments for one transaction (B-5 one-to-many).
+
+    Same savepoint + pre-flush discipline as `_try_claim`, but adds EVERY member
+    in ONE savepoint so a UNIQUE(payment_id) violation on ANY member rolls back
+    ALL of them — no partial claim, no half-reconciled transaction (which would
+    be worse than not supporting one-to-many at all). Returns True if the whole
+    group was claimed, False if any member was already taken.
+    """
+    from app.models.financial_account import ReconciliationPaymentClaim
+
+    db.flush()  # persist prior pending OUTSIDE the savepoint (see _try_claim)
+    try:
+        with db.begin_nested():
+            for m in members:
+                db.add(ReconciliationPaymentClaim(
+                    tenant_id=company_id, payment_type=m["type"], payment_id=m["id"],
+                    reconciliation_transaction_id=txn_id, reconciliation_run_id=run_id))
+            db.flush()
+        return True
+    except IntegrityError:
+        logger.warning(
+            "reconciliation: group claim lost for txn=%s (a member was already "
+            "claimed) — rolled back ALL members, not partial-claiming", txn_id)
+        return False
+
+
+def _payment_group_id(member_ids: list[str]) -> str:
+    """Deterministic group key over the SORTED member payment ids.
+
+    THIS IS NOT A ROW ID in any table — it resolves to nothing by design; the
+    members live in the candidate's `rejection_detail.members`. A reader seeing
+    this in `candidate_record_id` or (once accepted) `txn.matched_record_id` —
+    always paired with type `"payment_group"` — must read the members from
+    detail / the claim rows, NEVER look this up as a payment. The `grp_` prefix
+    makes that unmistakable. Reproducible: same member set → same key.
+    """
+    digest = hashlib.sha1(",".join(sorted(member_ids)).encode()).hexdigest()
+    return f"grp_{digest[:31]}"  # 4 + 31 = 35 chars <= String(36)
+
+
+def _find_payment_group(honest_pool, target: Decimal,
+                        claimed: set[tuple[str, str]]) -> list | None:
+    """Find an unclaimed subset of size 2 or 3 summing EXACTLY to `target`.
+
+    Hash-based (~O(N^2)), NOT the exponential general subset-sum: k=2 via a
+    complement lookup; k=3 via each pair + a complement lookup. Returns the first
+    subset found (as pool tuples) or None. k is capped at 3 — the largest bundle
+    this surfaces. Members must each be < target and not already claimed.
+    """
+    avail = [p for p in honest_pool if (p[0], p[1]) not in claimed and 0 < p[4] < target]
+    by_amt: dict[Decimal, list] = {}
+    for p in avail:
+        by_amt.setdefault(p[4], []).append(p)
+    n = len(avail)
+    # k = 2
+    for i in range(n):
+        need = target - avail[i][4]
+        for q in by_amt.get(need, []):
+            if q[1] != avail[i][1]:
+                return [avail[i], q]
+    # k = 3
+    for i in range(n):
+        for j in range(i + 1, n):
+            need = target - avail[i][4] - avail[j][4]
+            if need <= 0:
+                continue
+            for q in by_amt.get(need, []):
+                if q[1] not in (avail[i][1], avail[j][1]):
+                    return [avail[i], avail[j], q]
+    return None
 
 
 def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
@@ -399,8 +474,35 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
                                 "amount_delta_pct": str(pct.quantize(Decimal("0.0001"))),
                                 "days_diff": _days_diff(txn.transaction_date, rdate)}))
 
+        # ---- one-to-many: a single deposit covering N payments (B-5) ----------
+        # Only when no exact single payment matched. k<=3, EXACT total, over the
+        # unclaimed direction-honest pool; hash-based (~O(N^2)), not exponential.
+        # EXCLUSIONS — stated so nobody reads this as complete:
+        #   * a deposit covering 4+ payments will NOT surface (k capped at 3);
+        #   * a deposit with a fee/discount netted out (not an exact sum) will NOT
+        #     surface (exact-total only — the amount band does not compose here);
+        #   * same-customer scoping is unavailable (bank lines carry no
+        #     counterparty — the B-6 finding), so members can span customers.
+        # Review-only: a payment_group NEVER auto-commits (accepted stays a single
+        # payment or None); accepting it claims ALL members, all-or-none (B-5).
+        if not saw_exact_payment:
+            group = _find_payment_group(honest_pool, txn_amt, claimed)
+            if group is not None:
+                member_total = sum((m[4] for m in group), Decimal(0))
+                cands.append(dict(
+                    type="payment_group",
+                    id=_payment_group_id([m[1] for m in group]),
+                    score=BAND_MAX_SCORE,
+                    reason=None,
+                    detail={
+                        "members": [{"type": m[0], "id": m[1], "amount": str(m[4])} for m in group],
+                        "member_total": str(member_total),
+                        "member_count": len(group),
+                    },
+                ))
+
         # ---- commit the decision (period-lock gated, atomically claimed) ------
-        # `accepted` is always a PAYMENT here (invoices/bills never auto-commit).
+        # `accepted` is always a PAYMENT here (invoices/bills/groups never auto-commit).
         if accepted is not None:
             lock = PeriodLockService.check_date_in_locked_period(
                 db, company_id, txn.transaction_date)

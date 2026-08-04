@@ -57,3 +57,8 @@ tests/test_reconciliation_review_b3.py
 #   flag_id FK, ask→task_completed subscriber, hold→doc-attach hook, terminal→run
 #   summary (adjustment), same-exception reopen, no scheduler. —
 tests/test_reconciliation_flags_b4.py
+
+# — Books Review Arc B B-5: one-to-many producer (r152 CHECK) — subset-sum k<=3
+#   exact-total (exclusions), payment_group candidate, synthetic id, all-or-none
+#   accept (member pre-claimed → zero claims, txn stays unmatched). —
+tests/test_reconciliation_one_to_many_b5.py
