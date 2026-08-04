@@ -152,10 +152,28 @@ def cleanup_existing(db, tid):
     """Delete W2-marked rows in FK-safe order (idempotence). Runs (cascade txns)
     first, then payments, invoices, customers, financial account."""
     from sqlalchemy import text
+    from sqlalchemy import or_
+    from app.models.customer_payment import CustomerPaymentApplication
     # runs (cascade deletes reconciliation_transactions via ondelete=CASCADE)
     db.query(ReconciliationRun).filter(
         ReconciliationRun.tenant_id == tid, ReconciliationRun.csv_file_path == MARKER,
     ).delete(synchronize_session=False)
+    # customer_payment_applications reference payments AND invoices with no cascade.
+    # The Arc B Accept flow creates them (payment→invoice); the seed never does.
+    # Delete them before the payments/invoices they point at, or the FK bites.
+    w2_pay = [r[0] for r in db.query(CustomerPayment.id).filter(
+        CustomerPayment.company_id == tid,
+        CustomerPayment.reference_number.like(f"{PFX}%")).all()]
+    w2_inv = [r[0] for r in db.query(Invoice.id).filter(
+        Invoice.company_id == tid, Invoice.number.like(f"{PFX}%")).all()]
+    if w2_pay or w2_inv:
+        conds = []
+        if w2_pay:
+            conds.append(CustomerPaymentApplication.payment_id.in_(w2_pay))
+        if w2_inv:
+            conds.append(CustomerPaymentApplication.invoice_id.in_(w2_inv))
+        db.query(CustomerPaymentApplication).filter(or_(*conds)).delete(
+            synchronize_session=False)
     db.query(CustomerPayment).filter(
         CustomerPayment.company_id == tid,
         CustomerPayment.reference_number.like(f"{PFX}%"),

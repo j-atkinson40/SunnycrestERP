@@ -75,7 +75,15 @@ class CustomerPayment(Base):
 
 
 class CustomerPaymentApplication(Base):
-    """Maps a payment to one or more invoices."""
+    """Maps a payment to one or more invoices.
+
+    NOTE FOR TEST TEARDOWN: rows here reference customer_payments AND invoices
+    (no ondelete=CASCADE on either FK). Any marker-scoped teardown that deletes
+    W2/test payments or invoices must delete the applications FIRST. See
+    scripts/seed_reconciliation_test.cleanup_existing — the Arc B Accept flow
+    creates these rows (payment→invoice application), which the seed itself never
+    does, so the gap only surfaces after an Accept has run against the fixture.
+    """
 
     __tablename__ = "customer_payment_applications"
 
