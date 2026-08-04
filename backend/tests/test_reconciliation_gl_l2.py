@@ -244,6 +244,33 @@ class TestTheEntry:
         assert credit.credit_amount == Decimal("15.00")
         assert credit.debit_amount == Decimal("0.00")
 
+    def test_lines_carry_the_gl_account_number_and_name(self, db):
+        """The entry has to be READABLE, not merely balanced.
+
+        `JournalLineSpec` does no lookups by design — the caller denormalizes
+        account number + name onto each line. `/journal-entries` renders those
+        columns, and `year_end_close_agent` + `estimated_tax_prep_agent` match
+        on them. Booking with only `gl_account_id` produces an entry that is
+        arithmetically correct and shows a human two blank rows.
+
+        Caught by reading the first entry on testco rather than by a test —
+        which is why this test now exists.
+        """
+        co, user, acct, run, gl = _substrate(db)
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+
+        trigger_matching(run.id, current_user=user, db=db)
+        txn = db.query(ReconciliationTransaction).filter(
+            ReconciliationTransaction.reconciliation_run_id == run.id).one()
+
+        debit, credit = _lines_for(db, txn.journal_entry_id)
+        # Values come from `_substrate`'s mappings, stated as literals.
+        assert debit.gl_account_number == "6010"
+        assert debit.gl_account_name == "Bank Charges"
+        assert credit.gl_account_number == "1010"
+        assert credit.gl_account_name == "Operating Cash"
+
     def test_positive_amount_reverses_both_legs(self, db):
         """HAND MATH — a +15.00 fee REFUND is money IN, so the legs swap:
              line 1  DEBIT  Operating Cash 15.00

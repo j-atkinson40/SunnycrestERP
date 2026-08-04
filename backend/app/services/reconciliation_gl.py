@@ -104,13 +104,20 @@ def validate_gl_account(
 
 def _keyword_gl_with_reason(
     db: Session, company: Company, classification: str
-) -> tuple[str | None, str | None]:
-    """``(gl_account_id, blocked_reason)`` — exactly one is non-``None``.
+) -> tuple[TenantGLMapping | None, str | None]:
+    """``(mapping, blocked_reason)`` — exactly one is non-``None``.
 
     The reason-carrying core of ``resolve_keyword_gl_account``. L-1 logged the
     unmapped/dangling distinction and threw it away; L-2 needs it as a VALUE,
     because the Books Review card must tell the operator which of the two
     configuration actions to take. The log lines are unchanged.
+
+    Returns the whole validated ``TenantGLMapping`` rather than its id because
+    ``JournalLineSpec`` requires the caller to denormalize account number + name
+    onto each line (that module does no lookups). ``validate_gl_account`` has
+    already loaded the row, so carrying it costs nothing and passing only the id
+    would force a second query — or, as it did before this was caught, produce
+    lines with blank account columns.
     """
     if classification not in KEYWORD_CLASSIFICATIONS:
         # A classification the map has no business answering for — treat as
@@ -132,15 +139,16 @@ def _keyword_gl_with_reason(
             company.id, classification, gl_id,
         )
         return None, BLOCK_KEYWORD_GL_DANGLING
-    return validated.id, None
+    return validated, None
 
 
 def _contra_gl_with_reason(
     db: Session, financial_account: FinancialAccount
-) -> tuple[str | None, str | None]:
-    """``(gl_account_id, blocked_reason)`` — exactly one is non-``None``. The
+) -> tuple[TenantGLMapping | None, str | None]:
+    """``(mapping, blocked_reason)`` — exactly one is non-``None``. The
     reason-carrying core of ``resolve_contra_gl_account``; see
-    ``_keyword_gl_with_reason`` for why the distinction is now a value."""
+    ``_keyword_gl_with_reason`` for why the distinction is now a value, and why
+    the mapping travels rather than the id alone."""
     gl_id = financial_account.gl_account_id
     if not gl_id:
         logger.info(
@@ -156,7 +164,7 @@ def _contra_gl_with_reason(
             financial_account.id, gl_id,
         )
         return None, BLOCK_CONTRA_GL_DANGLING
-    return validated.id, None
+    return validated, None
 
 
 def resolve_keyword_gl_account(
@@ -169,8 +177,8 @@ def resolve_keyword_gl_account(
     no longer resolves) in the log, because they need different operator action;
     both fail closed.
     """
-    gl_id, _reason = _keyword_gl_with_reason(db, company, classification)
-    return gl_id
+    mapping, _reason = _keyword_gl_with_reason(db, company, classification)
+    return mapping.id if mapping is not None else None
 
 
 def resolve_contra_gl_account(
@@ -182,8 +190,8 @@ def resolve_contra_gl_account(
     refuses the booking (row → exception, or accept rejected), never a one-legged
     or silent post.
     """
-    gl_id, _reason = _contra_gl_with_reason(db, financial_account)
-    return gl_id
+    mapping, _reason = _contra_gl_with_reason(db, financial_account)
+    return mapping.id if mapping is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +205,22 @@ class KeywordPosting:
 
     Its existence is the licence to clear the row. There is no partial value —
     a posting either has both legs or was never constructed.
+
+    Each leg carries the GL account's number + name alongside its id because
+    ``JournalLineSpec`` requires the caller to denormalize them onto the line
+    (``journal_entry_service`` does no lookups). Those columns are what
+    ``/journal-entries`` renders and what the year-end-close and estimated-tax
+    agents match on; omitting them produces an entry that is arithmetically
+    correct and humanly unreadable.
     """
 
     classification: str
     keyword_gl_account_id: str
+    keyword_gl_account_number: str | None
+    keyword_gl_account_name: str | None
     contra_gl_account_id: str
+    contra_gl_account_number: str | None
+    contra_gl_account_name: str | None
 
 
 def resolve_keyword_posting(
@@ -244,8 +263,12 @@ def resolve_keyword_posting(
 
     return KeywordPosting(
         classification=classification,
-        keyword_gl_account_id=keyword_gl,
-        contra_gl_account_id=contra_gl,
+        keyword_gl_account_id=keyword_gl.id,
+        keyword_gl_account_number=keyword_gl.account_number,
+        keyword_gl_account_name=keyword_gl.account_name,
+        contra_gl_account_id=contra_gl.id,
+        contra_gl_account_number=contra_gl.account_number,
+        contra_gl_account_name=contra_gl.account_name,
     ), None
 
 
@@ -273,33 +296,35 @@ def book_keyword_entry(
     amount_dec = Decimal(str(amount))
     magnitude = abs(amount_dec)
 
+    def _keyword_leg(**side) -> JournalLineSpec:
+        return JournalLineSpec(
+            gl_account_id=posting.keyword_gl_account_id,
+            gl_account_number=posting.keyword_gl_account_number,
+            gl_account_name=posting.keyword_gl_account_name,
+            description=description,
+            **side,
+        )
+
+    def _contra_leg(**side) -> JournalLineSpec:
+        return JournalLineSpec(
+            gl_account_id=posting.contra_gl_account_id,
+            gl_account_number=posting.contra_gl_account_number,
+            gl_account_name=posting.contra_gl_account_name,
+            description=description,
+            **side,
+        )
+
     if amount_dec < 0:
         # Money out: the expense/liability side takes the debit, cash the credit.
         lines = [
-            JournalLineSpec(
-                gl_account_id=posting.keyword_gl_account_id,
-                debit_amount=magnitude,
-                description=description,
-            ),
-            JournalLineSpec(
-                gl_account_id=posting.contra_gl_account_id,
-                credit_amount=magnitude,
-                description=description,
-            ),
+            _keyword_leg(debit_amount=magnitude),
+            _contra_leg(credit_amount=magnitude),
         ]
     else:
         # Money in: cash takes the debit, the keyword account the credit.
         lines = [
-            JournalLineSpec(
-                gl_account_id=posting.contra_gl_account_id,
-                debit_amount=magnitude,
-                description=description,
-            ),
-            JournalLineSpec(
-                gl_account_id=posting.keyword_gl_account_id,
-                credit_amount=magnitude,
-                description=description,
-            ),
+            _contra_leg(debit_amount=magnitude),
+            _keyword_leg(credit_amount=magnitude),
         ]
 
     # Own numbering scheme, per journal_entry_service's stated discipline that
