@@ -86,6 +86,13 @@ class ActionConfig(BaseModel):
     # Structured reason enum (if present, UI shows a dropdown).
     reason_options: list[str] | None = None
     confirmation_required: bool = False
+    # INTERACTIVE actions need input BEFORE dispatch (a picker, a form) — so the
+    # display component collects the payload and calls apply_action itself. The
+    # action still lives here (apply_action validates action_id against the
+    # palette), but the immediate-dispatch TriageActionPalette SKIPS rendering it
+    # (rendering it would fire the handler with an empty payload). See STATE:
+    # "immediate-dispatch actions belong in the palette; input-first in the display."
+    interactive: bool = False
     # Backend handler key — resolved to a callable in action_handlers.py.
     # Must exist in the handler registry at load time or the queue
     # config is rejected.

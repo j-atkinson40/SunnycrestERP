@@ -38,10 +38,15 @@ export function TriageActionPalette({ actions, onAct, disabled }: Props) {
   const [pending, setPending] = useState<TriageActionConfig | null>(null);
   const [reason, setReason] = useState("");
 
+  // Snooze is handled by FlowControls' preset panel; interactive actions (Flag)
+  // are driven by the display component (they open a picker before dispatch), so
+  // the immediate-dispatch palette neither renders nor keybinds them.
+  const shown = actions.filter(
+    (a) => a.action_type !== "snooze" && !a.interactive,
+  );
+
   const trigger = (action: TriageActionConfig) => {
     if (disabled) return;
-    // Snooze is handled by FlowControls' preset panel, not the palette.
-    if (action.action_type === "snooze") return;
     if (action.requires_reason || action.confirmation_required) {
       setPending(action);
       setReason("");
@@ -50,7 +55,7 @@ export function TriageActionPalette({ actions, onAct, disabled }: Props) {
     onAct(action);
   };
 
-  useTriageKeyboard(actions, trigger, { enabled: !pending && !disabled });
+  useTriageKeyboard(shown, trigger, { enabled: !pending && !disabled });
 
   const onConfirm = () => {
     if (!pending) return;
@@ -62,8 +67,7 @@ export function TriageActionPalette({ actions, onAct, disabled }: Props) {
 
   return (
     <div className="flex flex-wrap gap-2 border-t pt-4">
-      {actions.map((a) => {
-        if (a.action_type === "snooze") return null; // handled elsewhere
+      {shown.map((a) => {
         return (
           <Button
             key={a.action_id}

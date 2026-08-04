@@ -48,6 +48,9 @@ export interface TriageActionConfig {
   requires_reason: boolean;
   reason_options?: string[] | null;
   confirmation_required: boolean;
+  // Interactive actions (need input before dispatch) are driven by the display
+  // component, not the immediate-dispatch palette — the palette skips them.
+  interactive?: boolean;
   handler: string;
   playwright_step_id?: string | null;
   workflow_id?: string | null;

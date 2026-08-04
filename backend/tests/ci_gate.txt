@@ -62,3 +62,8 @@ tests/test_reconciliation_flags_b4.py
 #   exact-total (exclusions), payment_group candidate, synthetic id, all-or-none
 #   accept (member pre-claimed → zero claims, txn stays unmatched). —
 tests/test_reconciliation_one_to_many_b5.py
+
+# — Books Review Arc B B-6: end-to-end through the assembled engine — queue builds
+#   + candidates reach extras; both card forms have data; Accept (single + group)
+#   leaves the queue + queue_count agrees; Flag ask→Task→park→complete→return. —
+tests/test_books_review_e2e_b6.py

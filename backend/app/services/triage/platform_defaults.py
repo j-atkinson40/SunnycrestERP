@@ -1196,12 +1196,22 @@ _reconciliation_review_triage = TriageQueueConfig(
             handler="reconciliation.accept",
             required_permission="invoice.approve",
         ),
-        # Flag is DISPLAY-owned (B-4.5): it opens a destination picker + recipient
-        # search (a modal flow) before dispatching reconciliation.flag with a
-        # payload — an interactive action the immediate-dispatch palette can't
-        # drive. It renders in ReconciliationExceptionDisplay on BOTH card forms,
-        # so the visible action set stays constant (Accept / Flag / Skip). Revise
-        # is still deferred (likely only meaningful on the coding card — see STATE).
+        # Flag is INTERACTIVE (B-4.5): it opens a destination picker + recipient
+        # search before dispatching, so the display component (not the palette)
+        # drives it. It MUST stay in the palette so apply_action validates
+        # action_id="flag", but interactive=True makes TriageActionPalette skip
+        # rendering it (rendering would immediate-dispatch with an empty payload).
+        # The display renders it on BOTH card forms → visible set stays constant
+        # (Accept / Flag / Skip). Revise still deferred (see STATE).
+        ActionConfig(
+            action_id="flag",
+            label="Flag",
+            action_type=ActionType.CUSTOM,
+            icon="Flag",
+            interactive=True,
+            handler="reconciliation.flag",
+            required_permission="invoice.approve",
+        ),
         ActionConfig(
             action_id="skip",
             label="Skip",
