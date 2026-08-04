@@ -37,6 +37,27 @@ function codingItem(): TriageItem {
   } as unknown as TriageItem
 }
 
+/**
+ * L-2 CONFIG item: the keyword ladder classified it, but there is nowhere to
+ * book it. Note `candidates: []` — the SAME shape that routes an ordinary item
+ * to the coding card. The classification is the only thing separating them,
+ * which is exactly why these tests exist.
+ */
+function configItem(blockedReason = "keyword_gl_unmapped"): TriageItem {
+  return {
+    entity_type: "reconciliation_exception",
+    entity_id: "txn-9",
+    title: "MONTHLY SERVICE CHARGE",
+    subtitle: "2026-06-16",
+    extras: {
+      amount: "-15.00",
+      candidates: [],
+      keyword_classification: "bank_fee",
+      blocked_reason: blockedReason,
+    },
+  } as unknown as TriageItem
+}
+
 beforeEach(() => mockAct.mockReset().mockResolvedValue(undefined))
 afterEach(cleanup)
 
@@ -54,6 +75,69 @@ describe("ReconciliationExceptionDisplay — form derives from candidate presenc
     render(<ReconciliationExceptionDisplay item={codingItem()} />)
     expect(screen.getByTestId("reconciliation-coding-card")).toBeInTheDocument()
     expect(screen.queryByTestId("reconciliation-ranked-card")).not.toBeInTheDocument()
+  })
+})
+
+describe("ReconciliationExceptionDisplay — L-2 CONFIG card (the third form)", () => {
+  it("does NOT fall through to the coding card when the row is classified", () => {
+    // The regression this whole form exists to prevent: a blocked keyword row
+    // has zero candidates, so without the classification check it would render
+    // as a coding card and ask the operator to code a row the system has
+    // already identified.
+    render(<ReconciliationExceptionDisplay item={configItem()} />)
+    expect(screen.getByTestId("reconciliation-config-card")).toBeInTheDocument()
+    expect(screen.queryByTestId("reconciliation-coding-card")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("reconciliation-ranked-card")).not.toBeInTheDocument()
+  })
+
+  it("names what the row is and what configuration is missing", () => {
+    render(<ReconciliationExceptionDisplay item={configItem()} />)
+    expect(screen.getByText("Bank fee")).toBeInTheDocument()
+    expect(
+      screen.getByText("No GL account is configured for bank fees.")
+    ).toBeInTheDocument()
+    expect(screen.getByText(/reconciliation GL settings/)).toBeInTheDocument()
+  })
+
+  it("offers no Accept — a row that cannot post cannot be accepted", () => {
+    // Fail-closed at the UI as well as the service. Flag and Skip remain
+    // available from the palette; "ask someone" is the right move when the fix
+    // belongs to an administrator.
+    render(<ReconciliationExceptionDisplay item={configItem()} />)
+    expect(screen.queryByText("Accept coding")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Coding")).not.toBeInTheDocument()
+  })
+
+  it("distinguishes a dangling mapping from an absent one", () => {
+    // Different operator action — re-map vs configure — so different copy.
+    render(<ReconciliationExceptionDisplay item={configItem("keyword_gl_dangling")} />)
+    expect(
+      screen.getByText("The GL account configured for bank fees is no longer active.")
+    ).toBeInTheDocument()
+  })
+
+  it("names the bank account, not the keyword map, when the contra leg is missing", () => {
+    render(<ReconciliationExceptionDisplay item={configItem("contra_gl_unset")} />)
+    expect(
+      screen.getByText("This bank account has no GL cash account set.")
+    ).toBeInTheDocument()
+  })
+
+  it("says a locked period is not a configuration gap", () => {
+    render(<ReconciliationExceptionDisplay item={configItem("period_locked")} />)
+    expect(
+      screen.getByText("The accounting period for this date is closed.")
+    ).toBeInTheDocument()
+    expect(screen.getByText(/not a configuration gap/)).toBeInTheDocument()
+  })
+
+  it("still renders a truthful card for an unrecognised reason", () => {
+    render(<ReconciliationExceptionDisplay item={configItem("something_new")} />)
+    expect(screen.getByTestId("reconciliation-config-card")).toBeInTheDocument()
+    expect(screen.getByText("Bank fee")).toBeInTheDocument()
+    expect(
+      screen.getByText("This item could not be posted to the ledger.")
+    ).toBeInTheDocument()
   })
 })
 

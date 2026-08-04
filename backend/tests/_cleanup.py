@@ -67,6 +67,14 @@ _PURGE_STATEMENTS = [
     "DELETE FROM reconciliation_transactions WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_adjustments WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_runs WHERE tenant_id = ANY(:ids)",
+    # r154 (Ledger Posting L-2): keyword rows now book a draft JE, so journal
+    # entries are part of any tenant subtree that ran matching. MUST follow
+    # reconciliation_transactions — its journal_entry_id FK has NO ON DELETE
+    # clause (deliberately: a cleared row must not be silently unlinked from the
+    # entry it booked), so the entries cannot go until the transactions have.
+    # Lines first, then entries — children-first, same as the block above.
+    "DELETE FROM journal_entry_lines WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM journal_entries WHERE tenant_id = ANY(:ids)",
     # Plaid substrate (children-first). bank_accounts.financial_account_id references
     # financial_accounts, so these precede it; reconciliation_transactions.bank_transaction_id
     # is ondelete=SET NULL and already deleted above.

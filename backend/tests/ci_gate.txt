@@ -100,3 +100,11 @@ tests/test_queue_count_membership_c5.py
 #   unmapped/dangling/foreign, and update_account no longer nulls an omitted field
 #   (C-1 hasattr fix) while honoring an explicit null. —
 tests/test_reconciliation_gl_l1.py
+
+# — Ledger Posting arc L-2: keyword rows book a balanced draft JE (r154) or do not
+#   clear. The cleared_total arithmetic is hand-pinned BOTH ways (configured →
+#   clears, unconfigured → clears nothing, partial → per-row), the ledger's cash
+#   leg is netted against platform_cleared_balance, the four blocked reasons stay
+#   distinct, and a blocked keyword row reaches Books Review as a CONFIG card
+#   rather than falling through to the coding card. —
+tests/test_reconciliation_gl_l2.py

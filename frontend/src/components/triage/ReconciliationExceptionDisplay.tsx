@@ -62,6 +62,63 @@ function readCandidates(item: TriageItem): ReconciliationCandidate[] {
   return Array.isArray(raw) ? (raw as ReconciliationCandidate[]) : []
 }
 
+function readString(item: TriageItem, key: string): string | null {
+  const raw = itemField(item, key)
+  return typeof raw === "string" && raw.length > 0 ? raw : null
+}
+
+/**
+ * L-2 CONFIG card copy.
+ *
+ * This is the third situation, and it is NOT an absent-candidate coding case.
+ * The system knows exactly what the row is — the keyword ladder classified it —
+ * and only lacks somewhere to book it. So the card names the class, names the
+ * missing configuration, and says who fixes it. It never asks the operator to
+ * code the row: coding it one at a time is the wrong unit of work when one
+ * settings change unblocks every row of that class at once.
+ */
+const CLASSIFICATION_LABEL: Record<string, string> = {
+  bank_fee: "Bank fee",
+  payroll: "Payroll",
+  nsf: "Returned item (NSF)",
+}
+
+/** Lowercase form for mid-sentence use ("no GL account for bank fees"). */
+const CLASSIFICATION_PLURAL: Record<string, string> = {
+  bank_fee: "bank fees",
+  payroll: "payroll",
+  nsf: "returned items",
+}
+
+interface BlockedCopy {
+  headline: (plural: string) => string
+  fix: string
+}
+
+const BLOCKED_COPY: Record<string, BlockedCopy> = {
+  keyword_gl_unmapped: {
+    headline: (plural) => `No GL account is configured for ${plural}.`,
+    fix: "An administrator sets this once in the reconciliation GL settings. Every transaction of this kind will post automatically from then on.",
+  },
+  keyword_gl_dangling: {
+    headline: (plural) =>
+      `The GL account configured for ${plural} is no longer active.`,
+    fix: "An administrator re-maps it in the reconciliation GL settings. The account it points at has been deactivated or removed.",
+  },
+  contra_gl_unset: {
+    headline: () => "This bank account has no GL cash account set.",
+    fix: "An administrator sets the GL account on the bank account itself. Without it there is no offsetting side for the entry.",
+  },
+  contra_gl_dangling: {
+    headline: () => "This bank account's GL cash account is no longer active.",
+    fix: "An administrator re-maps the GL account on the bank account. The account it points at has been deactivated or removed.",
+  },
+  period_locked: {
+    headline: () => "The accounting period for this date is closed.",
+    fix: "This is not a configuration gap — nothing will post into a closed period. Reopen the period or leave the item until it is reconciled elsewhere.",
+  },
+}
+
 interface GroupMember {
   type: string
   id: string
@@ -133,6 +190,26 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
   const { act, status } = useTriageSession()
   const candidates = readCandidates(item)
   const amount = itemField(item, "amount")
+  // L-2: presence of a classification is what selects the CONFIG form. It is
+  // checked BEFORE candidate count, because a blocked keyword row also has zero
+  // candidates and would otherwise fall through to the coding card — asking the
+  // operator to code a row the system has already identified.
+  const keywordClassification = readString(item, "keyword_classification")
+  const blockedReason = readString(item, "blocked_reason")
+  const classificationLabel =
+    (keywordClassification && CLASSIFICATION_LABEL[keywordClassification]) ??
+    keywordClassification ??
+    ""
+  const classificationPlural =
+    (keywordClassification && CLASSIFICATION_PLURAL[keywordClassification]) ??
+    "transactions of this kind"
+  // An unrecognised reason still renders a truthful card rather than an empty
+  // one: we know it did not post and we know what it is, so say that much.
+  const blockedCopy: BlockedCopy = (blockedReason ? BLOCKED_COPY[blockedReason] : undefined) ?? {
+    headline: () => "This item could not be posted to the ledger.",
+    fix: "An administrator needs to check the reconciliation GL configuration for this account.",
+  }
+  const blockedHeadline = blockedCopy.headline(classificationPlural)
   const [coding, setCoding] = useState("")
   const [flagOpen, setFlagOpen] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -181,8 +258,27 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
     </div>
   )
 
-  const body =
-    candidates.length === 0 ? (
+  const body = keywordClassification ? (
+    // CONFIG card — the row is classified; it has nowhere to book.
+    //
+    // Deliberately offers NO Accept. A row that cannot post cannot honestly be
+    // accepted, and the fail-closed discipline that governs the backend should
+    // not be quietly undone at the UI. Flag and Skip remain available below:
+    // "ask someone" is exactly the right move when the fix belongs to an admin.
+    <div
+      className="rounded-lg border border-border-subtle bg-surface-elevated p-4 shadow-level-1"
+      data-testid="reconciliation-config-card"
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="rounded-full bg-accent-subtle px-2 py-0.5 text-caption font-medium text-content-strong">
+          {classificationLabel}
+        </span>
+        <span className="text-caption text-content-subtle">not posted</span>
+      </div>
+      <p className="mt-2 text-body-sm text-content-base">{blockedHeadline}</p>
+      <p className="mt-1 text-caption text-content-muted">{blockedCopy.fix}</p>
+    </div>
+  ) : candidates.length === 0 ? (
       // CODING card
       <div
         className="rounded-lg border border-border-subtle bg-surface-elevated p-4 shadow-level-1"

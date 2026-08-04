@@ -1736,6 +1736,13 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
     Candidates ride each row (Option A) so the card derives its form (ranked vs
     coding) from their presence WITHOUT a second fetch. Near-misses are included
     as low-ranked candidates carrying their rejection reason + measured value.
+
+    L-2 adds a THIRD form. A keyword row that the ladder classified but could
+    not book lands here with `keyword_classification` + `blocked_reason` set and
+    no candidates. It must NOT fall through to the coding card: the system knows
+    exactly what the row is, so asking the operator to code it item by item asks
+    the wrong question — the fix is one configuration change that unblocks every
+    row of that class at once.
     """
     from app.models.financial_account import ReconciliationMatchCandidate
 
@@ -1771,8 +1778,14 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
             "transaction_date": t.transaction_date.isoformat() if t.transaction_date else None,
             "transaction_type": t.transaction_type,
             "candidates": cands_by_txn.get(t.id, []),
+            # L-2 third card form. Both NULL on ranked/coding items; non-NULL
+            # means the ladder KNOWS what this row is and only lacks somewhere
+            # to book it. Read off the exception row already in hand — no extra
+            # query, so the C-arc's count/build query budget is untouched.
+            "keyword_classification": e.keyword_classification,
+            "blocked_reason": e.blocked_reason,
         }
-        for (t, _e) in rows
+        for (t, e) in rows
     ]
 
 
