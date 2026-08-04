@@ -75,6 +75,9 @@ _PURGE_STATEMENTS = [
     "DELETE FROM plaid_category_mappings WHERE tenant_id = ANY(:ids)",
     "DELETE FROM plaid_items WHERE tenant_id = ANY(:ids)",
     "DELETE FROM financial_accounts WHERE tenant_id = ANY(:ids)",
+    # tenant_gl_mappings: financial_accounts.gl_account_id FK's here (r153, Ledger
+    # Posting arc), so it MUST follow financial_accounts and precede companies.
+    "DELETE FROM tenant_gl_mappings WHERE tenant_id = ANY(:ids)",
     "DELETE FROM customer_payment_applications WHERE payment_id IN (SELECT id FROM customer_payments WHERE company_id = ANY(:ids))",
     "DELETE FROM customer_payments WHERE company_id = ANY(:ids)",
     "DELETE FROM vendor_payments WHERE company_id = ANY(:ids)",

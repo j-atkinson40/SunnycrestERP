@@ -187,13 +187,21 @@ def update_account(
     ).first()
     if not acct:
         raise HTTPException(404, "Account not found")
-    for field in ["account_type", "account_name", "institution_name", "last_four", "gl_account_id", "is_primary", "statement_closing_day"]:
-        if hasattr(body, field):
-            setattr(acct, field, getattr(body, field))
-    if body.credit_limit is not None:
-        acct.credit_limit = Decimal(str(body.credit_limit))
-    if body.is_active is not None:
-        acct.is_active = body.is_active
+    # exclude_unset: apply ONLY the fields the client actually sent. hasattr on a
+    # Pydantic model is always true, so the prior fixed-field loop silently nulled
+    # every OMITTED optional field (the C-1 signature: a silent write of the wrong
+    # value, no error). gl_account_id now carries the bank contra account — a
+    # partial PATCH that nulled it would unmap the account and every subsequent
+    # reconciliation JE would refuse to book. (Ledger Posting arc L-1.)
+    changes = body.model_dump(exclude_unset=True)
+    for field in ("account_type", "account_name", "institution_name", "last_four",
+                  "gl_account_id", "is_primary", "statement_closing_day", "is_active"):
+        if field in changes:
+            setattr(acct, field, changes[field])
+    if "credit_limit" in changes:
+        acct.credit_limit = (
+            Decimal(str(changes["credit_limit"])) if changes["credit_limit"] is not None else None
+        )
     db.commit()
     return {"status": "updated"}
 

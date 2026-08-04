@@ -94,3 +94,9 @@ tests/test_queue_count_membership_c4.py
 #   reconstructed pre-C-1 count (materialize + snooze) per queue;
 #   email_unclassified is the documented uncapped-vs-capped exception at >50. —
 tests/test_queue_count_membership_c5.py
+
+# — Ledger Posting arc L-1: contra config — r153 FK (financial_accounts.gl_account_id
+#   → tenant_gl_mappings), keyword + contra GL resolvers fail closed on
+#   unmapped/dangling/foreign, and update_account no longer nulls an omitted field
+#   (C-1 hasattr fix) while honoring an explicit null. —
+tests/test_reconciliation_gl_l1.py
