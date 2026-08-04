@@ -89,3 +89,8 @@ tests/test_queue_count_membership_c3.py
 #   queue_count (anti-divergence), queue_ids subset + configs= reuse, and issues
 #   materially fewer SQL statements than the per-queue loop (floor hoisted). —
 tests/test_queue_count_membership_c4.py
+
+# — Queue-count perf C-5: new count preserves the OLD path's numbers — new ==
+#   reconstructed pre-C-1 count (materialize + snooze) per queue;
+#   email_unclassified is the documented uncapped-vs-capped exception at >50. —
+tests/test_queue_count_membership_c5.py
