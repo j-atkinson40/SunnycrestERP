@@ -49,6 +49,7 @@ from app.services.triage.embedded_actions import (
 )
 from app.services.triage.engine import (
     apply_action,
+    counts_for_user,
     end_session,
     get_session,
     next_item,
@@ -100,6 +101,7 @@ __all__ = [
     "end_session",
     "next_item",
     "queue_count",
+    "counts_for_user",
     "apply_action",
     "snooze_item",
     "sweep_expired_snoozes",

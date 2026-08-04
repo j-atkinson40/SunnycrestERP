@@ -166,12 +166,19 @@ def list_queues_for_user(
     if getattr(user, "is_super_admin", False):
         return [c for c in all_configs if c.enabled]
     from app.models.company import Company
-    from app.services.permission_service import user_has_permission
+    from app.services.permission_service import get_user_permissions
 
     company = (
         db.query(Company).filter(Company.id == user.company_id).first()
     )
     company_vertical = getattr(company, "vertical", None) if company else None
+
+    # Resolve the user's effective permission set ONCE, not once per queue ×
+    # permission (a fan-out floor). `p in get_user_permissions(...)` is
+    # equivalent to `user_has_permission(user, db, p)`: get_user_permissions
+    # returns the full permission set for a system-admin role, so the membership
+    # test passes for admins exactly as the per-perm helper did.
+    perm_set = get_user_permissions(user, db)
 
     out: list[TriageQueueConfig] = []
     for cfg in all_configs:
@@ -186,10 +193,7 @@ def list_queues_for_user(
             db, user.company_id, cfg.required_extension
         ):
             continue
-        all_perms_granted = all(
-            user_has_permission(user, db, p) for p in (cfg.permissions or [])
-        )
-        if not all_perms_granted:
+        if not all(p in perm_set for p in (cfg.permissions or [])):
             continue
         out.append(cfg)
     return out

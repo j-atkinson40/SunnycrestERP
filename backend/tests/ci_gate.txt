@@ -84,3 +84,8 @@ tests/test_queue_count_membership_c2.py
 #   proof); count is exact + uncapped while the build stays display-capped at 50
 #   (so count != len(build) at >50, by design); display shape + ordering. —
 tests/test_queue_count_membership_c3.py
+
+# — Queue-count perf C-4: batched counts_for_user — equivalent to per-queue
+#   queue_count (anti-divergence), queue_ids subset + configs= reuse, and issues
+#   materially fewer SQL statements than the per-queue loop (floor hoisted). —
+tests/test_queue_count_membership_c4.py

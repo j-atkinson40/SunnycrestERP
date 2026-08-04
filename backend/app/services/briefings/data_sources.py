@@ -251,26 +251,27 @@ def _collect_queue_summaries(
     out: list[dict[str, Any]] = []
     try:
         from app.services.triage import (
+            counts_for_user,
             list_queues_for_user,
-            queue_count,
         )
     except ImportError:
         return out
 
     try:
         configs = list_queues_for_user(db, user=user)
+        # Batched — one gate pass (reused via `configs=`) + one COUNT per queue,
+        # instead of a per-queue queue_count that re-resolves config + snooze N
+        # times. See engine.counts_for_user.
+        counts = counts_for_user(db, user=user, configs=configs)
     except Exception as e:
-        logger.debug("list_queues_for_user failed: %s", e)
+        logger.debug("counts_for_user failed: %s", e)
         return out
 
     # Seeded default — 30 sec/item. Refined via telemetry post-arc.
     seconds_per_item = 30.0
 
     for cfg in configs:
-        try:
-            n = queue_count(db, user=user, queue_id=cfg.queue_id)
-        except Exception:
-            n = 0
+        n = counts.get(cfg.queue_id, 0)
         if n <= 0:
             # Empty queues still surface so users see "all clear" context,
             # but we filter the zeros to keep the prompt compact.

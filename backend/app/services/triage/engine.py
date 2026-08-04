@@ -170,6 +170,33 @@ def next_item(
     raise NoPendingItems("No pending items in queue")
 
 
+def _count_config(db: Session, *, user: User, config: TriageQueueConfig) -> int:
+    """Pending-count core for a single (already-resolved, already-access-checked)
+    queue config. Shared by `queue_count` (single) and `counts_for_user`
+    (batched) so the two cannot count differently.
+
+    Fast path — direct-query queues with a membership seam count via COUNT(*)
+    over the shared membership query + snooze anti-join, never materializing
+    rows (no denormalization N+1). Same expression the row builder uses, so the
+    count cannot disagree with the build. Fallback — inline / saved-view-backed
+    queues (modes 2 + 3) materialize + count in Python.
+    """
+    mq_fn = (
+        _MEMBERSHIP_QUERIES.get(config.source_direct_query_key)
+        if config.source_direct_query_key
+        else None
+    )
+    if mq_fn is not None:
+        return _count_membership(
+            db, user=user, queue_id=config.queue_id, mq=mq_fn(db, user)
+        )
+    snoozed_ids = _active_snooze_entity_ids(
+        db, user_id=user.id, queue_id=config.queue_id
+    )
+    items = _execute_queue_saved_view(db, config=config, user=user)
+    return sum(1 for r in items if r.get("id") not in snoozed_ids)
+
+
 def queue_count(
     db: Session, *, user: User, queue_id: str
 ) -> int:
@@ -179,28 +206,46 @@ def queue_count(
         db, company_id=user.company_id, queue_id=queue_id
     )
     _check_user_can_access_queue(db, user, config)
+    return _count_config(db, user=user, config=config)
 
-    # Fast path — direct-query queues with a membership seam count via
-    # COUNT(*) over the shared membership query + snooze anti-join, never
-    # materializing rows (no denormalization N+1). Same expression the row
-    # builder uses, so the count cannot disagree with the build.
-    mq_fn = (
-        _MEMBERSHIP_QUERIES.get(config.source_direct_query_key)
-        if config.source_direct_query_key
-        else None
-    )
-    if mq_fn is not None:
-        return _count_membership(
-            db, user=user, queue_id=queue_id, mq=mq_fn(db, user)
-        )
 
-    # Fallback — inline / saved-view-backed queues (modes 2 + 3) still
-    # materialize + count in Python (out of scope for this arc).
-    snoozed_ids = _active_snooze_entity_ids(
-        db, user_id=user.id, queue_id=queue_id
-    )
-    items = _execute_queue_saved_view(db, config=config, user=user)
-    return sum(1 for r in items if r.get("id") not in snoozed_ids)
+def counts_for_user(
+    db: Session,
+    *,
+    user: User,
+    configs: list[TriageQueueConfig] | None = None,
+    queue_ids: list[str] | None = None,
+) -> dict[str, int]:
+    """Batched pending counts for every queue the user can see (or the subset
+    named by `queue_ids`) — the fan-out entry point for briefings, the spaces
+    sidebar, and MoC job cards.
+
+    Hoists the per-render floor out of the per-queue path: the queue configs and
+    the user's permission set are resolved ONCE via `list_queues_for_user`
+    (which also applies the enabled/vertical/extension/permission gates), not
+    once per queue. Each queue then costs a single COUNT (membership fast path;
+    snooze folded in as a correlated anti-join). So a 12-queue fan-out is ~12
+    counts + a small fixed constant, not 12 × (config + permission + count).
+
+    Pass `configs` to reuse a `list_queues_for_user` result the caller already
+    has (avoids a second gate pass). Returns {queue_id: pending_count}; queues
+    the user can't access are simply absent.
+    """
+    if configs is None:
+        configs = registry.list_queues_for_user(db, user=user)
+    if queue_ids is not None:
+        want = set(queue_ids)
+        configs = [c for c in configs if c.queue_id in want]
+    out: dict[str, int] = {}
+    for cfg in configs:
+        try:
+            out[cfg.queue_id] = _count_config(db, user=user, config=cfg)
+        except Exception:
+            logger.exception(
+                "counts_for_user: count failed for queue %s", cfg.queue_id
+            )
+            out[cfg.queue_id] = 0
+    return out
 
 
 # ── Action application ──────────────────────────────────────────────
@@ -1791,6 +1836,7 @@ __all__ = [
     "end_session",
     "next_item",
     "queue_count",
+    "counts_for_user",
     "apply_action",
     "snooze_item",
     "sweep_expired_snoozes",
