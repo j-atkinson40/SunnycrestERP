@@ -36,9 +36,10 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, NamedTuple
 
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, exists
+from sqlalchemy.orm import Query, Session
 
 from app.models.triage import TriageSession, TriageSnooze
 from app.models.user import User
@@ -178,6 +179,23 @@ def queue_count(
         db, company_id=user.company_id, queue_id=queue_id
     )
     _check_user_can_access_queue(db, user, config)
+
+    # Fast path — direct-query queues with a membership seam count via
+    # COUNT(*) over the shared membership query + snooze anti-join, never
+    # materializing rows (no denormalization N+1). Same expression the row
+    # builder uses, so the count cannot disagree with the build.
+    mq_fn = (
+        _MEMBERSHIP_QUERIES.get(config.source_direct_query_key)
+        if config.source_direct_query_key
+        else None
+    )
+    if mq_fn is not None:
+        return _count_membership(
+            db, user=user, queue_id=queue_id, mq=mq_fn(db, user)
+        )
+
+    # Fallback — inline / saved-view-backed queues (modes 2 + 3) still
+    # materialize + count in Python (out of scope for this arc).
     snoozed_ids = _active_snooze_entity_ids(
         db, user_id=user.id, queue_id=queue_id
     )
@@ -613,10 +631,56 @@ def sweep_expired_snoozes(db: Session) -> int:
 # returns a list of dicts shaped like saved-view rows (must include
 # "id" + whatever fields the queue's item_display references).
 #
+# THE MEMBERSHIP SEAM (queue-count perf arc):
+#   A queue's membership — which rows belong — is expressed ONCE as a
+#   `_mq_<name>(db, user) -> MembershipQuery`. Two consumers share it:
+#     - the row builder `_dq_<name>` executes `.query.all()` then
+#       denormalizes each row for display (the N+1-carrying path);
+#     - `queue_count` counts via `_count_membership` — a `COUNT(*)`
+#       over the SAME query with the snooze anti-join folded in, so it
+#       never materializes rows or pays the denormalization N+1.
+#   One expression, two consumers → count and build cannot silently
+#   disagree. `MembershipQuery.id_column` is the item-id column (the
+#   entity whose id becomes the triage item id); it anchors the snooze
+#   NOT EXISTS and must be the same id the builder emits as "id".
+#
 # Adding a new direct query:
-#   1. Write a `def _dq_<name>(db, user) -> list[dict]` function.
-#   2. Register in _DIRECT_QUERIES at module bottom.
-#   3. Reference from a queue config's `source_direct_query_key`.
+#   1. Write `def _mq_<name>(db, user) -> MembershipQuery` (membership).
+#   2. Write `def _dq_<name>(db, user) -> list[dict]` that denormalizes
+#      `_mq_<name>(db, user).query.all()`.
+#   3. Register in _MEMBERSHIP_QUERIES + _DIRECT_QUERIES at module bottom.
+#   4. Reference from a queue config's `source_direct_query_key`.
+
+
+class MembershipQuery(NamedTuple):
+    """The membership expression for a triage queue: which rows belong.
+
+    `query` is a SQLAlchemy Query whose result rows ARE the queue members
+    (one row per member — joins must be to-one so no fan-out; every builder
+    below satisfies this). `id_column` is the column carrying the triage
+    item id (what the builder emits as "id"), used for the snooze anti-join.
+    """
+
+    query: Query
+    id_column: Any
+
+
+def _count_membership(
+    db: Session, *, user: User, queue_id: str, mq: MembershipQuery
+) -> int:
+    """COUNT(*) over a membership query with the per-user snooze excluded
+    as a NOT EXISTS anti-join (never a Python post-filter). Matches the
+    legacy semantics: `len(rows) - snoozed-that-are-members`."""
+    snooze_anti = ~exists().where(
+        and_(
+            TriageSnooze.user_id == user.id,
+            TriageSnooze.queue_id == queue_id,
+            TriageSnooze.woken_at.is_(None),
+            TriageSnooze.wake_at > datetime.now(timezone.utc),
+            TriageSnooze.entity_id == mq.id_column,
+        )
+    )
+    return mq.query.filter(snooze_anti).count()
 
 
 def _dq_task_triage(
@@ -661,29 +725,38 @@ def _dq_task_triage(
     ]
 
 
-def _dq_ss_cert_triage(
-    db: Session, user: User
-) -> list[dict[str, Any]]:
-    """Pending (unapproved) social service certificates for the
-    current tenant. Ordered oldest-first so the longest-waiting
-    certificates are processed first. Display fields (deceased
-    name, funeral home name) are derived from the related
-    sales_order + customer — matching the pattern used by the
-    legacy `/social-service-certificates` route."""
+def _mq_ss_cert_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: pending (unapproved) social service certificates for the
+    current tenant, oldest-first (longest-waiting processed first). This is
+    the single source of truth for SS-cert queue membership — both the row
+    builder and `queue_count` consume it."""
     from app.models.social_service_certificate import (
         SocialServiceCertificate,
     )
-    from app.models.sales_order import SalesOrder
 
-    rows = (
+    q = (
         db.query(SocialServiceCertificate)
         .filter(
             SocialServiceCertificate.company_id == user.company_id,
             SocialServiceCertificate.status == "pending_approval",
         )
         .order_by(SocialServiceCertificate.generated_at.asc().nulls_last())
-        .all()
     )
+    return MembershipQuery(query=q, id_column=SocialServiceCertificate.id)
+
+
+def _dq_ss_cert_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Rows for the SS-cert queue. Membership comes from
+    `_mq_ss_cert_triage`; display fields (deceased name, funeral home name)
+    are denormalized from the related sales_order + customer — matching the
+    pattern used by the legacy `/social-service-certificates` route. The
+    per-row SalesOrder lookup is display-only (N+1); the count path skips it
+    entirely by counting the membership query."""
+    from app.models.sales_order import SalesOrder
+
+    rows = _mq_ss_cert_triage(db, user).query.all()
     out: list[dict[str, Any]] = []
     for c in rows:
         order = (
@@ -1528,6 +1601,17 @@ _DIRECT_QUERIES: dict[
     "email_unclassified": _dq_email_unclassified_triage,
     # Books Review Arc B B-3 — reconciliation exceptions (candidates via Option A)
     "reconciliation_review": _dq_reconciliation_review,
+}
+
+
+# Membership seam (queue-count perf arc): direct-query keys that have a
+# `_mq_<name>` membership function drive `queue_count` down the COUNT(*)
+# fast path. Keys absent here fall back to materialize-and-count. Populated
+# incrementally as builders are converted (C-1 → C-2 → C-3).
+_MEMBERSHIP_QUERIES: dict[
+    str, "Callable[[Session, User], MembershipQuery]"
+] = {
+    "ss_cert_triage": _mq_ss_cert_triage,
 }
 
 

@@ -70,6 +70,12 @@ _PURGE_STATEMENTS = [
     # deleted above) and before customers (which invoices reference).
     "DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = ANY(:ids))",
     "DELETE FROM invoices WHERE company_id = ANY(:ids)",
+    # Social-service certs reference sales_orders (order_id, unique NOT NULL);
+    # sales_orders reference customers. Delete certs → order lines → orders
+    # before customers below.
+    "DELETE FROM social_service_certificates WHERE company_id = ANY(:ids)",
+    "DELETE FROM sales_order_lines WHERE sales_order_id IN (SELECT id FROM sales_orders WHERE company_id = ANY(:ids))",
+    "DELETE FROM sales_orders WHERE company_id = ANY(:ids)",
     "DELETE FROM customers WHERE company_id = ANY(:ids)",
     "DELETE FROM vendors WHERE company_id = ANY(:ids)",
     # Task substrate + audit (B-4: the "Ask someone" flag creates a Task, which
@@ -79,6 +85,7 @@ _PURGE_STATEMENTS = [
     # in the reconciliation block above.
     "DELETE FROM audit_logs WHERE company_id = ANY(:ids)",
     "DELETE FROM notifications WHERE company_id = ANY(:ids)",
+    "DELETE FROM triage_snoozes WHERE company_id = ANY(:ids)",
     "DELETE FROM task_details WHERE vault_item_id IN (SELECT id FROM vault_items WHERE company_id = ANY(:ids))",
     "DELETE FROM vault_items WHERE company_id = ANY(:ids)",
     "DELETE FROM vaults WHERE company_id = ANY(:ids)",
