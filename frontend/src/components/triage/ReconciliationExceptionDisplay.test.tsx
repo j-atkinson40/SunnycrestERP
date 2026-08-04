@@ -229,3 +229,84 @@ describe("ReconciliationExceptionDisplay — coding accept", () => {
     expect(mockAct).toHaveBeenCalledWith({ action_id: "accept", payload: { coding: "6100 · Bank interest" } })
   })
 })
+
+// ── L-2.1c: the deliberately-unmapped variant ──────────────────────────────
+//
+// Five of the six blocked reasons name a fixable problem. This one does not: it
+// means an operator already decided this class does not post automatically,
+// which for payroll and NSF is the CORRECT answer on a real chart. The tests
+// below are mostly negative on purpose — what the copy must not say matters more
+// than its exact wording, because the failure mode is telling someone to fix
+// what they deliberately chose.
+
+function intentionalItem(classification = "payroll"): TriageItem {
+  return {
+    entity_type: "reconciliation_exception",
+    entity_id: "txn-11",
+    title: "ACH Electronic CreditGUSTO PAY 123456",
+    subtitle: "2026-07-12",
+    extras: {
+      amount: "-5850.00",
+      candidates: [],
+      keyword_classification: classification,
+      blocked_reason: "keyword_gl_intentional",
+    },
+  } as unknown as TriageItem
+}
+
+describe("ReconciliationExceptionDisplay — deliberately unmapped", () => {
+  it("renders the config card, not the coding card", () => {
+    render(<ReconciliationExceptionDisplay item={intentionalItem()} />)
+    expect(screen.getByTestId("reconciliation-config-card")).toBeInTheDocument()
+    expect(screen.queryByTestId("reconciliation-coding-card")).not.toBeInTheDocument()
+  })
+
+  it("does NOT read as a gap someone should close", () => {
+    render(<ReconciliationExceptionDisplay item={intentionalItem()} />)
+    const card = screen.getByTestId("reconciliation-config-card")
+    const text = card.textContent ?? ""
+    // The exact words are free to change; these claims are not. Each one would
+    // tell the operator to fix a setting they already chose.
+    expect(text).not.toMatch(/no gl account is configured/i)
+    expect(text).not.toMatch(/an administrator sets this/i)
+    expect(text).not.toMatch(/missing/i)
+    expect(text).not.toMatch(/no longer active/i)
+    expect(text).not.toMatch(/not posted/i)
+  })
+
+  it("says the setting is deliberate and that a person handles it", () => {
+    render(<ReconciliationExceptionDisplay item={intentionalItem()} />)
+    const text = screen.getByTestId("reconciliation-config-card").textContent ?? ""
+    expect(text).toMatch(/deliberate/i)
+    expect(text).toMatch(/person/i)
+  })
+
+  it("reads grammatically for every classification, including payroll", () => {
+    // "payroll" takes a singular verb where "bank fees" and "returned items"
+    // take a plural one, so copy of the form "X don't post" breaks on one third
+    // of the vocabulary. Pin the shape that survives all three.
+    for (const c of ["bank_fee", "payroll", "nsf"]) {
+      cleanup()
+      render(<ReconciliationExceptionDisplay item={intentionalItem(c)} />)
+      const text = screen.getByTestId("reconciliation-config-card").textContent ?? ""
+      expect(text).toMatch(/posting is turned off for /i)
+    }
+  })
+
+  it("still offers no Accept — nothing has changed about fail-closed", () => {
+    render(<ReconciliationExceptionDisplay item={intentionalItem()} />)
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: /accept/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("distinguishes itself from never-configured", () => {
+    render(<ReconciliationExceptionDisplay item={intentionalItem()} />)
+    const deliberate = screen.getByTestId("reconciliation-config-card").textContent
+    cleanup()
+    render(<ReconciliationExceptionDisplay item={configItem("keyword_gl_unmapped")} />)
+    const unconfigured = screen.getByTestId("reconciliation-config-card").textContent
+    expect(deliberate).not.toEqual(unconfigured)
+  })
+})

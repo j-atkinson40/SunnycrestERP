@@ -26,13 +26,24 @@ is ever a silent clear.
 Settings shape::
 
     company.settings["reconciliation_keyword_gl"] = {
-        "bank_fee": "<TenantGLMapping.id>",
-        "payroll":  "<TenantGLMapping.id>",
-        "nsf":      "<TenantGLMapping.id>",
+        "bank_fee": "<TenantGLMapping.id>",   # mapped
+        "payroll":  None,                      # DELIBERATELY unmapped
+        # "nsf" absent                         # never configured
     }
 
-An absent map, an absent key, ``None``, or an id that fails validation each
-resolve to ``None``.
+THREE states, not two. Every non-mapped state still resolves to ``None`` and
+still fails closed — the distinction is entirely in the REASON, because the
+reason is what the operator reads:
+
+  * an id            → mapped; validated at use, dangling if it no longer resolves
+  * key present, null→ the operator decided this one does not post automatically
+  * key absent       → nobody has decided yet
+
+The middle state exists because the shape does not fit every classification. A
+net payroll ACH draw is gross wages plus employer taxes across several
+departments, and an NSF reverses against AR — neither is one GL account, so
+"unmapped" is the correct answer rather than an unfinished one. A settings UI
+that only offered "pick an account" would manufacture wrong answers.
 """
 from __future__ import annotations
 
@@ -63,14 +74,24 @@ KEYWORD_CLASSIFICATIONS: tuple[str, ...] = ("bank_fee", "payroll", "nsf")
 
 # Why a keyword row could not book (L-2). Persisted on the exception so the
 # Books Review card can name the CONFIGURATION action rather than asking the
-# operator to code a row the system already classified. All four fail closed;
-# they differ only in who fixes what:
-#   keyword_gl_unmapped  — no settings entry for this classification → configure the map
-#   keyword_gl_dangling  — mapped, but the id no longer resolves    → re-map it
-#   contra_gl_unset      — the bank account has no GL account        → set it on the account
-#   contra_gl_dangling   — set, but the id no longer resolves        → re-map it
-#   period_locked        — the accounting period is closed           → not a config problem
+# operator to code a row the system already classified. All SIX fail closed;
+# they differ in who fixes what — and one of them is not a fix at all:
+#   keyword_gl_unmapped   — no settings entry for this classification → configure the map
+#   keyword_gl_intentional— mapped to null ON PURPOSE               → NOTHING TO FIX
+#   keyword_gl_dangling   — mapped, but the id no longer resolves    → re-map it
+#   contra_gl_unset       — the bank account has no GL account       → set it on the account
+#   contra_gl_dangling    — set, but the id no longer resolves       → re-map it
+#   period_locked         — the accounting period is closed          → not a config problem
+#
+# keyword_gl_intentional is the odd one and the copy must carry that. The
+# production chart pull (STATE, 2026-08-04) found NO correct single account for
+# payroll (a net ACH draw is gross wages plus employer taxes across departments)
+# or for nsf (a bounced check reverses against AR, not an expense). Unmapped is
+# the RIGHT answer for those, so the card says these don't post automatically and
+# this one needs a person — never that something is missing. Telling an operator
+# to fix what they deliberately chose is worse than saying nothing.
 BLOCK_KEYWORD_GL_UNMAPPED = "keyword_gl_unmapped"
+BLOCK_KEYWORD_GL_INTENTIONAL = "keyword_gl_intentional"
 BLOCK_KEYWORD_GL_DANGLING = "keyword_gl_dangling"
 BLOCK_CONTRA_GL_UNSET = "contra_gl_unset"
 BLOCK_CONTRA_GL_DANGLING = "contra_gl_dangling"
@@ -102,7 +123,7 @@ def validate_gl_account(
     )
 
 
-def _keyword_gl_with_reason(
+def keyword_gl_with_reason(
     db: Session, company: Company, classification: str
 ) -> tuple[TenantGLMapping | None, str | None]:
     """``(mapping, blocked_reason)`` — exactly one is non-``None``.
@@ -111,6 +132,12 @@ def _keyword_gl_with_reason(
     unmapped/dangling distinction and threw it away; L-2 needs it as a VALUE,
     because the Books Review card must tell the operator which of the two
     configuration actions to take. The log lines are unchanged.
+
+    PUBLIC as of L-2.1c because it now has consumers beyond the posting path —
+    anything that reports config state (the configure script, and the settings
+    panel's GET) must derive it HERE rather than re-deriving it, or two
+    descriptions of the same settings dict drift apart. The script did drift:
+    its report read a deliberate null as UNMAPPED.
 
     Returns the whole validated ``TenantGLMapping`` rather than its id because
     ``JournalLineSpec`` requires the caller to denormalize account number + name
@@ -124,6 +151,17 @@ def _keyword_gl_with_reason(
         # unmapped rather than trusting an arbitrary settings key.
         return None, BLOCK_KEYWORD_GL_UNMAPPED
     mapping = (company.settings or {}).get(KEYWORD_GL_SETTINGS_KEY) or {}
+    # THREE settings states, and the order of these two checks is load-bearing.
+    # `null` is FALSY, so the `if not gl_id` below would swallow a deliberate
+    # unmapping and report it as a gap the operator still has to close. Key
+    # PRESENT and null means they already decided; key ABSENT means they have
+    # not. (Ledger Posting L-2.1c.)
+    if classification in mapping and mapping[classification] is None:
+        logger.info(
+            "recon keyword GL deliberately unmapped: tenant=%s classification=%s",
+            company.id, classification,
+        )
+        return None, BLOCK_KEYWORD_GL_INTENTIONAL
     gl_id = mapping.get(classification)
     if not gl_id:
         logger.info(
@@ -142,12 +180,12 @@ def _keyword_gl_with_reason(
     return validated, None
 
 
-def _contra_gl_with_reason(
+def contra_gl_with_reason(
     db: Session, financial_account: FinancialAccount
 ) -> tuple[TenantGLMapping | None, str | None]:
     """``(mapping, blocked_reason)`` — exactly one is non-``None``. The
     reason-carrying core of ``resolve_contra_gl_account``; see
-    ``_keyword_gl_with_reason`` for why the distinction is now a value, and why
+    ``keyword_gl_with_reason`` for why the distinction is now a value, and why
     the mapping travels rather than the id alone."""
     gl_id = financial_account.gl_account_id
     if not gl_id:
@@ -177,7 +215,7 @@ def resolve_keyword_gl_account(
     no longer resolves) in the log, because they need different operator action;
     both fail closed.
     """
-    mapping, _reason = _keyword_gl_with_reason(db, company, classification)
+    mapping, _reason = keyword_gl_with_reason(db, company, classification)
     return mapping.id if mapping is not None else None
 
 
@@ -190,7 +228,7 @@ def resolve_contra_gl_account(
     refuses the booking (row → exception, or accept rejected), never a one-legged
     or silent post.
     """
-    mapping, _reason = _contra_gl_with_reason(db, financial_account)
+    mapping, _reason = contra_gl_with_reason(db, financial_account)
     return mapping.id if mapping is not None else None
 
 
@@ -239,11 +277,11 @@ def resolve_keyword_posting(
     the contra leg (the bank account they configure), then the period (a policy
     gate, not a configuration problem).
     """
-    keyword_gl, reason = _keyword_gl_with_reason(db, company, classification)
+    keyword_gl, reason = keyword_gl_with_reason(db, company, classification)
     if keyword_gl is None:
         return None, reason
 
-    contra_gl, reason = _contra_gl_with_reason(db, financial_account)
+    contra_gl, reason = contra_gl_with_reason(db, financial_account)
     if contra_gl is None:
         return None, reason
 

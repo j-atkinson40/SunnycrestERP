@@ -73,6 +73,13 @@ def main() -> None:
     ap.add_argument("--bank-fee", help="account_number for the bank_fee classification")
     ap.add_argument("--payroll", help="account_number for the payroll classification")
     ap.add_argument("--nsf", help="account_number for the nsf classification")
+    ap.add_argument(
+        "--unmap", action="append", metavar="CLASSIFICATION",
+        help="mark a classification as DELIBERATELY not posting (repeatable). "
+             "Writes an explicit null, which is a decision — distinct from an "
+             "absent key, which means nobody has decided yet. Correct for "
+             "payroll and nsf on charts with no single right account.",
+    )
     ap.add_argument("--contra-account", help="FinancialAccount.account_name to set the contra on")
     ap.add_argument("--contra", help="account_number for the bank account's contra (cash) GL")
     args = ap.parse_args()
@@ -93,7 +100,15 @@ def main() -> None:
             "payroll": args.payroll,
             "nsf": args.nsf,
         }
-        if any(v is not None for v in keyword_args.values()):
+        unmap = list(args.unmap or [])
+        for c in unmap:
+            if c not in reconciliation_gl.KEYWORD_CLASSIFICATIONS:
+                _die(f"--unmap {c!r} is not a classification "
+                     f"({', '.join(reconciliation_gl.KEYWORD_CLASSIFICATIONS)})")
+            if keyword_args.get(c) is not None:
+                _die(f"--unmap {c} contradicts --{c.replace('_', '-')} — pick one")
+
+        if any(v is not None for v in keyword_args.values()) or unmap:
             current = dict((co.settings or {}).get(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY) or {})
             for classification, acct_num in keyword_args.items():
                 if acct_num is None:
@@ -101,6 +116,12 @@ def main() -> None:
                 m = _resolve_account_number(db, co.id, acct_num)
                 current[classification] = m.id
                 P(f"keyword {classification} → {acct_num} ({m.account_name!r}) id={m.id}")
+            for classification in unmap:
+                # PRESENT and null. Not `pop` — an absent key means "nobody has
+                # decided", which is a different thing the card says differently.
+                current[classification] = None
+                P(f"keyword {classification} → DELIBERATELY UNMAPPED "
+                  f"(does not post automatically; a person books these)")
             co.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, current)
             wrote = True
 
@@ -132,12 +153,23 @@ def main() -> None:
         # ── report resolved state (what the runtime resolvers will see) ──────
         P("--- current reconciliation GL config ---")
         kmap = (co.settings or {}).get(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY) or {}
+        # Derived from the RUNTIME resolver, not re-inferred from the dict. The
+        # previous version inferred it, and inferred wrong the moment a third
+        # state existed: a deliberate null read as UNMAPPED, so the script told
+        # an operator to configure what they had just chosen not to configure.
+        _STATE_LABEL = {
+            reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED: "UNMAPPED (nobody has decided)",
+            reconciliation_gl.BLOCK_KEYWORD_GL_INTENTIONAL: "DELIBERATELY UNMAPPED (does not post; a person books these)",
+            reconciliation_gl.BLOCK_KEYWORD_GL_DANGLING: "DANGLING (mapped, but the id no longer resolves)",
+        }
         for classification in reconciliation_gl.KEYWORD_CLASSIFICATIONS:
-            resolved = reconciliation_gl.resolve_keyword_gl_account(db, co, classification)
+            mapping, reason = reconciliation_gl.keyword_gl_with_reason(db, co, classification)
             raw = kmap.get(classification)
-            state = "OK" if resolved else ("UNMAPPED" if not raw else "DANGLING")
+            state = "OK" if mapping is not None else _STATE_LABEL.get(reason, reason or "?")
             P(f"  keyword {classification}: {state}"
-              + (f" (id={resolved})" if resolved else (f" (settings id={raw})" if raw else "")))
+              + (f" ({mapping.account_number} {mapping.account_name!r} id={mapping.id})"
+                 if mapping is not None
+                 else (f" (settings id={raw})" if raw else "")))
         for fa in (
             db.query(FinancialAccount)
             .filter(FinancialAccount.tenant_id == co.id, FinancialAccount.is_active.is_(True))

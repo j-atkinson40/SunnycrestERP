@@ -72,10 +72,17 @@ function readString(item: TriageItem, key: string): string | null {
  *
  * This is the third situation, and it is NOT an absent-candidate coding case.
  * The system knows exactly what the row is — the keyword ladder classified it —
- * and only lacks somewhere to book it. So the card names the class, names the
- * missing configuration, and says who fixes it. It never asks the operator to
- * code the row: coding it one at a time is the wrong unit of work when one
- * settings change unblocks every row of that class at once.
+ * and only lacks somewhere to book it. So the card names the class and says what
+ * would change that. It never asks the operator to code the row: coding it one at
+ * a time is the wrong unit of work when one settings change unblocks every row of
+ * that class at once.
+ *
+ * L-2.1c: five of the six reasons name a fixable problem. `keyword_gl_intentional`
+ * does not — it means an operator already decided this class does not post
+ * automatically, which for payroll and NSF is the correct answer rather than an
+ * unfinished one. Its copy must read as a settled state, never as a gap; telling
+ * someone to fix what they deliberately chose is worse than saying nothing. When
+ * adding a reason, decide which of those two kinds it is BEFORE writing the words.
  */
 const CLASSIFICATION_LABEL: Record<string, string> = {
   bank_fee: "Bank fee",
@@ -93,12 +100,31 @@ const CLASSIFICATION_PLURAL: Record<string, string> = {
 interface BlockedCopy {
   headline: (plural: string) => string
   fix: string
+  /**
+   * The status word beside the classification pill. Defaults to "not posted",
+   * which is the honest word for every reason EXCEPT the deliberate one — there,
+   * "not posted" frames a settled decision as a failure.
+   */
+  pill?: string
 }
 
 const BLOCKED_COPY: Record<string, BlockedCopy> = {
   keyword_gl_unmapped: {
     headline: (plural) => `No GL account is configured for ${plural}.`,
     fix: "An administrator sets this once in the reconciliation GL settings. Every transaction of this kind will post automatically from then on.",
+  },
+  // The ONE variant that is not a problem to solve. Payroll and NSF have no
+  // correct single GL account on a real chart — a net payroll draw is gross
+  // wages plus employer taxes across departments, and an NSF reverses against
+  // AR — so an operator turning automatic posting off for them has finished,
+  // not stalled. Every word here has to avoid implying otherwise: no "missing",
+  // no "not configured", no "an administrator sets this". The phrasing also has
+  // to survive all three plurals, including "payroll", which takes a singular
+  // verb — hence "posting is turned off for X" rather than "X don't post".
+  keyword_gl_intentional: {
+    headline: (plural) => `Automatic posting is turned off for ${plural}.`,
+    fix: "That is a deliberate setting, not a gap — some kinds of transaction do not map to a single GL account and are booked by a person. Flag it to whoever handles these, or skip it.",
+    pill: "needs a person",
   },
   keyword_gl_dangling: {
     headline: (plural) =>
@@ -273,7 +299,9 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
         <span className="rounded-full bg-accent-subtle px-2 py-0.5 text-caption font-medium text-content-strong">
           {classificationLabel}
         </span>
-        <span className="text-caption text-content-subtle">not posted</span>
+        <span className="text-caption text-content-subtle">
+          {blockedCopy.pill ?? "not posted"}
+        </span>
       </div>
       <p className="mt-2 text-body-sm text-content-base">{blockedHeadline}</p>
       <p className="mt-1 text-caption text-content-muted">{blockedCopy.fix}</p>

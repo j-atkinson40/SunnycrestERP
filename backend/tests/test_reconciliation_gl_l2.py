@@ -605,3 +605,130 @@ class TestBlockedRowReachesBooksReview:
         assert len(rows) == 1
         assert rows[0]["keyword_classification"] is None
         assert rows[0]["blocked_reason"] is None
+
+
+class TestDeliberatelyUnmapped:
+    """The THIRD settings state (L-2.1c).
+
+    `payroll: None` present in the map means the operator decided this class does
+    not post automatically. The production chart makes that the CORRECT answer for
+    payroll and nsf, not an unfinished one — so it has to be distinguishable from
+    "nobody has configured this yet", because the card says different things.
+
+    What must NOT change: it still fails closed. A deliberate unmapping is a
+    reason, never a licence.
+    """
+
+    def test_explicit_null_is_intentional_not_unmapped(self, db):
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        co.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": None})
+        db.commit()
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+
+        exc = db.query(ReconciliationException).filter(
+            ReconciliationException.tenant_id == co.id).one()
+        assert exc.keyword_classification == "bank_fee"
+        assert exc.blocked_reason == reconciliation_gl.BLOCK_KEYWORD_GL_INTENTIONAL
+
+    def test_absent_key_is_still_unmapped(self, db):
+        """The other side of the same distinction. An empty map is 'nobody has
+        decided'; it must not drift into reading as a decision."""
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        co.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"payroll": None})
+        db.commit()
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+
+        exc = db.query(ReconciliationException).filter(
+            ReconciliationException.tenant_id == co.id).one()
+        # bank_fee is ABSENT from a map that carries a deliberate payroll entry.
+        assert exc.blocked_reason == reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED
+
+    def test_deliberate_and_absent_coexist_in_one_run(self, db):
+        """Both states in the SAME map, resolved per row. This is the shape a
+        real tenant has: bank_fee mapped, payroll deliberately off, nsf not yet
+        decided."""
+        co, user, acct, run, gl = _substrate(db, keyword_map=["bank_fee"])
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY,
+            {"bank_fee": gl["bank_fee"], "payroll": None},
+        )
+        db.commit()
+        _three_keyword_rows(db, run)
+        trigger_matching(run.id, current_user=user, db=db)
+
+        by_class = {
+            e.keyword_classification: e.blocked_reason
+            for e in db.query(ReconciliationException).filter(
+                ReconciliationException.tenant_id == co.id).all()
+        }
+        assert "bank_fee" not in by_class  # mapped → booked → cleared, no exception
+        assert by_class["payroll"] == reconciliation_gl.BLOCK_KEYWORD_GL_INTENTIONAL
+        assert by_class["nsf"] == reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED
+
+    def test_deliberate_unmapping_still_books_nothing_and_clears_nothing(self, db):
+        """THE PIN THAT MATTERS. A deliberate unmapping is a REASON, not a
+        licence — the row must stay unmatched with no journal entry behind it,
+        exactly like every other blocked reason. If this ever passes while a JE
+        exists, 'booking is the licence to clear' has been broken by a copy
+        change.
+
+        HAND MATH — one -15.00 row, deliberately unmapped:
+             journal entries       0
+             cleared_total         0.00
+             difference  = 2000 - 1000 - 0 = 1000.00
+        """
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        co.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": None})
+        db.commit()
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+
+        txn = db.query(ReconciliationTransaction).filter(
+            ReconciliationTransaction.reconciliation_run_id == run.id).one()
+        assert txn.match_status == "unmatched"
+        assert txn.journal_entry_id is None
+        assert db.query(JournalEntry).filter(
+            JournalEntry.tenant_id == co.id).count() == 0
+
+        db.refresh(run)
+        assert run.auto_cleared_count == 0
+        assert run.unmatched_count == 1
+        assert run.platform_cleared_balance == Decimal("0")
+        assert run.difference == Decimal("1000")
+
+    def test_falsy_non_null_is_unmapped_not_intentional(self, db):
+        """Only an explicit null is a decision. An empty string — the shape a
+        careless settings writer produces — is NOT one, and must read as
+        unconfigured rather than silently claiming the operator chose it."""
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        co.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": ""})
+        db.commit()
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+
+        exc = db.query(ReconciliationException).filter(
+            ReconciliationException.tenant_id == co.id).one()
+        assert exc.blocked_reason == reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED
+
+    def test_reason_fits_the_column(self):
+        """`blocked_reason` is String(30). A reason that silently truncates would
+        make the card fall through to the unrecognised-reason copy."""
+        assert len(reconciliation_gl.BLOCK_KEYWORD_GL_INTENTIONAL) <= 30
+
+    def test_all_reasons_are_distinct(self):
+        """Six now. Two that collide would render one card for two situations."""
+        reasons = [
+            reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED,
+            reconciliation_gl.BLOCK_KEYWORD_GL_INTENTIONAL,
+            reconciliation_gl.BLOCK_KEYWORD_GL_DANGLING,
+            reconciliation_gl.BLOCK_CONTRA_GL_UNSET,
+            reconciliation_gl.BLOCK_CONTRA_GL_DANGLING,
+            reconciliation_gl.BLOCK_PERIOD_LOCKED,
+        ]
+        assert len(set(reasons)) == len(reasons)
