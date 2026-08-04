@@ -683,25 +683,27 @@ def _count_membership(
     return mq.query.filter(snooze_anti).count()
 
 
+def _mq_task_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: open/in-progress/blocked tasks assigned to this user."""
+    from app.models.task import Task
+
+    q = db.query(Task).filter(
+        Task.company_id == user.company_id,
+        Task.assignee_user_id == user.id,
+        Task.is_active.is_(True),
+        Task.status.in_(("open", "in_progress", "blocked")),
+    )
+    return MembershipQuery(query=q, id_column=Task.id)
+
+
 def _dq_task_triage(
     db: Session, user: User
 ) -> list[dict[str, Any]]:
-    """Open/in-progress tasks assigned to the current user, sorted
-    by priority then due date. Matches the spec's task_triage
-    saved-view description."""
-    from app.models.task import Task
-
+    """Open/in-progress tasks assigned to the current user, sorted by
+    priority then due date. Membership from `_mq_task_triage`; the
+    priority/due sort + projection below are display-only."""
     priority_order = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
-    rows = (
-        db.query(Task)
-        .filter(
-            Task.company_id == user.company_id,
-            Task.assignee_user_id == user.id,
-            Task.is_active.is_(True),
-            Task.status.in_(("open", "in_progress", "blocked")),
-        )
-        .all()
-    )
+    rows = _mq_task_triage(db, user).query.all()
     rows.sort(
         key=lambda t: (
             priority_order.get(t.priority, 4),
@@ -790,6 +792,35 @@ def _dq_ss_cert_triage(
     return out
 
 
+def _mq_cash_receipts_matching_triage(
+    db: Session, user: User
+) -> MembershipQuery:
+    """Membership: unresolved cash_receipts_matching anomalies (possible-match
+    + stale/recent unmatched) for this tenant. The per-row CustomerPayment +
+    Customer denormalization lives in the builder, not here — the count path
+    counts this query and never pays that N+1."""
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+
+    q = (
+        db.query(AgentAnomaly)
+        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == "cash_receipts_matching",
+            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.anomaly_type.in_(
+                (
+                    "payment_possible_match",
+                    "payment_unmatched_stale",
+                    "payment_unmatched_recent",
+                )
+            ),
+        )
+    )
+    return MembershipQuery(query=q, id_column=AgentAnomaly.id)
+
+
 def _dq_cash_receipts_matching_triage(
     db: Session, user: User
 ) -> list[dict[str, Any]]:
@@ -810,30 +841,12 @@ def _dq_cash_receipts_matching_triage(
     at query time (similar to `_dq_ss_cert_triage` denormalizing the
     sales_order + customer).
     """
-    from app.models.agent import AgentJob
-    from app.models.agent_anomaly import AgentAnomaly
     from app.models.customer import Customer
     from app.models.customer_payment import CustomerPayment
 
     _severity_order = {"CRITICAL": 0, "WARNING": 1, "INFO": 2}
 
-    rows = (
-        db.query(AgentAnomaly)
-        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
-        .filter(
-            AgentJob.tenant_id == user.company_id,
-            AgentJob.job_type == "cash_receipts_matching",
-            AgentAnomaly.resolved.is_(False),
-            AgentAnomaly.anomaly_type.in_(
-                (
-                    "payment_possible_match",
-                    "payment_unmatched_stale",
-                    "payment_unmatched_recent",
-                )
-            ),
-        )
-        .all()
-    )
+    rows = _mq_cash_receipts_matching_triage(db, user).query.all()
 
     out: list[dict[str, Any]] = []
     payment_cache: dict[str, CustomerPayment | None] = {}
@@ -909,6 +922,23 @@ def _dq_cash_receipts_matching_triage(
     return out
 
 
+def _mq_month_end_close_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: month_end_close jobs awaiting approval (one-item-per-job),
+    oldest-first."""
+    from app.models.agent import AgentJob
+
+    q = (
+        db.query(AgentJob)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == "month_end_close",
+            AgentJob.status == "awaiting_approval",
+        )
+        .order_by(AgentJob.created_at.asc().nulls_last())
+    )
+    return MembershipQuery(query=q, id_column=AgentJob.id)
+
+
 def _dq_month_end_close_triage(
     db: Session, user: User
 ) -> list[dict[str, Any]]:
@@ -917,23 +947,10 @@ def _dq_month_end_close_triage(
     Unlike cash_receipts or ss_cert (one-per-anomaly), month-end close
     is ONE-ITEM-PER-JOB: the whole AgentJob in awaiting_approval is
     the decision. Anomalies are sub-items displayed via the context
-    panel, not individually triageable.
-
-    Ordering: oldest-awaiting-approval first — operators should close
-    older periods before newer ones.
+    panel, not individually triageable. Membership from
+    `_mq_month_end_close_triage`; report_payload parse below is display.
     """
-    from app.models.agent import AgentJob
-
-    rows = (
-        db.query(AgentJob)
-        .filter(
-            AgentJob.tenant_id == user.company_id,
-            AgentJob.job_type == "month_end_close",
-            AgentJob.status == "awaiting_approval",
-        )
-        .order_by(AgentJob.created_at.asc().nulls_last())
-        .all()
-    )
+    rows = _mq_month_end_close_triage(db, user).query.all()
 
     out: list[dict[str, Any]] = []
     for j in rows:
@@ -975,6 +992,32 @@ def _dq_month_end_close_triage(
     return out
 
 
+def _mq_ar_collections_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: unresolved ar_collections anomalies (one-per-customer) for
+    this tenant. The per-row Customer denormalization + draft-email parse live
+    in the builder; the count path never pays them."""
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+
+    q = (
+        db.query(AgentAnomaly, AgentJob)
+        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == "ar_collections",
+            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.anomaly_type.in_(
+                (
+                    "collections_follow_up",
+                    "collections_escalate",
+                    "collections_critical",
+                )
+            ),
+        )
+    )
+    return MembershipQuery(query=q, id_column=AgentAnomaly.id)
+
+
 def _dq_ar_collections_triage(
     db: Session, user: User
 ) -> list[dict[str, Any]]:
@@ -990,29 +1033,11 @@ def _dq_ar_collections_triage(
     risk), then ESCALATE, then FOLLOW_UP. Within tier, higher amount
     first.
     """
-    from app.models.agent import AgentJob
-    from app.models.agent_anomaly import AgentAnomaly
     from app.models.customer import Customer
 
     _severity_order = {"CRITICAL": 0, "WARNING": 1, "INFO": 2}
 
-    rows = (
-        db.query(AgentAnomaly, AgentJob)
-        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
-        .filter(
-            AgentJob.tenant_id == user.company_id,
-            AgentJob.job_type == "ar_collections",
-            AgentAnomaly.resolved.is_(False),
-            AgentAnomaly.anomaly_type.in_(
-                (
-                    "collections_follow_up",
-                    "collections_escalate",
-                    "collections_critical",
-                )
-            ),
-        )
-        .all()
-    )
+    rows = _mq_ar_collections_triage(db, user).query.all()
 
     out: list[dict[str, Any]] = []
     customer_cache: dict[str, Customer | None] = {}
@@ -1086,25 +1111,14 @@ def _dq_ar_collections_triage(
     return out
 
 
-def _dq_expense_categorization_triage(
-    db: Session, user: User
-) -> list[dict[str, Any]]:
-    """Workflow Arc Phase 8c — expense_categorization triage items.
-
-    ONE-ITEM-PER-VENDOR-BILL-LINE with an unresolved anomaly of type
-    `expense_low_confidence` or `expense_no_gl_mapping`. Denormalizes
-    VendorBill + Vendor + the AI-suggested proposed_category from
-    the job's report_payload.
-    """
+def _mq_expense_categorization_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: unresolved expense_categorization anomalies (one-per-line)
+    for this tenant. The per-row VendorBillLine/VendorBill/Vendor load +
+    proposed-category parse live in the builder, not here."""
     from app.models.agent import AgentJob
     from app.models.agent_anomaly import AgentAnomaly
-    from app.models.vendor import Vendor
-    from app.models.vendor_bill import VendorBill
-    from app.models.vendor_bill_line import VendorBillLine
 
-    _severity_order = {"CRITICAL": 0, "WARNING": 1, "INFO": 2}
-
-    rows = (
+    q = (
         db.query(AgentAnomaly, AgentJob)
         .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
         .filter(
@@ -1119,8 +1133,27 @@ def _dq_expense_categorization_triage(
                 )
             ),
         )
-        .all()
     )
+    return MembershipQuery(query=q, id_column=AgentAnomaly.id)
+
+
+def _dq_expense_categorization_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8c — expense_categorization triage items.
+
+    ONE-ITEM-PER-VENDOR-BILL-LINE with an unresolved anomaly of type
+    `expense_low_confidence` or `expense_no_gl_mapping`. Denormalizes
+    VendorBill + Vendor + the AI-suggested proposed_category from
+    the job's report_payload.
+    """
+    from app.models.vendor import Vendor
+    from app.models.vendor_bill import VendorBill
+    from app.models.vendor_bill_line import VendorBillLine
+
+    _severity_order = {"CRITICAL": 0, "WARNING": 1, "INFO": 2}
+
+    rows = _mq_expense_categorization_triage(db, user).query.all()
 
     out: list[dict[str, Any]] = []
     line_cache: dict[str, tuple[VendorBillLine, VendorBill, Vendor] | None] = {}
@@ -1204,6 +1237,36 @@ def _dq_expense_categorization_triage(
     return out
 
 
+def _mq_aftercare_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: unresolved fh_aftercare_pending anomalies for this tenant,
+    oldest-first, WITH a non-empty case id. The builder's
+    `if not case_id: continue` guard is lifted into SQL here (isnot None AND
+    != "") so count and build agree on membership — a null/empty entity_id is
+    not a member. Per-case FuneralCase/deceased/informant/service denorm lives
+    in the builder, not here."""
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+    from app.services.workflows.aftercare_adapter import (
+        AFTERCARE_JOB_TYPE,
+        ANOMALY_TYPE,
+    )
+
+    q = (
+        db.query(AgentAnomaly, AgentJob)
+        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == AFTERCARE_JOB_TYPE,
+            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.anomaly_type == ANOMALY_TYPE,
+            AgentAnomaly.entity_id.isnot(None),
+            AgentAnomaly.entity_id != "",
+        )
+        .order_by(AgentAnomaly.created_at.asc())
+    )
+    return MembershipQuery(query=q, id_column=AgentAnomaly.id)
+
+
 def _dq_aftercare_triage(
     db: Session, user: User
 ) -> list[dict[str, Any]]:
@@ -1215,37 +1278,19 @@ def _dq_aftercare_triage(
     name, informant name + email, and case_number for the display.
     One-item-per-case matrix.
     """
-    from app.models.agent import AgentJob
-    from app.models.agent_anomaly import AgentAnomaly
     from app.models.funeral_case import (
         CaseDeceased,
         CaseInformant,
         CaseService,
         FuneralCase,
     )
-    from app.services.workflows.aftercare_adapter import (
-        AFTERCARE_JOB_TYPE,
-        ANOMALY_TYPE,
-    )
 
-    rows = (
-        db.query(AgentAnomaly, AgentJob)
-        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
-        .filter(
-            AgentJob.tenant_id == user.company_id,
-            AgentJob.job_type == AFTERCARE_JOB_TYPE,
-            AgentAnomaly.resolved.is_(False),
-            AgentAnomaly.anomaly_type == ANOMALY_TYPE,
-        )
-        .order_by(AgentAnomaly.created_at.asc())
-        .all()
-    )
+    rows = _mq_aftercare_triage(db, user).query.all()
 
     out: list[dict[str, Any]] = []
     for anomaly, job in rows:
+        # Membership already excludes null/empty entity_id, so case_id is set.
         case_id = anomaly.entity_id
-        if not case_id:
-            continue
         fc = (
             db.query(FuneralCase)
             .filter(FuneralCase.id == case_id)
@@ -1320,6 +1365,30 @@ def _dq_aftercare_triage(
     return out
 
 
+def _mq_safety_program_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: SafetyProgramGeneration rows pending review, newest-first.
+    The outerjoin to SafetyTrainingTopic is display denorm (to-one, no fan-out)
+    carried on the shared query so build and count stay identical."""
+    from app.models.safety_program_generation import (
+        SafetyProgramGeneration,
+    )
+    from app.models.safety_training_topic import SafetyTrainingTopic
+
+    q = (
+        db.query(SafetyProgramGeneration, SafetyTrainingTopic)
+        .outerjoin(
+            SafetyTrainingTopic,
+            SafetyTrainingTopic.id == SafetyProgramGeneration.topic_id,
+        )
+        .filter(
+            SafetyProgramGeneration.tenant_id == user.company_id,
+            SafetyProgramGeneration.status == "pending_review",
+        )
+        .order_by(SafetyProgramGeneration.generated_at.desc().nulls_last())
+    )
+    return MembershipQuery(query=q, id_column=SafetyProgramGeneration.id)
+
+
 def _dq_safety_program_triage(
     db: Session, user: User
 ) -> list[dict[str, Any]]:
@@ -1339,24 +1408,7 @@ def _dq_safety_program_triage(
     Denormalizes the related SafetyTrainingTopic so the display
     can show title + OSHA standard without a second round-trip.
     """
-    from app.models.safety_program_generation import (
-        SafetyProgramGeneration,
-    )
-    from app.models.safety_training_topic import SafetyTrainingTopic
-
-    rows = (
-        db.query(SafetyProgramGeneration, SafetyTrainingTopic)
-        .outerjoin(
-            SafetyTrainingTopic,
-            SafetyTrainingTopic.id == SafetyProgramGeneration.topic_id,
-        )
-        .filter(
-            SafetyProgramGeneration.tenant_id == user.company_id,
-            SafetyProgramGeneration.status == "pending_review",
-        )
-        .order_by(SafetyProgramGeneration.generated_at.desc().nulls_last())
-        .all()
-    )
+    rows = _mq_safety_program_triage(db, user).query.all()
     out: list[dict[str, Any]] = []
     for gen, topic in rows:
         token_usage = gen.generation_token_usage or {}
@@ -1390,30 +1442,31 @@ def _dq_safety_program_triage(
     return out
 
 
-def _dq_catalog_fetch_triage(
-    db: Session, user: User
-) -> list[dict[str, Any]]:
-    """Workflow Arc Phase 8d — catalog_fetch pending-review items.
-
-    Returns one row per UrnCatalogSyncLog with
-    ``publication_state='pending_review'``. Unlike the accounting
-    queues, this one is NOT anomaly-backed — the sync_log row itself
-    is the unit of review. Ordered newest-first so the most recent
-    Wilbert change surfaces at the top if somehow multiple pending
-    reviews exist (the adapter marks older ones superseded so this
-    should normally be a single row).
-    """
+def _mq_catalog_fetch_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: UrnCatalogSyncLog rows pending review, newest-first."""
     from app.models.urn_catalog_sync_log import UrnCatalogSyncLog
 
-    rows = (
+    q = (
         db.query(UrnCatalogSyncLog)
         .filter(
             UrnCatalogSyncLog.tenant_id == user.company_id,
             UrnCatalogSyncLog.publication_state == "pending_review",
         )
         .order_by(UrnCatalogSyncLog.started_at.desc())
-        .all()
     )
+    return MembershipQuery(query=q, id_column=UrnCatalogSyncLog.id)
+
+
+def _dq_catalog_fetch_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8d — catalog_fetch pending-review items.
+
+    One row per UrnCatalogSyncLog with ``publication_state='pending_review'``
+    (NOT anomaly-backed — the sync_log row itself is the unit of review).
+    Membership from `_mq_catalog_fetch_triage`.
+    """
+    rows = _mq_catalog_fetch_triage(db, user).query.all()
     out: list[dict[str, Any]] = []
     for log in rows:
         out.append(
@@ -1448,29 +1501,38 @@ def _dq_email_unclassified_triage(
     return list_unclassified(db, tenant_id=user.company_id, limit=50)
 
 
-def _dq_workflow_review(
-    db: Session, user: User
-) -> list[dict[str, Any]]:
-    """Phase R-6.0a — pending WorkflowReviewItem rows for the current
-    tenant. Surfaces every item with ``decision IS NULL``, oldest
-    first (longest-waiting reviewed first).
-
-    Tenant-scoped via ``company_id == user.company_id``. The
-    underlying ``workflow_runs`` table is also tenant-scoped, so the
-    item-level filter is defense-in-depth.
-    """
+def _mq_workflow_review(db: Session, user: User) -> MembershipQuery:
+    """Membership: WorkflowReviewItem rows with decision IS NULL for this
+    tenant, oldest-first. Per-row WorkflowRun + Workflow denorm lives in the
+    builder, not here."""
     from app.models.workflow_review_item import WorkflowReviewItem
-    from app.models.workflow import WorkflowRun, Workflow
 
-    rows = (
+    q = (
         db.query(WorkflowReviewItem)
         .filter(
             WorkflowReviewItem.company_id == user.company_id,
             WorkflowReviewItem.decision.is_(None),
         )
         .order_by(WorkflowReviewItem.created_at.asc())
-        .all()
     )
+    return MembershipQuery(query=q, id_column=WorkflowReviewItem.id)
+
+
+def _dq_workflow_review(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Phase R-6.0a — pending WorkflowReviewItem rows for the current
+    tenant. Surfaces every item with ``decision IS NULL``, oldest
+    first (longest-waiting reviewed first). Membership from
+    `_mq_workflow_review`; per-row run/workflow denorm below is display.
+
+    Tenant-scoped via ``company_id == user.company_id``. The
+    underlying ``workflow_runs`` table is also tenant-scoped, so the
+    item-level filter is defense-in-depth.
+    """
+    from app.models.workflow import WorkflowRun, Workflow
+
+    rows = _mq_workflow_review(db, user).query.all()
     out: list[dict[str, Any]] = []
     for item in rows:
         run = (
@@ -1502,6 +1564,35 @@ def _dq_workflow_review(
     return out
 
 
+def _mq_reconciliation_review(db: Session, user: User) -> MembershipQuery:
+    """Membership: open reconciliation exceptions — the SOURCE TRANSACTION's
+    match_status is authority (JOIN to the txn, filter match_status='unmatched',
+    NOT exception.resolved), excluding actively-parked exceptions (flag_id set).
+    The batched candidate hydration (Option A) is display-only + lives in the
+    builder; count never fetches candidates. id_column = the transaction id (the
+    triage item id; the exception is one-per-txn so the join can't fan out)."""
+    from app.models.financial_account import (
+        ReconciliationException,
+        ReconciliationTransaction,
+    )
+
+    q = (
+        db.query(ReconciliationTransaction, ReconciliationException)
+        .join(
+            ReconciliationException,
+            ReconciliationException.reconciliation_transaction_id
+            == ReconciliationTransaction.id,
+        )
+        .filter(
+            ReconciliationTransaction.tenant_id == user.company_id,
+            ReconciliationTransaction.match_status == "unmatched",
+            ReconciliationException.flag_id.is_(None),
+        )
+        .order_by(ReconciliationTransaction.sort_order)
+    )
+    return MembershipQuery(query=q, id_column=ReconciliationTransaction.id)
+
+
 def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
     """Books Review — open reconciliation exceptions.
 
@@ -1517,33 +1608,9 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
     coding) from their presence WITHOUT a second fetch. Near-misses are included
     as low-ranked candidates carrying their rejection reason + measured value.
     """
-    from app.models.financial_account import (
-        ReconciliationException,
-        ReconciliationMatchCandidate,
-        ReconciliationTransaction,
-    )
+    from app.models.financial_account import ReconciliationMatchCandidate
 
-    # "still open" = the source transaction is unmatched. Auto-committed
-    # transactions carry match_status="auto_cleared" and have no exception; a
-    # human resolution moves match_status to "manually_matched" (dropping it here).
-    rows = (
-        db.query(ReconciliationTransaction, ReconciliationException)
-        .join(
-            ReconciliationException,
-            ReconciliationException.reconciliation_transaction_id
-            == ReconciliationTransaction.id,
-        )
-        .filter(
-            ReconciliationTransaction.tenant_id == user.company_id,
-            ReconciliationTransaction.match_status == "unmatched",
-            # B-4: exclude actively-parked exceptions. flag_id set = a flag whose
-            # returned_at is still NULL; on return the hook clears flag_id and the
-            # SAME exception reopens here.
-            ReconciliationException.flag_id.is_(None),
-        )
-        .order_by(ReconciliationTransaction.sort_order)
-        .all()
-    )
+    rows = _mq_reconciliation_review(db, user).query.all()
 
     txn_ids = [t.id for (t, _e) in rows]
     cands_by_txn: dict[str, list[dict[str, Any]]] = {}
@@ -1611,7 +1678,20 @@ _DIRECT_QUERIES: dict[
 _MEMBERSHIP_QUERIES: dict[
     str, "Callable[[Session, User], MembershipQuery]"
 ] = {
+    "task_triage": _mq_task_triage,
     "ss_cert_triage": _mq_ss_cert_triage,
+    "cash_receipts_matching_triage": _mq_cash_receipts_matching_triage,
+    "month_end_close_triage": _mq_month_end_close_triage,
+    "ar_collections_triage": _mq_ar_collections_triage,
+    "expense_categorization_triage": _mq_expense_categorization_triage,
+    "aftercare_triage": _mq_aftercare_triage,
+    "catalog_fetch_triage": _mq_catalog_fetch_triage,
+    "safety_program_triage": _mq_safety_program_triage,
+    "workflow_review": _mq_workflow_review,
+    "reconciliation_review": _mq_reconciliation_review,
+    # email_unclassified — NOT here (C-3): membership is latest-classification-
+    # per-message, a window-function translation that gets its own pass. It
+    # falls back to materialize-and-count until then (already LIMIT 50-capped).
 }
 
 

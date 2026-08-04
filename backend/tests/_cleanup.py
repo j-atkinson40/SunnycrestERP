@@ -37,6 +37,9 @@ _PURGE_STATEMENTS = [
     "DELETE FROM agent_schedules WHERE tenant_id = ANY(:ids)",
     "DELETE FROM agent_alerts WHERE tenant_id = ANY(:ids)",
     "DELETE FROM tenant_alerts WHERE tenant_id = ANY(:ids)",
+    # workflow_review_items reference workflow_runs (run_id CASCADE) — delete
+    # before the runs.
+    "DELETE FROM workflow_review_items WHERE company_id = ANY(:ids)",
     "DELETE FROM workflow_runs WHERE company_id = ANY(:ids)",
     "DELETE FROM workflow_steps WHERE workflow_id IN (SELECT id FROM workflows WHERE company_id = ANY(:ids))",
     "DELETE FROM workflows WHERE company_id = ANY(:ids)",
@@ -86,6 +89,11 @@ _PURGE_STATEMENTS = [
     "DELETE FROM audit_logs WHERE company_id = ANY(:ids)",
     "DELETE FROM notifications WHERE company_id = ANY(:ids)",
     "DELETE FROM triage_snoozes WHERE company_id = ANY(:ids)",
+    # tasks.assignee_user_id / created_by_user_id → users; delete before users.
+    "DELETE FROM tasks WHERE company_id = ANY(:ids)",
+    # tenant-scoped triage-backed entities with no child rows in these tests.
+    "DELETE FROM safety_program_generations WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM urn_catalog_sync_logs WHERE tenant_id = ANY(:ids)",
     "DELETE FROM task_details WHERE vault_item_id IN (SELECT id FROM vault_items WHERE company_id = ANY(:ids))",
     "DELETE FROM vault_items WHERE company_id = ANY(:ids)",
     "DELETE FROM vaults WHERE company_id = ANY(:ids)",

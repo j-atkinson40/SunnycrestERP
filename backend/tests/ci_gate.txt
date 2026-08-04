@@ -72,3 +72,9 @@ tests/test_books_review_e2e_b6.py
 #   share one membership expression + cannot disagree; snooze is a SQL anti-join
 #   matching the legacy post-filter; expired snooze ignored; tenant isolation. —
 tests/test_queue_count_membership_c1.py
+
+# — Queue-count perf C-2: count == build membership, all 10 converted builders
+#   (task/cash_receipts/month_end/ar_collections/expense/aftercare/catalog/
+#   safety/workflow_review/reconciliation); aftercare excludes null/empty
+#   entity_id in both paths. —
+tests/test_queue_count_membership_c2.py
