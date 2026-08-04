@@ -1082,6 +1082,149 @@ def _handle_email_unclassified_request_review(
     }
 
 
+def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Books Review Accept — DISPATCHES BY ITEM DATA (one key, one handler).
+
+    RANKED (viable candidates present): commit the SELECTED candidate — payload
+    `candidate_id`, defaulting to the top-ranked viable — claiming the payment
+    through the SAME Arc A path the auto-matcher uses
+    (`reconciliation_service._try_claim`, savepoint + pre-flush + specific
+    IntegrityError). Manual accept and auto-commit therefore write IDENTICAL
+    state (same claim row, same matched_record_*, same confidence), differing
+    ONLY in match_status ("manually_matched" vs "auto_cleared") and provenance
+    (reviewed_by/at). That equality is the sub-arc's parity invariant.
+
+    CODING (no candidates): a coding decision (payload `coding` or the note) is
+    required to accept.
+
+    PERIOD LOCK applies: a human choosing to commit hits the same
+    check_date_in_locked_period gate the auto path honors — Accept never writes
+    into a closed period because a person clicked the button.
+
+    Selecting a non-viable candidate (a rejected near-miss or an open invoice) is
+    Flag/override territory (B-4), not Accept.
+    """
+    from app.models.financial_account import (
+        ReconciliationException,
+        ReconciliationMatchCandidate,
+        ReconciliationTransaction,
+    )
+    from app.services import reconciliation_service
+    from app.services.agents.period_lock import PeriodLockService
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    txn_id = ctx["entity_id"]
+    payload = ctx.get("payload") or {}
+
+    txn = (
+        db.query(ReconciliationTransaction)
+        .filter(
+            ReconciliationTransaction.id == txn_id,
+            ReconciliationTransaction.tenant_id == user.company_id,
+        )
+        .first()
+    )
+    if txn is None:
+        return {"status": "errored", "message": "Transaction not found."}
+    if txn.match_status != "unmatched":
+        return {"status": "errored", "message": "This item is already resolved."}
+
+    lock = PeriodLockService.check_date_in_locked_period(
+        db, user.company_id, txn.transaction_date
+    )
+    if lock is not None:
+        return {
+            "status": "errored",
+            "message": (
+                f"Period {lock.period_start}–{lock.period_end} is locked; "
+                "unlock it to reconcile this transaction."
+            ),
+        }
+
+    exc = (
+        db.query(ReconciliationException)
+        .filter(ReconciliationException.reconciliation_transaction_id == txn_id)
+        .first()
+    )
+    viable = (
+        db.query(ReconciliationMatchCandidate)
+        .filter(
+            ReconciliationMatchCandidate.reconciliation_transaction_id == txn_id,
+            ReconciliationMatchCandidate.rejection_reason.is_(None),
+        )
+        .order_by(ReconciliationMatchCandidate.rank)
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+
+    if viable:
+        chosen = viable[0]  # top-ranked selected by default
+        requested = payload.get("candidate_id")
+        if requested:
+            match = next((c for c in viable if c.id == requested), None)
+            if match is None:
+                return {
+                    "status": "errored",
+                    "message": "Selected candidate is not a viable match for this transaction.",
+                }
+            chosen = match
+        if chosen.candidate_record_type not in ("customer_payment", "vendor_payment"):
+            return {
+                "status": "errored",
+                "message": (
+                    "This candidate is an open invoice, not a payment — accept it as a "
+                    "reconciling item via Flag (B-4)."
+                ),
+            }
+        won = reconciliation_service._try_claim(
+            db,
+            user.company_id,
+            chosen.candidate_record_type,
+            chosen.candidate_record_id,
+            txn.id,
+            txn.reconciliation_run_id,
+        )
+        if not won:
+            return {
+                "status": "errored",
+                "message": (
+                    "That payment was just claimed by another reconciliation. "
+                    "Re-open the item to see the update."
+                ),
+            }
+        txn.matched_record_type = chosen.candidate_record_type
+        txn.matched_record_id = chosen.candidate_record_id
+        txn.match_confidence = chosen.score
+        txn.match_status = "manually_matched"
+        txn.reviewed_by = user.id
+        txn.reviewed_at = now
+        if exc is not None:
+            exc.chosen_candidate_id = chosen.id
+        message = f"Matched to {chosen.candidate_record_type.replace('_', ' ')}."
+    else:
+        coding = payload.get("coding") or ctx.get("note")
+        if not coding:
+            return {
+                "status": "errored",
+                "message": "No candidates — enter a coding (account/category or note) to accept.",
+            }
+        txn.match_status = "manually_matched"
+        txn.match_notes = str(coding)
+        txn.reviewed_by = user.id
+        txn.reviewed_at = now
+        message = "Coded and accepted."
+
+    if exc is not None:
+        exc.resolved = True
+        exc.resolved_by = user.id
+        exc.resolved_at = now
+        if ctx.get("note"):
+            exc.resolution_note = ctx["note"]
+
+    return {"status": "applied", "message": message}
+
+
 HandlerFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 
@@ -1130,6 +1273,8 @@ HANDLERS: dict[str, HandlerFn] = {
     "email_unclassified.route_to_workflow": _handle_email_unclassified_route_to_workflow,
     "email_unclassified.suppress": _handle_email_unclassified_suppress,
     "email_unclassified.request_review": _handle_email_unclassified_request_review,
+    # Books Review reconciliation (Arc B B-3 — Accept dispatches by item data)
+    "reconciliation.accept": _handle_reconciliation_accept,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,

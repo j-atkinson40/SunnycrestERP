@@ -1157,3 +1157,72 @@ _email_unclassified_triage = TriageQueueConfig(
 
 
 register_platform_config(_email_unclassified_triage)
+
+
+# ── Queue: reconciliation_review_triage (Books Review Arc B B-3) ─────
+
+
+_reconciliation_review_triage = TriageQueueConfig(
+    queue_id="reconciliation_review_triage",
+    queue_name="Books Review",
+    description=(
+        "Reconciliation exceptions that need a human: deposits with ambiguous or "
+        "near-miss candidates (ranked card) and unidentified items with none "
+        "(coding card). One display component derives the form from candidate "
+        "presence. Accept commits the SELECTED candidate; Skip snoozes. Revise + "
+        "Flag land in B-4."
+    ),
+    icon="Scale",
+    source_direct_query_key="reconciliation_review",
+    # entity_id is the reconciliation TRANSACTION (candidates key to it; the
+    # exception is per-transaction). The transaction's match_status is authority
+    # on open/closed — the builder filters on it, not on exception.resolved.
+    item_entity_type="reconciliation_exception",
+    item_display=ItemDisplayConfig(
+        title_field="description",
+        subtitle_field="transaction_date",
+        # `candidates` (Option A) rides the item payload so the card derives its
+        # form (ranked vs coding) at display without a second fetch.
+        body_fields=["amount", "transaction_type", "candidates"],
+        display_component="reconciliation_exception",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="accept",
+            label="Accept",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="CheckCircle",
+            handler="reconciliation.accept",
+            required_permission="invoice.approve",
+        ),
+        # Revise + Flag land in B-4 (interactive RankedRows flows; Flag needs the
+        # park table). The palette stays constant across both card forms.
+        ActionConfig(
+            action_id="skip",
+            label="Skip",
+            action_type=ActionType.SKIP,
+            keyboard_shortcut="n",
+            icon="SkipForward",
+            handler="skip",
+        ),
+    ],
+    context_panels=[],
+    flow_controls=FlowControlsConfig(
+        # Exceptions can wait — next month's run re-surfaces anything still open.
+        snooze_enabled=True,
+        snooze_presets=[
+            SnoozePreset(label="Tomorrow", offset_hours=24),
+            SnoozePreset(label="Next week", offset_hours=24 * 7),
+        ],
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(),
+    permissions=["invoice.approve"],
+    display_order=25,
+    enabled=True,
+)
+
+
+register_platform_config(_reconciliation_review_triage)

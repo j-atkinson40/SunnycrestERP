@@ -1429,6 +1429,80 @@ def _dq_workflow_review(
     return out
 
 
+def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
+    """Books Review — open reconciliation exceptions.
+
+    THE EXCEPTION IS A WORKSPACE OBJECT; the source transaction's `match_status`
+    is authority on whether the item is still open. So this JOINs to the
+    transaction and filters on `match_status`, NOT on
+    `reconciliation_exceptions.resolved`. The consequence is load-bearing: the
+    Accept handler must move `match_status` OFF "unmatched" (not merely flip
+    `resolved`), or the item never leaves the queue — the invariant enforces
+    itself through the query, not through discipline.
+
+    Candidates ride each row (Option A) so the card derives its form (ranked vs
+    coding) from their presence WITHOUT a second fetch. Near-misses are included
+    as low-ranked candidates carrying their rejection reason + measured value.
+    """
+    from app.models.financial_account import (
+        ReconciliationException,
+        ReconciliationMatchCandidate,
+        ReconciliationTransaction,
+    )
+
+    # "still open" = the source transaction is unmatched. Auto-committed
+    # transactions carry match_status="auto_cleared" and have no exception; a
+    # human resolution moves match_status to "manually_matched" (dropping it here).
+    rows = (
+        db.query(ReconciliationTransaction, ReconciliationException)
+        .join(
+            ReconciliationException,
+            ReconciliationException.reconciliation_transaction_id
+            == ReconciliationTransaction.id,
+        )
+        .filter(
+            ReconciliationTransaction.tenant_id == user.company_id,
+            ReconciliationTransaction.match_status == "unmatched",
+        )
+        .order_by(ReconciliationTransaction.sort_order)
+        .all()
+    )
+
+    txn_ids = [t.id for (t, _e) in rows]
+    cands_by_txn: dict[str, list[dict[str, Any]]] = {}
+    if txn_ids:
+        cand_rows = (
+            db.query(ReconciliationMatchCandidate)
+            .filter(ReconciliationMatchCandidate.reconciliation_transaction_id.in_(txn_ids))
+            .order_by(ReconciliationMatchCandidate.rank)
+            .all()
+        )
+        for c in cand_rows:
+            cands_by_txn.setdefault(c.reconciliation_transaction_id, []).append(
+                {
+                    "id": c.id,
+                    "candidate_record_type": c.candidate_record_type,
+                    "candidate_record_id": c.candidate_record_id,
+                    "score": str(c.score),
+                    "rank": c.rank,
+                    "rejection_reason": c.rejection_reason,
+                    "rejection_detail": c.rejection_detail,
+                }
+            )
+
+    return [
+        {
+            "id": t.id,  # entity_id = the transaction (candidates key to it; exception per txn)
+            "description": t.description,
+            "amount": str(t.amount),
+            "transaction_date": t.transaction_date.isoformat() if t.transaction_date else None,
+            "transaction_type": t.transaction_type,
+            "candidates": cands_by_txn.get(t.id, []),
+        }
+        for (t, _e) in rows
+    ]
+
+
 _DIRECT_QUERIES: dict[
     str, "Callable[[Session, User], list[dict[str, Any]]]"
 ] = {
@@ -1448,6 +1522,8 @@ _DIRECT_QUERIES: dict[
     "workflow_review": _dq_workflow_review,
     # Phase R-6.1a — unclassified email cascade fallthrough
     "email_unclassified": _dq_email_unclassified_triage,
+    # Books Review Arc B B-3 — reconciliation exceptions (candidates via Option A)
+    "reconciliation_review": _dq_reconciliation_review,
 }
 
 

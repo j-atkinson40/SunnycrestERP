@@ -15,6 +15,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmailUnclassifiedItemDisplay } from "@/components/triage/EmailUnclassifiedItemDisplay";
+import { ReconciliationExceptionDisplay } from "@/components/triage/ReconciliationExceptionDisplay";
 import { WorkflowReviewItemDisplay } from "@/lib/triage/workflow-review-item-display";
 import type { TriageItem, TriageItemDisplay as DisplayCfg } from "@/types/triage";
 
@@ -50,6 +51,11 @@ export function TriageItemDisplay({ item, display, onAdvance }: Props) {
         onAdvance={onAdvance}
       />
     );
+  }
+  // Books Review Arc B B-3 — one component; ranked vs coding derived from
+  // candidate presence in the item payload (Option A).
+  if (display.display_component === "reconciliation_exception") {
+    return <ReconciliationExceptionDisplay item={item} display={display} onAdvance={onAdvance} />;
   }
   return <GenericDisplay item={item} bodyFields={display.body_fields} />;
 }
