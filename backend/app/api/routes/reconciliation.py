@@ -133,6 +133,13 @@ def list_accounts(
             "id": a.id, "account_type": a.account_type, "account_name": a.account_name,
             "institution_name": a.institution_name, "last_four": a.last_four,
             "is_primary": a.is_primary, "gl_account_id": a.gl_account_id,
+            # The client hydrates its edit form from this response, and every
+            # field it CANNOT hydrate it sends back as an explicit null — which
+            # `update_account`'s exclude_unset reads as a deliberate clear. So an
+            # editable column missing here is a silent wipe on the next save, not
+            # merely an absent readout. statement_closing_day was exactly that.
+            # (Ledger Posting L-2.1a.)
+            "statement_closing_day": a.statement_closing_day,
             "last_reconciled_date": str(a.last_reconciled_date) if a.last_reconciled_date else None,
             "last_reconciled_balance": float(a.last_reconciled_balance) if a.last_reconciled_balance else None,
             "credit_limit": float(a.credit_limit) if a.credit_limit else None,

@@ -29,6 +29,14 @@ interface Account {
   last_four: string | null
   is_primary: boolean
   credit_limit: number | null
+  // Every optional field goes back to the server as `x || null` (see payload()),
+  // and the server reads an explicit null as a deliberate clear. So a column the
+  // form SENDS but cannot HYDRATE is wiped on the next save. This one has no
+  // input control at all — payload() has always sent it, openEdit never filled
+  // it, and every edit-save therefore cleared it. Hydrated here so the round trip
+  // is lossless; add the control separately if it's ever wanted.
+  // (Ledger Posting L-2.1a.)
+  statement_closing_day: number | null
   last_reconciled_date: string | null
   days_since_reconciled: number | null
   status: string
@@ -84,7 +92,8 @@ export default function FinancialAccountsSettings() {
       institution_name: a.institution_name ?? "", last_four: a.last_four ?? "",
       is_primary: a.is_primary,
       credit_limit: a.credit_limit != null ? String(a.credit_limit) : "",
-      statement_closing_day: "",
+      statement_closing_day:
+        a.statement_closing_day != null ? String(a.statement_closing_day) : "",
     })
     setEditing(a)
   }

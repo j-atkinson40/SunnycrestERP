@@ -108,3 +108,11 @@ tests/test_reconciliation_gl_l1.py
 #   distinct, and a blocked keyword row reaches Books Review as a CONFIG card
 #   rather than falling through to the coding card. —
 tests/test_reconciliation_gl_l2.py
+
+# — Ledger Posting arc L-2.1a: the financial-accounts form's round trip. The form
+#   sends every optional field as `x || null`, and exclude_unset reads an explicit
+#   null as a deliberate clear — so a column the form SENDS but cannot HYDRATE is
+#   wiped on the next save. Pins that list_accounts surfaces what the form must
+#   hydrate, that an untouched edit preserves it, and that an explicit null still
+#   clears (the clearing path gl_account_id depends on). —
+tests/test_reconciliation_account_form.py
