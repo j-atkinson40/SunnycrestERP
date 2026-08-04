@@ -103,7 +103,23 @@ def main() -> None:
             P(f"     account {a.id}  {a.name!r}  type={a.account_type}  "
               f"linked_fin_acct={a.financial_account_id}")
 
-        # 3. find-or-create a FinancialAccount + link the primary depository account
+        # 3. sync FIRST — the sandbox spreads transactions across accounts, so
+        #    which accounts actually HOLD data is only knowable after a sync. A
+        #    "first depository" guess before the sync linked an empty account
+        #    (Cash Management had 0 txns while Checking/Credit Card held them).
+        result = None
+        if args.no_sync:
+            P("3. --no-sync: skipping sync")
+        else:
+            result = run_sync_pipeline(
+                db, company_id=co.id, triggered_by_user_id=getattr(user, "id", None),
+                dry_run=False, trigger_source="manual",
+            )
+            P(f"3. sync result: {result}")
+
+        # 4. find-or-create a FinancialAccount + link the account(s) that HOLD
+        #    posted transactions (NOT a first-depository guess), so a subsequent
+        #    populate_from_feed actually sees the feed.
         fa = (
             db.query(FinancialAccount)
             .filter(FinancialAccount.tenant_id == co.id,
@@ -117,31 +133,50 @@ def main() -> None:
             )
             db.add(fa)
             db.flush()
-            P(f"3. created FinancialAccount {fa.id} {_FINANCIAL_ACCOUNT_NAME!r}")
+            P(f"4. created FinancialAccount {fa.id} {_FINANCIAL_ACCOUNT_NAME!r}")
         else:
-            P(f"3. reusing FinancialAccount {fa.id} {_FINANCIAL_ACCOUNT_NAME!r}")
-        primary = next(
-            (a for a in accounts if (a.account_type or "").lower() == "depository"),
-            accounts[0] if accounts else None,
+            P(f"4. reusing FinancialAccount {fa.id} {_FINANCIAL_ACCOUNT_NAME!r}")
+        acct_ids = [a.id for a in accounts]
+        holder_counts = (
+            db.query(BankAccount.id, func.count(BankTransaction.id))
+            .outerjoin(
+                BankTransaction,
+                (BankTransaction.bank_account_id == BankAccount.id)
+                & (BankTransaction.is_pending.is_(False))
+                & (BankTransaction.removed_at.is_(None)),
+            )
+            .filter(BankAccount.id.in_(acct_ids))
+            .group_by(BankAccount.id)
+            .all()
         )
-        if primary is None:
-            _die("no bank accounts returned by the exchange")
-        primary.financial_account_id = fa.id
+        holders = [aid for aid, n in holder_counts if n > 0]
+        if not holders:
+            # --no-sync, or a genuinely empty feed: link one depository as a
+            # placeholder so the run has something to point at.
+            dep = next(
+                (a.id for a in accounts if (a.account_type or "").lower() == "depository"),
+                accounts[0].id if accounts else None,
+            )
+            if dep is None:
+                _die("no bank accounts returned by the exchange")
+            holders = [dep]
+            P("   (no posted transactions yet — linked one depository as placeholder)")
+        linked_names = []
+        for aid in holders:
+            ba = db.get(BankAccount, aid)
+            ba.financial_account_id = fa.id
+            linked_names.append(ba.name)
         db.commit()
-        P(f"   linked bank account {primary.id} ({primary.name!r}) → "
-          f"FinancialAccount {fa.id}")
+        P(f"   linked {len(holders)} txn-holding account(s) → FinancialAccount "
+          f"{fa.id}: {linked_names}")
 
-        # 4. sync
+        # 5. report what landed. NOTE on the B-1 columns: sandbox sends NO
+        #    merchant enrichment — merchant_name / merchant_entity_id come back
+        #    null and counterparties is an empty list. The columns are wired and
+        #    store what Plaid sends; merchant→customer resolution is UNVALIDATED
+        #    until production Plaid provides real enrichment.
         if args.no_sync:
-            P("4. --no-sync: skipping sync")
             return
-        result = run_sync_pipeline(
-            db, company_id=co.id, triggered_by_user_id=getattr(user, "id", None),
-            dry_run=False, trigger_source="manual",
-        )
-        P(f"4. sync result: {result}")
-
-        # 5. report what landed (incl. the B-1 columns — first real Plaid data)
         q = db.query(BankTransaction).filter(BankTransaction.tenant_id == co.id)
         total = q.count()
         dmin, dmax = db.query(
