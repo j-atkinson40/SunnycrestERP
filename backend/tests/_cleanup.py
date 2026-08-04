@@ -35,6 +35,9 @@ _PURGE_STATEMENTS = [
     # delete them before those. Then messages → threads → accounts (each
     # tenant-scoped, child-before-parent).
     "DELETE FROM workflow_email_classifications WHERE tenant_id = ANY(:ids)",
+    # email_participants link via thread_id (NOT message) and also reference
+    # company_entities / users / companies — delete before all of those.
+    "DELETE FROM email_participants WHERE thread_id IN (SELECT id FROM email_threads WHERE tenant_id = ANY(:ids))",
     "DELETE FROM email_messages WHERE tenant_id = ANY(:ids)",
     "DELETE FROM email_threads WHERE tenant_id = ANY(:ids)",
     "DELETE FROM email_accounts WHERE tenant_id = ANY(:ids)",
@@ -89,6 +92,12 @@ _PURGE_STATEMENTS = [
     "DELETE FROM sales_orders WHERE company_id = ANY(:ids)",
     "DELETE FROM customers WHERE company_id = ANY(:ids)",
     "DELETE FROM vendors WHERE company_id = ANY(:ids)",
+    # activity_log.master_company_id → company_entities — delete before it.
+    "DELETE FROM activity_log WHERE master_company_id IN (SELECT id FROM company_entities WHERE company_id = ANY(:ids))",
+    # company_entities (CRM) is referenced by customers/vendors/contacts/invoices/
+    # email_participants/activity_log (all deleted above) — delete after those,
+    # before companies. One statement handles the parent_company_id self-ref.
+    "DELETE FROM company_entities WHERE company_id = ANY(:ids)",
     # Task substrate + audit (B-4: the "Ask someone" flag creates a Task, which
     # fires the audit subscriber). audit_logs.user_id and vault_items.company_id
     # would otherwise block the users/companies deletes. task_details cascades

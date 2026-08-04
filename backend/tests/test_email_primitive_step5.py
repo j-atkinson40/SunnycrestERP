@@ -64,6 +64,23 @@ os.environ.setdefault(
 # ─────────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _purge_module_companies():
+    """`_make_ctx` (slug `em5-<sfx>`) commits its own SessionLocal outside any
+    rollback, so its company leaks unless purged. One module-scoped teardown
+    catches them all. Fixes the company-litter tripwire."""
+    yield
+    from app.database import SessionLocal
+
+    from tests._cleanup import purge_companies_by_slug
+
+    s = SessionLocal()
+    try:
+        purge_companies_by_slug(s, "em5-%")
+    finally:
+        s.close()
+
+
 @pytest.fixture
 def client():
     from fastapi.testclient import TestClient

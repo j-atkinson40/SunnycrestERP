@@ -31,6 +31,26 @@ import pytest
 # ── Fixtures ─────────────────────────────────────────────────────────
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _purge_module_companies():
+    """Every company here is created by `_make_ctx` (slug `p5-<sfx>`) which
+    commits its own SessionLocal — outside any transaction rollback — so it
+    leaks unless purged. One module-scoped teardown catches them all,
+    regardless of which fixture (or direct call) created them. Fixes the
+    company-litter tripwire (was leaking ~27 companies/run + misattributing
+    the failure to whichever test ran last)."""
+    yield
+    from app.database import SessionLocal
+
+    from tests._cleanup import purge_companies_by_slug
+
+    s = SessionLocal()
+    try:
+        purge_companies_by_slug(s, "p5-%")
+    finally:
+        s.close()
+
+
 @pytest.fixture
 def db_session():
     from app.database import SessionLocal
