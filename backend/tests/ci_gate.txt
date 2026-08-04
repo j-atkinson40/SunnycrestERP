@@ -114,5 +114,10 @@ tests/test_reconciliation_gl_l2.py
 #   null as a deliberate clear — so a column the form SENDS but cannot HYDRATE is
 #   wiped on the next save. Pins that list_accounts surfaces what the form must
 #   hydrate, that an untouched edit preserves it, and that an explicit null still
-#   clears (the clearing path gl_account_id depends on). —
+#   clears (the clearing path gl_account_id depends on).
+#   L-2.1b adds the other half of the same write contract: gl_account_id is
+#   validated at the boundary through validate_gl_account, because the r153 FK
+#   gives existence only — a FOREIGN-TENANT mapping id satisfied it and was
+#   written. Foreign and nonexistent must read identically so the error is not a
+#   cross-tenant existence oracle. —
 tests/test_reconciliation_account_form.py

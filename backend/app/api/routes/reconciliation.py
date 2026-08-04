@@ -21,10 +21,51 @@ from app.models.financial_account import (
     ReconciliationTransaction,
 )
 from app.models.user import User
-from app.services import reconciliation_service
+from app.services import reconciliation_gl, reconciliation_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _require_valid_gl_account(db: Session, tenant_id: str, gl_account_id: str) -> None:
+    """Refuse a contra that is not an ACTIVE mapping owned by this tenant.
+
+    The r153 FK gives EXISTENCE only — not tenant ownership, not ``is_active`` —
+    so a mapping id belonging to another tenant satisfied the constraint and was
+    written, then failed far away at resolve as ``contra_gl_dangling``. That is
+    the right copy for a mapping which drifted and the wrong copy for one that
+    was never valid, and it surfaces long after the mistake.
+
+    Validated here through the same ``validate_gl_account`` the resolvers use, so
+    there is ONE definition of a usable GL account rather than a boundary check
+    that can drift from the resolution check. (Ledger Posting L-2.1b.)
+
+    The message distinguishes INACTIVE (own tenant — a real, actionable fact)
+    from absent, but deliberately does NOT distinguish foreign-tenant from
+    nonexistent: saying "that belongs to another tenant" would make this endpoint
+    a cross-tenant existence oracle. Both read as not-in-your-chart.
+    """
+    if reconciliation_gl.validate_gl_account(db, tenant_id, gl_account_id) is not None:
+        return
+    from app.models.accounting_analysis import TenantGLMapping
+
+    same_tenant = (
+        db.query(TenantGLMapping)
+        .filter(
+            TenantGLMapping.id == gl_account_id,
+            TenantGLMapping.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if same_tenant is not None:
+        raise HTTPException(
+            400,
+            f"GL account {same_tenant.account_number} ({same_tenant.account_name}) "
+            "is inactive — reactivate it, or choose another.",
+        )
+    raise HTTPException(
+        400, "That GL account is not in your chart of accounts."
+    )
 
 
 # ── Schemas ──
@@ -166,6 +207,10 @@ def create_account(
     if count >= 5:
         raise HTTPException(400, "Maximum 5 active accounts")
 
+    # An account can be born mis-pointed, so the create path takes the same gate.
+    if body.gl_account_id:
+        _require_valid_gl_account(db, current_user.company_id, body.gl_account_id)
+
     account = FinancialAccount(
         tenant_id=current_user.company_id,
         account_type=body.account_type,
@@ -201,6 +246,10 @@ def update_account(
     # partial PATCH that nulled it would unmap the account and every subsequent
     # reconciliation JE would refuse to book. (Ledger Posting arc L-1.)
     changes = body.model_dump(exclude_unset=True)
+    # Gate VALUES, not the deliberate clear: an explicit null stays legal (it is
+    # the contra picker's clear path, pinned in test_reconciliation_gl_l1).
+    if changes.get("gl_account_id"):
+        _require_valid_gl_account(db, current_user.company_id, changes["gl_account_id"])
     for field in ("account_type", "account_name", "institution_name", "last_four",
                   "gl_account_id", "is_primary", "statement_closing_day", "is_active"):
         if field in changes:

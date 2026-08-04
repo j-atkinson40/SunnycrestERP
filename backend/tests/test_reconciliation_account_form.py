@@ -15,6 +15,15 @@ broke: the API must SURFACE the field (or the client cannot hydrate it), and the
 API must PRESERVE it when omitted (the L-1 exclude_unset contract, re-asserted for
 this field).
 
+L-2.1b extends this to the other half of the same routes' write contract: what
+they ACCEPT into ``gl_account_id``. The r153 FK gives existence only — not tenant
+ownership and not ``is_active`` — so a mapping id belonging to ANOTHER TENANT
+satisfied the constraint and was written. It failed later, at resolve, as
+``contra_gl_dangling``: copy that is right for a mapping which drifted and
+misleading for one that was never valid. Validated at the boundary now, through
+the same ``validate_gl_account`` gate the resolvers use, so there is one
+definition of a usable GL account rather than two.
+
 Cleans up its own ``raf-`` tenants (COMPANY-LITTER ratchet).
 """
 from __future__ import annotations
@@ -146,5 +155,191 @@ def test_explicit_null_closing_day_still_clears(substrate):
         fa = s.get(FinancialAccount, substrate["acct"])
         s.refresh(fa)
         assert fa.statement_closing_day is None
+    finally:
+        s.close()
+
+
+# ── L-2.1b: what the routes ACCEPT into gl_account_id ───────────────────────
+
+@pytest.fixture
+def gl_substrate():
+    """Two tenants. `mine` carries an active + an inactive mapping; `theirs`
+    carries an active one, to prove the foreign-tenant case — the r153 FK is
+    satisfied by it, so only an explicit check can refuse it."""
+    from app.models.accounting_analysis import TenantGLMapping
+    from tests._cleanup import purge_companies_by_slug
+
+    s = SessionLocal()
+    sfx = uuid.uuid4().hex[:8]
+    mine = Company(id=str(uuid.uuid4()), name=f"RAF M {sfx}",
+                   slug=f"{_SLUG_PREFIX}m-{sfx}", is_active=True,
+                   vertical="manufacturing")
+    theirs = Company(id=str(uuid.uuid4()), name=f"RAF T {sfx}",
+                     slug=f"{_SLUG_PREFIX}t-{sfx}", is_active=True,
+                     vertical="manufacturing")
+    s.add_all([mine, theirs])
+    s.flush()
+
+    def _m(tenant_id, name, number, active):
+        m = TenantGLMapping(id=str(uuid.uuid4()), tenant_id=tenant_id,
+                            platform_category="current_asset", account_number=number,
+                            account_name=name, is_active=active)
+        s.add(m)
+        return m
+
+    active = _m(mine.id, "Operating Cash", "1010", True)
+    inactive = _m(mine.id, "Closed Cash", "1011", False)
+    foreign = _m(theirs.id, "Their Cash", "1010", True)
+    s.flush()
+
+    acct = FinancialAccount(id=str(uuid.uuid4()), tenant_id=mine.id,
+                            account_type="checking", account_name="Operating")
+    s.add(acct)
+    s.commit()
+    ids = {"mine": mine.id, "acct": acct.id, "active": active.id,
+           "inactive": inactive.id, "foreign": foreign.id}
+    s.close()
+    yield ids
+    s = SessionLocal()
+    try:
+        purge_companies_by_slug(s, f"{_SLUG_PREFIX}%")
+    finally:
+        s.close()
+
+
+def _patch(s, ids, **fields):
+    user = types.SimpleNamespace(company_id=ids["mine"])
+    body = AccountUpdate(account_type="checking", account_name="Operating", **fields)
+    return update_account(ids["acct"], body, current_user=user, db=s)
+
+
+def test_update_rejects_foreign_tenant_gl_account(gl_substrate):
+    """THE ONE THAT MATTERS. The FK is satisfied — the row exists — so nothing
+    below the route refuses it, and the write succeeded pre-L-2.1b. A contra
+    pointing into another tenant's chart is the GL-leak shape."""
+    from fastapi import HTTPException
+
+    s = SessionLocal()
+    try:
+        with pytest.raises(HTTPException) as exc:
+            _patch(s, gl_substrate, gl_account_id=gl_substrate["foreign"])
+        assert exc.value.status_code == 400
+        s.rollback()
+        fa = s.get(FinancialAccount, gl_substrate["acct"])
+        s.refresh(fa)
+        assert fa.gl_account_id is None  # nothing written
+    finally:
+        s.close()
+
+
+def test_update_rejects_inactive_gl_account(gl_substrate):
+    """Own tenant, but deactivated. `validate_gl_account` refuses it at resolve;
+    refusing it at write means the operator learns at the moment of the mistake."""
+    from fastapi import HTTPException
+
+    s = SessionLocal()
+    try:
+        with pytest.raises(HTTPException) as exc:
+            _patch(s, gl_substrate, gl_account_id=gl_substrate["inactive"])
+        assert exc.value.status_code == 400
+        # The message distinguishes inactive from absent — different fixes.
+        assert "inactive" in str(exc.value.detail).lower()
+        s.rollback()
+    finally:
+        s.close()
+
+
+def test_update_rejects_nonexistent_gl_account(gl_substrate):
+    """No such mapping anywhere. Pre-L-2.1b this reached the DB and raised an
+    opaque IntegrityError from the r153 FK; now it is a legible 400."""
+    from fastapi import HTTPException
+
+    s = SessionLocal()
+    try:
+        with pytest.raises(HTTPException) as exc:
+            _patch(s, gl_substrate, gl_account_id=str(uuid.uuid4()))
+        assert exc.value.status_code == 400
+        s.rollback()
+    finally:
+        s.close()
+
+
+def test_foreign_and_nonexistent_read_the_same(gl_substrate):
+    """Both say 'not in your chart of accounts'. Naming the foreign case as
+    foreign would confirm that a row exists in another tenant — the error message
+    must not be a cross-tenant existence oracle."""
+    from fastapi import HTTPException
+
+    s = SessionLocal()
+    try:
+        with pytest.raises(HTTPException) as a:
+            _patch(s, gl_substrate, gl_account_id=gl_substrate["foreign"])
+        s.rollback()
+        with pytest.raises(HTTPException) as b:
+            _patch(s, gl_substrate, gl_account_id=str(uuid.uuid4()))
+        s.rollback()
+        assert str(a.value.detail) == str(b.value.detail)
+    finally:
+        s.close()
+
+
+def test_update_accepts_active_own_tenant_gl_account(gl_substrate):
+    """The happy path still writes."""
+    s = SessionLocal()
+    try:
+        _patch(s, gl_substrate, gl_account_id=gl_substrate["active"])
+        fa = s.get(FinancialAccount, gl_substrate["acct"])
+        s.refresh(fa)
+        assert fa.gl_account_id == gl_substrate["active"]
+    finally:
+        s.close()
+
+
+def test_update_accepts_explicit_null_gl_account(gl_substrate):
+    """Clearing stays legal — validation gates VALUES, not the deliberate clear.
+    This is the path the contra picker's clear control depends on."""
+    s = SessionLocal()
+    try:
+        fa = s.get(FinancialAccount, gl_substrate["acct"])
+        fa.gl_account_id = gl_substrate["active"]
+        s.commit()
+        _patch(s, gl_substrate, gl_account_id=None)
+        s.refresh(fa)
+        assert fa.gl_account_id is None
+    finally:
+        s.close()
+
+
+def test_create_rejects_foreign_tenant_gl_account(gl_substrate):
+    """Same gate on the create path — an account can be born mis-pointed."""
+    from fastapi import HTTPException
+
+    from app.api.routes.reconciliation import AccountCreate, create_account
+
+    s = SessionLocal()
+    try:
+        user = types.SimpleNamespace(company_id=gl_substrate["mine"])
+        body = AccountCreate(account_type="checking", account_name="Second",
+                             gl_account_id=gl_substrate["foreign"])
+        with pytest.raises(HTTPException) as exc:
+            create_account(body, current_user=user, db=s)
+        assert exc.value.status_code == 400
+        s.rollback()
+    finally:
+        s.close()
+
+
+def test_create_accepts_active_own_tenant_gl_account(gl_substrate):
+    """The create happy path."""
+    from app.api.routes.reconciliation import AccountCreate, create_account
+
+    s = SessionLocal()
+    try:
+        user = types.SimpleNamespace(company_id=gl_substrate["mine"])
+        body = AccountCreate(account_type="checking", account_name="Second",
+                             gl_account_id=gl_substrate["active"])
+        out = create_account(body, current_user=user, db=s)
+        fa = s.get(FinancialAccount, out["id"])
+        assert fa.gl_account_id == gl_substrate["active"]
     finally:
         s.close()
