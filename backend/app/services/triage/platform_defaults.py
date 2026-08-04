@@ -1196,19 +1196,12 @@ _reconciliation_review_triage = TriageQueueConfig(
             handler="reconciliation.accept",
             required_permission="invoice.approve",
         ),
-        # Flag lands in B-4: park the exception (ask someone / hold for docs /
-        # accept as a reconciling item), each with its own return trigger. Revise
-        # is still deferred (its semantics beyond Accept-with-candidate + Flag need
-        # a design pass). The palette stays constant across both card forms.
-        ActionConfig(
-            action_id="flag",
-            label="Flag",
-            action_type=ActionType.CUSTOM,
-            keyboard_shortcut="f",
-            icon="Flag",
-            handler="reconciliation.flag",
-            required_permission="invoice.approve",
-        ),
+        # Flag is DISPLAY-owned (B-4.5): it opens a destination picker + recipient
+        # search (a modal flow) before dispatching reconciliation.flag with a
+        # payload — an interactive action the immediate-dispatch palette can't
+        # drive. It renders in ReconciliationExceptionDisplay on BOTH card forms,
+        # so the visible action set stays constant (Accept / Flag / Skip). Revise
+        # is still deferred (likely only meaningful on the coding card — see STATE).
         ActionConfig(
             action_id="skip",
             label="Skip",

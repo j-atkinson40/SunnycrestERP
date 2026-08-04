@@ -66,6 +66,56 @@ class AdjustmentCreate(BaseModel):
 
 # ── Financial Accounts ──
 
+@router.get("/flag-recipients")
+def flag_recipients(
+    q: str = "",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Books Review B-4.5 — internal users a reconciliation exception can be
+    flagged to ("Ask someone"), each with their current open-ask load
+    ("N already waiting") so the picker can show it. Tenant-scoped, active users,
+    internal only (external recipients are deferred — the cross-tenant channel
+    does not exist)."""
+    from app.models.financial_account import ReconciliationFlag
+
+    query = db.query(User).filter(
+        User.company_id == current_user.company_id, User.is_active.is_(True)
+    )
+    term = q.strip()
+    if term:
+        like = f"%{term}%"
+        query = query.filter(
+            User.first_name.ilike(like)
+            | User.last_name.ilike(like)
+            | User.email.ilike(like)
+        )
+    users = query.order_by(User.first_name, User.last_name).limit(20).all()
+
+    # Open-ask load per recipient — one grouped count (cheap).
+    counts = dict(
+        db.query(ReconciliationFlag.owner_user_id, func.count(ReconciliationFlag.id))
+        .filter(
+            ReconciliationFlag.tenant_id == current_user.company_id,
+            ReconciliationFlag.destination == "ask_someone",
+            ReconciliationFlag.returned_at.is_(None),
+        )
+        .group_by(ReconciliationFlag.owner_user_id)
+        .all()
+    )
+    return {
+        "recipients": [
+            {
+                "id": u.id,
+                "name": (f"{u.first_name} {u.last_name}".strip() or u.email),
+                "email": u.email,
+                "waiting_count": int(counts.get(u.id, 0)),
+            }
+            for u in users
+        ]
+    }
+
+
 @router.get("/accounts")
 def list_accounts(
     current_user: User = Depends(get_current_user),

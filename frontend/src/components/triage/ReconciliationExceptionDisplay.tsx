@@ -22,6 +22,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
+import { FlagDestinationPicker, type FlagPayload } from "@/components/triage/FlagDestinationPicker"
 import { RankedRows } from "@/components/triage/RankedRows"
 import { useTriageSession } from "@/contexts/triage-session-context"
 import type { TriageItem } from "@/types/triage"
@@ -66,6 +67,7 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
   const candidates = readCandidates(item)
   const amount = itemField(item, "amount")
   const [coding, setCoding] = useState("")
+  const [flagOpen, setFlagOpen] = useState(false)
   const working = status === "working"
 
   const accept = async (payload: Record<string, unknown>) => {
@@ -73,6 +75,14 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
       await act({ action_id: "accept", payload })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Accept failed")
+    }
+  }
+
+  const flag = async (payload: FlagPayload) => {
+    try {
+      await act({ action_id: "flag", payload: payload as unknown as Record<string, unknown> })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Flag failed")
     }
   }
 
@@ -88,65 +98,87 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
     </div>
   )
 
-  if (candidates.length === 0) {
-    // CODING card
-    return (
-      <div className="flex flex-col gap-3" data-testid="reconciliation-coding-card">
-        {header}
-        <div className="rounded-lg border border-border-subtle bg-surface-elevated p-4 shadow-level-1">
-          <p className="text-body-sm text-content-muted">
-            No matching candidates. Code this item to accept it.
-          </p>
-          <textarea
-            value={coding}
-            onChange={(e) => setCoding(e.target.value)}
-            placeholder="Account / category / note"
-            rows={3}
-            aria-label="Coding"
-            className="mt-2 w-full rounded-md border border-border-base bg-surface-raised px-3 py-2 text-body-sm text-content-base outline-none focus-visible:border-signature-steel focus-visible:ring-1 focus-visible:ring-signature-steel/50"
-          />
-          <button
-            type="button"
-            disabled={working || !coding.trim()}
-            onClick={() => accept({ coding: coding.trim() })}
-            className="mt-2 inline-flex items-center rounded-md bg-accent px-3 py-1.5 text-body-sm font-medium text-content-on-accent transition-opacity duration-quick disabled:opacity-50"
-          >
-            Accept coding
-          </button>
-        </div>
+  const body =
+    candidates.length === 0 ? (
+      // CODING card
+      <div
+        className="rounded-lg border border-border-subtle bg-surface-elevated p-4 shadow-level-1"
+        data-testid="reconciliation-coding-card"
+      >
+        <p className="text-body-sm text-content-muted">
+          No matching candidates. Code this item to accept it.
+        </p>
+        <textarea
+          value={coding}
+          onChange={(e) => setCoding(e.target.value)}
+          placeholder="Account / category / note"
+          rows={3}
+          aria-label="Coding"
+          className="mt-2 w-full rounded-md border border-border-base bg-surface-raised px-3 py-2 text-body-sm text-content-base outline-none focus-visible:border-signature-steel focus-visible:ring-1 focus-visible:ring-signature-steel/50"
+        />
+        <button
+          type="button"
+          disabled={working || !coding.trim()}
+          onClick={() => accept({ coding: coding.trim() })}
+          className="mt-2 inline-flex items-center rounded-md bg-accent px-3 py-1.5 text-body-sm font-medium text-content-on-accent transition-opacity duration-quick disabled:opacity-50"
+        >
+          Accept coding
+        </button>
+      </div>
+    ) : (
+      // RANKED card
+      <div data-testid="reconciliation-ranked-card">
+        <RankedRows
+          items={candidates}
+          getKey={(c) => c.id}
+          ariaLabel="Match candidates"
+          // Disabled while the Flag picker is open so the two RankedRows
+          // capture-phase listeners never both fire on the same keystroke.
+          enabled={!working && !flagOpen}
+          onSelect={(c) => accept({ candidate_id: c.id })}
+          renderItem={(c) => (
+            <div className="flex min-w-0 items-baseline justify-between gap-3">
+              <span className="min-w-0 truncate text-body-sm text-content-base">
+                {c.candidate_record_type.replace(/_/g, " ")}
+                <span className="ml-2 font-plex-mono text-caption text-content-subtle">
+                  {c.candidate_record_id.slice(0, 8)}
+                </span>
+              </span>
+              {c.rejection_reason ? (
+                <span className="shrink-0 text-caption text-content-muted">
+                  {REASON_LABEL[c.rejection_reason] ?? c.rejection_reason.toLowerCase()}
+                </span>
+              ) : (
+                <span className="shrink-0 font-plex-mono text-caption tabular-nums text-content-muted">
+                  score {c.score}
+                </span>
+              )}
+            </div>
+          )}
+        />
       </div>
     )
-  }
 
-  // RANKED card
   return (
-    <div className="flex flex-col gap-3" data-testid="reconciliation-ranked-card">
+    <div className="flex flex-col gap-3">
       {header}
-      <RankedRows
-        items={candidates}
-        getKey={(c) => c.id}
-        ariaLabel="Match candidates"
-        enabled={!working}
-        onSelect={(c) => accept({ candidate_id: c.id })}
-        renderItem={(c) => (
-          <div className="flex min-w-0 items-baseline justify-between gap-3">
-            <span className="min-w-0 truncate text-body-sm text-content-base">
-              {c.candidate_record_type.replace(/_/g, " ")}
-              <span className="ml-2 font-plex-mono text-caption text-content-subtle">
-                {c.candidate_record_id.slice(0, 8)}
-              </span>
-            </span>
-            {c.rejection_reason ? (
-              <span className="shrink-0 text-caption text-content-muted">
-                {REASON_LABEL[c.rejection_reason] ?? c.rejection_reason.toLowerCase()}
-              </span>
-            ) : (
-              <span className="shrink-0 font-plex-mono text-caption tabular-nums text-content-muted">
-                score {c.score}
-              </span>
-            )}
-          </div>
-        )}
+      {body}
+      {/* Flag is display-owned (interactive: opens a picker before dispatch).
+          Neutral outline — Accept stays the one chrome-filled primary. */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={working}
+          onClick={() => setFlagOpen(true)}
+          className="rounded-md border border-border-base bg-surface-elevated px-3 py-1.5 text-body-sm text-content-base transition-colors duration-quick hover:bg-surface-raised disabled:opacity-50"
+        >
+          Flag…
+        </button>
+      </div>
+      <FlagDestinationPicker
+        open={flagOpen}
+        onClose={() => setFlagOpen(false)}
+        onFlag={(p) => void flag(p)}
       />
     </div>
   )

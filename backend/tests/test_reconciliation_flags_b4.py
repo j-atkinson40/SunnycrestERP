@@ -34,6 +34,7 @@ from app.models.financial_account import (
 )
 from app.models.role import Role
 from app.models.user import User
+from app.api.routes.reconciliation import flag_recipients
 from app.services import reconciliation_flags
 from app.services.agents.period_lock import PeriodLockService
 from app.services.tasks.subscribers.registry import emit_event, get_subscribers
@@ -206,6 +207,26 @@ def test_deleting_a_flag_set_nulls_the_exception_link(env):
     env.s.commit()
     env.s.refresh(e)
     assert e.flag_id is None                                 # ondelete SET NULL
+
+
+# ── B-4.5 recipient search endpoint ─────────────────────────────────────────
+def test_flag_recipients_lists_tenant_users_with_open_ask_counts(env):
+    t, e = _txn(env)
+    reconciliation_flags.create_flag(env.s, user=env.user, txn=t, exception=e,
+                                     destination="ask_someone", recipient_user_id=env.recipient.id)
+    env.s.commit()
+    out = flag_recipients(q="", current_user=env.user, db=env.s)
+    by_id = {r["id"]: r for r in out["recipients"]}
+    # the recipient carries one open ask; the flagger carries none
+    assert by_id[env.recipient.id]["waiting_count"] == 1
+    assert by_id[env.user.id]["waiting_count"] == 0
+
+
+def test_flag_recipients_filters_by_query(env):
+    out = flag_recipients(q="Dana", current_user=env.user, db=env.s)  # recipient first_name
+    ids = {r["id"] for r in out["recipients"]}
+    assert env.recipient.id in ids
+    assert env.user.id not in ids  # flagger is "B Four", not matched by "Dana"
 
 
 # ── guard ────────────────────────────────────────────────────────────────────
