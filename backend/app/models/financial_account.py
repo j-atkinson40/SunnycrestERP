@@ -191,11 +191,12 @@ class ReconciliationException(Base):
     reconciliation_run_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("reconciliation_runs.id", ondelete="CASCADE"),
         nullable=False, index=True)
-    # Flag/park link. FK DELIBERATELY ABSENT (not an oversight): the flag table is
-    # built in Arc B (the workspace). Referential integrity here is UNENFORCED until
-    # that migration adds the FK constraint — do not treat this id as guaranteed-valid
-    # until then. Tracked: Arc B wires flag_id -> <flag_table>.id.
-    flag_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Flag/park link → the active reconciliation_flags row (NULL = not parked). The
+    # FK landed in B-4 (r151, ondelete SET NULL: clearing a park frees the exception).
+    # The queue build excludes exceptions with flag_id set (actively parked); on return
+    # the subscriber/hook clears it so the SAME exception reopens, park row kept as history.
+    flag_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("reconciliation_flags.id", ondelete="SET NULL"), nullable=True)
     # Resolution state (workspace record; NOT the transaction's match_status).
     # chosen_candidate_id FK DELIBERATELY ABSENT: a FK to reconciliation_match_candidates
     # would be circular (candidate -> txn <- exception -> candidate) and buys little; the
@@ -238,3 +239,49 @@ class ReconciliationPaymentClaim(Base):
         nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ReconciliationFlag(Base):
+    """A parked reconciliation exception (Books Review Arc B B-4).
+
+    The RETURN TRIGGER is a DISCRIMINATED SHAPE: `return_trigger_kind` names the
+    mechanism — `task_completed` (Ask someone → a Task; return from the
+    task-completion subscriber), `document_attached` (Hold for docs → synchronous
+    return when a doc is attached), or `terminal` (Accept as reconciling item → no
+    evaluator; amount flows to the run's reconciling difference). NOT a single
+    timestamp with the discrimination hidden in code.
+
+    `returned_at IS NULL` = active park (the item is out of the queue). On return,
+    the subscriber/hook stamps returned_at and clears the exception's flag_id, so
+    the SAME exception reopens; the park row persists as queryable history
+    ("we asked Dana in July and she said X")."""
+
+    __tablename__ = "reconciliation_flags"
+    __table_args__ = (
+        CheckConstraint(
+            "destination IN ('ask_someone', 'hold_for_documentation', 'accept_reconciling')",
+            name="ck_recon_flag_destination",
+        ),
+        CheckConstraint(
+            "return_trigger_kind IN ('task_completed', 'document_attached', 'terminal')",
+            name="ck_recon_flag_trigger_kind",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False, index=True)
+    reconciliation_exception_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("reconciliation_exceptions.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    destination: Mapped[str] = mapped_column(String(30), nullable=False)
+    return_trigger_kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    owner_user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    # task_completed only — the Task's vault_item_id the task-completion subscriber matches on.
+    task_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("vault_items.id", ondelete="SET NULL"), nullable=True, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    return_note: Mapped[str | None] = mapped_column(Text, nullable=True)

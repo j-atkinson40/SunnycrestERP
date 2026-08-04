@@ -1225,6 +1225,72 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     return {"status": "applied", "message": message}
 
 
+def _handle_reconciliation_flag(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Books Review Flag — park the exception to one of three destinations, each
+    with its own return trigger (see reconciliation_flags.create_flag). ask/hold
+    set exception.flag_id (active park → out of queue); accept_reconciling is
+    terminal (amount flows to the run's reconciling difference, period-lock gated).
+    """
+    from app.models.financial_account import (
+        ReconciliationException,
+        ReconciliationTransaction,
+    )
+    from app.services import reconciliation_flags
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    txn_id = ctx["entity_id"]
+    payload = ctx.get("payload") or {}
+    destination = payload.get("destination")
+    if destination not in ("ask_someone", "hold_for_documentation", "accept_reconciling"):
+        return {
+            "status": "errored",
+            "message": "Flag requires a destination (ask_someone / hold_for_documentation / accept_reconciling).",
+        }
+
+    txn = (
+        db.query(ReconciliationTransaction)
+        .filter(
+            ReconciliationTransaction.id == txn_id,
+            ReconciliationTransaction.tenant_id == user.company_id,
+        )
+        .first()
+    )
+    if txn is None:
+        return {"status": "errored", "message": "Transaction not found."}
+    if txn.match_status != "unmatched":
+        return {"status": "errored", "message": "This item is already resolved."}
+    exc = (
+        db.query(ReconciliationException)
+        .filter(ReconciliationException.reconciliation_transaction_id == txn_id)
+        .first()
+    )
+    if exc is None:
+        return {"status": "errored", "message": "No exception to flag."}
+    if exc.flag_id is not None:
+        return {"status": "errored", "message": "This item is already parked."}
+
+    try:
+        flag = reconciliation_flags.create_flag(
+            db,
+            user=user,
+            txn=txn,
+            exception=exc,
+            destination=destination,
+            note=ctx.get("note") or payload.get("note"),
+            recipient_user_id=payload.get("recipient_user_id"),
+        )
+    except ValueError as exc_err:
+        return {"status": "errored", "message": str(exc_err)}
+
+    labels = {
+        "ask_someone": "Asked for review.",
+        "hold_for_documentation": "Held for documentation.",
+        "accept_reconciling": "Accepted as a reconciling item.",
+    }
+    return {"status": "applied", "message": labels.get(flag.destination, "Flagged.")}
+
+
 HandlerFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 
@@ -1275,6 +1341,8 @@ HANDLERS: dict[str, HandlerFn] = {
     "email_unclassified.request_review": _handle_email_unclassified_request_review,
     # Books Review reconciliation (Arc B B-3 — Accept dispatches by item data)
     "reconciliation.accept": _handle_reconciliation_accept,
+    # Books Review reconciliation flag/park (Arc B B-4)
+    "reconciliation.flag": _handle_reconciliation_flag,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,

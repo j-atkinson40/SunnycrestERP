@@ -1196,8 +1196,19 @@ _reconciliation_review_triage = TriageQueueConfig(
             handler="reconciliation.accept",
             required_permission="invoice.approve",
         ),
-        # Revise + Flag land in B-4 (interactive RankedRows flows; Flag needs the
-        # park table). The palette stays constant across both card forms.
+        # Flag lands in B-4: park the exception (ask someone / hold for docs /
+        # accept as a reconciling item), each with its own return trigger. Revise
+        # is still deferred (its semantics beyond Accept-with-candidate + Flag need
+        # a design pass). The palette stays constant across both card forms.
+        ActionConfig(
+            action_id="flag",
+            label="Flag",
+            action_type=ActionType.CUSTOM,
+            keyboard_shortcut="f",
+            icon="Flag",
+            handler="reconciliation.flag",
+            required_permission="invoice.approve",
+        ),
         ActionConfig(
             action_id="skip",
             label="Skip",

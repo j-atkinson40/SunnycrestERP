@@ -27,6 +27,7 @@ from app.services.tasks.subscribers import (  # noqa: F401
     workflow_subscriber,
     focus_subscriber,
     jcf_subscriber,
+    reconciliation_flag_subscriber,
 )
 from app.services.tasks.plugins.types import (  # noqa: F401
     generic_task,

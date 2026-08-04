@@ -46,6 +46,9 @@ _PURGE_STATEMENTS = [
     # (children-first discipline).
     "DELETE FROM reconciliation_payment_claims WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_match_candidates WHERE tenant_id = ANY(:ids)",
+    # r151 (B-4): flags first — the flag_id FK is ondelete SET NULL, so deleting
+    # flags clears the exceptions' back-reference before the exceptions go.
+    "DELETE FROM reconciliation_flags WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_exceptions WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_transactions WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_adjustments WHERE tenant_id = ANY(:ids)",
@@ -69,6 +72,16 @@ _PURGE_STATEMENTS = [
     "DELETE FROM invoices WHERE company_id = ANY(:ids)",
     "DELETE FROM customers WHERE company_id = ANY(:ids)",
     "DELETE FROM vendors WHERE company_id = ANY(:ids)",
+    # Task substrate + audit (B-4: the "Ask someone" flag creates a Task, which
+    # fires the audit subscriber). audit_logs.user_id and vault_items.company_id
+    # would otherwise block the users/companies deletes. task_details cascades
+    # from vault_items; reconciliation_flags.task_id (→ vault_items) is deleted
+    # in the reconciliation block above.
+    "DELETE FROM audit_logs WHERE company_id = ANY(:ids)",
+    "DELETE FROM notifications WHERE company_id = ANY(:ids)",
+    "DELETE FROM task_details WHERE vault_item_id IN (SELECT id FROM vault_items WHERE company_id = ANY(:ids))",
+    "DELETE FROM vault_items WHERE company_id = ANY(:ids)",
+    "DELETE FROM vaults WHERE company_id = ANY(:ids)",
     "DELETE FROM users WHERE company_id = ANY(:ids)",
     "DELETE FROM roles WHERE company_id = ANY(:ids)",
     "DELETE FROM companies WHERE id = ANY(:ids)",

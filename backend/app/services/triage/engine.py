@@ -1463,6 +1463,10 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
         .filter(
             ReconciliationTransaction.tenant_id == user.company_id,
             ReconciliationTransaction.match_status == "unmatched",
+            # B-4: exclude actively-parked exceptions. flag_id set = a flag whose
+            # returned_at is still NULL; on return the hook clears flag_id and the
+            # SAME exception reopens here.
+            ReconciliationException.flag_id.is_(None),
         )
         .order_by(ReconciliationTransaction.sort_order)
         .all()

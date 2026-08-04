@@ -52,3 +52,8 @@ tests/test_plaid_counterparty_b1.py
 #   Option A, Accept commits the SELECTED candidate reusing _try_claim, manual==auto
 #   state parity, period-lock gate, coding branch. —
 tests/test_reconciliation_review_b3.py
+
+# — Books Review Arc B B-4: flag/park (r151) — discriminated return_trigger_kind,
+#   flag_id FK, ask→task_completed subscriber, hold→doc-attach hook, terminal→run
+#   summary (adjustment), same-exception reopen, no scheduler. —
+tests/test_reconciliation_flags_b4.py
