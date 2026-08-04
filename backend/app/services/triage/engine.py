@@ -1486,19 +1486,103 @@ def _dq_catalog_fetch_triage(
     return out
 
 
+_EMAIL_UNCLASSIFIED_DISPLAY_LIMIT = 50
+
+
+def _mq_email_unclassified_triage(db: Session, user: User) -> MembershipQuery:
+    """Membership: inbound emails whose classification cascade exhausted without
+    a dispatch — the LATEST classification per message is tier IS NULL AND NOT
+    suppressed.
+
+    This is the SQL form of the Python latest-per-message de-dup in
+    ``classification.dispatch.list_unclassified`` (window over ALL
+    classifications for each message, rn=1 = the latest). The window orders by
+    ``created_at DESC`` — matching ``get_latest_classification_for_message`` —
+    with a deterministic ``id DESC`` tiebreak (the Python has none, so on a
+    created_at tie it was DB-arbitrary; this makes it stable). A WEC always has
+    a real email_message_id (NOT NULL FK), so the builder's inner join to the
+    message can't drop a member — membership is expressible on WEC alone.
+
+    UNCAPPED: per the arc's EXACT-COUNTS decision, the builder's display LIMIT
+    does NOT propagate here — the count answers the true 'how many waiting'.
+    """
+    from sqlalchemy import func
+
+    from app.models.email_classification import WorkflowEmailClassification as WEC
+
+    rn = func.row_number().over(
+        partition_by=WEC.email_message_id,
+        order_by=[WEC.created_at.desc(), WEC.id.desc()],
+    ).label("rn")
+    ranked = (
+        db.query(WEC.id.label("cid"), rn)
+        .filter(WEC.tenant_id == user.company_id)
+        .subquery()
+    )
+    q = (
+        db.query(WEC)
+        .join(ranked, ranked.c.cid == WEC.id)
+        .filter(
+            ranked.c.rn == 1,
+            WEC.tier.is_(None),
+            WEC.is_suppressed.is_(False),
+        )
+    )
+    return MembershipQuery(query=q, id_column=WEC.id)
+
+
 def _dq_email_unclassified_triage(
     db: Session, user: User
 ) -> list[dict[str, Any]]:
-    """Phase R-6.1a — surfaces inbound emails whose classification
-    cascade exhausted without a dispatch (tier IS NULL AND
-    is_suppressed = FALSE). Tenant-scoped via the
-    ``classification.list_unclassified`` helper which de-dups against
-    later replays so a once-unclassified message that's since been
-    routed via replay falls out of the queue.
+    """Phase R-6.1a — inbound emails whose classification cascade exhausted
+    without a dispatch (the latest classification per message is tier IS NULL
+    AND NOT suppressed). Membership from `_mq_email_unclassified_triage` (shared
+    with queue_count); this builder joins the EmailMessage for display (one
+    batched load, no N+1), orders oldest-first, and stages at most
+    `_EMAIL_UNCLASSIFIED_DISPLAY_LIMIT` rows — a DISPLAY bound for the
+    workspace, NOT a bound on the count (the count is exact + uncapped).
     """
-    from app.services.classification.dispatch import list_unclassified
+    from app.models.email_classification import WorkflowEmailClassification as WEC
+    from app.models.email_primitive import EmailMessage
 
-    return list_unclassified(db, tenant_id=user.company_id, limit=50)
+    mq = _mq_email_unclassified_triage(db, user)
+    rows = (
+        mq.query.order_by(WEC.created_at.asc())
+        .limit(_EMAIL_UNCLASSIFIED_DISPLAY_LIMIT)
+        .all()
+    )
+    msg_ids = [w.email_message_id for w in rows]
+    msgs = (
+        {m.id: m for m in db.query(EmailMessage).filter(EmailMessage.id.in_(msg_ids))}
+        if msg_ids
+        else {}
+    )
+    out: list[dict[str, Any]] = []
+    for cls_row in rows:
+        msg = msgs.get(cls_row.email_message_id)
+        out.append(
+            {
+                "id": cls_row.id,
+                "classification_id": cls_row.id,
+                "email_message_id": cls_row.email_message_id,
+                "subject": (msg.subject or "") if msg else "",
+                "sender_email": (msg.sender_email or "") if msg else "",
+                "sender_name": (msg.sender_name or "") if msg else "",
+                "body_excerpt": ((msg.body_text or "")[:500]) if msg else "",
+                "received_at": (
+                    msg.received_at.isoformat()
+                    if msg and msg.received_at
+                    else None
+                ),
+                "created_at": (
+                    cls_row.created_at.isoformat()
+                    if cls_row.created_at
+                    else None
+                ),
+                "tier_reasoning": cls_row.tier_reasoning or {},
+            }
+        )
+    return out
 
 
 def _mq_workflow_review(db: Session, user: User) -> MembershipQuery:
@@ -1689,9 +1773,10 @@ _MEMBERSHIP_QUERIES: dict[
     "safety_program_triage": _mq_safety_program_triage,
     "workflow_review": _mq_workflow_review,
     "reconciliation_review": _mq_reconciliation_review,
-    # email_unclassified — NOT here (C-3): membership is latest-classification-
-    # per-message, a window-function translation that gets its own pass. It
-    # falls back to materialize-and-count until then (already LIMIT 50-capped).
+    # C-3: latest-classification-per-message via a window function. UNCAPPED —
+    # the count is now exact (was ≤50 on the old fallback). The builder keeps a
+    # display LIMIT; the cap does not propagate to the count.
+    "email_unclassified": _mq_email_unclassified_triage,
 }
 
 

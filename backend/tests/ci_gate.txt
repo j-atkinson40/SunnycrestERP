@@ -78,3 +78,9 @@ tests/test_queue_count_membership_c1.py
 #   safety/workflow_review/reconciliation); aftercare excludes null/empty
 #   entity_id in both paths. —
 tests/test_queue_count_membership_c2.py
+
+# — Queue-count perf C-3: email_unclassified window-function membership — SQL
+#   membership == the Python list_unclassified reference (diff empty, identity
+#   proof); count is exact + uncapped while the build stays display-capped at 50
+#   (so count != len(build) at >50, by design); display shape + ordering. —
+tests/test_queue_count_membership_c3.py

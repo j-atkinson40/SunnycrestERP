@@ -30,6 +30,14 @@ from sqlalchemy import text
 # FK-safe order: children before parents. agent_run_steps + agent_anomalies
 # cascade from agent_jobs; the non-cascading referrers are cleared first.
 _PURGE_STATEMENTS = [
+    # Email classification substrate. Classifications reference email_messages
+    # AND workflow_runs/workflows (workflow_run_id / selected_workflow_id) — so
+    # delete them before those. Then messages → threads → accounts (each
+    # tenant-scoped, child-before-parent).
+    "DELETE FROM workflow_email_classifications WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM email_messages WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM email_threads WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM email_accounts WHERE tenant_id = ANY(:ids)",
     "DELETE FROM agent_activity_log WHERE job_id IN (SELECT id FROM agent_jobs WHERE tenant_id = ANY(:ids))",
     "UPDATE agent_schedules SET last_job_id = NULL WHERE last_job_id IN (SELECT id FROM agent_jobs WHERE tenant_id = ANY(:ids))",
     "DELETE FROM period_locks WHERE tenant_id = ANY(:ids)",
