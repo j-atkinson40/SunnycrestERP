@@ -476,26 +476,29 @@ def run_incomplete_customer_profile_job(db: Session, tenant_id: str) -> dict:
     if count == 0:
         return {"alerted": False}
 
-    try:
-        from app.services.behavioral_analytics_service import generate_insight
-        generate_insight(
-            db=db,
-            company_id=tenant_id,
-            insight_type="agent_alert",
-            title=f"{count} customer{'s' if count != 1 else ''} created during order entry need their profiles completed.",
-            description=(
-                f"{count} customer{'s' if count != 1 else ''} {'were' if count != 1 else 'was'} "
-                "created inline during order entry more than 7 days ago and still "
-                f"{'have' if count != 1 else 'has'} "
-                "incomplete profiles. Adding contact info, credit limits, and billing settings "
-                "ensures accurate statements and credit checking."
-            ),
-            action_url="/customers?filter=incomplete",
-            severity="info",
-            metadata={"incomplete_count": count},
-        )
-    except Exception:
-        pass
+    # AR-1 C-2, ADJACENT — not in scope, taken because it is the SAME defect in
+    # the same file and it is a keyword rename. This call passed `company_id`,
+    # `title`, `description`, `severity` and `metadata`; `generate_insight`
+    # accepts none of those and REQUIRES `tenant_id` + `headline`. Every
+    # invocation raised TypeError into the bare `except Exception: pass` below,
+    # so this alert has never fired either. `severity` has no equivalent on the
+    # signature and is dropped rather than guessed at.
+    from app.services.behavioral_analytics_service import generate_insight
+    generate_insight(
+        db=db,
+        tenant_id=tenant_id,
+        insight_type="agent_alert",
+        headline=f"{count} customer{'s' if count != 1 else ''} created during order entry need their profiles completed.",
+        detail=(
+            f"{count} customer{'s' if count != 1 else ''} {'were' if count != 1 else 'was'} "
+            "created inline during order entry more than 7 days ago and still "
+            f"{'have' if count != 1 else 'has'} "
+            "incomplete profiles. Adding contact info, credit limits, and billing settings "
+            "ensures accurate statements and credit checking."
+        ),
+        action_url="/customers?filter=incomplete",
+        supporting_data={"incomplete_count": count},
+    )
 
     return {"alerted": True, "count": count}
 
@@ -547,9 +550,14 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
         )
 
         stored = customer.current_balance or Decimal("0.00")
-        diff = abs(float(calculated) - float(stored))
+        # AR-1 C-2: Decimal, not float. This was
+        # `abs(float(calculated) - float(stored)) > 0.01` — a float comparison
+        # in the one job whose entire purpose is comparing two money values,
+        # with every input already a Decimal. The threshold stays a cent; what
+        # changes is that the subtraction is exact.
+        diff = abs(calculated - stored)
 
-        if diff > 0.01:
+        if diff > Decimal("0.01"):
             logger.warning(
                 "AR balance drift for customer %s (%s): stored=%.2f calculated=%.2f diff=%.2f",
                 customer.id,
@@ -561,33 +569,52 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
             customer.current_balance = calculated
             corrected += 1
 
-            try:
-                generate_insight(
-                    db=db,
-                    company_id=tenant_id,
-                    insight_type="agent_alert",
-                    title=f"AR balance corrected for {customer.name}",
-                    description=(
-                        f"Stored balance was ${float(stored):.2f} but open invoice total was "
-                        f"${float(calculated):.2f} (difference: ${diff:.2f}). "
-                        "Automatically corrected. Since the 2026-07 posting fix, "
-                        "every invoice issuance posts through one chokepoint — a "
-                        "correction here means something REAL bypassed it (a failed "
-                        "transaction, a data import, or a direct adjustment). Check "
-                        "this account's invoice and payment audit trail; this alert "
-                        "should be rare."
-                    ),
-                    action_url=f"/customers/{customer.id}",
-                    severity="warning",
-                    metadata={
-                        "customer_id": customer.id,
-                        "stored_balance": float(stored),
-                        "calculated_balance": float(calculated),
-                        "difference": diff,
-                    },
-                )
-            except Exception:
-                pass
+            # AR-1 C-2: the call is CORRECT now, and it is no longer wrapped in
+            # a bare `except Exception: pass`.
+            #
+            # It passed `company_id`, `title`, `description`, `severity` and
+            # `metadata`. `generate_insight` accepts none of those and REQUIRES
+            # `tenant_id` + `headline`, so every invocation raised TypeError
+            # straight into the swallow. Zero rows in `behavioral_insights` on
+            # dev AND production confirm it: the alert whose own copy says
+            # "this alert should be rare" has never once been shown to anyone.
+            #
+            # THE SWALLOW IS WHAT MADE THAT SURVIVABLE, which is the third
+            # instance of that lesson in a week (EPD's AR resolver, EPD's
+            # unmapped discount columns, this). A reporting path wrapped in a
+            # bare except is not a reporting path. Nothing is caught here now —
+            # if reporting drift fails, that is a real failure of this job and
+            # it should surface as one.
+            #
+            # `severity` has no equivalent on the signature and is dropped
+            # rather than guessed at; the money values go into
+            # `supporting_data` as strings so Decimal survives JSON round-trip
+            # without a float detour.
+            generate_insight(
+                db=db,
+                tenant_id=tenant_id,
+                insight_type="agent_alert",
+                headline=f"AR balance drift on {customer.name}",
+                detail=(
+                    f"Stored balance is ${stored:.2f} but the open invoice total is "
+                    f"${calculated:.2f} (difference: ${diff:.2f}). "
+                    "Every invoice issuance posts through one chokepoint, so a "
+                    "difference here means something bypassed it — a failed "
+                    "transaction, a data import, or a direct adjustment. Check "
+                    "this account's invoice and payment audit trail."
+                ),
+                scope="customer",
+                scope_entity_type="customer",
+                scope_entity_id=customer.id,
+                action_url=f"/customers/{customer.id}",
+                supporting_data={
+                    "customer_id": customer.id,
+                    "stored_balance": str(stored),
+                    "calculated_balance": str(calculated),
+                    "difference": str(diff),
+                },
+                generated_by_job="ar_balance_reconciliation",
+            )
 
     if corrected > 0:
         db.commit()
