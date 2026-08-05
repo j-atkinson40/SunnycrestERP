@@ -260,3 +260,4 @@ tests/test_moc_witness_marker_t21b.py
 tests/test_moc_workflow_mirrors.py
 tests/test_ponder_editor_p1.py
 tests/test_responders.py
+tests/test_map_accounting_content_r157.py
