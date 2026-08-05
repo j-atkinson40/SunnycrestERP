@@ -159,3 +159,17 @@ tests/test_epd_ar_account_ar0.py
 #   imported as a POSITIVE receivable — sign inverted — which is why credit rows
 #   are deliberately not posted and are surfaced as import warnings instead. —
 tests/test_ar_import_posts_c1.py
+
+# — AR-1 C-2: the AR drift sweeper REPORTS before it corrects. Three defects
+#   went in and two were invisible by construction: generate_insight was called
+#   with a signature it does not have (TypeError into a bare except, zero rows in
+#   behavioral_insights on dev AND production), and money was compared as floats
+#   in the one job whose purpose is comparing two money values. The correction is
+#   RETAINED deliberately — removing it while the only report destination had
+#   never rendered a row would leave drift neither fixed nor seen — but the
+#   BEFORE-value is now captured first, as one AgentAnomaly per drifting customer
+#   plus the structured set on the job's report_payload, because the correction
+#   destroys the primary evidence. NOT a Books Review exception: that model
+#   requires a transaction and a run an AR drift does not have. Phase 4 removes
+#   the correction once a triage queue exists to receive it. —
+tests/test_ar_drift_report_c2.py

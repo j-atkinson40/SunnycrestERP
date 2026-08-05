@@ -507,6 +507,14 @@ def run_incomplete_customer_profile_job(db: Session, tenant_id: str) -> dict:
 # AR Balance Reconciliation
 # ---------------------------------------------------------------------------
 
+# AR-1 C-2. Free-string job_type, like the aftercare adapter's
+# AFTERCARE_JOB_TYPE — `agent_jobs.job_type` carries no CHECK constraint and
+# `AgentJobType` is the accounting-agent vocabulary, which this sweeper is not
+# part of. No schema change, no enum widening.
+AR_BALANCE_DRIFT_JOB_TYPE = "ar_balance_reconciliation"
+AR_BALANCE_DRIFT_ANOMALY_TYPE = "ar_balance_drift"
+
+
 
 def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
     """Reconcile stored customer AR balances against actual invoice totals.
@@ -518,8 +526,41 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
     import edge case, direct-SQL adjustment), not the nightly laundering
     of a known bug. It stays running as the safety net for drift classes
     we haven't met.
+
+    AR-1 C-2 PHASE 3 — REPORTS *AND* CORRECTS, DELIBERATELY IN THAT ORDER.
+
+    The correction is retained on purpose. Removing it while the only report
+    destination had never rendered a row would make drift neither fixed NOR
+    seen — a regression wearing a correctness fix. The correction only becomes
+    dangerous once a GL exists to disagree with it, and payments do not post
+    yet, so there is real slack here and it is being spent on building the
+    destination properly rather than on rushing the removal.
+
+    THE REPORT MUST CAPTURE THE BEFORE-VALUE, because the correction destroys
+    the primary evidence. Once `current_balance = calculated` runs, the only
+    remaining record of what the balance WAS is whatever this job wrote down.
+    A `logger.warning` carries it but is not queryable; an `AgentAnomaly` per
+    drifting customer is, and the AgentJob's `report_payload` carries the whole
+    structured set.
+
+    WHY AgentAnomaly AND NOT A BOOKS REVIEW EXCEPTION: `ReconciliationException`
+    requires BOTH `reconciliation_transaction_id` AND `reconciliation_run_id`,
+    NOT NULL, plus a unique-per-transaction constraint. An AR drift has no bank
+    transaction and no run, so representing one there means fabricating both —
+    and those synthetic rows would flow into `cleared_total`,
+    `platform_cleared_balance` and the reconciling difference, corrupting the
+    reconciliation arithmetic L-2 and L-3 exist to make trustworthy. Anomalies
+    are the container five migrated agents already stage into, and the triage
+    queue that reads them (AR-1, later phase) is where the operator works.
+
+    Phase 4 removes the correction once that queue exists.
     """
+    import uuid as _uuid
+
     from app.models import Customer, Invoice
+    from app.models.agent_anomaly import AgentAnomaly
+    from app.models.agent import AgentJob
+    from app.schemas.agent import AgentJobStatus, AnomalySeverity
     from app.services.behavioral_analytics_service import generate_insight
 
     customers = (
@@ -532,6 +573,11 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
     )
 
     corrected = 0
+    # The AgentJob is created LAZILY, on the first drift — a clean night writes
+    # no job at all rather than a row saying "checked 200 customers, found
+    # nothing", which is what the return value is for.
+    job: AgentJob | None = None
+    drift_records: list[dict] = []
     for customer in customers:
         # The SQL mirror of Invoice.balance_remaining (exceptions arc):
         # credit memos reduce the balance; write-offs leave the sum by
@@ -566,6 +612,58 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
                 float(calculated),
                 diff,
             )
+            # ── REPORT FIRST, THEN CORRECT ──────────────────────────────────
+            # Ordering is the whole point: `stored` is captured above, the
+            # durable record is written here, and only then is the primary
+            # evidence overwritten. Reversing these two would leave the
+            # anomaly reporting the value it had just been set to.
+            if job is None:
+                job = AgentJob(
+                    id=str(_uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    job_type=AR_BALANCE_DRIFT_JOB_TYPE,
+                    status=AgentJobStatus.COMPLETE.value,
+                    dry_run=False,
+                    trigger_type="scheduled",
+                    run_log=[],
+                    anomaly_count=0,
+                )
+                db.add(job)
+                db.flush()
+
+            db.add(AgentAnomaly(
+                id=str(_uuid.uuid4()),
+                agent_job_id=job.id,
+                severity=AnomalySeverity.WARNING.value,
+                anomaly_type=AR_BALANCE_DRIFT_ANOMALY_TYPE,
+                entity_type="customer",
+                entity_id=customer.id,
+                description=(
+                    f"{customer.name}: stored AR balance was ${stored:.2f} but the "
+                    f"open invoice total is ${calculated:.2f} "
+                    f"(difference ${diff:.2f}). Every invoice issuance posts through "
+                    "one chokepoint, so a difference here means something bypassed "
+                    "it — a failed transaction, a data import, or a direct "
+                    "adjustment. The stored balance was corrected to the computed "
+                    "value; this record is the only evidence of what it was before."
+                ),
+                # The DIFFERENCE, as Decimal on a Numeric column. The two
+                # absolute values live in the job's report_payload — this is
+                # the sortable "how bad" number.
+                amount=diff,
+                resolved=False,
+            ))
+            drift_records.append({
+                "customer_id": customer.id,
+                "customer_name": customer.name,
+                # Strings, so Decimal survives the JSON round-trip without a
+                # float detour — the same reason the insight's supporting_data
+                # carries strings.
+                "stored_balance": str(stored),
+                "calculated_balance": str(calculated),
+                "difference": str(diff),
+            })
+
             customer.current_balance = calculated
             corrected += 1
 
@@ -616,10 +714,28 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
                 generated_by_job="ar_balance_reconciliation",
             )
 
+    if job is not None:
+        # The structured before-values, all of them, in one queryable place.
+        # The per-anomaly `description` is prose for a human; this is the set a
+        # later reconciliation can actually compute against.
+        job.anomaly_count = len(drift_records)
+        job.report_payload = {
+            "pipeline": "ar_balance_reconciliation",
+            "customers_checked": len(customers),
+            "drift_count": len(drift_records),
+            "corrections_applied": True,   # phase 4 flips this to False
+            "drifts": drift_records,
+        }
+
     if corrected > 0:
         db.commit()
 
-    return {"customers_checked": len(customers), "balances_corrected": corrected}
+    return {
+        "customers_checked": len(customers),
+        "balances_corrected": corrected,
+        "drift_reported": len(drift_records),
+        "agent_job_id": job.id if job is not None else None,
+    }
 
 
 # ---------------------------------------------------------------------------

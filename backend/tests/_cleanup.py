@@ -41,6 +41,15 @@ _PURGE_STATEMENTS = [
     "DELETE FROM email_messages WHERE tenant_id = ANY(:ids)",
     "DELETE FROM email_threads WHERE tenant_id = ANY(:ids)",
     "DELETE FROM email_accounts WHERE tenant_id = ANY(:ids)",
+    # behavioral_insights.tenant_id → companies, with no ON DELETE. It has
+    # never appeared here because, until AR-1 C-2, NO insight had ever been
+    # successfully created: two of the five `generate_insight` callers passed a
+    # signature that does not exist and raised TypeError into a bare
+    # `except Exception: pass`, and the other three had never had qualifying
+    # data. Fixing the AR-drift caller made the first real rows appear and this
+    # helper started failing on the companies delete — which is its own small
+    # proof of how unexercised that layer was.
+    "DELETE FROM behavioral_insights WHERE tenant_id = ANY(:ids)",
     "DELETE FROM agent_activity_log WHERE job_id IN (SELECT id FROM agent_jobs WHERE tenant_id = ANY(:ids))",
     "UPDATE agent_schedules SET last_job_id = NULL WHERE last_job_id IN (SELECT id FROM agent_jobs WHERE tenant_id = ANY(:ids))",
     "DELETE FROM period_locks WHERE tenant_id = ANY(:ids)",
