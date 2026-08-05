@@ -1082,6 +1082,126 @@ def _handle_email_unclassified_request_review(
     }
 
 
+def _handle_reconciliation_post_keyword(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Books Review "Post it" — book a keyword row whose configuration NOW resolves.
+
+    The card can offer this because the builder re-derives the blocked reason
+    live: a row that was unbookable when the statement was scored becomes
+    bookable the moment someone maps its classification. Without an action the
+    row would sit in the queue with nothing left to say, because a row cannot
+    leave without a journal entry behind it — booking is the licence to clear.
+
+    THE CARD'S VERDICT IS NOT TRUSTED. Everything is re-resolved here, at
+    execution, against current state: config can change, a period can lock, and
+    a matcher re-run can book the row between render and click. Same discipline
+    as `_try_claim` re-checking the pool rather than trusting what scoring saw.
+    Three guards, each a real race rather than a formality:
+
+      * match_status != "unmatched"  → a re-run (or another operator) got there
+        first. Refuse rather than double-book.
+      * journal_entry_id is not None → belt to that brace: the row already has
+        an entry, so clearing it again would produce a second one.
+      * decide() now blocks          → the config the card saw is gone. Report
+        the CURRENT reason, not the stale one.
+
+    Scoped narrowly on purpose: this books a keyword row, whose posting the
+    system already knows in full (classification → GL, bank → contra, sign →
+    direction). It does not touch the coding accept path or `auto_cleared`
+    payment matches — those need operator input or a different shape, and stay
+    with L-3.
+    """
+    from app.models.company import Company
+    from app.models.financial_account import (
+        FinancialAccount,
+        ReconciliationException,
+        ReconciliationRun,
+        ReconciliationTransaction,
+    )
+    from app.services import reconciliation_gl
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    txn_id = ctx["entity_id"]
+
+    txn = (
+        db.query(ReconciliationTransaction)
+        .filter(
+            ReconciliationTransaction.id == txn_id,
+            ReconciliationTransaction.tenant_id == user.company_id,
+        )
+        .first()
+    )
+    if txn is None:
+        return {"status": "errored", "message": "Transaction not found."}
+    if txn.match_status != "unmatched":
+        return {"status": "errored", "message": "This item is already resolved."}
+    if txn.journal_entry_id is not None:
+        return {
+            "status": "errored",
+            "message": "This item already has a journal entry behind it.",
+        }
+
+    exc = (
+        db.query(ReconciliationException)
+        .filter(ReconciliationException.reconciliation_transaction_id == txn_id)
+        .first()
+    )
+    if exc is None or not exc.keyword_classification:
+        return {
+            "status": "errored",
+            "message": (
+                "This item is not a recognised kind, so there is nothing to "
+                "post automatically."
+            ),
+        }
+
+    run = db.query(ReconciliationRun).filter(
+        ReconciliationRun.id == txn.reconciliation_run_id).one()
+    account = db.query(FinancialAccount).filter(
+        FinancialAccount.id == run.financial_account_id).one()
+    company = db.query(Company).filter(Company.id == user.company_id).one()
+
+    posting, reason = reconciliation_gl.build_keyword_posting_context(
+        db, company, [account]
+    ).decide(
+        classification=exc.keyword_classification,
+        financial_account_id=account.id,
+        entry_date=txn.transaction_date,
+    )
+    if posting is None:
+        # The card said it could post; between then and now it cannot. Report
+        # what is true NOW rather than what the card computed.
+        return {
+            "status": "errored",
+            "message": f"This can no longer post ({reason}). Reload to see why.",
+        }
+
+    entry = reconciliation_gl.book_keyword_entry(
+        db,
+        company_id=user.company_id,
+        posting=posting,
+        amount=txn.amount,
+        entry_date=txn.transaction_date,
+        description=txn.description or f"Reconciliation: {posting.classification}",
+        reference_number=txn.reference_number,
+    )
+    now = datetime.now(timezone.utc)
+    txn.match_status = posting.classification
+    txn.journal_entry_id = entry.id
+    txn.reviewed_by = user.id
+    txn.reviewed_at = now
+    exc.resolved = True
+    exc.resolved_by = user.id
+    exc.resolved_at = now
+    exc.resolution_note = f"Posted {entry.entry_number} after configuration."
+    db.commit()
+    return {
+        "status": "applied",
+        "message": f"Posted {entry.entry_number}.",
+        "entity_state": posting.classification,
+    }
+
+
 def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     """Books Review Accept — DISPATCHES BY ITEM DATA (one key, one handler).
 
@@ -1368,6 +1488,9 @@ HANDLERS: dict[str, HandlerFn] = {
     "email_unclassified.request_review": _handle_email_unclassified_request_review,
     # Books Review reconciliation (Arc B B-3 — Accept dispatches by item data)
     "reconciliation.accept": _handle_reconciliation_accept,
+    # L-2.1f — book a keyword row whose config now resolves (re-resolves at
+    # execution; never trusts the card's verdict).
+    "reconciliation.post_keyword": _handle_reconciliation_post_keyword,
     # Books Review reconciliation flag/park (Arc B B-4)
     "reconciliation.flag": _handle_reconciliation_flag,
     # Generic

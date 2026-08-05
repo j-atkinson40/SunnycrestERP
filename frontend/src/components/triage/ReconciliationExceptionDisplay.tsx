@@ -232,7 +232,13 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
   // candidates and would otherwise fall through to the coding card — asking the
   // operator to code a row the system has already identified.
   const keywordClassification = readString(item, "keyword_classification")
+  // LIVE as of this render (the builder re-derives it), not the snapshot the
+  // matcher stamped — so configuring the map and coming back shows the change.
   const blockedReason = readString(item, "blocked_reason")
+  // A keyword row whose configuration now resolves: no reason left, no
+  // candidates, and still in the queue because nothing has booked it yet.
+  const canPostNow = itemField(item, "can_post_now") === true
+  const evaluatedAt = readString(item, "evaluated_at")
   const classificationLabel =
     (keywordClassification && CLASSIFICATION_LABEL[keywordClassification]) ??
     keywordClassification ??
@@ -295,7 +301,10 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
     </div>
   )
 
-  const body = keywordClassification ? (
+  // ORDER MATTERS: a postable row is ALSO a keyword row, so `canPostNow` has to
+  // be excluded here or the config card wins and renders a blocked message for
+  // something that is no longer blocked.
+  const body = keywordClassification && !canPostNow ? (
     // CONFIG card — the row is classified; it has nowhere to book.
     //
     // Deliberately offers NO Accept. A row that cannot post cannot honestly be
@@ -316,6 +325,39 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
       </div>
       <p className="mt-2 text-body-sm text-content-base">{blockedHeadline}</p>
       <p className="mt-1 text-caption text-content-muted">{blockedCopy.fix}</p>
+    </div>
+  ) : canPostNow ? (
+    // The row was blocked when the statement was scored and is not blocked now
+    // — someone configured it in between. It has no reason left to show and no
+    // candidates, so without this branch it would render a card with nothing to
+    // say. It cannot silently leave the queue either: booking is the licence to
+    // clear, so leaving is what the button does.
+    <div
+      className="rounded-lg border border-border-subtle bg-surface-elevated p-4 shadow-level-1"
+      data-testid="reconciliation-postable-card"
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="rounded-full bg-accent-subtle px-2 py-0.5 text-caption font-medium text-content-strong">
+          {classificationLabel}
+        </span>
+        <span className="text-caption text-status-success">ready to post</span>
+      </div>
+      <p className="mt-2 text-body-sm text-content-base">
+        This can post now — the GL accounts it needs are configured.
+      </p>
+      <p className="mt-1 text-caption text-content-muted">
+        It was waiting when this statement was matched, so it stayed here.
+        Posting writes a draft journal entry and clears the row.
+      </p>
+      <button
+        type="button"
+        disabled={working}
+        onClick={() => act({ action_id: "post_keyword", payload: {} })}
+        data-testid="reconciliation-post-button"
+        className="mt-3 inline-flex items-center rounded-md bg-accent px-3 py-1.5 text-body-sm font-medium text-content-on-accent transition-opacity duration-quick disabled:opacity-50"
+      >
+        Post it
+      </button>
     </div>
   ) : candidates.length === 0 ? (
       // CODING card
@@ -401,6 +443,19 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
           Flag…
         </button>
       </div>
+      {/* AS-OF. The blocked REASON above is live, re-derived this render — but
+          the candidate set beside it is still whatever the last matcher run
+          computed. Without this line a freshly-correct reason implies freshly
+          matched candidates, which would be the wrong thing to imply. Cheap,
+          honest, and it stays true even once posting works. */}
+      {evaluatedAt && (
+        <p
+          className="text-right text-micro text-content-subtle"
+          data-testid="reconciliation-evaluated-at"
+        >
+          Matched against your ledger {new Date(evaluatedAt).toLocaleDateString()}
+        </p>
+      )}
       <FlagDestinationPicker
         open={flagOpen}
         onClose={() => setFlagOpen(false)}

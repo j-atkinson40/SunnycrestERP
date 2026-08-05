@@ -732,3 +732,306 @@ class TestDeliberatelyUnmapped:
             reconciliation_gl.BLOCK_PERIOD_LOCKED,
         ]
         assert len(set(reasons)) == len(reasons)
+
+
+class TestOneResolverTwoCallers:
+    """L-2.1f — the matcher and the display must not be able to disagree.
+
+    Two code paths computing "why is this blocked" that can drift is the
+    divergence the membership seam and `_count_config` exist to prevent. There
+    is one `KeywordPostingContext`; these pin that it really is one.
+    """
+
+    def test_context_decide_matches_the_single_row_wrapper(self, db):
+        """`resolve_keyword_posting` is a WRAPPER, not a second implementation.
+        Every (classification × config) combination must agree with `decide`."""
+        co, user, acct, run, gl = _substrate(db, keyword_map=["bank_fee"])
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY,
+            {"bank_fee": gl["bank_fee"], "payroll": None},
+        )
+        db.commit()
+        ctx = reconciliation_gl.build_keyword_posting_context(db, co, [acct])
+        for classification in reconciliation_gl.KEYWORD_CLASSIFICATIONS:
+            wrapped, wrapped_reason = reconciliation_gl.resolve_keyword_posting(
+                db, co, acct, classification, date(2026, 6, 16),
+            )
+            batched, batched_reason = ctx.decide(
+                classification=classification,
+                financial_account_id=acct.id,
+                entry_date=date(2026, 6, 16),
+            )
+            assert wrapped_reason == batched_reason, classification
+            assert (wrapped is None) == (batched is None), classification
+            if wrapped is not None:
+                assert wrapped == batched, classification
+
+    def test_decide_is_pure(self, db):
+        """No database. A context built once and reused across a page of rows
+        must not quietly issue a query per row — that is the whole reason the
+        display can afford to re-resolve."""
+        co, user, acct, run, gl = _substrate(db)
+        ctx = reconciliation_gl.build_keyword_posting_context(db, co, [acct])
+        db.close()  # any query from here raises
+        posting, reason = ctx.decide(
+            classification="bank_fee",
+            financial_account_id=acct.id,
+            entry_date=date(2026, 6, 16),
+        )
+        assert posting is not None and reason is None
+
+    def test_check_order_is_keyword_then_contra_then_period(self, db):
+        """The order decides WHICH reason a blocked row reports, so it is part
+        of the contract. With all three broken at once, the keyword leg wins."""
+        co, user, acct, run, gl = _substrate(db, keyword_map="none", contra=False)
+        db.commit()
+        ctx = reconciliation_gl.build_keyword_posting_context(db, co, [acct])
+        _posting, reason = ctx.decide(
+            classification="bank_fee",
+            financial_account_id=acct.id,
+            entry_date=date(2026, 6, 16),
+        )
+        assert reason == reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED
+
+    def test_unknown_account_id_fails_closed_as_contra_unset(self, db):
+        """A row whose bank account is not in the context — a caller bug, but it
+        must fail CLOSED rather than KeyError or (worse) book against nothing."""
+        co, user, acct, run, gl = _substrate(db)
+        ctx = reconciliation_gl.build_keyword_posting_context(db, co, [acct])
+        _posting, reason = ctx.decide(
+            classification="bank_fee",
+            financial_account_id="not-an-account",
+            entry_date=date(2026, 6, 16),
+        )
+        assert reason == reconciliation_gl.BLOCK_CONTRA_GL_UNSET
+
+
+class TestBlockedReasonIsLiveNotASnapshot:
+    """L-2.1f — configure, come back, and the card must have changed.
+
+    `blocked_reason` is stamped at matcher-run time. Left as a snapshot, an
+    operator who fixes the config sees cards saying exactly what they said
+    before — the settings panel appearing not to work.
+    """
+
+    def _row(self, db, user):
+        from app.services.triage.engine import _dq_reconciliation_review
+        rows = _dq_reconciliation_review(db, user)
+        assert len(rows) == 1
+        return rows[0]
+
+    def test_reason_changes_after_the_map_is_configured(self, db):
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+
+        before = self._row(db, user)
+        assert before["blocked_reason"] == reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED
+        assert before["can_post_now"] is False
+
+        # The operator configures the map. NO re-run.
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": gl["bank_fee"]}
+        )
+        db.commit()
+
+        after = self._row(db, user)
+        assert after["blocked_reason"] is None
+        assert after["can_post_now"] is True
+
+    def test_the_snapshot_is_still_reported_separately(self, db):
+        """The persisted reason stays available as `blocked_reason_at_match` —
+        'why it could not book when the statement was scored' is a different and
+        still-true fact, and the audit trail should not be lost to a rename."""
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": gl["bank_fee"]}
+        )
+        db.commit()
+
+        row = self._row(db, user)
+        assert row["blocked_reason"] is None
+        assert row["blocked_reason_at_match"] == reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED
+
+    def test_reason_changes_to_the_NEW_reason_not_just_to_none(self, db):
+        """Configured the keyword leg but not the contra: the reason must move
+        on to the next real blocker rather than clearing."""
+        co, user, acct, run, gl = _substrate(db, keyword_map="none", contra=False)
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": gl["bank_fee"]}
+        )
+        db.commit()
+
+        row = self._row(db, user)
+        assert row["blocked_reason"] == reconciliation_gl.BLOCK_CONTRA_GL_UNSET
+        assert row["can_post_now"] is False
+
+    def test_deliberate_unmapping_after_the_run_shows_as_intentional(self, db):
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+        co.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": None})
+        db.commit()
+
+        row = self._row(db, user)
+        assert row["blocked_reason"] == reconciliation_gl.BLOCK_KEYWORD_GL_INTENTIONAL
+        assert row["can_post_now"] is False
+
+    def test_non_keyword_rows_are_untouched(self, db):
+        """An ordinary coding exception has no classification, so it must not be
+        re-resolved, must not gain can_post_now, and must not pay for any of it."""
+        co, user, acct, run, gl = _substrate(db)
+        _txn(db, run, day=16, amount="-42", desc="Touchstone Climbing", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+
+        row = self._row(db, user)
+        assert row["keyword_classification"] is None
+        assert row["blocked_reason"] is None
+        assert row["can_post_now"] is False
+
+    def test_every_row_carries_an_as_of(self, db):
+        """F3's line. The reason is live but the CANDIDATE set beside it is
+        still whatever the last run computed, so the card says when that was."""
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+        assert self._row(db, user)["evaluated_at"] is not None
+
+
+class TestPostItReResolvesAtExecution:
+    """L-2.1f — the card's verdict is a render-time opinion, never trusted.
+
+    Between "this can post now" rendering and the operator clicking, config can
+    change, a period can lock, and a matcher re-run can book the row. Same
+    discipline as `_try_claim` re-checking the pool rather than trusting scoring.
+    """
+
+    def _post(self, db, user, txn_id):
+        from app.services.triage.action_handlers import HANDLERS
+        return HANDLERS["reconciliation.post_keyword"](
+            {"db": db, "user": user, "entity_id": txn_id, "payload": {}}
+        )
+
+    def _blocked_row(self, db):
+        co, user, acct, run, gl = _substrate(db, keyword_map="none")
+        _txn(db, run, day=16, amount=_FEE_AMT, desc="MONTHLY SERVICE CHARGE", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+        txn = db.query(ReconciliationTransaction).filter(
+            ReconciliationTransaction.reconciliation_run_id == run.id).one()
+        return co, user, acct, run, gl, txn
+
+    def test_posts_and_clears_once_configured(self, db):
+        """HAND MATH — a -15.00 fee, posted from the card:
+             DEBIT  Bank Charges   15.00
+             CREDIT Operating Cash 15.00
+        and the row clears BECAUSE the entry exists, not because of the click.
+        """
+        co, user, acct, run, gl, txn = self._blocked_row(db)
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": gl["bank_fee"]}
+        )
+        db.commit()
+
+        result = self._post(db, user, txn.id)
+        assert result["status"] == "applied"
+
+        db.refresh(txn)
+        assert txn.match_status == "bank_fee"
+        assert txn.journal_entry_id is not None
+        entry = db.query(JournalEntry).filter(
+            JournalEntry.id == txn.journal_entry_id).one()
+        assert entry.status == "draft"
+        assert entry.total_debits == Decimal("15.00")
+        assert entry.total_credits == Decimal("15.00")
+        debit, credit = _lines_for(db, entry.id)
+        assert debit.gl_account_id == gl["bank_fee"]
+        assert credit.gl_account_id == gl["cash"]
+
+    def test_refuses_when_the_config_went_away_after_render(self, db):
+        """The card computed 'can post'; by click time the mapping is gone. The
+        message must report the CURRENT reason, not the stale verdict."""
+        co, user, acct, run, gl, txn = self._blocked_row(db)
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": gl["bank_fee"]}
+        )
+        db.commit()
+        # …and then it is un-configured between render and click.
+        co.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {})
+        db.commit()
+
+        result = self._post(db, user, txn.id)
+        assert result["status"] == "errored"
+        assert reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED in result["message"]
+        db.refresh(txn)
+        assert txn.match_status == "unmatched"
+        assert db.query(JournalEntry).filter(
+            JournalEntry.tenant_id == co.id).count() == 0
+
+    def test_refuses_when_a_rerun_already_booked_it(self, db):
+        """THE DOUBLE-BOOK RACE. Configure, re-run the matcher (which books it),
+        then click the button the stale card is still showing."""
+        co, user, acct, run, gl, txn = self._blocked_row(db)
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": gl["bank_fee"]}
+        )
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)  # books it
+        db.refresh(txn)
+        assert txn.journal_entry_id is not None
+        before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co.id).count()
+
+        result = self._post(db, user, txn.id)
+        assert result["status"] == "errored"
+        after = db.query(JournalEntry).filter(JournalEntry.tenant_id == co.id).count()
+        assert after == before  # no second entry
+
+    def test_refuses_when_the_period_locked_after_render(self, db):
+        from app.models.period_lock import PeriodLock
+
+        co, user, acct, run, gl, txn = self._blocked_row(db)
+        co.set_setting(
+            reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, {"bank_fee": gl["bank_fee"]}
+        )
+        db.add(PeriodLock(
+            id=str(uuid.uuid4()), tenant_id=co.id, period_start=date(2026, 6, 1),
+            period_end=date(2026, 6, 30), is_active=True,
+        ))
+        db.commit()
+
+        result = self._post(db, user, txn.id)
+        assert result["status"] == "errored"
+        assert reconciliation_gl.BLOCK_PERIOD_LOCKED in result["message"]
+        assert db.query(JournalEntry).filter(
+            JournalEntry.tenant_id == co.id).count() == 0
+
+    def test_refuses_a_row_that_is_not_a_keyword_row(self, db):
+        co, user, acct, run, gl = _substrate(db)
+        _txn(db, run, day=16, amount="-42", desc="Touchstone Climbing", order=0)
+        db.commit()
+        trigger_matching(run.id, current_user=user, db=db)
+        txn = db.query(ReconciliationTransaction).filter(
+            ReconciliationTransaction.reconciliation_run_id == run.id).one()
+
+        result = self._post(db, user, txn.id)
+        assert result["status"] == "errored"
+        assert db.query(JournalEntry).filter(
+            JournalEntry.tenant_id == co.id).count() == 0
+
+    def test_is_tenant_scoped(self, db):
+        co, user, acct, run, gl, txn = self._blocked_row(db)
+        other = _company(db)
+        other_user = _user(db, other)
+        db.commit()
+        result = self._post(db, other_user, txn.id)
+        assert result["status"] == "errored"

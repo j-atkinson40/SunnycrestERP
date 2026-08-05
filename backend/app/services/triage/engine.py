@@ -1744,7 +1744,11 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
     the wrong question — the fix is one configuration change that unblocks every
     row of that class at once.
     """
-    from app.models.financial_account import ReconciliationMatchCandidate
+    from app.models.financial_account import (
+        FinancialAccount,
+        ReconciliationMatchCandidate,
+        ReconciliationRun,
+    )
 
     rows = _mq_reconciliation_review(db, user).query.all()
 
@@ -1770,6 +1774,56 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
                 }
             )
 
+    # ── L-2.1f: the reason is LIVE, not the snapshot the matcher wrote ──────
+    #
+    # `blocked_reason` is stamped on the exception at matcher-run time. Left as
+    # a snapshot, an operator who configures the map, saves, and comes here sees
+    # cards saying exactly what they said before — the settings panel appearing
+    # not to work, which is the worst possible first impression of one.
+    #
+    # So it is re-derived per render, through the SAME KeywordPostingContext the
+    # matcher uses. Cost is bounded by configuration, not by rows: three queries
+    # for the context plus one to map runs to bank accounts, whatever the page
+    # size. The COUNT path is untouched — `_count_membership` reads only
+    # match_status + flag_id, so none of this is on it.
+    #
+    # The persisted reason is deliberately still returned, as
+    # `blocked_reason_at_match`. It is a different and still-true fact ("why it
+    # could not book when the statement was scored") and dropping it would lose
+    # the audit trail to save a dictionary key.
+    keyword_rows = [(t, e) for (t, e) in rows if e.keyword_classification]
+    live_reason: dict[str, str | None] = {}
+    can_post_now: dict[str, bool] = {}
+    if keyword_rows:
+        from app.models.company import Company
+        from app.services import reconciliation_gl
+
+        run_ids = {t.reconciliation_run_id for (t, _e) in keyword_rows}
+        account_by_run = dict(
+            db.query(ReconciliationRun.id, ReconciliationRun.financial_account_id)
+            .filter(ReconciliationRun.id.in_(run_ids))
+            .all()
+        )
+        accounts = (
+            db.query(FinancialAccount)
+            .filter(FinancialAccount.id.in_(set(account_by_run.values())))
+            .all()
+        )
+        company = db.query(Company).filter(Company.id == user.company_id).one()
+        ctx = reconciliation_gl.build_keyword_posting_context(db, company, accounts)
+        for t, e in keyword_rows:
+            posting, reason = ctx.decide(
+                classification=e.keyword_classification,
+                financial_account_id=account_by_run.get(t.reconciliation_run_id, ""),
+                entry_date=t.transaction_date,
+            )
+            live_reason[t.id] = reason
+            # A row whose configuration now resolves has no reason and no
+            # candidates — without this flag it would render as a card with
+            # nothing to say. It cannot simply LEAVE the queue either: booking
+            # is the licence to clear, so it stays until an entry exists.
+            can_post_now[t.id] = posting is not None
+
     return [
         {
             "id": t.id,  # entity_id = the transaction (candidates key to it; exception per txn)
@@ -1780,10 +1834,15 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
             "candidates": cands_by_txn.get(t.id, []),
             # L-2 third card form. Both NULL on ranked/coding items; non-NULL
             # means the ladder KNOWS what this row is and only lacks somewhere
-            # to book it. Read off the exception row already in hand — no extra
-            # query, so the C-arc's count/build query budget is untouched.
+            # to book it.
             "keyword_classification": e.keyword_classification,
-            "blocked_reason": e.blocked_reason,
+            "blocked_reason": live_reason.get(t.id, e.blocked_reason),
+            "blocked_reason_at_match": e.blocked_reason,
+            "can_post_now": can_post_now.get(t.id, False),
+            # F3's as-of. The REASON is live, but the candidate set beside it is
+            # still whatever the last run computed, so the card says when that
+            # was rather than letting a fresh-looking reason imply fresh matching.
+            "evaluated_at": e.created_at.isoformat() if e.created_at else None,
         }
         for (t, e) in rows
     ]

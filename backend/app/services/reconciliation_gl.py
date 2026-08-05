@@ -261,6 +261,115 @@ class KeywordPosting:
     contra_gl_account_name: str | None
 
 
+@dataclass(frozen=True)
+class KeywordPostingContext:
+    """Every input resolution needs, fetched once, for a set of bank accounts.
+
+    THE ONE RESOLVER, and the reason it is a context object rather than a
+    function with a batch flag. Two callers ask the same question in different
+    shapes: the matcher asks per row while writing, the Books Review builder asks
+    for a page of rows while reading. A single function that switched behavior on
+    a `batch=` argument would be two implementations wearing one name — and if
+    the two ever ordered their checks differently, the card would name a
+    different reason than the matcher would have, which is precisely the class of
+    divergence the membership seam and `_count_config` exist to prevent.
+
+    So the SHAPE that differs (how many rows, when the inputs are fetched) lives
+    in construction, and the DECISION lives in ``decide``, which touches no
+    database at all. Both callers run identical logic because there is only one.
+    """
+
+    company_id: str
+    # classification → (mapping, blocked_reason); exactly one is non-None.
+    keyword_legs: dict[str, tuple[TenantGLMapping | None, str | None]]
+    # financial_account_id → (mapping, blocked_reason); same invariant.
+    contra_legs: dict[str, tuple[TenantGLMapping | None, str | None]]
+    # Active locked periods as (start, end) inclusive. Tested in memory — a
+    # per-row `check_date_in_locked_period` would be one query per row, which is
+    # affordable in the matcher's write path and is NOT affordable in a queue
+    # builder that renders a page at a time.
+    locked_periods: tuple[tuple[date, date], ...]
+
+    def is_locked(self, entry_date: date) -> bool:
+        return any(s <= entry_date <= e for (s, e) in self.locked_periods)
+
+    def decide(
+        self, *, classification: str, financial_account_id: str, entry_date: date
+    ) -> tuple[KeywordPosting | None, str | None]:
+        """``(posting, blocked_reason)`` — exactly one is non-``None``. Pure.
+
+        Order of checks is the order of the operator's likely fix: the keyword leg
+        (the map they configure), then the contra leg (the bank account they
+        configure), then the period (a policy gate, not a configuration problem).
+        Changing this order changes which reason a blocked row reports, so it is
+        part of the contract, not an implementation detail.
+        """
+        keyword_gl, reason = self.keyword_legs.get(
+            classification, (None, BLOCK_KEYWORD_GL_UNMAPPED)
+        )
+        if keyword_gl is None:
+            return None, reason
+
+        contra_gl, reason = self.contra_legs.get(
+            financial_account_id, (None, BLOCK_CONTRA_GL_UNSET)
+        )
+        if contra_gl is None:
+            return None, reason
+
+        # Checked HERE rather than left to create_journal_entry's raise, so a
+        # closed period produces the same fail-closed exception row as a missing
+        # mapping instead of an exception escaping the matcher mid-run.
+        if self.is_locked(entry_date):
+            logger.info(
+                "recon keyword posting blocked by period lock: tenant=%s "
+                "classification=%s date=%s",
+                self.company_id, classification, entry_date,
+            )
+            return None, BLOCK_PERIOD_LOCKED
+
+        return KeywordPosting(
+            classification=classification,
+            keyword_gl_account_id=keyword_gl.id,
+            keyword_gl_account_number=keyword_gl.account_number,
+            keyword_gl_account_name=keyword_gl.account_name,
+            contra_gl_account_id=contra_gl.id,
+            contra_gl_account_number=contra_gl.account_number,
+            contra_gl_account_name=contra_gl.account_name,
+        ), None
+
+
+def build_keyword_posting_context(
+    db: Session, company: Company, financial_accounts: list[FinancialAccount]
+) -> KeywordPostingContext:
+    """Resolve every input once, for however many accounts the caller has.
+
+    Three queries regardless of row count: the keyword legs' mappings, the contra
+    legs' mappings, and the tenant's active period locks. `keyword_gl_with_reason`
+    and `contra_gl_with_reason` are reused per DISTINCT leg (at most three
+    classifications, at most five bank accounts), not per row — so the cost is
+    bounded by configuration, not by how many transactions are on screen.
+    """
+    from app.models.period_lock import PeriodLock
+
+    keyword_legs = {
+        c: keyword_gl_with_reason(db, company, c) for c in KEYWORD_CLASSIFICATIONS
+    }
+    contra_legs = {
+        fa.id: contra_gl_with_reason(db, fa) for fa in financial_accounts
+    }
+    locks = (
+        db.query(PeriodLock)
+        .filter(PeriodLock.tenant_id == company.id, PeriodLock.is_active == True)  # noqa: E712
+        .all()
+    )
+    return KeywordPostingContext(
+        company_id=company.id,
+        keyword_legs=keyword_legs,
+        contra_legs=contra_legs,
+        locked_periods=tuple((l.period_start, l.period_end) for l in locks),
+    )
+
+
 def resolve_keyword_posting(
     db: Session,
     company: Company,
@@ -268,46 +377,19 @@ def resolve_keyword_posting(
     classification: str,
     entry_date: date,
 ) -> tuple[KeywordPosting | None, str | None]:
-    """``(posting, blocked_reason)`` — exactly one is non-``None``.
+    """One row's worth of ``KeywordPostingContext.decide``, context included.
 
-    Resolves BOTH legs plus the period gate before anything is written. The
-    caller books when it gets a posting and raises the row to an exception
-    carrying ``blocked_reason`` when it does not. Order of checks is the order
-    of the operator's likely fix: the keyword leg (the map they configure), then
-    the contra leg (the bank account they configure), then the period (a policy
-    gate, not a configuration problem).
+    Kept because callers that resolve a single row read better this way. It is a
+    WRAPPER, not a second implementation — build a context for the one account,
+    then decide. A caller in a loop should build the context itself and call
+    ``decide`` per row instead; the matcher does.
     """
-    keyword_gl, reason = keyword_gl_with_reason(db, company, classification)
-    if keyword_gl is None:
-        return None, reason
-
-    contra_gl, reason = contra_gl_with_reason(db, financial_account)
-    if contra_gl is None:
-        return None, reason
-
-    # Period lock is checked HERE rather than left to create_journal_entry's
-    # raise, so a closed period produces the same fail-closed exception row as a
-    # missing mapping instead of an exception escaping the matcher mid-run. This
-    # mirrors the payment auto-commit path, which has always gated on the lock
-    # before clearing.
-    lock = PeriodLockService.check_date_in_locked_period(db, company.id, entry_date)
-    if lock is not None:
-        logger.info(
-            "recon keyword posting blocked by period lock: tenant=%s "
-            "classification=%s date=%s",
-            company.id, classification, entry_date,
-        )
-        return None, BLOCK_PERIOD_LOCKED
-
-    return KeywordPosting(
+    ctx = build_keyword_posting_context(db, company, [financial_account])
+    return ctx.decide(
         classification=classification,
-        keyword_gl_account_id=keyword_gl.id,
-        keyword_gl_account_number=keyword_gl.account_number,
-        keyword_gl_account_name=keyword_gl.account_name,
-        contra_gl_account_id=contra_gl.id,
-        contra_gl_account_number=contra_gl.account_number,
-        contra_gl_account_name=contra_gl.account_name,
-    ), None
+        financial_account_id=financial_account.id,
+        entry_date=entry_date,
+    )
 
 
 def book_keyword_entry(

@@ -363,3 +363,78 @@ describe("the blocked card names a destination the operator can reach", () => {
     }
   })
 })
+
+// ── L-2.1f: the postable card and the as-of line ───────────────────────────
+
+function postableItem(): TriageItem {
+  return {
+    entity_type: "reconciliation_exception",
+    entity_id: "txn-12",
+    title: "MONTHLY SERVICE CHARGE",
+    subtitle: "2026-06-16",
+    extras: {
+      amount: "-15.00",
+      candidates: [],
+      keyword_classification: "bank_fee",
+      // Live re-resolution found nothing blocking it any more.
+      blocked_reason: null,
+      blocked_reason_at_match: "keyword_gl_unmapped",
+      can_post_now: true,
+      evaluated_at: "2026-06-30T12:00:00Z",
+    },
+  } as unknown as TriageItem
+}
+
+describe("a row that can post now", () => {
+  it("renders the postable card, not the coding card", () => {
+    // Without this branch the row has no reason and no candidates, so it would
+    // fall through to the coding card and ask the operator to code a row the
+    // system can book by itself.
+    render(<ReconciliationExceptionDisplay item={postableItem()} />)
+    expect(screen.getByTestId("reconciliation-postable-card")).toBeInTheDocument()
+    expect(screen.queryByTestId("reconciliation-coding-card")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("reconciliation-config-card")).not.toBeInTheDocument()
+  })
+
+  it("says it can post and offers the action", () => {
+    render(<ReconciliationExceptionDisplay item={postableItem()} />)
+    const card = screen.getByTestId("reconciliation-postable-card")
+    expect(card.textContent).toMatch(/can post now/i)
+    expect(screen.getByTestId("reconciliation-post-button")).toBeInTheDocument()
+  })
+
+  it("dispatches post_keyword, not accept", () => {
+    // Accept means "commit this candidate" / "I coded it". Posting a keyword row
+    // is neither — the system already knows the whole entry.
+    render(<ReconciliationExceptionDisplay item={postableItem()} />)
+    fireEvent.click(screen.getByTestId("reconciliation-post-button"))
+    expect(mockAct).toHaveBeenCalledWith({ action_id: "post_keyword", payload: {} })
+  })
+
+  it("does not offer a coding textarea", () => {
+    render(<ReconciliationExceptionDisplay item={postableItem()} />)
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+  })
+
+  it("still shows the config card when the row is blocked", () => {
+    // can_post_now false must not leak the postable branch into blocked rows.
+    render(<ReconciliationExceptionDisplay item={configItem()} />)
+    expect(screen.getByTestId("reconciliation-config-card")).toBeInTheDocument()
+    expect(screen.queryByTestId("reconciliation-postable-card")).not.toBeInTheDocument()
+  })
+})
+
+describe("the as-of line", () => {
+  it("says when the row was last matched", () => {
+    // The blocked REASON is live; the candidate set beside it is not. Without
+    // this, a freshly-correct reason implies freshly-matched candidates.
+    render(<ReconciliationExceptionDisplay item={postableItem()} />)
+    expect(screen.getByTestId("reconciliation-evaluated-at").textContent)
+      .toMatch(/matched against your ledger/i)
+  })
+
+  it("is omitted rather than guessed when there is no timestamp", () => {
+    render(<ReconciliationExceptionDisplay item={configItem()} />)
+    expect(screen.queryByTestId("reconciliation-evaluated-at")).toBeNull()
+  })
+})

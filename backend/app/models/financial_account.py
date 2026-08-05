@@ -236,6 +236,12 @@ class ReconciliationException(Base):
     # operator's fix is CONFIGURATION, not coding — the card must say so, which
     # is why the discriminator is stored rather than re-derived at display.
     keyword_classification: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # L-2.1f: this is a SNAPSHOT — why the row could not book when the statement
+    # was scored — and it is no longer what the card renders. Configuration
+    # changes after a run, so the Books Review builder re-derives the reason live
+    # through the same KeywordPostingContext the matcher used, and surfaces this
+    # column separately as `blocked_reason_at_match`. Kept because "why it failed
+    # then" stays a true and auditable fact; do not read it as current state.
     blocked_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     resolved_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)

@@ -1212,6 +1212,21 @@ _reconciliation_review_triage = TriageQueueConfig(
             handler="reconciliation.flag",
             required_permission="invoice.approve",
         ),
+        # L-2.1f. Offered ONLY by the config card, and only when the builder's
+        # live re-resolution says the row can now book — so like Flag it is
+        # interactive=True, keeping it out of the always-rendered palette while
+        # still being a valid action_id for apply_action. A row that became
+        # bookable after someone configured the map cannot simply leave the
+        # queue (booking is the licence to clear), so this is how it leaves.
+        ActionConfig(
+            action_id="post_keyword",
+            label="Post it",
+            action_type=ActionType.APPROVE,
+            icon="BookCheck",
+            interactive=True,
+            handler="reconciliation.post_keyword",
+            required_permission="invoice.approve",
+        ),
         ActionConfig(
             action_id="skip",
             label="Skip",

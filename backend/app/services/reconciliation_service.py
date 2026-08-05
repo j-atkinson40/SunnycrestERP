@@ -53,10 +53,8 @@ from app.models.financial_account import (
     ReconciliationTransaction,
 )
 from app.services.agents.period_lock import PeriodLockService
-from app.services.reconciliation_gl import (
-    book_keyword_entry,
-    resolve_keyword_posting,
-)
+from app.services import reconciliation_gl
+from app.services.reconciliation_gl import book_keyword_entry
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +285,16 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
         .filter(FinancialAccount.id == run.financial_account_id)
         .one()
     )
+    # ONE context for the whole run — the same object Books Review builds for a
+    # page of rows, so the matcher's reason and the card's reason cannot come
+    # from two implementations. Also drops the per-row cost: resolution used to
+    # be three queries per keyword row (keyword leg, contra leg, period lock);
+    # it is now three per RUN. A run is a consistent snapshot of configuration
+    # by construction, which is the behavior you want anyway — a settings edit
+    # mid-run should not split a statement across two rulesets.
+    posting_ctx = reconciliation_gl.build_keyword_posting_context(
+        db, company, [financial_account]
+    )
 
     # Load platform records for matching — REAL models, LOUD (D-3).
     # LOUD-FAILURE CONTRACT: no fallback — a matcher that cannot read its inputs
@@ -426,8 +434,10 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
         classified = _classify_keyword(txn.description)
         if classified is not None:
             classification, confidence = classified
-            posting, blocked_reason = resolve_keyword_posting(
-                db, company, financial_account, classification, txn.transaction_date,
+            posting, blocked_reason = posting_ctx.decide(
+                classification=classification,
+                financial_account_id=financial_account.id,
+                entry_date=txn.transaction_date,
             )
             if posting is not None:
                 entry = book_keyword_entry(
