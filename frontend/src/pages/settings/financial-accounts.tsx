@@ -128,6 +128,17 @@ interface AccountingGLRow {
   account_name: string | null
 }
 
+/** The payment bank default (AR-2). `state` is CHOSEN; `can_post` is READY —
+ *  they differ exactly when the chosen account has no GL account of its own. */
+interface PaymentBankRow {
+  financial_account_id: string | null
+  account_name: string | null
+  state: "mapped" | "unmapped" | "dangling"
+  gl_account_number: string | null
+  gl_account_name: string | null
+  can_post: boolean
+}
+
 const CLASSIFICATION_LABEL: Record<string, string> = {
   bank_fee: "Bank fees",
   payroll: "Payroll",
@@ -172,7 +183,9 @@ const STATE_COPY: Record<KeywordGLRow["state"], { label: string; tone: string }>
  * the payroll lesson repeated — three blanks read as an unfinished form and get
  * filled with the nearest plausible account.
  */
-function AccountingGLSection({ accounts }: { accounts: GLAccount[] }) {
+function AccountingGLSection(
+  { accounts, bankAccounts }: { accounts: GLAccount[]; bankAccounts: Account[] },
+) {
   const { isAdmin } = useAuth()
   const [rows, setRows] = useState<AccountingGLRow[] | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
@@ -293,8 +306,121 @@ function AccountingGLSection({ accounts }: { accounts: GLAccount[] }) {
             )
           })}
         </ul>
+
+        <PaymentBankRow accounts={bankAccounts} />
       </CardContent>
     </Card>
+  )
+}
+
+
+/**
+ * AR-2 — which bank account customer payments are recorded into.
+ *
+ * Lives in the accounting-GL card rather than its own, because the operator's
+ * question is one question: where does the platform post when it books for me.
+ * The SERVER keeps them separate (different id types, different validation);
+ * the operator should not have to care.
+ *
+ * A native select, not GLAccountPicker: this holds a FinancialAccount, not a
+ * TenantGLMapping, and the list is short (a tenant has a handful of bank
+ * accounts, not 224 GL codes).
+ */
+function PaymentBankRow({ accounts }: { accounts: Account[] }) {
+  const { isAdmin } = useAuth()
+  const [row, setRow] = useState<PaymentBankRow | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(() => {
+    apiClient.get("/reconciliation/payment-bank")
+      // Shape-guarded like the section above: a section that cannot load must
+      // render nothing rather than take the page with it.
+      .then((r) => setRow(r.data && typeof r.data === "object" ? r.data : null))
+      .catch(() => setRow(null))
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const write = async (financialAccountId: string | null) => {
+    setSaving(true)
+    try {
+      const r = await apiClient.put("/reconciliation/payment-bank", {
+        financial_account_id: financialAccountId,
+      })
+      setRow(r.data)
+      toast.success(
+        financialAccountId ? "Payment bank account set" : "Payment bank account cleared",
+      )
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(detail || "Save failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (row === null) return null
+
+  return (
+    <div className="mt-4 border-t border-border-subtle pt-4" data-testid="payment-bank-row">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-body-sm font-medium text-content-base">
+          Bank account for customer payments
+        </span>
+        <span
+          className={`text-caption ${row.can_post ? "text-content-muted" : "text-status-warning"}`}
+        >
+          {row.can_post ? "ready" : row.state === "mapped" ? "needs a GL account" : "not decided yet"}
+        </span>
+      </div>
+      <p className="mt-0.5 max-w-content text-caption text-content-muted">
+        Payments are recorded into this account the moment they are received, so
+        the ledger shows the money before it is deposited. Reconciliation
+        confirms it later.
+      </p>
+
+      {/* THE CROSS-REFERENCE. Two settings in two places have to line up, and
+          the second one lives behind an account's edit dialog — an operator who
+          set only this would leave thinking they were finished. */}
+      {row.state === "mapped" && !row.can_post && (
+        <p
+          className="mt-0.5 max-w-content text-caption text-status-warning"
+          data-testid="payment-bank-needs-gl"
+        >
+          Payments also need a GL account on the bank account itself. Edit{" "}
+          {row.account_name} above and set its GL account.
+        </p>
+      )}
+      {row.can_post && row.gl_account_number && (
+        <p className="mt-0.5 text-caption text-content-subtle">
+          Posts to {row.gl_account_number} — {row.gl_account_name}
+        </p>
+      )}
+
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        {isAdmin ? (
+          <select
+            value={row.financial_account_id ?? ""}
+            disabled={saving}
+            onChange={(e) => write(e.target.value || null)}
+            aria-label="Bank account for customer payments"
+            data-testid="payment-bank-select"
+            className="focus-ring-accent w-72 max-w-full rounded-md border border-border-base bg-surface-raised px-3 py-2 text-body-sm text-content-base disabled:opacity-50"
+          >
+            <option value="">Select account…</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.account_name}
+                {a.last_four ? ` ····${a.last_four}` : ""}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-body-sm text-content-base">
+            {row.account_name ?? "—"}
+          </span>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -571,7 +697,7 @@ export default function FinancialAccountsSettings() {
         </div>
       )}
 
-      <AccountingGLSection accounts={glAccounts} />
+      <AccountingGLSection accounts={glAccounts} bankAccounts={accounts} />
 
       <KeywordGLSection accounts={glAccounts} />
 

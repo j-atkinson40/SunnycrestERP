@@ -504,6 +504,127 @@ def set_accounting_gl(
     return _accounting_gl_payload(db, company)
 
 
+# ── The payment bank default (AR-2.0 follow-up) ──
+#
+# AR-2 shipped `payment_bank_financial_account_id` with NO surface, which is
+# AR-0's gap reproduced one arc later: a tenant who needs to configure it has no
+# way to. This closes it, using E-2 as the template.
+#
+# A THIRD endpoint rather than a row on /accounting-gl, for the reason that kept
+# /accounting-gl separate from /keyword-gl: the value TYPE differs. Every
+# accounting_gl value is a TenantGLMapping.id and its panel row renders a
+# GLAccountPicker; this holds a FinancialAccount.id and renders a bank picker.
+# Folding it in would make one endpoint validate two id types and one picker
+# wrong for one row.
+#
+# The two are shown in the SAME card, because the operator's question — "where
+# does the platform post when it books for me" — is one question even though the
+# server answers it from two vocabularies.
+
+
+class PaymentBankUpdate(BaseModel):
+    # NO DEFAULT, same contract as the other two: omitting it is a 422, and an
+    # explicit null is "we have not chosen one", not "I forgot to say".
+    financial_account_id: str | None
+
+
+def _payment_bank_payload(db: Session, company) -> dict:
+    """The chosen bank account and whether it can actually post.
+
+    TWO SETTINGS IN TWO PLACES have to line up before a payment posts: this
+    choice, and the chosen account's own `gl_account_id` (set on the account
+    edit form, L-2.1e's other half). Production today has this unset AND the
+    contra unset on its only account, so reporting only the first would send an
+    operator away thinking they were done.
+    """
+    from app.models.financial_account import FinancialAccount
+    from app.services.ar_payment_posting import PAYMENT_BANK_SETTINGS_KEY
+    from app.services.reconciliation_gl import contra_gl_with_reason
+
+    settings = company.settings or {}
+    chosen_id = settings.get(PAYMENT_BANK_SETTINGS_KEY)
+    account = None
+    if chosen_id:
+        account = (
+            db.query(FinancialAccount)
+            .filter(
+                FinancialAccount.id == chosen_id,
+                FinancialAccount.tenant_id == company.id,
+            )
+            .first()
+        )
+
+    if account is None:
+        return {
+            "financial_account_id": None,
+            "account_name": None,
+            "state": "unmapped" if chosen_id is None else "dangling",
+            "gl_account_number": None,
+            "gl_account_name": None,
+            "can_post": False,
+        }
+
+    cash, _reason = contra_gl_with_reason(db, account)
+    return {
+        "financial_account_id": account.id,
+        "account_name": account.account_name,
+        # "mapped" means CHOSEN; `can_post` is the one that means ready, and
+        # they differ exactly when the account's own GL account is missing.
+        "state": "mapped",
+        "gl_account_number": cash.account_number if cash else None,
+        "gl_account_name": cash.account_name if cash else None,
+        "can_post": cash is not None,
+    }
+
+
+@router.get("/payment-bank")
+def get_payment_bank(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+    return _payment_bank_payload(db, company)
+
+
+@router.put("/payment-bank")
+def set_payment_bank(
+    body: PaymentBankUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Choose the bank account customer payments are recorded into."""
+    from app.models.company import Company
+    from app.models.financial_account import FinancialAccount
+    from app.services.ar_payment_posting import PAYMENT_BANK_SETTINGS_KEY
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+
+    if body.financial_account_id is not None:
+        # Tenant-scoped, always. An id from another tenant must not be storable
+        # even though nothing downstream would resolve it — the same
+        # existence-oracle discipline the GL boundaries use.
+        exists = (
+            db.query(FinancialAccount)
+            .filter(
+                FinancialAccount.id == body.financial_account_id,
+                FinancialAccount.tenant_id == current_user.company_id,
+            )
+            .first()
+        )
+        if exists is None:
+            raise HTTPException(400, "That bank account is not one of yours.")
+
+    company.set_setting(PAYMENT_BANK_SETTINGS_KEY, body.financial_account_id)
+    db.commit()
+    return _payment_bank_payload(db, company)
+
+
 # ── Reconciliation Runs ──
 
 @router.post("/runs/start")

@@ -206,6 +206,106 @@ describe("accounting-GL section", () => {
   })
 })
 
+const PAYMENT_BANK_UNSET = {
+  financial_account_id: null,
+  account_name: null,
+  state: "unmapped" as const,
+  gl_account_number: null,
+  gl_account_name: null,
+  can_post: false,
+}
+
+/**
+ * AR-2's follow-up. The setting shipped with NO surface -- AR-0's gap
+ * reproduced -- and these pin the surface plus the CROSS-REFERENCE, which is the
+ * part an operator would otherwise miss: two settings live in two places and the
+ * second is behind an account's edit dialog.
+ */
+describe("payment bank default", () => {
+  const mockGet = (bank: Record<string, unknown>) => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === "/reconciliation/accounts") return Promise.resolve({ data: [ACCOUNT] })
+      if (url === "/journal-entries/gl-accounts") return Promise.resolve({ data: GL_ACCOUNTS })
+      if (url === "/reconciliation/keyword-gl") {
+        return Promise.resolve({ data: { classifications: KEYWORD_ROWS } })
+      }
+      if (url === "/reconciliation/accounting-gl") {
+        return Promise.resolve({ data: { purposes: ACCOUNTING_GL_ROWS } })
+      }
+      if (url === "/reconciliation/payment-bank") return Promise.resolve({ data: bank })
+      return Promise.resolve({ data: [] })
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsAdmin.mockReturnValue(true)
+    mockGet(PAYMENT_BANK_UNSET)
+  })
+
+  it("renders the row with the tenant's bank accounts to choose from", async () => {
+    renderPage()
+    await screen.findByTestId("payment-bank-row")
+    expect(screen.getByTestId("payment-bank-select")).toBeInTheDocument()
+  })
+
+  it("CROSS-REFERENCES the other setting when the account has no GL account", async () => {
+    // THE POINT. Chosen but not ready -- an operator who set only this would
+    // leave thinking they were finished, and the second setting is behind a
+    // dialog they have no reason to open.
+    mockGet({
+      ...PAYMENT_BANK_UNSET,
+      financial_account_id: "acct-1",
+      account_name: "Operating",
+      state: "mapped",
+      can_post: false,
+    })
+    renderPage()
+    const note = await screen.findByTestId("payment-bank-needs-gl")
+    expect(note.textContent).toContain("GL account on the bank account itself")
+    expect(note.textContent).toContain("Operating")
+  })
+
+  it("shows where it posts once both settings line up", async () => {
+    mockGet({
+      financial_account_id: "acct-1",
+      account_name: "Operating",
+      state: "mapped",
+      gl_account_number: "1030",
+      gl_account_name: "JANDHA LLC - CASH CHECKING",
+      can_post: true,
+    })
+    renderPage()
+    await screen.findByTestId("payment-bank-row")
+    expect(screen.queryByTestId("payment-bank-needs-gl")).not.toBeInTheDocument()
+    expect(screen.getByText(/1030 — JANDHA LLC - CASH CHECKING/)).toBeInTheDocument()
+  })
+
+  it("writes the chosen account", async () => {
+    mockApiPut.mockResolvedValue({
+      data: { ...PAYMENT_BANK_UNSET, financial_account_id: ACCOUNT.id, state: "mapped" },
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByTestId("payment-bank-row")
+
+    await user.selectOptions(screen.getByTestId("payment-bank-select"), ACCOUNT.id)
+
+    await waitFor(() =>
+      expect(mockApiPut).toHaveBeenCalledWith("/reconciliation/payment-bank", {
+        financial_account_id: ACCOUNT.id,
+      }),
+    )
+  })
+
+  it("is read-only for a non-admin", async () => {
+    mockIsAdmin.mockReturnValue(false)
+    renderPage()
+    await screen.findByTestId("payment-bank-row")
+    expect(screen.queryByTestId("payment-bank-select")).not.toBeInTheDocument()
+  })
+})
+
 describe("financial-accounts edit round trip", () => {
   beforeEach(() => {
     vi.clearAllMocks()

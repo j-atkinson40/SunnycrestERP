@@ -232,3 +232,111 @@ class TestTheCopyIsPartOfTheContract:
         blanks read as an unfinished form and get filled with the nearest
         plausible account, which is the payroll lesson."""
         assert [r["purpose"] for r in env.get()["purposes"]] == ["ar"]
+
+
+# ── the payment bank default (AR-2 follow-up) ───────────────────────────────
+
+
+class TestPaymentBankDefault:
+    """AR-2 shipped `payment_bank_financial_account_id` with NO surface — AR-0's
+    gap reproduced one arc later. This is the surface.
+
+    A THIRD endpoint rather than an /accounting-gl row, for the same reason
+    /accounting-gl is not a /keyword-gl row: the value TYPE differs. This holds
+    a FinancialAccount.id; every accounting_gl value is a TenantGLMapping.id.
+    """
+
+    def _bank(self, env, *, gl=None, name="Operating"):
+        from app.models.financial_account import FinancialAccount
+
+        a = FinancialAccount(
+            id=str(uuid.uuid4()), tenant_id=env.co, account_type="checking",
+            account_name=name, gl_account_id=gl.id if gl else None,
+        )
+        env.s.add(a); env.s.flush()
+        return a
+
+    def _get(self, env):
+        from app.api.routes.reconciliation import get_payment_bank
+        return get_payment_bank(current_user=env.user, db=env.s)
+
+    def _put(self, env, financial_account_id):
+        from app.api.routes.reconciliation import PaymentBankUpdate, set_payment_bank
+        return set_payment_bank(
+            body=PaymentBankUpdate(financial_account_id=financial_account_id),
+            current_user=env.user, db=env.s,
+        )
+
+    def test_unset_reads_as_unmapped_and_cannot_post(self, env):
+        row = self._get(env)
+        assert row["state"] == "unmapped"
+        assert row["can_post"] is False
+
+    def test_choosing_an_account_WITHOUT_a_gl_is_chosen_but_NOT_ready(self, env):
+        """THE STATE PRODUCTION IS IN: one FinancialAccount, gl_account_id NULL.
+        `state == "mapped"` says chosen; `can_post is False` says not ready. The
+        two differ exactly here, and reporting only the first would send an operator
+        away thinking they were finished."""
+        bank = self._bank(env, gl=None)
+        env.s.commit()
+
+        row = self._put(env, bank.id)
+        assert row["state"] == "mapped"          # chosen
+        assert row["can_post"] is False          # not ready
+        assert row["gl_account_number"] is None
+
+    def test_choosing_an_account_WITH_a_gl_can_post(self, env):
+        cash = env.mapping(name="JANDHA LLC - CASH CHECKING", number="1030")
+        bank = self._bank(env, gl=cash)
+        env.s.commit()
+
+        row = self._put(env, bank.id)
+        assert row["can_post"] is True
+        assert row["gl_account_number"] == "1030"
+
+    def test_it_actually_unblocks_posting(self, env):
+        """End to end: with both settings the payment legs resolve."""
+        from app.services.ar_payment_posting import resolve_payment_legs
+
+        cash = env.mapping(name="JANDHA LLC - CASH CHECKING", number="1030")
+        bank = self._bank(env, gl=cash)
+        env.s.commit()
+        env.put("ar", env.ar.id)                 # E-2's half
+        self._put(env, bank.id)                  # this half
+
+        cash_leg, ar_leg, reason = resolve_payment_legs(env.s, env.co)
+        assert reason is None
+        assert cash_leg.account_number == "1030"
+        assert ar_leg.account_number == "1200"
+
+    def test_a_foreign_tenants_account_is_refused(self, env):
+        other = Company(id=str(uuid.uuid4()), name="Other",
+                        slug=f"{_SLUG}other-{uuid.uuid4().hex[:6]}",
+                        is_active=True, vertical="manufacturing")
+        env.s.add(other); env.s.flush()
+        from app.models.financial_account import FinancialAccount
+        theirs = FinancialAccount(
+            id=str(uuid.uuid4()), tenant_id=other.id, account_type="checking",
+            account_name="Theirs",
+        )
+        env.s.add(theirs); env.s.commit()
+
+        with pytest.raises(HTTPException) as ei:
+            self._put(env, theirs.id)
+        assert ei.value.status_code == 400
+        assert self._get(env)["state"] == "unmapped"      # nothing written
+
+    def test_clearing_it_is_permitted(self, env):
+        cash = env.mapping(name="Cash", number="1030")
+        bank = self._bank(env, gl=cash)
+        env.s.commit()
+        self._put(env, bank.id)
+        row = self._put(env, None)
+        assert row["state"] == "unmapped"
+        assert row["can_post"] is False
+
+    def test_omitting_the_field_is_a_422(self, env):
+        from app.api.routes.reconciliation import PaymentBankUpdate
+        with pytest.raises(Exception) as ei:
+            PaymentBankUpdate()
+        assert "financial_account_id" in str(ei.value)
