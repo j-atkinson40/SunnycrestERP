@@ -103,6 +103,109 @@ async function openEditDialog() {
   return user
 }
 
+const ACCOUNTING_GL_ROWS = [
+  {
+    purpose: "ar",
+    label: "Accounts receivable",
+    description: "The control account customer balances post against.",
+    unmapped_cost:
+      "Marking this unmapped means early-payment discounts will not post. An account named ACCOUNTS RECEIVABLE-TRADE is almost certainly what you want.",
+    state: "unmapped" as const,
+    gl_account_id: null,
+    account_number: null,
+    account_name: null,
+  },
+]
+
+/**
+ * AR-2.0 E-2. The panel that closes the gap AR-0 left: the resolver and its
+ * fail-closed refusal shipped with no way for a tenant to clear it.
+ *
+ * These pin the CARD's wiring — the three states, the explicit-null write, and
+ * the unmapped-cost copy. The picker has its own spec; the endpoint has
+ * test_accounting_gl_panel_e2.py.
+ */
+describe("accounting-GL section", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsAdmin.mockReturnValue(true)
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === "/reconciliation/accounts") return Promise.resolve({ data: [ACCOUNT] })
+      if (url === "/journal-entries/gl-accounts") return Promise.resolve({ data: GL_ACCOUNTS })
+      if (url === "/reconciliation/keyword-gl") {
+        return Promise.resolve({ data: { classifications: KEYWORD_ROWS } })
+      }
+      if (url === "/reconciliation/accounting-gl") {
+        return Promise.resolve({ data: { purposes: ACCOUNTING_GL_ROWS } })
+      }
+      return Promise.resolve({ data: [] })
+    })
+  })
+
+  it("renders the purpose with its server-supplied copy", async () => {
+    renderPage()
+    await screen.findByTestId("accounting-gl-section")
+    expect(screen.getByTestId("accounting-gl-ar")).toBeInTheDocument()
+    expect(screen.getByText("Accounts receivable")).toBeInTheDocument()
+  })
+
+  it("shows what leaving it unmapped COSTS, and names the right answer", async () => {
+    // AR-unmapped is not payroll-unmapped: payroll has no single right account,
+    // AR does, and the consequence surfaces months later as a apparent bug.
+    renderPage()
+    const cost = await screen.findByTestId("accounting-gl-cost-ar")
+    expect(cost.textContent).toContain("will not post")
+    expect(cost.textContent).toContain("ACCOUNTS RECEIVABLE-TRADE")
+  })
+
+  it("sends an EXPLICIT null when the operator says they don't use it", async () => {
+    // The null must survive serialization — it is how "deliberately unmapped"
+    // is said, and the server distinguishes it from an absent key.
+    mockApiPut.mockResolvedValue({
+      data: { purposes: [{ ...ACCOUNTING_GL_ROWS[0], state: "intentional" }] },
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByTestId("accounting-gl-section")
+
+    await user.click(screen.getByTestId("accounting-gl-unmap-ar"))
+
+    await waitFor(() =>
+      expect(mockApiPut).toHaveBeenCalledWith("/reconciliation/accounting-gl", {
+        purpose: "ar",
+        gl_account_id: null,
+      }),
+    )
+  })
+
+  it("offers no unmap affordance once it is already intentional", async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === "/reconciliation/accounts") return Promise.resolve({ data: [ACCOUNT] })
+      if (url === "/journal-entries/gl-accounts") return Promise.resolve({ data: GL_ACCOUNTS })
+      if (url === "/reconciliation/keyword-gl") {
+        return Promise.resolve({ data: { classifications: KEYWORD_ROWS } })
+      }
+      if (url === "/reconciliation/accounting-gl") {
+        return Promise.resolve({
+          data: { purposes: [{ ...ACCOUNTING_GL_ROWS[0], state: "intentional" }] },
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    renderPage()
+    await screen.findByTestId("accounting-gl-section")
+    expect(screen.queryByTestId("accounting-gl-unmap-ar")).not.toBeInTheDocument()
+  })
+
+  it("is read-only for a non-admin", async () => {
+    mockIsAdmin.mockReturnValue(false)
+    renderPage()
+    await screen.findByTestId("accounting-gl-section")
+    expect(screen.queryByTestId("accounting-gl-picker-ar")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("accounting-gl-unmap-ar")).not.toBeInTheDocument()
+  })
+})
+
 describe("financial-accounts edit round trip", () => {
   beforeEach(() => {
     vi.clearAllMocks()

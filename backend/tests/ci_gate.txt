@@ -198,3 +198,17 @@ tests/test_ar_membership_seam_c3.py
 #   report_payload["corrections_applied"] is True, so nobody reads "drift
 #   reports" as "the rewrite stopped". Phase 4 flips it deliberately. —
 tests/test_ar_consolidation_validation_c4.py
+
+# — AR-2.0 E-2: the accounting-GL authoring surface. AR-0 shipped
+#   resolve_ar_account and its fail-closed refusal with NO endpoint and no UI, so
+#   a tenant hitting "No accounts-receivable GL account is configured" could not
+#   clear it without writing settings directly — the same gap L-2.1e closed for
+#   the keyword map one domain over. A SIBLING endpoint, not an extension: the
+#   validation vocabularies differ (code-fixed classifications vs open-ended
+#   purposes), so one PUT serving both would be two functions wearing one name.
+#   Pins the three states with `present-and-null` read BEFORE truthiness, the
+#   422-on-omission write contract, the existence-oracle refusal, that the panel
+#   actually clears AR-0's refusal end to end, and that the unmapped copy names
+#   BOTH the consequence and the right answer — AR-unmapped is not
+#   payroll-unmapped. Only "ar" ships; no speculative slots. —
+tests/test_accounting_gl_panel_e2.py

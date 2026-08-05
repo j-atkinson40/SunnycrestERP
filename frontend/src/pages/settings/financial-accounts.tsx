@@ -103,6 +103,31 @@ interface KeywordGLRow {
   account_name: string | null
 }
 
+/**
+ * AR-2.0 E-2. The accounting-GL purposes half of the same page.
+ *
+ * A SIBLING of KeywordGLRow, not a reuse: the server validates these against an
+ * open-ended purpose vocabulary rather than the code-fixed three-value
+ * classification set, so the two endpoints stay separate. What they share is
+ * this page and one chart fetch, because the operator's job is the same job.
+ *
+ * `label`, `description` and `unmapped_cost` come from the SERVER rather than a
+ * client-side table like CLASSIFICATION_NOTE below. The copy is part of the
+ * contract (L-2.1e) and the server owns which purposes exist, so shipping the
+ * words with the row keeps a new purpose from rendering blank until someone
+ * remembers to add a note here.
+ */
+interface AccountingGLRow {
+  purpose: string
+  label: string
+  description: string
+  unmapped_cost: string
+  state: "mapped" | "intentional" | "unmapped" | "dangling"
+  gl_account_id: string | null
+  account_number: string | null
+  account_name: string | null
+}
+
 const CLASSIFICATION_LABEL: Record<string, string> = {
   bank_fee: "Bank fees",
   payroll: "Payroll",
@@ -133,6 +158,146 @@ const STATE_COPY: Record<KeywordGLRow["state"], { label: string; tone: string }>
   unmapped: { label: "not decided yet", tone: "text-status-warning" },
   dangling: { label: "account no longer active", tone: "text-status-error" },
 }
+
+/**
+ * AR-2.0 E-2 — the accounting-GL purposes panel.
+ *
+ * AR-0 shipped `resolve_ar_account` and its fail-closed refusal with NO
+ * authoring surface, so a tenant hitting "No accounts-receivable GL account is
+ * configured" had no way to clear it short of writing settings directly. This
+ * is that surface, and it is the same gap L-2.1e closed for the keyword map one
+ * domain over.
+ *
+ * ONE PURPOSE SHIPS ("ar"). Empty slots for accounts no arc reads yet would be
+ * the payroll lesson repeated — three blanks read as an unfinished form and get
+ * filled with the nearest plausible account.
+ */
+function AccountingGLSection({ accounts }: { accounts: GLAccount[] }) {
+  const { isAdmin } = useAuth()
+  const [rows, setRows] = useState<AccountingGLRow[] | null>(null)
+  const [saving, setSaving] = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    apiClient.get("/reconciliation/accounting-gl")
+      // Shape-guarded, not just error-guarded. An unexpected body left `rows`
+      // undefined rather than null, which slipped past the `rows === null`
+      // early-return and threw inside `.map` — crashing the ENTIRE settings
+      // page over one section's response. Surfaced by 13 unrelated specs going
+      // red; a section that cannot load should render nothing, not take the
+      // page with it.
+      .then((r) => setRows(Array.isArray(r.data?.purposes) ? r.data.purposes : []))
+      .catch(() => setRows([]))
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const write = async (purpose: string, glAccountId: string | null, label: string) => {
+    setSaving(purpose)
+    try {
+      const r = await apiClient.put("/reconciliation/accounting-gl", {
+        purpose,
+        // Explicit null, never omitted — it is how "deliberately unmapped" is
+        // said, and the server distinguishes it from an absent key.
+        gl_account_id: glAccountId,
+      })
+      setRows(r.data.purposes)
+      toast.success(
+        glAccountId ? `${label} account set` : `${label} marked as not configured`,
+      )
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(detail || "Save failed")
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  if (rows === null) return null
+
+  return (
+    <Card data-testid="accounting-gl-section">
+      <CardContent className="p-4">
+        <h2 className="text-body font-medium text-content-strong">
+          Accounting GL accounts
+        </h2>
+        <p className="mt-1 max-w-content text-body-sm text-content-muted">
+          Where the platform posts when it books on your behalf. Unlike the
+          reconciliation kinds below, these generally DO have a right answer —
+          leaving one unset stops the feature that needs it.
+        </p>
+
+        <ul className="mt-4 space-y-4">
+          {rows.map((row) => {
+            const state = STATE_COPY[row.state] ?? STATE_COPY.unmapped
+            return (
+              <li key={row.purpose} data-testid={`accounting-gl-${row.purpose}`}>
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-body-sm font-medium text-content-base">
+                    {row.label}
+                  </span>
+                  <span className={`text-caption ${state.tone}`}>{state.label}</span>
+                </div>
+                <p className="mt-0.5 max-w-content text-caption text-content-muted">
+                  {row.description}
+                </p>
+                {/* The COST of leaving it unmapped, shown only when it is
+                    unmapped or deliberately so. Payroll-unmapped is correct;
+                    AR-unmapped is a choice whose consequence surfaces months
+                    later as what looks like a bug, so the panel says it now. */}
+                {(row.state === "unmapped" || row.state === "intentional") && (
+                  <p
+                    className="mt-0.5 max-w-content text-caption text-status-warning"
+                    data-testid={`accounting-gl-cost-${row.purpose}`}
+                  >
+                    {row.unmapped_cost}
+                  </p>
+                )}
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  {isAdmin ? (
+                    <>
+                      <div className="w-72 max-w-full">
+                        <GLAccountPicker
+                          accounts={accounts}
+                          value={row.gl_account_id}
+                          onChange={(id) => write(row.purpose, id, row.label)}
+                          disabled={saving === row.purpose}
+                          placeholder={
+                            row.state === "intentional"
+                              ? "Not configured"
+                              : "Select account…"
+                          }
+                          aria-label={`GL account for ${row.label}`}
+                          data-testid={`accounting-gl-picker-${row.purpose}`}
+                        />
+                      </div>
+                      {row.state !== "intentional" && (
+                        <button
+                          type="button"
+                          disabled={saving === row.purpose}
+                          onClick={() => write(row.purpose, null, row.label)}
+                          data-testid={`accounting-gl-unmap-${row.purpose}`}
+                          className="focus-ring-accent rounded-md text-caption text-content-subtle underline-offset-2 hover:underline disabled:opacity-50"
+                        >
+                          we don't use this
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-body-sm text-content-base">
+                      {row.account_number
+                        ? `${row.account_number} — ${row.account_name}`
+                        : "—"}
+                    </span>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
 
 /**
  * The tenant-wide half of reconciliation GL config. The per-account contra above
@@ -405,6 +570,8 @@ export default function FinancialAccountsSettings() {
           ))}
         </div>
       )}
+
+      <AccountingGLSection accounts={glAccounts} />
 
       <KeywordGLSection accounts={glAccounts} />
 

@@ -206,9 +206,15 @@ def post_entry(
     # S-3 ADDED the PeriodLock check ALONGSIDE (not in place of) the
     # AccountingPeriod one — dropping AccountingPeriod would silently
     # re-permit posting into a manually-closed period. Reconciling the two
-    # tables (are there closed AccountingPeriods with no PeriodLock?) is an
-    # S-6 item with a data question that must be answered before either is
-    # retired.
+    # tables (are there closed AccountingPeriods with no PeriodLock?) was
+    # deferred to S-6, which shipped (af333551..b6f1418c) without doing it.
+    #
+    # THE DATA QUESTION IS NOW ANSWERED (production, read-only, 2026-08-05):
+    # 0 accounting_periods, 0 with status='closed', 0 period_locks. There is
+    # nothing to reconcile, so retiring AccountingPeriod is no longer blocked
+    # BY DATA — it is only blocked by the decision. Re-measure before acting on
+    # this: the whole point of writing it down is that a count taken once is a
+    # hypothesis afterwards.
     period = db.query(AccountingPeriod).filter(
         AccountingPeriod.tenant_id == current_user.company_id,
         AccountingPeriod.period_month == entry.period_month,

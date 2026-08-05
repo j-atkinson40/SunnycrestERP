@@ -21,7 +21,11 @@ from app.models.financial_account import (
     ReconciliationTransaction,
 )
 from app.models.user import User
-from app.services import reconciliation_gl, reconciliation_service
+from app.services import (
+    early_payment_discount_service,
+    reconciliation_gl,
+    reconciliation_service,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -342,6 +346,162 @@ def set_keyword_gl(
     company.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, current)
     db.commit()
     return _keyword_gl_payload(db, company)
+
+
+# ── Accounting GL purposes (AR-2.0 E-2) ──
+#
+# A SIBLING endpoint to /keyword-gl, not an extension of it, and the reason is
+# the validation vocabulary. `/keyword-gl` validates against
+# KEYWORD_CLASSIFICATIONS — a code-fixed three-value set. `accounting_gl` keys
+# are PURPOSES, open-ended and growing one per arc that needs one. A single PUT
+# serving both would branch on which vocabulary applied, which is two functions
+# wearing one name — the thing `decide` vs `decide_coded` avoided.
+#
+# The FRONTEND does extend: /settings/accounts renders both sections from one
+# chart fetch, because the operator's job is the same job even though the
+# server's is not.
+#
+# ONE KEY SHIPS: "ar". `bad_debt` (8650 BAD DEBTS) and `finance_charge_income`
+# (9200 FINANCE CHARGE INCOME) both exist on the chart and are both needed
+# eventually — by write-offs and by finance-charge posting, neither of which is
+# built. Shipping empty slots for them is the payroll lesson exactly: three
+# blanks read as an unfinished form and get filled with the nearest plausible
+# account. `undeposited_funds` would be worse still — it names an account that
+# does not exist on the chart at all (AR-2 is blocked on precisely that), so the
+# slot would be unfillable and would read as the platform's bug. Each key
+# arrives with the arc that reads it.
+
+# NOTE ON WHERE THE KEY LIVES: `ACCOUNTING_GL_SETTINGS_KEY` is defined in
+# `early_payment_discount_service` because AR-0 put it there alongside its first
+# consumer, `resolve_ar_account`. It is now read from two modules and it is not
+# really EPD's concept — an accounting-GL settings key belongs somewhere
+# neutral. Left where it is rather than moved as a side effect of building a
+# panel; worth relocating when a THIRD consumer appears, which is the point at
+# which the current home stops being defensible.
+
+# Purpose → what the operator is choosing, and what it costs to leave unmapped.
+# The COPY IS PART OF THE CONTRACT (L-2.1e): a panel that presents a neutral
+# blank invites the nearest plausible answer.
+_ACCOUNTING_GL_PURPOSES: dict[str, dict[str, str]] = {
+    "ar": {
+        "label": "Accounts receivable",
+        "description": (
+            "The control account customer balances post against. Early-payment "
+            "discounts credit it."
+        ),
+        # UNLIKE PAYROLL, THERE IS A RIGHT ANSWER HERE, and the copy says so.
+        # Payroll-unmapped is correct — no single account fits a net ACH draw.
+        # AR-unmapped is a CHOICE WITH A CONSEQUENCE, and the consequence
+        # surfaces months later as what looks like a bug.
+        "unmapped_cost": (
+            "Marking this unmapped means early-payment discounts will not post. "
+            "An account named ACCOUNTS RECEIVABLE-TRADE is almost certainly what "
+            "you want."
+        ),
+    },
+}
+
+
+class AccountingGLUpdate(BaseModel):
+    purpose: str
+    # NO DEFAULT, same reason as KeywordGLUpdate: omitting it is a 422, because
+    # "I did not say" and "I said none" are different sentences.
+    gl_account_id: str | None
+
+
+def _accounting_gl_payload(db: Session, company) -> dict:
+    """State per purpose, derived from the SETTINGS + the runtime validator.
+
+    Three states, per L-2.1c, and the order of the checks is load-bearing —
+    `null` is falsy, so testing presence BEFORE truthiness is what keeps a
+    deliberate unmapping from reading as a gap nobody has closed yet.
+    """
+    from app.services.reconciliation_gl import validate_gl_account
+
+    stored = (company.settings or {}).get(
+        early_payment_discount_service.ACCOUNTING_GL_SETTINGS_KEY
+    ) or {}
+    out = []
+    for purpose, meta in _ACCOUNTING_GL_PURPOSES.items():
+        present = isinstance(stored, dict) and purpose in stored
+        gl_id = stored.get(purpose) if present else None
+
+        if present and gl_id is None:
+            state, mapping = "intentional", None
+        elif not gl_id:
+            state, mapping = "unmapped", None
+        else:
+            mapping = validate_gl_account(db, company.id, gl_id)
+            state = "mapped" if mapping is not None else "dangling"
+
+        out.append({
+            "purpose": purpose,
+            "label": meta["label"],
+            "description": meta["description"],
+            "unmapped_cost": meta["unmapped_cost"],
+            "state": state,
+            "gl_account_id": mapping.id if mapping else None,
+            "account_number": mapping.account_number if mapping else None,
+            "account_name": mapping.account_name if mapping else None,
+        })
+    return {"purposes": out}
+
+
+@router.get("/accounting-gl")
+def get_accounting_gl(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Readable by anyone; only an admin may change it. Same idiom as
+    /keyword-gl — the panel shows state to everyone."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+    return _accounting_gl_payload(db, company)
+
+
+@router.put("/accounting-gl")
+def set_accounting_gl(
+    body: AccountingGLUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Map a purpose to a GL account, or mark it deliberately unmapped
+    (`gl_account_id: null` — PRESENT and null, never a removed key).
+
+    AR-0 shipped the resolver and its fail-closed refusal with NO authoring
+    surface, so a tenant hitting that refusal could not clear it without direct
+    settings access. This is that surface.
+    """
+    from app.models.company import Company
+
+    if body.purpose not in _ACCOUNTING_GL_PURPOSES:
+        raise HTTPException(
+            400,
+            f"Unknown purpose {body.purpose!r} — expected one of "
+            f"{', '.join(_ACCOUNTING_GL_PURPOSES)}.",
+        )
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+
+    if body.gl_account_id is not None:
+        _require_valid_gl_account(db, current_user.company_id, body.gl_account_id)
+
+    current = dict(
+        (company.settings or {}).get(
+            early_payment_discount_service.ACCOUNTING_GL_SETTINGS_KEY
+        ) or {}
+    )
+    # Assignment, never `pop` on null — key PRESENT and null is a decision.
+    current[body.purpose] = body.gl_account_id
+    company.set_setting(
+        early_payment_discount_service.ACCOUNTING_GL_SETTINGS_KEY, current
+    )
+    db.commit()
+    return _accounting_gl_payload(db, company)
 
 
 # ── Reconciliation Runs ──
