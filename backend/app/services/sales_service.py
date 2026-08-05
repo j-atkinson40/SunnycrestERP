@@ -2588,28 +2588,51 @@ def void_payment(
     #
     # The link is deliberately KEPT rather than nulled, so the void stays
     # auditable — which entry was voided, and by which payment.
-    if payment.journal_entry_id:
-        from app.models.journal_entry import JournalEntry
-        from app.services import journal_entry_service
+    # A PAYMENT CAN CARRY MORE THAN ONE LEDGER REFERENCE, and every mutation
+    # path has to know about ALL of them. Two exist today:
+    #
+    #   journal_entry_id          AR-2's Dr bank / Cr AR, booked at receipt.
+    #                             DRAFT.
+    #   discount_journal_entry_id q2l3's DISC- entry, Dr discount / Cr AR,
+    #                             booked when an early-payment discount is
+    #                             applied. POSTED.
+    #
+    # The second was missed on the first pass of this fix and found by a
+    # deliberate re-read rather than by accident — it is the worse of the two,
+    # because a posted entry left standing understates AR permanently while the
+    # subledger unwinds the discount around it (`inv.discount_amount = 0.00`
+    # above). Both get the SAME treatment through one helper so the two cannot
+    # drift; a third reference would be one more line here, and if that ever
+    # happens the right move is to ask the payment for its entries rather than
+    # keep naming fields. Two is not yet enough to earn that.
+    from app.models.journal_entry import JournalEntry
+    from app.services import journal_entry_service
 
+    def _undo_entry(entry_id: str | None) -> None:
+        if not entry_id:
+            return
         entry = (
             db.query(JournalEntry)
             .filter(
-                JournalEntry.id == payment.journal_entry_id,
+                JournalEntry.id == entry_id,
                 JournalEntry.tenant_id == company_id,
             )
             .first()
         )
-        if entry is not None:
-            if entry.status == "posted":
-                journal_entry_service.reverse_journal_entry(
-                    db,
-                    tenant_id=company_id,
-                    entry_id=entry.id,
-                    actor_user_id=voided_by,
-                )
-            elif entry.status not in ("reversed", "voided"):
-                entry.status = "voided"
+        if entry is None:
+            return
+        if entry.status == "posted":
+            journal_entry_service.reverse_journal_entry(
+                db,
+                tenant_id=company_id,
+                entry_id=entry.id,
+                actor_user_id=voided_by,
+            )
+        elif entry.status not in ("reversed", "voided"):
+            entry.status = "voided"
+
+    _undo_entry(payment.journal_entry_id)
+    _undo_entry(payment.discount_journal_entry_id)
 
     # Soft delete the payment
     payment.deleted_at = datetime.now(timezone.utc)
