@@ -180,6 +180,143 @@ def post_payment(db: Session, *, company_id: str, payment, user_id: str | None):
     return entry
 
 
+_MISMATCH_ANOMALY_TYPE = "ar_payment_bank_mismatch"
+
+
+def check_match_bank_consistency(
+    db: Session, *, company_id: str, run_financial_account_id: str, payment_id: str
+) -> bool:
+    """AR-2.1 — did this payment post to the bank it actually landed in?
+
+    Returns True when consistent (or unknowable), False when a mismatch was
+    found and reported.
+
+    THE FAILURE THIS EXISTS FOR. The bank a payment posts to is a TENANT
+    DEFAULT, because `CustomerPayment` carries no bank field and asking at
+    payment time is friction on a distinction most tenants do not have. With one
+    operating account the default cannot be wrong. With two it can be — and it
+    would be wrong SILENTLY, which is the shape this arc keeps refusing.
+
+    The reconciliation match is the moment the truth arrives: the bank line
+    belongs to a known `FinancialAccount`, so pairing it with a payment says
+    where the money REALLY went. If that disagrees with where the payment
+    posted, the default was wrong for this payment and both bank accounts are
+    now misstated — one over, one under, by the same amount.
+
+    So the default is not made safe by being a better guess. It is made safe by
+    the mismatch being REPORTED, which is the same reasoning AR-1 applied to
+    balance drift and the same container.
+
+    Deliberately does NOT correct anything. Amending a posted entry from a
+    background match is exactly the "corrects rather than reports" behaviour
+    AR-1 spent a phase removing.
+    """
+    from app.models.customer_payment import CustomerPayment
+    from app.models.financial_account import FinancialAccount
+    from app.models.journal_entry import JournalEntryLine
+    from app.services.reconciliation_gl import contra_gl_with_reason
+
+    payment = (
+        db.query(CustomerPayment)
+        .filter(
+            CustomerPayment.id == payment_id,
+            CustomerPayment.company_id == company_id,
+        )
+        .first()
+    )
+    # Unposted payments are already reported by their own anomaly; re-reporting
+    # them here would double-count one gap as two.
+    if payment is None or payment.journal_entry_id is None:
+        return True
+
+    account = (
+        db.query(FinancialAccount)
+        .filter(
+            FinancialAccount.id == run_financial_account_id,
+            FinancialAccount.tenant_id == company_id,
+        )
+        .first()
+    )
+    if account is None:
+        return True
+    landed_in, _reason = contra_gl_with_reason(db, account)
+    if landed_in is None:
+        # The bank line's own account has no GL mapping. That is a
+        # configuration gap the reconciliation surfaces on its own terms
+        # (contra_gl_unset); not this check's business to duplicate.
+        return True
+
+    # Which GL account did the payment's entry actually debit?
+    posted_to = (
+        db.query(JournalEntryLine)
+        .filter(
+            JournalEntryLine.journal_entry_id == payment.journal_entry_id,
+            JournalEntryLine.debit_amount > 0,
+        )
+        .first()
+    )
+    if posted_to is None or posted_to.gl_account_id == landed_in.id:
+        return True
+
+    logger.warning(
+        "AR-2.1: payment %s posted to GL %s but its bank line belongs to %s "
+        "(tenant=%s)",
+        payment.id, posted_to.gl_account_id, landed_in.id, company_id,
+    )
+    _report_bank_mismatch(
+        db, company_id=company_id, payment=payment,
+        posted_to=posted_to, landed_in=landed_in, account_name=account.account_name,
+    )
+    return False
+
+
+def _report_bank_mismatch(
+    db: Session, *, company_id: str, payment, posted_to, landed_in, account_name: str
+):
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+    from app.schemas.agent import AgentJobStatus, AnomalySeverity
+
+    try:
+        job = AgentJob(
+            id=str(uuid.uuid4()), tenant_id=company_id,
+            job_type=_UNPOSTED_JOB_TYPE, status=AgentJobStatus.COMPLETE.value,
+            dry_run=False, trigger_type="event", run_log=[], anomaly_count=1,
+            report_payload={
+                "pipeline": "ar_payment_bank_mismatch",
+                "payment_id": payment.id,
+                "amount": str(payment.total_amount),
+                "posted_to_gl_account_id": posted_to.gl_account_id,
+                "landed_in_gl_account_id": landed_in.id,
+            },
+        )
+        db.add(job)
+        db.flush()
+        db.add(AgentAnomaly(
+            id=str(uuid.uuid4()), agent_job_id=job.id,
+            severity=AnomalySeverity.WARNING.value,
+            anomaly_type=_MISMATCH_ANOMALY_TYPE,
+            entity_type="customer_payment", entity_id=payment.id,
+            description=(
+                f"Payment of ${payment.total_amount} posted to "
+                f"{posted_to.gl_account_number or posted_to.gl_account_id}, but the "
+                f"bank line that matched it belongs to {account_name} "
+                f"({landed_in.account_number} — {landed_in.account_name}). Payments "
+                "post to the tenant's default bank account; this one landed "
+                "somewhere else, so both accounts are misstated by this amount "
+                "until the entry is corrected. Nothing has been changed "
+                "automatically."
+            ),
+            amount=Decimal(str(payment.total_amount)),
+            resolved=False,
+        ))
+    except Exception:
+        logger.exception(
+            "AR-2.1: failed to report bank mismatch for payment %s (tenant=%s)",
+            payment.id, company_id,
+        )
+
+
 def report_unposted_payment(db: Session, *, company_id: str, payment, reason: str):
     """Surface an unposted payment as operator-visible work.
 

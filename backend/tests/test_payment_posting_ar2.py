@@ -555,3 +555,141 @@ class TestTheInvariantAfterAR2:
             entry = env.s.query(JournalEntry).filter(
                 JournalEntry.id == p.journal_entry_id).one()
             assert entry.total_debits == entry.total_credits == p.total_amount
+
+
+# ── AR-2.1: the default's silent-wrongness is made loud ─────────────────────
+
+
+class TestBankMismatchDetection:
+    """The bank a payment posts to is a TENANT DEFAULT. With one operating
+    account it cannot be wrong; with two it can be, and it would be wrong
+    SILENTLY — one account overstated, the other understated, by the same
+    amount, with nothing to notice it.
+
+    The reconciliation match is the moment the truth arrives: the bank line
+    belongs to a known FinancialAccount, so pairing it with a payment says where
+    the money REALLY went. The default is not made safe by being a better guess;
+    it is made safe by the mismatch being reported.
+
+    REPORTED, NEVER CORRECTED. Amending a posted entry from a background match
+    is the behaviour AR-1 spent a phase removing.
+    """
+
+    def _second_bank(self, env):
+        other_cash = env.mapping(name="CHECKING-FIVE STAR", number="1050")
+        return env.bank(gl=other_cash), other_cash
+
+    def _anomalies(self, env, anomaly_type):
+        from app.models.agent import AgentJob
+        from app.models.agent_anomaly import AgentAnomaly
+
+        return (
+            env.s.query(AgentAnomaly)
+            .join(AgentJob, AgentAnomaly.agent_job_id == AgentJob.id)
+            .filter(
+                AgentJob.tenant_id == env.co,
+                AgentAnomaly.anomaly_type == anomaly_type,
+            ).all()
+        )
+
+    def test_a_match_against_a_DIFFERENT_bank_is_reported(self, env):
+        """HAND MATH: a 400.00 payment posts to 1030 (the default). Its bank
+        line belongs to an account whose GL is 1050. Both accounts are now
+        misstated by 400.00 — 1030 over, 1050 under."""
+        from app.services import ar_payment_posting
+
+        _ar, _cash, _bank = _configured(env)
+        other_bank, _other_gl = self._second_bank(env)
+        payment = env.pay(total="400.00")
+        env.s.commit()
+        assert payment.journal_entry_id is not None
+
+        ok = ar_payment_posting.check_match_bank_consistency(
+            env.s, company_id=env.co,
+            run_financial_account_id=other_bank.id,     # the OTHER account
+            payment_id=payment.id,
+        )
+        env.s.commit()
+
+        assert ok is False
+        found = self._anomalies(env, "ar_payment_bank_mismatch")
+        assert len(found) == 1
+        assert found[0].entity_id == payment.id
+        assert found[0].amount == Decimal("400.00")
+        assert "1050" in found[0].description        # where it actually landed
+
+    def test_a_match_against_the_SAME_bank_is_silent(self, env):
+        from app.services import ar_payment_posting
+
+        _ar, _cash, bank = _configured(env)
+        payment = env.pay(total="400.00")
+        env.s.commit()
+
+        ok = ar_payment_posting.check_match_bank_consistency(
+            env.s, company_id=env.co,
+            run_financial_account_id=bank.id,          # the same account
+            payment_id=payment.id,
+        )
+        env.s.commit()
+
+        assert ok is True
+        assert self._anomalies(env, "ar_payment_bank_mismatch") == []
+
+    def test_an_UNPOSTED_payment_is_not_double_reported(self, env):
+        """It already has an `ar_payment_unposted` anomaly. Reporting a bank
+        mismatch too would count one gap as two, and the second would be
+        meaningless — there is no entry to disagree with."""
+        from app.services import ar_payment_posting
+
+        bank, _gl = self._second_bank(env)
+        env.s.commit()                                  # nothing configured
+        payment = env.pay(total="400.00")
+        env.s.commit()
+        assert payment.journal_entry_id is None
+
+        ok = ar_payment_posting.check_match_bank_consistency(
+            env.s, company_id=env.co,
+            run_financial_account_id=bank.id, payment_id=payment.id,
+        )
+        assert ok is True
+        assert self._anomalies(env, "ar_payment_bank_mismatch") == []
+        assert len(self._anomalies(env, "ar_payment_unposted")) == 1
+
+    def test_it_reports_and_does_NOT_touch_the_entry(self, env):
+        """The entry is left exactly as posted. A background match amending a
+        journal entry is the AR-1 sweeper's mistake in a new place."""
+        from app.services import ar_payment_posting
+
+        _ar, cash, _bank = _configured(env)
+        other_bank, _other_gl = self._second_bank(env)
+        payment = env.pay(total="400.00")
+        env.s.commit()
+        before = _lines(env, payment.journal_entry_id)
+        before_debit_account = before[0].gl_account_id
+
+        ar_payment_posting.check_match_bank_consistency(
+            env.s, company_id=env.co,
+            run_financial_account_id=other_bank.id, payment_id=payment.id,
+        )
+        env.s.commit()
+
+        after = _lines(env, payment.journal_entry_id)
+        assert after[0].gl_account_id == before_debit_account == cash.id
+        assert after[0].debit_amount == Decimal("400.00")
+
+    def test_a_bank_line_whose_own_account_has_no_gl_is_not_this_checks_problem(self, env):
+        """Reconciliation already surfaces `contra_gl_unset` on its own terms.
+        Duplicating it here would report one configuration gap twice."""
+        from app.services import ar_payment_posting
+
+        _configured(env)
+        unmapped_bank = env.bank(gl=None)
+        payment = env.pay(total="400.00")
+        env.s.commit()
+
+        ok = ar_payment_posting.check_match_bank_consistency(
+            env.s, company_id=env.co,
+            run_financial_account_id=unmapped_bank.id, payment_id=payment.id,
+        )
+        assert ok is True
+        assert self._anomalies(env, "ar_payment_bank_mismatch") == []

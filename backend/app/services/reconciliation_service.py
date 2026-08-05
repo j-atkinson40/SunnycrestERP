@@ -54,6 +54,7 @@ from app.models.financial_account import (
 )
 from app.services.agents.period_lock import PeriodLockService
 from app.services import reconciliation_gl
+from app.services import ar_payment_posting
 from app.services.reconciliation_gl import book_keyword_entry
 
 logger = logging.getLogger(__name__)
@@ -614,6 +615,20 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
                 txn.matched_record_type = accepted["type"]
                 txn.matched_record_id = accepted["id"]
                 claimed.add((accepted["type"], accepted["id"]))
+                # AR-2.1: the match is the moment the truth about WHERE the
+                # money landed arrives. A payment posts to the tenant's default
+                # bank account; this bank line belongs to a known one. If they
+                # disagree, the default was wrong for this payment and two bank
+                # accounts are misstated. Reported, never corrected — amending a
+                # posted entry from a background sweep is the behaviour AR-1
+                # spent a phase removing.
+                if accepted["type"] == "customer_payment":
+                    ar_payment_posting.check_match_bank_consistency(
+                        db,
+                        company_id=company_id,
+                        run_financial_account_id=run.financial_account_id,
+                        payment_id=accepted["id"],
+                    )
             else:
                 # Lost the claim race — mark the candidate ALREADY_CLAIMED (its
                 # reason, persisted below) and fall through to unmatched+exception.

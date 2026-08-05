@@ -1385,6 +1385,25 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
             txn.reviewed_at = now
             if exc is not None:
                 exc.chosen_candidate_id = chosen.id
+            # AR-2.1, same check the auto path runs. A manual accept is the same
+            # moment of truth about where the money landed, so it gets the same
+            # detection — otherwise the default's silent-wrongness would be
+            # caught on one path and not the other.
+            if chosen.candidate_record_type == "customer_payment":
+                from app.services import ar_payment_posting
+
+                run = (
+                    db.query(ReconciliationRun)
+                    .filter(ReconciliationRun.id == txn.reconciliation_run_id)
+                    .first()
+                )
+                if run is not None:
+                    ar_payment_posting.check_match_bank_consistency(
+                        db,
+                        company_id=user.company_id,
+                        run_financial_account_id=run.financial_account_id,
+                        payment_id=chosen.candidate_record_id,
+                    )
             message = f"Matched to {chosen.candidate_record_type.replace('_', ' ')}."
     else:
         # ── CODED ACCEPT (L-3) ──────────────────────────────────────────────
