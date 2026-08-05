@@ -1,11 +1,68 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 
-const { mockAct } = vi.hoisted(() => ({ mockAct: vi.fn() }))
+const { mockAct, mockFetchGLAccounts } = vi.hoisted(() => ({
+  mockAct: vi.fn(),
+  mockFetchGLAccounts: vi.fn(),
+}))
 
 vi.mock("@/contexts/triage-session-context", () => ({
   useTriageSession: () => ({ act: mockAct, status: "idle" }),
 }))
+
+/**
+ * L-3. The chart fetch is stubbed, and the PICKER is stubbed to a plain select.
+ *
+ * Deliberate: `GLAccountPicker` has its own test file covering its combobox
+ * behavior (search, clear, unresolvable-value display). What THIS file pins is
+ * the CARD's wiring around it — that Accept is gated on the account and not the
+ * note, that the payload carries `gl_account_id`, that a choice does not leak
+ * across items, and that a blocked row never renders the form at all. A stub
+ * keeps those assertions about the card rather than about a combobox.
+ */
+vi.mock("@/components/accounting/GLAccountPicker", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/components/accounting/GLAccountPicker")>()
+  return {
+    ...actual,
+    fetchGLAccounts: mockFetchGLAccounts,
+    GLAccountPicker: ({
+      accounts,
+      value,
+      onChange,
+      disabled,
+      "aria-label": ariaLabel,
+      "data-testid": testId,
+    }: {
+      accounts: { id: string; account_number: string; account_name: string }[]
+      value: string | null
+      onChange: (id: string | null) => void
+      disabled?: boolean
+      "aria-label"?: string
+      "data-testid"?: string
+    }) => (
+      <select
+        aria-label={ariaLabel}
+        data-testid={testId}
+        disabled={disabled}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+      >
+        <option value="">Select account…</option>
+        {accounts.map((a) => (
+          <option key={a.id} value={a.id}>
+            {`${a.account_number} — ${a.account_name}`}
+          </option>
+        ))}
+      </select>
+    ),
+  }
+})
+
+const _CHART = [
+  { id: "gl-6400", account_number: "6400", account_name: "Shop Supplies" },
+  { id: "gl-6100", account_number: "6100", account_name: "Bank Interest" },
+]
 
 import {
   ReconciliationExceptionDisplay,
@@ -31,13 +88,31 @@ function rankedItem(): TriageItem {
   } as unknown as TriageItem
 }
 
-function codingItem(): TriageItem {
+function codingItem(entityId = "txn-8"): TriageItem {
   return {
     entity_type: "reconciliation_exception",
-    entity_id: "txn-8",
+    entity_id: entityId,
     title: "unidentified deposit 377.00",
     subtitle: "2026-07-15",
+    // `coding_blocked_reason` absent ⇒ this row HAS a contra leg and the form
+    // is offered. The blocked variant below is the same shape plus that key.
     extras: { amount: "377.00", candidates: [] },
+  } as unknown as TriageItem
+}
+
+/**
+ * L-3: a coding row whose BANK ACCOUNT has no usable GL cash account. Same
+ * shape as `codingItem` — no classification, no candidates — plus the reason the
+ * builder resolved live. The key is the only thing separating a fillable form
+ * from a card that refuses to offer one.
+ */
+function codingBlockedItem(reason: string): TriageItem {
+  return {
+    entity_type: "reconciliation_exception",
+    entity_id: "txn-81",
+    title: "ACH DEBIT 4471 CONSOLIDATED SUPPLY",
+    subtitle: "2026-07-15",
+    extras: { amount: "-377.00", candidates: [], coding_blocked_reason: reason },
   } as unknown as TriageItem
 }
 
@@ -62,7 +137,10 @@ function configItem(blockedReason = "keyword_gl_unmapped"): TriageItem {
   } as unknown as TriageItem
 }
 
-beforeEach(() => mockAct.mockReset().mockResolvedValue(undefined))
+beforeEach(() => {
+  mockAct.mockReset().mockResolvedValue(undefined)
+  mockFetchGLAccounts.mockReset().mockResolvedValue(_CHART)
+})
 afterEach(cleanup)
 
 describe("ReconciliationExceptionDisplay — form derives from candidate presence", () => {
@@ -226,15 +304,128 @@ describe("ReconciliationExceptionDisplay — one-to-many (payment_group)", () =>
   })
 })
 
+/**
+ * L-3 CODING accept. DELIBERATE PIN FLIP — this describe previously held:
+ *
+ *   it("Accept coding sends the note as payload; disabled until non-empty", () => {
+ *     ...
+ *     fireEvent.change(screen.getByLabelText("Coding"), { target: { value: "6100 · Bank interest" } })
+ *     expect(btn).not.toBeDisabled()
+ *     expect(mockAct).toHaveBeenCalledWith({ action_id: "accept", payload: { coding: "6100 · Bank interest" } })
+ *   })
+ *
+ * Free text gated the accept and free text WAS the payload — so a row could be
+ * retired with a string that named no account and posted nothing. The account is
+ * now the decision and the note is a note.
+ */
 describe("ReconciliationExceptionDisplay — coding accept", () => {
-  it("Accept coding sends the note as payload; disabled until non-empty", () => {
+  it("Accept is gated on the ACCOUNT, not on the note", async () => {
     render(<ReconciliationExceptionDisplay item={codingItem()} />)
     const btn = screen.getByRole("button", { name: "Accept coding" })
     expect(btn).toBeDisabled()
-    fireEvent.change(screen.getByLabelText("Coding"), { target: { value: "6100 · Bank interest" } })
+
+    // A note alone must NOT enable it — that is precisely the flipped behavior.
+    fireEvent.change(screen.getByLabelText("Note"), { target: { value: "shop restock" } })
+    expect(btn).toBeDisabled()
+
+    const picker = await screen.findByTestId("reconciliation-coding-account")
+    fireEvent.change(picker, { target: { value: "gl-6400" } })
     expect(btn).not.toBeDisabled()
-    fireEvent.click(btn)
-    expect(mockAct).toHaveBeenCalledWith({ action_id: "accept", payload: { coding: "6100 · Bank interest" } })
+  })
+
+  it("sends gl_account_id alone when no note is written", async () => {
+    render(<ReconciliationExceptionDisplay item={codingItem()} />)
+    const picker = await screen.findByTestId("reconciliation-coding-account")
+    fireEvent.change(picker, { target: { value: "gl-6400" } })
+    fireEvent.click(screen.getByRole("button", { name: "Accept coding" }))
+    // No `note` key at all — an empty string would be a value the server would
+    // then write over whatever match_notes already holds.
+    expect(mockAct).toHaveBeenCalledWith({
+      action_id: "accept",
+      payload: { gl_account_id: "gl-6400" },
+    })
+  })
+
+  it("sends the note alongside the account when one is written", async () => {
+    render(<ReconciliationExceptionDisplay item={codingItem()} />)
+    const picker = await screen.findByTestId("reconciliation-coding-account")
+    fireEvent.change(picker, { target: { value: "gl-6100" } })
+    fireEvent.change(screen.getByLabelText("Note"), { target: { value: "  Q3 interest  " } })
+    fireEvent.click(screen.getByRole("button", { name: "Accept coding" }))
+    expect(mockAct).toHaveBeenCalledWith({
+      action_id: "accept",
+      payload: { gl_account_id: "gl-6100", note: "Q3 interest" },
+    })
+  })
+
+  it("the chosen account does not survive the item changing", async () => {
+    const { rerender } = render(<ReconciliationExceptionDisplay item={codingItem("txn-8")} />)
+    const picker = await screen.findByTestId("reconciliation-coding-account")
+    fireEvent.change(picker, { target: { value: "gl-6400" } })
+    expect(screen.getByRole("button", { name: "Accept coding" })).not.toBeDisabled()
+
+    // THE ONE THAT MATTERS. An account picked for the previous transaction
+    // silently applying to the next one is a wrong posting with no error signal.
+    rerender(<ReconciliationExceptionDisplay item={codingItem("txn-88")} />)
+    expect(screen.getByRole("button", { name: "Accept coding" })).toBeDisabled()
+    expect((await screen.findByTestId("reconciliation-coding-account")).getAttribute("value"))
+      .not.toBe("gl-6400")
+  })
+
+  it("fetches the chart once and reuses it across items", async () => {
+    const { rerender } = render(<ReconciliationExceptionDisplay item={codingItem("txn-8")} />)
+    await screen.findByTestId("reconciliation-coding-account")
+    rerender(<ReconciliationExceptionDisplay item={codingItem("txn-88")} />)
+    await screen.findByTestId("reconciliation-coding-account")
+    // The chart is the TENANT's, not the row's — one request per mount, not one
+    // per item advanced through.
+    expect(mockFetchGLAccounts).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * L-3 CODING-BLOCKED. The operator's account is only ever the DEBIT leg; the
+ * credit leg is the bank account's GL cash account, which is not theirs to
+ * choose. When it is missing, no choice they make could post — so the form is
+ * not offered, rather than accepting into a failure at the end.
+ */
+describe("ReconciliationExceptionDisplay — coding blocked (no contra leg)", () => {
+  it("renders the blocked card with NO form when the contra is unset", () => {
+    render(<ReconciliationExceptionDisplay item={codingBlockedItem("contra_gl_unset")} />)
+    expect(screen.getByTestId("reconciliation-coding-blocked-card")).toBeInTheDocument()
+    expect(screen.queryByTestId("reconciliation-coding-card")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Accept coding" })).not.toBeInTheDocument()
+    expect(screen.queryByTestId("reconciliation-coding-account")).not.toBeInTheDocument()
+    expect(screen.getByText(/only one leg/)).toBeInTheDocument()
+  })
+
+  it("names where the fix happens, matching the nav label", () => {
+    render(<ReconciliationExceptionDisplay item={codingBlockedItem("contra_gl_unset")} />)
+    expect(screen.getByText(new RegExp(SETTINGS_DESTINATION.replace(/→/, "→")))).toBeInTheDocument()
+  })
+
+  it("does not fetch the chart for a row that cannot post", async () => {
+    render(<ReconciliationExceptionDisplay item={codingBlockedItem("contra_gl_unset")} />)
+    await waitFor(() => expect(mockFetchGLAccounts).not.toHaveBeenCalled())
+  })
+
+  it("a dangling contra reads as re-map, not as never-set", () => {
+    render(<ReconciliationExceptionDisplay item={codingBlockedItem("contra_gl_dangling")} />)
+    expect(screen.getByText(/no longer resolves/)).toBeInTheDocument()
+    expect(screen.getByText(/re-map/i)).toBeInTheDocument()
+  })
+
+  it("a locked period reads as policy, not as a configuration gap", () => {
+    render(<ReconciliationExceptionDisplay item={codingBlockedItem("period_locked")} />)
+    expect(screen.getByText(/period is closed/)).toBeInTheDocument()
+    expect(screen.getByText(/policy gate, not a configuration gap/)).toBeInTheDocument()
+  })
+
+  it("an unrecognised reason still renders a truthful card", () => {
+    render(<ReconciliationExceptionDisplay item={codingBlockedItem("something_new")} />)
+    expect(screen.getByTestId("reconciliation-coding-blocked-card")).toBeInTheDocument()
+    expect(screen.getByText(/cannot be posted to the ledger yet/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Accept coding" })).not.toBeInTheDocument()
   })
 })
 

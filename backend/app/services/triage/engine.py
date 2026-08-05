@@ -1792,13 +1792,29 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
     # could not book when the statement was scored") and dropping it would lose
     # the audit trail to save a dictionary key.
     keyword_rows = [(t, e) for (t, e) in rows if e.keyword_classification]
+    # L-3: a CODING row needs the same treatment for the OTHER leg. It has no
+    # classification and no candidates, so the operator supplies the debit
+    # account — but the contra still comes from the bank account, and without it
+    # the row cannot post no matter what they choose. Resolved HERE, at build
+    # time, so the card can say so BEFORE the form is fillable rather than
+    # letting someone pick an account, write a note, hit Accept, and only then
+    # learn the bank account was never mapped.
+    #
+    # Same context, same three queries — the accounts set just widens to cover
+    # coding rows' runs as well.
+    coding_rows = [
+        (t, e)
+        for (t, e) in rows
+        if not e.keyword_classification and not cands_by_txn.get(t.id)
+    ]
     live_reason: dict[str, str | None] = {}
     can_post_now: dict[str, bool] = {}
-    if keyword_rows:
+    coding_blocked: dict[str, str | None] = {}
+    if keyword_rows or coding_rows:
         from app.models.company import Company
         from app.services import reconciliation_gl
 
-        run_ids = {t.reconciliation_run_id for (t, _e) in keyword_rows}
+        run_ids = {t.reconciliation_run_id for (t, _e) in keyword_rows + coding_rows}
         account_by_run = dict(
             db.query(ReconciliationRun.id, ReconciliationRun.financial_account_id)
             .filter(ReconciliationRun.id.in_(run_ids))
@@ -1824,6 +1840,13 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
             # is the licence to clear, so it stays until an entry exists.
             can_post_now[t.id] = posting is not None
 
+        for t, e in coding_rows:
+            _contra, coding_reason = ctx.decide_coded(
+                financial_account_id=account_by_run.get(t.reconciliation_run_id, ""),
+                entry_date=t.transaction_date,
+            )
+            coding_blocked[t.id] = coding_reason
+
     return [
         {
             "id": t.id,  # entity_id = the transaction (candidates key to it; exception per txn)
@@ -1839,6 +1862,10 @@ def _dq_reconciliation_review(db: Session, user: User) -> list[dict[str, Any]]:
             "blocked_reason": live_reason.get(t.id, e.blocked_reason),
             "blocked_reason_at_match": e.blocked_reason,
             "can_post_now": can_post_now.get(t.id, False),
+            # L-3. NULL on ranked + keyword rows and on coding rows that CAN
+            # post; non-NULL means this row has no contra leg, so the coding
+            # form is not offered at all — a configuration problem, named as one.
+            "coding_blocked_reason": coding_blocked.get(t.id),
             # F3's as-of. The REASON is live, but the candidate set beside it is
             # still whatever the last run computed, so the card says when that
             # was rather than letting a fresh-looking reason imply fresh matching.

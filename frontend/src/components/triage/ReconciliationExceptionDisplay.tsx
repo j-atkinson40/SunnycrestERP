@@ -5,12 +5,17 @@
  * presence (the decided two-card design, since display_component is queue-level):
  *   - candidates present → RANKED card (candidates via the B-2 RankedRows primitive;
  *     near-misses fold in as low-ranked rows carrying their rejection reason).
- *   - candidates absent   → CODING card (a coding note the operator enters to accept).
+ *   - candidates absent   → CODING card (the operator picks the GL account this
+ *     belongs in; a note is optional beside it). L-3.
+ *   - candidates absent AND no contra leg → CODING-BLOCKED card: no form at all,
+ *     because no choice the operator makes could post. L-3.
  *
  * Accept DISPATCHES BY ITEM DATA through the one `reconciliation.accept` handler:
  *   - ranked → selecting a row commits THAT candidate (selection flows to the
  *     payload; the top row is selected by default). One key, one handler.
- *   - coding → the coding note is the payload.
+ *   - coding → `gl_account_id` is the payload, `note` optional beside it.
+ *     Accepting BOOKS a balanced draft JE before the row clears (L-3); pre-L-3
+ *     this was one free-text box that cleared the row against nothing.
  * `act` throws on an errored result (period locked, non-viable candidate, claim
  * race lost) and does NOT advance — we surface the message as a toast.
  *
@@ -22,6 +27,11 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
+import {
+  fetchGLAccounts,
+  GLAccountPicker,
+  type GLAccount,
+} from "@/components/accounting/GLAccountPicker"
 import { FlagDestinationPicker, type FlagPayload } from "@/components/triage/FlagDestinationPicker"
 import { RankedRows } from "@/components/triage/RankedRows"
 import { useTriageSession } from "@/contexts/triage-session-context"
@@ -107,6 +117,41 @@ const CLASSIFICATION_PLURAL: Record<string, string> = {
  * someone hunting, which is the failure this whole sub-arc exists to remove.
  */
 export const SETTINGS_DESTINATION = "Settings → Financial Accounts"
+
+/**
+ * L-3 CODING-BLOCKED card copy.
+ *
+ * A coding row's DEBIT leg is the operator's to choose; its CREDIT leg is the
+ * bank account's GL cash account, which is not. When that is missing the row
+ * cannot post no matter what they pick — so the form is not offered at all,
+ * rather than accepting into a failure at the end.
+ *
+ * Same discipline as the keyword CONFIG card: name the fix, not the failure,
+ * and never imply the operator did something wrong. The difference is that a
+ * keyword row is blocked for the whole CLASS (one settings change unblocks all
+ * bank fees); a coding row is blocked for the whole ACCOUNT (one settings change
+ * unblocks every uncoded row on that bank account), which is why the copy talks
+ * about the account rather than this transaction.
+ */
+const CODING_BLOCKED_COPY: Record<string, { pill: string; headline: string; fix: string }> = {
+  contra_gl_unset: {
+    pill: "cannot post",
+    headline:
+      "This bank account has no GL cash account, so a coded entry would have only one leg.",
+    fix: `An administrator needs to set the account's GL cash account in ${SETTINGS_DESTINATION}. That unblocks every uncoded item on this account at once.`,
+  },
+  contra_gl_dangling: {
+    pill: "cannot post",
+    headline:
+      "This bank account points at a GL cash account that no longer resolves, so a coded entry has nowhere to balance against.",
+    fix: `An administrator needs to re-map the account's GL cash account in ${SETTINGS_DESTINATION}.`,
+  },
+  period_locked: {
+    pill: "period closed",
+    headline: "This transaction's accounting period is closed, so nothing can post into it.",
+    fix: "Reopening the period is an administrator decision — it is a policy gate, not a configuration gap.",
+  },
+}
 
 interface BlockedCopy {
   headline: (plural: string) => string
@@ -253,17 +298,50 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
     fix: `An administrator needs to check the reconciliation GL configuration in ${SETTINGS_DESTINATION}.`,
   }
   const blockedHeadline = blockedCopy.headline(classificationPlural)
-  const [coding, setCoding] = useState("")
+  // L-3. Non-null means this row has no usable contra leg, so the coding FORM is
+  // not offered — see CODING_BLOCKED_COPY.
+  const codingBlockedReason = readString(item, "coding_blocked_reason")
+  const [glAccountId, setGLAccountId] = useState<string | null>(null)
+  const [note, setNote] = useState("")
+  const [glAccounts, setGLAccounts] = useState<GLAccount[]>([])
   const [flagOpen, setFlagOpen] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const working = status === "working"
 
+  // Is the fillable coding form what this item renders? Drives the chart fetch,
+  // which must not fire for ranked / keyword / blocked items.
+  const needsChart =
+    !keywordClassification && !canPostNow && candidates.length === 0 && !codingBlockedReason
+
   // Expanded group rows must NOT survive the item changing — expanding a group
   // on this item, then the queue advancing, must not leave a group expanded on
-  // the next item.
+  // the next item. Neither may a coding choice: an account picked for the
+  // PREVIOUS transaction silently applying to this one is a wrong posting with
+  // no error signal, which is the worst shape a bug in this arc can take.
   useEffect(() => {
     setExpandedGroups(new Set())
+    setGLAccountId(null)
+    setNote("")
   }, [item.entity_id])
+
+  // The chart is caller-supplied and caller-cached per the picker's contract.
+  // Fetched once per mount and reused across items — it is the tenant's chart,
+  // not this row's, so re-fetching per item would be one request per keystroke
+  // of triage.
+  useEffect(() => {
+    if (!needsChart || glAccounts.length > 0) return
+    let cancelled = false
+    fetchGLAccounts()
+      .then((accounts) => {
+        if (!cancelled) setGLAccounts(accounts)
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Could not load the chart of accounts.")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [needsChart, glAccounts.length])
 
   const toggleGroup = (id: string) =>
     setExpandedGroups((prev) => {
@@ -359,27 +437,82 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
         Post it
       </button>
     </div>
-  ) : candidates.length === 0 ? (
-      // CODING card
+  ) : candidates.length === 0 && codingBlockedReason ? (
+      // CODING-BLOCKED card (L-3) — the row has no contra leg.
+      //
+      // Deliberately offers NO form, for the same reason the keyword CONFIG card
+      // offers no Accept: an operator must not be able to pick an account, write
+      // a note, hit Accept, and only THEN learn the bank account was never
+      // mapped. The backend refuses this correctly; discovering it there is a
+      // wasted decision, and the fix is not theirs to make anyway. Flag and Skip
+      // remain below — "ask someone" is exactly right when an admin owns the fix.
+      <div
+        className="rounded-lg border border-border-subtle bg-surface-elevated p-4 shadow-level-1"
+        data-testid="reconciliation-coding-blocked-card"
+      >
+        {(() => {
+          const copy = CODING_BLOCKED_COPY[codingBlockedReason] ?? {
+            pill: "cannot post",
+            headline: "This item cannot be posted to the ledger yet.",
+            fix: `An administrator needs to check the reconciliation GL configuration in ${SETTINGS_DESTINATION}.`,
+          }
+          return (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="rounded-full bg-accent-subtle px-2 py-0.5 text-caption font-medium text-content-strong">
+                  Uncoded
+                </span>
+                <span className="text-caption text-content-subtle">{copy.pill}</span>
+              </div>
+              <p className="mt-2 text-body-sm text-content-base">{copy.headline}</p>
+              <p className="mt-1 text-caption text-content-muted">{copy.fix}</p>
+            </>
+          )
+        })()}
+      </div>
+    ) : candidates.length === 0 ? (
+      // CODING card — the operator supplies the debit leg (L-3).
+      //
+      // The account IS the decision; the note is a note. Pre-L-3 this was one
+      // free-text box that cleared the row against nothing, which is why Accept
+      // is now gated on a chosen account rather than on any text at all.
       <div
         className="rounded-lg border border-border-subtle bg-surface-elevated p-4 shadow-level-1"
         data-testid="reconciliation-coding-card"
       >
         <p className="text-body-sm text-content-muted">
-          No matching candidates. Code this item to accept it.
+          No matching candidates. Choose the account this belongs in — accepting
+          posts a draft journal entry and clears the row.
         </p>
-        <textarea
-          value={coding}
-          onChange={(e) => setCoding(e.target.value)}
-          placeholder="Account / category / note"
-          rows={3}
-          aria-label="Coding"
+        <div className="mt-2">
+          <GLAccountPicker
+            accounts={glAccounts}
+            value={glAccountId}
+            onChange={setGLAccountId}
+            placeholder="Select account…"
+            disabled={working}
+            aria-label="GL account"
+            data-testid="reconciliation-coding-account"
+          />
+        </div>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Note (optional)"
+          aria-label="Note"
+          data-testid="reconciliation-coding-note"
           className="mt-2 w-full rounded-md border border-border-base bg-surface-raised px-3 py-2 text-body-sm text-content-base outline-none focus-visible:border-signature-steel focus-visible:ring-1 focus-visible:ring-signature-steel/50"
         />
         <button
           type="button"
-          disabled={working || !coding.trim()}
-          onClick={() => accept({ coding: coding.trim() })}
+          // Gated on the ACCOUNT, never on the note. A row that cannot post
+          // cannot be accepted — the same fail-closed rule the backend enforces,
+          // not quietly undone at the UI.
+          disabled={working || !glAccountId}
+          onClick={() =>
+            accept(note.trim() ? { gl_account_id: glAccountId, note: note.trim() } : { gl_account_id: glAccountId })
+          }
+          data-testid="reconciliation-coding-accept"
           className="mt-2 inline-flex items-center rounded-md bg-accent px-3 py-1.5 text-body-sm font-medium text-content-on-accent transition-opacity duration-quick disabled:opacity-50"
         >
           Accept coding

@@ -68,6 +68,7 @@ from app.models.role import Role
 from app.models.user import User
 from app.services.agents.period_lock import PeriodLockService
 from app.services.triage.action_handlers import _handle_reconciliation_accept
+from app.services.triage.engine import _dq_reconciliation_review
 from tests._cleanup import purge_companies_by_slug
 
 _SLUG = "rl3-"
@@ -500,3 +501,86 @@ class TestNote:
             JournalEntry.id == txn.journal_entry_id).one()
         assert "6400" in res["message"]
         assert entry.entry_number in res["message"]
+
+
+# ── 5. the card learns it BEFORE the form (Y-4 seam) ────────────────────────
+
+
+class TestBuilderSurfacesTheCodingBlock:
+    """The queue builder resolves the contra leg for CODING rows too.
+
+    Without this the card can only discover an unmapped bank account by letting
+    the operator choose an account, write a note, hit Accept, and read a refusal
+    — a wasted decision about a fix that is not theirs to make. The reason is
+    resolved LIVE at build time, through the same context the matcher uses, so
+    configuring the account and coming back shows the change (the L-2.1f
+    snapshot lesson, applied to the other leg).
+    """
+
+    def test_a_coding_row_with_no_contra_carries_the_reason(self, env):
+        env.mapping(name="Shop Supplies", number="6400")
+        account = env.account(contra=None)
+        txn, _ = env.txn(account, amount=_OUT)
+        env.s.commit()
+
+        row = next(
+            r for r in _dq_reconciliation_review(env.s, env.user) if r["id"] == txn.id
+        )
+        assert row["coding_blocked_reason"] == "contra_gl_unset"
+        # It is NOT a keyword row — the two card forms must stay distinguishable.
+        assert row["keyword_classification"] is None
+        assert row["candidates"] == []
+
+    def test_a_coding_row_that_can_post_carries_no_reason(self, env):
+        _, _, txn, _ = _configured(env)
+
+        row = next(
+            r for r in _dq_reconciliation_review(env.s, env.user) if r["id"] == txn.id
+        )
+        assert row["coding_blocked_reason"] is None
+
+    def test_a_dangling_contra_is_distinguished_from_an_unset_one(self, env):
+        """Different operator actions — re-map vs. set — so different reasons."""
+        dead = env.mapping(name="Old Cash", number="1009", active=False)
+        env.mapping(name="Shop Supplies", number="6400")
+        account = env.account(contra=dead)
+        txn, _ = env.txn(account, amount=_OUT)
+        env.s.commit()
+
+        row = next(
+            r for r in _dq_reconciliation_review(env.s, env.user) if r["id"] == txn.id
+        )
+        assert row["coding_blocked_reason"] == "contra_gl_dangling"
+
+    def test_a_locked_period_blocks_the_coding_form_too(self, env):
+        _, _, txn, _ = _configured(env)
+        PeriodLockService.lock_period(
+            env.s, env.co, date(2026, 7, 1), date(2026, 7, 31), reason="closed")
+        env.s.commit()
+
+        row = next(
+            r for r in _dq_reconciliation_review(env.s, env.user) if r["id"] == txn.id
+        )
+        assert row["coding_blocked_reason"] == "period_locked"
+
+    def test_the_live_reason_follows_configuration_without_a_re_run(self, env):
+        """THE L-2.1f LESSON ON THE OTHER LEG. Configure the bank account, come
+        back, and the card must stop refusing — without re-running the matcher."""
+        cash = env.mapping(name="Operating Cash", number="1010")
+        env.mapping(name="Shop Supplies", number="6400")
+        account = env.account(contra=None)
+        txn, _ = env.txn(account, amount=_OUT)
+        env.s.commit()
+
+        blocked = next(
+            r for r in _dq_reconciliation_review(env.s, env.user) if r["id"] == txn.id
+        )
+        assert blocked["coding_blocked_reason"] == "contra_gl_unset"
+
+        account.gl_account_id = cash.id           # the settings change
+        env.s.commit()
+
+        after = next(
+            r for r in _dq_reconciliation_review(env.s, env.user) if r["id"] == txn.id
+        )
+        assert after["coding_blocked_reason"] is None
