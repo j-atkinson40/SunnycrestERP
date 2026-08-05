@@ -665,9 +665,23 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
     # cleared_total against an empty ledger — precisely the defect this arc
     # exists to remove, reintroduced through a side door.
     #
-    # `auto_cleared` counts unconditionally: it is the payment-match path, which
-    # still books nothing in L-2 (that is L-3). Until then a payment match
-    # clears on the strength of the matched payment record, exactly as before.
+    # `auto_cleared` counts unconditionally: it is the payment-match path, and
+    # it still books nothing. A payment match clears on the strength of the
+    # matched payment record, exactly as before.
+    #
+    # Corrected 2026-08-05 — this said "(that is L-3)", and L-3 did NOT close
+    # it. L-3 closed the CODING accept and scoped `auto_cleared` out
+    # deliberately, on the ground that a matched payment posts nothing because
+    # reconciliation is not an economic event: the money was recognised when the
+    # payment was recorded, and booking again would double-count cash.
+    #
+    # The gap is that the entry it should clear against does not exist —
+    # `create_customer_payment` (sales_service.py:1637) writes no journal entry.
+    # Closing that is AR-2, which is BLOCKED on an undeposited-funds account
+    # existing on the tenant's chart (an accountant's call, not ours: the cash
+    # account is unknown at payment time and the chart's nearest clearing
+    # account is a liability). See the SCOPE note in
+    # tests/test_reconciliation_gl_l2.py for the full reasoning.
     def _has_booked(t) -> bool:
         return t.journal_entry_id is not None
 

@@ -431,8 +431,34 @@ class TestLedgerAgreesWithReconciliation:
         The equality is not yet a platform invariant: an `auto_cleared` payment
         match still clears on the strength of the matched payment record and
         books nothing, so a run containing one would break this equality by
-        exactly that payment's amount. Closing that is L-3. Do not generalise
-        this assertion until it does.
+        exactly that payment's amount. Do not generalise this assertion until
+        that changes.
+
+        WHY IT STILL BOOKS NOTHING, and what would change it (corrected 2026-08-05
+        — this note previously said "Closing that is L-3", and L-3 did not close
+        it; L-3 closed the CODING accept and scoped `auto_cleared` OUT on the
+        ground that reconciliation is not an economic event):
+
+        A matched payment SHOULD clear against an entry that already exists,
+        posted when the payment was recorded. That entry does not exist:
+        `create_customer_payment` (sales_service.py:1637) writes no journal
+        entry, because AR is subledger-tracked and the GL has no AR balance.
+
+        Closing it is **AR-2**, and AR-2 is BLOCKED — not deferred. A payment
+        debits cash, and which cash account is unknown at payment time (a cheque
+        sits in a drawer before it is deposited; `CustomerPayment` carries no
+        bank-account field, and all five production payments are cheques). The
+        chart has no undeposited-funds account: of its five clearing/suspense
+        accounts the nearest, 3990 CLEARING ACCOUNT (WASH), is a LIABILITY, so
+        posting held cash there would report it as owed. **The unblock is a
+        chart addition, which is the tenant's accountant's call, not an
+        engineering one.**
+
+        If AR-2 lands on undeposited funds rather than direct-to-bank, this
+        equality changes SHAPE rather than simply generalising: the bank leg
+        only balances after the deposit posts, and a payment received but not
+        yet deposited becomes a legitimate difference. Re-derive before
+        widening; do not assume this assertion is the one that survives.
         """
         co, user, acct, run, gl = _substrate(db)
         _three_keyword_rows(db, run)

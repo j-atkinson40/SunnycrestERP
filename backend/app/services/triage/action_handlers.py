@@ -1107,8 +1107,15 @@ def _handle_reconciliation_post_keyword(ctx: dict[str, Any]) -> dict[str, Any]:
     Scoped narrowly on purpose: this books a keyword row, whose posting the
     system already knows in full (classification → GL, bank → contra, sign →
     direction). It does not touch the coding accept path or `auto_cleared`
-    payment matches — those need operator input or a different shape, and stay
-    with L-3.
+    payment matches.
+
+    Corrected 2026-08-05 — this said both "stay with L-3", and only half of that
+    happened. **L-3 DID close the coding accept** (`_handle_reconciliation_accept`
+    now books through `book_coded_entry`). **`auto_cleared` was scoped OUT** and
+    still books nothing: a matched payment posts nothing because reconciliation
+    is not an economic event, and the entry it should clear against does not
+    exist because `create_customer_payment` writes none. Closing THAT is AR-2,
+    blocked on an undeposited-funds account existing on the chart.
     """
     from app.models.company import Company
     from app.models.financial_account import (
