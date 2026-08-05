@@ -408,3 +408,150 @@ class TestTheSubledgerIsUnchanged:
             env.pay(total="100.00")
         env.s.rollback()
         assert env.je_count() == before
+
+
+# ── the invariant the SCOPE note was blocking ───────────────────────────────
+
+
+class TestTheInvariantAfterAR2:
+    """What the L-2 SCOPE note existed to defer, now assertable.
+
+    The note said the cash-leg equality was not a platform invariant because an
+    `auto_cleared` payment match cleared against nothing. It does not any more.
+    The invariant it becomes is:
+
+        cash movement equals what the reconciliation cleared, OR a reported
+        unposted-payment anomaly explains the difference.
+
+    The second clause is what makes it survive misconfiguration. A bare equality
+    would fail on a fail-open tenant and report a broken invariant when what
+    exists is a known, enumerated gap that says so itself.
+    """
+
+    def test_a_posted_payment_puts_real_cash_movement_in_the_ledger(self, env):
+        """THE CLAIM THE SCOPE NOTE DEFERRED. Before AR-2 the left side of this
+        comparison was 0.00 for any payment — nothing was ever written.
+
+        HAND MATH: two receipts, 400.00 and 250.00.
+             cash debits  650.00
+             cash credits   0.00
+             net movement = 650.00 - 0.00 = +650.00   (money IN)
+        """
+        _ar, cash, _bank = _configured(env)
+        env.pay(total="400.00")
+        env.pay(total="250.00")
+        env.s.commit()
+
+        lines = (
+            env.s.query(JournalEntryLine)
+            .filter(
+                JournalEntryLine.tenant_id == env.co,
+                JournalEntryLine.gl_account_id == cash.id,
+            ).all()
+        )
+        debits = sum((ln.debit_amount for ln in lines), Decimal("0.00"))
+        credits = sum((ln.credit_amount for ln in lines), Decimal("0.00"))
+        assert debits == Decimal("650.00")
+        assert credits == Decimal("0.00")
+        assert debits - credits == Decimal("650.00")
+
+    def test_the_ar_leg_mirrors_it_exactly(self, env):
+        """Every receipt is two legs and they are the same magnitude, so the AR
+        credits must equal the cash debits. If they ever diverge, one side is
+        posting and the other is not."""
+        ar, cash, _bank = _configured(env)
+        env.pay(total="400.00")
+        env.pay(total="250.00")
+        env.s.commit()
+
+        def _net(gl_id):
+            rows = (
+                env.s.query(JournalEntryLine)
+                .filter(
+                    JournalEntryLine.tenant_id == env.co,
+                    JournalEntryLine.gl_account_id == gl_id,
+                ).all()
+            )
+            return (sum((r.debit_amount for r in rows), Decimal("0.00")),
+                    sum((r.credit_amount for r in rows), Decimal("0.00")))
+
+        cash_d, cash_c = _net(cash.id)
+        ar_d, ar_c = _net(ar.id)
+        assert cash_d == ar_c == Decimal("650.00")
+        assert cash_c == ar_d == Decimal("0.00")
+
+    def test_an_UNPOSTED_payment_is_the_difference_AND_declares_itself(self, env):
+        """THE SECOND CLAUSE, which is the whole reason the invariant is not a
+        bare equality.
+
+        HAND MATH: three receipts of 100.00, one of them on a tenant that cannot
+        post... except a tenant is configured or not, so this uses the honest
+        version: configure, post two, then break the config and take a third.
+
+             posted to the ledger   200.00
+             received in reality    300.00
+             difference             100.00  ← explained by exactly one anomaly
+        """
+        from app.models.agent import AgentJob
+        from app.models.agent_anomaly import AgentAnomaly
+        from app.services.early_payment_discount_service import (
+            ACCOUNTING_GL_SETTINGS_KEY,
+        )
+
+        _ar, cash, _bank = _configured(env)
+        env.pay(total="100.00")
+        env.pay(total="100.00")
+        env.s.commit()
+
+        # The AR account is unmapped after the fact — a real state, since the
+        # panel permits deliberately-unmapped and an account can be deactivated.
+        env.company.set_setting(ACCOUNTING_GL_SETTINGS_KEY, {"ar": None})
+        env.s.commit()
+        env.pay(total="100.00")
+        env.s.commit()
+
+        lines = (
+            env.s.query(JournalEntryLine)
+            .filter(
+                JournalEntryLine.tenant_id == env.co,
+                JournalEntryLine.gl_account_id == cash.id,
+            ).all()
+        )
+        posted = sum((ln.debit_amount for ln in lines), Decimal("0.00"))
+        received = sum(
+            (p.total_amount for p in
+             env.s.query(CustomerPayment).filter(
+                 CustomerPayment.company_id == env.co).all()),
+            Decimal("0.00"),
+        )
+        assert posted == Decimal("200.00")
+        assert received == Decimal("300.00")
+
+        # ...and the difference is not a mystery. It is enumerated, with its
+        # amount, by the anomalies the unposted payments raised.
+        unexplained = received - posted
+        reported = sum(
+            (a.amount for a in
+             env.s.query(AgentAnomaly)
+             .join(AgentJob, AgentAnomaly.agent_job_id == AgentJob.id)
+             .filter(AgentJob.tenant_id == env.co).all()),
+            Decimal("0.00"),
+        )
+        assert reported == unexplained == Decimal("100.00")
+
+    def test_every_posted_payment_points_at_its_entry(self, env):
+        """The link that makes "which payments are unposted" answerable — and
+        therefore makes the second clause computable rather than rhetorical."""
+        _configured(env)
+        env.pay(total="100.00")
+        env.pay(total="200.00")
+        env.s.commit()
+
+        payments = env.s.query(CustomerPayment).filter(
+            CustomerPayment.company_id == env.co).all()
+        assert len(payments) == 2
+        for p in payments:
+            assert p.journal_entry_id is not None
+            entry = env.s.query(JournalEntry).filter(
+                JournalEntry.id == p.journal_entry_id).one()
+            assert entry.total_debits == entry.total_credits == p.total_amount

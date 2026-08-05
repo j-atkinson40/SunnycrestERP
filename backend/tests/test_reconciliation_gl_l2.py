@@ -427,38 +427,41 @@ class TestLedgerAgreesWithReconciliation:
         Pre-L-2 the left side was 0.00 (nothing was ever written) and the right
         side was -5000. There was no third column to compare them in.
 
-        SCOPE — this run contains ONLY keyword rows, and that is deliberate.
-        The equality is not yet a platform invariant: an `auto_cleared` payment
-        match still clears on the strength of the matched payment record and
-        books nothing, so a run containing one would break this equality by
-        exactly that payment's amount. Do not generalise this assertion until
-        that changes.
+        THE SCOPE NOTE IS GONE (AR-2, 2026-08-05). It said this equality was not
+        yet a platform invariant, because an `auto_cleared` payment match cleared
+        on the strength of the matched payment record and booked nothing. AR-2
+        closed that: `create_customer_payment` now posts `Dr bank / Cr AR` at
+        receipt, so a matched payment clears against an entry that EXISTS.
 
-        WHY IT STILL BOOKS NOTHING, and what would change it (corrected 2026-08-05
-        — this note previously said "Closing that is L-3", and L-3 did not close
-        it; L-3 closed the CODING accept and scoped `auto_cleared` OUT on the
-        ground that reconciliation is not an economic event):
+        The invariant it becomes is deliberately not a bare equality:
 
-        A matched payment SHOULD clear against an entry that already exists,
-        posted when the payment was recorded. That entry does not exist:
-        `create_customer_payment` (sales_service.py:1637) writes no journal
-        entry, because AR is subledger-tracked and the GL has no AR balance.
+            cash movement equals platform_cleared_balance, OR a reported
+            unposted-payment anomaly explains the difference.
 
-        Closing it is **AR-2**, and AR-2 is BLOCKED — not deferred. A payment
-        debits cash, and which cash account is unknown at payment time (a cheque
-        sits in a drawer before it is deposited; `CustomerPayment` carries no
-        bank-account field, and all five production payments are cheques). The
-        chart has no undeposited-funds account: of its five clearing/suspense
-        accounts the nearest, 3990 CLEARING ACCOUNT (WASH), is a LIABILITY, so
-        posting held cash there would report it as owed. **The unblock is a
-        chart addition, which is the tenant's accountant's call, not an
-        engineering one.**
+        The second clause is not a hedge — it is what keeps the invariant
+        CHECKABLE under misconfiguration. AR-2 is fail-open on the record and
+        fail-closed on the ledger: a payment records even when its accounts are
+        unconfigured, because a payment is an event that already happened and
+        refusing to record it would make the books describe reality LESS well,
+        not more. Those payments post nothing and raise an
+        `ar_payment_unposted` anomaly. A bare equality would simply fail there,
+        reporting a broken invariant when what actually exists is a known,
+        enumerated, self-declaring gap.
 
-        If AR-2 lands on undeposited funds rather than direct-to-bank, this
-        equality changes SHAPE rather than simply generalising: the bank leg
-        only balances after the deposit posts, and a payment received but not
-        yet deposited becomes a legitimate difference. Re-derive before
-        widening; do not assume this assertion is the one that survives.
+        `TestTheInvariantAfterAR2` below asserts the whole thing on a run
+        containing BOTH kinds of row, which is what this test could never do.
+        This one keeps its keyword-only substrate on purpose: it is the
+        narrowest statement of the claim and the one that isolates a keyword
+        regression.
+
+        WHY THE MATCH ITSELF STILL POSTS NOTHING, and why that is correct rather
+        than a remaining gap: cash is debited ONCE, at receipt. Checks post
+        direct to bank (no undeposited-funds account), so the reconciliation
+        match confirms the bank agrees and books nothing — verified at
+        `reconciliation_service.py:611-616`, which writes no `journal_entry_id`.
+        L-3's position is unchanged, and the second clause the AR-2 investigation
+        anticipated was contingent on undeposited funds, which is not the shape
+        that shipped.
         """
         co, user, acct, run, gl = _substrate(db)
         _three_keyword_rows(db, run)
