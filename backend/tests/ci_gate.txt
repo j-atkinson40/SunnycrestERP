@@ -147,3 +147,15 @@ tests/test_reconciliation_coded_l3.py
 #   fixed, that CustomerPayment has no discount columns at all — seven attributes
 #   the EPD path writes are unmapped and vanish on commit. —
 tests/test_epd_ar_account_ar0.py
+
+# — AR-1 C-1: the Sage import posts to AR. `import_open_invoices` created
+#   invoices at status sent/overdue — ISSUED — and never called
+#   post_invoice_to_ar, so every imported invoice was visible to aging, to the
+#   financials board and to the nightly sweeper's computed total while
+#   current_balance stayed put. The sweeper then wrote that drift away with an
+#   alert that has never fired. Pins that an imported invoice moves the balance,
+#   that a re-run skip does not post twice, and that the drift is now zero. Also
+#   pins, NOT fixed, that a NEGATIVE Sage balance (a customer credit) is
+#   imported as a POSITIVE receivable — sign inverted — which is why credit rows
+#   are deliberately not posted and are surfaced as import warnings instead. —
+tests/test_ar_import_posts_c1.py

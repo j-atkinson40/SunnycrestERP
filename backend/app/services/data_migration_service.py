@@ -788,7 +788,18 @@ def import_open_invoices(
     customer_id_map: dict,
     cutover_date: date,
 ) -> dict:
-    """Import open AR invoices as Invoice + InvoiceLine records."""
+    """Import open AR invoices as Invoice + InvoiceLine records.
+
+    AR-1 C-1: these are ISSUED invoices, so each one posts to the customer
+    balance as it lands (see the comment at the post site). Negative Sage
+    balances are the one exception and are reported as warnings.
+    """
+    # Local import: `sales_service` pulls in migration-adjacent models at
+    # module scope, so a top-level import here would close a cycle. Same idiom
+    # the other AR-posting callers use (draft_invoice_service.py:640,
+    # finance_charge_service.py:397).
+    from app.services.sales_service import post_invoice_to_ar
+
     imported = 0
     skipped = 0
     errors: list[str] = []
@@ -886,6 +897,51 @@ def import_open_invoices(
                 )
                 db.add(line)
                 db.flush()
+
+                # AR-1 C-1: POST TO AR, inside the same savepoint as the rows
+                # it accounts for. This invoice is born ISSUED (`sent` /
+                # `overdue`), not draft, so `post_invoice_to_ar`'s contract —
+                # "the balance moves when an invoice becomes REAL, exactly
+                # once" (sales_service.py:667-675) — applies at creation, the
+                # same way finance charges post at creation
+                # (finance_charge_service.py:398).
+                #
+                # Before this, an imported invoice was visible to aging, to the
+                # financials board and to the nightly sweeper's computed total
+                # while `current_balance` stayed put — drift the sweeper then
+                # silently wrote away, with an alert that has never once fired.
+                # Its own docstring named "a data import" as a hypothetical
+                # cause of drift; it was this function.
+                #
+                # Not a double-count: `import_customers` creates customers with
+                # no balance, and the imported `total` IS the outstanding
+                # balance with `amount_paid=0`, so `+ invoice.total` adds
+                # exactly the open amount.
+                #
+                # NEGATIVE SAGE BALANCES ARE DELIBERATELY NOT POSTED. Sage
+                # expresses a customer CREDIT as a negative balance, and this
+                # importer stores `abs_balance` as a positive `total` with
+                # status `sent` — so a $500 credit is already recorded as a
+                # $500 RECEIVABLE, sign inverted. Posting that would push the
+                # inversion into the stored balance too and turn a $500 credit
+                # into a $500 debit: a $1,000 swing, and a wrong number is
+                # worse than a missing one because nothing downstream can tell
+                # it is wrong. The row still imports (unchanged), the omission
+                # is surfaced as an import WARNING rather than swallowed, and
+                # the sign itself is a separate decision this arc has not
+                # taken. See TestNegativeSageBalanceSignInversion.
+                if balance > 0:
+                    post_invoice_to_ar(db, tenant_id, invoice)
+                else:
+                    warnings.append(
+                        f"Invoice {invoice_number}: Sage balance is negative "
+                        f"({balance}), i.e. a customer CREDIT. Imported as a "
+                        f"positive receivable of {abs_balance} (pre-existing "
+                        f"import behaviour) and deliberately NOT posted to the "
+                        f"customer balance — posting it would invert the sign. "
+                        f"Review this account's balance manually."
+                    )
+
                 nested.commit()
                 imported += 1
             except Exception as flush_err:
