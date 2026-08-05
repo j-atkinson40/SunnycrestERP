@@ -139,17 +139,49 @@ function GenericDisplay({
   );
 }
 
+/**
+ * The shared priority badge for every generic-rendered triage queue — which,
+ * after FB-1, includes all three accounting Focuses. One file's literals
+ * replicate across every consumer, which is why this is worth its own pass.
+ *
+ * MIGRATED AS ONE UNIT, per the semantic-sweep rule: urgent > high > low >
+ * normal is a single severity ramp, so migrating the easy tiers and leaving
+ * `urgent` on `bg-red-100` would have left the MOST severe state wearing the
+ * banned style — the exact failure the rule names.
+ *
+ * Classified rather than purged:
+ *   urgent → fn-negative   BORDER + TEXT, NEVER A WASH. A bad state earns
+ *                          emphasis, not a filled panel; §7 keeps functional
+ *                          colour to meaning and §2 keeps large surfaces
+ *                          neutral.
+ *   high   → fn-caution    same treatment, one step down, used sparingly.
+ *   low    → neutral       decorative, not a state. Chrome.
+ *   normal → neutral       was `bg-blue-100 text-blue-800`, which was wrong
+ *                          twice: a raw literal, and BLUE, which §6 rations to
+ *                          the steel signature alone. "Normal" is the absence
+ *                          of a signal and should read as chrome, not as a
+ *                          fourth colour competing with the three that mean
+ *                          something.
+ *
+ * Shape follows the status-key-keyed dict convention: a family per state, one
+ * lookup for the tokens. A new tier is one row and zero raw colours.
+ */
+const PRIORITY_FAMILY: Record<string, "negative" | "caution" | "neutral"> = {
+  urgent: "negative",
+  high: "caution",
+  low: "neutral",
+};
+
+const FAMILY_STYLES: Record<"negative" | "caution" | "neutral", string> = {
+  negative: "border-status-error/50 text-status-error",
+  caution: "border-status-warning/50 text-status-warning",
+  neutral: "border-border-base text-content-muted",
+};
+
 function PriorityBadge({ priority }: { priority: string }) {
-  const cls =
-    priority === "urgent"
-      ? "bg-red-100 text-red-800 border-red-200"
-      : priority === "high"
-      ? "bg-orange-100 text-orange-800 border-orange-200"
-      : priority === "low"
-      ? "bg-slate-100 text-slate-600 border-slate-200"
-      : "bg-blue-100 text-blue-800 border-blue-200";
+  const family = PRIORITY_FAMILY[priority] ?? "neutral";
   return (
-    <Badge variant="outline" className={cls}>
+    <Badge variant="outline" className={FAMILY_STYLES[family]}>
       {priority}
     </Badge>
   );
