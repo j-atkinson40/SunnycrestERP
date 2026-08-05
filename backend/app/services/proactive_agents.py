@@ -561,6 +561,7 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
     from app.models.agent_anomaly import AgentAnomaly
     from app.models.agent import AgentJob
     from app.schemas.agent import AgentJobStatus, AnomalySeverity
+    from app.services.ar_balance import is_receivable
     from app.services.behavioral_analytics_service import generate_insight
 
     customers = (
@@ -583,13 +584,11 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
         # credit memos reduce the balance; write-offs leave the sum by
         # status. Keep this formula in lockstep with the model property.
         calculated = (
-            db.query(func.sum(
-                Invoice.total - Invoice.amount_paid - Invoice.amount_credited
-            ))
+            db.query(func.sum(Invoice.balance_remaining))
             .filter(
                 Invoice.company_id == tenant_id,
                 Invoice.customer_id == customer.id,
-                Invoice.status.notin_(["paid", "void", "draft", "write_off"]),
+                is_receivable(),
             )
             .scalar()
             or Decimal("0.00")

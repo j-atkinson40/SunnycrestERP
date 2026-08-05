@@ -173,3 +173,17 @@ tests/test_ar_import_posts_c1.py
 #   requires a transaction and a run an AR drift does not have. Phase 4 removes
 #   the correction once a triage queue exists to receive it. —
 tests/test_ar_drift_report_c2.py
+
+# — AR-1 C-3: ONE membership expression, ONE value expression. Five distinct
+#   status filters and three different term-counts were in use; an `open`
+#   invoice was counted by the board and the sweeper and INVISIBLE TO AGING, and
+#   a `posted` finance charge was invisible to everything but the sweeper.
+#   Membership is now an EXCLUSION — draft, void — because an inclusion list is
+#   how those two dropped out; `paid` and `write_off` are members that self-zero,
+#   which is why the list is only two long. Value is Invoice.balance_remaining,
+#   now a hybrid_property so Python and SQL are the SAME expression rather than
+#   two kept in step by a comment. Synthetic proof, deliberately: production has
+#   no credits, no write-offs, no `open` and no `posted`, so a production diff
+#   would print zeros. Pins the partial write-off — the case only the terms can
+#   fix, since it keeps its ordinary status. —
+tests/test_ar_membership_seam_c3.py

@@ -31,6 +31,7 @@ from app.schemas.sales import (
 )
 from app.services import audit_service
 from app.services.sync_log_service import complete_sync_log, create_sync_log
+from app.services.ar_balance import is_receivable
 
 logger = logging.getLogger(__name__)
 
@@ -1824,7 +1825,7 @@ def get_ar_aging(
         .options(joinedload(Invoice.customer).joinedload(Customer.company_entity))
         .filter(
             Invoice.company_id == company_id,
-            Invoice.status.in_(["sent", "partial", "overdue"]),
+            is_receivable(),
         )
         .all()
     )
@@ -2010,10 +2011,10 @@ def get_sales_stats(db: Session, company_id: str) -> SalesStats:
     )
 
     total_ar = (
-        db.query(func.sum(Invoice.total - Invoice.amount_paid))
+        db.query(func.sum(Invoice.balance_remaining))
         .filter(
             Invoice.company_id == company_id,
-            Invoice.status.in_(["sent", "partial", "overdue"]),
+            is_receivable(),
         )
         .scalar()
         or Decimal("0.00")

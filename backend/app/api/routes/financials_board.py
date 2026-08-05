@@ -18,6 +18,7 @@ from app.models.invoice import Invoice
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.models.vendor_bill import VendorBill
+from app.services.ar_balance import is_receivable
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,8 +45,8 @@ def get_board_summary(
     week_end = today + timedelta(days=7)
 
     # AR outstanding
-    ar_total = db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0)).filter(
-        Invoice.company_id == tid, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
+    ar_total = db.query(func.coalesce(func.sum(Invoice.balance_remaining), 0)).filter(
+        Invoice.company_id == tid, is_receivable(),
     ).scalar() or 0
 
     # AR overdue count + total
@@ -151,11 +152,11 @@ def get_briefing(
     # Get largest overdue customer
     largest_overdue = ""
     overdue_by_customer = db.query(
-        Customer.name, func.sum(Invoice.total - Invoice.amount_paid).label("owed"),
+        Customer.name, func.sum(Invoice.balance_remaining).label("owed"),
     ).join(Invoice, Invoice.customer_id == Customer.id).filter(
-        Invoice.company_id == tid, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
+        Invoice.company_id == tid, is_receivable(),
         Invoice.due_date < date.today(),
-    ).group_by(Customer.name).order_by(func.sum(Invoice.total - Invoice.amount_paid).desc()).first()
+    ).group_by(Customer.name).order_by(func.sum(Invoice.balance_remaining).desc()).first()
     if overdue_by_customer:
         largest_overdue = f"{overdue_by_customer[0]} owes ${float(overdue_by_customer[1]):,.2f} overdue"
 
@@ -340,8 +341,8 @@ def get_ar_credit(
 
     results = []
     for c in customers:
-        balance = db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0)).filter(
-            Invoice.customer_id == c.id, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
+        balance = db.query(func.coalesce(func.sum(Invoice.balance_remaining), 0)).filter(
+            Invoice.customer_id == c.id, is_receivable(),
         ).scalar() or 0
 
         pct = (float(balance) / float(c.credit_limit) * 100) if c.credit_limit else 0
@@ -497,8 +498,8 @@ def get_cashflow_forecast(
         week_end = week_start + timedelta(days=6)
 
         # Expected AR collections (invoices due this week)
-        ar = db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0)).filter(
-            Invoice.company_id == tid, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
+        ar = db.query(func.coalesce(func.sum(Invoice.balance_remaining), 0)).filter(
+            Invoice.company_id == tid, is_receivable(),
             Invoice.due_date >= week_start, Invoice.due_date <= week_end,
         ).scalar() or 0
 
