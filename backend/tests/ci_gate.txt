@@ -133,3 +133,17 @@ tests/test_reconciliation_account_form.py
 #   inactive named), and pins that an OMITTED note does not clear match_notes —
 #   Plaid's bank-retraction marker lives there. —
 tests/test_reconciliation_coded_l3.py
+
+# — AR-0: the EPD AR-account resolver. `_find_ar_account` matched
+#   platform_category ILIKE '%ar%' — substring, free-text column, .first(), no
+#   ORDER BY, wrapped in a bare except. On sunnycrest's real 224-row chart NOT
+#   ONE of the nine categories contains "ar", so it returned None on every call
+#   and the caller's `ar_account_id or gl_account_id` fallback booked BOTH legs
+#   to the discount account: balanced, posted, recording nothing. Replaced by an
+#   explicit configured id (settings `accounting_gl.ar`) validated at use through
+#   require_gl_account — the L-2.2 single definition, no third check. Pins the
+#   substring class as unreachable, both refusal paths posting nothing, and the
+#   AR-0c primitive guards (unbalanced + all-legs-one-account). Also pins, NOT
+#   fixed, that CustomerPayment has no discount columns at all — seven attributes
+#   the EPD path writes are unmapped and vanish on commit. —
+tests/test_epd_ar_account_ar0.py

@@ -132,6 +132,22 @@ def _mk_user(db, co_id) -> User:
     return u
 
 
+def _configure_ar(db, co_id) -> str:
+    """AR-0. EPD now REFUSES to post without a configured AR control account,
+    so every EPD test must configure one. Pre-AR-0 the AR leg was found by
+    `platform_category ILIKE '%ar%'` and, failing that, silently fell back to
+    the discount account for BOTH legs — which is exactly what these tests
+    were unknowingly exercising (`cat="discount"` contains no "ar", so the
+    resolver returned None on every one of them).
+    """
+    ar = _mk_gl(db, co_id, num="1200", name="ACCOUNTS RECEIVABLE-TRADE",
+                cat="current_asset")
+    co = db.get(Company, co_id)
+    co.set_setting("accounting_gl", {"ar": ar})
+    db.commit()
+    return ar
+
+
 def _mk_gl(db, co_id, *, num, name, cat="general") -> str:
     """Seed a real GL mapping for this tenant. Post-fix, create_entry
     REQUIRES every line's gl_account_id to resolve to one of the caller's
@@ -189,34 +205,100 @@ class TestCreateEntry:
         assert row.total_debits == Decimal("100")
         assert row.total_credits == Decimal("100")
 
-    def test_permits_unbalanced_draft(self, db):
-        # WRONGNESS: create_entry never checks debits == credits; an
-        # unbalanced entry is freely created as a draft. Balance is only
-        # enforced at POST time.
+    def test_rejects_unbalanced_draft(self, db):
+        """DELIBERATE PIN FLIP — AR-0c. This previously read:
+
+            def test_permits_unbalanced_draft(self, db):
+                # WRONGNESS: create_entry never checks debits == credits; an
+                # unbalanced entry is freely created as a draft. Balance is only
+                # enforced at POST time.
+                ...
+                out = create_entry(body=body, current_user=user, db=db)  # no raise
+                row = db.get(JournalEntry, out["id"])
+                assert row.status == "draft"
+                assert row.total_debits == Decimal("100")
+                assert row.total_credits == Decimal("40")  # persisted unbalanced
+
+        The wrongness it named is now fixed at the primitive. `post_entry`'s
+        balance check survives as defense-in-depth for an entry mutated after
+        creation, but nothing reaches it unbalanced through the service.
+
+        CONSEQUENCE, stated plainly: a draft is no longer a work-in-progress
+        scratchpad. If the manual JE form wants "save a half-finished entry,"
+        that needs a different mechanism than an unbalanced JournalEntry row.
+        """
         co, user, gl_d, gl_c = _co_user_gls(db)
         body = JECreate(
             entry_type="manual",
             entry_date="2026-03-10",
-            description="pin: unbalanced draft allowed",
+            description="pin: unbalanced draft rejected",
             lines=[_line(gl_d, debit=100), _line(gl_c, credit=40)],
         )
-        out = create_entry(body=body, current_user=user, db=db)  # no raise
-        row = db.get(JournalEntry, out["id"])
-        assert row.status == "draft"
-        assert row.total_debits == Decimal("100")
-        assert row.total_credits == Decimal("40")  # persisted unbalanced
+        before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
+        with pytest.raises(HTTPException) as ei:
+            create_entry(body=body, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        assert "not balanced" in str(ei.value.detail)
+        assert db.query(JournalEntry).filter(
+            JournalEntry.tenant_id == co).count() == before
 
-    def test_permits_fewer_than_two_lines(self, db):
-        # WRONGNESS: a single-line (or zero-line) draft is creatable; the
-        # >=2-lines rule lives only in post_entry.
-        co, user, gl_d, gl_c = _co_user_gls(db)
+    def test_rejects_both_legs_on_one_account(self, db):
+        """AR-0c. A balanced two-legged entry on ONE account nets to nothing
+        while passing every balance check — the shape the EPD AR fallback
+        produced. Rejected at the primitive, whatever produced it."""
+        co, user, gl_d, _gl_c = _co_user_gls(db)
         body = JECreate(
             entry_type="manual",
             entry_date="2026-03-10",
-            description="pin: one line allowed",
-            lines=[_line(gl_d, debit=50)],
+            description="pin: same account both legs",
+            lines=[_line(gl_d, debit=100), _line(gl_d, credit=100)],
         )
-        out = create_entry(body=body, current_user=user, db=db)  # no raise
+        with pytest.raises(HTTPException) as ei:
+            create_entry(body=body, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        assert "same GL account" in str(ei.value.detail)
+
+    def test_permits_a_single_line_only_when_it_balances(self, db):
+        """DELIBERATE PIN FLIP — AR-0c, and the one COLLATERAL consequence of
+        the balance guard. This previously read:
+
+            def test_permits_fewer_than_two_lines(self, db):
+                # WRONGNESS: a single-line (or zero-line) draft is creatable; the
+                # >=2-lines rule lives only in post_entry.
+                ...
+                lines=[_line(gl_d, debit=50)],
+                out = create_entry(body=body, current_user=user, db=db)  # no raise
+                ...
+                assert len(lines) == 1
+
+        A one-line entry carrying an AMOUNT is unbalanced by construction, so
+        the balance guard now rejects it — the >=2-lines rule was never what
+        stopped it. A zero-amount single line still balances (0 == 0) and is
+        still creatable, which keeps `test_fewer_than_two_lines_rejected_at_post`
+        reachable: that rule genuinely does live only in `post_entry`.
+        """
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        # Carrying an amount → unbalanced → rejected at creation now.
+        with pytest.raises(HTTPException) as ei:
+            create_entry(
+                body=JECreate(
+                    entry_type="manual", entry_date="2026-03-10",
+                    description="pin: one line with an amount",
+                    lines=[_line(gl_d, debit=50)],
+                ),
+                current_user=user, db=db,
+            )
+        assert "not balanced" in str(ei.value.detail)
+
+        # Zero-amount single line → balances → still creatable.
+        out = create_entry(
+            body=JECreate(
+                entry_type="manual", entry_date="2026-03-10",
+                description="pin: one zero line allowed",
+                lines=[_line(gl_d, debit=0, credit=0)],
+            ),
+            current_user=user, db=db,
+        )
         lines = (
             db.query(JournalEntryLine)
             .filter(JournalEntryLine.journal_entry_id == out["id"])
@@ -323,11 +405,27 @@ class TestPostEntry:
         assert db.get(JournalEntry, eid).status == "posted"
 
     def test_unbalanced_rejected_at_post(self, db):
+        """AR-0c: the entry can no longer be CREATED unbalanced, so this pins
+        `post_entry`'s own check against an entry made unbalanced AFTER
+        creation — a direct row edit, a migration, a future partial-update
+        path. The check is now defense-in-depth rather than the only gate, and
+        it is kept deliberately: `create_journal_entry` guards the front door,
+        not every subsequent write to the row.
+
+        Previously this built the unbalanced entry through `_draft(...)` with
+        `lines=[_line(gl_d, debit=100), _line(gl_c, credit=40)]`, which the
+        primitive now refuses.
+        """
         co, user, gl_d, gl_c = _co_user_gls(db)
         eid = self._draft(
             db, user, gl_d, gl_c,
-            lines=[_line(gl_d, debit=100), _line(gl_c, credit=40)],
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
         )
+        # Knock it out of balance behind the service's back.
+        row = db.get(JournalEntry, eid)
+        row.total_credits = Decimal("40")
+        db.commit()
+
         with pytest.raises(HTTPException) as ei:
             post_entry(entry_id=eid, current_user=user, db=db)
         assert ei.value.status_code == 400
@@ -456,6 +554,7 @@ class TestEpdDiscountJournalEntry:
         co = _mk_company(db)
         user = _mk_user(db, co)
         gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        ar = _configure_ar(db, co)          # AR-0: required now
         pay = self._payment(db, co)
         entry_id = _create_discount_journal_entry(
             db, tenant_id=co, payment=pay, discount_amount=10.0,
@@ -469,20 +568,75 @@ class TestEpdDiscountJournalEntry:
         assert row.entry_type == "adjusting"
         assert row.period_month == 4 and row.period_year == 2026  # from payment_date
         assert row.total_debits == Decimal("10") == row.total_credits
+        # AR-0: the legs are now DIFFERENT accounts. Pre-AR-0 this test passed
+        # with both legs on `gl` — the fallback — and asserted only the totals,
+        # which is why a self-cancelling entry looked correct here for months.
+        lines = (
+            db.query(JournalEntryLine)
+            .filter(JournalEntryLine.journal_entry_id == entry_id)
+            .order_by(JournalEntryLine.line_number).all()
+        )
+        assert [ln.gl_account_id for ln in lines] == [gl, ar]
+        assert lines[1].gl_account_number == "1200"      # denormalized from the mapping
 
-    def test_returns_none_when_no_gl_account(self, db):
-        # Pins the explicit None-GL contract (early return + warning log).
+    def test_raises_when_no_gl_account(self, db):
+        """DELIBERATE PIN FLIP — AR-0. This previously read:
+
+            def test_returns_none_when_no_gl_account(self, db):
+                # Pins the explicit None-GL contract (early return + warning log).
+                ...
+                entry_id = _create_discount_journal_entry(
+                    db, tenant_id=co, payment=pay, discount_amount=10.0,
+                    gl_account_id=None, user_id=user.id,
+                )
+                assert entry_id is None
+                after = ...count()
+                assert after == before  # no entry created
+
+        "No entry created" was the right half. The wrong half was returning it
+        as a value the caller then ignored: `apply_discounted_payment` committed
+        the discount anyway and answered 200 with `journal_entry_id: null`, so
+        the customer's balance moved with nothing behind it and no human read a
+        null. It refuses now.
+        """
         co = _mk_company(db)
         user = _mk_user(db, co)
+        _configure_ar(db, co)
         pay = self._payment(db, co)
         before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
-        entry_id = _create_discount_journal_entry(
-            db, tenant_id=co, payment=pay, discount_amount=10.0,
-            gl_account_id=None, user_id=user.id,
-        )
-        assert entry_id is None
+
+        with pytest.raises(HTTPException) as ei:
+            _create_discount_journal_entry(
+                db, tenant_id=co, payment=pay, discount_amount=10.0,
+                gl_account_id=None, user_id=user.id,
+            )
+        assert ei.value.status_code == 400
+        assert "discount settings" in str(ei.value.detail)
         after = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
-        assert after == before  # no entry created
+        assert after == before  # still no entry created
+
+    def test_raises_when_ar_account_not_configured(self, db):
+        """AR-0, the other half: a configured DISCOUNT account is not enough.
+
+        Pre-AR-0 this posted a balanced, self-cancelling entry with both legs on
+        the discount account, because `_find_ar_account` returned None on every
+        real chart and the caller fell back to `gl_account_id`.
+        """
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        pay = self._payment(db, co)          # NO _configure_ar
+        before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
+
+        with pytest.raises(HTTPException) as ei:
+            _create_discount_journal_entry(
+                db, tenant_id=co, payment=pay, discount_amount=10.0,
+                gl_account_id=gl, user_id=user.id,
+            )
+        assert ei.value.status_code == 400
+        assert "accounts-receivable" in str(ei.value.detail).lower()
+        assert db.query(JournalEntry).filter(
+            JournalEntry.tenant_id == co).count() == before
 
 
 # ── S-3 period-lock guard ────────────────────────────────────────────
@@ -551,6 +705,7 @@ class TestPeriodLockGuard:
         co = _mk_company(db)
         user = _mk_user(db, co)
         gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        _configure_ar(db, co)                               # AR-0: required now
         _lock(db, co, date(2026, 5, 1), date(2026, 5, 31))  # May locked
         pay = TestEpdDiscountJournalEntry()._payment(db, co)  # payment_date Apr 20
         entry_id = _create_discount_journal_entry(
@@ -571,6 +726,11 @@ class TestPeriodLockGuard:
         co = _mk_company(db)
         user = _mk_user(db, co)
         gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        # AR-0: configured, so the AR refusal does not pre-empt the period-lock
+        # guard this test is about. Account resolution happens BEFORE the
+        # primitive's lock check, so an unconfigured tenant would 400 here for
+        # the wrong reason and the pin would silently stop testing the lock.
+        _configure_ar(db, co)
         pay = TestEpdDiscountJournalEntry()._payment(db, co)  # payment_date 2026-04-20
         _lock(db, co, date(2026, 4, 1), date(2026, 4, 30))    # April locked
         with pytest.raises(PeriodLockedError):

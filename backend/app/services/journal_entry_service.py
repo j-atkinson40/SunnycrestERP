@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.journal_entry import JournalEntry, JournalEntryLine
@@ -92,6 +93,36 @@ def create_journal_entry(
     # including the empty-lines edge (int 0, coerced by the Numeric column).
     total_debits = sum(Decimal(str(line.debit_amount)) for line in lines)
     total_credits = sum(Decimal(str(line.credit_amount)) for line in lines)
+
+    # AR-0c GUARDS. Both land HERE rather than at `post_entry` because a bad
+    # entry should never exist, not merely never post — L-2/L-3 drafts are the
+    # books' record of a cleared row and are read long before anyone posts them.
+    #
+    # The service computed both totals and never compared them (S-2 pinned this
+    # as `test_permits_unbalanced_draft`, and the S-2 header listed it among the
+    # things "almost certainly WRONG" that the extraction deliberately did not
+    # fix). `post_entry` catches it at posting time; nothing caught it at rest.
+    if total_debits != total_credits:
+        raise HTTPException(
+            400,
+            f"Entry is not balanced. Debits: ${total_debits}, "
+            f"Credits: ${total_credits}",
+        )
+
+    # A two-legged entry whose legs are the SAME account is meaningless
+    # whatever produced it — debit 10 and credit 10 on one account nets to
+    # nothing while passing every balance check. This is the shape the EPD
+    # AR-account fallback produced (`ar_account_id or gl_account_id`), and the
+    # reason it survived is that a balanced nothing looks exactly like a
+    # balanced something. Single-line entries are untouched: S-2 pinned those
+    # as creatable (`test_permits_fewer_than_two_lines`) and the >=2-line rule
+    # lives in `post_entry`.
+    if len(lines) >= 2 and len({line.gl_account_id for line in lines}) == 1:
+        raise HTTPException(
+            400,
+            "Every line of this entry is on the same GL account, so it records "
+            "nothing. Check the account configuration behind it.",
+        )
 
     kwargs = dict(
         tenant_id=tenant_id,

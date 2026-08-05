@@ -8,6 +8,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from fastapi import HTTPException
+
 from app.models.customer import Customer
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.customer_payment import CustomerPayment
@@ -15,6 +17,19 @@ from app.models.user import User
 from app.services.agents.period_lock import PeriodLockedError
 
 logger = logging.getLogger(__name__)
+
+# AR-0. The tenant's GL choices for accounting purposes, NESTED so the
+# siblings this arc already knows it needs — bad_debt (8650 BAD DEBTS),
+# finance_charge_income (9200 FINANCE CHARGE INCOME), and the AR arc's revenue
+# accounts — land here instead of proliferating flat keys beside
+# `early_payment_discount_gl_account_id`. That existing flat key is left alone:
+# it works, and churning it buys nothing.
+#
+#   company.settings["accounting_gl"] = {"ar": "<TenantGLMapping.id>"}
+#
+# Key absent or None ⇒ NOT configured ⇒ the posting refuses. Same fail-closed
+# rule as the reconciliation keyword map, resolved and validated at use.
+ACCOUNTING_GL_SETTINGS_KEY = "accounting_gl"
 
 
 def get_discount_settings(db: Session, tenant_id: str) -> dict:
@@ -155,6 +170,19 @@ def apply_discounted_payment(
     if not payment:
         return {"error": "Payment not found"}
 
+    # AR-0 PRE-FLIGHT. Resolve the accounts BEFORE touching the payment, so a
+    # refusal leaves nothing half-done. The order used to be mutate → post →
+    # commit-regardless, which is how a discount reached the customer's balance
+    # with no entry behind it. Booking is the licence to apply.
+    resolve_ar_account(db, tenant_id)
+    if not discount_data.get("gl_account_id"):
+        raise HTTPException(
+            400,
+            "No early-payment-discount GL account is configured, so this "
+            "discount has nothing to debit. Set it in the discount settings, "
+            "then apply the discount.",
+        )
+
     # Update payment record
     payment.discount_applied = True
     payment.discount_amount = Decimal(str(discount_data["discount_amount"]))
@@ -174,8 +202,10 @@ def apply_discounted_payment(
         gl_account_id=discount_data["gl_account_id"],
         user_id=user_id,
     )
-    if je_id:
-        payment.discount_journal_entry_id = je_id
+    # Unconditional now: `_create_discount_journal_entry` either returns an id
+    # or raises. The old `if je_id:` guarded against a None it could no longer
+    # receive, and reading it as optional is what made a null id look routine.
+    payment.discount_journal_entry_id = je_id
 
     db.commit()
 
@@ -194,92 +224,139 @@ def _create_discount_journal_entry(
     discount_amount: float,
     gl_account_id: str | None,
     user_id: str,
-) -> str | None:
-    """Create the auto-posted JE for the discount. Returns entry ID."""
+) -> str:
+    """Create the auto-posted JE for the discount. Returns the entry ID.
+
+    AR-0: RAISES rather than returning None. Every former `None` return was a
+    discount that applied to the customer's balance with nothing behind it —
+    the caller committed regardless and answered 200 with
+    `journal_entry_id: null`. Booking is the licence to clear here too.
+    """
     if not gl_account_id:
-        logger.warning(f"No discount GL account configured for tenant {tenant_id}")
-        return None
-
-    try:
-        from app.services import journal_entry_service
-        from app.services.journal_entry_service import JournalLineSpec
-
-        customer = db.query(Customer).filter(Customer.id == payment.customer_id).first()
-        customer_name = customer.name if customer else "Unknown"
-
-        ar_account_id = _find_ar_account(db, tenant_id)
-        specs = [
-            # Debit: Sales Discounts
-            JournalLineSpec(
-                gl_account_id=gl_account_id,
-                description=f"Early payment discount {payment.discount_percentage}% — {customer_name}",
-                debit_amount=Decimal(str(discount_amount)),
-                credit_amount=Decimal("0"),
-            ),
-            # Credit: Accounts Receivable (find AR account; fallback)
-            JournalLineSpec(
-                gl_account_id=ar_account_id or gl_account_id,
-                description=f"Discount applied to {customer_name} balance",
-                debit_amount=Decimal("0"),
-                credit_amount=Decimal(str(discount_amount)),
-            ),
-        ]
-
-        entry = journal_entry_service.create_journal_entry(
-            db,
-            tenant_id=tenant_id,
-            entry_id=str(uuid.uuid4()),
-            entry_number=f"DISC-{payment.id[:8]}",
-            entry_type="adjusting",
-            status="posted",
-            entry_date=payment.payment_date or date.today(),
-            period_month=(payment.payment_date or date.today()).month,
-            period_year=(payment.payment_date or date.today()).year,
-            description=f"Early payment discount — {customer_name}",
-            reference_number=getattr(payment, "reference_number", None),
-            created_by=user_id,
-            posted_by=user_id,
-            posted_at=datetime.now(timezone.utc),
-            lines=specs,
+        # Was: log a warning and return None, which the caller ignored.
+        raise HTTPException(
+            400,
+            "No early-payment-discount GL account is configured, so this "
+            "discount has nothing to debit. Set it in the discount settings, "
+            "then apply the discount.",
         )
 
-        return entry.id
-    except PeriodLockedError:
-        # Do NOT swallow our own S-3 period-lock guard. This path is
-        # REACHABLE today: apply_discounted_payment runs on an ALREADY
-        # EXISTING payment (a separate /discount action), so the period can
-        # lock (month-end close) AFTER the payment was created but BEFORE
-        # the discount is applied. A locked period means the contra-revenue
-        # entry can't be posted — so the discount must fail LOUDLY (409),
-        # not apply silently with no JE (AR reduced, no offsetting entry =
-        # books out of balance, the exact failure this arc exists to
-        # prevent). The broad swallow below stays an S-6 sweep item; this
-        # narrows only the case where our new guard would be eaten.
-        raise
-    except Exception as e:
-        logger.error(f"Failed to create discount JE: {e}")
-        return None
+    from app.services import journal_entry_service
+    from app.services.journal_entry_service import JournalLineSpec
+
+    customer = db.query(Customer).filter(Customer.id == payment.customer_id).first()
+    customer_name = customer.name if customer else "Unknown"
+
+    # Raises a legible 400 when unconfigured / inactive / foreign / unknown.
+    # No fallback: the old `ar_account_id or gl_account_id` put BOTH legs on
+    # the discount account, which balances, posts, and records nothing.
+    ar_account = resolve_ar_account(db, tenant_id)
+    specs = [
+        # Debit: Sales Discounts
+        JournalLineSpec(
+            gl_account_id=gl_account_id,
+            description=f"Early payment discount {payment.discount_percentage}% — {customer_name}",
+            debit_amount=Decimal(str(discount_amount)),
+            credit_amount=Decimal("0"),
+        ),
+        # Credit: Accounts Receivable — denormalized from the validated
+        # mapping, per JournalLineSpec's contract that the caller resolves.
+        JournalLineSpec(
+            gl_account_id=ar_account.id,
+            gl_account_number=ar_account.account_number,
+            gl_account_name=ar_account.account_name,
+            description=f"Discount applied to {customer_name} balance",
+            debit_amount=Decimal("0"),
+            credit_amount=Decimal(str(discount_amount)),
+        ),
+    ]
+
+    # NO try/except. AR-0 removes the broad `except Exception: logger.error(...);
+    # return None` that used to wrap this whole body.
+    #
+    # It had to go in THIS commit, not a later sweep: the new AR guard raises,
+    # and a guard a caller can swallow is not a guard on that path
+    # (DECISIONS.md 2026-07-29). The swallow would have eaten the very refusal
+    # AR-0 exists to add — and it was already eating an AttributeError on
+    # `payment.discount_percentage` for any caller that did not pre-set that
+    # unmapped attribute, which is how a whole posting path can fail silently
+    # and look configured.
+    #
+    # The S-3 `except PeriodLockedError: raise` re-raise is gone with it,
+    # redundant once nothing is caught. Its reasoning still holds and is why
+    # nothing is caught: a locked period means the contra-revenue entry cannot
+    # post, so the discount must fail LOUDLY rather than reduce AR with no
+    # offsetting entry.
+    entry = journal_entry_service.create_journal_entry(
+        db,
+        tenant_id=tenant_id,
+        entry_id=str(uuid.uuid4()),
+        entry_number=f"DISC-{payment.id[:8]}",
+        entry_type="adjusting",
+        status="posted",
+        entry_date=payment.payment_date or date.today(),
+        period_month=(payment.payment_date or date.today()).month,
+        period_year=(payment.payment_date or date.today()).year,
+        description=f"Early payment discount — {customer_name}",
+        reference_number=getattr(payment, "reference_number", None),
+        created_by=user_id,
+        posted_by=user_id,
+        posted_at=datetime.now(timezone.utc),
+        lines=specs,
+    )
+
+    return entry.id
 
 
-def _find_ar_account(db: Session, tenant_id: str) -> str | None:
-    """Find the AR GL account for this tenant."""
-    try:
-        # Health Triage P2: app.models.gl_mapping never existed → AR GL lookup
-        # silently fell through. TenantGLMapping lives in
-        # app.models.accounting_analysis (tenant_id/platform_category, verified).
-        from app.models.accounting_analysis import TenantGLMapping
+def resolve_ar_account(db: Session, tenant_id: str):
+    """The tenant's AR control account, or a legible 400. NEVER a guess.
 
-        ar = (
-            db.query(TenantGLMapping)
-            .filter(
-                TenantGLMapping.tenant_id == tenant_id,
-                TenantGLMapping.platform_category.ilike("%ar%"),
-            )
-            .first()
+    REPLACES `_find_ar_account` (AR-0), which matched
+    ``platform_category ILIKE '%ar%'`` — a substring match against a free-text
+    column, ``.first()``, no ORDER BY, wrapped in a bare
+    ``except Exception: return None``. Two failures came out of six lines: it
+    returned NOTHING when an AR account plainly existed, and it could return
+    the WRONG account when an unrelated category happened to contain the
+    letters "a" and "r" in sequence (warranty, clearing, salaries, arrears).
+
+    PRODUCTION EVIDENCE (read-only, 2026-08-05): sunnycrest's 224 active
+    mappings use nine categories — other, expense, current_liability,
+    current_asset, fixed_asset, cogs, tax_expense, other_income, equity. NOT
+    ONE contains "ar", so the old resolver returned None on every call, and the
+    caller's `ar_account_id or gl_account_id` fallback was the ONLY path.
+    Meanwhile `1200 ACCOUNTS RECEIVABLE-TRADE` sits on that chart categorised
+    `current_asset`. The resolver was never looking at the account; it was
+    interrogating a coarse import-time classification and hoping.
+
+    `platform_category` cannot be repaired into a signal, either — on the same
+    chart every revenue account (5010 PRECAST SALES, 5012 REDI-ROCK SALES) is
+    categorised `cogs`. So the answer is an EXPLICIT configured account, per
+    the keyword-map precedent: a tenant's GL choice for a purpose lives in
+    settings as a `TenantGLMapping.id`, resolved and validated AT USE through
+    `require_gl_account` — the same single definition of "usable GL account"
+    L-2.2 consolidated to. No third check.
+    """
+    from app.models.company import Company
+    from app.services.reconciliation_gl import require_gl_account
+
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    settings = (company.settings if company else None) or {}
+    accounting_gl = settings.get(ACCOUNTING_GL_SETTINGS_KEY) or {}
+    ar_id = accounting_gl.get("ar") if isinstance(accounting_gl, dict) else None
+
+    if not ar_id:
+        # Fail closed with the CONFIGURATION action named. The old code
+        # returned None here and the caller quietly booked both legs to the
+        # discount account.
+        raise HTTPException(
+            400,
+            "No accounts-receivable GL account is configured, so this discount "
+            "has nothing to credit. Set it in the accounting GL settings, then "
+            "apply the discount.",
         )
-        return ar.id if ar else None
-    except Exception:
-        return None
+    # Raises its own legible 400 for inactive / foreign-tenant / nonexistent,
+    # with the existence-oracle discipline L-2.1b established.
+    return require_gl_account(db, tenant_id, ar_id)
 
 
 def calculate_statement_discount(
