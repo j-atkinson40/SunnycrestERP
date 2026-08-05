@@ -1218,6 +1218,20 @@ _reconciliation_review_triage = TriageQueueConfig(
         # still being a valid action_id for apply_action. A row that became
         # bookable after someone configured the map cannot simply leave the
         # queue (booking is the licence to clear), so this is how it leaves.
+        # N-1+2. Offered interactively (not in the always-rendered palette)
+        # because it applies only to the narrow case: a bank line the ladder
+        # classified `nsf` whose amount matches a customer payment in the
+        # opposite pool. The link already exists as a DIRECTION_MISMATCH
+        # candidate; this is what finally acts on it.
+        ActionConfig(
+            action_id="return_payment",
+            label="Record as returned",
+            action_type=ActionType.CUSTOM,
+            icon="Undo2",
+            interactive=True,
+            handler="reconciliation.return_payment",
+            required_permission="invoice.approve",
+        ),
         ActionConfig(
             action_id="post_keyword",
             label="Post it",

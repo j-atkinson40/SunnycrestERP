@@ -120,6 +120,18 @@ class CustomerPayment(Base):
     modified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # N-1+2 (r156). A RETURNED payment is not a voided one: the void says this
+    # should never have been recorded and soft-deletes the row; the return says
+    # it happened and the bank took it back, so the row SURVIVES carrying the
+    # mark. Load-bearing rather than decorative — `void_payment`'s unwind leaves
+    # the CustomerPaymentApplication rows in place and only adjusts the invoices
+    # they point at, so an unmarked reversed payment would read as live and
+    # applied while its invoices no longer reflect it.
+    returned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    returned_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

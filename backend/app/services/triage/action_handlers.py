@@ -1517,6 +1517,127 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     return {"status": "applied", "message": message}
 
 
+def _handle_reconciliation_return_payment(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Record the payment this bank line reversed as RETURNED — the NSF action.
+
+    THERE IS NO DETECTION TO BUILD HERE, which is why this action is small. Two
+    mechanisms already exist and neither was actionable:
+
+      * the keyword ladder classifies the line as `nsf` at 0.88
+        (reconciliation_service.py:73) and then deliberately fails closed,
+        because L-2 ruled `nsf` unmapped ON PURPOSE — "a bounced cheque reverses
+        against AR, not an expense." That verdict stands; the card said "this
+        one needs a person" and the person had nothing to invoke.
+      * the matcher's direction-honest pools mean an NSF DEBIT cannot match the
+        payment CREDIT normally — but `DIRECTION_MISMATCH`
+        (reconciliation_service.py:496) already records the exact-amount hit in
+        the opposite pool as a scored-0.000 audit candidate. The system ALREADY
+        links the $400 return to the $400 payment. It just filed the link where
+        nobody acts on it.
+
+    So this handler resolves the payment from that existing candidate (or from
+    an explicit `payment_id` when the operator overrides), calls the reversal,
+    and resolves the row. The payment is NOT voided — see `return_payment`.
+
+    THE PAYMENT IS RE-RESOLVED AT EXECUTION, never trusted from the card, the
+    same discipline `reconciliation.post_keyword` follows: the candidate set can
+    change between render and click.
+    """
+    from fastapi import HTTPException
+
+    from app.models.financial_account import (
+        ReconciliationException,
+        ReconciliationMatchCandidate,
+        ReconciliationTransaction,
+    )
+    from app.services import sales_service
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    txn_id = ctx["entity_id"]
+    payload = ctx.get("payload") or {}
+
+    txn = (
+        db.query(ReconciliationTransaction)
+        .filter(
+            ReconciliationTransaction.id == txn_id,
+            ReconciliationTransaction.tenant_id == user.company_id,
+        )
+        .first()
+    )
+    if txn is None:
+        return {"status": "errored", "message": "Transaction not found.",
+                "code": "not_found"}
+
+    payment_id = payload.get("payment_id")
+    if not payment_id:
+        # The link the matcher already drew. Only an exact-amount opposite-pool
+        # hit on a CUSTOMER PAYMENT qualifies — a direction mismatch against
+        # anything else is a different signal and must not be swept in here.
+        candidate = (
+            db.query(ReconciliationMatchCandidate)
+            .filter(
+                ReconciliationMatchCandidate.reconciliation_transaction_id == txn_id,
+                ReconciliationMatchCandidate.rejection_reason == "DIRECTION_MISMATCH",
+                ReconciliationMatchCandidate.candidate_record_type == "customer_payment",
+            )
+            .all()
+        )
+        if len(candidate) != 1:
+            # Zero: nothing links. More than one: two payments of the same
+            # amount, and GUESSING WHICH ONE BOUNCED would reverse the wrong
+            # customer's payment. Both cases ask for the explicit id.
+            return {
+                "status": "errored",
+                "code": "ambiguous_payment",
+                "message": (
+                    "No single payment matches this return — pick the payment it "
+                    "reverses."
+                    if len(candidate) != 1 else ""
+                ),
+            }
+        payment_id = candidate[0].candidate_record_id
+
+    try:
+        result = sales_service.return_payment(
+            db,
+            payment_id,
+            user.company_id,
+            user.id,
+            reason=payload.get("reason") or f"Returned by bank — {txn.description or ''}".strip(),
+        )
+    except HTTPException as exc:
+        # The re-entrancy guard (409) and the spent-credit refusal (400) both
+        # land here, and both are things the operator needs told in words rather
+        # than a stack trace.
+        return {"status": "errored", "message": str(exc.detail),
+                "code": "cannot_return"}
+
+    txn.match_status = "manually_matched"
+    txn.matched_record_type = "customer_payment"
+    txn.matched_record_id = payment_id
+    txn.reviewed_by = user.id
+    txn.reviewed_at = datetime.now(timezone.utc)
+
+    exc_row = (
+        db.query(ReconciliationException)
+        .filter(ReconciliationException.reconciliation_transaction_id == txn_id)
+        .first()
+    )
+    if exc_row is not None and exc_row.resolved_at is None:
+        exc_row.resolved_at = datetime.now(timezone.utc)
+        exc_row.resolved_by = user.id
+
+    db.commit()
+    return {
+        "status": "ok",
+        "message": (
+            f"Payment recorded as returned. ${result['applied_reversed']} came "
+            "back off the customer's invoices."
+        ),
+    }
+
+
 def _handle_reconciliation_flag(ctx: dict[str, Any]) -> dict[str, Any]:
     """Books Review Flag — park the exception to one of three destinations, each
     with its own return trigger (see reconciliation_flags.create_flag). ask/hold
@@ -1638,6 +1759,9 @@ HANDLERS: dict[str, HandlerFn] = {
     "reconciliation.post_keyword": _handle_reconciliation_post_keyword,
     # Books Review reconciliation flag/park (Arc B B-4)
     "reconciliation.flag": _handle_reconciliation_flag,
+    # NSF / returned payment (N-1+2 — makes the DIRECTION_MISMATCH link, which
+    # the matcher already records, into something an operator can act on).
+    "reconciliation.return_payment": _handle_reconciliation_return_payment,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,
