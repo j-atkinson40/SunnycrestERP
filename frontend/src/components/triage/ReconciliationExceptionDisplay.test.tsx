@@ -7,7 +7,11 @@ vi.mock("@/contexts/triage-session-context", () => ({
   useTriageSession: () => ({ act: mockAct, status: "idle" }),
 }))
 
-import { ReconciliationExceptionDisplay } from "./ReconciliationExceptionDisplay"
+import {
+  ReconciliationExceptionDisplay,
+  SETTINGS_DESTINATION,
+} from "./ReconciliationExceptionDisplay"
+import { getAllNavItemsFlat, getNavigation } from "@/services/navigation-service"
 import type { TriageItem } from "@/types/triage"
 
 function rankedItem(): TriageItem {
@@ -96,7 +100,11 @@ describe("ReconciliationExceptionDisplay — L-2 CONFIG card (the third form)", 
     expect(
       screen.getByText("No GL account is configured for bank fees.")
     ).toBeInTheDocument()
-    expect(screen.getByText(/reconciliation GL settings/)).toBeInTheDocument()
+    // L-2.1e: the destination is now NAMED, matching the nav label exactly,
+    // rather than described in prose that matched nothing on screen.
+    expect(
+      screen.getByText(new RegExp(SETTINGS_DESTINATION.replace("→", "."))),
+    ).toBeInTheDocument()
   })
 
   it("offers no Accept — a row that cannot post cannot be accepted", () => {
@@ -308,5 +316,50 @@ describe("ReconciliationExceptionDisplay — deliberately unmapped", () => {
     render(<ReconciliationExceptionDisplay item={configItem("keyword_gl_unmapped")} />)
     const unconfigured = screen.getByTestId("reconciliation-config-card").textContent
     expect(deliberate).not.toEqual(unconfigured)
+  })
+})
+
+// ── L-2.1e: the card and the navigation must agree ─────────────────────────
+
+
+describe("the blocked card names a destination the operator can reach", () => {
+  it("uses the nav label for /settings/accounts verbatim", () => {
+    // The loop this sub-arc closes: the card names an action, the nav makes it
+    // reachable. If someone renames the nav entry and not the copy, the card
+    // sends an operator hunting for a page that no longer goes by that name —
+    // which is the original failure, restored.
+    const nav = getNavigation(
+      "manufacturing", new Set(), new Set(), {}, undefined, true, new Set(),
+    )
+    const entry = getAllNavItemsFlat(nav).find((i) => i.href === "/settings/accounts")
+    expect(entry, "/settings/accounts must be in the navigation").toBeTruthy()
+    expect(SETTINGS_DESTINATION).toContain(entry!.label)
+  })
+
+  it("every configuration variant points at the same place", () => {
+    for (const reason of [
+      "keyword_gl_unmapped",
+      "keyword_gl_dangling",
+      "contra_gl_unset",
+      "contra_gl_dangling",
+    ]) {
+      cleanup()
+      render(<ReconciliationExceptionDisplay item={configItem(reason)} />)
+      expect(
+        screen.getByTestId("reconciliation-config-card").textContent,
+      ).toContain(SETTINGS_DESTINATION)
+    }
+  })
+
+  it("does NOT send the operator to settings for the two non-config reasons", () => {
+    // period_locked is a policy gate and keyword_gl_intentional is a settled
+    // decision. Neither is fixed on the settings page, so neither may name it.
+    for (const reason of ["period_locked", "keyword_gl_intentional"]) {
+      cleanup()
+      render(<ReconciliationExceptionDisplay item={configItem(reason)} />)
+      expect(
+        screen.getByTestId("reconciliation-config-card").textContent,
+      ).not.toContain(SETTINGS_DESTINATION)
+    }
   })
 })

@@ -343,3 +343,186 @@ def test_create_accepts_active_own_tenant_gl_account(gl_substrate):
         assert fa.gl_account_id == gl_substrate["active"]
     finally:
         s.close()
+
+
+# ── L-2.1e: the keyword→GL map endpoint ─────────────────────────────────────
+
+def _admin(db, company_id):
+    """An admin User — require_admin checks role.is_system AND slug=='admin'."""
+    from app.models.role import Role
+    from app.models.user import User
+
+    role = Role(id=str(uuid.uuid4()), company_id=company_id, name="Admin",
+                slug="admin", is_system=True)
+    db.add(role)
+    db.flush()
+    u = User(id=str(uuid.uuid4()), company_id=company_id, role_id=role.id,
+             email=f"{_SLUG_PREFIX}{uuid.uuid4().hex[:8]}@test.local",
+             hashed_password="x", first_name="A", last_name="D", is_active=True)
+    db.add(u)
+    db.flush()
+    return u
+
+
+def _states(payload) -> dict:
+    return {c["classification"]: c["state"] for c in payload["classifications"]}
+
+
+def test_get_keyword_gl_reports_all_three_states(gl_substrate):
+    from app.api.routes.reconciliation import get_keyword_gl, set_keyword_gl
+    from app.api.routes.reconciliation import KeywordGLUpdate
+
+    s = SessionLocal()
+    try:
+        user = _admin(s, gl_substrate["mine"])
+        s.commit()
+        set_keyword_gl(KeywordGLUpdate(classification="bank_fee",
+                                       gl_account_id=gl_substrate["active"]),
+                       current_user=user, db=s)
+        set_keyword_gl(KeywordGLUpdate(classification="payroll", gl_account_id=None),
+                       current_user=user, db=s)
+        # nsf never touched.
+        states = _states(get_keyword_gl(current_user=user, db=s))
+        assert states == {
+            "bank_fee": "mapped",
+            "payroll": "intentional",
+            "nsf": "unmapped",
+        }
+    finally:
+        s.close()
+
+
+def test_get_reports_the_account_so_the_panel_need_not_join(gl_substrate):
+    from app.api.routes.reconciliation import (
+        KeywordGLUpdate, get_keyword_gl, set_keyword_gl,
+    )
+
+    s = SessionLocal()
+    try:
+        user = _admin(s, gl_substrate["mine"])
+        s.commit()
+        set_keyword_gl(KeywordGLUpdate(classification="bank_fee",
+                                       gl_account_id=gl_substrate["active"]),
+                       current_user=user, db=s)
+        row = next(c for c in get_keyword_gl(current_user=user, db=s)["classifications"]
+                   if c["classification"] == "bank_fee")
+        assert row["account_number"] == "1010"
+        assert row["account_name"] == "Operating Cash"
+    finally:
+        s.close()
+
+
+def test_put_null_writes_a_PRESENT_null_not_a_removed_key(gl_substrate):
+    """The distinction the whole third state rests on. `pop` would look
+    identical through the API and mean the opposite in Books Review."""
+    from app.api.routes.reconciliation import KeywordGLUpdate, set_keyword_gl
+    from app.models.company import Company
+    from app.services import reconciliation_gl
+
+    s = SessionLocal()
+    try:
+        user = _admin(s, gl_substrate["mine"])
+        s.commit()
+        set_keyword_gl(KeywordGLUpdate(classification="payroll", gl_account_id=None),
+                       current_user=user, db=s)
+        co = s.get(Company, gl_substrate["mine"])
+        s.refresh(co)
+        kmap = (co.settings or {}).get(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY) or {}
+        assert "payroll" in kmap
+        assert kmap["payroll"] is None
+    finally:
+        s.close()
+
+
+def test_put_omitting_gl_account_id_is_a_validation_error(gl_substrate):
+    """`I did not say` must not silently become `I said none`. The field has no
+    default, so Pydantic rejects the omission rather than defaulting to null."""
+    from pydantic import ValidationError
+
+    from app.api.routes.reconciliation import KeywordGLUpdate
+
+    with pytest.raises(ValidationError):
+        KeywordGLUpdate(classification="payroll")
+
+
+def test_put_rejects_unknown_classification(gl_substrate):
+    from fastapi import HTTPException
+
+    from app.api.routes.reconciliation import KeywordGLUpdate, set_keyword_gl
+
+    s = SessionLocal()
+    try:
+        user = _admin(s, gl_substrate["mine"])
+        s.commit()
+        with pytest.raises(HTTPException) as exc:
+            set_keyword_gl(KeywordGLUpdate(classification="rent", gl_account_id=None),
+                           current_user=user, db=s)
+        assert exc.value.status_code == 400
+    finally:
+        s.close()
+
+
+def test_put_rejects_a_foreign_tenant_account(gl_substrate):
+    """Same gate as the contra — the keyword map is a second door onto the same
+    field, and a door that skipped validation would reopen L-2.1b."""
+    from fastapi import HTTPException
+
+    from app.api.routes.reconciliation import KeywordGLUpdate, set_keyword_gl
+
+    s = SessionLocal()
+    try:
+        user = _admin(s, gl_substrate["mine"])
+        s.commit()
+        with pytest.raises(HTTPException) as exc:
+            set_keyword_gl(
+                KeywordGLUpdate(classification="bank_fee",
+                                gl_account_id=gl_substrate["foreign"]),
+                current_user=user, db=s)
+        assert exc.value.status_code == 400
+    finally:
+        s.close()
+
+
+def test_put_preserves_the_other_classifications(gl_substrate):
+    """One row at a time. Writing payroll must not disturb bank_fee — a
+    whole-map PUT would make two operators racing each other lose edits."""
+    from app.api.routes.reconciliation import (
+        KeywordGLUpdate, get_keyword_gl, set_keyword_gl,
+    )
+
+    s = SessionLocal()
+    try:
+        user = _admin(s, gl_substrate["mine"])
+        s.commit()
+        set_keyword_gl(KeywordGLUpdate(classification="bank_fee",
+                                       gl_account_id=gl_substrate["active"]),
+                       current_user=user, db=s)
+        set_keyword_gl(KeywordGLUpdate(classification="payroll", gl_account_id=None),
+                       current_user=user, db=s)
+        states = _states(get_keyword_gl(current_user=user, db=s))
+        assert states["bank_fee"] == "mapped"
+    finally:
+        s.close()
+
+
+def test_dangling_is_reported_as_its_own_state(gl_substrate):
+    """Mapped then deactivated. The panel must not show it as a live mapping
+    (it does not resolve) nor as unmapped (the fix is different)."""
+    from app.api.routes.reconciliation import (
+        KeywordGLUpdate, get_keyword_gl, set_keyword_gl,
+    )
+    from app.models.accounting_analysis import TenantGLMapping
+
+    s = SessionLocal()
+    try:
+        user = _admin(s, gl_substrate["mine"])
+        s.commit()
+        set_keyword_gl(KeywordGLUpdate(classification="bank_fee",
+                                       gl_account_id=gl_substrate["active"]),
+                       current_user=user, db=s)
+        s.get(TenantGLMapping, gl_substrate["active"]).is_active = False
+        s.commit()
+        states = _states(get_keyword_gl(current_user=user, db=s))
+        assert states["bank_fee"] == "dangling"
+    finally:
+        s.close()

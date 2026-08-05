@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.financial_account import (
     FinancialAccount,
@@ -260,6 +260,113 @@ def update_account(
         )
     db.commit()
     return {"status": "updated"}
+
+
+# ── Keyword → GL map (Ledger Posting L-2.1e) ──
+#
+# The tenant-wide half of reconciliation GL config; the per-account half is the
+# contra on `financial_accounts` above. Both legs of the same journal entry, so
+# both live on one settings page.
+#
+# PUT rather than PATCH, and an explicit null ACTS rather than being dropped —
+# the Plaid category-map precedent (`plaid.py::set_category_override`), not the
+# EPD one (`discount.py::update_settings`, which uses exclude_none and therefore
+# cannot clear its GL account at all). Here a null is the whole point: it is how
+# an operator says "this kind does not post automatically", which for payroll and
+# nsf is the correct answer on a real chart rather than an unfinished one.
+#
+# require_admin, matching the structural sibling (plaid.py) and all of Vault
+# Accounting — including the flow that CREATES the TenantGLMapping rows this maps
+# to. NOTE THE ASYMMETRY, deliberately left rather than silently widened: the
+# other leg, PATCH /accounts/{id}, is still get_current_user like the rest of this
+# router, so a non-admin can set a bank account's contra through the accounts form
+# but cannot touch the keyword map. Re-gating 14 routes is its own decision.
+
+_KEYWORD_STATE_MAPPED = "mapped"
+_BLOCK_TO_STATE = {
+    reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED: "unmapped",
+    reconciliation_gl.BLOCK_KEYWORD_GL_INTENTIONAL: "intentional",
+    reconciliation_gl.BLOCK_KEYWORD_GL_DANGLING: "dangling",
+}
+
+
+class KeywordGLUpdate(BaseModel):
+    classification: str
+    # NO DEFAULT — the field is required, so omitting it is a 422 rather than
+    # silently meaning null. "I did not say" and "I said none" are different
+    # sentences and this endpoint must not conflate them.
+    gl_account_id: str | None
+
+
+def _keyword_gl_payload(db: Session, company) -> dict:
+    """State per classification, derived from the RUNTIME resolver.
+
+    Never re-inferred from the settings dict. The configure script inferred it
+    and started lying the moment a third state existed — a deliberate null read
+    as "unmapped", so it told an operator to configure what they had just chosen
+    not to configure.
+    """
+    out = []
+    for c in reconciliation_gl.KEYWORD_CLASSIFICATIONS:
+        mapping, reason = reconciliation_gl.keyword_gl_with_reason(db, company, c)
+        out.append({
+            "classification": c,
+            "state": _KEYWORD_STATE_MAPPED if mapping else _BLOCK_TO_STATE.get(reason, "unmapped"),
+            "gl_account_id": mapping.id if mapping else None,
+            "account_number": mapping.account_number if mapping else None,
+            "account_name": mapping.account_name if mapping else None,
+        })
+    return {"classifications": out}
+
+
+@router.get("/keyword-gl")
+def get_keyword_gl(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Readable by anyone — the panel shows state to everyone and only lets an
+    admin change it, the BankCategoriesSettings idiom."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+    return _keyword_gl_payload(db, company)
+
+
+@router.put("/keyword-gl")
+def set_keyword_gl(
+    body: KeywordGLUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Map a classification to a GL account, or mark it as deliberately not
+    posting (`gl_account_id: null` — PRESENT and null, never a removed key)."""
+    from app.models.company import Company
+
+    if body.classification not in reconciliation_gl.KEYWORD_CLASSIFICATIONS:
+        raise HTTPException(
+            400,
+            f"Unknown classification {body.classification!r} — expected one of "
+            f"{', '.join(reconciliation_gl.KEYWORD_CLASSIFICATIONS)}.",
+        )
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+
+    if body.gl_account_id is not None:
+        _require_valid_gl_account(db, current_user.company_id, body.gl_account_id)
+
+    current = dict(
+        (company.settings or {}).get(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY) or {}
+    )
+    # Assignment, never `pop` on null: key PRESENT and null is a decision, an
+    # absent key means nobody has decided, and the Books Review card says
+    # different things for the two.
+    current[body.classification] = body.gl_account_id
+    company.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, current)
+    db.commit()
+    return _keyword_gl_payload(db, company)
 
 
 # ── Reconciliation Runs ──

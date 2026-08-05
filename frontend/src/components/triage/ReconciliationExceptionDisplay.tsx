@@ -97,6 +97,17 @@ const CLASSIFICATION_PLURAL: Record<string, string> = {
   nsf: "returned items",
 }
 
+/**
+ * WHERE THE FIX HAPPENS, named once and identically in every variant.
+ *
+ * The card telling an operator to configure something is only useful if they can
+ * find it. "Financial Accounts" is the nav label for `/settings/accounts`
+ * (navigation-service.ts, Operations group) — the two are pinned to each other
+ * by a test, because a card that says one thing while the nav says another sends
+ * someone hunting, which is the failure this whole sub-arc exists to remove.
+ */
+export const SETTINGS_DESTINATION = "Settings → Financial Accounts"
+
 interface BlockedCopy {
   headline: (plural: string) => string
   fix: string
@@ -111,7 +122,7 @@ interface BlockedCopy {
 const BLOCKED_COPY: Record<string, BlockedCopy> = {
   keyword_gl_unmapped: {
     headline: (plural) => `No GL account is configured for ${plural}.`,
-    fix: "An administrator sets this once in the reconciliation GL settings. Every transaction of this kind will post automatically from then on.",
+    fix: `An administrator sets this once in ${SETTINGS_DESTINATION}. Every transaction of this kind will post automatically from then on.`,
   },
   // The ONE variant that is not a problem to solve. Payroll and NSF have no
   // correct single GL account on a real chart — a net payroll draw is gross
@@ -129,15 +140,15 @@ const BLOCKED_COPY: Record<string, BlockedCopy> = {
   keyword_gl_dangling: {
     headline: (plural) =>
       `The GL account configured for ${plural} is no longer active.`,
-    fix: "An administrator re-maps it in the reconciliation GL settings. The account it points at has been deactivated or removed.",
+    fix: `An administrator re-maps it in ${SETTINGS_DESTINATION}. The account it points at has been deactivated or removed.`,
   },
   contra_gl_unset: {
     headline: () => "This bank account has no GL cash account set.",
-    fix: "An administrator sets the GL account on the bank account itself. Without it there is no offsetting side for the entry.",
+    fix: `An administrator sets the GL account on the bank account in ${SETTINGS_DESTINATION}. Without it there is no offsetting side for the entry.`,
   },
   contra_gl_dangling: {
     headline: () => "This bank account's GL cash account is no longer active.",
-    fix: "An administrator re-maps the GL account on the bank account. The account it points at has been deactivated or removed.",
+    fix: `An administrator re-maps the GL account on the bank account in ${SETTINGS_DESTINATION}. The account it points at has been deactivated or removed.`,
   },
   period_locked: {
     headline: () => "The accounting period for this date is closed.",
@@ -233,7 +244,7 @@ export function ReconciliationExceptionDisplay({ item }: Props) {
   // one: we know it did not post and we know what it is, so say that much.
   const blockedCopy: BlockedCopy = (blockedReason ? BLOCKED_COPY[blockedReason] : undefined) ?? {
     headline: () => "This item could not be posted to the ledger.",
-    fix: "An administrator needs to check the reconciliation GL configuration for this account.",
+    fix: `An administrator needs to check the reconciliation GL configuration in ${SETTINGS_DESTINATION}.`,
   }
   const blockedHeadline = blockedCopy.headline(classificationPlural)
   const [coding, setCoding] = useState("")

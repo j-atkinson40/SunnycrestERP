@@ -23,17 +23,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mockApiGet = vi.fn()
 const mockApiPatch = vi.fn()
 const mockApiPost = vi.fn()
+const mockApiPut = vi.fn()
 
 vi.mock("@/lib/api-client", () => ({
   default: {
     get: (...args: unknown[]) => mockApiGet(...args),
     patch: (...args: unknown[]) => mockApiPatch(...args),
     post: (...args: unknown[]) => mockApiPost(...args),
+    put: (...args: unknown[]) => mockApiPut(...args),
   },
 }))
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+}))
+
+// The keyword-GL section reads isAdmin (admin writes, everyone reads). Mocked
+// rather than wrapped in a real provider — these tests are about the request
+// body the form builds, not about auth.
+const mockIsAdmin = vi.fn(() => true)
+vi.mock("@/contexts/auth-context", () => ({
+  useAuth: () => ({ isAdmin: mockIsAdmin() }),
 }))
 
 import FinancialAccountsSettings from "./financial-accounts"
@@ -47,10 +57,31 @@ const ACCOUNT = {
   is_primary: true,
   credit_limit: null,
   statement_closing_day: 15,
+  gl_account_id: "gl-cash",
   last_reconciled_date: null,
   days_since_reconciled: null,
   status: "never",
 }
+
+const GL_ACCOUNTS = [
+  { id: "gl-cash", account_number: "1025", account_name: "CHECKING LNB", category: "current_asset" },
+  { id: "gl-fees", account_number: "8801", account_name: "BANK FEES", category: "expense" },
+]
+
+const KEYWORD_ROWS = [
+  {
+    classification: "bank_fee", state: "mapped", gl_account_id: "gl-fees",
+    account_number: "8801", account_name: "BANK FEES",
+  },
+  {
+    classification: "payroll", state: "intentional", gl_account_id: null,
+    account_number: null, account_name: null,
+  },
+  {
+    classification: "nsf", state: "unmapped", gl_account_id: null,
+    account_number: null, account_name: null,
+  },
+]
 
 function renderPage() {
   return render(
@@ -75,8 +106,17 @@ async function openEditDialog() {
 describe("financial-accounts edit round trip", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApiGet.mockResolvedValue({ data: [ACCOUNT] })
+    mockIsAdmin.mockReturnValue(true)
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === "/reconciliation/accounts") return Promise.resolve({ data: [ACCOUNT] })
+      if (url === "/journal-entries/gl-accounts") return Promise.resolve({ data: GL_ACCOUNTS })
+      if (url === "/reconciliation/keyword-gl") {
+        return Promise.resolve({ data: { classifications: KEYWORD_ROWS } })
+      }
+      return Promise.resolve({ data: [] })
+    })
     mockApiPatch.mockResolvedValue({ data: { status: "updated" } })
+    mockApiPut.mockResolvedValue({ data: { classifications: KEYWORD_ROWS } })
   })
 
   it("preserves statement_closing_day through an edit that changes only the name", async () => {
@@ -124,5 +164,150 @@ describe("financial-accounts edit round trip", () => {
     expect(screen.getByDisplayValue("Operating")).toBeTruthy()
     expect(screen.getByDisplayValue("First Platypus")).toBeTruthy()
     expect(screen.getByDisplayValue("1234")).toBeTruthy()
+  })
+})
+
+// ── L-2.1e: the contra picker and the keyword→GL section ───────────────────
+
+describe("contra GL picker", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsAdmin.mockReturnValue(true)
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === "/reconciliation/accounts") return Promise.resolve({ data: [ACCOUNT] })
+      if (url === "/journal-entries/gl-accounts") return Promise.resolve({ data: GL_ACCOUNTS })
+      if (url === "/reconciliation/keyword-gl") {
+        return Promise.resolve({ data: { classifications: KEYWORD_ROWS } })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    mockApiPatch.mockResolvedValue({ data: { status: "updated" } })
+    mockApiPut.mockResolvedValue({ data: { classifications: KEYWORD_ROWS } })
+  })
+
+  it("sends an EXPLICIT null only when the operator clears it", async () => {
+    // The distinction the whole three-valued field exists for. `undefined`
+    // preserves; `null` clears. Getting this wrong unmaps the bank account and
+    // every subsequent reconciliation JE refuses to book.
+    const user = await openEditDialog()
+    await user.click(screen.getByTestId("contra-gl-picker"))
+    await user.click(await screen.findByTestId("contra-gl-picker-none"))
+    await user.click(screen.getByRole("button", { name: /^save$/i }))
+
+    await waitFor(() => expect(mockApiPatch).toHaveBeenCalled())
+    const [, body] = mockApiPatch.mock.calls[0]
+    expect("gl_account_id" in body).toBe(true)
+    expect(body.gl_account_id).toBeNull()
+  })
+
+  it("sends the chosen account when one is picked", async () => {
+    const user = await openEditDialog()
+    await user.click(screen.getByTestId("contra-gl-picker"))
+    await user.click(await screen.findByTestId("gl-account-option-8801"))
+    await user.click(screen.getByRole("button", { name: /^save$/i }))
+
+    await waitFor(() => expect(mockApiPatch).toHaveBeenCalled())
+    expect(mockApiPatch.mock.calls[0][1].gl_account_id).toBe("gl-fees")
+  })
+
+  it("fetches the GL account list ONCE for the whole page", async () => {
+    // Four pickers on this page (contra + three keyword rows). Caller-supplied
+    // is what keeps that one request for 224 rows instead of four.
+    renderPage()
+    await screen.findByTestId("keyword-gl-section")
+    const glCalls = mockApiGet.mock.calls.filter(
+      (c) => c[0] === "/journal-entries/gl-accounts",
+    )
+    expect(glCalls).toHaveLength(1)
+  })
+})
+
+describe("keyword → GL section", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsAdmin.mockReturnValue(true)
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === "/reconciliation/accounts") return Promise.resolve({ data: [ACCOUNT] })
+      if (url === "/journal-entries/gl-accounts") return Promise.resolve({ data: GL_ACCOUNTS })
+      if (url === "/reconciliation/keyword-gl") {
+        return Promise.resolve({ data: { classifications: KEYWORD_ROWS } })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    mockApiPut.mockResolvedValue({ data: { classifications: KEYWORD_ROWS } })
+  })
+
+  it("says WHY a classification might correctly have no account", async () => {
+    // Three empty slots read as an unfinished form. Without this copy the next
+    // person maps payroll to the nearest plausible expense line precisely
+    // because the UI presented a blank to fill.
+    renderPage()
+    await screen.findByTestId("keyword-gl-section")
+    const payroll = screen.getByTestId("keyword-gl-payroll").textContent ?? ""
+    expect(payroll).toMatch(/gross wages plus employer taxes/i)
+    expect(payroll).toMatch(/no single right account/i)
+
+    const nsf = screen.getByTestId("keyword-gl-nsf").textContent ?? ""
+    expect(nsf).toMatch(/accounts receivable/i)
+  })
+
+  it("states that leaving one unset is a real answer", async () => {
+    renderPage()
+    const section = await screen.findByTestId("keyword-gl-section")
+    expect(section.textContent).toMatch(/not an unfinished one/i)
+  })
+
+  it("distinguishes deliberately-unmapped from not-decided in the row copy", async () => {
+    renderPage()
+    await screen.findByTestId("keyword-gl-section")
+    expect(screen.getByTestId("keyword-gl-payroll").textContent)
+      .toMatch(/handled by a person/i)
+    expect(screen.getByTestId("keyword-gl-nsf").textContent)
+      .toMatch(/not decided yet/i)
+  })
+
+  it("PUTs an explicit null when told these don't post automatically", async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByTestId("keyword-gl-section")
+    await user.click(screen.getByTestId("keyword-gl-unmap-nsf"))
+
+    await waitFor(() => expect(mockApiPut).toHaveBeenCalled())
+    const [url, body] = mockApiPut.mock.calls[0]
+    expect(url).toBe("/reconciliation/keyword-gl")
+    expect(body.classification).toBe("nsf")
+    expect("gl_account_id" in body).toBe(true)
+    expect(body.gl_account_id).toBeNull()
+  })
+
+  it("offers no unmap control on a row already deliberately unmapped", async () => {
+    renderPage()
+    await screen.findByTestId("keyword-gl-section")
+    expect(screen.queryByTestId("keyword-gl-unmap-payroll")).toBeNull()
+  })
+
+  it("PUTs the account id when one is chosen", async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByTestId("keyword-gl-section")
+    await user.click(screen.getByTestId("keyword-gl-picker-nsf"))
+    await user.click(await screen.findByTestId("gl-account-option-8801"))
+
+    await waitFor(() => expect(mockApiPut).toHaveBeenCalled())
+    expect(mockApiPut.mock.calls[0][1]).toEqual({
+      classification: "nsf",
+      gl_account_id: "gl-fees",
+    })
+  })
+
+  it("is read-only for a non-admin", async () => {
+    mockIsAdmin.mockReturnValue(false)
+    renderPage()
+    await screen.findByTestId("keyword-gl-section")
+    // State is still visible — everyone reads.
+    expect(screen.getByTestId("keyword-gl-bank_fee").textContent).toContain("8801")
+    // But nothing is editable.
+    expect(screen.queryByTestId("keyword-gl-picker-bank_fee")).toBeNull()
+    expect(screen.queryByTestId("keyword-gl-unmap-nsf")).toBeNull()
   })
 })
