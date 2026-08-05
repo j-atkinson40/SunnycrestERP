@@ -15,7 +15,7 @@ from app.database import get_db
 from app.models.journal_entry import AccountingPeriod, JournalEntry, JournalEntryLine, JournalEntryTemplate
 from app.models.accounting_analysis import TenantGLMapping
 from app.models.user import User
-from app.services import journal_entry_service
+from app.services import journal_entry_service, reconciliation_gl
 from app.services.journal_entry_service import JournalLineSpec
 from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
 
@@ -110,12 +110,14 @@ def create_entry(
     # the JE characterization test.
     line_specs: list[JournalLineSpec] = []
     for line in body.lines:
-        gl = db.query(TenantGLMapping).filter(
-            TenantGLMapping.id == line.gl_account_id,
-            TenantGLMapping.tenant_id == current_user.company_id,
-        ).first()
-        if gl is None:
-            raise HTTPException(400, f"Unknown GL account '{line.gl_account_id}' for this tenant")
+        # L-2.2 X-1: was a local `tenant_id`-only filter, which accepted a
+        # soft-deleted mapping that `validate_gl_account` — the single
+        # definition of a usable GL account everywhere else — refuses. Two
+        # definitions differing by one predicate is the drift L-2.1b closed on
+        # the reconciliation routes; this closes it here.
+        gl = reconciliation_gl.require_gl_account(
+            db, current_user.company_id, line.gl_account_id
+        )
         line_specs.append(JournalLineSpec(
             gl_account_id=line.gl_account_id,
             gl_account_number=gl.account_number,
@@ -293,6 +295,85 @@ def reverse_entry(
 
 # ── AI Parsing ──
 
+def _resolve_parsed_lines(db: Session, tenant_id: str, parsed: dict) -> dict:
+    """Resolve every GL account the model proposed against THIS tenant's chart.
+
+    L-2.2 X-2. `parse_entry` used to return the model's output verbatim, so a
+    `gl_account_id` it invented reached the form, sat in state invisibly, and
+    surfaced as a 400 from `create_entry` at save.
+
+    THE ID WAS ALWAYS INVENTED. The prompt renders the chart as
+    ``- {account_number}: {account_name} ({category})`` and then asks for
+    `gl_account_id` — the model is never shown an id, so it cannot return one.
+    The ACCOUNT NUMBER is the identifier it actually has, which is why that is
+    what resolution keys on. Validating the id alone would have been correct and
+    useless: every line would fail.
+
+    Order: a genuinely valid id wins (cheap, and future-proof if the prompt ever
+    gains ids), then the account number, then the line is marked unresolved.
+
+    UNRESOLVED IS FLAGGED, NOT DROPPED. `gl_account_id` goes to null so nothing
+    downstream can act on a bad value, and `gl_account_unresolved` carries what
+    the model proposed so the UI can say a suggestion was made and rejected.
+    Dropping it silently would discard information the model produced and leave
+    the operator with an empty picker and no reason for it.
+
+    Number lookup is TENANT-SCOPED and active-only — account numbers are not
+    globally unique, so an unscoped match would be a cross-tenant read.
+    """
+    lines = parsed.get("lines")
+    if not isinstance(lines, list):
+        return parsed
+
+    out_lines = []
+    for line in lines:
+        if not isinstance(line, dict):
+            out_lines.append(line)
+            continue
+        line = dict(line)
+        proposed_number = line.get("gl_account_number")
+        proposed_name = line.get("gl_account_name")
+
+        gl = reconciliation_gl.validate_gl_account(
+            db, tenant_id, line.get("gl_account_id")
+        )
+        if gl is None and proposed_number:
+            gl = (
+                db.query(TenantGLMapping)
+                .filter(
+                    TenantGLMapping.tenant_id == tenant_id,
+                    TenantGLMapping.account_number == str(proposed_number),
+                    TenantGLMapping.is_active.is_(True),
+                )
+                .first()
+            )
+
+        if gl is None:
+            line["gl_account_id"] = None
+            line["gl_account_number"] = None
+            line["gl_account_name"] = None
+            line["gl_account_unresolved"] = {
+                "proposed_number": proposed_number,
+                "proposed_name": proposed_name,
+            }
+        else:
+            # Denormalize from the MAPPING, never from what the model asserted
+            # about it — the same rule create_entry follows.
+            line["gl_account_id"] = gl.id
+            line["gl_account_number"] = gl.account_number
+            line["gl_account_name"] = gl.account_name
+            line["gl_account_unresolved"] = None
+        out_lines.append(line)
+
+    parsed = dict(parsed)
+    parsed["lines"] = out_lines
+    parsed["unresolved_line_count"] = sum(
+        1 for l in out_lines
+        if isinstance(l, dict) and l.get("gl_account_unresolved")
+    )
+    return parsed
+
+
 @router.post("/entries/parse")
 def parse_entry(
     body: ParseRequest,
@@ -318,7 +399,9 @@ def parse_entry(
             caller_entity_id=None,  # draft not yet persisted
         )
         if result.status == "success" and isinstance(result.response_parsed, dict):
-            return result.response_parsed
+            return _resolve_parsed_lines(
+                db, current_user.company_id, result.response_parsed
+            )
         return {
             "error": result.error_message or f"status={result.status}",
             "confidence": 0,

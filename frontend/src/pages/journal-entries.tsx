@@ -152,7 +152,22 @@ function EntriesTab() {
         })))
         setShowForm(true)
         setAIInput("")
-        toast.success(`Parsed ${data.lines.length} lines — review and post`)
+        // L-2.2 X-2. The backend resolves every proposed account against this
+        // tenant's chart and nulls the ones it cannot match, so an unmatched
+        // line arrives with an EMPTY picker. Say why — otherwise the operator
+        // sees a blank row and no sign that something was proposed and
+        // rejected, which is the silent-drop failure the null was chosen to
+        // avoid.
+        const unresolved: number = data.unresolved_line_count ?? 0
+        if (unresolved > 0) {
+          toast.warning(
+            `Parsed ${data.lines.length} lines. ${unresolved} ` +
+              `${unresolved === 1 ? "account is" : "accounts are"} not in your ` +
+              `chart of accounts — pick ${unresolved === 1 ? "it" : "them"} yourself.`,
+          )
+        } else {
+          toast.success(`Parsed ${data.lines.length} lines — review and post`)
+        }
       } else {
         toast.error(data.clarification_needed || "Could not parse entry")
       }

@@ -52,6 +52,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.accounting_analysis import TenantGLMapping
@@ -121,6 +122,48 @@ def validate_gl_account(
         )
         .first()
     )
+
+
+def require_gl_account(
+    db: Session, tenant_id: str, gl_account_id: str | None
+) -> TenantGLMapping:
+    """``validate_gl_account`` with a legible 400 instead of a ``None``.
+
+    THE ONE RAISER, so every write boundary that accepts a GL account agrees on
+    what "usable" means AND says the same thing when it is not. L-2.1b added
+    this check to the reconciliation account routes; L-2.2 routes the journal-
+    entry route through it too — before that, `create_entry` filtered
+    `tenant_id` but not `is_active`, so a soft-deleted mapping was writable on
+    one path and refused on the other. Two definitions differing by one
+    predicate is exactly the drift a shared function exists to prevent.
+
+    Returns the mapping so the caller can denormalize from it (JE lines carry
+    account number + name; see `JournalLineSpec`).
+
+    THE MESSAGE NAMES INACTIVE but deliberately does NOT distinguish
+    foreign-tenant from nonexistent. Inactive is the operator's own data and the
+    fix is theirs; saying "that belongs to another tenant" would make any
+    endpoint carrying this check a cross-tenant existence oracle. The two read
+    identically, and tests on both routes assert byte-identity.
+    """
+    mapping = validate_gl_account(db, tenant_id, gl_account_id)
+    if mapping is not None:
+        return mapping
+    same_tenant = (
+        db.query(TenantGLMapping)
+        .filter(
+            TenantGLMapping.id == gl_account_id,
+            TenantGLMapping.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if same_tenant is not None:
+        raise HTTPException(
+            400,
+            f"GL account {same_tenant.account_number} ({same_tenant.account_name}) "
+            "is inactive — reactivate it, or choose another.",
+        )
+    raise HTTPException(400, "That GL account is not in your chart of accounts.")
 
 
 def keyword_gl_with_reason(

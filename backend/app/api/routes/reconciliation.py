@@ -34,38 +34,13 @@ def _require_valid_gl_account(db: Session, tenant_id: str, gl_account_id: str) -
     so a mapping id belonging to another tenant satisfied the constraint and was
     written, then failed far away at resolve as ``contra_gl_dangling``. That is
     the right copy for a mapping which drifted and the wrong copy for one that
-    was never valid, and it surfaces long after the mistake.
+    was never valid, and it surfaces long after the mistake. (L-2.1b.)
 
-    Validated here through the same ``validate_gl_account`` the resolvers use, so
-    there is ONE definition of a usable GL account rather than a boundary check
-    that can drift from the resolution check. (Ledger Posting L-2.1b.)
-
-    The message distinguishes INACTIVE (own tenant — a real, actionable fact)
-    from absent, but deliberately does NOT distinguish foreign-tenant from
-    nonexistent: saying "that belongs to another tenant" would make this endpoint
-    a cross-tenant existence oracle. Both read as not-in-your-chart.
+    L-2.2 moved the body to ``reconciliation_gl.require_gl_account`` so the
+    journal-entry route could share it verbatim rather than grow a second check.
+    This stays as the local name the routes below read by.
     """
-    if reconciliation_gl.validate_gl_account(db, tenant_id, gl_account_id) is not None:
-        return
-    from app.models.accounting_analysis import TenantGLMapping
-
-    same_tenant = (
-        db.query(TenantGLMapping)
-        .filter(
-            TenantGLMapping.id == gl_account_id,
-            TenantGLMapping.tenant_id == tenant_id,
-        )
-        .first()
-    )
-    if same_tenant is not None:
-        raise HTTPException(
-            400,
-            f"GL account {same_tenant.account_number} ({same_tenant.account_name}) "
-            "is inactive — reactivate it, or choose another.",
-        )
-    raise HTTPException(
-        400, "That GL account is not in your chart of accounts."
-    )
+    reconciliation_gl.require_gl_account(db, tenant_id, gl_account_id)
 
 
 # ── Schemas ──
