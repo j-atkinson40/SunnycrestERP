@@ -82,6 +82,16 @@ _PURGE_STATEMENTS = [
     # clause (deliberately: a cleared row must not be silently unlinked from the
     # entry it booked), so the entries cannot go until the transactions have.
     # Lines first, then entries — children-first, same as the block above.
+    # r155 (AR-2) adds a SECOND dependent on journal_entries:
+    # customer_payments.journal_entry_id, also FK'd with no ON DELETE and for
+    # the same reason — deleting an entry a recorded payment points at should be
+    # refused, not silently unlink it. The payments themselves are deleted lower
+    # down (their applications reference invoices, so the pair cannot move up),
+    # so the LINK is cleared here instead. Nulling a column whose row is about
+    # to be deleted anyway is safe and keeps this block's invariant: nothing
+    # references a journal entry by the time entries go.
+    "UPDATE customer_payments SET journal_entry_id = NULL "
+    "WHERE company_id = ANY(:ids)",
     "DELETE FROM journal_entry_lines WHERE tenant_id = ANY(:ids)",
     "DELETE FROM journal_entries WHERE tenant_id = ANY(:ids)",
     # Plaid substrate (children-first). bank_accounts.financial_account_id references

@@ -212,3 +212,18 @@ tests/test_ar_consolidation_validation_c4.py
 #   BOTH the consequence and the right answer — AR-unmapped is not
 #   payroll-unmapped. Only "ar" ships; no speculative slots. —
 tests/test_accounting_gl_panel_e2.py
+
+# — AR-2: customer payments post to the GL. Dr <the bank's GL account> Cr <AR>,
+#   at the moment the money is recorded. CHECKS POST DIRECT TO BANK (operator's
+#   call — no undeposited-funds account, no chart addition), which is why L-3's
+#   position survives unchanged: the reconciliation match confirms and posts
+#   nothing, so cash is debited exactly once. The bank is a tenant default
+#   naming a FinancialAccount, and the cash leg resolves through that account's
+#   existing gl_account_id — one fact, one home, rather than a second definition
+#   of "which GL account is this bank". FAIL-OPEN ON THE RECORD, FAIL-CLOSED ON
+#   THE LEDGER: a payment is an event that already happened, so it records even
+#   when it cannot post, and the gap is REPORTED as an AgentAnomaly rather than
+#   swallowed. Pins the arithmetic (applied, unapplied, overpayment — the FULL
+#   amount posts, not the applied part), all three unconfigured paths, and that
+#   the subledger's balance law is untouched. —
+tests/test_payment_posting_ar2.py

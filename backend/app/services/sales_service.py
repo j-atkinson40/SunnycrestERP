@@ -1771,6 +1771,31 @@ def create_customer_payment(
 
     db.flush()
 
+    # AR-2: book the receipt — Dr bank / Cr AR — as of this moment, because the
+    # money arrived at this moment. Checks post DIRECT TO BANK (no undeposited
+    # funds), so this is the only cash debit; the reconciliation match later
+    # confirms it and posts nothing, which is why L-3's position is unchanged.
+    #
+    # FAIL-OPEN: `post_payment` returns None rather than raising when an account
+    # is unconfigured, and the payment stands. A payment is an event that
+    # already happened in the world — refusing to record it does not un-receive
+    # the money, it just means the books stop describing reality and a
+    # collections notice goes to someone who paid. The gap is reported as an
+    # AgentAnomaly instead, and the entry can be written once the account is
+    # configured. Every OTHER posting site in this arc refuses the operation;
+    # this one is different on purpose.
+    #
+    # THE FULL AMOUNT posts, not `total_applied` — application is a subledger
+    # detail and an overpayment that posted only its applied part would leave
+    # real cash unrecorded.
+    from app.services import ar_payment_posting
+
+    ar_payment_posting.post_payment(
+        db, company_id=company_id, payment=payment, user_id=user_id
+    )
+
+    db.flush()
+
     audit_service.log_action(
         db,
         company_id,

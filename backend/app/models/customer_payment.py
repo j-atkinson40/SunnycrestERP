@@ -91,6 +91,22 @@ class CustomerPayment(Base):
         String(36), nullable=True
     )
 
+    # AR-2 (r155): the entry that booked the RECEIPT — Dr bank / Cr AR. Distinct
+    # from `discount_journal_entry_id` above, which books the DISCOUNT; a
+    # discounted payment has two entries and keeping the links separate means
+    # neither has to be interpreted by which arc wrote it.
+    #
+    # NULL is an expected, recoverable state, not a defect: the decided
+    # discipline is that a payment RECORDS even when it cannot post (a payment
+    # is an event that already happened), so this column is what makes "which
+    # payments are unposted" answerable at all.
+    #
+    # FK'd, unlike its q2l3 sibling — deleting an entry a payment points at
+    # should be refused, per r153/r154.
+    journal_entry_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("journal_entries.id"), nullable=True
+    )
+
     # Audit
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
