@@ -75,6 +75,17 @@ def _cleanup_companies():
     ids = list(_CREATED_COMPANY_IDS)
     s = SessionLocal()
     try:
+        # r155 (AR-0.1): customer_payments.discount_journal_entry_id FKs to
+        # journal_entries with no ON DELETE, so the link must be cleared before
+        # the entries go. No test here sets it today — only
+        # `apply_discounted_payment` does, and this file calls the private
+        # builder — but the ordering hazard is real the moment one does.
+        # (`tests/_cleanup.py::purge_companies_by_slug` is the shared helper
+        # that encodes this order once; this file predates the ratchet and
+        # keeps a local list.)
+        s.query(CustomerPayment).filter(
+            CustomerPayment.company_id.in_(ids)
+        ).update({"discount_journal_entry_id": None}, synchronize_session=False)
         # (model, scope-column) in FK-safe order — children before parents.
         for model, col in (
             (JournalEntryLine, "tenant_id"),

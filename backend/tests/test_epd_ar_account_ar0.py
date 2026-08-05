@@ -374,60 +374,179 @@ class TestPrimitive:
         assert entry.total_debits == entry.total_credits == Decimal("10.00")
 
 
-# ── found by the characterization, OUT of AR-0's scope ──────────────────────
+# ── AR-0.1: the discount persists ───────────────────────────────────────────
 
 
-class TestUnmappedDiscountColumns:
-    """FOUND WHILE PINNING AR-0, NOT FIXED HERE.
+class TestDiscountColumnsPersist:
+    """DELIBERATE PIN FLIP — AR-0.1. This class replaced
+    `TestUnmappedDiscountColumns`, whose two tests read:
 
-    `apply_discounted_payment` writes SEVEN discount attributes onto the
-    payment (`early_payment_discount_service.py:159-166`):
-    `discount_applied`, `discount_amount`, `discount_percentage`,
-    `discount_type`, `discount_override_by`, `discount_override_reason`, and
-    later `discount_journal_entry_id`.
+        def test_WRONGNESS_customer_payment_has_no_discount_columns(self, env):
+            cols = {c.key for c in sa_inspect(CustomerPayment).mapper.column_attrs}
+            for attr in ("discount_applied", "discount_amount", ...):
+                assert attr not in cols
 
-    **`CustomerPayment` declares none of them** (`models/customer_payment.py`
-    has 14 mapped columns; not one is discount-related). Assigning an unmapped
-    attribute on a SQLAlchemy instance is legal Python and silently non-
-    persistent — it sets an instance attribute, the ORM ignores it, and the
-    commit succeeds. So the whole discount record on the payment evaporates:
-    which payments were discounted, by how much, under whose override, and
-    which journal entry backed it.
+        def test_WRONGNESS_assigning_them_does_not_persist(self, env):
+            pay.discount_applied = True
+            pay.discount_amount = Decimal("10.00")
+            env.s.commit()
+            other = SessionLocal()
+            fresh = other.query(CustomerPayment).filter(...).one()
+            assert not hasattr(fresh, "discount_applied")
+            assert not hasattr(fresh, "discount_amount")
 
-    That is a separate defect from the AR resolver and it needs its own
-    decision (add the columns via migration, or move the record elsewhere).
-    Pinned so it cannot be lost again.
+    Seven attributes the EPD service had always written, that the MODEL never
+    declared, that SQLAlchemy accepted as instance attributes and dropped on
+    commit.
+
+    NO MIGRATION. The columns existed the whole time — migration
+    `q2l3m4n5o6p7_add_early_payment_discount` created all seven when EPD
+    shipped. Only the model was missing them, so the fix is seven
+    `mapped_column` declarations mirroring q2l3's types exactly. The first
+    attempt here wrote a migration to "add" them, which the idempotent
+    `op.add_column` wrapper silently no-op'd — and whose downgrade then DROPPED
+    the real columns. Verify the schema before adding to it.
     """
 
-    def test_WRONGNESS_customer_payment_has_no_discount_columns(self, env):
+    ALL_SEVEN = (
+        "discount_applied", "discount_amount", "discount_percentage",
+        "discount_type", "discount_override_by", "discount_override_reason",
+        "discount_journal_entry_id",
+    )
+
+    def test_all_seven_are_mapped_columns(self, env):
         from sqlalchemy import inspect as sa_inspect
 
         cols = {c.key for c in sa_inspect(CustomerPayment).mapper.column_attrs}
-        for attr in (
-            "discount_applied", "discount_amount", "discount_percentage",
-            "discount_type", "discount_override_by", "discount_override_reason",
-            "discount_journal_entry_id",
-        ):
-            assert attr not in cols, f"{attr} is mapped — this pin is stale, good"
+        missing = [a for a in self.ALL_SEVEN if a not in cols]
+        assert missing == [], f"still unmapped: {missing}"
 
-    def test_WRONGNESS_assigning_them_does_not_persist(self, env):
+    def test_they_survive_a_commit_read_from_a_separate_session(self, env):
+        """A SEPARATE session deliberately — `expire_all()` + re-query returns
+        the SAME identity-mapped object, which would still carry an in-memory
+        attribute and prove nothing. Only a fresh session reads the database."""
         cust = env.customer()
         pay = env.payment(cust)
         env.s.commit()
 
         pay.discount_applied = True
         pay.discount_amount = Decimal("10.00")
-        env.s.commit()          # succeeds — no error at any point
+        pay.discount_percentage = Decimal("2.00")
+        pay.discount_type = "manager_override"
+        pay.discount_override_by = env.user.id
+        pay.discount_override_reason = "Long-standing account, paid same week."
+        env.s.commit()
 
-        # A SEPARATE session, deliberately: `expire_all()` + re-query returns
-        # the SAME identity-mapped object, which still carries the in-memory
-        # attribute. Only a fresh session reads what the database actually
-        # holds, which is the whole question.
         other = SessionLocal()
         try:
             fresh = other.query(CustomerPayment).filter(
                 CustomerPayment.id == pay.id).one()
-            assert not hasattr(fresh, "discount_applied")
-            assert not hasattr(fresh, "discount_amount")
+            assert fresh.discount_applied is True
+            assert fresh.discount_amount == Decimal("10.00")
+            assert fresh.discount_percentage == Decimal("2.00")
+            assert fresh.discount_type == "manager_override"
+            assert fresh.discount_override_by == env.user.id
+            assert "Long-standing account" in fresh.discount_override_reason
+        finally:
+            other.close()
+
+    def test_an_undiscounted_payment_reads_false_not_null(self, env):
+        """`discount_applied` is the one NOT NULL column: every historical row
+        genuinely was not discounted, so false is a true statement about the
+        backfill rather than a placeholder."""
+        cust = env.customer()
+        pay = env.payment(cust)
+        env.s.commit()
+
+        other = SessionLocal()
+        try:
+            fresh = other.query(CustomerPayment).filter(
+                CustomerPayment.id == pay.id).one()
+            assert fresh.discount_applied is False
+            # q2l3 gave this column `DEFAULT 0`, so an undiscounted payment
+            # reads 0.00 rather than NULL. Pinned as-is rather than "corrected"
+            # in the model — the table is the authority and a model that
+            # disagrees with it is how the original bug started.
+            assert fresh.discount_amount == Decimal("0.00")
+            assert fresh.discount_percentage is None
+            assert fresh.discount_journal_entry_id is None
+        finally:
+            other.close()
+
+    def test_the_full_apply_path_records_the_concession_and_its_entry(self, env):
+        """END TO END, and the point of the whole sub-arc: after applying a
+        discount, the payment carries WHAT was granted, at WHAT rate, under
+        WHOSE override, for WHAT reason, and WHICH entry backs it."""
+        chart = env.production_shaped_chart()
+        env.company.set_setting("accounting_gl", {"ar": chart["ar"].id})
+        env.company.set_setting("early_payment_discount_enabled", True)
+        env.company.set_setting(
+            "early_payment_discount_gl_account_id", chart["discount"].id)
+        cust = env.customer()
+        pay = env.payment(cust)
+        env.s.commit()
+
+        out = epd.apply_discounted_payment(
+            db=env.s, payment_id=pay.id, tenant_id=env.co,
+            discount_data={
+                "discount_amount": 10.00,
+                "discount_percentage": 2.0,
+                "gl_account_id": chart["discount"].id,
+            },
+            discount_type="manager_override", user_id=env.user.id,
+            override_by=env.user.id,
+            override_reason="Long-standing account, paid same week.",
+        )
+        assert out["discount_applied"] is True
+        assert out["journal_entry_id"] is not None
+
+        other = SessionLocal()
+        try:
+            fresh = other.query(CustomerPayment).filter(
+                CustomerPayment.id == pay.id).one()
+            assert fresh.discount_applied is True
+            assert fresh.discount_amount == Decimal("10.00")
+            assert fresh.discount_percentage == Decimal("2.00")
+            assert fresh.discount_type == "manager_override"
+            assert fresh.discount_override_by == env.user.id
+            assert fresh.discount_override_reason.startswith("Long-standing")
+            # THE LINK. Pre-r155 this was the most-lost value of the seven:
+            # the concession and the entry behind it could never be joined.
+            assert fresh.discount_journal_entry_id == out["journal_entry_id"]
+            entry = other.query(JournalEntry).filter(
+                JournalEntry.id == fresh.discount_journal_entry_id).one()
+            assert entry.total_debits == entry.total_credits == Decimal("10.00")
+        finally:
+            other.close()
+
+    def test_a_refused_discount_records_nothing(self, env):
+        """Fail-closed all the way through: AR unconfigured means no entry AND
+        no discount fields written, not a half-recorded concession."""
+        chart = env.production_shaped_chart()
+        env.company.set_setting("early_payment_discount_enabled", True)
+        env.company.set_setting(
+            "early_payment_discount_gl_account_id", chart["discount"].id)
+        cust = env.customer()
+        pay = env.payment(cust)
+        env.s.commit()                      # NO accounting_gl.ar
+
+        with pytest.raises(HTTPException):
+            epd.apply_discounted_payment(
+                db=env.s, payment_id=pay.id, tenant_id=env.co,
+                discount_data={
+                    "discount_amount": 10.00, "discount_percentage": 2.0,
+                    "gl_account_id": chart["discount"].id,
+                },
+                discount_type="policy", user_id=env.user.id,
+            )
+        env.s.rollback()
+
+        other = SessionLocal()
+        try:
+            fresh = other.query(CustomerPayment).filter(
+                CustomerPayment.id == pay.id).one()
+            assert fresh.discount_applied is False
+            assert fresh.discount_amount == Decimal("0.00")   # q2l3's DEFAULT 0
+            assert fresh.discount_journal_entry_id is None
         finally:
             other.close()
