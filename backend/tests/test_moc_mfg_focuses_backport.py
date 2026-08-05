@@ -62,15 +62,28 @@ def test_backport_non_regression_and_no_fh_pollution(db, demo_focuses):
     focus_labels = {r["label"] for r in rows if r["builder"] == "focuses"}
     assert "Decision Triage" in focus_labels        # owned (demo seed)
     assert "Legacy Generation" in focus_labels      # owned (demo seed)
-    # cemetery-triage joins manufacturing when the V-1 witness content
-    # exists; assert only if the join row is present (state-immune).
-    has_ct_join = db.execute(
+    # cemetery-triage joins manufacturing when the V-1 witness content exists;
+    # assert only if the content is present (state-immune, by design).
+    #
+    # ⚠️ THE GUARD CHECKED THE WRONG TABLE. It read only
+    # `focus_template_verticals` — the JOIN row — while the label it guards comes
+    # from `focus_templates` — the TEMPLATE row. `focus_rows_for_vertical` LEFT
+    # JOINs from templates, so a join row pointing at a template that does not
+    # exist yields NO label: guard passes, assertion fails. Dev was in exactly
+    # that state (join row present, template absent), which is why this failed
+    # while looking state-immune.
+    #
+    # State-immunity was the author's intent and is preserved — the guard now
+    # just checks the same thing the assertion reads. Both rows, or neither.
+    has_ct_content = db.execute(
         sql_text(
-            "SELECT 1 FROM focus_template_verticals WHERE "
-            "template_slug = 'cemetery-triage' AND vertical = 'manufacturing'"
+            "SELECT 1 FROM focus_template_verticals ftv "
+            "JOIN focus_templates ft ON ft.template_slug = ftv.template_slug "
+            "WHERE ftv.template_slug = 'cemetery-triage' "
+            "AND ftv.vertical = 'manufacturing' AND ft.is_active = true"
         )
     ).first()
-    if has_ct_join:
+    if has_ct_content:
         assert any("Cemetery Triage" in lbl for lbl in focus_labels)
 
     # THE VERTICAL FILTER: no FH mirror pollution; cores still carry.
