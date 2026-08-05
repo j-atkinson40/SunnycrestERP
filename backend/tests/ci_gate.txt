@@ -187,3 +187,14 @@ tests/test_ar_drift_report_c2.py
 #   would print zeros. Pins the partial write-off — the case only the terms can
 #   fix, since it keeps its ordinary status. —
 tests/test_ar_membership_seam_c3.py
+
+# — AR-1 C-4: validation across the arc, through the REAL readers rather than
+#   reconstructions of them. One customer, nine invoices covering every status
+#   and every term, hand-computed once to 2592.50, and get_ar_aging, the
+#   consolidated expression, the hybrid's Python branch and the sweeper's own
+#   computation each asked independently whether they agree. Plus the end-to-end
+#   import → balance → no-drift path. AND the honest clause: the sweeper REPORTS
+#   AND STILL CORRECTS, pinned as the phase-3 state with
+#   report_payload["corrections_applied"] is True, so nobody reads "drift
+#   reports" as "the rewrite stopped". Phase 4 flips it deliberately. —
+tests/test_ar_consolidation_validation_c4.py
