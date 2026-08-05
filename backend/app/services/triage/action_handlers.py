@@ -1202,6 +1202,27 @@ def _handle_reconciliation_post_keyword(ctx: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Why a CODED accept could not post, in the operator's terms. Keyed on the
+# `reconciliation_gl.BLOCK_*` reasons `decide_coded` can return. Only the two
+# contra reasons are reachable from the accept handler — the period gate fires
+# earlier, with a better message that names the dates — but `period_locked` is
+# carried anyway so a future caller of `decide_coded` cannot land on the generic
+# fallback. These name the FIX, not the failure, per the L-2.1e card discipline.
+_CODED_CONTRA_BLOCK_MESSAGES: dict[str, str] = {
+    "contra_gl_unset": (
+        "This bank account has no GL cash account set, so a coded entry has no "
+        "second leg. Set it on the account, then accept."
+    ),
+    "contra_gl_dangling": (
+        "This bank account's GL cash account no longer resolves. Re-map it on "
+        "the account, then accept."
+    ),
+    "period_locked": (
+        "That accounting period is closed, so nothing can post into it."
+    ),
+}
+
+
 def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     """Books Review Accept — DISPATCHES BY ITEM DATA (one key, one handler).
 
@@ -1214,8 +1235,12 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     ONLY in match_status ("manually_matched" vs "auto_cleared") and provenance
     (reviewed_by/at). That equality is the sub-arc's parity invariant.
 
-    CODING (no candidates): a coding decision (payload `coding` or the note) is
-    required to accept.
+    CODING (no candidates): payload `gl_account_id` is required, and the accept
+    BOOKS a balanced two-legged draft JE before the row clears (L-3) — the coded
+    account against the bank's contra, same sign rule as the keyword path. Free
+    text is an optional `note` alongside, no longer the decision itself. A row
+    that cannot post is refused with the configuration reason; nothing clears
+    unbooked.
 
     PERIOD LOCK applies: a human choosing to commit hits the same
     check_date_in_locked_period gate the auto path honors — Accept never writes
@@ -1224,12 +1249,17 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     Selecting a non-viable candidate (a rejected near-miss or an open invoice) is
     Flag/override territory (B-4), not Accept.
     """
+    from fastapi import HTTPException
+
+    from app.models.company import Company
     from app.models.financial_account import (
+        FinancialAccount,
         ReconciliationException,
         ReconciliationMatchCandidate,
+        ReconciliationRun,
         ReconciliationTransaction,
     )
-    from app.services import reconciliation_service
+    from app.services import reconciliation_gl, reconciliation_service
     from app.services.agents.period_lock import PeriodLockService
 
     db: Session = ctx["db"]
@@ -1350,17 +1380,106 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
                 exc.chosen_candidate_id = chosen.id
             message = f"Matched to {chosen.candidate_record_type.replace('_', ' ')}."
     else:
-        coding = payload.get("coding") or ctx.get("note")
-        if not coding:
+        # ── CODED ACCEPT (L-3) ──────────────────────────────────────────────
+        # Booking is the licence to clear. A coded row now posts a balanced
+        # two-legged draft JE before it may leave the queue, exactly as a keyword
+        # row does — the operator supplies the debit leg, the contra comes from
+        # the bank account, which is the same place the keyword path reads it.
+        #
+        # PIN FLIP, deliberate: pre-L-3 this branch accepted free text and wrote
+        # it to match_notes, clearing the row against nothing. Free text is now a
+        # NOTE alongside the account, not the decision itself.
+        gl_account_id = payload.get("gl_account_id")
+        if not gl_account_id:
             return {
                 "status": "errored",
-                "message": "No candidates — enter a coding (account/category or note) to accept.",
+                "message": (
+                    "No candidates — choose the GL account to code this to "
+                    "before accepting."
+                ),
             }
+        if txn.journal_entry_id is not None:
+            # Belt to the match_status brace above: a row already carrying an
+            # entry must not get a second one.
+            return {
+                "status": "errored",
+                "message": "This item already has a journal entry behind it.",
+            }
+
+        # `require_gl_account` RAISES — it is the one raiser, so every write
+        # boundary agrees on what a usable GL account is AND says the same thing
+        # when it is not. Triage handlers RETURN errored dicts, so the raise is
+        # caught here and its detail carried across verbatim. This borrows the
+        # message rather than writing a second definition of it; a local copy is
+        # exactly the drift L-2.2 consolidated away.
+        try:
+            coded_gl = reconciliation_gl.require_gl_account(
+                db, user.company_id, gl_account_id
+            )
+        except HTTPException as gl_exc:
+            return {"status": "errored", "message": str(gl_exc.detail)}
+
+        run = (
+            db.query(ReconciliationRun)
+            .filter(ReconciliationRun.id == txn.reconciliation_run_id)
+            .one()
+        )
+        account = (
+            db.query(FinancialAccount)
+            .filter(FinancialAccount.id == run.financial_account_id)
+            .one()
+        )
+        company = db.query(Company).filter(Company.id == user.company_id).one()
+
+        # The contra + period halves of the keyword path's own resolver, in the
+        # same check order. A coded row and a keyword row on this account in this
+        # period read the same dicts, so they cannot disagree about whether the
+        # account is configured or the period is open.
+        contra_gl, blocked_reason = reconciliation_gl.build_keyword_posting_context(
+            db, company, [account]
+        ).decide_coded(
+            financial_account_id=account.id,
+            entry_date=txn.transaction_date,
+        )
+        if contra_gl is None:
+            # The operator can pick a coding account all day and this still
+            # cannot post — there is no second leg. That is a configuration
+            # problem and it is named as one rather than accepted into a failure.
+            return {
+                "status": "errored",
+                "message": _CODED_CONTRA_BLOCK_MESSAGES.get(
+                    blocked_reason,
+                    "This cannot post yet — the bank account's GL cash account "
+                    "is not usable.",
+                ),
+            }
+
+        entry = reconciliation_gl.book_coded_entry(
+            db,
+            company_id=user.company_id,
+            coded_gl=coded_gl,
+            contra_gl=contra_gl,
+            amount=txn.amount,
+            entry_date=txn.transaction_date,
+            description=txn.description or f"Reconciliation: {coded_gl.account_name}",
+            reference_number=txn.reference_number,
+        )
+
         txn.match_status = "manually_matched"
-        txn.match_notes = str(coding)
+        txn.journal_entry_id = entry.id
         txn.reviewed_by = user.id
         txn.reviewed_at = now
-        message = "Coded and accepted."
+        # ONLY on a supplied note. An unconditional assign would quietly clear
+        # whatever is already there — including Plaid's "[bank retracted this
+        # transaction]" marker, which is written onto unmatched rows and is the
+        # operator's only trace of it. The legacy PATCH .../action route does
+        # assign unconditionally; that is recorded, not copied.
+        note = payload.get("note") or ctx.get("note")
+        if note:
+            txn.match_notes = str(note)
+        message = (
+            f"Coded to {coded_gl.account_number} and posted {entry.entry_number}."
+        )
 
     if exc is not None:
         exc.resolved = True

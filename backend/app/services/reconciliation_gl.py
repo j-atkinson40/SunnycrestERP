@@ -380,6 +380,41 @@ class KeywordPostingContext:
             contra_gl_account_name=contra_gl.account_name,
         ), None
 
+    def decide_coded(
+        self, *, financial_account_id: str, entry_date: date
+    ) -> tuple[TenantGLMapping | None, str | None]:
+        """``(contra_mapping, blocked_reason)`` — exactly one is non-``None``. Pure.
+
+        The coded (L-3) analogue of ``decide``. A coded row has NO keyword leg —
+        the operator supplies the debit account, and it is validated at the write
+        boundary by ``require_gl_account`` rather than resolved from the map. So
+        this runs the two checks a coded row DOES share with a keyword row, in
+        the same order ``decide`` uses: the contra leg (the bank account the
+        operator configures), then the period (a policy gate).
+
+        It is a SEPARATE method rather than a flag on ``decide`` for the reason
+        the class docstring gives about ``batch=``: a coded row genuinely has one
+        fewer input, and a ``decide(keyword=None)`` would be two implementations
+        wearing one name. What is shared is shared for real — both read the same
+        ``contra_legs`` dict and the same ``locked_periods``, so a coded row and a
+        keyword row on the same bank account in the same period can never disagree
+        about whether that account is configured or that period is open.
+        """
+        contra_gl, reason = self.contra_legs.get(
+            financial_account_id, (None, BLOCK_CONTRA_GL_UNSET)
+        )
+        if contra_gl is None:
+            return None, reason
+
+        if self.is_locked(entry_date):
+            logger.info(
+                "recon coded posting blocked by period lock: tenant=%s date=%s",
+                self.company_id, entry_date,
+            )
+            return None, BLOCK_PERIOD_LOCKED
+
+        return contra_gl, None
+
 
 def build_keyword_posting_context(
     db: Session, company: Company, financial_accounts: list[FinancialAccount]
@@ -435,44 +470,59 @@ def resolve_keyword_posting(
     )
 
 
-def book_keyword_entry(
+@dataclass(frozen=True)
+class _Leg:
+    """One side of a reconciliation JE, denormalized.
+
+    ``JournalLineSpec`` does no lookups, so number + name travel with the id or
+    the entry renders with blank account columns (the bug L-1 caught).
+    """
+
+    gl_account_id: str
+    gl_account_number: str | None
+    gl_account_name: str | None
+
+    @classmethod
+    def from_mapping(cls, m: TenantGLMapping) -> "_Leg":
+        return cls(m.id, m.account_number, m.account_name)
+
+
+def _book_two_legged_entry(
     db: Session,
     *,
     company_id: str,
-    posting: KeywordPosting,
+    subject: _Leg,
+    contra: _Leg,
     amount,
     entry_date: date,
     description: str,
     reference_number: str | None = None,
 ) -> JournalEntry:
-    """Book the two-legged DRAFT journal entry for a keyword row. Flushes; does
-    NOT commit (the caller owns the transaction).
+    """THE reconciliation JE writer — one debit, one credit, one magnitude.
+
+    Extracted at L-3 so the keyword path (L-2) and the coded path (L-3) cannot
+    drift on DIRECTION. The two differ only in where the non-cash leg comes from
+    — a keyword classification's mapped account, or an account the operator
+    picked — and that difference is entirely resolved before this is called. The
+    sign rule is the same rule for both, so it is written once.
 
     DIRECTION follows the transaction's SIGN, which is the bank's point of view:
     a negative amount is money leaving the account. So a -15.00 bank fee credits
     cash 15.00 and debits the bank-fee account 15.00; a positive amount (a fee
     refund, an NSF credit-back) reverses both legs. Magnitudes are always the
     absolute value — a journal line never carries a negative amount, it carries
-    a side. The entry is balanced by construction: one debit, one credit, one
-    magnitude.
+    a side. The entry is balanced by construction.
+
+    Flushes; does NOT commit (the caller owns the transaction).
     """
     amount_dec = Decimal(str(amount))
     magnitude = abs(amount_dec)
 
-    def _keyword_leg(**side) -> JournalLineSpec:
+    def _spec(leg: _Leg, **side) -> JournalLineSpec:
         return JournalLineSpec(
-            gl_account_id=posting.keyword_gl_account_id,
-            gl_account_number=posting.keyword_gl_account_number,
-            gl_account_name=posting.keyword_gl_account_name,
-            description=description,
-            **side,
-        )
-
-    def _contra_leg(**side) -> JournalLineSpec:
-        return JournalLineSpec(
-            gl_account_id=posting.contra_gl_account_id,
-            gl_account_number=posting.contra_gl_account_number,
-            gl_account_name=posting.contra_gl_account_name,
+            gl_account_id=leg.gl_account_id,
+            gl_account_number=leg.gl_account_number,
+            gl_account_name=leg.gl_account_name,
             description=description,
             **side,
         )
@@ -480,14 +530,14 @@ def book_keyword_entry(
     if amount_dec < 0:
         # Money out: the expense/liability side takes the debit, cash the credit.
         lines = [
-            _keyword_leg(debit_amount=magnitude),
-            _contra_leg(credit_amount=magnitude),
+            _spec(subject, debit_amount=magnitude),
+            _spec(contra, credit_amount=magnitude),
         ]
     else:
-        # Money in: cash takes the debit, the keyword account the credit.
+        # Money in: cash takes the debit, the subject account the credit.
         lines = [
-            _contra_leg(debit_amount=magnitude),
-            _keyword_leg(credit_amount=magnitude),
+            _spec(contra, debit_amount=magnitude),
+            _spec(subject, credit_amount=magnitude),
         ]
 
     # Own numbering scheme, per journal_entry_service's stated discipline that
@@ -507,4 +557,75 @@ def book_keyword_entry(
         description=description,
         reference_number=reference_number,
         lines=lines,
+    )
+
+
+def book_coded_entry(
+    db: Session,
+    *,
+    company_id: str,
+    coded_gl: TenantGLMapping,
+    contra_gl: TenantGLMapping,
+    amount,
+    entry_date: date,
+    description: str,
+    reference_number: str | None = None,
+) -> JournalEntry:
+    """Book the two-legged DRAFT journal entry for a CODED row (L-3).
+
+    Takes both mappings as validated rows rather than ids: ``require_gl_account``
+    already loaded the operator's account and ``decide_coded`` already loaded the
+    contra, so passing ids would force two more queries — or, as it did when this
+    was first written for keywords, produce lines with blank account columns.
+
+    Its existence is the licence to clear the row, exactly as ``KeywordPosting``'s
+    is for a keyword row. There is no partial value: both legs resolved, or the
+    accept is refused.
+    """
+    return _book_two_legged_entry(
+        db,
+        company_id=company_id,
+        subject=_Leg.from_mapping(coded_gl),
+        contra=_Leg.from_mapping(contra_gl),
+        amount=amount,
+        entry_date=entry_date,
+        description=description,
+        reference_number=reference_number,
+    )
+
+
+def book_keyword_entry(
+    db: Session,
+    *,
+    company_id: str,
+    posting: KeywordPosting,
+    amount,
+    entry_date: date,
+    description: str,
+    reference_number: str | None = None,
+) -> JournalEntry:
+    """Book the two-legged DRAFT journal entry for a keyword row.
+
+    The keyword leg takes the non-cash side; direction, magnitude, numbering and
+    the flush-don't-commit contract all live in ``_book_two_legged_entry``, which
+    the coded path (L-3) shares. Deliberately NOT restated here — two copies of
+    the sign rule is how the two paths would come to disagree about it.
+    """
+    return _book_two_legged_entry(
+        db,
+        company_id=company_id,
+        subject=_Leg(
+            posting.keyword_gl_account_id,
+            posting.keyword_gl_account_number,
+            posting.keyword_gl_account_name,
+        ),
+        contra=_Leg(
+            posting.contra_gl_account_id,
+            posting.contra_gl_account_number,
+            posting.contra_gl_account_name,
+        ),
+        amount=amount,
+        entry_date=entry_date,
+        description=description,
+        reference_number=reference_number,
     )
