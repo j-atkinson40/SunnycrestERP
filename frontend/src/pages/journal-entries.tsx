@@ -15,6 +15,11 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import apiClient from "@/lib/api-client"
+import {
+  GLAccountPicker,
+  fetchGLAccounts,
+  type GLAccount,
+} from "@/components/accounting/GLAccountPicker"
 
 // ── Types ──
 
@@ -26,9 +31,8 @@ interface JEEntry {
   posted_at: string | null
 }
 
-interface GLAccount {
-  id: string; account_number: string; account_name: string; category: string
-}
+// GLAccount now comes from the shared picker (L-2.1d) — one definition of what
+// a choosable GL account looks like, alongside one control for choosing it.
 
 interface Template {
   id: string; template_name: string; entry_type: string; frequency: string
@@ -122,7 +126,9 @@ function EntriesTab() {
     setLoading(true)
     Promise.all([
       apiClient.get("/journal-entries/entries").then((r) => setEntries(r.data)),
-      apiClient.get("/journal-entries/gl-accounts").then((r) => setGLAccounts(r.data)),
+      // ONE fetch for the whole entry, not one per line. The picker is
+      // deliberately caller-supplied so this stays true as lines are added.
+      fetchGLAccounts().then(setGLAccounts),
     ]).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
@@ -299,10 +305,18 @@ function EntriesTab() {
                   {formLines.map((line, i) => (
                     <tr key={i} className="border-b border-gray-100">
                       <td className="py-1">
-                        <select value={line.gl_account_id} onChange={(e) => updateLine(i, "gl_account_id", e.target.value)} className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs">
-                          <option value="">Select account...</option>
-                          {glAccounts.map((a) => <option key={a.id} value={a.id}>{a.account_number} — {a.account_name}</option>)}
-                        </select>
+                        {/* `|| null` and `?? ""` bridge the two vocabularies:
+                            this form has always used "" for "no account" (see
+                            handleSubmit, which DROPS such lines rather than
+                            erroring), while the picker speaks string | null. */}
+                        <GLAccountPicker
+                          accounts={glAccounts}
+                          value={line.gl_account_id || null}
+                          onChange={(id) => updateLine(i, "gl_account_id", id ?? "")}
+                          compact
+                          aria-label={`GL account, line ${i + 1}`}
+                          data-testid={`je-line-${i}-gl-account`}
+                        />
                       </td>
                       <td className="py-1">
                         <input value={line.description} onChange={(e) => updateLine(i, "description", e.target.value)} className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs" />
