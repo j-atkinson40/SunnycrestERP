@@ -2561,6 +2561,56 @@ def void_payment(
     if customer:
         customer.current_balance += applied_sum
 
+    # AR-2 REGRESSION FIX: undo the LEDGER too.
+    #
+    # This function reversed the subledger completely and, before AR-2, that was
+    # the whole story — a payment posted nothing. AR-2 made it incomplete: the
+    # applications unwound, the balance restored, the payment soft-deleted, and
+    # the journal entry left standing, so cash stayed overstated by the payment
+    # amount with nothing watching for it. A subledger and a ledger disagreeing
+    # silently is the exact class this arc exists to remove, and AR-2 shipped one.
+    #
+    # THE ENTRY'S STATUS DECIDES WHAT "UNDO" MEANS, and the two are not
+    # interchangeable:
+    #
+    #   draft  — it never hit the books. There is nothing to reverse, and a
+    #            mirror draft would leave two drafts netting to zero. Voided
+    #            instead: the record survives, and `post_entry`'s existing
+    #            status guard (draft / pending_review only) means a voided entry
+    #            can never post.
+    #   posted — a human posted it, so it DID hit the books and the only honest
+    #            undo is a reversing entry in the CURRENT period. Voiding or
+    #            deleting a posted entry would be rewriting history.
+    #
+    # A payment with NO entry is normal, not an error: AR-2 is fail-open, so an
+    # unconfigured tenant records payments that never posted. Those void with no
+    # ledger step at all.
+    #
+    # The link is deliberately KEPT rather than nulled, so the void stays
+    # auditable — which entry was voided, and by which payment.
+    if payment.journal_entry_id:
+        from app.models.journal_entry import JournalEntry
+        from app.services import journal_entry_service
+
+        entry = (
+            db.query(JournalEntry)
+            .filter(
+                JournalEntry.id == payment.journal_entry_id,
+                JournalEntry.tenant_id == company_id,
+            )
+            .first()
+        )
+        if entry is not None:
+            if entry.status == "posted":
+                journal_entry_service.reverse_journal_entry(
+                    db,
+                    tenant_id=company_id,
+                    entry_id=entry.id,
+                    actor_user_id=voided_by,
+                )
+            elif entry.status not in ("reversed", "voided"):
+                entry.status = "voided"
+
     # Soft delete the payment
     payment.deleted_at = datetime.now(timezone.utc)
 

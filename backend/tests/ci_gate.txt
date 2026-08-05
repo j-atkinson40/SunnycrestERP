@@ -227,3 +227,4 @@ tests/test_accounting_gl_panel_e2.py
 #   amount posts, not the applied part), all three unconfigured paths, and that
 #   the subledger's balance law is untouched. —
 tests/test_payment_posting_ar2.py
+tests/test_void_payment_reverses_ar2.py

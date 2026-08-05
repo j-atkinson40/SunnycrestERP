@@ -20,7 +20,7 @@ entry. It does NOT commit — the caller owns the transaction.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -43,6 +43,92 @@ class JournalLineSpec:
     gl_account_number: str | None = None
     gl_account_name: str | None = None
     description: str | None = None
+
+
+def reverse_journal_entry(
+    db: Session,
+    *,
+    tenant_id: str,
+    entry_id: str,
+    actor_user_id: str | None,
+) -> JournalEntry:
+    """Mirror a POSTED entry into a reversing entry in the CURRENT period.
+
+    Extracted from `journal_entries.py::reverse_entry` (AR-2 void fix) because a
+    second caller appeared: voiding a customer payment whose entry was posted
+    has to reverse it, and the alternative was a service importing a route
+    handler or duplicating the mirror logic. One definition, two callers — the
+    same reason `journal_entry_service` was extracted at S-2.
+
+    The route keeps its own auth, its own 400s and its own response shape; what
+    moved is only the construction. Behaviour is preserved bit-for-bit,
+    including the two things a later tidy-up would be tempted to "fix":
+
+      * `today`, NOT the original's entry_date. A reversal posts in the current
+        period — you reverse a closed-period entry INTO the open one, you do not
+        reach back. Copying the original's date here would turn correct
+        behaviour into a bug AND would trip the S-3 period-lock guard on every
+        reversal of a locked-period entry, making a legitimate operation
+        impossible.
+      * `JE-` numbering off a count of the tenant's entries, which is the route's
+        scheme rather than the `RECON-` one the reconciliation writers use.
+
+    Raises ValueError if the entry is not posted; the route maps that to its
+    existing 400 so its contract does not move.
+    """
+    from sqlalchemy import func as _func
+
+    original = (
+        db.query(JournalEntry)
+        .filter(JournalEntry.id == entry_id, JournalEntry.tenant_id == tenant_id)
+        .first()
+    )
+    if original is None or original.status != "posted":
+        raise ValueError("Can only reverse posted entries")
+
+    count = (
+        db.query(_func.count(JournalEntry.id))
+        .filter(JournalEntry.tenant_id == tenant_id)
+        .scalar()
+    ) or 0
+    today = date.today()
+
+    orig_lines = (
+        db.query(JournalEntryLine)
+        .filter(JournalEntryLine.journal_entry_id == entry_id)
+        .all()
+    )
+    rev_specs = [
+        JournalLineSpec(
+            gl_account_id=ol.gl_account_id,
+            gl_account_number=ol.gl_account_number,
+            gl_account_name=ol.gl_account_name,
+            description=ol.description,
+            debit_amount=ol.credit_amount,
+            credit_amount=ol.debit_amount,
+        )
+        for ol in orig_lines
+    ]
+
+    reversal = create_journal_entry(
+        db,
+        tenant_id=tenant_id,
+        entry_number=f"JE-{count + 1001}",
+        entry_type="reversal",
+        status="posted",
+        entry_date=today,
+        period_month=today.month,
+        period_year=today.year,
+        description=f"Reversal of {original.entry_number}: {original.description}",
+        is_reversal=True,
+        reversal_of_entry_id=original.id,
+        created_by=actor_user_id,
+        posted_by=actor_user_id,
+        posted_at=datetime.now(timezone.utc),
+        lines=rev_specs,
+    )
+    original.status = "reversed"
+    return reversal
 
 
 def create_journal_entry(

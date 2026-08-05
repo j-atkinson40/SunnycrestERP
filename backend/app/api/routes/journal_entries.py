@@ -241,62 +241,27 @@ def reverse_entry(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    original = db.query(JournalEntry).filter(
-        JournalEntry.id == entry_id, JournalEntry.tenant_id == current_user.company_id,
-    ).first()
-    if not original or original.status != "posted":
-        raise HTTPException(400, "Can only reverse posted entries")
-
-    # Generate reversal
-    count = db.query(func.count(JournalEntry.id)).filter(JournalEntry.tenant_id == current_user.company_id).scalar() or 0
-    rev_number = f"JE-{count + 1001}"
-    # A reversal posts in the CURRENT period (today), not the original's
-    # period — standard practice: you reverse a closed-period entry INTO the
-    # open current period, you do not reach back. This `today` is CORRECT,
-    # NOT the entry_date/period-derivation inconsistency to "unify" away. A
-    # later cleanup that copies the original's entry_date here would turn
-    # correct behavior into a bug AND would trip the S-3 period-lock guard on
-    # every reversal of a locked-period entry (making a legitimate operation
-    # impossible). Leave it as today.
-    today = date.today()
-
-    # Mirror the original's lines (debit <-> credit). The service computes
-    # the reversal totals from these mirrored specs, which equals the
-    # original's swapped totals exactly.
-    orig_lines = db.query(JournalEntryLine).filter(JournalEntryLine.journal_entry_id == entry_id).all()
-    rev_specs = [
-        JournalLineSpec(
-            gl_account_id=ol.gl_account_id,
-            gl_account_number=ol.gl_account_number,
-            gl_account_name=ol.gl_account_name,
-            description=ol.description,
-            debit_amount=ol.credit_amount,
-            credit_amount=ol.debit_amount,
+    # AR-2 void fix: the construction moved to
+    # `journal_entry_service.reverse_journal_entry` because voiding a payment
+    # whose entry was posted needs the same mirror, and the alternative was a
+    # service importing this route handler. This keeps its own 400 so the
+    # endpoint's contract does not move.
+    try:
+        reversal = journal_entry_service.reverse_journal_entry(
+            db,
+            tenant_id=current_user.company_id,
+            entry_id=entry_id,
+            actor_user_id=current_user.id,
         )
-        for ol in orig_lines
-    ]
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
-    reversal = journal_entry_service.create_journal_entry(
-        db,
-        tenant_id=current_user.company_id,
-        entry_number=rev_number,
-        entry_type="reversal",
-        status="posted",
-        entry_date=today,
-        period_month=today.month,
-        period_year=today.year,
-        description=f"Reversal of {original.entry_number}: {original.description}",
-        is_reversal=True,
-        reversal_of_entry_id=original.id,
-        created_by=current_user.id,
-        posted_by=current_user.id,
-        posted_at=datetime.now(timezone.utc),
-        lines=rev_specs,
-    )
-
-    original.status = "reversed"
     db.commit()
-    return {"id": reversal.id, "entry_number": rev_number, "status": "posted"}
+    return {
+        "id": reversal.id,
+        "entry_number": reversal.entry_number,
+        "status": "posted",
+    }
 
 
 # ── AI Parsing ──
