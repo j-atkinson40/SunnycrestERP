@@ -229,3 +229,4 @@ tests/test_accounting_gl_panel_e2.py
 tests/test_payment_posting_ar2.py
 tests/test_void_payment_reverses_ar2.py
 tests/test_nsf_returned_payment_n1.py
+tests/test_clean_run_does_not_park.py

@@ -83,6 +83,33 @@ class BaseAgent:
         )
 
     # ------------------------------------------------------------------
+    # Approval shape
+    # ------------------------------------------------------------------
+
+    #: Agents whose approval is about the ANOMALIES they found — the decision is
+    #: per-item, so a run that found none has nothing to decide. Contrast the
+    #: per-JOB agents (month_end_close), where the job itself is the decision and
+    #: an empty run still needs a human: `approval_gate` writes the PeriodLock on
+    #: approve, so auto-completing one would skip both the person and the lock.
+    #:
+    #: ONE definition, two readers — the terminal-state branch in `execute` and
+    #: the notification branch in `_dispatch_pending_attention_notification`.
+    #: They were the same split stated twice; a second list would have been free
+    #: to drift from the first, which is how four AR balance formulas happened.
+    PER_ANOMALY_APPROVAL_JOB_TYPES: ClassVar[frozenset[str]] = frozenset({
+        "cash_receipts_matching",
+        "ar_collections",
+        "expense_categorization",
+    })
+
+    def _nothing_to_approve(self) -> bool:
+        """True when this run produced no decision for a human to make."""
+        job_type = (self.job.job_type or "").strip()
+        if job_type not in self.PER_ANOMALY_APPROVAL_JOB_TYPES:
+            return False
+        return int(self.job.anomaly_count or 0) == 0
+
+    # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
@@ -99,9 +126,32 @@ class BaseAgent:
                 self._run_step_with_logging(step_name)
 
             self._assemble_report()
-            self._set_status(AgentJobStatus.AWAITING_APPROVAL)
-            self._trigger_approval_gate()
-            self._dispatch_pending_attention_notification()
+
+            # A RUN THAT FOUND NOTHING SHOULD NOT ASK ANYONE TO APPROVE NOTHING.
+            # Pre-fix every run parked in awaiting_approval unconditionally,
+            # generated an approval token, and emailed a review request — so the
+            # 15-minute expense_categorization cron asked for a decision on an
+            # empty result every time it fired. On dev that is 5,167 parked jobs
+            # (366 tenants × 28 periods); on production it is small but it is
+            # still a request to approve nothing, and a queue whose items are
+            # all empty teaches the operator to ignore it.
+            #
+            # ⚠️ THE TRAP THIS AVOIDS, and a blanket "0 anomalies → complete"
+            # would have walked straight into it: month_end_close's approval is
+            # NOT about its anomalies. The close ITSELF is the decision, and
+            # `approval_gate` writes the PeriodLock on approve — auto-completing
+            # a clean close would skip both the human and the lock. Per-JOB
+            # agents therefore always park, however quiet the run.
+            #
+            # The split is the SAME ONE `_dispatch_pending_attention_notification`
+            # already makes, and it reads from one constant here rather than a
+            # second list free to drift from the first.
+            if self._nothing_to_approve():
+                self._set_status(AgentJobStatus.COMPLETE)
+            else:
+                self._set_status(AgentJobStatus.AWAITING_APPROVAL)
+                self._trigger_approval_gate()
+                self._dispatch_pending_attention_notification()
 
         except AgentStepError as e:
             self._handle_step_failure(e)
@@ -340,11 +390,7 @@ class BaseAgent:
             job_type = (self.job.job_type or "").strip()
             anomaly_count = int(self.job.anomaly_count or 0)
 
-            if job_type in (
-                "cash_receipts_matching",
-                "ar_collections",
-                "expense_categorization",
-            ):
+            if job_type in self.PER_ANOMALY_APPROVAL_JOB_TYPES:
                 # expense_categorization fires every 15 min via cron;
                 # quiet runs (no anomalies) must stay silent.
                 if job_type == "expense_categorization" and anomaly_count == 0:
