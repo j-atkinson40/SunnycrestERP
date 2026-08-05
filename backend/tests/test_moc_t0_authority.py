@@ -39,6 +39,7 @@ from app.services.workflow_scheduler import (
     _matches_time_of_day,
     _resolve_tenant_tz,
 )
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 
 @pytest.fixture

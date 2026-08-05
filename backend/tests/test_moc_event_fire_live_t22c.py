@@ -34,6 +34,7 @@ from app.models.workflow import Workflow, WorkflowRun
 from app.models.workflow_template import WorkflowTemplate
 from app.services.maps_of_content import triggers as triggers_svc
 from app.services.maps_of_content.event_matcher import check_moc_domain_events
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 

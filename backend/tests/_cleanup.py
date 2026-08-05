@@ -25,6 +25,7 @@ Usage in a module-scoped teardown fixture:
 """
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import text
 
 # FK-safe order: children before parents. agent_run_steps + agent_anomalies
@@ -169,3 +170,61 @@ def purge_companies_by_slug(session, slug_prefix: str) -> None:
         ).all()
     ]
     purge_test_companies(session, ids)
+
+
+# ── The mechanism, not the convention ───────────────────────────────────────
+
+
+def _all_company_ids(session) -> set[str]:
+    return {r[0] for r in session.execute(text("SELECT id FROM companies")).all()}
+
+
+@pytest.fixture(autouse=True)
+def purge_new_companies():
+    """Autouse fixture: purge exactly the companies this module created.
+
+    THE RATCHET WAS HELD BY CONVENTION AND SO IT WAS NOT HELD. CLAUDE.md says
+    the company-litter count can only shrink, but nothing enforced it outside
+    the files that opted in — and 16 of the MoC test files create `Company` rows
+    while NONE called `purge_companies_by_slug`. Dev's 775 companies were the
+    receipt (~20 leaked per full run). `test_responders`' litter guard is the
+    DETECTOR, not the leaker: it passes in isolation and errors on a full run
+    because it happens to run last and counts what everything before it left.
+
+    ID-BASED, DELIBERATELY, RATHER THAN SLUG-BASED. `purge_companies_by_slug`
+    needs a prefix, and the leaking files' prefixes are not all safe to purge on:
+    `test_moc_ponder` uses `p-`, which as `p-%` would match any company slug
+    beginning "p-", and `test_moc_task_offers_p3` builds its slug from a
+    per-case name so the prefix is not knowable at import time. A wrong LIKE
+    pattern in a teardown deletes data that was not the test's. Snapshotting ids
+    before and purging the difference cannot over-reach: it removes exactly what
+    appeared while the test ran, and nothing else.
+
+    Import it into a test module to enable it — one line, and the fixture is
+    autouse from there:
+
+        from tests._cleanup import purge_new_companies  # noqa: F401
+
+    Explicit per-module import rather than a blanket `conftest.py` autouse: the
+    latter would silently change teardown for every backend test at once, and a
+    teardown that deletes rows is not something to switch on globally in the same
+    pass that fixes sixteen files.
+
+    Function-scoped so a leak is attributed to the test that caused it rather
+    than swept at module end.
+    """
+    from app.database import SessionLocal
+
+    session = SessionLocal()
+    try:
+        before = _all_company_ids(session)
+    finally:
+        session.close()
+
+    yield
+
+    session = SessionLocal()
+    try:
+        purge_test_companies(session, _all_company_ids(session) - before)
+    finally:
+        session.close()

@@ -25,6 +25,7 @@ from app.models.workflow import Workflow, WorkflowRun, WorkflowRunStep, Workflow
 from app.models.workflow_template import WorkflowTemplate
 from app.services.maps_of_content.schedule_sweep import list_schedule_runs
 from app.services.maps_of_content.task_catalog import resolve_task
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 

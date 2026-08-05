@@ -24,6 +24,7 @@ from app.database import SessionLocal
 from app.models.company import Company
 from app.services.maps_of_content.event_matcher import check_moc_domain_events
 from scripts.seed_moc_case_opened_trigger import EVENT_KEY, seed as seed_trigger
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 
 @pytest.fixture
