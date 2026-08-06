@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { ChevronDown, ChevronRight, Map as MapIcon } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronRight, Map as MapIcon } from "lucide-react"
 
 import {
   PonderServiceContext,
@@ -115,16 +115,35 @@ export default function BridgeableMapAreaPage() {
             The {area} work on your map — hold{" "}
             <kbd className="rounded-sm border border-border-base px-1 font-plex-mono text-caption">P</kbd>{" "}
             on a card to walk through it.
-            {" "}
-            <button
-              type="button"
-              onClick={() => ponderArea(area)}
-              className="focus-ring-accent rounded-md text-accent underline-offset-2 hover:underline"
-              data-testid="map-area-overview-link"
-            >
-              Or start with the area's story.
-            </button>
           </p>
+
+          {/* THE AREA STORY — promoted from a sentence to an affordance.
+              It was a text button inside this paragraph: the best content on
+              the page behind the least visible thing on it, which is the
+              built-but-unreachable shape this codebase has now hit three times
+              (the accounting_gl setting with no panel; the Focuses registered
+              with no way to open them). Same handler, same testid — the
+              behaviour is unchanged and only the affordance moved, so the
+              existing test keeps passing and this is a discoverability fix
+              rather than a feature.
+
+              MAP-3 gave it something to say: the story now carries the area's
+              RHYTHM, derived — which is the answer to "what happens daily"
+              that eleven cards could not give. */}
+          <button
+            type="button"
+            onClick={() => ponderArea(area)}
+            className="focus-ring-accent mt-3 inline-flex items-center gap-2 rounded-md border border-border-base bg-surface-elevated px-3 py-2 text-body-sm text-content-base shadow-level-1 transition-colors duration-quick hover:bg-surface-raised"
+            data-testid="map-area-overview-link"
+          >
+            <BookOpen size={14} className="text-accent" />
+            <span>
+              Start with the {area} story
+              <span className="ml-1 text-content-subtle">
+                — what runs, and when
+              </span>
+            </span>
+          </button>
         </div>
 
         {/* THE INTEGRATIONS AREA (2026-07-18) — the engine room. The
