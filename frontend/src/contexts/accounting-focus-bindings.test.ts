@@ -98,3 +98,39 @@ describe("reachability — a Focus nobody can open is not shipped", () => {
     }
   })
 })
+
+describe("every triageQueue Focus is reachable — the generalized guard", () => {
+  it("no registered triageQueue Focus is URL-only", () => {
+    /**
+     * THE TEST THAT WOULD HAVE CAUGHT decision-triage, and did not exist when
+     * FB-1 wrote a comment about decision-triage being URL-only.
+     *
+     * The original reachability test iterated a hardcoded BOUND list — the
+     * three Focuses that phase added — so it could not fail for the one it was
+     * describing. This iterates the REGISTRY, so the next triageQueue Focus is
+     * covered the moment it registers rather than the moment someone remembers.
+     *
+     * ⚠️ SCOPED TO triageQueue DELIBERATELY. A named command-bar entry is not
+     * the only good answer — INTENT ESCALATION is the other, and the better one
+     * where it applies: `quote-building` has no "Open Quote Focus" command and
+     * must not get one, because it materializes from what the user is already
+     * doing (CLAUDE.md's summon-is-intent-shaped rule — "if a command reads
+     * 'Open X,' it's wrong"). A blanket assertion over ALL Focuses would score
+     * the canonically-correct one as broken and invite someone to "fix" it.
+     *
+     * A triage queue is a list you go to on purpose, so a named entry is right
+     * for this mode and wrong for editCanvas.
+     */
+    const triageFocuses = listFocusConfigs().filter(
+      (c) => c.mode === "triageQueue" && !c.id.startsWith("test-"),
+    )
+    expect(triageFocuses.length).toBeGreaterThan(0)
+
+    const unreachable = triageFocuses
+      .filter((c) => !triageActions.some((a) => a.route?.includes(`focus=${c.id}`)))
+      .map((c) => c.id)
+
+    expect(unreachable, `URL-only triageQueue Focus: ${unreachable.join(", ")}`)
+      .toEqual([])
+  })
+})
