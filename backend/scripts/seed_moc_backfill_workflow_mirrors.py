@@ -50,7 +50,19 @@ VERTICAL = "manufacturing"
 #   'core'     → template scope 'platform_default' (vertical=None); surfaced on
 #                each vertical's card via explicit ref (resolver reads by id).
 _MANUFACTURING = [
-    "Bridgeable Compose", "New Order", "Order Gloves from Uline",
+    # ⚠️ "New Order" REMOVED — it is `Bridgeable Compose` under its PRE-REBRAND
+    # name, so this list named one workflow twice and the seed reported 27/28
+    # forever. `command_bar_extract_service.py:156` states the rename outright
+    # ("Universal Compose workflow (rebranded from wf_create_order)"), and
+    # `ALL_DEFAULT_WORKFLOWS` ships `wf_compose` while nothing ships
+    # `wf_create_order` at all.
+    #
+    # VERIFIED BEFORE DELETING, because the symptom was identical to r157's
+    # genuine defect — a thing on dev that nothing in the repo creates. There it
+    # meant new tenants lost content; HERE it is a pre-rebrand artifact from
+    # April and nothing depends on it. Same symptom, opposite cause; deleting on
+    # the pattern match would have been wrong, and so would keeping it.
+    "Bridgeable Compose", "Order Gloves from Uline",
     "Add Team Certification", "Safety Program Generation",
     "Vault Order Fulfillment", "Log Production Pour", "Schedule Delivery",
     "Social Service Certificate", "Start Disinterment Workflow",

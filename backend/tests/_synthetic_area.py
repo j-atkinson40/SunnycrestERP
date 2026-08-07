@@ -96,3 +96,26 @@ class SyntheticArea:
                 MoCTaskCatalog.id.in_(self._tasks)
             ).delete(synchronize_session=False)
         self.db.commit()
+
+
+def representative(area, db) -> str:
+    """One area spanning EVERY grain the vocabulary can produce, plus a job
+    nothing runs.
+
+    The seeded Accounting area happens to span four grains; this asserts the
+    span instead of inheriting it, so a test about the collapse cannot pass
+    because content coincidentally covered the cases. Nine distinct clock
+    times, deliberately — that is the claim MAP-3 makes."""
+    area.job("Sweeper", schedules=["Every 15 minutes"])
+    area.job("Matcher", schedules=["Every day at 10:30 PM",
+                                   "Every day at 11:00 PM"])
+    area.job("Chaser", schedules=["Every day at 11:05 PM",
+                                  "Every day at 11:30 PM"])
+    area.job("Nightly", schedules=["Every day at 3:00 AM"])
+    area.job("Weekly upkeep", schedules=["Weekly on Monday at 7:00 AM",
+                                         "Weekly on Monday at 8:00 AM"])
+    area.job("Close", schedules=["Monthly on the 1st at 6:00 AM"])
+    area.job("Statements", schedules=["Monthly on the 1st at 6:30 AM"])
+    area.job("By hand")
+    db.commit()
+    return area.name

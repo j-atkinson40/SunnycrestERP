@@ -31,6 +31,7 @@ from app.services.maps_of_content.area_ponder import (
     check_area_drift,
 )
 from tests._cleanup import purge_new_companies  # noqa: F401
+from tests._synthetic_area import representative
 
 
 @pytest.fixture
@@ -53,14 +54,6 @@ def area(db):
 
 
 def _derived(db, area_name: str) -> dict[str, str]:
-    script = build_area_ponder_script(db, vertical="manufacturing", area=area_name)
-    return {
-        b["key"]: b["derived_text"]
-        for b in script["beats"] if b["key"].startswith("cadence")
-    }
-
-
-def _cadence(db) -> dict[str, str]:
     """The DERIVED sentence per cadence beat.
 
     ⚠️ READS `derived_text`, NOT `text`, AND THAT IS A DELIBERATE CHANGE. These
@@ -72,7 +65,7 @@ def _cadence(db) -> dict[str, str]:
     trigger schedules rather than written down. Following the authored text
     would have quietly turned them into assertions about r158's copy.
     """
-    script = build_area_ponder_script(db, vertical="manufacturing", area="Accounting")
+    script = build_area_ponder_script(db, vertical="manufacturing", area=area_name)
     return {
         b["key"]: b["derived_text"]
         for b in script["beats"] if b["key"].startswith("cadence")
@@ -95,18 +88,18 @@ class TestGrainBucketing:
     def test_it_buckets_to_the_rhythm_an_operator_thinks_in(self, when, grain):
         assert _grain_of(when) == grain
 
-    def test_nine_accounting_clock_times_collapse_to_four_grains(self, db):
+    def test_nine_accounting_clock_times_collapse_to_four_grains(self, db, area):
         """The whole argument for grouping: the accounting jobs occupy NINE
         distinct clock times and FOUR rhythms. Eleven cards taught eleven
         things; four grains teach a shape."""
-        keys = {k for k in _cadence(db) if k != "cadence:none"}
+        keys = {k for k in _derived(db, representative(area, db)) if k != "cadence:none"}
         assert len(keys) <= 4, f"expected ≤4 grains, got {sorted(keys)}"
 
 
 class TestTheRhythmIsDerived:
-    def test_the_area_story_now_carries_WHEN(self, db):
+    def test_the_area_story_now_carries_WHEN(self, db, area):
         """The job branch rendered no cadence at all before this."""
-        assert _cadence(db), "the area story carries no rhythm"
+        assert _derived(db, representative(area, db)), "the area story carries no rhythm"
 
     def test_overnight_gathers_the_jobs_whose_automations_run_at_night(
         self, db, area
@@ -149,35 +142,35 @@ class TestTheRhythmIsDerived:
 
 
 class TestAbsenceIsNamed:
-    def test_jobs_with_no_schedule_are_NAMED_not_omitted(self, db):
+    def test_jobs_with_no_schedule_are_NAMED_not_omitted(self, db, area):
         """Four of eleven have no automations at all. They are things an
         operator does rather than things the platform runs — a fact about the
         area worth teaching, not a gap to paper over. Omitting them would
         silently drop a third of Accounting from its own story."""
-        c = _cadence(db)
+        c = _derived(db, representative(area, db))
         assert "cadence:none" in c
         assert "no schedule" in c["cadence:none"]
         assert "work you pick up" in c["cadence:none"]
 
 
 class TestTheClaimItDoesNotMake:
-    def test_it_does_not_assert_the_clean_queue_constraint(self, db):
+    def test_it_does_not_assert_the_clean_queue_constraint(self, db, area):
         """⚠️ THE POINT. "The month closes on a clean queue" is FALSE as a
         description — nothing enforces it. Month-end close's preconditions are
         the PeriodLock and the statement-run conflict check.
 
         If that constraint is ever built, this test fails and someone reads the
         docstring before deciding whether the Map may now say it."""
-        text = " ".join(_cadence(db).values()).lower()
+        text = " ".join(_derived(db, representative(area, db)).values()).lower()
         for claim in ("clean queue", "closes on a clean", "must be empty",
                       "before the month closes"):
             assert claim not in text
 
-    def test_it_says_WHEN_and_not_what_the_operator_does(self, db):
+    def test_it_says_WHEN_and_not_what_the_operator_does(self, db, area):
         """The derived half is derived; consequence is authored over it or
         derived as a live count, never asserted."""
         text = " ".join(
-            v for k, v in _cadence(db).items() if k != "cadence:none"
+            v for k, v in _derived(db, representative(area, db)).items() if k != "cadence:none"
         ).lower()
         for overreach in ("you should", "make sure", "be sure to", "always "):
             assert overreach not in text
@@ -238,11 +231,11 @@ class TestTheDriftCheck:
                   "derived_text": "x"}]
         assert check_area_drift(beats, {}) == []
 
-    def test_drift_rides_the_payload_and_never_raises(self, db):
+    def test_drift_rides_the_payload_and_never_raises(self, db, area):
         """WARN, NEVER FAIL — `check_mirror_drift`'s contract. A ponder that
         refused to render would replace a possibly-stale story with no story."""
         script = build_area_ponder_script(db, vertical="manufacturing",
-                                          area="Accounting")
+                                          area=representative(area, db))
         assert "drift" in script
         assert isinstance(script["drift"], list)
 

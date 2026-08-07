@@ -27,6 +27,7 @@ from app.services.maps_of_content.area_ponder import (
     build_area_ponder_script, check_area_drift,
 )
 from tests._cleanup import purge_new_companies  # noqa: F401
+from tests._synthetic_area import representative
 
 
 @pytest.fixture
@@ -59,24 +60,24 @@ class TestTheBeatsCarryTheirParts:
     """A card needs the pieces separately; the story needs them as a sentence.
     One derivation renders both."""
 
-    def test_every_cadence_beat_carries_structure(self, db):
-        for key, beat in _cards(db).items():
+    def test_every_cadence_beat_carries_structure(self, db, area):
+        for key, beat in _cards(db, representative(area, db)).items():
             c = beat["cadence"]
             assert c["grain"], f"{key} has no grain"
             assert c["label"], f"{key} has no label"
             assert isinstance(c["jobs"], list) and c["jobs"], f"{key} has no jobs"
 
-    def test_the_sentence_still_renders_for_the_story(self, db):
+    def test_the_sentence_still_renders_for_the_story(self, db, area):
         """MAP-3's altitude is KEPT. The story is not replaced by the cards —
         an operator who wants the whole rhythm still gets it in one narrative."""
-        for beat in _cards(db).values():
+        for beat in _cards(db, representative(area, db)).values():
             assert beat["text"], "a beat lost its sentence"
 
-    def test_jobs_carry_IDS_so_a_chip_can_link(self, db):
+    def test_jobs_carry_IDS_so_a_chip_can_link(self, db, area):
         """The chip is the way INTO the task card. A name alone would render a
         card that names its members and cannot reach them — the affordance gap
         this session hit three times."""
-        for beat in _cards(db).values():
+        for beat in _cards(db, representative(area, db)).values():
             for job in beat["cadence"]["jobs"]:
                 assert job.get("id"), f"{job.get('name')} has no id to link to"
 
@@ -112,10 +113,10 @@ class TestTheTimesAreSurfaced:
         assert c["whens"] == ["Every day at 11:00 PM"]
         assert {j["name"] for j in c["jobs"]} == {"First", "Second"}
 
-    def test_the_no_schedule_group_carries_NO_times(self, db):
+    def test_the_no_schedule_group_carries_NO_times(self, db, area):
         """Nothing runs them, so there is nothing to show — and an empty list
         renders no clock rather than a misleading one."""
-        assert _cards(db)["cadence:none"]["cadence"]["whens"] == []
+        assert _cards(db, representative(area, db))["cadence:none"]["cadence"]["whens"] == []
 
 
 class TestTheNoScheduleGroup:
@@ -187,7 +188,7 @@ class TestTheAuthoredProse:
                 f"which only repeats its own chips."
             )
 
-    def test_the_monthly_caption_does_not_teach_the_lock(self, db):
+    def test_the_monthly_caption_does_not_teach_the_lock(self):
         """⚠️ AN EARLIER DRAFT ENDED "…the close locks the period when you
         approve it." True, and the closest the Map has come to the clean-queue
         claim: a mechanism sentence beside a queue list invites the reader to
@@ -195,8 +196,29 @@ class TestTheAuthoredProse:
         and is taught on that task's card.
 
         Same reasoning kept live counts off these cards — proximity does
-        argumentative work that prose would be held accountable for."""
-        text = _cards(db)["cadence:monthly"]["text"].lower()
+        argumentative work that prose would be held accountable for.
+
+        ⚠️ THIS ONE IS A CONTENT TEST AND STAYS ONE — the only survivor of the
+        classification. Every other test in this file asks whether the code
+        DERIVES correctly and would still be meaningful if the shipped text
+        changed, so those moved to a synthetic area. This one asks whether the
+        SHIPPED SENTENCE says a specific thing, and changing r158's text SHOULD
+        break it. That is the whole job.
+
+        What it stops doing is reading the text back out of a database — the
+        caption is the migration's constant, and going through a render only
+        added two preconditions (r158 applied, the area has beats) to a claim
+        about prose."""
+        import importlib.util
+        from pathlib import Path
+
+        p = (Path(__file__).resolve().parents[1] / "alembic" / "versions"
+             / "r158_accounting_cadence_captions.py")
+        spec = importlib.util.spec_from_file_location("r158_monthly", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        text = mod._CAPTIONS["cadence:monthly"].lower()
         for claim in ("locks the period", "clean queue", "before you close",
                       "clear these first"):
             assert claim not in text
