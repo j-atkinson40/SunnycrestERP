@@ -39,6 +39,31 @@ def db():
     s.close()
 
 
+@pytest.fixture(autouse=True)
+def workflow_substrate(db):
+    """⚠️ THE UPSTREAM SEED THIS FILE ASSUMED. The mirror seed derives its
+    templates FROM the `workflows` table, so on a database where nothing has
+    seeded workflows it mirrors zero and every assertion here reads an empty
+    set. That is exactly CI's shape — fresh Postgres, `alembic upgrade head`,
+    no seeds — and it is why this file was red on the PR for two days while
+    passing locally against a database a boot had populated long ago.
+
+    ORDER IS LOAD-BEARING and was measured, not guessed: workflows before
+    mirrors, because the mirrors create the `moc_task_catalog` rows that job
+    seeds later attach refs to. Seeding jobs first silently skips every
+    automation ref — no error, just an emptier map.
+
+    Idempotent both ways, so it costs nothing where they already exist."""
+    from app.data.seed_workflows import seed_default_workflows
+    from scripts.seed_moc_backfill_workflow_mirrors import seed as _mirrors
+
+    seed_default_workflows(db)
+    db.commit()
+    _mirrors(db)
+    yield
+
+
+
 def _page(db) -> MoCPage | None:
     return (
         db.query(MoCPage)

@@ -30,6 +30,31 @@ def db():
     s.close()
 
 
+@pytest.fixture(autouse=True)
+def workflow_substrate(db):
+    """⚠️ THE UPSTREAM SEED THIS FILE ASSUMED. `seed_mirrors` derives its
+    templates FROM the `workflows` table — so on a database where nothing has
+    seeded workflows it mirrors zero, and every assertion here reads an empty
+    set. That is the shape CI has (fresh Postgres, `alembic upgrade head`, no
+    seeds), and it is why this file was red on the PR for two days while passing
+    locally against a database where a boot had populated workflows long ago.
+
+    ORDER IS LOAD-BEARING and was measured, not guessed: workflows must exist
+    before the mirrors run, because the mirrors create the `moc_task_catalog`
+    rows that job seeds later attach refs to. Seeding jobs first silently skips
+    every automation ref — no error, just an emptier map.
+
+    Idempotent both ways: `seed_default_workflows` upserts, and `seed_mirrors`
+    is skip-if-exists, so this costs nothing on a database that already has
+    them."""
+    from app.data.seed_workflows import seed_default_workflows
+
+    seed_default_workflows(db)
+    db.commit()
+    seed_mirrors(db)
+    yield
+
+
 @pytest.fixture
 def demo_focuses(db):
     """Ensure the pre-back-port card's focus content exists (adopt if the
@@ -91,4 +116,7 @@ def test_backport_non_regression_and_no_fh_pollution(db, demo_focuses):
     assert "First Call Intake" not in wf_labels     # FH stays off this card
     assert "Plot Reservation" not in wf_labels
     assert {"Month-End Close", "AR Collections"} <= wf_labels  # cores carry
-    assert "New Order" in wf_labels                 # own mirrors intact
+    # "New Order" -> "Bridgeable Compose": the same workflow under its current
+    # name. The fourth site naming the April one; the mirror is intact either
+    # way, this just asks after it correctly.
+    assert "Bridgeable Compose" in wf_labels        # own mirrors intact
