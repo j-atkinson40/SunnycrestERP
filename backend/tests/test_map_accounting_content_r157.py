@@ -42,6 +42,36 @@ def db():
     s.close()
 
 
+@pytest.fixture(autouse=True)
+def accounting_jobs(db):
+    """⚠️ THIS FILE'S OWN SUBSTRATE, RATHER THAN A NEIGHBOUR'S.
+
+    These tests read the seeded accounting jobs. A bare-database verification
+    run of six files TOGETHER passed — because an earlier file's seeds happened
+    to create them first. Run alone, or in the gate's order, they do not exist.
+    **The verification meant to prove the environment-dependence gone was
+    itself environment-dependent**, in the ordering rather than the database.
+
+    Order is the measured one: workflows → mirrors → jobs. The mirrors create
+    the `moc_task_catalog` rows the job seeds attach automation refs to, so
+    seeding jobs first silently produces jobs with empty refs — and half of
+    these tests are ABOUT the refs.
+
+    Every seed here is idempotent and preserve-aware, so this is free where the
+    rows already exist."""
+    from app.data.seed_workflows import seed_default_workflows
+    from scripts.seed_accounting_jobs import main as seed_jobs
+    from scripts.seed_moc_backfill_workflow_mirrors import seed as seed_mirrors
+    from scripts.seed_suite_jobs import main as seed_suite
+
+    seed_default_workflows(db)
+    db.commit()
+    seed_mirrors(db)
+    seed_jobs()
+    seed_suite()
+    yield
+
+
 def _job(db, name):
     return (
         db.query(MoCJob)
