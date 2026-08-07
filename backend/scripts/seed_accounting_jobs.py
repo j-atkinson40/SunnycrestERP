@@ -30,13 +30,45 @@ from app.services.maps_of_content import jobs as jobs_svc  # noqa: E402
 
 VERT = "manufacturing"
 
-# (name, description, [(kind, key-or-automation-NAME, order)])
+# (name, description, [(kind, key-or-automation-NAME, order[, label])])
+#
+# ⚠️ THIS LIST AND `r157_map_accounting_content` ARE TWO PRODUCERS OF ONE
+# STATE, and r157 shipped without this half. The migration corrects rows that
+# ALREADY EXIST; this seed mints rows that do NOT. On a fresh database the
+# migration runs first against zero jobs, correctly skips everything, and then
+# this seed wrote the pre-r157 text — so every NEW tenant got exactly the
+# content r157 exists to delete, permanently and silently.
+#
+# The migration keeps its own frozen copy (a migration is history and must not
+# import live code that can change under it). What binds the two is
+# `test_seed_matches_r157_content.py`, which loads r157 and asserts every
+# corrected description here matches it. Edit one without the other and that
+# test fails — which is the only mechanism, since the two files have no
+# reason to be opened together.
 SKELETON = [
     (
         "Bank reconciliation",
-        "Keep the bank and the books telling the same story — payments "
-        "matched to invoices, and the ones that can't be matched reviewed "
-        "by a person.",
+        # r157's corrected text. The old wording described the WHOLE statement
+        # as a matching problem; the arc split matching onto its own job below.
+        "Every line on the bank statement accounted for. A line the matcher "
+        "recognises clears against what the books already recorded; a line you "
+        "classify or code books its journal entry before it clears, so nothing "
+        "leaves the statement unaccounted for. Whatever the matcher can't place "
+        "waits in Books Review for a person.",
+        [
+            # The two matching refs MOVED to `Cash receipts matching` (r157 §4);
+            # what stays is the review queue this job actually names.
+            ("triage_queue", "reconciliation_review_triage", 0, "Books Review"),
+        ],
+    ),
+    (
+        # BORN AT r157 — the process was always distinct and had been borrowing
+        # Bank reconciliation's name. Ordered second so it sits where the
+        # migration puts it (Bank reconciliation's display_order + 1).
+        "Cash receipts matching",
+        "Payments matched to the invoices they settle — the confident ones "
+        "applied, and the ones the matcher can't place with certainty queued "
+        "for a person to confirm, override, or reject.",
         [
             ("automation", "Cash Receipts Matching", 0),
             ("triage_queue", "cash_receipts_matching_triage", 1),
@@ -73,8 +105,13 @@ SKELETON = [
     ),
     (
         "Expense management",
-        "Expenses categorized as they arrive — the uncertain ones queued "
-        "for a quick confirm.",
+        # r157's corrected text. "as they arrive" was the claim the platform
+        # could not keep — event dispatch does not exist, so the workflow runs
+        # on a 15-minute cron (Phase 8c's explicit workaround). The correction
+        # states the sweep and keeps the phrase only as the thing it means.
+        "Expenses categorized every fifteen minutes — until event dispatch "
+        "exists, that sweep is what \"as they arrive\" means — with the "
+        "uncertain ones queued for a quick confirm.",
         [
             ("automation", "Expense Categorization", 0),
             ("triage_queue", "expense_categorization_triage", 1),
@@ -115,7 +152,12 @@ def main() -> int:
                 description=description, task_type="Accounting",
                 display_order=order,
             )
-            for kind, key, ref_order in refs:
+            for ref in refs:
+                # 3-tuple or 4-tuple: r157's Books Review ref carries a LABEL,
+                # which the pre-r157 skeleton had no shape for. Tolerating both
+                # keeps every untouched entry above unchanged.
+                kind, key, ref_order = ref[0], ref[1], ref[2]
+                label = ref[3] if len(ref) > 3 else None
                 if kind == "automation":
                     row = (
                         db.query(MoCTaskCatalog)
@@ -134,7 +176,7 @@ def main() -> int:
                 try:
                     jobs_svc.add_ref(
                         db, job_id=job.id, ref_kind=kind, ref_key=key,
-                        display_order=ref_order,
+                        label=label, display_order=ref_order,
                     )
                 except jobs_svc.JobValidationError as e:
                     print(f"[seed_accounting_jobs] skip ref ({name}): {e}")
