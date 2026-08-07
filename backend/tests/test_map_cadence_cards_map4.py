@@ -37,6 +37,17 @@ def db():
     s.close()
 
 
+@pytest.fixture
+def area(db):
+    """An area built in-test. The seeded Accounting area is the wrong substrate
+    for a DERIVATION test — see `tests/_synthetic_area`."""
+    from tests._synthetic_area import SyntheticArea
+
+    a = SyntheticArea(db)
+    yield a
+    a.teardown()
+
+
 def _cards(db, area="Accounting") -> dict[str, dict]:
     script = build_area_ponder_script(db, vertical="manufacturing", area=area)
     return {
@@ -71,13 +82,35 @@ class TestTheBeatsCarryTheirParts:
 
 
 class TestTheTimesAreSurfaced:
-    def test_overnight_carries_its_ACTUAL_times(self, db):
+    def test_overnight_carries_its_ACTUAL_times(self, db, area):
         """"Overnight" loses that it is 10:30 PM to 3:00 AM. Someone deciding
         when to sit down with the queue needs the number, not the adjective —
-        the story keeps the adjective, the card shows both."""
-        whens = _cards(db)["cadence:nightly"]["cadence"]["whens"]
-        assert len(whens) >= 2
+        the story keeps the adjective, the card shows both.
+
+        ⚠️ RESHAPED off the seeded area: the times are given here, so the claim
+        is that the card SURFACES them rather than that this database happens to
+        have a 10:30 PM schedule adopted."""
+        area.job("Early", schedules=["Every day at 10:30 PM"])
+        area.job("Late", schedules=["Every day at 3:00 AM"])
+        db.commit()
+
+        whens = _cards(db, area.name)["cadence:nightly"]["cadence"]["whens"]
+        assert len(whens) == 2, "both clock times survive the grain collapse"
         assert any("10:30 PM" in w for w in whens)
+        assert any("3:00 AM" in w for w in whens)
+
+    def test_one_grain_does_not_lose_a_second_job_on_the_same_time(
+        self, db, area
+    ):
+        """The bucket de-dupes WHENS but must not de-dupe JOBS — two jobs on the
+        identical schedule are two chips under one clock."""
+        area.job("First", schedules=["Every day at 11:00 PM"])
+        area.job("Second", schedules=["Every day at 11:00 PM"])
+        db.commit()
+
+        c = _cards(db, area.name)["cadence:nightly"]["cadence"]
+        assert c["whens"] == ["Every day at 11:00 PM"]
+        assert {j["name"] for j in c["jobs"]} == {"First", "Second"}
 
     def test_the_no_schedule_group_carries_NO_times(self, db):
         """Nothing runs them, so there is nothing to show — and an empty list
@@ -86,23 +119,73 @@ class TestTheTimesAreSurfaced:
 
 
 class TestTheNoScheduleGroup:
-    def test_it_is_named_for_what_the_work_IS(self, db):
+    def test_it_is_named_for_what_the_work_IS(self, db, area):
         """"On your schedule", not "No schedule". A category defined by absence
-        still describes real work, and four of eleven is far too many to drop.
-        It is also the group an operator actually asks about: what do I do that
-        isn't automatic."""
-        c = _cards(db)["cadence:none"]["cadence"]
+        still describes real work, and it is the group an operator actually asks
+        about: what do I do that isn't automatic.
+
+        ⚠️ RESHAPED. The old version asserted `len(jobs) == 4` — a COUNT of what
+        the seeded area happened to hold, which says nothing about the grouping
+        and breaks whenever content changes. What matters is that a job with no
+        automation lands here and one with an automation does not."""
+        area.job("By hand")
+        area.job("Also by hand")
+        area.job("Automated", schedules=["Every day at 9:00 PM"])
+        db.commit()
+
+        c = _cards(db, area.name)["cadence:none"]["cadence"]
         assert c["label"] == "On your schedule"
-        assert len(c["jobs"]) == 4
+        assert {j["name"] for j in c["jobs"]} == {"By hand", "Also by hand"}
+        assert c["whens"] == [], "nothing runs them, so there is no clock"
 
 
 class TestTheAuthoredProse:
-    def test_every_grain_ships_with_a_sentence(self, db):
-        """r158 seeds them. A card rendering four rhythms with empty prose is
-        worse than one that arrives with a sentence — the derived fallback would
-        only repeat the job list the card already shows as chips."""
-        for key, beat in _cards(db).items():
-            assert beat["authored"], f"{key} has no authored prose"
+    def test_every_grain_ships_with_a_sentence(self):
+        """r158 seeds them. A card rendering rhythms with empty prose is worse
+        than one that arrives with a sentence — the derived fallback would only
+        repeat the job list the card already shows as chips.
+
+        ⚠️ RESHAPED to read the MIGRATION'S CONSTANTS rather than a database.
+        The old version asked "does the seeded area render authored prose",
+        which is true only where r158 ran AND the area has beats — two
+        preconditions for a claim about coverage. The claim is that every grain
+        the generator can emit has a caption, and that is checkable from the
+        two constants alone."""
+        import importlib.util
+        from pathlib import Path
+
+        from app.services.maps_of_content.area_ponder import _GRAIN_ORDER
+
+        p = (Path(__file__).resolve().parents[1] / "alembic" / "versions"
+             / "r158_accounting_cadence_captions.py")
+        spec = importlib.util.spec_from_file_location("r158_under_test", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        # ⚠️ `other` IS A KNOWN GAP, FOUND BY THIS RESHAPE AND PINNED RATHER
+        # THAN NARROWED AWAY. `_grain_of` returns "other" for any schedule
+        # string outside its vocabulary, `_GRAIN_ORDER` includes it, and
+        # `_GRAIN_LABEL` gives it a name — so the generator CAN emit a
+        # `cadence:other` card, and r158 ships no caption for it. That card
+        # renders label + chips + times with derived-only prose. Not fixable
+        # here: r158 has already applied, so the caption needs r159 or the
+        # seed-side equivalent. The old test could not have found this — it
+        # asked whether the SEEDED area rendered authored prose, and the seeded
+        # area has no schedule string weird enough to reach "other".
+        KNOWN_UNCAPTIONED = {"other"}
+
+        for grain in list(_GRAIN_ORDER) + ["none"]:
+            if grain in KNOWN_UNCAPTIONED:
+                assert f"cadence:{grain}" not in mod._CAPTIONS, (
+                    f"{grain!r} gained a caption — delete it from "
+                    f"KNOWN_UNCAPTIONED so this test guards it properly."
+                )
+                continue
+            assert f"cadence:{grain}" in mod._CAPTIONS, (
+                f"the generator can emit grain {grain!r} and r158 ships no "
+                f"caption for it — that card renders the derived fallback, "
+                f"which only repeats its own chips."
+            )
 
     def test_the_monthly_caption_does_not_teach_the_lock(self, db):
         """⚠️ AN EARLIER DRAFT ENDED "…the close locks the period when you
@@ -120,14 +203,41 @@ class TestTheAuthoredProse:
 
 
 class TestTheDriftCheckWasRePointed:
-    def test_the_SHIPPED_captions_produce_no_drift(self, db):
+    def test_the_SHIPPED_captions_produce_no_drift(self):
         """THE REGRESSION MAP-4 CAUSED AND FIXED. The first version flagged any
         authored cadence caption; seeding five made every render emit five
-        warnings. A check that fires on the expected state is one nobody
-        reads."""
-        script = build_area_ponder_script(db, vertical="manufacturing",
-                                          area="Accounting")
-        assert script["drift"] == []
+        warnings. A check that fires on the expected state is one nobody reads.
+
+        ⚠️ RESHAPED to run the check DIRECTLY over r158's captions and beats
+        carrying the parts a caption could echo. The old version asserted
+        `script["drift"] == []` on the seeded area — which passes trivially
+        when the area has no cadence beats at all, i.e. it was GREEN ON A
+        DATABASE WHERE THE THING IT GUARDS COULD NOT HAPPEN."""
+        import importlib.util
+        from pathlib import Path
+
+        from app.services.maps_of_content.area_ponder import check_area_drift
+
+        p = (Path(__file__).resolve().parents[1] / "alembic" / "versions"
+             / "r158_accounting_cadence_captions.py")
+        spec = importlib.util.spec_from_file_location("r158_drift", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        beats = [
+            {
+                "key": key, "authored": True, "text": text,
+                # The parts a caption COULD restate — a clock time and a job
+                # name. Present so the check has something to catch; the point
+                # is that the shipped prose does not name them.
+                "cadence": {
+                    "whens": ["Daily · 11:30 PM", "Monthly · 1st, 6:00 AM"],
+                    "jobs": [{"id": "x", "name": "Bank reconciliation"}],
+                },
+            }
+            for key, text in mod._CAPTIONS.items()
+        ]
+        assert check_area_drift(beats, {}) == []
 
     def test_a_caption_that_restates_a_TIME_is_flagged(self):
         beats = [{

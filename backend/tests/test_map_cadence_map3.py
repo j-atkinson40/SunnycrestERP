@@ -41,6 +41,25 @@ def db():
     s.close()
 
 
+@pytest.fixture
+def area(db):
+    """An area built in-test. See `tests/_synthetic_area` for why the seeded
+    Accounting area is the wrong substrate for a DERIVATION test."""
+    from tests._synthetic_area import SyntheticArea
+
+    a = SyntheticArea(db)
+    yield a
+    a.teardown()
+
+
+def _derived(db, area_name: str) -> dict[str, str]:
+    script = build_area_ponder_script(db, vertical="manufacturing", area=area_name)
+    return {
+        b["key"]: b["derived_text"]
+        for b in script["beats"] if b["key"].startswith("cadence")
+    }
+
+
 def _cadence(db) -> dict[str, str]:
     """The DERIVED sentence per cadence beat.
 
@@ -89,13 +108,31 @@ class TestTheRhythmIsDerived:
         """The job branch rendered no cadence at all before this."""
         assert _cadence(db), "the area story carries no rhythm"
 
-    def test_overnight_is_where_the_accounting_day_is(self, db):
-        """Five of the seven scheduled jobs run between 10:30 PM and 3:00 AM.
-        If that stops being true the beat should change, and this should fail
-        rather than quietly teach the old shape."""
-        c = _cadence(db)
+    def test_overnight_gathers_the_jobs_whose_automations_run_at_night(
+        self, db, area
+    ):
+        """⚠️ RESHAPED. This asserted "Bank reconciliation is in overnight" on
+        the SEEDED area — which passes where someone once adopted a schedule and
+        fails everywhere else, and could not tell a broken derivation from an
+        empty one. Both render as no cards.
+
+        What MAP-3 built is the chain from a schedule string to a grain. So the
+        schedules are given here, and the claim is about what the chain does
+        with them: two night jobs land together under one grain, and the beat
+        names them."""
+        area.job("Matcher", schedules=["Every day at 11:30 PM"])
+        area.job("Sweeper", schedules=["Every day at 3:00 AM"])
+        area.job("Filing", schedules=["Monthly on the 1st at 6:00 AM"])
+        db.commit()
+
+        c = _derived(db, area.name)
         assert "cadence:nightly" in c
-        assert "Bank reconciliation" in c["cadence:nightly"]
+        assert "Matcher" in c["cadence:nightly"]
+        assert "Sweeper" in c["cadence:nightly"]
+        # The discrimination the old shape could not make: the monthly job is
+        # NOT swept into overnight just because it also has a clock time.
+        assert "Filing" not in c["cadence:nightly"]
+        assert "Filing" in c["cadence:monthly"]
 
     def test_it_reads_the_SAME_precedence_the_automation_beat_reads(self, db):
         """One expression, two consumers — a job's rhythm and its automation's
