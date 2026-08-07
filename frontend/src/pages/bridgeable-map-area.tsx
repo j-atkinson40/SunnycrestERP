@@ -12,13 +12,14 @@ import {
   PonderServiceContext,
 } from "@/bridgeable-admin/components/moc/ponder-service-context"
 import {
-  getMapJobs, getMapTasks, tenantPonderService,
-  type MapJob, type MapTask,
+  getAreaCadence, getMapJobs, getMapTasks, tenantPonderService,
+  type CadenceCard, type MapJob, type MapTask,
 } from "@/services/moc-map-service"
 import { IntegrationsArea } from "@/components/moc-map/IntegrationsArea"
 import {
   JourneyArea, PlatformArea, ShowroomArea, TipsSection,
 } from "@/components/moc-map/PlatformAreas"
+import { CadenceSection } from "@/components/moc-map/CadenceSection"
 import { JobCard } from "@/components/moc-map/JobCard"
 import { TaskSections } from "@/components/moc-map/TaskSections"
 import { useMapOverlays } from "@/components/moc-map/useMapOverlays"
@@ -43,6 +44,10 @@ export default function BridgeableMapAreaPage() {
   // THE ENGINE ROOM — collapsed by default, remembered per-user (open
   // areas are the stored exceptions).
   const [engineOpen, setEngineOpen] = useState<Set<string>>(loadEngineRoomOpen)
+  // The rhythms. Fetched alongside jobs + tasks; failure is SILENT because a
+  // missing rhythm must not take the page's tasks down with it — the section is
+  // additive, and an area with none renders nothing anyway.
+  const [cadence, setCadence] = useState<CadenceCard[]>([])
 
   const reload = useCallback(async () => {
     // THE HANGING-JOBS FIX (2026-07-20): tasks and jobs load in
@@ -75,6 +80,19 @@ export default function BridgeableMapAreaPage() {
   useEffect(() => {
     reload().finally(() => setLoading(false))
   }, [reload])
+
+  // The rhythms, per area. SILENT ON FAILURE by design: the cadence section is
+  // additive, and an area with no scheduled work renders nothing regardless —
+  // so a failed fetch and an area without rhythms are the same empty section.
+  // Surfacing an error here would make the page's tasks look broken because a
+  // decoration did not load.
+  useEffect(() => {
+    let live = true
+    getAreaCadence(area)
+      .then((c) => { if (live) setCadence(c) })
+      .catch(() => { if (live) setCadence([]) })
+    return () => { live = false }
+  }, [area])
 
   const areaTasks = useMemo(
     () => tasks.filter((t) => (t.task_type || "General") === area),
@@ -168,6 +186,11 @@ export default function BridgeableMapAreaPage() {
           <>
             {/* THE WORK LEADS — job cards (Reframe R-2). A shared
                 automation appears under BOTH its jobs; each card honest. */}
+            {/* RHYTHM BEFORE THE LIST — the order is whole story → rhythms →
+                tasks → machines, widest to narrowest, each enterable without
+                the one above. */}
+            <CadenceSection cards={cadence} area={area} />
+
             {areaJobs.length > 0 ? (
               <section data-testid="map-job-section">
                 <h2 className="text-caption font-medium uppercase tracking-wide text-content-subtle">

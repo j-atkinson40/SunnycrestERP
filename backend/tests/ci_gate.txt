@@ -263,3 +263,4 @@ tests/test_responders.py
 tests/test_map_accounting_content_r157.py
 tests/test_map_accounting_beat_map2.py
 tests/test_map_cadence_map3.py
+tests/test_map_cadence_cards_map4.py

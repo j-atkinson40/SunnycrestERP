@@ -42,9 +42,20 @@ def db():
 
 
 def _cadence(db) -> dict[str, str]:
+    """The DERIVED sentence per cadence beat.
+
+    ⚠️ READS `derived_text`, NOT `text`, AND THAT IS A DELIBERATE CHANGE. These
+    tests originally read `text` — correct when nothing was authored, wrong the
+    moment r158 (MAP-4) seeded a caption per grain, because `text` is then the
+    OPERATOR'S prose and the derivation moves to `derived_text`.
+
+    What these tests are about is the DERIVATION — that the rhythm is read from
+    trigger schedules rather than written down. Following the authored text
+    would have quietly turned them into assertions about r158's copy.
+    """
     script = build_area_ponder_script(db, vertical="manufacturing", area="Accounting")
     return {
-        b["key"]: b["text"]
+        b["key"]: b["derived_text"]
         for b in script["beats"] if b["key"].startswith("cadence")
     }
 
@@ -145,21 +156,44 @@ class TestTheDriftCheck:
         out = check_area_drift([{"key": "a", "authored": False}], {"gone": "x"})
         assert any("orphaned" in d and "gone" in d for d in out)
 
-    def test_an_authored_CADENCE_caption_is_surfaced_with_its_derived_text(self):
-        """Surfaced FOR REVIEW, not auto-detected. Knowing a caption is stale
-        needs the derived text as of authoring, and captions store only text —
-        so the check reports the pair a human needs to compare. Claiming
-        automatic detection would be the same over-claim the beat avoids."""
+    def test_authored_prose_ALONE_is_no_longer_drift(self):
+        """DELIBERATE PIN FLIP (MAP-4). This asserted, verbatim:
+
+            beats = [{"key": "cadence:nightly", "authored": True,
+                      "derived_text": "Overnight — A and B."}]
+            out = check_area_drift(beats, {"cadence:nightly": "our words"})
+            assert len(out) == 1
+            assert "schedule-coupled" in out[0]
+
+        THE PREMISE WAS WRONG, NOT THE INTENT. MAP-3 flagged any authored
+        cadence caption on the assumption they were rare; MAP-4 seeded five, so
+        every render emitted five warnings — a check crying wolf on the expected
+        state, which trains people to stop reading the log.
+
+        The hazard was always narrower: prose that RESTATES something derived.
+        Durable prose is now permitted; see the two tests below for what still
+        fires."""
         beats = [{
             "key": "cadence:nightly", "authored": True,
+            "text": "Morning is for the queues.",
             "derived_text": "Overnight — A and B.",
+            "cadence": {"whens": ["Daily · 11:30 PM"], "jobs": [{"name": "A"}]},
         }]
 
-        out = check_area_drift(beats, {"cadence:nightly": "our words"})
+        assert check_area_drift(beats, {"cadence:nightly": "our words"}) == []
 
-        assert len(out) == 1
-        assert "schedule-coupled" in out[0]
-        assert "Overnight — A and B." in out[0]
+    def test_a_caption_RESTATING_derived_content_still_fires(self):
+        """What the check now catches — the actual failure mode."""
+        beats = [{
+            "key": "cadence:nightly", "authored": True,
+            "text": "A drafts at 11:30 PM.",
+            "derived_text": "Overnight — A.",
+            "cadence": {"whens": ["Daily · 11:30 PM"], "jobs": [{"name": "A"}]},
+        }]
+
+        out = check_area_drift(beats, {"cadence:nightly": "x"})
+
+        assert len(out) == 1 and "restates derived content" in out[0]
 
     def test_an_UNauthored_cadence_beat_is_not_drift(self):
         """Derived-only content cannot be stale — it is re-read every render."""

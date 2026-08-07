@@ -24,6 +24,7 @@ curriculum LIST ordered by `sequence`, deliberately not an engine.
 from __future__ import annotations
 
 import logging
+import re as _re
 import uuid
 from typing import Any
 
@@ -155,11 +156,42 @@ def check_area_drift(beats: list[dict], captions: dict) -> list[str]:
     for key, beat in live.items():
         if not key.startswith("cadence:") or not beat.get("authored"):
             continue
-        drift.append(
-            f"schedule-coupled caption on {key!r} — authored text overrides a "
-            f"DERIVED rhythm, which now reads: {beat.get('derived_text')!r}. "
-            "Compare; the schedule may have moved under it."
-        )
+        # ⚠️ THE FIRST VERSION OF THIS FIRED ON PROSE EXISTING, AND MAP-4 MADE
+        # PROSE THE NORM. Shipping five seeded cadence captions turned every
+        # render into five warnings — a check that cries wolf on the expected
+        # state, which trains people to stop reading the log. The premise was
+        # wrong, not the intent.
+        #
+        # THE REAL HAZARD IS NARROWER: prose that RESTATES something derived.
+        # "Morning is for the queues" cannot go stale; "the matcher runs at
+        # 11:30 PM" goes stale the moment someone re-crons it, and "Bank
+        # reconciliation and Collections" goes stale when membership changes.
+        # A caption that says what the OPERATOR DOES is durable; one that
+        # repeats WHEN or WHICH has baked a derived fact into authored text.
+        #
+        # So the check now looks for derived content INSIDE the caption rather
+        # than for the caption itself.
+        text = str(beat.get("text") or "")
+        echoes: list[str] = []
+
+        cadence = beat.get("cadence") or {}
+        for when in cadence.get("whens") or []:
+            # The humanized time carries its own separators; compare the parts
+            # that would actually appear in prose (a clock time, a weekday).
+            for token in _re.findall(r"\d{1,2}:\d{2}\s*(?:AM|PM)|\b1st\b", str(when)):
+                if token.lower() in text.lower():
+                    echoes.append(f"the time {token!r}")
+        for job in cadence.get("jobs") or []:
+            if job.get("name") and job["name"].lower() in text.lower():
+                echoes.append(f"the job name {job['name']!r}")
+
+        if echoes:
+            drift.append(
+                f"caption on {key!r} restates derived content — it contains "
+                f"{', '.join(sorted(set(echoes)))}, which the card already "
+                "shows and which moves when the schedule does. Say what the "
+                "operator DOES; let the card say when and which."
+            )
     return drift
 
 class AreaPonderError(ValueError):
@@ -300,32 +332,62 @@ def build_area_ponder_script(
         # Accounting's eleven have no automations at all; they are things an
         # operator does rather than things the platform runs, and that is a fact
         # about the area worth teaching rather than a gap to paper over.
-        by_grain: dict[str, list[str]] = {}
-        rhythmless: list[str] = []
+        # STRUCTURED, NOT JUST A SENTENCE (MAP-4). The beat carries its parts —
+        # grain, the actual TIMES, and the member jobs with ids — so a CARD can
+        # render them separately while the STORY still reads the sentence.
+        # `_beat(**extra)` already carries structure this way (the closing beat's
+        # `link`); one beat list, two altitudes.
+        #
+        # ⚠️ THE TIMES ARE THE QUIET IMPROVEMENT. "Overnight" loses that it is
+        # 10:30 PM to 3:00 AM, and someone deciding when to sit down with the
+        # queue needs the number rather than the adjective. The story keeps the
+        # adjective; the card shows both.
+        by_grain: dict[str, dict] = {}
+        rhythmless: list[dict] = []
         for j in area_jobs:
             cadences = _job_cadences(db, j)
             if not cadences:
-                rhythmless.append(j.name)
+                rhythmless.append({"id": j.id, "name": j.name})
                 continue
-            for grain, _when in cadences:
-                by_grain.setdefault(grain, [])
-                if j.name not in by_grain[grain]:
-                    by_grain[grain].append(j.name)
+            for grain, when in cadences:
+                slot = by_grain.setdefault(grain, {"jobs": [], "whens": []})
+                if not any(x["name"] == j.name for x in slot["jobs"]):
+                    slot["jobs"].append({"id": j.id, "name": j.name})
+                if when not in slot["whens"]:
+                    slot["whens"].append(when)
 
         for grain in _GRAIN_ORDER:
-            names = by_grain.get(grain)
-            if not names:
+            slot = by_grain.get(grain)
+            if not slot:
                 continue
+            names = [x["name"] for x in slot["jobs"]]
             _beat(
                 f"cadence:{grain}", "task",
                 f"{_GRAIN_LABEL[grain]} — {_join_names(names)}.",
+                cadence={
+                    "grain": grain,
+                    "label": _GRAIN_LABEL[grain],
+                    "whens": sorted(slot["whens"]),
+                    "jobs": slot["jobs"],
+                },
             )
 
         if rhythmless:
+            # NAMED FOR WHAT THE WORK IS, NOT FOR WHAT IT LACKS. "On your
+            # schedule" rather than "No schedule" — a category defined by
+            # absence still describes real work, and four of eleven is far too
+            # many to drop. It is also the group an operator actually asks
+            # about: what do I do that isn't automatic.
             _beat(
                 "cadence:none", "task",
-                f"{_join_names(rhythmless)} run on no schedule — they are work "
-                "you pick up, not work that arrives.",
+                f"{_join_names([x['name'] for x in rhythmless])} run on no "
+                "schedule — they are work you pick up, not work that arrives.",
+                cadence={
+                    "grain": "none",
+                    "label": "On your schedule",
+                    "whens": [],
+                    "jobs": rhythmless,
+                },
             )
         # THE ENGINE ROOM'S collective mention — the automations, counted.
         _beat(
