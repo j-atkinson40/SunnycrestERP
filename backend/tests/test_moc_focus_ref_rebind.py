@@ -41,6 +41,7 @@ from app.services.maps_of_content.task_catalog import (
     resolve_task_catalog,
     upsert_task,
 )
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 
 @pytest.fixture

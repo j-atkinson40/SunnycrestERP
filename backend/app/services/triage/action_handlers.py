@@ -1082,6 +1082,154 @@ def _handle_email_unclassified_request_review(
     }
 
 
+def _handle_reconciliation_post_keyword(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Books Review "Post it" — book a keyword row whose configuration NOW resolves.
+
+    The card can offer this because the builder re-derives the blocked reason
+    live: a row that was unbookable when the statement was scored becomes
+    bookable the moment someone maps its classification. Without an action the
+    row would sit in the queue with nothing left to say, because a row cannot
+    leave without a journal entry behind it — booking is the licence to clear.
+
+    THE CARD'S VERDICT IS NOT TRUSTED. Everything is re-resolved here, at
+    execution, against current state: config can change, a period can lock, and
+    a matcher re-run can book the row between render and click. Same discipline
+    as `_try_claim` re-checking the pool rather than trusting what scoring saw.
+    Three guards, each a real race rather than a formality:
+
+      * match_status != "unmatched"  → a re-run (or another operator) got there
+        first. Refuse rather than double-book.
+      * journal_entry_id is not None → belt to that brace: the row already has
+        an entry, so clearing it again would produce a second one.
+      * decide() now blocks          → the config the card saw is gone. Report
+        the CURRENT reason, not the stale one.
+
+    Scoped narrowly on purpose: this books a keyword row, whose posting the
+    system already knows in full (classification → GL, bank → contra, sign →
+    direction). It does not touch the coding accept path or `auto_cleared`
+    payment matches.
+
+    Corrected 2026-08-05 — this said both "stay with L-3", and only half of that
+    happened. **L-3 DID close the coding accept** (`_handle_reconciliation_accept`
+    now books through `book_coded_entry`). **`auto_cleared` was scoped OUT** and
+    still books nothing: a matched payment posts nothing because reconciliation
+    is not an economic event, and the entry it should clear against does not
+    exist because `create_customer_payment` writes none. Closing THAT is AR-2,
+    blocked on an undeposited-funds account existing on the chart.
+    """
+    from app.models.company import Company
+    from app.models.financial_account import (
+        FinancialAccount,
+        ReconciliationException,
+        ReconciliationRun,
+        ReconciliationTransaction,
+    )
+    from app.services import reconciliation_gl
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    txn_id = ctx["entity_id"]
+
+    txn = (
+        db.query(ReconciliationTransaction)
+        .filter(
+            ReconciliationTransaction.id == txn_id,
+            ReconciliationTransaction.tenant_id == user.company_id,
+        )
+        .first()
+    )
+    if txn is None:
+        return {"status": "errored", "message": "Transaction not found."}
+    if txn.match_status != "unmatched":
+        return {"status": "errored", "message": "This item is already resolved."}
+    if txn.journal_entry_id is not None:
+        return {
+            "status": "errored",
+            "message": "This item already has a journal entry behind it.",
+        }
+
+    exc = (
+        db.query(ReconciliationException)
+        .filter(ReconciliationException.reconciliation_transaction_id == txn_id)
+        .first()
+    )
+    if exc is None or not exc.keyword_classification:
+        return {
+            "status": "errored",
+            "message": (
+                "This item is not a recognised kind, so there is nothing to "
+                "post automatically."
+            ),
+        }
+
+    run = db.query(ReconciliationRun).filter(
+        ReconciliationRun.id == txn.reconciliation_run_id).one()
+    account = db.query(FinancialAccount).filter(
+        FinancialAccount.id == run.financial_account_id).one()
+    company = db.query(Company).filter(Company.id == user.company_id).one()
+
+    posting, reason = reconciliation_gl.build_keyword_posting_context(
+        db, company, [account]
+    ).decide(
+        classification=exc.keyword_classification,
+        financial_account_id=account.id,
+        entry_date=txn.transaction_date,
+    )
+    if posting is None:
+        # The card said it could post; between then and now it cannot. Report
+        # what is true NOW rather than what the card computed.
+        return {
+            "status": "errored",
+            "message": f"This can no longer post ({reason}). Reload to see why.",
+        }
+
+    entry = reconciliation_gl.book_keyword_entry(
+        db,
+        company_id=user.company_id,
+        posting=posting,
+        amount=txn.amount,
+        entry_date=txn.transaction_date,
+        description=txn.description or f"Reconciliation: {posting.classification}",
+        reference_number=txn.reference_number,
+    )
+    now = datetime.now(timezone.utc)
+    txn.match_status = posting.classification
+    txn.journal_entry_id = entry.id
+    txn.reviewed_by = user.id
+    txn.reviewed_at = now
+    exc.resolved = True
+    exc.resolved_by = user.id
+    exc.resolved_at = now
+    exc.resolution_note = f"Posted {entry.entry_number} after configuration."
+    db.commit()
+    return {
+        "status": "applied",
+        "message": f"Posted {entry.entry_number}.",
+        "entity_state": posting.classification,
+    }
+
+
+# Why a CODED accept could not post, in the operator's terms. Keyed on the
+# `reconciliation_gl.BLOCK_*` reasons `decide_coded` can return. Only the two
+# contra reasons are reachable from the accept handler — the period gate fires
+# earlier, with a better message that names the dates — but `period_locked` is
+# carried anyway so a future caller of `decide_coded` cannot land on the generic
+# fallback. These name the FIX, not the failure, per the L-2.1e card discipline.
+_CODED_CONTRA_BLOCK_MESSAGES: dict[str, str] = {
+    "contra_gl_unset": (
+        "This bank account has no GL cash account set, so a coded entry has no "
+        "second leg. Set it on the account, then accept."
+    ),
+    "contra_gl_dangling": (
+        "This bank account's GL cash account no longer resolves. Re-map it on "
+        "the account, then accept."
+    ),
+    "period_locked": (
+        "That accounting period is closed, so nothing can post into it."
+    ),
+}
+
+
 def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     """Books Review Accept — DISPATCHES BY ITEM DATA (one key, one handler).
 
@@ -1094,8 +1242,12 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     ONLY in match_status ("manually_matched" vs "auto_cleared") and provenance
     (reviewed_by/at). That equality is the sub-arc's parity invariant.
 
-    CODING (no candidates): a coding decision (payload `coding` or the note) is
-    required to accept.
+    CODING (no candidates): payload `gl_account_id` is required, and the accept
+    BOOKS a balanced two-legged draft JE before the row clears (L-3) — the coded
+    account against the bank's contra, same sign rule as the keyword path. Free
+    text is an optional `note` alongside, no longer the decision itself. A row
+    that cannot post is refused with the configuration reason; nothing clears
+    unbooked.
 
     PERIOD LOCK applies: a human choosing to commit hits the same
     check_date_in_locked_period gate the auto path honors — Accept never writes
@@ -1104,12 +1256,17 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
     Selecting a non-viable candidate (a rejected near-miss or an open invoice) is
     Flag/override territory (B-4), not Accept.
     """
+    from fastapi import HTTPException
+
+    from app.models.company import Company
     from app.models.financial_account import (
+        FinancialAccount,
         ReconciliationException,
         ReconciliationMatchCandidate,
+        ReconciliationRun,
         ReconciliationTransaction,
     )
-    from app.services import reconciliation_service
+    from app.services import reconciliation_gl, reconciliation_service
     from app.services.agents.period_lock import PeriodLockService
 
     db: Session = ctx["db"]
@@ -1228,19 +1385,127 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
             txn.reviewed_at = now
             if exc is not None:
                 exc.chosen_candidate_id = chosen.id
+            # AR-2.1, same check the auto path runs. A manual accept is the same
+            # moment of truth about where the money landed, so it gets the same
+            # detection — otherwise the default's silent-wrongness would be
+            # caught on one path and not the other.
+            if chosen.candidate_record_type == "customer_payment":
+                from app.services import ar_payment_posting
+
+                run = (
+                    db.query(ReconciliationRun)
+                    .filter(ReconciliationRun.id == txn.reconciliation_run_id)
+                    .first()
+                )
+                if run is not None:
+                    ar_payment_posting.check_match_bank_consistency(
+                        db,
+                        company_id=user.company_id,
+                        run_financial_account_id=run.financial_account_id,
+                        payment_id=chosen.candidate_record_id,
+                    )
             message = f"Matched to {chosen.candidate_record_type.replace('_', ' ')}."
     else:
-        coding = payload.get("coding") or ctx.get("note")
-        if not coding:
+        # ── CODED ACCEPT (L-3) ──────────────────────────────────────────────
+        # Booking is the licence to clear. A coded row now posts a balanced
+        # two-legged draft JE before it may leave the queue, exactly as a keyword
+        # row does — the operator supplies the debit leg, the contra comes from
+        # the bank account, which is the same place the keyword path reads it.
+        #
+        # PIN FLIP, deliberate: pre-L-3 this branch accepted free text and wrote
+        # it to match_notes, clearing the row against nothing. Free text is now a
+        # NOTE alongside the account, not the decision itself.
+        gl_account_id = payload.get("gl_account_id")
+        if not gl_account_id:
             return {
                 "status": "errored",
-                "message": "No candidates — enter a coding (account/category or note) to accept.",
+                "message": (
+                    "No candidates — choose the GL account to code this to "
+                    "before accepting."
+                ),
             }
+        if txn.journal_entry_id is not None:
+            # Belt to the match_status brace above: a row already carrying an
+            # entry must not get a second one.
+            return {
+                "status": "errored",
+                "message": "This item already has a journal entry behind it.",
+            }
+
+        # `require_gl_account` RAISES — it is the one raiser, so every write
+        # boundary agrees on what a usable GL account is AND says the same thing
+        # when it is not. Triage handlers RETURN errored dicts, so the raise is
+        # caught here and its detail carried across verbatim. This borrows the
+        # message rather than writing a second definition of it; a local copy is
+        # exactly the drift L-2.2 consolidated away.
+        try:
+            coded_gl = reconciliation_gl.require_gl_account(
+                db, user.company_id, gl_account_id
+            )
+        except HTTPException as gl_exc:
+            return {"status": "errored", "message": str(gl_exc.detail)}
+
+        run = (
+            db.query(ReconciliationRun)
+            .filter(ReconciliationRun.id == txn.reconciliation_run_id)
+            .one()
+        )
+        account = (
+            db.query(FinancialAccount)
+            .filter(FinancialAccount.id == run.financial_account_id)
+            .one()
+        )
+        company = db.query(Company).filter(Company.id == user.company_id).one()
+
+        # The contra + period halves of the keyword path's own resolver, in the
+        # same check order. A coded row and a keyword row on this account in this
+        # period read the same dicts, so they cannot disagree about whether the
+        # account is configured or the period is open.
+        contra_gl, blocked_reason = reconciliation_gl.build_keyword_posting_context(
+            db, company, [account]
+        ).decide_coded(
+            financial_account_id=account.id,
+            entry_date=txn.transaction_date,
+        )
+        if contra_gl is None:
+            # The operator can pick a coding account all day and this still
+            # cannot post — there is no second leg. That is a configuration
+            # problem and it is named as one rather than accepted into a failure.
+            return {
+                "status": "errored",
+                "message": _CODED_CONTRA_BLOCK_MESSAGES.get(
+                    blocked_reason,
+                    "This cannot post yet — the bank account's GL cash account "
+                    "is not usable.",
+                ),
+            }
+
+        entry = reconciliation_gl.book_coded_entry(
+            db,
+            company_id=user.company_id,
+            coded_gl=coded_gl,
+            contra_gl=contra_gl,
+            amount=txn.amount,
+            entry_date=txn.transaction_date,
+            description=txn.description or f"Reconciliation: {coded_gl.account_name}",
+            reference_number=txn.reference_number,
+        )
+
         txn.match_status = "manually_matched"
-        txn.match_notes = str(coding)
+        txn.journal_entry_id = entry.id
         txn.reviewed_by = user.id
         txn.reviewed_at = now
-        message = "Coded and accepted."
+        # ONLY on a supplied note. An unconditional assign would quietly clear
+        # whatever is already there — including Plaid's "[bank retracted this
+        # transaction]" marker, which is written onto unmatched rows and is the
+        # operator's only trace of it. The legacy PATCH .../action route does
+        # assign unconditionally; that is recorded, not copied.
+        note = payload.get("note") or ctx.get("note")
+        if note:
+            txn.match_notes = str(note)
+        message = (
+            f"Coded to {coded_gl.account_number} and posted {entry.entry_number}."
+        )
 
     if exc is not None:
         exc.resolved = True
@@ -1250,6 +1515,127 @@ def _handle_reconciliation_accept(ctx: dict[str, Any]) -> dict[str, Any]:
             exc.resolution_note = ctx["note"]
 
     return {"status": "applied", "message": message}
+
+
+def _handle_reconciliation_return_payment(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Record the payment this bank line reversed as RETURNED — the NSF action.
+
+    THERE IS NO DETECTION TO BUILD HERE, which is why this action is small. Two
+    mechanisms already exist and neither was actionable:
+
+      * the keyword ladder classifies the line as `nsf` at 0.88
+        (reconciliation_service.py:73) and then deliberately fails closed,
+        because L-2 ruled `nsf` unmapped ON PURPOSE — "a bounced cheque reverses
+        against AR, not an expense." That verdict stands; the card said "this
+        one needs a person" and the person had nothing to invoke.
+      * the matcher's direction-honest pools mean an NSF DEBIT cannot match the
+        payment CREDIT normally — but `DIRECTION_MISMATCH`
+        (reconciliation_service.py:496) already records the exact-amount hit in
+        the opposite pool as a scored-0.000 audit candidate. The system ALREADY
+        links the $400 return to the $400 payment. It just filed the link where
+        nobody acts on it.
+
+    So this handler resolves the payment from that existing candidate (or from
+    an explicit `payment_id` when the operator overrides), calls the reversal,
+    and resolves the row. The payment is NOT voided — see `return_payment`.
+
+    THE PAYMENT IS RE-RESOLVED AT EXECUTION, never trusted from the card, the
+    same discipline `reconciliation.post_keyword` follows: the candidate set can
+    change between render and click.
+    """
+    from fastapi import HTTPException
+
+    from app.models.financial_account import (
+        ReconciliationException,
+        ReconciliationMatchCandidate,
+        ReconciliationTransaction,
+    )
+    from app.services import sales_service
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    txn_id = ctx["entity_id"]
+    payload = ctx.get("payload") or {}
+
+    txn = (
+        db.query(ReconciliationTransaction)
+        .filter(
+            ReconciliationTransaction.id == txn_id,
+            ReconciliationTransaction.tenant_id == user.company_id,
+        )
+        .first()
+    )
+    if txn is None:
+        return {"status": "errored", "message": "Transaction not found.",
+                "code": "not_found"}
+
+    payment_id = payload.get("payment_id")
+    if not payment_id:
+        # The link the matcher already drew. Only an exact-amount opposite-pool
+        # hit on a CUSTOMER PAYMENT qualifies — a direction mismatch against
+        # anything else is a different signal and must not be swept in here.
+        candidate = (
+            db.query(ReconciliationMatchCandidate)
+            .filter(
+                ReconciliationMatchCandidate.reconciliation_transaction_id == txn_id,
+                ReconciliationMatchCandidate.rejection_reason == "DIRECTION_MISMATCH",
+                ReconciliationMatchCandidate.candidate_record_type == "customer_payment",
+            )
+            .all()
+        )
+        if len(candidate) != 1:
+            # Zero: nothing links. More than one: two payments of the same
+            # amount, and GUESSING WHICH ONE BOUNCED would reverse the wrong
+            # customer's payment. Both cases ask for the explicit id.
+            return {
+                "status": "errored",
+                "code": "ambiguous_payment",
+                "message": (
+                    "No single payment matches this return — pick the payment it "
+                    "reverses."
+                    if len(candidate) != 1 else ""
+                ),
+            }
+        payment_id = candidate[0].candidate_record_id
+
+    try:
+        result = sales_service.return_payment(
+            db,
+            payment_id,
+            user.company_id,
+            user.id,
+            reason=payload.get("reason") or f"Returned by bank — {txn.description or ''}".strip(),
+        )
+    except HTTPException as exc:
+        # The re-entrancy guard (409) and the spent-credit refusal (400) both
+        # land here, and both are things the operator needs told in words rather
+        # than a stack trace.
+        return {"status": "errored", "message": str(exc.detail),
+                "code": "cannot_return"}
+
+    txn.match_status = "manually_matched"
+    txn.matched_record_type = "customer_payment"
+    txn.matched_record_id = payment_id
+    txn.reviewed_by = user.id
+    txn.reviewed_at = datetime.now(timezone.utc)
+
+    exc_row = (
+        db.query(ReconciliationException)
+        .filter(ReconciliationException.reconciliation_transaction_id == txn_id)
+        .first()
+    )
+    if exc_row is not None and exc_row.resolved_at is None:
+        exc_row.resolved_at = datetime.now(timezone.utc)
+        exc_row.resolved_by = user.id
+
+    db.commit()
+    return {
+        "status": "ok",
+        "message": (
+            f"Payment recorded as returned. ${result['applied_reversed']} came "
+            "back off the customer's invoices."
+        ),
+    }
 
 
 def _handle_reconciliation_flag(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -1368,8 +1754,14 @@ HANDLERS: dict[str, HandlerFn] = {
     "email_unclassified.request_review": _handle_email_unclassified_request_review,
     # Books Review reconciliation (Arc B B-3 — Accept dispatches by item data)
     "reconciliation.accept": _handle_reconciliation_accept,
+    # L-2.1f — book a keyword row whose config now resolves (re-resolves at
+    # execution; never trusts the card's verdict).
+    "reconciliation.post_keyword": _handle_reconciliation_post_keyword,
     # Books Review reconciliation flag/park (Arc B B-4)
     "reconciliation.flag": _handle_reconciliation_flag,
+    # NSF / returned payment (N-1+2 — makes the DIRECTION_MISMATCH link, which
+    # the matcher already records, into something an operator can act on).
+    "reconciliation.return_payment": _handle_reconciliation_return_payment,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,

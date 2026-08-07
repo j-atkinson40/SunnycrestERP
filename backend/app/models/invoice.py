@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.database import Base
@@ -161,16 +162,61 @@ class Invoice(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    @property
+    @hybrid_property
     def balance_remaining(self) -> Decimal:
-        # total − paid − credited (memos) − written off. Everything that
-        # honestly reduced what's owed reduces the balance, everywhere
-        # this is read (aging, statements, the sweeper's mirror in SQL).
+        """What this invoice still owes: total − paid − credited − written off.
+
+        A HYBRID, not a plain property, and that is the whole point (AR-1 C-3).
+
+        Before this, the four-term truth lived here in Python and could not be
+        used in SQL, so every aggregating caller re-implemented it and they
+        drifted: the nightly sweeper computed three terms (dropping
+        `written_off_amount`) under a comment promising to "keep this formula in
+        lockstep with the model property", and fifteen dashboard/report sites
+        computed two (dropping credits AND write-offs). A comment asking two
+        expressions to agree is not a mechanism. A hybrid makes them the same
+        expression, compiled to Python for `inv.balance_remaining` and to SQL
+        for `func.sum(Invoice.balance_remaining)`.
+
+        Same principle as `_count_membership` (queue-count seam), `_count_config`
+        and `KeywordPostingContext.decide` — one definition, multiple consumers,
+        cannot diverge. `hybrid_property` is a new mechanism in this codebase;
+        the pattern is not.
+
+        THE PARTIALLY WRITTEN-OFF INVOICE IS WHY ALL FOUR TERMS ARE HERE. It
+        keeps its ordinary status, so no status filter can correct it — the
+        three-term formula counts the written-off portion as still owed and the
+        two-term formula counts the written-off AND credited portions. Only the
+        terms fix the terms. Membership (`services/ar_balance.py`) answers
+        whether this is a live receivable document; this answers how much.
+        Neither needs to know about the other.
+
+        ⚠️ THE PYTHON BRANCH'S CORRECTNESS DEPENDS ON ALL FOUR COLUMNS STAYING
+        NOT NULL. They are today — verified against `information_schema`:
+        `total`, `amount_paid`, `amount_credited` and `written_off_amount` are
+        all NOT NULL with defaults. The previous property carried
+        `or Decimal("0.00")` defenses that could never fire; they are dropped
+        rather than mirrored into the SQL branch, because defensive code that
+        cannot execute reads as load-bearing and would have made the two
+        branches structurally different for no reason. A migration making any of
+        these nullable must add `COALESCE` to BOTH branches.
+        """
         return (
             self.total
             - self.amount_paid
-            - (self.amount_credited or Decimal("0.00"))
-            - (self.written_off_amount or Decimal("0.00"))
+            - self.amount_credited
+            - self.written_off_amount
+        )
+
+    @balance_remaining.expression
+    def balance_remaining(cls):  # noqa: N805 - SQLAlchemy hybrid convention
+        """The SQL half of the same expression. No COALESCE: see the note on
+        NOT NULL above."""
+        return (
+            cls.total
+            - cls.amount_paid
+            - cls.amount_credited
+            - cls.written_off_amount
         )
 
     # Relationships

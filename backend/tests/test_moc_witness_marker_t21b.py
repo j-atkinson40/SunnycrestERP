@@ -39,6 +39,7 @@ from app.models.workflow_template import WorkflowTemplate
 from app.services.maps_of_content import triggers as triggers_svc
 from app.services.maps_of_content.schedule_sweep import check_moc_task_schedules
 from scripts import seed_moc_witness_marker as seed_mod
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 DUE_NOW = datetime(2026, 7, 1, 22, 5, 0, tzinfo=timezone.utc)     # 18:05 EDT

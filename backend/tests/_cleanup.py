@@ -25,6 +25,7 @@ Usage in a module-scoped teardown fixture:
 """
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import text
 
 # FK-safe order: children before parents. agent_run_steps + agent_anomalies
@@ -41,6 +42,15 @@ _PURGE_STATEMENTS = [
     "DELETE FROM email_messages WHERE tenant_id = ANY(:ids)",
     "DELETE FROM email_threads WHERE tenant_id = ANY(:ids)",
     "DELETE FROM email_accounts WHERE tenant_id = ANY(:ids)",
+    # behavioral_insights.tenant_id → companies, with no ON DELETE. It has
+    # never appeared here because, until AR-1 C-2, NO insight had ever been
+    # successfully created: two of the five `generate_insight` callers passed a
+    # signature that does not exist and raised TypeError into a bare
+    # `except Exception: pass`, and the other three had never had qualifying
+    # data. Fixing the AR-drift caller made the first real rows appear and this
+    # helper started failing on the companies delete — which is its own small
+    # proof of how unexercised that layer was.
+    "DELETE FROM behavioral_insights WHERE tenant_id = ANY(:ids)",
     "DELETE FROM agent_activity_log WHERE job_id IN (SELECT id FROM agent_jobs WHERE tenant_id = ANY(:ids))",
     "UPDATE agent_schedules SET last_job_id = NULL WHERE last_job_id IN (SELECT id FROM agent_jobs WHERE tenant_id = ANY(:ids))",
     "DELETE FROM period_locks WHERE tenant_id = ANY(:ids)",
@@ -67,6 +77,24 @@ _PURGE_STATEMENTS = [
     "DELETE FROM reconciliation_transactions WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_adjustments WHERE tenant_id = ANY(:ids)",
     "DELETE FROM reconciliation_runs WHERE tenant_id = ANY(:ids)",
+    # r154 (Ledger Posting L-2): keyword rows now book a draft JE, so journal
+    # entries are part of any tenant subtree that ran matching. MUST follow
+    # reconciliation_transactions — its journal_entry_id FK has NO ON DELETE
+    # clause (deliberately: a cleared row must not be silently unlinked from the
+    # entry it booked), so the entries cannot go until the transactions have.
+    # Lines first, then entries — children-first, same as the block above.
+    # r155 (AR-2) adds a SECOND dependent on journal_entries:
+    # customer_payments.journal_entry_id, also FK'd with no ON DELETE and for
+    # the same reason — deleting an entry a recorded payment points at should be
+    # refused, not silently unlink it. The payments themselves are deleted lower
+    # down (their applications reference invoices, so the pair cannot move up),
+    # so the LINK is cleared here instead. Nulling a column whose row is about
+    # to be deleted anyway is safe and keeps this block's invariant: nothing
+    # references a journal entry by the time entries go.
+    "UPDATE customer_payments SET journal_entry_id = NULL "
+    "WHERE company_id = ANY(:ids)",
+    "DELETE FROM journal_entry_lines WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM journal_entries WHERE tenant_id = ANY(:ids)",
     # Plaid substrate (children-first). bank_accounts.financial_account_id references
     # financial_accounts, so these precede it; reconciliation_transactions.bank_transaction_id
     # is ondelete=SET NULL and already deleted above.
@@ -142,3 +170,61 @@ def purge_companies_by_slug(session, slug_prefix: str) -> None:
         ).all()
     ]
     purge_test_companies(session, ids)
+
+
+# ── The mechanism, not the convention ───────────────────────────────────────
+
+
+def _all_company_ids(session) -> set[str]:
+    return {r[0] for r in session.execute(text("SELECT id FROM companies")).all()}
+
+
+@pytest.fixture(autouse=True)
+def purge_new_companies():
+    """Autouse fixture: purge exactly the companies this module created.
+
+    THE RATCHET WAS HELD BY CONVENTION AND SO IT WAS NOT HELD. CLAUDE.md says
+    the company-litter count can only shrink, but nothing enforced it outside
+    the files that opted in — and 16 of the MoC test files create `Company` rows
+    while NONE called `purge_companies_by_slug`. Dev's 775 companies were the
+    receipt (~20 leaked per full run). `test_responders`' litter guard is the
+    DETECTOR, not the leaker: it passes in isolation and errors on a full run
+    because it happens to run last and counts what everything before it left.
+
+    ID-BASED, DELIBERATELY, RATHER THAN SLUG-BASED. `purge_companies_by_slug`
+    needs a prefix, and the leaking files' prefixes are not all safe to purge on:
+    `test_moc_ponder` uses `p-`, which as `p-%` would match any company slug
+    beginning "p-", and `test_moc_task_offers_p3` builds its slug from a
+    per-case name so the prefix is not knowable at import time. A wrong LIKE
+    pattern in a teardown deletes data that was not the test's. Snapshotting ids
+    before and purging the difference cannot over-reach: it removes exactly what
+    appeared while the test ran, and nothing else.
+
+    Import it into a test module to enable it — one line, and the fixture is
+    autouse from there:
+
+        from tests._cleanup import purge_new_companies  # noqa: F401
+
+    Explicit per-module import rather than a blanket `conftest.py` autouse: the
+    latter would silently change teardown for every backend test at once, and a
+    teardown that deletes rows is not something to switch on globally in the same
+    pass that fixes sixteen files.
+
+    Function-scoped so a leak is attributed to the test that caused it rather
+    than swept at module end.
+    """
+    from app.database import SessionLocal
+
+    session = SessionLocal()
+    try:
+        before = _all_company_ids(session)
+    finally:
+        session.close()
+
+    yield
+
+    session = SessionLocal()
+    try:
+        purge_test_companies(session, _all_company_ids(session) - before)
+    finally:
+        session.close()

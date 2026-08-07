@@ -16,6 +16,7 @@ from app.models.company_entity import CompanyEntity
 from app.models.contact import Contact
 from app.models.customer import Customer
 from app.models.invoice import Invoice
+from app.services.ar_balance import is_receivable
 
 logger = logging.getLogger(__name__)
 
@@ -170,11 +171,11 @@ def enrich_customer_context(
 
     # Open AR balance — sum of outstanding invoices
     ar_result = (
-        db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0))
+        db.query(func.coalesce(func.sum(Invoice.balance_remaining), 0))
         .filter(
             Invoice.company_id == tenant_id,
             Invoice.customer_id == customer_id,
-            Invoice.status.in_(["sent", "overdue", "partial"]),
+            is_receivable(),
         )
         .scalar()
     )

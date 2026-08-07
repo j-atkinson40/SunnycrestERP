@@ -75,6 +75,17 @@ def _cleanup_companies():
     ids = list(_CREATED_COMPANY_IDS)
     s = SessionLocal()
     try:
+        # r155 (AR-0.1): customer_payments.discount_journal_entry_id FKs to
+        # journal_entries with no ON DELETE, so the link must be cleared before
+        # the entries go. No test here sets it today — only
+        # `apply_discounted_payment` does, and this file calls the private
+        # builder — but the ordering hazard is real the moment one does.
+        # (`tests/_cleanup.py::purge_companies_by_slug` is the shared helper
+        # that encodes this order once; this file predates the ratchet and
+        # keeps a local list.)
+        s.query(CustomerPayment).filter(
+            CustomerPayment.company_id.in_(ids)
+        ).update({"discount_journal_entry_id": None}, synchronize_session=False)
         # (model, scope-column) in FK-safe order — children before parents.
         for model, col in (
             (JournalEntryLine, "tenant_id"),
@@ -130,6 +141,22 @@ def _mk_user(db, co_id) -> User:
     db.add(u)
     db.commit()
     return u
+
+
+def _configure_ar(db, co_id) -> str:
+    """AR-0. EPD now REFUSES to post without a configured AR control account,
+    so every EPD test must configure one. Pre-AR-0 the AR leg was found by
+    `platform_category ILIKE '%ar%'` and, failing that, silently fell back to
+    the discount account for BOTH legs — which is exactly what these tests
+    were unknowingly exercising (`cat="discount"` contains no "ar", so the
+    resolver returned None on every one of them).
+    """
+    ar = _mk_gl(db, co_id, num="1200", name="ACCOUNTS RECEIVABLE-TRADE",
+                cat="current_asset")
+    co = db.get(Company, co_id)
+    co.set_setting("accounting_gl", {"ar": ar})
+    db.commit()
+    return ar
 
 
 def _mk_gl(db, co_id, *, num, name, cat="general") -> str:
@@ -189,34 +216,100 @@ class TestCreateEntry:
         assert row.total_debits == Decimal("100")
         assert row.total_credits == Decimal("100")
 
-    def test_permits_unbalanced_draft(self, db):
-        # WRONGNESS: create_entry never checks debits == credits; an
-        # unbalanced entry is freely created as a draft. Balance is only
-        # enforced at POST time.
+    def test_rejects_unbalanced_draft(self, db):
+        """DELIBERATE PIN FLIP — AR-0c. This previously read:
+
+            def test_permits_unbalanced_draft(self, db):
+                # WRONGNESS: create_entry never checks debits == credits; an
+                # unbalanced entry is freely created as a draft. Balance is only
+                # enforced at POST time.
+                ...
+                out = create_entry(body=body, current_user=user, db=db)  # no raise
+                row = db.get(JournalEntry, out["id"])
+                assert row.status == "draft"
+                assert row.total_debits == Decimal("100")
+                assert row.total_credits == Decimal("40")  # persisted unbalanced
+
+        The wrongness it named is now fixed at the primitive. `post_entry`'s
+        balance check survives as defense-in-depth for an entry mutated after
+        creation, but nothing reaches it unbalanced through the service.
+
+        CONSEQUENCE, stated plainly: a draft is no longer a work-in-progress
+        scratchpad. If the manual JE form wants "save a half-finished entry,"
+        that needs a different mechanism than an unbalanced JournalEntry row.
+        """
         co, user, gl_d, gl_c = _co_user_gls(db)
         body = JECreate(
             entry_type="manual",
             entry_date="2026-03-10",
-            description="pin: unbalanced draft allowed",
+            description="pin: unbalanced draft rejected",
             lines=[_line(gl_d, debit=100), _line(gl_c, credit=40)],
         )
-        out = create_entry(body=body, current_user=user, db=db)  # no raise
-        row = db.get(JournalEntry, out["id"])
-        assert row.status == "draft"
-        assert row.total_debits == Decimal("100")
-        assert row.total_credits == Decimal("40")  # persisted unbalanced
+        before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
+        with pytest.raises(HTTPException) as ei:
+            create_entry(body=body, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        assert "not balanced" in str(ei.value.detail)
+        assert db.query(JournalEntry).filter(
+            JournalEntry.tenant_id == co).count() == before
 
-    def test_permits_fewer_than_two_lines(self, db):
-        # WRONGNESS: a single-line (or zero-line) draft is creatable; the
-        # >=2-lines rule lives only in post_entry.
-        co, user, gl_d, gl_c = _co_user_gls(db)
+    def test_rejects_both_legs_on_one_account(self, db):
+        """AR-0c. A balanced two-legged entry on ONE account nets to nothing
+        while passing every balance check — the shape the EPD AR fallback
+        produced. Rejected at the primitive, whatever produced it."""
+        co, user, gl_d, _gl_c = _co_user_gls(db)
         body = JECreate(
             entry_type="manual",
             entry_date="2026-03-10",
-            description="pin: one line allowed",
-            lines=[_line(gl_d, debit=50)],
+            description="pin: same account both legs",
+            lines=[_line(gl_d, debit=100), _line(gl_d, credit=100)],
         )
-        out = create_entry(body=body, current_user=user, db=db)  # no raise
+        with pytest.raises(HTTPException) as ei:
+            create_entry(body=body, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        assert "same GL account" in str(ei.value.detail)
+
+    def test_permits_a_single_line_only_when_it_balances(self, db):
+        """DELIBERATE PIN FLIP — AR-0c, and the one COLLATERAL consequence of
+        the balance guard. This previously read:
+
+            def test_permits_fewer_than_two_lines(self, db):
+                # WRONGNESS: a single-line (or zero-line) draft is creatable; the
+                # >=2-lines rule lives only in post_entry.
+                ...
+                lines=[_line(gl_d, debit=50)],
+                out = create_entry(body=body, current_user=user, db=db)  # no raise
+                ...
+                assert len(lines) == 1
+
+        A one-line entry carrying an AMOUNT is unbalanced by construction, so
+        the balance guard now rejects it — the >=2-lines rule was never what
+        stopped it. A zero-amount single line still balances (0 == 0) and is
+        still creatable, which keeps `test_fewer_than_two_lines_rejected_at_post`
+        reachable: that rule genuinely does live only in `post_entry`.
+        """
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        # Carrying an amount → unbalanced → rejected at creation now.
+        with pytest.raises(HTTPException) as ei:
+            create_entry(
+                body=JECreate(
+                    entry_type="manual", entry_date="2026-03-10",
+                    description="pin: one line with an amount",
+                    lines=[_line(gl_d, debit=50)],
+                ),
+                current_user=user, db=db,
+            )
+        assert "not balanced" in str(ei.value.detail)
+
+        # Zero-amount single line → balances → still creatable.
+        out = create_entry(
+            body=JECreate(
+                entry_type="manual", entry_date="2026-03-10",
+                description="pin: one zero line allowed",
+                lines=[_line(gl_d, debit=0, credit=0)],
+            ),
+            current_user=user, db=db,
+        )
         lines = (
             db.query(JournalEntryLine)
             .filter(JournalEntryLine.journal_entry_id == out["id"])
@@ -255,6 +348,15 @@ class TestCreateEntryGLLookup:
     def test_foreign_tenant_gl_id_is_rejected_not_leaked(self, db):
         # FIXED (was the cross-tenant leak): referencing another tenant's
         # GL id is a 400, not a denorm of their account_number/name.
+        #
+        # PIN FLIPPED L-2.2 X-1 — MESSAGE ONLY, the 400 is unchanged.
+        #   prior:  assert "Unknown GL account" in str(ei.value.detail)
+        #           (the route's own string, f"Unknown GL account '{id}' for
+        #           this tenant" — it echoed the id the caller had supplied)
+        #   now:    the shared `reconciliation_gl.require_gl_account` message.
+        # The echo was never a leak (the caller supplied the id), so this is a
+        # consistency change, not a security one: one check now means one
+        # message, and foreign vs nonexistent stay byte-identical either way.
         other_co = _mk_company(db)
         foreign_gl = TenantGLMapping(
             id=str(uuid.uuid4()), tenant_id=other_co,
@@ -272,7 +374,10 @@ class TestCreateEntryGLLookup:
         with pytest.raises(HTTPException) as ei:
             create_entry(body=body, current_user=user, db=db)
         assert ei.value.status_code == 400
-        assert "Unknown GL account" in str(ei.value.detail)
+        assert "not in your chart of accounts" in str(ei.value.detail)
+        # Still no leak of the other tenant's data.
+        assert "9999" not in str(ei.value.detail)
+        assert "Foreign Tenant Account" not in str(ei.value.detail)
 
     def test_unknown_gl_id_is_rejected_not_silent_null(self, db):
         # FIXED (was the silent-null fallback): an id that resolves to
@@ -311,11 +416,27 @@ class TestPostEntry:
         assert db.get(JournalEntry, eid).status == "posted"
 
     def test_unbalanced_rejected_at_post(self, db):
+        """AR-0c: the entry can no longer be CREATED unbalanced, so this pins
+        `post_entry`'s own check against an entry made unbalanced AFTER
+        creation — a direct row edit, a migration, a future partial-update
+        path. The check is now defense-in-depth rather than the only gate, and
+        it is kept deliberately: `create_journal_entry` guards the front door,
+        not every subsequent write to the row.
+
+        Previously this built the unbalanced entry through `_draft(...)` with
+        `lines=[_line(gl_d, debit=100), _line(gl_c, credit=40)]`, which the
+        primitive now refuses.
+        """
         co, user, gl_d, gl_c = _co_user_gls(db)
         eid = self._draft(
             db, user, gl_d, gl_c,
-            lines=[_line(gl_d, debit=100), _line(gl_c, credit=40)],
+            lines=[_line(gl_d, debit=100), _line(gl_c, credit=100)],
         )
+        # Knock it out of balance behind the service's back.
+        row = db.get(JournalEntry, eid)
+        row.total_credits = Decimal("40")
+        db.commit()
+
         with pytest.raises(HTTPException) as ei:
             post_entry(entry_id=eid, current_user=user, db=db)
         assert ei.value.status_code == 400
@@ -444,6 +565,7 @@ class TestEpdDiscountJournalEntry:
         co = _mk_company(db)
         user = _mk_user(db, co)
         gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        ar = _configure_ar(db, co)          # AR-0: required now
         pay = self._payment(db, co)
         entry_id = _create_discount_journal_entry(
             db, tenant_id=co, payment=pay, discount_amount=10.0,
@@ -457,20 +579,75 @@ class TestEpdDiscountJournalEntry:
         assert row.entry_type == "adjusting"
         assert row.period_month == 4 and row.period_year == 2026  # from payment_date
         assert row.total_debits == Decimal("10") == row.total_credits
+        # AR-0: the legs are now DIFFERENT accounts. Pre-AR-0 this test passed
+        # with both legs on `gl` — the fallback — and asserted only the totals,
+        # which is why a self-cancelling entry looked correct here for months.
+        lines = (
+            db.query(JournalEntryLine)
+            .filter(JournalEntryLine.journal_entry_id == entry_id)
+            .order_by(JournalEntryLine.line_number).all()
+        )
+        assert [ln.gl_account_id for ln in lines] == [gl, ar]
+        assert lines[1].gl_account_number == "1200"      # denormalized from the mapping
 
-    def test_returns_none_when_no_gl_account(self, db):
-        # Pins the explicit None-GL contract (early return + warning log).
+    def test_raises_when_no_gl_account(self, db):
+        """DELIBERATE PIN FLIP — AR-0. This previously read:
+
+            def test_returns_none_when_no_gl_account(self, db):
+                # Pins the explicit None-GL contract (early return + warning log).
+                ...
+                entry_id = _create_discount_journal_entry(
+                    db, tenant_id=co, payment=pay, discount_amount=10.0,
+                    gl_account_id=None, user_id=user.id,
+                )
+                assert entry_id is None
+                after = ...count()
+                assert after == before  # no entry created
+
+        "No entry created" was the right half. The wrong half was returning it
+        as a value the caller then ignored: `apply_discounted_payment` committed
+        the discount anyway and answered 200 with `journal_entry_id: null`, so
+        the customer's balance moved with nothing behind it and no human read a
+        null. It refuses now.
+        """
         co = _mk_company(db)
         user = _mk_user(db, co)
+        _configure_ar(db, co)
         pay = self._payment(db, co)
         before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
-        entry_id = _create_discount_journal_entry(
-            db, tenant_id=co, payment=pay, discount_amount=10.0,
-            gl_account_id=None, user_id=user.id,
-        )
-        assert entry_id is None
+
+        with pytest.raises(HTTPException) as ei:
+            _create_discount_journal_entry(
+                db, tenant_id=co, payment=pay, discount_amount=10.0,
+                gl_account_id=None, user_id=user.id,
+            )
+        assert ei.value.status_code == 400
+        assert "discount settings" in str(ei.value.detail)
         after = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
-        assert after == before  # no entry created
+        assert after == before  # still no entry created
+
+    def test_raises_when_ar_account_not_configured(self, db):
+        """AR-0, the other half: a configured DISCOUNT account is not enough.
+
+        Pre-AR-0 this posted a balanced, self-cancelling entry with both legs on
+        the discount account, because `_find_ar_account` returned None on every
+        real chart and the caller fell back to `gl_account_id`.
+        """
+        co = _mk_company(db)
+        user = _mk_user(db, co)
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        pay = self._payment(db, co)          # NO _configure_ar
+        before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
+
+        with pytest.raises(HTTPException) as ei:
+            _create_discount_journal_entry(
+                db, tenant_id=co, payment=pay, discount_amount=10.0,
+                gl_account_id=gl, user_id=user.id,
+            )
+        assert ei.value.status_code == 400
+        assert "accounts-receivable" in str(ei.value.detail).lower()
+        assert db.query(JournalEntry).filter(
+            JournalEntry.tenant_id == co).count() == before
 
 
 # ── S-3 period-lock guard ────────────────────────────────────────────
@@ -539,6 +716,7 @@ class TestPeriodLockGuard:
         co = _mk_company(db)
         user = _mk_user(db, co)
         gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        _configure_ar(db, co)                               # AR-0: required now
         _lock(db, co, date(2026, 5, 1), date(2026, 5, 31))  # May locked
         pay = TestEpdDiscountJournalEntry()._payment(db, co)  # payment_date Apr 20
         entry_id = _create_discount_journal_entry(
@@ -559,6 +737,11 @@ class TestPeriodLockGuard:
         co = _mk_company(db)
         user = _mk_user(db, co)
         gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        # AR-0: configured, so the AR refusal does not pre-empt the period-lock
+        # guard this test is about. Account resolution happens BEFORE the
+        # primitive's lock check, so an unconfigured tenant would 400 here for
+        # the wrong reason and the pin would silently stop testing the lock.
+        _configure_ar(db, co)
         pay = TestEpdDiscountJournalEntry()._payment(db, co)  # payment_date 2026-04-20
         _lock(db, co, date(2026, 4, 1), date(2026, 4, 30))    # April locked
         with pytest.raises(PeriodLockedError):
@@ -580,3 +763,268 @@ class TestPeriodLockGuard:
         with pytest.raises(PeriodLockedError) as ei:
             post_entry(entry_id=eid, current_user=user, db=db)
         assert ei.value.status_code == 409
+
+
+# ── L-2.2 X-1: create_entry's lookup vs. validate_gl_account ─────────
+#
+# CHARACTERIZATION FIRST. `create_entry` filtered on tenant_id but NOT
+# is_active, so it accepted a soft-deleted mapping that
+# `reconciliation_gl.validate_gl_account` — the single definition of a usable
+# GL account everywhere else — refuses. Two definitions of "usable", differing
+# by one predicate, is the drift L-2.1b closed on the reconciliation routes.
+
+
+def _mk_inactive_gl(db, co_id, *, num, name) -> str:
+    gl = TenantGLMapping(
+        id=str(uuid.uuid4()), tenant_id=co_id, platform_category="general",
+        account_number=num, account_name=name, is_active=False,
+    )
+    db.add(gl)
+    db.commit()
+    return gl.id
+
+
+class TestCreateEntryRejectsInactiveGL:
+    """X-1. Own tenant, but deactivated.
+
+    PRIOR BEHAVIOUR, pinned before the change and now flipped: an inactive
+    same-tenant mapping was ACCEPTED and its account_number/name denormalized
+    onto the line, because the lookup filtered `tenant_id` only. Meanwhile
+    `validate_gl_account` refused the same id, so the reconciliation posting
+    path and the manual JE path disagreed about whether that account existed.
+
+    STOP-CHECK EVIDENCE for the flip (read-only, 2026-08-04): production has
+    **0 journal_entry_lines, 0 journal_entries, and 0 inactive mappings** out
+    of 224 — so no existing entry references an inactive mapping and nothing
+    previously writable becomes unwritable.
+    """
+
+    def test_inactive_same_tenant_gl_is_rejected(self, db):
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        dead = _mk_inactive_gl(db, co, num="1099", name="Closed Cash")
+        body = JECreate(
+            entry_type="manual", entry_date="2026-03-10", description="pin",
+            lines=[_line(dead, debit=10), _line(gl_c, credit=10)],
+        )
+        with pytest.raises(HTTPException) as ei:
+            create_entry(body=body, current_user=user, db=db)
+        assert ei.value.status_code == 400
+        # Named, unlike foreign/nonexistent: it is the operator's own data and
+        # the fix (reactivate, or pick another) is theirs to make.
+        assert "inactive" in str(ei.value.detail).lower()
+
+    def test_active_same_tenant_gl_still_accepted(self, db):
+        """The other direction — tightening must not reject valid accounts."""
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        body = JECreate(
+            entry_type="manual", entry_date="2026-03-10", description="pin",
+            lines=[_line(gl_d, debit=10), _line(gl_c, credit=10)],
+        )
+        out = create_entry(body=body, current_user=user, db=db)
+        line = (
+            db.query(JournalEntryLine)
+            .filter(JournalEntryLine.journal_entry_id == out["id"],
+                    JournalEntryLine.gl_account_id == gl_d)
+            .first()
+        )
+        assert line.gl_account_number == "1000"
+
+    def test_foreign_and_nonexistent_read_identically(self, db):
+        """The L-2.1b existence-oracle discipline, now enforced on this route
+        too: naming the foreign case as foreign would confirm that a row exists
+        in another tenant."""
+        other_co = _mk_company(db)
+        foreign = TenantGLMapping(
+            id=str(uuid.uuid4()), tenant_id=other_co, platform_category="revenue",
+            account_number="9999", account_name="Foreign Tenant Account",
+        )
+        db.add(foreign)
+        db.commit()
+        co, user, gl_d, gl_c = _co_user_gls(db)
+
+        details = []
+        for bad in (foreign.id, "does-not-exist"):
+            body = JECreate(
+                entry_type="manual", entry_date="2026-03-10", description="pin",
+                lines=[_line(bad, debit=10), _line(gl_c, credit=10)],
+            )
+            with pytest.raises(HTTPException) as ei:
+                create_entry(body=body, current_user=user, db=db)
+            details.append(str(ei.value.detail))
+        assert details[0] == details[1]
+
+
+# ── L-2.2 X-2: parse_entry returns an UNVALIDATED gl_account_id ──────
+#
+# CHARACTERIZATION FIRST, and the characterization is the finding.
+#
+# The prompt (`accounting.parse_journal_entry`, v1 active on production,
+# read-only-verified 2026-08-04) renders its chart as
+#     - {account_number}: {account_name} ({category})
+# and then asks the model to return `gl_account_id`. THE MODEL IS NEVER SHOWN AN
+# id. It is being asked for a value it has no way to know, so the id it returns
+# is always fabricated — an echoed account number, an invented UUID, or empty.
+# The frontend then reads ONLY `gl_account_id` and discards `gl_account_number`,
+# which is the field the model CAN get right because it is in the prompt.
+#
+# So account selection in the AI parse has never worked. Pre-L-2.1d the native
+# <select> rendered the fabricated id as blank and submitted it anyway; the
+# operator learned about it from create_entry's 400 at save.
+
+
+class _FakeResult:
+    def __init__(self, parsed):
+        self.status = "success"
+        self.response_parsed = parsed
+        self.error_message = None
+
+
+def _patch_intelligence(monkeypatch, parsed):
+    from app.services.intelligence import intelligence_service
+
+    monkeypatch.setattr(
+        intelligence_service, "execute",
+        lambda *a, **k: _FakeResult(parsed),
+    )
+
+
+class TestParseEntryResolvesGLAccounts:
+    """X-2. Whatever the model proposes is resolved against the tenant's own
+    chart before it leaves the endpoint."""
+
+    def _parse(self, db, user, text="anything"):
+        from app.api.routes.journal_entries import ParseRequest, parse_entry
+        return parse_entry(body=ParseRequest(input=text), current_user=user, db=db)
+
+    def test_a_fabricated_id_does_not_reach_the_caller(self, db, monkeypatch):
+        """THE BUG. Pre-L-2.2 this id was returned verbatim and the form put it
+        in state, where it sat invisibly until create_entry rejected it."""
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        _patch_intelligence(monkeypatch, {
+            "description": "pin", "entry_type": "manual", "confidence": 0.9,
+            "lines": [{
+                "gl_account_id": "gl-1000-fabricated",
+                "gl_account_number": "1000", "gl_account_name": "Cash",
+                "side": "debit", "amount": 10, "description": None,
+            }],
+        })
+        out = self._parse(db, user)
+        assert out["lines"][0]["gl_account_id"] != "gl-1000-fabricated"
+
+    def test_the_account_NUMBER_is_what_resolves(self, db, monkeypatch):
+        """The fix that makes the feature work at all: the model cannot know
+        ids, but it CAN read account numbers off the prompt, so the number is
+        the identifier to resolve by."""
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        _patch_intelligence(monkeypatch, {
+            "description": "pin", "entry_type": "manual", "confidence": 0.9,
+            "lines": [{
+                "gl_account_id": "definitely-not-a-real-id",
+                "gl_account_number": "1000", "gl_account_name": "Cash",
+                "side": "debit", "amount": 10, "description": None,
+            }],
+        })
+        line = self._parse(db, user)["lines"][0]
+        assert line["gl_account_id"] == gl_d          # the real mapping
+        assert line["gl_account_name"] == "Cash"      # denormalized from IT
+        assert line.get("gl_account_unresolved") is None
+
+    def test_a_valid_id_is_honoured_and_re_denormalized(self, db, monkeypatch):
+        """If a real id ever does arrive, it wins — and number/name come from
+        the mapping, not from whatever the model asserted about it."""
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        _patch_intelligence(monkeypatch, {
+            "description": "pin", "entry_type": "manual", "confidence": 0.9,
+            "lines": [{
+                "gl_account_id": gl_d,
+                "gl_account_number": "WRONG", "gl_account_name": "Wrong",
+                "side": "debit", "amount": 10, "description": None,
+            }],
+        })
+        line = self._parse(db, user)["lines"][0]
+        assert line["gl_account_id"] == gl_d
+        assert line["gl_account_number"] == "1000"
+        assert line["gl_account_name"] == "Cash"
+
+    def test_an_unresolvable_account_is_FLAGGED_not_dropped_silently(self, db, monkeypatch):
+        """The chosen shape. A proposal the chart cannot match becomes a null id
+        PLUS what the model proposed, so the UI can say a suggestion was made and
+        rejected. Dropping it silently would discard information the model
+        produced and leave the operator with an empty picker and no reason."""
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        _patch_intelligence(monkeypatch, {
+            "description": "pin", "entry_type": "manual", "confidence": 0.9,
+            "lines": [{
+                "gl_account_id": "nope",
+                "gl_account_number": "8888", "gl_account_name": "Imagined Account",
+                "side": "debit", "amount": 10, "description": None,
+            }],
+        })
+        line = self._parse(db, user)["lines"][0]
+        assert line["gl_account_id"] is None
+        assert line["gl_account_unresolved"] == {
+            "proposed_number": "8888", "proposed_name": "Imagined Account",
+        }
+        # The rest of the line survives — the amount and side were never in doubt.
+        assert line["amount"] == 10
+        assert line["side"] == "debit"
+
+    def test_an_inactive_account_does_not_resolve(self, db, monkeypatch):
+        """Same definition of usable as everywhere else — the prompt is built
+        from ACTIVE mappings, so a number that only matches a dead one is a
+        proposal the chart cannot honour."""
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        _mk_inactive_gl(db, co, num="1099", name="Closed Cash")
+        _patch_intelligence(monkeypatch, {
+            "description": "pin", "entry_type": "manual", "confidence": 0.9,
+            "lines": [{
+                "gl_account_id": None,
+                "gl_account_number": "1099", "gl_account_name": "Closed Cash",
+                "side": "debit", "amount": 10, "description": None,
+            }],
+        })
+        line = self._parse(db, user)["lines"][0]
+        assert line["gl_account_id"] is None
+        assert line["gl_account_unresolved"]["proposed_number"] == "1099"
+
+    def test_another_tenants_account_number_does_not_resolve(self, db, monkeypatch):
+        """A guard on the NEW number resolution, not a claim about an old leak
+        — the model never saw the other tenant's chart, so nothing was read
+        across tenants before. But account numbers are not globally unique, so
+        resolving by number without a tenant filter WOULD create the read. This
+        pins that it stays scoped."""
+        other_co = _mk_company(db)
+        db.add(TenantGLMapping(
+            id=str(uuid.uuid4()), tenant_id=other_co, platform_category="revenue",
+            account_number="7777", account_name="Their Account",
+        ))
+        db.commit()
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        _patch_intelligence(monkeypatch, {
+            "description": "pin", "entry_type": "manual", "confidence": 0.9,
+            "lines": [{
+                "gl_account_id": None, "gl_account_number": "7777",
+                "gl_account_name": "Their Account",
+                "side": "debit", "amount": 10, "description": None,
+            }],
+        })
+        line = self._parse(db, user)["lines"][0]
+        assert line["gl_account_id"] is None
+        assert "Their Account" not in str(line.get("gl_account_name") or "")
+
+    def test_the_error_shape_is_untouched(self, db, monkeypatch):
+        """A failed parse still returns the same {error, confidence, lines}
+        envelope — resolution must not change what failure looks like."""
+        from app.services.intelligence import intelligence_service
+
+        class _Failed:
+            status = "errored"
+            response_parsed = None
+            error_message = "boom"
+
+        co, user, gl_d, gl_c = _co_user_gls(db)
+        monkeypatch.setattr(intelligence_service, "execute", lambda *a, **k: _Failed())
+        out = self._parse(db, user)
+        assert out["lines"] == []
+        assert out["confidence"] == 0
+        assert out["error"] == "boom"

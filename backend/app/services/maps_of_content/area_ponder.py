@@ -23,6 +23,8 @@ curriculum LIST ordered by `sequence`, deliberately not an engine.
 """
 from __future__ import annotations
 
+import logging
+import re as _re
 import uuid
 from typing import Any
 
@@ -30,8 +32,167 @@ from sqlalchemy.orm import Session
 
 from app.models.moc_composition import MoCComposition
 
+logger = logging.getLogger(__name__)
+
 _TASK_BEAT_CAP = 10
 
+
+# ── Cadence (MAP-3) ────────────────────────────────────────────────────────
+#
+# CADENCE WAS ALREADY DERIVED AND THE JOB BRANCH DROPPED IT. The
+# automation branch below renders `when` per beat (the three-tier chain in
+# `task_catalog.py`: the mirrored runtime Workflow's trigger when
+# `schedule_authority == "runtime_scheduler"`, else the first active
+# MoCTaskTrigger, else the manual `frequency` string). When Reframe R-2 made
+# JOBS the map's face, the job branch was written without it — so an area
+# whose jobs lead teaches WHAT runs and never WHEN.
+#
+# Grouping by grain rather than listing per job is also THE CAP FIX, not a
+# side benefit: `_TASK_BEAT_CAP = 10` against Accounting's ELEVEN jobs means
+# the area story already truncates one into "…and N more". Four grains fit.
+
+_GRAIN_ORDER = ("continuous", "nightly", "weekly", "monthly", "other")
+
+_GRAIN_LABEL = {
+    "continuous": "Through the day",
+    "nightly": "Overnight",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "other": "On its own schedule",
+}
+
+
+def _job_cadences(db: Session, job) -> list[tuple[str, str]]:
+    """Every `(grain, when_text)` this job's automations run on.
+
+    Reads the SAME precedence the automation beat uses — one expression, two
+    consumers, so a job's rhythm and its automation's rhythm cannot disagree.
+    """
+    from app.services.maps_of_content.jobs import resolve_job
+
+    out: list[tuple[str, str]] = []
+    for ref in resolve_job(db, job)["refs"]:
+        if ref["kind"] != "automation":
+            continue
+        t = ref["automation"]
+        when = (
+            t.get("runtime_schedule_summary")
+            if t.get("schedule_authority") == "runtime_scheduler"
+            else (t.get("derived_frequency") or t.get("frequency"))
+        )
+        if when:
+            out.append((_grain_of(str(when)), str(when).rstrip(".")))
+    return out
+
+
+def _grain_of(when: str) -> str:
+    """Bucket a humanized schedule string into a rhythm an operator thinks in.
+
+    DELIBERATELY COARSE. The clock times matter for one automation; the GRAIN
+    is what a person plans around — "I work the queues in the morning" is a
+    fact about overnight, not about 11:30 PM. Nine distinct times across the
+    accounting jobs collapse to four grains.
+    """
+    w = when.lower()
+    if "minute" in w or "hour" in w:
+        return "continuous"
+    if "monthly" in w or "1st" in w or "month" in w:
+        return "monthly"
+    if "weekly" in w or "week" in w:
+        return "weekly"
+    if "daily" in w or "every day" in w:
+        return "nightly"
+    return "other"
+
+
+def _join_names(names: list[str]) -> str:
+    """Oxford-comma join. A beat that reads as a sentence, at any count."""
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return ", ".join(names[:-1]) + f", and {names[-1]}"
+
+
+def check_area_drift(beats: list[dict], captions: dict) -> list[str]:
+    """Named divergences for the AREA generator — `check_mirror_drift`'s job,
+    pointed at the one generator that had none.
+
+    WHY THIS GENERATOR NEEDED IT MOST. `check_mirror_drift` (`ponder.py:288`)
+    exists because "a mirror teaches its runtime source's story; if the runtime
+    shape changes under the mirror, the ponder would silently teach the old
+    story." It is called from exactly one site — the per-automation builder —
+    and the AREA generator watched nothing. Cadence is the most
+    schedule-coupled claim the Map can make, so authored prose sitting over
+    derived times is precisely that failure shape, on the surface that was
+    unguarded.
+
+    ⚠️ THIS SURFACES FOR REVIEW; IT DOES NOT AUTO-DETECT STALENESS, and the
+    distinction is the honest part. Detecting "this caption was written when the
+    schedule said something else" needs the derived text AS OF AUTHORING, and
+    captions store only the text. So the check reports every authored caption
+    that sits on a schedule-derived beat, WITH the current derived text beside
+    it — which is what a human comparing them actually needs. Claiming
+    automatic detection here would be the same over-claim the cadence beat is
+    disciplined against.
+
+    Storing a derived-text hash alongside each caption would make it automatic
+    and is a caption-shape change; deliberately not taken here.
+
+    WARN, NEVER FAIL — `check_mirror_drift`'s contract. A stale caption is a
+    content bug, not an outage, and a ponder that refused to render would
+    replace a possibly-stale story with no story.
+    """
+    drift: list[str] = []
+    live = {b["key"]: b for b in beats}
+
+    for key in captions:
+        if key not in live:
+            drift.append(
+                f"orphaned caption {key!r} — its beat no longer exists "
+                "(reclaimable in the editor; never rendered to viewers)"
+            )
+
+    for key, beat in live.items():
+        if not key.startswith("cadence:") or not beat.get("authored"):
+            continue
+        # ⚠️ THE FIRST VERSION OF THIS FIRED ON PROSE EXISTING, AND MAP-4 MADE
+        # PROSE THE NORM. Shipping five seeded cadence captions turned every
+        # render into five warnings — a check that cries wolf on the expected
+        # state, which trains people to stop reading the log. The premise was
+        # wrong, not the intent.
+        #
+        # THE REAL HAZARD IS NARROWER: prose that RESTATES something derived.
+        # "Morning is for the queues" cannot go stale; "the matcher runs at
+        # 11:30 PM" goes stale the moment someone re-crons it, and "Bank
+        # reconciliation and Collections" goes stale when membership changes.
+        # A caption that says what the OPERATOR DOES is durable; one that
+        # repeats WHEN or WHICH has baked a derived fact into authored text.
+        #
+        # So the check now looks for derived content INSIDE the caption rather
+        # than for the caption itself.
+        text = str(beat.get("text") or "")
+        echoes: list[str] = []
+
+        cadence = beat.get("cadence") or {}
+        for when in cadence.get("whens") or []:
+            # The humanized time carries its own separators; compare the parts
+            # that would actually appear in prose (a clock time, a weekday).
+            for token in _re.findall(r"\d{1,2}:\d{2}\s*(?:AM|PM)|\b1st\b", str(when)):
+                if token.lower() in text.lower():
+                    echoes.append(f"the time {token!r}")
+        for job in cadence.get("jobs") or []:
+            if job.get("name") and job["name"].lower() in text.lower():
+                echoes.append(f"the job name {job['name']!r}")
+
+        if echoes:
+            drift.append(
+                f"caption on {key!r} restates derived content — it contains "
+                f"{', '.join(sorted(set(echoes)))}, which the card already "
+                "shows and which moves when the schedule does. Say what the "
+                "operator DOES; let the card say when and which."
+            )
+    return drift
 
 class AreaPonderError(ValueError):
     pass
@@ -152,6 +313,82 @@ def build_area_ponder_script(
                 "task_cluster", "task",
                 f"…and {rest_jobs} more — the area page holds the whole list.",
             )
+
+        # THE CADENCE BEATS — the area's RHYTHM, derived. One beat per grain
+        # the jobs actually occupy, never per grain we think they should.
+        #
+        # ⚠️ WHAT IS DERIVED IS **WHEN**, AND ONLY WHEN. The beat says what runs
+        # and how often, because both are read. It does NOT say what the
+        # operator does with the result, and it does NOT say the month closes on
+        # a clean queue — NOTHING ENFORCES THAT. Month-end close gates on the
+        # PeriodLock and the statement-run conflict check, not on queue state.
+        # A teaching surface asserting an unenforced constraint is the exact
+        # failure the authored prose here is disciplined against, and it is the
+        # easiest one to commit because the arc makes it feel true. Where a
+        # story about consequence is wanted, it is AUTHORED over these beats
+        # (captions) or DERIVED as a live count — never asserted.
+        #
+        # Jobs with NO derivable cadence are NAMED, not omitted. Four of
+        # Accounting's eleven have no automations at all; they are things an
+        # operator does rather than things the platform runs, and that is a fact
+        # about the area worth teaching rather than a gap to paper over.
+        # STRUCTURED, NOT JUST A SENTENCE (MAP-4). The beat carries its parts —
+        # grain, the actual TIMES, and the member jobs with ids — so a CARD can
+        # render them separately while the STORY still reads the sentence.
+        # `_beat(**extra)` already carries structure this way (the closing beat's
+        # `link`); one beat list, two altitudes.
+        #
+        # ⚠️ THE TIMES ARE THE QUIET IMPROVEMENT. "Overnight" loses that it is
+        # 10:30 PM to 3:00 AM, and someone deciding when to sit down with the
+        # queue needs the number rather than the adjective. The story keeps the
+        # adjective; the card shows both.
+        by_grain: dict[str, dict] = {}
+        rhythmless: list[dict] = []
+        for j in area_jobs:
+            cadences = _job_cadences(db, j)
+            if not cadences:
+                rhythmless.append({"id": j.id, "name": j.name})
+                continue
+            for grain, when in cadences:
+                slot = by_grain.setdefault(grain, {"jobs": [], "whens": []})
+                if not any(x["name"] == j.name for x in slot["jobs"]):
+                    slot["jobs"].append({"id": j.id, "name": j.name})
+                if when not in slot["whens"]:
+                    slot["whens"].append(when)
+
+        for grain in _GRAIN_ORDER:
+            slot = by_grain.get(grain)
+            if not slot:
+                continue
+            names = [x["name"] for x in slot["jobs"]]
+            _beat(
+                f"cadence:{grain}", "task",
+                f"{_GRAIN_LABEL[grain]} — {_join_names(names)}.",
+                cadence={
+                    "grain": grain,
+                    "label": _GRAIN_LABEL[grain],
+                    "whens": sorted(slot["whens"]),
+                    "jobs": slot["jobs"],
+                },
+            )
+
+        if rhythmless:
+            # NAMED FOR WHAT THE WORK IS, NOT FOR WHAT IT LACKS. "On your
+            # schedule" rather than "No schedule" — a category defined by
+            # absence still describes real work, and four of eleven is far too
+            # many to drop. It is also the group an operator actually asks
+            # about: what do I do that isn't automatic.
+            _beat(
+                "cadence:none", "task",
+                f"{_join_names([x['name'] for x in rhythmless])} run on no "
+                "schedule — they are work you pick up, not work that arrives.",
+                cadence={
+                    "grain": "none",
+                    "label": "On your schedule",
+                    "whens": [],
+                    "jobs": rhythmless,
+                },
+            )
         # THE ENGINE ROOM'S collective mention — the automations, counted.
         _beat(
             "engine_room", "task",
@@ -195,12 +432,22 @@ def build_area_ponder_script(
     live_keys = {b["key"] for b in beats}
     orphaned = {k: v for k, v in captions.items() if k not in live_keys}
 
+    # MAP-3 — the drift check the area generator never had. Warn + ride the
+    # payload, exactly as the per-automation builder does with mirror drift.
+    area_drift = check_area_drift(beats, captions)
+    if area_drift:
+        logger.warning(
+            "[map] area ponder drift for %s/%s: %s", vertical, area,
+            "; ".join(area_drift),
+        )
+
     return {
         "task_id": f"area:{area}",
         "task_name": area,
         "workflow_name": "",
         "beats": beats,
         "orphaned_captions": orphaned,
+        "drift": area_drift,
         "mirror_drift": [],
         "is_live": False,
         "vertical": vertical,

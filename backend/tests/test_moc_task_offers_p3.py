@@ -26,6 +26,7 @@ from app.services.maps_of_content import task_offers
 from app.services.maps_of_content.ponder import build_ponder_script, recent_fires
 from app.services.maps_of_content.task_catalog import patch_task
 from app.services.maps_of_content.task_fork import fork_task_for_tenant
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 

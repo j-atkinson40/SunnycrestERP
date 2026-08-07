@@ -7,9 +7,27 @@ references the ONE workflow_template it runs + (via MoCTaskCatalogFocus) the
 MANY focus_templates it opens.
 
 frequency + task_type are FREE-FORM strings: free-form pending a stable
-vocabulary; promote to enum if the type/frequency set stabilizes (workflow
-templates carry no trigger columns to derive frequency from; no task-type
-taxonomy exists). Three-tier scope mirrors moc_pages. Actor columns FK-less
+vocabulary; promote to enum if the type/frequency set stabilizes (no task-type
+taxonomy exists).
+
+⚠️ `frequency` IS NOW THE LAST RESORT, NOT THE ONLY SOURCE. This docstring used
+to say "workflow templates carry no trigger columns to derive frequency from",
+and that stopped being true when the derived tiers landed. `task_catalog.py`
+resolves an automation's schedule in THREE tiers, and this column is the third:
+
+  1. `runtime_schedule_summary` — the MIRRORED runtime `Workflow`'s own trigger,
+     used when `schedule_authority(runtime) == "runtime_scheduler"`. The
+     authority discriminator is the point: it answers WHO actually makes this
+     fire, so a mirror reports what runs rather than what the MoC row hoped.
+  2. `derived_frequency` — the first ACTIVE `MoCTaskTrigger`'s summary.
+  3. THIS COLUMN — the manual string, which stands only when 1 and 2 are silent.
+
+Corrected 2026-08-06 during the stale-claim audit. A comment describing the
+system as it was, left in place after the work that changed it, is the same
+failure the audit catalogued in CLAUDE.md — and this one would mislead exactly
+the person who came looking for where cadence lives.
+
+Three-tier scope mirrors moc_pages. Actor columns FK-less
 (cross-realm). Artifact references resolve at READ time through the cards'
 _resolve_workflow/_resolve_focus (orphan-tolerant) — the FKs use ondelete so
 template deletion never blocks.

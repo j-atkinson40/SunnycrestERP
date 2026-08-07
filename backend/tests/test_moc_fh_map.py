@@ -39,6 +39,31 @@ def db():
     s.close()
 
 
+@pytest.fixture(autouse=True)
+def workflow_substrate(db):
+    """⚠️ THE UPSTREAM SEED THIS FILE ASSUMED. The mirror seed derives its
+    templates FROM the `workflows` table, so on a database where nothing has
+    seeded workflows it mirrors zero and every assertion here reads an empty
+    set. That is exactly CI's shape — fresh Postgres, `alembic upgrade head`,
+    no seeds — and it is why this file was red on the PR for two days while
+    passing locally against a database a boot had populated long ago.
+
+    ORDER IS LOAD-BEARING and was measured, not guessed: workflows before
+    mirrors, because the mirrors create the `moc_task_catalog` rows that job
+    seeds later attach refs to. Seeding jobs first silently skips every
+    automation ref — no error, just an emptier map.
+
+    Idempotent both ways, so it costs nothing where they already exist."""
+    from app.data.seed_workflows import seed_default_workflows
+    from scripts.seed_moc_backfill_workflow_mirrors import seed as _mirrors
+
+    seed_default_workflows(db)
+    db.commit()
+    _mirrors(db)
+    yield
+
+
+
 def _page(db) -> MoCPage | None:
     return (
         db.query(MoCPage)
@@ -54,7 +79,88 @@ def _rows(page: MoCPage) -> list[dict]:
     return [r for s in (page.sections or []) for r in s.get("rows", [])]
 
 
+# ── The Cemetery Triage prerequisite (test-hygiene fix) ─────────────────────
+
+
+def ensure_cemetery_triage_template(db):
+    """Create the `Cemetery Triage` focus template if it is absent.
+
+    ⚠️ A DISTINCT CLASS OF TEST FRAGILITY, and it is worse than the
+    seed-dependence it looks like. The tests asserting on this row DO run their
+    seed (`seed_fh_map`). The seed does not create the row — `focus_rows_for_vertical`
+    QUERIES `focus_templates`, and a grep for "Cemetery Triage" across `scripts/`
+    returns only that one querying file. NOTHING IN THE REPOSITORY CREATES IT.
+
+    The seed's own docstring says where it was expected to come from:
+
+        "Cemetery Triage surfaces because its funeral_home join row exists
+         (the V-1 log-skip made real, idempotently)"
+
+    — a RUNTIME flow (V-1 auto-authoring), not a seed. So the assertion passed
+    only on a database whose history happened to contain that flow's side
+    effect. It has never passed on a clean machine and could not.
+
+    The evidence was in the same file the whole time: the sibling test
+    (`test_focus_rows_query_returns_owned_and_joined`) creates its templates
+    inline and PASSES, while the two that assume the row FAIL. This helper is
+    that sibling's INSERT lifted, so both halves of the file now make what they
+    assert on.
+
+    Idempotent: returns the existing row's id when one is already present, so a
+    machine where V-1 DID run is unaffected.
+
+    ⚠️ FLAGGED, NOT DECIDED: whether a SEED should create this instead.
+    "Cemetery Triage exists for funeral_home" reads like platform-default
+    content rather than tenant runtime state. That is the same question as
+    `focus_templates` vs the frontend Focus registry — which half of the system
+    owns a Focus's existence — with three producers (frontend registry,
+    `focus_templates` seeds, V-1 auto-authoring) and no owner. Recorded in STATE
+    with the FB-1 finding. If a seed later creates the row this helper becomes
+    REDUNDANT rather than WRONG, which is why it is safe to add now.
+    """
+    existing = db.execute(
+        sql_text(
+            "SELECT id FROM focus_templates "
+            "WHERE display_name = 'Cemetery Triage' AND is_active = true"
+        )
+    ).fetchone()
+    if existing is not None:
+        return existing[0]
+
+    core_row = db.execute(
+        sql_text("SELECT id FROM focus_cores LIMIT 1")
+    ).fetchone()
+    if core_row is None:
+        core_id = str(uuid.uuid4())
+        db.execute(
+            sql_text(
+                "INSERT INTO focus_cores (id, core_slug, display_name, "
+                "registered_component_kind, registered_component_name) "
+                "VALUES (:id, :slug, 'Cemetery Triage Core', 'focus-core', "
+                "'TriageQueueCore')"
+            ),
+            {"id": core_id, "slug": f"cemetery-triage-core-{uuid.uuid4().hex[:8]}"},
+        )
+    else:
+        core_id = core_row[0]
+
+    tid = str(uuid.uuid4())
+    db.execute(
+        sql_text(
+            "INSERT INTO focus_templates (id, scope, template_slug, "
+            "display_name, inherits_from_core_id, inherits_from_core_version, "
+            "vertical, is_active) VALUES "
+            "(:id, 'vertical_default', :slug, 'Cemetery Triage', :c, 1, "
+            "'funeral_home', true)"
+        ),
+        {"id": tid, "slug": "cemetery-triage", "c": core_id},
+    )
+    db.flush()
+    return tid
+
+
 def test_fh_map_seeds_with_all_four_cards(db):
+    ensure_cemetery_triage_template(db)
     seed_mirrors(db)
     seed_fh_map(db)
     page = _page(db)

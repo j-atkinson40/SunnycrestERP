@@ -29,6 +29,7 @@ from app.database import SessionLocal
 from app.models.company import Company
 from app.models.moc_domain_event import MoCDomainEvent
 from app.services.maps_of_content.domain_events import emit_event
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 

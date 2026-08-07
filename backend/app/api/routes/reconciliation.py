@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.financial_account import (
     FinancialAccount,
@@ -21,10 +21,30 @@ from app.models.financial_account import (
     ReconciliationTransaction,
 )
 from app.models.user import User
-from app.services import reconciliation_service
+from app.services import (
+    early_payment_discount_service,
+    reconciliation_gl,
+    reconciliation_service,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _require_valid_gl_account(db: Session, tenant_id: str, gl_account_id: str) -> None:
+    """Refuse a contra that is not an ACTIVE mapping owned by this tenant.
+
+    The r153 FK gives EXISTENCE only — not tenant ownership, not ``is_active`` —
+    so a mapping id belonging to another tenant satisfied the constraint and was
+    written, then failed far away at resolve as ``contra_gl_dangling``. That is
+    the right copy for a mapping which drifted and the wrong copy for one that
+    was never valid, and it surfaces long after the mistake. (L-2.1b.)
+
+    L-2.2 moved the body to ``reconciliation_gl.require_gl_account`` so the
+    journal-entry route could share it verbatim rather than grow a second check.
+    This stays as the local name the routes below read by.
+    """
+    reconciliation_gl.require_gl_account(db, tenant_id, gl_account_id)
 
 
 # ── Schemas ──
@@ -133,6 +153,13 @@ def list_accounts(
             "id": a.id, "account_type": a.account_type, "account_name": a.account_name,
             "institution_name": a.institution_name, "last_four": a.last_four,
             "is_primary": a.is_primary, "gl_account_id": a.gl_account_id,
+            # The client hydrates its edit form from this response, and every
+            # field it CANNOT hydrate it sends back as an explicit null — which
+            # `update_account`'s exclude_unset reads as a deliberate clear. So an
+            # editable column missing here is a silent wipe on the next save, not
+            # merely an absent readout. statement_closing_day was exactly that.
+            # (Ledger Posting L-2.1a.)
+            "statement_closing_day": a.statement_closing_day,
             "last_reconciled_date": str(a.last_reconciled_date) if a.last_reconciled_date else None,
             "last_reconciled_balance": float(a.last_reconciled_balance) if a.last_reconciled_balance else None,
             "credit_limit": float(a.credit_limit) if a.credit_limit else None,
@@ -158,6 +185,10 @@ def create_account(
     ).scalar() or 0
     if count >= 5:
         raise HTTPException(400, "Maximum 5 active accounts")
+
+    # An account can be born mis-pointed, so the create path takes the same gate.
+    if body.gl_account_id:
+        _require_valid_gl_account(db, current_user.company_id, body.gl_account_id)
 
     account = FinancialAccount(
         tenant_id=current_user.company_id,
@@ -194,6 +225,10 @@ def update_account(
     # partial PATCH that nulled it would unmap the account and every subsequent
     # reconciliation JE would refuse to book. (Ledger Posting arc L-1.)
     changes = body.model_dump(exclude_unset=True)
+    # Gate VALUES, not the deliberate clear: an explicit null stays legal (it is
+    # the contra picker's clear path, pinned in test_reconciliation_gl_l1).
+    if changes.get("gl_account_id"):
+        _require_valid_gl_account(db, current_user.company_id, changes["gl_account_id"])
     for field in ("account_type", "account_name", "institution_name", "last_four",
                   "gl_account_id", "is_primary", "statement_closing_day", "is_active"):
         if field in changes:
@@ -204,6 +239,390 @@ def update_account(
         )
     db.commit()
     return {"status": "updated"}
+
+
+# ── Keyword → GL map (Ledger Posting L-2.1e) ──
+#
+# The tenant-wide half of reconciliation GL config; the per-account half is the
+# contra on `financial_accounts` above. Both legs of the same journal entry, so
+# both live on one settings page.
+#
+# PUT rather than PATCH, and an explicit null ACTS rather than being dropped —
+# the Plaid category-map precedent (`plaid.py::set_category_override`), not the
+# EPD one (`discount.py::update_settings`, which uses exclude_none and therefore
+# cannot clear its GL account at all). Here a null is the whole point: it is how
+# an operator says "this kind does not post automatically", which for payroll and
+# nsf is the correct answer on a real chart rather than an unfinished one.
+#
+# require_admin, matching the structural sibling (plaid.py) and all of Vault
+# Accounting — including the flow that CREATES the TenantGLMapping rows this maps
+# to. NOTE THE ASYMMETRY, deliberately left rather than silently widened: the
+# other leg, PATCH /accounts/{id}, is still get_current_user like the rest of this
+# router, so a non-admin can set a bank account's contra through the accounts form
+# but cannot touch the keyword map. Re-gating 14 routes is its own decision.
+
+_KEYWORD_STATE_MAPPED = "mapped"
+_BLOCK_TO_STATE = {
+    reconciliation_gl.BLOCK_KEYWORD_GL_UNMAPPED: "unmapped",
+    reconciliation_gl.BLOCK_KEYWORD_GL_INTENTIONAL: "intentional",
+    reconciliation_gl.BLOCK_KEYWORD_GL_DANGLING: "dangling",
+}
+
+
+class KeywordGLUpdate(BaseModel):
+    classification: str
+    # NO DEFAULT — the field is required, so omitting it is a 422 rather than
+    # silently meaning null. "I did not say" and "I said none" are different
+    # sentences and this endpoint must not conflate them.
+    gl_account_id: str | None
+
+
+def _keyword_gl_payload(db: Session, company) -> dict:
+    """State per classification, derived from the RUNTIME resolver.
+
+    Never re-inferred from the settings dict. The configure script inferred it
+    and started lying the moment a third state existed — a deliberate null read
+    as "unmapped", so it told an operator to configure what they had just chosen
+    not to configure.
+    """
+    out = []
+    for c in reconciliation_gl.KEYWORD_CLASSIFICATIONS:
+        mapping, reason = reconciliation_gl.keyword_gl_with_reason(db, company, c)
+        out.append({
+            "classification": c,
+            "state": _KEYWORD_STATE_MAPPED if mapping else _BLOCK_TO_STATE.get(reason, "unmapped"),
+            "gl_account_id": mapping.id if mapping else None,
+            "account_number": mapping.account_number if mapping else None,
+            "account_name": mapping.account_name if mapping else None,
+        })
+    return {"classifications": out}
+
+
+@router.get("/keyword-gl")
+def get_keyword_gl(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Readable by anyone — the panel shows state to everyone and only lets an
+    admin change it, the BankCategoriesSettings idiom."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+    return _keyword_gl_payload(db, company)
+
+
+@router.put("/keyword-gl")
+def set_keyword_gl(
+    body: KeywordGLUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Map a classification to a GL account, or mark it as deliberately not
+    posting (`gl_account_id: null` — PRESENT and null, never a removed key)."""
+    from app.models.company import Company
+
+    if body.classification not in reconciliation_gl.KEYWORD_CLASSIFICATIONS:
+        raise HTTPException(
+            400,
+            f"Unknown classification {body.classification!r} — expected one of "
+            f"{', '.join(reconciliation_gl.KEYWORD_CLASSIFICATIONS)}.",
+        )
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+
+    if body.gl_account_id is not None:
+        _require_valid_gl_account(db, current_user.company_id, body.gl_account_id)
+
+    current = dict(
+        (company.settings or {}).get(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY) or {}
+    )
+    # Assignment, never `pop` on null: key PRESENT and null is a decision, an
+    # absent key means nobody has decided, and the Books Review card says
+    # different things for the two.
+    current[body.classification] = body.gl_account_id
+    company.set_setting(reconciliation_gl.KEYWORD_GL_SETTINGS_KEY, current)
+    db.commit()
+    return _keyword_gl_payload(db, company)
+
+
+# ── Accounting GL purposes (AR-2.0 E-2) ──
+#
+# A SIBLING endpoint to /keyword-gl, not an extension of it, and the reason is
+# the validation vocabulary. `/keyword-gl` validates against
+# KEYWORD_CLASSIFICATIONS — a code-fixed three-value set. `accounting_gl` keys
+# are PURPOSES, open-ended and growing one per arc that needs one. A single PUT
+# serving both would branch on which vocabulary applied, which is two functions
+# wearing one name — the thing `decide` vs `decide_coded` avoided.
+#
+# The FRONTEND does extend: /settings/accounts renders both sections from one
+# chart fetch, because the operator's job is the same job even though the
+# server's is not.
+#
+# ONE KEY SHIPS: "ar". `bad_debt` (8650 BAD DEBTS) and `finance_charge_income`
+# (9200 FINANCE CHARGE INCOME) both exist on the chart and are both needed
+# eventually — by write-offs and by finance-charge posting, neither of which is
+# built. Shipping empty slots for them is the payroll lesson exactly: three
+# blanks read as an unfinished form and get filled with the nearest plausible
+# account. `undeposited_funds` would be worse still — it names an account that
+# does not exist on the chart at all (AR-2 is blocked on precisely that), so the
+# slot would be unfillable and would read as the platform's bug. Each key
+# arrives with the arc that reads it.
+
+# NOTE ON WHERE THE KEY LIVES: `ACCOUNTING_GL_SETTINGS_KEY` is defined in
+# `early_payment_discount_service` because AR-0 put it there alongside its first
+# consumer, `resolve_ar_account`. It is now read from two modules and it is not
+# really EPD's concept — an accounting-GL settings key belongs somewhere
+# neutral. Left where it is rather than moved as a side effect of building a
+# panel; worth relocating when a THIRD consumer appears, which is the point at
+# which the current home stops being defensible.
+
+# Purpose → what the operator is choosing, and what it costs to leave unmapped.
+# The COPY IS PART OF THE CONTRACT (L-2.1e): a panel that presents a neutral
+# blank invites the nearest plausible answer.
+_ACCOUNTING_GL_PURPOSES: dict[str, dict[str, str]] = {
+    "ar": {
+        "label": "Accounts receivable",
+        "description": (
+            "The control account customer balances post against. Early-payment "
+            "discounts credit it."
+        ),
+        # UNLIKE PAYROLL, THERE IS A RIGHT ANSWER HERE, and the copy says so.
+        # Payroll-unmapped is correct — no single account fits a net ACH draw.
+        # AR-unmapped is a CHOICE WITH A CONSEQUENCE, and the consequence
+        # surfaces months later as what looks like a bug.
+        "unmapped_cost": (
+            "Marking this unmapped means early-payment discounts will not post. "
+            "An account named ACCOUNTS RECEIVABLE-TRADE is almost certainly what "
+            "you want."
+        ),
+    },
+}
+
+
+class AccountingGLUpdate(BaseModel):
+    purpose: str
+    # NO DEFAULT, same reason as KeywordGLUpdate: omitting it is a 422, because
+    # "I did not say" and "I said none" are different sentences.
+    gl_account_id: str | None
+
+
+def _accounting_gl_payload(db: Session, company) -> dict:
+    """State per purpose, derived from the SETTINGS + the runtime validator.
+
+    Three states, per L-2.1c, and the order of the checks is load-bearing —
+    `null` is falsy, so testing presence BEFORE truthiness is what keeps a
+    deliberate unmapping from reading as a gap nobody has closed yet.
+    """
+    from app.services.reconciliation_gl import validate_gl_account
+
+    stored = (company.settings or {}).get(
+        early_payment_discount_service.ACCOUNTING_GL_SETTINGS_KEY
+    ) or {}
+    out = []
+    for purpose, meta in _ACCOUNTING_GL_PURPOSES.items():
+        present = isinstance(stored, dict) and purpose in stored
+        gl_id = stored.get(purpose) if present else None
+
+        if present and gl_id is None:
+            state, mapping = "intentional", None
+        elif not gl_id:
+            state, mapping = "unmapped", None
+        else:
+            mapping = validate_gl_account(db, company.id, gl_id)
+            state = "mapped" if mapping is not None else "dangling"
+
+        out.append({
+            "purpose": purpose,
+            "label": meta["label"],
+            "description": meta["description"],
+            "unmapped_cost": meta["unmapped_cost"],
+            "state": state,
+            "gl_account_id": mapping.id if mapping else None,
+            "account_number": mapping.account_number if mapping else None,
+            "account_name": mapping.account_name if mapping else None,
+        })
+    return {"purposes": out}
+
+
+@router.get("/accounting-gl")
+def get_accounting_gl(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Readable by anyone; only an admin may change it. Same idiom as
+    /keyword-gl — the panel shows state to everyone."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+    return _accounting_gl_payload(db, company)
+
+
+@router.put("/accounting-gl")
+def set_accounting_gl(
+    body: AccountingGLUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Map a purpose to a GL account, or mark it deliberately unmapped
+    (`gl_account_id: null` — PRESENT and null, never a removed key).
+
+    AR-0 shipped the resolver and its fail-closed refusal with NO authoring
+    surface, so a tenant hitting that refusal could not clear it without direct
+    settings access. This is that surface.
+    """
+    from app.models.company import Company
+
+    if body.purpose not in _ACCOUNTING_GL_PURPOSES:
+        raise HTTPException(
+            400,
+            f"Unknown purpose {body.purpose!r} — expected one of "
+            f"{', '.join(_ACCOUNTING_GL_PURPOSES)}.",
+        )
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+
+    if body.gl_account_id is not None:
+        _require_valid_gl_account(db, current_user.company_id, body.gl_account_id)
+
+    current = dict(
+        (company.settings or {}).get(
+            early_payment_discount_service.ACCOUNTING_GL_SETTINGS_KEY
+        ) or {}
+    )
+    # Assignment, never `pop` on null — key PRESENT and null is a decision.
+    current[body.purpose] = body.gl_account_id
+    company.set_setting(
+        early_payment_discount_service.ACCOUNTING_GL_SETTINGS_KEY, current
+    )
+    db.commit()
+    return _accounting_gl_payload(db, company)
+
+
+# ── The payment bank default (AR-2.0 follow-up) ──
+#
+# AR-2 shipped `payment_bank_financial_account_id` with NO surface, which is
+# AR-0's gap reproduced one arc later: a tenant who needs to configure it has no
+# way to. This closes it, using E-2 as the template.
+#
+# A THIRD endpoint rather than a row on /accounting-gl, for the reason that kept
+# /accounting-gl separate from /keyword-gl: the value TYPE differs. Every
+# accounting_gl value is a TenantGLMapping.id and its panel row renders a
+# GLAccountPicker; this holds a FinancialAccount.id and renders a bank picker.
+# Folding it in would make one endpoint validate two id types and one picker
+# wrong for one row.
+#
+# The two are shown in the SAME card, because the operator's question — "where
+# does the platform post when it books for me" — is one question even though the
+# server answers it from two vocabularies.
+
+
+class PaymentBankUpdate(BaseModel):
+    # NO DEFAULT, same contract as the other two: omitting it is a 422, and an
+    # explicit null is "we have not chosen one", not "I forgot to say".
+    financial_account_id: str | None
+
+
+def _payment_bank_payload(db: Session, company) -> dict:
+    """The chosen bank account and whether it can actually post.
+
+    TWO SETTINGS IN TWO PLACES have to line up before a payment posts: this
+    choice, and the chosen account's own `gl_account_id` (set on the account
+    edit form, L-2.1e's other half). Production today has this unset AND the
+    contra unset on its only account, so reporting only the first would send an
+    operator away thinking they were done.
+    """
+    from app.models.financial_account import FinancialAccount
+    from app.services.ar_payment_posting import PAYMENT_BANK_SETTINGS_KEY
+    from app.services.reconciliation_gl import contra_gl_with_reason
+
+    settings = company.settings or {}
+    chosen_id = settings.get(PAYMENT_BANK_SETTINGS_KEY)
+    account = None
+    if chosen_id:
+        account = (
+            db.query(FinancialAccount)
+            .filter(
+                FinancialAccount.id == chosen_id,
+                FinancialAccount.tenant_id == company.id,
+            )
+            .first()
+        )
+
+    if account is None:
+        return {
+            "financial_account_id": None,
+            "account_name": None,
+            "state": "unmapped" if chosen_id is None else "dangling",
+            "gl_account_number": None,
+            "gl_account_name": None,
+            "can_post": False,
+        }
+
+    cash, _reason = contra_gl_with_reason(db, account)
+    return {
+        "financial_account_id": account.id,
+        "account_name": account.account_name,
+        # "mapped" means CHOSEN; `can_post` is the one that means ready, and
+        # they differ exactly when the account's own GL account is missing.
+        "state": "mapped",
+        "gl_account_number": cash.account_number if cash else None,
+        "gl_account_name": cash.account_name if cash else None,
+        "can_post": cash is not None,
+    }
+
+
+@router.get("/payment-bank")
+def get_payment_bank(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+    return _payment_bank_payload(db, company)
+
+
+@router.put("/payment-bank")
+def set_payment_bank(
+    body: PaymentBankUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Choose the bank account customer payments are recorded into."""
+    from app.models.company import Company
+    from app.models.financial_account import FinancialAccount
+    from app.services.ar_payment_posting import PAYMENT_BANK_SETTINGS_KEY
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if company is None:
+        raise HTTPException(404, "Company not found")
+
+    if body.financial_account_id is not None:
+        # Tenant-scoped, always. An id from another tenant must not be storable
+        # even though nothing downstream would resolve it — the same
+        # existence-oracle discipline the GL boundaries use.
+        exists = (
+            db.query(FinancialAccount)
+            .filter(
+                FinancialAccount.id == body.financial_account_id,
+                FinancialAccount.tenant_id == current_user.company_id,
+            )
+            .first()
+        )
+        if exists is None:
+            raise HTTPException(400, "That bank account is not one of yours.")
+
+    company.set_setting(PAYMENT_BANK_SETTINGS_KEY, body.financial_account_id)
+    db.commit()
+    return _payment_bank_payload(db, company)
 
 
 # ── Reconciliation Runs ──

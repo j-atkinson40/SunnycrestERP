@@ -43,6 +43,7 @@ from app.services.maps_of_content.schedule_sweep import (
     check_moc_task_schedules,
     list_schedule_runs,
 )
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 # 2026-07-01 22:05 UTC = 18:05 America/New_York (EDT, UTC-4) → in [18:00,18:15).

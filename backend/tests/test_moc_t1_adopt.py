@@ -40,6 +40,7 @@ from app.services.maps_of_content.schedule_sweep import (
     _runtime_fired_same_window,
 )
 from app.services.maps_of_content.task_catalog import resolve_task
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 
 @pytest.fixture

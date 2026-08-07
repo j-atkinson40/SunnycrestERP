@@ -6,11 +6,17 @@ direction-honesty, ambiguity-skip, and confidences are pinned by
 test_reconciliation_matching_rework.py::TestMatchingHandMath. This file carries
 three additional pins:
 
-  1. The payroll asymmetry, as ARITHMETIC: `payroll` counts as auto-cleared
-     AND flows into cleared_total / platform_cleared_balance / difference;
-     `bank_fee` and `nsf` count as suggested and do NOT. Hand-computed so a
-     sign error in the money math trips the test, not just a label change.
-     (Unchanged by A-2 — the keyword ladder is preserved.)
+  1. FLIPPED BY L-2 (Ledger Posting): the payroll asymmetry is GONE, and what
+     replaced it is visible here as ARITHMETIC. Pre-L-2 this class pinned
+     `payroll` counting as auto-cleared and moving cleared_total while `bank_fee`
+     and `nsf` did not — an asymmetry with no accounting behind it, on top of a
+     deeper problem: payroll moved cleared_total while booking NOTHING, so the
+     reconciliation reported money as cleared that the ledger had never seen.
+     L-2 makes booking the licence to clear. These tenants have no GL
+     configuration at all, so post-L-2 NOTHING clears here — the fail-closed
+     path, hand-computed. The configured direction (all three book, all three
+     clear) is pinned in test_reconciliation_gl_l2.py, which owns the L-2
+     arithmetic in both directions.
   2. FLIPPED BY A-2: a re-run must NOT clobber a manual classification. The
      rewrite is non-destructive (only `unmatched` transactions are rescored),
      so a manual action survives a re-run even when the txn matches a rule.
@@ -154,16 +160,26 @@ def _cp(db, co, cust, *, day, total, ref=None) -> CustomerPayment:
     return p
 
 
-class TestPayrollAsymmetryArithmetic:
-    def test_payroll_hits_cleared_total_but_fee_and_nsf_do_not(self, db):
-        """HAND MATH — three pattern-only lines, no candidates:
-          T0 'GUSTO PAYROLL'  debit -5000 -> payroll  (auto;  cleared -5000)
-          T1 'SERVICE CHARGE' debit  -15  -> bank_fee (suggested; cleared +0)
-          T2 'NSF RETURNED'   debit -100  -> nsf      (suggested; cleared +0)
-          auto 1 · suggested 2 · unmatched 0
-          platform_cleared_balance = -5000 (payroll ONLY)
+class TestUnconfiguredTenantClearsNothing:
+    """FLIPPED BY L-2. These tenants are created with no keyword→GL map and no
+    GL account on the bank account, which is the state every tenant is in until
+    someone configures it. Pre-L-2 that state still produced a cleared balance;
+    post-L-2 it produces exceptions."""
+
+    def test_no_gl_configuration_means_no_row_clears(self, db):
+        """HAND MATH — three pattern-only lines, no GL configuration:
+          T0 'GUSTO PAYROLL'  debit -5000 -> classified payroll,  CANNOT BOOK
+          T1 'SERVICE CHARGE' debit  -15  -> classified bank_fee, CANNOT BOOK
+          T2 'NSF RETURNED'   debit -100  -> classified nsf,      CANNOT BOOK
+          auto 0 · suggested 0 · unmatched 3
+          platform_cleared_balance = 0
           difference = closing - opening - cleared
-                     = 2000 - 1000 - (-5000) = 6000
+                     = 2000 - 1000 - 0 = 1000
+
+        PRE-L-2 THIS READ: auto 1 · suggested 2 · unmatched 0, cleared -5000,
+        difference 6000. The -5000 was payroll clearing against a ledger with
+        nothing in it — `journal_entries` was 0 platform-wide. The number moved
+        because the label said "payroll", not because anything was booked.
         """
         co = _mk_company(db)
         user = _mk_user(db, co)
@@ -174,17 +190,18 @@ class TestPayrollAsymmetryArithmetic:
         db.commit()
 
         result = trigger_matching(run.id, current_user=user, db=db)
-        assert result["auto_cleared"] == 1
-        assert result["suggested"] == 2
-        assert result["unmatched"] == 0
+        assert result["auto_cleared"] == 0
+        assert result["suggested"] == 0
+        assert result["unmatched"] == 3
 
         db.refresh(run)
-        # The arithmetic — payroll's signed amount only.
-        assert run.platform_cleared_balance == Decimal("-5000")
-        assert run.difference == Decimal("6000")
+        assert run.platform_cleared_balance == Decimal("0")
+        assert run.difference == Decimal("1000")
 
-    def test_two_payrolls_accumulate_fees_still_excluded(self, db):
-        # Two payrolls -> cleared_total sums both; a fee between them adds 0.
+    def test_two_payrolls_and_a_fee_still_clear_nothing(self, db):
+        """PRE-L-2 THIS READ: cleared -9000 (the two payrolls, fee excluded).
+        Post-L-2 the classification is unchanged — all three rows are still
+        recognised — but recognition alone no longer moves money."""
         co = _mk_company(db)
         user = _mk_user(db, co)
         run = _mk_run(db, co, opening="0", closing="0")
@@ -195,7 +212,7 @@ class TestPayrollAsymmetryArithmetic:
 
         trigger_matching(run.id, current_user=user, db=db)
         db.refresh(run)
-        assert run.platform_cleared_balance == Decimal("-9000")  # -5000 + -4000, fee excluded
+        assert run.platform_cleared_balance == Decimal("0")
 
 
 class TestRerunPreservesManualAction:
@@ -210,11 +227,17 @@ class TestRerunPreservesManualAction:
         _txn(db, run, day=16, amount="-15", desc="MONTHLY SERVICE CHARGE", ttype="debit", order=0)
         db.commit()
 
-        trigger_matching(run.id, current_user=user, db=db)  # run 1 -> bank_fee
+        # Run 1. PRE-L-2 this left the row `bank_fee` on the strength of the
+        # description alone; post-L-2 the tenant has no GL configuration, so the
+        # row is classified but cannot book and stays `unmatched`. That makes
+        # this pin STRICTER, not weaker: the row is now genuinely inside run 2's
+        # rescore set, so "the manual action survives" is a real claim about the
+        # non-destructive gate rather than a row the gate skipped anyway.
+        trigger_matching(run.id, current_user=user, db=db)
         txn = db.query(ReconciliationTransaction).filter(
             ReconciliationTransaction.reconciliation_run_id == run.id
         ).first()
-        assert txn.match_status == "bank_fee"
+        assert txn.match_status == "unmatched"
 
         # Manual reclassification.
         txn.match_status = "manually_matched"
