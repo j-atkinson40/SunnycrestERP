@@ -52,16 +52,27 @@ def accounting_jobs(db):
     **The verification meant to prove the environment-dependence gone was
     itself environment-dependent**, in the ordering rather than the database.
 
-    Order is the measured one: workflows → mirrors → jobs. The mirrors create
-    the `moc_task_catalog` rows the job seeds attach automation refs to, so
-    seeding jobs first silently produces jobs with empty refs — and half of
-    these tests are ABOUT the refs.
+    Order is the measured one: workflows → mirrors → jobs → plaid-b2. The
+    mirrors create the `moc_task_catalog` rows the job seeds attach automation
+    refs to, so seeding jobs first silently produces jobs with empty refs — and
+    half of these tests are ABOUT the refs.
+
+    ⚠️ `seed_plaid_b2` IS PART OF THE CHAIN AND WAS MISSING, which is the same
+    defect one producer further along. It is a canonical boot seed (no manifest
+    entry ⇒ tier `all`, so it runs on every deploy) and it attaches the
+    `Pull Bank Transactions` automation ref to `Bank reconciliation`
+    (`seed_plaid_b2.py:31,200`). Without it this fixture built a `Bank
+    reconciliation` carrying ONE ref while every real database carries two —
+    so `test_rerunning_is_idempotent`'s `== 2` was right about production and
+    unreachable here. It runs LAST because `_seed_job_ref` attaches to a job
+    the accounting seed creates.
 
     Every seed here is idempotent and preserve-aware, so this is free where the
     rows already exist."""
     from app.data.seed_workflows import seed_default_workflows
     from scripts.seed_accounting_jobs import main as seed_jobs
     from scripts.seed_moc_backfill_workflow_mirrors import seed as seed_mirrors
+    from scripts.seed_plaid_b2 import main as seed_plaid
     from scripts.seed_suite_jobs import main as seed_suite
 
     seed_default_workflows(db)
@@ -69,6 +80,7 @@ def accounting_jobs(db):
     seed_mirrors(db)
     seed_jobs()
     seed_suite()
+    seed_plaid()
     yield
 
 
@@ -237,6 +249,71 @@ class TestTheGuardProtectsOperatorEdits:
             {"k": moved_key},
         ).scalar()
         assert n == 1
+
+    def test_a_partial_ref_deletion_is_NOT_refilled_by_the_seed(self, db):
+        """THE GUARD ON THE 2026-08-08 OPENING, and the only test that holds it.
+
+        `seed_accounting_jobs` now attaches refs to an existing job that has
+        NONE — the r157-minted `Cash receipts matching` case. The condition is
+        "no refs at all", NOT "missing the ones we declare", and the difference
+        is invisible to every other test here: all three of the r157 outcome
+        tests pass under either reading.
+
+        Under the wrong reading an operator who deletes ONE of a job's two refs
+        gets it silently restored on the next boot — the resurrection this
+        file's neighbouring test forbids of the migration, arriving instead
+        through the seed. Deleting a ref is how an operator says "not this
+        one"; a seed that re-adds it has overruled them.
+
+        Commits deliberately (the seed opens its OWN session and would not see
+        an uncommitted delete) and restores in `finally`.
+        """
+        from scripts.seed_accounting_jobs import main as seed_jobs
+
+        job = _job(db, "Collections")
+        assert job is not None
+        before = _refs(db, job)
+        assert len(before) == 2, f"expected 2 seeded refs, got {before}"
+
+        victim = ("triage_queue", "ar_collections_triage")
+        assert victim in before
+
+        db.execute(
+            text("DELETE FROM moc_job_ref WHERE job_id = :j AND ref_kind = :k "
+                 "AND ref_key = :r"),
+            {"j": job.id, "k": victim[0], "r": victim[1]},
+        )
+        db.commit()
+        try:
+            assert _refs(db, job) == before - {victim}   # one left, not none
+            seed_jobs()                                  # the boot pass
+            db.expire_all()
+            after = _refs(db, job)
+            assert victim not in after, (
+                "the seed RESURRECTED a ref the operator deleted — the "
+                "existing-row branch must require NO refs at all, not merely "
+                "a missing declared ref"
+            )
+            assert after == before - {victim}
+        finally:
+            # Idempotent restore. If the seed DID resurrect the ref (the
+            # regression this test exists to catch), a blind INSERT would
+            # raise a UniqueViolation out of teardown and bury the assertion
+            # message under it — the failure would stop teaching.
+            db.rollback()
+            still_gone = db.execute(
+                text("SELECT 1 FROM moc_job_ref WHERE job_id = :j "
+                     "AND ref_kind = :k AND ref_key = :r"),
+                {"j": job.id, "k": victim[0], "r": victim[1]},
+            ).first() is None
+            if still_gone:
+                db.execute(
+                    text("INSERT INTO moc_job_ref (id, job_id, ref_kind, "
+                         "ref_key, display_order) VALUES (:i, :j, :k, :r, 1)"),
+                    {"i": str(uuid.uuid4()), "j": job.id,
+                     "k": victim[0], "r": victim[1]},
+                )
+            db.commit()
 
     def test_rerunning_is_idempotent(self, db):
         """The migration is safe to re-run: descriptions already corrected match

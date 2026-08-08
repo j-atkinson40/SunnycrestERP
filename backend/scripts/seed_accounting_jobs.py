@@ -5,13 +5,22 @@ included — Statement Run carrying its TWO jobs (the many-to-many live on
 day one). Framings are DERIVED-HONEST placeholders; the VOICE is the
 operator's in R-3.
 
-PRESERVE-AWARE (the sunnycrest-seed standard): a job that EXISTS is not
-touched AT ALL — not its fields, not its refs. The operator's edits
-(including deliberate ref removals) survive every boot. Only wholly-missing
+PRESERVE-AWARE (the sunnycrest-seed standard): an existing job's FIELDS are
+never touched — the operator's words survive every boot. Only wholly-missing
 jobs are created. Automation refs resolve at seed time by NAME → current
 row id (boot seeds preserve ids; the mirrors-suite teardown re-attaches).
 A ref whose automation/queue is absent on this DB is skipped with a log
 line — never a dangling write (the write boundary holds in seeds too).
+
+ONE OPENING, ADDED 2026-08-08: an existing job that carries NO REFS AT ALL
+and whose entry here DECLARES refs gets them attached. `r157` §3 mints
+`Cash receipts matching` and then skips the moves that would have populated
+it (its source job does not exist on a fresh database), so the old
+skip-if-exists left that card permanently empty on every new tenant. The
+opening is deliberately "no refs at all" rather than "missing the ones we
+declare": an operator who deletes ONE ref leaves a row that still has refs,
+so it is skipped and their deletion survives. See the comment at the branch
+for why that distinction is the entire guard.
 
 Idempotent; production-safe (platform pedagogy — the jobs ship everywhere
 the manufacturing catalog does).
@@ -24,7 +33,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.database import SessionLocal  # noqa: E402
-from app.models.moc_job import MoCJob  # noqa: E402
+from app.models.moc_job import MoCJob, MoCJobRef  # noqa: E402
 from app.models.moc_task_catalog import MoCTaskCatalog  # noqa: E402
 from app.services.maps_of_content import jobs as jobs_svc  # noqa: E402
 
@@ -132,7 +141,7 @@ SKELETON = [
 
 def main() -> int:
     db = SessionLocal()
-    created = 0
+    created = filled = 0
     try:
         for order, (name, description, refs) in enumerate(SKELETON):
             existing = (
@@ -146,12 +155,54 @@ def main() -> int:
                 .first()
             )
             if existing is not None:
-                continue  # THE OPERATOR'S — untouched, refs included
-            job = jobs_svc.create_job(
-                db, name=name, scope="vertical_default", vertical=VERT,
-                description=description, task_type="Accounting",
-                display_order=order,
-            )
+                # PRESERVE-AWARE, WITH ONE OPENING — and the opening is narrow
+                # on purpose.
+                #
+                # `r157` §3 CREATES `Cash receipts matching` (it was born at the
+                # migration) and then tries to MOVE its two refs off `Bank
+                # reconciliation`. On a fresh database that source job does not
+                # exist yet, so every move SKIPS — correctly, it has nothing to
+                # move — and the migration leaves a job with ZERO refs. This
+                # seed then saw it existed and skipped it entirely, so the refs
+                # it declares were never attached and the card stayed
+                # permanently empty on every new tenant. Two producers of one
+                # state again, the same shape as the description drift the
+                # r157/seed binding test exists to catch.
+                #
+                # THE RULE: attach only when this entry DECLARES refs and the
+                # row has NONE AT ALL.
+                #
+                # "None at all" rather than "missing the ones we declare" is the
+                # whole guard. An operator who deletes ONE of two refs leaves a
+                # row that still has refs, so it is skipped and their deletion
+                # survives — which is what `test_a_deleted_ref_is_not_
+                # resurrected_on_the_destination` pins. Only a wholly ref-less
+                # row can be filled, and a wholly ref-less row is the state no
+                # operator produces by editing: they would have had to delete
+                # every ref, and if they did, the four never-faces below show
+                # that a job with no refs is a legitimate shape we never write
+                # into anyway (entries declaring `[]` never reach this branch).
+                if not refs:
+                    continue  # never-face — nothing declared, nothing to attach
+                has_any = (
+                    db.query(MoCJobRef)
+                    .filter(MoCJobRef.job_id == existing.id)
+                    .first()
+                    is not None
+                )
+                if has_any:
+                    continue  # THE OPERATOR'S — untouched, deletions included
+                job = existing  # declared refs, carries none → attach them
+                filled += 1
+                print(f"[seed_accounting_jobs] attaching refs to existing "
+                      f"ref-less job {name!r} (r157-created)")
+            else:
+                job = jobs_svc.create_job(
+                    db, name=name, scope="vertical_default", vertical=VERT,
+                    description=description, task_type="Accounting",
+                    display_order=order,
+                )
+                created += 1
             for ref in refs:
                 # 3-tuple or 4-tuple: r157's Books Review ref carries a LABEL,
                 # which the pre-r157 skeleton had no shape for. Tolerating both
@@ -180,10 +231,9 @@ def main() -> int:
                     )
                 except jobs_svc.JobValidationError as e:
                     print(f"[seed_accounting_jobs] skip ref ({name}): {e}")
-            created += 1
         db.commit()
-        print(f"[seed_accounting_jobs] ok — created {created} "
-              f"(existing untouched, refs included)")
+        print(f"[seed_accounting_jobs] ok — created {created}, "
+              f"filled {filled} ref-less (existing-with-refs untouched)")
         return 0
     finally:
         db.close()
