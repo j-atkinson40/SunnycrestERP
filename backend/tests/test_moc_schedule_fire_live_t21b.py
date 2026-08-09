@@ -36,6 +36,7 @@ from app.models.workflow import Workflow, WorkflowRun, WorkflowStep
 from app.models.workflow_template import WorkflowTemplate
 from app.services.maps_of_content import triggers as triggers_svc
 from app.services.maps_of_content.schedule_sweep import _resolve_go_live, check_moc_task_schedules
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 DUE_NOW = datetime(2026, 7, 1, 22, 5, 0, tzinfo=timezone.utc)      # 18:05 EDT

@@ -22,6 +22,7 @@ from app.services.crm import activity_log_service
 from app.services.crm import health_score_service
 from app.services.crm import classification_service
 from app.services.crm import crm_visibility_service
+from app.services.ar_balance import is_receivable
 
 router = APIRouter()
 
@@ -1805,7 +1806,7 @@ def get_company_invoices(
         db.query(Invoice).filter(
             Invoice.customer_id == customer.id,
             Invoice.company_id == current_user.company_id,
-            Invoice.status.in_(["sent", "partial", "overdue"]),
+            is_receivable(),
         ).all()
     )
 

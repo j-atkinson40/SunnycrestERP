@@ -31,6 +31,7 @@ from app.schemas.sales import (
 )
 from app.services import audit_service
 from app.services.sync_log_service import complete_sync_log, create_sync_log
+from app.services.ar_balance import is_receivable
 
 logger = logging.getLogger(__name__)
 
@@ -1770,6 +1771,31 @@ def create_customer_payment(
 
     db.flush()
 
+    # AR-2: book the receipt — Dr bank / Cr AR — as of this moment, because the
+    # money arrived at this moment. Checks post DIRECT TO BANK (no undeposited
+    # funds), so this is the only cash debit; the reconciliation match later
+    # confirms it and posts nothing, which is why L-3's position is unchanged.
+    #
+    # FAIL-OPEN: `post_payment` returns None rather than raising when an account
+    # is unconfigured, and the payment stands. A payment is an event that
+    # already happened in the world — refusing to record it does not un-receive
+    # the money, it just means the books stop describing reality and a
+    # collections notice goes to someone who paid. The gap is reported as an
+    # AgentAnomaly instead, and the entry can be written once the account is
+    # configured. Every OTHER posting site in this arc refuses the operation;
+    # this one is different on purpose.
+    #
+    # THE FULL AMOUNT posts, not `total_applied` — application is a subledger
+    # detail and an overpayment that posted only its applied part would leave
+    # real cash unrecorded.
+    from app.services import ar_payment_posting
+
+    ar_payment_posting.post_payment(
+        db, company_id=company_id, payment=payment, user_id=user_id
+    )
+
+    db.flush()
+
     audit_service.log_action(
         db,
         company_id,
@@ -1824,7 +1850,7 @@ def get_ar_aging(
         .options(joinedload(Invoice.customer).joinedload(Customer.company_entity))
         .filter(
             Invoice.company_id == company_id,
-            Invoice.status.in_(["sent", "partial", "overdue"]),
+            is_receivable(),
         )
         .all()
     )
@@ -2010,10 +2036,10 @@ def get_sales_stats(db: Session, company_id: str) -> SalesStats:
     )
 
     total_ar = (
-        db.query(func.sum(Invoice.total - Invoice.amount_paid))
+        db.query(func.sum(Invoice.balance_remaining))
         .filter(
             Invoice.company_id == company_id,
-            Invoice.status.in_(["sent", "partial", "overdue"]),
+            is_receivable(),
         )
         .scalar()
         or Decimal("0.00")
@@ -2476,10 +2502,30 @@ def get_payment_detail(db: Session, payment_id: str, company_id: str) -> dict:
     }
 
 
-def void_payment(
-    db: Session, payment_id: str, company_id: str, voided_by: str
-) -> dict:
-    """Void a payment and reverse all invoice applications."""
+def _unwind_payment(
+    db: Session,
+    payment_id: str,
+    company_id: str,
+    voided_by: str,
+    *,
+    soft_delete: bool,
+) -> tuple:
+    """The shared undo: unwind every application, restore the invoices and the
+    customer balance, and undo both ledger references.
+
+    EXTRACTED at N-1+2 because a RETURNED payment needs all of that and must NOT
+    be soft-deleted. Every line between here and the `soft_delete` branch is
+    `void_payment`'s, unchanged — the 12 void tests pass across this move
+    unmodified, which is the only reason it is safe to share.
+
+    `soft_delete` is the ONLY behavioural difference between the two callers,
+    and it is the whole distinction: a void says this payment should never have
+    been recorded, so the row goes; a return says it happened and the bank took
+    it back, so the row survives carrying its mark. Erasing the attempt destroys
+    exactly what an operator needs when the same customer bounces twice.
+
+    Returns `(payment, customer, applied_sum)` so the caller can finish its own
+    way. Does NOT commit."""
     payment = (
         db.query(CustomerPayment)
         .filter(
@@ -2491,6 +2537,22 @@ def void_payment(
     )
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
+
+    # RE-ENTRANCY GUARD, in the core because it protects BOTH callers. The
+    # unwind does not delete the CustomerPaymentApplication rows — it decrements
+    # the invoices they point at — so running it twice decrements twice and
+    # silently understates what those invoices have been paid. `deleted_at`
+    # already blocks a second void (the lookup filters on it); nothing blocked a
+    # second RETURN, or a void of an already-returned payment, until this.
+    if payment.returned_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This payment was already recorded as returned on "
+                f"{payment.returned_at.date()}. Undoing it again would decrement "
+                "its invoices a second time."
+            ),
+        )
 
     customer = (
         db.query(Customer).filter(Customer.id == payment.customer_id).first()
@@ -2535,8 +2597,92 @@ def void_payment(
     if customer:
         customer.current_balance += applied_sum
 
-    # Soft delete the payment
-    payment.deleted_at = datetime.now(timezone.utc)
+    # AR-2 REGRESSION FIX: undo the LEDGER too.
+    #
+    # This function reversed the subledger completely and, before AR-2, that was
+    # the whole story — a payment posted nothing. AR-2 made it incomplete: the
+    # applications unwound, the balance restored, the payment soft-deleted, and
+    # the journal entry left standing, so cash stayed overstated by the payment
+    # amount with nothing watching for it. A subledger and a ledger disagreeing
+    # silently is the exact class this arc exists to remove, and AR-2 shipped one.
+    #
+    # THE ENTRY'S STATUS DECIDES WHAT "UNDO" MEANS, and the two are not
+    # interchangeable:
+    #
+    #   draft  — it never hit the books. There is nothing to reverse, and a
+    #            mirror draft would leave two drafts netting to zero. Voided
+    #            instead: the record survives, and `post_entry`'s existing
+    #            status guard (draft / pending_review only) means a voided entry
+    #            can never post.
+    #   posted — a human posted it, so it DID hit the books and the only honest
+    #            undo is a reversing entry in the CURRENT period. Voiding or
+    #            deleting a posted entry would be rewriting history.
+    #
+    # A payment with NO entry is normal, not an error: AR-2 is fail-open, so an
+    # unconfigured tenant records payments that never posted. Those void with no
+    # ledger step at all.
+    #
+    # The link is deliberately KEPT rather than nulled, so the void stays
+    # auditable — which entry was voided, and by which payment.
+    # A PAYMENT CAN CARRY MORE THAN ONE LEDGER REFERENCE, and every mutation
+    # path has to know about ALL of them. Two exist today:
+    #
+    #   journal_entry_id          AR-2's Dr bank / Cr AR, booked at receipt.
+    #                             DRAFT.
+    #   discount_journal_entry_id q2l3's DISC- entry, Dr discount / Cr AR,
+    #                             booked when an early-payment discount is
+    #                             applied. POSTED.
+    #
+    # The second was missed on the first pass of this fix and found by a
+    # deliberate re-read rather than by accident — it is the worse of the two,
+    # because a posted entry left standing understates AR permanently while the
+    # subledger unwinds the discount around it (`inv.discount_amount = 0.00`
+    # above). Both get the SAME treatment through one helper so the two cannot
+    # drift; a third reference would be one more line here, and if that ever
+    # happens the right move is to ask the payment for its entries rather than
+    # keep naming fields. Two is not yet enough to earn that.
+    from app.models.journal_entry import JournalEntry
+    from app.services import journal_entry_service
+
+    def _undo_entry(entry_id: str | None) -> None:
+        if not entry_id:
+            return
+        entry = (
+            db.query(JournalEntry)
+            .filter(
+                JournalEntry.id == entry_id,
+                JournalEntry.tenant_id == company_id,
+            )
+            .first()
+        )
+        if entry is None:
+            return
+        if entry.status == "posted":
+            journal_entry_service.reverse_journal_entry(
+                db,
+                tenant_id=company_id,
+                entry_id=entry.id,
+                actor_user_id=voided_by,
+            )
+        elif entry.status not in ("reversed", "voided"):
+            entry.status = "voided"
+
+    _undo_entry(payment.journal_entry_id)
+    _undo_entry(payment.discount_journal_entry_id)
+
+    if soft_delete:
+        payment.deleted_at = datetime.now(timezone.utc)
+
+    return payment, customer, applied_sum
+
+
+def void_payment(
+    db: Session, payment_id: str, company_id: str, voided_by: str
+) -> dict:
+    """Void a payment and reverse all invoice applications."""
+    payment, customer, applied_sum = _unwind_payment(
+        db, payment_id, company_id, voided_by, soft_delete=True
+    )
 
     audit_service.log_action(
         db,
@@ -2550,6 +2696,75 @@ def void_payment(
 
     db.commit()
     return {"message": "Payment voided", "payment_id": payment_id}
+
+
+def return_payment(
+    db: Session,
+    payment_id: str,
+    company_id: str,
+    returned_by: str,
+    *,
+    reason: str | None = None,
+) -> dict:
+    """Record a payment as RETURNED by the bank — a bounced cheque, an NSF, a
+    reversed ACH.
+
+    THIS IS THE CORRECTNESS HALF OF NSF AND IT PREDATES THE LEDGER ENTIRELY.
+    Before this, a returned cheque left the payment fully intact: `amount_paid`
+    overstated on every invoice it touched, `current_balance` understated on the
+    customer, and NOTHING watching. The customer reads as paid when the money
+    came back, so collections does not chase them — a wrong number with no error
+    signal, which is the class this arc exists to remove. It is true with or
+    without a GL.
+
+    WHY THIS IS NOT `void_payment`. A void says the payment should never have
+    been recorded and soft-deletes the row. A return says it HAPPENED and the
+    bank took it back. The attempt is exactly what an operator needs when the
+    same customer's cheque bounces a second time, so the row survives carrying
+    `returned_at` + `returned_reason` (r156). Everything else — the applications,
+    the invoices, the customer balance, both ledger references — unwinds
+    identically, through the one shared core so the two cannot drift.
+
+    TREATMENT A (reverse the payment) is what this implements, and it is the
+    default. Treatment B (leave the payment standing, book a separate NSF entry
+    against it) is the configurable alternative and is NOT built here — the
+    setting and its schema land with it. Both preserve history; the distinction
+    is whether the LEDGER shows one entry reversed or two entries netting, which
+    is an accounting preference rather than a correctness question.
+
+    The bank's returned-item FEE is deliberately not handled here. It arrives as
+    its own bank line and posts through the existing `bank_fee` keyword
+    classification with no NSF work at all; a fee arriving NET inside the same
+    line is a real case but waits for a real statement to show it.
+    """
+    payment, customer, applied_sum = _unwind_payment(
+        db, payment_id, company_id, returned_by, soft_delete=False
+    )
+
+    payment.returned_at = datetime.now(timezone.utc)
+    payment.returned_reason = reason
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "returned",
+        "customer_payment",
+        payment.id,
+        user_id=returned_by,
+        changes={
+            "total_amount": str(payment.total_amount),
+            "applied_reversed": str(applied_sum),
+            "reason": reason or "",
+        },
+    )
+
+    db.commit()
+    return {
+        "message": "Payment recorded as returned",
+        "payment_id": payment_id,
+        "amount": str(payment.total_amount),
+        "applied_reversed": str(applied_sum),
+    }
 
 
 def get_invoice_payment_history(

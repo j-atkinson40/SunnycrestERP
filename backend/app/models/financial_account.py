@@ -56,6 +56,19 @@ class ReconciliationRun(Base):
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     total_statement_transactions: Mapped[int] = mapped_column(Integer, server_default="0")
     auto_cleared_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    # VESTIGIAL SINCE L-2 — always 0 on any run scored after the Ledger Posting
+    # arc. This is NOT a bug in the tally. It counted keyword rows the matcher
+    # had classified but deliberately withheld from cleared_total (`bank_fee`
+    # and `nsf`); L-2 replaced that withholding with a rule that has a reason
+    # behind it — a row clears when it BOOKS — so there is no longer any state
+    # between "cleared" and "needs a human". A keyword row either posted a
+    # journal entry (auto_cleared_count) or became an exception (unmatched_count).
+    #
+    # Retained rather than dropped so the run-summary shape stays stable for
+    # consumers (the `suggested` key in GET /reconciliation/runs/{id}). Drop the
+    # column and the API key together in a deliberate cleanup, not incidentally.
+    # Historical rows keep their pre-L-2 non-zero values and should be read as
+    # "scored under the old rule".
     suggested_count: Mapped[int] = mapped_column(Integer, server_default="0")
     unmatched_count: Mapped[int] = mapped_column(Integer, server_default="0")
     opening_balance: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
@@ -93,6 +106,12 @@ class ReconciliationTransaction(Base):
     match_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
     matched_record_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     matched_record_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # L-2 (r154) — the entry this row booked when it cleared. NULL means the row
+    # booked nothing: it is unmatched, or it cleared under a pre-L-2 run. The
+    # join that makes "reconciliation and the ledger agree" checkable rather
+    # than merely asserted.
+    journal_entry_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("journal_entries.id"), nullable=True)
     match_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -211,6 +230,19 @@ class ReconciliationException(Base):
     # accepted candidate is resolvable via the transaction's candidate set. Unenforced by
     # design — set on resolve, read through the candidate set.
     chosen_candidate_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # L-2 (r154) — the THIRD card form. Both NULL on an ordinary ranked/coding
+    # exception. Non-NULL means: the keyword ladder classified this row (we know
+    # exactly what it is), but it could not book, so it could not clear. The
+    # operator's fix is CONFIGURATION, not coding — the card must say so, which
+    # is why the discriminator is stored rather than re-derived at display.
+    keyword_classification: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # L-2.1f: this is a SNAPSHOT — why the row could not book when the statement
+    # was scored — and it is no longer what the card renders. Configuration
+    # changes after a run, so the Books Review builder re-derives the reason live
+    # through the same KeywordPostingContext the matcher used, and surfaces this
+    # column separately as `blocked_reason_at_match`. Kept because "why it failed
+    # then" stays a true and auditable fact; do not read it as current state.
+    blocked_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     resolved_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

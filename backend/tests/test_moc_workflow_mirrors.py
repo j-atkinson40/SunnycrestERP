@@ -26,7 +26,7 @@ from scripts.seed_moc_backfill_workflow_mirrors import (
     seed,
 )
 
-TOTAL = 28  # Ponder P0: +mirror_cash_receipts_matching  # 12 mfg + 9 fh + 6 core
+TOTAL = 27  # 11 mfg + 9 fh + 6 core + Ponder P0 mirror_cash_receipts_matching; "New Order" removed (pre-rebrand duplicate of Bridgeable Compose)
 
 
 @pytest.fixture
@@ -140,8 +140,35 @@ def db():
     s.close()
 
 
+@pytest.fixture(autouse=True)
+def workflow_substrate(db):
+    """⚠️ THE UPSTREAM SEED THIS FILE ASSUMED. The mirror seed derives its
+    templates FROM the `workflows` table, so on a database where nothing has
+    seeded workflows it mirrors zero and every assertion here reads an empty
+    set. That is exactly CI's shape — fresh Postgres, `alembic upgrade head`,
+    no seeds — and it is why this file was red on the PR for two days while
+    passing locally against a database a boot had populated long ago.
+
+    ORDER IS LOAD-BEARING and was measured, not guessed: workflows before
+    mirrors, because the mirrors create the `moc_task_catalog` rows that job
+    seeds later attach refs to. Seeding jobs first silently skips every
+    automation ref — no error, just an emptier map.
+
+    Idempotent both ways, so it costs nothing where they already exist."""
+    from app.data.seed_workflows import seed_default_workflows
+    from scripts.seed_moc_backfill_workflow_mirrors import seed as _mirrors
+
+    seed_default_workflows(db)
+    db.commit()
+    _mirrors(db)
+    yield
+
+
+
 def test_set_is_exactly_27():
-    assert len(_MANUFACTURING) == 12
+    # 12 -> 11: "New Order" was `Bridgeable Compose` under its pre-rebrand
+    # name, so this list named one workflow twice.
+    assert len(_MANUFACTURING) == 11
     assert len(_FUNERAL_HOME) == 9      # the triaged bring-in set; shells excluded
     assert len(_CORE) == 7  # +Cash Receipts Matching (Ponder P0 — the audit's B-1 gap)
     assert len(TARGETS) == TOTAL
@@ -155,6 +182,15 @@ def test_all_27_mirrors_valid_and_faithful(db):
             "FROM workflow_templates WHERE mirrored_from_workflow_id IS NOT NULL"
         )
     ).fetchall()
+    # ⚠️ SCOPED TO THE TARGET SET, NOT TO EVERY MIRROR ROW. Dropping the
+    # duplicate "New Order" target orphans the mirror any database that ran
+    # the OLD seed already has — dev today, production once this merges.
+    # Counting all rows would make this test fail on exactly those databases
+    # while passing on fresh ones, which is the environment-dependence this
+    # whole pass is removing. The orphan is real and is recorded in STATE;
+    # cleaning it is a migration decision, not a test's to make.
+    target_names = {t[0] for t in TARGETS}
+    mirrors = [m for m in mirrors if m.display_name in target_names]
     assert len(mirrors) == TOTAL
 
     # The whole set validates (a single bad mirror would fail on publish).
@@ -164,7 +200,8 @@ def test_all_27_mirrors_valid_and_faithful(db):
         assert m.mirrored_from_workflow_id  # provenance recorded
 
     # Faithful, one exemplar per vertical: node count == runtime step count.
-    for exemplar in ("New Order", "First Call Intake"):
+    # "New Order" -> "Bridgeable Compose": same workflow, current name.
+    for exemplar in ("Bridgeable Compose", "First Call Intake"):
         row = next(m for m in mirrors if m.display_name == exemplar)
         cs = row.canvas_state if isinstance(row.canvas_state, dict) else json.loads(row.canvas_state)
         nsteps = db.execute(
@@ -194,11 +231,14 @@ def test_fh_mirrors_are_fh_vertical_scope(db):
 def test_thin_task_wired_resolves_the_mirror_pill(db):
     seed(db)
     by = {t["name"]: t for t in resolve_task_catalog(db, vertical="manufacturing")}
-    no = by.get("New Order")
+    # Repointed off "New Order" — the pre-rebrand name of Bridgeable Compose.
+    # The CLAIM is unchanged (a thin task's workflow cell resolves to a live
+    # mirror); it was just asserting it through a duplicate target.
+    no = by.get("Bridgeable Compose")
     assert no is not None
     # The auto-populate keystone, for a mirror: the workflow cell resolves.
     assert no["workflow"] and no["workflow"]["available"]
-    assert no["workflow"]["label"] == "New Order"
+    assert no["workflow"]["label"] == "Bridgeable Compose"
     # Thin: descriptive cells blank (em-dash in the UI).
     assert no["frequency"] is None and no["task_type"] is None
 

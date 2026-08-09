@@ -111,9 +111,18 @@ JOBS = [
     ),
     (
         "Handle the exceptions",
-        "When money needs a correction — voids, credit memos, the "
-        "write-off verb, and the credit pocket's doors, every one "
-        "carrying its reason.",
+        # r157's corrected text — the SECOND producer of this state. r157
+        # corrects rows that exist; this seed mints rows that don't, so a
+        # fresh database took the old wording from here regardless of the
+        # migration. Bound to r157 by `test_seed_matches_r157_content.py`.
+        # The addition is the RETURNED CHEQUE, which NSF N-1+2 made real: a
+        # void and a return are different corrections and the card said only
+        # one of them.
+        "When money needs a correction — voids, returned cheques, credit memos, "
+        "the write-off verb, and the credit pocket's doors, every one carrying "
+        "its reason. A void says the payment should never have been recorded; a "
+        "return says it happened and the bank took it back, so the record "
+        "survives carrying the reason.",
         [],
         [
             ("today-void", "TODAY — voiding works, honestly: void an "
@@ -295,9 +304,32 @@ DESCRIPTION_REWRITES = [
         "When money needs a correction — voids work today; memos, "
         "write-offs, and the credit pocket's door are the arc this card "
         "is waiting for.",
+        # ⚠️ A REWRITE LADDER MUST END AT THE CURRENT TRUTH, NOT AT THE STEP
+        # THAT WAS CURRENT WHEN IT WAS WRITTEN. This target used to be the
+        # pre-r157 wording. A database still carrying the ORIGINAL text above
+        # would be rewritten here to a superseded value and then stay there
+        # forever — r157 has already run and alembic will not run it again, so
+        # nothing downstream would ever correct it. Advanced to r157's text so
+        # every rung of the ladder lands on the same place.
+        "When money needs a correction — voids, returned cheques, credit memos, "
+        "the write-off verb, and the credit pocket's doors, every one carrying "
+        "its reason. A void says the payment should never have been recorded; a "
+        "return says it happened and the bank took it back, so the record "
+        "survives carrying the reason.",
+    ),
+    (
+        # The pre-r157 wording as its own rung: a database that received it
+        # from the rung above BEFORE this fix, on which r157 has already run,
+        # is otherwise unreachable by either producer.
+        "Handle the exceptions",
         "When money needs a correction — voids, credit memos, the "
         "write-off verb, and the credit pocket's doors, every one "
         "carrying its reason.",
+        "When money needs a correction — voids, returned cheques, credit memos, "
+        "the write-off verb, and the credit pocket's doors, every one carrying "
+        "its reason. A void says the payment should never have been recorded; a "
+        "return says it happened and the bank took it back, so the record "
+        "survives carrying the reason.",
     ),
 ]
 

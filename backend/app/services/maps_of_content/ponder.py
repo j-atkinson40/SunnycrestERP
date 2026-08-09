@@ -204,22 +204,83 @@ def _when_text(workflow: Workflow) -> str:
 
 
 def _ordered_nodes(canvas: dict) -> list[dict]:
-    """Walk the canvas edges from the root (a node with no incoming edge).
-    Linear-subset walk — branches beyond the marked treatment would surface
-    here (the STOP condition); the accounting mirrors are linear."""
+    """Walk the canvas edges from the root (a node with no incoming edge),
+    DEPTH-FIRST, following each fork's paths in edge-declaration order.
+
+    THE PRIOR BODY WALKED A LINEAR SUBSET AND SILENTLY DROPPED PATHS. It read:
+
+        nexts = {e["source"]: e["target"] for e in edges}
+        ...
+        cur = nexts.get(cur)
+
+    A dict comprehension — so a node with TWO outgoing edges kept only the LAST
+    one, and the other path fell out of the walk entirely. Its own docstring
+    named this as the stop condition ("branches beyond the marked treatment
+    would surface here; the accounting mirrors are linear"), which was honest
+    and is why this is a deliberate flip rather than a bug fix.
+
+    WHY IT MATTERS NOW: the accounting mirrors are NOT linear once
+    reconciliation is taught. That process is nothing but forks — matched vs
+    unmatched, keyword vs coded, viable vs blocked, void vs return. A linear
+    walk would pick ONE arm arbitrarily (whichever edge was declared last) and
+    present it as *the* path, teaching a process that does not exist. A ponder
+    that teaches the wrong path is worse than one that teaches nothing, because
+    it is believed.
+
+    ⚠️ THE LINEAR CASE IS BYTE-IDENTICAL, and that is the property the
+    characterization rests on: for a canvas where every node has at most one
+    outgoing edge, depth-first pre-order in declaration order visits exactly the
+    old chain in exactly the old order. Nothing that renders today moves.
+
+    DEPTH-FIRST IS THE PEDAGOGICAL CHOICE, not an implementation convenience:
+    each arm is told to its end before the next begins ("if it matches… ; if it
+    doesn't…"), which is how a person explains a fork. Breadth-first would
+    interleave the arms and read as one confused path.
+
+    A JOIN IS VISITED ONCE, on the first arm that reaches it — you do not teach
+    the same step twice because two ways led to it.
+
+    Count is unchanged: disconnected leftovers still append in declaration
+    order, so `len(result) == len(nodes)` exactly as before. `check_mirror_drift`
+    compares count/order/type against the runtime and is therefore unaffected
+    for linear mirrors; for a branching mirror it now compares the honest order.
+
+    NOT IN SCOPE: the branch BEAT still says only "a fork happens here"
+    (`motif_for_step` → `{"kind": "branch"}`). Naming which way leads where
+    needs the edge labels carried into the beat — a change to beat CONTENT, not
+    to walk COVERAGE, and it should be its own pass.
+    """
     nodes = {n["id"]: n for n in canvas.get("nodes", [])}
     edges = canvas.get("edges", [])
     targets = {e["target"] for e in edges}
-    nexts = {e["source"]: e["target"] for e in edges}
+
+    # Adjacency in DECLARATION order — the authoring order is the teaching
+    # order, so the arm drawn first is the arm told first.
+    adjacency: dict[str, list[str]] = {}
+    for e in edges:
+        adjacency.setdefault(e["source"], []).append(e["target"])
+
     roots = [nid for nid in nodes if nid not in targets]
     if not roots:
         return list(nodes.values())
-    ordered, seen, cur = [], set(), roots[0]
-    while cur and cur in nodes and cur not in seen:
+
+    ordered: list[dict] = []
+    seen: set[str] = set()
+
+    # Iterative DFS — a canvas is operator-authored and shallow, but recursion
+    # on a cyclic canvas would blow the stack where `seen` merely stops.
+    stack = [roots[0]]
+    while stack:
+        cur = stack.pop()
+        if cur not in nodes or cur in seen:
+            continue
         ordered.append(nodes[cur])
         seen.add(cur)
-        cur = nexts.get(cur)
-    # Any disconnected leftovers append in declaration order (honest, visible).
+        # Reversed so the FIRST-declared arm is popped first.
+        stack.extend(reversed(adjacency.get(cur, [])))
+
+    # Any leftovers — further roots, or nodes unreachable from the first —
+    # append in declaration order (honest, visible), exactly as before.
     ordered += [n for nid, n in nodes.items() if nid not in seen]
     return ordered
 

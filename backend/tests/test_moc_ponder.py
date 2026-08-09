@@ -24,6 +24,7 @@ from app.services.maps_of_content.ponder import (
     cron_to_prose,
     save_caption,
 )
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 
 @pytest.fixture

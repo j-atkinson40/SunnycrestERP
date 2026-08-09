@@ -29,6 +29,7 @@ from app.models.moc_task_trigger import MoCTaskTrigger
 from app.models.workflow import Workflow, WorkflowStep
 from app.models.workflow_template import WorkflowTemplate
 from app.services.maps_of_content.task_catalog import resolve_task, resolve_task_catalog
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 

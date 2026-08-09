@@ -6,19 +6,20 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { ChevronDown, ChevronRight, Map as MapIcon } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronRight, Map as MapIcon } from "lucide-react"
 
 import {
   PonderServiceContext,
 } from "@/bridgeable-admin/components/moc/ponder-service-context"
 import {
-  getMapJobs, getMapTasks, tenantPonderService,
-  type MapJob, type MapTask,
+  getAreaCadence, getMapJobs, getMapTasks, tenantPonderService,
+  type CadenceCard, type MapJob, type MapTask,
 } from "@/services/moc-map-service"
 import { IntegrationsArea } from "@/components/moc-map/IntegrationsArea"
 import {
   JourneyArea, PlatformArea, ShowroomArea, TipsSection,
 } from "@/components/moc-map/PlatformAreas"
+import { CadenceSection } from "@/components/moc-map/CadenceSection"
 import { JobCard } from "@/components/moc-map/JobCard"
 import { TaskSections } from "@/components/moc-map/TaskSections"
 import { useMapOverlays } from "@/components/moc-map/useMapOverlays"
@@ -43,6 +44,10 @@ export default function BridgeableMapAreaPage() {
   // THE ENGINE ROOM — collapsed by default, remembered per-user (open
   // areas are the stored exceptions).
   const [engineOpen, setEngineOpen] = useState<Set<string>>(loadEngineRoomOpen)
+  // The rhythms. Fetched alongside jobs + tasks; failure is SILENT because a
+  // missing rhythm must not take the page's tasks down with it — the section is
+  // additive, and an area with none renders nothing anyway.
+  const [cadence, setCadence] = useState<CadenceCard[]>([])
 
   const reload = useCallback(async () => {
     // THE HANGING-JOBS FIX (2026-07-20): tasks and jobs load in
@@ -75,6 +80,19 @@ export default function BridgeableMapAreaPage() {
   useEffect(() => {
     reload().finally(() => setLoading(false))
   }, [reload])
+
+  // The rhythms, per area. SILENT ON FAILURE by design: the cadence section is
+  // additive, and an area with no scheduled work renders nothing regardless —
+  // so a failed fetch and an area without rhythms are the same empty section.
+  // Surfacing an error here would make the page's tasks look broken because a
+  // decoration did not load.
+  useEffect(() => {
+    let live = true
+    getAreaCadence(area)
+      .then((c) => { if (live) setCadence(c) })
+      .catch(() => { if (live) setCadence([]) })
+    return () => { live = false }
+  }, [area])
 
   const areaTasks = useMemo(
     () => tasks.filter((t) => (t.task_type || "General") === area),
@@ -115,16 +133,35 @@ export default function BridgeableMapAreaPage() {
             The {area} work on your map — hold{" "}
             <kbd className="rounded-sm border border-border-base px-1 font-plex-mono text-caption">P</kbd>{" "}
             on a card to walk through it.
-            {" "}
-            <button
-              type="button"
-              onClick={() => ponderArea(area)}
-              className="focus-ring-accent rounded-md text-accent underline-offset-2 hover:underline"
-              data-testid="map-area-overview-link"
-            >
-              Or start with the area's story.
-            </button>
           </p>
+
+          {/* THE AREA STORY — promoted from a sentence to an affordance.
+              It was a text button inside this paragraph: the best content on
+              the page behind the least visible thing on it, which is the
+              built-but-unreachable shape this codebase has now hit three times
+              (the accounting_gl setting with no panel; the Focuses registered
+              with no way to open them). Same handler, same testid — the
+              behaviour is unchanged and only the affordance moved, so the
+              existing test keeps passing and this is a discoverability fix
+              rather than a feature.
+
+              MAP-3 gave it something to say: the story now carries the area's
+              RHYTHM, derived — which is the answer to "what happens daily"
+              that eleven cards could not give. */}
+          <button
+            type="button"
+            onClick={() => ponderArea(area)}
+            className="focus-ring-accent mt-3 inline-flex items-center gap-2 rounded-md border border-border-base bg-surface-elevated px-3 py-2 text-body-sm text-content-base shadow-level-1 transition-colors duration-quick hover:bg-surface-raised"
+            data-testid="map-area-overview-link"
+          >
+            <BookOpen size={14} className="text-accent" />
+            <span>
+              Start with the {area} story
+              <span className="ml-1 text-content-subtle">
+                — what runs, and when
+              </span>
+            </span>
+          </button>
         </div>
 
         {/* THE INTEGRATIONS AREA (2026-07-18) — the engine room. The
@@ -149,6 +186,11 @@ export default function BridgeableMapAreaPage() {
           <>
             {/* THE WORK LEADS — job cards (Reframe R-2). A shared
                 automation appears under BOTH its jobs; each card honest. */}
+            {/* RHYTHM BEFORE THE LIST — the order is whole story → rhythms →
+                tasks → machines, widest to narrowest, each enterable without
+                the one above. */}
+            <CadenceSection cards={cadence} area={area} />
+
             {areaJobs.length > 0 ? (
               <section data-testid="map-job-section">
                 <h2 className="text-caption font-medium uppercase tracking-wide text-content-subtle">

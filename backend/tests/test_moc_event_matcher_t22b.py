@@ -40,6 +40,7 @@ from app.services.maps_of_content.event_matcher import (
     conditions_match,
 )
 from app.services.maps_of_content.schedule_sweep import list_schedule_runs
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 

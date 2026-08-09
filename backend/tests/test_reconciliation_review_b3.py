@@ -11,7 +11,8 @@ Pins the load-bearing calls:
     row, same matched_record_*, same confidence), differing ONLY in match_status
     + provenance — the highest-value pin in the sub-arc;
   * Accept honors the period lock (a human click never writes a closed period);
-  * the coding branch requires a coding.
+  * the coding branch requires an ACCOUNT, not free text (flipped at L-3, which
+    made booking the licence to clear — see that test's docstring).
 
 Cleans up its own `b3rec-*` tenants via the shared FK-safe helper.
 """
@@ -257,21 +258,40 @@ def test_accept_is_blocked_by_a_locked_period(env):
 
 
 # ── coding branch + guards ──────────────────────────────────────────────────
-def test_coding_accept_requires_and_records_a_coding(env):
+def test_coding_accept_requires_an_account_not_free_text(env):
+    """DELIBERATE PIN FLIP — Ledger Posting L-3. This test previously asserted:
+
+        res = _handle_reconciliation_accept(
+            _ctx(env, t.id, payload={"coding": "6100 · Interest"}))
+        assert res["status"] == "applied"
+        assert t.match_status == "manually_matched"
+        assert t.match_notes == "6100 · Interest"
+        assert exc.resolved is True
+
+    That cleared a row against nothing. The string named no account, resolved to
+    nothing, and produced no journal entry — the last place in the platform a
+    human could retire a bank line with no posting behind it. Booking is now the
+    licence to clear, so free text alone is refused; it survives as an optional
+    NOTE beside the account. The coded accept's own behavior (both directions of
+    the arithmetic, every refusal path) is pinned in
+    `test_reconciliation_coded_l3.py`.
+    """
     run = _run(env)
     t = _txn(env, run, amount="377.00")
     exc = _exc(env, t, run)                                     # no candidates
     env.s.commit()
 
-    # no coding → error
+    # no payload at all → error (unchanged)
     assert _handle_reconciliation_accept(_ctx(env, t.id))["status"] == "errored"
-    # with coding → applied
+    # free text alone → NOW errored, was "applied"
     res = _handle_reconciliation_accept(_ctx(env, t.id, payload={"coding": "6100 · Interest"}))
     env.s.commit()
-    assert res["status"] == "applied"
+    assert res["status"] == "errored"
+    assert "choose the GL account" in res["message"]
     env.s.refresh(t); env.s.refresh(exc)
-    assert t.match_status == "manually_matched" and t.match_notes == "6100 · Interest"
-    assert exc.resolved is True
+    assert t.match_status == "unmatched"                        # nothing cleared
+    assert t.journal_entry_id is None                           # nothing posted
+    assert exc.resolved is False
 
 
 def test_accept_on_already_resolved_item_errors(env):

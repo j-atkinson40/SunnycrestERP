@@ -12,6 +12,7 @@ from app.models.company_entity import CompanyEntity
 from app.models.customer import Customer
 from app.models.invoice import Invoice
 from app.models.sales_order import SalesOrder
+from app.services.ar_balance import is_receivable
 
 logger = logging.getLogger(__name__)
 
@@ -133,11 +134,11 @@ def get_group_summary(db: Session, tenant_id: str, group_id: str) -> dict:
         if customer:
             # Open AR balance
             ar_result = (
-                db.query(func.sum(Invoice.total - Invoice.amount_paid))
+                db.query(func.sum(Invoice.balance_remaining))
                 .filter(
                     Invoice.customer_id == customer.id,
                     Invoice.company_id == tenant_id,
-                    Invoice.status.in_(["sent", "partial", "overdue"]),
+                    is_receivable(),
                 )
                 .scalar()
             )

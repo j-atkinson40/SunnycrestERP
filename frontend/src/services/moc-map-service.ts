@@ -298,3 +298,56 @@ export function recordEngagement(
     .post("/moc/engagement", { ponder_key: ponderKey, event })
     .catch(() => {})
 }
+
+// ── Cadence (MAP-4) ────────────────────────────────────────────────────────
+
+export interface CadenceCard {
+  /** The beat key — `cadence:nightly`, `cadence:none`. Stable; the drift
+   *  check and the caption editor both key on it. */
+  key: string
+  grain: string
+  /** Derived label — "Overnight", "On your schedule". */
+  label: string
+  /** Derived TIMES, which the story's sentence drops. "Overnight" loses that
+   *  it is 10:30 PM to 3:00 AM, and someone deciding when to sit down with the
+   *  queue needs the number rather than the adjective. */
+  whens: string[]
+  jobs: Array<{ id: string; name: string }>
+  /** Authored prose — what the operator does in this rhythm. Falls back to the
+   *  derived sentence when nobody has written one. */
+  text: string
+  authored: boolean
+}
+
+/**
+ * The area's rhythms, read from the SAME script the area story renders.
+ *
+ * No new endpoint and no second source of truth: the cadence beats already
+ * carry their structured parts, so a card and a sentence are two renderings of
+ * one derivation. If the schedule moves, both move together.
+ *
+ * Returns [] for an area with no cadence content — most areas — so the caller
+ * renders nothing rather than empty scaffolding.
+ */
+export async function getAreaCadence(area: string): Promise<CadenceCard[]> {
+  const { data } = await apiClient.get(
+    `/moc/area-ponder/${encodeURIComponent(area)}`,
+  )
+  const beats: Array<Record<string, unknown>> = data?.beats ?? []
+  return beats
+    .filter((b) => b && typeof b === "object" && b.cadence)
+    .map((b) => {
+      const c = b.cadence as Record<string, unknown>
+      return {
+        key: String(b.key ?? ""),
+        grain: String(c.grain ?? ""),
+        label: String(c.label ?? ""),
+        whens: Array.isArray(c.whens) ? (c.whens as string[]) : [],
+        jobs: Array.isArray(c.jobs)
+          ? (c.jobs as Array<{ id: string; name: string }>)
+          : [],
+        text: String(b.text ?? ""),
+        authored: Boolean(b.authored),
+      }
+    })
+}

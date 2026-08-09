@@ -23,6 +23,7 @@ from app.services.briefing_service import (
     get_briefing_for_employee,
     refresh_briefing_for_employee,
 )
+from app.services.ar_balance import is_receivable
 from app.services.functional_area_service import (
     get_active_areas_for_employee,
     get_areas_for_tenant,
@@ -266,7 +267,7 @@ def get_action_items(
             db.query(Invoice)
             .filter(
                 Invoice.company_id == company_id,
-                Invoice.status.in_(["sent", "partial", "overdue", "open"]),
+                is_receivable(),
                 Invoice.due_date < now,
             )
             .order_by(Invoice.due_date.asc())

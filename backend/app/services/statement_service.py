@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.customer import Customer
 from app.models.invoice import Invoice
 from app.models.statement import CustomerStatement, StatementRun, StatementTemplate
+from app.services.ar_balance import is_receivable
 
 logger = logging.getLogger(__name__)
 
@@ -372,11 +373,11 @@ def calculate_balances(
 
     # Previous balance — invoices before this period with outstanding amounts
     prev_invoices = (
-        db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0))
+        db.query(func.coalesce(func.sum(Invoice.balance_remaining), 0))
         .filter(
             Invoice.customer_id == customer_id,
             Invoice.invoice_date < period_start,
-            Invoice.status.in_(["sent", "partial", "overdue"]),
+            is_receivable(),
         )
         .scalar()
     )

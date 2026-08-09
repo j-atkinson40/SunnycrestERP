@@ -87,7 +87,25 @@ def test_seed_idempotent_and_descriptive(db):
 
     billing = _task(db, "Funeral Home Billing")
     assert billing is not None
-    assert billing.frequency == "End of Month"
+
+    # DELIBERATE PIN FLIP. This asserted `frequency == "End of Month"` and the
+    # SEED was changed under it — `seed_moc_manufacturing.py:50-54`, verbatim:
+    #
+    #   # T-0 honesty (2026-07): the task's workflow is an authored DRAFT
+    #   # (never compiled, no triggers, fires nowhere) — a task that fires
+    #   # nowhere doesn't claim a cadence. The make-it-real lands in
+    #   # transfer T-2; the frequency returns with the actual schedule.
+    #   "frequency": None,
+    #
+    # The seed explained itself and the test did not read it, so the two drifted
+    # and the suite carried a red test for months.
+    #
+    # ASSERTING `is None` RATHER THAN THE COMMENT'S INTENT IS THE POINT: a test
+    # phrased to survive T-2 would survive the exact change it exists to notice.
+    # When T-2 restores the cadence this fails, and that failure is the prompt to
+    # come read whether the test still says the right thing.
+    assert billing.frequency is None
+
     assert billing.task_type == "Accounting"
     assert "charge accounts" in billing.description
 

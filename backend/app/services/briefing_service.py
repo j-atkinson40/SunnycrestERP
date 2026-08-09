@@ -27,6 +27,7 @@ from app.models.sales_order import SalesOrder
 from app.models.sync_log import SyncLog
 from app.models.user import User
 from app.services.functional_area_service import get_active_areas_for_employee
+from app.services.ar_balance import is_receivable
 
 logger = logging.getLogger(__name__)
 
@@ -815,10 +816,10 @@ def _build_executive_context(
 
         # Outstanding AR
         outstanding_ar = (
-            db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0))
+            db.query(func.coalesce(func.sum(Invoice.balance_remaining), 0))
             .filter(
                 Invoice.company_id == company_id,
-                Invoice.status.in_(["sent", "partial", "overdue"]),
+                is_receivable(),
             )
             .scalar()
         ) or Decimal("0")

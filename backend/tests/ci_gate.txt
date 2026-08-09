@@ -1,102 +1,268 @@
-# Scoped CI test gate — the curated set of test files known GREEN against a
-# fresh migrated DB (alembic upgrade head, NO seed), one path per line.
-#
-# WHY SCOPED, not the whole suite: an S-5 CI-clean investigation ran all 5145
-# backend tests against a fresh migrated DB and found ~220 non-passing —
-# dominated by seed-dependence (~106 tests `.one()` on rows only a seed
-# creates) and SQLite-schema tests (9, running against a non-Postgres schema).
-# Those are a "how many of our tests are real" problem, not a "make CI green"
-# problem, and are routed to a dedicated CI-clean arc (see STATE.md). A
-# full-suite gate would be red on day one and get bypassed; this gate is green
-# and enforces the arc's work + the ratchets NOW. GROW this list as files are
-# made CI-clean — never add a file that isn't green here.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#
+#   → tenant_gl_mappings), keyword + contra GL resolvers fail closed on
+#   (C-1 hasattr fix) while honoring an explicit null. —
+#   (so count != len(build) at >50, by design); display shape + ordering. —
+#   (task/cash_receipts/month_end/ar_collections/expense/aftercare/catalog/
+#   + candidates reach extras; both card forms have data; Accept (single + group)
+#   422-on-omission write contract, the existence-oracle refusal, that the panel
+#   a `posted` finance charge was invisible to everything but the sweeper.
+#   a tenant hitting "No accounts-receivable GL account is configured" could not
+#   accept (member pre-claimed → zero claims, txn stays unmatched). —
+#   actually clears AR-0's refusal end to end, and that the unmapped copy names
+#   alert that has never fired. Pins that an imported invoice moves the balance,
+#   amount posts, not the applied part), all three unconfigured paths, and that
+#   and every term, hand-computed once to 2592.50, and get_ar_aging, the
+#   AND STILL CORRECTS, pinned as the phase-3 state with
+#   and the caller's `ar_account_id or gl_account_id` fallback booked BOTH legs
+#   AR-0c primitive guards (unbalanced + all-legs-one-account). Also pins, NOT
+#   are deliberately not posted and are surfaced as import warnings instead. —
+#   at the moment the money is recorded. CHECKS POST DIRECT TO BANK (operator's
+#   bank's contra) before the row leaves the queue. Pins the arithmetic BOTH
+#   BEFORE-value is now captured first, as one AgentAnomaly per drifting customer
+#   behavioral_insights on dev AND production), and money was compared as floats
+#   BOTH the consequence and the right answer — AR-unmapped is not
+#   call — no undeposited-funds account, no chart addition), which is why L-3's
+#   claim-table pool exclusion, race-loser (SAVEPOINT + IntegrityError → not swallowed),
+#   clear it without writing settings directly — the same gap L-2.1e closed for
+#   clear. The cleared_total arithmetic is hand-pinned BOTH ways (configured →
+#   clears (the clearing path gl_account_id depends on).
+#   clears, unconfigured → clears nothing, partial → per-row), the ledger's cash
+#   computation each asked independently whether they agree. Plus the end-to-end
+#   consolidated expression, the hybrid's Python branch and the sweeper's own
+#   count is unchanged on every refusal path (no account / contra unset / contra
+#   creation, no-double-clear claim set, idempotent re-run. —
+#   cross-tenant existence oracle. —
+#   current_balance stayed put. The sweeper then wrote that drift away with an
+#   dangling / locked period / already-booked), carries the L-2.1b existence-
+#   destroys the primary evidence. NOT a Books Review exception: that model
+#   directions as hand-computed literals, asserts the platform journal_entries
+#   distinct, and a blocked keyword row reaches Books Review as a CONFIG card
+#   email_unclassified is the documented uncapped-vs-capped exception at >50. —
+#   entity_id in both paths. —
+#   exact-total (exclusions), payment_group candidate, synthetic id, all-or-none
+#   existing gl_account_id — one fact, one home, rather than a second definition
+#   explicit configured id (settings `accounting_gl.ar`) validated at use through
+#   financials board and to the nightly sweeper's computed total while
+#   fix, since it keeps its ordinary status. —
+#   fixed, that CustomerPayment has no discount columns at all — seven attributes
+#   flag_id FK, ask→task_completed subscriber, hold→doc-attach hook, terminal→run
+#   gives existence only — a FOREIGN-TENANT mapping id satisfied it and was
+#   how those two dropped out; `paid` and `write_off` are members that self-zero,
+#   hydrate, that an untouched edit preserves it, and that an explicit null still
+#   import → balance → no-drift path. AND the honest clause: the sweeper REPORTS
+#   imported as a POSITIVE receivable — sign inverted — which is why credit rows
+#   in the one job whose purpose is comparing two money values. The correction is
+#   inactive named), and pins that an OMITTED note does not clear match_notes —
+#   invoice was counted by the board and the sweeper and INVISIBLE TO AGING, and
+#   invoices at status sent/overdue — ISSUED — and never called
+#   L-2.1b adds the other half of the same write contract: gl_account_id is
+#   leaves the queue + queue_count agrees; Flag ask→Task→park→complete→return. —
+#   leg is netted against platform_cleared_balance, the four blocked reasons stay
+#   matching the legacy post-filter; expired snooze ignored; tenant isolation. —
+#   materially fewer SQL statements than the per-queue loop (floor hoisted). —
+#   membership == the Python list_unclassified reference (diff empty, identity
+#   Membership is now an EXCLUSION — draft, void — because an inclusion list is
+#   merchant_entity_id / counterparties[] landed by sync, description back-compat kept. —
+#   naming a FinancialAccount, and the cash leg resolves through that account's
+#   never rendered a row would leave drift neither fixed nor seen — but the
+#   no credits, no write-offs, no `open` and no `posted`, so a production diff
+#   nothing, so cash is debited exactly once. The bank is a tenant default
+#   now a hybrid_property so Python and SQL are the SAME expression rather than
+#   now posts a balanced two-legged draft JE (operator's account against the
+#   null as a deliberate clear — so a column the form SENDS but cannot HYDRATE is
+#   of "which GL account is this bank". FAIL-OPEN ON THE RECORD, FAIL-CLOSED ON
+#   ONE of the nine categories contains "ar", so it returned None on every call
+#   Option A, Accept commits the SELECTED candidate reusing _try_claim, manual==auto
+#   oracle discipline to this boundary (foreign and nonexistent byte-identical,
+#   ORDER BY, wrapped in a bare except. On sunnycrest's real 224-row chart NOT
+#   payroll-unmapped. Only "ar" ships; no speculative slots. —
+#   period-lock gate, cascade release. —
+#   persistence, near-amount band, invoice/bill EPD fallback, exception
+#   pins (candidates key to txn, no match_status copy, uniqueness, CHECK, cascade). —
+#   Pins the three states with `present-and-null` read BEFORE truthiness, the
+#   pins, NOT fixed, that a NEGATIVE Sage balance (a customer credit) is
+#   place a human could retire a bank line against nothing — the coding accept —
+#   Plaid's bank-retraction marker lives there. —
+#   platform_category ILIKE '%ar%' — substring, free-text column, .first(), no
+#   plus the structured set on the job's report_payload, because the correction
+#   position survives unchanged: the reconciliation match confirms and posts
+#   post_invoice_to_ar, so every imported invoice was visible to aging, to the
+#   preserve-list) + full throwaway-tenant wipe lifecycle. Creates its own
+#   proof); count is exact + uncapped while the build stays display-capped at 50
+#   purposes), so one PUT serving both would be two functions wearing one name.
+#   queue_count (anti-divergence), queue_ids subset + configs= reuse, and issues
+#   rather than falling through to the coding card. —
+#   reconstructed pre-C-1 count (materialize + snooze) per queue;
+#   reconstructions of them. One customer, nine invoices covering every status
+#   report_payload["corrections_applied"] is True, so nobody reads "drift
+#   reports" as "the rewrite stopped". Phase 4 flips it deliberately. —
+#   require_gl_account — the L-2.2 single definition, no third check. Pins the
+#   requires a transaction and a run an AR drift does not have. Phase 4 removes
+#   resolve_ar_account and its fail-closed refusal with NO endpoint and no UI, so
+#   RETAINED deliberately — removing it while the only report destination had
+#   safety/workflow_review/reconciliation); aftercare excludes null/empty
+#   sends every optional field as `x || null`, and exclude_unset reads an explicit
+#   share one membership expression + cannot disagree; snooze is a SQL anti-join
+#   state parity, period-lock gate, coding branch. —
+#   status filters and three different term-counts were in use; an `open`
+#   substring class as unreachable, both refusal paths posting nothing, and the
+#   summary (adjustment), same-exception reopen, no scheduler. —
+#   swallowed. Pins the arithmetic (applied, unapplied, overpayment — the FULL
+#   tenant, cleans up after itself (COMPANY-LITTER ratchet). —
+#   that a re-run skip does not post twice, and that the drift is now zero. Also
+#   the correction once a triage queue exists to receive it. —
+#   the EPD path writes are unmapped and vanish on commit. —
+#   the keyword map one domain over. A SIBLING endpoint, not an extension: the
+#   THE LEDGER: a payment is an event that already happened, so it records even
+#   the source transaction's match_status (not exception.resolved), candidates via
+#   the subledger's balance law is untouched. —
+#   to the discount account: balanced, posted, recording nothing. Replaced by an
+#   two kept in step by a comment. Synthetic proof, deliberately: production has
+#   unmapped/dangling/foreign, and update_account no longer nulls an omitted field
+#   validated at the boundary through validate_gl_account, because the r153 FK
+#   validation vocabularies differ (code-fixed classifications vs open-ended
+#   went in and two were invisible by construction: generate_insight was called
+#   when it cannot post, and the gap is REPORTED as an AgentAnomaly rather than
+#   which is why the list is only two long. Value is Invoice.balance_remaining,
+#   wiped on the next save. Pins that list_accounts surfaces what the form must
+#   with a signature it does not have (TypeError into a bare except, zero rows in
+#   would print zeros. Pins the partial write-off — the case only the terms can
+#   written. Foreign and nonexistent must read identically so the error is not a
 # — Accounting Substrate Arc (period lock, service seams, Plaid, EPD) —
-tests/test_plaid_sync_loud_failure.py
+# — AR-0: the EPD AR-account resolver. `_find_ar_account` matched
+# — AR-1 C-1: the Sage import posts to AR. `import_open_invoices` created
+# — AR-1 C-2: the AR drift sweeper REPORTS before it corrects. Three defects
+# — AR-1 C-3: ONE membership expression, ONE value expression. Five distinct
+# — AR-1 C-4: validation across the arc, through the REAL readers rather than
+# — AR-2: customer payments post to the GL. Dr <the bank's GL account> Cr <AR>,
+# — AR-2.0 E-2: the accounting-GL authoring surface. AR-0 shipped
+# — Books Review Arc B B-1: Plaid counterparty persisted raw (r150) — merchant_name /
+# — Books Review Arc B B-3: reconciliation review queue — source builder filters on
+# — Books Review Arc B B-4: flag/park (r151) — discriminated return_trigger_kind,
+# — Books Review Arc B B-5: one-to-many producer (r152 CHECK) — subset-sum k<=3
+# — Books Review Arc B B-6: end-to-end through the assembled engine — queue builds
+# — Books Review Phase 2 A-1b: reconciliation exception model (r148) — schema
+# — Books Review Phase 2 A-2: durable non-destructive scoring — candidate
+# — Books Review Phase 2 A-3: durable payment-claim table (r149) — UNIQUE(payment_id),
+# — Ledger Posting arc L-1: contra config — r153 FK (financial_accounts.gl_account_id
+# — Ledger Posting arc L-2: keyword rows book a balanced draft JE (r154) or do not
+# — Ledger Posting arc L-2.1a: the financial-accounts form's round trip. The form
+# — Ledger Posting arc L-3: a CODED row books, or it does not clear. The last
+# — Queue-count perf C-1: the membership seam (ss_cert_triage) — count and build
+# — Queue-count perf C-2: count == build membership, all 10 converted builders
+# — Queue-count perf C-3: email_unclassified window-function membership — SQL
+# — Queue-count perf C-4: batched counts_for_user — equivalent to per-queue
+# — Queue-count perf C-5: new count preserves the OLD path's numbers — new ==
+# — Ratchets —
+# — Scheduler isolation (S-1c) + its neighbor (both teardown-fixed in S-5) —
+# — Tenant wipe tool (W-1b): derivation + three guards (against the REAL
+# and enforces the arc's work + the ratchets NOW. GROW this list as files are
+# backend tests against a fresh migrated DB and found ~220 non-passing —
+# creates) and SQLite-schema tests (9, running against a non-Postgres schema).
+# dominated by seed-dependence (~106 tests `.one()` on rows only a seed
+# fresh migrated DB (alembic upgrade head, NO seed), one path per line.
+# full-suite gate would be red on day one and get bypassed; this gate is green
+# made CI-clean — never add a file that isn't green here.
+# problem, and are routed to a dedicated CI-clean arc (see STATE.md). A
+# Scoped CI test gate — the curated set of test files known GREEN against a
+# Those are a "how many of our tests are real" problem, not a "make CI green"
+# WHY SCOPED, not the whole suite: an S-5 CI-clean investigation ran all 5145
+tests/test_accounting_gl_panel_e2.py
+tests/test_ar_consolidation_validation_c4.py
+tests/test_ar_drift_report_c2.py
+tests/test_ar_import_posts_c1.py
+tests/test_ar_membership_seam_c3.py
+tests/test_books_review_e2e_b6.py
+tests/test_clean_run_does_not_park.py
+tests/test_epd_ar_account_ar0.py
 tests/test_journal_entry_characterization.py
+tests/test_map_accounting_beat_map2.py
+tests/test_map_accounting_content_r157.py
+tests/test_map_cadence_cards_map4.py
+tests/test_map_cadence_map3.py
+tests/test_moc_case_opened_beat.py
+tests/test_moc_domain_events_t22a.py
+tests/test_moc_event_fire_live_t22c.py
+tests/test_moc_event_matcher_t22b.py
+tests/test_moc_fh_map.py
+tests/test_moc_focus_ref_rebind.py
+tests/test_moc_live_toggle_t21c.py
+tests/test_moc_mfg_focuses_backport.py
+tests/test_moc_ordinal_weekday.py
+tests/test_moc_planning.py
+tests/test_moc_platform_focuses_card.py
+tests/test_moc_platform_h2.py
+tests/test_moc_ponder.py
+tests/test_moc_schedule_fire_live_t21b.py
+tests/test_moc_schedule_sweep.py
+tests/test_moc_t0_authority.py
+tests/test_moc_t1_adopt.py
+tests/test_moc_task_catalog_api.py
+tests/test_moc_task_catalog_assembly.py
+tests/test_moc_task_catalog_seed.py
+tests/test_moc_task_editing.py
+tests/test_moc_task_offers_p3.py
+tests/test_moc_task_triggers.py
+tests/test_moc_tenant_map.py
+tests/test_moc_tenant_view.py
+tests/test_moc_witness_marker_t21b.py
+tests/test_moc_workflow_mirrors.py
+tests/test_nsf_returned_payment_n1.py
+tests/test_payment_posting_ar2.py
+tests/test_plaid_counterparty_b1.py
+tests/test_plaid_sync_loud_failure.py
+tests/test_ponder_branch_walk.py
+tests/test_ponder_editor_p1.py
+tests/test_queue_count_membership_c1.py
+tests/test_queue_count_membership_c2.py
+tests/test_queue_count_membership_c3.py
+tests/test_queue_count_membership_c4.py
+tests/test_queue_count_membership_c5.py
+tests/test_reconciliation_account_form.py
+tests/test_reconciliation_claim_a3.py
+tests/test_reconciliation_coded_l3.py
+tests/test_reconciliation_exception_model.py
+tests/test_reconciliation_flags_b4.py
+tests/test_reconciliation_gl_l1.py
+tests/test_reconciliation_gl_l2.py
 tests/test_reconciliation_matching_characterization.py
 tests/test_reconciliation_matching_rework.py
-
-# — Ratchets —
+tests/test_reconciliation_one_to_many_b5.py
+tests/test_reconciliation_review_b3.py
+tests/test_reconciliation_scoring_a2.py
+tests/test_responders.py
 tests/test_route_write_ratchet.py
-
-# — Scheduler isolation (S-1c) + its neighbor (both teardown-fixed in S-5) —
+tests/test_seed_matches_r157_content.py
+tests/test_seed_posting_ratchet.py
+tests/test_void_payment_reverses_ar2.py
+tests/test_wipe_tenant.py
 tests/test_workflow_scheduler_pair_isolation.py
 tests/test_workflow_scheduler_scheduled_dispatch.py
-
-# — Tenant wipe tool (W-1b): derivation + three guards (against the REAL
-#   preserve-list) + full throwaway-tenant wipe lifecycle. Creates its own
-#   tenant, cleans up after itself (COMPANY-LITTER ratchet). —
-tests/test_wipe_tenant.py
-
-# — Books Review Phase 2 A-1b: reconciliation exception model (r148) — schema
-#   pins (candidates key to txn, no match_status copy, uniqueness, CHECK, cascade). —
-tests/test_reconciliation_exception_model.py
-
-# — Books Review Phase 2 A-2: durable non-destructive scoring — candidate
-#   persistence, near-amount band, invoice/bill EPD fallback, exception
-#   creation, no-double-clear claim set, idempotent re-run. —
-tests/test_reconciliation_scoring_a2.py
-
-# — Books Review Phase 2 A-3: durable payment-claim table (r149) — UNIQUE(payment_id),
-#   claim-table pool exclusion, race-loser (SAVEPOINT + IntegrityError → not swallowed),
-#   period-lock gate, cascade release. —
-tests/test_reconciliation_claim_a3.py
-
-# — Books Review Arc B B-1: Plaid counterparty persisted raw (r150) — merchant_name /
-#   merchant_entity_id / counterparties[] landed by sync, description back-compat kept. —
-tests/test_plaid_counterparty_b1.py
-
-# — Books Review Arc B B-3: reconciliation review queue — source builder filters on
-#   the source transaction's match_status (not exception.resolved), candidates via
-#   Option A, Accept commits the SELECTED candidate reusing _try_claim, manual==auto
-#   state parity, period-lock gate, coding branch. —
-tests/test_reconciliation_review_b3.py
-
-# — Books Review Arc B B-4: flag/park (r151) — discriminated return_trigger_kind,
-#   flag_id FK, ask→task_completed subscriber, hold→doc-attach hook, terminal→run
-#   summary (adjustment), same-exception reopen, no scheduler. —
-tests/test_reconciliation_flags_b4.py
-
-# — Books Review Arc B B-5: one-to-many producer (r152 CHECK) — subset-sum k<=3
-#   exact-total (exclusions), payment_group candidate, synthetic id, all-or-none
-#   accept (member pre-claimed → zero claims, txn stays unmatched). —
-tests/test_reconciliation_one_to_many_b5.py
-
-# — Books Review Arc B B-6: end-to-end through the assembled engine — queue builds
-#   + candidates reach extras; both card forms have data; Accept (single + group)
-#   leaves the queue + queue_count agrees; Flag ask→Task→park→complete→return. —
-tests/test_books_review_e2e_b6.py
-
-# — Queue-count perf C-1: the membership seam (ss_cert_triage) — count and build
-#   share one membership expression + cannot disagree; snooze is a SQL anti-join
-#   matching the legacy post-filter; expired snooze ignored; tenant isolation. —
-tests/test_queue_count_membership_c1.py
-
-# — Queue-count perf C-2: count == build membership, all 10 converted builders
-#   (task/cash_receipts/month_end/ar_collections/expense/aftercare/catalog/
-#   safety/workflow_review/reconciliation); aftercare excludes null/empty
-#   entity_id in both paths. —
-tests/test_queue_count_membership_c2.py
-
-# — Queue-count perf C-3: email_unclassified window-function membership — SQL
-#   membership == the Python list_unclassified reference (diff empty, identity
-#   proof); count is exact + uncapped while the build stays display-capped at 50
-#   (so count != len(build) at >50, by design); display shape + ordering. —
-tests/test_queue_count_membership_c3.py
-
-# — Queue-count perf C-4: batched counts_for_user — equivalent to per-queue
-#   queue_count (anti-divergence), queue_ids subset + configs= reuse, and issues
-#   materially fewer SQL statements than the per-queue loop (floor hoisted). —
-tests/test_queue_count_membership_c4.py
-
-# — Queue-count perf C-5: new count preserves the OLD path's numbers — new ==
-#   reconstructed pre-C-1 count (materialize + snooze) per queue;
-#   email_unclassified is the documented uncapped-vs-capped exception at >50. —
-tests/test_queue_count_membership_c5.py
-
-# — Ledger Posting arc L-1: contra config — r153 FK (financial_accounts.gl_account_id
-#   → tenant_gl_mappings), keyword + contra GL resolvers fail closed on
-#   unmapped/dangling/foreign, and update_account no longer nulls an omitted field
-#   (C-1 hasattr fix) while honoring an explicit null. —
-tests/test_reconciliation_gl_l1.py

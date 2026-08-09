@@ -129,11 +129,16 @@ class TestMatchingHandMath:
           T3 credit +250 ref CHK-123 → TWO $250 customer candidates (exact-
                 match skips on ambiguity) → REFERENCE match P2 → conf 0.97
           T4 credit +999          → no candidate → unmatched
-          T5 'SERVICE CHARGE'     → bank_fee (suggested)
+          T5 'SERVICE CHARGE'     → classified bank_fee by the ladder, but this
+                tenant has no keyword→GL map, so post-L-2 it CANNOT BOOK and
+                therefore does not clear → unmatched, with the classification
+                recorded on its exception. (PRE-L-2 THIS READ: bank_fee,
+                suggested. The ladder is unchanged; what a classification earns
+                is what changed.)
           T6 credit +777          → only a VENDOR payment holds $777 —
                 DIRECTION-HONEST: a deposit never matches a vendor payment
                 → unmatched
-          Expected: auto 3 · suggested 1 · unmatched 2."""
+          Expected: auto 3 · suggested 0 · unmatched 3."""
         from app.api.routes.reconciliation import trigger_matching
 
         co = _mk_company(db)
@@ -162,8 +167,8 @@ class TestMatchingHandMath:
         result = trigger_matching(run.id, current_user=user, db=db)
 
         assert result["auto_cleared"] == 3
-        assert result["suggested"] == 1
-        assert result["unmatched"] == 2
+        assert result["suggested"] == 0
+        assert result["unmatched"] == 3
 
         # Per-line assertions from persisted state.
         txns = {t.sort_order: t for t in db.query(ReconciliationTransaction)
@@ -177,13 +182,22 @@ class TestMatchingHandMath:
         assert txns[2].matched_record_id == p2.id  # the reference match
         assert txns[2].match_confidence == Decimal("0.970")
         assert txns[3].match_status == "unmatched"
-        assert txns[4].match_status == "bank_fee"
+        assert txns[4].match_status == "unmatched"  # classified, but cannot book
         assert txns[5].match_status == "unmatched"  # direction honesty
+
+        # The ladder still FIRED on T5 and still short-circuited before the
+        # scorer — the evidence moved from the status to the exception, which
+        # names the classification directly rather than implying it.
+        from app.models.financial_account import ReconciliationException
+
+        exc = db.query(ReconciliationException).filter(
+            ReconciliationException.reconciliation_transaction_id == txns[4].id).one()
+        assert exc.keyword_classification == "bank_fee"
 
         # INDEPENDENT CROSS-CHECK: statuses recounted from persistence.
         statuses = [t.match_status for t in txns.values()]
         assert len(statuses) == 6
-        assert statuses.count("auto_cleared") + statuses.count("bank_fee") + statuses.count("unmatched") == 6
+        assert statuses.count("auto_cleared") + statuses.count("unmatched") == 6
 
     def test_loud_failure_never_an_all_unmatched_lie(self, db, monkeypatch):
         import app.api.routes.reconciliation as recon

@@ -369,6 +369,24 @@ function getManufacturingNav(
         },
         // Operations
         {
+          // Ledger Posting L-2.1e. The Books Review blocked card tells an
+          // operator to configure reconciliation GL; before this entry existed
+          // the page was reachable only by URL, so the card named an action and
+          // left them hunting. LABEL IS LOAD-BEARING — the card's copy says
+          // "Settings → Financial Accounts" verbatim, and a cross-file test
+          // (ReconciliationExceptionDisplay.test.tsx) fails if the two drift.
+          label: "Financial Accounts",
+          href: "/settings/accounts",
+          icon: "Landmark",
+          settingsGroup: "Operations",
+        },
+        {
+          label: "Bank Categories",
+          href: "/settings/bank-categories",
+          icon: "Tags",
+          settingsGroup: "Operations",
+        },
+        {
           label: "Programs & Products",
           href: "/settings/programs",
           icon: "Package",

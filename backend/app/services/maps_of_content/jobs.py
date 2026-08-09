@@ -15,12 +15,15 @@ slot in by exactly that shape.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Callable, Sequence
 
 from sqlalchemy.orm import Session
 
 from app.models.moc_job import MoCJob, MoCJobRef
+
+logger = logging.getLogger(__name__)
 
 REF_KINDS = ("automation", "triage_queue", "focus")
 
@@ -367,6 +370,178 @@ def _first_sentence(text: str | None, limit: int = 140) -> str | None:
     return head
 
 
+# ── The accounting-config beat (MAP-2) ─────────────────────────────────────
+
+
+_KEYWORD_LABELS = {
+    "bank_fee": "bank fee",
+    "payroll": "payroll draw",
+    "nsf": "returned item",
+}
+
+
+def _accounting_config_beats(db: Session, company_id: str) -> list[tuple[str, str]]:
+    """The tenant's OWN accounting configuration, read live.
+
+    "Two settings decide whether payments post; yours are unset" is truer than
+    any sentence anyone can write into a description, because it is read rather
+    than asserted — and it corrects itself the moment someone configures them.
+
+    THE STATE VOCABULARY IS THE POINT, AND IT IS FOUR STATES, NOT THREE.
+    `_accounting_gl_payload`'s docstring says "Three states, per L-2.1c" and the
+    code produces FOUR — `mapped`, `intentional`, `unmapped`, `dangling`. Each
+    earns its own sentence because each implies a DIFFERENT ACTION:
+
+      mapped      nothing to do; say what it means, not that a box is ticked.
+      intentional a settled DECISION, never a gap. `payroll` and `nsf` are both
+                  intentional on the production chart and both CORRECT — no
+                  single account is the right answer for either. Copy that
+                  implied something was missing would tell an operator to fix
+                  what they deliberately chose, which is the exact bug
+                  `_keyword_gl_payload`'s docstring records the configure script
+                  having shipped.
+      unmapped    nobody has decided; name what it blocks and where it is set.
+      dangling    SOMETHING BROKE. The only one of the four that is evidence of
+                  a problem rather than a decision — an account was chosen and
+                  no longer resolves. Folding it into `unmapped` would tell an
+                  operator to configure what they already configured, and would
+                  hide the one state that means an account went away.
+
+    Reads through the PANEL payloads rather than the posting resolvers.
+    `resolve_ar_account` raises identically for unset and deliberately-unmapped
+    (`if not ar_id` — `null` is falsy), which is right for a poster (both mean
+    "cannot post") and wrong for a teaching surface, where the two must never
+    read the same.
+
+    Returns `[(beat_key, text)]`, empty when there is nothing honest to say.
+    ~5 queries; the caller gates before invoking.
+    """
+    from app.api.routes.reconciliation import (
+        _accounting_gl_payload, _keyword_gl_payload, _payment_bank_payload,
+    )
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if company is None:
+        return []                                   # honest absence
+
+    try:
+        ar = next(
+            (p for p in _accounting_gl_payload(db, company)["purposes"]
+             if p["purpose"] == "ar"), None,
+        )
+        bank = _payment_bank_payload(db, company)
+        keywords = _keyword_gl_payload(db, company)["classifications"]
+    except Exception:
+        # A RESOLVER RAISING IS ABSENCE, NOT CONTENT. The feed beat's rule —
+        # omitted, never faked. A half-rendered configuration claim is worse
+        # than no claim, because the half that rendered looks complete.
+        logger.warning(
+            "[map] accounting-config beat omitted for tenant %s — a resolver "
+            "raised; the beat renders nothing rather than a partial truth.",
+            company_id, exc_info=True,
+        )
+        return []
+
+    beats: list[tuple[str, str]] = []
+
+    # ── The posting pair ───────────────────────────────────────────────────
+    # TWO SETTINGS IN TWO PLACES, and reporting only one sends an operator away
+    # thinking they are done — the `_payment_bank_payload` lesson. `state` means
+    # CHOSEN; `can_post` means READY, and they differ exactly when the chosen
+    # account has no GL account of its own.
+    ar_state = (ar or {}).get("state", "unmapped")
+    ar_name = (ar or {}).get("account_name")
+    bank_chosen = bank.get("state") == "mapped"
+    bank_ready = bool(bank.get("can_post"))
+    bank_name = bank.get("account_name")
+    # THE DEBITED LEG IS A GL ACCOUNT, NOT THE BANK. `account_name` is the
+    # FinancialAccount ("Operating"); `gl_account_name` is what the entry debits
+    # ("CASH CHECKING"). The posting sentence names ledger legs, so it must use
+    # the GL name — naming the bank there teaches the wrong vocabulary, and the
+    # operator reading the ledger would not find "Operating" on it.
+    cash_name = bank.get("gl_account_name") or bank_name
+
+    if ar_state == "dangling":
+        beats.append((
+            "config:ar",
+            "The accounts-receivable account was set but no longer resolves — "
+            "it may have been deactivated. Customer payments stay recorded-only "
+            "until it is re-picked.",
+        ))
+    elif ar_state == "intentional":
+        beats.append((
+            "config:ar",
+            "You have chosen not to map an accounts-receivable account, so "
+            "customer payments stay recorded-only.",
+        ))
+    elif ar_state == "mapped" and bank_ready:
+        beats.append((
+            "config:posting",
+            f"Customer payments post as they are received — debited to "
+            f"{cash_name}, credited to {ar_name} — so a matched deposit clears "
+            f"against an entry that already exists.",
+        ))
+    elif ar_state == "mapped" and bank_chosen and not bank_ready:
+        beats.append((
+            "config:posting",
+            f"{bank_name} is chosen to receive customer payments, but it has "
+            f"no GL account of its own, so nothing posts yet. That one is set "
+            f"on the account itself.",
+        ))
+    elif ar_state == "mapped":
+        beats.append((
+            "config:posting",
+            f"{ar_name} is set for receivables, but no bank account is chosen "
+            f"to receive customer payments, so nothing posts yet.",
+        ))
+    else:
+        # Production's current state, and the beat's most valuable one.
+        # "Nothing is configured" is a FACT ABOUT THIS TENANT, not an absence of
+        # data — so it renders, where a failed read would not.
+        beats.append((
+            "config:posting",
+            "Customer payments are recorded but not posted: no receivables "
+            "account is set, and no bank account is chosen to receive them. "
+            "Both live in Settings, under Financial accounts. Until they are "
+            "set, every payment is recorded and reported as unposted — nothing "
+            "is lost, but the ledger does not yet show the cash.",
+        ))
+
+    # ── The keyword map ────────────────────────────────────────────────────
+    for k in keywords:
+        label = _KEYWORD_LABELS.get(k["classification"], k["classification"])
+        state = k["state"]
+        if state == "mapped":
+            text = (f"A line reading like a {label} books straight to "
+                    f"{k['account_name']}.")
+        elif state == "intentional":
+            text = (f"{label.capitalize()} lines are deliberately left for a "
+                    f"person — no single account is the right answer, so they "
+                    f"wait in Books Review instead of booking automatically.")
+        elif state == "dangling":
+            text = (f"The {label} account no longer resolves — it may have been "
+                    f"deactivated. Re-pick it and those lines book again.")
+        else:
+            text = (f"{label.capitalize()} lines have no account yet, so they "
+                    f"cannot book. Set one in the keyword map, or leave it "
+                    f"unset deliberately.")
+        beats.append((f"config:keyword:{k['classification']}", text))
+
+    # ── The structural frame ───────────────────────────────────────────────
+    # PHRASED AS THE DESIGN, NOT THE STATE. "clears against a payment already on
+    # the books" would be FALSE in production today, because whether a payment is
+    # on the books depends on the very configuration this beat just reported.
+    # "when one exists" is the narrow true thing in every state.
+    beats.append((
+        "config:frame",
+        "A line you classify or code books its journal entry before it clears; "
+        "a line matched to a payment clears against that payment's own entry, "
+        "when one exists.",
+    ))
+    return beats
+
+
 def build_job_ponder_script(
     db: Session, *, job_id: str, company_id: str | None = None, user=None,
 ) -> dict[str, Any]:
@@ -476,6 +651,27 @@ def build_job_ponder_script(
                 ponder_ref={"overlay_id": "onboarding:connect-your-bank",
                             "label": "Walk the setup"},
             )
+
+    # THE ACCOUNTING-CONFIG BEAT (MAP-2): whether this tenant's books
+    # actually tie is a question about CONFIGURATION, and configuration is
+    # state — so it is READ, never written into a description. The feed
+    # beat above is the precedent: live, tenant-scoped, honest absence.
+    #
+    # ⚠️ GATED ON A REF, NOT ON THE JOB'S NAME. r157 renamed and split the
+    # accounting cards, which is exactly how a name-match silently stops
+    # matching; a job that teaches Books Review is the job whose story needs
+    # to know whether Books Review can book. Data-driven, so a future rename
+    # cannot orphan it.
+    #
+    # ⚠️ AND GATED BEFORE THE RESOLVERS RUN. `_accounting_config_beats` costs
+    # ~5 queries; computing it for eleven cards and discarding nine would be
+    # forty-five queries to render the Accounting area. The `any(...)` below
+    # short-circuits on a list already in memory, so the nine pay nothing.
+    if company_id and any(
+        r["key"] == "reconciliation_review_triage" for r in queues
+    ):
+        for key, text in _accounting_config_beats(db, company_id):
+            _beat(key, "setup", text)
 
     # THE STORY BEATS (D-11 U-4 — the capability-ponder grammar): a job
     # may carry an authored sequence in `ponder.story` — a list of

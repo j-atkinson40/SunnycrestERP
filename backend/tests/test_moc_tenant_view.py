@@ -20,6 +20,7 @@ from app.database import SessionLocal
 from app.models.company import Company
 from app.models.moc_task_catalog import MoCTaskCatalog
 from app.services.maps_of_content.task_catalog import resolve_task_catalog
+from tests._cleanup import purge_new_companies  # noqa: F401  (autouse)
 
 VERT = "manufacturing"
 

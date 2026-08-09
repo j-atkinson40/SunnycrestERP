@@ -42,7 +42,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.company import Company
 from app.models.financial_account import (
+    FinancialAccount,
     ReconciliationAdjustment,
     ReconciliationException,
     ReconciliationMatchCandidate,
@@ -51,8 +53,41 @@ from app.models.financial_account import (
     ReconciliationTransaction,
 )
 from app.services.agents.period_lock import PeriodLockService
+from app.services import reconciliation_gl
+from app.services import ar_payment_posting
+from app.services.reconciliation_gl import book_keyword_entry
 
 logger = logging.getLogger(__name__)
+
+# ── Keyword ladder (L-2) ─────────────────────────────────────────────────────
+# The description patterns and their precedence are UNCHANGED from the original
+# inline ladder — fee, then payroll, then nsf, first match wins, same
+# confidences. Lifted to module scope only so the classification is nameable
+# separately from what a classification now earns (a posting, or an exception).
+#
+# The vocabulary is code-fixed and matches `reconciliation_gl.KEYWORD_CLASSIFICATIONS`,
+# which is what the tenant's settings map keys off.
+_KEYWORD_LADDER: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("bank_fee", "0.90", ("SERVICE CHARGE", "MONTHLY FEE", "WIRE FEE", "OVERDRAFT", "ATM FEE")),
+    ("payroll", "0.92", ("PAYROLL", "ADP", "GUSTO", "PAYCHEX")),
+    ("nsf", "0.88", ("RETURNED", "NSF", "INSUFFICIENT", "REVERSAL")),
+)
+
+# The statuses a keyword row holds once it has cleared. A row in one of these
+# states counts toward cleared_total ONLY if it actually booked — see the tally.
+_KEYWORD_CLEARING_STATUSES: frozenset[str] = frozenset(
+    c for (c, _conf, _kw) in _KEYWORD_LADDER
+)
+
+
+def _classify_keyword(description: str | None) -> tuple[str, Decimal] | None:
+    """``(classification, confidence)`` for a description the ladder recognizes,
+    else ``None``. Pure; first match wins, in ladder order."""
+    desc_upper = (description or "").upper()
+    for classification, confidence, keywords in _KEYWORD_LADDER:
+        if any(kw in desc_upper for kw in keywords):
+            return classification, Decimal(confidence)
+    return None
 
 # ── A-2 scoring constants ────────────────────────────────────────────────────
 # BOTH OF THESE ARE GUESSES, NOT TUNED VALUES. They are placeholders until real
@@ -240,6 +275,28 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
         ReconciliationTransaction.reconciliation_run_id == run.id,
     ).order_by(ReconciliationTransaction.sort_order).all()
 
+    # L-2 posting inputs, resolved ONCE per run rather than per transaction: the
+    # tenant (holder of the keyword→GL settings map) and the bank account (holder
+    # of the contra/cash GL account). Both are LOUD on absence, matching this
+    # module's loud-failure contract — a matcher that cannot identify the account
+    # it is reconciling must refuse, not book against a guess.
+    company = db.query(Company).filter(Company.id == company_id).one()
+    financial_account = (
+        db.query(FinancialAccount)
+        .filter(FinancialAccount.id == run.financial_account_id)
+        .one()
+    )
+    # ONE context for the whole run — the same object Books Review builds for a
+    # page of rows, so the matcher's reason and the card's reason cannot come
+    # from two implementations. Also drops the per-row cost: resolution used to
+    # be three queries per keyword row (keyword leg, contra leg, period lock);
+    # it is now three per RUN. A run is a consistent snapshot of configuration
+    # by construction, which is the behavior you want anyway — a settings edit
+    # mid-run should not split a statement across two rulesets.
+    posting_ctx = reconciliation_gl.build_keyword_posting_context(
+        db, company, [financial_account]
+    )
+
     # Load platform records for matching — REAL models, LOUD (D-3).
     # LOUD-FAILURE CONTRACT: no fallback — a matcher that cannot read its inputs
     # refuses (an "everything's unmatched" screen from a broken read is the lie;
@@ -358,22 +415,56 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
             ReconciliationException.reconciliation_transaction_id == txn.id,
         ).delete(synchronize_session=False)
 
-        # (2) Keyword ladder — UNCHANGED. These short-circuit: they set a status
-        # and produce neither candidates nor an exception (they are their own
-        # confirmation flow). payroll auto-clears and moves money; fee/nsf are
-        # suggested and do not.
-        desc_upper = (txn.description or "").upper()
-        if any(kw in desc_upper for kw in ["SERVICE CHARGE", "MONTHLY FEE", "WIRE FEE", "OVERDRAFT", "ATM FEE"]):
-            txn.match_status = "bank_fee"
-            txn.match_confidence = Decimal("0.90")
-            continue
-        if any(kw in desc_upper for kw in ["PAYROLL", "ADP", "GUSTO", "PAYCHEX"]):
-            txn.match_status = "payroll"
-            txn.match_confidence = Decimal("0.92")
-            continue
-        if any(kw in desc_upper for kw in ["RETURNED", "NSF", "INSUFFICIENT", "REVERSAL"]):
-            txn.match_status = "nsf"
-            txn.match_confidence = Decimal("0.88")
+        # (2) Keyword ladder — L-2: BOOKING IS THE LICENCE TO CLEAR.
+        #
+        # The classification vocabulary and its precedence are UNCHANGED (fee →
+        # payroll → nsf, same patterns, same confidences). What changed is what
+        # a classification EARNS. Before L-2 a keyword row set a status and
+        # moved on, booking nothing — payroll went further and moved
+        # cleared_total, which is the asymmetry this arc closes. Now every
+        # keyword row must produce a balanced two-legged draft JE before it may
+        # clear, and a row that cannot book does not clear:
+        #
+        #   both GL legs resolve + period open  → book draft JE, clear
+        #   anything unresolvable               → stay unmatched, EXCEPTION
+        #
+        # The exception carries WHY (r154), because this is a third kind of
+        # Books Review item: the system knows exactly what the row is and only
+        # lacks somewhere to put it. That is a configuration fix, not a coding
+        # decision, and the card says so.
+        classified = _classify_keyword(txn.description)
+        if classified is not None:
+            classification, confidence = classified
+            posting, blocked_reason = posting_ctx.decide(
+                classification=classification,
+                financial_account_id=financial_account.id,
+                entry_date=txn.transaction_date,
+            )
+            if posting is not None:
+                entry = book_keyword_entry(
+                    db,
+                    company_id=company_id,
+                    posting=posting,
+                    amount=txn.amount,
+                    entry_date=txn.transaction_date,
+                    description=txn.description or f"Reconciliation: {classification}",
+                    reference_number=txn.reference_number,
+                )
+                txn.match_status = classification
+                txn.match_confidence = confidence
+                txn.journal_entry_id = entry.id
+                continue
+            # Fail closed. `match_status` is already "unmatched" (guaranteed by
+            # the gate at the top of the loop), so the row stays out of
+            # cleared_total by the same arithmetic that governs every other
+            # unmatched row — no separate exclusion to keep in sync.
+            db.add(ReconciliationException(
+                tenant_id=company_id,
+                reconciliation_transaction_id=txn.id,
+                reconciliation_run_id=run.id,
+                keyword_classification=classification,
+                blocked_reason=blocked_reason,
+            ))
             continue
 
         txn_amt = abs(Decimal(str(txn.amount)))
@@ -524,6 +615,20 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
                 txn.matched_record_type = accepted["type"]
                 txn.matched_record_id = accepted["id"]
                 claimed.add((accepted["type"], accepted["id"]))
+                # AR-2.1: the match is the moment the truth about WHERE the
+                # money landed arrives. A payment posts to the tenant's default
+                # bank account; this bank line belongs to a known one. If they
+                # disagree, the default was wrong for this payment and two bank
+                # accounts are misstated. Reported, never corrected — amending a
+                # posted entry from a background sweep is the behaviour AR-1
+                # spent a phase removing.
+                if accepted["type"] == "customer_payment":
+                    ar_payment_posting.check_match_bank_consistency(
+                        db,
+                        company_id=company_id,
+                        run_financial_account_id=run.financial_account_id,
+                        payment_id=accepted["id"],
+                    )
             else:
                 # Lost the claim race — mark the candidate ALREADY_CLAIMED (its
                 # reason, persisted below) and fall through to unmatched+exception.
@@ -558,13 +663,58 @@ def run_matching(db: Session, run: ReconciliationRun, company_id: str) -> dict:
     # ---- run summary: RE-TALLY from persisted state ------------------------
     # Tallying the final match_status of every transaction (not incrementing as
     # we go) keeps the counts correct even when a re-run skips already-resolved
-    # rows. payroll counts with auto per the preserved asymmetry; fee/nsf are
-    # suggested and do NOT flow into cleared_total.
-    auto_count = sum(1 for t in transactions if t.match_status in ("auto_cleared", "payroll"))
-    suggested_count = sum(1 for t in transactions if t.match_status in ("bank_fee", "nsf"))
+    # rows.
+    #
+    # L-2 CLOSES THE PAYROLL ASYMMETRY. Pre-L-2 the buckets were arbitrary:
+    # `payroll` counted as cleared and moved cleared_total while booking
+    # nothing; `bank_fee` and `nsf` were "suggested" and moved nothing, though
+    # the ladder is no less certain about a service charge than about a Gusto
+    # run. The rule is now uniform and has a reason behind it — A ROW COUNTS AS
+    # CLEARED WHEN IT BOOKED — so all three classifications clear together when
+    # they post, and none of them clears when it cannot.
+    #
+    # The test is `journal_entry_id`, NOT the status string, and that is
+    # load-bearing rather than fastidious: `POST .../transactions/{id}/action`
+    # with `mark_payroll` sets `match_status = "payroll"` by hand and books
+    # nothing. Tallying on the label would let that manual action move
+    # cleared_total against an empty ledger — precisely the defect this arc
+    # exists to remove, reintroduced through a side door.
+    #
+    # `auto_cleared` counts unconditionally: it is the payment-match path, and
+    # it still books nothing. A payment match clears on the strength of the
+    # matched payment record, exactly as before.
+    #
+    # Corrected 2026-08-05 — this said "(that is L-3)", and L-3 did NOT close
+    # it. L-3 closed the CODING accept and scoped `auto_cleared` out
+    # deliberately, on the ground that a matched payment posts nothing because
+    # reconciliation is not an economic event: the money was recognised when the
+    # payment was recorded, and booking again would double-count cash.
+    #
+    # The gap is that the entry it should clear against does not exist —
+    # `create_customer_payment` (sales_service.py:1637) writes no journal entry.
+    # Closing that is AR-2, which is BLOCKED on an undeposited-funds account
+    # existing on the tenant's chart (an accountant's call, not ours: the cash
+    # account is unknown at payment time and the chart's nearest clearing
+    # account is a liability). See the SCOPE note in
+    # tests/test_reconciliation_gl_l2.py for the full reasoning.
+    def _has_booked(t) -> bool:
+        return t.journal_entry_id is not None
+
+    def _is_cleared(t) -> bool:
+        if t.match_status == "auto_cleared":
+            return True
+        if t.match_status in _KEYWORD_CLEARING_STATUSES:
+            return _has_booked(t)
+        return False
+
+    auto_count = sum(1 for t in transactions if _is_cleared(t))
+    # Structurally zero after L-2 and left in place deliberately: there is no
+    # longer any state between "cleared" and "needs a human". A keyword row
+    # either booked (cleared) or became an exception (unmatched). The field and
+    # its API key stay so the run summary's shape does not churn for consumers.
+    suggested_count = 0
     unmatched_count = sum(1 for t in transactions if t.match_status == "unmatched")
-    cleared_total = sum((t.amount for t in transactions
-                         if t.match_status in ("auto_cleared", "payroll")), Decimal(0))
+    cleared_total = sum((t.amount for t in transactions if _is_cleared(t)), Decimal(0))
 
     run.auto_cleared_count = auto_count
     run.suggested_count = suggested_count

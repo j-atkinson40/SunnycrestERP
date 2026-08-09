@@ -349,6 +349,68 @@ registerFocus({
   queueId: "workflow_review_triage",
 })
 
+// ── Accounting Focuses (FB-1) ──────────────────────────────────────────────
+//
+// THE ACCOUNTING SUITE HAD ZERO FOCUSES BEFORE THIS, not one. Books Review was
+// described as a Focus for weeks; it is a purpose-built DISPLAY COMPONENT
+// (ReconciliationExceptionDisplay) rendering inside the /triage/ page, bound to
+// the Focus primitive nowhere. Verified: `reconciliation_review_triage` had zero
+// non-test references in frontend/src.
+//
+// Each binding is data only — `TriageQueueCore` renders whatever queue its
+// `queueId` names, so a Focus over an existing queue costs one entry and no
+// component. What it does NOT cost is a way in: see the command-bar entries in
+// services/actions/triage.ts, without which a registered Focus is reachable only
+// by typing ?focus= into the URL, which is the state `decision-triage` has been
+// in since it shipped.
+//
+// ONE QUEUE WAS DELIBERATELY NOT BOUND. `ar_collections_triage` is a worklist,
+// not a bounded decision: the condition that stages an item (this customer owes
+// and is overdue) does not resolve when the operator sends the drafted email —
+// it resolves when they pay, elsewhere and later, and tomorrow's run re-stages
+// the same customers. THE QUEUE'S EMPTINESS IS NOT EVIDENCE THE DECISION WAS
+// MADE, which is the test. It keeps its /triage/ page, which is honest about
+// being a list.
+//
+// `cash_receipts_matching_triage` is ALSO unbound, for a different reason:
+// post-A-2 Books Review scores candidates against the same payment pool with the
+// same exact-amount ladder AND has the claimed set + _try_claim that cash
+// receipts lacks. Two Focuses answering "what is this unmatched money" from
+// opposite ends would leave the operator unsure which is authoritative, and the
+// prior question — whether cash receipts still needs to exist — is not a Focus
+// question. Held.
+
+registerFocus({
+  id: "books-review",
+  mode: "triageQueue",
+  displayName: "Books Review",
+  queueId: "reconciliation_review_triage",
+})
+
+// The strongest of the four by the bounded-decision test: per-JOB cardinality
+// (one item, one irreversible decision, a period lock on the far side), and it
+// terminates by construction because `awaiting_approval` is a state a job leaves.
+registerFocus({
+  id: "month-end-close",
+  mode: "triageQueue",
+  displayName: "Month-End Close",
+  queueId: "month_end_close_triage",
+})
+
+// Bounded in principle — every uncategorized line is coded and the set is
+// finite. ⚠️ UNEXERCISED IN PRACTICE: on dev this queue has never held an item,
+// because `find_uncategorized_expenses` reports `total_bill_lines_in_period: 0`
+// on every one of 5,167 runs. That is a source-population fact (no vendor bills
+// dated inside the run's window), NOT an agent defect — the four steps complete
+// and the classifier is reached. Production is UNVERIFIED. Bound anyway because
+// the emptiness is data, not structure; revisit if production is empty too.
+registerFocus({
+  id: "expense-categorization",
+  mode: "triageQueue",
+  displayName: "Expense Categorization",
+  queueId: "expense_categorization_triage",
+})
+
 registerFocus({
   id: "test-matrix",
   mode: "matrix",

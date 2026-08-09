@@ -15,7 +15,7 @@ from app.database import get_db
 from app.models.journal_entry import AccountingPeriod, JournalEntry, JournalEntryLine, JournalEntryTemplate
 from app.models.accounting_analysis import TenantGLMapping
 from app.models.user import User
-from app.services import journal_entry_service
+from app.services import journal_entry_service, reconciliation_gl
 from app.services.journal_entry_service import JournalLineSpec
 from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
 
@@ -110,12 +110,14 @@ def create_entry(
     # the JE characterization test.
     line_specs: list[JournalLineSpec] = []
     for line in body.lines:
-        gl = db.query(TenantGLMapping).filter(
-            TenantGLMapping.id == line.gl_account_id,
-            TenantGLMapping.tenant_id == current_user.company_id,
-        ).first()
-        if gl is None:
-            raise HTTPException(400, f"Unknown GL account '{line.gl_account_id}' for this tenant")
+        # L-2.2 X-1: was a local `tenant_id`-only filter, which accepted a
+        # soft-deleted mapping that `validate_gl_account` — the single
+        # definition of a usable GL account everywhere else — refuses. Two
+        # definitions differing by one predicate is the drift L-2.1b closed on
+        # the reconciliation routes; this closes it here.
+        gl = reconciliation_gl.require_gl_account(
+            db, current_user.company_id, line.gl_account_id
+        )
         line_specs.append(JournalLineSpec(
             gl_account_id=line.gl_account_id,
             gl_account_number=gl.account_number,
@@ -204,9 +206,15 @@ def post_entry(
     # S-3 ADDED the PeriodLock check ALONGSIDE (not in place of) the
     # AccountingPeriod one — dropping AccountingPeriod would silently
     # re-permit posting into a manually-closed period. Reconciling the two
-    # tables (are there closed AccountingPeriods with no PeriodLock?) is an
-    # S-6 item with a data question that must be answered before either is
-    # retired.
+    # tables (are there closed AccountingPeriods with no PeriodLock?) was
+    # deferred to S-6, which shipped (af333551..b6f1418c) without doing it.
+    #
+    # THE DATA QUESTION IS NOW ANSWERED (production, read-only, 2026-08-05):
+    # 0 accounting_periods, 0 with status='closed', 0 period_locks. There is
+    # nothing to reconcile, so retiring AccountingPeriod is no longer blocked
+    # BY DATA — it is only blocked by the decision. Re-measure before acting on
+    # this: the whole point of writing it down is that a count taken once is a
+    # hypothesis afterwards.
     period = db.query(AccountingPeriod).filter(
         AccountingPeriod.tenant_id == current_user.company_id,
         AccountingPeriod.period_month == entry.period_month,
@@ -233,65 +241,109 @@ def reverse_entry(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    original = db.query(JournalEntry).filter(
-        JournalEntry.id == entry_id, JournalEntry.tenant_id == current_user.company_id,
-    ).first()
-    if not original or original.status != "posted":
-        raise HTTPException(400, "Can only reverse posted entries")
-
-    # Generate reversal
-    count = db.query(func.count(JournalEntry.id)).filter(JournalEntry.tenant_id == current_user.company_id).scalar() or 0
-    rev_number = f"JE-{count + 1001}"
-    # A reversal posts in the CURRENT period (today), not the original's
-    # period — standard practice: you reverse a closed-period entry INTO the
-    # open current period, you do not reach back. This `today` is CORRECT,
-    # NOT the entry_date/period-derivation inconsistency to "unify" away. A
-    # later cleanup that copies the original's entry_date here would turn
-    # correct behavior into a bug AND would trip the S-3 period-lock guard on
-    # every reversal of a locked-period entry (making a legitimate operation
-    # impossible). Leave it as today.
-    today = date.today()
-
-    # Mirror the original's lines (debit <-> credit). The service computes
-    # the reversal totals from these mirrored specs, which equals the
-    # original's swapped totals exactly.
-    orig_lines = db.query(JournalEntryLine).filter(JournalEntryLine.journal_entry_id == entry_id).all()
-    rev_specs = [
-        JournalLineSpec(
-            gl_account_id=ol.gl_account_id,
-            gl_account_number=ol.gl_account_number,
-            gl_account_name=ol.gl_account_name,
-            description=ol.description,
-            debit_amount=ol.credit_amount,
-            credit_amount=ol.debit_amount,
+    # AR-2 void fix: the construction moved to
+    # `journal_entry_service.reverse_journal_entry` because voiding a payment
+    # whose entry was posted needs the same mirror, and the alternative was a
+    # service importing this route handler. This keeps its own 400 so the
+    # endpoint's contract does not move.
+    try:
+        reversal = journal_entry_service.reverse_journal_entry(
+            db,
+            tenant_id=current_user.company_id,
+            entry_id=entry_id,
+            actor_user_id=current_user.id,
         )
-        for ol in orig_lines
-    ]
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
-    reversal = journal_entry_service.create_journal_entry(
-        db,
-        tenant_id=current_user.company_id,
-        entry_number=rev_number,
-        entry_type="reversal",
-        status="posted",
-        entry_date=today,
-        period_month=today.month,
-        period_year=today.year,
-        description=f"Reversal of {original.entry_number}: {original.description}",
-        is_reversal=True,
-        reversal_of_entry_id=original.id,
-        created_by=current_user.id,
-        posted_by=current_user.id,
-        posted_at=datetime.now(timezone.utc),
-        lines=rev_specs,
-    )
-
-    original.status = "reversed"
     db.commit()
-    return {"id": reversal.id, "entry_number": rev_number, "status": "posted"}
+    return {
+        "id": reversal.id,
+        "entry_number": reversal.entry_number,
+        "status": "posted",
+    }
 
 
 # ── AI Parsing ──
+
+def _resolve_parsed_lines(db: Session, tenant_id: str, parsed: dict) -> dict:
+    """Resolve every GL account the model proposed against THIS tenant's chart.
+
+    L-2.2 X-2. `parse_entry` used to return the model's output verbatim, so a
+    `gl_account_id` it invented reached the form, sat in state invisibly, and
+    surfaced as a 400 from `create_entry` at save.
+
+    THE ID WAS ALWAYS INVENTED. The prompt renders the chart as
+    ``- {account_number}: {account_name} ({category})`` and then asks for
+    `gl_account_id` — the model is never shown an id, so it cannot return one.
+    The ACCOUNT NUMBER is the identifier it actually has, which is why that is
+    what resolution keys on. Validating the id alone would have been correct and
+    useless: every line would fail.
+
+    Order: a genuinely valid id wins (cheap, and future-proof if the prompt ever
+    gains ids), then the account number, then the line is marked unresolved.
+
+    UNRESOLVED IS FLAGGED, NOT DROPPED. `gl_account_id` goes to null so nothing
+    downstream can act on a bad value, and `gl_account_unresolved` carries what
+    the model proposed so the UI can say a suggestion was made and rejected.
+    Dropping it silently would discard information the model produced and leave
+    the operator with an empty picker and no reason for it.
+
+    Number lookup is TENANT-SCOPED and active-only — account numbers are not
+    globally unique, so an unscoped match would be a cross-tenant read.
+    """
+    lines = parsed.get("lines")
+    if not isinstance(lines, list):
+        return parsed
+
+    out_lines = []
+    for line in lines:
+        if not isinstance(line, dict):
+            out_lines.append(line)
+            continue
+        line = dict(line)
+        proposed_number = line.get("gl_account_number")
+        proposed_name = line.get("gl_account_name")
+
+        gl = reconciliation_gl.validate_gl_account(
+            db, tenant_id, line.get("gl_account_id")
+        )
+        if gl is None and proposed_number:
+            gl = (
+                db.query(TenantGLMapping)
+                .filter(
+                    TenantGLMapping.tenant_id == tenant_id,
+                    TenantGLMapping.account_number == str(proposed_number),
+                    TenantGLMapping.is_active.is_(True),
+                )
+                .first()
+            )
+
+        if gl is None:
+            line["gl_account_id"] = None
+            line["gl_account_number"] = None
+            line["gl_account_name"] = None
+            line["gl_account_unresolved"] = {
+                "proposed_number": proposed_number,
+                "proposed_name": proposed_name,
+            }
+        else:
+            # Denormalize from the MAPPING, never from what the model asserted
+            # about it — the same rule create_entry follows.
+            line["gl_account_id"] = gl.id
+            line["gl_account_number"] = gl.account_number
+            line["gl_account_name"] = gl.account_name
+            line["gl_account_unresolved"] = None
+        out_lines.append(line)
+
+    parsed = dict(parsed)
+    parsed["lines"] = out_lines
+    parsed["unresolved_line_count"] = sum(
+        1 for l in out_lines
+        if isinstance(l, dict) and l.get("gl_account_unresolved")
+    )
+    return parsed
+
 
 @router.post("/entries/parse")
 def parse_entry(
@@ -318,7 +370,9 @@ def parse_entry(
             caller_entity_id=None,  # draft not yet persisted
         )
         if result.status == "success" and isinstance(result.response_parsed, dict):
-            return result.response_parsed
+            return _resolve_parsed_lines(
+                db, current_user.company_id, result.response_parsed
+            )
         return {
             "error": result.error_message or f"status={result.status}",
             "confidence": 0,
