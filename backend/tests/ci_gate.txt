@@ -258,6 +258,7 @@ tests/test_reconciliation_matching_rework.py
 tests/test_reconciliation_one_to_many_b5.py
 tests/test_reconciliation_review_b3.py
 tests/test_reconciliation_scoring_a2.py
+tests/test_reframe_r1.py
 tests/test_responders.py
 tests/test_route_write_ratchet.py
 tests/test_seed_accounting_demo.py

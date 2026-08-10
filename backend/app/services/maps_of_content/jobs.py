@@ -25,7 +25,28 @@ from app.models.moc_job import MoCJob, MoCJobRef
 
 logger = logging.getLogger(__name__)
 
-REF_KINDS = ("automation", "triage_queue", "focus")
+# ⚠️ THE `focus` REF KIND IS REMOVED (FR-1). THE `focus` BEAT KIND IS NOT —
+# two vocabularies shared a word in this module and only the first is gone.
+#
+#   REMOVED  `MoCJobRef.ref_kind == "focus"` — a job ref naming a Focus. It
+#            resolved ONLY against `focus_templates.template_slug`, and
+#            `registerFocus()` has no field that can name a template_slug, so
+#            the kind could not point at any Focus the runtime renders. Zero
+#            rows ever existed on production or dev, and the six accounting
+#            jobs reach their surfaces through `triage_queue` refs instead.
+#
+#   KEPT     the BEAT kind `"focus"` — `platform_map.py:98` builds
+#            `{"key": "exhibit", "kind": "focus"}` by querying FocusTemplate
+#            directly and calling `focus_miniature`, never touching MoCJobRef.
+#            The exhibit grammar is untouched.
+#
+# ⚠️ THE DATABASE STILL PERMITS IT. `ck_moc_job_ref_kind` (this model's
+# `__table_args__`, created by `r132_moc_job.py:69`) still reads
+# `ref_kind IN ('automation', 'triage_queue', 'focus')`. Tightening it is a
+# migration and was deliberately NOT taken here — reported, not decided. Until
+# it lands the service refuses a focus ref and the database would accept one
+# written around the service.
+REF_KINDS = ("automation", "triage_queue")
 
 
 class JobValidationError(ValueError):
@@ -48,21 +69,9 @@ def _check_triage_queue(db: Session, key: str) -> bool:
     return key in platform_queue_ids()
 
 
-def _check_focus(db: Session, key: str) -> bool:
-    from app.models.focus_template import FocusTemplate
-
-    return (
-        db.query(FocusTemplate)
-        .filter(FocusTemplate.template_slug == key)
-        .first()
-        is not None
-    )
-
-
 REF_CHECKERS: dict[str, Callable[[Session, str], bool]] = {
     "automation": _check_automation,
     "triage_queue": _check_triage_queue,
-    "focus": _check_focus,
 }
 
 
@@ -100,29 +109,9 @@ def _resolve_triage_queue(db: Session, key: str) -> dict[str, Any] | None:
     }
 
 
-def _resolve_focus(db: Session, key: str) -> dict[str, Any] | None:
-    from app.models.focus_template import FocusTemplate
-
-    tpl = (
-        db.query(FocusTemplate)
-        .filter(FocusTemplate.template_slug == key)
-        .order_by(FocusTemplate.version.desc())
-        .first()
-    )
-    if tpl is None:
-        return None
-    return {
-        "kind": "focus",
-        "key": key,
-        "label": tpl.display_name,
-        "vertical": tpl.vertical,
-    }
-
-
 REF_RESOLVERS: dict[str, Callable[[Session, str], dict[str, Any] | None]] = {
     "automation": _resolve_automation,
     "triage_queue": _resolve_triage_queue,
-    "focus": _resolve_focus,
 }
 
 
@@ -555,7 +544,10 @@ def build_job_ponder_script(
 
     autos = [r for r in resolved["refs"] if r["kind"] == "automation"]
     queues = [r for r in resolved["refs"] if r["kind"] == "triage_queue"]
-    focuses = [r for r in resolved["refs"] if r["kind"] == "focus"]
+    # No `focuses` list — the `focus` REF kind is gone (FR-1). This was the
+    # bridge that turned job refs into focus BEATS; the beat kind itself
+    # survives and is still emitted by `platform_map.py` from a FocusTemplate
+    # read, with no ref involved.
 
     beats: list[dict] = []
 
@@ -735,21 +727,11 @@ def build_job_ponder_script(
             link={"href": r["href"], "label": f"Open {r['label']}"},
         )
 
-    # THE FOCUS BEATS — the resolved miniature (the exhibit grammar).
-    for r in focuses:
-        from app.services.maps_of_content.ponder import focus_miniature
-
-        artifact = focus_miniature(
-            db, template_slug=r["key"], vertical=r.get("vertical"),
-            display_name=r["label"],
-        )
-        if artifact is None:
-            continue  # unresolvable → skip honestly
-        _beat(
-            f"focus:{r['key']}", "focus",
-            f"The work happens in {r['label']} — this job opens it ready to go.",
-            artifact=artifact,
-        )
+    # THE FOCUS BEATS ARE GONE FROM THE JOB SCRIPT (FR-1) — a job can no longer
+    # carry a `focus` ref, so there is nothing here to turn into one. The
+    # `focus_miniature` exhibit grammar is NOT removed: `platform_map.py:88-102`
+    # still builds a `kind: "focus"` beat from a direct FocusTemplate read. What
+    # went is the bridge, not the destination.
 
     # THE CLOSING — home is the area page.
     area = job.task_type or "General"

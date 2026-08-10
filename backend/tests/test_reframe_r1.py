@@ -126,9 +126,27 @@ class TestWriteBoundary:
                 db, job_id=job.id, ref_kind="triage_queue", ref_key="no_such_queue",
             )
 
-    def test_focus_ref_must_resolve_by_slug(self, db, world):
+    def test_focus_is_no_longer_a_ref_kind(self, db, world):
+        """FR-1 — RE-POINTED, NOT DELETED.
+
+        This asserted that a `focus` ref with an unresolvable slug was rejected
+        ("does not resolve"). That PROPERTY survives the removal and is already
+        covered one test above by the `triage_queue` variant, so re-pointing at
+        another arbitrary bad key would have duplicated it and guarded nothing.
+
+        What the removal CHANGED is that `focus` is not a kind at all, so the
+        rejection now comes from the kind check rather than the key check —
+        hence the different `match`. Pinned here so that re-adding `focus` to
+        REF_KINDS fails a test rather than silently restoring a capability that
+        could not point at any Focus the runtime renders.
+
+        ⚠️ The BEAT kind `"focus"` is untouched and must stay: `platform_map`
+        still emits one from a direct FocusTemplate read. This is about the REF
+        kind only.
+        """
         job = _mk_job(db)
-        with pytest.raises(JobValidationError, match="does not resolve"):
+        assert "focus" not in jobs_svc.REF_KINDS
+        with pytest.raises(JobValidationError, match="ref_kind"):
             jobs_svc.add_ref(
                 db, job_id=job.id, ref_kind="focus", ref_key="never-a-slug",
             )
