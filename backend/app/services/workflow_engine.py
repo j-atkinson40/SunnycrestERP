@@ -604,7 +604,94 @@ _FAILURE_STATUSES = frozenset({
     "errored",
     "unsupported_record_type",
     "missing_params",
+    # WE-1 A-2 — a gate whose `park_when` cannot be evaluated. Its OWN status
+    # rather than `error` so the cause is legible in `output_data` without
+    # reading the expression back.
+    "park_condition_unresolvable",
 })
+
+#: Operators `park_when` understands. DELIBERATELY A DIFFERENT SET from the
+#: `condition` step's (`==`, `!=`, `in`), and the divergence is the point:
+#: `park_when` exists to ask "did the producer leave anything to decide", which
+#: is a numeric question, and `_evaluate_condition` has no numeric operator.
+#:
+#: Widening the condition grammar instead would change behaviour for every
+#: existing condition step as a side effect of a commit about gates. Forcing
+#: `park_when` into `==` would be worse still: `{"op": "==", "value": 0}`
+#: inverted reads as "park when there is nothing", which is exactly backwards.
+_PARK_OPS = {
+    ">": lambda a, b: a > b,
+    ">=": lambda a, b: a >= b,
+    "<": lambda a, b: a < b,
+    "<=": lambda a, b: a <= b,
+    "==": lambda a, b: a == b,
+    "!=": lambda a, b: a != b,
+}
+
+
+def _record_step_failure(db, run, rs, step, output: dict) -> dict:
+    """Mark a step failed, fail its run, route the escalation, stop the loop.
+
+    ONE implementation, two callers — the action path and the `park_when` gate.
+    A second copy would be free to drift from the first, and the thing it would
+    drift on is whether a failure stops the run, which is the whole point.
+
+    `_fail_run` dedupes into ONE open Decision Triage item per
+    (company, workflow, trigger_source) with an occurrence counter, so a
+    15-minute cron produces one item counting up rather than 96 a day.
+    """
+    reason = f"step reported {output['status']}"
+    if output.get("reason"):
+        reason += f" — {output['reason']}"
+    rs.status = "failed"
+    rs.error_message = reason[:500]
+    rs.output_data = output
+    db.commit()
+    _fail_run(db, run, f"Step {step.step_key} {reason}")
+    # The `error` key is what makes `_drive_run` stop (see its H1 witness
+    # comment) — without it the loop advances past a step that just failed.
+    return {"error": reason}
+
+
+def _evaluate_park_when(gate: object) -> dict:
+    """`{park: bool}`, or a failure shape when the gate cannot be evaluated.
+
+    NEVER DEFAULTS. An unparseable gate, an unknown operator, or a field that
+    did not resolve to something comparable is a BROKEN GATE — and defaulting
+    either way gives a silent wrong answer, which is the class A-1 just closed
+    one function over. It fails loudly and the run stops.
+
+    The field arrives ALREADY RESOLVED — `resolve_variables` substitutes
+    `{output.step.key}` before this sees it, the same resolver every other step
+    config uses. So one grammar and one resolver; only the operators differ.
+    """
+    if not isinstance(gate, dict):
+        return {
+            "status": "park_condition_unresolvable",
+            "reason": f"park_when must be an object, got {type(gate).__name__}",
+        }
+    op = gate.get("op")
+    if op not in _PARK_OPS:
+        return {
+            "status": "park_condition_unresolvable",
+            "reason": f"unknown park_when operator {op!r}; known: {sorted(_PARK_OPS)}",
+        }
+    field, value = gate.get("field"), gate.get("value")
+    # An unresolved template survives resolution as its literal `{...}` text —
+    # the signature of a reference to a step or key that does not exist. Caught
+    # here rather than compared as a string, which would silently be truthy.
+    if isinstance(field, str) and field.startswith("{") and field.endswith("}"):
+        return {
+            "status": "park_condition_unresolvable",
+            "reason": f"park_when field {field!r} did not resolve — no such step or key",
+        }
+    try:
+        return {"park": bool(_PARK_OPS[op](field, value))}
+    except TypeError as e:
+        return {
+            "status": "park_condition_unresolvable",
+            "reason": f"park_when {field!r} {op} {value!r} is not comparable: {e}",
+        }
 
 
 def _next_by_order(steps: list[WorkflowStep], current: WorkflowStep) -> WorkflowStep | None:
@@ -684,6 +771,50 @@ def _execute_step(
 
     try:
         if step.step_type == "input" and not dry_run:
+            # WE-1 A-2 — A GATE MAY DECLINE TO ASK AN EMPTY QUESTION.
+            #
+            # An `input` step carrying `park_when` parks only when its condition
+            # holds. ABSENT MEANS PARK, exactly as before, which is what makes
+            # this purely additive: every existing gate keeps its behaviour and
+            # no exclusion list is needed.
+            #
+            # ⚠️ THE ENGINE CANNOT INFER EMPTINESS, which is why this is
+            # DECLARED at the step rather than derived here. Expense
+            # Categorization's producer returns five counts
+            # (uncategorized_found / auto_apply_ready / needs_review /
+            # anomaly_count / no_gl_mapping) and only the workflow author knows
+            # which of them mean a human has something to decide. A generic
+            # "did it produce nothing" predicate would have read anomaly_count,
+            # found 1, and kept parking all 12,367 runs — correct by its own
+            # definition and useless.
+            gate = step.config.get("park_when") if isinstance(step.config, dict) else None
+            if gate is not None:
+                # Resolved through the SAME resolver every other step config
+                # uses, so `{output.step.key}` means what it means everywhere.
+                from app.services.workflows.step_params import merge_overlay
+                resolved_gate = resolve_variables(
+                    merge_overlay(
+                        step.config, (param_overlays or {}).get(step.step_key)
+                    ),
+                    run, outputs_by_key, current_user, current_company,
+                    previous_step_key=previous_step_key,
+                ).get("park_when")
+
+                verdict = _evaluate_park_when(resolved_gate)
+                if verdict.get("status") in _FAILURE_STATUSES:
+                    # A broken gate is a broken step. Never default to parking
+                    # or to skipping — either is a silent wrong answer.
+                    return _record_step_failure(db, run, rs, step, verdict)
+                if not verdict["park"]:
+                    rs.status = "completed"
+                    rs.output_data = {
+                        "gate_skipped": True,
+                        "park_when": resolved_gate,
+                        "reason": "condition false — nothing to decide",
+                    }
+                    db.commit()
+                    return {"output": rs.output_data}
+
             # Pause for input (LIVE only). Config describes what to ask.
             # Don't mark step completed yet — advance_run will do that.
             # In dry-run the pause is suppressed below so the run stays terminal.
@@ -762,21 +893,7 @@ def _execute_step(
         # `_FAILURE_STATUSES` are returned, not raised, and this is where they
         # were lost.
         if isinstance(output, dict) and output.get("status") in _FAILURE_STATUSES:
-            reason = f"step reported {output['status']}"
-            rs.status = "failed"
-            rs.error_message = reason[:500]
-            rs.output_data = output
-            db.commit()
-            # SAME TREATMENT AS A RAISED FAILURE, deliberately: fail the run and
-            # route the escalation. `_fail_run` dedupes into ONE open Decision
-            # Triage item per (company, workflow, trigger_source) with an
-            # occurrence counter, so a 15-minute cron produces one item that
-            # counts up rather than 96 items a day.
-            _fail_run(db, run, f"Step {step.step_key} {reason}")
-            # The `error` key is what makes `_drive_run` stop (see its H1
-            # witness comment) — without it the loop would advance past a step
-            # that just failed.
-            return {"error": reason}
+            return _record_step_failure(db, run, rs, step, output)
 
         rs.status = "completed"
         rs.output_data = output
@@ -1835,13 +1952,27 @@ def _evaluate_condition(config: dict) -> dict:
     value = config.get("value")
     # Caller resolves the field value via variables; config.field can be either
     # a resolved literal or a reference. Support both.
-    result = False
+    # ⚠️ AN UNKNOWN OPERATOR IS A FAILURE, NOT `False` (WE-1 A-2).
+    # This used to initialise `result = False` and fall through every branch, so
+    # a condition step with an unrecognised `op` evaluated false and said
+    # nothing — the same swallow A-1 closed one function over. It matters more
+    # now: `park_when` accepts `>`, `>=`, `<`, `<=`, so `>` is a thing people
+    # will reach for, and written here it would have silently branched false.
     if op == "==":
         result = field == value
     elif op == "!=":
         result = field != value
     elif op == "in":
         result = field in (value or [])
+    else:
+        return {
+            "status": "error",
+            "error": (
+                f"unknown condition operator {op!r}; condition steps support "
+                f"'==', '!=', 'in'. Numeric comparison is available on an input "
+                f"step's park_when, not here."
+            ),
+        }
     return {"condition_result": result, "resolved_field": field}
 
 

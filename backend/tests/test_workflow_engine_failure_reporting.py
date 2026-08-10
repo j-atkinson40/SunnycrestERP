@@ -62,6 +62,13 @@ class TestFailureStatusSet:
         assert "unknown_action_type" in workflow_engine._FAILURE_STATUSES
 
     def test_all_known_shapes_are_covered(self):
+        """Exact equality on purpose — an addition should be a deliberate act.
+
+        This failed when WE-1 A-2 added `park_condition_unresolvable`, which is
+        the test working rather than the test being brittle: a new failure
+        status arriving unnoticed is exactly the defect, because an
+        unregistered one is silently a completed step.
+        """
         assert workflow_engine._FAILURE_STATUSES == {
             "unknown_action_type",
             "unknown_step_type",
@@ -69,6 +76,8 @@ class TestFailureStatusSet:
             "errored",
             "unsupported_record_type",
             "missing_params",
+            # A-2 — a gate whose `park_when` cannot be evaluated.
+            "park_condition_unresolvable",
         }
 
 

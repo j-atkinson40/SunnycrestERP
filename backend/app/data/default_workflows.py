@@ -1374,6 +1374,29 @@ TIER_1_WORKFLOWS.extend([
                         "unmapped categories. Approve, override, or "
                         "reject per line via the triage queue."
                     ),
+                    # WE-1 A-2. This gate parked on EVERY run for three months —
+                    # 12,367 of them at a 15-minute cadence — because an input
+                    # step parked unconditionally. The same defect `ae3a2eab`
+                    # fixed on the agent side, one layer over.
+                    #
+                    # `needs_review`, NOT `anomaly_count`, AND THE TWO DISAGREE.
+                    # The parked runs carry `needs_review: 0, anomaly_count: 1`,
+                    # so a faithful port of the agent-side predicate would have
+                    # kept parking all of them — correct by its own definition
+                    # and useless. The 1 is `no_gl_mapping`: the category
+                    # `vehicle_expense` has no GL account on this tenant.
+                    #
+                    # That is not what this gate is for. Its own prompt says
+                    # "approve, override, or reject PER LINE" — an unmapped
+                    # category has no line to approve and no override that fixes
+                    # it. It is a settings gap, it already raises its own
+                    # anomaly saying so, and a gate that stops for something it
+                    # cannot act on is the ar_collections shape.
+                    "park_when": {
+                        "field": "{output.run_categorization.needs_review}",
+                        "op": ">",
+                        "value": 0,
+                    },
                 },
             },
         ],

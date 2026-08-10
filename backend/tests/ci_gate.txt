@@ -267,5 +267,6 @@ tests/test_seed_posting_ratchet.py
 tests/test_void_payment_reverses_ar2.py
 tests/test_wipe_tenant.py
 tests/test_workflow_engine_failure_reporting.py
+tests/test_workflow_engine_park_when.py
 tests/test_workflow_scheduler_pair_isolation.py
 tests/test_workflow_scheduler_scheduled_dispatch.py
