@@ -202,6 +202,7 @@ tests/test_ar_import_posts_c1.py
 tests/test_ar_membership_seam_c3.py
 tests/test_books_review_e2e_b6.py
 tests/test_clean_run_does_not_park.py
+tests/test_clear_parked_workflow_runs.py
 tests/test_epd_ar_account_ar0.py
 tests/test_journal_entry_characterization.py
 tests/test_map_accounting_beat_map2.py
