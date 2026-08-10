@@ -66,6 +66,24 @@ convenient: it is what makes re-running safe instead of duplicative. Do NOT
 commits would fight the wrapper, and the failure mode would be a half-written
 ledger that looks rolled back.
 
+⚠️ CLEANUP IS SCOPED TO WHAT A RE-SEED REQUIRES, NOT TO WHAT THE FAILURE
+TOUCHED. Those are different sets and the second one is the trap. Twice while
+building this, cleanup was written against the symptom and was incomplete by
+construction:
+
+  * The PAYMENTS had to go, though nothing was wrong with them, because phase 3
+    is idempotent on `reference_number` and would SKIP them — and the fix being
+    re-seeded was new payment dates. Idempotence working perfectly would have
+    reproduced the original failure.
+  * The INVOICES had to go, though nothing was wrong with them either, because
+    `post_payment` mutated `amount_paid` and `status` on the ones it settled and
+    deleting a payment does not undo that. Phase 3 validates against the invoice
+    BALANCE, so six fully-paid invoices would have 400'd the re-run.
+
+Neither row was defective. Both blocked the re-seed. The question a cleanup must
+answer is "what must not exist for the next run to be honest", not "what did the
+bad run write".
+
 IDEMPOTENCE IS BY MARKER PREFIX, not uuid5: `create_customer_payment` mints its
 own uuid4 internally, so caller-supplied ids are unavailable once the writes go
 through the service layer. Every seeded row carries `DEMO2` in a text field the
@@ -506,26 +524,40 @@ def phase_2_receivables(db: Session, company: Company, actor: User) -> dict:
 # the whole point of demonstrating them. Pre-unwinding here would leave two rows
 # in a terminal state and nothing to show.
 
+#: ⚠️ `days_ago` IS PHASE 4's CONSTRAINT, NOT A FLAVOUR CHOICE. An auto-clear
+#: needs its payment within `DATE_WINDOW_DAYS` (5) of the statement line, and
+#: phase 4 dates its matched lines at the END of the feed window — which is
+#: `TODAY - 1`. So every value below is ≤ 4, putting each payment within four
+#: days of that line with a day of margin.
+#:
+#: THE FIRST PRODUCTION RUN FAILED EXACTLY HERE. The amounts were designed and
+#: the dates were not: feed dates came from the window, payment dates from these
+#: offsets, and nothing made them agree. Gaps of 6, 9 and 20 days meant NO line
+#: had a viable exact candidate — auto=1 against an expected 4, and suggested=0.
+#: The relationship is one-directional now (payments are dated to suit the feed,
+#: which is dated to suit the window) rather than two independent computations
+#: that have to coincide.
+#:
 #: (label, invoice matched by note-suffix, days_ago, amount, applied, method)
 _PAYMENTS = [
     # 1. NORMAL — settles 4175.00 exactly. 4175.00 applied, 0.00 unapplied.
-    ("normal", "DEMO2-C001 d-12", 6, Decimal("4175.00"), Decimal("4175.00"), "check"),
+    ("normal", "DEMO2-C001 d-12", 4, Decimal("4175.00"), Decimal("4175.00"), "check"),
     # 2. EPD IN WINDOW — 2/10 net 30 against 4946.43.
     #    discount = 4946.43 × 0.02 = 98.9286 → 98.93
     #    paid     = 4946.43 − 98.93 = 4847.50
     #    The 98.93 short-pay is 2.00% — inside AMOUNT_BAND_PCT (3%), so phase 4
     #    can surface this as a ranked card at BAND_MAX_SCORE rather than clearing.
-    ("epd_in_window", "DEMO2-C002 d-45", 40, Decimal("4847.50"), Decimal("4847.50"), "ach"),
+    ("epd_in_window", "DEMO2-C002 d-45", 4, Decimal("4847.50"), Decimal("4847.50"), "ach"),
     # 3. EPD OUT OF WINDOW — 2300.00 invoice, paid in full because the discount
     #    window closed. No short-pay: 2300.00 − 0.00 = 2300.00.
-    ("epd_out_of_window", "DEMO2-C005 d-75", 20, Decimal("2300.00"), Decimal("2300.00"), "check"),
+    ("epd_out_of_window", "DEMO2-C005 d-75", 3, Decimal("2300.00"), Decimal("2300.00"), "check"),
     # 4. OVERPAYMENT — 1500.00 invoice, 1750.00 received.
     #    unapplied = 1750.00 − 1500.00 = 250.00 → the customer's credit pocket.
-    ("overpayment", "DEMO2-C004 d-52", 15, Decimal("1750.00"), Decimal("1500.00"), "check"),
+    ("overpayment", "DEMO2-C004 d-52", 2, Decimal("1750.00"), Decimal("1500.00"), "check"),
     # 5. TO VOID — 980.00, posted. LEFT POSTED for the demo to void.
-    ("to_void", "DEMO2-C003 d-82", 30, Decimal("980.00"), Decimal("980.00"), "check"),
+    ("to_void", "DEMO2-C003 d-82", 3, Decimal("980.00"), Decimal("980.00"), "check"),
     # 6. TO RETURN — 1120.00, posted. LEFT POSTED for the demo to NSF-return.
-    ("to_return", "DEMO2-C004 d-104", 25, Decimal("1120.00"), Decimal("1120.00"), "check"),
+    ("to_return", "DEMO2-C004 d-104", 2, Decimal("1120.00"), Decimal("1120.00"), "check"),
     # 7. COLLISION TWIN — 1750.00, the SAME amount as `overpayment` above, and
     #    that duplication is its entire purpose. Phase 4 seeds one statement
     #    line at 1750.00 which therefore has TWO viable exact candidates, and
@@ -534,7 +566,7 @@ _PAYMENTS = [
     #    clearing. Named rather than filler so the pair's purpose is visible
     #    HERE, at the seed, rather than inferable from phase 4.
     #    Applied 1750.00 against the open 2150.00 invoice → leaves 400.00 open.
-    ("collision_twin", "DEMO2-C003 d-8", 18, Decimal("1750.00"), Decimal("1750.00"), "ach"),
+    ("collision_twin", "DEMO2-C003 d-8", 2, Decimal("1750.00"), Decimal("1750.00"), "ach"),
 ]
 
 
@@ -631,7 +663,13 @@ _FEED_LINES = [
     #    4847.50 − 97.50 = 4750.00   (97.50 / 4847.50 = 2.01%)
     ("band_pay_a",    14, Decimal("4750.00"),  "DEPOSIT ST MARYS CEMETERY",    "DEMO2-BF-05"),
     #    1750.00 − 35.00 = 1715.00   (35.00 / 1750.00 = 2.00%)
-    ("band_pay_b",    13, Decimal("1715.00"),  "DEPOSIT ACH RETURNED ITEM ADJ", "DEMO2-BF-06"),
+    #    ⚠️ WAS "DEPOSIT ACH RETURNED ITEM ADJ" AND THAT BROKE IT. "RETURNED" is
+    #    on the nsf rung of the keyword ladder, the ladder runs BEFORE candidate
+    #    matching, so the line was classified and blocked rather than ever being
+    #    scored against an amount. A description written for plausibility
+    #    removed a card form from the demo, and the symptom — a band candidate
+    #    that silently never appears — looks like a matcher bug. Guarded below.
+    ("band_pay_b",    13, Decimal("1715.00"),  "DEPOSIT ACH BATCH SETTLEMENT", "DEMO2-BF-06"),
     #    1120.00 − 22.40 = 1097.60   (22.40 / 1120.00 = 2.00%)
     ("band_pay_c",    12, Decimal("1097.60"),  "DEPOSIT FAIRVIEW BURIAL",      "DEMO2-BF-07"),
 
@@ -669,13 +707,28 @@ _FEED_LINES = [
     ("keyword_payroll", 3, Decimal("-4210.00"), "GUSTO PAYROLL",               "DEMO2-BF-20"),
 ]
 
-#: What the run MUST produce. Stated so a run producing something else is
-#: VISIBLY wrong rather than plausibly fine — the whole reason the numbers are
-#: authored rather than generated.
+#: What the run MUST produce, COUNTED FROM `reconciliation_match_candidates`
+#: RATHER THAN THE RUN SUMMARY.
+#:
+#: ⚠️ THE FIRST VERSION ASSERTED ON THE SUMMARY AND COULD NOT SEE ITS OWN
+#: SUBJECT. It checked lines / auto_cleared / needs_human, and `needs_human`
+#: folded ranked and coding cards together — so a queue of twenty coding cards
+#: and a queue with the designed mix produced the SAME number. It passed a run
+#: whose ranked cards were the open question. Worse, `suggested_count` is
+#: hardcoded to 0 in `reconciliation_service` (vestigial after L-2, kept so the
+#: API shape does not churn), so reading it as evidence about band candidates —
+#: which I did, twice — is reading a constant.
+#:
+#: The card form derives from CANDIDATE PRESENCE (`financial_account.py:150`:
+#: "card form derives from candidate presence at display"), so that is what the
+#: table counts. `ranked` is the number that would have failed the first run and
+#: passes this one, which is the entire point of having it.
 _EXPECTED = {
     "lines": 20,
-    "auto_cleared": 4,   # 3 exact + the SERVICE CHARGE that books and clears
-    "needs_human": 16,   # 1 collision + 4 band + 10 coding + 1 blocked payroll
+    "cleared": 4,   # 3 exact matches + the SERVICE CHARGE that books and clears
+    "ranked": 5,    # 1 collision (2 candidates) + 4 band (1715 also draws 2)
+    "coding": 10,   # unmatched with NO candidate — nothing to rank
+    "blocked": 1,   # GUSTO PAYROLL: keyword_gl_intentional, books nothing
 }
 
 
@@ -711,14 +764,79 @@ def phase_4_bank_feed(db: Session, company: Company, actor: User, account) -> di
         )
     feed_account = linked[0]
 
+    # ⚠️ THE KEYWORD LADDER RUNS BEFORE CANDIDATE MATCHING, so a description
+    # decides whether a line is ever scored against an amount at all. Only the
+    # two lines that are SUPPOSED to be keyword rows may match a rung; any other
+    # match silently removes a card form from the demo and presents as a matcher
+    # bug. Read from `_KEYWORD_LADDER` rather than restated, so a rung added
+    # later is caught here instead of the next time someone writes a plausible
+    # bank description.
+    from app.services.reconciliation_service import _KEYWORD_LADDER
+
+    for label, _o, _amt, description, _r in _FEED_LINES:
+        hit = next(
+            (c for c, _conf, kws in _KEYWORD_LADDER
+             if any(kw in description.upper() for kw in kws)),
+            None,
+        )
+        intended = label.startswith("keyword_")
+        if bool(hit) != intended:
+            die(
+                f"feed line {label!r} — description {description!r} "
+                + (f"matches the {hit!r} keyword rung but is not a keyword line; "
+                   f"it would be classified and blocked before its amount is "
+                   f"ever compared."
+                   if hit else
+                   "is a keyword line but matches no rung, so it will fall "
+                   "through to candidate matching instead of booking.")
+            )
+
+    # ⚠️ THE WINDOW MUST EXCLUDE THE PRE-EXISTING FEED, and a fixed 30-day
+    # lookback does NOT. `populate_from_feed` pulls from EVERY linked bank
+    # account within [period_start, statement_date] — production's Plaid sandbox
+    # item holds 16 rows dated 2026-07-08..07-28 across six linked accounts, and
+    # a 30-day window swallows ~13 of them. The run would materialise ~33 lines,
+    # `_EXPECTED` would mismatch, and the mismatch would read as the matcher
+    # disagreeing rather than the window overlapping. Plaid's rows keep their
+    # OWN run so ingest stays separately demonstrable — that is the hybrid
+    # design, and this is what makes it true rather than merely stated.
+    from sqlalchemy import func as _f
+    from app.models.plaid import BankTransaction as _BT
+
     statement_date = TODAY - timedelta(days=1)
+    last_existing = (
+        db.query(_f.max(_BT.transaction_date))
+        .filter(
+            _BT.tenant_id == company.id,
+            _BT.bank_account_id.in_([a.id for a in linked]),
+            ~_BT.plaid_transaction_id.like(f"{MARKER}-%"),
+        )
+        .scalar()
+    )
     period_start = statement_date - timedelta(days=30)
+    if last_existing is not None and last_existing >= period_start:
+        period_start = last_existing + timedelta(days=1)
+    window_days = (statement_date - period_start).days + 1
+    if window_days < len(_FEED_LINES) // 2:
+        die(
+            f"the feed window is only {window_days} day(s) "
+            f"({period_start}..{statement_date}) because existing feed rows run "
+            f"to {last_existing} — too tight to date {len(_FEED_LINES)} demo "
+            f"lines distinctly. Widen by seeding against a later statement_date."
+        )
 
     # PLAID HYBRID — the existing feed rows keep their own runs so ingest stays
     # separately demonstrable; these are the lines that carry the demo, marked
     # so cleanup can find them and so nobody mistakes them for Plaid's.
     made = 0
-    for label, days_before, amount, description, _ref in _FEED_LINES:
+    for i, (label, _authored_offset, amount, description, _ref) in enumerate(_FEED_LINES):
+        # DATE DERIVED FROM POSITION, not from the tuple's offset field. The
+        # matcher walks in sort_order, populate_from_feed sorts by date, and the
+        # auto-clear lines must claim their payments BEFORE the band lines are
+        # scored — so list order is the thing that matters, and deriving the date
+        # from the index makes that guaranteed rather than dependent on 20
+        # hand-tuned offsets still fitting a window whose width now varies with
+        # the existing feed. The tuple's offset survives as authored intent.
         plaid_id = f"{MARKER}-TXN-{label}"
         if db.query(BankTransaction).filter(
             BankTransaction.tenant_id == company.id,
@@ -730,7 +848,18 @@ def phase_4_bank_feed(db: Session, company: Company, actor: User, account) -> di
             bank_account_id=feed_account.id,
             plaid_transaction_id=plaid_id,
             amount=amount,
-            transaction_date=statement_date - timedelta(days=days_before),
+            # DATE DERIVED FROM ROLE. A line that must MATCH a payment sits AT
+            # the statement date, because phase 3 dates those payments ≤4 days
+            # earlier — so the pair is inside DATE_WINDOW_DAYS by construction
+            # rather than by two independent calculations happening to agree.
+            # That agreement is exactly what failed on the first production run.
+            # Lines with nothing to match spread across the window so the
+            # statement reads like a month rather than a single day.
+            transaction_date=(
+                statement_date
+                if label.startswith(("auto_", "band_", "collision"))
+                else period_start + timedelta(days=min(i, window_days - 1))
+            ),
             description=description,
             # POSTED and not retracted, or populate_from_feed filters it out.
             is_pending=False,
@@ -763,17 +892,47 @@ def phase_4_bank_feed(db: Session, company: Company, actor: User, account) -> di
 
     say(f"phase 4 — seeded {made} feed rows, populated {populated['populated']}, "
         f"matched {result}")
-    auto = result.get("auto_cleared", 0)
-    needs = result.get("suggested", 0) + result.get("unmatched", 0)
-    if (populated["populated"], auto, needs) != (
-        _EXPECTED["lines"], _EXPECTED["auto_cleared"], _EXPECTED["needs_human"],
-    ):
-        say(f"  ⚠️ EXPECTED lines={_EXPECTED['lines']} "
-            f"auto={_EXPECTED['auto_cleared']} needs_human={_EXPECTED['needs_human']} "
-            f"— GOT lines={populated['populated']} auto={auto} needs_human={needs}. "
-            f"The population and the matcher disagree; one of them is wrong and "
-            f"the table is what says so.")
-    return {"seeded": made, **result}
+
+    # POST-HOC, AGAINST THE DATABASE. This cannot be a static test: the card
+    # forms only exist once a run has scored, so the assertion lives where the
+    # run reports. Counted from the candidate table because that is what the
+    # display derives the card form from — the run summary carries two vestigial
+    # fields and cannot answer this.
+    from sqlalchemy import text as _text
+
+    shape = db.execute(_text("""
+        SELECT
+          count(*) FILTER (WHERE t.match_status = 'auto_cleared'
+                              OR t.journal_entry_id IS NOT NULL)          AS cleared,
+          count(*) FILTER (WHERE t.match_status = 'unmatched' AND c.n > 0) AS ranked,
+          count(*) FILTER (WHERE t.match_status = 'unmatched' AND c.n = 0
+                              AND e.blocked IS NULL)                       AS coding,
+          count(*) FILTER (WHERE e.blocked IS NOT NULL)                    AS blocked
+        FROM reconciliation_transactions t
+        LEFT JOIN LATERAL (
+            SELECT count(*) AS n FROM reconciliation_match_candidates mc
+            WHERE mc.reconciliation_transaction_id = t.id
+        ) c ON true
+        LEFT JOIN LATERAL (
+            SELECT max(blocked_reason) AS blocked FROM reconciliation_exceptions x
+            WHERE x.reconciliation_transaction_id = t.id
+              AND x.blocked_reason LIKE 'keyword_gl%'
+        ) e ON true
+        WHERE t.reconciliation_run_id = :r
+    """), {"r": run_id}).one()
+
+    actual = {
+        "lines": populated["populated"], "cleared": shape.cleared,
+        "ranked": shape.ranked, "coding": shape.coding, "blocked": shape.blocked,
+    }
+    say(f"  shape — {actual}")
+    if actual != _EXPECTED:
+        diff = {k: (v, actual[k]) for k, v in _EXPECTED.items() if actual[k] != v}
+        say(f"  ⚠️ EXPECTED {_EXPECTED} — GOT {actual}. Differs on "
+            f"{ {k: f'want {w}, got {g}' for k, (w, g) in diff.items()} }. The "
+            f"population and the matcher disagree; one of them is wrong and the "
+            f"table is what says so.")
+    return {"seeded": made, **result, **actual}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -936,6 +1095,202 @@ def phase_6_verify(db: Session, company: Company) -> dict:
 # Cleanup — marker-scoped PLUS TWO JOINS.
 # ─────────────────────────────────────────────────────────────────────────────
 
+def cleanup_reconciliation(
+    db: Session, company: Company, *, execute: bool, quiet: bool = False
+) -> dict:
+    """Remove the reconciliation chain and postings THIS SEED created.
+
+    ⚠️ THIS DELETES POSTED JOURNAL ENTRIES ON A LIVE TENANT. Not agent rows,
+    not scaffolding — balanced two-legged entries that moved a real ledger. It
+    is defensible only because this seed created them, today, as demo data; it
+    is a different act from clearing a backlog and the dry run says so in those
+    words rather than folding them into a row count.
+
+    ⚠️ THE PAYMENTS GO TOO, AND THAT IS NOT OPTIONAL. Phase 3 is idempotent on
+    `reference_number`, so a re-run SKIPS every existing payment — and the whole
+    point of a re-seed is that those payments get new dates. Leave them and the
+    re-seed silently reproduces the original failure with idempotence working
+    perfectly the entire time. A cleanup that removed everything except the
+    payments would read as complete and change nothing.
+
+    ⚠️ THE DELETION ORDER IS FORCED, AND THE FK IS THE GUARD.
+    `reconciliation_transactions.journal_entry_id` has NO `ON DELETE` — r154
+    made that choice deliberately, so that a hard delete of an entry a cleared
+    row points at is REFUSED rather than silently unlinking it. Transactions
+    therefore go before the entries they reference. If this order is ever
+    reversed the database refuses; it does not corrupt. Do not "fix" that by
+    adding a cascade.
+    """
+    from sqlalchemy import text
+
+    p = {"t": company.id}
+    counts: dict[str, int] = {}
+
+    # The demo's own feed rows, and the runs reachable from them.
+    demo_txn_ids = [r[0] for r in db.execute(text(
+        "SELECT id FROM bank_transactions WHERE tenant_id = :t "
+        "AND plaid_transaction_id LIKE 'DEMO2-%'"
+    ), p)]
+    run_ids: list[str] = []
+    if demo_txn_ids:
+        run_ids = [r[0] for r in db.execute(text(
+            "SELECT DISTINCT reconciliation_run_id FROM reconciliation_transactions "
+            "WHERE bank_transaction_id = ANY(:ids)"
+        ), {"ids": demo_txn_ids})]
+
+    # ⚠️ SAFETY GATE — a run is only ours if EVERY line in it is ours. Plaid's
+    # July rows live in their own run (verified: 16 transactions, zero DEMO2),
+    # and that separation is what makes this deletion safe. If a run ever mixes
+    # the two, deleting it would take Plaid's ingest demonstration with it —
+    # so refuse and make a human look rather than delete the majority case.
+    for rid in run_ids:
+        total = db.execute(text(
+            "SELECT count(*) FROM reconciliation_transactions "
+            "WHERE reconciliation_run_id = :r"
+        ), {"r": rid}).scalar()
+        ours = db.execute(text(
+            "SELECT count(*) FROM reconciliation_transactions "
+            "WHERE reconciliation_run_id = :r AND bank_transaction_id = ANY(:ids)"
+        ), {"r": rid, "ids": demo_txn_ids}).scalar()
+        if total != ours:
+            die(
+                f"reconciliation run {rid} holds {total} transactions of which "
+                f"only {ours} are this seed's. Deleting it would remove rows the "
+                f"seed did not create. Refusing — a human should look."
+            )
+
+    je_from_txns = [r[0] for r in db.execute(text(
+        "SELECT DISTINCT journal_entry_id FROM reconciliation_transactions "
+        "WHERE reconciliation_run_id = ANY(:r) AND journal_entry_id IS NOT NULL"
+    ), {"r": run_ids})] if run_ids else []
+    je_from_payments = [r[0] for r in db.execute(text(
+        "SELECT id FROM journal_entries WHERE tenant_id = :t "
+        "AND reference_number LIKE 'DEMO2-PAY-%'"
+    ), p)]
+    je_ids = sorted(set(je_from_txns) | set(je_from_payments))
+
+    pay_ids = [r[0] for r in db.execute(text(
+        "SELECT id FROM customer_payments WHERE company_id = :t "
+        "AND reference_number LIKE 'DEMO2-%'"
+    ), p)]
+
+    # ⚠️ THE INVOICES GO TOO, AND NOT BECAUSE THEY ARE WRONG. `post_payment`
+    # mutated `amount_paid` and `status` on the invoices these payments settled;
+    # deleting the payments does NOT undo that, so six invoices would be left
+    # marked paid with nothing paying them. The re-seed's phase 3 validates each
+    # application against the invoice BALANCE, and a fully-paid invoice has none
+    # — so it would 400 rather than reproduce the demo. Recreating them via
+    # phase 2 is cheaper and more honest than hand-resetting derived fields the
+    # service owns. They carry no journal entries of their own (revenue does not
+    # post — the known gap), so nothing is orphaned by their removal.
+    inv_ids = [r[0] for r in db.execute(text(
+        "SELECT id FROM invoices WHERE company_id = :t "
+        "AND notes LIKE 'DEMO2 invoice for%'"
+    ), p)]
+
+    def n(sql: str, params: dict) -> int:
+        return db.execute(text(sql), params).scalar() or 0
+
+    counts["reconciliation_exceptions"] = n(
+        "SELECT count(*) FROM reconciliation_exceptions "
+        "WHERE reconciliation_run_id = ANY(:r)", {"r": run_ids}) if run_ids else 0
+    counts["reconciliation_transactions"] = n(
+        "SELECT count(*) FROM reconciliation_transactions "
+        "WHERE reconciliation_run_id = ANY(:r)", {"r": run_ids}) if run_ids else 0
+    counts["reconciliation_runs"] = len(run_ids)
+    counts["journal_entries (POSTED)"] = len(je_ids)
+    counts["customer_payment_applications"] = n(
+        "SELECT count(*) FROM customer_payment_applications "
+        "WHERE payment_id = ANY(:p)", {"p": pay_ids}) if pay_ids else 0
+    counts["customer_payments"] = len(pay_ids)
+    counts["invoice_lines"] = n(
+        "SELECT count(*) FROM invoice_lines WHERE invoice_id = ANY(:i)",
+        {"i": inv_ids}) if inv_ids else 0
+    counts["invoices"] = len(inv_ids)
+    counts["bank_transactions"] = len(demo_txn_ids)
+
+    # `quiet` on the execute pass: the counts were already shown and
+    # confirmed a moment ago, and reprinting the whole block under a
+    # different mode header is how a reader loses track of which one
+    # describes what actually happened.
+    if not quiet:
+        print("\n" + "=" * 68)
+        print(f"DEMO-2 RECONCILIATION CLEANUP — {company.name} ({company.slug})")
+        print(f"mode: {'EXECUTE' if execute else 'DRY-RUN (default)'}")
+        print("=" * 68)
+        for k, v in counts.items():
+            print(f"    {k:<34} {v}")
+        if je_ids:
+            print(f"\n  ⚠️  {len(je_ids)} of those are POSTED JOURNAL ENTRIES — balanced")
+            print("     two-legged entries that moved this tenant's real ledger. They")
+            print("     are being deleted because THIS SEED created them today as demo")
+            print("     data. That is a different act from clearing agent rows.")
+        if run_ids:
+            print(f"\n  runs to delete: {[r[:8] for r in run_ids]}")
+            print("  Plaid's own run is NOT among them — every line in each run above")
+            print("  traces to a DEMO2- bank transaction (verified, not assumed).")
+    if not execute:
+        print("\nDRY-RUN complete. Nothing was deleted.")
+        return counts
+
+    # ── ORDER IS THE CONTRACT — see the docstring. ────────────────────────
+    if run_ids:
+        db.execute(text("DELETE FROM reconciliation_exceptions "
+                        "WHERE reconciliation_run_id = ANY(:r)"), {"r": run_ids})
+        db.execute(text("DELETE FROM reconciliation_transactions "
+                        "WHERE reconciliation_run_id = ANY(:r)"), {"r": run_ids})
+        db.execute(text("DELETE FROM reconciliation_runs WHERE id = ANY(:r)"),
+                   {"r": run_ids})
+    # ⚠️ EVERYTHING HOLDING A POINTER INTO `journal_entries` GOES FIRST, AND THE
+    # SET IS DERIVED FROM `pg_constraint`, NOT REASONED ABOUT. Inferring it from
+    # which table "depends on" which put payments AFTER entries and the FK
+    # refused — one step past where a guessed column name had already refused.
+    # The authoritative set at r158:
+    #
+    #     customer_payments.journal_entry_id            ON DELETE NO ACTION
+    #     reconciliation_transactions.journal_entry_id  ON DELETE NO ACTION
+    #     journal_entry_lines.journal_entry_id          ON DELETE CASCADE
+    #
+    # Two must be cleared first; the third clears itself. And a FOURTH reference
+    # exists that is NOT in that list — `customer_payments.discount_journal_
+    # entry_id` holds an entry id with NO constraint, so it would dangle
+    # silently rather than refuse. Harmless here (those payments are deleted
+    # too), but it is why "the FK graph" and "every reference" are different
+    # questions, and why the graph alone is not a safety proof.
+    if pay_ids:
+        db.execute(text("DELETE FROM customer_payment_applications "
+                        "WHERE payment_id = ANY(:p)"), {"p": pay_ids})
+        db.execute(text("DELETE FROM customer_payments WHERE id = ANY(:p)"),
+                   {"p": pay_ids})
+    if je_ids:
+        # `journal_entry_id`, READ FROM THE MODEL, not `entry_id` — which is what
+        # the relationship is NAMED (`back_populates="entry"`) and is not the
+        # column. That guess reached a production write path and crashed the
+        # execute; the single commit at the end is the only reason nothing
+        # persisted. These lines DO cascade, so this delete is belt-and-braces —
+        # kept so the script states what it removes.
+        db.execute(text("DELETE FROM journal_entry_lines WHERE journal_entry_id = ANY(:j)"),
+                   {"j": je_ids})
+        db.execute(text("DELETE FROM journal_entries WHERE id = ANY(:j)"), {"j": je_ids})
+    if inv_ids:
+        # Lines before invoices — the FK points that way.
+        db.execute(text("DELETE FROM invoice_lines WHERE invoice_id = ANY(:i)"),
+                   {"i": inv_ids})
+        db.execute(text("DELETE FROM invoices WHERE id = ANY(:i)"), {"i": inv_ids})
+    if demo_txn_ids:
+        db.execute(text("DELETE FROM bank_transactions WHERE id = ANY(:b)"),
+                   {"b": demo_txn_ids})
+    db.flush()
+    print("\n" + "=" * 68)
+    print("DELETED — reconciliation chain, postings, payments and invoices:")
+    for k, v in counts.items():
+        if v:
+            print(f"    {k:<34} {v}")
+    print(f"    {'TOTAL':<34} {sum(counts.values())}")
+    print("=" * 68)
+    return counts
+
+
 def cleanup(db: Session, company: Company) -> dict:
     """Marker scope alone is not enough, and both gaps are load-bearing.
 
@@ -957,16 +1312,26 @@ def cleanup(db: Session, company: Company) -> dict:
         "DELETE FROM agent_jobs WHERE tenant_id = :t AND report_pdf_path = :m"
     ), {"t": company.id, "m": MARKER}).rowcount
     removed["reversal_entries"] = db.execute(text(
-        "DELETE FROM journal_entry_lines WHERE entry_id IN "
-        "(SELECT id FROM journal_entries WHERE company_id = :t "
+        # TWO identifiers were wrong here and neither had ever run: the column is
+        # `journal_entry_id` (not `entry_id`, which is the RELATIONSHIP name) and
+        # journal_entries is on `tenant_id` (not `company_id` — this schema
+        # carries both conventions). Latent because no reversal entries existed
+        # yet; it would have crashed the first time one did.
+        "DELETE FROM journal_entry_lines WHERE journal_entry_id IN "
+        "(SELECT id FROM journal_entries WHERE tenant_id = :t "
         " AND reversal_of_entry_id IS NOT NULL)"
     ), {"t": company.id}).rowcount
 
     db.flush()
-    say(f"cleanup — {removed}")
-    say("NOTE: invoices/payments/journal entries created through the services are "
-        "NOT removed here — they are real financial rows with real postings. Use "
-        "wipe_tenant for a full reset.")
+    say(f"agent-row cleanup — {removed}")
+    # ⚠️ THIS NOTE USED TO SAY THE OPPOSITE AND IT WAS A LIE ON A DELETE PATH.
+    # It read "invoices/payments/journal entries are NOT removed here", which
+    # was true when only this function existed and false the moment
+    # `cleanup_reconciliation` was added — so a run that had just deleted 15
+    # posted journal entries printed a summary claiming it had not. A stale
+    # reassurance after a destructive action is worse than no summary: it
+    # invites the reader to stop checking. The two functions now report their
+    # own work and neither speaks for the other.
     return removed
 
 
@@ -985,7 +1350,11 @@ def main() -> None:
     ap.add_argument("--tenant-slug", required=True)
     ap.add_argument("--phase", default="all",
                     help="comma list (0,1,2) or 'all'. Phase 0 always runs first.")
-    ap.add_argument("--cleanup", action="store_true", help="Remove marker-scoped rows.")
+    ap.add_argument("--cleanup", action="store_true",
+                    help="Remove rows this seed created (DRY-RUN unless --execute).")
+    ap.add_argument("--execute", action="store_true",
+                    help="With --cleanup: actually delete. Requires a typed "
+                         "confirmation when posted journal entries are involved.")
     args = ap.parse_args()
 
     db: Session = SessionLocal()
@@ -1000,6 +1369,32 @@ def main() -> None:
             die(f"no active user on {args.tenant_slug!r} to attribute writes to")
 
         if args.cleanup:
+            # ALWAYS dry-run first, whatever was asked: the counts are what the
+            # confirmation below is confirming, so they must be computed and
+            # shown BEFORE anything is deleted.
+            counts = cleanup_reconciliation(db, company, execute=False)
+            if not args.execute:
+                print("Re-run with --cleanup --execute to delete.\n")
+                return
+            # ⚠️ A TYPED CONFIRMATION, AND IT IS NOT A FORMALITY. This deletes
+            # posted journal entries from a live tenant. The guard's entire
+            # value is that a HUMAN answers it — satisfying it from a pipe
+            # would convert it into ceremony on the one operation where it is
+            # most warranted, which is the same act as removing an alarm for
+            # being inconvenient. `wipe_tenant` requires the same thing for the
+            # same reason.
+            if counts.get("journal_entries (POSTED)"):
+                try:
+                    typed = input(
+                        f"\nType the tenant slug ({company.slug}) to confirm "
+                        f"deleting {counts['journal_entries (POSTED)']} POSTED "
+                        f"journal entries: "
+                    ).strip()
+                except EOFError:
+                    die("no terminal to confirm on — this must be run by a human.")
+                if typed != company.slug:
+                    die("confirmation did not match — nothing deleted.")
+            cleanup_reconciliation(db, company, execute=True, quiet=True)
             cleanup(db, company)
             db.commit()
             return
