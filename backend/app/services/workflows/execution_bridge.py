@@ -34,7 +34,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.workflow import WorkflowRun, WorkflowRunStep
+from app.models.workflow import WorkflowRun
 from app.models.workflow_template import WorkflowTemplate
 from app.services.workflow_engine import start_run
 from app.services.workflows.canvas_compiler import compile_canvas_to_workflow
@@ -170,38 +170,25 @@ def execute_template(
         trigger_context=trigger_context,
         dry_run=dry_run,
     )
-    _surface_run_failures(db, run)
+    # WAS `_surface_run_failures(db, run)` — REMOVED (WE-1 A-1).
+    #
+    # It compensated for an engine that recorded a failed step and then let
+    # `_complete_run` overwrite the run back to 'completed'. That was true when
+    # written. It stopped being true in TWO stages, and the compensation
+    # outlived both:
+    #
+    #   2026-07-15  the H1 witness fix made `_drive_run` STOP on a raised
+    #               failure (`workflow_engine.py:559-567`), so the run was
+    #               already 'failed' before the bridge looked at it.
+    #   WE-1 A-1    `_execute_step` now fails the run for the six failure
+    #               shapes it RETURNS rather than raises.
+    #
+    # So `run.status == 'failed'` was already true whenever a step had failed,
+    # and the function early-returned every time. Harmless — but its docstring
+    # asserted that the engine swallows run-level failure, which is a wrong
+    # description of the mechanism, sitting exactly where someone reads to
+    # understand failure handling. Deleted rather than left as a no-op with a
+    # false explanation attached.
     return run
 
 
-def _surface_run_failures(db: Session, run: WorkflowRun) -> None:
-    """Make a step failure LOUD at the RUN level (the safety surface).
-
-    ENGINE LIMITATION (flagged, T-2.1): `_drive_run` does NOT stop on a step
-    failure — `_execute_step` records the failed step (WorkflowRunStep.status=
-    'failed' + error_message) but the loop continues and `_complete_run`
-    overwrites the run back to 'completed'. So run-level failure is swallowed by
-    the engine today. Until the engine's run-level failure handling is fixed
-    (T-2.1, alongside the escalation hook), the bridge compensates: if ANY step
-    failed, mark the run 'failed' with the step's reason + log loudly. A trigger
-    that fires and fails must never read as 'completed'."""
-    if run.status == "failed":
-        return
-    failed = (
-        db.query(WorkflowRunStep)
-        .filter(WorkflowRunStep.run_id == run.id, WorkflowRunStep.status == "failed")
-        .all()
-    )
-    if not failed:
-        return
-    reasons = "; ".join(f"{s.step_key}: {s.error_message}" for s in failed[:3])
-    run.status = "failed"
-    run.error_message = (run.error_message or "") + (
-        f" [bridge] {len(failed)} step(s) failed: {reasons}"
-    )
-    db.commit()
-    logger.error(
-        "Canvas execution run %s had %d failed step(s) but the engine left it "
-        "'%s' — surfaced as failed by the bridge. Reasons: %s",
-        run.id, len(failed), "completed", reasons,
-    )
