@@ -580,6 +580,33 @@ def _drive_run(db: Session, run: WorkflowRun, dry_run: bool = False) -> None:
     _fail_run(db, run, f"Workflow exceeded {max_iterations} steps — possible loop")
 
 
+#: The statuses the engine returns as DATA to mean "this did not work". Every
+#: one was previously recorded as `completed` (WE-1, A-1). Derived by reading
+#: every `{"status": ...}` failure return in this module rather than listed from
+#: memory — `unknown_action_type` (1 site), `error` (4), `unsupported_record_type`
+#: (2), `missing_params` (1), `unknown_step_type` (1, the step_type dispatch).
+#:
+#: ⚠️ A NEW FAILURE SHAPE MUST BE ADDED HERE OR IT IS SILENTLY A SUCCESS. That
+#: is the defect this set exists to stop repeating, and the set is the only
+#: thing standing between a returned failure and a green step.
+#: ⚠️ `errored` WAS MISSED ON THE FIRST PASS AND IS THE MOST IMPORTANT ENTRY.
+#: It has 14 return sites — more than every other shape combined — and it is the
+#: failure mode of `call_service_method`, whose contract is
+#: `{"status": "applied" | "errored"}`. That is the action type the migrated
+#: accounting adapters use (cash receipts, month-end close, AR collections,
+#: expense categorization), so without it the MODERN, WORKING steps would keep
+#: reporting success on failure while only the legacy no-ops went loud. Found by
+#: the derived test below scanning this module, not by reading the list again.
+_FAILURE_STATUSES = frozenset({
+    "unknown_action_type",
+    "unknown_step_type",
+    "error",
+    "errored",
+    "unsupported_record_type",
+    "missing_params",
+})
+
+
 def _next_by_order(steps: list[WorkflowStep], current: WorkflowStep) -> WorkflowStep | None:
     idx = next((i for i, s in enumerate(steps) if s.id == current.id), -1)
     return steps[idx + 1] if 0 <= idx < len(steps) - 1 else None
@@ -722,6 +749,34 @@ def _execute_step(
         # Store output back on the run
         outputs_by_key[step.step_key] = output
         run.output_data = {**(run.output_data or {}), step.step_key: output}
+
+        # ⚠️ A STEP THAT REPORTED A FAILURE IS NOT COMPLETED (WE-1, A-1).
+        # This line used to be an unconditional `rs.status = "completed"`, set
+        # without inspecting the output — so every failure the engine returns as
+        # DATA rather than raising was recorded as success. The measured result:
+        # 13,207 steps marked completed while reporting `unknown_action_type`,
+        # and ZERO steps marked failed in the platform's entire history. Not
+        # because nothing failed — because failure was overwritten.
+        #
+        # Only a RAISED error reached the `except` below. The five shapes in
+        # `_FAILURE_STATUSES` are returned, not raised, and this is where they
+        # were lost.
+        if isinstance(output, dict) and output.get("status") in _FAILURE_STATUSES:
+            reason = f"step reported {output['status']}"
+            rs.status = "failed"
+            rs.error_message = reason[:500]
+            rs.output_data = output
+            db.commit()
+            # SAME TREATMENT AS A RAISED FAILURE, deliberately: fail the run and
+            # route the escalation. `_fail_run` dedupes into ONE open Decision
+            # Triage item per (company, workflow, trigger_source) with an
+            # occurrence counter, so a 15-minute cron produces one item that
+            # counts up rather than 96 items a day.
+            _fail_run(db, run, f"Step {step.step_key} {reason}")
+            # The `error` key is what makes `_drive_run` stop (see its H1
+            # witness comment) — without it the loop would advance past a step
+            # that just failed.
+            return {"error": reason}
 
         rs.status = "completed"
         rs.output_data = output
