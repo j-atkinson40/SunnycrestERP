@@ -35,6 +35,8 @@ const BOUND = [
   { id: "books-review", queueId: "reconciliation_review_triage" },
   { id: "month-end-close", queueId: "month_end_close_triage" },
   { id: "expense-categorization", queueId: "expense_categorization_triage" },
+  // FB-2 — moved up from the deliberately-NOT-bound block below.
+  { id: "cash-receipts", queueId: "cash_receipts_matching_triage" },
 ] as const
 
 describe("accounting Focus bindings", () => {
@@ -63,12 +65,18 @@ describe("the queues deliberately NOT bound", () => {
     expect(bound).toEqual([])
   })
 
-  it("cash_receipts_matching_triage has no Focus — held on the Books Review overlap", () => {
-    const bound = listFocusConfigs().filter(
-      (c) => c.queueId === "cash_receipts_matching_triage",
-    )
-    expect(bound).toEqual([])
-  })
+  // `cash_receipts_matching_triage` USED TO BE ASSERTED HERE, held on the Books
+  // Review overlap. FB-2 re-derived that at HEAD and bound it, so the assertion
+  // moved to BOUND above rather than being deleted quietly — a test that pins a
+  // decision has to move when the decision does, and leaving it would have made
+  // the binding look like a regression.
+  //
+  // The ruling, so the next person does not re-open it from the same starting
+  // point: the two queues answer different questions over different objects.
+  // Books Review's item is a BANK STATEMENT LINE; cash receipts' item is a
+  // CUSTOMER PAYMENT. Resolving either leaves the other open — an applied
+  // payment does not reconcile the bank line, and a cleared bank line does not
+  // apply the payment. `_try_claim` guards the first link, not the second.
 })
 
 describe("reachability — a Focus nobody can open is not shipped", () => {

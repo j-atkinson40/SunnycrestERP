@@ -171,4 +171,35 @@ export const triageActions: ActionRegistryEntry[] = [
     vertical: "cross",
     route: "/financials?focus=expense-categorization",
   },
+  // FB-2. THE ENTRY IS THE BINDING. A registered Focus without one is reachable
+  // only by typing `?focus=` into the URL — the state `decision-triage` sat in
+  // from the day it shipped. The generalized guard in
+  // contexts/accounting-focus-bindings.test.ts fails until this exists, so it
+  // cannot be forgotten silently; it still has to be written by hand.
+  //
+  // Keywords lead with the QUESTION THE QUEUE ANSWERS, not its name. An item is
+  // a payment looking for the invoice it settles — deliberately distinct from
+  // Books Review's keywords above, which are about a bank line looking for a
+  // record. Someone typing "unmatched" could mean either; "unapplied payment"
+  // and "which invoice" can only mean this one.
+  {
+    id: "open_cash_receipts_focus",
+    title: "Open Cash Receipts",
+    subtitle: "Apply the payments the matcher could not place",
+    icon: "hand-coins",
+    kind: "navigate",
+    keywords: [
+      "cash receipts",
+      "unapplied payment",
+      "unapplied payments",
+      "apply payment",
+      "match payment to invoice",
+      "which invoice",
+      "payment matching",
+    ],
+    roles: ["admin", "office"],
+    permission: "invoice.approve",
+    vertical: "cross",
+    route: "/financials?focus=cash-receipts",
+  },
 ];

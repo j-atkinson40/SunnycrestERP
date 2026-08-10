@@ -372,13 +372,21 @@ registerFocus({
 // MADE, which is the test. It keeps its /triage/ page, which is honest about
 // being a list.
 //
-// `cash_receipts_matching_triage` is ALSO unbound, for a different reason:
-// post-A-2 Books Review scores candidates against the same payment pool with the
-// same exact-amount ladder AND has the claimed set + _try_claim that cash
-// receipts lacks. Two Focuses answering "what is this unmatched money" from
-// opposite ends would leave the operator unsure which is authoritative, and the
-// prior question — whether cash receipts still needs to exist — is not a Focus
-// question. Held.
+// `cash_receipts_matching_triage` WAS held here, on the reasoning that it and
+// Books Review answer "what is this unmatched money" from opposite ends and that
+// post-A-2 Books Review has claim machinery cash receipts lacks. FB-2 re-derived
+// that at HEAD and BOUND IT (below). The two queues answer DIFFERENT QUESTIONS
+// OVER DIFFERENT OBJECTS, and resolving either leaves the other open:
+//
+//   Books Review   item = a BANK STATEMENT LINE — "what is this line, and does
+//                  it correspond to something the books already recorded?"
+//   Cash receipts  item = a CUSTOMER PAYMENT — "which invoice does this settle?"
+//
+// Applying a payment to an invoice leaves the bank line unreconciled; clearing
+// the bank line against the payment record leaves the payment unapplied in the
+// AR subledger. `_try_claim` stops one payment being claimed by two statement
+// lines — that protects bank reconciliation, and is not the guard that
+// payment-to-invoice application needs.
 
 registerFocus({
   id: "books-review",
@@ -409,6 +417,32 @@ registerFocus({
   mode: "triageQueue",
   displayName: "Expense Categorization",
   queueId: "expense_categorization_triage",
+})
+
+// FB-2. Passes the bounded-decision test cleanly and is the one queue on the
+// tenant with real volume behind it: `approve_match` writes the
+// CustomerPaymentApplication, moves `Invoice.amount_paid`, flips status when
+// fully applied and resolves the anomaly in ONE transaction — so the condition
+// that staged the item is closed BY the action, which is the whole test.
+// Contrast `ar_collections_triage` above, where sending the email leaves the
+// invoice just as overdue as it was.
+//
+// Production substrate at binding time: 208 anomalies ever, 3 unresolved —
+// against ar_collections' 2 and month_end_close's 0. The most-exercised queue
+// the tenant has, and until now reachable only as a /triage/ list.
+//
+// ⚠️ THIS IS THE FIFTH FOCUS ON THE WRONG SIDE OF A SPLIT NOBODY HAS DECIDED.
+// The frontend registry now holds 5 production triageQueue Focuses; the backend
+// `focus_templates` table holds 2 (`decision-triage`, `legacy-generation`), and
+// the overlap is `decision-triage` alone. "Cash receipts is bound" and "the Map
+// can point at cash receipts" remain SEPARATE CLAIMS, and only the first is
+// true. Recorded so the eventual reconciliation has an accurate count rather
+// than a rediscovery.
+registerFocus({
+  id: "cash-receipts",
+  mode: "triageQueue",
+  displayName: "Cash Receipts",
+  queueId: "cash_receipts_matching_triage",
 })
 
 registerFocus({
