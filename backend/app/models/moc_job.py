@@ -60,9 +60,17 @@ class MoCJob(Base):
 
 class MoCJobRef(Base):
     __tablename__ = "moc_job_ref"
+    # `focus` dropped by r159 (FR-1 follow-on), and changed in the SAME commit
+    # as that migration — a model constraint that disagrees with the database
+    # makes alembic autogenerate propose the difference as a surprise inside
+    # someone else's unrelated diff.
+    #
+    # ⚠️ This governs the REF kind only. The BEAT kind `"focus"` is a separate
+    # vocabulary and is untouched — see the REF_KINDS comment in
+    # `maps_of_content/jobs.py` and `platform_map.py:88-102`.
     __table_args__ = (
         CheckConstraint(
-            "ref_kind IN ('automation', 'triage_queue', 'focus')",
+            "ref_kind IN ('automation', 'triage_queue')",
             name="ck_moc_job_ref_kind",
         ),
     )
