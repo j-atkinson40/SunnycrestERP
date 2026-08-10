@@ -3,6 +3,7 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import { cn } from "@/lib/utils";
+import { useDialogPopupContainer } from "@/components/ui/dialog";
 
 /**
  * Bridgeable Popover — Aesthetic Arc Session 3.
@@ -64,8 +65,15 @@ function PopoverContent({
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
+  // Inside a Dialog, portal into the dialog's popup so this shares its stacking
+  // context. Otherwise the Positioner's `z-50` loses to `--z-modal` (105) and
+  // the popover renders BEHIND the modal that opened it — the trigger and list
+  // both work, so it reads as a greyed-out control rather than a layering bug.
+  // `null` outside a dialog ⇒ `undefined` ⇒ the default body portal, unchanged.
+  const dialogContainer = useDialogPopupContainer()
+
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={dialogContainer ?? undefined}>
       <PopoverPrimitive.Positioner
         className="isolate z-50 outline-none"
         side={side}

@@ -4,6 +4,7 @@ import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 
 import { cn } from "@/lib/utils"
+import { useDialogPopupContainer } from "@/components/ui/dialog"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
 /**
@@ -52,8 +53,12 @@ function DropdownMenuContent({
     MenuPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
+  // See `useDialogPopupContainer` — inside a Dialog this portals into the
+  // dialog's popup so the `z-50` Positioner is not trapped under `--z-modal`.
+  const dialogContainer = useDialogPopupContainer()
+
   return (
-    <MenuPrimitive.Portal>
+    <MenuPrimitive.Portal container={dialogContainer ?? undefined}>
       <MenuPrimitive.Positioner
         className="isolate z-50 outline-none"
         align={align}

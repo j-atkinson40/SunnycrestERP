@@ -4,6 +4,7 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@/lib/utils"
+import { useDialogPopupContainer } from "@/components/ui/dialog"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 /**
@@ -91,8 +92,12 @@ function SelectContent({
     SelectPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
   >) {
+  // See `useDialogPopupContainer` — inside a Dialog this portals into the
+  // dialog's popup so the `z-50` Positioner is not trapped under `--z-modal`.
+  const dialogContainer = useDialogPopupContainer()
+
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={dialogContainer ?? undefined}>
       <SelectPrimitive.Positioner
         side={side}
         sideOffset={sideOffset}

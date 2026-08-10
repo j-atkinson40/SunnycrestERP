@@ -31,6 +31,28 @@ import { XIcon } from "lucide-react"
  * feel against elevated modal body, identical logic to CardFooter.
  */
 
+/**
+ * The open Dialog's popup element, published so overlays opened from INSIDE a
+ * dialog can portal into it instead of into `<body>`.
+ *
+ * WHY A CONTAINER AND NOT A BIGGER NUMBER. A z-index is a GLOBAL claim, and
+ * "above the dialog" is not a global fact — it depends on which dialog, and on
+ * whether one is open at all. Giving the dropdown family a number above
+ * `--z-modal` would make every popover on the platform outrank every modal,
+ * including ones it must never cover, and the value would have to stay right in
+ * every future combination. Portalling makes it right BY CONSTRUCTION: the
+ * popup shares the dialog's stacking context, so it sits above its own dialog
+ * and inherits that dialog's place in the global order. No new layer, no token.
+ *
+ * `null` when there is no dialog above — consumers then pass `undefined` and
+ * the primitive's default body portal is used, unchanged.
+ */
+const DialogPopupContainerContext = React.createContext<HTMLElement | null>(null)
+
+export function useDialogPopupContainer(): HTMLElement | null {
+  return React.useContext(DialogPopupContainerContext)
+}
+
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
@@ -78,11 +100,19 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  // STATE, not a ref object: consumers need to RE-RENDER when the popup node
+  // mounts. A `useRef` would hold the element but never notify the pickers
+  // below, so the first open would still portal to `<body>`.
+  const [popupEl, setPopupEl] = React.useState<HTMLElement | null>(null)
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        // Before `{...props}` so an explicit caller ref still wins — no call
+        // site passes one today, and this keeps that door open.
+        ref={setPopupEl}
         // Phase A Session 4.2.6 — z-index routed through --z-modal
         // (105, above --z-focus: 100) so nested Dialogs inside a
         // Focus render above the Focus Popup. Prior literal z-50
@@ -95,7 +125,9 @@ function DialogContent({
         style={{ zIndex: "var(--z-modal)" }}
         {...props}
       >
-        {children}
+        <DialogPopupContainerContext.Provider value={popupEl}>
+          {children}
+        </DialogPopupContainerContext.Provider>
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
