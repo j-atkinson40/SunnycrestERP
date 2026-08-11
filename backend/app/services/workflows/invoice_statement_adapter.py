@@ -70,6 +70,15 @@ def run_statement_run(
     return {
         "statement_run_id": run.id,
         "total_customers": run.total_customers,
+        # BSS-1: surfaced so the approval gate can ask about what it SAYS it
+        # asks about. The gate's prompt is "Review flagged statements", and the
+        # step output carried only `total_customers` — so any `park_when` would
+        # have had to gate on the wrong number, parking on a clean run of forty
+        # unflagged statements. NOTHING IS COMPUTED HERE: statement_generation_
+        # service already counts these (`:339-424`) and already uses the count
+        # to set `run.status` ("in_review" when > 0, else "draft").
+        "flagged_count": run.flagged_count,
+        "run_status": run.status,
         "period_start": ps.isoformat(),
         "period_end": pe.isoformat(),
     }
