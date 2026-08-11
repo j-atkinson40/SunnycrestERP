@@ -1377,6 +1377,14 @@ _SERVICE_METHOD_REGISTRY: dict[str, tuple[str, tuple[str, ...]]] = {
         "app.services.workflows.invoice_statement_adapter:run_statement_run",
         ("period_start", "period_end"),
     ),
+    # IOD r166 — wires wf_sys_compliance_sync to the service its own definition
+    # has always named (`"source_service": "vault_compliance_sync.py"`). No
+    # declared kwargs: the service takes only the auto-injected db + company_id,
+    # and the adapter absorbs triggered_by_user_id via **_ignored.
+    "compliance_sync.run_compliance_sync": (
+        "app.services.workflows.compliance_sync_adapter:run_compliance_sync",
+        (),
+    ),
 }
 
 
