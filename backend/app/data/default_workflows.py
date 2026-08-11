@@ -860,6 +860,20 @@ TIER_1_WORKFLOWS = [
                         "Review the analysis report and approve to "
                         "generate the statement run + lock the period."
                     ),
+                    # ⚠️ NO `park_when`, DELIBERATELY (ported from r162).
+                    # Three sibling gates carry one; this one must not. It
+                    # approves a PERIOD LOCK, not a review of findings — zero
+                    # anomalies is a clean close that still wants a human, so
+                    # `anomaly_count > 0` by analogy would suppress a DECISION
+                    # rather than an empty prompt. This workflow PARKS ON EVERY
+                    # RUN and that is correct, not the A-2 pathology returning.
+                    "_no_park_when": {
+                        "by": "r162 (WE-1), ported to the definition",
+                        "why": (
+                            "Approves a period lock, not a review of findings. "
+                            "Manual trigger — whoever invokes it wants the gate."
+                        ),
+                    },
                 },
             },
         ],
@@ -931,6 +945,18 @@ TIER_1_WORKFLOWS = [
                         "Review drafts and dispatch one customer's "
                         "email at a time via the triage queue."
                     ),
+                    # WE-1 A-2 (ported from r162 — the migration was reverted by
+                    # THIS seeder on the next boot; the definition is the durable
+                    # home for step config). The gate asks about DRAFTS and the
+                    # producer emits `drafts_generated`, which was 0 on all 127
+                    # runs across three months. Without this the gate parks on
+                    # nothing every run — the 12,367-run pathology A-2 exists to
+                    # stop.
+                    "park_when": {
+                        "op": ">",
+                        "field": "{output.run_collections.drafts_generated}",
+                        "value": 0,
+                    },
                 },
             },
         ],
@@ -964,17 +990,60 @@ TIER_1_WORKFLOWS = [
         "command_bar_priority": 0,
         "is_system": True,
         "source_service": "statement_generation_service.py",
+        # ⚠️ DELIBERATELY PARTIAL (ported from r165). Generation is real, review
+        # is real, DISPATCH IS DECLARED AND ABSENT — nothing bulk-sends an
+        # approved statement run. A RED RUN AFTER THE GATE IS INTENDED, not a
+        # regression. Clearing step 4 would make the run complete green having
+        # generated statements, collected an approval, and sent nothing, which is
+        # the silent-success class WE-1 A-1 exists to end.
         "steps": [
-            {"step_order": 1, "step_key": "identify_customers", "step_type": "action", "config": {"description": "Find charge-account customers with activity"}},
-            {"step_order": 2, "step_key": "generate_statements", "step_type": "action", "config": {"description": "Generate statement PDFs"}},
-            {"step_order": 3, "step_key": "approval_gate", "step_type": "input", "config": {"prompt": "Review flagged statements"}},
-            {"step_order": 4, "step_key": "send_statements", "step_type": "action", "config": {"description": "Email approved statements"}},
+            # Inert: the producer selects customers itself.
+            {"step_order": 1, "step_key": "identify_customers", "step_type": "action",
+             "config": {"action_type": "show_confirmation",
+                        "message": "Retired step — the producer selects customers itself.",
+                        "_retired": {"by": "r165, ported to the definition",
+                                     "was": {"description": "Find charge-account customers with activity"}}}},
+            # PRODUCER. The adapter + registry entry already existed; the
+            # workflow simply never pointed at them. Replaced in place rather
+            # than inserted — a second step at an occupied step_order recreates
+            # the duplicate-order race r161/r162 removed.
+            {"step_order": 2, "step_key": "generate_statements", "step_type": "action",
+             "config": {"action_type": "call_service_method",
+                        "method_name": "invoice_statement.run_statement_run",
+                        "kwargs": {}}},
+            # No `park_when`: the gate asks about FLAGGED statements and the
+            # producer returns no flagged count. `total_customers > 0` would park
+            # on a clean run of forty unflagged statements. Upgrade path: have
+            # the adapter return `flagged_count`, then park on `> 0`.
+            {"step_order": 3, "step_key": "approval_gate", "step_type": "input",
+             "config": {"prompt": "Review flagged statements"}},
+            # LEFT BROKEN ON PURPOSE. Its three params (from_name, reply_to,
+            # include_zero_balance) are the spec for a future bulk-send step;
+            # wf_mfg_send_statement proves the recipe but is manual per-customer.
+            {"step_order": 4, "step_key": "send_statements", "step_type": "action",
+             "config": {"description": "Email approved statements",
+                        "_deliberately_broken": {
+                            "by": "r165, ported to the definition",
+                            "why": "Bulk dispatch of an approved run does not exist.",
+                            "upgrade_path": "Add a bulk send to invoice_statement_adapter."}}},
         ],
     },
     {
         "id": "wf_sys_legacy_print_proof",
         "name": "Legacy Print — Proof",
-        "description": "Generate print proof, email to funeral home for approval.",
+        # UNWIRED, NOT UNBUILT (r167, ported — corrects r164, which marked this
+        # is_coming_soon). Both capabilities exist: _legacy_generate_proof
+        # (HEADLESS_DISPATCH, focus_id "legacy_proof_generation") and
+        # legacy_email_service.send_proof_email. They do not COMPOSE yet — the
+        # generation is deliberately pure and persists no LegacyProof, while the
+        # email step loads one by id. Its legacy_order.submitted trigger also has
+        # no event system, which is why it has zero runs.
+        "description": (
+            "UNWIRED, NOT UNBUILT (r167) — both capabilities exist but do not "
+            "compose: the generation persists no LegacyProof and the email step "
+            "loads one by id. Generate print proof, email to funeral home for "
+            "approval."
+        ),
         "keywords": [],
         "tier": 1,
         "scope": "vertical",
@@ -1027,17 +1096,51 @@ TIER_1_WORKFLOWS = [
         "command_bar_priority": 0,
         "is_system": True,
         "source_service": "vault_compliance_sync.py",
+        # PORTED FROM r166, which this seeder reverted on the next boot. The
+        # four steps below name the four things `sync_compliance_expiries`
+        # ALREADY DOES (see `source_service` above) — one call covers all of
+        # them, so step 1 is the producer and the rest are inert. Unwired work,
+        # not unbuilt work; wiring it is what makes the "Compliance & records
+        # upkeep" cadence card TRUE rather than needing to be walked back.
         "steps": [
-            {"step_order": 1, "step_key": "scan_inspections", "step_type": "action", "config": {"description": "Find overdue inspections"}},
-            {"step_order": 2, "step_key": "scan_training", "step_type": "action", "config": {"description": "Find expiring training certs"}},
-            {"step_order": 3, "step_key": "scan_regulatory", "step_type": "action", "config": {"description": "Find regulatory deadlines (OSHA 300A)"}},
-            {"step_order": 4, "step_key": "upsert_vault_items", "step_type": "action", "config": {"description": "Create/update vault items (dedupe by source_entity_id)"}},
+            {"step_order": 1, "step_key": "scan_inspections", "step_type": "action",
+             "config": {"action_type": "call_service_method",
+                        "method_name": "compliance_sync.run_compliance_sync",
+                        "kwargs": {}}},
+            {"step_order": 2, "step_key": "scan_training", "step_type": "action",
+             "config": {"action_type": "show_confirmation",
+                        "message": "Retired step — runs inside the sibling producer's one call.",
+                        "_retired": {"by": "r166, ported to the definition",
+                                     "was": {"description": "Find expiring training certs"}}}},
+            {"step_order": 3, "step_key": "scan_regulatory", "step_type": "action",
+             "config": {"action_type": "show_confirmation",
+                        "message": "Retired step — runs inside the sibling producer's one call.",
+                        "_retired": {"by": "r166, ported to the definition",
+                                     "was": {"description": "Find regulatory deadlines (OSHA 300A)"}}}},
+            {"step_order": 4, "step_key": "upsert_vault_items", "step_type": "action",
+             "config": {"action_type": "show_confirmation",
+                        "message": "Retired step — the VaultItem upsert is what the producer does.",
+                        "_retired": {"by": "r166, ported to the definition",
+                                     "was": {"description": "Create/update vault items (dedupe by source_entity_id)"}}}},
         ],
     },
     {
         "id": "wf_sys_training_expiry",
         "name": "Training Expiry Monitor",
-        "description": "Notify admins when employee training certifications are expiring.",
+        # RETIRED as REDUNDANT (r166, ported — the migration's description edit
+        # was reverted by this seeder). NOT "unbuilt": its whole declared job is
+        # a strict subset of vault_compliance_sync.sync_compliance_expiries,
+        # INCLUDING the notification, which de-dupes. Compliance Sync runs daily
+        # at 03:00; this ran weekly. Wiring it too would produce green runs that
+        # did nothing because something else already did it.
+        # `is_active=False` is set by r166 and SURVIVES a boot — `is_active` is
+        # declared by 0/36 definitions, so the seeder never writes it.
+        "description": (
+            "RETIRED (r166) — superseded by Compliance Sync, which finds "
+            "expiring training certs and notifies admins (de-duped) daily. "
+            "Not 'unbuilt' — covered. Original: Notify admins when employee "
+            "training certifications are expiring."
+        ),
         "keywords": [],
         "tier": 1,
         "scope": "core",
@@ -1177,7 +1280,17 @@ TIER_1_WORKFLOWS.extend([
     {
         "id": "wf_sys_document_review_reminder",
         "name": "Document Review Reminder",
-        "description": "Flags written programs not reviewed in 11 months and notifies admin.",
+        # NOT BUILT (r167, ported). Declares source_service
+        # document_review_service.py, WHICH DOES NOT EXIST. `scan_documents` is a
+        # prose-only step and the surviving `notify_admin` would notify about
+        # nothing. r167 also sets is_active=False (which survives a boot) so it
+        # stops failing on its Monday cron.
+        "description": (
+            "NOT BUILT (r167) — declares source_service "
+            "document_review_service.py, which does not exist. Deactivated so it "
+            "stops failing weekly. Original: Flags written programs not reviewed "
+            "in 11 months and notifies admin."
+        ),
         "keywords": [],
         "tier": 1,
         "scope": "vertical",

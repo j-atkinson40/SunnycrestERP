@@ -1,4 +1,39 @@
-"""Seed default workflows — idempotent, safe to run on every startup."""
+"""Seed default workflows — idempotent, safe to run on every startup.
+
+⚠️ OVERWRITE-AWARE, AND THE OPPOSITE OF ITS SIBLING SEEDER. STATED EXPLICITLY
+BECAUSE THE SILENCE HERE COST FOUR MIGRATIONS.
+
+For every workflow and every step DECLARED in `default_workflows.py`, this does
+an unconditional `setattr` over each declared column — **including a step's
+`config`**. There is no preserve rule, no `force` flag, no user-modified check.
+Anything a migration or an operator writes into a declared row is **overwritten
+on the next boot**.
+
+Contrast `scripts/seed_accounting_jobs.py`, which is explicitly PRESERVE-AWARE:
+*"an existing job's FIELDS are never touched — the operator's words survive every
+boot. Only wholly-missing jobs are created."* Two seeders, same codebase,
+opposite policies. This file previously said nothing, and silence beside an
+explicit contract reads as the same contract — which is exactly why r162, r165
+and r166 wrote step config in migrations and were silently reverted in production
+on the next deploy.
+
+**THE DEFINITION OWNS STEP CONFIG.** To change a step's behaviour, edit
+`app/data/default_workflows.py` — not a migration. Once the definition is right
+this seeder stops being an eraser and becomes the repair mechanism: every drifted
+row heals itself on the next boot, no data migration required. Enforced by
+`tests/test_workflow_definition_ownership_ratchet.py`.
+
+WHAT SURVIVES, precisely — it is DECLAREDNESS, not table:
+
+    workflows.description     declared by 36/36  → overwritten every boot
+    workflows.is_active       declared by  0/36  → never written, survives
+    workflows.is_coming_soon  declared by  3/36  → overwritten for those 3 only
+    a step present in the definition             → its config is overwritten
+    an ORPHAN step (absent from the definition)  → untouched, survives
+
+The orphan case is not protection, only distance: declaring one of those keys
+would silently revert whatever neutralised it.
+"""
 
 from sqlalchemy.orm import Session
 

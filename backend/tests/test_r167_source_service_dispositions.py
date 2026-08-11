@@ -92,11 +92,26 @@ class TestDRRGetsBothFlags:
 
     def test_the_original_description_is_the_real_one(self):
         """Read off the definition rather than reconstructed — the first draft of
-        this migration invented a plausible description and it was wrong."""
+        this migration invented a plausible description and it was wrong.
+
+        ⚠️ ASSERTION CHANGED WHEN r167's INTENT WAS PORTED INTO
+        `default_workflows.py`. It originally required exact equality with the
+        definition, which held until the port rewrote that description. It now
+        requires CONTAINMENT, which is the durable property: the ported text
+        embeds the original verbatim ("… Original: <text>"), so the pre-r167
+        wording survives in both places and the downgrade still restores the real
+        value rather than an invented one.
+
+        This is a deliberate behaviour change, not a test bent to pass — the
+        migration's stored original is unchanged; what moved is the definition.
+        """
         from app.data.default_workflows import ALL_DEFAULT_WORKFLOWS
 
         drr = next(w for w in ALL_DEFAULT_WORKFLOWS if w["id"] == r167._DRR)
-        assert r167._DRR_WAS_DESC == drr["description"]
+        assert r167._DRR_WAS_DESC in drr["description"], (
+            "the ported description no longer embeds the pre-r167 original — the "
+            "downgrade would restore text that appears nowhere in the definition"
+        )
         assert r167._DRR_WAS_DESC in r167._DRR_NEW_DESC
 
 

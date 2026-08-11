@@ -5,6 +5,13 @@ included — Statement Run carrying its TWO jobs (the many-to-many live on
 day one). Framings are DERIVED-HONEST placeholders; the VOICE is the
 operator's in R-3.
 
+⚠️ THIS POLICY IS NOT UNIVERSAL — `app/data/seed_workflows.py` IS THE OPPOSITE.
+That seeder OVERWRITES every declared column on every boot, including a workflow
+step's `config`, with no preserve rule at all. Do not carry this file's contract
+across to it: r162, r165 and r166 were written on that assumption and were
+silently reverted in production. Each seeder now states its own policy and names
+the other, because silence beside an explicit contract reads as agreement.
+
 PRESERVE-AWARE (the sunnycrest-seed standard): an existing job's FIELDS are
 never touched — the operator's words survive every boot. Only wholly-missing
 jobs are created. Automation refs resolve at seed time by NAME → current
