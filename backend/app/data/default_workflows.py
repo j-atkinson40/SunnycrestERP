@@ -1275,39 +1275,6 @@ TIER_1_WORKFLOWS.extend([
         ],
     },
     {
-        "id": "wf_sys_ss_certificate",
-        "name": "Social Service Certificate",
-        "description": "Generates, approves, and emails social service certificates.",
-        "keywords": ["ss certificate", "social service", "generate certificate"],
-        "tier": 1,
-        "scope": "vertical",
-        "agent_registry_key": None,
-        "vertical": "manufacturing",
-        "trigger_type": "manual",
-        "icon": "file-check",
-        "command_bar_priority": 65,
-        "is_system": True,
-        "source_service": "social_service_certificate_service.py",
-        "steps": [
-            {"step_order": 1, "step_key": "generate_cert", "step_type": "action",
-             "config": {"action_type": "system_job", "job": "generate_ss_certificate"}},
-            {"step_order": 2, "step_key": "store_cert", "step_type": "action",
-             "config": {"action_type": "store_document", "document_type": "ss_certificate"}},
-            {"step_order": 3, "step_key": "email_cert", "step_type": "action",
-             "config": {"action_type": "system_job", "job": "email_ss_certificate"}},
-        ],
-        "params": [
-            {"step_key": "email_cert", "param_key": "to_email",
-             "label": "Send certificate to", "param_type": "email",
-             "default_value": "{order.fh_email}", "is_configurable": True,
-             "description": "Email address of the funeral home"},
-            {"step_key": "email_cert", "param_key": "cc_emails",
-             "label": "CC addresses", "param_type": "email_list",
-             "default_value": [], "is_configurable": True,
-             "description": "Additional recipients."},
-        ],
-    },
-    {
         # Workflow Arc Phase 8c migration — SIMPLE approval, per-line
         # categorization review. agent_registry_key cleared.
         #
