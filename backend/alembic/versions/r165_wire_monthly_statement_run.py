@@ -148,16 +148,37 @@ _NO_PARK_WHEN = {
 _DELIBERATELY_BROKEN = {
     "by": "r165 (IOD)",
     "decision": "send_statements is LEFT BROKEN, deliberately.",
+    # ⚠️ CORRECTED 2026-08-11 (BSS-1). This migration's data was superseded by the
+    # port into `default_workflows.py`; what remains here is documentation, and
+    # two of its claims were FALSE. Both are corrected below with the original
+    # wording preserved, because a note that stops someone looking is worse than
+    # no note.
     "why": (
-        "Bulk dispatch of an approved statement run does not exist. "
-        "statement_generation_service.generate_statement_run GENERATES only. "
-        "Clearing this step would make the run complete green having sent "
-        "nothing — the silent-success class WE-1 A-1 was built to end."
+        "Bulk dispatch EXISTS — statement_service.send_all_digital is a real "
+        "per-item fan-out with per-item ledger writes — but is FILTERED TO ZERO "
+        "ROWS for this producer's output (it requires delivery_method 'digital' "
+        "+ status 'ready'; the producer writes 'email' + 'pending') and attaches "
+        "no PDF. Clearing this step would still make the run complete green "
+        "having sent nothing — the silent-success class WE-1 A-1 was built to end."
+    ),
+    "why_was_recorded_as": (
+        "'Bulk dispatch of an approved statement run does not exist.' FALSE."
     ),
     "upgrade_path": (
-        "Add a bulk send to invoice_statement_adapter and point this step at it. "
-        "The recipe is proven in wf_mfg_send_statement (generate_document + "
-        "send_email), which is fully built but manual and per-customer."
+        "Reconcile the two parallel statement subsystems' Customer column pair, "
+        "then wire statement_pdf_service.generate_statement_document (ZERO "
+        "callers today) so the email carries the statement. Per-item failure "
+        "handling follows the Plaid sync shape: per-item try, commit the ledger "
+        "INSIDE the loop, one terminal raise; 'customer has no email' is a SOFT "
+        "outcome (a paper-statement customer), not an error."
+    ),
+    "upgrade_path_was_recorded_as": (
+        "'The recipe is proven in wf_mfg_send_statement … which is fully built.' "
+        "FALSE — that workflow's generate_document step omits template_key + "
+        "title so the handler raises, its send_email step is a two-line stub "
+        "that calls nothing, and it has ZERO runs platform-wide. 'Fully built' "
+        "was asserted from step NAMES and recognised action types without "
+        "reading the configs."
     ),
     "params_are_the_spec": ["from_name", "reply_to", "include_zero_balance"],
 }

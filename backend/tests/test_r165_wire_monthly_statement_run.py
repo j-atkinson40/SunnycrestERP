@@ -82,9 +82,19 @@ class TestTheDeliberatelyPartialState:
         assert "DELETE FROM" not in src.upper(), "no step is deleted here"
         note = r165._DELIBERATELY_BROKEN
         assert "LEFT BROKEN" in note["decision"]
-        assert "generates only" in note["why"].lower(), (
-            "the reason must name the capability gap — that "
-            "generate_statement_run GENERATES only and nothing bulk-sends"
+        # ⚠️ ASSERTION CORRECTED 2026-08-11 (BSS-1). This previously required the
+        # reason to say "generates only … nothing bulk-sends", which was FALSE:
+        # `statement_service.send_all_digital` IS a bulk fan-out. The durable
+        # property is that the note names the ACTUAL gap — a sender filtered to
+        # zero rows by a column mismatch — rather than a non-existent capability.
+        why = note["why"].lower()
+        assert "send_all_digital" in why or "exists" in why, (
+            "the reason must acknowledge that bulk dispatch EXISTS — claiming "
+            "otherwise is what stops the next reader finding it"
+        )
+        assert "filtered" in why or "zero rows" in why, (
+            "the reason must name the real gap: the sender is filtered to zero "
+            "rows for this producer's output"
         )
 
     def test_the_broken_step_carries_its_reason_on_the_row(self):
@@ -97,10 +107,33 @@ class TestTheDeliberatelyPartialState:
             "from_name", "reply_to", "include_zero_balance",
         ]
 
-    def test_the_upgrade_path_names_the_proven_recipe(self):
-        """wf_mfg_send_statement is fully built — manual and per-customer — so
-        the shape of a bulk send is known rather than speculative."""
-        assert "wf_mfg_send_statement" in r165._DELIBERATELY_BROKEN["upgrade_path"]
+    def test_the_upgrade_path_does_not_cite_the_unproven_recipe(self):
+        """⚠️ THIS TEST WAS INVERTED 2026-08-11 (BSS-1), AND ITS OLD NAME WAS THE
+        FALSEHOOD: `test_the_upgrade_path_names_the_proven_recipe`.
+
+        It asserted that the note cites `wf_mfg_send_statement` as a proven
+        recipe. Measured: that workflow's `generate_document` step omits
+        `template_key` + `title` so the handler raises, its `send_email` step is
+        a two-line stub that calls nothing, and it has ZERO runs platform-wide.
+        It proves nothing.
+
+        "Fully built" was asserted from step NAMES and recognised action types
+        without reading the configs — the same error STATE records that morning
+        as `notify_admins` / "one rename from working", repeated four hours later.
+
+        A test that pins a false claim is worse than no test: it enforces the
+        falsehood against anyone who corrects it. So the assertion is now the
+        reverse — the note must NOT hold that workflow up as a model.
+        """
+        note = r165._DELIBERATELY_BROKEN
+        assert "wf_mfg_send_statement" not in note["upgrade_path"], (
+            "the upgrade path cites wf_mfg_send_statement as a recipe; it is "
+            "broken and has never run"
+        )
+        assert "was_recorded_as" in " ".join(note), (
+            "the corrected note must preserve what it previously claimed, so "
+            "the correction is legible rather than silent"
+        )
 
     def test_the_docstring_leads_with_the_red_run_being_intended(self):
         """Someone triaging a failed run six weeks from now should find this

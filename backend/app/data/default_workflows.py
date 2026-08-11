@@ -990,12 +990,32 @@ TIER_1_WORKFLOWS = [
         "command_bar_priority": 0,
         "is_system": True,
         "source_service": "statement_generation_service.py",
-        # ⚠️ DELIBERATELY PARTIAL (ported from r165). Generation is real, review
-        # is real, DISPATCH IS DECLARED AND ABSENT — nothing bulk-sends an
-        # approved statement run. A RED RUN AFTER THE GATE IS INTENDED, not a
-        # regression. Clearing step 4 would make the run complete green having
-        # generated statements, collected an approval, and sent nothing, which is
-        # the silent-success class WE-1 A-1 exists to end.
+        # ⚠️ DELIBERATELY PARTIAL. Generation is real, review is real, and step 4
+        # does not dispatch. A RED RUN AFTER THE GATE IS INTENDED, not a
+        # regression: clearing step 4 would make the run complete green having
+        # generated statements, took an approval, and sent nothing — the
+        # silent-success class WE-1 A-1 exists to end.
+        #
+        # ⚠️ CORRECTED 2026-08-11 (BSS-1). This block previously said "DISPATCH IS
+        # DECLARED AND ABSENT — nothing bulk-sends an approved statement run."
+        # THAT WAS FALSE and it was the kind of false that stops someone looking.
+        # `statement_service.send_all_digital` IS a real per-item bulk fan-out
+        # with per-item ledger writes (status / sent_at / email_sent_to /
+        # send_error on CustomerStatement), reachable from three live endpoints
+        # in `app/api/routes/statements.py`.
+        #
+        # What is TRUE is narrower and more useful: `send_all_digital` is
+        # FILTERED TO ZERO ROWS for anything this producer generates, and sends
+        # no PDF. Two independent predicates each zero it —
+        #   delivery_method == "digital"  vs the producer writing "email"
+        #   status          == "ready"    vs the producer writing "pending"
+        # — because TWO PARALLEL STATEMENT SUBSYSTEMS share StatementRun and
+        # CustomerStatement while reading different Customer columns
+        # (`receives_statements` + `statement_delivery_method` versus
+        # `receives_monthly_statement` + `preferred_delivery_method`).
+        # Separately, `statement_pdf_service.generate_statement_document` renders
+        # a real Document via the active `statement.professional` template and
+        # has ZERO CALLERS, so a send today would carry no statement.
         "steps": [
             # Inert: the producer selects customers itself.
             {"step_order": 1, "step_key": "identify_customers", "step_type": "action",
@@ -1023,9 +1043,39 @@ TIER_1_WORKFLOWS = [
             {"step_order": 4, "step_key": "send_statements", "step_type": "action",
              "config": {"description": "Email approved statements",
                         "_deliberately_broken": {
-                            "by": "r165, ported to the definition",
-                            "why": "Bulk dispatch of an approved run does not exist.",
-                            "upgrade_path": "Add a bulk send to invoice_statement_adapter."}}},
+                            "by": "r165, ported to the definition; corrected by BSS-1",
+                            "why": (
+                                "Bulk dispatch EXISTS (statement_service."
+                                "send_all_digital) but is filtered to zero rows "
+                                "for this producer's output and attaches no PDF. "
+                                "Two parallel statement subsystems read different "
+                                "Customer columns; the producer writes "
+                                "delivery_method 'email' + status 'pending', the "
+                                "sender requires 'digital' + 'ready'."
+                            ),
+                            "was_recorded_as": (
+                                "'Bulk dispatch of an approved run does not "
+                                "exist' — FALSE, corrected 2026-08-11."
+                            ),
+                            "upgrade_path": (
+                                "Reconcile the two subsystems' column pair, then "
+                                "wire statement_pdf_service."
+                                "generate_statement_document (currently ZERO "
+                                "callers) so the email carries the statement. "
+                                "Per-item failure handling should follow the "
+                                "Plaid sync shape: per-item try, commit ledger "
+                                "INSIDE the loop, one terminal raise — and treat "
+                                "'customer has no email' as a SOFT outcome, "
+                                "because that is a paper-statement customer, not "
+                                "an error."
+                            ),
+                            "do_not_cite": (
+                                "wf_mfg_send_statement is NOT a proven recipe. "
+                                "Its generate_document step omits template_key + "
+                                "title so the handler raises, its send_email step "
+                                "is a two-line stub that calls nothing, and it "
+                                "has ZERO runs platform-wide."
+                            )}}},
         ],
     },
     {
