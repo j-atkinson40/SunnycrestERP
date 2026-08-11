@@ -310,6 +310,7 @@ def send_all_digital(db: Session, run_id: str, tenant_id: str) -> dict:
     } if cust_ids else {}
 
     from app.models.company import Company
+    from app.services import statement_pdf_service
     from app.services.email_service import email_service
     company = db.query(Company).filter(Company.id == tenant_id).first()
     tenant_name = company.name if company else "Your supplier"
@@ -325,6 +326,43 @@ def send_all_digital(db: Session, run_id: str, tenant_id: str) -> dict:
             failed += 1
             continue
 
+        # BSS-2 D-2 — RENDER THE STATEMENT AND ATTACH IT.
+        # `statement_pdf_service.generate_statement_document` had ZERO callers.
+        # It renders a real Document via the active `statement.professional`
+        # template, and its own docstring said "the email-sending path in
+        # email_service doesn't call it yet." Until now this function emailed a
+        # body with no statement in it.
+        #
+        # Passing `document_id` is all that is required — `send_statement_email`
+        # has accepted it all along and DeliveryService auto-fetches and
+        # attaches the PDF from it.
+        #
+        # ⚠️ THE GUARD IS NOT OPTIONAL. `generate_statement_document` raises
+        # DocumentRenderError on template / PDF / R2 failure, and this loop's
+        # single `db.commit()` sits AFTER the loop — so an unguarded raise would
+        # abort the sweep and roll back the per-item ledger for every customer
+        # already processed. That is the failure shape D-3 addresses in full;
+        # this narrow guard exists so D-2 does not ship the hazard meanwhile.
+        #
+        # A render failure SKIPS the send: a statement email carrying no
+        # statement is worse than no email.
+        document_id = None
+        try:
+            doc = statement_pdf_service.generate_statement_document(
+                db, stmt.id, tenant_id
+            )
+            document_id = doc.id if doc is not None else None
+        except Exception as exc:  # noqa: BLE001 — classified properly in D-3
+            stmt.status = "failed"
+            stmt.send_error = f"Statement render failed: {exc}"[:500]
+            failed += 1
+            continue
+        if document_id is None:
+            stmt.status = "failed"
+            stmt.send_error = "Statement render returned no document"
+            failed += 1
+            continue
+
         statement_month = f"{stmt.period_month}/{stmt.period_year}" if hasattr(stmt, "period_month") else "Monthly"
         result = email_service.send_statement_email(
             customer_email=email,
@@ -332,6 +370,7 @@ def send_all_digital(db: Session, run_id: str, tenant_id: str) -> dict:
             tenant_name=tenant_name,
             statement_month=statement_month,
             company_id=tenant_id,
+            document_id=document_id,
             db=db,
         )
         if result["success"]:

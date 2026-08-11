@@ -272,6 +272,7 @@ tests/test_responders.py
 tests/test_route_write_ratchet.py
 tests/test_seed_accounting_demo.py
 tests/test_seed_matches_r157_content.py
+tests/test_statement_send_attaches_document.py
 tests/test_statement_adapter_flagged_count.py
 tests/test_seed_posting_ratchet.py
 tests/test_void_payment_reverses_ar2.py
