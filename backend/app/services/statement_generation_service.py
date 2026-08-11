@@ -97,7 +97,28 @@ def _opening_balance_as_of(
 
 
 def get_eligible_customers(db: Session, tenant_id: str, period_end: date) -> list[Customer]:
-    """Get all customers with receives_monthly_statement = true and activity in period."""
+    """Get all customers with receives_monthly_statement = true and activity in period.
+
+    ⚠️ BSS-2 D-4 — THIS COHORT SELECTOR IS DELIBERATELY *NOT* RECONCILED TO THE
+    OTHER SUBSYSTEM, and it is the one axis that goes against the rule applied
+    everywhere else in this reconciliation.
+
+    The delivery VOCABULARY adopted the established side (`statement_service`'s
+    digital / mail / none) because that side had three consumers and a paper
+    path. The COHORT does the opposite, on the opposite evidence:
+
+      `receives_monthly_statement`  11 True / 11 False   ← someone CURATED this
+      `receives_statements`         22 True, all default ← nobody decided this
+
+    Against a `false` server default, 11 explicit Trues are a deliberate act.
+    `receives_statements` defaults to `true`, so its all-True state is the
+    absence of a decision rather than a decision.
+
+    Switching to the established side here would silently DOUBLE the cohort from
+    11 to 22 — invisible until a customer receives a statement they should never
+    have been sent. Adopting an established convention is not worth a wrong
+    recipient.
+    """
     return (
         db.query(Customer)
         .filter(
@@ -409,10 +430,26 @@ def _generate_statements_for_run(
             payments_received=data["payments_total"],
             balance_due=data["closing_balance"],
             invoice_count=data["invoice_count"],
-            delivery_method=customer.preferred_delivery_method or "email",
+            # ── BSS-2 D-4 — THE COLUMN RECONCILIATION ────────────────────
+            # Two statement subsystems shared this table with disagreeing
+            # vocabularies. This side wrote `preferred_delivery_method or
+            # "email"` with `status="pending"`; `statement_service.
+            # send_all_digital` selects `delivery_method == "digital"` AND
+            # `status == "ready"`. EITHER predicate alone matched zero rows, so
+            # nothing this producer generated was ever sendable.
+            #
+            # The established side won on evidence rather than convenience: a
+            # three-valued vocabulary with a PAPER PATH (digital / mail / none),
+            # a full status lifecycle, and two live endpoints consuming it.
+            # "email" and "pending" were consumed by nothing.
+            delivery_method=customer.statement_delivery_method or "digital",
             flagged=len(flags) > 0,
             flag_reasons=flags if flags else (location_breakdown if location_breakdown else []),
-            status="pending",
+            # `ready` means "balances computed and sendable" — exactly what this
+            # loop just did. It deliberately does NOT mean "has a PDF": two live
+            # endpoints already read this value, and the document is rendered
+            # per-send inside `send_all_digital`.
+            status="ready",
         )
         db.add(item)
 

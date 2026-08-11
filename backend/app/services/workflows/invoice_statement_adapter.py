@@ -82,3 +82,47 @@ def run_statement_run(
         "period_start": ps.isoformat(),
         "period_end": pe.isoformat(),
     }
+
+
+def run_statement_dispatch(
+    db: Session,
+    *,
+    company_id: str,
+    triggered_by_user_id: str | None = None,
+    statement_run_id: Any = None,
+    **_ignored: Any,
+) -> dict[str, Any]:
+    """Dispatch an approved statement run → a summary. BSS-2 D-4.
+
+    Thin wrapper over `statement_service.send_all_digital`, which was already a
+    real per-item fan-out with per-item ledger writes and simply had no workflow
+    entry point. The `_deliberately_broken` note this replaces claimed bulk
+    dispatch did not exist; it did, and was unreachable from here.
+
+    ⚠️ RAISES on hard failures, by design. D-3 classifies a render failure or an
+    unanswered send as HARD: per-item state is committed inside the loop first,
+    then one terminal raise. So a failed run here means "some items did not
+    dispatch and the ledger records exactly which" — NOT "the run did nothing".
+    Soft outcomes (no address → `skipped`, provider rejection → `failed`) are
+    recorded and do not raise.
+    """
+    from app.services import statement_service
+
+    if not statement_run_id:
+        # The producer emits `statement_run_id`; a missing one means the step is
+        # wired to the wrong output key, which is a configuration error rather
+        # than an empty run — say so instead of silently dispatching nothing.
+        raise ValueError(
+            "run_statement_dispatch requires statement_run_id "
+            "(bind it to {output.generate_statements.statement_run_id})"
+        )
+
+    result = statement_service.send_all_digital(db, str(statement_run_id), company_id)
+    return {
+        "statement_run_id": str(statement_run_id),
+        "sent": result.get("sent", 0),
+        "failed": result.get("failed", 0),
+        # Soft outcome, surfaced separately so a caller can tell a
+        # paper-statement cohort from a broken one.
+        "skipped": result.get("skipped", 0),
+    }

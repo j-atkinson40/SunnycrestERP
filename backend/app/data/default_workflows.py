@@ -1037,45 +1037,67 @@ TIER_1_WORKFLOWS = [
             # the adapter return `flagged_count`, then park on `> 0`.
             {"step_order": 3, "step_key": "approval_gate", "step_type": "input",
              "config": {"prompt": "Review flagged statements"}},
-            # LEFT BROKEN ON PURPOSE. Its three params (from_name, reply_to,
-            # include_zero_balance) are the spec for a future bulk-send step;
-            # wf_mfg_send_statement proves the recipe but is manual per-customer.
+            # BSS-2 D-4 — NO LONGER BROKEN. Dispatches the approved run via
+            # statement_service.send_all_digital, which existed all along and
+            # had no workflow entry point. `statement_run_id` binds to the
+            # producer's output. Raises on HARD failures only (D-3): per-item
+            # state commits inside the loop first, so a red run means "these
+            # items did not dispatch and the ledger says which", never "nothing
+            # happened".
             {"step_order": 4, "step_key": "send_statements", "step_type": "action",
-             "config": {"description": "Email approved statements",
-                        "_deliberately_broken": {
-                            "by": "r165, ported to the definition; corrected by BSS-1",
-                            "why": (
-                                "Bulk dispatch EXISTS (statement_service."
-                                "send_all_digital) but is filtered to zero rows "
-                                "for this producer's output and attaches no PDF. "
-                                "Two parallel statement subsystems read different "
-                                "Customer columns; the producer writes "
-                                "delivery_method 'email' + status 'pending', the "
-                                "sender requires 'digital' + 'ready'."
+             "config": {"action_type": "call_service_method",
+                        "method_name": "invoice_statement.run_statement_dispatch",
+                        "kwargs": {"statement_run_id":
+                                   "{output.generate_statements.statement_run_id}"},
+                        "description": "Email approved statements",
+                        "_was_recorded_as": {
+                            "by": "BSS-2 D-4",
+                            "note": (
+                                "This step carried `_deliberately_broken` from "
+                                "r165 until 2026-08-11. Kept per the retraction "
+                                "convention so the claim and its resolution "
+                                "travel together."
                             ),
-                            "was_recorded_as": (
+                            "r165_claimed": (
                                 "'Bulk dispatch of an approved run does not "
-                                "exist' — FALSE, corrected 2026-08-11."
+                                "exist' — FALSE. It existed as statement_service."
+                                "send_all_digital with three live callers; it was "
+                                "unreachable from a workflow and filtered to zero "
+                                "rows by a column mismatch."
                             ),
-                            "upgrade_path": (
-                                "Reconcile the two subsystems' column pair, then "
-                                "wire statement_pdf_service."
-                                "generate_statement_document (currently ZERO "
-                                "callers) so the email carries the statement. "
-                                "Per-item failure handling should follow the "
-                                "Plaid sync shape: per-item try, commit ledger "
-                                "INSIDE the loop, one terminal raise — and treat "
-                                "'customer has no email' as a SOFT outcome, "
-                                "because that is a paper-statement customer, not "
-                                "an error."
+                            "r165_also_claimed": (
+                                "'The recipe is proven in wf_mfg_send_statement' "
+                                "— FALSE. That workflow's generate_document step "
+                                "omits template_key + title so the handler "
+                                "raises, its send_email step is a two-line stub, "
+                                "and it has ZERO runs platform-wide."
                             ),
-                            "do_not_cite": (
-                                "wf_mfg_send_statement is NOT a proven recipe. "
-                                "Its generate_document step omits template_key + "
-                                "title so the handler raises, its send_email step "
-                                "is a two-line stub that calls nothing, and it "
-                                "has ZERO runs platform-wide."
-                            )}}},
+                            "resolved_by": (
+                                "D-1 reconciled the column pair (established "
+                                "vocabulary digital/ready; the newcomer's cohort "
+                                "kept, because receives_monthly_statement is the "
+                                "only curated one). D-2 wired the zero-caller PDF "
+                                "renderer. D-3 made the ledger survive a failure. "
+                                "D-4 pointed this step at the dispatch."
+                            ),
+                        },
+                        # ⚠️ THESE THREE PARAMS ARE NOT ALL HONOURED, and one is
+                        # on the wrong step entirely:
+                        #   from_name / reply_to — SendParams supports both
+                        #     (delivery_service.py:68-69) but neither is threaded
+                        #     through send_statement_email → send_all_digital.
+                        #     Capability exists; the wire does not.
+                        #   include_zero_balance — CANNOT work here. The
+                        #     zero-balance skip happens at GENERATION
+                        #     (statement_generation_service: "Skip if no activity
+                        #     and zero balance"), so a param on the SEND step
+                        #     cannot include what generation already excluded. It
+                        #     belongs on generate_statements, or nowhere.
+                        "_params_status": {
+                            "honoured": [],
+                            "supported_but_unwired": ["from_name", "reply_to"],
+                            "on_the_wrong_step": ["include_zero_balance"],
+                        }}},
         ],
     },
     {
