@@ -155,6 +155,57 @@ def _matches_time_after_event(
 # ── Phase 8b.5 — scheduled (cron) trigger support ────────────────────
 
 
+#: Standard-cron day-of-week → the unambiguous day NAME APScheduler accepts.
+#: 7 is a legal standard-cron alias for Sunday.
+_STANDARD_DOW_NAMES = {
+    "0": "sun", "1": "mon", "2": "tue", "3": "wed",
+    "4": "thu", "5": "fri", "6": "sat", "7": "sun",
+}
+
+
+def _standard_dow_to_names(cron_expr: str) -> str:
+    """Rewrite a cron's day-of-week field from STANDARD-CRON NUMERICS to names.
+
+    ⚠️ APScheduler's `CronTrigger.from_crontab` IS OFF BY ONE FROM STANDARD CRON
+    ON DAY-OF-WEEK. It reads 0 as MONDAY; standard cron (and every author who has
+    written one of these strings) means SUNDAY. Verified empirically across all
+    seven values — `0..6` fired Monday…Sunday where the author meant
+    Sunday…Saturday.
+
+    The live consequence was small but real: `wf_sys_catalog_fetch` carries
+    `0 3 * * 1`, is documented "weekly Monday", and fetched on TUESDAYS.
+
+    Translating to NAMES rather than doing arithmetic is deliberate — `mon` is
+    unambiguous in both dialects, so the rewritten expression cannot be
+    misread again by a future parser change, and it is self-documenting in a log
+    line. Numeric tokens are translated inside ranges (`1-5` → `mon-fri`), lists
+    (`1,3` → `mon,wed`) and step bases (`1-5/2` → `mon-fri/2`); `*` and names
+    already present are passed through untouched.
+
+    A cron authored as APScheduler-dialect would be shifted by this. None exists:
+    before this landed, every non-`*` dow in `default_workflows.py` was `1`
+    meaning Monday, and no definition used `0` — the value a pre-compensating
+    author would have reached for.
+    """
+    parts = cron_expr.split()
+    if len(parts) < 5:
+        return cron_expr  # malformed — let APScheduler raise on it as before
+    dow = parts[4]
+    if dow == "*":
+        return cron_expr
+
+    def _tok(token: str) -> str:
+        base, sep, step = token.partition("/")
+        lo, dash, hi = base.partition("-")
+        lo_n = _STANDARD_DOW_NAMES.get(lo.strip(), lo)
+        hi_n = _STANDARD_DOW_NAMES.get(hi.strip(), hi) if dash else hi
+        rebuilt = f"{lo_n}{dash}{hi_n}" if dash else lo_n
+        return f"{rebuilt}{sep}{step}" if sep else rebuilt
+
+    parts[4] = ",".join(_tok(t) for t in dow.split(","))
+    return " ".join(parts)
+
+
 def _intended_scheduled_fire(
     cron_expr: str, tenant_tz: ZoneInfo, now: datetime
 ) -> datetime | None:
@@ -169,7 +220,13 @@ def _intended_scheduled_fire(
 
     Raises `ValueError` on malformed cron strings — caller catches.
     """
-    trigger = CronTrigger.from_crontab(cron_expr, timezone=tenant_tz)
+    # THE SINGLE PARSE SITE for both the runtime sweep and the MoC schedule
+    # sweep (which calls this function), so the dialect fix lands in one place.
+    # See `_standard_dow_to_names`: APScheduler reads day-of-week 0 as Monday,
+    # standard cron means Sunday, and every stored expression is standard cron.
+    trigger = CronTrigger.from_crontab(
+        _standard_dow_to_names(cron_expr), timezone=tenant_tz
+    )
     # Walk back by the sweep window and ask: what's the next fire time
     # at or after (now - window)? If it's <= now, the cron wanted to
     # fire in this window.

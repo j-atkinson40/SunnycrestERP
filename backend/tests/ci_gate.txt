@@ -254,6 +254,7 @@ tests/test_r164_mark_declared_but_unbuilt.py
 tests/test_r165_wire_monthly_statement_run.py
 tests/test_r166_wire_compliance_sync.py
 tests/test_r167_source_service_dispositions.py
+tests/test_cron_dow_dialect.py
 tests/test_reconciliation_account_form.py
 tests/test_reconciliation_claim_a3.py
 tests/test_reconciliation_coded_l3.py
