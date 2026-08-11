@@ -248,6 +248,7 @@ tests/test_queue_count_membership_c3.py
 tests/test_queue_count_membership_c4.py
 tests/test_queue_count_membership_c5.py
 tests/test_r161_orphan_producer_twins.py
+tests/test_r162_finish_the_migrated_four.py
 tests/test_reconciliation_account_form.py
 tests/test_reconciliation_claim_a3.py
 tests/test_reconciliation_coded_l3.py
