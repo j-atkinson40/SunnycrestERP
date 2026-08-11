@@ -23,8 +23,17 @@ import inspect
 from app.services import statement_service
 
 
+def _code_only(src: str) -> str:
+    """Source with `#` comments stripped — see the note in
+    `test_statement_dispatch_durability.py`. Matching against source text also
+    matches the comments explaining that text, which is how the split point
+    below landed inside a comment mentioning `send_statement_email` rather than
+    on the call itself."""
+    return "\n".join(line.split("#")[0] for line in src.splitlines())
+
+
 def _send_src() -> str:
-    return inspect.getsource(statement_service.send_all_digital)
+    return _code_only(inspect.getsource(statement_service.send_all_digital))
 
 
 class TestTheJoinExists:
@@ -54,49 +63,31 @@ class TestTheJoinExists:
         assert "document_id" in sig.parameters
 
 
-class TestTheGuardIsPresent:
-    """⚠️ NOT DEFENSIVE PADDING — the loop's only `db.commit()` is AFTER it."""
+class TestTheRenderFailurePathSurvives:
+    """⚠️ D-2's two guard-shape tests LIVED HERE AND WERE REPLACED, not deleted.
 
-    def test_the_render_is_guarded(self):
-        """`generate_statement_document` raises DocumentRenderError on template,
-        PDF or R2 failure. Unguarded, one raise aborts the sweep and rolls back
-        the per-item ledger for every customer already processed — the exact
-        failure shape D-3 exists to fix. This guard is why D-2 does not ship
-        that hazard while D-3 is pending."""
+    They pinned D-2's narrow structure — a render-only `try` with a `continue`
+    on failure — which existed solely so D-2 did not ship the abort hazard while
+    D-3 was pending. D-3 widened the `try` to span the whole item and routes
+    failures through `_record_hard`, so both assertions became false BY DESIGN.
+
+    Durability, classification and the terminal raise are now covered by
+    `test_statement_dispatch_durability.py`. What stays here is the one property
+    that belongs to D-2's subject: a render failure must never fall through to a
+    body-only send, because a statement email carrying no statement is worse
+    than no email.
+
+    (One prediction was wrong and is worth recording: D-2 asserted the trailing
+    `db.commit()` would move when D-3 landed. It did not — that commit writes
+    the RUN row and correctly stays after the loop. D-3 added per-item commits
+    beside it rather than relocating it.)
+    """
+
+    def test_a_missing_document_never_reaches_the_send(self):
         src = _send_src()
-        assert "try:" in src and "except Exception" in src
-        assert "generate_statement_document" in src.split("try:")[1].split("except")[0], (
-            "the render call moved outside the try — a render failure can now "
-            "abort the whole sweep"
-        )
-
-    def test_a_render_failure_skips_the_send(self):
-        """A statement email carrying no statement is worse than no email, so a
-        render failure must NOT fall through to a body-only send."""
-        src = _send_src()
-        after_except = src.split("except Exception")[1]
-        assert "continue" in after_except.split("statement_month")[0], (
-            "a render failure no longer skips the send"
-        )
-
-    def test_a_none_document_also_skips(self):
-        """`generate_statement_document` RETURNS None (rather than raising) when
-        the statement, customer or company row is missing — a different path
-        from the exception, and equally must not send."""
-        assert "document_id is None" in _send_src()
-
-
-class TestTheCommitHazardIsStillOpen:
-    """Records what D-2 deliberately did NOT fix, so D-3's scope stays legible
-    and nobody reads the narrow guard as the whole answer."""
-
-    def test_the_commit_is_still_outside_the_loop(self):
-        """When this starts failing, D-3 has landed and this test should be
-        replaced by D-3's own coverage — not deleted quietly."""
-        src = _send_src()
-        loop_body = src.split("for stmt in stmts:")[1]
-        tail = loop_body.split("# Update run")[-1]
-        assert "db.commit()" in tail, (
-            "the commit moved — if D-3 landed, replace this test with D-3's "
-            "per-item commit coverage rather than removing it"
+        before_send = src.split("send_statement_email")[0]
+        assert "document_id is None" in before_send
+        assert "raise RuntimeError" in before_send, (
+            "the missing-document case no longer stops the item — a body-only "
+            "statement email could now go out"
         )
