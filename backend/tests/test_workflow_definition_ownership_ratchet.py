@@ -79,9 +79,35 @@ _WRITES_STEP_CONFIG = re.compile(
 )
 
 
+def _strip_prose(text: str) -> str:
+    """Remove docstrings and `#` comments BEFORE matching.
+
+    ⚠️ WITHOUT THIS THE RATCHET FALSE-POSITIVES ON ITS OWN SUBJECT MATTER. Every
+    migration in this line documents what it does to step config, so a future
+    one whose docstring says "this deliberately does NOT update
+    workflow_steps.config" would be flagged as an offender by the guard
+    describing it — blocking exactly the careful author it exists to help.
+
+    Verified in the other direction too: all five known offenders still match
+    after stripping, so the detector fires on CODE and never depended on prose.
+    That check matters because a ratchet satisfied by its own docstring is a
+    ratchet that cannot fail — the same class the detector self-test caught from
+    a different angle.
+
+    Docstrings first (they can contain `#`), then comments.
+    """
+    without_docstrings = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', " ", text)
+    return "\n".join(line.split("#")[0] for line in without_docstrings.splitlines())
+
+
 def _normalise(text: str) -> str:
-    """Source → the SQL as the database would see it, near enough to match."""
-    return re.sub(r"\s+", " ", re.sub(r"[\"']", " ", text))
+    """Source → the SQL as the database would see it, near enough to match.
+
+    Prose is stripped first; the quote-and-whitespace collapse then joins SQL
+    that migrations assemble from adjacent string literals.
+    """
+    stripped = _strip_prose(text)
+    return re.sub(r"\s+", " ", re.sub(r"[\"']", " ", stripped))
 
 
 def _migration_files():
@@ -133,6 +159,41 @@ class TestNoNewMigrationWritesStepConfig:
             f"the detector no longer matches {missed}, which are known to write "
             f"step config — the ratchet is now vacuous"
         )
+
+    def test_prose_alone_does_not_trip_the_ratchet(self):
+        """⚠️ THE FALSE-POSITIVE DIRECTION, and it was real before this test.
+
+        Every migration in this line DOCUMENTS what it does to step config, so
+        the guard was matching its own subject matter: a migration whose
+        docstring said "this deliberately does NOT update workflow_steps SET
+        config" was flagged as an offender. The ratchet would have blocked
+        precisely the careful author it exists to help, and the failure message
+        would have pointed them at a file they had already read.
+
+        A guard that fires on descriptions of the thing, rather than the thing,
+        is the mirror of a guard satisfied by its own docstring.
+        """
+        prose_only = (
+            '"""A migration that deliberately does NOT touch step config.\n'
+            "This is NOT an UPDATE workflow_steps SET config statement.\n"
+            '"""\n'
+            "# also not: UPDATE workflow_steps SET config = ...\n"
+            "def upgrade():\n    pass\n"
+        )
+        assert not _WRITES_STEP_CONFIG.search(_normalise(prose_only)), (
+            "the ratchet fires on a migration that merely MENTIONS step config "
+            "in prose — it would block an author documenting that they avoided it"
+        )
+
+    def test_stripping_prose_did_not_blind_the_detector(self):
+        """The other direction, kept adjacent so the two are read together: all
+        five known offenders must still match AFTER prose is stripped, proving
+        the detector reads code and never leaned on documentation."""
+        missed = [
+            n for n in sorted(_GRANDFATHERED)
+            if not _WRITES_STEP_CONFIG.search(_normalise((_VERSIONS / n).read_text()))
+        ]
+        assert not missed, f"stripping prose blinded the detector on {missed}"
 
     @pytest.mark.parametrize("name", [
         "r163_delete_ss_certificate_workflow.py",   # deletes steps, legitimate
