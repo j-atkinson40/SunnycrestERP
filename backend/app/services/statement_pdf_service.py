@@ -209,6 +209,12 @@ def generate_statement_document(
     from app.services import legacy_r2_client
 
     stmt.statement_pdf_url = legacy_r2_client.get_public_url(doc.storage_key)
+    # BSS-2: stamp the timestamp HERE — where a PDF actually exists, and beside
+    # the URL it is paired with. It was previously stamped in
+    # `statement_service.generate_statement_pdf` at a point that renders nothing,
+    # so the column asserted a document next to a URL column that was always
+    # null. Both are now written together, and only when both are true.
+    stmt.statement_pdf_generated_at = datetime.now(timezone.utc)
     db.flush()
 
     return doc

@@ -239,7 +239,13 @@ def generate_statement(
         stmt.balance_due = balances["balance_due"]
         stmt.invoice_ids = [i["id"] for i in invoices]
         stmt.invoice_count = len(invoices)
-        stmt.statement_pdf_generated_at = datetime.now(timezone.utc)
+        # BSS-2: `stmt.statement_pdf_generated_at = ...` was here and RENDERED
+        # NOTHING. This function computes balances; no PDF is produced anywhere
+        # in it, and `statement_pdf_url` was left null — so the column asserted a
+        # document that did not exist. The stamp now lives in
+        # `statement_pdf_service.generate_statement_document`, beside the URL it
+        # belongs with. `ready` still means "balances computed and sendable",
+        # unchanged — two live endpoints consume it.
         stmt.status = "ready"
         db.commit()
         return True
@@ -363,7 +369,14 @@ def send_all_digital(db: Session, run_id: str, tenant_id: str) -> dict:
             failed += 1
             continue
 
-        statement_month = f"{stmt.period_month}/{stmt.period_year}" if hasattr(stmt, "period_month") else "Monthly"
+        # BSS-2: was `f"{stmt.period_month}/{stmt.period_year}" if hasattr(stmt,
+        # "period_month") else "Monthly"`. The columns are
+        # `statement_period_month` / `statement_period_year`, so the hasattr was
+        # ALWAYS FALSE and every statement email would have rendered its month
+        # as the literal string "Monthly". Both columns are non-nullable ints,
+        # so no guard is needed. Never noticed because nothing has ever been
+        # sent — the first customer to receive one would have found it.
+        statement_month = f"{stmt.statement_period_month}/{stmt.statement_period_year}"
         result = email_service.send_statement_email(
             customer_email=email,
             customer_name=cust.name if cust else "Valued Customer",
