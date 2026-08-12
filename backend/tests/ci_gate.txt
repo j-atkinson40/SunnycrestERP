@@ -248,6 +248,7 @@ tests/test_queue_count_membership_c3.py
 tests/test_queue_count_membership_c4.py
 tests/test_queue_count_membership_c5.py
 tests/test_map5_derived_frequency.py
+tests/test_map5_liveness.py
 tests/test_r161_orphan_producer_twins.py
 tests/test_r162_finish_the_migrated_four.py
 tests/test_r163_delete_ss_certificate_workflow.py

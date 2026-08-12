@@ -41,10 +41,24 @@ def _job(db, name: str) -> MoCJob:
 
 
 class TestTheEleven:
-    def test_area_holds_eleven(self, db):
+    def test_area_holds_twelve(self, db):
+        """⚠️ WAS `test_area_holds_eleven`, asserting 11. r157 added `Cash
+        receipts matching` and the count has been 12 since; the assertion kept
+        saying eleven.
+
+        A test asserting a stale count FAILS WHOEVER CORRECTS THE THING IT
+        COUNTS, which makes it worse than no test — it reads as the corrector's
+        own breakage. Same shape as the two r165 tests that pinned false claims
+        and had to be inverted. Fixed here because MAP-5's investigation
+        surfaced it and it sits in the file this arc is editing.
+
+        The class name stays `TestTheEleven`: "the eleven" is how this area is
+        referred to across the arc logs, and renaming it would break that thread
+        for a number that will move again.
+        """
         n = db.query(MoCJob).filter(
             MoCJob.task_type == "Accounting", MoCJob.is_active).count()
-        assert n == 11
+        assert n == 12
 
     def test_tax_card_woke_by_reality(self, db):
         """THE SECOND WAKING: the sales-tax arc shipped tax_periods and
