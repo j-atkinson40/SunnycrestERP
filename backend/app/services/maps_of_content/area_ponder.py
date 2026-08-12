@@ -237,6 +237,25 @@ def check_area_drift(beats: list[dict], captions: dict) -> list[str]:
             if job.get("name") and job["name"].lower() in text.lower():
                 echoes.append(f"the job name {job['name']!r}")
 
+        # ⚠️ MAP-5 — LIVENESS IS DERIVED, AND PROSE RESTATING IT GOES STALE
+        # FASTER THAN A CLOCK TIME DOES.
+        # "the matcher runs at 11:30 PM" rots when someone re-crons it; "and it
+        # has never fired" rots THE FIRST TIME IT FIRES. A caption is authored
+        # once and read for months, so baking a run state into it is the same
+        # hazard as baking a schedule in, only quicker.
+        #
+        # This is why liveness is a SIBLING of `whens` and `jobs` on the cadence
+        # payload and never merged into `text`: the card says WHETHER, the
+        # caption says what the operator DOES.
+        if cadence.get("liveness"):
+            for phrase in (
+                "never run", "hasn't run", "has not run", "last ran",
+                "preview only", "nothing was saved", "switched off",
+                "not built", "didn't finish", "waiting on you",
+            ):
+                if phrase in text.lower():
+                    echoes.append(f"the liveness phrase {phrase!r}")
+
         if echoes:
             drift.append(
                 f"caption on {key!r} restates derived content — it contains "
@@ -502,6 +521,21 @@ def build_area_ponder_script(
                             ),
                         }
                     )
+            # ── B-1 — A GRAIN WHOSE MEMBERS ARE ALL DEAD RENDERS, MARKED ──
+            # Not suppressed: hiding it removes a declared capability from the
+            # rhythm view, which is what r164 refused to do by deleting rows.
+            # Not demoted to "on your schedule": that says work you pick up, and
+            # nobody can pick this up. Not left alone: the card would keep
+            # teaching a 7am Monday rhythm that is neither running nor built.
+            #
+            # So the times are replaced by what is true. The grain stays visible
+            # because the DECLARATION is real even when the running is not.
+            _dead = {_liveness.NOT_BUILT, _liveness.SWITCHED_OFF, _liveness.UNKNOWN_JOB}
+            _lv = cadence.get("liveness") or []
+            if _lv and all(x["state"] in _dead for x in _lv):
+                cadence["all_dead"] = True
+                cadence["whens"] = []
+                cadence["dead_label"] = "Not running here — declared, not built yet"
             _beat(
                 f"cadence:{grain}", "task",
                 f"{_GRAIN_LABEL[grain]} — {_join_names(names)}.",

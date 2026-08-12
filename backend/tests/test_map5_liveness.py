@@ -295,3 +295,76 @@ class TestTwoStoppedStatesNotOne:
         assert _classify(
             workflow_known=False, is_coming_soon=True, is_active=False
         ).state == L.UNKNOWN_JOB
+
+
+class TestTheDriftTokenWatchesLiveness:
+    """⚠️ PROSE RESTATING LIVENESS GOES STALE FASTER THAN A CLOCK TIME DOES.
+
+    "the matcher runs at 11:30 PM" rots when someone re-crons it. "and it has
+    never fired" rots THE FIRST TIME IT FIRES. A caption is authored once and
+    read for months, so `check_area_drift` must watch liveness phrases the same
+    way it watches times and job names.
+    """
+
+    def _drift(self, text, liveness):
+        from app.services.maps_of_content.area_ponder import check_area_drift
+
+        beats = [{
+            "key": "cadence:weekly", "authored": True, "text": text,
+            "cadence": {"whens": [], "jobs": [], "liveness": liveness},
+        }]
+        return check_area_drift(beats, {"cadence:weekly": text})
+
+    def test_a_caption_restating_a_run_state_is_flagged(self):
+        d = self._drift(
+            "Monday mornings, and it has never run here.",
+            [{"job": "j", "state": "never_run", "label": "x"}],
+        )
+        assert d and "liveness phrase" in d[0]
+
+    def test_a_durable_caption_is_not_flagged(self):
+        """"What the operator DOES" cannot go stale — the check must stay
+        narrow or it cries wolf on the expected state, which is the mistake its
+        own first version made."""
+        assert not self._drift(
+            "Monday mornings are for the compliance queue.",
+            [{"job": "j", "state": "never_run", "label": "x"}],
+        )
+
+    def test_nothing_is_flagged_when_the_beat_has_no_liveness(self):
+        assert not self._drift("It has never run here.", [])
+
+
+class TestTheMarkedEmptyGrain:
+    """B-1: a grain whose members are all dead RENDERS, marked.
+
+    Not suppressed — hiding it removes a declared capability from the rhythm
+    view, which r164 refused to do by deleting rows. Not demoted to "on your
+    schedule" — that means work you pick up, and nobody can pick this up. Not
+    left alone — the card would keep teaching a 7am Monday rhythm that is
+    neither running nor built.
+    """
+
+    def test_the_dead_states_are_the_stopped_ones_plus_unknown(self):
+        import inspect
+
+        from tests._source import code_only
+
+        from app.services.maps_of_content import area_ponder
+
+        src = code_only(inspect.getsource(area_ponder.build_area_ponder_script))
+        assert "_dead = {" in src
+        for state in ("NOT_BUILT", "SWITCHED_OFF", "UNKNOWN_JOB"):
+            assert state in src
+
+    def test_a_live_member_keeps_the_grain_alive(self):
+        """ALL dead, not ANY. One running member means the rhythm is real and
+        the times must still show."""
+        import inspect
+
+        from tests._source import code_only
+
+        from app.services.maps_of_content import area_ponder
+
+        src = code_only(inspect.getsource(area_ponder.build_area_ponder_script))
+        assert "all(x[\"state\"] in _dead" in src
