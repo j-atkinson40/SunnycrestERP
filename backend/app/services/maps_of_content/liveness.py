@@ -34,9 +34,11 @@ from typing import Any
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
-#: The seven states a member can be in. Four are generic (they fall out of run
-#: status alone); `runs_dry` and `not_reportable` are configuration facts; the
-#: seventh is a broken reference — see `UNKNOWN_JOB` below.
+#: The NINE states a member can be in. Four are generic (they fall out of run
+#: status alone); `runs_dry` and `not_reportable` are configuration facts; one is
+#: a broken reference; and two are deliberately-stopped — see below. The count
+#: has moved twice during this build, both times because real data produced a
+#: case the design had merged into another.
 NEVER_RUN = "never_run"
 RAN_AND_CLOSED = "ran_and_closed"
 LEFT_A_DECISION = "left_a_decision"
@@ -53,10 +55,19 @@ NOT_REPORTABLE = "not_reportable"
 #: silence-versus-zero. "No run row" and "no such workflow" are different facts
 #: and the card must never merge them.
 UNKNOWN_JOB = "unknown_job"
+#: ⚠️ TWO STOPPED STATES, NOT ONE — the distinction r164/r166/r167 turned on.
+#: `is_coming_soon` means DECLARED, NEVER BUILT. `is_active=False` alone means
+#: SOMEONE SWITCHED IT OFF. Document Review Reminder is both, which is why they
+#: look like one state; Training Expiry is switched off and deliberately NOT
+#: coming-soon, because it is COVERED by Compliance Sync — "not built yet" would
+#: be false about it, and it renders on the weekly card today.
+NOT_BUILT = "not_built"
+SWITCHED_OFF = "switched_off"
 
 LIVENESS_STATES = (
     NEVER_RUN, RAN_AND_CLOSED, LEFT_A_DECISION,
     DID_NOT_COMPLETE, RUNS_DRY, NOT_REPORTABLE, UNKNOWN_JOB,
+    NOT_BUILT, SWITCHED_OFF,
 )
 
 
@@ -94,6 +105,8 @@ def classify(
     now: Any,
     live_whens: list[str] | None = None,
     dry_whens: list[str] | None = None,
+    is_coming_soon: bool = False,
+    is_active: bool = True,
 ) -> Liveness:
     """One member's liveness. Pure — the query lives in `for_workflows`.
 
@@ -112,6 +125,16 @@ def classify(
         # Honest on the card, loud in the log: the operator is told we cannot
         # answer; the developer gets a warning that a member is dangling.
         return Liveness(UNKNOWN_JOB, "We can't find this job's runs")
+
+    # ⚠️ DELIBERATELY STOPPED OUTRANKS `runs_dry`, and the reason is that
+    # `runs_dry` is a PROMISE: "preview only" implies it would write if promoted.
+    # These would not — there is no service behind a not-built job, and a
+    # switched-off one was stopped on purpose. Ranking dry first turns an honest
+    # absence into a false expectation.
+    if is_coming_soon:
+        return Liveness(NOT_BUILT, "Not running here — not built yet")
+    if not is_active:
+        return Liveness(SWITCHED_OFF, "Switched off — not running here")
 
     if not has_tenant_ledger:
         # ⚠️ SAYS WHY RATHER THAN FALLING SILENT. Ten members showing liveness
@@ -185,8 +208,14 @@ def classify(
     return Liveness(RAN_AND_CLOSED, f"Ran {ago}{caveat}", last_run_at)
 
 
-def known_workflows(db: Session, workflow_ids: list[str]) -> set[str]:
-    """Which of these ids are real `workflows` rows.
+def workflow_flags(db: Session, workflow_ids: list[str]) -> dict[str, dict]:
+    """Existence AND the two stopped-flags, in one query. `{id: {...}}`.
+
+    ⚠️ THE FLAGS RIDE ALONG DELIBERATELY. `is_coming_soon` and `is_active` decide
+    two of the nine states, and fetching them per task would add a query per
+    member; fetching them here adds two columns to a query already being made.
+    A missing key means the workflow does not exist — which is the distinction
+    below.
 
     ⚠️ SEPARATE FROM "HAS RUNS", DELIBERATELY. `for_workflows` returns rows only
     where a run exists, so a missing key there is ambiguous between "never ran"
@@ -198,12 +227,17 @@ def known_workflows(db: Session, workflow_ids: list[str]) -> set[str]:
     not check, and the whole point of `unknown_job` is not assuming.
     """
     if not workflow_ids:
-        return set()
+        return {}
     rows = db.execute(
-        sql_text("SELECT id FROM workflows WHERE id = ANY(:ids)"),
+        sql_text(
+            "SELECT id, is_active, is_coming_soon FROM workflows "
+            "WHERE id = ANY(:ids)"
+        ),
         {"ids": workflow_ids},
     )
-    return {r[0] for r in rows}
+    return {
+        r[0]: {"is_active": bool(r[1]), "is_coming_soon": bool(r[2])} for r in rows
+    }
 
 
 def for_workflows(

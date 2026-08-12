@@ -445,7 +445,7 @@ def build_area_ponder_script(
         from app.services.maps_of_content import liveness as _liveness
 
         _runs: dict[str, tuple] = {}
-        _known: set[str] = set()
+        _flags: dict[str, dict] = {}
         if company_id:
             _wids = [
                 m["workflow_id"]
@@ -457,7 +457,7 @@ def build_area_ponder_script(
                 _runs = _liveness.for_workflows(
                     db, workflow_ids=_wids, company_id=company_id
                 )
-                _known = _liveness.known_workflows(db, _wids)
+                _flags = _liveness.workflow_flags(db, _wids)
         _now = datetime.now(timezone.utc)
 
         for grain in _GRAIN_ORDER:
@@ -479,9 +479,11 @@ def build_area_ponder_script(
                 cadence["liveness"] = []
                 for m in slot["_members"]:
                     _status, _at = _runs.get(m["workflow_id"], (None, None))
+                    _f = _flags.get(m["workflow_id"] or "", {})
                     _lv = _liveness.classify(
-                        workflow_known=bool(m["workflow_id"])
-                        and m["workflow_id"] in _known,
+                        workflow_known=bool(m["workflow_id"]) and bool(_f),
+                        is_coming_soon=_f.get("is_coming_soon", False),
+                        is_active=_f.get("is_active", True),
                         has_tenant_ledger=True,
                         last_status=_status,
                         last_run_at=_at,

@@ -146,6 +146,8 @@ class TestEveryStateIsDeclared:
             _classify(live_whens=[], dry_whens=["Daily · 10:30 PM"]).state,
             _classify(last_status="awaiting_input").state,
             _classify(last_status="failed").state,
+            _classify(is_coming_soon=True).state,
+            _classify(is_active=False).state,
             _classify().state,
         }
         assert produced == set(L.LIVENESS_STATES)
@@ -246,3 +248,50 @@ class TestTheRuntimeWorkflowIdHasTwoHomes:
         which is a plausible, confident lie about a job whose workflow does not
         exist. Caught on the first end-to-end run against production."""
         assert _classify(workflow_known=False).state == L.UNKNOWN_JOB
+
+
+class TestTwoStoppedStatesNotOne:
+    """⚠️ THE DISTINCTION r164 / r166 / r167 TURNED ON, and the weekly card is
+    where it proves out.
+
+    `is_coming_soon` means DECLARED, NEVER BUILT. `is_active=False` alone means
+    SOMEONE SWITCHED IT OFF. Document Review Reminder is both, which is why they
+    look like one state — but Training Expiry is switched off and deliberately
+    NOT coming-soon, because it is COVERED by Compliance Sync. "Not built yet"
+    would be false about it, and both render on the weekly card today.
+    """
+
+    def test_coming_soon_says_not_built(self):
+        r = _classify(is_coming_soon=True, is_active=False)
+        assert r.state == L.NOT_BUILT
+        assert "not built yet" in r.label.lower()
+
+    def test_inactive_alone_says_switched_off(self):
+        r = _classify(is_active=False)
+        assert r.state == L.SWITCHED_OFF
+        assert "switched off" in r.label.lower()
+        assert "not built" not in r.label.lower(), (
+            "Training Expiry is covered by Compliance Sync, not unbuilt — "
+            "'not built yet' would be false about it"
+        )
+
+    def test_not_built_wins_when_both_are_true(self):
+        """DRR is both. The more specific fact is the more useful one."""
+        assert _classify(is_coming_soon=True, is_active=False).state == L.NOT_BUILT
+
+    def test_stopped_outranks_runs_dry(self):
+        """⚠️ `runs_dry` IS A PROMISE — "preview only" implies it would write if
+        promoted. A not-built job has no service behind it and a switched-off one
+        was stopped on purpose, so neither would. Ranking dry first turns an
+        honest absence into a false expectation."""
+        assert _classify(
+            is_coming_soon=True, live_whens=[], dry_whens=["Daily · 10:30 PM"]
+        ).state == L.NOT_BUILT
+        assert _classify(
+            is_active=False, live_whens=[], dry_whens=["Daily · 10:30 PM"]
+        ).state == L.SWITCHED_OFF
+
+    def test_unknown_job_still_outranks_both(self):
+        assert _classify(
+            workflow_known=False, is_coming_soon=True, is_active=False
+        ).state == L.UNKNOWN_JOB
