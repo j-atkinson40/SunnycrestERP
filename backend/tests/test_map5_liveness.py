@@ -27,7 +27,7 @@ def _classify(**kw):
     base = dict(
         workflow_known=True, has_tenant_ledger=True,
         last_status="completed", last_run_at=_SIX_HOURS_AGO,
-        now=_NOW, fires_live=True,
+        now=_NOW, live_whens=["Daily · 6:00 AM"], dry_whens=[],
     )
     base.update(kw)
     return L.classify(**base)
@@ -38,13 +38,13 @@ class TestRunsDryIsTheDesignsTest:
         """⚠️ ORDER IS LOAD-BEARING. The dry check OUTRANKS run status, because
         a dry run that recorded `completed` is still a preview. Ranking status
         first renders "Ran 6 hours ago" over a run that changed nothing."""
-        r = _classify(fires_live=False, last_status="completed")
+        r = _classify(live_whens=[], dry_whens=["Daily · 10:30 PM"], last_status="completed")
         assert r.state == L.RUNS_DRY
 
     def test_the_copy_denies_the_write_in_the_same_line_as_the_run(self):
         """The specific failure it must prevent: reading `completed` plus a
         nonzero ingested count as a working feed."""
-        label = _classify(fires_live=False).label.lower()
+        label = _classify(live_whens=[], dry_whens=["Daily · 10:30 PM"]).label.lower()
         assert "preview" in label
         assert "nothing was saved" in label
 
@@ -52,7 +52,7 @@ class TestRunsDryIsTheDesignsTest:
         """"Writes nothing until promoted" was rejected — accurate, but
         `promoted` names a control a tenant operator cannot see. Correct and
         unhelpful is still a copy failure."""
-        assert "promot" not in _classify(fires_live=False).label.lower()
+        assert "promot" not in _classify(live_whens=[], dry_whens=["Daily · 10:30 PM"]).label.lower()
 
 
 class TestTheBrokenReferenceCannotReadAsNeverRun:
@@ -75,7 +75,7 @@ class TestTheBrokenReferenceCannotReadAsNeverRun:
         including `runs_dry` or `not_reportable`, which would both read as
         statements about a job that exists."""
         for kw in (
-            dict(fires_live=False),
+            dict(live_whens=[], dry_whens=["Daily · 10:30 PM"]),
             dict(has_tenant_ledger=False),
             dict(last_status="failed"),
             dict(last_run_at=None, last_status=None),
@@ -143,9 +143,60 @@ class TestEveryStateIsDeclared:
             _classify(workflow_known=False).state,
             _classify(has_tenant_ledger=False).state,
             _classify(last_run_at=None, last_status=None).state,
-            _classify(fires_live=False).state,
+            _classify(live_whens=[], dry_whens=["Daily · 10:30 PM"]).state,
             _classify(last_status="awaiting_input").state,
             _classify(last_status="failed").state,
             _classify().state,
         }
         assert produced == set(L.LIVENESS_STATES)
+
+
+class TestMixedPromotionIsLiveAndNamesTheSchedule:
+    """A task can carry several schedule triggers, promoted independently.
+
+    ⚠️ MIXED IS LIVE. `runs_dry` means NOTHING GETS WRITTEN, so if any trigger is
+    promoted, calling the member dry is false in the direction that matters:
+    "preview only" over a job that writes on its evening run is the same error as
+    "green" over one that wrote nothing.
+
+    But bare "live" under-informs, because half the schedule still produces
+    nothing — so the caveat NAMES the preview schedule. A hedge becomes
+    information when it says which.
+    """
+
+    def test_mixed_is_not_runs_dry(self):
+        r = _classify(live_whens=["Daily · 6:30 AM"], dry_whens=["Daily · 10:30 PM"])
+        assert r.state == L.RAN_AND_CLOSED
+
+    def test_the_caveat_names_the_preview_schedule(self):
+        label = _classify(
+            live_whens=["Daily · 6:30 AM"], dry_whens=["Daily · 10:30 PM"]
+        ).label
+        assert "10:30 PM" in label and "preview only" in label
+
+    def test_the_caveat_names_the_time_not_the_whole_phrase(self):
+        """A summary is "<cadence> · <time>". Interpolating it whole gives
+        "Ran 6 hours ago · Daily · 10:30 PM is preview only" — three items where
+        there are two. The same separator collision `_join_frequencies` hit, and
+        it matters for the same reason: a correct fix that reads as a rendering
+        bug gets "fixed" back."""
+        label = _classify(
+            live_whens=["Daily · 6:30 AM"], dry_whens=["Daily · 10:30 PM"]
+        ).label
+        assert "Daily · 10:30 PM" not in label
+        assert label.count("·") == 0
+
+    def test_plural_agrees(self):
+        label = _classify(
+            live_whens=["Daily · 6:30 AM"],
+            dry_whens=["Daily · 10:30 PM", "Weekly · Mon, 7:00 AM"],
+        ).label
+        assert "runs are preview only" in label
+
+    def test_all_dry_still_reads_as_a_preview_not_a_caveat(self):
+        """When nothing is promoted the member IS dry, and the copy must deny
+        the write outright rather than qualifying one schedule."""
+        label = _classify(
+            live_whens=[], dry_whens=["Daily · 10:30 PM", "Daily · 6:30 AM"]
+        ).label
+        assert "nothing was saved" in label

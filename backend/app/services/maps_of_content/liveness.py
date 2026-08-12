@@ -34,8 +34,9 @@ from typing import Any
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
-#: The six states a member can be in. Four are generic (they fall out of run
-#: status alone); `runs_dry` and `not_reportable` are configuration facts.
+#: The seven states a member can be in. Four are generic (they fall out of run
+#: status alone); `runs_dry` and `not_reportable` are configuration facts; the
+#: seventh is a broken reference — see `UNKNOWN_JOB` below.
 NEVER_RUN = "never_run"
 RAN_AND_CLOSED = "ran_and_closed"
 LEFT_A_DECISION = "left_a_decision"
@@ -91,7 +92,8 @@ def classify(
     last_status: str | None,
     last_run_at: Any,
     now: Any,
-    fires_live: bool,
+    live_whens: list[str] | None = None,
+    dry_whens: list[str] | None = None,
 ) -> Liveness:
     """One member's liveness. Pure — the query lives in `for_workflows`.
 
@@ -128,8 +130,40 @@ def classify(
         return Liveness(NEVER_RUN, "Scheduled, but hasn't run yet")
 
     ago = _humanize_ago((now - last_run_at).total_seconds())
+    live_whens = list(live_whens or [])
+    dry_whens = list(dry_whens or [])
 
-    if not fires_live:
+    # ⚠️ MIXED PROMOTION IS LIVE, AND THE CARD NAMES WHICH SCHEDULE.
+    # A task can carry several schedule triggers, promoted independently.
+    # `runs_dry` means NOTHING GETS WRITTEN — so if any trigger is live, calling
+    # the member dry is false in the direction that matters: "preview only" over
+    # a job that writes on its evening run is the same error as "green" over one
+    # that wrote nothing.
+    #
+    # But bare "live" under-informs, because half the schedule still produces
+    # nothing. So the caveat NAMES the preview schedule rather than flagging
+    # one — the same principle as `not_reportable` stating its boundary. A hedge
+    # becomes information when it says which.
+    #
+    # Possible because per-trigger `is_live` + `summary` already reach here in
+    # the resolved task payload; no new query, no new field.
+    # Name the TIME, not the whole humanized phrase. A summary is
+    # "<cadence> · <time>", so interpolating it whole gives
+    # "Ran 6 hours ago · Daily · 10:30 PM is preview only" — three items where
+    # there are two. Same collision `_join_frequencies` hit; same reason it
+    # matters, because a correct fix that reads as a rendering bug gets
+    # "fixed" back.
+    caveat = ""
+    if live_whens and dry_whens:
+        times = [w.split(" · ", 1)[-1] for w in dry_whens]
+        joined = times[0] if len(times) == 1 else (
+            " and ".join(times) if len(times) == 2
+            else ", ".join(times[:-1]) + f" and {times[-1]}"
+        )
+        noun, verb = ("run", "is") if len(times) == 1 else ("runs", "are")
+        caveat = f" — the {joined} {noun} {verb} preview only"
+
+    if not live_whens and dry_whens:
         # THE STATE THE DESIGN IS TESTED ON. It confirms the run and denies the
         # write in one line. "Writes nothing until promoted" was rejected:
         # accurate, but `promoted` is platform-admin vocabulary for a control a
@@ -138,7 +172,7 @@ def classify(
         return Liveness(RUNS_DRY, f"Ran {ago} · preview only — nothing was saved", last_run_at)
 
     if last_status == "awaiting_input":
-        return Liveness(LEFT_A_DECISION, f"Ran {ago} · waiting on you", last_run_at)
+        return Liveness(LEFT_A_DECISION, f"Ran {ago} · waiting on you{caveat}", last_run_at)
 
     if last_status == "failed":
         # "Didn't finish", not "failed". A run that halted on an unimplemented
@@ -146,9 +180,9 @@ def classify(
         # theirs to act on; an alarming word on a surface that renders daily
         # teaches people to ignore it. Work that IS theirs belongs in a queue
         # with an action, not a status line.
-        return Liveness(DID_NOT_COMPLETE, f"Ran {ago} · didn't finish", last_run_at)
+        return Liveness(DID_NOT_COMPLETE, f"Ran {ago} · didn't finish{caveat}", last_run_at)
 
-    return Liveness(RAN_AND_CLOSED, f"Ran {ago}", last_run_at)
+    return Liveness(RAN_AND_CLOSED, f"Ran {ago}{caveat}", last_run_at)
 
 
 def for_workflows(
