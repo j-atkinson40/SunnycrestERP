@@ -31,6 +31,38 @@ _WORKFLOWS = "workflows"
 _FOCUSES = "focuses"
 
 
+def _join_frequencies(phrases: list[str]) -> str | None:
+    """Join several humanized schedules into one legible phrase. MAP-5.
+
+    `humanize_schedule` returns "<cadence> · <time>". Joining two of them with
+    the same separator produces "Daily · 10:30 PM · Daily · 6:30 AM" — the
+    cadence repeats and the join collides with the separator already inside each
+    phrase, so a correct fix reads as a rendering bug.
+
+    When every phrase shares a cadence (the common case — a job that runs twice
+    daily), the cadence is stated once and the times are joined:
+    "Daily · 10:30 PM and 6:30 AM". Mixed cadences fall back to "; ", which is
+    unambiguous even if less pretty.
+    """
+    if not phrases:
+        return None
+    if len(phrases) == 1:
+        return phrases[0]
+
+    split = [p.split(" · ", 1) for p in phrases]
+    if all(len(parts) == 2 for parts in split):
+        heads = {parts[0] for parts in split}
+        if len(heads) == 1:
+            tails = [parts[1] for parts in split]
+            joined = (
+                " and ".join(tails)
+                if len(tails) == 2
+                else ", ".join(tails[:-1]) + f" and {tails[-1]}"
+            )
+            return f"{split[0][0]} · {joined}"
+    return "; ".join(phrases)
+
+
 def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
     """One catalog row → its rendered shape, with workflow + focuses resolved
     through the cards' BUILDERS path ({exists, available, label, routing})."""
@@ -111,12 +143,29 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         }
         for t in active_triggers
     ]
-    schedule_trigger = next((t for t in active_triggers if t.kind == "schedule"), None)
-    derived_frequency = (
-        _triggers.humanize_schedule(schedule_trigger.config)
-        if schedule_trigger
-        else None
-    )
+    # ⚠️ MAP-5 — ALL schedule triggers, not the first.
+    # This was `next((t for t in active_triggers if t.kind == "schedule"), None)`,
+    # which silently dropped every schedule after the first. `Pull Bank
+    # Transactions` carries TWO active schedule triggers (`30 22 * * *` and
+    # `30 6 * * *`) and rendered as "Daily · 10:30 PM" alone, while its measured
+    # runs land at 06:31 daily — a twice-daily job shown as once-daily.
+    #
+    # It matters more now than it did: a liveness line reading "last ran 6 hours
+    # ago" beside a clock time 14 hours old looks like the NEW feature is broken
+    # while being exactly correct. Shipping liveness onto a frequency that drops
+    # half a schedule would make the new thing look like the defect, so the two
+    # are one change.
+    schedule_triggers = [t for t in active_triggers if t.kind == "schedule"]
+    _humanized = [
+        h for h in (
+            _triggers.humanize_schedule(t.config) for t in schedule_triggers
+        ) if h
+    ]
+    # Order-preserving dedupe: two triggers can humanize identically (the same
+    # cron authored twice), and repeating the phrase reads as a rendering bug.
+    _seen: set[str] = set()
+    _distinct = [h for h in _humanized if not (h in _seen or _seen.add(h))]
+    derived_frequency = _join_frequencies(_distinct)
     return {
         "id": task.id,
         "name": task.name,
