@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import re as _re
 import uuid
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy.orm import Session
 
@@ -62,15 +62,50 @@ _GRAIN_LABEL = {
 }
 
 
-def _job_cadences(db: Session, job) -> list[tuple[str, str]]:
-    """Every `(grain, when_text)` this job's automations run on.
+class _Cadence(NamedTuple):
+    """One automation's rhythm, plus what liveness needs to judge it. MAP-5.
 
-    Reads the SAME precedence the automation beat uses — one expression, two
-    consumers, so a job's rhythm and its automation's rhythm cannot disagree.
+    A NAMED shape rather than more tuple positions, because the fields serve two
+    concerns — the first two describe WHEN, the rest describe WHETHER — and a
+    five-position tuple would hide that at every call site.
+    """
+
+    grain: str
+    when: str
+    automation: str
+    runtime_workflow_id: str | None
+    live_whens: tuple[str, ...]
+    dry_whens: tuple[str, ...]
+
+
+def _job_cadences(db: Session, job) -> list[_Cadence]:
+    """Every rhythm this job's automations run on, with liveness inputs.
+
+    ⚠️ THIS DOCSTRING USED TO CLAIM "one expression, two consumers, so a job's
+    rhythm and its automation's rhythm cannot disagree." THAT WAS FALSE, and it
+    was believed — the precedence below is COPY-PASTED IN THREE PLACES:
+
+        area_ponder.py::_job_cadences   (here)
+        area_ponder.py                  (the automation beat)
+        jobs.py                         (the job's own refs)
+
+    Semantically identical, textually different: three formattings, two variable
+    names. So the invariant that comment named is MANUAL, not mechanical —
+    nothing detects the three drifting apart, and whoever updates one gets no
+    signal that two others exist.
+
+    A false claim in the place someone would look to check it is the same shape
+    as `_deliberately_broken` asserting bulk dispatch did not exist. Recorded
+    rather than quietly fixed: consolidating the three is its own pass, and it
+    wants a TEST asserting they agree, not a comment claiming they do.
+
+    ⚠️ ONLY THIS SITE IS WIDENED. The other two build a `when` string for a beat
+    line and need none of the liveness fields — widening them would hand unused
+    data to consumers that never read it.
     """
     from app.services.maps_of_content.jobs import resolve_job
 
-    out: list[tuple[str, str]] = []
+    out: list[_Cadence] = []
     for ref in resolve_job(db, job)["refs"]:
         if ref["kind"] != "automation":
             continue
@@ -80,8 +115,25 @@ def _job_cadences(db: Session, job) -> list[tuple[str, str]]:
             if t.get("schedule_authority") == "runtime_scheduler"
             else (t.get("derived_frequency") or t.get("frequency"))
         )
-        if when:
-            out.append((_grain_of(str(when)), str(when).rstrip(".")))
+        if not when:
+            continue
+        # Per-trigger promotion, already resolved in the task payload — the
+        # split that lets a card name WHICH schedule is a preview rather than
+        # flagging the whole member. No extra query.
+        triggers = [x for x in (t.get("triggers") or []) if x.get("summary")]
+        wf = t.get("workflow") or {}
+        out.append(
+            _Cadence(
+                grain=_grain_of(str(when)),
+                when=str(when).rstrip("."),
+                automation=str(t.get("name") or ""),
+                runtime_workflow_id=wf.get("runtime_workflow_id"),
+                live_whens=tuple(x["summary"] for x in triggers if x.get("is_live")),
+                dry_whens=tuple(
+                    x["summary"] for x in triggers if not x.get("is_live")
+                ),
+            )
+        )
     return out
 
 
@@ -349,27 +401,109 @@ def build_area_ponder_script(
             if not cadences:
                 rhythmless.append({"id": j.id, "name": j.name})
                 continue
-            for grain, when in cadences:
-                slot = by_grain.setdefault(grain, {"jobs": [], "whens": []})
+            for c in cadences:
+                slot = by_grain.setdefault(
+                    grain := c.grain, {"jobs": [], "whens": [], "_members": []}
+                )
                 if not any(x["name"] == j.name for x in slot["jobs"]):
                     slot["jobs"].append({"id": j.id, "name": j.name})
-                if when not in slot["whens"]:
-                    slot["whens"].append(when)
+                if c.when not in slot["whens"]:
+                    slot["whens"].append(c.when)
+                # MAP-5: carried per grain so liveness can be resolved in ONE
+                # hoisted query after the loop rather than per member. Private
+                # (`_members`) because it is an input to the liveness pass, not
+                # part of the beat's payload — the rendered `liveness` list
+                # replaces it.
+                slot["_members"].append(
+                    {
+                        "job": j.name,
+                        # ⚠️ THE AUTOMATION NAME, NOT JUST THE JOB'S. A job can
+                        # contribute SEVERAL automations to one grain — the
+                        # weekly card carries two from "Compliance & records
+                        # upkeep" — and keying the line on the job renders two
+                        # identical labels with different states, which reads as
+                        # a rendering bug rather than two facts.
+                        "automation": c.automation,
+                        "workflow_id": c.runtime_workflow_id,
+                        "live_whens": list(c.live_whens),
+                        "dry_whens": list(c.dry_whens),
+                    }
+                )
+
+        # ── MAP-5 — LIVENESS, HOISTED ────────────────────────────────────
+        # Two queries total for every member across every grain, against a
+        # render that currently issues 262. Derived here and never stored: a
+        # cached last-ran column is a write-time status claim with no reader.
+        #
+        # ⚠️ OMITTED ENTIRELY WITHOUT A TENANT. `company_id` is optional on this
+        # builder, and `workflow_runs` is tenant-scoped. Rendering a
+        # platform-wide last-run on a tenant's card would be a scope error
+        # dressed as a fact — the same class as reading a platform count as one
+        # tenant's. No tenant, no claim.
+        from datetime import datetime, timezone
+
+        from app.services.maps_of_content import liveness as _liveness
+
+        _runs: dict[str, tuple] = {}
+        _known: set[str] = set()
+        if company_id:
+            _wids = [
+                m["workflow_id"]
+                for s in by_grain.values()
+                for m in s["_members"]
+                if m["workflow_id"]
+            ]
+            if _wids:
+                _runs = _liveness.for_workflows(
+                    db, workflow_ids=_wids, company_id=company_id
+                )
+                _known = _liveness.known_workflows(db, _wids)
+        _now = datetime.now(timezone.utc)
 
         for grain in _GRAIN_ORDER:
             slot = by_grain.get(grain)
             if not slot:
                 continue
             names = [x["name"] for x in slot["jobs"]]
+            cadence: dict[str, Any] = {
+                "grain": grain,
+                "label": _GRAIN_LABEL[grain],
+                "whens": sorted(slot["whens"]),
+                "jobs": slot["jobs"],
+            }
+            if company_id:
+                # A SIBLING OF `whens` AND `jobs`, NEVER MERGED INTO `text`.
+                # `check_area_drift` flags an authored caption that restates
+                # derived content, and liveness is derived — baking "and it has
+                # never fired" into prose goes stale the moment it fires.
+                cadence["liveness"] = []
+                for m in slot["_members"]:
+                    _status, _at = _runs.get(m["workflow_id"], (None, None))
+                    _lv = _liveness.classify(
+                        workflow_known=bool(m["workflow_id"])
+                        and m["workflow_id"] in _known,
+                        has_tenant_ledger=True,
+                        last_status=_status,
+                        last_run_at=_at,
+                        now=_now,
+                        live_whens=m["live_whens"],
+                        dry_whens=m["dry_whens"],
+                    )
+                    cadence["liveness"].append(
+                        {
+                            "job": m["job"],
+                            "automation": m["automation"],
+                            "state": _lv.state,
+                            "label": _lv.label,
+                            "last_run_at": (
+                                _lv.last_run_at.isoformat() if _lv.last_run_at else None
+                            ),
+                        }
+                    )
             _beat(
                 f"cadence:{grain}", "task",
                 f"{_GRAIN_LABEL[grain]} — {_join_names(names)}.",
-                cadence={
-                    "grain": grain,
-                    "label": _GRAIN_LABEL[grain],
-                    "whens": sorted(slot["whens"]),
-                    "jobs": slot["jobs"],
-                },
+                cadence=cadence,
             )
 
         if rhythmless:

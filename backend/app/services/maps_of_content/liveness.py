@@ -185,6 +185,27 @@ def classify(
     return Liveness(RAN_AND_CLOSED, f"Ran {ago}{caveat}", last_run_at)
 
 
+def known_workflows(db: Session, workflow_ids: list[str]) -> set[str]:
+    """Which of these ids are real `workflows` rows.
+
+    ⚠️ SEPARATE FROM "HAS RUNS", DELIBERATELY. `for_workflows` returns rows only
+    where a run exists, so a missing key there is ambiguous between "never ran"
+    and "no such workflow" — and collapsing the two is what made this module
+    report "hasn't run yet" about a job that runs twice daily.
+
+    One extra query against a primary key. The alternative — inferring existence
+    from a non-null template FK — assumes a referential guarantee this code does
+    not check, and the whole point of `unknown_job` is not assuming.
+    """
+    if not workflow_ids:
+        return set()
+    rows = db.execute(
+        sql_text("SELECT id FROM workflows WHERE id = ANY(:ids)"),
+        {"ids": workflow_ids},
+    )
+    return {r[0] for r in rows}
+
+
 def for_workflows(
     db: Session, *, workflow_ids: list[str], company_id: str
 ) -> dict[str, tuple[str | None, Any]]:
