@@ -200,3 +200,49 @@ class TestMixedPromotionIsLiveAndNamesTheSchedule:
             live_whens=[], dry_whens=["Daily · 10:30 PM", "Daily · 6:30 AM"]
         ).label
         assert "nothing was saved" in label
+
+
+class TestTheRuntimeWorkflowIdHasTwoHomes:
+    """⚠️ CHECKING ONE HOME PRODUCES A CONFIDENT WRONG ANSWER.
+
+    A `workflow_templates` row points at its runtime workflow through
+    `compiled_workflow_id` OR `mirrored_from_workflow_id`, never both. Measured
+    across the accounting tasks: SIX resolve through the mirror, ONE through
+    compiled — and the one is `Pull Bank Transactions`, which is liveness's own
+    test case. A mirror-only lookup returns NULL for it, finds no runs, and the
+    card says "hasn't run yet" about a job that runs twice daily.
+
+    `artifact_id` is the TEMPLATE id and is not the runtime id — measured, zero
+    `workflow_runs` rows are ever recorded against it.
+    """
+
+    def test_resolution_tries_both_columns(self):
+        import inspect
+
+        from tests._source import code_only
+
+        from app.services.maps_of_content import task_catalog
+
+        src = code_only(inspect.getsource(task_catalog.resolve_task))
+        assert "runtime_workflow_id" in src
+        assert "compiled_workflow_id" in src and "mirrored_from_workflow_id" in src
+
+    def test_it_is_resolved_where_the_template_is_already_loaded(self):
+        """One home, no extra query. A second consumer deriving it separately is
+        how the two would drift apart."""
+        import inspect
+
+        from tests._source import code_only
+
+        from app.services.maps_of_content import task_catalog
+
+        src = code_only(inspect.getsource(task_catalog.resolve_task))
+        body = src.split("tmpl = db.get(WorkflowTemplate")[1]
+        assert "runtime_workflow_id" in body
+
+    def test_a_null_resolution_is_unknown_not_never_run(self):
+        """`Funeral Home Billing` has never compiled — no runtime workflow at
+        all. Without the guard it renders as "Scheduled, but hasn't run yet",
+        which is a plausible, confident lie about a job whose workflow does not
+        exist. Caught on the first end-to-end run against production."""
+        assert _classify(workflow_known=False).state == L.UNKNOWN_JOB

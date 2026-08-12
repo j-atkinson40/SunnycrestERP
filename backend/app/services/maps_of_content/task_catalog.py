@@ -95,6 +95,26 @@ def resolve_task(db: Session, task: MoCTaskCatalog) -> dict[str, Any]:
         workflow["is_mirror"] = (
             tmpl is not None and tmpl.mirrored_from_workflow_id is not None
         )
+        # ⚠️ MAP-5 — THE RUNTIME WORKFLOW ID HAS TWO HOMES, AND CHECKING ONE
+        # PRODUCES A CONFIDENT WRONG ANSWER.
+        # A template points at its runtime workflow through `compiled_workflow_id`
+        # OR `mirrored_from_workflow_id`, never both. Measured across the
+        # accounting tasks: six resolve through the mirror, ONE through compiled
+        # — and the one is `Pull Bank Transactions`, which is liveness's own test
+        # case. A mirror-only lookup returns NULL for it, finds no runs, and the
+        # card says "hasn't run yet" about a job that runs twice daily.
+        #
+        # `artifact_id` is the TEMPLATE id and is not this: runs are never
+        # recorded against it (measured: 0 rows).
+        #
+        # Resolved here because `tmpl` is already loaded — no extra query — and
+        # because one home for it is what stops a second consumer deriving it
+        # differently.
+        workflow["runtime_workflow_id"] = (
+            (tmpl.compiled_workflow_id or tmpl.mirrored_from_workflow_id)
+            if tmpl is not None
+            else None
+        )
         # T-0 — WHO makes this task fire (the honesty badges key on it).
         if workflow["is_mirror"]:
             from app.services.maps_of_content.ponder import (
