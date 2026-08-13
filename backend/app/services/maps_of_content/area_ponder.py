@@ -500,10 +500,23 @@ def build_area_ponder_script(
                     _status, _at = _runs.get(m["workflow_id"], (None, None))
                     _f = _flags.get(m["workflow_id"] or "", {})
                     _lv = _liveness.classify(
+                        # ⚠️ WAS HARDCODED `True`, WHICH MADE ONE OF NINE STATES
+                        # UNREACHABLE. B-4 ruled that members whose only ledger
+                        # is APScheduler's `job_runs` get `not_reportable`,
+                        # because that table has NO TENANT COLUMN and any claim
+                        # from it would be platform-wide on a tenant's card. The
+                        # state was built, its copy written, its behaviour
+                        # tested — and the input was never connected, so it
+                        # could never fire. Capability sitting unwired, in
+                        # something shipped the day before.
+                        #
+                        # A member reports into `workflow_runs` (tenant-scoped)
+                        # exactly when it resolves to a runtime workflow. No
+                        # workflow id means no tenant ledger.
+                        has_tenant_ledger=bool(m["workflow_id"]),
                         workflow_known=bool(m["workflow_id"]) and bool(_f),
                         is_coming_soon=_f.get("is_coming_soon", False),
                         is_active=_f.get("is_active", True),
-                        has_tenant_ledger=True,
                         last_status=_status,
                         last_run_at=_at,
                         now=_now,

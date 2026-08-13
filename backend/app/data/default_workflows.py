@@ -947,14 +947,23 @@ TIER_1_WORKFLOWS = [
                     ),
                     # WE-1 A-2 (ported from r162 — the migration was reverted by
                     # THIS seeder on the next boot; the definition is the durable
-                    # home for step config). The gate asks about DRAFTS and the
-                    # producer emits `drafts_generated`, which was 0 on all 127
-                    # runs across three months. Without this the gate parks on
-                    # nothing every run — the 12,367-run pathology A-2 exists to
-                    # stop.
+                    # home for step config). The gate asks about DRAFTS, so it
+                    # parks only when there are some.
+                    #
+                    # ⚠️ FIELD CORRECTED (CR-1). This read
+                    # `{output.run_collections.drafts_generated}`, and that key
+                    # is NEVER in the payload — 0 of 40 real report payloads
+                    # carry it, 40 of 40 carry `drafts_ready`. So the predicate
+                    # was permanently `0 > 0` and THE GATE COULD NEVER PARK,
+                    # including on the three runs that had drafts to review.
+                    #
+                    # r162 justified itself with "drafts_generated: 0 on every
+                    # run across three months" — a zero that meant ABSENT, read
+                    # as a zero that meant NONE. The arc's own thesis, missed
+                    # inside the fix.
                     "park_when": {
                         "op": ">",
-                        "field": "{output.run_collections.drafts_generated}",
+                        "field": "{output.run_collections.drafts_ready}",
                         "value": 0,
                     },
                 },

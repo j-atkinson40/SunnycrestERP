@@ -135,7 +135,28 @@ def run_collections_pipeline(
         "follow_up_count": exec_summary.get("follow_up_count", 0),
         "escalate_count": exec_summary.get("escalate_count", 0),
         "critical_count": exec_summary.get("critical_count", 0),
-        "drafts_generated": exec_summary.get("drafts_generated", 0),
+        # ⚠️ WAS `exec_summary.get("drafts_generated", 0)` — A KEY THAT IS NEVER
+        # IN THE PAYLOAD. Measured: 0 of 40 real report payloads carry
+        # `drafts_generated`; 40 of 40 carry `drafts_ready`, non-zero on 3. The
+        # agent writes `drafts_generated` into a STEP's data dict, never into
+        # `report_payload`, so this `.get()` returned its default forever.
+        #
+        # THE CONSEQUENCE WAS WORSE THAN THE BUG IT WAS ADDED TO FIX. r162 put
+        # `park_when: drafts_generated > 0` on this gate to stop it parking on
+        # nothing 127 times. Against a key that is always 0, the gate could never
+        # park AT ALL — including the three runs that genuinely had drafts to
+        # review. A noisy false positive became a silent false negative.
+        #
+        # ⚠️ AND THE EVIDENCE FOR THAT FIX WAS THIS SAME BUG. r162's commit reads
+        # "A-3 measured drafts_generated: 0 on every run across three months."
+        # That zero meant ABSENT and was read as meaning NONE — the exact
+        # distinction this arc exists to draw, missed inside the fix.
+        #
+        # A `.get()` WITH A DEFAULT RETURNS A PLAUSIBLE NUMBER FOR A NAME THAT
+        # DOES NOT EXIST. That is the worst form of the wrong-name family: no
+        # crash, no empty result, just a confident wrong value that survives
+        # being measured.
+        "drafts_ready": exec_summary.get("drafts_ready", 0),
         "dry_run": dry_run,
     }
 

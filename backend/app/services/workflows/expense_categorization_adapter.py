@@ -119,7 +119,16 @@ def run_categorization_pipeline(
         "agent_job_id": job.id,
         "status": job.status,
         "anomaly_count": job.anomaly_count,
-        "uncategorized_found": exec_summary.get("uncategorized_found", 0),
+        # ⚠️ WAS `exec_summary.get("uncategorized_found", 0)` — a key the agent
+        # never writes. Real payloads carry `total_uncategorized` (40 of 40).
+        # Same defect as the AR adapter's `drafts_generated`, found by the guard
+        # written for that one, on its first run.
+        #
+        # LOWER SEVERITY THAN THE AR CASE, and the difference is instructive: no
+        # gate reads this field, so it was a wrong number in a step's output
+        # rather than a predicate that could never fire. The expense gate parks
+        # on `needs_review`, which IS present on 40 of 40 — that gate works.
+        "total_uncategorized": exec_summary.get("total_uncategorized", 0),
         "auto_apply_ready": exec_summary.get("auto_apply_ready", 0),
         "needs_review": exec_summary.get("needs_review", 0),
         "no_gl_mapping": exec_summary.get("no_gl_mapping", 0),
