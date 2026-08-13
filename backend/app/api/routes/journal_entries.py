@@ -17,6 +17,8 @@ from app.models.accounting_analysis import TenantGLMapping
 from app.models.user import User
 from app.services import journal_entry_service, reconciliation_gl
 from app.services.journal_entry_service import JournalLineSpec
+from app.models.period_lock import PeriodLock
+from app.services.accounting.period_projection import lock_span_for_month, project_month
 from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
 
 logger = logging.getLogger(__name__)
@@ -432,38 +434,61 @@ def create_template(
 
 # ── Periods ──
 
+def _active_locks(db: Session, tenant_id: str) -> list[PeriodLock]:
+    """Every live lock for the tenant.
+
+    `is_active` is the same flag `PeriodLockService.check_date_in_locked_period`
+    filters on. If the projection and the enforcer disagreed about which locks
+    count, the tab would describe a period the write paths do not agree with —
+    which is the whole defect this projection exists to close.
+    """
+    return (
+        db.query(PeriodLock)
+        .filter(PeriodLock.tenant_id == tenant_id, PeriodLock.is_active == True)  # noqa: E712
+        .all()
+    )
+
+
 @router.get("/periods")
 def list_periods(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    periods = db.query(AccountingPeriod).filter(
-        AccountingPeriod.tenant_id == current_user.company_id,
-    ).order_by(AccountingPeriod.period_year.desc(), AccountingPeriod.period_month.desc()).limit(24).all()
+    """The last 24 months, each projected from `period_locks`.
 
-    # If no periods exist, create current and last 2 months
-    if not periods:
-        today = date.today()
-        for i in range(3):
-            m = today.month - i
-            y = today.year
-            if m <= 0:
-                m += 12
-                y -= 1
-            db.add(AccountingPeriod(tenant_id=current_user.company_id, period_month=m, period_year=y))
-        db.commit()
-        periods = db.query(AccountingPeriod).filter(
-            AccountingPeriod.tenant_id == current_user.company_id,
-        ).order_by(AccountingPeriod.period_year.desc(), AccountingPeriod.period_month.desc()).all()
+    ⚠️ THIS READS THE LOCK, NOT `accounting_periods.status`. The tab used to show
+    a status only the journal-entry post honoured — so Close stopped JEs and left
+    every AR path writing. The reader stays; the source moved. See
+    `services/accounting/period_projection` for why there are three states.
 
-    return [
-        {
-            "id": p.id, "period_month": p.period_month, "period_year": p.period_year,
-            "status": p.status,
-            "closed_at": p.closed_at.isoformat() if p.closed_at else None,
-        }
-        for p in periods
-    ]
+    No longer creates rows on first read. That branch existed because an empty
+    table meant an empty tab; a projection over the calendar cannot be empty.
+    """
+    locks = _active_locks(db, current_user.company_id)
+    spans = [(lk.period_start, lk.period_end) for lk in locks]
+    today = date.today()
+
+    out = []
+    for i in range(24):
+        m, y = today.month - i, today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        # The lock covering the 1st, for the timestamp the tab already displayed.
+        covering = next(
+            (lk for lk in locks if lk.period_start <= date(y, m, 1) <= lk.period_end),
+            None,
+        )
+        out.append({
+            # Synthetic and stable. The tab keys rows by this; it no longer
+            # corresponds to a row, because the row is no longer the source.
+            "id": f"{y}-{m:02d}",
+            "period_month": m,
+            "period_year": y,
+            "status": project_month(spans, month=m, year=y),
+            "closed_at": covering.locked_at.isoformat() if covering else None,
+        })
+    return out
 
 
 @router.post("/periods/close")
@@ -472,23 +497,35 @@ def close_period(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    period = db.query(AccountingPeriod).filter(
-        AccountingPeriod.tenant_id == current_user.company_id,
-        AccountingPeriod.period_month == body.period_month,
-        AccountingPeriod.period_year == body.period_year,
-    ).first()
-    if not period:
-        period = AccountingPeriod(
+    """Write a lock spanning the whole month.
+
+    ⚠️ THIS USED TO SET `accounting_periods.status` AND NOTHING ELSE, which only
+    the JE post honoured — so it stopped journal entries and left invoices,
+    payments and statements posting freely. A partially-working control is harder
+    to notice than a broken one: the operator sees JEs refuse and concludes the
+    close worked.
+
+    Writing the whole month is the inverse of `project_month`, so the round trip
+    reads back as `closed` rather than `partially_closed`.
+    """
+    start, end = lock_span_for_month(body.period_month, body.period_year)
+
+    # Idempotent: re-closing an already-locked month must not stack locks, or
+    # `open` would have to delete an unknown number of them to take effect.
+    existing = [
+        lk
+        for lk in _active_locks(db, current_user.company_id)
+        if lk.period_start <= start and lk.period_end >= end
+    ]
+    if not existing:
+        db.add(PeriodLock(
             tenant_id=current_user.company_id,
-            period_month=body.period_month,
-            period_year=body.period_year,
-        )
-        db.add(period)
-        db.flush()
-    period.status = "closed"
-    period.closed_by = current_user.id
-    period.closed_at = datetime.now(timezone.utc)
-    db.commit()
+            period_start=start,
+            period_end=end,
+            locked_by=current_user.id,
+            lock_reason=f"Period {body.period_month}/{body.period_year} closed from the Accounting Periods tab",
+        ))
+        db.commit()
     return {"status": "closed"}
 
 
@@ -498,17 +535,28 @@ def open_period(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    period = db.query(AccountingPeriod).filter(
-        AccountingPeriod.tenant_id == current_user.company_id,
-        AccountingPeriod.period_month == body.period_month,
-        AccountingPeriod.period_year == body.period_year,
-    ).first()
-    if period:
-        period.status = "open"
-        period.closed_by = None
-        period.closed_at = None
+    """Deactivate every active lock overlapping the month.
+
+    OVERLAPPING, not exactly-matching. A lock written by month-end close may span
+    a different range than this tab's month, and an `open` that only matched its
+    own spans would report success while leaving the month locked — the same
+    reports-success-without-controlling failure this endpoint's sibling had.
+    """
+    start, end = lock_span_for_month(body.period_month, body.period_year)
+    now = datetime.now(timezone.utc)
+
+    overlapping = [
+        lk
+        for lk in _active_locks(db, current_user.company_id)
+        if lk.period_start <= end and lk.period_end >= start
+    ]
+    for lk in overlapping:
+        lk.is_active = False   # the flag `check_date_in_locked_period` filters on
+        lk.unlocked_by = current_user.id
+        lk.unlocked_at = now
+    if overlapping:
         db.commit()
-    return {"status": "open"}
+    return {"status": "open", "locks_released": len(overlapping)}
 
 
 # ── GL Accounts (for form dropdowns) ──
