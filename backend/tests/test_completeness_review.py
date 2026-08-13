@@ -21,7 +21,11 @@ from datetime import date, timedelta
 import pytest
 
 from app.services.completeness import expectations as ex
+from sqlalchemy import text
+
 from app.services.completeness.review import (
+    ARRIVED,
+    REPORTED_NONE,
     ACTIONABLE,
     DECLINED,
     MISSING,
@@ -164,3 +168,66 @@ class TestPeriodArithmetic:
         w = ex.periods_in_window("daily", date(2026, 8, 13))
         for (_, prev_end), (nxt_start, _) in zip(w, w[1:]):
             assert nxt_start == prev_end + timedelta(days=1)
+
+
+class TestTheNothingHappenedPath:
+    """⚠️ WITHOUT THIS, EVERY QUIET DAY READS AS A GAP. Measured on testco: 21
+    `missing` rows, of which 6 may be a factory that simply did not pour. The
+    carve-out is what makes the report CORRECT, not merely quieter."""
+
+    def _claim(self, db, key, start, end, *, name="J. Atkinson", role="production"):
+        from datetime import datetime, timezone
+        import uuid
+        db.execute(text(
+            "INSERT INTO completeness_nil_claims (id, tenant_id, expectation_key, "
+            "period_start, period_end, claimed_by, claimed_by_name, "
+            "claimed_by_role_slug, claimed_at, note, created_at) VALUES "
+            "(:i,:t,:k,:s,:e,NULL,:n,:r,:a,'quiet day',:a)"),
+            {"i": str(uuid.uuid4()), "t": TENANT, "k": key, "s": start, "e": end,
+             "n": name, "r": role, "a": datetime.now(timezone.utc)})
+        db.flush()
+
+    def test_a_claim_turns_missing_into_reported_none(self, db):
+        past = date(2026, 8, 8)
+        before = [r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+                  if r.key == "production_log_daily" and r.period_start == past]
+        assert before and before[0].verdict == MISSING, "fixture assumption broke"
+
+        self._claim(db, "production_log_daily", past, past)
+        after = [r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+                 if r.key == "production_log_daily" and r.period_start == past]
+        assert after[0].verdict == REPORTED_NONE
+
+    def test_the_claimant_is_named_on_the_row(self, db):
+        """The accountability IS the evidence — a nil claim nobody signed is
+        just silence with extra steps."""
+        past = date(2026, 8, 8)
+        self._claim(db, "production_log_daily", past, past)
+        row = next(r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+                   if r.key == "production_log_daily" and r.period_start == past)
+        assert "J. Atkinson" in row.detail and "production" in row.detail
+
+    def test_reported_none_is_not_arrived(self, db):
+        """A month of nil claims must not render as a month of work."""
+        past = date(2026, 8, 8)
+        self._claim(db, "production_log_daily", past, past)
+        row = next(r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+                   if r.key == "production_log_daily" and r.period_start == past)
+        assert row.verdict != ARRIVED
+        assert row.verdict not in ACTIONABLE, "a signed nil claim is not a gap"
+
+
+class TestEvidenceIsTheDeliverableNotTheMechanism:
+    def test_no_expectation_reads_a_run_table(self):
+        """⚠️ MAP-5 ASKS IF THE MECHANISM RAN; THIS ASKS IF THE DELIVERABLE
+        ARRIVED. A bank sync that ran green and imported nothing satisfies MAP-5
+        and must not satisfy this — measured this week as "the error stopped,
+        and green does not mean the feed works". Declaring `workflow_runs` as
+        evidence would silently make a dry-run preview count as satisfaction."""
+        from app.services.completeness.review import _NEVER_EVIDENCE
+
+        for e in ex.PLATFORM + [x for v in ex.VERTICAL.values() for x in v]:
+            assert e.evidence.table not in _NEVER_EVIDENCE, (
+                f"{e.key} takes its evidence from {e.evidence.table} — a run "
+                f"record, which a dry run also writes"
+            )

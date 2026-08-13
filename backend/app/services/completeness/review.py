@@ -39,16 +39,42 @@ MISSING = "missing"
 #: In its period, not yet late. What a two-state design eats — and reporting a
 #: deliverable due on the 20th as missing on the 5th trains readers to ignore it.
 NOT_YET_DUE = "not_yet_due"
+#: Someone with the obligation stated that nothing happened, and signed it.
+#: ⚠️ SATISFIED, BUT NOT `arrived`. Folding this into `arrived` would render a
+#: month of nil claims identically to a month of real work — the review would
+#: read clean while describing an empty factory. "Nothing arrived" and "someone
+#: said nothing happened" are both non-events, and collapsing them loses the one
+#: that carries accountability.
+REPORTED_NONE = "reported_none"
 #: The tenant said they don't do this, and why.
 DECLINED = "declined"
 #: The probe could not run. NOT absence — a broken check must not read as a
 #: clean period, which is the exact substitution this module exists to refuse.
 UNKNOWN = "unknown"
 
-VERDICTS = (ARRIVED, PARTIAL, MISSING, NOT_YET_DUE, DECLINED, UNKNOWN)
+VERDICTS = (ARRIVED, PARTIAL, MISSING, NOT_YET_DUE, REPORTED_NONE, DECLINED, UNKNOWN)
 
-#: Verdicts a reader must act on. `arrived` and `not_yet_due` are quiet.
+#: Verdicts a reader must act on. `arrived`, `reported_none` and `not_yet_due`
+#: are quiet — but `reported_none` stays VISIBLY distinct, so a long run of them
+#: is legible to someone looking rather than indistinguishable from work.
 ACTIONABLE = (MISSING, PARTIAL, UNKNOWN)
+
+#: ⚠️ EVIDENCE IS DOMAIN ROWS, NEVER `workflow_runs` — AND THAT IS A DIFFERENT
+#: QUESTION, NOT A DUPLICATE DERIVATION. MAP-5's `liveness` asks whether the
+#: MECHANISM RAN; this asks whether the DELIVERABLE ARRIVED. They come apart
+#: exactly where it matters: this week measured a bank sync that ran green and
+#: imported nothing ("the error stopped, and green does not mean the feed
+#: works"). Such a run satisfies MAP-5 and must NOT satisfy this.
+#:
+#: MAP-5's rule that `runs_dry` outranks run status transfers and is honoured
+#: STRUCTURALLY: a dry run writes no domain rows, so it cannot be counted. The
+#: guard below makes that explicit rather than incidental — relying on the
+#: domain-row check to happen to exclude previews is how the rule gets lost.
+#:
+#: Two derivations of one fact is this codebase's recurring defect. These are
+#: two facts. Said here, at the seam, because the next reader sees the
+#: duplication before they see the reason.
+_NEVER_EVIDENCE = {"workflow_runs", "agent_jobs", "agent_run_steps"}
 
 
 @dataclass(frozen=True)
@@ -84,6 +110,24 @@ def _probe(db: Session, exp: Expectation, tenant_id: str, start: date, end: date
     except Exception:
         db.rollback()
         return None
+
+
+def _nil_claim(db: Session, tenant_id: str, key: str, start: date, end: date):
+    """A signed statement that nothing happened in this period, or None.
+
+    Checked BEFORE the domain probe returns `missing` — never instead of it. A
+    claim does not suppress real evidence; if both exist the evidence wins,
+    because a filed pour log contradicts "no pours" and the log is the harder
+    fact.
+    """
+    return db.execute(
+        text(
+            "SELECT claimed_by_name, claimed_by_role_slug, claimed_at, note "
+            "FROM completeness_nil_claims WHERE tenant_id = :t "
+            "AND expectation_key = :k AND period_start = :s AND period_end = :e"
+        ),
+        {"t": tenant_id, "k": key, "s": start, "e": end},
+    ).fetchone()
 
 
 def _tenant_start(db: Session, tenant_id: str) -> date | None:
@@ -128,6 +172,13 @@ def review(
                 verdict, detail = UNKNOWN, (
                     f"Could not read {exp.evidence.table}.{exp.evidence.date_column} — "
                     f"the check is broken, which is not the same as a clean period."
+                )
+            elif n == 0 and (claim := _nil_claim(db, tenant_id, exp.key, start, end)):
+                # The carve-out. Without it every quiet day reads as a gap, and
+                # testco measured that at 6 of 21 red rows possibly being noise.
+                verdict, detail = REPORTED_NONE, (
+                    f"{claim[0]} ({claim[1]}) reported nothing on "
+                    f"{claim[2]:%-d %b}" + (f": {claim[3]}" if claim[3] else "")
                 )
             elif n == 0 and today <= due:
                 verdict, detail = NOT_YET_DUE, f"Due {due:%-d %b}."
