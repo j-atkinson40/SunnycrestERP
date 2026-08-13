@@ -32,6 +32,26 @@ function formatRelativeAge(iso: string | null): string {
   return `${days}d ago`;
 }
 
+/**
+ * Render the locked spans as days within the month: "1–15" or "1–10, 20–31".
+ *
+ * ⚠️ THIS IS WHY THE THIRD STATE IS USABLE. "Partially closed" tells an operator
+ * nothing about whether the invoice in front of them will post; the days do. A
+ * state name nobody can act on is only a slightly better lie than the binary it
+ * replaced.
+ *
+ * Parsed by splitting the ISO string, NOT via `new Date(iso)` — that reads a
+ * bare date as UTC midnight and renders the previous day at any negative UTC
+ * offset, which would report the wrong closed dates to every US tenant.
+ */
+function formatLockedDays(ranges: [string, string][] | undefined): string {
+  if (!ranges || ranges.length === 0) return "";
+  const day = (iso: string) => Number(iso.split("-")[2]);
+  return ranges
+    .map(([s, e]) => (day(s) === day(e) ? `${day(s)}` : `${day(s)}–${day(e)}`))
+    .join(", ");
+}
+
 export default function AccountingPeriodsTab() {
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [periods, setPeriods] = useState<PeriodRow[] | null>(null);
@@ -163,11 +183,27 @@ export default function AccountingPeriodsTab() {
                     {p.display_name}
                   </td>
                   <td className="px-4 py-2">
-                    {p.status === "closed" ? (
+                    {p.status === "closed" && (
                       <Badge variant="secondary" className="bg-red-100 text-red-800">
                         <Lock className="mr-1 h-3 w-3" /> Closed
                       </Badge>
-                    ) : (
+                    )}
+                    {p.status === "partially_closed" && (
+                      // The dates, not the label, are what an operator acts on.
+                      <span className="flex flex-col gap-0.5">
+                        <Badge
+                          variant="secondary"
+                          className="w-fit bg-amber-100 text-amber-900"
+                        >
+                          <AlertTriangle className="mr-1 h-3 w-3" /> Partly closed
+                        </Badge>
+                        <span className="text-xs text-gray-600">
+                          {formatLockedDays(p.locked_ranges)} shut · rest accepts
+                          writes
+                        </span>
+                      </span>
+                    )}
+                    {p.status !== "closed" && p.status !== "partially_closed" && (
                       <Badge variant="secondary" className="bg-green-100 text-green-800">
                         Open
                       </Badge>
@@ -177,26 +213,36 @@ export default function AccountingPeriodsTab() {
                     {p.closed_at ? formatRelativeAge(p.closed_at) : "—"}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    {p.status === "closed" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setUnlockTarget(p)}
-                      >
-                        <Unlock className="mr-1 h-3.5 w-3.5" /> Unlock
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setLockTarget(p);
-                          setTypedConfirm("");
-                        }}
-                      >
-                        <Lock className="mr-1 h-3.5 w-3.5" /> Close period
-                      </Button>
-                    )}
+                    {/* A partly-closed month has BOTH moves available — finish
+                        shutting it, or release what is already shut. Offering
+                        only one would make the other reachable exclusively by
+                        going through a state the operator did not want. */}
+                    <span className="flex justify-end gap-2">
+                      {p.status !== "open" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setUnlockTarget(p)}
+                        >
+                          <Unlock className="mr-1 h-3.5 w-3.5" /> Unlock
+                        </Button>
+                      )}
+                      {p.status !== "closed" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setLockTarget(p);
+                            setTypedConfirm("");
+                          }}
+                        >
+                          <Lock className="mr-1 h-3.5 w-3.5" />
+                          {p.status === "partially_closed"
+                            ? "Close the rest"
+                            : "Close period"}
+                        </Button>
+                      )}
+                    </span>
                   </td>
                 </tr>
               ))}

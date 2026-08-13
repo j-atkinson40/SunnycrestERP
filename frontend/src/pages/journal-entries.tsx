@@ -504,6 +504,10 @@ function PeriodsTab() {
     open: { label: "Open", color: "bg-green-100 text-green-700", icon: Unlock },
     review: { label: "Review", color: "bg-amber-100 text-amber-700", icon: Lock },
     closed: { label: "Closed", color: "bg-red-100 text-red-600", icon: Lock },
+    // ⚠️ MUST BE PRESENT. The lookup below falls back to `open`, so an unmapped
+    // status renders a partly-LOCKED month as fully open — the most dangerous of
+    // the three possible wrong answers, and it fails silently.
+    partially_closed: { label: "Partly closed", color: "bg-amber-100 text-amber-900", icon: Lock },
   }
 
   return (
@@ -520,12 +524,15 @@ function PeriodsTab() {
               </div>
               <div className="flex items-center gap-2">
                 <span className={cn("text-[10px] px-1.5 py-0.5 rounded", badge.color)}>{badge.label}</span>
-                {p.status === "open" && (
+                {/* Negated tests, not equality: `=== "open"` and `=== "closed"`
+                    both went false on a partly-closed month, leaving the row
+                    with no action at all. */}
+                {p.status !== "closed" && (
                   <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => handleClose(p.period_month, p.period_year)}>
-                    <Lock className="h-3 w-3 mr-0.5" /> Close
+                    <Lock className="h-3 w-3 mr-0.5" /> {p.status === "partially_closed" ? "Close rest" : "Close"}
                   </Button>
                 )}
-                {p.status === "closed" && (
+                {p.status !== "open" && (
                   <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => handleOpen(p.period_month, p.period_year)}>
                     <Unlock className="h-3 w-3 mr-0.5" /> Reopen
                   </Button>

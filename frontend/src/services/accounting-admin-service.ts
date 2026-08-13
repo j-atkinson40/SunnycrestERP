@@ -18,9 +18,20 @@ export interface PeriodRow {
   period_month: number;
   period_year: number;
   display_name: string;
-  status: "open" | "closed" | string;
+  /**
+   * Projected from `period_locks`, not stored. Three states, because two would
+   * lie: a lock over half a month makes "closed" false and "open" equally
+   * false, since writes to the locked half will be refused.
+   */
+  status: "open" | "closed" | "partially_closed" | string;
   closed_at: string | null;
   closed_by: string | null;
+  /**
+   * ISO date pairs for the locked spans inside this month; empty when open.
+   * "Partially closed" tells an operator nothing about whether their invoice
+   * will post — the DATES are what predicts the behaviour.
+   */
+  locked_ranges?: [string, string][];
 }
 
 export interface PeriodListResponse {

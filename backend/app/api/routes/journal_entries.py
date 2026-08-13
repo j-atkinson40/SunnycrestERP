@@ -18,7 +18,11 @@ from app.models.user import User
 from app.services import journal_entry_service, reconciliation_gl
 from app.services.journal_entry_service import JournalLineSpec
 from app.models.period_lock import PeriodLock
-from app.services.accounting.period_projection import lock_span_for_month, project_month
+from app.services.accounting.period_projection import (
+    active_locks as _active_locks,
+    lock_span_for_month,
+    project_month,
+)
 from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
 
 logger = logging.getLogger(__name__)
@@ -433,21 +437,6 @@ def create_template(
 
 
 # ── Periods ──
-
-def _active_locks(db: Session, tenant_id: str) -> list[PeriodLock]:
-    """Every live lock for the tenant.
-
-    `is_active` is the same flag `PeriodLockService.check_date_in_locked_period`
-    filters on. If the projection and the enforcer disagreed about which locks
-    count, the tab would describe a period the write paths do not agree with —
-    which is the whole defect this projection exists to close.
-    """
-    return (
-        db.query(PeriodLock)
-        .filter(PeriodLock.tenant_id == tenant_id, PeriodLock.is_active == True)  # noqa: E712
-        .all()
-    )
-
 
 @router.get("/periods")
 def list_periods(

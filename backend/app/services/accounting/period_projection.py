@@ -42,6 +42,24 @@ OPEN = "open"
 PERIOD_STATES = (CLOSED, PARTIALLY_CLOSED, OPEN)
 
 
+def active_locks(db, tenant_id: str) -> list:
+    """Every live lock for the tenant. The ONLY read both period UIs may use.
+
+    ⚠️ ONE DEFINITION ON PURPOSE. `is_active` is the same flag
+    `PeriodLockService.check_date_in_locked_period` filters on. Two period
+    surfaces exist (`/journal-entries/periods` and `/vault/accounting/periods`)
+    and they got out of step once already — that is the whole defect. A copy of
+    this filter per route is how they drift apart again.
+    """
+    from app.models.period_lock import PeriodLock
+
+    return (
+        db.query(PeriodLock)
+        .filter(PeriodLock.tenant_id == tenant_id, PeriodLock.is_active == True)  # noqa: E712
+        .all()
+    )
+
+
 def month_bounds(month: int, year: int) -> tuple[date, date]:
     """First and last day of the month, inclusive.
 
@@ -76,6 +94,33 @@ def project_month(
     if covered == total:
         return CLOSED
     return PARTIALLY_CLOSED
+
+
+def covered_ranges(
+    locks: list[tuple[date, date]], *, month: int, year: int
+) -> list[tuple[date, date]]:
+    """The locked spans within the month, merged and clipped to it.
+
+    ⚠️ THIS IS WHAT MAKES THE THIRD STATE USABLE. "Partially closed" tells an
+    operator nothing about whether their invoice will post; "closed 1–15 August"
+    predicts the behaviour. A state name that can't be acted on is only a
+    slightly better lie than the binary it replaced.
+
+    Merged, because two adjacent locks are one span to a reader. Clipped, because
+    a lock running into September is not a fact about August.
+    """
+    first, last = month_bounds(month, year)
+    out: list[tuple[date, date]] = []
+    for i in range((last - first).days + 1):
+        day = date.fromordinal(first.toordinal() + i)
+        if not any(s <= day <= e for s, e in locks):
+            continue
+        # Extend the open span if this day continues it, else start a new one.
+        if out and (day - out[-1][1]).days == 1:
+            out[-1] = (out[-1][0], day)
+        else:
+            out.append((day, day))
+    return out
 
 
 def lock_span_for_month(month: int, year: int) -> tuple[date, date]:

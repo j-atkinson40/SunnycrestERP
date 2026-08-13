@@ -21,7 +21,7 @@ on every query via `current_user.company_id`.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -38,7 +38,15 @@ from app.models.accounting_analysis import (
 from app.models.agent import AgentJob
 from app.models.audit_log import AuditLog
 from app.models.journal_entry import AccountingPeriod
+from app.models.period_lock import PeriodLock
 from app.models.user import User
+from app.services.accounting.period_projection import (
+    CLOSED,
+    active_locks as _active_locks,
+    covered_ranges,
+    lock_span_for_month,
+    project_month,
+)
 from app.services.accounting_analysis_service import PLATFORM_CATEGORIES
 
 router = APIRouter()
@@ -99,9 +107,14 @@ class _PeriodRow(BaseModel):
     period_month: int
     period_year: int
     display_name: str
+    #: Projected from `period_locks`: closed | partially_closed | open.
     status: str
     closed_at: datetime | None = None
     closed_by: str | None = None
+    #: The locked spans inside this month, as ISO date pairs. Empty when open.
+    #: Present so the UI can say WHICH days are shut rather than only that some
+    #: are -- "partially closed" does not predict whether an invoice will post.
+    locked_ranges: list[tuple[str, str]] = []
 
 
 class _PeriodListResponse(BaseModel):
@@ -143,20 +156,33 @@ def list_periods(
         AccountingPeriod.period_year.desc(),
         AccountingPeriod.period_month.desc(),
     ).limit(60).all()
-    return _PeriodListResponse(
-        periods=[
+    # ⚠️ STATUS IS PROJECTED, NOT READ. The row survives as the handle this tab
+    # keys its lock/unlock calls off; only the meaning of `status` moved to
+    # `period_locks`. See services/accounting/period_projection.
+    locks = _active_locks(db, current_user.company_id)
+    spans = [(lk.period_start, lk.period_end) for lk in locks]
+
+    out = []
+    for p in rows:
+        ranges = covered_ranges(spans, month=p.period_month, year=p.period_year)
+        first_of_month = date(p.period_year, p.period_month, 1)
+        covering = next(
+            (lk for lk in locks if lk.period_start <= first_of_month <= lk.period_end),
+            None,
+        )
+        out.append(
             _PeriodRow(
                 id=p.id,
                 period_month=p.period_month,
                 period_year=p.period_year,
                 display_name=_period_display_name(p),
-                status=p.status,
-                closed_at=p.closed_at,
-                closed_by=p.closed_by,
+                status=project_month(spans, month=p.period_month, year=p.period_year),
+                closed_at=covering.locked_at if covering else None,
+                closed_by=covering.locked_by if covering else None,
+                locked_ranges=[(s.isoformat(), e.isoformat()) for s, e in ranges],
             )
-            for p in rows
-        ]
-    )
+        )
+    return _PeriodListResponse(periods=out)
 
 
 def _get_owned_period(db: Session, user: User, period_id: str) -> AccountingPeriod:
@@ -183,11 +209,31 @@ def lock_period(
     on an already-locked period — returns 409 instead of re-writing
     (prevents double-audit noise)."""
     period = _get_owned_period(db, current_user, period_id)
-    if period.status == "closed":
+    spans = [
+        (lk.period_start, lk.period_end)
+        for lk in _active_locks(db, current_user.company_id)
+    ]
+    previous_status = project_month(
+        spans, month=period.period_month, year=period.period_year
+    )
+    if previous_status == CLOSED:
         raise HTTPException(
             status_code=409, detail="Period is already closed"
         )
-    previous_status = period.status
+
+    # ⚠️ THIS USED TO SET `period.status` AND NOTHING ELSE — which only the
+    # journal-entry post honoured. The modal promises invoices, bills and
+    # payments will be rejected; before this, three of those four were false.
+    start, end = lock_span_for_month(period.period_month, period.period_year)
+    db.add(PeriodLock(
+        tenant_id=current_user.company_id,
+        period_start=start,
+        period_end=end,
+        locked_by=current_user.id,
+        lock_reason=f"{_period_display_name(period)} closed from the Periods & Locks tab",
+    ))
+    # Kept in step so anything still reading the column agrees with the lock.
+    # It is a projection now, not a source — see the list endpoint.
     period.status = "closed"
     period.closed_by = current_user.id
     period.closed_at = datetime.now(timezone.utc)
@@ -216,11 +262,28 @@ def unlock_period(
     """Unlock a previously-closed period. Writes a `period_unlocked`
     audit row. Idempotent on an already-open period — returns 409."""
     period = _get_owned_period(db, current_user, period_id)
-    if period.status != "closed":
+    locks = _active_locks(db, current_user.company_id)
+    previous_status = project_month(
+        [(lk.period_start, lk.period_end) for lk in locks],
+        month=period.period_month,
+        year=period.period_year,
+    )
+    if previous_status == "open":
         raise HTTPException(
             status_code=409, detail="Period is not closed"
         )
-    previous_status = period.status
+
+    # Release by OVERLAP, not exact span. A lock written by month-end close may
+    # cover a different range than this month; an exact-match release would
+    # report success and leave the period shut — the same reports-success-
+    # without-controlling defect this endpoint is being fixed for.
+    start, end = lock_span_for_month(period.period_month, period.period_year)
+    now = datetime.now(timezone.utc)
+    for lk in locks:
+        if lk.period_start <= end and lk.period_end >= start:
+            lk.is_active = False   # the flag check_date_in_locked_period filters
+            lk.unlocked_by = current_user.id
+            lk.unlocked_at = now
     period.status = "open"
     period.closed_by = None
     period.closed_at = None
