@@ -65,7 +65,13 @@ _MANUFACTURING = [
     "Bridgeable Compose", "Order Gloves from Uline",
     "Add Team Certification", "Safety Program Generation",
     "Vault Order Fulfillment", "Log Production Pour", "Schedule Delivery",
-    "Social Service Certificate", "Start Disinterment Workflow",
+    # "Social Service Certificate" — REMOVED. r163 deleted the workflow row and
+    # its definition together; the certificate itself stays service-owned (its
+    # routes, PDF generator, triage queue and briefing block are all live and
+    # correct). Mirroring a workflow that no longer exists made the seed log a
+    # skip and the count come up one short on a CLEAN database — an incomplete
+    # deletion, not local dirt.
+    "Start Disinterment Workflow",
     "Wilbert Catalog Auto-Fetch", "Document Review Reminder",
 ]
 # FH Map stamp — the triaged bring-in 9 (fh_map_investigation.md §1a(a)):

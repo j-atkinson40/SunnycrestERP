@@ -3,8 +3,9 @@
 Assembly tests (load-bearing, the JCF-1 bar): a runtime workflow ROUND-TRIPS to a
 faithful, VALID template (node count = step count, config carried, provenance set)
 that the resolver surfaces; the thin task is pre-wired (its workflow cell resolves
-the mirror pill); the whole set (27 = 12 manufacturing + 9 funeral_home + 6 core)
-validates; idempotent. The FH nine ride the SAME parameterized transform —
+the mirror pill); the whole set (26 = 10 manufacturing + 9 funeral_home + 6 core +
+the Ponder P0 cash-receipts mirror) validates; idempotent. The FH nine ride the
+SAME parameterized transform —
 `task_vertical` lands each thin task on its own vertical's map.
 """
 from __future__ import annotations
@@ -26,7 +27,12 @@ from scripts.seed_moc_backfill_workflow_mirrors import (
     seed,
 )
 
-TOTAL = 27  # 11 mfg + 9 fh + 6 core + Ponder P0 mirror_cash_receipts_matching; "New Order" removed (pre-rebrand duplicate of Bridgeable Compose)
+# 10 mfg + 9 fh + 6 core + Ponder P0 mirror_cash_receipts_matching.
+# "New Order" removed (pre-rebrand duplicate of Bridgeable Compose).
+# 27 → 26: r163 deleted the Social Service Certificate workflow and its
+# definition. This count is the reason that deletion did not pass silently —
+# the seed logged a skip and moved on, and only the total caught it.
+TOTAL = 26
 
 
 @pytest.fixture
@@ -165,16 +171,19 @@ def workflow_substrate(db):
 
 
 
-def test_set_is_exactly_27():
+def test_set_is_exactly_26():
     # 12 -> 11: "New Order" was `Bridgeable Compose` under its pre-rebrand
     # name, so this list named one workflow twice.
-    assert len(_MANUFACTURING) == 11
+    # 11 -> 10: r163 deleted the Social Service Certificate workflow. The
+    # certificate is still a live feature -- routes, PDF, triage queue -- it is
+    # only the WORKFLOW that is gone, so there is nothing left to mirror.
+    assert len(_MANUFACTURING) == 10
     assert len(_FUNERAL_HOME) == 9      # the triaged bring-in set; shells excluded
     assert len(_CORE) == 7  # +Cash Receipts Matching (Ponder P0 — the audit's B-1 gap)
     assert len(TARGETS) == TOTAL
 
 
-def test_all_27_mirrors_valid_and_faithful(db):
+def test_all_26_mirrors_valid_and_faithful(db):
     seed(db)
     mirrors = db.execute(
         sql_text(
