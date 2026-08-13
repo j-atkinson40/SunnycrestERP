@@ -231,3 +231,63 @@ class TestEvidenceIsTheDeliverableNotTheMechanism:
                 f"{e.key} takes its evidence from {e.evidence.table} — a run "
                 f"record, which a dry run also writes"
             )
+
+
+class TestRunCollapse:
+    """⚠️ SIX CONSECUTIVE MISSING DAYS IS ONE CONDITION. Rendering it six times
+    makes the report describe incidents that do not exist — measured at 21 rows
+    where 4 conditions existed. This is not polish; the un-collapsed list is
+    wrong about the world."""
+
+    def test_a_run_of_missing_days_becomes_one_row(self, db):
+        from app.services.completeness.collapse import collapse
+        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        runs = collapse(rows)
+        assert len(runs) < len(rows), "nothing collapsed"
+        bank = [r for r in runs if r.key == "bank_feed_daily" and r.verdict == MISSING]
+        assert len(bank) == 1, f"the bank feed rendered as {len(bank)} conditions"
+        assert bank[0].periods > 1
+        assert "Nothing since" in bank[0].detail
+
+    def test_collapse_never_merges_different_verdicts(self, db):
+        from app.services.completeness.collapse import collapse
+        for r in collapse(review(db, TENANT, "manufacturing", date(2026, 8, 13))):
+            assert r.verdict in VERDICTS
+
+    def test_the_quiet_are_counted_not_enumerated(self, db):
+        """Silence is what a reader fills in with an assumption."""
+        from app.services.completeness.collapse import collapse, summarise
+        shown, closing = summarise(collapse(review(db, TENANT, "manufacturing",
+                                                   date(2026, 8, 13))))
+        assert all(r.actionable or r.verdict == REPORTED_NONE for r in shown)
+        assert closing, "the quiet obligations vanished instead of being counted"
+
+    def test_reported_none_renders_despite_being_quiet(self, db):
+        """⚠️ A MONTH OF NIL CLAIMS IS A FINDING, and it only is one if someone
+        can see it. Folding it into the quiet count would hide the single thing
+        the carve-out could be abused to do."""
+        from app.services.completeness.collapse import Run, summarise
+        r = Run("k", "L", "production", REPORTED_NONE, date(2026, 8, 1),
+                date(2026, 8, 30), 30, "30 periods reported empty.")
+        shown, _ = summarise([r])
+        assert r in shown and not r.actionable
+
+
+class TestOnlyTheRoleThatOwesItMayClaim:
+    def test_the_endpoint_checks_the_role(self):
+        """The carve-out's whole value is that a named person HOLDING the
+        obligation stood behind it. A claim from anyone else is an opinion."""
+        import inspect
+        from app.api.routes import completeness
+        from tests._source import code_only
+        src = code_only(inspect.getsource(completeness.file_nil_claim))
+        assert "exp.role_slug" in src and "403" in src
+
+    def test_the_prompt_can_be_filtered_to_a_role(self, db):
+        """⚠️ PROMPTED, NOT REMEMBERED. A quiet day produces no reason to open
+        anything; role-filtering is what lets this power a prompt where the
+        person already is, rather than a page they had to choose to visit."""
+        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13),
+                      role_slug="production")
+        assert rows, "role filter returned nothing"
+        assert {r.role_slug for r in rows} == {"production"}

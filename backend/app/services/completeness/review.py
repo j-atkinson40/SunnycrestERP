@@ -122,9 +122,22 @@ def _nil_claim(db: Session, tenant_id: str, key: str, start: date, end: date):
     """
     return db.execute(
         text(
-            "SELECT claimed_by_name, claimed_by_role_slug, claimed_at, note "
-            "FROM completeness_nil_claims WHERE tenant_id = :t "
-            "AND expectation_key = :k AND period_start = :s AND period_end = :e"
+            "SELECT c.claimed_by_name, c.claimed_by_role_slug, c.claimed_at, c.note, "
+            # ⚠️ ONE BINARY FACT, NO TAXONOMY. Whether the claimant STILL holds
+            # the obligation is checkable and lets the reader draw their own
+            # conclusion. A strong/weak/questionable scale would be a judgement
+            # the system is not entitled to make, and enumerated scales decay.
+            #
+            # No role-history table exists and none is needed: the SNAPSHOT
+            # supplies the past, so this only has to ask about the present.
+            # That is why snapshotting at write time was the right call.
+            "       (u.id IS NOT NULL AND u.is_active AND r.slug = c.claimed_by_role_slug) "
+            "         AS still_holds "
+            "FROM completeness_nil_claims c "
+            "LEFT JOIN users u ON u.id = c.claimed_by AND u.is_active "
+            "LEFT JOIN roles r ON r.id = u.role_id "
+            "WHERE c.tenant_id = :t "
+            "AND c.expectation_key = :k AND c.period_start = :s AND c.period_end = :e"
         ),
         {"t": tenant_id, "k": key, "s": start, "e": end},
     ).fetchone()
@@ -139,7 +152,8 @@ def _tenant_start(db: Session, tenant_id: str) -> date | None:
 
 
 def review(
-    db: Session, tenant_id: str, vertical: str, as_of: date | None = None
+    db: Session, tenant_id: str, vertical: str, as_of: date | None = None,
+    *, role_slug: str | None = None,
 ) -> list[Verdict]:
     """Every expectation × every period in the window, each with one verdict.
 
@@ -152,6 +166,12 @@ def review(
     out: list[Verdict] = []
 
     for exp in for_tenant(tenant_id, vertical):
+        # ⚠️ THE PROMPT MUST ARRIVE, NOT WAIT. A quiet day produces no reason to
+        # visit anything, which is exactly how the gap forms. Filtering by the
+        # viewer's own role is what lets this same service power a prompt on the
+        # production manager's Pulse rather than only a page they chose to open.
+        if role_slug and exp.role_slug != role_slug:
+            continue
         declined = declination_for(tenant_id, exp.key)
         if declined:
             # Rendered once, not filtered. A declined obligation that vanished
@@ -176,9 +196,13 @@ def review(
             elif n == 0 and (claim := _nil_claim(db, tenant_id, exp.key, start, end)):
                 # The carve-out. Without it every quiet day reads as a gap, and
                 # testco measured that at 6 of 21 red rows possibly being noise.
+                who = f"{claim[0]} ({claim[1]}"
+                # Rendered only when NOT current — the normal case stays clean,
+                # and the exception is the thing an accountant would act on.
+                who += ")" if claim[4] else ", no longer {})".format(claim[1])
                 verdict, detail = REPORTED_NONE, (
-                    f"{claim[0]} ({claim[1]}) reported nothing on "
-                    f"{claim[2]:%-d %b}" + (f": {claim[3]}" if claim[3] else "")
+                    f"{who} reported nothing on {claim[2]:%-d %b}"
+                    + (f": {claim[3]}" if claim[3] else "")
                 )
             elif n == 0 and today <= due:
                 verdict, detail = NOT_YET_DUE, f"Due {due:%-d %b}."
