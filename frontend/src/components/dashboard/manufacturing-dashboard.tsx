@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SpringBurialWidget } from "@/components/dashboard/spring-burial-widget";
+import { MyObligationsPrompt } from "@/components/completeness/MyObligationsPrompt";
 import { MorningBriefingCard } from "@/components/morning-briefing-card";
 import { MorningBriefingMobile } from "@/components/morning-briefing-mobile";
 import { useDevice } from "@/contexts/device-context";

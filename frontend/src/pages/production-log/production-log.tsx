@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { MyObligationsPrompt } from "@/components/completeness/MyObligationsPrompt";
 import type { Product } from "@/types/product";
 import type { ProductionLogEntry, ProductionLogEntryCreate, ProductionLogEntryUpdate } from "@/types/production-log";
 
@@ -322,6 +323,20 @@ export default function ProductionLogPage() {
 
   return (
     <div className="space-y-6">
+      {/* CR-2 A-3 — the nil-claim pattern's wired instance.
+          Renders ONLY when this role owes an open day, so a manager who logs
+          daily never sees it. Mounted above the header deliberately: an
+          unanswered obligation is the first thing to read on this page, and
+          burying it under the form would make it findable rather than
+          unavoidable. This is still the WEAKER half of "prompted, not
+          remembered" — it reaches whoever opened the page. The stronger half is
+          the same component on the production role's Pulse, which reaches
+          whoever did NOT. */}
+      <MyObligationsPrompt
+        expectationKey="production_log_daily"
+        onFiled={() => void loadEntries()}
+      />
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>

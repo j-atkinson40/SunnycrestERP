@@ -1,0 +1,84 @@
+/**
+ * The completeness review + the nil-claim pattern. CR-2 A-3.
+ *
+ * ⚠️ TWO AUDIENCES, ONE SERVICE. `getReview` is the accountant's bounded
+ * decision; `getMyObligations` is the SAME data filtered to the caller's role.
+ * That filter is the whole "prompted, not remembered" mechanism — a quiet day
+ * produces no reason to open anything, so the obligation has to arrive at the
+ * person rather than wait on a page they chose to visit.
+ */
+import { apiClient } from "@/lib/api-client";
+
+/** Satisfied and quiet. */
+export type Verdict =
+  | "arrived"
+  | "partial"
+  | "missing"
+  | "not_yet_due"
+  /** Someone holding the obligation signed a statement that nothing happened. */
+  | "reported_none"
+  | "declined"
+  /** The check could not run. NOT the same as a clean period. */
+  | "unknown";
+
+/**
+ * Consecutive periods of one obligation sharing a verdict, as ONE row.
+ * Six consecutive missing days is one condition; six rows would describe
+ * incidents that do not exist.
+ */
+export interface CompletenessRun {
+  key: string;
+  label: string;
+  role_slug: string;
+  verdict: Verdict;
+  actionable: boolean;
+  first: string;
+  last: string;
+  periods: number;
+  detail: string;
+}
+
+export interface CompletenessResult {
+  rows: CompletenessRun[];
+  /** The quiet obligations, counted not enumerated. Silence reads as an
+   *  assumption; "3 obligations current" is a statement. */
+  quiet_summary: string;
+  actionable_count: number;
+}
+
+export interface MyObligations extends CompletenessResult {
+  role_slug: string | null;
+}
+
+export const completenessService = {
+  async getReview(asOf?: string): Promise<CompletenessResult> {
+    const { data } = await apiClient.get<CompletenessResult>("/completeness/review", {
+      params: asOf ? { as_of: asOf } : {},
+    });
+    return data;
+  },
+
+  async getMyObligations(asOf?: string): Promise<MyObligations> {
+    const { data } = await apiClient.get<MyObligations>("/completeness/my-obligations", {
+      params: asOf ? { as_of: asOf } : {},
+    });
+    return data;
+  },
+
+  /**
+   * State that nothing happened, signed.
+   *
+   * The server rejects this with 403 unless the caller holds the obligation's
+   * role — this is the one place assertion substitutes for evidence, and what
+   * makes it worth anything is that a named person who OWES it stood behind it.
+   */
+  async fileNilClaim(input: {
+    expectation_key: string;
+    period_start: string;
+    period_end: string;
+    note?: string;
+  }): Promise<{ status: string; claimed_by: string; role_slug: string }> {
+    const { data } = await apiClient.post("/completeness/nil-claim", input);
+    return data;
+  },
+};
