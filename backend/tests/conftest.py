@@ -21,11 +21,25 @@ tear its own companies down in a module-scoped teardown fixture (the
 test_workflow_scheduler_pair_isolation.py). "The other files already
 leak" is never a licence to add another leaker — the debt has a
 direction (down), and the offender set is meant to be enumerated and
-drained (routed to S-6 test-hygiene), not grown. NOTE: CI's backend
-job runs imports + migration-heads + `alembic upgrade` only — it does
-NOT run pytest, so this tripwire is a LOCAL guardrail. Its signal is
-only as good as the baseline; pre-existing leakers keep it red, which
-is exactly why new files must not add to the pile.
+drained (routed to S-6 test-hygiene), not grown. Its signal is only as
+good as the baseline; pre-existing leakers keep it red, which is
+exactly why new files must not add to the pile.
+
+⚠️ CORRECTED 2026-08-16 — this said "CI's backend job runs imports +
+migration-heads + `alembic upgrade` only — it does NOT run pytest, so
+this tripwire is a LOCAL guardrail." That is FALSE and was believed
+while acting on it. `.github/workflows/ci.yml` runs
+`python -m pytest $(… ci_gate.txt …)` against a fresh Postgres, which
+is how three seed-dependent tests in test_completeness_review.py were
+finally caught. The gate is not local-only, and a bare-database axis
+runs on every push.
+
+⚠️ AND THE BARE AXIS IS NOT OPTIONAL COVERAGE — see tests/_tenant.py.
+Passing on a bare database is not evidence a test is independent of
+seeded state; it is evidence that THAT PATH did not need it. A file can
+be nine-tenths green on a fresh database while resting entirely on a row
+nobody creates, because read paths tolerate a missing tenant and write
+paths do not.
 """
 from __future__ import annotations
 
