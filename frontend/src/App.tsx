@@ -147,6 +147,8 @@ import VaultOverview from "@/pages/vault/VaultOverview";
 // V-1e: Accounting admin consolidation.
 import AccountingAdminLayout from "@/pages/vault/accounting/AccountingAdminLayout";
 import AccountingPeriodsTab from "@/pages/vault/accounting/AccountingPeriodsTab";
+// CR-2 A-4: the accountant's completeness review.
+import AccountingCompletenessTab from "@/pages/vault/accounting/AccountingCompletenessTab";
 import AccountingAgentsTab from "@/pages/vault/accounting/AccountingAgentsTab";
 import AccountingClassificationTab from "@/pages/vault/accounting/AccountingClassificationTab";
 import AccountingTaxTab from "@/pages/vault/accounting/AccountingTaxTab";
@@ -1682,6 +1684,10 @@ export function renderTenantSlugRoutes(
                         <Route
                           path="periods"
                           element={<AccountingPeriodsTab />}
+                        />
+                        <Route
+                          path="completeness"
+                          element={<AccountingCompletenessTab />}
                         />
                         <Route
                           path="agents"

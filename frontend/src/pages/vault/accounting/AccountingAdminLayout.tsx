@@ -1,17 +1,18 @@
 /**
  * AccountingAdminLayout — Phase V-1e.
  *
- * Wraps all six Accounting admin sub-tabs with a secondary tab bar.
+ * Wraps all seven Accounting admin sub-tabs with a secondary tab bar.
  * Renders inside the Vault Hub's main content area (which is already
  * itself wrapped in VaultHubLayout one level up the route tree).
  *
  * Tabs:
  *   1. Periods & Locks       → /vault/accounting/periods
- *   2. Agent Schedules       → /vault/accounting/agents
- *   3. GL Classification     → /vault/accounting/classification
- *   4. Tax Config            → /vault/accounting/tax
- *   5. Statement Templates   → /vault/accounting/statements
- *   6. COA Templates         → /vault/accounting/coa
+ *   2. Completeness          → /vault/accounting/completeness   (CR-2 A-4)
+ *   3. Agent Schedules       → /vault/accounting/agents
+ *   4. GL Classification     → /vault/accounting/classification
+ *   5. Tax Config            → /vault/accounting/tax
+ *   6. Statement Templates   → /vault/accounting/statements
+ *   7. COA Templates         → /vault/accounting/coa
  */
 
 import { NavLink, Outlet } from "react-router-dom";
@@ -19,6 +20,10 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "periods", label: "Periods & Locks" },
+  // CR-2 A-4. Sits beside Periods deliberately: completeness is only meaningful
+  // against a window that can be final, and it READS that window through the
+  // same projection rather than keeping its own idea of what is closed.
+  { to: "completeness", label: "Completeness" },
   { to: "agents", label: "Agent Schedules" },
   { to: "classification", label: "GL Classification" },
   { to: "tax", label: "Tax Config" },
