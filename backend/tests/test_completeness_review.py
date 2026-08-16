@@ -35,7 +35,22 @@ from app.services.completeness.review import (
     review,
 )
 
-TENANT = "staging-test-001"
+from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
+
+TENANT = TESTCO_ID
+
+# ⚠️ THIS FILE ASSUMED A ROW IT NEVER CREATED, AND ONLY A THIRD OF IT NOTICED.
+# `TENANT` was a bare literal. On CI's fresh Postgres the three tests below that
+# INSERT a nil claim died on completeness_nil_claims_tenant_id_fkey while every
+# other test passed — `review()` against a nonexistent tenant returns
+# all-`missing` without touching a foreign key. Ninety percent green, resting
+# entirely on seed_staging having run.
+#
+# Teardown is create-scoped by construction (see tests/_tenant.py): purging
+# `staging-test-001` outright would delete a developer's real testco.
+canonical_tenant = make_canonical_tenant_fixture(
+    child_tables=("completeness_nil_claims",),
+)
 
 
 @pytest.fixture
