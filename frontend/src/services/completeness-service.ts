@@ -7,7 +7,10 @@
  * produces no reason to open anything, so the obligation has to arrive at the
  * person rather than wait on a page they chose to visit.
  */
-import { apiClient } from "@/lib/api-client";
+// DEFAULT import — `api-client.ts` has no named `apiClient` export, and every
+// other service in this directory imports it this way. The named form typechecks
+// nowhere and fails the rollup build outright.
+import apiClient from "@/lib/api-client";
 
 /** Satisfied and quiet. */
 export type Verdict =
