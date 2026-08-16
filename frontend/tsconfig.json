@@ -1,3 +1,13 @@
+// ⚠️ SOLUTION-STYLE CONFIG — `"files": []` MEANS `npx tsc --noEmit` CHECKS NOTHING.
+// It compiles an empty program and exits 0, so it reports success on a tree with
+// real type errors in it. It is the obvious command to reach for and it is a no-op.
+//
+// Use `npm run typecheck` (`tsc -b --force`), which follows the references below
+// and is what CI runs at .github/workflows/ci.yml. Measured 2026-08-15 against
+// two live errors: bare `--noEmit` → 0 errors; `tsc -b` → both caught.
+//
+// `--force` is deliberate: plain `tsc -b` trusts .tsbuildinfo and can skip a
+// project it believes is unchanged, which turns a local check into a coin flip.
 {
   "files": [],
   "references": [
