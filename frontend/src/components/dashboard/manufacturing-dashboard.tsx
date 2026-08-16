@@ -359,6 +359,13 @@ export function ManufacturingDashboard() {
       {/* Morning Briefing */}
       {isMobile ? <MorningBriefingMobile /> : <MorningBriefingCard />}
 
+      {/* CR-2 A-3's stronger half, finally rendered. A quiet day produces no
+          reason to open the log page at all — that is precisely how the gap
+          forms — so the obligation has to arrive at whoever did NOT go looking.
+          Renders null when the viewer's role owes nothing, which is why it can
+          sit this high without costing anyone a row. */}
+      <MyObligationsPrompt />
+
       {/* Onboarding Banner — prominent, shows until setup is complete */}
       {onboardingPercent !== null && onboardingPercent < 100 && (
         <Link
