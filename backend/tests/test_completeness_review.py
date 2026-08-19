@@ -30,6 +30,7 @@ from app.services.completeness.review import (
     DECLINED,
     MISSING,
     NOT_YET_DUE,
+    RENDERED,
     UNKNOWN,
     VERDICTS,
     review,
@@ -149,6 +150,61 @@ class TestDecliningIsNotDeletion:
         rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
         assert DECLINED not in ACTIONABLE
         assert all(r.verdict != MISSING for r in rows if r.key == "production_log_daily")
+
+    def test_declined_survives_the_whole_read_path(self, db, monkeypatch):
+        """⚠️ THE TEST THAT WAS MISSING, AND ITS ABSENCE SHIPPED THE DEFECT.
+
+        Its siblings above assert on `review()`. `review()` was never the read
+        path — the endpoint runs `summarise(collapse(review(...)))`, and
+        `summarise` selected on ACTIONABLE, so the declined row was dropped one
+        layer below where anything was looking and counted as "1 obligation
+        current". Two true facts (the service emits it, the tab styles it grey)
+        were read as a third that nobody checked: that it arrives.
+
+        So this asserts against the SHAPE THE ENDPOINT RETURNS, not the service's
+        intermediate.
+        """
+        from app.services.completeness.collapse import collapse, summarise
+
+        monkeypatch.setattr(ex, "TENANT_DECLINED", {
+            TENANT: [ex.Declination("production_log_daily", "no on-site pours",
+                                    date(2026, 5, 1))]
+        })
+        shown, closing = summarise(collapse(
+            review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        ))
+        got = [r for r in shown if r.key == "production_log_daily"]
+        assert got, (
+            "the declined obligation never reached the response — it was "
+            "folded into the quiet count, where it reads as up to date"
+        )
+        assert got[0].verdict == DECLINED
+        assert "no on-site pours" in got[0].detail, "the reason was dropped"
+        assert not got[0].actionable, "declined is an answer, not a gap"
+
+    def test_the_quiet_count_does_not_absorb_a_declination(self):
+        """The closing line says "N obligations current". A declined obligation
+        is not current — it is one the tenant has said they do not have. Counting
+        it there makes the sentence false, quietly, in the direction of
+        reassurance: the reader is told a thing is up to date when what happened
+        is that it was struck off.
+
+        Hand-built rather than derived from `review()`, so the number the
+        assertion checks is stated here and not computed by the code under test.
+        """
+        from app.services.completeness.collapse import Run, summarise
+
+        declined = Run("d", "Deliveries", "driver", DECLINED,
+                       date(2026, 8, 13), date(2026, 8, 13), 1, "Declined 1 May: no fleet")
+        current = Run("b", "Bank feed", "admin", NOT_YET_DUE,
+                      date(2026, 8, 13), date(2026, 8, 13), 1, "Due 14 Aug.")
+        shown, closing = summarise([declined, current])
+
+        assert declined in shown, "the declination was folded into the quiet count"
+        assert closing == "1 obligation current.", (
+            f"the quiet count is {closing!r} — with one genuinely-current "
+            f"obligation and one declined, only the first is current"
+        )
 
 
 class TestNothingIsOwedBeforeTheTenantExisted:
@@ -274,7 +330,10 @@ class TestRunCollapse:
         from app.services.completeness.collapse import collapse, summarise
         shown, closing = summarise(collapse(review(db, TENANT, "manufacturing",
                                                    date(2026, 8, 13))))
-        assert all(r.actionable or r.verdict == REPORTED_NONE for r in shown)
+        # Against RENDERED, not a restatement of the selection predicate — an
+        # assertion that re-derives the implementation passes whatever the
+        # implementation does, which is how `declined` went missing.
+        assert all(r.verdict in RENDERED for r in shown)
         assert closing, "the quiet obligations vanished instead of being counted"
 
     def test_reported_none_renders_despite_being_quiet(self, db):

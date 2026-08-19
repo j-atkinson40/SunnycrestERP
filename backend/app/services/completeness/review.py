@@ -59,6 +59,26 @@ VERDICTS = (ARRIVED, PARTIAL, MISSING, NOT_YET_DUE, REPORTED_NONE, DECLINED, UNK
 #: is legible to someone looking rather than indistinguishable from work.
 ACTIONABLE = (MISSING, PARTIAL, UNKNOWN)
 
+#: Verdicts that render as a ROW rather than folding into the quiet count.
+#: A SUPERSET of ACTIONABLE, and the distinction is the point: visible and
+#: actionable are different properties, and collapsing them is what dropped
+#: `declined` out of the review.
+#:
+#: ⚠️ `declined` IS HERE BECAUSE NOT-ACTIONABLE IS NOT THE SAME AS NOT-WORTH-
+#: SEEING, AND THIS EXACT SUBSTITUTION SHIPPED. A-1 proved `review()` emits a
+#: DECLINED verdict and the A-4 tab styles it grey; from those two facts the read
+#: path was called complete. Neither one is the endpoint. `summarise` selected on
+#: ACTIONABLE, so every declined obligation fell into the quiet count and the
+#: response said "1 obligation current" — a tenant's "we don't do that" rendered
+#: as an obligation that is up to date, which is the opposite claim. Latent only
+#: because `TENANT_DECLINED` is still empty; it would have bitten on the first
+#: declination ever written.
+#:
+#: The quiet count is now honest as a side effect: with `declined` lifted out,
+#: what remains in it really is `arrived` + `not_yet_due` — obligations that ARE
+#: current, which is what the sentence has always said.
+RENDERED = (*ACTIONABLE, REPORTED_NONE, DECLINED)
+
 #: ⚠️ EVIDENCE IS DOMAIN ROWS, NEVER `workflow_runs` — AND THAT IS A DIFFERENT
 #: QUESTION, NOT A DUPLICATE DERIVATION. MAP-5's `liveness` asks whether the
 #: MECHANISM RAN; this asks whether the DELIVERABLE ARRIVED. They come apart

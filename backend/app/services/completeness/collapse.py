@@ -19,6 +19,7 @@ from datetime import date
 
 from app.services.completeness.review import (
     ACTIONABLE,
+    RENDERED,
     REPORTED_NONE,
     Verdict,
 )
@@ -90,8 +91,14 @@ def summarise(runs: list[Run]) -> tuple[list[Run], str]:
     `reported_none` renders as a ROW despite not being actionable. A month of
     signed nil claims is a finding, and folding it into the quiet count would
     hide the one thing the carve-out could be abused to do.
+
+    ⚠️ SELECTION IS ON `RENDERED`, NOT ON `actionable`. The two are different
+    properties and this function conflated them: `declined` is not actionable and
+    is not quiet either, and selecting on actionability sent it to the quiet
+    count — where a tenant's "we don't do that" was reported as an obligation
+    that is current. See the `RENDERED` note in `review.py`.
     """
-    shown = [r for r in runs if r.actionable or r.verdict == REPORTED_NONE]
+    shown = [r for r in runs if r.verdict in RENDERED]
     quiet = [r for r in runs if r not in shown]
     if not quiet:
         return shown, ""
