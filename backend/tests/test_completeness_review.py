@@ -27,6 +27,7 @@ from app.services.completeness.review import (
     ARRIVED,
     REPORTED_NONE,
     ACTIONABLE,
+    CONTRADICTED,
     DECLINED,
     MISSING,
     NOT_YET_DUE,
@@ -204,6 +205,185 @@ class TestDecliningIsNotDeletion:
         assert closing == "1 obligation current.", (
             f"the quiet count is {closing!r} — with one genuinely-current "
             f"obligation and one declined, only the first is current"
+        )
+
+
+class TestADeclinationGovernsOnlyThePeriodsItCovers:
+    """⚠️ DECLINING USED TO ERASE HISTORY, AND THAT MADE THE AFFORDANCE A BUTTON
+    FOR CLEARING RED ROWS. Measured on testco at as_of=2026-08-13 before this
+    landed: `production_log_daily` rendered `missing 6–11 Aug (6 periods)`, and
+    declining it rendered `declined 13 Aug (1 period)` — six days gone, because
+    the resolver emitted one current-period row and skipped the window.
+
+    An answer given today must not rewrite last week. These pin that, because the
+    D-2 authoring surface is only safe to build on top of it.
+    """
+
+    KEY = "production_log_daily"
+    AS_OF = date(2026, 8, 13)
+
+    def _decline(self, monkeypatch, on, revoked=None):
+        monkeypatch.setattr(ex, "TENANT_DECLINED", {
+            TENANT: [ex.Declination(self.KEY, "no on-site pours", on,
+                                    revoked_on=revoked)]
+        })
+
+    def _rows(self, db):
+        return [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
+                if r.key == self.KEY]
+
+    def test_periods_before_the_declination_keep_their_verdict(self, db, monkeypatch):
+        before = {r.period_start: r.verdict for r in self._rows(db)}
+        assert MISSING in before.values(), "fixture assumption broke"
+
+        self._decline(monkeypatch, date(2026, 8, 11))
+        after = {r.period_start: r.verdict for r in self._rows(db)}
+
+        assert set(before) == set(after), (
+            "declining changed WHICH periods are evaluated — the window is not "
+            "the declination's to decide"
+        )
+        earlier = [p for p in after if p < date(2026, 8, 11)]
+        assert earlier, "no period precedes the declination; test proves nothing"
+        assert all(after[p] == before[p] for p in earlier), (
+            f"declining rewrote earlier periods: "
+            f"{ {p: (before[p], after[p]) for p in earlier if before[p] != after[p]} }"
+        )
+        assert all(after[p] == DECLINED for p in after if p >= date(2026, 8, 11))
+
+    def test_a_revocation_resumes_the_obligation(self, db, monkeypatch):
+        """`[declined_on, revoked_on)` — the period a tenant resumes in is OWED,
+        not forgiven. An inclusive end would leave that period ambiguous between
+        the two episodes that touch it."""
+        self._decline(monkeypatch, date(2026, 8, 8), revoked=date(2026, 8, 11))
+        got = {r.period_start: r.verdict for r in self._rows(db)}
+
+        assert got[date(2026, 8, 8)] == DECLINED
+        assert got[date(2026, 8, 10)] == DECLINED, "revocation started a day early"
+        assert got[date(2026, 8, 11)] != DECLINED, (
+            "the obligation was still declined on the day it was resumed"
+        )
+
+    @pytest.mark.parametrize("period_start,expected", [
+        (date(2026, 8, 7), False),   # before it
+        (date(2026, 8, 8), True),    # the day it begins — inclusive
+        (date(2026, 8, 10), True),   # inside
+        (date(2026, 8, 11), False),  # the day it is revoked — EXCLUSIVE
+        (date(2026, 8, 12), False),  # after
+    ])
+    def test_the_range_is_half_open(self, period_start, expected):
+        d = ex.Declination("k", "r", date(2026, 8, 8), revoked_on=date(2026, 8, 11))
+        assert (ex.declination_covering([d], period_start) is not None) is expected
+
+    def test_an_unrevoked_declination_has_no_end(self):
+        d = ex.Declination("k", "r", date(2026, 8, 8))
+        assert ex.declination_covering([d], date(2099, 1, 1)) is not None
+
+    def test_overlapping_episodes_resolve_by_a_stated_rule(self):
+        """Sane data has none — D-1's partial unique index allows one live
+        episode. If they ever exist the answer must be a RULE (most recent
+        statement wins), not whichever the list happened to hold first, which is
+        the ordering-decides-the-outcome defect this repo has shipped twice."""
+        old = ex.Declination("k", "old", date(2026, 1, 1))
+        new = ex.Declination("k", "new", date(2026, 8, 1))
+        assert ex.declination_covering([old, new], date(2026, 8, 5)).reason == "new"
+        assert ex.declination_covering([new, old], date(2026, 8, 5)).reason == "new"
+
+
+class TestEvidenceAgainstADeclinationIsAFinding:
+    """⚠️ A DECLINED OBLIGATION THAT RECEIVES EVIDENCE IS A FINDING. A tenant
+    declared they do not do deliveries and a delivery row appeared — either the
+    declination is wrong or something unexpected happened, and both want
+    reporting. The old resolver could not see it: it skipped the probe on the
+    declined branch, so the one thing worth catching was the one thing not
+    looked for."""
+
+    KEY = "production_log_daily"
+    AS_OF = date(2026, 8, 13)
+
+    def _decline(self, monkeypatch):
+        monkeypatch.setattr(ex, "TENANT_DECLINED", {
+            TENANT: [ex.Declination(self.KEY, "no on-site pours", date(2026, 5, 1))]
+        })
+
+    def test_the_probe_runs_on_a_declined_period(self, db, monkeypatch):
+        """The capability claim, asserted directly. `observed` is the probe's
+        result, so `None` on every declined row is what "we never looked" looks
+        like — which is exactly what shipped."""
+        self._decline(monkeypatch)
+        rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
+                if r.key == self.KEY]
+        assert rows and all(r.verdict == DECLINED for r in rows)
+        assert all(r.observed is not None for r in rows), (
+            "the probe did not run on a declined period, so a contradiction "
+            "could never be detected"
+        )
+
+    def test_evidence_in_a_declined_period_is_contradicted(self, db, monkeypatch):
+        """⚠️ `_probe` IS PATCHED RATHER THAN EVIDENCE INSERTED, DELIBERATELY.
+        `production_log_entries` has NOT NULL FKs to `products` and `users`, and
+        the shared tenant fixture creates neither — inserting real rows would
+        pass on a seeded developer machine and fail on CI's bare Postgres, which
+        is the precise defect `tests/_tenant.py` exists to stop. Patching the
+        probe exercises the real `review()` path and depends on no seeded state.
+        """
+        from app.services.completeness import review as rv
+
+        self._decline(monkeypatch)
+        monkeypatch.setattr(rv, "_probe", lambda *a, **k: 3)
+        rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
+                if r.key == self.KEY]
+
+        assert rows and all(r.verdict == CONTRADICTED for r in rows)
+        assert all(r.observed == 3 for r in rows)
+        assert "no on-site pours" in rows[0].detail, "the declination was dropped"
+        assert "3 arrived" in rows[0].detail, "the evidence was dropped"
+
+    def test_contradicted_is_actionable_and_rendered(self):
+        assert CONTRADICTED in ACTIONABLE
+        assert CONTRADICTED in RENDERED
+        assert CONTRADICTED in VERDICTS
+
+    def test_a_collapsed_contradiction_does_not_invert_itself(self, db, monkeypatch):
+        """⚠️ `contradicted` IS ACTIONABLE, AND THE ACTIONABLE RUN DETAIL SAYS
+        "Nothing since 6 Aug" — the exact opposite of what a contradiction means.
+        A row whose detail contradicts its own verdict is worse than one that did
+        not collapse, because it still looks right."""
+        from app.services.completeness import review as rv
+        from app.services.completeness.collapse import collapse
+
+        self._decline(monkeypatch)
+        monkeypatch.setattr(rv, "_probe", lambda *a, **k: 3)
+        runs = [r for r in collapse(review(db, TENANT, "manufacturing", self.AS_OF))
+                if r.key == self.KEY]
+
+        assert len(runs) == 1 and runs[0].periods > 1, "nothing collapsed"
+        assert "Nothing since" not in runs[0].detail, (
+            f"the run detail inverts its own verdict: {runs[0].detail!r}"
+        )
+        assert "evidence arrived anyway" in runs[0].detail
+
+    def test_a_broken_probe_stays_declined_but_says_so(self, db, monkeypatch):
+        """⚠️ THE ONE JUDGEMENT CALL IN D-3, PINNED SO IT CANNOT DRIFT QUIET.
+        Everywhere else `None` becomes `unknown`, because there the probe IS the
+        verdict. Here it is not — a declination is a recorded statement and a
+        database error cannot un-record it, so reporting `unknown` would have the
+        review claim not to know something it does know. But the contradiction
+        check silently degrading is the graceful path this module refuses, so the
+        failure is SAID on the row."""
+        from app.services.completeness import review as rv
+
+        self._decline(monkeypatch)
+        monkeypatch.setattr(rv, "_probe", lambda *a, **k: None)
+        rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
+                if r.key == self.KEY]
+
+        assert rows and all(r.verdict == DECLINED for r in rows), (
+            "a broken probe changed the verdict of a recorded declination"
+        )
+        assert all("could not check" in r.detail for r in rows), (
+            "the contradiction check failed silently — the row reads as a "
+            "declination that was verified"
         )
 
 

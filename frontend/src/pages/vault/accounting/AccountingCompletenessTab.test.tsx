@@ -163,6 +163,63 @@ describe("rows", () => {
     expect(screen.getByText("Nothing outstanding.")).toBeInTheDocument()
   })
 
+  it("renders `declined` as a visible answer rather than a gap", async () => {
+    // ⚠️ THE ROW THIS TAB HAS ALWAYS STYLED AND NEVER RECEIVED. `summarise`
+    // selected on ACTIONABLE, so a declination left the endpoint as a +1 to the
+    // quiet count and this branch was dead. Pinned from the tab's side too, so a
+    // future narrowing of the backend's selection fails here as well as there.
+    getReview.mockResolvedValue(
+      result({
+        rows: [
+          run({
+            verdict: "declined",
+            actionable: false,
+            detail: "Declined 1 May 2026: no on-site pours",
+          }),
+        ],
+        quiet_summary: "3 obligations current.",
+        actionable_count: 0,
+      }),
+    )
+    render(<AccountingCompletenessTab />)
+
+    expect(await screen.findByText("Declined")).toBeInTheDocument()
+    expect(
+      screen.getByText("Declined 1 May 2026: no on-site pours"),
+    ).toBeInTheDocument()
+    // An answer, not a gap: visible, and it does not raise the headline count.
+    expect(screen.getByText("Nothing outstanding.")).toBeInTheDocument()
+  })
+
+  it("renders `contradicted` as its own state, not as declined and not as missing", async () => {
+    // Folding it into `declined` would hide the finding behind a quiet grey
+    // pill; rendering it as `missing` would say something is absent when the
+    // finding is that something ARRIVED.
+    getReview.mockResolvedValue(
+      result({
+        rows: [
+          run({
+            verdict: "contradicted",
+            actionable: true,
+            detail:
+              "Declined, and evidence arrived anyway in 2 periods, 9 Aug–10 Aug.",
+          }),
+        ],
+        actionable_count: 1,
+      }),
+    )
+    render(<AccountingCompletenessTab />)
+
+    expect(await screen.findByText("Contradicted")).toBeInTheDocument()
+    expect(screen.queryByText("Declined")).not.toBeInTheDocument()
+    expect(screen.queryByText("Missing")).not.toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Declined, and evidence arrived anyway in 2 periods, 9 Aug–10 Aug.",
+      ),
+    ).toBeInTheDocument()
+  })
+
   it("renders what it is given and does not re-filter the backend's shape", async () => {
     // `summarise` already decided what shows. If this component filtered too,
     // the review's shape would be decided in two places.

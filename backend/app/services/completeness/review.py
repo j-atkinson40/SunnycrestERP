@@ -23,11 +23,12 @@ from sqlalchemy.orm import Session
 
 from app.services.completeness.expectations import (
     periods_in_window,
+    Declination,
     Expectation,
-    declination_for,
+    declination_covering,
+    declinations_for,
     due_on,
     for_tenant,
-    period_for,
 )
 
 #: Evidence present, and at or above any declared minimum.
@@ -48,16 +49,25 @@ NOT_YET_DUE = "not_yet_due"
 REPORTED_NONE = "reported_none"
 #: The tenant said they don't do this, and why.
 DECLINED = "declined"
+#: The tenant said they don't do this, and evidence arrived anyway.
+#: ⚠️ A FINDING, NOT A CORRECTION. Either the declination is wrong or something
+#: unexpected happened, and BOTH want reporting — so the verdict names the
+#: RELATIONSHIP between the two facts and refuses to pick which one is at fault.
+#: Not `arrived` (that would silently un-decline the obligation and delete the
+#: finding), not `missing` (nothing is absent; the finding is the opposite), and
+#: not folded into `declined` (a quiet verdict cannot carry an accusation).
+CONTRADICTED = "contradicted"
 #: The probe could not run. NOT absence — a broken check must not read as a
 #: clean period, which is the exact substitution this module exists to refuse.
 UNKNOWN = "unknown"
 
-VERDICTS = (ARRIVED, PARTIAL, MISSING, NOT_YET_DUE, REPORTED_NONE, DECLINED, UNKNOWN)
+VERDICTS = (ARRIVED, PARTIAL, MISSING, NOT_YET_DUE, REPORTED_NONE, DECLINED,
+            CONTRADICTED, UNKNOWN)
 
 #: Verdicts a reader must act on. `arrived`, `reported_none` and `not_yet_due`
 #: are quiet — but `reported_none` stays VISIBLY distinct, so a long run of them
 #: is legible to someone looking rather than indistinguishable from work.
-ACTIONABLE = (MISSING, PARTIAL, UNKNOWN)
+ACTIONABLE = (MISSING, PARTIAL, CONTRADICTED, UNKNOWN)
 
 #: Verdicts that render as a ROW rather than folding into the quiet count.
 #: A SUPERSET of ACTIONABLE, and the distinction is the point: visible and
@@ -163,6 +173,38 @@ def _nil_claim(db: Session, tenant_id: str, key: str, start: date, end: date):
     ).fetchone()
 
 
+def _declined_verdict(
+    exp: Expectation, d: Declination, start: date, end: date, due: date, n: int | None
+) -> Verdict:
+    """One period of a declined obligation: `declined`, or `contradicted`.
+
+    ⚠️ A BROKEN PROBE DOES NOT MAKE THE DECLINATION UNKNOWN, and this is the one
+    judgement call in D-3. Everywhere else `None` becomes `UNKNOWN`, because
+    there the probe IS the verdict. Here it is not: the declination is a recorded
+    statement, and a database error cannot un-record it. Reporting `unknown`
+    would have the review claim not to know something it does know, and would put
+    an actionable row against an obligation the tenant does not have.
+
+    But the contradiction check silently degrading is exactly the graceful path
+    this module refuses, so the failure is SAID on the row rather than swallowed.
+    Not actionable, and deliberately so — pinned by test, so it cannot quietly
+    become a plain declined row later.
+    """
+    since = f"Declined {d.declined_on:%-d %b %Y}: {d.reason}"
+    if n is None:
+        return Verdict(exp.key, exp.label, exp.role_slug, DECLINED, start, end,
+                       due, None,
+                       f"{since} — could not check {exp.evidence.table} for "
+                       f"evidence to the contrary.")
+    if n > 0:
+        return Verdict(exp.key, exp.label, exp.role_slug, CONTRADICTED, start,
+                       end, due, n,
+                       f"{since} — but {n} arrived. Either the declination is "
+                       f"wrong or this was not expected.")
+    return Verdict(exp.key, exp.label, exp.role_slug, DECLINED, start, end,
+                   due, 0, since)
+
+
 def _tenant_start(db: Session, tenant_id: str) -> date | None:
     """When the tenant began. Nothing is owed for a period before that."""
     got = db.execute(
@@ -192,21 +234,30 @@ def review(
         # production manager's Pulse rather than only a page they chose to open.
         if role_slug and exp.role_slug != role_slug:
             continue
-        declined = declination_for(tenant_id, exp.key)
-        if declined:
-            # Rendered once, not filtered. A declined obligation that vanished
-            # would be indistinguishable from one never declared.
-            start, end = period_for(exp.cadence, today)
-            out.append(Verdict(
-                exp.key, exp.label, exp.role_slug, DECLINED, start, end,
-                due_on(exp, end), None,
-                f"Declined {declined.declined_on:%-d %b %Y}: {declined.reason}",
-            ))
-            continue
+        declinations = declinations_for(tenant_id, exp.key)
 
         for start, end in periods_in_window(exp.cadence, today, not_before=began):
             due = due_on(exp, end)
+
+            # ⚠️ PER PERIOD, NOT PER EXPECTATION — AND THE DIFFERENCE IS SIX DAYS
+            # OF ERASED HISTORY. The previous version emitted ONE current-period
+            # row for a declined obligation and skipped the window entirely, so
+            # declining `production_log_daily` on testco replaced
+            # `missing 6–11 Aug (6 periods)` with `declined 13 Aug (1 period)`.
+            # An answer given today rewrote last week, which made the D-2
+            # affordance a control for clearing red rows no matter what its label
+            # said. A declination now governs only the periods it covers.
+            declined = declination_covering(declinations, start)
+
+            # ⚠️ PROBED ANYWAY, WHICH IS THE WHOLE OF THE CONTRADICTION CHECK.
+            # Skipping the probe because nothing is owed is what made "a declined
+            # obligation that receives evidence" undetectable. Nothing is owed;
+            # something may still have happened, and that is the finding.
             n = _probe(db, exp, tenant_id, start, end)
+
+            if declined:
+                out.append(_declined_verdict(exp, declined, start, end, due, n))
+                continue
 
             if n is None:
                 verdict, detail = UNKNOWN, (

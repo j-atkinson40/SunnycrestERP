@@ -69,11 +69,27 @@ class Declination:
     Kept as a POSITIVE record so the review can say "declined: no on-site pours"
     rather than falling silent, which is what a deletion would produce and is
     indistinguishable from never having declared it.
+
+    ⚠️ IT HAS A BEGINNING AND MAY HAVE AN END, AND THOSE TWO DATES ARE THE ONLY
+    EXPRESSION OF ITS RANGE. `[declined_on, revoked_on)` — half-open, so the
+    period a tenant resumes in is owed rather than forgiven. There is deliberately
+    no `effective_from` / `effective_to` pair: a second way to express the same
+    interval is two derivations of one fact, which is this codebase's recurring
+    defect and not one worth importing into a new table.
+
+    Revocation is IN-ROW, not a second record. A tenant that declines, resumes,
+    and declines again has one Declination per episode — so "is this declined
+    now" is the predicate `revoked_on IS NULL`, never latest-wins over rows with
+    no guaranteed order. Unspecified ordering deciding an outcome is a defect this
+    repository has shipped twice (`_schedulable_workflows` without ORDER BY;
+    duplicate `step_order` resolved by whatever Postgres returned first).
     """
 
     expectation_key: str
     reason: str
     declined_on: date
+    #: When the tenant resumed the obligation. None means still declined.
+    revoked_on: date | None = None
 
 
 # ── Platform scope: owed by every vertical ────────────────────────────
@@ -150,11 +166,53 @@ def for_tenant(tenant_id: str, vertical: str) -> list[Expectation]:
     ]
 
 
-def declination_for(tenant_id: str, key: str) -> Declination | None:
-    return next(
-        (d for d in TENANT_DECLINED.get(tenant_id, []) if d.expectation_key == key),
-        None,
-    )
+def declinations_for(tenant_id: str, key: str) -> list[Declination]:
+    """Every declination episode for this obligation, unordered.
+
+    A LIST, not the first match. An obligation declined in March, resumed in
+    July and declined again in October has three of these, and asking for "the"
+    declination would have to pick one — which is the ordering-decides-the-answer
+    shape the dataclass docstring names. Callers ask which episode covers a
+    PERIOD; nothing has to be first.
+    """
+    return [d for d in TENANT_DECLINED.get(tenant_id, []) if d.expectation_key == key]
+
+
+def declination_covering(
+    declinations: list[Declination], period_start: date
+) -> Declination | None:
+    """The episode in force when this period BEGAN, or None.
+
+    ⚠️ KEYED ON `period_start`, AND THAT IS THE FIX FOR A MEASURED DEFECT. The
+    previous resolver ignored dates entirely and rendered one current-period row
+    for a declined obligation, skipping the whole lookback window — so declining
+    `production_log_daily` on testco turned `missing 6–11 Aug (6 periods)` into
+    `declined 13 Aug (1 period)`. Six days of red erased by an answer given
+    afterwards.
+
+    A period that had already begun was owed in full when it began, so a
+    declination takes effect from the next period and a revocation resumes the
+    obligation from the next one. Declining today cannot rewrite yesterday, which
+    is what makes the D-2 affordance something other than a button for clearing
+    rows.
+
+    Half-open on purpose: `revoked_on` is the first day the obligation is owed
+    again, not the last day it was declined. An inclusive end would leave the
+    resumption period ambiguous between the two episodes that touch it.
+
+    Sane data yields at most one match — D-1's partial unique index allows one
+    live episode per obligation, and episodes do not overlap. `max` on
+    `declined_on` rather than `next` anyway, so that if overlapping episodes ever
+    exist the answer is a STATED RULE (the most recent statement wins) instead of
+    whatever the list order happened to be.
+    """
+    covering = [
+        d
+        for d in declinations
+        if d.declined_on <= period_start
+        and (d.revoked_on is None or period_start < d.revoked_on)
+    ]
+    return max(covering, key=lambda d: d.declined_on) if covering else None
 
 
 def period_for(cadence: Cadence, as_of: date) -> tuple[date, date]:

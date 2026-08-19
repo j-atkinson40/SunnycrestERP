@@ -54,6 +54,11 @@ const VERDICT_STYLE: Record<Verdict, { family: StatusFamily; label: string }> = 
   unknown: { family: "warning", label: "Check failed" },
   reported_none: { family: "info", label: "Reported none" },
   declined: { family: "neutral", label: "Declined" },
+  // ⚠️ `warning`, NOT `error`. A delivery arriving against a declined fleet is
+  // an unexplained fact, not a failure — and an obligation nobody owes cannot be
+  // in breach. Rendering it red would tell the reader someone is at fault when
+  // the likeliest answer is that the declination needs revoking.
+  contradicted: { family: "warning", label: "Contradicted" },
   arrived: { family: "success", label: "Arrived" },
   not_yet_due: { family: "neutral", label: "Not yet due" },
 };

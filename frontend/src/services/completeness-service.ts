@@ -21,6 +21,12 @@ export type Verdict =
   /** Someone holding the obligation signed a statement that nothing happened. */
   | "reported_none"
   | "declined"
+  /**
+   * The tenant declined this obligation and evidence arrived anyway. Either the
+   * declination is wrong or something unexpected happened; the verdict names the
+   * relationship and refuses to pick which.
+   */
+  | "contradicted"
   /** The check could not run. NOT the same as a clean period. */
   | "unknown";
 

@@ -19,6 +19,7 @@ from datetime import date
 
 from app.services.completeness.review import (
     ACTIONABLE,
+    CONTRADICTED,
     RENDERED,
     REPORTED_NONE,
     Verdict,
@@ -70,6 +71,13 @@ def collapse(verdicts: list[Verdict]) -> list[Run]:
 
 def _run_detail(prev: Run, v: Verdict) -> str:
     n = prev.periods + 1
+    if v.verdict == CONTRADICTED:
+        # ⚠️ BEFORE THE ACTIONABLE BRANCH, WHICH WOULD INVERT IT. `contradicted`
+        # is actionable, and "Nothing since 6 Aug" is the exact opposite of what
+        # a contradiction says — a run detail that contradicts its own verdict is
+        # worse than not collapsing at all, because the row still looks right.
+        return (f"Declined, and evidence arrived anyway in {n} periods, "
+                f"{prev.first:%-d %b}–{v.period_end:%-d %b}.")
     if v.verdict in ACTIONABLE:
         return f"Nothing since {prev.first:%-d %b} — {n} periods."
     if v.verdict == REPORTED_NONE:
