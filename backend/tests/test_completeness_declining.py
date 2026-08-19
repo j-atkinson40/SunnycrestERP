@@ -51,7 +51,22 @@ canonical_tenant = make_canonical_tenant_fixture(
 #: would have made the declinations sweep raise, and a single `tenant_id` would
 #: have made the users sweep raise; either way the teardown, not the test, is
 #: what breaks, which is the confusing kind of red.
-_LEAKY = (("completeness_declinations", "tenant_id"), ("users", "company_id"))
+#
+# ⚠️ `roles` IS IN THIS LIST BECAUSE CI FAILED WITHOUT IT, AND IT COULD NOT FAIL
+# LOCALLY. `_user` creates a role on a miss — on a seeded machine every slug
+# already exists so nothing is created and nothing leaks; on CI's bare Postgres
+# all five are created, the handler's commit persists them, and the canonical
+# tenant's teardown then dies on `roles_company_id_fkey` deleting the company.
+# Same axis inversion the `_user` docstring already describes for the INSERT
+# side — fixed there and not here, which is how it reached CI.
+#
+# ORDER IS LOAD-BEARING: children first. `users.role_id` references `roles.id`,
+# so roles must be swept last or the delete raises.
+_LEAKY = (
+    ("completeness_declinations", "tenant_id"),
+    ("users", "company_id"),
+    ("roles", "company_id"),
+)
 
 
 @pytest.fixture
