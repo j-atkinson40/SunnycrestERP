@@ -226,12 +226,32 @@ class TestTheCopyIsPartOfTheContract:
         assert "will not post" in cost                    # the consequence
         assert "ACCOUNTS RECEIVABLE-TRADE" in cost        # the right answer
 
-    def test_only_ar_ships(self, env):
+    def test_only_the_purposes_something_READS_ship(self, env):
         """No speculative slots. bad_debt and finance_charge_income exist on the
         real chart and are NOT here, because nothing reads them yet — three
         blanks read as an unfinished form and get filled with the nearest
-        plausible account, which is the payroll lesson."""
-        assert [r["purpose"] for r in env.get()["purposes"]] == ["ar"]
+        plausible account, which is the payroll lesson.
+
+        ⚠️ WAS `test_only_ar_ships`, AND THE RENAME IS THE POINT. It asserted the
+        COUNT of a growing list, so it failed the moment INV-1 A-1 added
+        `revenue` — correctly, because a purpose arriving is a contract change
+        that should be seen. But "only ar" was never the rule; "only what has a
+        reader" is. Pinned that way now, so the next arc that adds a purpose is
+        stopped only if it adds one nothing consumes.
+
+        `revenue` is read by `ar_invoice_posting.resolve_invoice_legs`
+        (INV-1 A-1). `ar` is read by that and by
+        `ar_payment_posting.resolve_payment_legs` and
+        `early_payment_discount_service.resolve_ar_account`.
+        """
+        shipped = [r["purpose"] for r in env.get()["purposes"]]
+        assert shipped == ["ar", "revenue"]
+        for speculative in ("bad_debt", "finance_charge_income",
+                            "undeposited_funds", "freight"):
+            assert speculative not in shipped, (
+                f"{speculative!r} ships with no reader — an unfillable blank "
+                f"gets filled with the nearest plausible account"
+            )
 
 
 # ── the payment bank default (AR-2 follow-up) ───────────────────────────────

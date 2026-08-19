@@ -361,15 +361,24 @@ def set_keyword_gl(
 # chart fetch, because the operator's job is the same job even though the
 # server's is not.
 #
-# ONE KEY SHIPS: "ar". `bad_debt` (8650 BAD DEBTS) and `finance_charge_income`
-# (9200 FINANCE CHARGE INCOME) both exist on the chart and are both needed
-# eventually — by write-offs and by finance-charge posting, neither of which is
-# built. Shipping empty slots for them is the payroll lesson exactly: three
-# blanks read as an unfinished form and get filled with the nearest plausible
-# account. `undeposited_funds` would be worse still — it names an account that
-# does not exist on the chart at all (AR-2 is blocked on precisely that), so the
-# slot would be unfillable and would read as the platform's bug. Each key
-# arrives with the arc that reads it.
+# TWO KEYS SHIP: "ar" (AR-2.0 E-2) and "revenue" (INV-1 A-1). `bad_debt`
+# (8650 BAD DEBTS) and `finance_charge_income` (9200 FINANCE CHARGE INCOME) both
+# exist on the chart and are both needed eventually — by write-offs and by
+# finance-charge posting, neither of which is built. Shipping empty slots for
+# them is the payroll lesson exactly: three blanks read as an unfinished form and
+# get filled with the nearest plausible account. `undeposited_funds` would be
+# worse still — it names an account that does not exist on the chart at all
+# (AR-2 is blocked on precisely that), so the slot would be unfillable and would
+# read as the platform's bug. Each key arrives with the arc that reads it.
+#
+# ⚠️ AND "freight" IS DELIBERATELY NOT HERE, THOUGH 5210 FREIGHT IS ON THE CHART.
+# Measured on production 2026-08-19: `delivery_charge` exists on `Quote` alone
+# (`models/quote.py:115`), materialises as an ordinary QuoteLine described
+# "Delivery" (`quote_service.py:222-233`), and neither `SalesOrder` nor `Invoice`
+# has the column. Zero issued invoices on any production tenant carry such a
+# line. So freight does not reach an invoice today, and a slot for it would be
+# exactly the unfillable blank the paragraph above refuses. It arrives with the
+# arc that gives freight a home on the invoice.
 
 # NOTE ON WHERE THE KEY LIVES: `ACCOUNTING_GL_SETTINGS_KEY` is defined in
 # `early_payment_discount_service` because AR-0 put it there alongside its first
@@ -397,6 +406,32 @@ _ACCOUNTING_GL_PURPOSES: dict[str, dict[str, str]] = {
             "Marking this unmapped means early-payment discounts will not post. "
             "An account named ACCOUNTS RECEIVABLE-TRADE is almost certainly what "
             "you want."
+        ),
+    },
+    "revenue": {
+        "label": "Sales revenue",
+        # ⚠️ THE COPY ADMITS THE MISMATCH RATHER THAN HIDING IT. Measured on
+        # production 2026-08-19: this chart splits revenue THIRTEEN ways in the
+        # 5xxx block — PRECAST / REDI-ROCK / ROSETTA / FUNERAL sales, their
+        # resales, refunds, rebates, freight and cash discounts — and the
+        # platform has one concept. It cannot pick between them, because
+        # `products.product_line` is NULL for all 33 products on every
+        # production tenant, so an invoice line carries nothing to choose with.
+        #
+        # This is the payroll shape: one bucket, many accounts, and saying so
+        # beats guessing. The panel asks for the account the tenant wants ALL
+        # invoice revenue booked to, and the split waits for the accountant.
+        "description": (
+            "The account invoiced sales are credited to. This platform books "
+            "all invoice revenue to one account — if your chart splits revenue "
+            "by product line, choose the account you want everything to land "
+            "in for now, or leave it unmapped until you have decided."
+        ),
+        "unmapped_cost": (
+            "Marking this unmapped means invoices will not post to the ledger "
+            "at all — they will still be created and still move the customer's "
+            "balance, and the review will name them as unposted. Nothing is "
+            "booked to a default account on your behalf."
         ),
     },
 }

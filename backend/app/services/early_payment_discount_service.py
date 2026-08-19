@@ -329,8 +329,15 @@ def resolve_ar_account(db: Session, tenant_id: str):
     interrogating a coarse import-time classification and hoping.
 
     `platform_category` cannot be repaired into a signal, either — on the same
-    chart every revenue account (5010 PRECAST SALES, 5012 REDI-ROCK SALES) is
-    categorised `cogs`. So the answer is an EXPLICIT configured account, per
+    chart every revenue account is categorised `cogs`. RE-DERIVED ON PRODUCTION
+    2026-08-19 (INV-1 A-1) and it is worse than this docstring said: not two
+    accounts but THIRTEEN, the entire 5xxx block, including `5000 REVENUE`
+    itself — 5000 · 5010 PRECAST SALES · 5012 REDI-ROCK SALES · 5014 ROSETTA
+    SALES · 5020 PRECAST-RESALE · 5110 FUNERAL SALES · 5120 FUNERAL-RESALE ·
+    5150/5160 REFUNDS-RETURNS · 5165 FUNERAL REBATES · 5170 DAMAGE OR DEFECTIVE
+    RESALE · 5210 FREIGHT · 5410 DISCOUNTS ALLOWED-CASH. The original two were
+    the ones someone happened to look at. So the answer is an EXPLICIT
+    configured account, per
     the keyword-map precedent: a tenant's GL choice for a purpose lives in
     settings as a `TenantGLMapping.id`, resolved and validated AT USE through
     `require_gl_account` — the same single definition of "usable GL account"
