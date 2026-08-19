@@ -56,7 +56,7 @@ vi.mock("@/services/completeness-service", () => ({
 beforeEach(() => {
   getReview.mockReset()
   getObligations.mockReset()
-  getObligations.mockResolvedValue({ obligations: [], may_decline: false })
+  getObligations.mockResolvedValue({ obligations: [] })
 })
 afterEach(cleanup)
 

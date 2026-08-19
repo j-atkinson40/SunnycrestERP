@@ -333,6 +333,63 @@ class TestRevokingIsNotDeleting:
         assert e.value.status_code == 404
 
 
+class TestTheTenantWideReadsAreGatedAndTheSelfScopedOnesAreNot:
+    """⚠️ TWO GATES, AND ONLY ONE OF THEM IS A TIGHTENING.
+
+    `/review` and `/obligations` answer for the WHOLE TENANT. Until CR-3 they
+    gated on `get_current_user` alone, so any authenticated user could pull every
+    obligation and every gap by API while the tab was role-gated — a UI-only
+    restriction, which is not a restriction. Flagged three times before it was
+    fixed rather than flagged a fourth.
+
+    `/my-obligations` is the opposite case and the tests below are PERMISSIVE on
+    purpose. It filters to the caller's own role, so there is nothing to withhold
+    — and it is the entire "prompted, not remembered" mechanism. A tidy-up that
+    applied one gate to the whole router would silently stop production managers
+    being told they had not logged Tuesday, and the obligation would then be
+    satisfied only by the people who were going to satisfy it anyway. That is a
+    regression that no test would catch without these.
+    """
+
+    @pytest.mark.parametrize("role_slug", ["production", "driver", "office"])
+    def test_the_tenant_wide_review_refuses_everyone_else(self, db, role_slug):
+        with pytest.raises(HTTPException) as e:
+            api.get_review(None, _user(db, role_slug), db)
+        assert e.value.status_code == 403
+
+    @pytest.mark.parametrize("role_slug", ["admin", "accountant"])
+    def test_accounting_responsibility_reads_the_review(self, db, role_slug):
+        got = api.get_review(None, _user(db, role_slug), db)
+        assert "rows" in got and "actionable_count" in got
+
+    @pytest.mark.parametrize("role_slug", ["production", "driver"])
+    def test_the_obligation_list_refuses_everyone_else(self, db, role_slug):
+        with pytest.raises(HTTPException) as e:
+            api.list_obligations(_user(db, role_slug), db)
+        assert e.value.status_code == 403
+
+    @pytest.mark.parametrize("role_slug", ["production", "driver", "safety_trainer"])
+    def test_my_obligations_STAYS_OPEN_to_the_people_it_prompts(self, db, role_slug):
+        """⚠️ ASSERTED IN THE PERMISSIVE DIRECTION. If this ever raises, the
+        prompt has stopped arriving and nothing else will say so — a quiet day
+        produces no reason to open anything, so the failure mode is silence."""
+        got = api.my_obligations(None, _user(db, role_slug), db)
+        assert got["role_slug"] == role_slug
+
+    def test_my_obligations_returns_only_what_that_person_owes(self, db):
+        """WHY it can stay open: it cannot show you anyone else's obligations, so
+        there is nothing for a gate to protect."""
+        got = api.my_obligations(None, _user(db, "production"), db)
+        assert got["rows"], "fixture assumption broke — production owes something"
+        assert {r["role_slug"] for r in got["rows"]} == {"production"}
+
+    def test_one_list_governs_both_the_read_and_the_write(self):
+        """The route gate and the write gate are the same question — accounting
+        responsibility — so they share a constant. Two literals with identical
+        contents is two producers of one fact waiting to drift."""
+        assert api.ACCOUNTING_ROLES == ("admin", "accountant")
+
+
 class TestTheObligationListIsTheAuthoringSurfacesData:
     def test_it_enumerates_the_QUIET_obligations_too(self, db):
         """⚠️ THIS IS WHY THE SURFACE CANNOT BE DERIVED FROM `/review`. The review
@@ -367,19 +424,18 @@ class TestTheObligationListIsTheAuthoringSurfacesData:
         others = [o for o in got["obligations"] if o["key"] != KEY]
         assert all(o["declination"] is None for o in others), "declination leaked"
 
-    @pytest.mark.parametrize("role_slug,expected", [
-        ("admin", True), ("accountant", True),
-        ("production", False), ("driver", False),
-    ])
-    def test_it_tells_the_client_whether_this_user_may_decline(
-        self, db, role_slug, expected
-    ):
-        """⚠️ SO THE UI DOES NOT RENDER A CONTROL THAT 403s. A button that exists
-        and refuses is the built-and-unreachable failure inverted — it invites the
-        click. The server decides; the client asks rather than re-deriving the
-        role list, which would be two producers of one fact."""
-        got = api.list_obligations(_user(db, role_slug), db)
-        assert got["may_decline"] is expected
+    def test_there_is_no_may_decline_flag(self, db):
+        """⚠️ D-2 SHIPPED ONE AND THE ENDPOINT GATE MADE IT A DECOY. The flag
+        existed so the UI would not render a control that 403s. Once
+        `/obligations` refused everyone outside the accounting roles, it became
+        structurally always `true` — a field that reads as a permission check and
+        checks nothing, which is the `AUTO_COMMIT_THRESHOLD` / `suggested_count`
+        shape this codebase has been burned by twice. Removed rather than left.
+
+        Reaching this data is now the permission; the assertion is that nothing
+        restates it in the payload."""
+        got = api.list_obligations(_user(db, "admin"), db)
+        assert "may_decline" not in got
 
     def test_a_revoked_obligation_reads_as_undeclined(self, db):
         user = _user(db, "admin")

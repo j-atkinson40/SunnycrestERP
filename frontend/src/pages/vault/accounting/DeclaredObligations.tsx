@@ -108,12 +108,7 @@ export default function DeclaredObligations({ onChanged }: Props) {
       ) : data ? (
         <ul className="mt-4 divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-surface-elevated">
           {data.obligations.map((o) => (
-            <ObligationRow
-              key={o.key}
-              obligation={o}
-              mayDecline={data.may_decline}
-              onChanged={afterWrite}
-            />
+            <ObligationRow key={o.key} obligation={o} onChanged={afterWrite} />
           ))}
         </ul>
       ) : null}
@@ -123,11 +118,9 @@ export default function DeclaredObligations({ onChanged }: Props) {
 
 function ObligationRow({
   obligation,
-  mayDecline,
   onChanged,
 }: {
   obligation: Obligation;
-  mayDecline: boolean;
   onChanged: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -184,32 +177,33 @@ function ObligationRow({
           <span className="text-micro uppercase tracking-wide text-content-subtle">
             {obligation.cadence} · {obligation.role_slug}
           </span>
-          {/* Rendered only when the server says this user may write. A button
-              that exists and 403s is built-and-unreachable inverted — it invites
-              the click rather than merely permitting it. */}
-          {mayDecline && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setOpen((v) => !v);
-                setFailed(null);
-              }}
-            >
-              {declined ? (
-                <>
-                  <Undo2 className="mr-1.5 h-3.5 w-3.5" />
-                  Resume
-                </>
-              ) : (
-                "We don't do this"
-              )}
-            </Button>
-          )}
+          {/* ⚠️ NO PERMISSION BRANCH HERE, AND THAT IS NOT AN OMISSION.
+              `/completeness/obligations` refuses anyone outside the accounting
+              roles, so having this data at all means the caller may write. A
+              client-side flag would either restate the server's rule — two
+              producers of one fact — or, once the endpoint was gated, be a
+              constant `true` dressed as a check. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setOpen((v) => !v);
+              setFailed(null);
+            }}
+          >
+            {declined ? (
+              <>
+                <Undo2 className="mr-1.5 h-3.5 w-3.5" />
+                Resume
+              </>
+            ) : (
+              "We don't do this"
+            )}
+          </Button>
         </div>
       </div>
 
-      {open && mayDecline && (
+      {open && (
         <div className="mt-3 rounded-base border border-border-base bg-surface-sunken p-3">
           <label
             className="block text-caption text-content-muted"

@@ -11,11 +11,25 @@ Six endpoints, three audiences:
   POST /decline         "we don't do that", signed (CR-3 D-2).
   POST /declinations/{id}/revoke   "we do this again" (CR-3 D-2).
 
-⚠️ THE DECLINING ENDPOINTS ARE ROLE-CHECKED IN THE HANDLER. The read endpoints
-here gate on `get_current_user` only — any authenticated user can pull the whole
-tenant's review by API while the UI is role-gated. That is a known CR-2-shaped
-gap, flagged rather than fixed. A WRITE inheriting it would not be a gap: it
-would let any user silence any obligation for the whole tenant.
+⚠️ TWO GATES, AND THE SPLIT IS THE POINT — NOT ONE RULE APPLIED UNEVENLY.
+
+`/review`, `/obligations`, `/decline` and the revoke path answer for the WHOLE
+TENANT, so they take the same accounting-responsibility gate the UI route takes.
+Until now the reads gated on `get_current_user` alone: any authenticated user
+could pull every obligation and every gap by API while the tab was role-gated,
+which made the UI restriction decorative. Flagged three times before it was worth
+fixing rather than flagging a fourth.
+
+`/my-obligations` and `/nil-claim` stay open to every authenticated user, and
+tightening them would be a REGRESSION rather than hardening. `/my-obligations`
+filters to the caller's OWN role — it can only return what that person already
+owes, so there is nothing to withhold — and it is the entire "prompted, not
+remembered" mechanism: a production manager who cannot call it stops being told
+they have not logged Tuesday, and the obligation is then satisfied only by the
+people who were going to satisfy it anyway. `/nil-claim` carries its own stricter
+check (only the role that OWES it may claim it). Both are pinned by test in the
+PERMISSIVE direction, because the plausible future mistake here is a tidy-up that
+applies one gate to the whole router.
 
 ⚠️ THE NIL-CLAIM ENDPOINT IS THE PATTERN, NOT ONE SURFACE. Three obligations
 need the affordance and each belongs to a different person in a different place:
@@ -82,6 +96,38 @@ def _serialise(runs, closing: str) -> dict:
     }
 
 
+# ⚠️ WHO MAY DECLINE IS A DIFFERENT QUESTION FROM WHO MAY NIL-CLAIM, AND THE
+# ANSWERS DIVERGE ON PURPOSE. A nil claim is an OBSERVATION about one period, so
+# only the role that owes it may make one — a claim from anyone else is an
+# opinion. A declination is a STANDING DECISION about what the business does, so
+# the person who holds the obligation is exactly the wrong authority: the driver
+# does not decide whether the company runs a delivery fleet.
+#
+# ⚠️ ONE LIST, NOT TWO. "Who may see the tenant's whole books review" and "who
+# may decline an obligation" are the same question — accounting responsibility —
+# so they share a constant rather than each declaring `("admin", "accountant")`.
+# Two literals with the same contents is two producers of one fact waiting to
+# drift apart. Named to match the frontend's `ACCOUNTING_ROLES` in
+# `AccountingAdminLayout`, so the route gate and this one are recognisably the
+# same rule rather than a coincidence.
+ACCOUNTING_ROLES = ("admin", "accountant")
+
+
+def _require_accounting_role(slug: str | None, action: str) -> None:
+    """Gate anything that answers for the whole tenant.
+
+    ⚠️ ENFORCED HERE, NOT ONLY IN THE ROUTER. A UI-only restriction is not a
+    restriction — the endpoint is the boundary, and the tab being admin-gated did
+    nothing for anyone holding a token and a URL.
+    """
+    if slug not in ACCOUNTING_ROLES:
+        raise HTTPException(
+            403,
+            f"{action} is the tenant's accounting responsibility; you hold "
+            f"'{slug}'. It belongs to {' or '.join(ACCOUNTING_ROLES)}.",
+        )
+
+
 @router.get("/review")
 def get_review(
     as_of: date | None = Query(None),
@@ -89,6 +135,7 @@ def get_review(
     db: Session = Depends(get_db),
 ):
     """Are the books complete through this date. Bounded, and it exits."""
+    _require_accounting_role(_role_slug(db, current_user), "The completeness review")
     rows = review(db, current_user.company_id, _vertical(db, current_user.company_id), as_of)
     shown, closing = summarise(collapse(rows))
     return _serialise(shown, closing)
@@ -117,34 +164,6 @@ def my_obligations(
 
 # ── CR-3 D-2: the authoring surface's data ────────────────────────────
 #
-# ⚠️ WHO MAY DECLINE IS A DIFFERENT QUESTION FROM WHO MAY NIL-CLAIM, AND THE
-# ANSWERS DIVERGE ON PURPOSE. A nil claim is an OBSERVATION about one period, so
-# only the role that owes it may make one — a claim from anyone else is an
-# opinion. A declination is a STANDING DECISION about what the business does, so
-# the person who holds the obligation is exactly the wrong authority: the driver
-# does not decide whether the company runs a delivery fleet.
-#
-# Accounting responsibility decides. The same list the route gate uses, because a
-# UI-only restriction on a write is not a restriction.
-DECLINING_ROLES = ("admin", "accountant")
-
-
-def _require_declining_role(slug: str | None) -> None:
-    """⚠️ ENFORCED HERE, NOT ONLY IN THE ROUTER. The read endpoints in this file
-    gate on `get_current_user` and are reachable by any authenticated user while
-    the UI is role-gated — a known gap, flagged and out of CR-3's scope. A WRITE
-    inheriting that would not be a gap, it would be a hole: any user could
-    silence any obligation for the whole tenant.
-    """
-    if slug not in DECLINING_ROLES:
-        raise HTTPException(
-            403,
-            f"Declining an obligation is a standing decision about the "
-            f"business; you hold '{slug}'. It belongs to "
-            f"{' or '.join(DECLINING_ROLES)}.",
-        )
-
-
 @router.get("/obligations")
 def list_obligations(
     current_user: User = Depends(get_current_user),
@@ -159,6 +178,7 @@ def list_obligations(
     and a control derived from a review row would only ever be able to decline
     things that were already red.
     """
+    _require_accounting_role(_role_slug(db, current_user), "The obligation list")
     exps = for_tenant(current_user.company_id, _vertical(db, current_user.company_id))
     live = live_for_tenant(db, current_user.company_id)
     return {
@@ -173,7 +193,6 @@ def list_obligations(
             }
             for e in exps
         ],
-        "may_decline": _role_slug(db, current_user) in DECLINING_ROLES,
     }
 
 
@@ -228,7 +247,7 @@ def decline_obligation(
         raise HTTPException(404, f"No such obligation: {body.expectation_key}")
 
     slug = _role_slug(db, current_user)
-    _require_declining_role(slug)
+    _require_accounting_role(slug, "Declining an obligation")
 
     now = datetime.now(timezone.utc)
     name = f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email
@@ -284,7 +303,7 @@ def revoke_declination(
         raise HTTPException(422, "Resuming an obligation needs a reason too.")
 
     slug = _role_slug(db, current_user)
-    _require_declining_role(slug)
+    _require_accounting_role(slug, "Resuming an obligation")
 
     now = datetime.now(timezone.utc)
     name = f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email

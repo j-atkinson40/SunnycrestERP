@@ -98,7 +98,6 @@ describe("where the control sits", () => {
     })
     getObligations.mockResolvedValue({
       obligations: [obligation()],
-      may_decline: true,
     })
   })
 
@@ -160,7 +159,6 @@ describe("the list is the full declared set, not the review's exceptions", () =>
     // control derived from review rows could only decline what was already red.
     getObligations.mockResolvedValue({
       obligations: [obligation(), obligation({ key: "b", label: "Toolbox talk held" })],
-      may_decline: true,
     })
     render(<DeclaredObligations />)
     expect(await screen.findByText("Deliveries confirmed")).toBeInTheDocument()
@@ -168,7 +166,7 @@ describe("the list is the full declared set, not the review's exceptions", () =>
   })
 
   it("says whose duty each one is and why it matters", async () => {
-    getObligations.mockResolvedValue({ obligations: [obligation()], may_decline: true })
+    getObligations.mockResolvedValue({ obligations: [obligation()] })
     render(<DeclaredObligations />)
     expect(
       await screen.findByText(/Unconfirmed deliveries stall the invoice/),
@@ -177,30 +175,39 @@ describe("the list is the full declared set, not the review's exceptions", () =>
   })
 })
 
-describe("the control is only rendered when it would work", () => {
-  it("hides it entirely when the server says this user may not decline", async () => {
-    // ⚠️ A BUTTON THAT RENDERS AND 403s IS BUILT-AND-UNREACHABLE INVERTED — it
-    // invites the click rather than merely permitting it. `may_decline` is the
-    // server's answer; re-deriving the role list here would be two producers of
-    // one fact.
-    getObligations.mockResolvedValue({ obligations: [obligation()], may_decline: false })
-    render(<DeclaredObligations />)
-    expect(await screen.findByText("Deliveries confirmed")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /don't do this/i })).toBeNull()
-  })
-
-  it("shows it when they may", async () => {
-    getObligations.mockResolvedValue({ obligations: [obligation()], may_decline: true })
+describe("the permission lives at the endpoint, not in the payload", () => {
+  it("renders the control for anyone who got the data at all", async () => {
+    // ⚠️ D-2 SHIPPED A `may_decline` FLAG AND THE ENDPOINT GATE MADE IT A DECOY.
+    // The flag existed so no button would render that then 403s. Once
+    // `/completeness/obligations` refused everyone outside the accounting roles,
+    // it became structurally always `true` — a field that reads as a permission
+    // check and checks nothing, which is the shape this codebase has been burned
+    // by twice (`AUTO_COMMIT_THRESHOLD`, `suggested_count`). The server's refusal
+    // is the permission; reaching this data means you may write.
+    getObligations.mockResolvedValue({ obligations: [obligation()] })
     render(<DeclaredObligations />)
     expect(
       await screen.findByRole("button", { name: /don't do this/i }),
     ).toBeInTheDocument()
   })
+
+  it("shows the refusal rather than an empty list when the endpoint says no", async () => {
+    // What a non-accounting role now gets: a 403, surfaced. An empty list would
+    // read as "this tenant declares nothing", which is a different fact.
+    getObligations.mockRejectedValue({
+      response: { data: { detail: "The obligation list is the tenant's accounting responsibility" } },
+    })
+    render(<DeclaredObligations />)
+    expect(
+      await screen.findByText(/accounting responsibility/i),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /don't do this/i })).toBeNull()
+  })
 })
 
 describe("declining", () => {
   beforeEach(() => {
-    getObligations.mockResolvedValue({ obligations: [obligation()], may_decline: true })
+    getObligations.mockResolvedValue({ obligations: [obligation()] })
   })
 
   it("requires a reason before it will submit", async () => {
@@ -285,7 +292,7 @@ describe("declining", () => {
 
 describe("a declined obligation", () => {
   beforeEach(() => {
-    getObligations.mockResolvedValue({ obligations: [DECLINED], may_decline: true })
+    getObligations.mockResolvedValue({ obligations: [DECLINED] })
   })
 
   it("names who declined it, when, and why", async () => {

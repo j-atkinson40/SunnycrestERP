@@ -89,11 +89,24 @@ export interface Obligation {
 
 export interface ObligationList {
   obligations: Obligation[];
-  /** The server's answer, not the client's guess. Re-deriving the role list here
-   *  would be two producers of one fact — and a control that renders and then
-   *  403s invites the click it cannot honour. */
-  may_decline: boolean;
 }
+
+/**
+ * ⚠️ THERE IS NO `may_decline` FLAG, AND ITS ABSENCE IS THE DESIGN.
+ *
+ * D-2 shipped one, because a control that renders and then 403s invites the
+ * click it cannot honour. Then `/obligations` was gated to the same accounting
+ * roles that may decline — so the flag became structurally always `true`, which
+ * is a field that reads as a permission check and checks nothing. This codebase
+ * already carries two of those (`AUTO_COMMIT_THRESHOLD` referenced nowhere,
+ * `suggested_count` hardcoded to 0) and both produced wrong conclusions when
+ * someone reasoned from them.
+ *
+ * So the permission is expressed once, at the endpoint: reaching this data at
+ * all means the server admitted you, and it admits exactly the roles that may
+ * write. Re-deriving the role list on the client would be the same defect from
+ * the other side.
+ */
 
 export const completenessService = {
   async getReview(asOf?: string): Promise<CompletenessResult> {
