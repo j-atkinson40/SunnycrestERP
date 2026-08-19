@@ -145,7 +145,10 @@ import IntelligenceCreateExperiment from "@/pages/admin/intelligence/CreateExper
 import VaultHubLayout from "@/pages/vault/VaultHubLayout";
 import VaultOverview from "@/pages/vault/VaultOverview";
 // V-1e: Accounting admin consolidation.
-import AccountingAdminLayout from "@/pages/vault/accounting/AccountingAdminLayout";
+import AccountingAdminLayout, {
+  ACCOUNTING_ROLES,
+  AccountingLanding,
+} from "@/pages/vault/accounting/AccountingAdminLayout";
 import AccountingPeriodsTab from "@/pages/vault/accounting/AccountingPeriodsTab";
 // CR-2 A-4: the accountant's completeness review.
 import AccountingCompletenessTab from "@/pages/vault/accounting/AccountingCompletenessTab";
@@ -1666,43 +1669,60 @@ export function renderTenantSlugRoutes(
                       </Route>
                     </Route>
 
-                    {/* V-1e: Accounting admin consolidation. Admin-only
-                        at the sub-tree root — same gate the backend
-                        uses on every endpoint under
-                        /api/v1/vault/accounting/*. Tenant-facing
-                        Financials Hub (invoices/AR/AP/JEs) stays in
-                        the vertical nav, NOT here. */}
-                    <Route element={<ProtectedRoute adminOnly />}>
+                    {/* V-1e: Accounting admin consolidation. Tenant-facing
+                        Financials Hub (invoices/AR/AP/JEs) stays in the
+                        vertical nav, NOT here.
+
+                        ⚠️ THE SUB-TREE ROOT GATE IS `ACCOUNTING_ROLES`, NOT
+                        `adminOnly`, AND THE COMMENT THAT USED TO SIT HERE WAS
+                        FALSE. It claimed the admin-only wrapper matched "the
+                        gate the backend uses on every endpoint under
+                        /api/v1/vault/accounting/*" — true of the six config
+                        tabs, and NOT of CR-2's completeness review, whose router
+                        is mounted at /api/v1/completeness and gates on
+                        `get_current_user`. The review inherited a gate nobody
+                        chose for it and locked out the accountant the arc was
+                        built around.
+
+                        So the gate is now stated per tab rather than assumed for
+                        the subtree: accounting RESPONSIBILITY reaches the area,
+                        admin reaches the configuration. The list lives in
+                        AccountingAdminLayout beside the tab bar that must agree
+                        with it. */}
+                    <Route
+                      element={<ProtectedRoute anyRole={[...ACCOUNTING_ROLES]} />}
+                    >
                       <Route
                         path="accounting"
                         element={<AccountingAdminLayout />}
                       >
-                        <Route
-                          index
-                          element={<Navigate to="periods" replace />}
-                        />
-                        <Route
-                          path="periods"
-                          element={<AccountingPeriodsTab />}
-                        />
+                        {/* Role-aware: a fixed redirect to `periods` would land
+                            the accountant on the one tab they cannot open. */}
+                        <Route index element={<AccountingLanding />} />
                         <Route
                           path="completeness"
                           element={<AccountingCompletenessTab />}
                         />
-                        <Route
-                          path="agents"
-                          element={<AccountingAgentsTab />}
-                        />
-                        <Route
-                          path="classification"
-                          element={<AccountingClassificationTab />}
-                        />
-                        <Route path="tax" element={<AccountingTaxTab />} />
-                        <Route
-                          path="statements"
-                          element={<AccountingStatementsTab />}
-                        />
-                        <Route path="coa" element={<AccountingCoaTab />} />
+                        <Route element={<ProtectedRoute adminOnly />}>
+                          <Route
+                            path="periods"
+                            element={<AccountingPeriodsTab />}
+                          />
+                          <Route
+                            path="agents"
+                            element={<AccountingAgentsTab />}
+                          />
+                          <Route
+                            path="classification"
+                            element={<AccountingClassificationTab />}
+                          />
+                          <Route path="tax" element={<AccountingTaxTab />} />
+                          <Route
+                            path="statements"
+                            element={<AccountingStatementsTab />}
+                          />
+                          <Route path="coa" element={<AccountingCoaTab />} />
+                        </Route>
                       </Route>
                     </Route>
                   </Route>

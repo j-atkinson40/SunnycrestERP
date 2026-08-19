@@ -501,6 +501,15 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             default_home_route="/financials",
             pins=[
                 PinSeed(pin_type="nav_item", target="/financials"),
+                # CR-3: the completeness review is the accountant's daily
+                # question — "did everything that was supposed to arrive,
+                # arrive?" — and the Vault hub will not offer it to them,
+                # because the Accounting service is gated on the `admin`
+                # permission for the six configuration tabs beside it.
+                PinSeed(
+                    pin_type="nav_item",
+                    target="/vault/accounting/completeness",
+                ),
                 PinSeed(
                     pin_type="saved_view",
                     target="saved_view_seed:accountant:outstanding_invoices",
@@ -535,6 +544,15 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             default_home_route="/financials",
             pins=[
                 PinSeed(pin_type="nav_item", target="/financials"),
+                # CR-3: the completeness review is the accountant's daily
+                # question — "did everything that was supposed to arrive,
+                # arrive?" — and the Vault hub will not offer it to them,
+                # because the Accounting service is gated on the `admin`
+                # permission for the six configuration tabs beside it.
+                PinSeed(
+                    pin_type="nav_item",
+                    target="/vault/accounting/completeness",
+                ),
                 PinSeed(
                     pin_type="saved_view",
                     target="saved_view_seed:accountant:outstanding_invoices",
@@ -813,6 +831,13 @@ NAV_LABEL_TABLE: dict[str, tuple[str, str]] = {
     # Accountant
     "/reports": ("Reports", "BarChart3"),
     "/financials/board": ("Financials Board", "LayoutDashboard"),
+    # CR-3: the accountant's route to the completeness review. The Vault hub's
+    # Accounting service is `required_permission="admin"`, so the hub nav does
+    # not offer it to an accountant — a pin is how they reach it, and without
+    # one the surface is URL-only. Six of the seven Accounting tabs really are
+    # admin configuration, so opening the whole service would be the wrong
+    # correction.
+    "/vault/accounting/completeness": ("Completeness", "ClipboardCheck"),
     # Compliance + safety
     "/compliance": ("Compliance Hub", "ShieldCheck"),
     "/safety": ("Safety", "ShieldCheck"),

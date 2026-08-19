@@ -8,10 +8,24 @@ interface ProtectedRouteProps {
   requiredModule?: string;
   requiredExtension?: string;
   adminOnly?: boolean;
+  /**
+   * Any one of these role slugs may pass. For surfaces that belong to a
+   * RESPONSIBILITY rather than to the admin role — an accountant holds the books
+   * without administering the tenant.
+   *
+   * ⚠️ NOT A LOOSENING OF `adminOnly`, AND THE DISTINCTION IS THE POINT. It is a
+   * DELIBERATE gate where the alternative was an inherited one: CR-2's
+   * completeness review sat inside V-1e's admin-only accounting subtree
+   * (`ba424db6`, April 2026) purely because that is where it was mounted, so the
+   * accountant the arc was designed for could not open it. Passing a list states
+   * who a surface is for; removing the gate would have said nothing and let any
+   * authenticated user in.
+   */
+  anyRole?: string[];
   requiredConsole?: string;
 }
 
-export function ProtectedRoute({ requiredPermission, requiredModule, requiredExtension, adminOnly, requiredConsole }: ProtectedRouteProps) {
+export function ProtectedRoute({ requiredPermission, requiredModule, requiredExtension, adminOnly, anyRole, requiredConsole }: ProtectedRouteProps) {
   const { user, isLoading, isAuthenticated, hasPermission, hasModule, isAdmin, consoleAccess, track } = useAuth();
   const { isExtensionEnabled } = useExtensions();
 
@@ -47,6 +61,13 @@ export function ProtectedRoute({ requiredPermission, requiredModule, requiredExt
   }
 
   if (adminOnly && !isAdmin) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  // A user with no resolved role slug fails a role gate rather than passing it.
+  // The permissive reading — "we could not tell, so let them through" — is the
+  // graceful path, and this is a gate.
+  if (anyRole && !(user?.role_slug && anyRole.includes(user.role_slug))) {
     return <Navigate to="/unauthorized" replace />;
   }
 
