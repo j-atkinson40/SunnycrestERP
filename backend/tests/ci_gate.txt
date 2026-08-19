@@ -294,3 +294,4 @@ tests/test_cr3_completeness_reachability.py
 tests/test_completeness_declining.py
 tests/test_ar_invoice_posting_legs.py
 tests/test_ar_invoice_posting.py
+tests/test_suite_jobs_beat_rewrites.py

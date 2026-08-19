@@ -159,22 +159,33 @@ JOBS = [
         "certificates, periods accumulating by jurisdiction, and the "
         "return that tells you what to fix before filing.",
         [],
+        # ⚠️ THESE MUST STAY IN LOCKSTEP WITH THE TAX-2 B-1 REWRITES BELOW.
+        # `JOBS` is the FRESH-INSTALL text; `BEAT_REWRITES` is the upgrade path
+        # for already-seeded rows. They are two producers of one fact, and if
+        # they disagree a new database and an existing one end up carding
+        # different words. A test resolves both and fails on divergence — it
+        # caught exactly that divergence being introduced here.
         [
             ("today-resolve", "TODAY — resolution is real, three axes "
              "deep: product taxability (nothing exempt without your "
              "mark), job and blanket certificates with dated validity, "
-             "and the county engine — every answer carrying its "
-             "specific reason. A flag without a certificate resolves "
-             "TAXABLE with the gap listed.",
-             {"href": "/settings/tax", "label": "Open Tax Settings"}),
+             "and the county engine. It resolves against a delivery "
+             "county or the customer's ZIP — with neither on file it "
+             "records 'unresolved' and charges nothing, which is NOT "
+             "the same as exempt. Check your customers carry addresses.",
+             {"href": "/customers", "label": "Open Customers"}),
             ("coming-accumulate", "TODAY — accumulation: invoice tax "
              "facts gather into periods by jurisdiction on the NY "
              "sales-tax calendar (Mar–May quarters, by invoice date), "
-             "rebuilt idempotently every night.", None),
+             "rebuilt idempotently every night. Invoices that resolved "
+             "to nothing land in the unclassified bucket, each one "
+             "named in the period's gaps.", None),
             ("coming-filing", "TODAY — the return: gross, exempt by "
              "reason class, taxable, and tax computed per jurisdiction "
              "— plus the gaps list (uncertified flags, unattached "
-             "scans) so the fix happens before the filing.",
+             "scans, zero-tax invoices with no exemption source). A "
+             "return with a large exempt column and a long gaps list is "
+             "not a finished return — read the gaps before you file.",
              {"href": "/reports", "label": "Open the return"}),
         ],
         {"coming": {"checker": "tax_filing_arc"}},
@@ -288,6 +299,81 @@ BEAT_REWRITES += [
          "link": {"href": "/reports", "label": "Open the return"}},
     ),
 ]
+
+# ── TAX-2 B-1: the card stops implying the operator's tax is handled ──
+#
+# ⚠️ THE THREE BEATS ABOVE ARE TRUE OF THE CODE AND FALSE OF THE DATA, and this
+# is the one card where that gap creates legal liability rather than
+# inconvenience. Measured on production 2026-08-19:
+#
+#   * sunnycrest has 5 tax rates and 12 correctly-chosen central-NY counties
+#   * `get_jurisdiction_for_order` resolves cemetery-county → customer-ZIP
+#   * ZERO customers on ANY tenant carry a ZIP, and sunnycrest has no cemeteries
+#   * so every call returns (None, None), every line resolves `unresolved`,
+#     and tax computes 0.00 on all 14 production invoices
+#   * the nightly accumulator duly files 20,921.43 into the EXEMPT bucket with
+#     a gap per invoice: "zero tax with no recorded exemption source"
+#
+# An operator reading "resolution is real" concludes their tax is handled. It is
+# not being computed at all. The mechanism is real; the OUTCOME is absent, and
+# the beat never said which it was describing.
+#
+# THE SMALLEST HONEST CHANGE IS THE TEXT, not a new state. `runs_dry` was
+# considered and does NOT fit: it means an unpromoted trigger that WOULD write if
+# promoted (`liveness.py:129-131`), and it applies to cadence members with
+# workflow triggers. The tax engine has no trigger, is not unpromoted, and does
+# write — it writes zeros because an input is missing. Different subject,
+# different promise. See the TAX-2 B-1 report for the third-state question.
+#
+# Each replacement names the PRECONDITION, so the sentence stays true after the
+# addresses land — a beat that has to be rewritten again when the data changes
+# is the same write-time-status defect one layer up.
+BEAT_REWRITES += [
+    (
+        "File sales tax", "today-resolve",
+        "TODAY — resolution is real, three axes deep: product taxability "
+        "(nothing exempt without your mark), job and blanket certificates with "
+        "dated validity, and the county engine — every answer carrying its "
+        "specific reason. A flag without a certificate resolves TAXABLE with "
+        "the gap listed.",
+        {"key": "today-resolve",
+         "text": "TODAY — resolution is real, three axes deep: product "
+                 "taxability (nothing exempt without your mark), job and "
+                 "blanket certificates with dated validity, and the county "
+                 "engine. It resolves against a delivery county or the "
+                 "customer's ZIP — with neither on file it records "
+                 "'unresolved' and charges nothing, which is NOT the same as "
+                 "exempt. Check your customers carry addresses.",
+         "link": {"href": "/customers", "label": "Open Customers"}},
+    ),
+    (
+        "File sales tax", "coming-accumulate",
+        "TODAY — accumulation: invoice tax facts gather into periods by "
+        "jurisdiction on the NY sales-tax calendar (Mar–May quarters, by "
+        "invoice date), rebuilt idempotently every night.",
+        {"key": "coming-accumulate",
+         "text": "TODAY — accumulation: invoice tax facts gather into periods "
+                 "by jurisdiction on the NY sales-tax calendar (Mar–May "
+                 "quarters, by invoice date), rebuilt idempotently every "
+                 "night. Invoices that resolved to nothing land in the "
+                 "unclassified bucket, each one named in the period's gaps."},
+    ),
+    (
+        "File sales tax", "coming-filing",
+        "TODAY — the return: gross, exempt by reason class, taxable, and tax "
+        "computed per jurisdiction — plus the gaps list (uncertified flags, "
+        "unattached scans) so the fix happens before the filing.",
+        {"key": "coming-filing",
+         "text": "TODAY — the return: gross, exempt by reason class, taxable, "
+                 "and tax computed per jurisdiction — plus the gaps list "
+                 "(uncertified flags, unattached scans, zero-tax invoices with "
+                 "no exemption source). A return with a large exempt column and "
+                 "a long gaps list is not a finished return — read the gaps "
+                 "before you file.",
+         "link": {"href": "/reports", "label": "Open the return"}},
+    ),
+]
+
 
 DESCRIPTION_REWRITES = [
     (
