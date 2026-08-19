@@ -119,6 +119,7 @@ export default function CustomersPage() {
     phone: "",
     city: "",
     state: "",
+    zip_code: "",
     payment_terms: "",
     credit_limit: "",
     customer_type: "",
@@ -191,6 +192,18 @@ export default function CustomersPage() {
         phone: newCustomer.phone.trim() || undefined,
         city: newCustomer.city.trim() || undefined,
         state: newCustomer.state.trim() || undefined,
+        // TAX-2 B-2. The ZIP is not cosmetic: `get_jurisdiction_for_order`
+        // (backend `tax_service.py:39-49`) resolves a taxing county from
+        // `zip_code or billing_zip` through the platform's zip→county map, and
+        // there is NO city→county path. So a customer created here without one
+        // cannot be taxed — the resolver records `unresolved` and charges
+        // nothing, which is not the same as exempt.
+        //
+        // This form asked for city and state and not the ZIP, while the CSV
+        // import on the SAME page lists `zip_code` among its columns — so
+        // importing produced taxable customers and typing produced untaxable
+        // ones, from one screen.
+        zip_code: newCustomer.zip_code.trim() || undefined,
         payment_terms: newCustomer.payment_terms.trim() || undefined,
         credit_limit: newCustomer.credit_limit.trim()
           ? parseFloat(newCustomer.credit_limit)
@@ -206,6 +219,7 @@ export default function CustomersPage() {
         phone: "",
         city: "",
         state: "",
+        zip_code: "",
         payment_terms: "",
         credit_limit: "",
         customer_type: "",
@@ -369,6 +383,7 @@ export default function CustomersPage() {
                     phone: "",
                     city: "",
                     state: "",
+                    zip_code: "",
                     payment_terms: activeTab === "cemeteries" ? "Net 30" : "",
                     credit_limit: "",
                     customer_type: activeTab === "cemeteries" ? "cemetery" : "funeral_home",
@@ -469,6 +484,31 @@ export default function CustomersPage() {
                         }
                         placeholder="e.g. NY"
                       />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      {/* ⚠️ NOT MARKED REQUIRED, DELIBERATELY. Ruled in TAX-2
+                          B-2: the funeral-home path resolves tax by CEMETERY
+                          COUNTY rather than customer ZIP, and Places-discovered
+                          customers may genuinely have no ZIP. Requiredness
+                          belongs at the resolution boundary — refuse an order
+                          you cannot tax — not on the customer record. The helper
+                          text says what it costs instead. */}
+                      <Label htmlFor="new-customer-zip">ZIP code</Label>
+                      <Input
+                        id="new-customer-zip"
+                        value={newCustomer.zip_code}
+                        onChange={(e) =>
+                          setNewCustomer({ ...newCustomer, zip_code: e.target.value })
+                        }
+                        placeholder="e.g. 13021"
+                      />
+                      <p className="text-caption text-content-muted">
+                        Sales tax resolves from the ZIP. Without one this
+                        customer's orders charge no tax — which is not the same
+                        as being exempt.
+                      </p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
