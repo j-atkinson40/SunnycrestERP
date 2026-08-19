@@ -171,7 +171,31 @@ def make_canonical_tenant_fixture(*, child_tables: tuple[str, ...] = ()):
         yield TESTCO_ID
 
         if not created:
-            return  # seeded machine — this fixture made nothing, so it removes nothing
+            # seeded machine — this fixture made nothing, so it removes nothing.
+            #
+            # ⚠️ AND THIS BRANCH IS HOW A TEARDOWN FAILURE IMMUNISES ITSELF. The
+            # guard reads `does the row exist`, but a row that exists BECAUSE a
+            # previous teardown failed is indistinguishable from a seeded one.
+            # So the first run leaks, and every run after it takes this branch
+            # and skips teardown entirely — going green over the very leak it
+            # caused. "Clean when run alone" was true and meant nothing; the row
+            # was already there from the run that failed.
+            #
+            # THE GENERAL RULE, third instance in this codebase of a check whose
+            # passing state is produced by the defect it should catch:
+            #
+            #   A test that cleans up conditionally can be made to stop cleaning
+            #   up by the thing it failed to clean.
+            #
+            # The guard is still correct — it is the property that keeps this
+            # fixture from eating a developer's testco. What it cannot do is
+            # self-report. That job belongs to the session-scoped COMPANY LITTER
+            # tripwire in `conftest.py`, which counts rows rather than trusting
+            # this branch, and which is the only reason the leak was ever seen.
+            # Do not "optimise" that tripwire away on the grounds that the
+            # fixtures handle their own cleanup: these fixtures are exactly what
+            # it is watching.
+            return
         db = SessionLocal()
         try:
             drop_company(db, company_id=TESTCO_ID, child_tables=child_tables)

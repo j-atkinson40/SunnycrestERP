@@ -2,6 +2,21 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## `setup_complete` IS A ONE-WAY FLAG — the amber dot has never meant what it reads as (2026-08-19, TAX-2 B-2)
+
+- **Written in exactly one place** — `customer_service.py:899`, `quick_create_customer` — and **`CustomerUpdate` has no field for it**, so *nothing in the platform can set it back to True*. A customer created inline during order entry and afterwards given a full address stays flagged **forever**, while taxing correctly.
+- **The list indicator** (`frontend/src/pages/customers.tsx`, amber dot) reads that flag and is titled *"Customer profile incomplete — created during order entry"*. That is accurate as **provenance** and is read by operators as **current state**. It has never been current state.
+- **The set diverges from "cannot be taxed" in BOTH directions:** a quick-created customer later given a ZIP is still `setup_complete=False` but resolves tax fine; an **imported** customer is `setup_complete=True` and may have arrived with **no ZIP at all**. So the tax consequence could NOT be moved onto this flag — it would tell an operator that taxable customers are untaxable and vice versa.
+- **Resolution shipped:** the dot keeps its provenance wording; a **sibling indicator** reads `zip_code or billing_zip` (the resolver's own test, `tax_service.py:39`). `count_customers_without_zip` (`customer_service.py`) counts that set for the nightly alarm. `test_zip_alarm.py::test_setup_complete_can_never_be_set_back_to_true` **pins the one-way-ness** — if `CustomerUpdate` ever gains the field, that test fails and the two-indicator decision resurfaces instead of going stale.
+- **Still true and unbuilt:** nothing clears the flag. A customer whose profile IS completed has no way to stop being counted by `get_incomplete_customer_count`. Recorded, not fixed — fixing it is a behaviour change on a flag with a live reader.
+
+## A conditional teardown can be stopped from cleaning up by the thing it failed to clean (2026-08-19, TAX-2 B-2)
+
+- **Third instance in this codebase of a check whose passing state is produced by the defect it should catch.** (Prior two: a ratchet satisfied by an unregistered wrapper function; void-reversal tests that all called the helper directly and stayed green when the production call site was deleted.)
+- **The mechanism:** `tests/_tenant.py`'s fixture guards teardown with `if not created: return` — correct, and the property that stops it eating a seeded developer's testco. But **a row left behind by a FAILED teardown is indistinguishable from a seeded one.** Run 1 leaked; every run after took the skip branch and went green over its own leak. **"Clean when run alone" was true and meant nothing** — the row was already there from the run that failed.
+- **Only the session-scoped COMPANY LITTER tripwire in `conftest.py` ever saw it**, because it counts rows rather than trusting the fixtures. **Do not remove that tripwire on the grounds that fixtures handle their own cleanup — the fixtures are what it is watching.**
+- **Root cause it was hiding:** `drop_company` hardcoded `WHERE tenant_id` while the scope column varies per table (`customers.company_id`). Fixed in `1b7402c8` by resolving the column per table; a table with neither column now fails loudly.
+
 ## Domain mechanisms not yet modelled
 
 - **⚠️ SPRING BURIAL DEPOSITS — a discount-for-prepayment mechanism nothing in the platform models (recorded 2026-08-05, operator-confirmed).** Cemeteries in Sunnycrest's region close for winter: once the ground freezes a burial cannot happen until spring. Sunnycrest offers funeral homes a **discount to pay at time of death rather than at time of burial**, pulling cash forward through the slowest months of the year. **`3390 CUSTOMER SPRING DEPOSIT` as a `current_liability` is CORRECT accounting, not a chart error** — money taken for a service not yet delivered is owed until it is delivered. (`1220 CUSTOMER DEPOSIT` as a `current_asset` is the one that still looks wrong unless it means something else; **not resolved**.)
