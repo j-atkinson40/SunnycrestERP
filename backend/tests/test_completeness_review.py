@@ -51,8 +51,56 @@ TENANT = TESTCO_ID
 # Teardown is create-scoped by construction (see tests/_tenant.py): purging
 # `staging-test-001` outright would delete a developer's real testco.
 canonical_tenant = make_canonical_tenant_fixture(
-    child_tables=("completeness_nil_claims",),
+    child_tables=("completeness_nil_claims", "completeness_declinations"),
 )
+
+
+def _decline(
+    db,
+    key: str,
+    on: date,
+    *,
+    reason: str = "no on-site pours",
+    revoked: date | None = None,
+    name: str = "R. Okafor",
+    role: str = "admin",
+):
+    """Record a declination as a ROW, the way the surface will.
+
+    ⚠️ THESE TESTS USED TO MONKEYPATCH A CODE DICT, AND THAT BYPASSED THE THING
+    MOST LIKELY TO BREAK. `TENANT_DECLINED` was removed in D-1 (`r169`) because a
+    dict and a table both answering "is this declined" is two producers of one
+    fact — but the test-shape consequence matters on its own: patching the
+    in-memory source meant the loader, the column names and the row→dataclass
+    mapping were never exercised by anything. A guessed column name is one of
+    this codebase's recurring silent failures, and nothing here would have caught
+    one.
+
+    Safe on a bare database: `completeness_declinations`' only FKs are
+    `companies` (which the shared fixture guarantees) and `users` (nullable, left
+    NULL here). No products, no users, nothing seeded.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    db.execute(
+        text(
+            "INSERT INTO completeness_declinations "
+            "(id, tenant_id, expectation_key, declined_on, reason, declined_by, "
+            " declined_by_name, declined_by_role_slug, revoked_on, revoked_at, "
+            " created_at) "
+            "VALUES (:i,:t,:k,:d,:reason,NULL,:n,:r,:rev,:rev_at,:c)"
+        ),
+        {
+            "i": str(uuid.uuid4()), "t": TENANT, "k": key, "d": on,
+            "reason": reason, "n": name, "r": role, "rev": revoked,
+            # `revoked_at` is what the live-episode partial unique index keys on,
+            # so it has to move with `revoked_on` or a second episode is refused.
+            "rev_at": datetime.now(timezone.utc) if revoked else None,
+            "c": datetime.now(timezone.utc),
+        },
+    )
+    db.flush()
 
 
 @pytest.fixture
@@ -131,28 +179,23 @@ class TestNoGracefulPath:
 
 
 class TestDecliningIsNotDeletion:
-    def test_a_declined_obligation_still_renders(self, db, monkeypatch):
+    def test_a_declined_obligation_still_renders(self, db):
         """⚠️ THE DISTINCTION THAT IS THE DESIGN. Declined and never-declared
         must not look identical; filtering the row out would make them so."""
-        monkeypatch.setattr(ex, "TENANT_DECLINED", {
-            TENANT: [ex.Declination("production_log_daily", "no on-site pours",
-                                    date(2026, 5, 1))]
-        })
+        _decline(db, "production_log_daily", date(2026, 5, 1))
         rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
         got = [r for r in rows if r.key == "production_log_daily"]
         assert got, "the declined obligation disappeared — indistinguishable "
         assert all(r.verdict == DECLINED for r in got)
         assert "no on-site pours" in got[0].detail, "the reason was dropped"
 
-    def test_declined_is_not_actionable(self, db, monkeypatch):
-        monkeypatch.setattr(ex, "TENANT_DECLINED", {
-            TENANT: [ex.Declination("production_log_daily", "x", date(2026, 5, 1))]
-        })
+    def test_declined_is_not_actionable(self, db):
+        _decline(db, "production_log_daily", date(2026, 5, 1), reason="x")
         rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
         assert DECLINED not in ACTIONABLE
         assert all(r.verdict != MISSING for r in rows if r.key == "production_log_daily")
 
-    def test_declined_survives_the_whole_read_path(self, db, monkeypatch):
+    def test_declined_survives_the_whole_read_path(self, db):
         """⚠️ THE TEST THAT WAS MISSING, AND ITS ABSENCE SHIPPED THE DEFECT.
 
         Its siblings above assert on `review()`. `review()` was never the read
@@ -167,10 +210,7 @@ class TestDecliningIsNotDeletion:
         """
         from app.services.completeness.collapse import collapse, summarise
 
-        monkeypatch.setattr(ex, "TENANT_DECLINED", {
-            TENANT: [ex.Declination("production_log_daily", "no on-site pours",
-                                    date(2026, 5, 1))]
-        })
+        _decline(db, "production_log_daily", date(2026, 5, 1))
         shown, closing = summarise(collapse(
             review(db, TENANT, "manufacturing", date(2026, 8, 13))
         ))
@@ -222,21 +262,18 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
     KEY = "production_log_daily"
     AS_OF = date(2026, 8, 13)
 
-    def _decline(self, monkeypatch, on, revoked=None):
-        monkeypatch.setattr(ex, "TENANT_DECLINED", {
-            TENANT: [ex.Declination(self.KEY, "no on-site pours", on,
-                                    revoked_on=revoked)]
-        })
+    def _decline(self, db, on, revoked=None):
+        _decline(db, self.KEY, on, revoked=revoked)
 
     def _rows(self, db):
         return [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
                 if r.key == self.KEY]
 
-    def test_periods_before_the_declination_keep_their_verdict(self, db, monkeypatch):
+    def test_periods_before_the_declination_keep_their_verdict(self, db):
         before = {r.period_start: r.verdict for r in self._rows(db)}
         assert MISSING in before.values(), "fixture assumption broke"
 
-        self._decline(monkeypatch, date(2026, 8, 11))
+        self._decline(db, date(2026, 8, 11))
         after = {r.period_start: r.verdict for r in self._rows(db)}
 
         assert set(before) == set(after), (
@@ -251,11 +288,11 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
         )
         assert all(after[p] == DECLINED for p in after if p >= date(2026, 8, 11))
 
-    def test_a_revocation_resumes_the_obligation(self, db, monkeypatch):
+    def test_a_revocation_resumes_the_obligation(self, db):
         """`[declined_on, revoked_on)` — the period a tenant resumes in is OWED,
         not forgiven. An inclusive end would leave that period ambiguous between
         the two episodes that touch it."""
-        self._decline(monkeypatch, date(2026, 8, 8), revoked=date(2026, 8, 11))
+        self._decline(db, date(2026, 8, 8), revoked=date(2026, 8, 11))
         got = {r.period_start: r.verdict for r in self._rows(db)}
 
         assert got[date(2026, 8, 8)] == DECLINED
@@ -272,11 +309,12 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
         (date(2026, 8, 12), False),  # after
     ])
     def test_the_range_is_half_open(self, period_start, expected):
-        d = ex.Declination("k", "r", date(2026, 8, 8), revoked_on=date(2026, 8, 11))
+        d = ex.Declination("k", "r", date(2026, 8, 8), "R. Okafor", "admin",
+                           revoked_on=date(2026, 8, 11))
         assert (ex.declination_covering([d], period_start) is not None) is expected
 
     def test_an_unrevoked_declination_has_no_end(self):
-        d = ex.Declination("k", "r", date(2026, 8, 8))
+        d = ex.Declination("k", "r", date(2026, 8, 8), "R. Okafor", "admin")
         assert ex.declination_covering([d], date(2099, 1, 1)) is not None
 
     def test_overlapping_episodes_resolve_by_a_stated_rule(self):
@@ -284,8 +322,8 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
         episode. If they ever exist the answer must be a RULE (most recent
         statement wins), not whichever the list happened to hold first, which is
         the ordering-decides-the-outcome defect this repo has shipped twice."""
-        old = ex.Declination("k", "old", date(2026, 1, 1))
-        new = ex.Declination("k", "new", date(2026, 8, 1))
+        old = ex.Declination("k", "old", date(2026, 1, 1), "R. Okafor", "admin")
+        new = ex.Declination("k", "new", date(2026, 8, 1), "R. Okafor", "admin")
         assert ex.declination_covering([old, new], date(2026, 8, 5)).reason == "new"
         assert ex.declination_covering([new, old], date(2026, 8, 5)).reason == "new"
 
@@ -301,16 +339,14 @@ class TestEvidenceAgainstADeclinationIsAFinding:
     KEY = "production_log_daily"
     AS_OF = date(2026, 8, 13)
 
-    def _decline(self, monkeypatch):
-        monkeypatch.setattr(ex, "TENANT_DECLINED", {
-            TENANT: [ex.Declination(self.KEY, "no on-site pours", date(2026, 5, 1))]
-        })
+    def _decline(self, db):
+        _decline(db, self.KEY, date(2026, 5, 1))
 
-    def test_the_probe_runs_on_a_declined_period(self, db, monkeypatch):
+    def test_the_probe_runs_on_a_declined_period(self, db):
         """The capability claim, asserted directly. `observed` is the probe's
         result, so `None` on every declined row is what "we never looked" looks
         like — which is exactly what shipped."""
-        self._decline(monkeypatch)
+        self._decline(db)
         rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
                 if r.key == self.KEY]
         assert rows and all(r.verdict == DECLINED for r in rows)
@@ -329,7 +365,7 @@ class TestEvidenceAgainstADeclinationIsAFinding:
         """
         from app.services.completeness import review as rv
 
-        self._decline(monkeypatch)
+        self._decline(db)
         monkeypatch.setattr(rv, "_probe", lambda *a, **k: 3)
         rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
                 if r.key == self.KEY]
@@ -352,7 +388,7 @@ class TestEvidenceAgainstADeclinationIsAFinding:
         from app.services.completeness import review as rv
         from app.services.completeness.collapse import collapse
 
-        self._decline(monkeypatch)
+        self._decline(db)
         monkeypatch.setattr(rv, "_probe", lambda *a, **k: 3)
         runs = [r for r in collapse(review(db, TENANT, "manufacturing", self.AS_OF))
                 if r.key == self.KEY]
@@ -373,7 +409,7 @@ class TestEvidenceAgainstADeclinationIsAFinding:
         failure is SAID on the row."""
         from app.services.completeness import review as rv
 
-        self._decline(monkeypatch)
+        self._decline(db)
         monkeypatch.setattr(rv, "_probe", lambda *a, **k: None)
         rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
                 if r.key == self.KEY]
@@ -384,6 +420,168 @@ class TestEvidenceAgainstADeclinationIsAFinding:
         assert all("could not check" in r.detail for r in rows), (
             "the contradiction check failed silently — the row reads as a "
             "declination that was verified"
+        )
+
+
+class TestTheDeclinationTable:
+    """CR-3 D-1 — `completeness_declinations` (`r169`).
+
+    A declination is a tenant OBSERVATION, not a platform declaration: authored
+    by an operator, dated, attributable, and reversible without a release. It
+    used to live in `expectations.TENANT_DECLINED`, a code dict nothing could
+    write to — which is what a placeholder for a table looks like, and which made
+    the capability unreachable in exactly the way this arc exists to close.
+    """
+
+    KEY = "production_log_daily"
+
+    def test_the_loader_reads_what_the_writer_wrote(self, db):
+        """Column names, row→dataclass mapping, and the key. Everything the
+        monkeypatched dict used to skip."""
+        from app.services.completeness.declinations import load_for_tenant
+
+        _decline(db, self.KEY, date(2026, 5, 1), reason="no on-site pours",
+                 name="R. Okafor", role="admin")
+        got = load_for_tenant(db, TENANT)
+
+        assert self.KEY in got, f"nothing loaded for {self.KEY}: {list(got)}"
+        (d,) = got[self.KEY]
+        assert d.expectation_key == self.KEY
+        assert d.declined_on == date(2026, 5, 1)
+        assert d.reason == "no on-site pours"
+        assert d.declined_by_name == "R. Okafor"
+        assert d.declined_by_role_slug == "admin"
+        assert d.revoked_on is None
+
+    def test_revoked_episodes_are_loaded_too(self, db):
+        """⚠️ FILTERING TO THE LIVE ONES WOULD REWRITE HISTORY IN THE OTHER
+        DIRECTION. A period inside a PAST declination would render `missing` —
+        the tenant told to file production logs for the months they had already
+        told us they were not producing. The loader brings every episode; the
+        range check decides which governs which period."""
+        from app.services.completeness.declinations import load_for_tenant
+
+        _decline(db, self.KEY, date(2026, 3, 1), revoked=date(2026, 6, 1))
+        got = load_for_tenant(db, TENANT)
+        assert got.get(self.KEY), "a revoked episode was dropped by the loader"
+        assert got[self.KEY][0].revoked_on == date(2026, 6, 1)
+
+    def test_episodes_accumulate_rather_than_replace(self, db):
+        """Declined, resumed, declined again is THREE rows on one obligation —
+        the history a delete would have erased and the reason revocation is
+        in-row rather than a second kind of record."""
+        from app.services.completeness.declinations import load_for_tenant
+
+        _decline(db, self.KEY, date(2026, 1, 1), revoked=date(2026, 3, 1))
+        _decline(db, self.KEY, date(2026, 5, 1), revoked=date(2026, 7, 1))
+        _decline(db, self.KEY, date(2026, 8, 1))
+        assert len(load_for_tenant(db, TENANT)[self.KEY]) == 3
+
+    def test_at_most_one_LIVE_episode_is_enforced_by_the_index(self, db):
+        """⚠️ THE PREDICATE `revoked_at IS NULL` IS ONLY AN ANSWER IF THE INDEX
+        MAKES IT ONE. Without the partial unique, two live episodes could exist
+        and "is this declined now" would be a query returning two rows — which is
+        the latest-wins-over-unordered-rows shape that in-row revocation was
+        chosen to avoid.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        _decline(db, self.KEY, date(2026, 5, 1))
+        with pytest.raises(IntegrityError):
+            _decline(db, self.KEY, date(2026, 6, 1))
+        db.rollback()
+
+    def test_a_revoked_episode_does_not_block_a_new_one(self, db):
+        """The other half of the same index, and the half a plain unique would
+        have broken: a tenant who resumes must be able to decline again."""
+        _decline(db, self.KEY, date(2026, 1, 1), revoked=date(2026, 3, 1))
+        _decline(db, self.KEY, date(2026, 5, 1))  # must not raise
+
+    @pytest.mark.parametrize("revoked_on,revoked_at_set", [
+        (date(2026, 6, 1), False),   # effective date, never recorded
+        (None, True),                # recorded, no effective date
+    ])
+    def test_the_two_revocation_columns_cannot_disagree(
+        self, db, revoked_on, revoked_at_set
+    ):
+        """⚠️ THEY COULD, AND IT WAS MEASURED BEFORE THE CHECK EXISTED.
+
+        `revoked_on` is the effective date; `revoked_at` is when the revocation
+        was recorded. Legitimately different VALUES — revoke today, effective the
+        1st — so they are not collapsed into one column. But their NULL-ness is
+        one fact, and with only one of them set the system held two answers:
+        `declination_covering` stopped at `revoked_on` and treated the episode as
+        over, while `revoked_at IS NULL` — the partial unique index and the whole
+        "is this declined now" predicate — still counted it live.
+
+        Two derivations of one fact, in the table whose own design notes argue
+        against them. Caught before r169 shipped; the constraint is why it cannot
+        come back as a writer that forgets one column.
+        """
+        import uuid
+        from datetime import datetime, timezone
+        from sqlalchemy.exc import IntegrityError
+
+        with pytest.raises(IntegrityError):
+            db.execute(
+                text(
+                    "INSERT INTO completeness_declinations "
+                    "(id, tenant_id, expectation_key, declined_on, reason, "
+                    " declined_by_name, declined_by_role_slug, revoked_on, "
+                    " revoked_at, created_at) "
+                    "VALUES (:i,:t,:k,:d,'r','N','admin',:ron,:rat,:c)"
+                ),
+                {
+                    "i": str(uuid.uuid4()), "t": TENANT, "k": self.KEY,
+                    "d": date(2026, 1, 1), "ron": revoked_on,
+                    "rat": datetime.now(timezone.utc) if revoked_at_set else None,
+                    "c": datetime.now(timezone.utc),
+                },
+            )
+            db.flush()
+        db.rollback()
+
+    def test_a_coherent_revocation_is_accepted(self, db):
+        """The control. A constraint that refused everything would satisfy the
+        test above and break the feature."""
+        _decline(db, self.KEY, date(2026, 1, 1), revoked=date(2026, 6, 1))
+
+    def test_declinations_do_not_leak_across_tenants(self, db):
+        from app.services.completeness.declinations import load_for_tenant
+
+        _decline(db, self.KEY, date(2026, 5, 1))
+        assert load_for_tenant(db, "some-other-tenant") == {}
+
+    def test_the_author_is_named_on_the_rendered_row(self, db):
+        """⚠️ ATTRIBUTION AT THE POINT OF USE. A declination silences an
+        obligation until someone revokes it; the cheapest thing that stops it
+        being used to clear a report is that the row says who answered. Stored
+        and never read would be the shape this arc keeps finding."""
+        _decline(db, self.KEY, date(2026, 5, 1), name="R. Okafor", role="admin")
+        rows = [r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+                if r.key == self.KEY]
+        assert rows
+        assert "R. Okafor" in rows[0].detail, (
+            f"the author is stored and not rendered: {rows[0].detail!r}"
+        )
+        assert "admin" in rows[0].detail, "the role held at write time is dropped"
+
+    def test_the_code_dict_is_gone(self):
+        """⚠️ TWO PRODUCERS OF ONE FACT IS THE DEFECT THIS ARC KEEPS UNWINDING.
+        A dict and a table both answering "is this declined" would drift, and the
+        dict is the one nobody can write to — so a tenant's answer and a
+        developer's would disagree with no way to tell which was meant."""
+        # ⚠️ THE CONTROL COMES FIRST. `hasattr` on a wrong module reference
+        # returns False too, so a negative assertion alone passes vacuously —
+        # the same silent-lookup family as `inspect.getsource` on a guessed name
+        # returning "" and every assertion against it succeeding. Proving a
+        # sibling attribute IS there is what makes the absence mean something.
+        assert hasattr(ex, "TENANT_EXTRA"), (
+            "the expectations module did not load as expected; the assertion "
+            "below would pass for the wrong reason"
+        )
+        assert not hasattr(ex, "TENANT_DECLINED"), (
+            "the code dict is back beside the table"
         )
 
 

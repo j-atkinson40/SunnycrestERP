@@ -83,11 +83,20 @@ class Declination:
     no guaranteed order. Unspecified ordering deciding an outcome is a defect this
     repository has shipped twice (`_schedulable_workflows` without ORDER BY;
     duplicate `step_order` resolved by whatever Postgres returned first).
+
+    ⚠️ THE CLAIMANT IS EVIDENCE, NOT METADATA — r168's ruling, and it applies
+    with more force here. A nil claim answers for one period; a declination
+    stands until someone revokes it, so WHO said it matters more, not less. Name
+    and role are SNAPSHOTTED at write time by `completeness_declinations`,
+    because a join answers "what do they hold now", which is a different question
+    from "did they hold it when they answered".
     """
 
     expectation_key: str
     reason: str
     declined_on: date
+    declined_by_name: str
+    declined_by_role_slug: str
     #: When the tenant resumed the obligation. None means still declined.
     revoked_on: date | None = None
 
@@ -144,12 +153,23 @@ VERTICAL: dict[str, list[Expectation]] = {
 
 # ── Tenant scope ──────────────────────────────────────────────────────
 #
-# Declarations and DECLINATIONS, keyed by tenant id. Empty today; A-3 and the
-# settings surface author into it. Kept in code for A-1 per the no-new-table
-# constraint — this is the seam a table would replace, not a permanent home.
+# Tenant-authored DECLARATIONS, keyed by tenant id. Empty today. Out of scope for
+# CR-3 and deliberately still a code seam: an added obligation needs an evidence
+# source, and a source the schema does not model can only be satisfied by
+# assertion — which is what three sub-arcs were spent closing.
 
 TENANT_EXTRA: dict[str, list[Expectation]] = {}
-TENANT_DECLINED: dict[str, list[Declination]] = {}
+
+# ⚠️ `TENANT_DECLINED` WAS HERE AND IS GONE — CR-3 D-1 (`r169`). It was a code
+# dict nothing could write to, which is what a placeholder for a table looks
+# like. Declinations now live in `completeness_declinations` and are read by
+# `services/completeness/declinations.load_for_tenant`.
+#
+# Removed rather than kept alongside: a dict and a table both answering "is this
+# obligation declined" is two producers of one fact. A declaration is a PLATFORM
+# statement, versioned with the code that derives it; a declination is a TENANT
+# observation, authored by an operator and reversible without a release. Only the
+# first belongs in this file.
 
 
 def for_tenant(tenant_id: str, vertical: str) -> list[Expectation]:
@@ -164,18 +184,6 @@ def for_tenant(tenant_id: str, vertical: str) -> list[Expectation]:
         *VERTICAL.get(vertical, []),
         *TENANT_EXTRA.get(tenant_id, []),
     ]
-
-
-def declinations_for(tenant_id: str, key: str) -> list[Declination]:
-    """Every declination episode for this obligation, unordered.
-
-    A LIST, not the first match. An obligation declined in March, resumed in
-    July and declined again in October has three of these, and asking for "the"
-    declination would have to pick one — which is the ordering-decides-the-answer
-    shape the dataclass docstring names. Callers ask which episode covers a
-    PERIOD; nothing has to be first.
-    """
-    return [d for d in TENANT_DECLINED.get(tenant_id, []) if d.expectation_key == key]
 
 
 def declination_covering(

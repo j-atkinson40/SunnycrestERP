@@ -21,12 +21,12 @@ from datetime import date, datetime
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.services.completeness.declinations import load_for_tenant
 from app.services.completeness.expectations import (
     periods_in_window,
     Declination,
     Expectation,
     declination_covering,
-    declinations_for,
     due_on,
     for_tenant,
 )
@@ -190,7 +190,15 @@ def _declined_verdict(
     Not actionable, and deliberately so — pinned by test, so it cannot quietly
     become a plain declined row later.
     """
-    since = f"Declined {d.declined_on:%-d %b %Y}: {d.reason}"
+    # ⚠️ THE AUTHOR IS ON THE ROW, NOT ONLY IN THE TABLE. A declination is a
+    # standing decision about the business that silences an obligation until
+    # someone revokes it — attribution visible at the point of use is the
+    # cheapest thing that stops it being used to clear a report. Snapshotted, so
+    # this says who answered THEN rather than what they hold now.
+    since = (
+        f"Declined {d.declined_on:%-d %b %Y} by {d.declined_by_name} "
+        f"({d.declined_by_role_slug}): {d.reason}"
+    )
     if n is None:
         return Verdict(exp.key, exp.label, exp.role_slug, DECLINED, start, end,
                        due, None,
@@ -225,6 +233,10 @@ def review(
     """
     today = as_of or datetime.now().date()
     began = _tenant_start(db, tenant_id)
+    # ONE read for the whole review. The loop below is expectations × periods, so
+    # a per-expectation query would multiply an indexed read of a small
+    # tenant-scoped table by the size of the declared set for no gain.
+    declined_by_key = load_for_tenant(db, tenant_id)
     out: list[Verdict] = []
 
     for exp in for_tenant(tenant_id, vertical):
@@ -234,7 +246,7 @@ def review(
         # production manager's Pulse rather than only a page they chose to open.
         if role_slug and exp.role_slug != role_slug:
             continue
-        declinations = declinations_for(tenant_id, exp.key)
+        declinations = declined_by_key.get(exp.key, [])
 
         for start, end in periods_in_window(exp.cadence, today, not_before=began):
             due = due_on(exp, end)
