@@ -469,12 +469,69 @@ def generate_year_end_checklist(db: Session, tenant_id: str) -> list[dict]:
 
 
 def run_incomplete_customer_profile_job(db: Session, tenant_id: str) -> dict:
-    """Alert when quick-created customers haven't been completed after 7 days."""
-    from app.services.customer_service import get_incomplete_customer_count
+    """Alert on customer records that cost something — TAX-2 B-2.
+
+    ⚠️ THIS JOB WATCHED THE WRONG SET AND WOULD HAVE STAYED SILENT. It counted
+    only `setup_complete=False`, of which production has ZERO on every tenant —
+    while 21 of 22 customers carry no ZIP and therefore charge no sales tax.
+    A nightly alarm whose condition is never met is the same as no alarm, and
+    this one would have reported "all clear" on the exact defect the TAX-2 arc
+    exists to fix.
+
+    ⚠️ AND THE TWO COUNTS ARE NOT INTERCHANGEABLE. `setup_complete` never clears
+    (see `get_incomplete_customer_count`), so a quick-created customer given a
+    full address afterwards stays "incomplete" forever while taxing correctly;
+    an imported customer is "complete" and may have arrived with no ZIP at all.
+    They are counted separately and spoken about separately, because attaching
+    the tax sentence to the wrong set would tell an operator their taxable
+    customers are untaxable.
+    """
+    from app.services.customer_service import (
+        count_customers_without_zip,
+        get_incomplete_customer_count,
+    )
 
     count = get_incomplete_customer_count(db, tenant_id, older_than_days=7)
-    if count == 0:
+    no_zip = count_customers_without_zip(db, tenant_id)
+    if count == 0 and no_zip == 0:
         return {"alerted": False}
+
+    # ⚠️ THE ZIP LINE LEADS WHEN THERE IS ONE, because it is the one with a
+    # dollar consequence. An incomplete profile costs a credit check; an absent
+    # ZIP means every order that customer places charges no tax, and the
+    # liability does not go away for having been uncollected.
+    if no_zip:
+        headline = (
+            f"{no_zip} customer{'s' if no_zip != 1 else ''} "
+            f"{'have' if no_zip != 1 else 'has'} no ZIP, so their orders charge no sales tax."
+        )
+    else:
+        headline = (
+            f"{count} customer{'s' if count != 1 else ''} created during order "
+            "entry need their profiles completed."
+        )
+
+    parts: list[str] = []
+    if no_zip:
+        # ⚠️ WORD-FOR-WORD THE FORM'S SENTENCE (`customers.tsx`, the ZIP field's
+        # helper text) AND THE TAX CARD'S (`seed_suite_jobs.py`, today-resolve).
+        # An operator who meets one phrasing in three places learns the
+        # distinction; three phrasings of one fact teach nothing. If you reword
+        # it here, reword it there — `test_zip_alarm.py` holds all three
+        # together.
+        parts.append(
+            f"{no_zip} active customer{'s' if no_zip != 1 else ''} "
+            f"{'have' if no_zip != 1 else 'has'} no ZIP code on file. Sales tax "
+            "resolves from the ZIP. Without one this customer's orders charge no "
+            "tax — which is not the same as being exempt."
+        )
+    if count:
+        parts.append(
+            f"Separately, {count} customer{'s' if count != 1 else ''} "
+            f"{'were' if count != 1 else 'was'} created inline during order entry "
+            "more than 7 days ago and still need contact info, credit limits and "
+            "billing settings for accurate statements and credit checking."
+        )
 
     # AR-1 C-2, ADJACENT — not in scope, taken because it is the SAME defect in
     # the same file and it is a keyword rename. This call passed `company_id`,
@@ -488,19 +545,18 @@ def run_incomplete_customer_profile_job(db: Session, tenant_id: str) -> dict:
         db=db,
         tenant_id=tenant_id,
         insight_type="agent_alert",
-        headline=f"{count} customer{'s' if count != 1 else ''} created during order entry need their profiles completed.",
-        detail=(
-            f"{count} customer{'s' if count != 1 else ''} {'were' if count != 1 else 'was'} "
-            "created inline during order entry more than 7 days ago and still "
-            f"{'have' if count != 1 else 'has'} "
-            "incomplete profiles. Adding contact info, credit limits, and billing settings "
-            "ensures accurate statements and credit checking."
-        ),
-        action_url="/customers?filter=incomplete",
-        supporting_data={"incomplete_count": count},
+        headline=headline,
+        detail=" ".join(parts),
+        # ⚠️ WAS `/customers?filter=incomplete` — A FILTER THAT DOES NOT EXIST.
+        # `customers.tsx` has no `filter` query param; the link landed on the
+        # unfiltered list and looked like it had worked. Pointing at the plain
+        # list is honest. Building the filter is worth doing and is not this
+        # change.
+        action_url="/customers",
+        supporting_data={"incomplete_count": count, "no_zip_count": no_zip},
     )
 
-    return {"alerted": True, "count": count}
+    return {"alerted": True, "count": count, "no_zip_count": no_zip}
 
 
 # ---------------------------------------------------------------------------

@@ -930,7 +930,15 @@ def quick_create_customer(
 
 
 def get_incomplete_customer_count(db: Session, company_id: str, older_than_days: int = 7) -> int:
-    """Count quick-created customers that still need their profiles completed."""
+    """Count quick-created customers that still need their profiles completed.
+
+    ⚠️ `setup_complete` IS A ONE-WAY FLAG AND NEVER CLEARS. It is written False
+    in exactly one place — `quick_create_customer` — and `CustomerUpdate` has no
+    field for it, so nothing can set it back to True. A customer created inline
+    during order entry and afterwards given a full address stays counted here
+    forever. That is why this count is NOT the one the tax copy speaks from:
+    see `count_customers_without_zip` below.
+    """
     from datetime import datetime, timedelta, timezone
     cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
     return (
@@ -940,6 +948,43 @@ def get_incomplete_customer_count(db: Session, company_id: str, older_than_days:
             Customer.setup_complete == False,  # noqa: E712
             Customer.is_active == True,  # noqa: E712
             Customer.created_at < cutoff,
+        )
+        .count()
+    )
+
+
+def count_customers_without_zip(db: Session, company_id: str) -> int:
+    """Active customers that carry no ZIP on either address — TAX-2 B-2.
+
+    ⚠️ THE THING THAT ACTUALLY CAUSES THE CONSEQUENCE, which is not the same set
+    as `setup_complete=False`. `get_jurisdiction_for_order`
+    (`tax_service.py:39-49`) resolves a taxing county from
+    `zip_code or billing_zip` through the platform's zip→county map, and there
+    is no city→county path. So a customer without either resolves `unresolved`
+    and their orders charge no tax — which is not the same as being exempt.
+
+    The two sets OVERLAP AND DIVERGE IN BOTH DIRECTIONS: a quick-created
+    customer later given a ZIP is still `setup_complete=False` (the flag never
+    clears) but taxes fine; an imported customer is `setup_complete=True` and
+    may still have arrived with no ZIP. Counting one and speaking about the
+    other would put a tax claim on the wrong customers, which is the substitution
+    this arc keeps refusing.
+
+    Matches the resolver's own test — empty string and NULL both fail it — so
+    this counts exactly who it cannot tax, not who looks incomplete.
+    """
+    from sqlalchemy import func, or_
+
+    def _blank(col):
+        return or_(col.is_(None), func.trim(col) == "")
+
+    return (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == company_id,
+            Customer.is_active == True,  # noqa: E712
+            _blank(Customer.zip_code),
+            _blank(Customer.billing_zip),
         )
         .count()
     )

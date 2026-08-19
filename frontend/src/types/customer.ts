@@ -97,6 +97,10 @@ export interface CustomerListItem {
   contact_name: string | null;
   city: string | null;
   state: string | null;
+  // Both, because tax resolves from `zip_code or billing_zip` — see the note
+  // on CustomerListItem in backend `schemas/customer.py`.
+  zip_code: string | null;
+  billing_zip: string | null;
   account_status: string;
   current_balance: number;
   credit_limit: number | null;

@@ -188,6 +188,25 @@ def job_uncleared_check_monitor():
     _run_per_tenant("UNCLEARED_CHECK_MONITOR", run_uncleared_check_monitor)
 
 
+def job_incomplete_customer_profile():
+    """TAX-2 B-2 — ⚠️ WRITTEN, CORRECT, AND NEVER SCHEDULED UNTIL NOW.
+
+    `run_incomplete_customer_profile_job` has existed in `PROACTIVE_JOBS` since
+    it was written. That registry is reachable — `POST /jobs/run/{job_name}`
+    (`api/routes/proactive_agents.py:29`, admin-only) triggers it by hand — but
+    NOTHING SWEEPS IT. `scheduler.py` imports its nine siblings by name and this
+    was not among them. Two registries, one of them swept, and the unswept one
+    read as working because its entries were present and correct.
+
+    It is scheduled here rather than deleted because the condition it watches is
+    live: `quick_create_customer` stamps zip-less customers from two live call
+    sites, and after TAX-2 B-2 added the ZIP field to the create form, this is
+    the mechanism that catches the population problem regrowing.
+    """
+    from app.services.proactive_agents import run_incomplete_customer_profile_job
+    _run_per_tenant("INCOMPLETE_CUSTOMER_PROFILE", run_incomplete_customer_profile_job)
+
+
 def job_financial_health_score():
     from app.services.financial_health_service import run_daily_score
     today = date.today()
@@ -496,6 +515,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "missing_entry_detector": job_missing_entry_detector,
     "tax_filing_prep": job_tax_filing_prep,
     "uncleared_check_monitor": job_uncleared_check_monitor,
+    "incomplete_customer_profile": job_incomplete_customer_profile,
     "financial_health_score": job_financial_health_score,
     "cross_system_synthesis": job_cross_system_synthesis,
     "network_snapshot": job_network_snapshot,
@@ -543,6 +563,7 @@ def register_all_jobs():
         ("tax_filing_prep", job_tax_filing_prep, "30"),
         ("uncleared_check_monitor", job_uncleared_check_monitor, "35"),
         ("quote_auto_expiry", job_quote_auto_expiry, "40"),
+        ("incomplete_customer_profile", job_incomplete_customer_profile, "45"),
     ]
     for name, func, minute_offset in nightly_jobs:
         scheduler.add_job(

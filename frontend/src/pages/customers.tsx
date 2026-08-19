@@ -734,6 +734,23 @@ export default function CustomersPage() {
                             className="inline-block h-2 w-2 rounded-full bg-amber-400 ml-1.5 align-middle shrink-0"
                           />
                         )}
+                        {/* ⚠️ A SECOND INDICATOR, NOT A REWORDING OF THE FIRST.
+                            The amber dot reads `setup_complete`, which is a
+                            ONE-WAY FLAG — `quick_create_customer` is its only
+                            writer and `CustomerUpdate` cannot clear it, so a
+                            customer given a full address afterwards keeps the
+                            dot forever. Moving the tax sentence onto it would
+                            tell an operator that customers who tax correctly
+                            charge nothing. This one reads the condition that
+                            actually causes the consequence, and the two sets
+                            diverge in both directions: an imported customer is
+                            `setup_complete=True` and may still have no ZIP. */}
+                        {!customer.zip_code && !customer.billing_zip && (
+                          <span
+                            title="No ZIP code — this customer's orders charge no sales tax, which is not the same as being exempt"
+                            className="inline-block h-2 w-2 rounded-full bg-status-error ml-1.5 align-middle shrink-0"
+                          />
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {customer.account_number || "—"}

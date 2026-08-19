@@ -219,6 +219,15 @@ class CustomerListItem(BaseModel):
     contact_name: str | None = None
     city: str | None = None
     state: str | None = None
+    # ⚠️ THE SAME ASYMMETRY AS THE CREATE FORM, IN THE LIST SCHEMA. This carried
+    # `city` and `state` — the two fields `get_jurisdiction_for_order` CANNOT
+    # resolve against — and omitted the one it can. The list could therefore
+    # never show whether a customer is taxable. Both ZIP columns are exposed
+    # because the resolver reads `zip_code or billing_zip`
+    # (`tax_service.py:39`); showing only the first would flag customers that
+    # tax correctly off their billing address.
+    zip_code: str | None = None
+    billing_zip: str | None = None
     account_status: str
     current_balance: Decimal
     credit_balance: Decimal = Decimal("0.00")
