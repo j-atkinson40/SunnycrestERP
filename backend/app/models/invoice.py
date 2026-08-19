@@ -148,6 +148,21 @@ class Invoice(Base):
         String(36), ForeignKey("invoices.id"), nullable=True
     )
 
+    # INV-1 A-2 (r170) — the entry that booked `Dr AR / Cr revenue`, or NULL.
+    #
+    # NULL is a real and expected state, not a gap waiting to be filled. The
+    # decided discipline is fail-closed on the LEDGER and fail-open on the
+    # RECORD: an invoice issues even when no revenue account is configured, so
+    # this column is what makes "which invoices are unposted" answerable at all.
+    #
+    # FK'd, per r153/r154/r155 — deleting an entry an issued invoice points at
+    # should be refused, not silently unlink it and leave the invoice looking
+    # unposted. The unconstrained `discount_journal_entry_id` (q2l3) is the
+    # counter-example, and AR-0.1 already records it as an open question.
+    journal_entry_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("journal_entries.id"), nullable=True
+    )
+
     # Audit
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True

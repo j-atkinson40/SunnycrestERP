@@ -664,8 +664,10 @@ def update_sales_order(
     return order
 
 
-def post_invoice_to_ar(db: Session, company_id: str, invoice: Invoice) -> None:
-    """THE ONE POSTING MOMENT (audit #2 D-2).
+def post_invoice_to_ar(
+    db: Session, company_id: str, invoice: Invoice, user_id: str | None = None
+) -> None:
+    """THE ONE POSTING MOMENT (audit #2 D-2) — subledger AND ledger (INV-1 A-2).
 
     AR balance moves when an invoice becomes REAL — exactly once, at the
     draft→issued transition (approval, or a status PATCH out of draft),
@@ -673,6 +675,23 @@ def post_invoice_to_ar(db: Session, company_id: str, invoice: Invoice) -> None:
     else adds invoice totals to `customer.current_balance`. The old
     draft-time post at creation double-counted with the approval-time
     post; the 02:00 sweeper laundered the lie nightly.
+
+    ⚠️ UNTIL INV-1 A-2 THIS TOUCHED THE LEDGER NOWHERE. It moved
+    `customer.current_balance` — a denormalised subledger column — and wrote no
+    journal entry, while `post_payment` credited the AR control account at
+    receipt. Measured on production 2026-08-19:
+    `1200 ACCOUNTS RECEIVABLE-TRADE` carried **Dr 0.00 against Cr 33,845.00**
+    over 14 lines. The account only ever moved one way. The debit is now written
+    here, at the same chokepoint the balance moves, so the two halves of AR
+    cannot drift apart by being wired in different places.
+
+    THE NAME UNDERSTATES IT NOW and is kept anyway: six call sites reference it
+    and a rename is churn that would bury the behaviour change in a diff of
+    unrelated files. The docstring is the correction.
+
+    Fail-open on the RECORD: `post_invoice` returns None rather than raising
+    when an account is unconfigured or the period is closed, and the invoice
+    stands. The gap is reported as an `AgentAnomaly`, never swallowed.
     """
     customer = (
         db.query(Customer)
@@ -684,6 +703,17 @@ def post_invoice_to_ar(db: Session, company_id: str, invoice: Invoice) -> None:
         customer.current_balance = (
             customer.current_balance or Decimal("0.00")
         ) + invoice.total
+
+    # ⚠️ ONE CHOKEPOINT, NOT SIX CALL SITES. `post_invoice_to_ar` is already
+    # what every issuance path funnels through — the PATCH out of draft, the
+    # email-send of a draft, the draft-invoice batch, finance charges, the data
+    # migration. Wiring the ledger post at each of them instead would be six
+    # places to forget, and the one forgotten would be silent.
+    from app.services import ar_invoice_posting
+
+    ar_invoice_posting.post_invoice(
+        db, company_id=company_id, invoice=invoice, user_id=user_id
+    )
 
 
 def create_invoice_from_order(
@@ -995,6 +1025,49 @@ def update_invoice(
     return invoice
 
 
+def _undo_invoice_entry(
+    db: Session, company_id: str, invoice: Invoice, actor_user_id: str | None
+) -> None:
+    """Reverse or void the entry an invoice points at. INV-1 A-2.
+
+    Deliberately the SAME SHAPE as `_unwind_payment._undo_entry`: a POSTED entry
+    is reversed (a correcting entry, so the audit trail keeps both), anything
+    else is marked voided in place (there is nothing to correct — a draft entry
+    never hit the books). Two behaviours because reversing a draft would create
+    a correcting entry for something that never counted.
+
+    Tenant-scoped in the query, and silent on a miss: an invoice pointing at an
+    entry that is not this tenant's is a data problem, not something a void
+    should raise on halfway through.
+    """
+    # Locally imported, matching `_unwind_payment` two hundred lines down —
+    # neither name is module-level in this file, and assuming they were is a
+    # NameError that only fires on the void path.
+    from app.models.journal_entry import JournalEntry
+    from app.services import journal_entry_service
+
+    entry_id = getattr(invoice, "journal_entry_id", None)
+    if not entry_id:
+        return
+    entry = (
+        db.query(JournalEntry)
+        .filter(JournalEntry.id == entry_id,
+                JournalEntry.tenant_id == company_id)
+        .first()
+    )
+    if entry is None:
+        return
+    if entry.status == "posted":
+        journal_entry_service.reverse_journal_entry(
+            db,
+            tenant_id=company_id,
+            entry_id=entry.id,
+            actor_user_id=actor_user_id,
+        )
+    elif entry.status not in ("reversed", "voided"):
+        entry.status = "voided"
+
+
 def void_invoice(
     db: Session, company_id: str, user_id: str, invoice_id: str
 ) -> Invoice:
@@ -1022,6 +1095,20 @@ def void_invoice(
     if was_posted:
         customer = _get_customer_or_404(db, company_id, invoice.customer_id)
         customer.current_balance -= invoice.balance_remaining
+
+    # ⚠️ AND THE LEDGER MUST COME BACK TOO (INV-1 A-2). AR-2's void bug is the
+    # precedent: `_undo_entry` was written for the payment path and MISSED
+    # `discount_journal_entry_id`, leaving a posted entry standing behind a
+    # voided payment. The failure was not the reversal logic — it was reversing
+    # SOME of the entries a record points at. An invoice points at one, so the
+    # equivalent mistake here is forgetting it entirely.
+    #
+    # Unconditional, NOT gated on `was_posted`: a draft invoice has no entry, so
+    # `journal_entry_id` is None and this is a no-op — whereas gating it would
+    # mean a status vocabulary change (a new pre-issued status, say) could
+    # silently strand an entry. The column is the authority on whether an entry
+    # exists, not the status.
+    _undo_invoice_entry(db, company_id, invoice, user_id)
 
     audit_service.log_action(
         db,

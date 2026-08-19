@@ -1262,6 +1262,21 @@ def cleanup_reconciliation(
                         "WHERE payment_id = ANY(:p)"), {"p": pay_ids})
         db.execute(text("DELETE FROM customer_payments WHERE id = ANY(:p)"),
                    {"p": pay_ids})
+    # ⚠️ INVOICES NOW COME BEFORE JOURNAL ENTRIES, AND r170 IS WHY. INV-1 A-2
+    # added `invoices.journal_entry_id` as an FK, so an invoice can point at an
+    # entry — and deleting the entry first makes the FK refuse. The two blocks
+    # below were the other way round until that column existed, and the ordering
+    # was correct right up to the moment it was not.
+    #
+    # Caught by `test_seed_accounting_demo.py::test_children_are_deleted_before_
+    # their_parents`, which DERIVES the constraint graph rather than restating a
+    # hand-written order — so a new FK anywhere invalidates the sequence loudly
+    # instead of waiting for a cleanup run to fail on real data.
+    if inv_ids:
+        # Lines before invoices — the FK points that way.
+        db.execute(text("DELETE FROM invoice_lines WHERE invoice_id = ANY(:i)"),
+                   {"i": inv_ids})
+        db.execute(text("DELETE FROM invoices WHERE id = ANY(:i)"), {"i": inv_ids})
     if je_ids:
         # `journal_entry_id`, READ FROM THE MODEL, not `entry_id` — which is what
         # the relationship is NAMED (`back_populates="entry"`) and is not the
@@ -1272,11 +1287,6 @@ def cleanup_reconciliation(
         db.execute(text("DELETE FROM journal_entry_lines WHERE journal_entry_id = ANY(:j)"),
                    {"j": je_ids})
         db.execute(text("DELETE FROM journal_entries WHERE id = ANY(:j)"), {"j": je_ids})
-    if inv_ids:
-        # Lines before invoices — the FK points that way.
-        db.execute(text("DELETE FROM invoice_lines WHERE invoice_id = ANY(:i)"),
-                   {"i": inv_ids})
-        db.execute(text("DELETE FROM invoices WHERE id = ANY(:i)"), {"i": inv_ids})
     if demo_txn_ids:
         db.execute(text("DELETE FROM bank_transactions WHERE id = ANY(:b)"),
                    {"b": demo_txn_ids})
