@@ -31,6 +31,7 @@ import { AlertTriangle, Loader2, RefreshCw, ShieldQuestion } from "lucide-react"
 
 import { Button } from "@/components/ui/button";
 import { StatusPill, type StatusFamily } from "@/components/ui/status-pill";
+import DeclaredObligations from "./DeclaredObligations";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   completenessService,
@@ -138,6 +139,24 @@ export default function AccountingCompletenessTab() {
       ) : result ? (
         <Review result={result} />
       ) : null}
+
+      {/* CR-3 D-2. ⚠️ BELOW THE REVIEW AND OUTSIDE IT, WHICH IS THE RULING AND
+          NOT A LAYOUT PREFERENCE. Declining has to be reachable from here — a
+          control only reachable from settings is safe and never found — but a
+          control adjacent to a `missing` row is answered in the mood of clearing
+          that row. Its own section, after the exceptions, over the FULL declared
+          set including the quiet ones.
+
+          Rendered unconditionally, NOT inside the `result ?` branch: the
+          obligations that exist are not contingent on the review having loaded,
+          and hiding the authoring surface behind a failed fetch would make a
+          transient error look like a tenant with nothing to declare. It fetches
+          its own data and owns its own failure state.
+
+          `load` is passed so a write re-reads the review above — the two show the
+          same facts, and a stale review beside a fresh list is the page
+          contradicting itself. */}
+      <DeclaredObligations onChanged={() => void load()} />
     </div>
   );
 }

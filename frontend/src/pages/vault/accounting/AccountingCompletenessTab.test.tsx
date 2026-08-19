@@ -26,10 +26,16 @@ import AccountingCompletenessTab from "./AccountingCompletenessTab"
 import type { CompletenessResult, CompletenessRun } from "@/services/completeness-service"
 
 const getReview = vi.fn()
+const getObligations = vi.fn()
 
 vi.mock("@/services/completeness-service", () => ({
   completenessService: {
     getReview: (...args: unknown[]) => getReview(...args),
+    // CR-3 D-2. The tab now mounts `DeclaredObligations`, which fetches its own
+    // data — so this mock has to answer for it or every test in the file dies on
+    // `getObligations is not a function` in a child component, which reads like
+    // a failure of whatever the test was actually asserting.
+    getObligations: (...args: unknown[]) => getObligations(...args),
   },
 }))
 
@@ -49,6 +55,8 @@ vi.mock("@/services/completeness-service", () => ({
  */
 beforeEach(() => {
   getReview.mockReset()
+  getObligations.mockReset()
+  getObligations.mockResolvedValue({ obligations: [], may_decline: false })
 })
 afterEach(cleanup)
 

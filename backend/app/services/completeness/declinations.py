@@ -66,3 +66,38 @@ def load_for_tenant(db: Session, tenant_id: str) -> dict[str, list[Declination]]
             )
         )
     return dict(out)
+
+
+def live_for_tenant(db: Session, tenant_id: str) -> dict[str, dict]:
+    """The declination in force RIGHT NOW per obligation, with its id.
+
+    ⚠️ A DIFFERENT QUESTION FROM `load_for_tenant`, NOT A NARROWER ANSWER TO THE
+    SAME ONE. The resolver asks "which episode governed THIS period" and needs
+    every episode ever recorded. The authoring surface asks "what is the state of
+    this obligation now" and needs exactly one row plus its id to revoke. Serving
+    the second from the first would mean re-deriving "which of these is live" at
+    every call site — and the whole reason revocation is in-row is that
+    `revoked_at IS NULL` should be a predicate the database answers.
+
+    `ux_completeness_declination_live` is what makes at-most-one true, so this
+    cannot silently pick between two rows.
+    """
+    rows = db.execute(
+        text(
+            "SELECT id, expectation_key, declined_on, reason, declined_by_name, "
+            "       declined_by_role_slug "
+            "FROM completeness_declinations "
+            "WHERE tenant_id = :t AND revoked_at IS NULL"
+        ),
+        {"t": tenant_id},
+    ).fetchall()
+    return {
+        key: {
+            "id": row_id,
+            "declined_on": declined_on,
+            "reason": reason,
+            "declined_by_name": name,
+            "declined_by_role_slug": role_slug,
+        }
+        for row_id, key, declined_on, reason, name, role_slug in rows
+    }

@@ -291,3 +291,4 @@ tests/test_workflow_scheduler_scheduled_dispatch.py
 tests/test_period_projection.py
 tests/test_completeness_review.py
 tests/test_cr3_completeness_reachability.py
+tests/test_completeness_declining.py
