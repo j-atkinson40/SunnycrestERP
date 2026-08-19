@@ -110,10 +110,39 @@ def drop_company(db, *, company_id: str, child_tables: tuple[str, ...]) -> None:
     Only ever called for a row `ensure_company` reported creating, so the child
     sweep cannot reach seeded data. Extra DELETEs over empty sets are harmless
     no-ops — the same reasoning `_cleanup.py` uses for its ordered list.
+
+    ⚠️ THE SCOPE COLUMN VARIES PER TABLE AND THIS HARDCODED `tenant_id`. That is
+    a platform-wide fact — `invoices.company_id`, `journal_entries.tenant_id`,
+    `customers.company_id` — and assuming one name here meant that passing a
+    `company_id`-scoped table raised `UndefinedColumn`, the teardown never
+    reached the `companies` DELETE, and the tenant leaked. The failure surfaced
+    as a COMPANY LITTER tripwire error naming the wrong culprit, and only on the
+    bare axis, since a seeded machine never enters this branch at all.
+
+    Worse, it hid itself on re-run: the leaked row made `ensure_company` report
+    `created=False` next time, so the fixture skipped teardown entirely and the
+    suite went green over the same leak.
+
+    Resolved per table rather than per caller so no suite has to know which
+    convention its tables follow.
     """
     for table in child_tables:
+        column = db.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns"
+                " WHERE table_name = :t AND column_name IN ('tenant_id', 'company_id')"
+                " ORDER BY column_name = 'tenant_id' DESC LIMIT 1"
+            ),
+            {"t": table},
+        ).scalar()
+        if column is None:
+            raise AssertionError(
+                f"{table!r} has neither tenant_id nor company_id — it cannot be "
+                f"swept as a child of a company, and naming it in child_tables "
+                f"would silently leave rows behind"
+            )
         db.execute(
-            text(f"DELETE FROM {table} WHERE tenant_id = :i"), {"i": company_id}
+            text(f"DELETE FROM {table} WHERE {column} = :i"), {"i": company_id}
         )
     db.execute(text("DELETE FROM companies WHERE id = :i"), {"i": company_id})
     db.commit()
