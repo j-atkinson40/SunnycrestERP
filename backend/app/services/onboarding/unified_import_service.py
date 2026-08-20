@@ -573,25 +573,39 @@ def _classify_batch_ai(
                     result_map = {r.get("id"): r for r in result["classifications"] if isinstance(r, dict)}
                 else:
                     logger.warning("Unexpected AI classification response format")
-                result_map = {}
+                    result_map = {}
 
-            for row in batch:
-                ai = result_map.get(row.id)
-                if ai:
-                    row.suggested_type = ai.get("customer_type", "unknown")
-                    row.suggested_contractor_type = ai.get("contractor_type")
-                    conf = ai.get("confidence", 0.5)
-                    row.classification_confidence = float(Decimal(str(conf)))
-                    row.cross_ref_confidence = float(Decimal(str(conf)))
-                else:
+                for row in batch:
+                    ai = result_map.get(row.id)
+                    if ai:
+                        row.suggested_type = ai.get("customer_type", "unknown")
+                        row.suggested_contractor_type = ai.get("contractor_type")
+                        conf = ai.get("confidence", 0.5)
+                        row.classification_confidence = float(Decimal(str(conf)))
+                        row.cross_ref_confidence = float(Decimal(str(conf)))
+                    else:
+                        row.suggested_type = row.suggested_type or "unknown"
+                        row.classification_confidence = float(Decimal("0.3"))
+
+            except Exception:
+                logger.exception("AI classification batch failed")
+                for row in batch:
                     row.suggested_type = row.suggested_type or "unknown"
                     row.classification_confidence = float(Decimal("0.3"))
-
-        except Exception:
-            logger.exception("AI classification batch failed")
-            for row in batch:
-                row.suggested_type = row.suggested_type or "unknown"
-                row.classification_confidence = float(Decimal("0.3"))
+    finally:
+        # ⚠️ THE DEFECT THE SyntaxError WAS HIDING. `_owns_db` is assigned on
+        # both branches above and was read NOWHERE — so whenever this function
+        # opened its own session (called without `db`, which is how
+        # `_classify_with_signals` used to call it), that session was never
+        # closed. The variable exists to be read; reading it is what closes the
+        # session.
+        #
+        # Invisible until now because the file could not be parsed: one failure
+        # shadowing another, and fixing only the first would have shipped the
+        # second. The outer `try:` had no `except` and no `finally` at all —
+        # the function simply ended.
+        if _owns_db:
+            db.close()
 
 
 # ── Main processing orchestrator ───────────────────────────────────
