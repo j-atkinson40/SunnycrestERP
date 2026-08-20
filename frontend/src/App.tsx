@@ -277,6 +277,7 @@ import ChargeTermsOnboardingPage from "@/pages/onboarding/charge-terms";
 import TeamSetupPage from "@/pages/onboarding/team-setup";
 import SafetyTrainingSetupPage from "@/pages/onboarding/safety-training-setup";
 import TaxJurisdictionsOnboarding from "@/pages/onboarding/tax-jurisdictions";
+import TaxReadinessPage from "@/pages/onboarding/tax-readiness";
 import TransfersPage from "@/pages/transfers";
 import ProcedureLibraryPage, { ProcedureDetailPage } from "@/pages/training/procedure-library";
 import VaultOrderLifecyclePage from "@/pages/training/vault-order-lifecycle";
@@ -1373,6 +1374,7 @@ export function renderTenantSlugRoutes(
                   <Route path="onboarding/team-intelligence" element={<TeamIntelligencePage />} />
                   <Route path="onboarding/safety-training" element={<SafetyTrainingSetupPage />} />
                   <Route path="onboarding/tax-jurisdictions" element={<TaxJurisdictionsOnboarding />} />
+                  <Route path="onboarding/tax-readiness" element={<TaxReadinessPage />} />
                   <Route path="onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="onboarding/charge-terms" element={<ChargeTermsOnboardingPage />} />
                   <Route path="onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />

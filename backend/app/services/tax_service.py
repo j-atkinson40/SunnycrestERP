@@ -217,6 +217,94 @@ def unresolved_reason_for_customer(db: Session, customer_id: str | None,
     )
 
 
+#: The four ways a customer stands, ordered worst-first for rendering.
+READINESS_STATES = ("no_address", "ambiguous", "unconfigured", "resolves")
+
+
+def tax_readiness(db: Session, company_id: str) -> dict:
+    """Which customers can be taxed, and precisely why the rest cannot.
+
+    ⚠️ AN OBLIGATION, NOT A GATE. A tenant with 400 imported customers and 30
+    bad addresses must be able to finish onboarding — the 30 surface at the till
+    once the order path refuses, and blocking platform use over them would be
+    the wrong trade. What this exists to guarantee is that **the tenant knew**.
+
+    ⚠️ AND IT NAMES THE ROWS. A count sends someone hunting; `unresolved_reason_
+    for_customer` already produces the operator-facing sentence per customer
+    (r172), including the counties an ambiguous ZIP spans and their differing
+    rates. The same discipline as a migration pre-flight: report which, not how
+    many.
+
+    States, and they want different actions:
+      no_address    — no ZIP at all; the customer needs an address
+      ambiguous     — the ZIP spans counties that charge different rates, or
+                      spills into one this tenant has no rate for; set
+                      `customer.tax_county`
+      unconfigured  — resolves to a county with no jurisdiction configured; add
+                      it in tax settings
+      resolves      — taxable today
+
+    Reads the live data every time and stores nothing. A stored readiness count
+    is a second producer of a fact derived from `customers`, and it goes stale
+    the moment someone fixes an address — the shape `setup_complete` has, where
+    a flag that never clears outlives what it described.
+    """
+    from app.models.customer import Customer
+    from app.services.county_geographic_service import counties_for_zip
+
+    customers = (
+        db.query(Customer)
+        .filter(Customer.company_id == company_id, Customer.is_active == True)  # noqa: E712
+        .order_by(Customer.name)
+        .all()
+    )
+
+    buckets: dict[str, list[dict]] = {s: [] for s in READINESS_STATES}
+    for cust in customers:
+        jur, rate = get_jurisdiction_for_order(db, company_id, None, cust.id)
+        if jur and rate:
+            buckets["resolves"].append({
+                "customer_id": cust.id, "customer_name": cust.name,
+                "county": jur.county, "rate_percentage": float(rate.rate_percentage),
+            })
+            continue
+
+        zip_code = (cust.zip_code or cust.billing_zip or "").strip()[:5]
+        if (cust.tax_county or "").strip():
+            state = "unconfigured"
+        elif not zip_code:
+            state = "no_address"
+        elif len(counties_for_zip(zip_code, "NY")) > 1:
+            state = "ambiguous"
+        else:
+            state = "unconfigured"
+        buckets[state].append({
+            "customer_id": cust.id,
+            "customer_name": cust.name,
+            "zip_code": zip_code or None,
+            "reason": unresolved_reason_for_customer(db, cust.id),
+        })
+
+    counts = {s: len(buckets[s]) for s in READINESS_STATES}
+    total = len(customers)
+    unresolved = total - counts["resolves"]
+    return {
+        "total_customers": total,
+        "resolves": counts["resolves"],
+        "unresolved": unresolved,
+        "counts": counts,
+        "customers": buckets,
+        # ⚠️ BORROWED FROM THE COMPLETENESS VERDICTS, WHICH ALREADY HAVE THE
+        # RIGHT WORD. "partial" is precisely "some resolve and some do not" —
+        # a boolean would collapse the state this whole surface exists to show.
+        "verdict": (
+            "reported_none" if total == 0
+            else "complete" if unresolved == 0
+            else "partial"
+        ),
+    }
+
+
 def compute_tax(
     subtotal: Decimal,
     rate_percentage: Decimal,

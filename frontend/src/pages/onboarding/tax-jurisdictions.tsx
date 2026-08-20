@@ -18,7 +18,17 @@ interface CountySuggestion {
   state_rate: number | null
   county_rate: number | null
   is_state_rate_only: boolean
+  /* HOW the county was suggested. Was called `source`, which collided with the
+     rate's own provenance below and silently won — so a verified New York rate
+     and an unverified Ohio one arrived byte-identical. */
+  suggested_by: "service_territory" | "radius_lookup" | "customer_addresses"
   source: "service_territory" | "radius_lookup" | "customer_addresses"
+  /* WHERE the rate came from. `platform_tax_rates` means it was checked against
+     a primary publication on `rate_verified_on`; null means it came from the
+     static compilation, which is unverified outside New York. */
+  rate_source: string | null
+  rate_verified_on: string | null
+  jurisdiction_code: string | null
   distance_miles: number | null
   already_configured: boolean
   rate_found: boolean
@@ -244,6 +254,15 @@ export default function TaxJurisdictionsOnboarding() {
             ? "We loaded your service territory counties and pre-filled their tax rates. Select the counties you deliver to."
             : "We found counties near your location and pre-filled their tax rates. Select the ones you deliver to."}
         </p>
+        {/* ⚠️ THE HONEST DESCRIPTION OF WHO OWNS THE NUMBER. The platform keeps
+            county rates and suggests them; what actually bills is the rate saved
+            against this tenant's jurisdiction. Those are the same today and the
+            copy must not promise they always will be — the tenant table is still
+            what the invoice reads. */}
+        <p className="text-xs text-gray-500 mt-2">
+          We suggest each county&rsquo;s rate. The rate you save here is what bills —
+          you can change it, and changing it only affects this business.
+        </p>
       </div>
 
       {/* Data freshness notice */}
@@ -375,6 +394,23 @@ export default function TaxJurisdictionsOnboarding() {
                             {s.is_state_rate_only && s.rate_found && (
                               <p className="text-xs text-amber-600 mt-0.5">
                                 State rate only — enter county rate if different
+                              </p>
+                            )}
+                            {/* ⚠️ UNVERIFIED IS NOT THE SAME AS FOUND. Only New
+                                York has been checked against a primary source
+                                (Publication 718); the rest of the file is a
+                                2025 compilation that was wrong for nine NY
+                                counties until it was checked. Saying so is the
+                                difference between a rate and a guess. */}
+                            {s.rate_found && !s.rate_verified_on && (
+                              <p className="text-xs text-amber-600 mt-0.5">
+                                Not verified against {s.state}&rsquo;s published rates — confirm this figure
+                              </p>
+                            )}
+                            {s.rate_verified_on && (
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                Verified {s.rate_verified_on}
+                                {s.jurisdiction_code ? ` · reporting code ${s.jurisdiction_code}` : ""}
                               </p>
                             )}
                             {!s.rate_found && (

@@ -244,6 +244,19 @@ def build_suggestions(
         seen.add(key)
 
         rate_info = get_tax_rate_for_county(state, county, db=db)
+        # ⚠️ TWO FACTS SHARED THE WORD `source` AND THE VALUABLE ONE WAS THROWN
+        # AWAY. This dict's `source` means HOW THE COUNTY WAS SUGGESTED
+        # (radius_lookup / customer_addresses / service_territory).
+        # `get_tax_rate_for_county` returns a `source` meaning WHERE THE RATE
+        # CAME FROM (`platform_tax_rates` when the state has been verified
+        # against a primary publication, absent when it fell back to the static
+        # file). Building this dict with an explicit key list silently dropped
+        # the second, so a New York suggestion — verified against Publication
+        # 718 last week — and an Ohio one from a 2025 compilation nobody has
+        # ever checked arrived byte-identical.
+        #
+        # Renamed to `suggested_by`, and the provenance passed through under
+        # its own names. `rate_verified_on` being null IS the honest signal.
         suggestions.append({
             "county": county,
             "state": state.upper(),
@@ -251,7 +264,13 @@ def build_suggestions(
             "state_rate": rate_info["state_rate"] if rate_info else None,
             "county_rate": rate_info["county_rate"] if rate_info else None,
             "is_state_rate_only": rate_info["is_state_rate_only"] if rate_info else True,
+            "suggested_by": source,
+            # Retained for one release so an unmigrated caller does not break.
+            # `suggested_by` is the name; this is the old one.
             "source": source,
+            "rate_source": (rate_info or {}).get("source"),
+            "rate_verified_on": (rate_info or {}).get("verified_on"),
+            "jurisdiction_code": (rate_info or {}).get("jurisdiction_code"),
             "distance_miles": distance,
             "already_configured": key in existing_keys,
             "rate_found": rate_info is not None,

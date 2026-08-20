@@ -1,5 +1,27 @@
 """Shared test teardown — FK-safe purge of test-created companies.
 
+⚠️ A SERVICE THAT COMMITS INTERNALLY MAKES THE CALLER'S ROLLBACK A LIE.
+Read this before deciding a `finally: s.rollback()` fixture is teardown. Three
+services found doing it, in one week, each caught the same way:
+
+    generate_insight        — writes behavioral_insights and commits
+    run_health_check        — writes audit_health_checks and commits
+    initialize_checklist    — writes the checklist, items and scenarios, commits
+
+A test that calls one of these passes, rolls back, and leaves rows. Nothing in
+the test can see that: the assertions are about return values, and the session
+that would have shown the residue is closed. **Only a row COUNT across the
+session sees it** — which is what `conftest.py`'s COMPANY LITTER tripwire does,
+and it is why that tripwire is not redundant with per-file cleanup. It caught
+all three.
+
+So: when a test exercises a service rather than a query, assume it may commit
+until you have looked. Either sweep the tables it writes (see
+`tests/_tenant.py`'s `child_tables`) or track the ids you create and delete them
+in a module-scoped teardown. The rollback still earns its place for everything
+that did NOT reach a committing service — it is insufficient, not useless.
+
+
 ONE place for the company FK-cascade order so per-file teardown fixtures
 don't each re-derive the graph and drift (S-5 CI-clean). The
 accounting/workflow suites create companies plus a web of children —

@@ -330,6 +330,41 @@ def list_exemptions(
     return results
 
 
+@router.get("/readiness")
+def tax_readiness_report(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Which customers can be taxed, and why the rest cannot.
+
+    Backs the `verify_tax_readiness` onboarding step, and stays useful long
+    afterwards — the answer changes every time a customer is edited, which is
+    why nothing caches it.
+
+    ⚠️ VIEWING THIS IS WHAT COMPLETES THE STEP, NOT REACHING ZERO. A tenant with
+    400 imported customers and 30 bad addresses must be able to finish
+    onboarding; the 30 surface at the till once the order path refuses. The
+    obligation the step carries is that the tenant KNEW, so the completion hook
+    fires here rather than on a clean result.
+    """
+    from app.services.onboarding_service import check_completion
+    from app.services.tax_service import tax_readiness
+
+    report = tax_readiness(db, current_user.company_id)
+
+    try:
+        check_completion(db, current_user.company_id, "verify_tax_readiness")
+        db.commit()
+    except Exception:
+        # The report is the deliverable; a checklist hiccup must not withhold
+        # it. Logged rather than silent — this arc has found three swallows
+        # that reported nothing.
+        db.rollback()
+        logger.warning("verify_tax_readiness completion hook failed", exc_info=True)
+
+    return report
+
+
 # ── County Geographic Suggestions ──
 
 

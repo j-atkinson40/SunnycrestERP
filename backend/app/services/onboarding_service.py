@@ -274,6 +274,34 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/tax-jurisdictions",
         "sort_order": 8,
     },
+    # Sort 9: Tax readiness — TAX-4. Distinct from the step above, and the
+    # distinction is the point: "which counties do you serve" is a decision the
+    # tenant makes once, "do your customers resolve" is a fact about data that
+    # changes every time a customer is edited. Folding the second into the
+    # first would give it a completion that silently stops being true — the
+    # `setup_complete` shape, where a flag outlives what it described.
+    #
+    # Completing it means the tenant LOOKED, not that every customer resolves.
+    # A tenant with 400 imported customers and 30 bad addresses must be able to
+    # finish onboarding; the 30 surface at the till once the order path refuses.
+    {
+        "item_key": "verify_tax_readiness",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Check your customers can be taxed",
+        "description": (
+            "See which customers resolve to a tax county and which cannot yet. "
+            "Anything unresolved charges no tax — which is not the same as "
+            "being exempt."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/tax-readiness",
+        "sort_order": 9,
+        # You cannot judge readiness before there are jurisdictions to resolve
+        # against — every customer would read as unconfigured.
+        "depends_on": "setup_tax_jurisdictions",
+    },
     # Sort 10: Charge accounts — credit limits before first billing run
     {
         "item_key": "setup_charge_accounts",
