@@ -1,8 +1,8 @@
 {
   "metadata": {
     "source": "Tax Foundation and state department of revenue data",
-    "last_updated": "2025-01-01",
-    "note": "Combined state + county rates. Local district taxes may apply additionally.",
+    "last_updated": "2026-08-20",
+    "note": "Combined state + county rates. Local district taxes may apply additionally. ONLY NEW YORK HAS BEEN VERIFIED AGAINST A PRIMARY SOURCE \u2014 see `verification`. Every other state carries the original unverified 2025-01-01 compilation and should not be trusted without the same check.",
     "priority_states": [
       "NY",
       "PA",
@@ -17,7 +17,20 @@
       "FL",
       "TX",
       "CA"
-    ]
+    ],
+    "verification": {
+      "NY": {
+        "authority": "NYS Publication 718 (2/25) \u2014 New York State Sales and Use Tax Rates by Jurisdiction",
+        "url": "https://www.tax.ny.gov/pdf/publications/sales/pub718.pdf",
+        "authority_effective": "2025-03-01",
+        "verified_on": "2026-08-20",
+        "coverage": "all 62 counties; the five NYC boroughs carry the single New York City rate",
+        "caveats": [
+          "county_rate for MCTD counties (Dutchess, Nassau, Orange, Putnam, Rockland, Suffolk, Westchester) folds in the 3/8% Metropolitan Commuter Transportation District surcharge, which is not a county levy. combined_rate is the load-bearing field and is correct.",
+          "Yonkers (8.875%) differs from Westchester County (8.375%). This file is keyed by county and cannot express that; it is the only NY county where a city rate diverges today."
+        ]
+      }
+    }
   },
   "rates": [
     {
@@ -59,8 +72,8 @@
       "state": "NY",
       "county": "Chautauqua",
       "state_rate": 4.0,
-      "county_rate": 3.5,
-      "combined_rate": 7.5
+      "county_rate": 4.0,
+      "combined_rate": 8.0
     },
     {
       "state": "NY",
@@ -108,15 +121,15 @@
       "state": "NY",
       "county": "Dutchess",
       "state_rate": 4.0,
-      "county_rate": 3.75,
-      "combined_rate": 7.75
+      "county_rate": 4.125,
+      "combined_rate": 8.125
     },
     {
       "state": "NY",
       "county": "Erie",
       "state_rate": 4.0,
-      "county_rate": 4.0,
-      "combined_rate": 8.0
+      "county_rate": 4.75,
+      "combined_rate": 8.75
     },
     {
       "state": "NY",
@@ -213,8 +226,8 @@
       "state": "NY",
       "county": "Nassau",
       "state_rate": 4.0,
-      "county_rate": 4.25,
-      "combined_rate": 8.25
+      "county_rate": 4.625,
+      "combined_rate": 8.625
     },
     {
       "state": "NY",
@@ -248,8 +261,8 @@
       "state": "NY",
       "county": "Orange",
       "state_rate": 4.0,
-      "county_rate": 3.75,
-      "combined_rate": 7.75
+      "county_rate": 4.125,
+      "combined_rate": 8.125
     },
     {
       "state": "NY",
@@ -276,8 +289,8 @@
       "state": "NY",
       "county": "Putnam",
       "state_rate": 4.0,
-      "county_rate": 4.125,
-      "combined_rate": 8.125
+      "county_rate": 4.375,
+      "combined_rate": 8.375
     },
     {
       "state": "NY",
@@ -346,8 +359,8 @@
       "state": "NY",
       "county": "Suffolk",
       "state_rate": 4.0,
-      "county_rate": 4.25,
-      "combined_rate": 8.25
+      "county_rate": 4.75,
+      "combined_rate": 8.75
     },
     {
       "state": "NY",
@@ -388,8 +401,8 @@
       "state": "NY",
       "county": "Washington",
       "state_rate": 4.0,
-      "county_rate": 4.0,
-      "combined_rate": 8.0
+      "county_rate": 3.0,
+      "combined_rate": 7.0
     },
     {
       "state": "NY",
@@ -402,8 +415,8 @@
       "state": "NY",
       "county": "Westchester",
       "state_rate": 4.0,
-      "county_rate": 3.375,
-      "combined_rate": 7.375
+      "county_rate": 4.375,
+      "combined_rate": 8.375
     },
     {
       "state": "NY",
@@ -418,6 +431,41 @@
       "state_rate": 4.0,
       "county_rate": 4.0,
       "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Richmond",
+      "state_rate": 4.0,
+      "county_rate": 4.875,
+      "combined_rate": 8.875
+    },
+    {
+      "state": "NY",
+      "county": "Queens",
+      "state_rate": 4.0,
+      "county_rate": 4.875,
+      "combined_rate": 8.875
+    },
+    {
+      "state": "NY",
+      "county": "New York",
+      "state_rate": 4.0,
+      "county_rate": 4.875,
+      "combined_rate": 8.875
+    },
+    {
+      "state": "NY",
+      "county": "Kings",
+      "state_rate": 4.0,
+      "county_rate": 4.875,
+      "combined_rate": 8.875
+    },
+    {
+      "state": "NY",
+      "county": "Bronx",
+      "state_rate": 4.0,
+      "county_rate": 4.875,
+      "combined_rate": 8.875
     },
     {
       "state": "PA",

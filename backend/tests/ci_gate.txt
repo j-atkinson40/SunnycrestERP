@@ -297,3 +297,4 @@ tests/test_ar_invoice_posting.py
 tests/test_suite_jobs_beat_rewrites.py
 tests/test_zip_alarm.py
 tests/test_tax_exemption_surface.py
+tests/test_ny_tax_rates.py
