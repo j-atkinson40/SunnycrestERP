@@ -135,20 +135,96 @@ def _platform_rate_for_county(db, state: str, county: str, on) -> dict | None:
     }
 
 
+def _county_has_dated_coverage(db, state: str, county: str) -> bool:
+    """Does `platform_tax_rates` carry ANY row for this state+county, at any date?
+
+    ⚠️ KEYED ON THE COUNTY, NOT THE STATE, AND THAT DISTINCTION IS THE WHOLE
+    GUARD. The first version asked whether the STATE had any rows, which made a
+    THIRD absence collapse into the refusal: a New York county missing from the
+    table — a caller's misspelling, or one the seed never loaded — would be
+    refused instead of falling back to the file. That is the Ohio argument at
+    county granularity: we have no dated data for that county, so the undated
+    file is not a worse answer than nothing, it is the only answer.
+
+    Caught by `test_platform_tax_rates.py` when the gate ran, not by noticing.
+
+    Deliberately ignores `effective_to`: a county whose only row has been CLOSED
+    still has dated coverage, and a date outside it is a refusal rather than a
+    fallback. The question here is "did we ever record dates for this county",
+    not "is something in force now" — that second question is
+    `_platform_rate_for_county`, and its None is what brings us here.
+    """
+    from app.models.tax import PlatformTaxRate
+
+    return (
+        db.query(PlatformTaxRate.id)
+        .filter(
+            PlatformTaxRate.state == state.upper(),
+            PlatformTaxRate.county.ilike(county.strip()),
+        )
+        .first()
+        is not None
+    )
+
+
 def get_tax_rate_for_county(state: str, county: str, db=None, on=None) -> dict | None:
-    """Look up combined tax rate for a state+county.
+    """Look up combined tax rate for a state+county, as of `on`.
 
     Reads `platform_tax_rates` when a session is supplied and the state has been
     loaded; otherwise falls back to the static dataset. `db` is optional so the
-    function stays callable from contexts that have no session — the fallback is
-    the old behaviour exactly.
-    """
-    if db is not None:
-        from datetime import date as _date
+    function stays callable from contexts that have no session.
 
-        hit = _platform_rate_for_county(db, state, county, on or _date.today())
+    ⚠️ A DATE THE TABLE CANNOT ANSWER IS REFUSED, NOT ANSWERED FROM THE UNDATED
+    FILE. Before this, asking about 2019 returned **today's** rate: the platform
+    lookup found no row in force, fell through to
+    `us-county-tax-rates.json` — which has no date concept at all — and handed
+    back the current figure as though it were the 2019 one. The caller supplied a
+    date, got an answer, and the answer silently ignored it. That is worse than
+    not asking, because it looks like history.
+
+    The distinction that decides it is not "did we find a rate" but "does this
+    COUNTY have dated coverage" — county, not state, because three absences
+    reach this line and only one of them is a refusal:
+
+      - county NOT in `platform_tax_rates` because its whole state is absent
+        (Ohio today) → fall back to the file. We have no dated data and never
+        claimed to; the file is undated for every date equally.
+      - county not in the table though its state is loaded (a misspelling, or
+        one the seed missed) → **also fall back**, for exactly the same reason.
+        Refusing here would break a county the file can still answer.
+      - county IS in the table, date outside its range → **refuse**, carrying
+        `unknown_because`. `platform_tax_rates` holds one edition
+        (`effective_from` 2025-03-01 on every row), so every pre-epoch question
+        about a loaded county lands here.
+
+    "I do not have rates for that date" is a first-class answer in this codebase
+    — `require_resolution` raises rather than defaulting to zero, an unbacked
+    exemption flag resolves TAXABLE with the gap listed, an ambiguous ZIP
+    refuses and names the counties.
+
+    ⚠️ LATENT TODAY, AND SAYING SO: no caller passes a historical date.
+    `build_suggestions` omits `on`, so it always asks about now. This is the
+    trap waiting for whoever builds historical recompute — the parameter exists,
+    accepts a past date, and until now answered it with a present number.
+    """
+    from datetime import date as _date
+
+    asked = on or _date.today()
+    if db is not None:
+        hit = _platform_rate_for_county(db, state, county, asked)
         if hit:
             return hit
+        if _county_has_dated_coverage(db, state, county):
+            return {
+                "state_rate": None, "county_rate": None, "combined_rate": None,
+                "is_state_rate_only": False,
+                "unknown_because": (
+                    f"no {county.strip()} County, {state.upper()} rate is recorded "
+                    f"as in force on {asked.isoformat()} — that county has dated "
+                    "coverage and this date falls outside it, so the undated "
+                    "fallback would answer with a figure from another period"
+                ),
+            }
 
     data = _load_tax_rates()
     state_upper = state.upper()
@@ -271,9 +347,16 @@ def build_suggestions(
             "rate_source": (rate_info or {}).get("source"),
             "rate_verified_on": (rate_info or {}).get("verified_on"),
             "jurisdiction_code": (rate_info or {}).get("jurisdiction_code"),
+            # Why there is no rate, when there is a reason worth giving. Null in
+            # the ordinary "county not in the file" case — that has no story.
+            "rate_unknown_because": (rate_info or {}).get("unknown_because"),
             "distance_miles": distance,
             "already_configured": key in existing_keys,
-            "rate_found": rate_info is not None,
+            # ⚠️ KEYED ON AN ACTUAL RATE, NOT ON A NON-NULL DICT. The
+            # date-refusal above returns a dict WITHOUT a rate, so
+            # `rate_info is not None` would have reported `rate_found: True`
+            # alongside `combined_rate: None` — a found rate that is not a rate.
+            "rate_found": bool(rate_info) and rate_info.get("combined_rate") is not None,
         })
 
     # Group 1: Service territory counties

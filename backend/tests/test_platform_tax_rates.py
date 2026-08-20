@@ -347,13 +347,24 @@ class TestTheReadPathPrefersTheTable:
 
     def test_a_row_not_yet_in_force_is_not_used(self, db):
         """A rate announced for next quarter must not be charged today — the
-        whole reason `effective_from` is stored rather than assumed."""
+        whole reason `effective_from` is stored rather than assumed.
+
+        ⚠️ THE ASSERTION MOVED FROM SHAPE TO INTENT, DELIBERATELY. This read
+        `is None` until TAX-5 A-3 made an unanswerable date return a REASON
+        rather than nothing. The intent — no rate is charged today — is
+        unchanged and is what `combined_rate is None` pins; what changed is
+        that the caller is now told WHY, which is the point of that branch.
+        Kept as a positive assertion on the reason so a regression that quietly
+        starts charging the future rate cannot pass by returning a bare None.
+        """
         from app.services.county_geographic_service import get_tax_rate_for_county
 
         future = date.today() + timedelta(days=30)
         _row(db, county="Futureton", rate="9.9990", code="6666", effective_from=future)
         db.flush()
-        assert get_tax_rate_for_county("NY", "Futureton", db=db) is None
+        today_answer = get_tax_rate_for_county("NY", "Futureton", db=db)
+        assert today_answer["combined_rate"] is None, "the future rate was charged today"
+        assert "Futureton" in today_answer["unknown_because"]
         assert get_tax_rate_for_county("NY", "Futureton", db=db, on=future)["combined_rate"] == 9.999
 
     def test_a_city_row_does_not_answer_for_its_county(self, db):
