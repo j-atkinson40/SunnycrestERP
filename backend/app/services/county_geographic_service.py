@@ -43,8 +43,80 @@ def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.asin(math.sqrt(a))
 
 
-def get_tax_rate_for_county(state: str, county: str) -> dict | None:
-    """Look up combined tax rate for a state+county from static dataset."""
+def _platform_rate_for_county(db, state: str, county: str, on) -> dict | None:
+    """The in-force `platform_tax_rates` row for a county, if one is loaded.
+
+    ⚠️ TABLE FIRST, FILE SECOND, AND THE ORDER IS THE POINT. `us-county-tax-rates.json`
+    is an unversioned snapshot with one commit in its history; it was wrong for
+    nine New York counties for nineteen months because nothing could correct it
+    centrally and nothing recorded that nobody had checked. The table carries
+    effective dates, the reporting code, and `verified_on`. Where it has an
+    answer, the file's is stale by construction.
+
+    Returns None when the state has not been loaded, so every state except New
+    York still resolves through the file — deliberately, because only New York
+    has been verified against a primary source.
+    """
+    from app.models.tax import PlatformTaxRate
+
+    rows = (
+        db.query(PlatformTaxRate)
+        .filter(
+            PlatformTaxRate.state == state.upper(),
+            PlatformTaxRate.county.ilike(county.strip()),
+            PlatformTaxRate.effective_to.is_(None),
+        )
+        .all()
+    )
+    if not rows:
+        return None
+    # A county can hold several jurisdictions. The county-wide rate is the
+    # "– except" row; a city row applies only inside that city and cannot be
+    # chosen from a county name alone. Preferring the county-wide row is
+    # CORRECT for eleven of New York's twelve split counties and WRONG for
+    # Yonkers — recorded in the seed's docstring, and not fixable without
+    # resolving on address rather than county.
+    rows = [r for r in rows if r.is_in_force_on(on)]
+    if not rows:
+        return None
+    countywide = next((r for r in rows if "(city)" not in r.jurisdiction_name), rows[0])
+    combined = float(countywide.rate_percentage)
+    state_only = (
+        db.query(PlatformTaxRate)
+        .filter(
+            PlatformTaxRate.state == state.upper(),
+            PlatformTaxRate.county.is_(None),
+            PlatformTaxRate.effective_to.is_(None),
+        )
+        .first()
+    )
+    state_rate = float(state_only.rate_percentage) if state_only else None
+    return {
+        "state_rate": state_rate,
+        "county_rate": round(combined - state_rate, 4) if state_rate is not None else None,
+        "combined_rate": combined,
+        "is_state_rate_only": state_rate is not None and combined == state_rate,
+        "jurisdiction_code": countywide.jurisdiction_code,
+        "source": "platform_tax_rates",
+        "verified_on": countywide.verified_on.isoformat(),
+    }
+
+
+def get_tax_rate_for_county(state: str, county: str, db=None, on=None) -> dict | None:
+    """Look up combined tax rate for a state+county.
+
+    Reads `platform_tax_rates` when a session is supplied and the state has been
+    loaded; otherwise falls back to the static dataset. `db` is optional so the
+    function stays callable from contexts that have no session — the fallback is
+    the old behaviour exactly.
+    """
+    if db is not None:
+        from datetime import date as _date
+
+        hit = _platform_rate_for_county(db, state, county, on or _date.today())
+        if hit:
+            return hit
+
     data = _load_tax_rates()
     state_upper = state.upper()
     county_lower = county.lower().strip()
@@ -110,6 +182,7 @@ def build_suggestions(
     customer_counties: list[dict] | None = None,
     existing_jurisdictions: list[dict] | None = None,
     radius_miles: float = 100,
+    db=None,
 ) -> list[dict]:
     """
     Build county suggestions with pre-filled tax rates.
@@ -137,7 +210,7 @@ def build_suggestions(
             return
         seen.add(key)
 
-        rate_info = get_tax_rate_for_county(state, county)
+        rate_info = get_tax_rate_for_county(state, county, db=db)
         suggestions.append({
             "county": county,
             "state": state.upper(),

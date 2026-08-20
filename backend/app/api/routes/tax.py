@@ -390,6 +390,10 @@ def get_county_suggestions(
         customer_counties=customer_counties if customer_counties else None,
         existing_jurisdictions=existing_jurisdictions,
         radius_miles=radius_miles,
+        # r171 — prefer `platform_tax_rates` over the static file wherever the
+        # state has been loaded. Passing the session is the whole wiring; the
+        # fallback keeps every unloaded state working exactly as before.
+        db=db,
     )
 
     return {
