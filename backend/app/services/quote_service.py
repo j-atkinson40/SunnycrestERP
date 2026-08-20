@@ -294,9 +294,13 @@ def create_quote(
                     pass  # Non-critical
 
     # --- Tax — THE ONE RESOLUTION (D-11 U-1) ---
-    # Both faces resolve through resolve_quote_tax; the result carries its
+    # Both faces resolve through resolve_line_tax; the result carries its
     # why. The Order-Station face tolerates walk-ins (no customer/cemetery
     # → unresolved-with-reason $0); the Sales face requires resolution.
+    #
+    # (TAX-5 corrected the name: this said `resolve_quote_tax`, a wrapper that
+    # had no callers and has been deleted. A comment asserting a call path that
+    # does not exist is how the wrapper stayed alive.)
     try:
         # Sales-tax arc: the LINE-LEVEL chain — product-exempt lines
         # answer $0 with their product reason; certificates and the
@@ -313,6 +317,11 @@ def create_quote(
                                   "description": None}],
             customer_id=customer_id,
             cemetery_id=quote.cemetery_id,
+            # TAX-5 — the quote's own date, which is when the taxable event is
+            # priced. Previously defaulted to today at every caller, so
+            # certificate validity was judged against the wrong day on any
+            # backdated quote.
+            on_date=quote.quote_date,
         )
         quote.tax_reason = res.reason
         if res.resolved:

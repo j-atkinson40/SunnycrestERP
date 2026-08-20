@@ -257,6 +257,13 @@ def submit_vault_order(
         }],
         customer_id=tenant_id,  # the FH is the customer in the mfg book
         require_resolution=False,
+        # TAX-5 — EXPLICIT, not defaulted. This order is created now
+        # (`order_date=datetime.now(UTC)` below), so today genuinely IS the date
+        # of the taxable event. Passing it rather than letting it default is
+        # what distinguishes "now because that is the question" from "now
+        # because nobody supplied anything" — the distinction the old default
+        # erased at all five callers.
+        on_date=date.today(),
     )
 
     so_id = str(uuid.uuid4())

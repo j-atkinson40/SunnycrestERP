@@ -5,6 +5,7 @@ then applies TaxRate to taxable order amounts.
 """
 
 import logging
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -409,7 +410,7 @@ def resolve_line_tax(
     cemetery_id: str | None = None,
     override_rate: Decimal | None = None,
     require_resolution: bool = False,
-    on_date=None,
+    on_date: date,
 ) -> LineTaxResolution:
     """THE RESOLUTION ORDER, extended at the line level (sales-tax arc):
 
@@ -422,13 +423,51 @@ def resolve_line_tax(
 
     `lines` items: {"product_id": str|None, "amount": Decimal-ish,
     "description": str|None}.
+
+    ⚠️ `on_date` IS REQUIRED, AND IT USED TO DEFAULT TO TODAY WHILE NO CALLER
+    EVER PASSED IT. That is not a hypothetical hazard — it was producing wrong
+    answers. `on` decides CERTIFICATE VALIDITY (`_find_valid_certificate` below,
+    and `TaxCertificate.is_valid_on`), so with every one of the five callers
+    silently taking `today`, a resale certificate that expired last month still
+    exempted a document backdated to before its expiry. Plausibly, and with no
+    test that would notice — a defaulted date on a fiduciary calculation is the
+    same shape as a `.get(key, 0)` returning a number for a key that is absent.
+
+    Required rather than defaulted because the failure mode is FORGETTING, and a
+    required argument makes forgetting impossible rather than detectable. The
+    date is the date the TAXABLE EVENT OCCURRED — a quote's `quote_date`, an
+    order's `order_date`, an invoice's `invoice_date`. Where "now" genuinely IS
+    the question (a live preview), callers pass `date.today()` EXPLICITLY, so
+    that reads as a stated choice rather than an absence.
+
+    ⚠️ IT DOES NOT YET GOVERN THE RATE. `get_jurisdiction_for_order` still takes
+    no date, so the rate resolved is always the one in force now. That is
+    deliberate and separately ruled: `platform_tax_rates` carries a single
+    edition (every row `effective_from = 2025-03-01`), so threading the date
+    into the rate lookup would change no answer while implying the table knew
+    better. See the TAX-5 report — the two dates are different problems that
+    happened to share a parameter.
     """
-    from datetime import date as _date
     from app.models.customer import Customer
     from app.models.product import Product
     from app.services.money import round_money
 
-    on = on_date or _date.today()
+    # ⚠️ COERCE, BECAUSE `datetime` IS A SUBCLASS OF `date` AND THAT MAKES THIS
+    # TRAP INVISIBLE TWICE OVER. The annotation says `date`; `datetime` satisfies
+    # it, and `isinstance(a_datetime, date)` is True — so neither the type hint
+    # nor a defensive isinstance check would catch a caller passing a timestamp.
+    # What DOES catch it is Python refusing the comparison at the point of use:
+    #
+    #     datetime.now() < date.today()
+    #     TypeError: '<' not supported between instances of
+    #                'datetime.datetime' and 'datetime.date'
+    #
+    # and `cert.is_valid_on(on)` compares against `Date` columns. Both quote
+    # callers hold a `datetime` (`quotes.quote_date`, `QuoteCreate.quote_date`),
+    # and invoices will too (`invoice_date` is `timestamp with time zone`), so
+    # every real caller would have raised. Normalising here rather than at four
+    # call sites keeps the rule in one place.
+    on = on_date.date() if isinstance(on_date, datetime) else on_date
     amounts = [Decimal(str(l.get("amount") or 0)) for l in lines]
     subtotal = sum(amounts, Decimal("0.00"))
 
@@ -555,34 +594,13 @@ def resolve_line_tax(
     )
 
 
-def resolve_quote_tax(
-    db: Session,
-    company_id: str,
-    *,
-    subtotal: Decimal,
-    customer_id: str | None = None,
-    cemetery_id: str | None = None,
-    override_rate: Decimal | None = None,
-    require_resolution: bool = False,
-) -> TaxResolution:
-    """The shared money core's tax step — the U-1 shape, now a thin
-    wrapper over the three-axis line-level chain (one law, one path).
-
-    NOTE (sales-tax arc): the bare tax_exempt flag no longer exempts —
-    a valid certificate does. Flag-without-cert resolves TAXABLE with
-    the gap in the reason. Product exemption needs line detail; callers
-    with lines use resolve_line_tax directly.
-    """
-    out = resolve_line_tax(
-        db, company_id,
-        lines=[{"product_id": None, "amount": subtotal, "description": None}],
-        customer_id=customer_id, cemetery_id=cemetery_id,
-        override_rate=override_rate, require_resolution=require_resolution,
-    )
-    return TaxResolution(
-        tax_amount=out.tax_amount, tax_rate=out.tax_rate,
-        reason=out.reason, resolved=out.resolved,
-    )
+# ⚠️ `resolve_quote_tax` DELETED (TAX-5). It wrapped `resolve_line_tax` and
+# HAD NO CALLERS — the only reference anywhere was a comment in
+# `quote_service.py` asserting that "both faces resolve through" it, which
+# had not been true for some time. Making `on_date` required would have meant
+# threading a date through a function nothing invokes: correct-looking code
+# nobody calls is what this arc deleted a second tax engine over, and the
+# same reasoning applies at a smaller scale.
 
 
 def get_tax_preview(

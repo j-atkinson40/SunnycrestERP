@@ -174,6 +174,11 @@ def create_quote(db: Session, company_id: str, user_id: str, data) -> Quote:
             customer_id=data.customer_id,
             override_rate=getattr(data, "tax_rate", None),
             require_resolution=True,
+            # TAX-5 — the date the taxable event occurred, not "now". Governs
+            # CERTIFICATE VALIDITY: with the old default, a quote backdated
+            # before a certificate's expiry was priced against today's validity,
+            # so an expired certificate still exempted it.
+            on_date=data.quote_date,
         )
     except TaxResolutionError as exc:
         raise HTTPException(

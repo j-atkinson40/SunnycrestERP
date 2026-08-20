@@ -41,7 +41,7 @@ must not create data.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Optional
@@ -399,6 +399,10 @@ def assemble_quote_preview(
             lines=tax_lines,
             customer_id=customer_id,
             require_resolution=False,
+            # TAX-5 — EXPLICIT. A live preview asks "what would this cost
+            # today", so today is the answer rather than a fallback. Stated so
+            # the reader can tell it was chosen.
+            on_date=date.today(),
         )
         if res.resolved:
             tax_resolved = True

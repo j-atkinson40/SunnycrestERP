@@ -302,3 +302,4 @@ tests/test_platform_tax_rates.py
 tests/test_zip_ambiguity.py
 tests/test_onboarding_instantiation.py
 tests/test_tax_readiness.py
+tests/test_tax_on_date.py
