@@ -289,31 +289,70 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
     except Exception:
         logger.warning("health check 'stale_drafts' failed — finding silently absent", exc_info=True)
 
-    # Check: exempt customers without certificates
-    try:
-        missing_cert = db.query(func.count(Customer.id)).filter(
-            Customer.company_id == tenant_id, Customer.tax_status == "exempt",
-            Customer.exemption_certificate.is_(None),
-        ).scalar() or 0
-        if missing_cert:
-            findings.append({"severity": "amber", "category": "tax", "code": "missing_cert",
-                              "message": f"{missing_cert} exempt customers without certificate numbers",
-                              "action_label": "Review", "action_url": "/settings/tax?tab=exemptions"})
-    except Exception:
-        logger.warning("health check 'missing_cert' failed — finding silently absent", exc_info=True)
+    # ⚠️ BOTH TAX CHECKS BELOW QUERIED `customers.tax_status` AND RAISED
+    # AttributeError ON EVERY CALL, ON EVERY TENANT, SINCE THEY WERE WRITTEN.
+    # Those columns are in the database and were never mapped onto the
+    # `Customer` model. Each check caught the error into a bare
+    # `except Exception` whose own comment read "finding silently absent" — so a
+    # RED compliance finding and an amber one have never been able to fire, and
+    # the report rendered exactly as it would if both had run and found nothing.
+    #
+    # Measured when this was found: no customer on any tenant was exempt, so
+    # both would legitimately have reported zero. That is luck, not correctness.
+    # The first customer marked exempt is the one nobody would have heard about.
+    #
+    # Repointed at `TaxCertificate` — the model that holds this data and dates
+    # it — and the swallow is replaced by `_tax_check`, which reports a check
+    # that COULD NOT RUN as its own visible finding. "Did not run" and "found
+    # nothing" are different answers and this report used to render them
+    # identically.
+    from app.models.tax_filing import TaxCertificate
 
-    # Check: expired exemptions
-    try:
-        expired = db.query(func.count(Customer.id)).filter(
-            Customer.company_id == tenant_id, Customer.tax_status == "exempt",
-            Customer.exemption_expiry < today,
-        ).scalar() or 0
-        if expired:
-            findings.append({"severity": "red", "category": "tax", "code": "expired_exemptions",
-                              "message": f"{expired} tax exemption certificates have expired",
-                              "action_label": "Update", "action_url": "/settings/tax?tab=exemptions"})
-    except Exception:
-        logger.warning("health check 'expired_exemptions' failed — finding silently absent", exc_info=True)
+    def _tax_check(code: str, severity: str, action_label: str, count_query, message):
+        """Run a compliance count; surface a failure instead of hiding it."""
+        try:
+            n = count_query() or 0
+        except Exception:
+            logger.warning("health check %r failed", code, exc_info=True)
+            findings.append({
+                "severity": "amber", "category": "tax", "code": f"{code}_check_failed",
+                "message": (
+                    f"The '{action_label.lower()}' tax check could not run — this is "
+                    "NOT a clean result; the condition is unknown."
+                ),
+                "action_label": "Investigate", "action_url": "/settings/tax?tab=exemptions",
+            })
+            return
+        if n:
+            findings.append({
+                "severity": severity, "category": "tax", "code": code,
+                "message": message(n),
+                "action_label": action_label, "action_url": "/settings/tax?tab=exemptions",
+            })
+
+    # Check: active certificates with no certificate number recorded
+    _tax_check(
+        "missing_cert", "amber", "Review",
+        lambda: db.query(func.count(TaxCertificate.id)).filter(
+            TaxCertificate.company_id == tenant_id,
+            TaxCertificate.is_active == True,  # noqa: E712
+            TaxCertificate.cert_number.is_(None),
+        ).scalar(),
+        lambda n: f"{n} exemption certificate{'s' if n != 1 else ''} without a certificate number",
+    )
+
+    # Check: certificates past their valid_through date. Open-dated
+    # certificates (valid_through NULL) never expire and are excluded by the
+    # comparison rather than by an assumption.
+    _tax_check(
+        "expired_exemptions", "red", "Update",
+        lambda: db.query(func.count(TaxCertificate.id)).filter(
+            TaxCertificate.company_id == tenant_id,
+            TaxCertificate.is_active == True,  # noqa: E712
+            TaxCertificate.valid_through < today,
+        ).scalar(),
+        lambda n: f"{n} tax exemption certificate{'s have' if n != 1 else ' has'} expired",
+    )
 
     # Check: overdue AR over 90 days
     overdue_90 = db.query(func.count(Invoice.id)).filter(

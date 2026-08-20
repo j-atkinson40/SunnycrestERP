@@ -30,10 +30,16 @@ interface Jurisdiction {
   zip_codes: string[]; tax_rate_id: string; rate_name: string | null; rate_percentage: number | null; is_active: boolean
 }
 
+/* Shape follows `GET /tax/exemptions` AFTER it was repointed at
+   `TaxCertificate` (TAX-3). It previously described `customers.tax_status` and
+   friends — columns that exist in the database but are not mapped on the ORM
+   model, so the endpoint returned 500 on every call and this tab rendered an
+   empty list through a bare `.catch(() => {})`. */
 interface Exemption {
-  customer_id: string; customer_name: string; tax_status: string
-  exemption_certificate: string | null; exemption_expiry: string | null
-  exemption_verified: boolean; is_expired: boolean; is_expiring: boolean; missing_cert: boolean
+  certificate_id: string; customer_id: string; customer_name: string
+  cert_type: string; cert_number: string | null; scope: string
+  valid_through: string | null; attached: boolean
+  is_expired: boolean; is_expiring: boolean; missing_cert: boolean
 }
 
 export default function TaxSettingsPage() {
@@ -247,12 +253,36 @@ function JurisdictionsTab() {
 function ExemptionsTab() {
   const [exemptions, setExemptions] = useState<Exemption[]>([])
   const [loading, setLoading] = useState(true)
+  /* ⚠️ THE ERROR STATE IS THE POINT OF THIS COMPONENT'S REWRITE. This was
+     `.catch(() => {})`, so a 500 produced an empty array and the tab rendered
+     "No tax-exempt customers" — which is exactly what a working request with
+     nothing to report looks like. The endpoint returned 500 on EVERY call for
+     as long as it existed, and this tab said all-clear the whole time.
+     "Could not load" and "nothing to show" are different answers. */
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    apiClient.get("/tax/exemptions").then((r) => setExemptions(r.data)).catch(() => {}).finally(() => setLoading(false))
+    apiClient.get("/tax/exemptions")
+      .then((r) => setExemptions(r.data))
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) return <div className="flex justify-center py-12"><RefreshCw className="h-6 w-6 animate-spin text-gray-300" /></div>
+
+  if (failed) {
+    return (
+      <Card className="border-red-200">
+        <CardContent className="p-8 text-center space-y-1">
+          <p className="text-sm font-medium text-red-700">Couldn't load exemptions</p>
+          <p className="text-xs text-gray-500">
+            This is not a clean result — expiring or expired certificates may exist
+            and are not shown. Reload, and report it if it persists.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
 
   const expired = exemptions.filter((e) => e.is_expired)
   const expiring = exemptions.filter((e) => e.is_expiring)
@@ -261,23 +291,26 @@ function ExemptionsTab() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
-        <Card><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-gray-900">{exemptions.length}</p><p className="text-xs text-gray-500">Exempt customers</p></CardContent></Card>
+        <Card><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-gray-900">{exemptions.length}</p><p className="text-xs text-gray-500">Active certificates</p></CardContent></Card>
         <Card className={expiring.length > 0 ? "border-amber-200" : ""}><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-amber-600">{expiring.length}</p><p className="text-xs text-gray-500">Expiring in 30 days</p></CardContent></Card>
         <Card className={expired.length > 0 ? "border-red-200" : ""}><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-red-600">{expired.length}</p><p className="text-xs text-gray-500">Expired</p></CardContent></Card>
       </div>
 
       {exemptions.length === 0 ? (
-        <Card><CardContent className="p-8 text-center"><p className="text-sm text-gray-400">No tax-exempt customers</p></CardContent></Card>
+        <Card><CardContent className="p-8 text-center"><p className="text-sm text-gray-400">No exemption certificates on file</p></CardContent></Card>
       ) : (
         <div className="space-y-1.5">
           {[...expired, ...expiring, ...exemptions.filter((e) => !e.is_expired && !e.is_expiring)].map((e) => (
-            <Card key={e.customer_id} className={cn(e.is_expired ? "border-red-200" : e.is_expiring ? "border-amber-200" : "")}>
+            <Card key={e.certificate_id} className={cn(e.is_expired ? "border-red-200" : e.is_expiring ? "border-amber-200" : "")}>
               <CardContent className="p-3 flex items-center justify-between">
                 <div>
                   <span className="text-sm font-medium">{e.customer_name}</span>
                   <span className="text-xs text-gray-500 ml-2">
-                    {e.exemption_certificate ? `Cert #${e.exemption_certificate}` : "No certificate"}
-                    {e.exemption_expiry && ` · Expires ${e.exemption_expiry}`}
+                    {e.cert_number ? `Cert #${e.cert_number}` : "No certificate number"}
+                    {/* Open-dated certificates never expire — say so rather than
+                        leaving the date silently blank. */}
+                    {e.valid_through ? ` · Expires ${e.valid_through}` : " · Open-dated"}
+                    {e.scope === "job" && " · this job only"}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">

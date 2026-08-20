@@ -1,8 +1,8 @@
 """Tax rate, jurisdiction, and resolution API routes."""
 
 import logging
-from datetime import date, datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -38,21 +38,8 @@ class JurisdictionCreate(BaseModel):
     zip_codes: list[str] | None = None
 
 
-class ResolveLineRequest(BaseModel):
-    customer_id: str
-    product_id: str | None = None
-    line_amount: float
-    delivery_state: str | None = None
-    delivery_county: str | None = None
-    delivery_zip: str | None = None
-
-
-class ResolveInvoiceRequest(BaseModel):
-    customer_id: str
-    delivery_state: str | None = None
-    delivery_county: str | None = None
-    delivery_zip: str | None = None
-    lines: list[dict]  # [{product_id, amount}]
+# ⚠️ ResolveLineRequest / ResolveInvoiceRequest DELETED (TAX-3) along with the
+# second tax engine they fed. See the deletion note above `list_exemptions`.
 
 
 # ── Tax Rates ──
@@ -262,226 +249,85 @@ def delete_jurisdiction(
     return {"status": "deleted"}
 
 
-# ── Tax Resolution ──
-
-@router.post("/resolve-line")
-def resolve_line(
-    body: ResolveLineRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    result = _resolve_line_tax(
-        db, current_user.company_id, body.customer_id, body.product_id,
-        Decimal(str(body.line_amount)),
-        body.delivery_state, body.delivery_county, body.delivery_zip,
-    )
-    return result
-
-
-@router.post("/resolve-invoice")
-def resolve_invoice(
-    body: ResolveInvoiceRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    line_results = []
-    subtotal = Decimal(0)
-    total_tax = Decimal(0)
-
-    for line in body.lines:
-        amount = Decimal(str(line.get("amount", 0)))
-        result = _resolve_line_tax(
-            db, current_user.company_id, body.customer_id,
-            line.get("product_id"), amount,
-            body.delivery_state, body.delivery_county, body.delivery_zip,
-        )
-        line_results.append(result)
-        subtotal += amount
-        total_tax += Decimal(str(result.get("tax_amount", 0)))
-
-    # Tax breakdown by rate
-    breakdown: dict[str, dict] = {}
-    for r in line_results:
-        rate_name = r.get("rate_name", "Unknown")
-        if rate_name not in breakdown:
-            breakdown[rate_name] = {"rate_name": rate_name, "rate_percentage": r.get("tax_rate_percentage", 0), "taxable_amount": 0, "tax_amount": 0}
-        breakdown[rate_name]["taxable_amount"] += r.get("taxable_amount", 0)
-        breakdown[rate_name]["tax_amount"] += r.get("tax_amount", 0)
-
-    return {
-        "lines": line_results,
-        "subtotal_before_tax": float(subtotal),
-        "total_tax_amount": float(total_tax),
-        "total": float(subtotal + total_tax),
-        "tax_breakdown": list(breakdown.values()),
-    }
-
-
 @router.get("/exemptions")
 def list_exemptions(
     status: str | None = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Customer).filter(
-        Customer.company_id == current_user.company_id,
-        Customer.tax_status.in_(["exempt", "partial"]),
-    )
-    customers = query.all()
-    today = date.today()
+    """Exemptions needing attention — expiring, expired, or unnumbered.
+
+    ⚠️ THIS READ `customers.tax_status` AND RETURNED HTTP 500 ON EVERY CALL.
+    Those columns (`tax_status`, `exemption_certificate`, `exemption_expiry`,
+    `exemption_verified`) exist in the DATABASE — added by
+    `s3a4b5c6d7e8_add_tax_system.py` — and were never mapped onto the `Customer`
+    model, so `Customer.tax_status` raised AttributeError before any query ran.
+    The caller (`tax-settings.tsx`) had a bare `.catch(() => {})`, so the tab
+    rendered "No tax-exempt customers" on a failed request. **An empty list is
+    what a working query with nothing to report looks like.**
+
+    ⚠️ AND THE DELETED SECOND ENGINE READ THE SAME COLUMNS. `_resolve_line_tax`
+    (this file, removed in the same change) would have exempted a customer on
+    `tax_status == "exempt"` ALONE, rendering the reason
+    `"Customer exempt — no certificate"` onto an invoice. It never ran — same
+    AttributeError — but mapping those columns to "fix" the 500 would have
+    turned unreachable code into reachable wrong code. Deleting is why that is
+    now impossible rather than merely unlikely.
+
+    Repointed at `TaxCertificate`, which is the model that actually holds this
+    data and is already dated: `is_valid_on` does expiry properly, and
+    job-scoped certificates are distinguishable from blanket ones. Same
+    question, answered from the records that exist.
+    """
     from datetime import timedelta
+
+    from app.models.tax_filing import TaxCertificate
+
+    today = date.today()
     thirty_days = today + timedelta(days=30)
 
+    rows = (
+        db.query(TaxCertificate, Customer.name)
+        .join(Customer, Customer.id == TaxCertificate.customer_id)
+        .filter(
+            TaxCertificate.company_id == current_user.company_id,
+            TaxCertificate.is_active == True,  # noqa: E712
+        )
+        .order_by(TaxCertificate.valid_through.is_(None), TaxCertificate.valid_through)
+        .all()
+    )
+
     results = []
-    for c in customers:
-        expiry = c.exemption_expiry
-        is_expired = expiry and expiry < today
-        is_expiring = expiry and not is_expired and expiry <= thirty_days
-        missing_cert = not c.exemption_certificate
+    for cert, customer_name in rows:
+        through = cert.valid_through
+        is_expired = bool(through and through < today)
+        is_expiring = bool(through and not is_expired and through <= thirty_days)
+        # An open-dated certificate never expires — that is a real answer, not a
+        # missing one, so it is neither expired nor expiring.
+        missing_number = not cert.cert_number
 
         if status == "expired" and not is_expired:
             continue
         if status == "expiring" and not is_expiring:
             continue
-        if status == "missing_cert" and not missing_cert:
+        if status == "missing_cert" and not missing_number:
             continue
 
         results.append({
-            "customer_id": c.id, "customer_name": c.name,
-            "tax_status": c.tax_status,
-            "exemption_certificate": c.exemption_certificate,
-            "exemption_expiry": str(expiry) if expiry else None,
-            "exemption_verified": c.exemption_verified,
-            "is_expired": is_expired, "is_expiring": is_expiring,
-            "missing_cert": missing_cert,
+            "certificate_id": cert.id,
+            "customer_id": cert.customer_id,
+            "customer_name": customer_name,
+            "cert_type": cert.cert_type,
+            "cert_number": cert.cert_number,
+            "scope": "job" if cert.sales_order_id else "blanket",
+            "valid_through": through.isoformat() if through else None,
+            "attached": cert.vault_document_id is not None,
+            "is_expired": is_expired,
+            "is_expiring": is_expiring,
+            "missing_cert": missing_number,
         })
 
     return results
-
-
-# ── Tax Resolution Logic ──
-
-def _resolve_jurisdiction(
-    db: Session, tenant_id: str, state: str | None, county: str | None, zip_code: str | None,
-) -> tuple[TaxJurisdiction | None, str | None]:
-    """Find matching jurisdiction. Returns (jurisdiction, resolution_method)."""
-    if not state:
-        return None, None
-
-    # Step 1: Zip match
-    if zip_code:
-        j = db.query(TaxJurisdiction).filter(
-            TaxJurisdiction.tenant_id == tenant_id,
-            func.upper(TaxJurisdiction.state) == state.upper(),
-            TaxJurisdiction.is_active == True,
-            TaxJurisdiction.zip_codes.any(zip_code),
-        ).first()
-        if j:
-            return j, "jurisdiction_zip"
-
-    # Step 2: County match
-    if county:
-        j = db.query(TaxJurisdiction).filter(
-            TaxJurisdiction.tenant_id == tenant_id,
-            func.upper(TaxJurisdiction.state) == state.upper(),
-            func.lower(TaxJurisdiction.county) == county.lower(),
-            TaxJurisdiction.is_active == True,
-        ).first()
-        if j:
-            return j, "jurisdiction_county"
-
-    return None, None
-
-
-def _resolve_line_tax(
-    db: Session, tenant_id: str, customer_id: str, product_id: str | None,
-    line_amount: Decimal, delivery_state: str | None, delivery_county: str | None, delivery_zip: str | None,
-) -> dict:
-    """Full tax resolution for a single line."""
-    from app.models.product import Product
-
-    # Product check
-    product = db.query(Product).filter(Product.id == product_id).first() if product_id else None
-    if product and getattr(product, "taxability", "customer_based") == "non_taxable":
-        return {
-            "taxable": False, "tax_amount": 0, "tax_rate_percentage": 0,
-            "tax_rate_id": None, "tax_jurisdiction_id": None,
-            "tax_exempt_reason": "Product is non-taxable",
-            "tax_resolution_method": "product_non_taxable",
-            "taxable_amount": 0, "rate_name": "Non-taxable",
-        }
-
-    # Customer check
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
-    if customer and customer.tax_status == "exempt":
-        expiry = customer.exemption_expiry
-        if not expiry or expiry >= date.today():
-            cert = customer.exemption_certificate
-            return {
-                "taxable": False, "tax_amount": 0, "tax_rate_percentage": 0,
-                "tax_rate_id": None, "tax_jurisdiction_id": None,
-                "tax_exempt_reason": f"Customer exempt{' — cert #' + cert if cert else ' — no certificate'}",
-                "tax_resolution_method": "customer_exempt",
-                "taxable_amount": 0, "rate_name": "Exempt",
-            }
-
-    # Determine rate by priority
-    rate = None
-    jurisdiction = None
-    method = None
-
-    # A: Product override
-    if product and getattr(product, "tax_rate_override_id", None):
-        rate = db.query(TaxRate).filter(TaxRate.id == product.tax_rate_override_id).first()
-        if rate:
-            method = "product_override"
-
-    # B: Jurisdiction
-    if not rate:
-        jurisdiction, j_method = _resolve_jurisdiction(db, tenant_id, delivery_state, delivery_county, delivery_zip)
-        if jurisdiction:
-            rate = db.query(TaxRate).filter(TaxRate.id == jurisdiction.tax_rate_id).first()
-            method = j_method
-
-    # C: Customer override
-    if not rate and customer and getattr(customer, "tax_rate_override_id", None):
-        rate = db.query(TaxRate).filter(TaxRate.id == customer.tax_rate_override_id).first()
-        if rate:
-            method = "customer_override"
-
-    # D: Default
-    if not rate:
-        rate = db.query(TaxRate).filter(
-            TaxRate.tenant_id == tenant_id, TaxRate.is_default == True, TaxRate.is_active == True,
-        ).first()
-        if rate:
-            method = "default_rate"
-
-    # E: No rate
-    if not rate:
-        return {
-            "taxable": True, "tax_amount": 0, "tax_rate_percentage": 0,
-            "tax_rate_id": None, "tax_jurisdiction_id": None,
-            "tax_exempt_reason": None,
-            "tax_resolution_method": "no_rate",
-            "taxable_amount": float(line_amount), "rate_name": "No rate",
-            "warning": "No tax rate configured for this jurisdiction.",
-        }
-
-    pct = rate.rate_percentage
-    tax = (line_amount * pct / Decimal(100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    return {
-        "taxable": True,
-        "tax_amount": float(tax),
-        "tax_rate_percentage": float(pct),
-        "tax_rate_id": rate.id,
-        "tax_jurisdiction_id": jurisdiction.id if jurisdiction else None,
-        "tax_exempt_reason": None,
-        "tax_resolution_method": method,
-        "taxable_amount": float(line_amount),
-        "rate_name": rate.rate_name,
-    }
 
 
 # ── County Geographic Suggestions ──
