@@ -86,6 +86,10 @@ class CustomerCreate(BaseModel):
     city: str | None = None
     state: str | None = None
     zip_code: str | None = None
+    # r172 — the operator's answer when a ZIP spans counties that charge
+    # different rates. 22 such ZIPs sit inside Sunnycrest's twelve counties.
+    # Beats every derived source when set.
+    tax_county: str | None = None
     country: str | None = "US"
     # Billing address
     billing_address_line1: str | None = None
@@ -120,6 +124,10 @@ class CustomerUpdate(BaseModel):
     city: str | None = None
     state: str | None = None
     zip_code: str | None = None
+    # r172 — the operator's answer when a ZIP spans counties that charge
+    # different rates. 22 such ZIPs sit inside Sunnycrest's twelve counties.
+    # Beats every derived source when set.
+    tax_county: str | None = None
     country: str | None = None
     billing_address_line1: str | None = None
     billing_address_line2: str | None = None
@@ -164,6 +172,10 @@ class CustomerResponse(BaseModel):
     city: str | None = None
     state: str | None = None
     zip_code: str | None = None
+    # r172 — the operator's answer when a ZIP spans counties that charge
+    # different rates. 22 such ZIPs sit inside Sunnycrest's twelve counties.
+    # Beats every derived source when set.
+    tax_county: str | None = None
     country: str | None = None
     # Billing
     billing_address_line1: str | None = None

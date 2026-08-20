@@ -1,0 +1,6896 @@
+{
+ "metadata": {
+  "source": "New York State ZIP Codes-County FIPS Cross-Reference",
+  "url": "https://data.ny.gov/resource/juva-r6g2.json",
+  "publisher": "New York State (data.ny.gov), dataset juva-r6g2",
+  "source_file_date": "2007-07-25",
+  "verified_on": "2026-08-20",
+  "caveat": "EVERY ROW IN THE SOURCE IS DATED 2007-07-25 AND THE DATASET HAS NEVER BEEN REVISED. Use it to mark a ZIP as KNOWN-AMBIGUOUS, never to assert a county with confidence. It UNDER-DETECTS: a ZIP listed here as spanning two counties almost certainly still does, but one listed as clean may have become ambiguous since 2007 and would be missed. Under-detection is the unsafe direction, which is why an explicit customer.tax_county overrides it and why resolution refuses rather than guesses.",
+  "county_naming": "Counties carry the PLATFORM's spelling so they join us-county-tax-rates.json and platform_tax_rates.county. The state prints 'St. Lawrence'; every platform file uses 'St Lawrence'.",
+  "zip_count": 2169,
+  "ambiguous_zip_count": 334
+ },
+ "zips": {
+  "00501": [
+   "Suffolk"
+  ],
+  "00544": [
+   "Suffolk"
+  ],
+  "06390": [
+   "Suffolk"
+  ],
+  "10001": [
+   "New York"
+  ],
+  "10002": [
+   "New York"
+  ],
+  "10003": [
+   "New York"
+  ],
+  "10004": [
+   "New York"
+  ],
+  "10005": [
+   "New York"
+  ],
+  "10006": [
+   "New York"
+  ],
+  "10007": [
+   "New York"
+  ],
+  "10008": [
+   "New York"
+  ],
+  "10009": [
+   "New York"
+  ],
+  "10010": [
+   "New York"
+  ],
+  "10011": [
+   "New York"
+  ],
+  "10012": [
+   "New York"
+  ],
+  "10013": [
+   "New York"
+  ],
+  "10014": [
+   "New York"
+  ],
+  "10016": [
+   "New York"
+  ],
+  "10017": [
+   "New York"
+  ],
+  "10018": [
+   "New York"
+  ],
+  "10019": [
+   "New York"
+  ],
+  "10020": [
+   "New York"
+  ],
+  "10021": [
+   "New York"
+  ],
+  "10022": [
+   "New York"
+  ],
+  "10023": [
+   "New York"
+  ],
+  "10024": [
+   "New York"
+  ],
+  "10025": [
+   "New York"
+  ],
+  "10026": [
+   "New York"
+  ],
+  "10027": [
+   "New York"
+  ],
+  "10028": [
+   "New York"
+  ],
+  "10029": [
+   "New York"
+  ],
+  "10030": [
+   "New York"
+  ],
+  "10031": [
+   "New York"
+  ],
+  "10032": [
+   "New York"
+  ],
+  "10033": [
+   "New York"
+  ],
+  "10034": [
+   "New York"
+  ],
+  "10035": [
+   "New York"
+  ],
+  "10036": [
+   "New York"
+  ],
+  "10037": [
+   "New York"
+  ],
+  "10038": [
+   "New York"
+  ],
+  "10039": [
+   "New York"
+  ],
+  "10040": [
+   "New York"
+  ],
+  "10041": [
+   "New York"
+  ],
+  "10043": [
+   "New York"
+  ],
+  "10044": [
+   "New York"
+  ],
+  "10045": [
+   "New York"
+  ],
+  "10047": [
+   "New York"
+  ],
+  "10048": [
+   "New York"
+  ],
+  "10055": [
+   "New York"
+  ],
+  "10065": [
+   "New York"
+  ],
+  "10069": [
+   "New York"
+  ],
+  "10072": [
+   "New York"
+  ],
+  "10075": [
+   "New York"
+  ],
+  "10080": [
+   "New York"
+  ],
+  "10081": [
+   "New York"
+  ],
+  "10082": [
+   "New York"
+  ],
+  "10087": [
+   "New York"
+  ],
+  "10101": [
+   "New York"
+  ],
+  "10102": [
+   "New York"
+  ],
+  "10103": [
+   "New York"
+  ],
+  "10104": [
+   "New York"
+  ],
+  "10105": [
+   "New York"
+  ],
+  "10106": [
+   "New York"
+  ],
+  "10107": [
+   "New York"
+  ],
+  "10108": [
+   "New York"
+  ],
+  "10109": [
+   "New York"
+  ],
+  "10110": [
+   "New York"
+  ],
+  "10111": [
+   "New York"
+  ],
+  "10112": [
+   "New York"
+  ],
+  "10113": [
+   "New York"
+  ],
+  "10114": [
+   "New York"
+  ],
+  "10115": [
+   "New York"
+  ],
+  "10116": [
+   "New York"
+  ],
+  "10117": [
+   "New York"
+  ],
+  "10118": [
+   "New York"
+  ],
+  "10119": [
+   "New York"
+  ],
+  "10120": [
+   "New York"
+  ],
+  "10121": [
+   "New York"
+  ],
+  "10122": [
+   "New York"
+  ],
+  "10123": [
+   "New York"
+  ],
+  "10124": [
+   "New York"
+  ],
+  "10125": [
+   "New York"
+  ],
+  "10126": [
+   "New York"
+  ],
+  "10128": [
+   "New York"
+  ],
+  "10129": [
+   "New York"
+  ],
+  "10130": [
+   "New York"
+  ],
+  "10131": [
+   "New York"
+  ],
+  "10132": [
+   "New York"
+  ],
+  "10133": [
+   "New York"
+  ],
+  "10138": [
+   "New York"
+  ],
+  "10149": [
+   "New York"
+  ],
+  "10150": [
+   "New York"
+  ],
+  "10151": [
+   "New York"
+  ],
+  "10152": [
+   "New York"
+  ],
+  "10153": [
+   "New York"
+  ],
+  "10154": [
+   "New York"
+  ],
+  "10155": [
+   "New York"
+  ],
+  "10156": [
+   "New York"
+  ],
+  "10157": [
+   "New York"
+  ],
+  "10158": [
+   "New York"
+  ],
+  "10159": [
+   "New York"
+  ],
+  "10160": [
+   "New York"
+  ],
+  "10161": [
+   "New York"
+  ],
+  "10162": [
+   "New York"
+  ],
+  "10163": [
+   "New York"
+  ],
+  "10164": [
+   "New York"
+  ],
+  "10165": [
+   "New York"
+  ],
+  "10166": [
+   "New York"
+  ],
+  "10167": [
+   "New York"
+  ],
+  "10168": [
+   "New York"
+  ],
+  "10169": [
+   "New York"
+  ],
+  "10170": [
+   "New York"
+  ],
+  "10171": [
+   "New York"
+  ],
+  "10172": [
+   "New York"
+  ],
+  "10173": [
+   "New York"
+  ],
+  "10174": [
+   "New York"
+  ],
+  "10175": [
+   "New York"
+  ],
+  "10176": [
+   "New York"
+  ],
+  "10177": [
+   "New York"
+  ],
+  "10178": [
+   "New York"
+  ],
+  "10179": [
+   "New York"
+  ],
+  "10185": [
+   "New York"
+  ],
+  "10197": [
+   "New York"
+  ],
+  "10199": [
+   "New York"
+  ],
+  "10213": [
+   "New York"
+  ],
+  "10242": [
+   "New York"
+  ],
+  "10249": [
+   "New York"
+  ],
+  "10256": [
+   "New York"
+  ],
+  "10259": [
+   "New York"
+  ],
+  "10260": [
+   "New York"
+  ],
+  "10261": [
+   "New York"
+  ],
+  "10265": [
+   "New York"
+  ],
+  "10268": [
+   "New York"
+  ],
+  "10269": [
+   "New York"
+  ],
+  "10270": [
+   "New York"
+  ],
+  "10271": [
+   "New York"
+  ],
+  "10272": [
+   "New York"
+  ],
+  "10273": [
+   "New York"
+  ],
+  "10274": [
+   "New York"
+  ],
+  "10275": [
+   "New York"
+  ],
+  "10276": [
+   "New York"
+  ],
+  "10277": [
+   "New York"
+  ],
+  "10278": [
+   "New York"
+  ],
+  "10279": [
+   "New York"
+  ],
+  "10280": [
+   "New York"
+  ],
+  "10281": [
+   "New York"
+  ],
+  "10282": [
+   "New York"
+  ],
+  "10285": [
+   "New York"
+  ],
+  "10286": [
+   "New York"
+  ],
+  "10292": [
+   "New York"
+  ],
+  "10301": [
+   "Richmond"
+  ],
+  "10302": [
+   "Richmond"
+  ],
+  "10303": [
+   "Richmond"
+  ],
+  "10304": [
+   "Richmond"
+  ],
+  "10305": [
+   "Richmond"
+  ],
+  "10306": [
+   "Richmond"
+  ],
+  "10307": [
+   "Richmond"
+  ],
+  "10308": [
+   "Richmond"
+  ],
+  "10309": [
+   "Richmond"
+  ],
+  "10310": [
+   "Richmond"
+  ],
+  "10311": [
+   "Richmond"
+  ],
+  "10312": [
+   "Richmond"
+  ],
+  "10313": [
+   "Richmond"
+  ],
+  "10314": [
+   "Richmond"
+  ],
+  "10451": [
+   "Bronx"
+  ],
+  "10452": [
+   "Bronx"
+  ],
+  "10453": [
+   "Bronx"
+  ],
+  "10454": [
+   "Bronx"
+  ],
+  "10455": [
+   "Bronx"
+  ],
+  "10456": [
+   "Bronx"
+  ],
+  "10457": [
+   "Bronx"
+  ],
+  "10458": [
+   "Bronx"
+  ],
+  "10459": [
+   "Bronx"
+  ],
+  "10460": [
+   "Bronx"
+  ],
+  "10461": [
+   "Bronx"
+  ],
+  "10462": [
+   "Bronx"
+  ],
+  "10463": [
+   "Bronx",
+   "New York"
+  ],
+  "10464": [
+   "Bronx"
+  ],
+  "10465": [
+   "Bronx"
+  ],
+  "10466": [
+   "Bronx"
+  ],
+  "10467": [
+   "Bronx"
+  ],
+  "10468": [
+   "Bronx"
+  ],
+  "10469": [
+   "Bronx"
+  ],
+  "10470": [
+   "Bronx",
+   "Westchester"
+  ],
+  "10471": [
+   "Bronx"
+  ],
+  "10472": [
+   "Bronx"
+  ],
+  "10473": [
+   "Bronx"
+  ],
+  "10474": [
+   "Bronx"
+  ],
+  "10475": [
+   "Bronx"
+  ],
+  "10499": [
+   "Bronx"
+  ],
+  "10501": [
+   "Westchester"
+  ],
+  "10502": [
+   "Westchester"
+  ],
+  "10503": [
+   "Westchester"
+  ],
+  "10504": [
+   "Westchester"
+  ],
+  "10505": [
+   "Westchester"
+  ],
+  "10506": [
+   "Westchester"
+  ],
+  "10507": [
+   "Westchester"
+  ],
+  "10509": [
+   "Putnam",
+   "Westchester"
+  ],
+  "10510": [
+   "Westchester"
+  ],
+  "10511": [
+   "Westchester"
+  ],
+  "10512": [
+   "Putnam"
+  ],
+  "10514": [
+   "Westchester"
+  ],
+  "10516": [
+   "Dutchess",
+   "Putnam"
+  ],
+  "10517": [
+   "Westchester"
+  ],
+  "10518": [
+   "Westchester"
+  ],
+  "10519": [
+   "Westchester"
+  ],
+  "10520": [
+   "Westchester"
+  ],
+  "10521": [
+   "Westchester"
+  ],
+  "10522": [
+   "Westchester"
+  ],
+  "10523": [
+   "Westchester"
+  ],
+  "10524": [
+   "Putnam",
+   "Westchester"
+  ],
+  "10526": [
+   "Westchester"
+  ],
+  "10527": [
+   "Westchester"
+  ],
+  "10528": [
+   "Westchester"
+  ],
+  "10530": [
+   "Westchester"
+  ],
+  "10532": [
+   "Westchester"
+  ],
+  "10533": [
+   "Westchester"
+  ],
+  "10535": [
+   "Westchester"
+  ],
+  "10536": [
+   "Westchester"
+  ],
+  "10537": [
+   "Putnam",
+   "Westchester"
+  ],
+  "10538": [
+   "Westchester"
+  ],
+  "10540": [
+   "Westchester"
+  ],
+  "10541": [
+   "Putnam",
+   "Westchester"
+  ],
+  "10542": [
+   "Putnam"
+  ],
+  "10543": [
+   "Westchester"
+  ],
+  "10545": [
+   "Westchester"
+  ],
+  "10546": [
+   "Westchester"
+  ],
+  "10547": [
+   "Westchester"
+  ],
+  "10548": [
+   "Westchester"
+  ],
+  "10549": [
+   "Westchester"
+  ],
+  "10550": [
+   "Bronx",
+   "Westchester"
+  ],
+  "10551": [
+   "Westchester"
+  ],
+  "10552": [
+   "Westchester"
+  ],
+  "10553": [
+   "Westchester"
+  ],
+  "10557": [
+   "Westchester"
+  ],
+  "10558": [
+   "Westchester"
+  ],
+  "10560": [
+   "Putnam",
+   "Westchester"
+  ],
+  "10562": [
+   "Westchester"
+  ],
+  "10566": [
+   "Westchester"
+  ],
+  "10567": [
+   "Westchester"
+  ],
+  "10570": [
+   "Westchester"
+  ],
+  "10571": [
+   "Westchester"
+  ],
+  "10572": [
+   "Westchester"
+  ],
+  "10573": [
+   "Westchester"
+  ],
+  "10576": [
+   "Westchester"
+  ],
+  "10577": [
+   "Westchester"
+  ],
+  "10578": [
+   "Westchester"
+  ],
+  "10579": [
+   "Putnam",
+   "Westchester"
+  ],
+  "10580": [
+   "Westchester"
+  ],
+  "10583": [
+   "Westchester"
+  ],
+  "10587": [
+   "Westchester"
+  ],
+  "10588": [
+   "Westchester"
+  ],
+  "10589": [
+   "Westchester"
+  ],
+  "10590": [
+   "Westchester"
+  ],
+  "10591": [
+   "Westchester"
+  ],
+  "10594": [
+   "Westchester"
+  ],
+  "10595": [
+   "Westchester"
+  ],
+  "10596": [
+   "Westchester"
+  ],
+  "10597": [
+   "Westchester"
+  ],
+  "10598": [
+   "Westchester"
+  ],
+  "10601": [
+   "Westchester"
+  ],
+  "10602": [
+   "Westchester"
+  ],
+  "10603": [
+   "Westchester"
+  ],
+  "10604": [
+   "Westchester"
+  ],
+  "10605": [
+   "Westchester"
+  ],
+  "10606": [
+   "Westchester"
+  ],
+  "10607": [
+   "Westchester"
+  ],
+  "10610": [
+   "Westchester"
+  ],
+  "10701": [
+   "Westchester"
+  ],
+  "10702": [
+   "Westchester"
+  ],
+  "10703": [
+   "Westchester"
+  ],
+  "10704": [
+   "Bronx",
+   "Westchester"
+  ],
+  "10705": [
+   "Bronx",
+   "Westchester"
+  ],
+  "10706": [
+   "Westchester"
+  ],
+  "10707": [
+   "Westchester"
+  ],
+  "10708": [
+   "Westchester"
+  ],
+  "10709": [
+   "Westchester"
+  ],
+  "10710": [
+   "Westchester"
+  ],
+  "10801": [
+   "Westchester"
+  ],
+  "10802": [
+   "Westchester"
+  ],
+  "10803": [
+   "Bronx",
+   "Westchester"
+  ],
+  "10804": [
+   "Westchester"
+  ],
+  "10805": [
+   "Westchester"
+  ],
+  "10901": [
+   "Rockland"
+  ],
+  "10910": [
+   "Orange"
+  ],
+  "10911": [
+   "Rockland"
+  ],
+  "10912": [
+   "Orange"
+  ],
+  "10913": [
+   "Rockland"
+  ],
+  "10914": [
+   "Orange"
+  ],
+  "10915": [
+   "Orange"
+  ],
+  "10916": [
+   "Orange"
+  ],
+  "10917": [
+   "Orange"
+  ],
+  "10918": [
+   "Orange"
+  ],
+  "10919": [
+   "Orange"
+  ],
+  "10920": [
+   "Rockland"
+  ],
+  "10921": [
+   "Orange"
+  ],
+  "10922": [
+   "Orange"
+  ],
+  "10923": [
+   "Rockland"
+  ],
+  "10924": [
+   "Orange"
+  ],
+  "10925": [
+   "Orange"
+  ],
+  "10926": [
+   "Orange"
+  ],
+  "10927": [
+   "Rockland"
+  ],
+  "10928": [
+   "Orange"
+  ],
+  "10930": [
+   "Orange"
+  ],
+  "10931": [
+   "Rockland"
+  ],
+  "10932": [
+   "Orange"
+  ],
+  "10933": [
+   "Orange"
+  ],
+  "10940": [
+   "Orange",
+   "Sullivan"
+  ],
+  "10941": [
+   "Orange"
+  ],
+  "10943": [
+   "Orange"
+  ],
+  "10949": [
+   "Orange"
+  ],
+  "10950": [
+   "Orange"
+  ],
+  "10952": [
+   "Rockland"
+  ],
+  "10953": [
+   "Orange"
+  ],
+  "10954": [
+   "Rockland"
+  ],
+  "10956": [
+   "Rockland"
+  ],
+  "10958": [
+   "Orange"
+  ],
+  "10959": [
+   "Orange"
+  ],
+  "10960": [
+   "Rockland"
+  ],
+  "10962": [
+   "Rockland"
+  ],
+  "10963": [
+   "Orange"
+  ],
+  "10964": [
+   "Rockland"
+  ],
+  "10965": [
+   "Rockland"
+  ],
+  "10968": [
+   "Rockland"
+  ],
+  "10969": [
+   "Orange"
+  ],
+  "10970": [
+   "Rockland"
+  ],
+  "10973": [
+   "Orange"
+  ],
+  "10974": [
+   "Orange",
+   "Rockland"
+  ],
+  "10975": [
+   "Orange"
+  ],
+  "10976": [
+   "Rockland"
+  ],
+  "10977": [
+   "Rockland"
+  ],
+  "10979": [
+   "Orange"
+  ],
+  "10980": [
+   "Rockland"
+  ],
+  "10981": [
+   "Orange"
+  ],
+  "10982": [
+   "Rockland"
+  ],
+  "10983": [
+   "Rockland"
+  ],
+  "10984": [
+   "Rockland"
+  ],
+  "10985": [
+   "Orange"
+  ],
+  "10986": [
+   "Rockland"
+  ],
+  "10987": [
+   "Orange",
+   "Rockland"
+  ],
+  "10988": [
+   "Orange"
+  ],
+  "10989": [
+   "Rockland"
+  ],
+  "10990": [
+   "Orange"
+  ],
+  "10992": [
+   "Orange"
+  ],
+  "10993": [
+   "Rockland"
+  ],
+  "10994": [
+   "Rockland"
+  ],
+  "10996": [
+   "Orange"
+  ],
+  "10997": [
+   "Orange"
+  ],
+  "10998": [
+   "Orange"
+  ],
+  "11001": [
+   "Nassau",
+   "Queens"
+  ],
+  "11002": [
+   "Nassau"
+  ],
+  "11003": [
+   "Nassau"
+  ],
+  "11004": [
+   "Queens"
+  ],
+  "11005": [
+   "Queens"
+  ],
+  "11010": [
+   "Nassau"
+  ],
+  "11020": [
+   "Nassau"
+  ],
+  "11021": [
+   "Nassau"
+  ],
+  "11022": [
+   "Nassau"
+  ],
+  "11023": [
+   "Nassau"
+  ],
+  "11024": [
+   "Nassau"
+  ],
+  "11030": [
+   "Nassau"
+  ],
+  "11040": [
+   "Nassau",
+   "Queens"
+  ],
+  "11041": [
+   "Nassau"
+  ],
+  "11042": [
+   "Nassau"
+  ],
+  "11050": [
+   "Nassau"
+  ],
+  "11051": [
+   "Nassau"
+  ],
+  "11052": [
+   "Nassau"
+  ],
+  "11053": [
+   "Nassau"
+  ],
+  "11054": [
+   "Nassau"
+  ],
+  "11055": [
+   "Nassau"
+  ],
+  "11096": [
+   "Nassau",
+   "Queens"
+  ],
+  "11101": [
+   "Queens"
+  ],
+  "11102": [
+   "Queens"
+  ],
+  "11103": [
+   "Queens"
+  ],
+  "11104": [
+   "Queens"
+  ],
+  "11105": [
+   "Queens"
+  ],
+  "11106": [
+   "Queens"
+  ],
+  "11109": [
+   "Queens"
+  ],
+  "11201": [
+   "Kings",
+   "New York"
+  ],
+  "11202": [
+   "Kings"
+  ],
+  "11203": [
+   "Kings"
+  ],
+  "11204": [
+   "Kings"
+  ],
+  "11205": [
+   "Kings"
+  ],
+  "11206": [
+   "Kings"
+  ],
+  "11207": [
+   "Kings"
+  ],
+  "11208": [
+   "Kings"
+  ],
+  "11209": [
+   "Kings"
+  ],
+  "11210": [
+   "Kings"
+  ],
+  "11211": [
+   "Kings"
+  ],
+  "11212": [
+   "Kings"
+  ],
+  "11213": [
+   "Kings"
+  ],
+  "11214": [
+   "Kings"
+  ],
+  "11215": [
+   "Kings"
+  ],
+  "11216": [
+   "Kings"
+  ],
+  "11217": [
+   "Kings"
+  ],
+  "11218": [
+   "Kings"
+  ],
+  "11219": [
+   "Kings"
+  ],
+  "11220": [
+   "Kings"
+  ],
+  "11221": [
+   "Kings"
+  ],
+  "11222": [
+   "Kings"
+  ],
+  "11223": [
+   "Kings"
+  ],
+  "11224": [
+   "Kings"
+  ],
+  "11225": [
+   "Kings"
+  ],
+  "11226": [
+   "Kings"
+  ],
+  "11228": [
+   "Kings"
+  ],
+  "11229": [
+   "Kings"
+  ],
+  "11230": [
+   "Kings"
+  ],
+  "11231": [
+   "Kings"
+  ],
+  "11232": [
+   "Kings"
+  ],
+  "11233": [
+   "Kings"
+  ],
+  "11234": [
+   "Kings"
+  ],
+  "11235": [
+   "Kings"
+  ],
+  "11236": [
+   "Kings"
+  ],
+  "11237": [
+   "Kings"
+  ],
+  "11238": [
+   "Kings"
+  ],
+  "11239": [
+   "Kings",
+   "Queens"
+  ],
+  "11241": [
+   "Kings"
+  ],
+  "11242": [
+   "Kings"
+  ],
+  "11243": [
+   "Kings"
+  ],
+  "11245": [
+   "Kings"
+  ],
+  "11247": [
+   "Kings"
+  ],
+  "11249": [
+   "Kings"
+  ],
+  "11251": [
+   "Kings"
+  ],
+  "11252": [
+   "Kings"
+  ],
+  "11256": [
+   "Kings"
+  ],
+  "11351": [
+   "Queens"
+  ],
+  "11352": [
+   "Queens"
+  ],
+  "11354": [
+   "Queens"
+  ],
+  "11355": [
+   "Queens"
+  ],
+  "11356": [
+   "Queens"
+  ],
+  "11357": [
+   "Queens"
+  ],
+  "11358": [
+   "Queens"
+  ],
+  "11359": [
+   "Queens"
+  ],
+  "11360": [
+   "Queens"
+  ],
+  "11361": [
+   "Queens"
+  ],
+  "11362": [
+   "Queens"
+  ],
+  "11363": [
+   "Queens"
+  ],
+  "11364": [
+   "Queens"
+  ],
+  "11365": [
+   "Queens"
+  ],
+  "11366": [
+   "Queens"
+  ],
+  "11367": [
+   "Queens"
+  ],
+  "11368": [
+   "Queens"
+  ],
+  "11369": [
+   "Queens"
+  ],
+  "11370": [
+   "Queens"
+  ],
+  "11371": [
+   "Queens"
+  ],
+  "11372": [
+   "Queens"
+  ],
+  "11373": [
+   "Queens"
+  ],
+  "11374": [
+   "Queens"
+  ],
+  "11375": [
+   "Queens"
+  ],
+  "11377": [
+   "Queens"
+  ],
+  "11378": [
+   "Queens"
+  ],
+  "11379": [
+   "Queens"
+  ],
+  "11380": [
+   "Queens"
+  ],
+  "11381": [
+   "Queens"
+  ],
+  "11385": [
+   "Queens"
+  ],
+  "11386": [
+   "Queens"
+  ],
+  "11405": [
+   "Queens"
+  ],
+  "11411": [
+   "Queens"
+  ],
+  "11412": [
+   "Queens"
+  ],
+  "11413": [
+   "Queens"
+  ],
+  "11414": [
+   "Queens"
+  ],
+  "11415": [
+   "Queens"
+  ],
+  "11416": [
+   "Queens"
+  ],
+  "11417": [
+   "Queens"
+  ],
+  "11418": [
+   "Queens"
+  ],
+  "11419": [
+   "Queens"
+  ],
+  "11420": [
+   "Queens"
+  ],
+  "11421": [
+   "Queens"
+  ],
+  "11422": [
+   "Queens"
+  ],
+  "11423": [
+   "Queens"
+  ],
+  "11424": [
+   "Queens"
+  ],
+  "11425": [
+   "Queens"
+  ],
+  "11426": [
+   "Queens"
+  ],
+  "11427": [
+   "Queens"
+  ],
+  "11428": [
+   "Queens"
+  ],
+  "11429": [
+   "Queens"
+  ],
+  "11430": [
+   "Queens"
+  ],
+  "11431": [
+   "Queens"
+  ],
+  "11432": [
+   "Queens"
+  ],
+  "11433": [
+   "Queens"
+  ],
+  "11434": [
+   "Queens"
+  ],
+  "11435": [
+   "Queens"
+  ],
+  "11436": [
+   "Queens"
+  ],
+  "11439": [
+   "Queens"
+  ],
+  "11451": [
+   "Queens"
+  ],
+  "11499": [
+   "Queens"
+  ],
+  "11501": [
+   "Nassau"
+  ],
+  "11507": [
+   "Nassau"
+  ],
+  "11509": [
+   "Nassau"
+  ],
+  "11510": [
+   "Nassau"
+  ],
+  "11514": [
+   "Nassau"
+  ],
+  "11516": [
+   "Nassau"
+  ],
+  "11518": [
+   "Nassau"
+  ],
+  "11520": [
+   "Nassau"
+  ],
+  "11530": [
+   "Nassau"
+  ],
+  "11531": [
+   "Nassau"
+  ],
+  "11535": [
+   "Nassau"
+  ],
+  "11536": [
+   "Nassau"
+  ],
+  "11542": [
+   "Nassau"
+  ],
+  "11545": [
+   "Nassau"
+  ],
+  "11547": [
+   "Nassau"
+  ],
+  "11548": [
+   "Nassau"
+  ],
+  "11549": [
+   "Nassau"
+  ],
+  "11550": [
+   "Nassau"
+  ],
+  "11551": [
+   "Nassau"
+  ],
+  "11552": [
+   "Nassau"
+  ],
+  "11553": [
+   "Nassau"
+  ],
+  "11554": [
+   "Nassau"
+  ],
+  "11555": [
+   "Nassau"
+  ],
+  "11556": [
+   "Nassau"
+  ],
+  "11557": [
+   "Nassau"
+  ],
+  "11558": [
+   "Nassau"
+  ],
+  "11559": [
+   "Nassau",
+   "Queens"
+  ],
+  "11560": [
+   "Nassau"
+  ],
+  "11561": [
+   "Nassau"
+  ],
+  "11563": [
+   "Nassau"
+  ],
+  "11565": [
+   "Nassau"
+  ],
+  "11566": [
+   "Nassau"
+  ],
+  "11568": [
+   "Nassau"
+  ],
+  "11569": [
+   "Nassau"
+  ],
+  "11570": [
+   "Nassau"
+  ],
+  "11571": [
+   "Nassau"
+  ],
+  "11572": [
+   "Nassau"
+  ],
+  "11575": [
+   "Nassau"
+  ],
+  "11576": [
+   "Nassau"
+  ],
+  "11577": [
+   "Nassau"
+  ],
+  "11579": [
+   "Nassau"
+  ],
+  "11580": [
+   "Nassau",
+   "Queens"
+  ],
+  "11581": [
+   "Nassau"
+  ],
+  "11582": [
+   "Nassau"
+  ],
+  "11590": [
+   "Nassau"
+  ],
+  "11592": [
+   "Nassau"
+  ],
+  "11594": [
+   "Nassau"
+  ],
+  "11595": [
+   "Nassau"
+  ],
+  "11596": [
+   "Nassau"
+  ],
+  "11597": [
+   "Nassau"
+  ],
+  "11598": [
+   "Nassau"
+  ],
+  "11599": [
+   "Nassau"
+  ],
+  "11690": [
+   "Queens"
+  ],
+  "11691": [
+   "Queens"
+  ],
+  "11692": [
+   "Queens"
+  ],
+  "11693": [
+   "Kings",
+   "Queens"
+  ],
+  "11694": [
+   "Queens"
+  ],
+  "11695": [
+   "Queens"
+  ],
+  "11697": [
+   "Queens"
+  ],
+  "11701": [
+   "Nassau",
+   "Suffolk"
+  ],
+  "11702": [
+   "Nassau",
+   "Suffolk"
+  ],
+  "11703": [
+   "Suffolk"
+  ],
+  "11704": [
+   "Suffolk"
+  ],
+  "11705": [
+   "Suffolk"
+  ],
+  "11706": [
+   "Suffolk"
+  ],
+  "11707": [
+   "Suffolk"
+  ],
+  "11708": [
+   "Suffolk"
+  ],
+  "11709": [
+   "Nassau"
+  ],
+  "11710": [
+   "Nassau"
+  ],
+  "11713": [
+   "Suffolk"
+  ],
+  "11714": [
+   "Nassau"
+  ],
+  "11715": [
+   "Suffolk"
+  ],
+  "11716": [
+   "Suffolk"
+  ],
+  "11717": [
+   "Suffolk"
+  ],
+  "11718": [
+   "Suffolk"
+  ],
+  "11719": [
+   "Suffolk"
+  ],
+  "11720": [
+   "Suffolk"
+  ],
+  "11721": [
+   "Suffolk"
+  ],
+  "11722": [
+   "Suffolk"
+  ],
+  "11724": [
+   "Nassau",
+   "Suffolk"
+  ],
+  "11725": [
+   "Suffolk"
+  ],
+  "11726": [
+   "Suffolk"
+  ],
+  "11727": [
+   "Suffolk"
+  ],
+  "11729": [
+   "Suffolk"
+  ],
+  "11730": [
+   "Suffolk"
+  ],
+  "11731": [
+   "Suffolk"
+  ],
+  "11732": [
+   "Nassau"
+  ],
+  "11733": [
+   "Suffolk"
+  ],
+  "11735": [
+   "Nassau",
+   "Suffolk"
+  ],
+  "11736": [
+   "Nassau"
+  ],
+  "11737": [
+   "Suffolk"
+  ],
+  "11738": [
+   "Suffolk"
+  ],
+  "11739": [
+   "Suffolk"
+  ],
+  "11740": [
+   "Suffolk"
+  ],
+  "11741": [
+   "Suffolk"
+  ],
+  "11742": [
+   "Suffolk"
+  ],
+  "11743": [
+   "Nassau",
+   "Suffolk"
+  ],
+  "11746": [
+   "Suffolk"
+  ],
+  "11747": [
+   "Suffolk"
+  ],
+  "11749": [
+   "Suffolk"
+  ],
+  "11750": [
+   "Suffolk"
+  ],
+  "11751": [
+   "Suffolk"
+  ],
+  "11752": [
+   "Suffolk"
+  ],
+  "11753": [
+   "Nassau"
+  ],
+  "11754": [
+   "Suffolk"
+  ],
+  "11755": [
+   "Suffolk"
+  ],
+  "11756": [
+   "Nassau"
+  ],
+  "11757": [
+   "Suffolk"
+  ],
+  "11758": [
+   "Nassau",
+   "Suffolk"
+  ],
+  "11760": [
+   "Suffolk"
+  ],
+  "11762": [
+   "Nassau"
+  ],
+  "11763": [
+   "Suffolk"
+  ],
+  "11764": [
+   "Suffolk"
+  ],
+  "11765": [
+   "Nassau"
+  ],
+  "11766": [
+   "Suffolk"
+  ],
+  "11767": [
+   "Suffolk"
+  ],
+  "11768": [
+   "Suffolk"
+  ],
+  "11769": [
+   "Suffolk"
+  ],
+  "11770": [
+   "Suffolk"
+  ],
+  "11771": [
+   "Nassau"
+  ],
+  "11772": [
+   "Suffolk"
+  ],
+  "11773": [
+   "Nassau"
+  ],
+  "11774": [
+   "Nassau"
+  ],
+  "11775": [
+   "Suffolk"
+  ],
+  "11776": [
+   "Suffolk"
+  ],
+  "11777": [
+   "Suffolk"
+  ],
+  "11778": [
+   "Suffolk"
+  ],
+  "11779": [
+   "Suffolk"
+  ],
+  "11780": [
+   "Suffolk"
+  ],
+  "11782": [
+   "Suffolk"
+  ],
+  "11783": [
+   "Nassau"
+  ],
+  "11784": [
+   "Suffolk"
+  ],
+  "11786": [
+   "Suffolk"
+  ],
+  "11787": [
+   "Suffolk"
+  ],
+  "11788": [
+   "Suffolk"
+  ],
+  "11789": [
+   "Suffolk"
+  ],
+  "11790": [
+   "Suffolk"
+  ],
+  "11791": [
+   "Nassau"
+  ],
+  "11792": [
+   "Suffolk"
+  ],
+  "11793": [
+   "Nassau"
+  ],
+  "11794": [
+   "Suffolk"
+  ],
+  "11795": [
+   "Suffolk"
+  ],
+  "11796": [
+   "Suffolk"
+  ],
+  "11797": [
+   "Nassau"
+  ],
+  "11798": [
+   "Suffolk"
+  ],
+  "11801": [
+   "Nassau"
+  ],
+  "11802": [
+   "Nassau"
+  ],
+  "11803": [
+   "Nassau"
+  ],
+  "11804": [
+   "Nassau"
+  ],
+  "11815": [
+   "Nassau"
+  ],
+  "11854": [
+   "Nassau"
+  ],
+  "11855": [
+   "Nassau"
+  ],
+  "11901": [
+   "Suffolk"
+  ],
+  "11930": [
+   "Suffolk"
+  ],
+  "11931": [
+   "Suffolk"
+  ],
+  "11932": [
+   "Suffolk"
+  ],
+  "11933": [
+   "Suffolk"
+  ],
+  "11934": [
+   "Suffolk"
+  ],
+  "11935": [
+   "Suffolk"
+  ],
+  "11937": [
+   "Suffolk"
+  ],
+  "11939": [
+   "Suffolk"
+  ],
+  "11940": [
+   "Suffolk"
+  ],
+  "11941": [
+   "Suffolk"
+  ],
+  "11942": [
+   "Suffolk"
+  ],
+  "11944": [
+   "Suffolk"
+  ],
+  "11946": [
+   "Suffolk"
+  ],
+  "11947": [
+   "Suffolk"
+  ],
+  "11948": [
+   "Suffolk"
+  ],
+  "11949": [
+   "Suffolk"
+  ],
+  "11950": [
+   "Suffolk"
+  ],
+  "11951": [
+   "Suffolk"
+  ],
+  "11952": [
+   "Suffolk"
+  ],
+  "11953": [
+   "Suffolk"
+  ],
+  "11954": [
+   "Suffolk"
+  ],
+  "11955": [
+   "Suffolk"
+  ],
+  "11956": [
+   "Suffolk"
+  ],
+  "11957": [
+   "Suffolk"
+  ],
+  "11958": [
+   "Suffolk"
+  ],
+  "11959": [
+   "Suffolk"
+  ],
+  "11960": [
+   "Suffolk"
+  ],
+  "11961": [
+   "Suffolk"
+  ],
+  "11962": [
+   "Suffolk"
+  ],
+  "11963": [
+   "Suffolk"
+  ],
+  "11964": [
+   "Suffolk"
+  ],
+  "11965": [
+   "Suffolk"
+  ],
+  "11967": [
+   "Suffolk"
+  ],
+  "11968": [
+   "Suffolk"
+  ],
+  "11969": [
+   "Suffolk"
+  ],
+  "11970": [
+   "Suffolk"
+  ],
+  "11971": [
+   "Suffolk"
+  ],
+  "11972": [
+   "Suffolk"
+  ],
+  "11973": [
+   "Suffolk"
+  ],
+  "11975": [
+   "Suffolk"
+  ],
+  "11976": [
+   "Suffolk"
+  ],
+  "11977": [
+   "Suffolk"
+  ],
+  "11978": [
+   "Suffolk"
+  ],
+  "11980": [
+   "Suffolk"
+  ],
+  "12007": [
+   "Albany"
+  ],
+  "12008": [
+   "Schenectady"
+  ],
+  "12009": [
+   "Albany",
+   "Schenectady"
+  ],
+  "12010": [
+   "Fulton",
+   "Montgomery",
+   "Saratoga"
+  ],
+  "12015": [
+   "Greene"
+  ],
+  "12016": [
+   "Montgomery"
+  ],
+  "12017": [
+   "Columbia"
+  ],
+  "12018": [
+   "Rensselaer"
+  ],
+  "12019": [
+   "Saratoga",
+   "Schenectady"
+  ],
+  "12020": [
+   "Saratoga"
+  ],
+  "12022": [
+   "Rensselaer"
+  ],
+  "12023": [
+   "Albany",
+   "Schoharie"
+  ],
+  "12024": [
+   "Columbia"
+  ],
+  "12025": [
+   "Fulton",
+   "Saratoga"
+  ],
+  "12027": [
+   "Saratoga",
+   "Schenectady"
+  ],
+  "12028": [
+   "Rensselaer",
+   "Washington"
+  ],
+  "12029": [
+   "Columbia"
+  ],
+  "12031": [
+   "Schoharie"
+  ],
+  "12032": [
+   "Fulton",
+   "Hamilton"
+  ],
+  "12033": [
+   "Rensselaer"
+  ],
+  "12035": [
+   "Schoharie"
+  ],
+  "12036": [
+   "Otsego",
+   "Schoharie"
+  ],
+  "12037": [
+   "Columbia"
+  ],
+  "12040": [
+   "Rensselaer"
+  ],
+  "12041": [
+   "Albany"
+  ],
+  "12042": [
+   "Greene"
+  ],
+  "12043": [
+   "Otsego",
+   "Schoharie"
+  ],
+  "12045": [
+   "Albany"
+  ],
+  "12046": [
+   "Albany",
+   "Greene"
+  ],
+  "12047": [
+   "Albany"
+  ],
+  "12050": [
+   "Columbia"
+  ],
+  "12051": [
+   "Greene"
+  ],
+  "12052": [
+   "Rensselaer"
+  ],
+  "12053": [
+   "Albany",
+   "Schenectady",
+   "Schoharie"
+  ],
+  "12054": [
+   "Albany"
+  ],
+  "12055": [
+   "Albany"
+  ],
+  "12056": [
+   "Schenectady"
+  ],
+  "12057": [
+   "Rensselaer",
+   "Washington"
+  ],
+  "12058": [
+   "Greene"
+  ],
+  "12059": [
+   "Albany"
+  ],
+  "12060": [
+   "Columbia"
+  ],
+  "12061": [
+   "Rensselaer"
+  ],
+  "12062": [
+   "Columbia",
+   "Rensselaer"
+  ],
+  "12063": [
+   "Rensselaer"
+  ],
+  "12064": [
+   "Otsego",
+   "Schoharie"
+  ],
+  "12065": [
+   "Saratoga"
+  ],
+  "12066": [
+   "Montgomery",
+   "Schenectady",
+   "Schoharie"
+  ],
+  "12067": [
+   "Albany"
+  ],
+  "12068": [
+   "Fulton",
+   "Montgomery"
+  ],
+  "12069": [
+   "Montgomery"
+  ],
+  "12070": [
+   "Fulton",
+   "Montgomery"
+  ],
+  "12071": [
+   "Schoharie"
+  ],
+  "12072": [
+   "Montgomery"
+  ],
+  "12073": [
+   "Schoharie"
+  ],
+  "12074": [
+   "Saratoga"
+  ],
+  "12075": [
+   "Columbia"
+  ],
+  "12076": [
+   "Schoharie"
+  ],
+  "12077": [
+   "Albany"
+  ],
+  "12078": [
+   "Fulton"
+  ],
+  "12082": [
+   "Rensselaer"
+  ],
+  "12083": [
+   "Albany",
+   "Greene"
+  ],
+  "12084": [
+   "Albany"
+  ],
+  "12085": [
+   "Albany"
+  ],
+  "12086": [
+   "Fulton",
+   "Montgomery",
+   "Saratoga"
+  ],
+  "12087": [
+   "Albany",
+   "Greene"
+  ],
+  "12089": [
+   "Rensselaer"
+  ],
+  "12090": [
+   "Rensselaer"
+  ],
+  "12092": [
+   "Schoharie"
+  ],
+  "12093": [
+   "Delaware",
+   "Schoharie"
+  ],
+  "12094": [
+   "Rensselaer"
+  ],
+  "12095": [
+   "Fulton",
+   "Montgomery"
+  ],
+  "12106": [
+   "Columbia"
+  ],
+  "12107": [
+   "Albany"
+  ],
+  "12108": [
+   "Hamilton"
+  ],
+  "12110": [
+   "Albany"
+  ],
+  "12115": [
+   "Columbia"
+  ],
+  "12116": [
+   "Otsego"
+  ],
+  "12117": [
+   "Fulton"
+  ],
+  "12118": [
+   "Rensselaer",
+   "Saratoga"
+  ],
+  "12120": [
+   "Albany"
+  ],
+  "12121": [
+   "Rensselaer"
+  ],
+  "12122": [
+   "Albany",
+   "Schoharie"
+  ],
+  "12123": [
+   "Columbia",
+   "Rensselaer"
+  ],
+  "12124": [
+   "Greene"
+  ],
+  "12125": [
+   "Columbia"
+  ],
+  "12128": [
+   "Albany"
+  ],
+  "12130": [
+   "Columbia"
+  ],
+  "12131": [
+   "Schoharie"
+  ],
+  "12132": [
+   "Columbia"
+  ],
+  "12133": [
+   "Rensselaer"
+  ],
+  "12134": [
+   "Fulton",
+   "Hamilton",
+   "Saratoga"
+  ],
+  "12136": [
+   "Columbia"
+  ],
+  "12137": [
+   "Montgomery",
+   "Schenectady"
+  ],
+  "12138": [
+   "Rensselaer"
+  ],
+  "12139": [
+   "Hamilton"
+  ],
+  "12140": [
+   "Rensselaer"
+  ],
+  "12141": [
+   "Schenectady"
+  ],
+  "12143": [
+   "Albany",
+   "Greene"
+  ],
+  "12144": [
+   "Rensselaer"
+  ],
+  "12147": [
+   "Albany"
+  ],
+  "12148": [
+   "Saratoga"
+  ],
+  "12149": [
+   "Otsego",
+   "Schoharie"
+  ],
+  "12150": [
+   "Schenectady"
+  ],
+  "12151": [
+   "Saratoga"
+  ],
+  "12153": [
+   "Rensselaer"
+  ],
+  "12154": [
+   "Rensselaer",
+   "Washington"
+  ],
+  "12155": [
+   "Delaware",
+   "Otsego"
+  ],
+  "12156": [
+   "Columbia",
+   "Rensselaer"
+  ],
+  "12157": [
+   "Albany",
+   "Schenectady",
+   "Schoharie"
+  ],
+  "12158": [
+   "Albany"
+  ],
+  "12159": [
+   "Albany"
+  ],
+  "12160": [
+   "Montgomery",
+   "Schoharie"
+  ],
+  "12161": [
+   "Albany"
+  ],
+  "12164": [
+   "Hamilton"
+  ],
+  "12165": [
+   "Columbia"
+  ],
+  "12166": [
+   "Montgomery",
+   "Schoharie"
+  ],
+  "12167": [
+   "Delaware",
+   "Schoharie"
+  ],
+  "12168": [
+   "Columbia",
+   "Rensselaer"
+  ],
+  "12169": [
+   "Rensselaer"
+  ],
+  "12170": [
+   "Saratoga"
+  ],
+  "12172": [
+   "Columbia"
+  ],
+  "12173": [
+   "Columbia"
+  ],
+  "12174": [
+   "Columbia"
+  ],
+  "12175": [
+   "Schoharie"
+  ],
+  "12176": [
+   "Greene"
+  ],
+  "12177": [
+   "Montgomery"
+  ],
+  "12180": [
+   "Rensselaer"
+  ],
+  "12181": [
+   "Rensselaer"
+  ],
+  "12182": [
+   "Rensselaer"
+  ],
+  "12183": [
+   "Albany"
+  ],
+  "12184": [
+   "Columbia",
+   "Rensselaer"
+  ],
+  "12185": [
+   "Rensselaer",
+   "Washington"
+  ],
+  "12186": [
+   "Albany"
+  ],
+  "12187": [
+   "Schoharie"
+  ],
+  "12188": [
+   "Saratoga"
+  ],
+  "12189": [
+   "Albany"
+  ],
+  "12190": [
+   "Hamilton"
+  ],
+  "12192": [
+   "Greene"
+  ],
+  "12193": [
+   "Albany"
+  ],
+  "12194": [
+   "Schoharie"
+  ],
+  "12195": [
+   "Columbia"
+  ],
+  "12196": [
+   "Rensselaer"
+  ],
+  "12197": [
+   "Otsego"
+  ],
+  "12198": [
+   "Rensselaer"
+  ],
+  "12201": [
+   "Albany"
+  ],
+  "12202": [
+   "Albany"
+  ],
+  "12203": [
+   "Albany"
+  ],
+  "12204": [
+   "Albany"
+  ],
+  "12205": [
+   "Albany"
+  ],
+  "12206": [
+   "Albany"
+  ],
+  "12207": [
+   "Albany"
+  ],
+  "12208": [
+   "Albany"
+  ],
+  "12209": [
+   "Albany"
+  ],
+  "12210": [
+   "Albany"
+  ],
+  "12211": [
+   "Albany"
+  ],
+  "12212": [
+   "Albany"
+  ],
+  "12220": [
+   "Albany"
+  ],
+  "12222": [
+   "Albany"
+  ],
+  "12223": [
+   "Albany"
+  ],
+  "12224": [
+   "Albany"
+  ],
+  "12226": [
+   "Albany"
+  ],
+  "12227": [
+   "Albany"
+  ],
+  "12228": [
+   "Albany"
+  ],
+  "12229": [
+   "Albany"
+  ],
+  "12230": [
+   "Albany"
+  ],
+  "12231": [
+   "Albany"
+  ],
+  "12232": [
+   "Albany"
+  ],
+  "12233": [
+   "Albany"
+  ],
+  "12234": [
+   "Albany"
+  ],
+  "12235": [
+   "Albany"
+  ],
+  "12236": [
+   "Albany"
+  ],
+  "12237": [
+   "Albany"
+  ],
+  "12238": [
+   "Albany"
+  ],
+  "12239": [
+   "Albany"
+  ],
+  "12240": [
+   "Albany"
+  ],
+  "12241": [
+   "Albany"
+  ],
+  "12242": [
+   "Albany"
+  ],
+  "12243": [
+   "Albany"
+  ],
+  "12244": [
+   "Albany"
+  ],
+  "12245": [
+   "Albany"
+  ],
+  "12246": [
+   "Albany"
+  ],
+  "12247": [
+   "Albany"
+  ],
+  "12248": [
+   "Albany"
+  ],
+  "12249": [
+   "Albany"
+  ],
+  "12250": [
+   "Albany"
+  ],
+  "12252": [
+   "Albany"
+  ],
+  "12255": [
+   "Albany"
+  ],
+  "12256": [
+   "Albany"
+  ],
+  "12257": [
+   "Albany"
+  ],
+  "12260": [
+   "Albany"
+  ],
+  "12261": [
+   "Albany"
+  ],
+  "12288": [
+   "Albany"
+  ],
+  "12301": [
+   "Schenectady"
+  ],
+  "12302": [
+   "Saratoga",
+   "Schenectady"
+  ],
+  "12303": [
+   "Albany",
+   "Schenectady"
+  ],
+  "12304": [
+   "Albany",
+   "Schenectady"
+  ],
+  "12305": [
+   "Schenectady"
+  ],
+  "12306": [
+   "Albany",
+   "Schenectady"
+  ],
+  "12307": [
+   "Schenectady"
+  ],
+  "12308": [
+   "Schenectady"
+  ],
+  "12309": [
+   "Albany",
+   "Schenectady"
+  ],
+  "12325": [
+   "Schenectady"
+  ],
+  "12345": [
+   "Schenectady"
+  ],
+  "12401": [
+   "Ulster"
+  ],
+  "12402": [
+   "Ulster"
+  ],
+  "12404": [
+   "Ulster"
+  ],
+  "12405": [
+   "Greene"
+  ],
+  "12406": [
+   "Delaware",
+   "Ulster"
+  ],
+  "12407": [
+   "Greene"
+  ],
+  "12409": [
+   "Ulster"
+  ],
+  "12410": [
+   "Ulster"
+  ],
+  "12411": [
+   "Ulster"
+  ],
+  "12412": [
+   "Ulster"
+  ],
+  "12413": [
+   "Greene"
+  ],
+  "12414": [
+   "Greene",
+   "Ulster"
+  ],
+  "12416": [
+   "Ulster"
+  ],
+  "12417": [
+   "Ulster"
+  ],
+  "12418": [
+   "Greene"
+  ],
+  "12419": [
+   "Ulster"
+  ],
+  "12420": [
+   "Ulster"
+  ],
+  "12421": [
+   "Delaware"
+  ],
+  "12422": [
+   "Greene"
+  ],
+  "12423": [
+   "Greene"
+  ],
+  "12424": [
+   "Greene"
+  ],
+  "12427": [
+   "Greene"
+  ],
+  "12428": [
+   "Sullivan",
+   "Ulster"
+  ],
+  "12429": [
+   "Ulster"
+  ],
+  "12430": [
+   "Delaware",
+   "Greene"
+  ],
+  "12431": [
+   "Greene"
+  ],
+  "12432": [
+   "Ulster"
+  ],
+  "12433": [
+   "Ulster"
+  ],
+  "12434": [
+   "Delaware"
+  ],
+  "12435": [
+   "Ulster"
+  ],
+  "12436": [
+   "Greene"
+  ],
+  "12438": [
+   "Delaware"
+  ],
+  "12439": [
+   "Greene"
+  ],
+  "12440": [
+   "Ulster"
+  ],
+  "12441": [
+   "Ulster"
+  ],
+  "12442": [
+   "Greene"
+  ],
+  "12443": [
+   "Ulster"
+  ],
+  "12444": [
+   "Greene"
+  ],
+  "12446": [
+   "Ulster"
+  ],
+  "12448": [
+   "Ulster"
+  ],
+  "12449": [
+   "Ulster"
+  ],
+  "12450": [
+   "Greene"
+  ],
+  "12451": [
+   "Greene"
+  ],
+  "12452": [
+   "Greene"
+  ],
+  "12453": [
+   "Ulster"
+  ],
+  "12454": [
+   "Greene"
+  ],
+  "12455": [
+   "Delaware"
+  ],
+  "12456": [
+   "Ulster"
+  ],
+  "12457": [
+   "Ulster"
+  ],
+  "12458": [
+   "Sullivan",
+   "Ulster"
+  ],
+  "12459": [
+   "Delaware"
+  ],
+  "12460": [
+   "Albany",
+   "Greene"
+  ],
+  "12461": [
+   "Ulster"
+  ],
+  "12463": [
+   "Greene",
+   "Ulster"
+  ],
+  "12464": [
+   "Ulster"
+  ],
+  "12465": [
+   "Delaware",
+   "Ulster"
+  ],
+  "12466": [
+   "Ulster"
+  ],
+  "12468": [
+   "Delaware",
+   "Greene"
+  ],
+  "12469": [
+   "Albany",
+   "Greene",
+   "Schoharie"
+  ],
+  "12470": [
+   "Greene"
+  ],
+  "12471": [
+   "Ulster"
+  ],
+  "12472": [
+   "Ulster"
+  ],
+  "12473": [
+   "Greene"
+  ],
+  "12474": [
+   "Delaware"
+  ],
+  "12475": [
+   "Ulster"
+  ],
+  "12477": [
+   "Greene",
+   "Ulster"
+  ],
+  "12480": [
+   "Greene",
+   "Ulster"
+  ],
+  "12481": [
+   "Ulster"
+  ],
+  "12482": [
+   "Greene"
+  ],
+  "12483": [
+   "Ulster"
+  ],
+  "12484": [
+   "Ulster"
+  ],
+  "12485": [
+   "Greene"
+  ],
+  "12486": [
+   "Ulster"
+  ],
+  "12487": [
+   "Ulster"
+  ],
+  "12489": [
+   "Ulster"
+  ],
+  "12490": [
+   "Ulster"
+  ],
+  "12491": [
+   "Ulster"
+  ],
+  "12492": [
+   "Greene"
+  ],
+  "12493": [
+   "Ulster"
+  ],
+  "12494": [
+   "Ulster"
+  ],
+  "12495": [
+   "Greene",
+   "Ulster"
+  ],
+  "12496": [
+   "Greene"
+  ],
+  "12498": [
+   "Ulster"
+  ],
+  "12501": [
+   "Dutchess"
+  ],
+  "12502": [
+   "Columbia"
+  ],
+  "12503": [
+   "Columbia"
+  ],
+  "12504": [
+   "Dutchess"
+  ],
+  "12506": [
+   "Dutchess"
+  ],
+  "12507": [
+   "Dutchess"
+  ],
+  "12508": [
+   "Dutchess"
+  ],
+  "12510": [
+   "Dutchess"
+  ],
+  "12511": [
+   "Dutchess"
+  ],
+  "12512": [
+   "Dutchess"
+  ],
+  "12513": [
+   "Columbia"
+  ],
+  "12514": [
+   "Dutchess"
+  ],
+  "12515": [
+   "Ulster"
+  ],
+  "12516": [
+   "Columbia"
+  ],
+  "12517": [
+   "Columbia"
+  ],
+  "12518": [
+   "Orange"
+  ],
+  "12520": [
+   "Orange"
+  ],
+  "12521": [
+   "Columbia"
+  ],
+  "12522": [
+   "Dutchess"
+  ],
+  "12523": [
+   "Columbia"
+  ],
+  "12524": [
+   "Dutchess",
+   "Putnam"
+  ],
+  "12525": [
+   "Ulster"
+  ],
+  "12526": [
+   "Columbia"
+  ],
+  "12527": [
+   "Dutchess"
+  ],
+  "12528": [
+   "Ulster"
+  ],
+  "12529": [
+   "Columbia"
+  ],
+  "12530": [
+   "Columbia"
+  ],
+  "12531": [
+   "Dutchess",
+   "Putnam"
+  ],
+  "12533": [
+   "Dutchess",
+   "Putnam"
+  ],
+  "12534": [
+   "Columbia"
+  ],
+  "12537": [
+   "Dutchess"
+  ],
+  "12538": [
+   "Dutchess"
+  ],
+  "12540": [
+   "Dutchess"
+  ],
+  "12541": [
+   "Columbia"
+  ],
+  "12542": [
+   "Orange",
+   "Ulster"
+  ],
+  "12543": [
+   "Orange"
+  ],
+  "12544": [
+   "Columbia"
+  ],
+  "12545": [
+   "Dutchess"
+  ],
+  "12546": [
+   "Columbia",
+   "Dutchess"
+  ],
+  "12547": [
+   "Ulster"
+  ],
+  "12548": [
+   "Ulster"
+  ],
+  "12549": [
+   "Orange"
+  ],
+  "12550": [
+   "Orange"
+  ],
+  "12551": [
+   "Orange"
+  ],
+  "12552": [
+   "Orange"
+  ],
+  "12553": [
+   "Orange"
+  ],
+  "12555": [
+   "Orange"
+  ],
+  "12561": [
+   "Ulster"
+  ],
+  "12563": [
+   "Putnam"
+  ],
+  "12564": [
+   "Dutchess",
+   "Putnam"
+  ],
+  "12565": [
+   "Columbia"
+  ],
+  "12566": [
+   "Orange",
+   "Sullivan",
+   "Ulster"
+  ],
+  "12567": [
+   "Columbia",
+   "Dutchess"
+  ],
+  "12568": [
+   "Ulster"
+  ],
+  "12569": [
+   "Dutchess"
+  ],
+  "12570": [
+   "Dutchess"
+  ],
+  "12571": [
+   "Columbia",
+   "Dutchess"
+  ],
+  "12572": [
+   "Dutchess"
+  ],
+  "12574": [
+   "Dutchess"
+  ],
+  "12575": [
+   "Orange"
+  ],
+  "12577": [
+   "Orange"
+  ],
+  "12578": [
+   "Dutchess"
+  ],
+  "12580": [
+   "Dutchess"
+  ],
+  "12581": [
+   "Dutchess"
+  ],
+  "12582": [
+   "Dutchess",
+   "Putnam"
+  ],
+  "12583": [
+   "Columbia",
+   "Dutchess"
+  ],
+  "12584": [
+   "Orange"
+  ],
+  "12585": [
+   "Dutchess"
+  ],
+  "12586": [
+   "Orange",
+   "Ulster"
+  ],
+  "12588": [
+   "Ulster"
+  ],
+  "12589": [
+   "Orange",
+   "Ulster"
+  ],
+  "12590": [
+   "Dutchess"
+  ],
+  "12592": [
+   "Dutchess"
+  ],
+  "12594": [
+   "Dutchess"
+  ],
+  "12601": [
+   "Dutchess"
+  ],
+  "12602": [
+   "Dutchess"
+  ],
+  "12603": [
+   "Dutchess"
+  ],
+  "12604": [
+   "Dutchess"
+  ],
+  "12701": [
+   "Sullivan"
+  ],
+  "12719": [
+   "Sullivan"
+  ],
+  "12720": [
+   "Sullivan"
+  ],
+  "12721": [
+   "Orange",
+   "Sullivan"
+  ],
+  "12722": [
+   "Sullivan"
+  ],
+  "12723": [
+   "Sullivan"
+  ],
+  "12724": [
+   "Sullivan"
+  ],
+  "12725": [
+   "Sullivan",
+   "Ulster"
+  ],
+  "12726": [
+   "Sullivan"
+  ],
+  "12727": [
+   "Sullivan"
+  ],
+  "12729": [
+   "Orange",
+   "Sullivan"
+  ],
+  "12732": [
+   "Sullivan"
+  ],
+  "12733": [
+   "Sullivan"
+  ],
+  "12734": [
+   "Sullivan"
+  ],
+  "12736": [
+   "Sullivan"
+  ],
+  "12737": [
+   "Sullivan"
+  ],
+  "12738": [
+   "Sullivan"
+  ],
+  "12740": [
+   "Sullivan",
+   "Ulster"
+  ],
+  "12741": [
+   "Sullivan"
+  ],
+  "12742": [
+   "Sullivan"
+  ],
+  "12743": [
+   "Sullivan"
+  ],
+  "12745": [
+   "Sullivan"
+  ],
+  "12746": [
+   "Orange"
+  ],
+  "12747": [
+   "Sullivan"
+  ],
+  "12748": [
+   "Sullivan"
+  ],
+  "12749": [
+   "Sullivan"
+  ],
+  "12750": [
+   "Sullivan"
+  ],
+  "12751": [
+   "Sullivan"
+  ],
+  "12752": [
+   "Sullivan"
+  ],
+  "12754": [
+   "Sullivan"
+  ],
+  "12758": [
+   "Delaware",
+   "Sullivan",
+   "Ulster"
+  ],
+  "12759": [
+   "Sullivan"
+  ],
+  "12760": [
+   "Delaware",
+   "Sullivan"
+  ],
+  "12762": [
+   "Sullivan"
+  ],
+  "12763": [
+   "Sullivan",
+   "Ulster"
+  ],
+  "12764": [
+   "Sullivan"
+  ],
+  "12765": [
+   "Sullivan"
+  ],
+  "12766": [
+   "Sullivan"
+  ],
+  "12767": [
+   "Sullivan"
+  ],
+  "12768": [
+   "Sullivan"
+  ],
+  "12769": [
+   "Sullivan"
+  ],
+  "12770": [
+   "Sullivan"
+  ],
+  "12771": [
+   "Orange"
+  ],
+  "12775": [
+   "Sullivan"
+  ],
+  "12776": [
+   "Delaware",
+   "Sullivan"
+  ],
+  "12777": [
+   "Sullivan"
+  ],
+  "12778": [
+   "Sullivan"
+  ],
+  "12779": [
+   "Sullivan"
+  ],
+  "12780": [
+   "Orange",
+   "Sullivan"
+  ],
+  "12781": [
+   "Sullivan"
+  ],
+  "12783": [
+   "Sullivan"
+  ],
+  "12784": [
+   "Sullivan"
+  ],
+  "12785": [
+   "Orange"
+  ],
+  "12786": [
+   "Sullivan"
+  ],
+  "12787": [
+   "Sullivan"
+  ],
+  "12788": [
+   "Sullivan"
+  ],
+  "12789": [
+   "Sullivan"
+  ],
+  "12790": [
+   "Sullivan"
+  ],
+  "12791": [
+   "Sullivan"
+  ],
+  "12792": [
+   "Sullivan"
+  ],
+  "12801": [
+   "Warren"
+  ],
+  "12803": [
+   "Saratoga"
+  ],
+  "12804": [
+   "Warren",
+   "Washington"
+  ],
+  "12808": [
+   "Warren"
+  ],
+  "12809": [
+   "Washington"
+  ],
+  "12810": [
+   "Warren"
+  ],
+  "12811": [
+   "Warren"
+  ],
+  "12812": [
+   "Hamilton"
+  ],
+  "12814": [
+   "Warren"
+  ],
+  "12815": [
+   "Warren"
+  ],
+  "12816": [
+   "Washington"
+  ],
+  "12817": [
+   "Warren"
+  ],
+  "12819": [
+   "Washington"
+  ],
+  "12820": [
+   "Warren"
+  ],
+  "12821": [
+   "Washington"
+  ],
+  "12822": [
+   "Saratoga"
+  ],
+  "12823": [
+   "Washington"
+  ],
+  "12824": [
+   "Warren"
+  ],
+  "12827": [
+   "Washington"
+  ],
+  "12828": [
+   "Saratoga",
+   "Washington"
+  ],
+  "12831": [
+   "Saratoga"
+  ],
+  "12832": [
+   "Washington"
+  ],
+  "12833": [
+   "Saratoga"
+  ],
+  "12834": [
+   "Washington"
+  ],
+  "12835": [
+   "Saratoga",
+   "Warren"
+  ],
+  "12836": [
+   "Essex",
+   "Warren"
+  ],
+  "12837": [
+   "Washington"
+  ],
+  "12838": [
+   "Washington"
+  ],
+  "12839": [
+   "Warren",
+   "Washington"
+  ],
+  "12841": [
+   "Washington"
+  ],
+  "12842": [
+   "Hamilton"
+  ],
+  "12843": [
+   "Warren"
+  ],
+  "12844": [
+   "Warren",
+   "Washington"
+  ],
+  "12845": [
+   "Warren"
+  ],
+  "12846": [
+   "Warren"
+  ],
+  "12847": [
+   "Hamilton"
+  ],
+  "12848": [
+   "Washington"
+  ],
+  "12849": [
+   "Washington"
+  ],
+  "12850": [
+   "Saratoga"
+  ],
+  "12851": [
+   "Essex"
+  ],
+  "12852": [
+   "Essex"
+  ],
+  "12853": [
+   "Essex",
+   "Warren"
+  ],
+  "12854": [
+   "Washington"
+  ],
+  "12855": [
+   "Essex"
+  ],
+  "12856": [
+   "Warren"
+  ],
+  "12857": [
+   "Essex",
+   "Warren"
+  ],
+  "12858": [
+   "Essex"
+  ],
+  "12859": [
+   "Saratoga"
+  ],
+  "12860": [
+   "Warren"
+  ],
+  "12861": [
+   "Washington"
+  ],
+  "12862": [
+   "Warren"
+  ],
+  "12863": [
+   "Saratoga"
+  ],
+  "12864": [
+   "Hamilton"
+  ],
+  "12865": [
+   "Washington"
+  ],
+  "12866": [
+   "Saratoga"
+  ],
+  "12870": [
+   "Essex",
+   "Warren"
+  ],
+  "12871": [
+   "Saratoga"
+  ],
+  "12872": [
+   "Essex"
+  ],
+  "12873": [
+   "Washington"
+  ],
+  "12874": [
+   "Warren"
+  ],
+  "12878": [
+   "Warren"
+  ],
+  "12879": [
+   "Essex"
+  ],
+  "12883": [
+   "Essex",
+   "Washington"
+  ],
+  "12884": [
+   "Saratoga"
+  ],
+  "12885": [
+   "Warren"
+  ],
+  "12886": [
+   "Warren"
+  ],
+  "12887": [
+   "Washington"
+  ],
+  "12901": [
+   "Clinton"
+  ],
+  "12903": [
+   "Clinton"
+  ],
+  "12910": [
+   "Clinton"
+  ],
+  "12911": [
+   "Clinton",
+   "Essex"
+  ],
+  "12912": [
+   "Clinton",
+   "Essex",
+   "Franklin"
+  ],
+  "12913": [
+   "Essex",
+   "Franklin"
+  ],
+  "12914": [
+   "Franklin",
+   "St Lawrence"
+  ],
+  "12915": [
+   "Franklin"
+  ],
+  "12916": [
+   "Franklin"
+  ],
+  "12917": [
+   "Franklin"
+  ],
+  "12918": [
+   "Clinton"
+  ],
+  "12919": [
+   "Clinton"
+  ],
+  "12920": [
+   "Clinton",
+   "Franklin"
+  ],
+  "12921": [
+   "Clinton"
+  ],
+  "12922": [
+   "St Lawrence"
+  ],
+  "12923": [
+   "Clinton"
+  ],
+  "12924": [
+   "Clinton"
+  ],
+  "12926": [
+   "Franklin"
+  ],
+  "12927": [
+   "St Lawrence"
+  ],
+  "12928": [
+   "Essex"
+  ],
+  "12929": [
+   "Clinton"
+  ],
+  "12930": [
+   "Franklin",
+   "St Lawrence"
+  ],
+  "12932": [
+   "Essex"
+  ],
+  "12933": [
+   "Clinton"
+  ],
+  "12934": [
+   "Clinton"
+  ],
+  "12935": [
+   "Clinton"
+  ],
+  "12936": [
+   "Essex"
+  ],
+  "12937": [
+   "Franklin"
+  ],
+  "12939": [
+   "Franklin"
+  ],
+  "12941": [
+   "Essex"
+  ],
+  "12942": [
+   "Essex"
+  ],
+  "12943": [
+   "Essex"
+  ],
+  "12944": [
+   "Clinton",
+   "Essex"
+  ],
+  "12945": [
+   "Franklin"
+  ],
+  "12946": [
+   "Essex"
+  ],
+  "12949": [
+   "St Lawrence"
+  ],
+  "12950": [
+   "Essex"
+  ],
+  "12952": [
+   "Clinton"
+  ],
+  "12953": [
+   "Franklin"
+  ],
+  "12955": [
+   "Clinton",
+   "Franklin"
+  ],
+  "12956": [
+   "Essex"
+  ],
+  "12957": [
+   "Franklin",
+   "St Lawrence"
+  ],
+  "12958": [
+   "Clinton"
+  ],
+  "12959": [
+   "Clinton"
+  ],
+  "12960": [
+   "Essex"
+  ],
+  "12961": [
+   "Essex"
+  ],
+  "12962": [
+   "Clinton"
+  ],
+  "12964": [
+   "Essex"
+  ],
+  "12965": [
+   "St Lawrence"
+  ],
+  "12966": [
+   "Franklin"
+  ],
+  "12967": [
+   "Franklin",
+   "St Lawrence"
+  ],
+  "12969": [
+   "Franklin"
+  ],
+  "12970": [
+   "Franklin"
+  ],
+  "12972": [
+   "Clinton",
+   "Essex"
+  ],
+  "12973": [
+   "St Lawrence"
+  ],
+  "12974": [
+   "Essex"
+  ],
+  "12975": [
+   "Essex"
+  ],
+  "12976": [
+   "Franklin"
+  ],
+  "12977": [
+   "Essex"
+  ],
+  "12978": [
+   "Clinton"
+  ],
+  "12979": [
+   "Clinton"
+  ],
+  "12980": [
+   "Franklin",
+   "St Lawrence"
+  ],
+  "12981": [
+   "Clinton"
+  ],
+  "12983": [
+   "Essex",
+   "Franklin"
+  ],
+  "12985": [
+   "Clinton"
+  ],
+  "12986": [
+   "Franklin",
+   "St Lawrence"
+  ],
+  "12987": [
+   "Essex"
+  ],
+  "12989": [
+   "Essex",
+   "Franklin"
+  ],
+  "12992": [
+   "Clinton"
+  ],
+  "12993": [
+   "Essex"
+  ],
+  "12995": [
+   "Franklin"
+  ],
+  "12996": [
+   "Essex"
+  ],
+  "12997": [
+   "Clinton",
+   "Essex"
+  ],
+  "12998": [
+   "Essex"
+  ],
+  "13020": [
+   "Onondaga"
+  ],
+  "13021": [
+   "Cayuga"
+  ],
+  "13022": [
+   "Cayuga"
+  ],
+  "13024": [
+   "Cayuga"
+  ],
+  "13026": [
+   "Cayuga"
+  ],
+  "13027": [
+   "Cayuga",
+   "Onondaga"
+  ],
+  "13028": [
+   "Oswego"
+  ],
+  "13029": [
+   "Onondaga"
+  ],
+  "13030": [
+   "Madison",
+   "Onondaga"
+  ],
+  "13031": [
+   "Onondaga"
+  ],
+  "13032": [
+   "Madison",
+   "Oneida"
+  ],
+  "13033": [
+   "Cayuga"
+  ],
+  "13034": [
+   "Cayuga"
+  ],
+  "13035": [
+   "Madison",
+   "Onondaga"
+  ],
+  "13036": [
+   "Onondaga",
+   "Oswego"
+  ],
+  "13037": [
+   "Madison",
+   "Onondaga"
+  ],
+  "13039": [
+   "Onondaga"
+  ],
+  "13040": [
+   "Chenango",
+   "Cortland"
+  ],
+  "13041": [
+   "Onondaga"
+  ],
+  "13042": [
+   "Oneida",
+   "Oswego"
+  ],
+  "13043": [
+   "Madison"
+  ],
+  "13044": [
+   "Oswego"
+  ],
+  "13045": [
+   "Cayuga",
+   "Cortland",
+   "Tompkins"
+  ],
+  "13051": [
+   "Onondaga"
+  ],
+  "13052": [
+   "Chenango",
+   "Cortland",
+   "Madison"
+  ],
+  "13053": [
+   "Cortland",
+   "Tompkins"
+  ],
+  "13054": [
+   "Oneida"
+  ],
+  "13056": [
+   "Cortland"
+  ],
+  "13057": [
+   "Onondaga"
+  ],
+  "13060": [
+   "Onondaga"
+  ],
+  "13061": [
+   "Madison"
+  ],
+  "13062": [
+   "Tompkins"
+  ],
+  "13063": [
+   "Onondaga"
+  ],
+  "13064": [
+   "Cayuga"
+  ],
+  "13065": [
+   "Seneca"
+  ],
+  "13066": [
+   "Onondaga"
+  ],
+  "13068": [
+   "Tompkins"
+  ],
+  "13069": [
+   "Onondaga",
+   "Oswego"
+  ],
+  "13071": [
+   "Cayuga"
+  ],
+  "13072": [
+   "Chenango",
+   "Madison"
+  ],
+  "13073": [
+   "Cayuga",
+   "Tompkins"
+  ],
+  "13074": [
+   "Cayuga",
+   "Oswego"
+  ],
+  "13076": [
+   "Oswego"
+  ],
+  "13077": [
+   "Cortland",
+   "Onondaga"
+  ],
+  "13078": [
+   "Onondaga"
+  ],
+  "13080": [
+   "Cayuga",
+   "Onondaga"
+  ],
+  "13081": [
+   "Cayuga"
+  ],
+  "13082": [
+   "Madison",
+   "Onondaga"
+  ],
+  "13083": [
+   "Jefferson",
+   "Oswego"
+  ],
+  "13084": [
+   "Onondaga"
+  ],
+  "13087": [
+   "Cortland"
+  ],
+  "13088": [
+   "Onondaga"
+  ],
+  "13089": [
+   "Onondaga"
+  ],
+  "13090": [
+   "Onondaga"
+  ],
+  "13092": [
+   "Cayuga",
+   "Tompkins"
+  ],
+  "13093": [
+   "Oswego"
+  ],
+  "13101": [
+   "Cortland"
+  ],
+  "13102": [
+   "Tompkins"
+  ],
+  "13103": [
+   "Oswego"
+  ],
+  "13104": [
+   "Madison",
+   "Onondaga"
+  ],
+  "13107": [
+   "Oswego"
+  ],
+  "13108": [
+   "Onondaga"
+  ],
+  "13110": [
+   "Onondaga"
+  ],
+  "13111": [
+   "Cayuga",
+   "Oswego"
+  ],
+  "13112": [
+   "Onondaga"
+  ],
+  "13113": [
+   "Cayuga"
+  ],
+  "13114": [
+   "Oswego"
+  ],
+  "13115": [
+   "Oswego"
+  ],
+  "13116": [
+   "Onondaga"
+  ],
+  "13117": [
+   "Cayuga"
+  ],
+  "13118": [
+   "Cayuga"
+  ],
+  "13119": [
+   "Onondaga"
+  ],
+  "13120": [
+   "Onondaga"
+  ],
+  "13121": [
+   "Oswego"
+  ],
+  "13122": [
+   "Madison",
+   "Onondaga"
+  ],
+  "13123": [
+   "Oneida"
+  ],
+  "13124": [
+   "Chenango"
+  ],
+  "13126": [
+   "Cayuga",
+   "Oswego"
+  ],
+  "13131": [
+   "Oswego"
+  ],
+  "13132": [
+   "Oswego"
+  ],
+  "13134": [
+   "Madison"
+  ],
+  "13135": [
+   "Onondaga",
+   "Oswego"
+  ],
+  "13136": [
+   "Chenango"
+  ],
+  "13137": [
+   "Onondaga"
+  ],
+  "13138": [
+   "Onondaga"
+  ],
+  "13139": [
+   "Cayuga"
+  ],
+  "13140": [
+   "Cayuga"
+  ],
+  "13141": [
+   "Cortland",
+   "Onondaga"
+  ],
+  "13142": [
+   "Oswego"
+  ],
+  "13143": [
+   "Cayuga",
+   "Wayne"
+  ],
+  "13144": [
+   "Oswego"
+  ],
+  "13145": [
+   "Jefferson",
+   "Oswego"
+  ],
+  "13146": [
+   "Seneca",
+   "Wayne"
+  ],
+  "13147": [
+   "Cayuga"
+  ],
+  "13148": [
+   "Seneca",
+   "Wayne"
+  ],
+  "13152": [
+   "Cayuga",
+   "Onondaga"
+  ],
+  "13153": [
+   "Onondaga"
+  ],
+  "13154": [
+   "Wayne"
+  ],
+  "13155": [
+   "Chenango"
+  ],
+  "13156": [
+   "Cayuga",
+   "Wayne"
+  ],
+  "13157": [
+   "Oneida"
+  ],
+  "13158": [
+   "Cortland",
+   "Onondaga"
+  ],
+  "13159": [
+   "Cortland",
+   "Onondaga"
+  ],
+  "13160": [
+   "Cayuga"
+  ],
+  "13162": [
+   "Oneida"
+  ],
+  "13163": [
+   "Madison"
+  ],
+  "13164": [
+   "Onondaga"
+  ],
+  "13165": [
+   "Seneca"
+  ],
+  "13166": [
+   "Cayuga",
+   "Onondaga"
+  ],
+  "13167": [
+   "Oswego"
+  ],
+  "13201": [
+   "Onondaga"
+  ],
+  "13202": [
+   "Onondaga"
+  ],
+  "13203": [
+   "Onondaga"
+  ],
+  "13204": [
+   "Onondaga"
+  ],
+  "13205": [
+   "Onondaga"
+  ],
+  "13206": [
+   "Onondaga"
+  ],
+  "13207": [
+   "Onondaga"
+  ],
+  "13208": [
+   "Onondaga"
+  ],
+  "13209": [
+   "Onondaga"
+  ],
+  "13210": [
+   "Onondaga"
+  ],
+  "13211": [
+   "Onondaga"
+  ],
+  "13212": [
+   "Onondaga"
+  ],
+  "13214": [
+   "Onondaga"
+  ],
+  "13215": [
+   "Onondaga"
+  ],
+  "13217": [
+   "Onondaga"
+  ],
+  "13218": [
+   "Onondaga"
+  ],
+  "13219": [
+   "Onondaga"
+  ],
+  "13220": [
+   "Onondaga"
+  ],
+  "13221": [
+   "Onondaga"
+  ],
+  "13224": [
+   "Onondaga"
+  ],
+  "13225": [
+   "Onondaga"
+  ],
+  "13235": [
+   "Onondaga"
+  ],
+  "13244": [
+   "Onondaga"
+  ],
+  "13250": [
+   "Onondaga"
+  ],
+  "13251": [
+   "Onondaga"
+  ],
+  "13252": [
+   "Onondaga"
+  ],
+  "13261": [
+   "Onondaga"
+  ],
+  "13290": [
+   "Onondaga"
+  ],
+  "13301": [
+   "Oneida"
+  ],
+  "13302": [
+   "Oswego"
+  ],
+  "13303": [
+   "Oneida"
+  ],
+  "13304": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13305": [
+   "Lewis"
+  ],
+  "13308": [
+   "Oneida"
+  ],
+  "13309": [
+   "Lewis",
+   "Oneida"
+  ],
+  "13310": [
+   "Madison"
+  ],
+  "13312": [
+   "Lewis"
+  ],
+  "13313": [
+   "Oneida"
+  ],
+  "13314": [
+   "Madison"
+  ],
+  "13315": [
+   "Otsego"
+  ],
+  "13316": [
+   "Lewis",
+   "Oneida",
+   "Oswego"
+  ],
+  "13317": [
+   "Montgomery",
+   "Otsego"
+  ],
+  "13318": [
+   "Oneida"
+  ],
+  "13319": [
+   "Oneida"
+  ],
+  "13320": [
+   "Montgomery",
+   "Otsego",
+   "Schoharie"
+  ],
+  "13321": [
+   "Oneida"
+  ],
+  "13322": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13323": [
+   "Oneida"
+  ],
+  "13324": [
+   "Herkimer"
+  ],
+  "13325": [
+   "Lewis"
+  ],
+  "13326": [
+   "Otsego"
+  ],
+  "13327": [
+   "Lewis"
+  ],
+  "13328": [
+   "Oneida"
+  ],
+  "13329": [
+   "Fulton",
+   "Herkimer"
+  ],
+  "13331": [
+   "Hamilton",
+   "Herkimer"
+  ],
+  "13332": [
+   "Chenango",
+   "Madison"
+  ],
+  "13333": [
+   "Otsego"
+  ],
+  "13334": [
+   "Madison"
+  ],
+  "13335": [
+   "Otsego"
+  ],
+  "13337": [
+   "Otsego"
+  ],
+  "13338": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13339": [
+   "Fulton",
+   "Herkimer",
+   "Montgomery"
+  ],
+  "13340": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13341": [
+   "Oneida"
+  ],
+  "13342": [
+   "Otsego"
+  ],
+  "13343": [
+   "Lewis"
+  ],
+  "13345": [
+   "Lewis"
+  ],
+  "13346": [
+   "Madison"
+  ],
+  "13348": [
+   "Otsego"
+  ],
+  "13350": [
+   "Herkimer"
+  ],
+  "13352": [
+   "Oneida"
+  ],
+  "13353": [
+   "Hamilton"
+  ],
+  "13354": [
+   "Oneida"
+  ],
+  "13355": [
+   "Madison"
+  ],
+  "13357": [
+   "Herkimer"
+  ],
+  "13360": [
+   "Hamilton"
+  ],
+  "13361": [
+   "Herkimer",
+   "Otsego"
+  ],
+  "13362": [
+   "Oneida"
+  ],
+  "13363": [
+   "Oneida"
+  ],
+  "13364": [
+   "Madison"
+  ],
+  "13365": [
+   "Herkimer"
+  ],
+  "13367": [
+   "Herkimer",
+   "Lewis"
+  ],
+  "13368": [
+   "Lewis"
+  ],
+  "13401": [
+   "Oneida"
+  ],
+  "13402": [
+   "Madison",
+   "Oneida"
+  ],
+  "13403": [
+   "Oneida"
+  ],
+  "13404": [
+   "Lewis"
+  ],
+  "13406": [
+   "Herkimer"
+  ],
+  "13407": [
+   "Herkimer"
+  ],
+  "13408": [
+   "Madison"
+  ],
+  "13409": [
+   "Madison",
+   "Oneida"
+  ],
+  "13410": [
+   "Montgomery"
+  ],
+  "13411": [
+   "Chenango",
+   "Otsego"
+  ],
+  "13413": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13415": [
+   "Otsego"
+  ],
+  "13416": [
+   "Herkimer"
+  ],
+  "13417": [
+   "Oneida"
+  ],
+  "13418": [
+   "Madison"
+  ],
+  "13420": [
+   "Herkimer"
+  ],
+  "13421": [
+   "Madison",
+   "Oneida"
+  ],
+  "13424": [
+   "Oneida"
+  ],
+  "13425": [
+   "Madison",
+   "Oneida"
+  ],
+  "13426": [
+   "Oswego"
+  ],
+  "13428": [
+   "Montgomery"
+  ],
+  "13431": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13433": [
+   "Lewis"
+  ],
+  "13435": [
+   "Oneida"
+  ],
+  "13436": [
+   "Hamilton"
+  ],
+  "13437": [
+   "Lewis",
+   "Oswego"
+  ],
+  "13438": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13439": [
+   "Herkimer",
+   "Otsego"
+  ],
+  "13440": [
+   "Oneida"
+  ],
+  "13441": [
+   "Oneida"
+  ],
+  "13442": [
+   "Oneida"
+  ],
+  "13450": [
+   "Otsego"
+  ],
+  "13452": [
+   "Fulton",
+   "Montgomery"
+  ],
+  "13454": [
+   "Fulton",
+   "Herkimer"
+  ],
+  "13455": [
+   "Oneida"
+  ],
+  "13456": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13457": [
+   "Otsego"
+  ],
+  "13459": [
+   "Montgomery",
+   "Schoharie"
+  ],
+  "13460": [
+   "Chenango",
+   "Madison"
+  ],
+  "13461": [
+   "Oneida"
+  ],
+  "13464": [
+   "Chenango"
+  ],
+  "13465": [
+   "Madison"
+  ],
+  "13468": [
+   "Otsego"
+  ],
+  "13469": [
+   "Oneida"
+  ],
+  "13470": [
+   "Fulton",
+   "Herkimer"
+  ],
+  "13471": [
+   "Lewis",
+   "Oneida"
+  ],
+  "13472": [
+   "Herkimer"
+  ],
+  "13473": [
+   "Lewis"
+  ],
+  "13475": [
+   "Herkimer"
+  ],
+  "13476": [
+   "Oneida"
+  ],
+  "13477": [
+   "Madison",
+   "Oneida"
+  ],
+  "13478": [
+   "Oneida"
+  ],
+  "13479": [
+   "Oneida"
+  ],
+  "13480": [
+   "Madison",
+   "Oneida"
+  ],
+  "13482": [
+   "Otsego"
+  ],
+  "13483": [
+   "Oneida",
+   "Oswego"
+  ],
+  "13484": [
+   "Madison"
+  ],
+  "13485": [
+   "Chenango",
+   "Madison",
+   "Otsego"
+  ],
+  "13486": [
+   "Oneida"
+  ],
+  "13488": [
+   "Otsego"
+  ],
+  "13489": [
+   "Lewis"
+  ],
+  "13490": [
+   "Oneida"
+  ],
+  "13491": [
+   "Herkimer",
+   "Madison",
+   "Otsego"
+  ],
+  "13492": [
+   "Oneida"
+  ],
+  "13493": [
+   "Oswego"
+  ],
+  "13494": [
+   "Oneida"
+  ],
+  "13495": [
+   "Oneida"
+  ],
+  "13501": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13502": [
+   "Herkimer",
+   "Oneida"
+  ],
+  "13503": [
+   "Oneida"
+  ],
+  "13504": [
+   "Oneida"
+  ],
+  "13505": [
+   "Oneida"
+  ],
+  "13599": [
+   "Oneida"
+  ],
+  "13601": [
+   "Jefferson"
+  ],
+  "13602": [
+   "Jefferson"
+  ],
+  "13603": [
+   "Jefferson"
+  ],
+  "13605": [
+   "Jefferson"
+  ],
+  "13606": [
+   "Jefferson"
+  ],
+  "13607": [
+   "Jefferson"
+  ],
+  "13608": [
+   "Jefferson",
+   "St Lawrence"
+  ],
+  "13611": [
+   "Jefferson"
+  ],
+  "13612": [
+   "Jefferson"
+  ],
+  "13613": [
+   "St Lawrence"
+  ],
+  "13614": [
+   "St Lawrence"
+  ],
+  "13615": [
+   "Jefferson"
+  ],
+  "13616": [
+   "Jefferson"
+  ],
+  "13617": [
+   "St Lawrence"
+  ],
+  "13618": [
+   "Jefferson"
+  ],
+  "13619": [
+   "Jefferson",
+   "Lewis"
+  ],
+  "13620": [
+   "Lewis"
+  ],
+  "13621": [
+   "St Lawrence"
+  ],
+  "13622": [
+   "Jefferson"
+  ],
+  "13623": [
+   "St Lawrence"
+  ],
+  "13624": [
+   "Jefferson"
+  ],
+  "13625": [
+   "St Lawrence"
+  ],
+  "13626": [
+   "Jefferson",
+   "Lewis"
+  ],
+  "13627": [
+   "Lewis"
+  ],
+  "13628": [
+   "Jefferson"
+  ],
+  "13630": [
+   "St Lawrence"
+  ],
+  "13631": [
+   "Jefferson"
+  ],
+  "13632": [
+   "Jefferson"
+  ],
+  "13633": [
+   "St Lawrence"
+  ],
+  "13634": [
+   "Jefferson"
+  ],
+  "13635": [
+   "St Lawrence"
+  ],
+  "13636": [
+   "Jefferson"
+  ],
+  "13637": [
+   "Jefferson"
+  ],
+  "13638": [
+   "Jefferson"
+  ],
+  "13639": [
+   "St Lawrence"
+  ],
+  "13640": [
+   "Jefferson"
+  ],
+  "13641": [
+   "Jefferson"
+  ],
+  "13642": [
+   "St Lawrence"
+  ],
+  "13643": [
+   "Jefferson"
+  ],
+  "13645": [
+   "St Lawrence"
+  ],
+  "13646": [
+   "Jefferson",
+   "St Lawrence"
+  ],
+  "13647": [
+   "St Lawrence"
+  ],
+  "13648": [
+   "Lewis",
+   "St Lawrence"
+  ],
+  "13649": [
+   "St Lawrence"
+  ],
+  "13650": [
+   "Jefferson"
+  ],
+  "13651": [
+   "Jefferson"
+  ],
+  "13652": [
+   "St Lawrence"
+  ],
+  "13654": [
+   "St Lawrence"
+  ],
+  "13655": [
+   "Franklin"
+  ],
+  "13656": [
+   "Jefferson"
+  ],
+  "13658": [
+   "St Lawrence"
+  ],
+  "13659": [
+   "Jefferson"
+  ],
+  "13660": [
+   "St Lawrence"
+  ],
+  "13661": [
+   "Jefferson",
+   "Oswego"
+  ],
+  "13662": [
+   "St Lawrence"
+  ],
+  "13664": [
+   "St Lawrence"
+  ],
+  "13665": [
+   "Jefferson",
+   "Lewis"
+  ],
+  "13666": [
+   "St Lawrence"
+  ],
+  "13667": [
+   "St Lawrence"
+  ],
+  "13668": [
+   "St Lawrence"
+  ],
+  "13669": [
+   "St Lawrence"
+  ],
+  "13670": [
+   "St Lawrence"
+  ],
+  "13671": [
+   "Jefferson"
+  ],
+  "13672": [
+   "St Lawrence"
+  ],
+  "13673": [
+   "Jefferson"
+  ],
+  "13674": [
+   "Jefferson"
+  ],
+  "13675": [
+   "Jefferson"
+  ],
+  "13676": [
+   "St Lawrence"
+  ],
+  "13677": [
+   "St Lawrence"
+  ],
+  "13678": [
+   "St Lawrence"
+  ],
+  "13679": [
+   "Jefferson",
+   "St Lawrence"
+  ],
+  "13680": [
+   "St Lawrence"
+  ],
+  "13681": [
+   "St Lawrence"
+  ],
+  "13682": [
+   "Jefferson",
+   "Lewis"
+  ],
+  "13683": [
+   "Franklin"
+  ],
+  "13684": [
+   "St Lawrence"
+  ],
+  "13685": [
+   "Jefferson"
+  ],
+  "13687": [
+   "St Lawrence"
+  ],
+  "13690": [
+   "St Lawrence"
+  ],
+  "13691": [
+   "Jefferson"
+  ],
+  "13692": [
+   "Jefferson"
+  ],
+  "13693": [
+   "Jefferson"
+  ],
+  "13694": [
+   "St Lawrence"
+  ],
+  "13695": [
+   "St Lawrence"
+  ],
+  "13696": [
+   "St Lawrence"
+  ],
+  "13697": [
+   "St Lawrence"
+  ],
+  "13699": [
+   "St Lawrence"
+  ],
+  "13730": [
+   "Broome",
+   "Chenango"
+  ],
+  "13731": [
+   "Delaware"
+  ],
+  "13732": [
+   "Tioga"
+  ],
+  "13733": [
+   "Chenango",
+   "Delaware",
+   "Otsego"
+  ],
+  "13734": [
+   "Tioga"
+  ],
+  "13736": [
+   "Broome",
+   "Tioga",
+   "Tompkins"
+  ],
+  "13737": [
+   "Broome"
+  ],
+  "13738": [
+   "Cortland"
+  ],
+  "13739": [
+   "Delaware"
+  ],
+  "13740": [
+   "Delaware"
+  ],
+  "13743": [
+   "Tioga"
+  ],
+  "13744": [
+   "Broome"
+  ],
+  "13745": [
+   "Broome"
+  ],
+  "13746": [
+   "Broome",
+   "Chenango"
+  ],
+  "13747": [
+   "Otsego"
+  ],
+  "13748": [
+   "Broome"
+  ],
+  "13749": [
+   "Broome"
+  ],
+  "13750": [
+   "Delaware",
+   "Otsego"
+  ],
+  "13751": [
+   "Delaware"
+  ],
+  "13752": [
+   "Delaware"
+  ],
+  "13753": [
+   "Delaware"
+  ],
+  "13754": [
+   "Broome",
+   "Delaware"
+  ],
+  "13755": [
+   "Delaware"
+  ],
+  "13756": [
+   "Delaware"
+  ],
+  "13757": [
+   "Delaware"
+  ],
+  "13758": [
+   "Chenango"
+  ],
+  "13760": [
+   "Broome",
+   "Tioga"
+  ],
+  "13761": [
+   "Broome"
+  ],
+  "13762": [
+   "Broome"
+  ],
+  "13763": [
+   "Broome"
+  ],
+  "13774": [
+   "Delaware"
+  ],
+  "13775": [
+   "Delaware"
+  ],
+  "13776": [
+   "Otsego"
+  ],
+  "13777": [
+   "Broome"
+  ],
+  "13778": [
+   "Broome",
+   "Chenango"
+  ],
+  "13780": [
+   "Chenango"
+  ],
+  "13782": [
+   "Delaware"
+  ],
+  "13783": [
+   "Delaware"
+  ],
+  "13784": [
+   "Cortland"
+  ],
+  "13786": [
+   "Delaware"
+  ],
+  "13787": [
+   "Broome",
+   "Chenango"
+  ],
+  "13788": [
+   "Delaware"
+  ],
+  "13790": [
+   "Broome"
+  ],
+  "13794": [
+   "Broome"
+  ],
+  "13795": [
+   "Broome"
+  ],
+  "13796": [
+   "Otsego"
+  ],
+  "13797": [
+   "Broome"
+  ],
+  "13801": [
+   "Chenango"
+  ],
+  "13802": [
+   "Broome"
+  ],
+  "13803": [
+   "Broome",
+   "Cortland"
+  ],
+  "13804": [
+   "Delaware"
+  ],
+  "13806": [
+   "Delaware"
+  ],
+  "13807": [
+   "Otsego"
+  ],
+  "13808": [
+   "Otsego"
+  ],
+  "13809": [
+   "Chenango",
+   "Otsego"
+  ],
+  "13810": [
+   "Otsego"
+  ],
+  "13811": [
+   "Broome",
+   "Tioga"
+  ],
+  "13812": [
+   "Tioga"
+  ],
+  "13813": [
+   "Broome",
+   "Chenango"
+  ],
+  "13814": [
+   "Chenango"
+  ],
+  "13815": [
+   "Chenango"
+  ],
+  "13820": [
+   "Delaware",
+   "Otsego"
+  ],
+  "13825": [
+   "Delaware",
+   "Otsego"
+  ],
+  "13826": [
+   "Broome"
+  ],
+  "13827": [
+   "Tioga"
+  ],
+  "13830": [
+   "Chenango"
+  ],
+  "13832": [
+   "Chenango"
+  ],
+  "13833": [
+   "Broome",
+   "Chenango"
+  ],
+  "13834": [
+   "Otsego"
+  ],
+  "13835": [
+   "Broome",
+   "Cortland",
+   "Tioga"
+  ],
+  "13838": [
+   "Delaware",
+   "Otsego"
+  ],
+  "13839": [
+   "Delaware"
+  ],
+  "13840": [
+   "Tioga"
+  ],
+  "13841": [
+   "Chenango"
+  ],
+  "13842": [
+   "Delaware"
+  ],
+  "13843": [
+   "Chenango",
+   "Otsego"
+  ],
+  "13844": [
+   "Chenango"
+  ],
+  "13845": [
+   "Tioga"
+  ],
+  "13846": [
+   "Delaware"
+  ],
+  "13847": [
+   "Delaware"
+  ],
+  "13848": [
+   "Broome"
+  ],
+  "13849": [
+   "Delaware",
+   "Otsego"
+  ],
+  "13850": [
+   "Broome"
+  ],
+  "13851": [
+   "Broome"
+  ],
+  "13856": [
+   "Delaware"
+  ],
+  "13859": [
+   "Otsego"
+  ],
+  "13860": [
+   "Delaware"
+  ],
+  "13861": [
+   "Otsego"
+  ],
+  "13862": [
+   "Broome"
+  ],
+  "13863": [
+   "Broome",
+   "Chenango",
+   "Cortland"
+  ],
+  "13864": [
+   "Tioga",
+   "Tompkins"
+  ],
+  "13865": [
+   "Broome"
+  ],
+  "13901": [
+   "Broome"
+  ],
+  "13902": [
+   "Broome"
+  ],
+  "13903": [
+   "Broome"
+  ],
+  "13904": [
+   "Broome"
+  ],
+  "13905": [
+   "Broome"
+  ],
+  "14001": [
+   "Erie",
+   "Genesee",
+   "Niagara"
+  ],
+  "14004": [
+   "Erie",
+   "Genesee",
+   "Wyoming"
+  ],
+  "14005": [
+   "Genesee"
+  ],
+  "14006": [
+   "Erie"
+  ],
+  "14008": [
+   "Niagara"
+  ],
+  "14009": [
+   "Cattaraugus",
+   "Wyoming"
+  ],
+  "14010": [
+   "Erie"
+  ],
+  "14011": [
+   "Genesee",
+   "Wyoming"
+  ],
+  "14012": [
+   "Niagara"
+  ],
+  "14013": [
+   "Erie",
+   "Genesee"
+  ],
+  "14020": [
+   "Genesee"
+  ],
+  "14021": [
+   "Genesee"
+  ],
+  "14024": [
+   "Allegany",
+   "Wyoming"
+  ],
+  "14025": [
+   "Erie"
+  ],
+  "14026": [
+   "Erie"
+  ],
+  "14027": [
+   "Erie"
+  ],
+  "14028": [
+   "Niagara"
+  ],
+  "14029": [
+   "Allegany"
+  ],
+  "14030": [
+   "Cattaraugus",
+   "Erie",
+   "Wyoming"
+  ],
+  "14031": [
+   "Erie"
+  ],
+  "14032": [
+   "Erie",
+   "Niagara"
+  ],
+  "14033": [
+   "Erie"
+  ],
+  "14034": [
+   "Erie"
+  ],
+  "14035": [
+   "Erie"
+  ],
+  "14036": [
+   "Genesee"
+  ],
+  "14037": [
+   "Erie",
+   "Wyoming"
+  ],
+  "14038": [
+   "Erie"
+  ],
+  "14039": [
+   "Wyoming"
+  ],
+  "14040": [
+   "Genesee",
+   "Wyoming"
+  ],
+  "14041": [
+   "Cattaraugus"
+  ],
+  "14042": [
+   "Cattaraugus"
+  ],
+  "14043": [
+   "Erie"
+  ],
+  "14047": [
+   "Erie"
+  ],
+  "14048": [
+   "Chautauqua"
+  ],
+  "14051": [
+   "Erie"
+  ],
+  "14052": [
+   "Erie"
+  ],
+  "14054": [
+   "Genesee",
+   "Wyoming"
+  ],
+  "14055": [
+   "Erie"
+  ],
+  "14056": [
+   "Genesee"
+  ],
+  "14057": [
+   "Erie"
+  ],
+  "14058": [
+   "Genesee",
+   "Orleans"
+  ],
+  "14059": [
+   "Erie"
+  ],
+  "14060": [
+   "Allegany",
+   "Cattaraugus"
+  ],
+  "14061": [
+   "Erie"
+  ],
+  "14062": [
+   "Chautauqua"
+  ],
+  "14063": [
+   "Chautauqua"
+  ],
+  "14065": [
+   "Allegany",
+   "Cattaraugus"
+  ],
+  "14066": [
+   "Wyoming"
+  ],
+  "14067": [
+   "Niagara"
+  ],
+  "14068": [
+   "Erie"
+  ],
+  "14069": [
+   "Erie"
+  ],
+  "14070": [
+   "Cattaraugus",
+   "Erie"
+  ],
+  "14072": [
+   "Erie"
+  ],
+  "14075": [
+   "Erie"
+  ],
+  "14080": [
+   "Erie"
+  ],
+  "14081": [
+   "Cattaraugus",
+   "Chautauqua",
+   "Erie"
+  ],
+  "14082": [
+   "Wyoming"
+  ],
+  "14083": [
+   "Wyoming"
+  ],
+  "14085": [
+   "Erie"
+  ],
+  "14086": [
+   "Erie"
+  ],
+  "14091": [
+   "Erie"
+  ],
+  "14092": [
+   "Niagara"
+  ],
+  "14094": [
+   "Niagara"
+  ],
+  "14095": [
+   "Niagara"
+  ],
+  "14098": [
+   "Orleans"
+  ],
+  "14101": [
+   "Cattaraugus"
+  ],
+  "14102": [
+   "Erie"
+  ],
+  "14103": [
+   "Genesee",
+   "Orleans"
+  ],
+  "14105": [
+   "Genesee",
+   "Niagara",
+   "Orleans"
+  ],
+  "14107": [
+   "Niagara"
+  ],
+  "14108": [
+   "Niagara"
+  ],
+  "14109": [
+   "Niagara"
+  ],
+  "14110": [
+   "Erie"
+  ],
+  "14111": [
+   "Erie"
+  ],
+  "14112": [
+   "Erie"
+  ],
+  "14113": [
+   "Wyoming"
+  ],
+  "14120": [
+   "Niagara"
+  ],
+  "14125": [
+   "Genesee",
+   "Orleans"
+  ],
+  "14126": [
+   "Niagara"
+  ],
+  "14127": [
+   "Erie"
+  ],
+  "14129": [
+   "Cattaraugus"
+  ],
+  "14130": [
+   "Wyoming"
+  ],
+  "14131": [
+   "Niagara"
+  ],
+  "14132": [
+   "Niagara"
+  ],
+  "14133": [
+   "Cattaraugus"
+  ],
+  "14134": [
+   "Erie"
+  ],
+  "14135": [
+   "Chautauqua"
+  ],
+  "14136": [
+   "Chautauqua"
+  ],
+  "14138": [
+   "Cattaraugus",
+   "Chautauqua"
+  ],
+  "14139": [
+   "Erie"
+  ],
+  "14140": [
+   "Erie"
+  ],
+  "14141": [
+   "Cattaraugus",
+   "Erie"
+  ],
+  "14143": [
+   "Genesee"
+  ],
+  "14144": [
+   "Niagara"
+  ],
+  "14145": [
+   "Erie",
+   "Wyoming"
+  ],
+  "14150": [
+   "Erie"
+  ],
+  "14151": [
+   "Erie"
+  ],
+  "14166": [
+   "Chautauqua"
+  ],
+  "14167": [
+   "Wyoming"
+  ],
+  "14168": [
+   "Cattaraugus"
+  ],
+  "14169": [
+   "Erie"
+  ],
+  "14170": [
+   "Erie"
+  ],
+  "14171": [
+   "Cattaraugus"
+  ],
+  "14172": [
+   "Niagara"
+  ],
+  "14173": [
+   "Cattaraugus"
+  ],
+  "14174": [
+   "Niagara"
+  ],
+  "14201": [
+   "Erie"
+  ],
+  "14202": [
+   "Erie"
+  ],
+  "14203": [
+   "Erie"
+  ],
+  "14204": [
+   "Erie"
+  ],
+  "14205": [
+   "Erie"
+  ],
+  "14206": [
+   "Erie"
+  ],
+  "14207": [
+   "Erie"
+  ],
+  "14208": [
+   "Erie"
+  ],
+  "14209": [
+   "Erie"
+  ],
+  "14210": [
+   "Erie"
+  ],
+  "14211": [
+   "Erie"
+  ],
+  "14212": [
+   "Erie"
+  ],
+  "14213": [
+   "Erie"
+  ],
+  "14214": [
+   "Erie"
+  ],
+  "14215": [
+   "Erie"
+  ],
+  "14216": [
+   "Erie"
+  ],
+  "14217": [
+   "Erie"
+  ],
+  "14218": [
+   "Erie"
+  ],
+  "14219": [
+   "Erie"
+  ],
+  "14220": [
+   "Erie"
+  ],
+  "14221": [
+   "Erie"
+  ],
+  "14222": [
+   "Erie"
+  ],
+  "14223": [
+   "Erie"
+  ],
+  "14224": [
+   "Erie"
+  ],
+  "14225": [
+   "Erie"
+  ],
+  "14226": [
+   "Erie"
+  ],
+  "14227": [
+   "Erie"
+  ],
+  "14228": [
+   "Erie"
+  ],
+  "14231": [
+   "Erie"
+  ],
+  "14233": [
+   "Erie"
+  ],
+  "14240": [
+   "Erie"
+  ],
+  "14241": [
+   "Erie"
+  ],
+  "14260": [
+   "Erie"
+  ],
+  "14261": [
+   "Erie"
+  ],
+  "14263": [
+   "Erie"
+  ],
+  "14264": [
+   "Erie"
+  ],
+  "14265": [
+   "Erie"
+  ],
+  "14267": [
+   "Erie"
+  ],
+  "14269": [
+   "Erie"
+  ],
+  "14270": [
+   "Erie"
+  ],
+  "14272": [
+   "Erie"
+  ],
+  "14273": [
+   "Erie"
+  ],
+  "14276": [
+   "Erie"
+  ],
+  "14280": [
+   "Erie"
+  ],
+  "14301": [
+   "Niagara"
+  ],
+  "14302": [
+   "Niagara"
+  ],
+  "14303": [
+   "Niagara"
+  ],
+  "14304": [
+   "Niagara"
+  ],
+  "14305": [
+   "Niagara"
+  ],
+  "14410": [
+   "Monroe"
+  ],
+  "14411": [
+   "Orleans"
+  ],
+  "14413": [
+   "Wayne"
+  ],
+  "14414": [
+   "Livingston",
+   "Monroe"
+  ],
+  "14415": [
+   "Yates"
+  ],
+  "14416": [
+   "Genesee",
+   "Monroe",
+   "Orleans"
+  ],
+  "14418": [
+   "Steuben",
+   "Yates"
+  ],
+  "14420": [
+   "Monroe",
+   "Orleans"
+  ],
+  "14422": [
+   "Genesee",
+   "Orleans"
+  ],
+  "14423": [
+   "Livingston"
+  ],
+  "14424": [
+   "Ontario"
+  ],
+  "14425": [
+   "Ontario"
+  ],
+  "14427": [
+   "Wyoming"
+  ],
+  "14428": [
+   "Genesee",
+   "Monroe"
+  ],
+  "14429": [
+   "Orleans"
+  ],
+  "14430": [
+   "Monroe"
+  ],
+  "14432": [
+   "Ontario",
+   "Wayne"
+  ],
+  "14433": [
+   "Seneca",
+   "Wayne"
+  ],
+  "14435": [
+   "Livingston"
+  ],
+  "14437": [
+   "Allegany",
+   "Livingston",
+   "Steuben"
+  ],
+  "14441": [
+   "Yates"
+  ],
+  "14443": [
+   "Ontario"
+  ],
+  "14445": [
+   "Monroe"
+  ],
+  "14449": [
+   "Wayne"
+  ],
+  "14450": [
+   "Monroe",
+   "Wayne"
+  ],
+  "14452": [
+   "Orleans"
+  ],
+  "14453": [
+   "Ontario"
+  ],
+  "14454": [
+   "Livingston"
+  ],
+  "14456": [
+   "Ontario",
+   "Seneca",
+   "Yates"
+  ],
+  "14461": [
+   "Ontario"
+  ],
+  "14462": [
+   "Livingston"
+  ],
+  "14463": [
+   "Ontario"
+  ],
+  "14464": [
+   "Monroe"
+  ],
+  "14466": [
+   "Livingston",
+   "Ontario"
+  ],
+  "14467": [
+   "Monroe"
+  ],
+  "14468": [
+   "Monroe"
+  ],
+  "14469": [
+   "Ontario"
+  ],
+  "14470": [
+   "Orleans"
+  ],
+  "14471": [
+   "Ontario"
+  ],
+  "14472": [
+   "Livingston",
+   "Monroe",
+   "Ontario"
+  ],
+  "14475": [
+   "Ontario"
+  ],
+  "14476": [
+   "Monroe",
+   "Orleans"
+  ],
+  "14477": [
+   "Orleans"
+  ],
+  "14478": [
+   "Yates"
+  ],
+  "14479": [
+   "Orleans"
+  ],
+  "14480": [
+   "Livingston"
+  ],
+  "14481": [
+   "Livingston",
+   "Wyoming"
+  ],
+  "14482": [
+   "Genesee",
+   "Livingston",
+   "Monroe"
+  ],
+  "14485": [
+   "Livingston",
+   "Ontario"
+  ],
+  "14486": [
+   "Livingston"
+  ],
+  "14487": [
+   "Livingston",
+   "Ontario"
+  ],
+  "14488": [
+   "Livingston"
+  ],
+  "14489": [
+   "Ontario",
+   "Seneca",
+   "Wayne"
+  ],
+  "14502": [
+   "Monroe",
+   "Wayne"
+  ],
+  "14504": [
+   "Ontario"
+  ],
+  "14505": [
+   "Wayne"
+  ],
+  "14506": [
+   "Monroe"
+  ],
+  "14507": [
+   "Yates"
+  ],
+  "14508": [
+   "Monroe"
+  ],
+  "14510": [
+   "Livingston"
+  ],
+  "14511": [
+   "Monroe"
+  ],
+  "14512": [
+   "Ontario",
+   "Steuben",
+   "Yates"
+  ],
+  "14513": [
+   "Ontario",
+   "Wayne"
+  ],
+  "14514": [
+   "Monroe"
+  ],
+  "14515": [
+   "Monroe"
+  ],
+  "14516": [
+   "Wayne"
+  ],
+  "14517": [
+   "Livingston"
+  ],
+  "14518": [
+   "Ontario"
+  ],
+  "14519": [
+   "Wayne"
+  ],
+  "14520": [
+   "Wayne"
+  ],
+  "14521": [
+   "Seneca"
+  ],
+  "14522": [
+   "Ontario",
+   "Wayne"
+  ],
+  "14525": [
+   "Genesee",
+   "Livingston",
+   "Wyoming"
+  ],
+  "14526": [
+   "Monroe"
+  ],
+  "14527": [
+   "Yates"
+  ],
+  "14529": [
+   "Steuben"
+  ],
+  "14530": [
+   "Livingston",
+   "Wyoming"
+  ],
+  "14532": [
+   "Ontario",
+   "Seneca"
+  ],
+  "14533": [
+   "Livingston"
+  ],
+  "14534": [
+   "Monroe",
+   "Ontario"
+  ],
+  "14536": [
+   "Allegany",
+   "Livingston",
+   "Wyoming"
+  ],
+  "14537": [
+   "Ontario"
+  ],
+  "14538": [
+   "Wayne"
+  ],
+  "14539": [
+   "Livingston"
+  ],
+  "14541": [
+   "Seneca"
+  ],
+  "14542": [
+   "Wayne"
+  ],
+  "14543": [
+   "Monroe"
+  ],
+  "14544": [
+   "Ontario",
+   "Yates"
+  ],
+  "14545": [
+   "Livingston"
+  ],
+  "14546": [
+   "Monroe"
+  ],
+  "14547": [
+   "Ontario"
+  ],
+  "14548": [
+   "Ontario"
+  ],
+  "14549": [
+   "Wyoming"
+  ],
+  "14550": [
+   "Wyoming"
+  ],
+  "14551": [
+   "Wayne"
+  ],
+  "14555": [
+   "Wayne"
+  ],
+  "14556": [
+   "Livingston"
+  ],
+  "14557": [
+   "Genesee"
+  ],
+  "14558": [
+   "Livingston"
+  ],
+  "14559": [
+   "Monroe"
+  ],
+  "14560": [
+   "Livingston",
+   "Ontario"
+  ],
+  "14561": [
+   "Ontario",
+   "Yates"
+  ],
+  "14563": [
+   "Wayne"
+  ],
+  "14564": [
+   "Monroe",
+   "Ontario",
+   "Wayne"
+  ],
+  "14568": [
+   "Wayne"
+  ],
+  "14569": [
+   "Wyoming"
+  ],
+  "14571": [
+   "Orleans"
+  ],
+  "14572": [
+   "Livingston",
+   "Steuben"
+  ],
+  "14580": [
+   "Monroe",
+   "Wayne"
+  ],
+  "14585": [
+   "Ontario"
+  ],
+  "14586": [
+   "Monroe"
+  ],
+  "14588": [
+   "Seneca"
+  ],
+  "14589": [
+   "Wayne"
+  ],
+  "14590": [
+   "Wayne"
+  ],
+  "14591": [
+   "Genesee",
+   "Wyoming"
+  ],
+  "14592": [
+   "Livingston"
+  ],
+  "14602": [
+   "Monroe"
+  ],
+  "14603": [
+   "Monroe"
+  ],
+  "14604": [
+   "Monroe"
+  ],
+  "14605": [
+   "Monroe"
+  ],
+  "14606": [
+   "Monroe"
+  ],
+  "14607": [
+   "Monroe"
+  ],
+  "14608": [
+   "Monroe"
+  ],
+  "14609": [
+   "Monroe"
+  ],
+  "14610": [
+   "Monroe"
+  ],
+  "14611": [
+   "Monroe"
+  ],
+  "14612": [
+   "Monroe"
+  ],
+  "14613": [
+   "Monroe"
+  ],
+  "14614": [
+   "Monroe"
+  ],
+  "14615": [
+   "Monroe"
+  ],
+  "14616": [
+   "Monroe"
+  ],
+  "14617": [
+   "Monroe"
+  ],
+  "14618": [
+   "Monroe"
+  ],
+  "14619": [
+   "Monroe"
+  ],
+  "14620": [
+   "Monroe"
+  ],
+  "14621": [
+   "Monroe"
+  ],
+  "14622": [
+   "Monroe"
+  ],
+  "14623": [
+   "Monroe"
+  ],
+  "14624": [
+   "Monroe"
+  ],
+  "14625": [
+   "Monroe"
+  ],
+  "14626": [
+   "Monroe"
+  ],
+  "14627": [
+   "Monroe"
+  ],
+  "14638": [
+   "Monroe"
+  ],
+  "14639": [
+   "Monroe"
+  ],
+  "14642": [
+   "Monroe"
+  ],
+  "14643": [
+   "Monroe"
+  ],
+  "14644": [
+   "Monroe"
+  ],
+  "14645": [
+   "Monroe"
+  ],
+  "14646": [
+   "Monroe"
+  ],
+  "14647": [
+   "Monroe"
+  ],
+  "14649": [
+   "Monroe"
+  ],
+  "14650": [
+   "Monroe"
+  ],
+  "14651": [
+   "Monroe"
+  ],
+  "14652": [
+   "Monroe"
+  ],
+  "14653": [
+   "Monroe"
+  ],
+  "14664": [
+   "Monroe"
+  ],
+  "14673": [
+   "Monroe"
+  ],
+  "14683": [
+   "Monroe"
+  ],
+  "14692": [
+   "Monroe"
+  ],
+  "14694": [
+   "Monroe"
+  ],
+  "14701": [
+   "Chautauqua"
+  ],
+  "14702": [
+   "Chautauqua"
+  ],
+  "14706": [
+   "Cattaraugus"
+  ],
+  "14707": [
+   "Allegany"
+  ],
+  "14708": [
+   "Allegany"
+  ],
+  "14709": [
+   "Allegany"
+  ],
+  "14710": [
+   "Chautauqua"
+  ],
+  "14711": [
+   "Allegany"
+  ],
+  "14712": [
+   "Chautauqua"
+  ],
+  "14714": [
+   "Allegany"
+  ],
+  "14715": [
+   "Allegany"
+  ],
+  "14716": [
+   "Chautauqua"
+  ],
+  "14717": [
+   "Allegany"
+  ],
+  "14718": [
+   "Chautauqua"
+  ],
+  "14719": [
+   "Cattaraugus"
+  ],
+  "14720": [
+   "Chautauqua"
+  ],
+  "14721": [
+   "Allegany"
+  ],
+  "14722": [
+   "Chautauqua"
+  ],
+  "14723": [
+   "Chautauqua"
+  ],
+  "14724": [
+   "Chautauqua"
+  ],
+  "14726": [
+   "Cattaraugus",
+   "Chautauqua"
+  ],
+  "14727": [
+   "Allegany",
+   "Cattaraugus"
+  ],
+  "14728": [
+   "Chautauqua"
+  ],
+  "14729": [
+   "Cattaraugus"
+  ],
+  "14730": [
+   "Cattaraugus"
+  ],
+  "14731": [
+   "Cattaraugus"
+  ],
+  "14732": [
+   "Chautauqua"
+  ],
+  "14733": [
+   "Chautauqua"
+  ],
+  "14735": [
+   "Allegany",
+   "Wyoming"
+  ],
+  "14736": [
+   "Chautauqua"
+  ],
+  "14737": [
+   "Allegany",
+   "Cattaraugus"
+  ],
+  "14738": [
+   "Cattaraugus",
+   "Chautauqua"
+  ],
+  "14739": [
+   "Allegany"
+  ],
+  "14740": [
+   "Chautauqua"
+  ],
+  "14741": [
+   "Cattaraugus"
+  ],
+  "14742": [
+   "Chautauqua"
+  ],
+  "14743": [
+   "Cattaraugus"
+  ],
+  "14744": [
+   "Allegany"
+  ],
+  "14745": [
+   "Allegany"
+  ],
+  "14747": [
+   "Cattaraugus",
+   "Chautauqua"
+  ],
+  "14748": [
+   "Cattaraugus"
+  ],
+  "14750": [
+   "Chautauqua"
+  ],
+  "14751": [
+   "Cattaraugus"
+  ],
+  "14752": [
+   "Chautauqua"
+  ],
+  "14753": [
+   "Cattaraugus"
+  ],
+  "14754": [
+   "Allegany"
+  ],
+  "14755": [
+   "Cattaraugus"
+  ],
+  "14756": [
+   "Chautauqua"
+  ],
+  "14757": [
+   "Chautauqua"
+  ],
+  "14758": [
+   "Chautauqua"
+  ],
+  "14760": [
+   "Cattaraugus"
+  ],
+  "14766": [
+   "Cattaraugus"
+  ],
+  "14767": [
+   "Chautauqua"
+  ],
+  "14769": [
+   "Chautauqua"
+  ],
+  "14770": [
+   "Allegany",
+   "Cattaraugus"
+  ],
+  "14772": [
+   "Cattaraugus"
+  ],
+  "14774": [
+   "Allegany"
+  ],
+  "14775": [
+   "Chautauqua"
+  ],
+  "14777": [
+   "Allegany"
+  ],
+  "14778": [
+   "Cattaraugus"
+  ],
+  "14779": [
+   "Cattaraugus"
+  ],
+  "14781": [
+   "Chautauqua"
+  ],
+  "14782": [
+   "Chautauqua"
+  ],
+  "14783": [
+   "Cattaraugus"
+  ],
+  "14784": [
+   "Chautauqua"
+  ],
+  "14785": [
+   "Chautauqua"
+  ],
+  "14786": [
+   "Allegany"
+  ],
+  "14787": [
+   "Chautauqua"
+  ],
+  "14788": [
+   "Cattaraugus"
+  ],
+  "14801": [
+   "Steuben"
+  ],
+  "14802": [
+   "Allegany"
+  ],
+  "14803": [
+   "Allegany",
+   "Steuben"
+  ],
+  "14804": [
+   "Allegany"
+  ],
+  "14805": [
+   "Chemung",
+   "Schuyler"
+  ],
+  "14806": [
+   "Allegany",
+   "Steuben"
+  ],
+  "14807": [
+   "Allegany",
+   "Steuben"
+  ],
+  "14808": [
+   "Steuben"
+  ],
+  "14809": [
+   "Steuben"
+  ],
+  "14810": [
+   "Steuben"
+  ],
+  "14812": [
+   "Chemung",
+   "Schuyler",
+   "Steuben"
+  ],
+  "14813": [
+   "Allegany"
+  ],
+  "14814": [
+   "Chemung",
+   "Steuben"
+  ],
+  "14815": [
+   "Schuyler",
+   "Steuben"
+  ],
+  "14816": [
+   "Chemung"
+  ],
+  "14817": [
+   "Tioga",
+   "Tompkins"
+  ],
+  "14818": [
+   "Schuyler"
+  ],
+  "14819": [
+   "Steuben"
+  ],
+  "14820": [
+   "Steuben"
+  ],
+  "14821": [
+   "Steuben"
+  ],
+  "14822": [
+   "Allegany",
+   "Livingston"
+  ],
+  "14823": [
+   "Steuben"
+  ],
+  "14824": [
+   "Chemung",
+   "Schuyler"
+  ],
+  "14825": [
+   "Chemung"
+  ],
+  "14826": [
+   "Steuben"
+  ],
+  "14827": [
+   "Steuben"
+  ],
+  "14830": [
+   "Chemung",
+   "Steuben"
+  ],
+  "14831": [
+   "Steuben"
+  ],
+  "14836": [
+   "Allegany",
+   "Livingston"
+  ],
+  "14837": [
+   "Schuyler",
+   "Steuben",
+   "Yates"
+  ],
+  "14838": [
+   "Chemung",
+   "Schuyler"
+  ],
+  "14839": [
+   "Steuben"
+  ],
+  "14840": [
+   "Schuyler",
+   "Steuben"
+  ],
+  "14841": [
+   "Schuyler",
+   "Seneca"
+  ],
+  "14842": [
+   "Yates"
+  ],
+  "14843": [
+   "Allegany",
+   "Steuben"
+  ],
+  "14845": [
+   "Chemung",
+   "Schuyler"
+  ],
+  "14846": [
+   "Allegany",
+   "Livingston"
+  ],
+  "14847": [
+   "Seneca"
+  ],
+  "14850": [
+   "Tompkins"
+  ],
+  "14851": [
+   "Tompkins"
+  ],
+  "14852": [
+   "Tompkins"
+  ],
+  "14853": [
+   "Tompkins"
+  ],
+  "14854": [
+   "Tompkins"
+  ],
+  "14855": [
+   "Steuben"
+  ],
+  "14856": [
+   "Steuben"
+  ],
+  "14857": [
+   "Yates"
+  ],
+  "14858": [
+   "Steuben"
+  ],
+  "14859": [
+   "Chemung",
+   "Tioga"
+  ],
+  "14860": [
+   "Seneca"
+  ],
+  "14861": [
+   "Chemung"
+  ],
+  "14863": [
+   "Schuyler"
+  ],
+  "14864": [
+   "Chemung",
+   "Schuyler"
+  ],
+  "14865": [
+   "Schuyler"
+  ],
+  "14867": [
+   "Tompkins"
+  ],
+  "14869": [
+   "Schuyler"
+  ],
+  "14870": [
+   "Schuyler",
+   "Steuben"
+  ],
+  "14871": [
+   "Chemung",
+   "Steuben"
+  ],
+  "14872": [
+   "Chemung"
+  ],
+  "14873": [
+   "Steuben"
+  ],
+  "14874": [
+   "Steuben"
+  ],
+  "14876": [
+   "Schuyler"
+  ],
+  "14877": [
+   "Steuben"
+  ],
+  "14878": [
+   "Schuyler",
+   "Yates"
+  ],
+  "14879": [
+   "Steuben"
+  ],
+  "14880": [
+   "Allegany"
+  ],
+  "14881": [
+   "Tompkins"
+  ],
+  "14882": [
+   "Cayuga",
+   "Tompkins"
+  ],
+  "14883": [
+   "Tioga",
+   "Tompkins"
+  ],
+  "14884": [
+   "Allegany"
+  ],
+  "14885": [
+   "Steuben"
+  ],
+  "14886": [
+   "Schuyler",
+   "Seneca",
+   "Tompkins"
+  ],
+  "14887": [
+   "Schuyler"
+  ],
+  "14889": [
+   "Chemung",
+   "Schuyler",
+   "Tioga"
+  ],
+  "14891": [
+   "Schuyler"
+  ],
+  "14892": [
+   "Chemung",
+   "Tioga"
+  ],
+  "14893": [
+   "Schuyler"
+  ],
+  "14894": [
+   "Chemung"
+  ],
+  "14895": [
+   "Allegany"
+  ],
+  "14897": [
+   "Allegany",
+   "Steuben"
+  ],
+  "14898": [
+   "Steuben"
+  ],
+  "14901": [
+   "Chemung"
+  ],
+  "14902": [
+   "Chemung"
+  ],
+  "14903": [
+   "Chemung"
+  ],
+  "14904": [
+   "Chemung"
+  ],
+  "14905": [
+   "Chemung"
+  ],
+  "14925": [
+   "Chemung"
+  ]
+ }
+}

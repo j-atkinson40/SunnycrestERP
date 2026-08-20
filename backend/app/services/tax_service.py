@@ -38,18 +38,47 @@ def get_jurisdiction_for_order(
     if not county and customer_id:
         cust = db.query(Customer).filter(Customer.id == customer_id).first()
         if cust:
-            # D-11 U-1: customers carry no county directly — resolve it
-            # through the platform's zip→county mapping (the same data the
-            # cemetery-suggestion flow uses). Before this, the customer
-            # branch silently skipped and customer-only quotes could never
-            # resolve tax.
-            zip_code = (cust.zip_code or cust.billing_zip or "").strip()[:5]
-            if zip_code:
-                from app.services.county_geographic_service import _load_zip_mapping
-                hit = _load_zip_mapping().get(zip_code)
-                if hit:
-                    county = hit["county"]
-                    state = (hit["state"] or "").strip().upper()
+            # ⚠️ THE OPERATOR'S ANSWER BEATS EVERY DERIVED ONE (r172). It exists
+            # because 22 ZIPs in Sunnycrest's twelve counties span a rate
+            # boundary and cannot be resolved from a ZIP at all. Checked before
+            # the ZIP so that setting it actually ends the ambiguity.
+            if (cust.tax_county or "").strip():
+                county = cust.tax_county.strip()
+                state = (cust.state or cust.billing_state or "NY").strip().upper()
+            else:
+                # ⚠️ WAS `_load_zip_mapping()` — 107 COUNTY CENTROIDS USED AS A
+                # COVERAGE TABLE. One ZIP per county, so 14580 (Webster, Monroe)
+                # resolved to nothing while 14604 (Rochester) resolved fine, and
+                # every real customer outside those 107 silently charged zero.
+                # Now the state's own cross-reference, and — the point of the
+                # change — a ZIP that spans counties DOES NOT RESOLVE.
+                from app.services.county_geographic_service import counties_for_zip
+
+                zip_code = (cust.zip_code or cust.billing_zip or "").strip()[:5]
+                if zip_code:
+                    cand = counties_for_zip(zip_code, "NY")
+                    if len(cand) == 1:
+                        county, state = cand[0], "NY"
+                    elif len(cand) > 1:
+                        # ⚠️ A STRADDLE IS ONLY AMBIGUOUS IF THE ANSWER DIFFERS.
+                        # 57 ZIPs span two or more of Sunnycrest's twelve
+                        # counties; only 22 touch Oneida (8.75%) or Ontario
+                        # (7.5%). For the other 35 every candidate is at 8%, so
+                        # the rate is the same whichever county the customer is
+                        # actually in — refusing those would be theatre.
+                        #
+                        # ⚠️ AND THEY ARE HARMLESS ONLY BECAUSE THOSE RATES
+                        # MATCH TODAY. If one of those counties changes rate, 35
+                        # ZIPs become ambiguous with nothing announcing it — the
+                        # condition is checked here at resolution time rather
+                        # than assumed, so a rate change flips them to
+                        # unresolved instead of silently mispricing.
+                        agreed = _one_rate_across(db, company_id, cand)
+                        if agreed is not None:
+                            county, state = agreed, "NY"
+                        # else: leave unresolved. The reason names the counties.
+                    if not county:
+                        state = state or ""
 
     if not county or not state:
         return None, None
@@ -70,6 +99,122 @@ def get_jurisdiction_for_order(
 
     rate = db.query(TaxRate).filter(TaxRate.id == jur.tax_rate_id).first()
     return jur, rate
+
+
+def _one_rate_across(db: Session, company_id: str, counties: list[str]) -> str | None:
+    """Return a county to use when EVERY candidate would charge the same rate.
+
+    A ZIP spanning several counties is only a problem when the counties disagree
+    about the rate. This returns the first candidate when all of them are
+    configured for this tenant AND carry one rate; None otherwise.
+
+    ⚠️ EVERY CANDIDATE MUST BE CONFIGURED, not just one. If a ZIP spans Cortland
+    and Broome and the tenant has only Cortland, the customer may genuinely be
+    in Broome — and resolving to Cortland because it is the only row we have is
+    a guess wearing a lookup's clothes.
+    """
+    from app.models.tax import TaxJurisdiction, TaxRate
+
+    rows = (
+        db.query(TaxJurisdiction, TaxRate)
+        .join(TaxRate, TaxRate.id == TaxJurisdiction.tax_rate_id)
+        .filter(
+            TaxJurisdiction.tenant_id == company_id,
+            TaxJurisdiction.is_active == True,  # noqa: E712
+            TaxJurisdiction.state == "NY",
+        )
+        .all()
+    )
+    by_county = {j.county.lower(): r.rate_percentage for j, r in rows}
+    rates = {by_county.get(c.lower()) for c in counties}
+    if None in rates or len(rates) != 1:
+        return None
+    return counties[0]
+
+
+def unresolved_reason_for_customer(db: Session, customer_id: str | None,
+                                   cemetery_id: str | None = None) -> str:
+    """Why resolution failed, in terms an operator can act on.
+
+    ⚠️ "CANNOT RESOLVE" SENDS SOMEONE HUNTING. The three failures below need
+    three different actions, and a single message for all of them is the same
+    defect as a health check that cannot distinguish "did not run" from "found
+    nothing":
+
+      - no ZIP at all            → put an address on the customer
+      - ZIP spans counties       → set `tax_county`, and here are the choices
+      - resolved but no rate row → configure that county in tax settings
+
+    The ambiguous case names the counties for the same reason a migration
+    pre-flight names the rows it will touch: the specific fact is what makes it
+    actionable.
+    """
+    from app.models.customer import Customer
+    from app.services.county_geographic_service import counties_for_zip
+
+    if not (customer_id or cemetery_id):
+        return "no customer or cemetery to resolve against"
+    cust = (
+        db.query(Customer).filter(Customer.id == customer_id).first()
+        if customer_id else None
+    )
+    if cust is None:
+        return "no cemetery county and no customer record to resolve against"
+    if (cust.tax_county or "").strip():
+        return (
+            f"{cust.name} is set to {cust.tax_county.strip()} County, but no tax "
+            f"jurisdiction is configured for it — add it in tax settings"
+        )
+    zip_code = (cust.zip_code or cust.billing_zip or "").strip()[:5]
+    if not zip_code:
+        return (
+            f"{cust.name} has no ZIP code on file — sales tax resolves from the "
+            "ZIP, and without one this customer's orders charge no tax, which "
+            "is not the same as being exempt"
+        )
+    cand = counties_for_zip(zip_code, "NY")
+    if len(cand) > 1:
+        # Reached only when the candidates DISAGREE — a straddle whose counties
+        # share a rate resolves and never gets here. Two ways to disagree, and
+        # they want different actions.
+        from app.models.tax import TaxJurisdiction, TaxRate
+
+        rows = (
+            db.query(TaxJurisdiction, TaxRate)
+            .join(TaxRate, TaxRate.id == TaxJurisdiction.tax_rate_id)
+            .filter(
+                TaxJurisdiction.tenant_id == cust.company_id,
+                TaxJurisdiction.is_active == True,  # noqa: E712
+            )
+            .all()
+        )
+        by_county = {j.county.lower(): r.rate_percentage for j, r in rows}
+        unconfigured = [c for c in cand if c.lower() not in by_county]
+        if unconfigured:
+            return (
+                f"ZIP {zip_code} spans {', '.join(cand)}, and "
+                f"{', '.join(unconfigured)} {'is' if len(unconfigured) == 1 else 'are'} "
+                f"not configured — the customer may be in a county this tenant "
+                f"has no rate for. Set the county on {cust.name}, or add the "
+                f"missing jurisdiction."
+            )
+        spread = ", ".join(
+            f"{c} {by_county[c.lower()].normalize()}%" for c in cand
+        )
+        return (
+            f"ZIP {zip_code} spans counties charging different rates "
+            f"({spread}) — a ZIP cannot decide between them. Set the county on "
+            f"{cust.name} to resolve this."
+        )
+    if not cand:
+        return (
+            f"ZIP {zip_code} is not in the New York ZIP→county reference — set "
+            f"the county on {cust.name} directly"
+        )
+    return (
+        f"{cust.name} resolves to {cand[0]} County, but no tax jurisdiction is "
+        f"configured for it — add it in tax settings"
+    )
 
 
 def compute_tax(
@@ -302,11 +447,11 @@ def resolve_line_tax(
             exempt_lines=exempt_lines, gaps=gaps,
         )
 
-    missing = (
-        "no cemetery county and the customer's zip matched no jurisdiction"
-        if (cemetery_id or customer_id)
-        else "no customer or cemetery to resolve against"
-    )
+    # ⚠️ WAS ONE SENTENCE FOR EVERY FAILURE — "no cemetery county and the
+    # customer's zip matched no jurisdiction" — which is true of a customer with
+    # no address, a customer whose ZIP spans two counties, and a county nobody
+    # configured. Three different actions, one message. Now the specific one.
+    missing = unresolved_reason_for_customer(db, customer_id, cemetery_id)
     if require_resolution:
         raise TaxResolutionError(
             f"Can't resolve tax ({missing}) and no explicit tax rate was "

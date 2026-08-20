@@ -33,6 +33,39 @@ def _load_zip_mapping() -> dict:
         return {}
 
 
+@lru_cache(maxsize=1)
+def _load_ny_zip_counties() -> dict:
+    """ZIP → [county, …] for New York, from the state's own cross-reference.
+
+    ⚠️ THIS IS AN AMBIGUITY FILTER, NOT A COUNTY SOURCE, AND THE DIFFERENCE IS
+    THE WHOLE DESIGN. Every row in the state's dataset is dated 2007-07-25 and
+    it has never been revised, so it UNDER-DETECTS: a ZIP it lists as spanning
+    two counties almost certainly still does, but one it lists as clean may have
+    become ambiguous since and would be missed. Under-detection is the unsafe
+    direction — which is why an explicit `customer.tax_county` overrides it, and
+    why an ambiguous ZIP refuses rather than picking.
+
+    Distinct from `_load_zip_mapping()`, which is 107 county CENTROIDS for the
+    radius suggestion and was never a coverage table — using it as one is what
+    made 14580 (Webster, Monroe) resolve to nothing while 14604 resolved fine.
+    """
+    path = os.path.join(DATA_DIR, "ny-zip-counties.json")
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.warning("ny-zip-counties.json not found — ZIP resolution disabled")
+        return {"zips": {}, "metadata": {}}
+
+
+def counties_for_zip(zip_code: str, state: str = "NY") -> list[str]:
+    """Every county a ZIP touches. Empty when unknown — NOT a resolution."""
+    if (state or "").upper() != "NY":
+        return []
+    z = (zip_code or "").strip()[:5]
+    return list(_load_ny_zip_counties()["zips"].get(z, []))
+
+
 def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """Calculate distance in miles between two lat/lng points."""
     R = 3959  # Earth radius in miles

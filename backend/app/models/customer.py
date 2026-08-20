@@ -95,6 +95,11 @@ class Customer(Base):
 
     # --- Other ---
     tax_exempt: Mapped[bool] = mapped_column(Boolean, default=False)
+    # r172 — the operator's answer when the ZIP cannot give one. 22 ZIPs in
+    # Sunnycrest's twelve counties span a rate boundary; for those, resolution
+    # refuses rather than guessing, and this is what unblocks it. Beats every
+    # other source when set, including the cemetery county.
+    tax_county: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tax_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

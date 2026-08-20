@@ -121,6 +121,7 @@ export default function CustomerDetailPage() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [zipCode, setZipCode] = useState("");
+  const [taxCounty, setTaxCounty] = useState("");
   const [country, setCountry] = useState("US");
 
   // Billing address
@@ -226,6 +227,7 @@ export default function CustomerDetailPage() {
       setCity(customer.city || "");
       setState(customer.state || "");
       setZipCode(customer.zip_code || "");
+    setTaxCounty(customer.tax_county || "");
       setCountry(customer.country || "US");
 
       setBillingLine1(customer.billing_address_line1 || "");
@@ -319,6 +321,9 @@ export default function CustomerDetailPage() {
         city: city.trim() || undefined,
         state: state.trim() || undefined,
         zip_code: zipCode.trim() || undefined,
+        // `"" || undefined` — an empty string would write a blank over a real
+        // county, and the resolver treats blank as "derive from ZIP" anyway.
+        tax_county: taxCounty.trim() || undefined,
         country: country.trim() || undefined,
         billing_address_line1: billingLine1.trim() || undefined,
         billing_address_line2: billingLine2.trim() || undefined,
@@ -1093,6 +1098,29 @@ export default function CustomerDetailPage() {
                 onChange={(e) => setCountry(e.target.value)}
                 disabled={!canEdit}
               />
+            </div>
+            {/* ⚠️ THE OVERRIDE FOR A ZIP THAT CANNOT DECIDE. 22 ZIP codes inside
+                Sunnycrest's twelve counties span a county line where the rates
+                differ; for those the ZIP genuinely does not determine the rate
+                and the order will not resolve until this is set. Labelled and
+                explained rather than left as a bare field, for the same reason
+                the ZIP field carries helper text: the operator has to know when
+                to reach for it. */}
+            <div className="space-y-2 max-w-[280px]">
+              <Label htmlFor="tax-county">Tax county</Label>
+              <Input
+                id="tax-county"
+                value={taxCounty}
+                onChange={(e) => setTaxCounty(e.target.value)}
+                disabled={!canEdit}
+                placeholder="Usually blank"
+              />
+              <p className="text-xs text-content-muted">
+                Leave blank and the county is worked out from the ZIP. Some ZIP
+                codes span two counties that charge different rates — those
+                orders won't resolve tax until you set the county here, and the
+                message on the order names the choices.
+              </p>
             </div>
           </div>
         </Card>

@@ -55,6 +55,8 @@ export interface Customer {
   city: string | null;
   state: string | null;
   zip_code: string | null;
+  /* r172 — operator override for a ZIP that spans counties with different rates. */
+  tax_county: string | null;
   country: string | null;
   billing_address_line1: string | null;
   billing_address_line2: string | null;
@@ -211,6 +213,8 @@ export interface CustomerCreate {
   city?: string;
   state?: string;
   zip_code?: string;
+  /* r172 — see the note on Customer.tax_county. */
+  tax_county?: string;
   country?: string;
   credit_limit?: number;
   payment_terms?: string;
