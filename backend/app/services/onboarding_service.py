@@ -1265,6 +1265,39 @@ def fix_checklist_targets(db: Session) -> None:
     db.commit()
 
 
+def ensure_checklist_for_company(db: Session, company) -> str:
+    """Instantiate a checklist for `company` if its vertical has one defined.
+
+    ⚠️ THE PRESET CHECK IS THE POINT, AND IT IS WHY THIS IS A SHARED HELPER
+    RATHER THAN THREE CALL SITES. `initialize_checklist` falls back to the
+    MANUFACTURING list for any preset it does not recognise (see `_PRESET_ITEMS`
+    below it), and only `manufacturing` and `funeral_home` are defined. Calling
+    it directly for a `cemetery` tenant hands them 27 manufacturing items
+    opening with "How do you stock your vaults?" — verified against a scratch
+    database, and st-marys is a cemetery tenant on production.
+
+    Giving those tenants nothing is more honest than giving them the wrong list.
+    The caller gets the reason back so the gap stays a reported number instead of
+    a silent fallback.
+
+    Returns one of: "created" · "existing" · "no_vertical" · "no_preset".
+    """
+    existing = (
+        db.query(OnboardingChecklist)
+        .filter(OnboardingChecklist.tenant_id == company.id)
+        .first()
+    )
+    if existing:
+        return "existing"
+    vertical = getattr(company, "vertical", None)
+    if not vertical:
+        return "no_vertical"
+    if vertical not in _PRESET_ITEMS:
+        return "no_preset"
+    initialize_checklist(db, company.id, vertical)
+    return "created"
+
+
 def initialize_checklist(
     db: Session, tenant_id: str, preset: str
 ) -> OnboardingChecklist:

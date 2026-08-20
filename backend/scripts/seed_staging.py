@@ -340,6 +340,33 @@ def _seed_company(db: Session):
                "vertical": "manufacturing", "tz": "America/New_York", "now": NOW})
     db.flush()
 
+    # TAX-4 — the onboarding checklist, at the moment the tenant exists.
+    #
+    # ⚠️ `initialize_checklist`'s DOCSTRING SAYS "Called when a tenant is
+    # created" AND NO SCRIPT THAT CREATES TENANTS CALLED IT. Measured before
+    # this change: `tenant_onboarding_checklists` was EMPTY on production across
+    # all four tenants, and empty on dev across 902 companies. Twenty-five item
+    # definitions, two presets, scenarios, a hub, a startup retrofit and a
+    # working backfill — with zero instances anywhere for the platform's whole
+    # life.
+    #
+    # Runs on the update path too, so testco picks one up on the next seed
+    # rather than only on a fresh database. `ensure_checklist_for_company`
+    # no-ops when one exists.
+    from app.models.company import Company
+    from app.services.onboarding_service import ensure_checklist_for_company
+
+    company = db.query(Company).filter(Company.id == CFG["company_id"]).first()
+    if company is not None:
+        try:
+            if ensure_checklist_for_company(db, company) == "created":
+                db.flush()
+                print("  ✓ onboarding checklist created for testco")
+        except Exception as exc:  # noqa: BLE001
+            # Reported rather than swallowed — a checklist failure must not take
+            # down the staging seed, and must not be invisible either.
+            print(f"  ⚠️ onboarding checklist FAILED for testco: {exc}")
+
 
 def _seed_roles(db: Session):
     roles = [

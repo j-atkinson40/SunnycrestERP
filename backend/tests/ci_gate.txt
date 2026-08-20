@@ -300,3 +300,4 @@ tests/test_tax_exemption_surface.py
 tests/test_ny_tax_rates.py
 tests/test_platform_tax_rates.py
 tests/test_zip_ambiguity.py
+tests/test_onboarding_instantiation.py

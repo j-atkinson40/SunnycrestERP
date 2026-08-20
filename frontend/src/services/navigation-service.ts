@@ -429,7 +429,17 @@ function getManufacturingNav(
         },
         {
           label: "Onboarding",
-          href: "/onboarding",
+          // TAX-4: was `/onboarding`, which renders OnboardingFlow. The
+          // per-tenant CHECKLIST — the 25 items, their status, the progress
+          // — lives at `/onboarding/hub` (App.tsx:1364), one hop further than
+          // the nav suggested. Both routes exist, so this was never a broken
+          // link; it just pointed past the thing an admin comes here for.
+          //
+          // It also matters more than it did: the hub lazily calls
+          // `initializeChecklist()` when a tenant has none, so opening it is
+          // what brings a checklist into existence for tenants that predate
+          // the seed-time instantiation.
+          href: "/onboarding/hub",
           icon: "Rocket",
           adminOnly: true,
           settingsGroup: "Platform",

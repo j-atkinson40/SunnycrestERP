@@ -52,6 +52,40 @@ from app.services.role_service import seed_default_roles  # noqa: E402
 import json  # noqa: E402  # canonical-restraint: small set of imports
 
 
+def _ensure_onboarding_checklist(db, company) -> None:
+    """TAX-4 — a tenant this script creates gets its onboarding checklist here.
+
+    ⚠️ `initialize_checklist`'s DOCSTRING SAYS "Called when a tenant is created"
+    AND THE SCRIPTS THAT CREATE TENANTS NEVER CALLED IT. Measured before this
+    change: `tenant_onboarding_checklists` was EMPTY on production across all
+    four tenants and on dev across 902 companies. Twenty-five item definitions,
+    two presets, scenarios, a hub and a working backfill, with zero instances
+    anywhere — a mechanism nobody instantiated rather than one nobody turned on.
+
+    Both paths, like `seed_default_roles` above: an existing tenant that predates
+    this gets one too, which is the only way hopkins-fh and st-marys ever will.
+    `ensure_checklist_for_company` no-ops when a checklist exists and refuses
+    verticals with no preset defined — st-marys is `cemetery`, which has none,
+    and handing it the manufacturing list would be worse than handing it nothing.
+    """
+    from app.services.onboarding_service import ensure_checklist_for_company
+
+    try:
+        outcome = ensure_checklist_for_company(db, company)
+        if outcome == "created":
+            db.commit()
+            print(f"  ✓ onboarding checklist created for {company.slug}")
+        elif outcome == "no_preset":
+            print(f"  ⚠️ {company.slug}: vertical {company.vertical!r} has no "
+                  "checklist defined — not initialised (the fallback is the "
+                  "manufacturing list)")
+    except Exception as exc:  # noqa: BLE001
+        # Reported, not swallowed. A checklist failure must not take down a
+        # demo seed, but it must not be invisible either.
+        db.rollback()
+        print(f"  ⚠️ onboarding checklist FAILED for {company.slug}: {exc}")
+
+
 def _ensure_company(db, slug, defaults) -> Company:
     c = db.query(Company).filter(Company.slug == slug).first()
     if c:
@@ -59,6 +93,7 @@ def _ensure_company(db, slug, defaults) -> Company:
         # Hopkins rows pre-dating the seed fix. Idempotent — no-op
         # if the catalog is already present.
         seed_default_roles(db, c.id)
+        _ensure_onboarding_checklist(db, c)
         return c
     c = Company(id=str(uuid.uuid4()), slug=slug, is_active=True, **defaults)
     db.add(c)
@@ -69,6 +104,7 @@ def _ensure_company(db, slug, defaults) -> Company:
     # admin user even if creation had worked. Both pre-conditions
     # are repaired by seeding canonical tenant roles here.
     seed_default_roles(db, c.id)
+    _ensure_onboarding_checklist(db, c)
     return c
 
 
