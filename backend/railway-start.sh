@@ -84,7 +84,20 @@ alembic current 2>&1 || echo "(could not read revision)"
 # the seed before continuing. Documented in CLAUDE.md staging section.
 #
 # Production still skips all staging seeds via the ENVIRONMENT guard.
-if [ "${ENVIRONMENT:-dev}" != "production" ]; then
+#
+# ⚠️ THIS TEST USED TO READ `[ "${ENVIRONMENT:-dev}" != "production" ]`, WHICH
+# FAILED OPEN. A deploy where the variable was merely MISSING inferred "dev"
+# and ran the demo seeds — so the guard's safe state depended on a variable
+# being present, and absence silently permitted. `hopkins-fh` was created on
+# the production database 73 seconds after this guard was committed, by the
+# deploy that shipped it. Absence now REFUSES, loudly, and fails the deploy —
+# the same discipline as the migration and seed blocks above: we would rather
+# go red than write into a database we cannot name.
+if ! ENV_RESOLVED="$(bash "$(dirname "$0")/scripts/require_known_environment.sh")"; then
+    echo "  ✗ boot prep aborted — ENVIRONMENT must be set explicitly."
+    exit 1
+fi
+if [ "$ENV_RESOLVED" != "production" ]; then
     echo ""
     echo "Running staging seed scripts (R-1.6 — auto-seed on every deploy)..."
     echo "Seed failures FAIL the deploy (R-1.6.3). Half-seeded tenants are not acceptable."
