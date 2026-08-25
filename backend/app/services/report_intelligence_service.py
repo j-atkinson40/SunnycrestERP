@@ -136,9 +136,22 @@ def _compute_cache_key(report_type: str, period_start: date, period_end: date, k
     return hashlib.md5(raw.encode()).hexdigest()
 
 
-def get_commentary(db: Session, commentary_id: str) -> dict | None:
-    """Get commentary by ID — used for polling."""
-    c = db.query(ReportCommentary).filter(ReportCommentary.id == commentary_id).first()
+def get_commentary(db: Session, commentary_id: str, tenant_id: str) -> dict | None:
+    """Get commentary by ID — used for polling.
+
+    `tenant_id` is REQUIRED, not optional-with-default (RI-1). This filtered on
+    id alone and the route never scoped it, so any authenticated user could read
+    another company's executive_summary, key_findings and attention_items by id.
+    A default would let a caller silently reacquire that.
+
+    Returns None rather than raising on a foreign row: to a caller outside the
+    tenant, a row that exists and a row that does not must be indistinguishable,
+    or the 404 becomes an existence oracle.
+    """
+    c = (db.query(ReportCommentary)
+         .filter(ReportCommentary.id == commentary_id,
+                 ReportCommentary.tenant_id == tenant_id)
+         .first())
     if not c:
         return None
     return {
@@ -385,8 +398,13 @@ def run_preflight(db: Session, tenant_id: str, audit_package_id: str | None = No
     }
 
 
-def get_preflight_result(db: Session, result_id: str) -> dict | None:
-    r = db.query(AuditPreflightResult).filter(AuditPreflightResult.id == result_id).first()
+def get_preflight_result(db: Session, result_id: str, tenant_id: str) -> dict | None:
+    """See `get_commentary` on why `tenant_id` is required and why a foreign row
+    returns None rather than raising."""
+    r = (db.query(AuditPreflightResult)
+         .filter(AuditPreflightResult.id == result_id,
+                 AuditPreflightResult.tenant_id == tenant_id)
+         .first())
     if not r:
         return None
     return {
@@ -401,8 +419,20 @@ def get_preflight_result(db: Session, result_id: str) -> dict | None:
     }
 
 
-def override_preflight(db: Session, result_id: str, user_id: str, reason: str) -> bool:
-    r = db.query(AuditPreflightResult).filter(AuditPreflightResult.id == result_id).first()
+def override_preflight(db: Session, result_id: str, user_id: str, reason: str,
+                       tenant_id: str) -> bool:
+    """Override a BLOCKED pre-flight. `tenant_id` required (RI-1) — this is a
+    WRITE, and it was reachable cross-tenant by id.
+
+    It was unreachable in practice only by accident: nothing could produce
+    `blocked`, because `run_preflight` initialises `blocking` and `warnings`
+    empty and never appends to either. A-2 makes blocking real, which arms this.
+    Scoped before that lands rather than after.
+    """
+    r = (db.query(AuditPreflightResult)
+         .filter(AuditPreflightResult.id == result_id,
+                 AuditPreflightResult.tenant_id == tenant_id)
+         .first())
     if not r or r.status != "blocked":
         return False
     r.override_by = user_id

@@ -35,7 +35,7 @@ def poll_commentary(
     db: Session = Depends(get_db),
 ):
     """Poll for commentary generation status."""
-    result = get_commentary(db, commentary_id)
+    result = get_commentary(db, commentary_id, current_user.company_id)
     if not result:
         raise HTTPException(status_code=404)
     return result
@@ -131,7 +131,7 @@ def get_preflight(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    result = get_preflight_result(db, result_id)
+    result = get_preflight_result(db, result_id, current_user.company_id)
     if not result:
         raise HTTPException(status_code=404)
     return result
@@ -148,6 +148,7 @@ def override_preflight_check(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not override_preflight(db, result_id, current_user.id, body.reason):
+    if not override_preflight(db, result_id, current_user.id, body.reason,
+                              current_user.company_id):
         raise HTTPException(status_code=400, detail="Cannot override — not in blocked status")
     return {"status": "overridden"}

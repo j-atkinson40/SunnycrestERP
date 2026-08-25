@@ -125,6 +125,20 @@ _PURGE_STATEMENTS = [
     "DELETE FROM plaid_category_mappings WHERE tenant_id = ANY(:ids)",
     "DELETE FROM plaid_items WHERE tenant_id = ANY(:ids)",
     "DELETE FROM financial_accounts WHERE tenant_id = ANY(:ids)",
+    # Reporting + audit intelligence (RI-1). These carry a companies FK at the
+    # DATABASE level that the models do not declare — `ReportCommentary.tenant_id`
+    # is a plain String(36) in Python, but `report_commentary_tenant_id_fkey`
+    # exists in Postgres, so a purge that skips them fails on the FK rather than
+    # leaving litter. audit_preflight_results references audit_packages, so it
+    # precedes it; audit_packages and report_runs precede companies.
+    "DELETE FROM report_commentary WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM report_forecasts WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM report_snapshots WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM audit_preflight_results WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM audit_health_checks WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM audit_packages WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM report_runs WHERE tenant_id = ANY(:ids)",
+
     # tenant_gl_mappings: financial_accounts.gl_account_id FK's here (r153, Ledger
     # Posting arc), so it MUST follow financial_accounts and precede companies.
     "DELETE FROM tenant_gl_mappings WHERE tenant_id = ANY(:ids)",
