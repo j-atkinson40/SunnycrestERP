@@ -31,45 +31,131 @@ from app.models.vendor_bill_line import VendorBillLine
 # Category mappings
 # ---------------------------------------------------------------------------
 
+# The canonical platform account-category vocabulary (LEDGER-1 A-1).
+#
+# This set is authoritative. It is balance-sheet complete — a trial balance and
+# a balance sheet group by exactly these — which is why it wins over
+# `accounting_analysis_service.PLATFORM_CATEGORIES` (revenue/ar/cogs/ap/expenses),
+# which cannot express a balance sheet at all.
+#
+# TWO FALLBACKS THAT MEAN DIFFERENT THINGS, and the distinction is load-bearing:
+#   `other`        — this account IS miscellaneous. A human decided that.
+#   `unclassified` — the importer COULD NOT MAP IT. Nobody decided anything.
+# Collapsing them is how 73 of Sunnycrest's 224 accounts became indistinguishable
+# from a deliberate choice.
+PLATFORM_ACCOUNT_CATEGORIES: frozenset[str] = frozenset({
+    "current_asset",
+    "fixed_asset",
+    "current_liability",
+    "long_term_liability",
+    "equity",
+    "revenue",
+    "contra_revenue",
+    "cogs",
+    "delivery_cost",
+    "expense",
+    "tax_expense",
+    "other_income",
+    "other",
+    "unclassified",
+})
+
+#: What the importer emits when it cannot map a Sage category. Distinct from
+#: `other` on purpose — see above.
+UNCLASSIFIED = "unclassified"
+
+# `contra_revenue` is deliberately NOT reachable from any Sage category: Sage
+# files refunds, returns, rebates and cash discounts inside SALES alongside gross
+# revenue. It is applied per-account after import, not derived from the category.
+#
+# `delivery_cost` is its own category rather than folded into `cogs` because
+# licensees differ in how delivery gets done — one outsources hauling, another
+# runs six trucks — and gross margin has to mean "what manufacturing earns"
+# across all of them. It presents below gross profit, above operating expenses.
 SAGE_CATEGORY_MAP: dict[str, str] = {
     "CURRENT ASSETS": "current_asset",
     "FIXED ASSETS": "fixed_asset",
     "CURRENT LIABILITIES": "current_liability",
     "LONG TERM LIABILITIES": "long_term_liability",
+    "NON-CURRENT LIABILITIES": "long_term_liability",
     "EQUITY": "equity",
+    "STOCKHOLDERS' EQUITY": "equity",
     "INCOME": "revenue",
+    "SALES": "revenue",
     "COST OF SALES": "cogs",
+    "COST OF GOODS SOLD": "cogs",
+    "DELIVERY COSTS": "delivery_cost",
     "MANUFACTURING EXPENSE": "expense",
     "ADMINISTRATIVE & SELLING EXPENSE": "expense",
     "OTHER INCOME & EXPENSES": "other_income",
     "PROVISION FOR TAXES": "tax_expense",
 }
 
+#: A key matched immediately after one of these is REJECTED. "CURRENT
+#: LIABILITIES" is a substring of "NON-CURRENT LIABILITIES", and a substring test
+#: cannot see that the prefix inverts the meaning.
+_NEGATING_TOKENS: frozenset[str] = frozenset({"NON", "NOT", "EX", "LESS", "ANTI", "PRE", "DE"})
+
+
+def _match_is_negated(haystack: str, start: int) -> bool:
+    """True if the text immediately before `start` negates the matched key."""
+    prefix = haystack[:start].rstrip(" -_/")
+    if not prefix:
+        return False
+    last_token = prefix.rsplit(" ", 1)[-1].rsplit("-", 1)[-1]
+    return last_token in _NEGATING_TOKENS
+
 
 def classify_sage_category(sage_category: str) -> tuple[str, float]:
     """Map a Sage COA category label to a platform category + confidence.
 
-    Extracted from `parse_sage_coa` unchanged (LEDGER-1 A-1). Behaviour is
-    IDENTICAL to the inline version it replaces, defects included, so the
-    characterization suite at `tests/test_sage_coa_classification.py` passes
-    unmodified across the move. The fix is a separate commit.
+    Returns `(platform_category, confidence)`: 1.0 for an exact map hit, 0.7 for
+    a constrained fuzzy hit, 0.0 for `unclassified`.
 
-    Returns `(platform_category, confidence)` where confidence is 1.0 for an
-    exact map hit, 0.7 for a fuzzy hit, and 0.0 for the `other` fallback.
+    THREE DEFECTS FIXED HERE, each independently (LEDGER-1 A-1):
+
+    1. **The fuzzy pass was bidirectional.** `sage_category in key` mapped
+       Sunnycrest's "SALES" to `cogs`, because "SALES" is a substring of the key
+       "COST OF SALES". Only `key in normalised` survives — a category is
+       matched by a key it CONTAINS, never by a key that contains it.
+
+    2. **It broke on the first hit in dict-insertion order**, so the answer
+       depended on dictionary ordering. The LONGEST matching key now wins, which
+       is deterministic and picks the more specific match.
+
+    3. **A negating prefix was invisible.** "CURRENT LIABILITIES" is a substring
+       of "NON-CURRENT LIABILITIES", so long-term debt classified as current.
+       `_match_is_negated` rejects a key matched immediately after NON/NOT/EX/…
+
+    THE FUZZY PASS IS KEPT, NOT DELETED, and that is deliberate. It is the only
+    reason "STOCKHOLDERS' EQUITY" resolves to `equity` — there is no such exact
+    key. Deleting it is the obvious fix and it loses a correct answer.
+
+    An unmatched category returns `unclassified`, NOT `other`. `other` means a
+    human judged the account miscellaneous; `unclassified` means the importer
+    could not map it and somebody still has to look.
     """
-    normalised = sage_category.strip().upper()
+    normalised = " ".join(sage_category.strip().upper().split())
 
     account_type = SAGE_CATEGORY_MAP.get(normalised)
     if account_type is not None:
         return account_type, 1.0
 
-    # Try a fuzzy match — check if any key is contained in the category
-    for key, val in SAGE_CATEGORY_MAP.items():
-        if key in normalised or normalised in key:
-            return val, 0.7
+    # Longest key that the category CONTAINS, and whose match is not negated.
+    best_key: str | None = None
+    for key in SAGE_CATEGORY_MAP:
+        start = normalised.find(key)
+        if start == -1:
+            continue
+        if _match_is_negated(normalised, start):
+            continue
+        if best_key is None or len(key) > len(best_key):
+            best_key = key
 
-    return "other", 0.0
+    if best_key is not None:
+        return SAGE_CATEGORY_MAP[best_key], 0.7
 
+    return UNCLASSIFIED, 0.0
 
 # ---------------------------------------------------------------------------
 # Helpers
