@@ -193,7 +193,15 @@ export default function TaxJurisdictionsOnboarding() {
             state_rate: null,
             county_rate: null,
             is_state_rate_only: false,
+            /* Hand-entered, so it carries no publication provenance: the three
+               rate_* fields are null and stay null. `suggested_by` mirrors
+               `source` because TAX-4 split the two apart and this literal was
+               written before the split — see the interface above. */
+            suggested_by: "customer_addresses",
             source: "customer_addresses",
+            rate_source: null,
+            rate_verified_on: null,
+            jurisdiction_code: null,
             distance_miles: null,
             already_configured: false,
             rate_found: !!manualRate,
