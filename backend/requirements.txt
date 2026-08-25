@@ -8,7 +8,22 @@ pydantic-settings==2.7.1
 python-jose[cryptography]==3.3.0
 cryptography>=42.0  # explicit pin — Fernet at-rest encryption (Plaid tokens + credential_service); was transitive-only via python-jose
 passlib[bcrypt]==1.7.4
-anthropic>=0.42.0
+# PINNED EXACTLY, NOT RANGED — and the reason is the whole point.
+# This was `anthropic>=0.42.0`: a floor with no ceiling. On 2026-08-23 14:09:25 UTC a
+# rebuild resolved that to 1.0.0, a major release that removed `temperature`, `top_p`,
+# and `top_k` from `Messages.create()`. Every call through
+# intelligence_service._call_anthropic (which passes `temperature` unconditionally)
+# died with TypeError for two days.
+#
+# Nothing in this repo changed. This file was untouched since 18 Jul; the last push was
+# 20 Aug. The failure had no author — a rebuild took a major version because the
+# constraint permitted it. That is why this is `==` and not `<1.0.0`: a narrower range
+# is the same mechanism with a smaller window.
+#
+# 0.125.0 verified against the complete import surface this codebase uses —
+# Anthropic, AsyncAnthropic, APIError, RateLimitError — plus temperature/top_p/top_k
+# present in the Messages.create signature.
+anthropic==0.125.0
 python-multipart>=0.0.18
 redis>=5.0.0
 requests>=2.31.0
