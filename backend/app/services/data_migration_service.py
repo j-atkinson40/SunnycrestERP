@@ -56,6 +56,15 @@ PLATFORM_ACCOUNT_CATEGORIES: frozenset[str] = frozenset({
     "expense",
     "tax_expense",
     "other_income",
+    # ⚠️ ADDED AFTER THIS SET WAS COMMITTED AS COMPLETE (r174). Sage files one
+    # category, "OTHER INCOME & EXPENSES", holding both directions — INTEREST
+    # EXPENSE and PENALTIES sit alongside FINANCE CHARGE INCOME, INTEREST
+    # INCOME, MISC. INCOME and GAIN ON SALE. Without this value the expense
+    # half had nowhere correct to go and would have landed in `other`, which is
+    # the bucket this arc exists to empty. Interest expense is non-operating —
+    # folding it into `expense` puts debt service inside operating expenses and
+    # makes operating income wrong.
+    "other_expense",
     "other",
     "unclassified",
 })
