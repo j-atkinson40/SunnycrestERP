@@ -709,6 +709,8 @@ def import_gl_accounts(
                     account_name=acct["description"],
                     provider_account_id=account_number,
                     is_active=(status == "active"),
+                    sage_category=acct.get("sage_category"),
+                    confidence=acct.get("confidence"),
                 )
                 nested = db.begin_nested()
                 try:
@@ -724,6 +726,8 @@ def import_gl_accounts(
                 existing.account_name = acct["description"]
                 existing.provider_account_id = account_number
                 existing.is_active = status == "active"
+                existing.sage_category = acct.get("sage_category")
+                existing.confidence = acct.get("confidence")
                 nested = db.begin_nested()
                 try:
                     db.flush()

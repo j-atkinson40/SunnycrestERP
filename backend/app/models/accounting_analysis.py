@@ -1,6 +1,7 @@
 """Accounting AI analysis models — staging, analysis results, GL mappings, alerts."""
 
 import uuid
+from decimal import Decimal
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
@@ -54,6 +55,17 @@ class TenantGLMapping(Base):
     account_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     account_name: Mapped[str] = mapped_column(String(255), nullable=False)
     provider_account_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # ── Import provenance (LEDGER-1 A-1) ──────────────────────────────────
+    # The importer computed both of these and threw them away. A 0.7 fuzzy
+    # guess was stored indistinguishably from a 1.0 exact match, so a
+    # misclassification was invisible until someone read the chart against the
+    # source CSV. Nullable because every row imported before r173 has no
+    # recorded provenance — NULL is the true statement about those rows, not a
+    # placeholder.
+    sage_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
