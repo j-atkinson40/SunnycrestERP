@@ -22,6 +22,8 @@ import uuid
 
 import pytest
 
+from sqlalchemy.exc import IntegrityError
+
 from app.models.accounting_analysis import TenantGLMapping
 from app.models.company import Company
 from app.services.data_migration_service import PLATFORM_ACCOUNT_CATEGORIES
@@ -225,3 +227,69 @@ class TestApplyingItToRealRows:
         db.commit()
         _apply(db, tenant.id)
         assert self._categories(db, tenant.id)["5010"] == "revenue"
+
+
+class TestTheConstraintItselfRefuses:
+    """r174's CHECK constraint, tested as a constraint rather than as a list.
+
+    The class above proves the CORRECTIONS list is internally coherent. That is
+    a statement about a Python tuple. This one is about the database: it asserts
+    the column actually rejects what the vocabulary excludes, which is the only
+    thing standing between a typo and a wrong number on a financial report.
+
+    Worth stating why this test exists at all. Before r174 the column was
+    `String(100)` with no enum, no FK and no CHECK, so it was used as scratch
+    space by anything that needed to fill a NOT NULL — four test files were
+    writing account names into it, and nothing stopped them. Constraining the
+    column turned those into loud failures. This is the test that would notice
+    if the constraint were ever quietly dropped again.
+    """
+
+    def _insert(self, db, tenant_id, category, number):
+        db.add(TenantGLMapping(
+            id=str(uuid.uuid4()), tenant_id=tenant_id, platform_category=category,
+            account_number=number, account_name=f"{category} probe", is_active=True,
+        ))
+        db.flush()
+
+    @pytest.mark.parametrize("category", sorted(PLATFORM_ACCOUNT_CATEGORIES))
+    def test_every_permitted_category_is_accepted(self, db, tenant, category):
+        with db.begin_nested():
+            self._insert(db, tenant.id, category, f"70{abs(hash(category)) % 90:02d}")
+
+    @pytest.mark.parametrize("category", [
+        "warranty_reserve",   # the AR-0 decoy class — see test_epd_ar_account_ar0
+        "bank charges",       # an account name, which is how the column was used
+        "general",            # a plausible-looking value that is not in the set
+        "vault_sales",        # a SUBCATEGORY — the two-taxonomy collision item 3 closed
+        "Revenue",            # right word, wrong case: the set is lowercase
+        "",                   # empty is not "unclassified"
+    ])
+    def test_anything_outside_the_vocabulary_is_refused(self, db, tenant, category):
+        with pytest.raises(IntegrityError) as ei:
+            with db.begin_nested():
+                self._insert(db, tenant.id, category, "7999")
+        assert "ck_tenant_gl_mappings_platform_category" in str(ei.value)
+
+    def test_null_is_refused_by_NOT_NULL_not_by_the_check(self, db, tenant):
+        """Worth pinning which mechanism does this, because the two are easy to
+        confuse and behave differently.
+
+        A CHECK does NOT reject NULL — `NULL IN (...)` evaluates to NULL, not
+        FALSE, and a CHECK is satisfied by anything that is not FALSE. So if
+        the column were nullable, r174's constraint would let NULL straight
+        through. It is `nullable=False` on the model that refuses it.
+
+        This matters if the column is ever made nullable: the vocabulary
+        constraint would silently stop covering the empty case, and nothing
+        else here would notice.
+
+        Contrast r173's `sage_category` / `confidence`, which ARE nullable by
+        design — rows classified before r173 have nothing truthful to record.
+        """
+        with pytest.raises(IntegrityError) as ei:
+            with db.begin_nested():
+                self._insert(db, tenant.id, None, "7998")
+        msg = str(ei.value)
+        assert "null value" in msg.lower() or "not-null" in msg.lower(), msg
+        assert "ck_tenant_gl_mappings_platform_category" not in msg

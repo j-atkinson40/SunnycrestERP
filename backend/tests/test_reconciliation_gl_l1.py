@@ -31,9 +31,14 @@ from tests._cleanup import purge_companies_by_slug
 _SLUG_PREFIX = "rgl-"
 
 
-def _mapping(tenant_id, *, name, number, active=True):
+def _mapping(tenant_id, *, name, number, active=True, category="expense"):
+    """`category` is a real platform category, not the account name lowercased.
+    r174 put a CHECK constraint on `platform_category`; the old `name.lower()`
+    wrote values no production row could hold. Nothing here asserts on the
+    category, but `uq_gl_mapping` is on (tenant_id, platform_category,
+    account_number), so the values still have to keep those tuples distinct."""
     return TenantGLMapping(
-        id=str(uuid.uuid4()), tenant_id=tenant_id, platform_category=name.lower(),
+        id=str(uuid.uuid4()), tenant_id=tenant_id, platform_category=category,
         account_number=number, account_name=name, is_active=active,
     )
 
@@ -53,7 +58,8 @@ def substrate():
 
     active = _mapping(co_a.id, name="Bank Charges", number="6010", active=True)
     inactive = _mapping(co_a.id, name="Old Fees", number="6011", active=False)
-    cash = _mapping(co_a.id, name="Operating Cash", number="1010", active=True)
+    cash = _mapping(co_a.id, name="Operating Cash", number="1010", active=True,
+                    category="current_asset")
     foreign = _mapping(co_b.id, name="B Bank Charges", number="6010", active=True)
     s.add_all([active, inactive, cash, foreign]); s.flush()
 

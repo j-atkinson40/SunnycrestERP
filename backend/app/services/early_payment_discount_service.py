@@ -336,7 +336,20 @@ def resolve_ar_account(db: Session, tenant_id: str):
     SALES · 5020 PRECAST-RESALE · 5110 FUNERAL SALES · 5120 FUNERAL-RESALE ·
     5150/5160 REFUNDS-RETURNS · 5165 FUNERAL REBATES · 5170 DAMAGE OR DEFECTIVE
     RESALE · 5210 FREIGHT · 5410 DISCOUNTS ALLOWED-CASH. The original two were
-    the ones someone happened to look at. So the answer is an EXPLICIT
+    the ones someone happened to look at.
+
+    AMENDED 2026-08-25 (LEDGER-1 A-1, r174). The paragraph above is now history
+    rather than current state: r174 corrected that 5xxx block — 8 accounts
+    cogs -> revenue, 5 cogs -> contra_revenue (5150 · 5160 · 5165 · 5170 · 5410)
+    — and constrained the column to a 15-term vocabulary. So `platform_category`
+    IS a trustworthy classification today, and the sentence "cannot be repaired
+    into a signal" no longer describes the data.
+
+    The CONCLUSION is unchanged, for a reason that never depended on the data
+    being wrong: a correct category still cannot say WHICH `current_asset` is
+    the AR control account. A chart may hold several. Category is a property of
+    a class of accounts; this resolver needs one specific account. That is a
+    difference in kind, not in data quality, so the answer is still an EXPLICIT
     configured account, per
     the keyword-map precedent: a tenant's GL choice for a purpose lives in
     settings as a `TenantGLMapping.id`, resolved and validated AT USE through

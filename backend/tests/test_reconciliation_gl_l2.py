@@ -88,9 +88,13 @@ def db():
 # ── substrate ───────────────────────────────────────────────────────────────
 
 
-def _mapping(db, tenant_id, *, name, number, active=True) -> TenantGLMapping:
+def _mapping(db, tenant_id, *, name, number, active=True,
+             category="expense") -> TenantGLMapping:
+    """See the note in L-1's `_mapping`: `category` is a real platform category
+    because r174 constrains the column. `uq_gl_mapping` is on (tenant_id,
+    platform_category, account_number)."""
     m = TenantGLMapping(
-        id=str(uuid.uuid4()), tenant_id=tenant_id, platform_category=name.lower(),
+        id=str(uuid.uuid4()), tenant_id=tenant_id, platform_category=category,
         account_number=number, account_name=name, is_active=active,
     )
     db.add(m)
@@ -156,7 +160,8 @@ def _substrate(db, *, keyword_map="all", contra=True):
     co = _company(db)
     user = _user(db, co)
 
-    cash = _mapping(db, co.id, name="Operating Cash", number="1010")
+    cash = _mapping(db, co.id, name="Operating Cash", number="1010",
+                    category="current_asset")
     fee = _mapping(db, co.id, name="Bank Charges", number="6010")
     payroll = _mapping(db, co.id, name="Payroll Expense", number="6020")
     nsf = _mapping(db, co.id, name="Returned Items", number="6030")

@@ -35,6 +35,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.models.accounting_analysis import TenantGLMapping
@@ -45,6 +46,7 @@ from app.models.journal_entry import JournalEntry, JournalEntryLine
 from app.models.role import Role
 from app.models.user import User
 from app.services import early_payment_discount_service as epd
+from app.services.data_migration_service import PLATFORM_ACCOUNT_CATEGORIES
 from app.services import journal_entry_service
 from app.services.journal_entry_service import JournalLineSpec
 from tests._cleanup import purge_companies_by_slug
@@ -175,14 +177,60 @@ class TestResolver:
         assert got.account_number == "1200"
         assert got.account_name == "ACCOUNTS RECEIVABLE-TRADE"
 
-    def test_the_substring_decoys_are_no_longer_reachable(self, env):
-        """THE CLASS, KILLED. Every category that used to read as AR is now
-        simply an unconfigured tenant — the resolver never looks at
-        `platform_category` at all."""
-        env.production_shaped_chart()
+    def test_the_decoy_categories_can_no_longer_be_STORED(self, env):
+        """THE CLASS, KILLED AT THE COLUMN. r174 (LEDGER-1 A-1) constrained
+        `platform_category` to the 15-term platform vocabulary, and not one of
+        those terms contains "ar". So the five categories that used to read as
+        AR cannot be written at all — the defect class is now structurally
+        unreachable rather than merely unread.
+
+        This asserts the DATABASE refuses them. It deliberately does not
+        exercise the resolver: a test that passes only because the insert
+        failed is a test of the constraint, not of `resolve_ar_account`. The
+        resolver keeps its own test below, on values the constraint permits.
+
+        The constraint's general contract — every permitted value accepted,
+        anything else rejected — is covered in `test_gl_category_correction.py`.
+        """
         for cat in ("warranty_reserve", "clearing", "salaries", "arrears", "market"):
-            env.mapping(name=f"{cat} account", number=f"9{abs(hash(cat)) % 900 + 99}",
-                        category=cat)
+            with pytest.raises(IntegrityError) as ei:
+                with env.s.begin_nested():
+                    env.mapping(name=f"{cat} account",
+                                number=f"9{abs(hash(cat)) % 900 + 99}", category=cat)
+            assert "ck_tenant_gl_mappings_platform_category" in str(ei.value), cat
+
+    def test_the_resolver_refuses_rather_than_guessing_from_the_chart(self, env):
+        """THE RESOLVER'S OWN GUARANTEE, on values the constraint permits.
+
+        Seeds EVERY permitted category — including `current_asset`, the one a
+        real AR account carries — alongside a production-shaped chart holding
+        `1200 ACCOUNTS RECEIVABLE-TRADE`. The account the old `_find_ar_account`
+        was hunting for is sitting right there, correctly categorised, and the
+        resolver still refuses, because it reads an explicitly configured id
+        and nothing else.
+
+        WHAT THIS CATCHES, established by breaking it rather than by assertion:
+        re-pointing the unconfigured branch at `db.query(TenantGLMapping)
+        .filter(tenant_id == ...).first()` turns this test RED. Any resolver
+        that guesses an account off the chart fails here, and it fails without
+        depending on the constraint existing.
+
+        WHAT IT DOES NOT CATCH, and this is worth being exact about. It does
+        NOT catch a regression to the original `platform_category ILIKE '%ar%'`.
+        Verified: restoring that predicate leaves this test GREEN, with the
+        constraint dropped as well as with it in force. The reason is that no
+        term in the 15-value vocabulary contains "ar", so an ILIKE resolver
+        matches nothing and fails closed by accident rather than by design.
+
+        That regression only does damage in conjunction — the predicate returns,
+        AND the constraint is gone, AND something writes a decoy category. The
+        middle term is what `test_the_decoy_categories_can_no_longer_be_STORED`
+        above is for. Neither test covers the pair alone, which is the whole
+        reason both are here.
+        """
+        env.production_shaped_chart()
+        for i, cat in enumerate(sorted(PLATFORM_ACCOUNT_CATEGORIES)):
+            env.mapping(name=f"{cat} account", number=f"87{i:02d}", category=cat)
         env.s.commit()
 
         with pytest.raises(HTTPException) as ei:

@@ -117,10 +117,15 @@ class _Env:
         s.add(self.user); s.flush()
         self.co = self.company.id
 
-    def mapping(self, *, name, number, active=True, tenant_id=None) -> TenantGLMapping:
+    def mapping(self, *, name, number, active=True, tenant_id=None,
+                category="expense") -> TenantGLMapping:
+        """See the note in L-1's `_mapping`: `category` is a real platform
+        category because r174 constrains the column. `uq_gl_mapping` is on
+        (tenant_id, platform_category, account_number), which is why the cash
+        accounts below take `current_asset` rather than sharing one value."""
         m = TenantGLMapping(
             id=str(uuid.uuid4()), tenant_id=tenant_id or self.co,
-            platform_category=name.lower().replace(" ", "_"),
+            platform_category=category,
             account_number=number, account_name=name, is_active=active,
         )
         self.s.add(m); self.s.flush()
@@ -191,7 +196,7 @@ def _lines(env, entry_id) -> tuple[JournalEntryLine, JournalEntryLine]:
 def _configured(env, *, amount=_OUT, notes=None):
     """A tenant that can post: cash mapped on the bank account, an expense
     account for the operator to choose, and one unclassifiable row."""
-    cash = env.mapping(name="Operating Cash", number="1010")
+    cash = env.mapping(name="Operating Cash", number="1010", category="current_asset")
     expense = env.mapping(name="Shop Supplies", number="6400")
     account = env.account(contra=cash)
     txn, exc = env.txn(account, amount=amount, notes=notes)
@@ -334,7 +339,8 @@ class TestNothingClearsUnbooked:
     def test_contra_dangling_refuses_and_says_re_map(self, env):
         """Set, but the mapping is inactive — a different operator action from
         'never set', which is why the two reasons are distinct."""
-        dead_cash = env.mapping(name="Old Cash", number="1009", active=False)
+        dead_cash = env.mapping(name="Old Cash", number="1009", active=False,
+                                category="current_asset")
         expense = env.mapping(name="Shop Supplies", number="6400")
         account = env.account(contra=dead_cash)
         txn, _ = env.txn(account, amount=_OUT)
@@ -428,7 +434,7 @@ class TestCodedAccountValidation:
         # ONE configured tenant, TWO rows — `uq_gl_mapping` is on
         # (tenant_id, platform_category, account_number), so seeding the same
         # chart twice for one tenant is a unique violation, not a fixture.
-        cash = env.mapping(name="Operating Cash", number="1010")
+        cash = env.mapping(name="Operating Cash", number="1010", category="current_asset")
         account = env.account(contra=cash)
         txn_a, _ = env.txn(account, amount=_OUT)
         txn_b, _ = env.txn(account, amount=_OUT)
@@ -445,7 +451,7 @@ class TestCodedAccountValidation:
     def test_inactive_own_account_is_named_because_it_is_actionable(self, env):
         """Inactive is the operator's OWN data and the fix is theirs, so the
         message may name it — the asymmetry L-2.1b ruled deliberately."""
-        cash = env.mapping(name="Operating Cash", number="1010")
+        cash = env.mapping(name="Operating Cash", number="1010", category="current_asset")
         dead = env.mapping(name="Retired Supplies", number="6401", active=False)
         account = env.account(contra=cash)
         txn, _ = env.txn(account, amount=_OUT)
@@ -541,7 +547,8 @@ class TestBuilderSurfacesTheCodingBlock:
 
     def test_a_dangling_contra_is_distinguished_from_an_unset_one(self, env):
         """Different operator actions — re-map vs. set — so different reasons."""
-        dead = env.mapping(name="Old Cash", number="1009", active=False)
+        dead = env.mapping(name="Old Cash", number="1009", active=False,
+                                category="current_asset")
         env.mapping(name="Shop Supplies", number="6400")
         account = env.account(contra=dead)
         txn, _ = env.txn(account, amount=_OUT)
@@ -566,7 +573,7 @@ class TestBuilderSurfacesTheCodingBlock:
     def test_the_live_reason_follows_configuration_without_a_re_run(self, env):
         """THE L-2.1f LESSON ON THE OTHER LEG. Configure the bank account, come
         back, and the card must stop refusing — without re-running the matcher."""
-        cash = env.mapping(name="Operating Cash", number="1010")
+        cash = env.mapping(name="Operating Cash", number="1010", category="current_asset")
         env.mapping(name="Shop Supplies", number="6400")
         account = env.account(contra=None)
         txn, _ = env.txn(account, amount=_OUT)

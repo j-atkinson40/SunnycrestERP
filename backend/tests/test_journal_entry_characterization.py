@@ -148,8 +148,10 @@ def _configure_ar(db, co_id) -> str:
     so every EPD test must configure one. Pre-AR-0 the AR leg was found by
     `platform_category ILIKE '%ar%'` and, failing that, silently fell back to
     the discount account for BOTH legs — which is exactly what these tests
-    were unknowingly exercising (`cat="discount"` contains no "ar", so the
-    resolver returned None on every one of them).
+    were unknowingly exercising (`cat="contra_revenue"` contains no "ar", so
+    the resolver returned None on every one of them; it read `"discount"`
+    before r174 constrained the column, and that contained no "ar" either —
+    the reasoning is unchanged, only the spelling is).
     """
     ar = _mk_gl(db, co_id, num="1200", name="ACCOUNTS RECEIVABLE-TRADE",
                 cat="current_asset")
@@ -159,10 +161,16 @@ def _configure_ar(db, co_id) -> str:
     return ar
 
 
-def _mk_gl(db, co_id, *, num, name, cat="general") -> str:
+def _mk_gl(db, co_id, *, num, name, cat="other") -> str:
     """Seed a real GL mapping for this tenant. Post-fix, create_entry
     REQUIRES every line's gl_account_id to resolve to one of the caller's
-    own tenant's mappings — so tests must provide real ones."""
+    own tenant's mappings — so tests must provide real ones.
+
+    `cat` defaults to `other` — a real platform category — because r174 put a
+    CHECK constraint on the column. It read `general`, which no production row
+    could hold. `uq_gl_mapping` is on (tenant_id, platform_category,
+    account_number), so callers seeding several accounts for one tenant need
+    those tuples to stay distinct."""
     gl = TenantGLMapping(
         id=str(uuid.uuid4()), tenant_id=co_id,
         platform_category=cat, account_number=num, account_name=name,
@@ -187,8 +195,8 @@ def _co_user_gls(db):
     """Common setup: a tenant, an admin, and two of its own GL accounts."""
     co = _mk_company(db)
     user = _mk_user(db, co)
-    gl_d = _mk_gl(db, co, num="1000", name="Cash")
-    gl_c = _mk_gl(db, co, num="4000", name="Revenue")
+    gl_d = _mk_gl(db, co, num="1000", name="Cash", cat="current_asset")
+    gl_c = _mk_gl(db, co, num="4000", name="Revenue", cat="revenue")
     return co, user, gl_d, gl_c
 
 
@@ -564,7 +572,7 @@ class TestEpdDiscountJournalEntry:
     def test_number_status_period_and_balance(self, db):
         co = _mk_company(db)
         user = _mk_user(db, co)
-        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="contra_revenue")
         ar = _configure_ar(db, co)          # AR-0: required now
         pay = self._payment(db, co)
         entry_id = _create_discount_journal_entry(
@@ -635,7 +643,7 @@ class TestEpdDiscountJournalEntry:
         """
         co = _mk_company(db)
         user = _mk_user(db, co)
-        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="contra_revenue")
         pay = self._payment(db, co)          # NO _configure_ar
         before = db.query(JournalEntry).filter(JournalEntry.tenant_id == co).count()
 
@@ -715,7 +723,7 @@ class TestPeriodLockGuard:
         # the discount JE's date is protected upstream.)
         co = _mk_company(db)
         user = _mk_user(db, co)
-        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="contra_revenue")
         _configure_ar(db, co)                               # AR-0: required now
         _lock(db, co, date(2026, 5, 1), date(2026, 5, 31))  # May locked
         pay = TestEpdDiscountJournalEntry()._payment(db, co)  # payment_date Apr 20
@@ -736,7 +744,7 @@ class TestPeriodLockGuard:
         # AR reduced with no contra-revenue entry (books out of balance).
         co = _mk_company(db)
         user = _mk_user(db, co)
-        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="discount")
+        gl = _mk_gl(db, co, num="4100", name="Sales Discounts", cat="contra_revenue")
         # AR-0: configured, so the AR refusal does not pre-empt the period-lock
         # guard this test is about. Account resolution happens BEFORE the
         # primitive's lock check, so an unconfigured tenant would 400 here for
@@ -776,7 +784,7 @@ class TestPeriodLockGuard:
 
 def _mk_inactive_gl(db, co_id, *, num, name) -> str:
     gl = TenantGLMapping(
-        id=str(uuid.uuid4()), tenant_id=co_id, platform_category="general",
+        id=str(uuid.uuid4()), tenant_id=co_id, platform_category="other",
         account_number=num, account_name=name, is_active=False,
     )
     db.add(gl)
