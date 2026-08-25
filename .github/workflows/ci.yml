@@ -117,6 +117,14 @@ jobs:
       - name: TypeScript type check
         run: npx tsc -b
 
+      # 4526 tests across 338 files existed and had NEVER run in CI. `tsc -b`
+      # above catches type errors; nothing ran the assertions. Two comments in
+      # this directory (seed-idempotency.yml, playwright-staging.yml) already
+      # described vitest as part of the check — the coverage was documented
+      # before it existed.
+      - name: Run frontend tests
+        run: npm test
+
       - name: Build production bundle
         run: npm run build
         env:
