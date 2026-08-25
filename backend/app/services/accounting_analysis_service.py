@@ -26,21 +26,71 @@ ANALYSIS_MODEL = "claude-haiku-4-5-20250514"
 ANALYSIS_MAX_TOKENS = 4096
 
 # Platform account categories for GL mapping
+# ⚠️ THE KEYS OF THIS DICT ARE PLATFORM CATEGORIES AND MUST STAY CANONICAL.
+# Before LEDGER-1 A-1 they were `revenue / ar / cogs / ap / expenses` — a set
+# that cannot express a balance sheet, while the column they feed
+# (`tenant_gl_mappings.platform_category`) held a balance-sheet vocabulary from
+# the Sage importer. Four vocabularies coexisted because the column was
+# `String(100)` with nothing enforcing any of them. r174 constrains it; these
+# keys are now `data_migration_service.PLATFORM_ACCOUNT_CATEGORIES` values.
+#
+# THE VALUES ARE A DIFFERENT TAXONOMY ON PURPOSE. `vault_sales` vs `urn_sales`
+# is real operational information that "revenue" throws away. They are
+# SUBCATEGORIES, resolved to their canonical parent by
+# `resolve_platform_category` before anything is written to a mapping row.
 PLATFORM_CATEGORIES = {
     "revenue": [
         "vault_sales", "urn_sales", "equipment_sales", "delivery_revenue",
         "redi_rock_sales", "wastewater_sales", "rosetta_sales",
         "service_revenue", "other_revenue",
     ],
-    "ar": ["ar_funeral_homes", "ar_contractors", "ar_government", "ar_other"],
-    "cogs": ["vault_materials", "direct_labor", "delivery_costs", "other_cogs"],
-    "ap": ["accounts_payable"],
-    "expenses": [
+    # AR is a current asset; AP is a current liability. The old `ar` / `ap`
+    # keys named the subledger rather than the statement line.
+    "current_asset": ["ar_funeral_homes", "ar_contractors", "ar_government", "ar_other"],
+    "cogs": ["vault_materials", "direct_labor", "other_cogs"],
+    "current_liability": ["accounts_payable"],
+    "delivery_cost": ["delivery_costs"],
+    "expense": [
         "rent", "utilities", "insurance", "payroll", "office_supplies",
         "vehicle_expense", "repairs_maintenance", "depreciation",
-        "professional_fees", "advertising", "other_expense",
+        "professional_fees", "advertising",
     ],
+    "other_expense": ["interest_expense", "penalties"],
+    "other_income": ["finance_charge_income", "interest_income", "misc_income", "gain_on_sale"],
 }
+
+#: subcategory -> canonical parent. Built from the dict above so the two cannot
+#: drift; a subcategory listed twice would be a bug and is asserted against.
+_SUBCATEGORY_PARENT: dict[str, str] = {}
+for _parent, _subs in PLATFORM_CATEGORIES.items():
+    for _sub in _subs:
+        assert _sub not in _SUBCATEGORY_PARENT, f"subcategory {_sub!r} listed under two parents"
+        _SUBCATEGORY_PARENT[_sub] = _parent
+
+
+def resolve_platform_category(value: str | None) -> str | None:
+    """Resolve a suggestion to a canonical platform category, or None.
+
+    Accepts either a canonical category (returned unchanged) or one of the
+    subcategories above (returned as its parent). Returns None for anything
+    else, so the caller can refuse at the boundary rather than letting a CHECK
+    constraint surface as a 500.
+
+    This exists because the AI prompt asks for a value "from the lists above",
+    meaning a SUBCATEGORY — and `vault_accounting.confirm_classification` wrote
+    that straight into `tenant_gl_mappings.platform_category`. Since r174 that
+    column is constrained, so an unresolved subcategory would be an
+    IntegrityError on a path that had never been exercised.
+    """
+    from app.services.data_migration_service import PLATFORM_ACCOUNT_CATEGORIES
+
+    if not value:
+        return None
+    candidate = value.strip().lower()
+    if candidate in PLATFORM_ACCOUNT_CATEGORIES:
+        return candidate
+    return _SUBCATEGORY_PARENT.get(candidate)
+
 
 ANALYSIS_SYSTEM_PROMPT = """You are an accounting data analyst specializing in manufacturing \
 and funeral service businesses. You will be given a chart of accounts and customer/vendor/product \
@@ -50,13 +100,30 @@ Your job is to analyze this data and return structured JSON mapping their accoun
 
 Platform account categories that need mapping:
 
+Return `platform_category` as ONE OF THESE CANONICAL CATEGORIES:
+
+current_asset, fixed_asset, current_liability, long_term_liability, equity, \
+revenue, contra_revenue, cogs, delivery_cost, expense, tax_expense, \
+other_income, other_expense, other, unclassified
+
+Use `unclassified` when you cannot map an account — do NOT guess, and do NOT use \
+`other` for it. `other` means the account genuinely is miscellaneous; \
+`unclassified` means you could not tell, which is a different and more useful \
+answer to whoever reviews this.
+
+Where a finer subcategory applies, return it in `subcategory`. These are \
+optional and additive; the canonical category above is what gets stored:
+
 REVENUE: vault_sales, urn_sales, equipment_sales, delivery_revenue, redi_rock_sales, \
 wastewater_sales, rosetta_sales, service_revenue, other_revenue
-AR: ar_funeral_homes, ar_contractors, ar_government, ar_other
-COGS: vault_materials, direct_labor, delivery_costs, other_cogs
-AP: accounts_payable
-EXPENSES: rent, utilities, insurance, payroll, office_supplies, vehicle_expense, \
-repairs_maintenance, depreciation, professional_fees, advertising, other_expense
+CURRENT_ASSET: ar_funeral_homes, ar_contractors, ar_government, ar_other
+COGS: vault_materials, direct_labor, other_cogs
+CURRENT_LIABILITY: accounts_payable
+DELIVERY_COST: delivery_costs
+EXPENSE: rent, utilities, insurance, payroll, office_supplies, vehicle_expense, \
+repairs_maintenance, depreciation, professional_fees, advertising
+OTHER_EXPENSE: interest_expense, penalties
+OTHER_INCOME: finance_charge_income, interest_income, misc_income, gain_on_sale
 
 For each mapping return:
 - account_number

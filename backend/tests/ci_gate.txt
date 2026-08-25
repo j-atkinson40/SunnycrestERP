@@ -308,3 +308,4 @@ tests/test_rate_date_refusal.py
 tests/test_sage_coa_classification.py
 tests/test_gl_mapping_provenance.py
 tests/test_gl_category_correction.py
+tests/test_platform_category_resolution.py

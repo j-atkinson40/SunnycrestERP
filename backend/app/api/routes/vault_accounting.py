@@ -47,7 +47,10 @@ from app.services.accounting.period_projection import (
     lock_span_for_month,
     project_month,
 )
-from app.services.accounting_analysis_service import PLATFORM_CATEGORIES
+from app.services.accounting_analysis_service import (
+    PLATFORM_CATEGORIES,
+    resolve_platform_category,
+)
 
 router = APIRouter()
 
@@ -544,13 +547,30 @@ def confirm_classification(
             status_code=409,
             detail=f"Analysis row is already {row.status!r}",
         )
-    chosen = (body.platform_category if body else None) or row.platform_category
-    if not chosen:
+    suggested = (body.platform_category if body else None) or row.platform_category
+    if not suggested:
         raise HTTPException(
             status_code=400,
             detail=(
                 "No platform_category — AI did not suggest one and "
                 "no override was provided"
+            ),
+        )
+
+    # ⚠️ RESOLVE AND REFUSE AT THE BOUNDARY (LEDGER-1 A-1). The AI prompt asks
+    # for a value "from the lists above", meaning a SUBCATEGORY (`vault_sales`),
+    # and this handler used to write it straight into
+    # `tenant_gl_mappings.platform_category`. Since r174 that column carries a
+    # CHECK constraint, so an unresolved subcategory — or a typo in an operator
+    # override — would raise IntegrityError and surface as a 500. Resolving
+    # here turns both into a 400 that names the problem.
+    chosen = resolve_platform_category(suggested)
+    if chosen is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{suggested!r} is not a platform category or a known "
+                "subcategory of one"
             ),
         )
     row.platform_category = chosen
