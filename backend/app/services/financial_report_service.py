@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.customer import Customer
 from app.models.invoice import Invoice
+from app.models.journal_entry import JournalEntry, JournalEntryLine
 from app.models.report import AuditHealthCheck, AuditPackage, ReportRun
 from app.models.vendor_bill import VendorBill
 from app.models.vendor_bill_line import VendorBillLine
@@ -475,3 +476,112 @@ def _sum_by_gl_type(db: Session, tenant_id: str, start: date, end: date, gl_type
             "amount": float(remainder),
         })
     return out
+
+
+# ---------------------------------------------------------------------------
+# REPORT 14: Trial Balance  (LEDGER-1 A-2)
+# ---------------------------------------------------------------------------
+
+# Statuses whose lines have actually hit the ledger.
+#
+# THE REVERSAL TRAP, and the reason this is not `status == "posted"`. Reversing
+# an entry (journal_entry_service, ~line 113) creates a NEW entry with
+# status="posted" holding the mirrored lines, then sets the ORIGINAL to
+# "reversed". The original's lines stay in the table. So a posted-only filter
+# keeps the reversal and drops what it reverses, and every account in that pair
+# reports the negation of a figure that should be zero. Totals still balance —
+# the reversal is internally balanced — so the error is invisible to the one
+# check a trial balance is for.
+#
+# The codebase has not settled this: `== "posted"`, `!= "reversed"` and
+# `!= "voided"` all appear, and nothing anywhere sets "voided". Both members of
+# a reversed pair belong in the ledger; only drafts do not.
+_LEDGER_STATUSES: tuple[str, ...] = ("posted", "reversed")
+
+
+def get_trial_balance(db: Session, tenant_id: str, as_of: date | None = None,
+                      user_id: str | None = None) -> dict:
+    """Debits and credits per GL account, cumulative through `as_of`.
+
+    Reads the LEDGER — `journal_entry_lines` — not invoices and vendor bills.
+    That is the difference between this and `get_income_statement`, which
+    derives figures from source documents and cannot see a manual journal entry
+    at all.
+
+    `has_postings` is the field that matters and the reason this returns it
+    separately from `balanced`. An empty ledger balances trivially: 0 == 0. A
+    caller that reads only `balanced` cannot tell a clean set of books from no
+    books, and for most tenants today the honest answer is that there is
+    nothing here. `balanced is True and has_postings is False` is not a passing
+    trial balance; it is the absence of one.
+
+    Anything with a status this function does not recognise is reported in
+    `excluded_statuses` rather than silently dropped — a trial balance that
+    quietly omits rows is worse than one that refuses.
+    """
+    as_of = as_of or date.today()
+
+    rows = (
+        db.query(
+            JournalEntryLine.gl_account_number.label("number"),
+            JournalEntryLine.gl_account_name.label("name"),
+            func.coalesce(func.sum(JournalEntryLine.debit_amount), 0).label("debits"),
+            func.coalesce(func.sum(JournalEntryLine.credit_amount), 0).label("credits"),
+            func.count(JournalEntryLine.id).label("lines"),
+        )
+        .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
+        .filter(
+            JournalEntryLine.tenant_id == tenant_id,
+            JournalEntry.status.in_(_LEDGER_STATUSES),
+            JournalEntry.entry_date <= as_of,
+        )
+        .group_by(JournalEntryLine.gl_account_number, JournalEntryLine.gl_account_name)
+        .order_by(JournalEntryLine.gl_account_number)
+        .all()
+    )
+
+    accounts = []
+    total_debits = Decimal("0")
+    total_credits = Decimal("0")
+    for r in rows:
+        debits = Decimal(str(r.debits))
+        credits = Decimal(str(r.credits))
+        total_debits += debits
+        total_credits += credits
+        accounts.append({
+            "account_number": r.number,
+            "account_name": r.name,
+            "debits": debits,
+            "credits": credits,
+            # Debit-positive. An account with more credits than debits reports a
+            # negative balance rather than being flipped into a credit column —
+            # the caller decides presentation; this reports arithmetic.
+            "balance": debits - credits,
+            "line_count": r.lines,
+        })
+
+    excluded = dict(
+        db.query(JournalEntry.status, func.count(JournalEntryLine.id))
+        .join(JournalEntryLine, JournalEntry.id == JournalEntryLine.journal_entry_id)
+        .filter(
+            JournalEntryLine.tenant_id == tenant_id,
+            JournalEntry.status.notin_(_LEDGER_STATUSES),
+            JournalEntry.entry_date <= as_of,
+        )
+        .group_by(JournalEntry.status)
+        .all()
+    )
+
+    result = {
+        "as_of": str(as_of),
+        "accounts": accounts,
+        "total_debits": total_debits,
+        "total_credits": total_credits,
+        "difference": total_debits - total_credits,
+        "balanced": total_debits == total_credits,
+        "has_postings": bool(accounts),
+        "account_count": len(accounts),
+        "excluded_statuses": excluded,
+    }
+    _log_run(db, tenant_id, "trial_balance", {"as_of": str(as_of)}, user_id, len(accounts))
+    return result

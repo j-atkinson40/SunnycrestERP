@@ -15,6 +15,7 @@ from app.models.user import User
 from app.services.financial_report_service import (
     get_ap_aging_report,
     get_ar_aging_report,
+    get_trial_balance,
     get_income_statement,
     get_invoice_register,
     get_sales_by_customer,
@@ -69,6 +70,23 @@ def ar_aging(
     as_of_date = date.fromisoformat(as_of) if as_of else date.today()
     data = get_ar_aging_report(db, current_user.company_id, as_of_date, current_user.id)
     _snapshot(db, current_user.company_id, "ar_aging", as_of_date, as_of_date, data)
+    return data
+
+
+@router.get("/trial-balance")
+def trial_balance(
+    as_of: str | None = Query(None),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Debits and credits per GL account, straight from the ledger.
+
+    Read `has_postings` alongside `balanced`. An empty ledger reports
+    balanced — 0 == 0 — so `balanced` alone cannot distinguish clean books from
+    no books.
+    """
+    as_of_date = date.fromisoformat(as_of) if as_of else date.today()
+    data = get_trial_balance(db, current_user.company_id, as_of_date, current_user.id)
+    _snapshot(db, current_user.company_id, "trial_balance", as_of_date, as_of_date, data)
     return data
 
 

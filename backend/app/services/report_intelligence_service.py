@@ -340,33 +340,158 @@ def get_forecasts(db: Session, tenant_id: str, forecast_type: str | None = None)
 # ---------------------------------------------------------------------------
 
 
+# ── audit pre-flight ────────────────────────────────────────────────────────
+#
+# WHAT THIS WAS, before LEDGER-1 A-2. Five checks that each appended
+# unconditionally to `passed`, two lists that were never appended to anywhere in
+# the function, and therefore a `status` that could only ever be "passed" —
+# committed to a durable `AuditPreflightResult` row naming five satisfied
+# checks. Not a guard that could not fail: a guard that did not exist, writing
+# down that it had run. The `override_by` / `override_reason` / `override_at`
+# columns show blocking was designed for; nothing could reach it.
+#
+# Two of the five are DELETED rather than implemented, because a check that
+# cannot be honestly computed today should be absent rather than green:
+#
+#   * `reconciliation` ("All accounts reconciled through period") — the
+#     reconciliation substrate exists (reconciliation_runs and friends), but
+#     "reconciled THROUGH a period" needs a per-account statement-coverage
+#     notion the schema does not carry. Asserting coverage from run rows would
+#     restate the same fiction in SQL.
+#   * `w9_compliance` ("All vendors over $600 have W-9 on file") — there is no
+#     W-9 field on the vendor model. The check cannot read what it claims to
+#     check. This is a real 1099 obligation and wants its own arc, not a line
+#     that returns green because the column is missing.
+#
+# A deleted check is visibly absent from `passed_checks`. A stubbed one is
+# indistinguishable from a satisfied one, which is how this survived.
+
+
+def _check_trial_balance(db: Session, tenant_id: str, period_start, period_end):
+    from app.services.financial_report_service import get_trial_balance
+
+    tb = get_trial_balance(db, tenant_id, as_of=period_end)
+
+    if not tb["has_postings"]:
+        # An empty ledger reports balanced — 0 == 0 — which is why the old
+        # string "Trial balance is balanced" was true and worthless. There is
+        # nothing here to audit.
+        return ("blocking",
+                "No posted journal entries as of this date, so there is no trial "
+                "balance to evidence. An audit package cannot be produced from an "
+                "empty ledger.",
+                {"as_of": tb["as_of"], "account_count": 0})
+
+    if not tb["balanced"]:
+        return ("blocking",
+                f"Trial balance is out of balance by {tb['difference']}.",
+                {"total_debits": str(tb["total_debits"]),
+                 "total_credits": str(tb["total_credits"]),
+                 "difference": str(tb["difference"])})
+
+    return ("passed",
+            f"Trial balance is balanced across {tb['account_count']} accounts "
+            f"({tb['total_debits']} debits = {tb['total_credits']} credits).",
+            {"account_count": tb["account_count"]})
+
+
+def _check_invoice_integrity(db: Session, tenant_id: str, period_start, period_end):
+    """Invoices edited after money was applied to them.
+
+    `customer_payment_applications` carries no timestamp of its own, so the
+    comparison is against `CustomerPayment.created_at` — when the payment row
+    was written. Stated because it is a real limitation: an application made
+    later against an older payment reads as earlier than it was, so this can
+    UNDER-report. It cannot over-report.
+    """
+    from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
+    from app.models.invoice import Invoice
+
+    q = (
+        db.query(Invoice.number, Invoice.modified_at, CustomerPayment.created_at)
+        .join(CustomerPaymentApplication,
+              CustomerPaymentApplication.invoice_id == Invoice.id)
+        .join(CustomerPayment,
+              CustomerPayment.id == CustomerPaymentApplication.payment_id)
+        .filter(Invoice.company_id == tenant_id,
+                Invoice.modified_at.isnot(None),
+                Invoice.modified_at > CustomerPayment.created_at)
+    )
+    if period_start:
+        q = q.filter(Invoice.invoice_date >= period_start)
+    if period_end:
+        q = q.filter(Invoice.invoice_date <= period_end)
+
+    offenders = q.limit(51).all()
+    if not offenders:
+        return ("passed", "No invoices were modified after a payment was applied.", None)
+
+    shown = [o.number for o in offenders[:50]]
+    return ("blocking",
+            f"{len(shown)}{'+' if len(offenders) > 50 else ''} invoice(s) were "
+            "modified after a payment was applied to them.",
+            {"invoice_numbers": shown})
+
+
+def _check_ar_collectibility(db: Session, tenant_id: str, period_start, period_end):
+    """More than 5% of AR sitting over 90 days is a warning, not a block.
+
+    Old AR is a judgement about collectibility, not a defect in the books, so it
+    must not stop an audit package the way an unbalanced ledger does.
+    """
+    from app.services.financial_report_service import get_ar_aging_report
+
+    aging = get_ar_aging_report(db, tenant_id, as_of=period_end)
+    totals = aging["totals"]
+    total = Decimal(str(totals["total"] or 0))
+    over_90 = Decimal(str(totals["days_over_90"] or 0))
+
+    if total <= 0:
+        return ("passed", "No outstanding AR.", None)
+
+    pct = (over_90 / total * 100).quantize(Decimal("0.1"))
+    if pct > Decimal("5.0"):
+        return ("warning",
+                f"{pct}% of AR is over 90 days ({over_90} of {total}), above the "
+                "5% threshold.",
+                {"over_90": str(over_90), "total": str(total), "percent": str(pct)})
+    return ("passed", f"{pct}% of AR is over 90 days, within the 5% threshold.", None)
+
+
+_PREFLIGHT_CHECKS = (
+    ("trial_balance", _check_trial_balance),
+    ("invoice_integrity", _check_invoice_integrity),
+    ("ar_collectibility", _check_ar_collectibility),
+)
+
+
 def run_preflight(db: Session, tenant_id: str, audit_package_id: str | None = None,
                   period_start: date | None = None, period_end: date | None = None) -> dict:
-    """Run audit pre-flight checks and return results."""
+    """Run audit pre-flight checks and return results.
 
-    blocking = []
-    warnings = []
-    passed = []
+    A check that RAISES becomes blocking, never passed. The failure mode this
+    replaces was a safe state produced by absence; an exception swallowed into
+    green would reintroduce it in a form that is harder to see.
+    """
+    blocking: list[dict] = []
+    warnings: list[dict] = []
+    passed: list[dict] = []
+    buckets = {"blocking": blocking, "warning": warnings, "passed": passed}
 
-    # CHECK: Trial balance balanced
-    # Would call getTrialBalance() — simplified for now
-    passed.append({"code": "trial_balance", "message": "Trial balance is balanced"})
+    for code, check in _PREFLIGHT_CHECKS:
+        try:
+            severity, message, detail = check(db, tenant_id, period_start, period_end)
+        except Exception as exc:  # noqa: BLE001 — deliberate: fail closed, and say so
+            logger.exception("Pre-flight check %s failed for tenant %s", code, tenant_id)
+            blocking.append({"code": code,
+                             "message": f"Check could not be completed: {exc}",
+                             "detail": {"error": type(exc).__name__}})
+            continue
+        entry = {"code": code, "message": message}
+        if detail is not None:
+            entry["detail"] = detail
+        buckets[severity].append(entry)
 
-    # CHECK: Reconciliation coverage
-    passed.append({"code": "reconciliation", "message": "All accounts reconciled through period"})
-
-    # CHECK: No invoices modified after payment
-    passed.append({"code": "invoice_integrity", "message": "No invoices modified after payment"})
-
-    # CHECK: W-9 compliance
-    # Would query vendors > $600 YTD without W-9
-    passed.append({"code": "w9_compliance", "message": "All vendors over $600 have W-9 on file"})
-
-    # CHECK: Stale AR
-    # Would check AR aging for > 5% over 90 days
-    passed.append({"code": "ar_collectibility", "message": "AR aging within acceptable thresholds"})
-
-    # Determine status
     if blocking:
         status = "blocked"
     elif warnings:

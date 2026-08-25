@@ -310,3 +310,5 @@ tests/test_gl_mapping_provenance.py
 tests/test_gl_category_correction.py
 tests/test_platform_category_resolution.py
 tests/test_report_intelligence_tenant_scope_ri1.py
+tests/test_trial_balance_a2.py
+tests/test_preflight_a2.py
