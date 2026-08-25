@@ -50,3 +50,8 @@ backend/static/legacy-vault-prints/
 templates/standard/*.tif
 templates/standard/*.tiff
 .claude/scheduled_tasks.lock
+
+# Real customer chart-of-accounts exports — never commit.
+# Sunnycrest COA CSV used for the LEDGER-1 A-1 re-import (real business data).
+GL_ChartOfAccounts*.csv
+*ChartOfAccounts*.csv
