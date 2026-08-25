@@ -305,3 +305,4 @@ tests/test_tax_readiness.py
 tests/test_tax_on_date.py
 tests/test_every_module_parses.py
 tests/test_rate_date_refusal.py
+tests/test_sage_coa_classification.py

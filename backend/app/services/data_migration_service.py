@@ -46,6 +46,31 @@ SAGE_CATEGORY_MAP: dict[str, str] = {
 }
 
 
+def classify_sage_category(sage_category: str) -> tuple[str, float]:
+    """Map a Sage COA category label to a platform category + confidence.
+
+    Extracted from `parse_sage_coa` unchanged (LEDGER-1 A-1). Behaviour is
+    IDENTICAL to the inline version it replaces, defects included, so the
+    characterization suite at `tests/test_sage_coa_classification.py` passes
+    unmodified across the move. The fix is a separate commit.
+
+    Returns `(platform_category, confidence)` where confidence is 1.0 for an
+    exact map hit, 0.7 for a fuzzy hit, and 0.0 for the `other` fallback.
+    """
+    normalised = sage_category.strip().upper()
+
+    account_type = SAGE_CATEGORY_MAP.get(normalised)
+    if account_type is not None:
+        return account_type, 1.0
+
+    # Try a fuzzy match — check if any key is contained in the category
+    for key, val in SAGE_CATEGORY_MAP.items():
+        if key in normalised or normalised in key:
+            return val, 0.7
+
+    return "other", 0.0
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -133,22 +158,7 @@ def parse_sage_coa(file_content: bytes) -> list[dict]:
         status_raw = row[12].strip().lower()  # "active", "inactive", "deleted"
         sage_category = row[9].strip().upper()
 
-        bridgeable_account_type = SAGE_CATEGORY_MAP.get(sage_category)
-        if bridgeable_account_type is not None:
-            confidence = 1.0
-        else:
-            # Try a fuzzy match — check if any key is contained in the category
-            matched = None
-            for key, val in SAGE_CATEGORY_MAP.items():
-                if key in sage_category or sage_category in key:
-                    matched = val
-                    break
-            if matched:
-                bridgeable_account_type = matched
-                confidence = 0.7
-            else:
-                bridgeable_account_type = "other"
-                confidence = 0.0
+        bridgeable_account_type, confidence = classify_sage_category(sage_category)
 
         accounts.append(
             {
