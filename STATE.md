@@ -2,6 +2,17 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ EVERY DEPLOY TAKES THE PRODUCTION API DOWN FOR ~4½ MINUTES (2026-08-26, AP-1)
+
+- **MEASURED, not estimated: `api.getbridgeable.com` returned 502 for ~260 seconds** after a push to `main`, then recovered serving the new SHA. Observed 2026-08-26 on a commit that changed **twenty comment lines** — no migration, no behaviour change. It is not the commit; it is every deploy.
+- **Cause, and it is documented in the file itself.** `backend/railway-start.sh:11-20` re-invokes itself under a Postgres advisory lock and runs the ENTIRE prep phase as the locked child — `alembic upgrade head` plus **all 65 discovered `scripts/seed_*.py`** via `run_canonical_seeds.sh` — and only then reaches `exec uvicorn` at `:19`. **Uvicorn does not bind until every seed finishes.**
+- **The mechanism is confirmed rather than plausible**: 65 seeds × ~4s each ≈ 260s was predicted BEFORE measuring; observed ~260s (20s poll granularity, so 240–260s).
+- **⚠️ THE FRONTENDS STAY UP THROUGHOUT.** `app.getbridgeable.com` and `sunnycrest.getbridgeable.com` both served HTTP 200 across the whole window. So a tenant's app loads normally and then fails every API call — **it reads as a broken product, not a deploy in progress.** That is why this went unnoticed: nothing about it looks like a deploy from outside.
+- **The `:9` comment is true and does not say this.** It reads *"uvicorn starts after the lock releases, so serving is never serialized"* — correct ACROSS overlapping containers, which is what the C-10 postmortem was about. Within a single boot, serving still waits for the full chain. A true statement about one axis, read as covering the other.
+- **Most of the 65 refuse instantly on production** (`ENVIRONMENT=production — refusing to seed demo content`) but each pays full Python interpreter startup to decline. The refusals are most of the window.
+- **NOT FIXED — deliberately.** Changing boot infrastructure has a worse failure mode than a four-minute window. Two options if it is ever worth it: skip demo seeds by NAME on production rather than having each start up and decline; or move seeds off the bind path (after uvicorn, or a Railway release phase), which would reduce the outage to migration time.
+- **And pushing to `main` deploys straight to PRODUCTION**, not only staging. Three pushes on 2026-08-26 each took the API down for this window. Whether that is the intended arrangement is an open decision, not a settled one.
+
 ## `setup_complete` IS A ONE-WAY FLAG — the amber dot has never meant what it reads as (2026-08-19, TAX-2 B-2)
 
 - **Written in exactly one place** — `customer_service.py:899`, `quick_create_customer` — and **`CustomerUpdate` has no field for it**, so *nothing in the platform can set it back to True*. A customer created inline during order entry and afterwards given a full address stays flagged **forever**, while taxing correctly.
