@@ -180,10 +180,38 @@ class EstimatedTaxPrepAgent(BaseAgent):
             "quarters_elapsed": quarters_elapsed,
         }
 
-        msg = (
-            f"Period net income: ${period_net_income:,.2f}. "
-            f"YTD net income: ${ytd_net_income:,.2f}."
-        )
+        # A-3. The income statement now reads the LEDGER. A tenant with nothing
+        # posted yields net income of exactly zero, and "$0.00" presented as a
+        # computed figure is indistinguishable from a business that genuinely
+        # broke even — which then annualizes into a $0.00 tax estimate an
+        # operator could act on. An estimate of zero because nothing has POSTED
+        # is a different statement from an estimate of zero because nothing is
+        # OWED, and only one of them is an answer.
+        has_postings = bool(period_result.get("has_postings")) or bool(
+            ytd_result.get("has_postings"))
+        data["has_postings"] = has_postings
+
+        if not has_postings:
+            anomalies.append(self._make_anomaly(
+                severity=AnomalySeverity.WARNING,
+                anomaly_type="no_posted_ledger_activity",
+                description=(
+                    "No posted journal entries in this period or year to date, so "
+                    "every figure below is zero because the ledger is empty — not "
+                    "because there was no income. This is an ABSENCE, not an "
+                    "estimate. Do not file against it."
+                ),
+            ))
+            msg = (
+                f"No posted ledger activity for {period_label}. Net income "
+                "figures are zero because nothing has been posted, not because "
+                "nothing was earned."
+            )
+        else:
+            msg = (
+                f"Period net income: ${period_net_income:,.2f}. "
+                f"YTD net income: ${ytd_net_income:,.2f}."
+            )
 
         return StepResult(message=msg, data=data, anomalies=anomalies)
 

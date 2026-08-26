@@ -33,39 +33,257 @@ def _log_run(db: Session, tenant_id: str, report_type: str, params: dict, user_i
 # REPORT 1: Income Statement
 # ---------------------------------------------------------------------------
 
+# The income statement, in the ruled order. `delivery_cost` sits BELOW gross
+# profit deliberately: it is a cost of getting product to the customer, not a
+# cost of producing it, and burying it in COGS makes gross margin
+# incomparable across licensees who deliver differently.
+#
+# Sign conventions. Revenue-natured categories carry a CREDIT balance, so their
+# figure is credits - debits. Everything else is debit-natured. `contra_revenue`
+# is debit-natured AND subtracted from revenue, which is why it is listed with
+# revenue rather than with the costs.
+_PL_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    ("revenue",        "Revenue",              "credit"),
+    ("contra_revenue", "Less: contra revenue", "debit"),
+    ("cogs",           "Cost of goods sold",   "debit"),
+    ("delivery_cost",  "Delivery costs",       "debit"),
+    ("expense",        "Operating expenses",   "debit"),
+    ("tax_expense",    "Tax expense",          "debit"),
+    ("other_income",   "Other income",         "credit"),
+    ("other_expense",  "Other expense",        "debit"),
+)
+
+# Categories that belong on the BALANCE SHEET. Their lines are excluded from the
+# P&L rather than swept into a bucket.
+_BALANCE_SHEET_CATEGORIES = frozenset({
+    "current_asset", "fixed_asset", "current_liability",
+    "long_term_liability", "equity",
+})
+
+# Genuinely miscellaneous or not yet classified. These CANNOT be honestly placed
+# on an income statement — `other` may be either an income or a balance-sheet
+# account — so they are reported separately and excluded from net income, with
+# the amount stated so nobody has to guess how much was set aside.
+_UNPLACEABLE_CATEGORIES = frozenset({"other", "unclassified"})
+
+
 def get_income_statement(db: Session, tenant_id: str, period_start: date, period_end: date,
                          comparison_start: date | None = None, comparison_end: date | None = None,
                          user_id: str | None = None) -> dict:
-    """Revenue - COGS - Expenses = Net Income."""
-    revenue = _sum_invoices_by_gl_type(db, tenant_id, period_start, period_end, "revenue")
-    cogs = _sum_by_gl_type(db, tenant_id, period_start, period_end, "cogs")
-    expenses = _sum_by_gl_type(db, tenant_id, period_start, period_end, "expense")
+    """Revenue - contra revenue - COGS = gross profit; then costs below it.
 
-    total_rev = sum(r["amount"] for r in revenue)
-    total_cogs = sum(r["amount"] for r in cogs)
-    total_exp = sum(r["amount"] for r in expenses)
-    gross = total_rev - total_cogs
-    net = gross - total_exp
+    Reads the LEDGER. Before A-3 this read invoices and vendor bills, so a
+    posted journal entry was invisible to the P&L, and revenue was a single
+    fabricated `4000 Sales Revenue` row holding every invoice total, summed in
+    binary float in a module whose docstring says "never float".
+
+    Lines whose `gl_account_id` does not resolve to one of this tenant's GL
+    mappings are counted in `unplaceable`, never dropped. The low-level
+    `create_journal_entry` does no GL lookup (the API-level `create_entry`
+    does), so unresolvable lines are possible, and an income statement that
+    silently omits them would be wrong in exactly the way that is hardest to
+    notice.
+    """
+    sections, unplaceable, totals = _pl_sections(db, tenant_id, period_start, period_end)
+
+    def t(cat: str) -> Decimal:
+        return totals.get(cat, Decimal("0"))
+
+    gross_profit = t("revenue") - t("contra_revenue") - t("cogs")
+    operating_income = gross_profit - t("delivery_cost") - t("expense")
+    net_income = (operating_income - t("tax_expense")
+                  + t("other_income") - t("other_expense"))
 
     result = {
         "period": {"start": str(period_start), "end": str(period_end)},
-        "revenue": revenue, "total_revenue": total_rev,
-        "cogs": cogs, "total_cogs": total_cogs,
-        "gross_profit": gross,
-        "gross_margin_percent": round(gross / total_rev * 100, 1) if total_rev else 0,
-        "expenses": expenses, "total_expenses": total_exp,
-        "net_income": net,
+        "sections": sections,
+        "gross_profit": gross_profit,
+        "gross_margin_percent": (
+            (gross_profit / t("revenue") * 100).quantize(Decimal("0.1"))
+            if t("revenue") else Decimal("0.0")
+        ),
+        "operating_income": operating_income,
+        "net_income": net_income,
+        "has_postings": any(sec["accounts"] for sec in sections) or bool(unplaceable["accounts"]),
+        "unplaceable": unplaceable,
+        "reconciliation": _reconcile_revenue_to_ar(db, tenant_id, period_start,
+                                                   period_end, t("revenue")),
+        "expense_reconciliation": _reconcile_expense_to_ap(
+            db, tenant_id, period_start, period_end,
+            t("cogs") + t("delivery_cost") + t("expense")),
+        # Retained for existing callers. `revenue`/`cogs`/`expenses` are the
+        # section rows; the flat totals keep the old key names.
+        "revenue": next(s["accounts"] for s in sections if s["category"] == "revenue"),
+        "total_revenue": t("revenue"),
+        "cogs": next(s["accounts"] for s in sections if s["category"] == "cogs"),
+        "total_cogs": t("cogs"),
+        "expenses": next(s["accounts"] for s in sections if s["category"] == "expense"),
+        "total_expenses": t("expense"),
     }
 
     if comparison_start and comparison_end:
-        comp_rev = sum(r["amount"] for r in _sum_invoices_by_gl_type(db, tenant_id, comparison_start, comparison_end, "revenue"))
-        comp_exp = sum(r["amount"] for r in _sum_by_gl_type(db, tenant_id, comparison_start, comparison_end, "expense"))
-        comp_cogs = sum(r["amount"] for r in _sum_by_gl_type(db, tenant_id, comparison_start, comparison_end, "cogs"))
-        result["comparison_period"] = {"start": str(comparison_start), "end": str(comparison_end)}
-        result["comparison_net_income"] = comp_rev - comp_cogs - comp_exp
+        _, _, comp_totals = _pl_sections(db, tenant_id, comparison_start, comparison_end)
 
-    _log_run(db, tenant_id, "income_statement", {"period_start": str(period_start), "period_end": str(period_end)}, user_id, len(revenue) + len(expenses))
+        def ct(cat: str) -> Decimal:
+            return comp_totals.get(cat, Decimal("0"))
+
+        comp_gross = ct("revenue") - ct("contra_revenue") - ct("cogs")
+        result["comparison_period"] = {"start": str(comparison_start), "end": str(comparison_end)}
+        result["comparison_net_income"] = (
+            comp_gross - ct("delivery_cost") - ct("expense") - ct("tax_expense")
+            + ct("other_income") - ct("other_expense")
+        )
+
+    _log_run(db, tenant_id, "income_statement",
+             {"period_start": str(period_start), "period_end": str(period_end)},
+             user_id, sum(len(s["accounts"]) for s in sections))
     return result
+
+
+def _pl_sections(db: Session, tenant_id: str, start: date, end: date):
+    """Ledger lines for the period, grouped into P&L sections by GL category."""
+    from app.models.accounting_analysis import TenantGLMapping
+
+    rows = (
+        db.query(
+            TenantGLMapping.platform_category.label("category"),
+            JournalEntryLine.gl_account_number.label("number"),
+            JournalEntryLine.gl_account_name.label("name"),
+            func.coalesce(func.sum(JournalEntryLine.debit_amount), 0).label("debits"),
+            func.coalesce(func.sum(JournalEntryLine.credit_amount), 0).label("credits"),
+        )
+        .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
+        .outerjoin(TenantGLMapping, TenantGLMapping.id == JournalEntryLine.gl_account_id)
+        .filter(
+            JournalEntryLine.tenant_id == tenant_id,
+            JournalEntry.status.in_(_LEDGER_STATUSES),
+            JournalEntry.entry_date >= start,
+            JournalEntry.entry_date <= end,
+        )
+        .group_by(TenantGLMapping.platform_category,
+                  JournalEntryLine.gl_account_number,
+                  JournalEntryLine.gl_account_name)
+        .all()
+    )
+
+    by_category: dict[str, list[dict]] = {}
+    totals: dict[str, Decimal] = {}
+    unplaceable_accounts: list[dict] = []
+    unplaceable_total = Decimal("0")
+
+    natural = {cat: sign for cat, _, sign in _PL_SECTIONS}
+
+    for r in rows:
+        debits = Decimal(str(r.debits))
+        credits = Decimal(str(r.credits))
+        cat = r.category
+
+        if cat in _BALANCE_SHEET_CATEGORIES:
+            continue
+
+        if cat is None or cat in _UNPLACEABLE_CATEGORIES:
+            unplaceable_accounts.append({
+                "account_number": r.number, "account_name": r.name,
+                "category": cat, "debits": debits, "credits": credits,
+                "reason": ("no GL mapping for this line's gl_account_id"
+                           if cat is None else f"category {cat!r} is not a P&L section"),
+            })
+            unplaceable_total += (debits - credits)
+            continue
+
+        amount = credits - debits if natural[cat] == "credit" else debits - credits
+        by_category.setdefault(cat, []).append({
+            "account_number": r.number, "account_name": r.name, "amount": amount,
+        })
+        totals[cat] = totals.get(cat, Decimal("0")) + amount
+
+    sections = [
+        {"category": cat, "label": label,
+         "accounts": sorted(by_category.get(cat, []),
+                            key=lambda a: a["account_number"] or ""),
+         "total": totals.get(cat, Decimal("0"))}
+        for cat, label, _ in _PL_SECTIONS
+    ]
+    unplaceable = {
+        "accounts": sorted(unplaceable_accounts, key=lambda a: a["account_number"] or ""),
+        "net_amount": unplaceable_total,
+        "excluded_from_net_income": True,
+    }
+    return sections, unplaceable, totals
+
+
+def _reconcile_revenue_to_ar(db: Session, tenant_id: str, start: date, end: date,
+                             gl_revenue: Decimal) -> dict:
+    """GL revenue against the AR subledger for the same period.
+
+    Live from A-3 onward, and it could not have been meaningful before: until
+    revenue came from the GL there was nothing to reconcile it TO — the old
+    figure WAS the invoice total, so the two sides were the same number and
+    agreement was tautological.
+
+    A difference is not automatically an error. Revenue recognised by journal
+    entry without an invoice, or an invoice raised for something that is not
+    revenue, both show up here legitimately. It is a prompt to look, which is
+    why it reports the figures rather than a pass/fail.
+    """
+    invoiced = (
+        db.query(func.coalesce(func.sum(Invoice.total), 0))
+        .filter(Invoice.company_id == tenant_id,
+                Invoice.invoice_date >= start,
+                Invoice.invoice_date <= end,
+                Invoice.status.in_(["posted", "sent", "paid", "partial", "overdue"]))
+        .scalar()
+    )
+    ar_revenue = Decimal(str(invoiced or 0))
+    difference = gl_revenue - ar_revenue
+    return {
+        "gl_revenue": gl_revenue,
+        "ar_subledger_revenue": ar_revenue,
+        "difference": difference,
+        "agrees": difference == 0,
+    }
+
+
+def _reconcile_expense_to_ap(db: Session, tenant_id: str, start: date, end: date,
+                             gl_expense: Decimal) -> dict:
+    """GL expenses against the AP subledger, symmetric to the AR side.
+
+    THIS ONE MATTERS MORE THAN ITS TWIN, and the reason should not be buried.
+    `ar_invoice_posting` exists, so an invoice CAN reach the ledger. There is no
+    equivalent for vendor bills — nothing anywhere posts AP to the GL. So ledger
+    expenses are structurally empty, not merely empty today, until an AP posting
+    path is built.
+
+    Before A-3 the P&L showed vendor-bill expenses via `_sum_by_gl_type`, which
+    D-2 did real work to make honest. Reading the ledger instead is correct — it
+    is the source of truth — but it means those expenses stop appearing, and
+    without this the disappearance would be SILENT. That is the defect shape
+    this arc keeps closing, so it is not being introduced here.
+    """
+    from app.models.vendor_bill import VendorBill
+
+    billed = (
+        db.query(func.coalesce(func.sum(VendorBill.total), 0))
+        .filter(VendorBill.company_id == tenant_id,
+                VendorBill.deleted_at.is_(None),
+                VendorBill.status.notin_(("draft", "void")),
+                VendorBill.bill_date >= start,
+                # END-EXCLUSIVE. `bill_date` is a DATETIME, not a date, so
+                # `<= end` silently drops every bill timestamped after midnight
+                # on the closing day. Same boundary discipline as D-1/D-2.
+                VendorBill.bill_date < end + timedelta(days=1))
+        .scalar()
+    )
+    ap_expense = Decimal(str(billed or 0))
+    difference = gl_expense - ap_expense
+    return {
+        "gl_expense": gl_expense,
+        "ap_subledger_expense": ap_expense,
+        "difference": difference,
+        "agrees": difference == 0,
+        "note": ("No AP-to-GL posting path exists, so a non-zero AP subledger "
+                 "with zero GL expense is expected rather than anomalous."),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -402,22 +620,32 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _sum_invoices_by_gl_type(db: Session, tenant_id: str, start: date, end: date, gl_type: str) -> list[dict]:
-    """Sum invoice line amounts grouped by GL account type."""
-    invoices = db.query(Invoice).filter(
-        Invoice.company_id == tenant_id,
-        Invoice.invoice_date >= start, Invoice.invoice_date <= end,
-        Invoice.status.in_(["posted", "sent", "paid", "partial"]),
-    ).all()
-    # Simple aggregation — group by a generic "Sales Revenue" for now
-    total = sum(float(i.total) for i in invoices)
-    if total > 0:
-        return [{"account_number": "4000", "account_name": "Sales Revenue", "amount": total}]
-    return []
-
-
 def _sum_by_gl_type(db: Session, tenant_id: str, start: date, end: date, gl_type: str) -> list[dict]:
     """Vendor-bill expenses for the period, categorized honestly (D-2).
+
+    NOT DEAD, BUT NO LONGER CALLED BY THE INCOME STATEMENT (A-3). Read this
+    before deciding it is a gap. `get_income_statement` now reads the LEDGER, so
+    it no longer routes expenses through here, and nothing else in `app/` calls
+    this either. It is kept rather than deleted for two reasons:
+
+      * `tests/test_vendor_bill_reports_rework.py` pins its behaviour, and that
+        suite encodes the D-2 vendor-bill categorization work — the honest
+        `expense_category` rollup, the end-exclusive boundary, and the
+        tax/uncategorized remainder that makes the total tie to bill totals.
+        Deleting the function discards that knowledge with it.
+      * There is no AP-to-GL posting path anywhere in the codebase, so this is
+        currently the ONLY place vendor-bill expenses are aggregated honestly.
+        If an AP posting service is built, that changes; until then this is the
+        subledger view, and `_reconcile_expense_to_ap` is what tells a reader of
+        the P&L that the ledger side is structurally zero rather than genuinely
+        zero.
+
+    The `gl_type == "cogs"` branch below was NOT completed in A-3. r174 created
+    a COGS dimension, so it could be — but completing a branch inside a function
+    nothing invokes is dead code. The income statement gets cogs from the ledger.
+
+    Original docstring follows.
+
 
     Pre-rework this imported the dead `app.models.bill` inside a swallow and
     returned [] on every call — the P&L overstated profit by ALL vendor-bill
