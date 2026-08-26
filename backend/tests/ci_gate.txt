@@ -314,3 +314,4 @@ tests/test_trial_balance_a2.py
 tests/test_preflight_a2.py
 tests/test_income_statement_a3.py
 tests/test_health_check_greens_hc1.py
+tests/test_audit_health_tasks_hc1.py

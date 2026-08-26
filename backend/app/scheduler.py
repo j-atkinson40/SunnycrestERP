@@ -213,6 +213,23 @@ def job_financial_health_score():
     _run_per_tenant("FINANCIAL_HEALTH_SCORE", run_daily_score, today)
 
 
+def job_audit_health_tasks():
+    """HC-1 A-3 — push the audit health findings at somebody.
+
+    `run_health_check` computed correct findings and nothing ever called it:
+    two on-demand API routes, no scheduler, no briefing, no widget. Production
+    carried 15 stale draft journal entries for twenty days behind a working
+    "Review Drafts" action nobody was told about.
+
+    Runs BEFORE the 5am financial-health job so a fresh finding is already a
+    task by the time anyone reads a morning briefing (briefings sweep from
+    ~7am, and tasks surface there via `_collect_pending_tasks_summary`).
+    """
+    from app.services.audit_health_tasks import raise_tasks_for_health_findings
+
+    _run_per_tenant("AUDIT_HEALTH_TASKS", raise_tasks_for_health_findings)
+
+
 def job_cross_system_synthesis():
     from app.services.cross_system_insight_service import detect_all_insights
     _run_per_tenant("CROSS_SYSTEM_SYNTHESIS", detect_all_insights)
@@ -500,6 +517,7 @@ def job_platform_incident_dispatcher():
 # ---------------------------------------------------------------------------
 
 JOB_REGISTRY: dict[str, callable] = {
+    "audit_health_tasks": job_audit_health_tasks,
     "tax_accumulation": job_tax_accumulation,
     "draft_invoice_generator": job_draft_invoice_generator,
     "network_readiness": job_network_readiness,
@@ -613,6 +631,16 @@ def register_all_jobs():
         name="payment_pattern_enrichment",
         replace_existing=True,
         misfire_grace_time=7200,
+    )
+
+    # DAILY at 4:40am — audit health findings become tasks (HC-1)
+    scheduler.add_job(
+        job_audit_health_tasks,
+        CronTrigger(hour=4, minute=40),
+        id="audit_health_tasks",
+        name="audit_health_tasks",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
 
     # DAILY at 5am — financial health score
