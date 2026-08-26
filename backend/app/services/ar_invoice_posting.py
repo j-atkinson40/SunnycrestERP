@@ -266,6 +266,26 @@ def post_invoice(db: Session, *, company_id: str, invoice, user_id: str | None):
                 # `1200 ACCOUNTS RECEIVABLE-TRADE` reads Dr 0.00 / Cr 33,845.00
                 # precisely because this line was missing while payments
                 # credited the same account.
+                #
+                # ⚠️ THAT FIGURE IS DOUBLE. Corrected 2026-08-26 (AP-1) rather
+                # than deleted, because it has been quoted forward as evidence.
+                # The balance is real, but 16,922.50 of the credit is a
+                # DUPLICATE: `seed_accounting_demo.py:610` calls `post_payment`
+                # after `:605` calls `create_customer_payment`, and
+                # `create_customer_payment` already posts
+                # (`sales_service.py:1885`). Seven payments, fourteen identical
+                # entries — `RECON-1001..1014` in pairs. The seed's own comment
+                # asserts the opposite ("only post_payment books Dr bank / Cr
+                # AR"), which is what made it invisible.
+                #
+                # The true single-posted credit is 16,922.50. The CONCLUSION is
+                # unaffected — 16,922.50 credited against 0.00 debited is the
+                # same one-directional control account this line fixes — but the
+                # number should not be re-quoted at twice its size.
+                #
+                # Seed-only: `post_payment` has exactly two call sites
+                # (`sales_service.py:1885`, `seed_accounting_demo.py:610`) and
+                # only the seed calls it after a path that already posted.
                 _line(ar, debit_amount=amount),
                 _line(revenue, credit_amount=amount),
             ],
