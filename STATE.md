@@ -2,6 +2,13 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## `task_details.suppression_key` IS WRITTEN AND NEVER READ (2026-08-26, HC-1 A-3)
+
+- **A declared field with NO consumer anywhere in `app/`.** `create_task_with_provenance` accepts it (`tasks/service.py:164`), passes it through (`:299`), the column exists (`task_details.py:145`), and `plugins/creators.py` threads it — **and nothing ever reads it back.** Three write paths, zero reads.
+- **It looks exactly like the tool for the job it does not do.** HC-1 A-3 needed "do not raise this finding again while an open task for it exists" and reached for `suppression_key` first. The actual mechanism had to be built explicitly — an `_open_finding_codes` query plus an episode number in `provenance_ref_id` — because the field does nothing.
+- **Either it becomes real or it goes.** The failure mode is that the next person finds it, assumes it suppresses, passes it, and ships a producer that duplicates on every run. That is not hypothetical: the expense-categorization agent carries **1,299 unresolved `expense_no_gl_mapping` anomalies against 3 bill lines** because nothing dedupes it.
+- Recorded rather than fixed: making it real is a decision about task-substrate semantics, and deleting a column has its own migration.
+
 ## ⚠️ EVERY DEPLOY TAKES THE PRODUCTION API DOWN FOR ~4½ MINUTES (2026-08-26, AP-1)
 
 - **MEASURED, not estimated: `api.getbridgeable.com` returned 502 for ~260 seconds** after a push to `main`, then recovered serving the new SHA. Observed 2026-08-26 on a commit that changed **twenty comment lines** — no migration, no behaviour change. It is not the commit; it is every deploy.
