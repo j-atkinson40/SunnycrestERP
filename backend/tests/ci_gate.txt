@@ -313,3 +313,4 @@ tests/test_report_intelligence_tenant_scope_ri1.py
 tests/test_trial_balance_a2.py
 tests/test_preflight_a2.py
 tests/test_income_statement_a3.py
+tests/test_health_check_greens_hc1.py

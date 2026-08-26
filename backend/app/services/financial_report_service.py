@@ -473,15 +473,71 @@ def get_tax_summary(db: Session, tenant_id: str, period_start: date, period_end:
 # ---------------------------------------------------------------------------
 
 def run_health_check(db: Session, tenant_id: str) -> dict:
-    """Run all audit health checks and return findings."""
+    """Run all audit health checks and return findings.
+
+    ⚠️ A CHECK THAT CANNOT RUN MUST NOT PRODUCE A GREEN (HC-1 A-2). Two defects
+    were demonstrated by execution before this rewrite, not inferred:
+
+      1. Forcing the reconciliation check to raise produced output BYTE-IDENTICAL
+         to a healthy tenant — three greens, including "All accounts reconciled
+         within 35 days". The absence of a finding was converted into a positive
+         claim about a condition nobody had checked.
+      2. The tax checks already emitted a `*_check_failed` finding on failure —
+         and the green fired ANYWAY, in the same payload, directly contradicting
+         it. The green tested `f["code"] == "missing_cert"`, while a failed check
+         emits `missing_cert_check_failed`. Different string, so
+         "no bad finding exists" held.
+
+    THE GENERAL SHAPE, worth stating because it will recur: a green gated on the
+    ABSENCE OF A SPECIFIC FAILURE CODE is satisfied by the check dying. Every
+    green here now gates on `ran` — the check completing — and only then on the
+    absence of a bad finding. Absence of evidence is not evidence.
+
+    Historical note, since the comment it replaces made this look worse than it
+    is: the two tax checks once queried `customers.tax_status`, a column never
+    mapped onto the model, and raised AttributeError on every call. They query
+    `TaxCertificate` now. **Verified against production 2026-08-26: all five
+    checks execute cleanly.** The "finding silently absent" comment described a
+    state that no longer exists.
+    """
     today = date.today()
     findings = []
+    #: Names of checks that COMPLETED. A green may only be emitted for a check
+    #: in here. Nothing else is allowed to imply a condition was verified.
+    ran: set[str] = set()
+
+    def _guarded(name: str, action_label: str, action_url: str, category: str):
+        """Run a check body; on failure say so instead of saying nothing.
+
+        Returns a decorator so each check keeps its own body inline and cannot
+        be added without a name — the previous shape let a check be written with
+        a bare `try/except` and no registration, which is how two of five ended
+        up silent.
+        """
+        def wrap(fn):
+            try:
+                fn()
+                ran.add(name)
+            except Exception:
+                logger.warning("health check %r failed", name, exc_info=True)
+                findings.append({
+                    "severity": "amber", "category": category,
+                    "code": f"{name}_check_failed",
+                    "message": (
+                        f"The {name.replace('_', ' ')} check could not run — this "
+                        "is NOT a clean result; the condition is unknown."
+                    ),
+                    "action_label": "Investigate", "action_url": action_url,
+                })
+            return fn
+        return wrap
 
     # Check: reconciliation overdue
-    try:
+    @_guarded("reconciliation", "Reconcile", "/settings/accounts", "reconciliation")
+    def _recon():
         from app.models.financial_account import FinancialAccount
         overdue_accounts = db.query(FinancialAccount).filter(
-            FinancialAccount.tenant_id == tenant_id, FinancialAccount.is_active == True,
+            FinancialAccount.tenant_id == tenant_id, FinancialAccount.is_active == True,  # noqa: E712
         ).all()
         for acct in overdue_accounts:
             if acct.last_reconciled_date and (today - acct.last_reconciled_date).days > 35:
@@ -491,11 +547,15 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
             elif not acct.last_reconciled_date:
                 findings.append({"severity": "amber", "category": "reconciliation", "code": "never_reconciled",
                                   "message": f"{acct.account_name} has never been reconciled", "action_label": "Reconcile", "action_url": "/settings/accounts"})
-    except Exception:
-        logger.warning("health check 'reconciliation' failed — finding silently absent", exc_info=True)
 
     # Check: stale draft journal entries
-    try:
+    #
+    # Measured on production 2026-08-26 (HC-1): sunnycrest = 15, twenty days old.
+    # Those are the AR-2 payment postings, booked `draft` deliberately
+    # (`reconciliation_gl.py:105`, "L-2 books; a human posts") and never posted.
+    # This finding is the ONLY thing in the platform that says so.
+    @_guarded("stale_drafts", "Review Drafts", "/journal-entries?status=draft", "journal_entries")
+    def _stale_drafts():
         from app.models.journal_entry import JournalEntry
         stale_count = db.query(func.count(JournalEntry.id)).filter(
             JournalEntry.tenant_id == tenant_id, JournalEntry.status == "draft",
@@ -505,26 +565,7 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
             findings.append({"severity": "amber", "category": "journal_entries", "code": "stale_drafts",
                               "message": f"{stale_count} journal entries in draft for over 7 days",
                               "action_label": "Review Drafts", "action_url": "/journal-entries?status=draft"})
-    except Exception:
-        logger.warning("health check 'stale_drafts' failed — finding silently absent", exc_info=True)
 
-    # ⚠️ BOTH TAX CHECKS BELOW QUERIED `customers.tax_status` AND RAISED
-    # AttributeError ON EVERY CALL, ON EVERY TENANT, SINCE THEY WERE WRITTEN.
-    # Those columns are in the database and were never mapped onto the
-    # `Customer` model. Each check caught the error into a bare
-    # `except Exception` whose own comment read "finding silently absent" — so a
-    # RED compliance finding and an amber one have never been able to fire, and
-    # the report rendered exactly as it would if both had run and found nothing.
-    #
-    # Measured when this was found: no customer on any tenant was exempt, so
-    # both would legitimately have reported zero. That is luck, not correctness.
-    # The first customer marked exempt is the one nobody would have heard about.
-    #
-    # Repointed at `TaxCertificate` — the model that holds this data and dates
-    # it — and the swallow is replaced by `_tax_check`, which reports a check
-    # that COULD NOT RUN as its own visible finding. "Did not run" and "found
-    # nothing" are different answers and this report used to render them
-    # identically.
     from app.models.tax_filing import TaxCertificate
 
     def _tax_check(code: str, severity: str, action_label: str, count_query, message):
@@ -542,6 +583,7 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
                 "action_label": "Investigate", "action_url": "/settings/tax?tab=exemptions",
             })
             return
+        ran.add(code)
         if n:
             findings.append({
                 "severity": severity, "category": "tax", "code": code,
@@ -573,22 +615,40 @@ def run_health_check(db: Session, tenant_id: str) -> dict:
         lambda n: f"{n} tax exemption certificate{'s have' if n != 1 else ' has'} expired",
     )
 
-    # Check: overdue AR over 90 days
-    overdue_90 = db.query(func.count(Invoice.id)).filter(
-        Invoice.company_id == tenant_id, Invoice.status.in_(["sent", "partial", "overdue"]),
-        Invoice.due_date < today - timedelta(days=90),
-    ).scalar() or 0
-    if overdue_90:
-        findings.append({"severity": "red" if overdue_90 > 5 else "amber", "category": "ar", "code": "overdue_90",
-                          "message": f"{overdue_90} invoices are over 90 days past due",
-                          "action_label": "Review AR", "action_url": "/financials?zone=ar&tab=overdue"})
+    # Check: overdue AR over 90 days.
+    #
+    # Was the ONLY unguarded check: an exception here took the entire health
+    # report down rather than one finding, so a single query failure hid four
+    # working checks.
+    overdue_90 = 0
 
-    # Green checks
-    if not any(f["code"] == "recon_overdue" for f in findings) and not any(f["code"] == "never_reconciled" for f in findings):
+    @_guarded("overdue_90", "Review AR", "/financials?zone=ar&tab=overdue", "ar")
+    def _overdue():
+        nonlocal overdue_90
+        overdue_90 = db.query(func.count(Invoice.id)).filter(
+            Invoice.company_id == tenant_id, Invoice.status.in_(["sent", "partial", "overdue"]),
+            Invoice.due_date < today - timedelta(days=90),
+        ).scalar() or 0
+        if overdue_90:
+            findings.append({"severity": "red" if overdue_90 > 5 else "amber", "category": "ar", "code": "overdue_90",
+                              "message": f"{overdue_90} invoices are over 90 days past due",
+                              "action_label": "Review AR", "action_url": "/financials?zone=ar&tab=overdue"})
+
+    # Green checks.
+    #
+    # ⚠️ EVERY ONE GATES ON `ran` FIRST. A green states that a condition was
+    # CHECKED AND FOUND CLEAN. Without the `ran` test it states only that no bad
+    # finding is present, which is exactly what a dead check produces.
+    def _bad(*codes) -> bool:
+        return any(f["code"] in codes for f in findings)
+
+    if "reconciliation" in ran and not _bad("recon_overdue", "never_reconciled"):
         findings.append({"severity": "green", "category": "reconciliation", "code": "recon_current", "message": "All accounts reconciled within 35 days"})
-    if not any(f["code"] == "expired_exemptions" for f in findings) and not any(f["code"] == "missing_cert" for f in findings):
+    if "stale_drafts" in ran and not _bad("stale_drafts"):
+        findings.append({"severity": "green", "category": "journal_entries", "code": "drafts_current", "message": "No journal entries left in draft"})
+    if {"missing_cert", "expired_exemptions"} <= ran and not _bad("expired_exemptions", "missing_cert"):
         findings.append({"severity": "green", "category": "tax", "code": "exemptions_valid", "message": "All exemption certificates are valid"})
-    if overdue_90 == 0:
+    if "overdue_90" in ran and overdue_90 == 0:
         findings.append({"severity": "green", "category": "ar", "code": "ar_current", "message": "No invoices over 90 days past due"})
 
     red = sum(1 for f in findings if f["severity"] == "red")
