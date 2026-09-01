@@ -1714,6 +1714,95 @@ which encodes the FK-safe deletion order in one place. The company-litter count 
 shrink. Cascade behavior in this schema is uneven — extend the helper rather than writing
 a local delete list.
 
+### Checks that are green without being evidence
+
+Extracted 2026-09-01 from the accounting arc's working record. Eight recorded shapes,
+caught across three dispatches. Every one was found by a person reading a passing check
+and asking what its green actually proved.
+
+**These are two mechanisms, not eight of a kind.** Shapes 1–5 share a mechanism: the
+check's passing state can be produced by the very defect it should catch. Shapes 6–8 are
+green-without-evidence by a different mechanism entirely — nothing about the defect
+produces the green; the check simply never had contact with what it names. They live
+together because one remedy catches all eight.
+
+#### Mechanism A — the defect produces the green (1–5)
+
+**1. Conditional teardown.** A test that cleans up conditionally can be made to stop
+cleaning up by the thing it failed to clean. Caught in `tests/_tenant.py`: the fixture
+skipped cleanup when the row already existed, so run 1 leaked and every run after took
+the skip branch. *"Clean when run alone" was true and meant nothing.*
+
+**2. A ratchet too weak to catch its own bug.** Asserted a job name appeared anywhere in
+`scheduler.py`; the unregistered wrapper function satisfied it. Deleting the registration
+left it green. ⚠️ No rule was recorded for this shape — the record is the incident only.
+Do not supply one retroactively.
+
+**3. Void reversal unwired.** Every test called the helper directly, so deleting the
+production call site broke nothing. ⚠️ No rule was recorded. Incident only.
+
+> Shapes 2 and 3 are adjacent — both checks exercised an artifact rather than the wiring
+> that reaches it. That is an observation, not a rule. If a third instance appears, the
+> generalization will have been earned; until then it has not been.
+
+**4. A ratchet matching the receiver's NAME.** Match the attribute, not the receiver — a
+check that requires the caller to have named their variable conventionally passes on
+unconventional code, which is where defects live. Caught: the ratchet asserted `Customer.x`
+and `customer.x`; the real code called the local `cust`.
+
+**5. A failed flag that proved nothing.** A page set the flag in `.catch` and the test
+asserted the error state; removing the `.catch` entirely still rendered the error, because
+a rejected promise left the data null either way. *The flag was bookkeeping; `!data` was
+the real guard.*
+
+#### Mechanism B — green without contact (6–8)
+
+**6. A check that passes for a reason unrelated to what it claims.** Ask what would have
+to be true for this to fail. If the answer involves a condition the test does not control,
+it is not covering what it names. Caught: the GL decoy resolver test, still green after a
+CHECK constraint narrowed the vocabulary out from under it. *The behaviour was correct and
+the coverage was imaginary.*
+
+**7. A check whose success condition is invariant under the failure it catches.** When a
+check tests an invariant — balances, totals, round-trips — ask which WRONG answers also
+satisfy it. Symmetric corruption usually does. Caught: the trial balance filtering
+`status == "posted"`, reporting the negation of figures that should have been zero, and
+reporting `balanced: True` while doing it.
+
+**8. A monitor whose failure mode is silence.** Anything that reports by EMITTING — a
+monitor, a tail, a grep pipeline, a poll loop — needs a positive control. Confirm it can
+speak before trusting that it is quiet. Caught: two CI watchers on
+`gh run list --commit <SHORT-sha>`. Shapes 6 and 7 return a wrong answer; ⚠️ this one
+returns NO answer and lets you supply the wrong one yourself. It was written four minutes
+after shape 6 was described, into the instrumentation of the session that described it.
+
+#### The remedy — one test for all eight
+
+**Break the thing it guards and confirm it goes red — and check the break turns THAT check
+red, not merely something.**
+
+The final clause is the load-bearing half. A break that turns the suite red while leaving
+the specific check green is the failure this whole list describes.
+
+**If a check cannot be made to fail, it is documentation.** File it as such or delete it;
+do not count it as coverage.
+
+**The deletion corollary: the fix is often deletion, not another test.** Both times this
+list caught asserted-but-absent coverage in a single session, the repair simplified the
+code rather than adding to it.
+
+#### The counterweight
+
+This list is not an argument that guards are untrustworthy. The session-scoped COMPANY
+LITTER row-counting tripwire earns its keep **precisely because it does not trust the
+per-fixture cleanup it watches.** A check that assumes its neighbours are honest inherits
+their failures; a check that re-derives independently is the thing this list is asking for,
+not the thing it is warning about.
+
+The distinction is what a green result is evidence OF. A check that would still pass under
+the defect proves nothing. A check that re-derives from a different direction proves
+something, and is worth its cost.
+
 ## 12. Business Context
 
 ### Tenant Types
@@ -1754,7 +1843,7 @@ production or sales volume is operating, whatever its number.
 
 ⚠️ Account number ranges are convention, not evidence. Sage's 9000 range does not make an
 account non-operating. Classifying by range is the same defect shape as inferring a name
-from a shape rather than a config — see the green-that-isn't-evidence taxonomy.
+from a shape rather than a config — see §11 "Checks that are green without being evidence."
 
 **Delivery cost is presented below gross profit** (2026-09-01). Per-unit costing views that
 need fully-loaded delivery pull it back in as their own grouping.
