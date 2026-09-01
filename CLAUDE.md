@@ -1716,9 +1716,10 @@ a local delete list.
 
 ### Checks that are green without being evidence
 
-Extracted 2026-09-01 from the accounting arc's working record. Eight recorded shapes,
-caught across three dispatches. Every one was found by a person reading a passing check
-and asking what its green actually proved.
+Extracted 2026-09-01 from the accounting arc's working record, which carries shapes
+1–5 from before that arc. Eight recorded shapes, each with the defect it caught.
+⚠️ None was found by a failing check — by construction, every one was green at the
+moment it was caught.
 
 **These are two mechanisms, not eight of a kind.** Shapes 1–5 share a mechanism: the
 check's passing state can be produced by the very defect it should catch. Shapes 6–8 are
