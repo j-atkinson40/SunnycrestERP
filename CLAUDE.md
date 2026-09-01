@@ -402,7 +402,7 @@ Extensions (Wastewater, Redi-Rock, Rosetta, NPCA Audit Prep, Urn Sales) are trac
 **NPCA:** `npca_audit_prep` is a proper extension. All dashboard elements and nav items are gated by `hasModule("npca_audit_prep")`. Auto-enables when `npca_certification_status = "certified"` is set during platform admin tenant setup.
 
 ### Settings Pattern
-Tenant settings are stored as a JSONB field on the `companies` table (`settings_json` column), accessed via `company.settings` property and `company.set_setting(key, value)` method. A `tenant_settings` database table also exists (migrations create it) but is orphaned — application code uses `Company.settings_json` exclusively.
+Tenant settings are stored on the `companies` table in the `settings_json` column, which is **`text`, not JSONB** — a prior version of this document claimed JSONB and cost a probe. Access is via the `company.settings` property and `company.set_setting(key, value)` method; do not write JSONB operators against this column. A `tenant_settings` database table also exists (migrations create it) but is orphaned — application code uses `Company.settings_json` exclusively.
 
 ### Admin Platform Architecture
 
@@ -1736,6 +1736,28 @@ a local delete list.
 3. **Early Payment Discounts** — 2% if paid by 15th of month
 4. **Cross-Licensee Transfers** — NY licensee transfers burial to NJ licensee; billing chains automatically
 5. **Spring Burial Season** — March–May peak, requires delivery capacity management
+
+### Chart of Accounts Classification
+
+The chart of accounts is a grouping query, not a maintained artifact. Classification is one
+fact; presentation is a query over it. A statutory presentation variant is a second grouping,
+never a reclassification.
+
+**Classification authority is platform-owned.** An importer reading a legacy chart (Sage,
+QuickBooks) PROPOSES a classification. Bridgeable's vertical default DECIDES. A tenant may
+override with a recorded reason. Importer output is never the record.
+
+**The non-operating test.** An account is non-operating if its activity would continue
+unchanged were the business to stop selling its product. Interest income, gain or loss on
+asset disposal, and insurance settlements are non-operating. Anything that moves with
+production or sales volume is operating, whatever its number.
+
+⚠️ Account number ranges are convention, not evidence. Sage's 9000 range does not make an
+account non-operating. Classifying by range is the same defect shape as inferring a name
+from a shape rather than a config — see the green-that-isn't-evidence taxonomy.
+
+**Delivery cost is presented below gross profit** (2026-09-01). Per-unit costing views that
+need fully-loaded delivery pull it back in as their own grouping.
 
 ## 13. Known Issues and Tech Debt
 

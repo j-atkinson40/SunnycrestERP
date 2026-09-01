@@ -1258,3 +1258,39 @@ direction is `pg_ls_waldir()` (readable without superuser): it reports WAL size 
 than filesystem free space — a weaker signal, but not nothing, and the natural fallback
 for a non-superuser guard. Record kept so this is designed for, not discovered when the
 wipe refuses.
+
+---
+
+## 2026-09-01 — Revenue recognition timing is a property of the event type; the tenant setting is its default
+
+INV-1 shipped invoice posting to a configured revenue account but left unanswered *when* revenue is earned. Two candidate homes existed: a tenant-level setting (`revenue_recognition = on_invoice | on_delivery`), or a property resolved per event through the posting registry. The registry wins, because `decide()` was generalized into a posting registry precisely so that posting policy is a property of the event; putting recognition timing in a tenant flag splits one concern across two mechanisms. The immediate implementation is narrower than the decision: Sunnycrest is set to `on_invoice`, which is a true statement about precast (manufacture → deliver → invoice, with control transfer close enough to invoicing that it needs no adjustment), and AP-1 ships against it. The tenant setting stands as the default the registry consults when an event type does not override. This ordering matters for the funeral vertical: pre-need contracts are paid in advance against a service performed years later under New York statutory trusting requirements, and at-need is a different policy in the same tenant on the same day. A tenant flag cannot express that; a registration can. Shipping the flag as "the answer" rather than as "the default" would make it load-bearing and force the pre-need arc to fight it.
+
+---
+
+## 2026-09-01 — Health-check findings notify the accountant cohort
+
+HC-1 bridged health findings to the Task substrate but left the notification cohort narrow. The cohort widens to include `accountant`. A finding that reaches a queue nobody in the responsible role watches is the same failure as a finding that reaches nowhere — the arc's own signature, a fail-closed refusal that never arrives at a person. The trade (broader cohorts dilute signal) is named in the code at the point of the change rather than left to be rediscovered.
+
+---
+
+## 2026-09-01 — A cadence grain renders one line per automation; shared automations name their dependents
+
+`Pull Bank Transactions` rendered twice in the nightly grain because two jobs reference the same automation. Rendering it twice is a false statement about the schedule — it reads as running twice. The grain deduplicates by automation and names the second job as an attribute of the single row. The dependency information is worth keeping ("two jobs depend on this" is exactly what a degraded connection needs to report), but it is a fact about the automation, not a second occurrence of it. This generalizes: the cadence card's unit is the automation, and job references are attributes on it.
+
+---
+
+## 2026-09-01 — Anomaly supersede is a condition of shipping any anomaly-writing fix
+
+The expense classifier has accumulated 1,299 unresolved `expense_no_gl_mapping` anomalies against 3 bill lines, re-created every run with no supersede. Any fix that touches an anomaly-writing path ships supersede in the same pass. Shipping a posting path while leaving a permanent unrelated alarm hands an operator a working feature plus a standing lie about their data, and a duplicate-generating anomaly writer is the same class of defect as whatever is being fixed. The Task substrate's composite idempotency key — `(provenance_kind, provenance_ref_type, provenance_ref_id, event_kind)` — is the shape to match.
+
+---
+
+## 2026-09-01 — Delivery cost is presented below gross profit
+
+Delivery is classified in selling expense, below gross profit, rather than in COGS. GAAP presentation convention places freight-out below the line, and Sunnycrest's statements go to an external accountant and a bank, both of whom expect it there. Two consequences are accepted deliberately rather than discovered later. First, gross profit does not carry the fully-loaded cost of delivering a vault: when the mixer integration lands and per-pour costing becomes real, the per-unit cost view assembles delivery from a second section of the statement. This is affordable because the chart of accounts is a grouping query — classification and presentation are separate facts, and a per-unit costing grouping that pulls delivery back above the line is an addition, not a reclassification. Second, delivery cost sits outside any gross-margin threshold the intelligence layer watches, so an expensive route will not move gross margin. That monitoring gap is placed deliberately in the delivery area rather than assumed to surface in the P&L.
+
+---
+
+## 2026-09-01 — Legacy chart classification is advisory input, not the record
+
+The Sage COA classifier is demoted from authority to importer heuristic. It **proposes**; Bridgeable's vertical-default classification **decides**; a tenant may override with a recorded reason. Sunnycrest is the first legacy chart imported and there will be many — every funeral home arriving with a QuickBooks chart inherits the precedent set here. If the importer's classification stands as truth, the platform's income statement means something different in every tenant, and cross-tenant comparison never becomes possible; that comparison is the substrate under the Bridgeable Mutual thesis, so the cost of getting this wrong is not confined to reporting. The governing rule for classification is stated in CLAUDE.md: an account is non-operating if its activity would continue unchanged were the business to stop selling its product. Account number ranges are convention, not evidence — classifying by range is the same shape as inferring names from shapes rather than configs.
