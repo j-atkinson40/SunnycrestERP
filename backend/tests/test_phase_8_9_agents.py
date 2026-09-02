@@ -75,6 +75,17 @@ def engine():
             "period_locks",
             "invoices",
             "report_runs",
+            # S-2, 2026-09-02. Added because LEDGER-1 A-3 (c2d82fe9) moved
+            # get_income_statement onto the ledger, and this fixture's first
+            # agent step (budget_vs_actual_agent get_current_period_actuals)
+            # calls it. Without these two the step died with
+            # "no such table: journal_entry_lines" and the job landed 'failed'
+            # instead of 'awaiting_approval'. The file was not in ci_gate.txt,
+            # so the break shipped unnoticed.
+            "tenant_gl_mappings",
+            "vendor_bills",
+            "journal_entries",
+            "journal_entry_lines",
         ]
     ]
     jsonb_cols = []

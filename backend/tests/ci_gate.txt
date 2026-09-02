@@ -315,3 +315,91 @@ tests/test_preflight_a2.py
 tests/test_income_statement_a3.py
 tests/test_health_check_greens_hc1.py
 tests/test_audit_health_tasks_hc1.py
+
+# ═══════════════════════════════════════════════════════════════════════════
+# S-2 — THE SALES & ORDERS FLOOR (2026-09-02)
+#
+# The territory had 72 test files with area coverage BY CONTENT, of which 4
+# appeared here and only 1 asserted area behaviour. Nothing in Sales & Orders
+# was meaningfully gated while four intake arcs queued to land on it.
+#
+# HOW THE 72 WERE FOUND: by reading every one of the 420 test files in tests/
+# for symbols that belong to this area. NOT by filtering filenames — an earlier
+# filename filter returned 20 and missed 56, including the Order Station's own
+# tests, because it searched for names rather than content.
+#
+# WHAT IS GATED HERE: the 62 files below are clean on the BARE axis — a freshly
+# created DB at `alembic upgrade head`, which is what this CI job provisions.
+# Measured alone, on a DB recreated immediately beforehand, with no other run
+# touching it. Bare: 1221 passed / 15 failed / 4 skipped over the full 72.
+# The 62 additions cost ~26s against a 279s gate baseline (+9.3%).
+#
+# NOT GATED, and why: 6 files fail on bare. 4 of them are green on the SEEDED
+# axis and fail only because this job's DB carries no canonical seeds; 2 fail
+# on both axes. Each carries its exact failure signature in STATE.md so a LATER,
+# DIFFERENT failure is distinguishable from the known one — an already-red check
+# cannot report a new failure, which is how a break hid inside
+# test_phase_8_9_agents.py's pre-existing red for weeks.
+# ═══════════════════════════════════════════════════════════════════════════
+tests/test_activity_log_types.py
+tests/test_ar_single_post.py
+tests/test_bugs_regression.py
+tests/test_calendar_step3_email_itip_routing.py
+tests/test_calendar_step3_itip_inbound.py
+tests/test_calendar_step4_action_types.py
+tests/test_calendar_step5_cross_surface.py
+tests/test_command_bar_latency.py
+tests/test_command_bar_portal.py
+tests/test_command_bar_portal_latency.py
+tests/test_command_bar_resolver.py
+tests/test_documents_arc_4b2a_mention_substrate.py
+tests/test_documents_d1.py
+tests/test_documents_d2.py
+tests/test_documents_d3.py
+tests/test_documents_d4_signing.py
+tests/test_documents_d5_signing.py
+tests/test_documents_d6_sharing.py
+tests/test_documents_d7_delivery.py
+tests/test_documents_d9.py
+tests/test_draft_invoice_system_actor.py
+tests/test_email_primitive_step2.py
+tests/test_email_primitive_step3.py
+tests/test_email_primitive_step4a.py
+tests/test_email_primitive_step4b.py
+tests/test_email_primitive_step4c.py
+tests/test_focus_draft_persistence.py
+tests/test_intelligence_phase2c0a.py
+tests/test_intelligence_phase2c0a_lint.py
+tests/test_intelligence_phase2c0b.py
+tests/test_intelligence_phase2c3.py
+tests/test_intelligence_phase2c4.py
+tests/test_invoice_statement_workflow.py
+tests/test_legacy_generation_headless.py
+tests/test_legacy_order_end_to_end.py
+tests/test_month_end_close_agent.py
+tests/test_notification_category_types.py
+tests/test_peek_api.py
+tests/test_peek_latency.py
+tests/test_personalization_studio_phase1b_api.py
+tests/test_personalization_studio_phase1d_workshop.py
+tests/test_personalization_studio_phase1f_documentshare.py
+tests/test_personalization_studio_phase1g_demo_seed.py
+tests/test_personalization_studio_r75_consent.py
+tests/test_personalization_studio_r76_instances.py
+tests/test_phase_3_4_5_agents.py
+tests/test_phase_8_9_agents.py
+tests/test_quote_unification_u23.py
+tests/test_saved_view_execute_latency.py
+tests/test_saved_view_preview.py
+tests/test_saved_view_preview_latency.py
+tests/test_saved_views.py
+tests/test_seed_fh_demo_r2_optional.py
+tests/test_smtp_hardening.py
+tests/test_so_class_killers.py
+tests/test_so_creation_paths.py
+tests/test_so_lifecycle.py
+tests/test_task_and_triage.py
+tests/test_tax_filing_arc.py
+tests/test_vault_schedule_widget.py
+tests/test_vault_v1fg_vault_item_hygiene.py
+tests/test_workflow_headless_extraction.py

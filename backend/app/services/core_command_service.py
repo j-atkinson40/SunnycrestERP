@@ -78,14 +78,19 @@ def _resolve_entities(db: Session, raw_input: str, company_id: str) -> dict:
             .filter(
                 SalesOrder.company_id == company_id,
                 or_(
-                    SalesOrder.order_number.ilike(f"%{raw_input}%"),
+                    # `order_number` never existed on this model — the column is `number`.
+                    # ⚠️ This did NOT surface as a 500: the enclosing
+                    # `except Exception: pass` swallowed the AttributeError, so
+                    # the command bar silently resolved ZERO sales orders on
+                    # every search. Indistinguishable from "no match".
+                    SalesOrder.number.ilike(f"%{raw_input}%"),
                 )
             )
             .limit(5)
             .all()
         )
         resolved["orders"] = [
-            {"id": o.id, "order_number": o.order_number, "status": o.status}
+            {"id": o.id, "order_number": o.number, "status": o.status}
             for o in orders
         ]
     except Exception:
@@ -228,7 +233,9 @@ def _local_search(db: Session, raw_input: str, company_id: str) -> dict:
             .filter(
                 SalesOrder.company_id == company_id,
                 or_(
-                    SalesOrder.order_number.ilike(pattern),
+                    # Same bug, same swallow (see above): `number`, not
+                    # `order_number`. Suggestions returned nothing, silently.
+                    SalesOrder.number.ilike(pattern),
                     Customer.name.ilike(pattern),
                 ),
             )
@@ -240,7 +247,7 @@ def _local_search(db: Session, raw_input: str, company_id: str) -> dict:
                 "id": f"order_{o.id}",
                 "type": "RECORD",
                 "icon": "package",
-                "title": f"Order {o.order_number}",
+                "title": f"Order {o.number}",
                 "subtitle": f"{o.status or 'unknown'}",
                 "action": {"type": "navigate", "route": f"/orders/{o.id}"},
                 "confidence": 0.55,

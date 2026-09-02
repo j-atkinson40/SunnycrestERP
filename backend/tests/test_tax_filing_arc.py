@@ -89,7 +89,7 @@ class TestTheSixAxes:
                 db, co.id,
                 lines=[{"product_id": vault.id, "amount": Decimal("1000.00"),
                         "description": "Vault"}],
-                customer_id=cust.id)
+                customer_id=cust.id, on_date=date.today())
             assert out.tax_amount == Decimal("70.00")
             assert out.source == "jurisdiction"
             assert "Cayuga County, NY" in out.reason
@@ -103,7 +103,7 @@ class TestTheSixAxes:
                 db, co.id,
                 lines=[{"product_id": marker.id, "amount": Decimal("500.00"),
                         "description": "Marker"}],
-                customer_id=cust.id)
+                customer_id=cust.id, on_date=date.today())
             assert out.tax_amount == Decimal("0.00")
             assert out.source == "product_exempt"
             assert out.exempt_lines[0]["reason"] == "product: Memorial Marker — exempt class"
@@ -120,7 +120,7 @@ class TestTheSixAxes:
                     {"product_id": vault.id, "amount": Decimal("1000.00")},
                     {"product_id": marker.id, "amount": Decimal("500.00")},
                 ],
-                customer_id=cust.id)
+                customer_id=cust.id, on_date=date.today())
             assert out.tax_amount == Decimal("70.00")
             assert out.taxable_subtotal == Decimal("1000.00")
             assert out.exempt_subtotal == Decimal("500.00")
@@ -144,7 +144,7 @@ class TestTheSixAxes:
             out = resolve_line_tax(
                 db, co.id,
                 lines=[{"product_id": vault.id, "amount": Decimal("1000.00")}],
-                customer_id=cust.id, sales_order_id=so.id)
+                customer_id=cust.id, sales_order_id=so.id, on_date=date.today())
             assert out.tax_amount == Decimal("0.00")
             assert out.source == "job_certificate"
             assert "job certificate resale (JOB-777)" in out.reason
@@ -162,7 +162,7 @@ class TestTheSixAxes:
             out = resolve_line_tax(
                 db, co.id,
                 lines=[{"product_id": vault.id, "amount": Decimal("1000.00")}],
-                customer_id=cust.id)
+                customer_id=cust.id, on_date=date.today())
             assert out.tax_amount == Decimal("0.00")
             assert out.source == "customer_certificate"
             assert "valid through" in out.reason
@@ -181,7 +181,7 @@ class TestTheSixAxes:
             out = resolve_line_tax(
                 db, co.id,
                 lines=[{"product_id": vault.id, "amount": Decimal("1000.00")}],
-                customer_id=cust.id)
+                customer_id=cust.id, on_date=date.today())
             assert out.tax_amount == Decimal("70.00")
             assert out.source == "jurisdiction"
         finally:
@@ -195,7 +195,7 @@ class TestTheSixAxes:
             out = resolve_line_tax(
                 db, co.id,
                 lines=[{"product_id": vault.id, "amount": Decimal("1000.00")}],
-                customer_id=cust.id)
+                customer_id=cust.id, on_date=date.today())
             assert out.tax_amount == Decimal("70.00")
             assert out.gaps and "exemption flag" in out.gaps[0]
             assert "GAP: exemption flag without certificate" in out.reason
@@ -342,7 +342,7 @@ class TestIsolation:
             out_b = resolve_line_tax(
                 db, co_b.id,
                 lines=[{"product_id": vault_b.id, "amount": Decimal("1000.00")}],
-                customer_id=cust_b.id)
+                customer_id=cust_b.id, on_date=date.today())
             assert out_b.tax_amount == Decimal("70.00")  # B still taxes
 
             # B cannot read A's return
@@ -364,7 +364,7 @@ class TestIsolation:
             out = resolve_line_tax(
                 db, co_b.id,
                 lines=[{"product_id": marker_a.id, "amount": Decimal("500.00")}],
-                customer_id=cust_b.id)
+                customer_id=cust_b.id, on_date=date.today())
             assert out.tax_amount == Decimal("35.00")  # 7% of 500
         finally:
             _cleanup(db, [co_a.id, co_b.id])

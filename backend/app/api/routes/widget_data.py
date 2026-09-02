@@ -395,14 +395,19 @@ def orders_today(
     db: Session = Depends(get_db),
 ):
     """Today's orders for the TodaysServicesWidget."""
-    from app.models.sales_order import SalesOrder
+    from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
 
     today = date.today()
     orders = (
         db.query(SalesOrder)
         .filter(
             SalesOrder.company_id == current_user.company_id,
-            SalesOrder.is_active == True,
+            # `is_active` never existed on this model — the filter raised AttributeError
+            # on every call. Sales orders have no soft-delete; "not active"
+            # means cancelled. Uses CANCEL_SPELLINGS because the column carries
+            # both spellings (sales_order.py:29) and a one-spelling check
+            # silently keeps the other. Same predicate as personalization.py:50.
+            SalesOrder.status.notin_([*CANCEL_SPELLINGS, "void"]),
             SalesOrder.scheduled_date == today,
         )
         .order_by(SalesOrder.scheduled_date)
@@ -415,7 +420,11 @@ def orders_today(
         "orders": [
             {
                 "id": o.id,
-                "order_number": getattr(o, "order_number", None),
+                # Reading `order_number` off the row returned None for EVERY order:
+                # the column is `number` (sales_order.py). The default swallowed it,
+                # so this reported null rather than raising. Response key unchanged —
+                # it is the API contract. Matches internal.py:137, briefings.py:242.
+                "order_number": o.number,
                 "customer_name": getattr(o, "customer_name", None) or getattr(o, "bill_to_name", "Unknown"),
                 "cemetery_name": getattr(o, "cemetery_name", None) or getattr(o, "ship_to_name", None),
                 "service_time": o.scheduled_date.isoformat() if o.scheduled_date else None,
@@ -438,7 +447,12 @@ def orders_pending_summary(
         db.query(SalesOrder.status, func.count(SalesOrder.id))
         .filter(
             SalesOrder.company_id == current_user.company_id,
-            SalesOrder.is_active == True,
+            # `is_active` never existed on this model — AttributeError on every
+            # call. NOT replaced with a cancelled-exclusion here, because the
+            # status allow-list below already excludes every cancelled
+            # spelling: an order can only be counted if its status is one of
+            # these five, and neither "cancelled" nor "canceled" is among them.
+            # Adding a notin_ would be a second filter that can never bind.
             SalesOrder.status.in_(["pending", "scheduled", "in_production", "confirmed", "draft"]),
         )
         .group_by(SalesOrder.status)

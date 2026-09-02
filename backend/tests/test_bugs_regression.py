@@ -79,6 +79,13 @@ def test_sales_order_has_scheduled_date_and_delivered_at_not_delivery_date():
     assert "delivered_at" in cols
     assert "delivery_date" not in cols
     assert "service_date" not in cols
+    # S-2: the two phantoms fixed 2026-09-02. The positive assertions matter as
+    # much as the negative ones — if someone ADDS an `order_number` column the
+    # source ratchet's advice ("use number") becomes wrong, and this catches it.
+    assert "number" in cols
+    assert "order_number" not in cols
+    assert "status" in cols
+    assert "is_active" not in cols
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -117,21 +124,47 @@ def test_no_source_references_contact_tenant_id():
     )
 
 
-def test_no_source_references_sales_order_delivery_or_service_date():
-    """No service or route file references the non-existent SalesOrder
-    columns `delivery_date` or `service_date`."""
-    for rel in (
-        "app/api/routes/operations_board.py",
-        "app/api/routes/widget_data.py",
-        "app/api/routes/company_entities.py",
-    ):
+#: Phantom ``SalesOrder`` attributes: names that are NOT mapped columns, so any
+#: reference raises ``AttributeError`` at query-construction time. Each entry is
+#: (phantom name, what to use instead).
+#:
+#: ⚠️ THIS IS A LITERAL SUBSTRING CHECK OVER WHOLE FILE SOURCE, COMMENTS
+#: INCLUDED. If you need to discuss one of these names in a comment, write it
+#: WITHOUT the ``SalesOrder.`` prefix — otherwise the comment trips the ratchet.
+#: That is deliberate: a check that parsed out comments could be defeated by a
+#: reference the parser mis-classified, and this is the cheaper guarantee.
+_PHANTOM_SALES_ORDER_COLUMNS = (
+    ("SalesOrder.delivery_date", "scheduled_date"),
+    ("SalesOrder.service_date", "scheduled_date"),
+    # S-2, 2026-09-02. Both were live at HEAD and both are in docs/BUGS.md.
+    ("SalesOrder.is_active", "status.notin_([*CANCEL_SPELLINGS, \"void\"]) — "
+                             "sales orders have no soft-delete"),
+    ("SalesOrder.order_number", "number"),
+)
+
+#: Files that reference ``SalesOrder`` and have carried a phantom column.
+#: GROW THIS LIST rather than adding a second ratchet.
+_PHANTOM_SCANNED_FILES = (
+    "app/api/routes/operations_board.py",
+    "app/api/routes/widget_data.py",
+    "app/api/routes/company_entities.py",
+    # added S-2 — carried SalesOrder.order_number at :81 and :231, where the
+    # enclosing `except Exception: pass` swallowed the AttributeError and the
+    # command bar silently resolved zero orders on every search.
+    "app/services/core_command_service.py",
+)
+
+
+def test_no_source_references_phantom_sales_order_columns():
+    """No scanned service or route file references a non-existent SalesOrder
+    column. Table-driven so a new phantom is one tuple, not a new test."""
+    for rel in _PHANTOM_SCANNED_FILES:
         src = _source(rel)
-        assert "SalesOrder.delivery_date" not in src, (
-            f"{rel} references SalesOrder.delivery_date — use scheduled_date."
-        )
-        assert "SalesOrder.service_date" not in src, (
-            f"{rel} references SalesOrder.service_date — use scheduled_date."
-        )
+        for phantom, instead in _PHANTOM_SALES_ORDER_COLUMNS:
+            assert phantom not in src, (
+                f"{rel} references {phantom}, which is not a mapped column — "
+                f"use {instead}."
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════
