@@ -822,7 +822,12 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
 - Go-live date: April 7, 2026
-- Migration head: `r103_focus_templates_edit_session`
+- Migration head: `r174_gl_category_correction` — re-derived 2026-09-01 by reading
+  `alembic_version` on PRODUCTION (`shuttle.proxy.rlwy.net`, db `railway`) through the
+  connection-level read-only guard. The prior claim here was `r103_focus_templates_edit_session`,
+  stale by 71 migrations; AP-1 had already measured r174 and this block was never updated.
+  ⚠️ Adjacent "Build status → Migration files | 135" is stale by the same drift and is NOT
+  corrected here — it was outside the released scope. Re-derive it before quoting it.
 
 ## Build status
 
