@@ -902,6 +902,24 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
   **Unaffected:** the two attribute-bug fixes, the extended ratchet and both FIX-THEN-GATE repairs were verified by targeted runs and break-tests, not by the flag-suppressed sweep.
 
+- **2026-09-03 — S-3a: the RingCentral entrance is half-built, and a webhook signature check failed open for five months.** `<post-commit-hash>`.
+
+  **The fail-open (fixed, `8ab1d13f`).** `_verify_webhook_signature` returned `True` unconditionally when `ENVIRONMENT != "production"`, and returned `True` **in production** when `RINGCENTRAL_CLIENT_SECRET` was unset. Introduced `1e48454b` 2026-04-08, fixed 2026-09-03 — just under five months. Staging reports `environment: "dev"` and its webhook is publicly reachable (HTTP 405 on GET, i.e. routed), so staging's endpoint was an **unauthenticated public writer** into `ringcentral_call_log` for that window. Production's secret is set, so production enforced throughout; the exposure there was conditional. ⚠️ The production half was the worse one: "the secret is set" was true, enforced by nothing, checked by no one, and the day it stopped being true the guard would have gone QUIET. Now fails closed everywhere, with 9 tests including a positive control, both halves break-tested. Gate 158 → 159.
+
+  **The entrance.** The token WRITER exists — `GET .../ringcentral/oauth/callback` (`ringcentral.py:482`) exchanges an authorization code and writes `ringcentral_access_token` / `ringcentral_refresh_token` (both `encrypt_secret` at write — this settles the census's open question #8: **RC tokens are encrypted from birth**), plus `expires_in`, `owner_id`, `connected`. Found by enumerating all 80 `set_setting(` call sites including the five that write a constructed key, not by filtering for the key string.
+
+  ⚠️ **The initiating end does not exist.** No `oauth/authorize` route (app route table enumerated); no RC authorize URL anywhere in `frontend/src`; and the "Connect RingCentral" button at `call-intelligence-settings.tsx:92-95` has **no `onClick` and no `href`**. A tenant cannot be connected to RingCentral by any means present in the product.
+
+  ⚠️ **The connection indicator names the wrong thing.** That page's "Phone system connected" is driven by `connected` from `useCall()`, which is `call-context.tsx:140` — the **SSE stream's** state, not RingCentral's. A tenant with no RC connection sees "connected" whenever the browser's event stream is open.
+
+  ⚠️ **`ringcentral_refresh_token` is written and never read.** Only two occurrences in `app/`, both the write. No `grant_type=refresh_token` for RC, unlike `calendar/oauth_service.py:343,362` and `email/oauth_service.py:313` which both have one. `ringcentral_token_expires_in` is stored and never consulted.
+
+  **Subscription state: NOT determinable from here, and why.** RC was queried read-only with production credentials. `client_credentials` → `OAU-270` (partner-level grant); `password` → **`OAU-251` "Unauthorized for this grant type"**. Structured RC errors rather than transport failures, so the credentials are real and the app is known to RC — and the app is authorized only for `authorization_code`. Listing subscriptions needs an access token; that token needs a flow with no initiator. MEASURED: 0 rows in `ringcentral_call_log` ever, across four tenants; no tenant holds the token key. INFERRED, not proven: this system has never created a subscription. A subscription hand-created in RC's own console remains possible and is not knowable from inside. `RINGCENTRAL_SERVER_URL` is unset, so the default is **production** RingCentral, not sandbox.
+
+  **Provisioning is an arc, not a config step.** Of eight required pieces, two exist (token exchange, encrypted storage) and six are absent: authorize/redirect, refresh, expiry awareness, subscription creation, subscription renewal, and failure visibility. Two of the absences — refresh and renewal — are the kind that work at first and stop silently later. ⚠️ **The September bar assumed a proven chain.** The chain is proven downstream of a boundary nothing crosses. Honest statement: the call pipeline is built and correct from webhook receipt through draft-order creation, and cannot be connected to a phone system by any means present in the product.
+
+  **Fourth instance of one pattern:** `post_invoice` (complete, never called), `legacy_photo_pending` (readers, no writer that can set True), the RC chain (complete downstream of an unbuilt entrance), `ringcentral_refresh_token` (written, never read). Three areas, four discovery methods, none found by a check.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
