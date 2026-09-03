@@ -1953,6 +1953,100 @@ an independent tripwire in CI — the first place it ran where the suppression d
 not travel with it. The tripwire did not catch it by being well designed; it
 caught it by running somewhere the export could not reach.
 
+#### Complete machinery behind an unprovisioned entrance
+
+A subsystem can be fully built, correct, and tested downstream of a boundary
+that nothing ever crosses. Every read site works. Every transformation is right.
+No path produces the input.
+
+This is invisible to code review, which reads the machinery and finds it sound,
+and invisible to tests, which supply the input the entrance would have supplied.
+It surfaces only when someone asks what WRITES the thing, or what CALLS the
+entry point, or how a tenant would ever reach this — and that question is almost
+never asked, because the machinery's correctness is not in doubt.
+
+THE TEST, for any subsystem believed to work:
+
+    "What produces this system's input in production, and has it ever run?"
+
+Three instances, September 2026, two areas, found by three unrelated methods:
+`post_invoice` — complete, never called, eight permanently unreachable invoices.
+`legacy_photo_pending` — six read sites including a board filter and a
+user-visible badge, one write, which sets it False; nothing can raise it.
+The RingCentral chain — webhook through draft-order creation built and correct,
+with no OAuth initiation anywhere, so no tenant can attach a phone system.
+
+CLASS KILLER, owed: a platform-wide read-site/write-site census over boolean
+columns and over service entry points, asking of each whether any code path in
+production produces it. Three instances found by luck is an argument for running
+the census rather than waiting for the fourth.
+
+#### Enumeration defeated by presentation
+
+A correct query can be made uninformative by what happens to its output. A pipe,
+a truncation, or a viewport destroys the property being read while leaving a
+plausible-looking result.
+
+`head -10` cut an enumeration before the writer that falsified the conclusion.
+`tail -30` cut earlier output the same way. `$?` read through a pipe returned
+`tail`'s exit status while `tsc` had exited 2 — the same error at both ends of
+the same pipe.
+
+Never read a status, a count, or a completeness claim through a transform you
+have not accounted for. If the result will be trusted, read it whole, or read
+the status of the process that produced it rather than the last one in the
+chain.
+
+This is the sibling of false absence at a different layer: there, the query was
+wrong; here, the query was right and its output was cut.
+
+#### False presence from a substring match
+
+The mirror of false absence. A filter that matches inside longer names produces
+findings for things that were never there — a search for "ring" matched
+`spring_burial*`.
+
+Both directions fail for the same reason: the query's shape was never checked
+against what it could match. Bound the match, or enumerate and read.
+
+#### Fixtures modeled on the implementation
+
+A test double built from the code under test inherits that code's mistakes and
+then certifies them. A mock declaring `{ apiClient }` against a module that
+default-exports made five tests pass against a member that does not exist.
+
+The check has contact with something — just not with reality. Build fixtures
+from the contract, not from the caller, and where a double stands in for a real
+module, assert the real module's shape somewhere.
+
+Corollary for test SELECTION, not assertion: when replacing a check that
+conflated two things, the tests that matter are the ones where the two DISAGREE.
+Aligned-only cases pass against the defect being fixed. An indicator reading
+SSE-connected as phone-connected is certified green by every test where both are
+true.
+
+#### Reconstruction recovers errors first
+
+Memory of an investigation is not merely lossy; it is biased toward what was
+DISCUSSED. In an investigation, the discussed is disproportionately the errors —
+they get argued about and become canon, while correct findings are recorded once
+and never revisited.
+
+So a document reconstructed from memory will look like a document about what went
+wrong, and will be trusted as a document about what is true. The bias has a
+direction, which makes it predictable and therefore avoidable.
+
+When an investigation's artifact is lost: write a STUB naming what it covered
+and instructing a re-run. Do not produce a best-effort reconstruction. A
+reconstruction that reads as cleanly as the original is the more dangerous
+artifact.
+
+Where reconstruction is unavoidable, mark provenance per claim — unmarked,
+UNCERTAIN, RE-DERIVED, NEW SINCE THE ORIGINAL, LOST — and re-source rather than
+restate. Re-sourcing recovers more than it costs: RingCentral's refresh-token
+rotation, re-read rather than recalled, returned a mechanism the original did
+not have.
+
 ## 12. Business Context
 
 ### Tenant Types

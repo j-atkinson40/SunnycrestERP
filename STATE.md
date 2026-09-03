@@ -973,6 +973,38 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
   Gate 159 → 161. Leak-checked at 902 → 902 with the guard ON, positively controlled by disabling the teardown and confirming the tripwire reports 902 → 904.
 
+**Owed, Sales & Orders campaign, September 2026**
+
+RC provisioning arc — REQUIRED TEST, not a caveat: refresh, then USE the new
+access token, then confirm the old refresh token is dead. RingCentral kills the
+previous refresh token roughly ten seconds after the new access token is used,
+but leaves it valid up to sixty minutes if it is not used. A test that skips the
+use step passes against a broken implementation. Scope doc §5 records this as a
+caveat; the arc's dispatch must carry it as a required test.
+
+RC provisioning arc — must store `ringcentral_subscription_id` at subscription
+creation. `ownerId` identifies the extension, not the subscription, and drifts on
+re-auth and across multiple extensions.
+
+RC integration, standing observation: signature verification that passed when
+unconfigured, `state` repurposed as an unauthenticated tenant selector, a
+first-match tenant resolver, a refresh token written and never read, and an
+expiry stored as a duration with no issue time. Each individually explicable;
+together they indicate an integration built for the intended sequence with
+adversarial and decay cases unwritten. The provisioning arc treats "what does
+this do when it fails" as a first-class deliverable, not a polish pass.
+
+Sales & Orders census — STUB ONLY, lost to /tmp. Re-run required.
+`docs/investigations/mfg_area_audit_02_sales_orders.md` (2026-07-18, HEAD
+a6d20089, derivations intact) covers the same area and holds the structural
+finding a re-run would otherwise rediscover: two parallel quote/order-money
+systems on the same tables — the Order-Station path in `quote_service.py` and
+the AR path in `sales_service.py` — with five further creation paths orbiting
+them. Read it before commissioning the re-run.
+
+Class killer owed: platform-wide read-site/write-site census over boolean
+columns and service entry points.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
