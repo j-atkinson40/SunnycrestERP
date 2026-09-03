@@ -380,6 +380,11 @@ tests/test_task_and_triage.py
 tests/test_tax_filing_arc.py
 tests/test_workflow_headless_extraction.py
 
+# S-3a: the RingCentral webhook signature check, which failed open in every
+# non-production environment and in production with an unset secret, from
+# 2026-04-08 until 2026-09-03. Pure function, no DB, leaks nothing.
+tests/test_ringcentral_webhook_signature.py
+
 # ── S-2 CORRECTION (2026-09-03) ───────────────────────────────────────────
 # 24 of the 62 files added above were REMOVED again the same day. They pass,
 # but they leak companies without teardown — 341 rows across the 24, exactly

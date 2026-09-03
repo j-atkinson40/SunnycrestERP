@@ -41,14 +41,34 @@ router = APIRouter()
 
 
 def _verify_webhook_signature(body: bytes, signature: str | None) -> bool:
-    """Verify RingCentral webhook signature (HMAC-SHA256).
+    """Verify RingCentral webhook signature (HMAC-SHA256). FAILS CLOSED.
 
-    In dev mode or if no client secret configured, skip validation.
+    ⚠️ THIS FAILED OPEN TWICE, FROM 2026-04-08 (`1e48454b`) UNTIL 2026-09-03.
+    It returned True unconditionally outside production, and returned True IN
+    production whenever `RINGCENTRAL_CLIENT_SECRET` was unset. The endpoint it
+    guards writes to `ringcentral_call_log`, so for that window any environment
+    reporting a non-production `ENVIRONMENT` — staging reports `"dev"` — exposed
+    an unauthenticated public writer into the database.
+
+    ⚠️ WHY THE PRODUCTION-SECRET CHECK WAS THE WORSE HALF. "Production's secret
+    is set" was true, enforced by nothing, and checked by no one. The day it
+    stopped being true the guard would have gone QUIET rather than loud — an
+    expired premise living in code rather than in a shell script (CLAUDE.md §11,
+    "Expired premise — and its inherited form"). A missing secret is now a
+    REFUSAL, so that failure is loud in every environment.
+
+    No unconditional pass remains. An unset secret rejects; a missing signature
+    rejects; a mismatched signature rejects.
     """
-    if settings.ENVIRONMENT != "production":
-        return True
     if not settings.RINGCENTRAL_CLIENT_SECRET:
-        return True
+        # Fail closed. An unconfigured integration must refuse traffic, not
+        # accept everything — the alternative is a public write endpoint whose
+        # openness is invisible because nothing reports it.
+        logger.error(
+            "RingCentral webhook rejected: RINGCENTRAL_CLIENT_SECRET is unset. "
+            "The endpoint is refusing all traffic until it is configured."
+        )
+        return False
     if not signature:
         return False
 
