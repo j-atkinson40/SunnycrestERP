@@ -2070,6 +2070,13 @@ Absence is a finding to be established, never a premise to be confirmed.
 This applies to remembered state as much as to expectations. A prior session's account
 of the repo is a hypothesis. Ground against HEAD.
 
+**Deliverables live in the repository.** Investigation output written to /tmp is
+destroyed at the next boot. Findings files, census documents, audits, predictions,
+and scope documents go to `backend/docs/investigations/` and are committed —
+including read-only investigations that produce no code. A conclusion whose
+derivation was deleted becomes a claim with no auditable basis, which is the
+condition canon exists to prevent.
+
 ## Act-side spatial discipline (park, 2026-07)
 
 - SUMMON IS INTENT-SHAPED. Never app-launcher grammar. If a command reads "Open X,"
