@@ -920,6 +920,20 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
   **Fourth instance of one pattern:** `post_invoice` (complete, never called), `legacy_photo_pending` (readers, no writer that can set True), the RC chain (complete downstream of an unbuilt entrance), `ringcentral_refresh_token` (written, never read). Three areas, four discovery methods, none found by a check.
 
+- **2026-09-03 — S-3b: the connection indicator named the wrong thing, and the RC provisioning arc is scoped at 5-6 sessions.** `<post-commit-hash>`.
+
+  **The indicator (fixed, `f2b59df7`).** `call-intelligence-settings.tsx` reported "Phone system connected" from `useCall().connected` — the **SSE stream's** state (`call-context.tsx:140`), not RingCentral's. A tenant with no RC connection read as connected whenever the browser's event stream was open. ⚠️ This mattered more than the gap it concealed: a missing OAuth flow is discoverable when someone clicks the button, but an indicator reporting green for a different proposition guarantees nobody clicks. Now derived from `ringcentral_connected` (set only by the OAuth callback), with unknown and fetch-failure both rendering NOT connected. The SSE stream is still shown, labelled as the browser's connection to Bridgeable. The `useCall` value is renamed at the point of use so the confusion cannot be re-made silently. The Connect button — which had no `onClick` and no `href` — is disabled and labelled. Five tests; the decisive ones are the CROSSED cases (SSE up + RC absent, SSE down + RC present), since aligned-only cases would pass against the original bug. Break-tested both ways. Frontend tests do run in CI (`npm test` = `vitest run`, ci.yml:126).
+
+  ⚠️ **Two live defects found in the one piece that does exist.** `oauth_callback` (`ringcentral.py:482`) uses `state` as the **raw `company_id`** — no nonce, no TTL, no consumption — on a **public GET with no authentication**. Anyone holding a valid RC authorization code can write their tokens into another tenant's settings. Both siblings do this correctly (`calendar/oauth_service.py:147,193`; `email/oauth_service.py:127,163`, 10-minute single-use nonce). Separately, `_resolve_tenant_id` (`ringcentral.py:186-189`) returns the **first** company with `ringcentral_connected`, so the first tenant to connect would capture every inbound call for every tenant; in non-production it falls back to any active company. **Neither is fixed** — both are recorded for the provisioning arc, and both are independent of it.
+
+  ⚠️ **Adjacent, unfixed:** `GET /companies/tenant-settings` (`companies.py:60-69`) returns the settings dict wholesale, including encrypted `ringcentral_access_token` / `_refresh_token`, to any caller with `company.view`.
+
+  **Census open question #8 SETTLED by direct observation: RC tokens are encrypted at the write site.** `encrypt_secret` at `ringcentral.py:534` and `:540`, `decrypt_secret` at use at `:329`. Observed at the writer, not inferred from a neighbouring module.
+
+  **Scope (`/tmp/rc_provisioning_scope.md`): 5-6 sessions.** Two of eight pieces exist. The pattern is fully worked out twice in-repo, so ~2 sessions are transcription from `calendar/oauth_service.py` and `email/oauth_service.py`; ~2 are genuinely new (subscription create + renew — no other integration here maintains a provider-side subscription); ~1.5 is failure visibility. **Refresh and renewal are INSIDE the minimum set**, not adjacent to it: without them the connection works for an hour, or until the subscription expires. Two transfer caveats recorded: RC rotates its refresh token, so the stored value must be replaced on every refresh; and `ringcentral_token_expires_in` is stored as a **duration with no issue time**, which cannot answer "is this expired".
+
+  ⚠️ **RC's subscription TTL was NOT read from RC** — listing subscriptions needs a token this system cannot obtain — so no TTL figure is asserted. The arc must read it from RC's response at creation and store it rather than hardcode it.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
