@@ -851,6 +851,16 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
   The first four are green on the seeded axis and fail **only** because the CI job's database carries no canonical seeds. That is one shared cause with one fix, not four independent problems. The last two fail on both axes and were confirmed to fail in isolation, so neither is order-dependent.
 
+  **Quarantine ownership (ruled 2026-09-03).** The four seed-dependent files are **ONE quarantine with ONE owner: CI seed provisioning.** The CI job migrates a database and stops short of canonical seeds; that is platform infrastructure, not area work. The signature is recorded once against the group. Four gated files for one provisioning fix is the best remaining ratio in this territory — do it soon.
+
+  `test_personalization_studio_step2_urn_vault.py` → owned by the personalization / legacy-image chapter.
+
+  ⚠️ `test_intelligence_phase2c2.py` → **NO OWNER NAMED, 2026-09-03.** Parked deliberately rather than assigned, because inventing an arc to tidy the paperwork is the same error as inventing four owners for the group above. Flag to the Intelligence area when that campaign opens. It is ungated and red, i.e. the saturated condition canonized this session, so its recorded signature is load-bearing. A managed-prompt content mismatch reads more like registry drift than test rot.
+
+  ⚠️ **THE CLOSE WAS INCOMPLETE BY CHOICE. "S-2 complete" does NOT mean "S-2 e2e-verified."** The dispatch's staging seed + Playwright/Claude-API run was not performed. Playwright had failed six consecutive runs on an unchanged `STAGING_CI_BOT_PASSWORD`; running it would have produced a known red that says nothing about this arc and would later read as S-2 having broken something.
+
+  **And that channel is itself a saturated signal, at pipeline altitude.** Six consecutive reds on one unchanged cause means anything that regressed in that window was invisible to staging e2e, and the window's length is not knowable from inside it. Consequence for whoever fixes the credential: **the first green run is a BASELINE, not a confirmation.** Everything that landed during the dark window remains unverified by e2e regardless of what that run says.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
