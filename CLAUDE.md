@@ -1804,6 +1804,115 @@ The distinction is what a green result is evidence OF. A check that would still 
 the defect proves nothing. A check that re-derives from a different direction proves
 something, and is worth its cost.
 
+### Failures in the other direction — negatives, derivations, and dead signals
+
+The preceding section covers checks that are green without being evidence, and
+one remedy catches all eight of them. This section covers a different mechanism,
+and the break test does not detect any of it. These entries are named rather
+than numbered: they are not more shapes of the same kind, and reading them as a
+continuation of the list is itself the error.
+
+Three concern claims that are wrong while looking right. The fourth concerns
+inference rather than checking at all.
+
+#### False absence from a constructed name
+
+The preceding shapes describe checks that pass when they should not. This is the
+mirror: a NEGATIVE result that is not a finding.
+
+A query built around a name you constructed can return nothing while the thing
+exists under a different name. A route path, a pluralized table, a filename
+keyword, a directory prefix glob — all the same object. A miss on any of them is
+a FAILED LOOKUP, not an absence.
+
+THE TEST, applied to every negative result before it is reported:
+
+    "Could this query have returned nothing while the thing exists?"
+
+If yes, the null is uninformative. Re-derive by enumeration: enumerate the app's
+route table rather than grepping path strings; query information_schema rather
+than guessing pluralization; read __tablename__ off the model; walk the
+directory tree rather than matching a naming convention.
+
+Note that a filesystem walk can still fail this test. `app/services/focus*/`
+walks the filesystem and never enters a directory that does not start with
+"focus". The question tests the QUERY, not the querier — which is why it works
+where care does not. No amount of attention distinguishes a constructed name
+from a real enumeration at the moment of writing it.
+
+Discovered September 2026, Sales & Orders census: five distinct false absences
+across four namespaces, none caught by review, each caught only by re-deriving
+with a different method.
+
+#### Conclusion survives, derivation falsified
+
+The worst case is not a wrong conclusion. It is a RIGHT conclusion reached
+through evidence that does not support it.
+
+A wrong conclusion eventually contacts reality and gets corrected. A correct
+conclusion resting on a falsified derivation never does — nothing downstream
+contradicts it, so it is never re-examined, and it is cited later by people with
+no way to know what it rests on.
+
+Consequence: verify derivations on claims you AGREE with. Agreement is not
+confirmation. When an investigation records how a claim was reached, the
+derivation is auditable; when it records only the claim, it is not.
+
+#### Saturated signal
+
+An already-red check cannot report a new failure.
+
+A failing test does not merely stop protecting its territory — it CONCEALS
+subsequent regressions in that territory, because the red it would emit is
+already being emitted for an unrelated reason, and nobody re-reads a test they
+know is broken. Where the check is also ungated, nothing is listening either;
+the two conditions compose, and the composed form is worse than either. The
+detector is correct, its output is correct, its output is being emitted, and its
+information content is zero.
+
+This subsumes the weaker "unwired detector" framing. Unwired describes who is
+listening. Saturated describes whether there is anything new to hear.
+
+OPERATIONAL CONSEQUENCE — quarantine is deliberate saturation:
+
+Every QUARANTINE verdict MUST record the file's exact failure signature at
+quarantine time: error type, message, and count. Not "fails." A quarantined file
+is a saturated signal by policy, which is acceptable only if a later, different
+failure remains distinguishable from the known one. The owning arc re-runs the
+file at its open and diffs against the recorded signature. A changed signature
+is a finding, not a continuation.
+
+The same applies at pipeline altitude. A CI channel red for N consecutive runs
+on a known cause is dark for those N runs, and the window's length is not
+knowable from inside it. When such a channel is repaired, the first green run is
+a BASELINE, not a confirmation — everything that landed during the dark window
+remains unverified by that channel regardless of what the first run says.
+
+Discovered September 2026: test_phase_8_9_agents.py was red on a missing SQLite
+fixture table since before the arc began; a commit added two further missing-table
+dependencies inside that red and was completely invisible.
+
+#### Causation — proximity is not necessity
+
+Sibling to false absence above. That entry tests a query; this tests an
+inference.
+
+    "Could this failure have this cause and also several others?"
+
+A change close in time to a failure, with a readable mechanism connecting them,
+is SUFFICIENT-LOOKING. It says nothing about necessity. The test is running the
+parent commit. If the failure predates the accused change, the mechanism was
+real and irrelevant.
+
+Bisect before naming a cause in writing. A ledger entry naming a specific commit
+will be quoted later without its evidence, so the derivation belongs in the
+entry: which SHAs were run, in what state each was, and whether the conclusion
+came from measurement or inference.
+
+Discovered September 2026: c2d82fe9 was named as the cause of a test failure from
+timing plus code-reading. The test was red at the accused commit's parent. Four
+worktree runs cost less than the entry would have cost being wrong in canon.
+
 ## 12. Business Context
 
 ### Tenant Types

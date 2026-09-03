@@ -54,11 +54,13 @@ The manufacturer’s compositor already exists. The FH version extends it:
 
 Personalization fields in case file (feeds compositor directly): 
 
-- `personalization_name_display` — how name should appear (e.g. “John M. Smith”) 
-
-- `personalization_birth_date_display` — format preference (e.g. “March 15, 1942”) 
-
-- `personalization_death_date_display` — format preference 
+> **Personalization storage (corrected September 2026).** Personalization
+> content is stored as untyped JSONB on the line models. No typed
+> `personalization_*_display` columns exist, and none have ever existed; earlier
+> revisions of this document described a design that was never built. Typing this
+> payload is an open question owned by the legacy image arc — untyped JSONB
+> crossing a tenant boundary into an image render is a silent-failure surface —
+> and this document will describe typed fields only once they exist on the model.
 
 - Photo/image attachment handled within compositor UI — not captured by Scribe 
 
@@ -344,13 +346,6 @@ class CaseDeceased(Base):
 
 ```
     ever_in_armed_forces: Mapped[Optional[bool]]
-```
-
-```
-    # Legacy Compositor personalization — feeds compositor directly
-    personalization_name_display: Mapped[Optional[str]]
-    personalization_birth_date_display: Mapped[Optional[str]]
-    personalization_death_date_display: Mapped[Optional[str]]
 ```
 
 ```
