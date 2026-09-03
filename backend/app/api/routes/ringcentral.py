@@ -158,11 +158,11 @@ async def _handle_telephony_event(db: Session, event_body: dict, payload: dict):
         if not rc_call_id:
             continue
 
-        # Find tenant by matching the callee extension or use the first tenant with RC configured
-        # For now, find tenant from existing call logs or look up via extension mapping
-        tenant_id = _resolve_tenant_id(db, callee_number, party)
+        # Tenant comes from the ENVELOPE's RC identity (subscriptionId /
+        # ownerId), not from the party. `_resolve_tenant_id` logs its own
+        # rejection reason; an unresolvable event is dropped, never defaulted.
+        tenant_id = _resolve_tenant_id(db, payload)
         if not tenant_id:
-            logger.warning("Cannot resolve tenant for RC call %s", rc_call_id)
             continue
 
         if status in ("ringing", "proceeding"):
@@ -173,27 +173,145 @@ async def _handle_telephony_event(db: Session, event_body: dict, payload: dict):
             await _on_call_ended(db, tenant_id, rc_call_id, status, party)
 
 
-def _resolve_tenant_id(db: Session, callee_number: str, party: dict) -> str | None:
-    """Resolve which tenant this call belongs to.
+#: Per-tenant RingCentral identities, most specific first. Both are stored in
+#: `companies.settings_json` by the OAuth callback / the provisioning arc's
+#: subscription creation, and both are matched EXACTLY against the field of the
+#: same meaning in the webhook envelope.
+#:
+#:   ringcentral_subscription_id ← envelope `subscriptionId` — per-subscription,
+#:       so it is one-to-one with the tenant that created the subscription.
+#:       NOT WRITTEN YET: no code creates RC subscriptions (S-3a). The
+#:       provisioning arc must store it when it does.
+#:   ringcentral_owner_id        ← envelope `ownerId` — the extension that owns
+#:       the subscription. Written today by `oauth_callback` from the token
+#:       response's `owner_id`.
+#:
+#: Envelope field names verified against RingCentral's published notification
+#: structure (developers.ringcentral.com, Account Telephony Sessions Event),
+#: not inferred from what this file happened to read.
+_RC_IDENTITY_KEYS: tuple[tuple[str, str], ...] = (
+    ("ringcentral_subscription_id", "subscriptionId"),
+    ("ringcentral_owner_id", "ownerId"),
+)
 
-    Checks ringcentral extension mappings or falls back to the first company
-    with RC credentials configured.
+
+def _envelope_identity(envelope: dict, envelope_field: str) -> str | None:
+    """Read one identity out of the webhook envelope, normalized to a string.
+
+    RingCentral sends `ownerId` as a quoted numeric ("400144455008"); coercing
+    both sides through `str().strip()` keeps a stored int and a delivered
+    string from silently failing to match.
+    """
+    value = envelope.get(envelope_field)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _resolve_tenant_id(db: Session, envelope: dict) -> str | None:
+    """Resolve which tenant this webhook belongs to, or None to REJECT it.
+
+    ⚠️ WHAT THIS REPLACES. Until 2026-09-03 this function returned the FIRST
+    company whose settings carried `ringcentral_connected`, ignoring both of
+    its arguments entirely:
+
+        for company in companies:
+            if (company.settings or {}).get("ringcentral_connected"):
+                return company.id
+        if settings.ENVIRONMENT != "production":
+            return <any active company>
+
+    So the first tenant ever to connect RingCentral would have captured every
+    inbound call for every tenant — call logs, caller identification, AR
+    balances, and the after-call extraction pipeline, all written under the
+    wrong `tenant_id`. Outside production it did not even require a connection:
+    any active company would do, and staging reports `ENVIRONMENT="dev"`.
+
+    ⚠️ `ringcentral_connected` IS STILL READ, AND THAT IS NOT THE OLD BUG. The
+    old code used it as the ONLY predicate and took the first row satisfying
+    it. Here it is a precondition ON TOP OF an exact identity match: a tenant
+    must be connected AND the webhook must name that tenant's stored RC
+    identity. It narrows the candidate set; it never selects from it.
+
+    REJECTION IS THE DEFAULT, IN EVERY ENVIRONMENT. No first match, no fallback
+    to any active company, no dev-mode convenience. An unresolvable webhook is
+    logged and dropped, because the alternative is writing another tenant's
+    call into somebody's database.
+
+    Ambiguity also rejects: if two tenants claim the same RC identity, or if
+    `subscriptionId` and `ownerId` resolve to different tenants, that is a
+    misconfiguration and there is no safe way to guess through it.
+
+    ⚠️ THIS RETURNS None FOR EVERY WEBHOOK TODAY. `ringcentral_owner_id` is
+    written only by `oauth_callback`, which now rejects everything until an
+    authorize endpoint exists (S-3c Part 1), and `ringcentral_subscription_id`
+    is written by nothing at all. Zero tenants have RC identity stored, so
+    nothing resolves. That is correct: no tenant is connected, the Connect
+    button is disabled, and there is no legitimate inbound call to route.
     """
     from app.models.company import Company
 
-    # Check companies with RC configured in settings
-    companies = db.query(Company).filter(Company.is_active == True).all()
-    for company in companies:
+    # `settings_json` is `text`, not JSONB (CLAUDE.md §4 Settings Pattern), so
+    # this cannot be a SQL predicate — the decode happens in Python.
+    index: dict[tuple[str, str], set[str]] = {}
+    for company in db.query(Company).filter(Company.is_active == True).all():  # noqa: E712
         s = company.settings or {}
-        if s.get("ringcentral_connected"):
-            return company.id
+        if not s.get("ringcentral_connected"):
+            continue
+        for setting_key, _ in _RC_IDENTITY_KEYS:
+            stored = s.get(setting_key)
+            if stored is None:
+                continue
+            stored_text = str(stored).strip()
+            if stored_text:
+                index.setdefault((setting_key, stored_text), set()).add(company.id)
 
-    # Fallback: any company (dev mode with single tenant)
-    if settings.ENVIRONMENT != "production":
-        company = db.query(Company).filter(Company.is_active == True).first()
-        return company.id if company else None
+    resolved: str | None = None
+    resolved_via: str | None = None
 
-    return None
+    for setting_key, envelope_field in _RC_IDENTITY_KEYS:
+        delivered = _envelope_identity(envelope, envelope_field)
+        if delivered is None:
+            continue
+        claimants = index.get((setting_key, delivered))
+        if not claimants:
+            continue
+        if len(claimants) > 1:
+            logger.error(
+                "RingCentral webhook rejected: %s %r is claimed by %d tenants. "
+                "Two tenants cannot share one RingCentral identity; refusing to "
+                "guess which one this call belongs to.",
+                envelope_field,
+                delivered,
+                len(claimants),
+            )
+            return None
+        candidate = next(iter(claimants))
+        if resolved is None:
+            resolved, resolved_via = candidate, envelope_field
+        elif candidate != resolved:
+            logger.error(
+                "RingCentral webhook rejected: %s resolves to tenant %s but %s "
+                "resolves to tenant %s. Contradictory stored RC identity.",
+                resolved_via,
+                resolved,
+                envelope_field,
+                candidate,
+            )
+            return None
+
+    if resolved is None:
+        logger.warning(
+            "RingCentral webhook rejected: no connected tenant matches the "
+            "identity it names (subscriptionId=%r, ownerId=%r). Dropping — "
+            "there is no default tenant, in any environment.",
+            _envelope_identity(envelope, "subscriptionId"),
+            _envelope_identity(envelope, "ownerId"),
+        )
+        return None
+
+    return resolved
 
 
 async def _on_call_ringing(
@@ -375,7 +493,10 @@ def _handle_voicemail_event(db: Session, event_body: dict, payload: dict):
     from_data = event_body.get("from", {})
     caller_number = from_data.get("phoneNumber", "")
 
-    tenant_id = _resolve_tenant_id(db, "", {})
+    # Same envelope, same identity fields. The old call passed ("", {}) — both
+    # arguments were ignored, which is how a voicemail for any tenant landed on
+    # whichever tenant happened to be first.
+    tenant_id = _resolve_tenant_id(db, payload)
     if not tenant_id:
         return
 
