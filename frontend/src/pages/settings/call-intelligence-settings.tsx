@@ -2,7 +2,7 @@
 // Provider-agnostic call feature config. RingCentral is one provider option.
 
 import { useEffect, useState } from "react";
-import { apiClient } from "@/lib/api-client";
+import apiClient from "@/lib/api-client";
 import { useCall } from "@/contexts/call-context";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";

@@ -16,8 +16,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockGet = vi.fn();
+// ⚠️ `apiClient` is a DEFAULT export (`api-client.ts:149`). This mock said
+// `apiClient:` and matched a `import { apiClient }` in the page — the mock
+// reproduced the import error, so all five tests were green against a module
+// specifier that does not exist. `tsc -b` was the only thing that could see it,
+// and it was missed because its exit code was read through a pipe to `tail`.
+// Mock the shape the module actually exports, not the shape the caller assumed.
 vi.mock("@/lib/api-client", () => ({
-  apiClient: { get: (...a: unknown[]) => mockGet(...a) },
+  default: { get: (...a: unknown[]) => mockGet(...a) },
 }));
 
 let sseConnected = false;
