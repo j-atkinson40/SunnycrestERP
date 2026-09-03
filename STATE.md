@@ -934,6 +934,45 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
   ⚠️ **RC's subscription TTL was NOT read from RC** — listing subscriptions needs a token this system cannot obtain — so no TTL figure is asserted. The arc must read it from RC's response at creation and store it rather than hardcode it.
 
+- **2026-09-03 — S-3c: two live defects in the RingCentral callback, fixed ahead of the arc.** `<post-commit-hash>`.
+
+  Both were in shipped code, both independent of the provisioning arc, both small in patch size. One was a cross-tenant write on an unauthenticated public GET.
+
+  **Part 1 — `state` was a tenant selector, not a CSRF token (fixed).** `oauth_callback` read its `state` query parameter as a raw `company_id` and wrote RingCentral tokens into whatever company it named — on a public, unauthenticated GET, where `state` is attacker-supplied by construction. Anyone holding a valid RC authorization code, trivially obtained from their own free RC account, could write their tokens into any tenant's settings. Live from `1e48454b` (2026-04-08) to 2026-09-03, alongside the fail-open signature check in the same file.
+
+  Now an opaque, single-use, TTL-bounded nonce in the platform-shared `oauth_state_nonces` table (Email r64) — **no migration**, the `provider_type` column takes arbitrary strings and `"ringcentral"` is disjoint from Calendar's and Email's values. Helper at `app/services/ringcentral_oauth_state.py`.
+
+  **What transferred from the siblings and what did not.** Transferred verbatim from `calendar/oauth_service.py` and `email/oauth_service.py`: the table, `secrets.token_urlsafe(32)`, the ten-minute TTL, single-use via the `consumed_at` flip, and the rejection ladder. **Did NOT transfer:** the siblings' `validate_and_consume_state_nonce` takes `tenant_id` and `user_id` as inputs to be MATCHED, because their callbacks are authenticated and the nonce is a cross-check. RingCentral's callback has no session — RC redirects the browser to it directly — so here the nonce row is the **source** of the company binding, not a check on one. There is deliberately no `tenant_id` parameter, because accepting one would reintroduce the exact defect. This module's validate is strictly less permissive than the siblings', not more: it has fewer inputs to be lied to with.
+
+  ⚠️ **The callback now rejects every request, on purpose.** Nothing mints nonces yet — no authorize endpoint exists (S-3a) — so no nonce validates. A callback that rejects all input is strictly better than one that accepts hostile input, and the Connect button is already disabled (S-3b). `issue_state_nonce` is built now so the arc's authorize endpoint has correct minting waiting for it rather than inventing its own under schedule pressure.
+
+  12 tests. The decisive one is `test_state_naming_tenant_b_writes_nothing` — the CROSSED case, where the request names a tenant it must not reach. Every other test in the file would also pass against the original code, which already rejected an empty state and 404'd on an unknown one; "unknown state rejected" certifies the defect rather than the fix. Break-tested: restoring `company_id = state` returns **302 and writes tenant B's tokens** — the cross-tenant write reproduced, then blocked.
+
+  ⚠️ **One test was found to be claiming a property it did not prove, by break-testing.** `test_callback_nonce_is_single_use_at_the_route` asserted the post-consumption `db.commit()` was load-bearing; deleting that commit left the test green, because the handler's later commit flushes `consumed_at` alongside the token writes. Its success condition was invariant under the failure it named (CLAUDE.md §11, shape 7). The commit's real job is the FAILURE path — a failed token exchange unwinds the request and rolls the flip back, making the nonce replayable for anyone who can make the exchange fail. `test_nonce_is_burned_even_when_the_token_exchange_fails` was added and is the only test that goes red when the commit is removed. The docstring now records the correction rather than the original claim.
+
+  **Part 2 — `_resolve_tenant_id` returned the first row (fixed).** It ignored both of its arguments and returned the first company carrying `ringcentral_connected`, with a non-production fallback to any active company. The first tenant ever to connect would have captured every inbound call for every tenant — call logs, caller identification, AR balances in the screen-pop, and the after-call extraction pipeline, all under the wrong `tenant_id`. Staging reports `"dev"`, so the fallback was live wherever it mattered.
+
+  **Resolution is now by exact identity, determined by enumeration.** The 26-column `ringcentral_call_log` schema carries an `extension_id` that nothing ever writes; the per-tenant RC identity that exists is `ringcentral_owner_id`, written by the OAuth callback from the token response. RingCentral's published notification envelope (developers.ringcentral.com, Account Telephony Sessions Event) carries `subscriptionId` and `ownerId` at top level — read from RC's documentation, not from what this handler happened to parse. The resolver matches `subscriptionId` → `ringcentral_subscription_id` and `ownerId` → `ringcentral_owner_id`, both exact, both coerced through `str().strip()` on each side.
+
+  **Rejection is the default in every environment.** No first match, no fallback, no dev-mode convenience — the non-production branch is removed outright. Ambiguity also rejects: two tenants claiming one identity, or `subscriptionId` and `ownerId` resolving to different tenants. `ringcentral_connected` is still read, but as a **precondition on top of** an exact match — it narrows the candidate set and never selects from it, which is what the old code did with it.
+
+  ⚠️ **This returns None for every webhook today, and that is correct.** `ringcentral_subscription_id` is written by nothing (no code creates RC subscriptions), and `ringcentral_owner_id` is written only by the callback, which now rejects everything. Zero tenants have RC identity stored, no tenant is connected, and there is no legitimate inbound call to route.
+
+  **Design constraint on the arc, surfaced not papered over:** the envelope DOES carry an identifier, so no STOP was triggered — but the arc must **store `ringcentral_subscription_id` at subscription creation**. Without it, resolution rests on `ownerId` alone, which identifies the subscribing extension rather than the subscription, and a tenant with multiple extensions or a re-authorized connection can drift off it.
+
+  12 tests. Break-tested against the original body: 11 of the 12 go red and the one that survives is the positive control — the case the old code got right by accident. Four further targeted breaks (ambiguity check, contradiction check, `ringcentral_connected` precondition, `str()` coercion) each turn exactly one test red.
+
+  **Part 3 — logged, not fixed. Owning arc: RC provisioning.**
+  - `GET /companies/tenant-settings` returns the settings dict including encrypted RC token material to the browser. Encrypted at rest does not make it appropriate as an API response body.
+  - `ringcentral_token_expires_in` is stored as a duration with no issue time and cannot answer whether the token is expired.
+  - RC rotates refresh tokens; the stored value must be replaced on every refresh or the next one fails.
+
+  **A fourth, found while fixing Part 1 — also logged, not fixed.** The callback's `redirect_uri` outside production is `{FRONTEND_URL}/settings/call-intelligence`, a frontend page rather than the callback endpoint; only the production branch points at the API. The token exchange's `redirect_uri` must equal the one used in the authorize request, so the arc has to make these one value derived in one place. This is why nonce validation deliberately does **not** check `redirect_uri` — binding to a currently-wrong value would have coupled the fix to a defect it does not own.
+
+  **The framing this belongs to.** Three defects on one integration now: a signature check that passed when unconfigured, a CSRF parameter repurposed as a tenant selector, and a resolver that returned the first match — plus a refresh token stored and never read and an expiry stored in a form that cannot answer whether it expired. Individually explicable; together they say **RingCentral was built as a happy path, with every adversarial and decay case unwritten.** It was written to work once, by someone who knew the intended sequence, and never against the case where something arrives wrong or time passes. The provisioning arc should treat "what does this do when it fails" as a first-class deliverable rather than a polish pass.
+
+  Gate 159 → 161. Leak-checked at 902 → 902 with the guard ON, positively controlled by disabling the teardown and confirming the tripwire reports 902 → 904.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
