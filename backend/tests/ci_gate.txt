@@ -342,16 +342,13 @@ tests/test_audit_health_tasks_hc1.py
 # test_phase_8_9_agents.py's pre-existing red for weeks.
 # ═══════════════════════════════════════════════════════════════════════════
 tests/test_activity_log_types.py
-tests/test_ar_single_post.py
 tests/test_bugs_regression.py
 tests/test_calendar_step3_email_itip_routing.py
 tests/test_calendar_step3_itip_inbound.py
 tests/test_calendar_step4_action_types.py
-tests/test_calendar_step5_cross_surface.py
 tests/test_command_bar_latency.py
 tests/test_command_bar_portal.py
 tests/test_command_bar_portal_latency.py
-tests/test_command_bar_resolver.py
 tests/test_documents_arc_4b2a_mention_substrate.py
 tests/test_documents_d1.py
 tests/test_documents_d2.py
@@ -361,38 +358,19 @@ tests/test_documents_d5_signing.py
 tests/test_documents_d6_sharing.py
 tests/test_documents_d7_delivery.py
 tests/test_documents_d9.py
-tests/test_draft_invoice_system_actor.py
-tests/test_email_primitive_step2.py
-tests/test_email_primitive_step3.py
-tests/test_email_primitive_step4a.py
-tests/test_email_primitive_step4b.py
-tests/test_email_primitive_step4c.py
 tests/test_focus_draft_persistence.py
 tests/test_intelligence_phase2c0a.py
 tests/test_intelligence_phase2c0a_lint.py
 tests/test_intelligence_phase2c0b.py
 tests/test_intelligence_phase2c3.py
 tests/test_intelligence_phase2c4.py
-tests/test_invoice_statement_workflow.py
-tests/test_legacy_generation_headless.py
-tests/test_legacy_order_end_to_end.py
 tests/test_month_end_close_agent.py
 tests/test_notification_category_types.py
-tests/test_peek_api.py
-tests/test_peek_latency.py
-tests/test_personalization_studio_phase1b_api.py
-tests/test_personalization_studio_phase1d_workshop.py
-tests/test_personalization_studio_phase1f_documentshare.py
-tests/test_personalization_studio_phase1g_demo_seed.py
 tests/test_personalization_studio_r75_consent.py
 tests/test_personalization_studio_r76_instances.py
 tests/test_phase_3_4_5_agents.py
 tests/test_phase_8_9_agents.py
 tests/test_quote_unification_u23.py
-tests/test_saved_view_execute_latency.py
-tests/test_saved_view_preview.py
-tests/test_saved_view_preview_latency.py
-tests/test_saved_views.py
 tests/test_seed_fh_demo_r2_optional.py
 tests/test_smtp_hardening.py
 tests/test_so_class_killers.py
@@ -400,6 +378,21 @@ tests/test_so_creation_paths.py
 tests/test_so_lifecycle.py
 tests/test_task_and_triage.py
 tests/test_tax_filing_arc.py
-tests/test_vault_schedule_widget.py
-tests/test_vault_v1fg_vault_item_hygiene.py
 tests/test_workflow_headless_extraction.py
+
+# ── S-2 CORRECTION (2026-09-03) ───────────────────────────────────────────
+# 24 of the 62 files added above were REMOVED again the same day. They pass,
+# but they leak companies without teardown — 341 rows across the 24, exactly
+# the count the session-scoped COMPANY LITTER tripwire reported in CI.
+#
+# They were gated because every local harness script in that arc exported
+# BRIDGEABLE_ALLOW_COMPANY_LITTER=1. The guard was off for every "verified
+# green" measurement, so the verification could not have failed this way.
+# That is the counterweight in CLAUDE.md section 11 — the tripwire earns its
+# keep precisely because it does not trust the per-fixture cleanup it watches
+# — violated by the arc that landed it.
+#
+# THE FIX IS NEVER TO SET THAT FLAG IN CI. Owning arc: test hygiene / the
+# company-litter ratchet. Each file's exact leak count is recorded in STATE.md
+# so a later, different leak is distinguishable from the known one.
+# ── end S-2 correction ────────────────────────────────────────────────────

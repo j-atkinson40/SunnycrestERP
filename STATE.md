@@ -861,6 +861,47 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
   **And that channel is itself a saturated signal, at pipeline altitude.** Six consecutive reds on one unchanged cause means anything that regressed in that window was invisible to staging e2e, and the window's length is not knowable from inside it. Consequence for whoever fixes the credential: **the first green run is a BASELINE, not a confirmation.** Everything that landed during the dark window remains unverified by e2e regardless of what that run says.
 
+- **2026-09-03 — S-2 CORRECTION: 24 of the 62 gated files leak companies, and I gated them because I had turned the detector off.** `<post-commit-hash>`.
+
+  CI on `2101bff3` failed with **2571 passed + 1 error**: the session-scoped COMPANY LITTER tripwire — *"started with 1 companies and ended with 342 — 341 row(s) were created without teardown."*
+
+  **Cause, stated plainly: every local harness script in S-2 exported `BRIDGEABLE_ALLOW_COMPANY_LITTER=1`.** It was set once, early, for an unrelated reason, then inherited by the bare-axis runner, the seeded-axis runner, the gate baseline and the final 182-file verification without ever being re-examined. Every "verified green on a fresh bare DB" in the S-2 entry above was produced with the guard disabled, and therefore **could not have failed this way**. That is the counterweight in CLAUDE.md §11 — the tripwire earns its keep precisely because it does not trust the per-fixture cleanup it watches — violated by the arc that landed it. It is also the expired-boilerplate shape: a flag true when written, never re-derived, because it was never the subject of the work.
+
+  **Per-file leak signatures**, measured with the guard ON, one file per session against a freshly migrated DB. The 24 sum to **exactly 341**, reconciling with CI's session aggregate — so this is the complete set, not a sample:
+
+  | file | companies leaked |
+  |---|---|
+  | `test_ar_single_post.py` | 1 |
+  | `test_calendar_step5_cross_surface.py` | 24 |
+  | `test_command_bar_resolver.py` | 14 |
+  | `test_draft_invoice_system_actor.py` | 1 |
+  | `test_email_primitive_step2.py` | 21 |
+  | `test_email_primitive_step3.py` | 13 |
+  | `test_email_primitive_step4a.py` | 27 |
+  | `test_email_primitive_step4b.py` | 26 |
+  | `test_email_primitive_step4c.py` | 18 |
+  | `test_invoice_statement_workflow.py` | 2 |
+  | `test_legacy_generation_headless.py` | 2 |
+  | `test_legacy_order_end_to_end.py` | 1 |
+  | `test_peek_api.py` | 12 |
+  | `test_peek_latency.py` | 1 |
+  | `test_personalization_studio_phase1b_api.py` | 20 |
+  | `test_personalization_studio_phase1d_workshop.py` | 27 |
+  | `test_personalization_studio_phase1f_documentshare.py` | 39 |
+  | `test_personalization_studio_phase1g_demo_seed.py` | 18 |
+  | `test_saved_view_execute_latency.py` | 1 |
+  | `test_saved_view_preview.py` | 12 |
+  | `test_saved_view_preview_latency.py` | 1 |
+  | `test_saved_views.py` | 31 |
+  | `test_vault_schedule_widget.py` | 19 |
+  | `test_vault_v1fg_vault_item_hygiene.py` | 10 |
+
+  **Repair: the 24 are removed from `ci_gate.txt`.** Gate 182 → **158** (120 original + 38 clean additions). Re-verified with the guard ON and the environment asserted clean: **2185 passed, 5 skipped, 0 failed, 0 errors, 274.10s.** That green was then positively controlled — a known leaker run in the same configuration produces the tripwire error — so the guard demonstrably *can* fire here.
+
+  ⚠️ **THE FIX IS NEVER TO SET THAT FLAG IN CI.** Owning arc: test hygiene / the company-litter ratchet (`tests/_cleanup.py::purge_companies_by_slug`). The 24 files pass their assertions; they fail a hygiene criterion, and the signatures above let the owning arc diff rather than re-discover.
+
+  **Unaffected:** the two attribute-bug fixes, the extended ratchet and both FIX-THEN-GATE repairs were verified by targeted runs and break-tests, not by the flag-suppressed sweep.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
