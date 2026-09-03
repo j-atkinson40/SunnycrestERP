@@ -2072,7 +2072,7 @@ of the repo is a hypothesis. Ground against HEAD.
 
 **Deliverables live in the repository.** Investigation output written to /tmp is
 destroyed at the next boot. Findings files, census documents, audits, predictions,
-and scope documents go to `backend/docs/investigations/` and are committed —
+and scope documents go to `docs/investigations/` and are committed —
 including read-only investigations that produce no code. A conclusion whose
 derivation was deleted becomes a claim with no auditable basis, which is the
 condition canon exists to prevent.

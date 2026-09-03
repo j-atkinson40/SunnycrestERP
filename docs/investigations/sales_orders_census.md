@@ -91,6 +91,18 @@ recovers what was wrong.
 
 ## 4. What the next arc should do
 
+**Start from the July audit, which survived.**
+`docs/investigations/mfg_area_audit_02_sales_orders.md` (288 lines, 2026-07-18,
+HEAD `a6d20089`) is a read-only audit of this same area, anchored and committed.
+It is not the census and does not replace it — it predates it by six weeks and
+was scoped as a ledger rather than an inventory — but it covers the same
+territory with its derivations intact, and its structural finding (two parallel
+quote/order-money systems on the same tables: the Order-Station path in
+`quote_service.py` and the AR path in `sales_service.py`, with five more creation
+paths orbiting them) is the kind of claim the census was rebuilding toward.
+
+It survived for exactly one reason: it was committed to the repository.
+
 **Re-run the census.** Do not inherit from this file, and do not inherit any
 claim attributed to the census that is not re-derived. The two downstream
 conclusions that survive independently — the corrected 72-file test inventory
