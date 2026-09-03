@@ -1913,6 +1913,46 @@ Discovered September 2026: c2d82fe9 was named as the cause of a test failure fro
 timing plus code-reading. The test was red at the accused commit's parent. Four
 worktree runs cost less than the entry would have cost being wrong in canon.
 
+#### Expired premise — and its inherited form
+
+A stated premise is not a check. It does not go green or red; it is simply true
+when written and, sometimes, false later. Nothing signals the transition. The
+sentence reads exactly the same on the day it stops being true as on the day it
+was written.
+
+This is why standing instructions, dispatch boilerplate, and carried-forward
+context require re-derivation rather than review. Reading a stale line does not
+reveal that it is stale.
+
+**Inherited form.** The mechanism is much harder to see when the expired thing
+is inherited rather than copied. A dispatch is READ each time it is used; an
+environment variable, config default, seed flag, or CI setting is INHERITED — it
+rides into successive contexts without ever being the subject of any of them. It
+was a decision once, under conditions that have since expired, and then it
+stopped being a decision while continuing to have effects. What makes it
+invisible is precisely that it was never anyone's topic.
+
+The exposure test is not "is this still true" — nobody asks that of a line they
+are not reading. It is:
+
+    "What is in force here that nothing in this session decided?"
+
+Enumerate the inherited state at the start of any run whose result will be
+trusted, and re-derive anything that suppresses a guard.
+
+**Design criterion for guards.** A guard you can silence from the same place you
+write the code protects you from mistakes and not from yourself. Grade every
+guard on whether it runs somewhere the person who could disable it does not
+reach. This is a stronger property than the guard's design quality and should be
+stated separately when a guard is added.
+
+Discovered September 2026: a test-data guard was disabled by a flag set once for
+a real reason, which then rode into four successive scripts as boilerplate. It
+was never re-examined because it was never any script's topic. It was caught by
+an independent tripwire in CI — the first place it ran where the suppression did
+not travel with it. The tripwire did not catch it by being well designed; it
+caught it by running somewhere the export could not reach.
+
 ## 12. Business Context
 
 ### Tenant Types
