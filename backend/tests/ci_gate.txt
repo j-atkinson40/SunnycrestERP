@@ -385,6 +385,14 @@ tests/test_workflow_headless_extraction.py
 # 2026-04-08 until 2026-09-03. Pure function, no DB, leaks nothing.
 tests/test_ringcentral_webhook_signature.py
 
+# S-3c Part 1: `state` was read as a raw company_id on a public unauthenticated
+# GET, so anyone with a RingCentral authorization code from their own account
+# could write their tokens into any tenant. Creates companies and tears them
+# down in a module-scoped fixture; leak-checked at 902 -> 902 with the guard ON,
+# positively controlled by disabling the teardown and confirming the tripwire
+# reports 902 -> 904.
+tests/test_ringcentral_oauth_state.py
+
 # ── S-2 CORRECTION (2026-09-03) ───────────────────────────────────────────
 # 24 of the 62 files added above were REMOVED again the same day. They pass,
 # but they leak companies without teardown — 341 rows across the 24, exactly

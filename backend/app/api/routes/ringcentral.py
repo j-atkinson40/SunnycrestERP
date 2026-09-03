@@ -487,22 +487,56 @@ async def oauth_callback(
 ):
     """Exchange OAuth authorization code for RC access/refresh tokens.
 
-    Stores tokens in company.settings JSONB (same pattern as DocuSign/QBO).
+    Stores tokens in company.settings (same pattern as DocuSign/QBO).
+
+    ⚠️ `state` IS A NONCE, NOT A TENANT SELECTOR. From `1e48454b` (2026-04-08)
+    until 2026-09-03 this handler read `state` as a raw `company_id` on a
+    public unauthenticated GET, so anyone with a RingCentral authorization
+    code from their own account could write their tokens into any tenant's
+    settings. The company binding now comes from server-side state created at
+    initiation — see `app/services/ringcentral_oauth_state.py`, which also
+    records what did and did not transfer from the two correct sibling
+    implementations.
+
+    ⚠️ THIS REJECTS EVERY REQUEST TODAY, DELIBERATELY. No authorize endpoint
+    exists yet, so nothing mints nonces, so no nonce validates. A callback that
+    rejects all input is strictly better than one that accepts hostile input,
+    and the Connect button is already disabled (S-3b).
     """
     import httpx
+
+    from app.services.ringcentral_oauth_state import (
+        RingCentralOAuthStateInvalid,
+        validate_and_consume_state_nonce,
+    )
 
     if not settings.RINGCENTRAL_CLIENT_ID or not settings.RINGCENTRAL_CLIENT_SECRET:
         raise HTTPException(status_code=500, detail="RingCentral OAuth not configured")
 
-    # State contains company_id
-    company_id = state
-    if not company_id:
-        raise HTTPException(status_code=400, detail="Missing state (company_id)")
+    # Consume BEFORE the token exchange. A nonce burned by a failed exchange
+    # costs the user a restart; a nonce still live during an exchange is a
+    # retry window on a public endpoint.
+    try:
+        nonce_row = validate_and_consume_state_nonce(db, nonce=state)
+    except RingCentralOAuthStateInvalid as exc:
+        logger.warning("RingCentral OAuth callback rejected: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+
+    # THE BINDING. Read off the consumed nonce — never off a request parameter.
+    company_id = nonce_row.tenant_id
+
+    # Commit the consumption on its own. Without this the `consumed_at` flip
+    # is only flushed, so any later failure in this handler rolls it back and
+    # the nonce becomes replayable — single-use that is only single-use on the
+    # happy path is not single-use.
+    db.commit()
 
     from app.models.company import Company
 
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
+        # The nonce's tenant vanished between initiation and callback. Reject;
+        # there is no other company this could reasonably mean.
         raise HTTPException(status_code=404, detail="Company not found")
 
     # Exchange code for tokens
