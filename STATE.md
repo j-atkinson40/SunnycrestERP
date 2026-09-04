@@ -1109,14 +1109,66 @@ Measured; the operational meaning is not established.
 growing. By tenant: hopkins-fh **6,037**, sunnycrest **2,046**, st-marys 95,
 testco 14. `hopkins-fh` has 6,037 pending approvals and zero data of any kind, so
 the count is mostly manufactured by the per-tenant sweep rather than a backlog of
-real decisions — which means a real decision would now be buried in it. And
-nothing reports it: all eleven triage queues fire zero notifications (STATE
-2026-05-26), so 2,046 pending approvals on the live tenant have accumulated
-unannounced. Not triaged here; surfaced for scoping.
+real decisions — which means a real decision would now be buried in it. ⚠️ **THE CLAIM THAT FOLLOWED HERE WAS FALSE AND IS CORRECTED BELOW** (see the
+2026-09-04 approval-queue entry): this entry originally said "nothing reports
+it: all eleven triage queues fire zero notifications, so 2,046 pending
+approvals have accumulated unannounced." Measured: **2,643
+`agent_anomaly_pending` notifications fired between 2026-05-23 and 2026-09-03**,
+and sunnycrest holds **2,179 unread**. They were announced; nobody read them.
+The "11/11 fire zero" figure came from a 2026-05-26 entry that a LATER entry the
+same day superseded when the (c) build arc wired producer-site notifications.
+Inherited without asking when it last worked.
 
 Adjacent, unexamined: `agent_jobs.status` carries both `complete` (2,464) and
 `completed` (804). Two spellings of one terminal state is how a status filter
 becomes silently wrong.
+
+**2026-09-04 — The approval queue is ~50 decisions wearing 8,192 rows, and the
+notification claim I made this morning was false.**
+
+Derivation: `docs/investigations/2026-09-04-approval-queue.md`. Read-only.
+
+**Two populations, neither a backlog.** 6,130 rows carry `anomaly_count=0` — all
+on hopkins-fh/st-marys, all stopping 2026-07-16/17, orphaned residue from a bug
+fixed then (`base_agent._nothing_to_approve` now suppresses exactly this).
+2,062 rows do carry a finding, but sunnycrest's 2,018 each have
+`anomaly_count=1`, and platform-wide the unresolved anomalies resolve to
+**`expense_no_gl_mapping`: 1,825 rows, ONE distinct description**, plus
+`expense_classification_failed`: 192 rows, one description. **The actionable
+content of the whole queue is ~50 distinct conditions** — 24
+`collections_critical` + 23 `collections_follow_up`, which have distinct
+descriptions per row.
+
+**Driver:** `wf_sys_expense_categorization` runs `*/15 * * * *` = 96 runs/day
+per tenant, one job per run, and `_run_per_tenant` sweeps every active tenant
+with no data-presence predicate. Growth ran at 96–98/day and **collapsed to 2/day
+on 2026-09-01 — not a repair.** No code shipped; the uncategorized line cleared,
+so runs now find nothing. The next unmapped line resumes it.
+
+⚠️ **THE FRAGMENT CONTRACT CATCHES THIS, which is its first live test against
+pre-existing code.** `base_agent` writes `provenance_ref_id=self.job_id` — the
+RUN's id — so the substrate's `(provenance_kind, provenance_ref, event_kind)`
+uniqueness can never fire. The contract requires instances keyed on the
+CONDITION; a deferred prompt keyed on a run gets a new identity 15 minutes later
+and returns, defeating deferral entirely. Deferral is unimplementable against a
+run-keyed condition. Recorded as evidence the contract's discipline works.
+
+⚠️ **TWELVE queues, not eleven.** `reconciliation_review_triage` was added
+2026-08-03 (`16bd8829`), after the 11/11 audit, and has never been assessed. Six
+queues measured firing notifications; six not established — the `else: return`
+in `base_agent` says they "have their own producer sites or no notification
+scope yet," which is two different answers.
+
+**No unprovisioned-entrance instance here** — the notification path exists, is
+reachable, and fires prolifically. Reported as a negative because it was asked
+for.
+
+Every remedy is a production write and is James's: re-key on the entity, retire
+the 6,130 orphans, dedupe the re-raises, decide the cron, classify the six,
+assess the twelfth. None run.
+
+Adjacent: `agent_jobs.status` has both `complete` (2,464) and `completed` (804);
+1,289 unread `delivery_failed` notifications; 3,915 unread notifications total.
 
 ## Production
 
