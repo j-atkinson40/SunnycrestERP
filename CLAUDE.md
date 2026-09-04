@@ -1825,6 +1825,29 @@ unnecessary. If the shape can only be named, name it — recognition is worth
 having, and most of these could not be removed. But an entry that could have
 been a deletion is a rule that will be followed until the day it matters.
 
+### Figures in dispatches are never inherited
+
+Every dispatch that states a figure — a count, a file list, a set of sites, a row total —
+carries an instruction not to inherit it. The instruction is unconditional. It is not
+applied where uncertainty is felt, because the figures it catches are the ones nobody
+thought to check.
+
+Measured 2026-09-04: the line caught two figures in a single dispatch cycle. A universal
+claim about entity-id coverage, produced by a query ending `LIMIT 6` and reported without
+its bound. And a phase count of 41, produced by subtracting 4 from 45 where the 4 counted
+agents and the 45 counted sites. Both authors were confident. Neither figure survived
+re-derivation.
+
+This is the removal criterion applied to dispatch authorship: a figure that cannot be
+inherited cannot be inherited wrongly. The alternative — asking the reader to notice when
+a number looks uncertain — fails at exactly the cases that matter, because confidence is
+not correlated with correctness.
+
+Corollary: a dispatch's own scope figures are subject to its own method constraints. A
+brief that imposes enumeration discipline and then populates its question list from an
+inherited file list has violated itself. This has happened; see the services/pulse
+sixfold undercount, 2026-09-04.
+
 ### Checks that are green without being evidence
 
 Extracted 2026-09-01 from the accounting arc's working record, which carries shapes
