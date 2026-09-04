@@ -2205,6 +2205,36 @@ including read-only investigations that produce no code. A conclusion whose
 derivation was deleted becomes a claim with no auditable basis, which is the
 condition canon exists to prevent.
 
+### Filing test: where a finding goes
+
+DECISIONS records why a decision was made. It binds nothing, and CLAUDE.md's read order
+says it is opened only when a session needs to understand why something is the way it
+is. CLAUDE.md binds behavior and is read every session.
+
+Therefore: if a finding changes what a session should DO, it lands in CLAUDE.md.
+DECISIONS may reference it. A rule filed where it will not be read is not in force,
+however well written.
+
+This is not hypothetical. The persistent-storage rule (investigation deliverables to
+docs/investigations/, never /tmp/) was landed in DECISIONS on 2026-05-27 in response to
+a /tmp rotation that destroyed ~35,500 words. Four months later a second loss occurred
+the same way, under that rule. The rule was sound; its filing location was not.
+
+Corollary: when a rule is violated by someone who would have followed it, check where it
+was filed before concluding anything about discipline.
+
+Two method shapes belong here for the same reason — both are things a session must do,
+not things it must know:
+
+**The count that measured the wrong unit.** `grep -c` counts matching lines, not
+occurrences. The failure is invisible because the result is well-formed and plausible.
+Always report the unit measured. Distinct from enumeration-defeated-by-presentation,
+where members are hidden rather than the unit being wrong.
+
+**Fixtures modeled on the implementation.** A test that passes because it shares the
+code's wrong assumption. Fixtures must be derived from the specification or from real
+data, never from reading the implementation being tested.
+
 ## Act-side spatial discipline (park, 2026-07)
 
 - SUMMON IS INTENT-SHAPED. Never app-launcher grammar. If a command reads "Open X,"

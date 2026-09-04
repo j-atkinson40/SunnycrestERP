@@ -1543,3 +1543,32 @@ the §1a and §3 rewrites ship in the same commit that removes it. And the pulse
 ComponentKind moves from out-of-scope to in-scope: with no users, the CHECK constraint
 migration is cheap, and carrying a dead kind forward is the more expensive path.
 Whether the kind is retired or renamed depends on the salvage finding.
+
+---
+
+## 2026-09-04 — Corrections to the fragment-contract entries, and synthesis moves server-side
+
+Three corrections to the 2026-09-04 entries, recorded rather than edited, since this log
+is append-only.
+
+First, the claim that pulse_subscriber receives three task lifecycle event types is
+wrong; it registers five, adding task_completed and task_cancelled. The error entered
+canon from a docstring excerpt rather than the registration call.
+
+Second, the claim that fragment regeneration "adopts" that stream was overstated in two
+directions. The task lifecycle is one material-change source among several, not the
+source. And invalidate_for_user performs whole-user eviction across every work-areas hash
+and minute window, which is the wrong granularity: re-composing everything re-words
+everything, defeating the wording stability the fragment contract identifies as the
+precondition for trust. Fragment-keyed invalidation is new work, not adoption. Reading
+"already emits the right events" as "already has the right invalidation" conflated two
+different claims about the same subscriber.
+
+Third, and substantively: prose synthesis moves server-side. anomaly_layer_service states
+deliberately that synthesis belongs in the frontend because prose is a presentation
+concern. That position is correct in general and wrong under this contract. "Every
+factual claim is a link" requires the synthesizer to hold entity ids, and the renderer
+does not reliably have them. Provenance forces the placement. The in-code comment
+asserting the opposite is superseded by this entry. The cost is per-fragment rather than
+per-service and therefore does not amortize across the arc, which is why the surface arc
+is sized at 5 sessions rather than the 4 the salvage-heavy reading predicted.
