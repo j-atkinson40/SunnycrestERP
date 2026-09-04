@@ -1052,6 +1052,20 @@ columns and service entry points.
 
 ## Active deferred items
 
+> ⚠️ **THIS HEADING SPANS A DATE RANGE AND DATES NOTHING.** Entries below were
+> added at different times over many months and are not in date order. **Do not
+> infer any entry's date from this heading, from the section's position, or
+> from a neighbouring entry.** Fourteen of the fifteen top-level entries here
+> carry no date of their own; that is known debt, tracked against the
+> dating-discipline rule in CLAUDE.md, and it is not fixed by back-dating from
+> memory. Use `git log -S "<literal string from the entry>" -- STATE.md`.
+>
+> An undated heading over undated bullets is worse than an undated bullet: it is
+> a date-shaped surface that reads as authoritative from position alone. This
+> section carried exactly that inference on 2026-09-04, when a figure written
+> 2026-05-13 read as a September claim and nearly became a fabricated finding.
+
+
 - **Data Migration Tool** — waiting on Sage CSV exports from Sunnycrest accountant (invoice history, customer list, cash receipts)
 - **Spaces substrate arc** — locked as immediate post-Studio-shell priority per DECISIONS.md 2026-05-13.
 - **Audit substrate write-side instrumentation** — `audit_logs` table exists with section-type metadata (`entity_type` column), but no editor service or admin route writes to it. Grep across all seven editor services + six `visual_editor_*` admin routes returned zero `audit_service` / `log_action` / `AuditLog()` references. Recent-edits feed in Studio overview ships using per-table `updated_at` pivot (Studio 1a-ii); audit-substrate arc is needed to wire write-side audit instrumentation across editors + resolve the `users.id` FK constraint that blocks PlatformUser attribution (per CLAUDE.md's known "Audit attribution limitation" entry). Bounded but multi-touch arc; warrants dedicated investigation before dispatch. Not blocking but real observability gap.
