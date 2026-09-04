@@ -1443,3 +1443,103 @@ holding, and it settles into past tense exactly as it would have had they acted
 themselves. Routed beyond the holders, it would be a feed. The activity feed remains a
 separate channel, as with Focus: persistent state, live presence, and ambient events
 stay distinct.
+
+---
+
+## 2026-09-04 — Peek interaction: delayed hover, long-press on touch, release dismisses
+
+Hover opens a peek after a ~300ms entry delay, with a ~150ms exit grace before it
+closes. The entry delay exists because a surface built on cheap glances is also a
+surface a mouse crosses constantly; without it, ordinary cursor travel produces a
+stream of accidental peeks and the user learns to route around the standing set. The
+exit grace is the half that gets forgotten: without it the peek dies while the pointer
+is travelling into it, which reads as a broken control rather than a fast one.
+
+Touch has no honest hover, so long-press is the peek gesture. It requires a duration
+distinct from the OS text-selection default plus explicit suppression of the selection
+callout, and a visual or haptic tick at threshold so the user knows it registered.
+Absent both, the gesture ships feeling broken.
+
+Release dismisses the peek. This keeps the gesture a true hover analogue — transient,
+self-teaching, no cleanup — but holding a finger on glass is uncomfortable past a few
+seconds, and the schedule is exactly the thing read for longer than that. So the peek
+carries a promotion path: hold to peek, release to drop, slide up or lift onto the
+panel to make it persist. The alternative considered was tap-outside-to-dismiss, which
+is more comfortable but collapses the distinction between long-press and tap to a
+difference in payload only, and a gesture that produces nearly the same outcome as the
+simpler gesture does not get learned. The known risk is discoverability — this is
+approximately Peek and Pop, and one reason that failed is that nobody found it. A
+first-run hint is the mitigation; if the gesture is still unused after real use, the
+promotion path is the part to reconsider, not the release-dismisses default.
+
+---
+
+## 2026-09-04 — A standing line never opens a Focus directly
+
+Standing lines always peek. Focus entrances come from prose fragments, or from inside a
+peek, never from the standing line itself. The standing set's value is that all of its
+entries cost the same: a user who has stopped reading them and simply hits the third one
+is relying on the fact that nothing in that list can surprise them. One heavyweight
+click hidden among seven cheap ones destroys that in a single instance, and the user
+does not get the confidence back cheaply.
+
+Nothing is lost by the constraint. The dispatcher case — the schedule as reference,
+scheduling as a decision — is served by the prose prompt as the primary route and by a
+Focus entrance inside the peek as the secondary one. The rule costs a click in the rare
+path and buys uniformity in the common one.
+
+---
+
+## 2026-09-04 — Three text states in the note, distinguished without color
+
+Text on the note is in one of exactly three states: measured, which is a link; inferred,
+which is unlinked and carries a distinguishing mark; and connective tissue, which is
+plain. The user must be able to tell at a glance which parts of a sentence the system
+knows from which parts it thinks, because prose launders inference as fact in a way a
+number in a tile does not — a wrong dashboard tile shows a wrong number, but a wrong
+sentence is confidently wrong in natural language.
+
+No color carries this distinction. Functional color remains reserved for meaning
+(leaf-green positive, terracotta negative) per DESIGN_LANGUAGE, and spending it on an
+epistemic distinction would both dilute it and make the note's most common visual
+feature a signal that means nothing about urgency. Exact treatment of the inference mark
+defers to the aesthetics arc, since it must survive the chrome/steel language and the
+rationing of the steel-blue accent.
+
+---
+
+## 2026-09-04 — Unresolved prompts do not escalate onto the backup's note
+
+An untouched prompt sitting in the owner's note does not surface differently on the
+backup's note as the day progresses. Escalation requires a per-prompt-type staleness
+threshold, and there is no evidence available to set one: a threshold that fires too
+early trains people to ignore the escalation, which is worse than not having it, and a
+threshold that fires too late is indistinguishable from not having it. Ship owner/backup
+flat, observe which prompts actually stall in practice, and revisit with data. This is a
+deferral of a refinement, not a rejection of the need.
+
+---
+
+## 2026-09-04 — The note arc is contract-first, and Pulse is retired rather than coexisted
+
+No tenant is using the platform, so there is no interim to design for: Pulse is not kept
+alive alongside the note surface, does not consume fragments in a degraded rendering,
+and is not migrated from. It is retired, and the note becomes the front door directly.
+
+The arc is nonetheless contract-first. The fragment contract — the registry of who sees
+a fragment, what condition creates it, what it opens with what scope, and what
+transition ends it, plus the emission path — is one session's work and is testable with
+nothing rendered. The surface is five or more: prose composition, the peek layer with
+the timings above, the settling job, the deferral state machine, and owner/backup
+routing. Features under construction need something to declare against, and fragment
+declarations written during the contract sub-arc become the acceptance tests for the
+surface when it lands. This ordering holds independently of the no-interim ruling; it
+was never an argument about coexistence.
+
+Two consequences. The supersession markers on CLAUDE.md §1a and PLATFORM_ARCHITECTURE §3
+stay up until the Pulse implementation is actually removed, because the argument for
+them was that canon must not describe a surface absent from code in either direction;
+the §1a and §3 rewrites ship in the same commit that removes it. And the pulse-widget
+ComponentKind moves from out-of-scope to in-scope: with no users, the CHECK constraint
+migration is cheap, and carrying a dead kind forward is the more expensive path.
+Whether the kind is retired or renamed depends on the salvage finding.
