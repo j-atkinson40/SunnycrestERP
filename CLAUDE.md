@@ -2399,6 +2399,29 @@ section is where the false inference happened, and it is the shape to fix first.
 `git log -S "<literal string>"` is the enumeration that answers "when was this
 written." Use it before attributing any undated line to a period.
 
+### Supersession marking in STATE.md
+
+When an entry supersedes an earlier one, mark the earlier entry at the moment of
+supersession. The superseding author is the only person who knows the supersession
+occurred; a later reader sees two adjacent entries with no way to tell which is live,
+and will read the one nearest to hand.
+
+Mark in place, do not delete: quote or leave the original wording and append
+`[SUPERSEDED <date> by <entry or commit>]`. An entry that is corrected rather than
+replaced takes `[CORRECTED <date>]` with the original wording preserved. The record of
+what was believed is part of the record.
+
+Marking is currently ad hoc — measured 2026-09-04 at roughly 14 markings across 400+
+top-level entries, and the 2026-05-26 entry that produced a false claim in a 2026-09-04
+investigation was not among them. As with dating discipline, existing unmarked entries
+are owed work, enumerable, and are not to be marked retroactively by inference. A
+supersession relationship derived from reading rather than from knowing is a constructed
+claim.
+
+Corollary: an entry inherited from STATE without checking whether it was superseded is
+an inherited claim, not a measured one, and carries the same status as anything else
+reported rather than verified.
+
 ### Three filing defects, one mechanism
 
 Recorded as an observation, not yet a rule. Within a single day: a binding
