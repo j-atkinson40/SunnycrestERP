@@ -1878,6 +1878,43 @@ Discovered September 2026, Sales & Orders census: five distinct false absences
 across four namespaces, none caught by review, each caught only by re-deriving
 with a different method.
 
+#### The constructed count — magnitude is a claim too
+
+Sibling of the entry above, at the same mechanism and a different target. That
+one concerns whether a thing EXISTS; this one concerns HOW MUCH, and the same
+constructed-scope failure produces both.
+
+**A correct finding recorded at the wrong magnitude is functionally a missed
+one.** Not a lesser version of the finding — a different one, because magnitude
+selects the response class. Six consecutive failures reads as a flaky week and
+prompts a note; ninety-five reads as a dead channel and prompts a repair. Same
+diagnosis, same evidence, same honesty, opposite outcome.
+
+So magnitude claims need the enumeration discipline that existence claims get. A
+count taken from what happened to be in view is a constructed count, and it
+carries the same warning as a constructed name: it will be plausible, it will be
+well-formed, and nothing about it announces its scope.
+
+THE TEST, applied to any count that will drive a decision:
+
+    "What bounded this count — the thing, or my view of it?"
+
+If the answer is the view — the page of results returned, the runs the tool
+listed by default, the window the query happened to cover — the number is a
+lower bound wearing an exact figure's clothes. Enumerate to the actual boundary,
+or report it as a bound.
+
+⚠️ Note that "when did this last pass?" is a MAGNITUDE question wearing an
+existence question's clothes, which is why it works and why it gets skipped.
+Asked of a red channel it looks like a yes/no about the current state; what it
+actually returns is the size of the dark window.
+
+Discovered September 2026: a session correctly identified a dead CI channel,
+correctly attributed it to the CI credential, and honestly recorded it — as "six
+consecutive runs" against an actual ninety-five, because six was what the
+default listing showed. The finding was right and produced no action for six
+more days. See "Absent signal" below.
+
 #### Conclusion survives, derivation falsified
 
 The worst case is not a wrong conclusion. It is a RIGHT conclusion reached
@@ -2285,6 +2322,54 @@ where members are hidden rather than the unit being wrong.
 **Fixtures modeled on the implementation.** A test that passes because it shares the
 code's wrong assumption. Fixtures must be derived from the specification or from real
 data, never from reading the implementation being tested.
+
+### Dating discipline in STATE.md
+
+**Every STATE.md line carries its own date. No line inherits a date from a
+heading or from a neighbour.**
+
+This binds what a session writes, and it exists to remove a method rather than
+to discourage one. A reader who needs a line's date and finds none will infer it
+from position, because position is the only signal available; that inference is
+reasonable, unavoidable, and wrong whenever the nearest dated line belongs to a
+different entry. Asking readers not to infer does not work. Making every line
+self-dating removes the inference as an available move.
+
+⚠️ A date inferred from document position is a CONSTRUCTED NAME, and produces
+the same class of confident error — see §11.
+
+Discovered September 2026, and the near-miss is the argument: an investigation
+into whether the record contained false claims nearly filed one. `STATE.md`
+carried "53 of 56 Playwright gates pass" under `## Active deferred items`, a
+heading with no date, 634 lines below the nearest dated bullet. Read by
+position it appeared to be a September claim made while the channel was dead —
+a fabricated integrity finding, inside an integrity investigation. `git log -S`
+on the literal string put it ten weeks earlier. The line was STALE, not false.
+
+Measured at the time of writing: 410 top-level bullets, 310 carrying their own
+date, 100 without. Most of the hundred sit under headings that at least carry a
+date; fifteen sit under `## Active deferred items`, which carries none. That
+section is where the false inference happened, and it is the shape to fix first.
+
+`git log -S "<literal string>"` is the enumeration that answers "when was this
+written." Use it before attributing any undated line to a period.
+
+### Three filing defects, one mechanism
+
+Recorded as an observation, not yet a rule. Within a single day: a binding
+constraint filed in the document the read order says to open only for *why*; a
+canon addition dispatched to a section number that turned out to be Business
+Context; and a document whose structure made a false date inference the natural
+reading.
+
+None was a discipline failure. Each was a correct instinct applied to a document
+that could not support it — the rule was sound and unread, the reason was right
+and the address wrong, the inference was reasonable and the structure silent.
+
+If a fourth appears, the generalisation will have been earned: that document
+STRUCTURE is a control surface, and that "people should be more careful" is the
+response available when the structure cannot be changed, not the first one to
+reach for. Until then this is three instances and a hypothesis.
 
 ## Act-side spatial discipline (park, 2026-07)
 
