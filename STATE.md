@@ -1005,6 +1005,71 @@ them. Read it before commissioning the re-run.
 Class killer owed: platform-wide read-site/write-site census over boolean
 columns and service entry points.
 
+**2026-09-04 — PRIORITY SHIFT: production, not staging. Note arc and staging CI
+both held.**
+
+Operator call. Work moves to production-facing concerns — the cutover arc and
+September. Two things stop where they are, and both stop in a recorded state
+rather than an abandoned one.
+
+⚠️ **THE E2E GATE IS DARK, DELIBERATELY, AND IS NOT COVERAGE.** Quarantine
+signature at quarantine time, per the §11 requirement that a quarantine record
+its exact failure so a later DIFFERENT failure stays distinguishable from the
+known one:
+
+    channel   .github/workflows/playwright-staging.yml (all three jobs:
+              Maps of Content, runtime-editor, Claude-API e2e)
+    signature Error: Platform admin login failed: 401
+              {"detail":"Invalid email or password"}
+    shape     every spec, ~400ms each, dying at auth before exercising anything
+    extent    99 consecutive runs, 0 green, 2026-07-28 → 2026-09-04
+    cause     the CI bot PlatformUser is created by a one-time manual script
+              that no deploy step and no seed re-runs
+
+**Nothing merged since 2026-07-28 is e2e-verified.** That includes the Sales &
+Orders campaign, the RingCentral work, and the fragment contract. The pytest
+gate is unaffected and remains real — it runs in `ci.yml` against a fresh
+Postgres and was exercised throughout; 2243 passing at `d50094de` stands. Do
+not read "CI green" as "e2e verified" while this entry is live.
+
+**The repair is one step and is deferred, not lost:** set
+`STAGING_CI_BOT_PASSWORD` as a Railway env var on the staging service, to the
+value already in GitHub Secrets. `provision_ci_bot --ensure` is landed in
+`railway-start.sh` and will recreate the bot from it on the next deploy.
+Rotation is NOT required — the secret was last updated 2026-05-06 and the
+channel died 2026-07-28, so the credential did not drift; the environment was
+reset out from under it.
+
+⚠️ Until that variable exists, every staging deploy logs
+`✗ STAGING_CI_BOT_PASSWORD is not set — CI bot NOT ensured`. That is intended
+as a standing reminder, but a warning printed on every deploy becomes noise
+nobody reads — if it is still appearing when someone next reads this, either
+set the variable or make the line say "deferred, see STATE.md" rather than
+letting it train people to skip deploy output.
+
+⚠️ **WHEN THE CHANNEL IS REPAIRED, THE FIRST RUN IS A BASELINE, NOT A PASS.**
+Before classifying anything, prove the instrument can report failure: assert a
+spec that must fail, confirm it goes red, remove it. Then sort the real
+failures into environmental drift / genuine regressions from the three
+in-window arcs / specs that were already wrong when the channel died. The third
+bucket goes into the named baseline with its own signature and is NOT fixed on
+sight. A repaired run that comes back fully green after five weeks dark
+deserves suspicion before celebration.
+
+**Note arc — held at the contract.** The fragment contract shipped at
+`d50094de` (registry, emission, four declarations, 22 tests, gate 162 files).
+Session 1 of 5 (note shell + standing-set register + `operational_layer_service`
+decomposition) was dispatched and NOT started. Canon is fully landed and does
+not depend on the build: five decisions at `8e83e2a6`, four interaction rulings
+at `65c39d3b`, corrections at `543a9c5c`. Supersession markers stay up on
+CLAUDE.md §1a and PLATFORM_ARCHITECTURE §3 — Pulse is still what `/home` serves,
+and the markers say so.
+
+**Next, per STATE's own critical path:** the cutover arc — opening balances /
+trial balance as of a cutover date, open AR (aged), open AP, Plaid on the real
+operating account, historical comparison for trust. Mostly data and process
+rather than code, and it sits AHEAD of Books Review Phase 2, not beside it.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
