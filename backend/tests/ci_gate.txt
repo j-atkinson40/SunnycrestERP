@@ -398,6 +398,15 @@ tests/test_ringcentral_webhook_signature.py
 tests/test_ringcentral_oauth_state.py
 tests/test_ringcentral_tenant_resolution.py
 
+# Note-arc contract sub-arc: the fragment contract's four declarations,
+# enforced at registration and at emission. Includes the discriminator's
+# output (the three platform fragment types) and the crossed audience case —
+# a fragment whose audience excludes the user must not have its CONDITION RUN,
+# which is the only observable difference between "filtered out" and "does not
+# exist". Creates one company, torn down in a module fixture; leak-checked at
+# 902 -> 902 with the guard ON.
+tests/test_fragment_contract.py
+
 # ── S-2 CORRECTION (2026-09-03) ───────────────────────────────────────────
 # 24 of the 62 files added above were REMOVED again the same day. They pass,
 # but they leak companies without teardown — 341 rows across the 24, exactly

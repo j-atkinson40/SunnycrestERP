@@ -1,0 +1,217 @@
+"""Fragment contract types — the substrate the note surface renders.
+
+Per DECISIONS 2026-09-04 ("Monitor is a daily note, not a dashboard" and
+"Prose fragments declare four things or they don't ship").
+
+⚠️ THE PAYLOAD IS A RENAME, NOT A REBUILD. `FragmentPayload` below is
+`IntelligenceStream` from `frontend/src/types/pulse.ts:64-71` and
+`app/services/pulse/types.py`, under fragment terminology. It already carried
+`synthesized_text` + `referenced_items {kind, entity_id, label, href}` +
+`priority`, and `AnomalyIntelligenceStream.tsx` already renders it as prose with
+inline chips. The salvage investigation (`docs/investigations/2026-09-04-pulse-
+salvage.md`) established that the body was correct and the DECLARATIONS were
+what was missing. This module adds the declarations; it does not re-invent the
+body.
+
+──────────────────────────────────────────────────────────────────────────
+THE FOUR DECLARATIONS
+
+A fragment type that cannot express all four does not register. The enforcement
+lives in `registry.register_fragment`; these types exist so that the four are
+structurally impossible to omit rather than merely documented.
+
+  (1) AUDIENCE       — `Audience`, evaluated against the EXISTING permission
+                       system. Lacking the permission means the fragment DOES
+                       NOT EXIST for that user; it is never emitted inert.
+  (2) CONDITION      — a callable yielding zero or more `FragmentInstance`,
+                       each carrying `condition_inputs` — enumerable and
+                       snapshottable, because the surface arc's deferral wakes
+                       a deferred prompt on divergence of those inputs. This
+                       module builds the enumeration; the wake logic is surface
+                       arc work.
+  (3) TARGET + SCOPE — `target_surface` + `target_key` are type-level (what
+                       kind of thing this opens); `FragmentInstance.scope` is
+                       instance-level and REQUIRED NON-EMPTY. A scheduling
+                       fragment opens the scheduling Focus already scoped to
+                       tomorrow. An href with no scope carry does not satisfy
+                       this declaration and is rejected at emission.
+  (4) END TRANSITION — required for `kind="prompt"`, forbidden for
+                       `kind="non_prompt"`. See the asymmetry note below.
+
+──────────────────────────────────────────────────────────────────────────
+PROMPT vs NON-PROMPT, AND THE EXIT ASYMMETRY
+
+`kind="prompt"` — something a person must resolve. Per DECISIONS 2026-09-04
+("Prompts leave the note by resolution or dated deferral, never silently"),
+there is no "make this go away." A prompt therefore has NO dismiss path.
+
+`kind="non_prompt"` — anomalies, insights, ambient observation. These exit by
+dismiss, and `signal_service`'s existing dismiss inputs continue to serve them.
+
+⚠️ A PROMPT CURRENTLY HAS NO EXIT AT ALL. Deferral is surface-arc work, so in
+this sub-arc a prompt exits only by its declared end transition actually
+occurring. That is correct for a substrate with no users and no rendering, and
+it is the reason the surface arc follows immediately rather than being parked:
+the contract cannot ship to a person in this state.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, Literal, Mapping, Sequence
+
+#: What a fragment opens. `window` is the floating-tablet surface; `peek` is the
+#: transient hover/long-press layer; `focus` is the bounded-decision surface.
+TargetSurface = Literal["peek", "focus", "window"]
+
+#: Prompt fragments demand resolution. Non-prompt fragments inform.
+FragmentKind = Literal["prompt", "non_prompt"]
+
+
+class FragmentDeclarationError(ValueError):
+    """A fragment type failed to declare one of the four. It does not register.
+
+    Raised at REGISTRATION time, not at emission time, so a malformed fragment
+    type fails at import rather than in front of a user.
+    """
+
+
+@dataclass(frozen=True)
+class ReferencedItem:
+    """One typed link inside a fragment's prose.
+
+    Renamed from `pulse.types.ReferencedItem`, shape unchanged. Per DECISIONS
+    2026-09-04 ("Three text states"), a referenced item is MEASURED text — the
+    link is the provenance mark. Unlinked prose is connective tissue or
+    inference, and the two are distinguished typographically, never by color.
+    """
+
+    kind: str
+    entity_id: str
+    label: str
+    href: str | None = None
+
+
+@dataclass(frozen=True)
+class FragmentPayload:
+    """The fragment body. Renamed from `IntelligenceStream`; shape unchanged.
+
+    `synthesized_text` is the prose. `referenced_items` are its measured
+    claims. `priority` is the urgency ordering the note composes on — higher
+    surfaces first.
+    """
+
+    title: str
+    synthesized_text: str
+    referenced_items: tuple[ReferencedItem, ...] = ()
+    priority: int = 50
+
+
+@dataclass(frozen=True)
+class Audience:
+    """(1) AUDIENCE — a permission predicate over the EXISTING system.
+
+    These are the same three gates `command_bar.registry.ActionRegistryEntry`
+    declares and `command_bar.retrieval` applies, which in turn mirror
+    `vault.hub_registry`'s VaultServiceDescriptor semantics. Evaluation reads
+    `permission_service.user_has_permission` and `module_service.
+    is_module_enabled`. No parallel permission system is introduced.
+
+    ⚠️ `Audience.any_authenticated()` is an EXPLICIT declaration, not a default.
+    A fragment type must say who sees it; saying "any authenticated tenant user"
+    is a valid answer and must be stated, matching `triage.platform_defaults`'s
+    `permissions=[]  # any authenticated tenant user`.
+    """
+
+    required_permission: str | None = None
+    required_module: str | None = None
+    required_extension: str | None = None
+
+    @classmethod
+    def any_authenticated(cls) -> "Audience":
+        return cls()
+
+
+@dataclass(frozen=True)
+class EndTransition:
+    """(4) END TRANSITION — the state change that resolves a prompt.
+
+    Declarative rather than callable: the surface arc's resolver reads
+    `resolved_when` to decide whether a rendered prompt has been satisfied, and
+    the settling job reads `past_tense` to render the settled note's record of
+    what was done. Holding these as data rather than as a closure is what lets
+    the settled note be generated from events that actually occurred rather
+    than from a re-run of the condition.
+    """
+
+    #: Domain object whose state change resolves this prompt.
+    entity_kind: str
+    #: Declarative key the surface arc's resolver dispatches on.
+    resolved_when: str
+    #: Past-tense template for the settled note. DECISIONS 2026-09-04
+    #: ("live phase and settled phase") requires the settled form be a
+    #: DISTINCT fragment generated from events that occurred — this is the
+    #: template for that, not a rewording of the live text.
+    past_tense: str
+
+
+@dataclass(frozen=True)
+class FragmentInstance:
+    """One emitted fragment. Produced by a declaration's condition.
+
+    `scope` is (3)'s instance half and is REQUIRED NON-EMPTY — see
+    `emission._validate_instance`. `condition_inputs` is (2)'s snapshot: the
+    enumerable inputs that caused this instance to exist, which the surface
+    arc's deferral machinery diffs to wake a deferred prompt on divergence.
+    """
+
+    instance_key: str
+    payload: FragmentPayload
+    scope: Mapping[str, Any]
+    condition_inputs: Mapping[str, Any]
+
+
+#: A condition is `(db, *, user) -> Sequence[FragmentInstance]`. Zero instances
+#: is a correct and common answer — DECISIONS 2026-09-04 ("two registers"): a
+#: three-line note on a quiet day is correct behavior, not a failure.
+ConditionFn = Callable[..., Sequence[FragmentInstance]]
+
+
+@dataclass(frozen=True)
+class FragmentDeclaration:
+    """A registered fragment type. All four declarations are structural.
+
+    OWNED BY THIS MODULE, in the manner of `ActionRegistryEntry`. Later arcs
+    extend it with new fields; they do not redefine it.
+    """
+
+    fragment_id: str
+    label: str
+    kind: FragmentKind
+
+    # (1) AUDIENCE
+    audience: Audience
+
+    # (2) CONDITION
+    condition: ConditionFn
+
+    # (3) TARGET — type-level half; the scope half is per-instance.
+    target_surface: TargetSurface
+    target_key: str
+
+    # (4) END TRANSITION — required iff kind == "prompt".
+    end_transition: EndTransition | None = None
+
+    #: Free-form, registry-opaque. Mirrors ActionRegistryEntry.metadata.
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def dismissible(self) -> bool:
+        """Only non-prompt fragments may be dismissed.
+
+        Per DECISIONS 2026-09-04: "There is no 'make this go away.'" The salvage
+        investigation found `LayerItem.dismissed` + `DismissSignalRequest`
+        shipped and applying to everything; this property is where that stops
+        applying to prompts.
+        """
+        return self.kind == "non_prompt"
