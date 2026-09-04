@@ -1572,3 +1572,58 @@ does not reliably have them. Provenance forces the placement. The in-code commen
 asserting the opposite is superseded by this entry. The cost is per-fragment rather than
 per-service and therefore does not amortize across the arc, which is why the surface arc
 is sized at 5 sessions rather than the 4 the salvage-heavy reading predicted.
+
+---
+
+## 2026-09-04 — A fragment declares five things; IDENTITY is the fifth
+
+The fragment contract requires a fifth declaration:
+
+**IDENTITY — the key under which two evaluations yield the same instance,
+derived from what the condition is about, never from the evaluation that found
+it.**
+
+The four declarations say what a fragment *is*. They say nothing about what makes
+two sightings the same fragment. CONDITION was written as "a predicate that
+yields zero or more instances, each carrying scope" and never said the instance
+key must be derived from the condition's subject — so a condition that mints a
+fresh key on every evaluation satisfies the contract as literally written. That
+is a gap in the contract, not only a defect in any particular producer.
+
+The production instance that surfaced it: `base_agent` writes
+`provenance_ref_id = self.job_id`, keying on the *observation* rather than the
+*thing observed*. The task substrate's
+`(provenance_kind, provenance_ref, event_kind)` uniqueness was presumably written
+to prevent exactly this and cannot fire, because every run supplies a new
+`provenance_ref`. One unmapped vendor-bill line became 1,825 anomaly rows,
+~2,018 approval jobs and ~2,018 notifications, because nothing could recognise
+the second sighting as the first.
+
+Run-keyed identity does not merely break deferral. It breaks resolution — the
+thing resolved is the sighting, not the condition, so the next sweep re-raises
+it. It breaks deduplication, because there is no key to deduplicate on. And it
+breaks any uniqueness constraint downstream, because the constraint is applied
+to a value that is unique by construction.
+
+Deferral in particular is unimplementable against it: a user defers an instance,
+the sweep runs, and the same fact returns under a new key — not because its
+inputs diverged, which is the only sanctioned wake, but because its identity was
+never stable.
+
+**Consequences.** A fragment type registers only if its condition can state the
+key. The key is a property of the subject — the vendor-bill line, the invoice,
+the case — and is stable for as long as the condition holds, independent of how
+often the sweep runs. Registration-time enforcement matches the other four: a
+condition that cannot name its subject is underspecified and does not register.
+Two evaluations yielding the same key are the same instance, and the second is
+not a new prompt.
+
+⚠️ The contract as landed (`d50094de`) does NOT enforce this. Session 4 builds
+deferral on an assumption the substrate does not currently make, so the
+declaration lands before the surface arc rather than after it.
+
+The same shape appears twice more in the same system and is not confined to
+fragments: `workflow_runs` accumulated 11,930 rows in `awaiting_input`, 11,766 of
+them from one cron, for the same reason; and `agent_jobs.status` carries both
+`complete` and `completed`, which is identity never keyed at the vocabulary
+level. A status with two spellings is a key with two values.

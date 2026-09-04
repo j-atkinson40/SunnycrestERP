@@ -205,11 +205,51 @@ The notification path is not per-queue. It runs through
 | email_unclassified_triage | falls through | **not established** |
 | reconciliation_review_triage | falls through; added after the 11/11 audit | **not established** |
 
-**Six measured firing. Six not established.** The `else` branch comments that
-they "have their own producer sites or no notification scope yet" — which is two
-different answers, and distinguishing them per queue requires tracing six
-producer sites. That was not completed in this pass and is not generalised from
-the six that were.
+### The six, closed by measurement (added after the first pass)
+
+Production has exactly **two** `task_details.provenance_kind` values
+(`anomaly_detection` 2,333; `integration_event` 2) and **five** notification
+categories, none of which belong to these six. So no producer-site path among
+them has fired. Classifying by whether the CONDITION ever occurred, which is the
+only honest split:
+
+| queue | source rows in production | verdict |
+|---|---|---|
+| `ss_cert_triage` | `social_service_certificates` = **0** | **untestable** — condition never occurred |
+| `aftercare_triage` | `agent_anomalies` type `fh_aftercare_pending` = **0** | **untestable** — condition never occurred |
+| `email_unclassified_triage` | `email_messages` = **0** | **untestable** — condition never occurred |
+| `task_triage` | reads the task substrate itself | **fires by construction** — its rows ARE tasks, and `task_created` is what the subscriber listens for |
+| `reconciliation_review_triage` | `reconciliation_exceptions` = **31** | **gap** — condition present, nothing produced |
+| `workflow_review_triage` | `workflow_runs` = 17,715, **11,930 `awaiting_input`** | **gap, and the largest object in this investigation** |
+
+⚠️ **Three of the six cannot be classified as working or broken, because their
+input has never existed.** A path with no input produces the same silence
+whether it works or not. Recording them as "untestable" rather than as either —
+this is the absent-signal asymmetry at producer altitude.
+
+### ⚠️ The instrumented path and the taken path are different paths
+
+`workflow_review_triage` is worth its own finding. Two transitions exist:
+
+- `workflow_engine.py:1096-1115` creates a `WorkflowReviewItem` and **does**
+  call `create_task_with_provenance`. Production count: **8 rows.**
+- `workflow_engine.py:535` sets `run.status = "awaiting_input"` and creates
+  **nothing**. Production count: **11,930 rows.**
+
+The instrumented path is taken 8 times; the path production actually takes,
+11,930 times, has no instrumentation at all. **11,766 of those are "Expense
+Categorization"** — the same `*/15` cron as §1, so one misconfigured trigger has
+produced roughly twenty thousand stuck rows across two unrelated tables.
+
+This is adjacent to complete-machinery-behind-an-unprovisioned-entrance but is
+not it: the machinery is complete AND reachable AND reached — eight times. The
+volume simply goes somewhere else. Offered as a variant — *the instrumented path
+is not the taken path* — rather than forced into the existing shape or dropped.
+
+⚠️ **This corrects the first pass of this document,** which said "No unreachable
+notification-path instance was found." That remains true literally, and was too
+narrow a question: nothing was unreachable, and 11,930 rows still went
+unreported.
 
 **No unreachable-notification-path instance was found**, so this is NOT a
 fourth complete-machinery-behind-an-unprovisioned-entrance. The path exists, is

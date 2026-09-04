@@ -1170,6 +1170,55 @@ assess the twelfth. None run.
 Adjacent: `agent_jobs.status` has both `complete` (2,464) and `completed` (804);
 1,289 unread `delivery_failed` notifications; 3,915 unread notifications total.
 
+**2026-09-04 — IDENTITY is the fifth declaration; the six-queue enumeration
+closes; and there is a SECOND stuck queue larger than the first.**
+
+Derivation: `docs/investigations/2026-09-04-approval-queue.md` (extended).
+Canon: DECISIONS 2026-09-04 "A fragment declares five things; IDENTITY is the
+fifth."
+
+⚠️ **11,930 `workflow_runs` sit in `awaiting_input`** — larger than the 8,192
+approval queue and previously unrecorded. **11,766 of them are "Expense
+Categorization"**, the same `*/15` cron. One misconfigured trigger has produced
+roughly twenty thousand stuck rows across two unrelated tables.
+
+⚠️ **The instrumented path is not the taken path.** `workflow_engine.py:1096-1115`
+creates a `WorkflowReviewItem` and DOES create a task — production count **8**.
+`workflow_engine.py:535` sets `run.status='awaiting_input'` and creates nothing —
+production count **11,930**. Complete, reachable, and reached eight times, while
+the volume goes elsewhere. Offered as a variant of
+complete-machinery-behind-an-unprovisioned-entrance rather than forced into it.
+
+**The six unestablished queues are closed, by measurement.** Production carries
+exactly two `task_details.provenance_kind` values and five notification
+categories, none belonging to these six. Classifying by whether the condition
+ever occurred, which is the only honest split:
+
+- **Untestable — input never existed:** `ss_cert_triage`
+  (`social_service_certificates` = 0), `aftercare_triage`
+  (`fh_aftercare_pending` anomalies = 0), `email_unclassified_triage`
+  (`email_messages` = 0). A path with no input produces the same silence whether
+  it works or not; recorded as untestable rather than as working or broken.
+- **Fires by construction:** `task_triage` — its rows ARE tasks, and
+  `task_created` is what the subscriber listens for.
+- **Gap, condition present:** `reconciliation_review_triage` (31 exceptions,
+  nothing produced) and `workflow_review_triage` (11,930, above).
+
+**Supersession marking in STATE is ad hoc, and that is why this morning's error
+happened.** Measured: `SUPERSEDED` 5, `superseded by` 2, `CORRECTED` 2, `STALE`
+5 — about 14 markings across 400+ top-level entries, and the 2026-05-26
+notifications entry that a later same-day entry overtook was not among them.
+A reader of two adjacent entries has no way to know which is live. Worth a rule
+of the same shape as the dating one: **when an entry supersedes an earlier one,
+mark the earlier one at the point of supersession** — otherwise this recurs and
+the next one may not be caught.
+
+**Remedies remain held, all six, per operator instruction.** The
+`complete` (2,464) / `completed` (804) split is a third instance of identity
+never keyed — a status with two spellings is a key with two values — and must be
+settled before any status `UPDATE`, since an update naming one silently misses
+the other.
+
 ## Production
 
 - Live tenant: Sunnycrest Precast at `sunnycrest.getbridgeable.com` (first tenant: James Atkinson)
