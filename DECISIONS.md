@@ -1627,3 +1627,55 @@ fragments: `workflow_runs` accumulated 11,930 rows in `awaiting_input`, 11,766 o
 them from one cron, for the same reason; and `agent_jobs.status` carries both
 `complete` and `completed`, which is identity never keyed at the vocabulary
 level. A status with two spellings is a key with two values.
+
+---
+
+## 2026-09-04 — The subject is what the end transition acts on
+
+Refines the IDENTITY entry above, which said the key must derive from what the
+condition is about and left "about" undefined. It is now defined:
+
+**The subject is not what the anomaly or fragment is ABOUT. It is what the END
+TRANSITION ACTS ON — what, when done, makes the thing go away.**
+
+The contract already requires every prompt to declare an end transition. The
+subject is that transition's target. So subject and resolution are the same
+question asked twice, and **if they disagree, the declaration is wrong.** That is
+a check, not merely a definition.
+
+Against the cases that resisted a taxonomy:
+
+`expense_no_gl_mapping` — mapping the category resolves it, so the category is
+the subject. That was already the standing ruling, and it was not a special case;
+it was the general rule appearing first and being mistaken for an exception.
+
+A depreciation entry never made — making the entry for that period resolves it.
+Subject is the period and the schedule, composite, which IDENTITY permits and
+which `user_day` already demonstrates.
+
+`vendors_not_reviewed_for_1099` — reviewing the vendors for the tax year
+resolves it. One act, so one subject: the tax year, with the vendor set as
+attributes. It reads as an absence over an aggregate only while the question is
+what it is *about*; asking what clears it dissolves the ambiguity.
+
+The single-entity sites fit the same rule rather than forming a separate class:
+fixing that row resolves it, so the row is the subject. They are the case where
+the target happens to be a row.
+
+⚠️ **So entity / absence / aggregate describes CONDITIONS, not subjects.** It is
+useful vocabulary for explaining why a given subject is not a row id, and it is
+the wrong axis on which to build subject kinds. A taxonomy of conditions invites
+a per-site debate; one test applied per site does not.
+
+**Two guards, because the rule fails in both directions.**
+
+TOO COARSE. If two instances would collapse to one subject but need separate
+acts, the subject is too coarse. This is the symmetric partner to the category
+ruling: category beat line because one act cleared many lines, and it would have
+been wrong had each line needed its own decision.
+
+GENUINELY AMBIGUOUS. If more than one distinct act would resolve it, the subject
+is not determined, and that is a real Type B rather than a judgement call.
+Surface these as a batch with their competing resolutions named. A site that
+resists the test is signalling its membership in that batch rather than inviting
+an author to pick.

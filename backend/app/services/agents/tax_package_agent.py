@@ -212,6 +212,8 @@ class TaxPackageAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.CRITICAL,
                 anomaly_type="tax_package_missing_year_end_close",
+                entity_type="fiscal_year",
+                entity_id=str(year),
                 description=(
                     f"Year-end close has not been completed for {year}. "
                     f"Annual financial statements are not available."
@@ -224,6 +226,8 @@ class TaxPackageAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.CRITICAL,
                 anomaly_type="tax_package_missing_1099_prep",
+                entity_type="fiscal_year",
+                entity_id=str(year),
                 description=(
                     f"1099 prep has not been run for {year}. "
                     f"Vendor filing list is not available."
@@ -241,6 +245,8 @@ class TaxPackageAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="tax_package_months_not_closed",
+                entity_type="fiscal_year",
+                entity_id=str(year),
                 description=(
                     f"Only {months_found}/12 months have completed month-end "
                     f"closes. Months missing: {month_names}. Financial "
@@ -265,6 +271,8 @@ class TaxPackageAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="tax_package_missing_tax_estimates",
+                entity_type="fiscal_year",
+                entity_id=str(year),
                 description=(
                     f"Not all quarterly tax estimate reports are available "
                     f"for {year}. Found {est_count}/4 quarters."
@@ -282,6 +290,8 @@ class TaxPackageAgent(BaseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.INFO,
                     anomaly_type=f"tax_package_missing_{agent_type}",
+                    entity_type="fiscal_year",
+                    entity_id=str(year),
                     description=(
                         f"{label} has not been completed for {year}. "
                         f"This is optional but recommended."

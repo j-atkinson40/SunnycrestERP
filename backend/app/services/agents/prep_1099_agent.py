@@ -266,6 +266,8 @@ class Prep1099Agent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="vendors_not_reviewed_for_1099",
+                entity_type="tax_year",
+                entity_id=str(self._period_start().year),
                 description=(
                     f"{needs_review_count} vendors paid "
                     f"${float(needs_review_total):,.2f} above the $600 threshold "
@@ -288,6 +290,8 @@ class Prep1099Agent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.CRITICAL,
                 anomaly_type="missing_tax_ids_summary",
+                entity_type="tax_year",
+                entity_id=str(self._period_start().year),
                 description=(
                     f"{missing_tax_id_count} vendors requiring 1099 are "
                     f"missing Tax ID / EIN. Collect W-9 forms before "
@@ -299,6 +303,10 @@ class Prep1099Agent(BaseAgent):
         # CHECK C — No W-9 tracking infrastructure (always)
         anomalies.append(self._make_anomaly(
             severity=AnomalySeverity.INFO,
+            # ⚠️ HELD WITHOUT A SUBJECT — Type B, phases 2-3. The only act that clears
+            # this is Bridgeable shipping W-9 tracking. It is a product-gap notice
+            # wearing an anomaly's shape, not a decision the tenant can make.
+            # See docs/investigations/2026-09-04-anomaly-subject-phase23.md.
             anomaly_type="w9_tracking_not_implemented",
             description=(
                 "W-9 receipt tracking is not yet implemented in Bridgeable. "
@@ -335,6 +343,8 @@ class Prep1099Agent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="orphaned_vendor_payments",
+                entity_type="tax_year",
+                entity_id=str(self._period_start().year),
                 description=(
                     f"{orphan_count} payments totaling "
                     f"${float(orphan_total):,.2f} in period have no vendor "

@@ -173,6 +173,8 @@ class AnnualBudgetAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="budget_no_prior_year_data",
+                entity_type="fiscal_year",
+                entity_id=str(prior_year),
                 description=(
                     f"No financial data found for {prior_year}. Budget will be "
                     f"based on available partial data or manual entry required."
@@ -289,6 +291,8 @@ class AnnualBudgetAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="budget_projects_loss",
+                entity_type="annual_budget",
+                entity_id=str(self._period_start().year),
                 description=(
                     f"With current assumptions, budget projects a net loss of "
                     f"${float(abs(budget_ni)):,.2f}. Consider adjusting growth "

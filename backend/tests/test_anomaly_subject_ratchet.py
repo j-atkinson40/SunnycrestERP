@@ -41,7 +41,19 @@ _AGENTS = Path(__file__).resolve().parents[1] / "app" / "services" / "agents"
 #: travelled from the audit into the arc scope and into the operator's ruling.
 #: `test_call_sites_are_actually_found` caught it — a positive control written
 #: against the wrong number found the number wrong.
-MAX_SITES_WITHOUT_SUBJECT = 34
+#:
+#: LOWERED 34 -> 2 at phases 2-3 (2026-09-04). The 32 filled sites each answered
+#: the rule from DECISIONS 2026-09-04: the subject is what the END TRANSITION
+#: acts on. The 2 that remain are the sites where NOTHING THE OPERATOR CAN DO
+#: makes the condition go away, so there is no transition and therefore no
+#: subject — see the Type B batch in
+#: `docs/investigations/2026-09-04-anomaly-subject-phase23.md`.
+#:
+#: ⚠️ DO NOT DRIVE THIS TO ZERO BY INVENTING SUBJECTS FOR THE LAST TWO. They are
+#: held open deliberately. The arc's own STOP line says inventing a subject is
+#: worse than stopping, and a fabricated subject here would key two permanent
+#: notices as if they were resolvable decisions.
+MAX_SITES_WITHOUT_SUBJECT = 2
 
 #: Proximity window for the subject check. Stated rather than hidden: a call
 #: passing `entity_id` on the ninth line reads as non-compliant here. That makes

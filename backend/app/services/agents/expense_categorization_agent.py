@@ -362,6 +362,8 @@ class ExpenseCategorizationAgent(BaseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.INFO,
                     anomaly_type="expense_no_gl_mapping",
+                    entity_type="expense_category",
+                    entity_id=proposed_category,
                     description=(
                         f"Category '{proposed_category}' has no GL account mapping "
                         f"for this tenant. Add a mapping in Settings → GL Accounts "

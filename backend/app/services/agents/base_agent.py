@@ -207,6 +207,36 @@ class BaseAgent:
     # Anomaly recording
     # ------------------------------------------------------------------
 
+    def _period_subject_id(self) -> str:
+        """Subject id for an anomaly whose resolving act is bounded to this job's
+        accounting period.
+
+        Per DECISIONS 2026-09-04, the subject is what the END TRANSITION acts on.
+        For a revenue outlier or a collection-rate warning, the act is bounded to
+        the books for a period, and two runs over the same period are addressing
+        the same subject.
+
+        ⚠️ DELIBERATELY NOT THE JOB ID. A subject keyed on the run is precisely
+        what the IDENTITY declaration refuses — it makes every run a new subject,
+        so nothing ever supersedes anything, which is the defect that produced
+        1,825 duplicate `expense_no_gl_mapping` rows.
+
+        Raises rather than returning a placeholder when the job carries no
+        period. A blank subject is indistinguishable from a legitimately absent
+        one, which is the absent-signal shape (CLAUDE.md §11). `AgentRunner`
+        requires both dates, so this can only fire on a job created some other
+        way — and that is worth hearing about.
+        """
+        ps, pe = self.job.period_start, self.job.period_end
+        if ps is None or pe is None:
+            raise ValueError(
+                f"agent job {self.job.id} ({self.job.job_type}) has no period, so "
+                "a period-scoped anomaly has no subject. AgentRunner.create_job "
+                "requires period_start and period_end; this job came from "
+                "somewhere else."
+            )
+        return f"{ps.isoformat()}:{pe.isoformat()}"
+
     def _make_anomaly(
         self,
         severity: AnomalySeverity,
@@ -229,7 +259,9 @@ class BaseAgent:
         THAT IS TEMPORARY. The arc requires them, so a subjectless anomaly
         becomes unexpressible rather than discouraged. They cannot be made
         required yet: a required parameter fails at CALL time with TypeError,
-        not at import, and 45 of 75 call sites currently pass neither. Making
+        not at import. At phase 1, 34 of 64 call sites passed neither. (An earlier
+    figure of 45 of 75 was wrong — it counted eleven `def _make_anomaly(`
+    definitions as call sites.) Making
         them required today would leave twelve scheduled production agents —
         including month_end_close, ar_collections, cash_receipts and
         expense_categorization — raising TypeError at their next run.

@@ -227,6 +227,8 @@ class YearEndCloseAgent(MonthEndCloseAgent):
                         anomalies.append(self._make_anomaly(
                             severity=AnomalySeverity.WARNING,
                             anomaly_type="yearend_budget_variance",
+                            entity_type="budget_summary_line",
+                            entity_id=f"{actual_key}:{year}",
                             description=(
                                 f"{actual_key}: full year actual "
                                 f"${actual_val:,.2f} vs budget "
@@ -341,6 +343,8 @@ class YearEndCloseAgent(MonthEndCloseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="yearend_no_depreciation",
+                entity_type="fiscal_year",
+                entity_id=str(year),
                 description=(
                     "No depreciation entries found for the year. If the business "
                     "owns depreciable assets, depreciation may not have been "
@@ -363,6 +367,8 @@ class YearEndCloseAgent(MonthEndCloseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.INFO,
                     anomaly_type="yearend_depreciation_irregular",
+                    entity_type="fiscal_year",
+                    entity_id=str(year),
                     description=(
                         f"Depreciation entries are irregular — monthly amounts "
                         f"vary significantly. Expected ~${float(monthly_avg):,.2f}/month. "
@@ -477,6 +483,8 @@ class YearEndCloseAgent(MonthEndCloseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.INFO,
                     anomaly_type="yearend_accrual_no_reversal",
+                    entity_type="journal_entry",
+                    entity_id=entry.id,
                     description=(
                         f"Accrual entry '{entry.description}' "
                         f"(${float(amt):,.2f}) in December has no "
@@ -498,6 +506,8 @@ class YearEndCloseAgent(MonthEndCloseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.INFO,
                 anomaly_type="yearend_no_accruals",
+                entity_type="fiscal_year",
+                entity_id=str(year),
                 description=(
                     "No accrual entries found in December. Common year-end "
                     "accruals include: accrued wages, accrued interest, "
@@ -593,6 +603,8 @@ class YearEndCloseAgent(MonthEndCloseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="yearend_inventory_value_zero",
+                entity_type="fiscal_year",
+                entity_id=str(year),
                 description=(
                     "Year-end inventory value computes to $0 but units are on "
                     "hand. Cost prices may not be set. Verify with CPA for "
@@ -699,6 +711,8 @@ class YearEndCloseAgent(MonthEndCloseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.INFO,
                 anomaly_type="yearend_retained_earnings_unavailable",
+                entity_type="fiscal_year",
+                entity_id=str(year),
                 description=(
                     "Beginning retained earnings balance could not be found "
                     "in journal entries. CPA will need to provide this figure "

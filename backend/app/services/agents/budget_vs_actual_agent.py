@@ -231,6 +231,8 @@ class BudgetVsActualAgent(BaseAgent):
         anomalies.append(self._make_anomaly(
             severity=AnomalySeverity.INFO,
             anomaly_type="budget_no_comparison_basis",
+            entity_type="accounting_period",
+            entity_id=self._period_subject_id(),
             description=(
                 "No budget or prior period data available for comparison. "
                 "This report shows actuals only."
@@ -349,6 +351,8 @@ class BudgetVsActualAgent(BaseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=severity,
                     anomaly_type="budget_variance_significant",
+                    entity_type="budget_summary_line",
+                    entity_id=f"{key}:{self._period_subject_id()}",
                     description=(
                         f"{label}: actual ${float(actual):,.2f} vs {comparison_label} "
                         f"${float(comp):,.2f}. "
@@ -417,6 +421,8 @@ class BudgetVsActualAgent(BaseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.INFO,
                     anomaly_type="budget_line_variance",
+                    entity_type="gl_account_period",
+                    entity_id=f"{acct_num}:{self._period_subject_id()}",
                     description=(
                         f"GL {acct_num} {acct_name}: ${float(actual_amt):,.2f} actual vs "
                         f"${float(comp_amt):,.2f} {comparison_label}. "

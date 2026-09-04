@@ -177,6 +177,8 @@ class EstimatedTaxPrepAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="no_posted_ledger_activity",
+                entity_type="accounting_period",
+                entity_id=self._period_subject_id(),
                 description=(
                     "No posted journal entries in this period or year to date, so "
                     "every figure below is zero because the ledger is empty — not "
@@ -221,6 +223,9 @@ class EstimatedTaxPrepAgent(BaseAgent):
             method = "single_period"
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.INFO,
+                # ⚠️ HELD WITHOUT A SUBJECT — Type B, phases 2-3. Nothing anyone DOES
+                # resolves this; the quarter simply fills up. No end transition, so no
+                # subject. See docs/investigations/2026-09-04-anomaly-subject-phase23.md.
                 anomaly_type="tax_estimate_rough",
                 description=(
                     "Less than one full quarter of data available. "
@@ -288,6 +293,8 @@ class EstimatedTaxPrepAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="no_tax_rates_configured",
+                entity_type="tax_rate_configuration",
+                entity_id=self.tenant_id,
                 description=(
                     "No tax rates found for this tenant. State tax estimate "
                     "cannot be computed. Configure tax rates in "
@@ -409,6 +416,8 @@ class EstimatedTaxPrepAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.INFO,
                 anomaly_type="no_tax_payment_tracking",
+                entity_type="tax_year",
+                entity_id=str(self._period_end().year),
                 description=(
                     "No estimated tax payment records found. If payments "
                     "have been made, they may not be categorized in a way "

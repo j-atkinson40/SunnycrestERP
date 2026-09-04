@@ -457,6 +457,8 @@ class InventoryReconciliationAgent(BaseAgent):
                     anomalies.append(self._make_anomaly(
                         severity=AnomalySeverity.INFO,
                         anomaly_type="inventory_unplanned_production",
+                        entity_type="inventory_item",
+                        entity_id=p["inventory_item_id"],
                         description=(
                             f"{p['product_name']}: {produced} units produced in period "
                             f"with no linked work order. Speculative stock build."
@@ -540,6 +542,8 @@ class InventoryReconciliationAgent(BaseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.INFO,
                     anomaly_type="inventory_large_count_adjustment",
+                    entity_type="inventory_transaction",
+                    entity_id=txn.id,
                     description=(
                         f"{pname}: physical count on {txn_date} required "
                         f"adjustment of {adjustment:+d} units."

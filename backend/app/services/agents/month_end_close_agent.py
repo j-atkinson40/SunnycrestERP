@@ -533,6 +533,8 @@ class MonthEndCloseAgent(BaseAgent):
                     anomalies.append(self._make_anomaly(
                         severity=AnomalySeverity.WARNING,
                         anomaly_type="revenue_outlier",
+                        entity_type="accounting_period",
+                        entity_id=self._period_subject_id(),
                         description=(
                             f"Total revenue ${total_revenue:,.2f} exceeds "
                             f"historical threshold of ${threshold:,.2f} "
@@ -661,6 +663,8 @@ class MonthEndCloseAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.CRITICAL,
                 anomaly_type="statement_run_conflict",
+                entity_type="statement_run",
+                entity_id=existing_run.id,
                 description=(
                     f"A statement run for this period already exists "
                     f"with status '{existing_run.status}'. "
@@ -715,6 +719,8 @@ class MonthEndCloseAgent(BaseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.WARNING,
                     anomaly_type="low_collection_rate",
+                    entity_type="accounting_period",
+                    entity_id=self._period_subject_id(),
                     description=(
                         f"Collection rate is {collection_rate_pct:.1f}% "
                         f"(${total_collected:,.2f} collected vs "
@@ -783,6 +789,8 @@ class MonthEndCloseAgent(BaseAgent):
                     anomalies.append(self._make_anomaly(
                         severity=AnomalySeverity.INFO,
                         anomaly_type="low_invoice_volume",
+                        entity_type="accounting_period",
+                        entity_id=self._period_subject_id(),
                         description=(
                             f"Invoice count ({current_count}) is less than half "
                             f"the prior average ({prior_avg:.0f}). "
