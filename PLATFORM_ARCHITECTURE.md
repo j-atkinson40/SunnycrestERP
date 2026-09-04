@@ -94,6 +94,33 @@ Naming: Earlier work in this cluster used “decision workspace” or “focused
 
 ## 3. Spaces (Monitor) 
 
+> ## ⚠️ THE THESIS STANDS; THE PULSE EXECUTION IS SUPERSEDED — 2026-09-04
+>
+> **This section is accurate about the surface that ships today, and is no longer
+> authoritative about the surface being built.** Per DECISIONS 2026-09-04
+> ("Monitor is a daily note, not a dashboard"), Monitor becomes a per-user,
+> per-day note surface — prose fragments over a positionally stable standing set —
+> rather than a per-Space composed widget surface.
+>
+> **§3.2 is NOT superseded.** Its five obligations — surface what's actionable
+> now; show ambient state; highlight what's changed; provide go-deeper paths;
+> adapt to context — remain the test the new surface must pass. §3.2 already
+> indicts the dashboard on its own terms ("A static dashboard list does maybe 30%
+> of #4 and nothing else"), and the note answers all five: 1/3/5 in prose, 2 in
+> the standing set, 4 in peeks and Focus entrances.
+>
+> **Superseded:** §3.1's "Each Space has one composed Monitor surface (the Pulse /
+> Home)" — scope moves to one note per user per day, with Space as a filter on
+> which fragments appear rather than a separate surface — and the layered
+> widget-composition execution in §3.3 and §3.4, plus §8.2 and §8.4.
+>
+> **The rewrite ships with the implementation, not before it.** Pulse is shipped
+> across 115 code files and is the tenant front door.
+>
+> Inventory + derivations:
+> `docs/investigations/2026-09-04-monitor-supersession-inventory.md`.
+
+
 A Space is a persistent context the user lives in: a domain like Funeral Direction, Production, Business, Schedule, or a cross-tenant relationship like “Sunnycrest ↔ Hopkins”. Spaces hold navigation structure and a composed Monitor surface. They are where users _return_ ; they are not where users _focus into_ . 
 
 ## 3.1 The Monitor Reframe 
@@ -1047,6 +1074,9 @@ When the aesthetics arc completes, sequencing conversation should cover: which F
 
 ## 8.2 Naming of the Pulse Surface 
 
+> ⚠️ **Superseded 2026-09-04** — see the marker at §3. The Monitor thesis in
+> §3.2 stands; this Pulse execution detail does not.
+
 “Pulse” is the working name for each Space’s primary Monitor surface. Alternatives: “Live View” (descriptive but flat), “Home” (clear but generic), “The Surface” (too abstract). Decide before building. 
 
 ## 8.3 Spaces Overview vs. Cross-Space Overview 
@@ -1060,6 +1090,9 @@ _Cross-Space Overview_ — the leadership Pulse composing across spaces (Section
 May share real estate. May be siblings. Worth deciding. 
 
 ## 8.4 Monitor’s Default Landing per Space 
+
+> ⚠️ **Superseded 2026-09-04** — see the marker at §3. The Monitor thesis in
+> §3.2 stands; this Pulse execution detail does not.
 
 Each Space’s Pulse should be role-defaulted (Funeral Direction → director-shaped composition; Production → plant manager-shaped). Configurable per-user with sensible role defaults. Specifics TBD per Space. 
 

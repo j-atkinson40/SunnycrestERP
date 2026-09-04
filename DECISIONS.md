@@ -1294,3 +1294,152 @@ Delivery is classified in selling expense, below gross profit, rather than in CO
 ## 2026-09-01 — Legacy chart classification is advisory input, not the record
 
 The Sage COA classifier is demoted from authority to importer heuristic. It **proposes**; Bridgeable's vertical-default classification **decides**; a tenant may override with a recorded reason. Sunnycrest is the first legacy chart imported and there will be many — every funeral home arriving with a QuickBooks chart inherits the precedent set here. If the importer's classification stands as truth, the platform's income statement means something different in every tenant, and cross-tenant comparison never becomes possible; that comparison is the substrate under the Bridgeable Mutual thesis, so the cost of getting this wrong is not confined to reporting. The governing rule for classification is stated in CLAUDE.md: an account is non-operating if its activity would continue unchanged were the business to stop selling its product. Account number ranges are convention, not evidence — classifying by range is the same shape as inferring names from shapes rather than configs.
+
+---
+
+## 2026-09-04 — Monitor is a daily note, not a dashboard
+
+The Monitor primitive is replaced by a per-user, per-day note surface. Rationale: a
+dashboard presents state without stance. It can show inventory at 3 and required at 6,
+and separately show that Tuesday's pour slipped, but it structurally cannot say
+*because* — the causal and temporal connective tissue that an experienced coworker
+supplies is exactly what a grid of widgets cannot carry. Monitor was the one primitive
+that failed the "would a good coach do this" test. The note is prose plus links;
+links open floating windows or Focuses; the user does not leave the page. Scope is one
+note per user per day, not one Pulse per Space — the human has one day, and cross-day
+questions ("what did I decide Tuesday") live above the Space boundary. Space selection
+becomes a filter on which fragments appear, not a separate surface.
+
+Supersedes nine dependent sites in CLAUDE.md §1a — the section title, MODE 1 in full,
+Decision Framework Question 1, the "if a feature is both" block, both the INCOMPLETE and
+COMPLETE clauses, and Rules 2, 3, and 4 — and the Pulse execution described in
+PLATFORM_ARCHITECTURE §3.1, §3.3, §3.4, §8.2, and §8.4. The five Monitor obligations in
+§3.2 are not superseded; they remain the test this surface must pass. Rule 3's four-leg
+completeness test becomes unsatisfiable rather than shorter once the hub-widget leg is
+removed, and is suspended pending rewrite. The Act and Decide primitives are unchanged.
+The pulse-widget ComponentKind is carried by a database CHECK constraint, so its
+disposition is a migration and is explicitly out of scope here.
+
+User-authored text is supported but secondary: the value is that entity references in
+user text become backlinks on those entities, so "what did we decide about Hopkins" is
+answered by opening Hopkins, not by reading four people's notes. The note is personal;
+the graph is shared.
+
+---
+
+## 2026-09-04 — The note has two registers, and only one of them is composed
+
+Standing lines are configured, positionally stable, and always present — schedule,
+inbox, today's production. They do not reorder and do not appear or disappear.
+Intelligence must not compose this set, because composition destroys the positional
+memory that makes a standing line cheap to use. Prose fragments are composed, ordered
+by urgency, and appear only when there is something to say; a three-line note on a
+quiet day is correct behavior, not a failure.
+
+The relationship is that the standing set is the floor and prose is the exception
+layer: the schedule sits there as one word all day, and when there is a conflict in it,
+prose says so above with a link into the conflict. The schedule is on the wall, and
+someone tells you when it's broken.
+
+The dashboard's actual error was allocating persistent screen space in proportion to
+importance rather than to attention frequency. The funeral kanban is important all day
+and looked at four times; it earns permanence, not area.
+
+Standing set is capped at 7 per role, admission test "referenced most days" rather than
+"useful sometimes." Most roles will sit well below it; a role approaching 7 is a signal
+about that role's design, not grounds to raise the cap. Standing lines may carry live
+counts, but never badges — a count is a fact you read, a badge is a demand. No color
+escalation, no growth to catch the eye. If something in the inbox needs deciding today,
+that is prose's job, and prose says what it is.
+
+---
+
+## 2026-09-04 — Prose fragments declare four things or they don't ship
+
+A prose fragment is not descriptive text with a link attached — it *is* a query,
+rendered in language, carrying its scope into whatever it opens. "There are 4 funerals,
+2 septic tank, and 3 Redi-Rock deliveries to schedule for tomorrow" opens the
+scheduling Focus already scoped to tomorrow, not a generic surface the user then
+filters. A fragment that cannot name its target and scope is a dashboard tile that
+learned to talk.
+
+Every fragment declares: (1) who sees it — a permission predicate, where lacking the
+permission means the fragment does not exist rather than rendering inert; (2) what
+condition brings it into existence; (3) what it opens and with what scope; (4) what
+state transition ends it. Any of the four unspecified means the fragment is
+underspecified. This is the bounded-decision test applied one level up — to the thing
+that summons the decision surface rather than to the surface itself.
+
+Fragments are typed and individually sourced rather than produced by one large
+generation call. Each fragment then knows its own source query, so provenance is
+structural rather than promised; regeneration is incremental on material change; and
+wording is stable across refreshes, which is the precondition for trust. Freeform
+prose over the whole surface would be untestable and would re-word itself daily.
+
+The substrate for this already exists: pulse_subscriber is one of six task-lifecycle
+subscribers and already receives task_created / task_assigned / task_status_changed,
+which is the material-change stream fragments need. Fragment regeneration adopts that
+stream rather than introducing a parallel one. (Investigator finding, 2026-09-04;
+see docs/investigations/.)
+
+Every factual claim is a link, and the link is the provenance mark. Unlinked text is
+connective tissue. Inference ("because the pour slipped") must be typographically
+distinguishable from measurement — the user must be able to tell at a glance what the
+system knows from what it thinks.
+
+---
+
+## 2026-09-04 — The note has a live phase and a settled phase
+
+During the day the note is about what needs doing. At a tenant-configured settling hour
+(default midnight, tenant-local) consumed prompts are replaced by past-tense records of
+the action taken: "you have 3 unread" becomes "you replied to 5 emails and 2 text
+messages, submitted 2 quotes, entered 5 sales orders," with links. Same fragment
+lineage, different tense — nothing misrepresents the past, because the past-tense form
+is a distinct fragment generated from events that actually occurred.
+
+Events attribute to the day they occurred in tenant-local time, so an 11pm reply lands
+in the correct day's summary even when settling has already run. The settled note is
+therefore append-only with visible timestamps rather than immutable — the same pattern
+as this document.
+
+Links carry the timestamp of the note they appear on. Anything event-sourced re-derives
+as-of; entities that cannot re-derive get a payload frozen at settling and are visibly
+marked as a record rather than a live view. A link that quietly shows today's data under
+yesterday's sentence is the worst available outcome for a surface whose premise is that
+links are provenance marks. Fragment types must also declare which sense of "yesterday"
+they mean — the funerals that occurred yesterday, versus the approval as it stood when
+it was given, are different queries and the user cannot tell them apart from the prose.
+
+---
+
+## 2026-09-04 — Prompts leave the note by resolution or dated deferral, never silently
+
+There is no "make this go away." An unresolved prompt persists across settling, and the
+user's only alternatives are to act on it or to defer it to a named date (presets plus a
+date picker; granularity beyond that is not useful). Deferral is recorded on the day's
+settled note — the record of what someone chose not to do is often more informative than
+the record of what they did, and in a regulated context it is the more consequential
+one. Deferral does not survive material change: the condition's inputs are snapshotted
+at deferral, and the prompt wakes on divergence, because the user deferred a decision
+with a known shape and the shape changed. Re-deferral is stated plainly ("deferred three
+times") without color escalation — someone repeatedly pushing something is usually
+blocked on something else, and it is the only signal that would reveal a badly designed
+prompt.
+
+Prompts have an owner and optionally a backup, not flat multi-user sharing. Flat sharing
+across four capable users reliably produces diffusion of responsibility; primary-with-
+backup matches how a ten-person business actually distributes work and makes the
+ordering legible without negotiation. Avatars communicate capability, not activity —
+they say "this isn't only yours," which is information needed before acting. Capped at
+4 plus a count, as with Focus presence. Attribution never carries timing emphasis and is
+never aggregated into per-user resolution counts; the moment such a number exists,
+someone will look at it.
+
+When any authorized party resolves a prompt, everyone who held that prompt gets the
+past-tense resolution line with a link to what was done — and no one else. This is not
+event news about a colleague; it is the resolution of a fragment the recipient was
+holding, and it settles into past tense exactly as it would have had they acted
+themselves. Routed beyond the holders, it would be a feed. The activity feed remains a
+separate channel, as with Focus: persistent state, live presence, and ambient events
+stay distinct.

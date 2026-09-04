@@ -56,6 +56,40 @@ Workflow Arc Phase 8a operationalizes this principle in three ways:
 
 ## 1a. Core UX Philosophy — "Monitor through hubs. Act through the command bar."
 
+> ## ⚠️ SUPERSEDED IN PART — 2026-09-04
+>
+> **This section is accurate about the surface that ships today, and is no longer
+> authoritative about the surface being built.** Read it to understand `/home` as
+> it currently behaves. Do not design new work against it.
+>
+> Per DECISIONS 2026-09-04 ("Monitor is a daily note, not a dashboard"), the
+> Monitor primitive is replaced by a per-user, per-day note surface. Nine sites in
+> this section depend on Monitor-as-dashboard: the section title, MODE 1 in full,
+> Decision Framework Question 1, the "if a feature is both" block, both the
+> INCOMPLETE and COMPLETE clauses, and Rules 2, 3, and 4.
+>
+> ⚠️ **Rule 3's four-leg completeness test is SUSPENDED, not shortened.** It closes
+> "If you cannot specify all four, the feature is not fully designed," and its
+> first leg is "Which hub(s) get a widget for this feature." Removing that leg
+> leaves a four-leg gate that no feature can satisfy, so the test would fail every
+> design or be quietly ignored — and a stated gate that everyone ignores is worse
+> than no gate. Until the rewrite lands, specify the remaining three legs (command
+> bar workflow, natural-language inputs, UI backup page) and treat the hub-widget
+> leg as not applicable. **Rules 1, 5, and 6 are unaffected and remain in force**,
+> as do MODE 2 and everything from "Spaces — Context Switching" onward.
+>
+> **The rewrite ships with the implementation, not before it.** `/home` serves the
+> Pulse surface to every authenticated tenant user today
+> (`frontend/src/components/root-redirect.tsx`), across 115 code files. Rewriting
+> this section to describe the note surface now would put a description of an
+> unbuilt surface into the document dispatches are told to read first, while
+> leaving the shipped surface with no canon at all — the same map-describes-a-
+> nonexistent-surface defect the S-4 arc exists to repair, manufactured
+> deliberately in the foundational document.
+>
+> Inventory + derivations:
+> `docs/investigations/2026-09-04-monitor-supersession-inventory.md`.
+
 **This is the foundational design principle of Bridgeable. Every feature decision must be evaluated against it.**
 
 ### The Two Modes
