@@ -74,6 +74,22 @@ Measured, unresolved anomalies, `entity_id` coverage:
 | `ar_balance_drift` | 5 | 5 |
 | `payment_unmatched_stale` | 4 | 4 |
 
+> ## ⚠️ [CORRECTED 2026-09-04] — THE CLAIM BELOW IS FALSE AS WRITTEN
+>
+> The original text read: *"Every other anomaly type carries an entity reference
+> on every row. This one carries it on none."* The second sentence is true. **The
+> first is false**, and it was produced by a query with `LIMIT 6` — a universal
+> claim bounded by my view of the data rather than by the data.
+>
+> Re-measured across ALL types, resolved and unresolved: **six types carry zero
+> entity ids**, and `payment_unmatched_recent` carries them on 2 of 3 unresolved
+> rows — partial coverage within one type, a third state the original did not
+> consider. See `2026-09-04-anomaly-subject-audit.md` for the full enumeration
+> and for the 45-of-75 call-site finding that supersedes this section's framing
+> entirely.
+>
+> Original wording preserved below.
+
 **Every other anomaly type carries an entity reference on every row. This one
 carries it on none.** The write site passes no `entity_type` and no `entity_id`,
 and the description is category-scoped rather than line-scoped:
@@ -147,8 +163,8 @@ writer, so it is James's. In dependency order:
 Steps 1 and 2 together are what canon meant by "ships supersede in the same
 pass"; the entry did not anticipate that step 1 was missing.
 
-**Session 2 could proceed on other sources.** `expense_no_gl_mapping` is the only
-unresolved type without entity ids; the other five carry them on every row. But
+**Session 2 could proceed on other sources.** ⚠️ [CORRECTED 2026-09-04] — this
+sentence rested on the falsified claim above. Six types lack entity ids, not one. But
 the dispatch's STOP is explicit, the largest source in production is the affected
 one, and building prose that must exclude the biggest thing on the surface is a
 decision rather than an implementation detail. Held for that ruling.
