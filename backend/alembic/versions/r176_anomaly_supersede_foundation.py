@@ -29,6 +29,10 @@ WHAT AND WHY:
    a human acted, putting a false statement in the audit trail and biasing every
    "what did operators decide" query toward overstating engagement.
 
+⚠️ BEFORE YOU ROLL THIS BACK — READ `downgrade()`. Two properties are true
+today and stop being true once phase 5b lands, and the second one is a
+data-loss rollback wearing a schema-rollback's shape.
+
 Revision ID: r176_anomaly_supersede_foundation
 Revises: r175_note_surface_foundation
 """
@@ -107,6 +111,29 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """⚠️ READ THIS BEFORE ROLLING BACK. Two things, both easy to miss under
+    the pressure that makes someone reach for a rollback.
+
+    1. ROLLBACK HAS AN ORDER: DEPLOY FIRST, THEN MIGRATION.
+       The application code references `tenant_id` and `superseded_at`. Dropping
+       those columns underneath running new code breaks it immediately. Revert
+       the deploy, let the old container take traffic, and only then downgrade.
+
+    2. ⚠️ THIS IS LOSSLESS TODAY AND WILL NOT BE AFTER PHASE 5b.
+       Phase 5a writes `superseded_at` nowhere, so dropping it loses nothing.
+       Once 5b's supersede-on-write is live, that column is the ONLY record of
+       which anomalies the machine replaced. Dropping it does not merely lose a
+       timestamp — every superseded row silently becomes open work again in
+       every count, badge and triage queue, because `open_filter()` reads
+       exactly that column. At the time 5a landed that would have been 240 rows
+       reappearing against 11 real decisions.
+
+       So this is a safe escape hatch for 5a and is NOT one after 5b. If you are
+       rolling back post-5b, dump `(id, superseded_at)` for every non-null row
+       first, or you are deleting the answer rather than the question.
+
+    `entity_id` is deliberately left at 255 — see the inline note below.
+    """
     op.drop_index("ix_agent_anomalies_open", table_name="agent_anomalies")
     op.drop_column("agent_anomalies", "superseded_at")
     # ⚠️ Narrowing entity_id back to 36 would FAIL on any row holding a longer
