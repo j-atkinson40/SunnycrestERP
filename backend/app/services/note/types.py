@@ -92,13 +92,28 @@ class StandingEntry:
         )
 
 
+#: ⚠️ WHY THIS EXISTS. The rule "a failed count renders as no count, never zero"
+#: is right, and taken alone it made two different states indistinguishable from
+#: outside: an entry that HAS no count and an entry whose count FAILED both
+#: rendered as nothing. An operator reviewing the surface could not tell a
+#: deliberate blank from three silent failures — the absent-signal problem
+#: appearing in the UI itself.
+#:
+#: So the payload distinguishes them even though the reader may not need to:
+#:   "absent"      — the entry declares no count_source. Nothing to show.
+#:   "ok"          — resolved. `count` is the number.
+#:   "unavailable" — a count_source was declared and resolution FAILED.
+#:                   Still never rendered as zero; zero is a claim.
+CountState = Literal["absent", "ok", "unavailable"]
+
+
 @dataclass(frozen=True)
 class ResolvedStandingEntry:
     """An entry with its count resolved, ready to render."""
 
     entry: StandingEntry
-    #: None when the entry declares no count source, or when resolution failed.
-    #: A failed count renders as no count — NEVER as zero, which is a claim.
+    #: None for both "absent" and "unavailable" — see `state` to tell them apart.
     count: int | None
     #: Which tier this entry came from: "role" | "tenant" | "user".
     tier: str
+    state: CountState = "absent"

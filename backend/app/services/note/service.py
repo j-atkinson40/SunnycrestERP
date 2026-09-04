@@ -144,14 +144,13 @@ def render_standing_set(db: Session, user: User) -> list[ResolvedStandingEntry]:
     the register's entire value.
     """
     entries, tier = resolve_standing_set(db, user)
-    return [
-        ResolvedStandingEntry(
-            entry=e,
-            count=resolve_count(db, user, e.count_source),
-            tier=tier,
+    out: list[ResolvedStandingEntry] = []
+    for e in entries:
+        count, state = resolve_count(db, user, e.count_source)
+        out.append(
+            ResolvedStandingEntry(entry=e, count=count, tier=tier, state=state)
         )
-        for e in entries
-    ]
+    return out
 
 
 def set_override(

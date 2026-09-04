@@ -46,6 +46,11 @@ def get_today_note(
                 "target_key": r.entry.target_key,
                 # None means "no count", NEVER zero. Zero is a claim.
                 "count": r.count,
+                # ⚠️ Distinguishes a deliberate blank from a silent failure.
+                # Both render without a number, and an operator reviewing the
+                # surface must still be able to tell them apart — otherwise
+                # three absent counts and three broken ones look identical.
+                "count_state": r.state,
                 "tier": r.tier,
                 # Session 3 wires opening. Declared, not wired, and the client
                 # must not invent a click for it.

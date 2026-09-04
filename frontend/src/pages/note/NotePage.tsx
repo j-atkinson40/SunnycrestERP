@@ -31,6 +31,10 @@ interface StandingEntry {
   target_key: string;
   /** null means NO count — never rendered as zero, because zero is a claim. */
   count: number | null;
+  /** "absent" = no count declared · "ok" = resolved · "unavailable" = it broke.
+   *  Both non-ok states render without a number; they are distinguished so a
+   *  reviewer can tell a deliberate blank from a silent failure. */
+  count_state: "absent" | "ok" | "unavailable";
   tier: string;
   openable: boolean;
 }
@@ -95,15 +99,17 @@ export default function NotePage() {
             className="flex items-baseline justify-between border-b border-border-subtle py-2"
           >
             <span className="text-body text-content-base">{e.label}</span>
-            {/* Plain text. No badge, no colour, no shape. */}
-            {e.count !== null && (
-              <span
-                data-testid={`count-${e.entry_id}`}
-                className="text-body-sm tabular-nums text-content-muted"
-              >
-                {e.count}
-              </span>
-            )}
+            {/* Plain text. No badge, no colour, no shape. `data-count-state`
+                carries the distinction to the DOM so a reviewer (and a test)
+                can tell "no count" from "count broke" without either becoming
+                a number. Never renders zero on failure — zero is a claim. */}
+            <span
+              data-testid={`count-${e.entry_id}`}
+              data-count-state={e.count_state}
+              className="text-body-sm tabular-nums text-content-muted"
+            >
+              {e.count_state === "ok" ? e.count : ""}
+            </span>
           </div>
         ))}
       </section>

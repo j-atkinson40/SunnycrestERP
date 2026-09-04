@@ -67,20 +67,33 @@ COUNT_RESOLVERS: dict[str, Callable[[Session, User], int]] = {
 }
 
 
-def resolve_count(db: Session, user: User, count_source: str | None) -> int | None:
-    """Resolve one entry's live count, or None.
+def resolve_count(
+    db: Session, user: User, count_source: str | None
+) -> tuple[int | None, str]:
+    """Resolve one entry's live count. Returns `(count, state)`.
+
+    ⚠️ THE STATE IS THE POINT. "A failed count renders as no count" is right and,
+    alone, made a deliberate blank indistinguishable from a silent failure — so
+    the two are separated here even though both render without a number. An
+    operator reviewing the surface must be able to tell "this line has no count"
+    from "this line's count broke".
 
     Never raises into the caller: a standing set that cannot render because one
     count failed is worse than one with a single count missing.
     """
     if not count_source:
-        return None
+        return None, "absent"
     fn = COUNT_RESOLVERS.get(count_source)
     if fn is None:
-        logger.debug("no count resolver for %r — rendering no count", count_source)
-        return None
+        # A declared source with no resolver is a wiring gap, not a blank line.
+        logger.warning(
+            "standing entry declares count_source %r with no resolver "
+            "registered — rendering unavailable, not zero",
+            count_source,
+        )
+        return None, "unavailable"
     try:
-        return int(fn(db, user))
+        return int(fn(db, user)), "ok"
     except Exception:
         logger.exception("count resolution failed for %r", count_source)
-        return None  # NOT zero — zero is a claim
+        return None, "unavailable"  # NOT zero — zero is a claim

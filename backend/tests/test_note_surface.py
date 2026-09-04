@@ -287,7 +287,9 @@ def test_a_failed_count_renders_as_none_never_zero(db, user):
 
     counts.COUNT_RESOLVERS["_boom"] = _boom
     try:
-        assert counts.resolve_count(db, user, "_boom") is None
+        count, state = counts.resolve_count(db, user, "_boom")
+        assert count is None, "a failed count is never zero — zero is a claim"
+        assert state == "unavailable"
     finally:
         counts.COUNT_RESOLVERS.pop("_boom", None)
 
@@ -295,7 +297,9 @@ def test_a_failed_count_renders_as_none_never_zero(db, user):
 def test_unknown_count_source_renders_no_count(db, user):
     from app.services.note import counts
 
-    assert counts.resolve_count(db, user, "nonexistent-source") is None
+    count, state = counts.resolve_count(db, user, "nonexistent-source")
+    assert count is None
+    assert state == "unavailable", "a declared source with no resolver is a wiring gap, not a blank"
 
 
 # ── Item 3 — the decomposition, resolving on a real day ──────────────
@@ -315,3 +319,74 @@ def test_every_shipped_role_template_satisfies_the_register(db):
     for key, entries in ROLE_TEMPLATES.items():
         validate_entries(entries)
         assert len(entries) <= MAX_STANDING_ENTRIES, key
+
+
+# ── Operator review 2026-09-04 — the four flags ──────────────────────
+
+
+def test_no_label_is_an_imperative():
+    """⚠️ A LABEL THAT TELLS YOU TO ACT IS A BADGE MADE OF WORDS.
+
+    Caught in operator review: "Needs attention" satisfied the colour and growth
+    prohibitions and still pulled the eye, because an imperative does a badge's
+    work through language. Three nouns and one instruction is not a uniform set.
+    """
+    from app.services.note import FALLBACK_TEMPLATE, ROLE_TEMPLATES
+
+    banned = ("needs", "check", "review", "action", "urgent", "fix", "must", "!")
+    for key, entries in list(ROLE_TEMPLATES.items()) + [(("fallback", ""), FALLBACK_TEMPLATE)]:
+        for e in entries:
+            low = e.label.lower()
+            for b in banned:
+                assert b not in low, f"{key} label {e.label!r} reads as a demand, not a fact"
+
+
+def test_no_label_collides_with_the_page_title():
+    """The page is titled Today. A standing line called Today is confusing on
+    first read and worse on the tenth."""
+    from app.services.note import FALLBACK_TEMPLATE, ROLE_TEMPLATES
+
+    for key, entries in list(ROLE_TEMPLATES.items()) + [(("fallback", ""), FALLBACK_TEMPLATE)]:
+        for e in entries:
+            assert e.label.strip().lower() != "today", f"{key}: {e.label!r} collides with the page title"
+
+
+def test_labels_are_unique_within_a_template():
+    from app.services.note import ROLE_TEMPLATES
+
+    for key, entries in ROLE_TEMPLATES.items():
+        labels = [e.label for e in entries]
+        assert len(labels) == len(set(labels)), f"{key} repeats a label: {labels}"
+
+
+def test_absent_and_unavailable_are_distinguishable(db, user):
+    """⚠️ THE ABSENT-SIGNAL PROBLEM, IN THE UI. Both render without a number, so
+    without a discriminator an operator cannot tell a deliberate blank from a
+    silent failure — which is exactly what the review could not tell."""
+    from app.services.note import counts
+
+    absent_count, absent_state = counts.resolve_count(db, user, None)
+    assert (absent_count, absent_state) == (None, "absent")
+
+    def _boom(db, user):
+        raise RuntimeError("nope")
+
+    counts.COUNT_RESOLVERS["_x"] = _boom
+    try:
+        broke_count, broke_state = counts.resolve_count(db, user, "_x")
+    finally:
+        counts.COUNT_RESOLVERS.pop("_x", None)
+
+    assert broke_count is None
+    assert broke_state != absent_state, (
+        "a deliberate blank and a broken count must be distinguishable"
+    )
+
+
+def test_render_carries_the_state_per_entry(db, user):
+    rendered = render_standing_set(db, user)
+    assert rendered
+    for r in rendered:
+        assert r.state in ("absent", "ok", "unavailable")
+        if r.state != "ok":
+            assert r.count is None, "only a resolved count carries a number"

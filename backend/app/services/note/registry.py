@@ -57,40 +57,59 @@ def _e(entry_id: str, label: str, target_key: str, count_source: str | None = No
 #: fallback — manufacturing 5 widgets, the other three verticals 2. The
 #: work-area mapping's breadth is untested because its input has never existed,
 #: so seeding from it would be seeding from a path nobody has walked.
+# ⚠️ EVERY LABEL IS A NOUN, AND THAT IS A RULE RATHER THAN A STYLE CHOICE.
+# Operator review 2026-09-04 caught "Needs attention" on the anomalies line: the
+# colour and growth prohibitions were satisfied, and the label still pulled the
+# eye, because an imperative does a badge's work through language. Three nouns
+# and one instruction is not a uniform set — the instruction is the badge.
+#
+# It was also less useful: "Needs attention" does not say what needs it. The 44
+# it counted are, measured on production, 24 collections_critical + 9
+# collections_follow_up + 3 ar_balance_drift + a scatter of singles — all rows
+# of `agent_anomalies`, which the product already calls anomalies everywhere
+# else. Naming the thing is both the honest label and the more informative one.
+#
+# ⚠️ AND NO LABEL MAY BE "Today". The page itself is titled Today; a standing
+# line with the same word is confusing on first read and worse on the tenth. The
+# `today` widget is a work summary — "Today's work summary ... vault deliveries,
+# ancillary pool items waiting, and unscheduled deliveries" — so it is named for
+# what it contains, per vertical.
 ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
     ("manufacturing", "admin"): (
         _e("schedule", "Schedule", "vault_schedule"),
         _e("production", "Production", "line_status"),
-        _e("today", "Today", "today"),
-        _e("anomalies", "Needs attention", "anomalies", count_source="anomalies"),
+        _e("deliveries", "Deliveries", "today"),
+        _e("anomalies", "Anomalies", "anomalies", count_source="anomalies"),
     ),
     ("manufacturing", "production"): (
         _e("schedule", "Schedule", "vault_schedule"),
         _e("production", "Production", "line_status"),
-        _e("today", "Today", "today"),
+        _e("deliveries", "Deliveries", "today"),
     ),
     ("manufacturing", "dispatcher"): (
         _e("schedule", "Schedule", "vault_schedule"),
         _e("ancillary", "Ancillary pool", "scheduling.ancillary-pool"),
-        _e("today", "Today", "today"),
+        _e("deliveries", "Deliveries", "today"),
     ),
+    # An accountant does not reference deliveries most days, so the work-summary
+    # line is dropped here rather than carried for symmetry. Two entries is a
+    # correct standing set; the admission test is "referenced most days".
     ("manufacturing", "accountant"): (
-        _e("anomalies", "Needs attention", "anomalies", count_source="anomalies"),
+        _e("anomalies", "Anomalies", "anomalies", count_source="anomalies"),
         _e("ar", "Receivables", "ar_summary"),
-        _e("today", "Today", "today"),
     ),
     # The three non-manufacturing verticals share the sparse default the
     # operational layer already falls back to. Two entries, not five.
     ("funeral_home", "director"): (
-        _e("today", "Today", "today"),
+        _e("workload", "Workload", "today"),
         _e("activity", "Recent activity", "recent_activity"),
     ),
     ("cemetery", "admin"): (
-        _e("today", "Today", "today"),
+        _e("workload", "Workload", "today"),
         _e("activity", "Recent activity", "recent_activity"),
     ),
     ("crematory", "admin"): (
-        _e("today", "Today", "today"),
+        _e("workload", "Workload", "today"),
         _e("activity", "Recent activity", "recent_activity"),
     ),
 }
@@ -99,7 +118,7 @@ ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
 #: with no standing set has no positional memory to build, and the register's
 #: whole value is that position means something.
 FALLBACK_TEMPLATE: tuple[StandingEntry, ...] = (
-    _e("today", "Today", "today"),
+    _e("workload", "Workload", "today"),
 )
 
 
