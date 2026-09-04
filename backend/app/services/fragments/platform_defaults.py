@@ -148,7 +148,9 @@ def _anomaly_watchlist_condition(
 
     return [
         FragmentInstance(
-            instance_key=f"anomaly_watchlist:{user.company_id}",
+            # (5) IDENTITY: one watchlist per tenant. Stable across every
+            # sweep for as long as the tenant has unresolved anomalies.
+            subject_id=user.company_id,
             payload=FragmentPayload(
                 title="Today's watch list",
                 synthesized_text=text,
@@ -220,7 +222,8 @@ def _compliance_flags_condition(
 
     return [
         FragmentInstance(
-            instance_key=f"compliance_flags:{user.id}",
+            # (5) IDENTITY: one flags fragment per user.
+            subject_id=user.id,
             payload=FragmentPayload(
                 title="Compliance",
                 synthesized_text=text,
@@ -297,7 +300,11 @@ def _tasks_due_today_condition(
 
     return [
         FragmentInstance(
-            instance_key=f"tasks_due_today:{user.id}:{today.isoformat()}",
+            # (5) IDENTITY: the subject genuinely IS (this user, this day) —
+            # tomorrow is a different fragment, today is the same one no
+            # matter how often the sweep runs. The date is a property of the
+            # subject, not of the evaluation.
+            subject_id=f"{user.id}:{today.isoformat()}",
             payload=FragmentPayload(
                 title="Due today",
                 synthesized_text=text,
@@ -336,6 +343,7 @@ def seed() -> None:
             condition=_anomaly_watchlist_condition,
             target_surface="peek",
             target_key="anomalies",
+            subject_kind="company",
             metadata={
                 "replaces": "pulse.anomaly_layer_service:stream:anomaly_intelligence",
             },
@@ -351,6 +359,7 @@ def seed() -> None:
             condition=_compliance_flags_condition,
             target_surface="peek",
             target_key="safety_alerts",
+            subject_kind="user",
             metadata={
                 "replaces": "pulse.anomaly_layer_service:stream:compliance_flags",
             },
@@ -366,6 +375,7 @@ def seed() -> None:
             condition=_tasks_due_today_condition,
             target_surface="focus",
             target_key="task_triage",
+            subject_kind="user_day",
             # (4) END TRANSITION — a prompt must declare how it leaves.
             end_transition=EndTransition(
                 entity_kind="task",

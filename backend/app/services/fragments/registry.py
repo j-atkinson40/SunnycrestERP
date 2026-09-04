@@ -96,6 +96,27 @@ def _validate(decl: FragmentDeclaration) -> None:
             "target_key names what is opened and is required."
         )
 
+    # (5) IDENTITY — must name what instances are about. Enforced here so a
+    # fragment whose author never answered "what is this about?" cannot
+    # register; the alternative is discovering at deferral time that the answer
+    # was "the run that found it".
+    if not decl.subject_kind or not decl.subject_kind.strip():
+        raise FragmentDeclarationError(
+            f"{decl.fragment_id}: declaration (5) IDENTITY is missing — "
+            "subject_kind must name the KIND of thing instances are about "
+            "(\"invoice\", \"vendor_bill_line\", \"user_day\"). The instance "
+            "key is derived from it plus the instance's subject_id, so a "
+            "condition can never supply a run-scoped key."
+        )
+    _RUN_SCOPED = ("run", "job", "execution", "sweep", "evaluation", "invocation")
+    if decl.subject_kind.strip().lower() in _RUN_SCOPED:
+        raise FragmentDeclarationError(
+            f"{decl.fragment_id}: declaration (5) IDENTITY names "
+            f"{decl.subject_kind!r}, which is the EVALUATION rather than its "
+            "subject. Two evaluations of the same condition must yield the "
+            "same key; keying on the run guarantees they never do."
+        )
+
     # (4) END TRANSITION — required iff prompt, forbidden otherwise.
     if decl.kind == "prompt" and decl.end_transition is None:
         raise FragmentDeclarationError(

@@ -152,7 +152,7 @@ def clean_registry():
 
 def _instance(**over):
     base = dict(
-        instance_key="k1",
+        subject_id="subj-1",
         payload=FragmentPayload(title="T", synthesized_text="text"),
         scope={"a": 1},
         condition_inputs={"ids": []},
@@ -170,6 +170,7 @@ def _decl(**over):
         condition=lambda db, *, user: [_instance()],
         target_surface="peek",
         target_key="thing",
+        subject_kind="thing",
     )
     base.update(over)
     return FragmentDeclaration(**base)
@@ -362,13 +363,13 @@ def test_emission_drops_a_scopeless_instance_without_dropping_the_rest(
         _decl(
             fragment_id="mixed",
             condition=lambda db, *, user: [
-                _instance(instance_key="bad", scope={}),
-                _instance(instance_key="good", scope={"x": 1}),
+                _instance(subject_id="bad", scope={}),
+                _instance(subject_id="good", scope={"x": 1}),
             ],
         )
     )
     out = emit_for_user(db, user=user, fragment_ids=["mixed"])
-    assert [e.instance.instance_key for e in out] == ["good"]
+    assert [e.instance.subject_id for e in out] == ["good"]
 
 
 # ── Emission behaviour ───────────────────────────────────────────────
@@ -516,3 +517,89 @@ def test_tasks_due_tomorrow_does_not_emit(db, user, world):
         db.query(TaskDetails).filter(TaskDetails.id == td.id).delete()
         db.query(VaultItem).filter(VaultItem.id == vi.id).delete()
         db.commit()
+
+# ── Scenario 5 — IDENTITY (declaration 5) ────────────────────────────
+
+
+def test_missing_subject_kind_does_not_register(clean_registry):
+    """(5) must be declared, like the other four."""
+    with pytest.raises(FragmentDeclarationError, match="IDENTITY"):
+        register_fragment(_decl(subject_kind=""))
+
+
+def test_run_scoped_subject_kind_is_rejected(clean_registry):
+    """⚠️ THE PRODUCTION DEFECT, REFUSED AT REGISTRATION. base_agent wrote
+    provenance_ref_id=self.job_id — keyed on the evaluation. Naming the
+    evaluation as the subject is the same mistake spelled out loud."""
+    for bad in ("run", "job", "execution", "sweep", "evaluation", "invocation"):
+        with pytest.raises(FragmentDeclarationError, match="EVALUATION"):
+            register_fragment(_decl(fragment_id=f"f_{bad}", subject_kind=bad))
+
+
+def test_instance_key_is_derived_not_supplied(clean_registry):
+    """The condition cannot choose the key — it has no field for one."""
+    import dataclasses
+
+    fields = {f.name for f in dataclasses.fields(FragmentInstance)}
+    assert "instance_key" not in fields, (
+        "a condition that can supply its own key can supply a run-scoped one"
+    )
+    assert "subject_id" in fields
+
+
+def test_two_evaluations_of_the_same_condition_yield_the_same_key(
+    clean_registry, db, user
+):
+    """⚠️ THE DECISIVE TEST, and the one that would have caught the sweep.
+
+    Not "does it produce a key" — a run-keyed condition produces one too. The
+    property is that evaluating TWICE yields the SAME key, which is exactly
+    what `provenance_ref_id = self.job_id` cannot do.
+    """
+    calls: list[int] = []
+
+    def _condition(db, *, user):
+        calls.append(1)
+        # subject is stable; anything derived from the call is not
+        return [_instance(subject_id="vendor-bill-line-42")]
+
+    register_fragment(_decl(fragment_id="stable", condition=_condition))
+    first = emit_for_user(db, user=user, fragment_ids=["stable"])
+    second = emit_for_user(db, user=user, fragment_ids=["stable"])
+    assert len(calls) == 2, "condition must actually have run twice"
+    assert first[0].instance_key == second[0].instance_key
+
+
+def test_a_run_keyed_condition_produces_a_different_key_each_time(
+    clean_registry, db, user
+):
+    """POSITIVE CONTROL FOR THE TEST ABOVE. If a condition derives subject_id
+    from its own evaluation, the keys diverge — proving the previous test can
+    fail, and reproducing the defect's signature at the contract layer."""
+    import uuid as _uuid
+
+    def _run_keyed(db, *, user):
+        return [_instance(subject_id=f"job-{_uuid.uuid4()}")]
+
+    register_fragment(_decl(fragment_id="unstable", condition=_run_keyed))
+    a = emit_for_user(db, user=user, fragment_ids=["unstable"])
+    b = emit_for_user(db, user=user, fragment_ids=["unstable"])
+    assert a[0].instance_key != b[0].instance_key
+
+
+def test_missing_subject_id_is_rejected_at_emission(clean_registry):
+    with pytest.raises(FragmentEmissionError, match="subject_id"):
+        _validate_instance(_decl(), _instance(subject_id="  "))
+
+
+def test_platform_defaults_all_declare_identity():
+    for fid, decl in get_registry().items():
+        assert decl.subject_kind, f"{fid} does not declare (5) IDENTITY"
+
+
+def test_platform_default_keys_are_stable_across_evaluations(db, user):
+    """The three shipped types must satisfy the property, not just the
+    synthetic ones."""
+    a = emit_for_user(db, user=user)
+    b = emit_for_user(db, user=user)
+    assert [e.instance_key for e in a] == [e.instance_key for e in b]

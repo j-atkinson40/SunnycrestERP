@@ -68,6 +68,20 @@ class EmittedFragment:
         return self.declaration.fragment_id
 
     @property
+    def instance_key(self) -> str:
+        """(5) IDENTITY — DERIVED, never supplied by the condition.
+
+        Two evaluations of the same condition over the same subject produce
+        the same key, which is the whole property. The condition cannot key on
+        its own run because it never gets to choose the key.
+        """
+        return (
+            f"{self.declaration.fragment_id}"
+            f":{self.declaration.subject_kind}"
+            f":{self.instance.subject_id}"
+        )
+
+    @property
     def priority(self) -> int:
         return self.instance.payload.priority
 
@@ -115,20 +129,21 @@ def _validate_instance(
     dict, so it is rejected here rather than degrading silently into the
     behaviour the decision was written to prevent.
     """
-    if not inst.instance_key or not inst.instance_key.strip():
+    if not inst.subject_id or not str(inst.subject_id).strip():
         raise FragmentEmissionError(
-            f"{decl.fragment_id}: instance_key is required — the surface arc "
-            "keys deferral and settling on it."
+            f"{decl.fragment_id}: declaration (5) requires a subject_id — what "
+            "this instance is ABOUT. The instance key is derived from it, and "
+            "the surface arc keys deferral and settling on that."
         )
     if not inst.scope:
         raise FragmentEmissionError(
-            f"{decl.fragment_id}/{inst.instance_key}: declaration (3) requires "
+            f"{decl.fragment_id}/{inst.subject_id}: declaration (3) requires "
             "a NON-EMPTY scope. A fragment must carry scope into what it "
             "opens; an empty scope is an unscoped href in a dict."
         )
     if inst.condition_inputs is None:
         raise FragmentEmissionError(
-            f"{decl.fragment_id}/{inst.instance_key}: declaration (2) requires "
+            f"{decl.fragment_id}/{inst.subject_id}: declaration (2) requires "
             "condition_inputs — the enumerable snapshot the surface arc's "
             "deferral diffs to wake a prompt on divergence."
         )
@@ -181,5 +196,5 @@ def emit_for_user(
     # Urgency order. DECISIONS 2026-09-04 ("two registers"): prose fragments
     # are "composed, ordered by urgency" — unlike the standing set, which is
     # positionally stable and must never reorder.
-    out.sort(key=lambda e: (-e.priority, e.fragment_id, e.instance.instance_key))
+    out.sort(key=lambda e: (-e.priority, e.fragment_id, e.instance_key))
     return out

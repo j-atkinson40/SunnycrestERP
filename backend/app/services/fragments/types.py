@@ -159,13 +159,29 @@ class EndTransition:
 class FragmentInstance:
     """One emitted fragment. Produced by a declaration's condition.
 
-    `scope` is (3)'s instance half and is REQUIRED NON-EMPTY — see
-    `emission._validate_instance`. `condition_inputs` is (2)'s snapshot: the
-    enumerable inputs that caused this instance to exist, which the surface
-    arc's deferral machinery diffs to wake a deferred prompt on divergence.
+    ⚠️ THERE IS NO `instance_key` FIELD, DELIBERATELY. Per DECISIONS 2026-09-04
+    ("A fragment declares five things; IDENTITY is the fifth"), the key must be
+    derived from what the condition is ABOUT and never from the evaluation that
+    found it. A condition that could supply its own key could supply a
+    run-scoped one — which is exactly the production defect this closes, where
+    `base_agent` wrote `provenance_ref_id = self.job_id` and one unmapped
+    vendor-bill line became 1,825 rows because nothing recognised the second
+    sighting as the first.
+
+    So the condition supplies the SUBJECT and the contract computes the key.
+    See `EmittedFragment.instance_key`.
+
+    `scope` is (3)'s instance half and is REQUIRED NON-EMPTY.
+    `condition_inputs` is (2)'s snapshot: the enumerable inputs that caused this
+    instance to exist, which the surface arc's deferral diffs to wake a
+    deferred prompt on divergence.
     """
 
-    instance_key: str
+    #: (5) IDENTITY — what this instance is ABOUT, stable for as long as the
+    #: condition holds. The invoice id, the vendor-bill line id, the case id.
+    #: A composite is fine when the subject genuinely is one ("this user, this
+    #: day"); a run id, a job id, or a timestamp of evaluation is not.
+    subject_id: str
     payload: FragmentPayload
     scope: Mapping[str, Any]
     condition_inputs: Mapping[str, Any]
@@ -198,6 +214,14 @@ class FragmentDeclaration:
     # (3) TARGET — type-level half; the scope half is per-instance.
     target_surface: TargetSurface
     target_key: str
+
+    # (5) IDENTITY — the type-level half. Names the KIND of thing instances of
+    # this fragment are about ("invoice", "vendor_bill_line", "user_day"). The
+    # per-instance half is `FragmentInstance.subject_id`, and the key is the
+    # two composed. Declaring it forces the author to answer "what is this
+    # fragment about?" at registration rather than discovering at deferral time
+    # that the answer was "the run that found it".
+    subject_kind: str = ""
 
     # (4) END TRANSITION — required iff kind == "prompt".
     end_transition: EndTransition | None = None
