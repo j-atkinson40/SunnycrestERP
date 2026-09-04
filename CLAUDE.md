@@ -1825,6 +1825,42 @@ unnecessary. If the shape can only be named, name it — recognition is worth
 having, and most of these could not be removed. But an entry that could have
 been a deletion is a rule that will be followed until the day it matters.
 
+#### Removal is the LAST step, not the first
+
+The criterion above says prefer removal. It says nothing about ordering, and the
+ordering is where it goes wrong.
+
+**You cannot remove a method while its callers still use it.** In a language that
+fails at call time rather than at import — Python, and most of what runs here —
+removing the method first does not surface the defect, it converts a latent
+defect into a LIVE OUTAGE. A required parameter added to a function with
+non-compliant callers raises nothing at import, nothing in a parse, and
+`TypeError` at whatever hour the scheduler next fires it.
+
+The sequence is:
+
+    1. ENFORCE DIRECTION   — a ratchet: the non-compliant count may only shrink
+    2. FILL THE CALLERS    — per-site, which is where the real judgement lives
+    3. THEN REMOVE         — once nobody calls it the old way, the removal
+                             breaks nothing and the method becomes unexpressible
+
+⚠️ **The ratchet is what makes the interim honest rather than a permanent
+almost.** Without it, step 2 is a plan, and plans decay into "we should tighten
+that someday." A ratchet is mechanically enforced and its direction is one-way,
+so an interim that lasts longer than intended is still an interim rather than
+the new normal.
+
+⚠️ **A ratchet needs two positive controls, not one.** It asserts an absence —
+"no new violations" — and absences look identical whether the instrument works or
+not. Prove the scanner can SEE (a scanner matching nothing satisfies `0 <= N`
+trivially) and prove the ceiling is TIGHT (a ceiling above the real count has
+stopped ratcheting and rejects nothing). See §11 *Absent signal*.
+
+Discovered September 2026: a ruling to make a parameter required was correct as a
+destination and unshippable as a first step — 34 of 64 call sites passed it, and
+requiring it would have raised `TypeError` in twelve scheduled production agents
+against a live tenant's books.
+
 ### Figures in dispatches are never inherited
 
 Every dispatch that states a figure — a count, a file list, a set of sites, a row total —

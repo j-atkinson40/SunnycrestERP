@@ -169,6 +169,44 @@ is the pass.
 
 ---
 
+## 2a. Two findings from phase 1 that change how the rest is read
+
+### A positive control's value is not bounded by what it was written to catch
+
+`test_call_sites_are_actually_found` was written to check one thing: that the
+scanner matches *anything*, since a scanner finding nothing satisfies a ratchet
+trivially. It caught something it was not looking for — that the arc's 75/30/45
+figures were wrong — because it was **the only thing in the pipeline touching the
+actual population rather than a description of it.**
+
+The audit described the population. The arc scope inherited the description. The
+ruling reasoned over the inherited description. Three documents, one unexamined
+measurement. The control ran against the files.
+
+That generalises: a control is worth writing even when the thing it checks seems
+too obvious to fail, because its real function is contact with reality, and
+contact catches more than the assertion names.
+
+### The mechanism: a definition and a call look identical to a text search
+
+`grep '_make_anomaly(\|add_anomaly('` matched eleven `def _make_anomaly(` lines
+as readily as it matched calls. This is the false-presence-from-substring shape
+(CLAUDE.md §11) with one difference that explains its survival: **the substring
+was syntactically legitimate.** A search for `"ring"` matching `spring_burial`
+looks wrong the moment anyone reads the match. A search for `_make_anomaly(`
+matching its own definition looks *correct* — the text is genuinely there, in a
+genuinely relevant context, and every match is a true match of the pattern.
+
+The pattern was right and the population was wrong. That is why it survived three
+documents and a ruling, and why the fix is not a better regex but a control that
+touches the files.
+
+Correct form when counting call sites: match `self._make_anomaly(` /
+`self.add_anomaly(` and exclude `def `-prefixed lines explicitly, or parse rather
+than grep.
+
+---
+
 ## 3. The census this arc must produce, and its one binding constraint
 
 ⚠️ **Per-row, never per-type.** `payment_unmatched_recent` carries a subject on
