@@ -65,10 +65,19 @@ the do-not-inherit line does real work.
 `BaseAgent.add_anomaly` / `_make_anomaly`. A call site omitting either fails
 loudly rather than writing a subjectless row.
 
-⚠️ **This breaks 45 call sites at once and that is the intended mechanism**, not
-a cost to mitigate. Do not add a default, do not add a nullable escape, do not
-add a `subject_optional=True`. Any of those restores the hole with a guard on it,
-which is the shape the criterion rejects.
+> ### ⚠️ BREAKING 45 CALL SITES IS THE MECHANISM, NOT THE COST
+>
+> The next reader will see a commit that breaks 45 sites and reach for a default
+> parameter. **Do not.** No default, no nullable escape, no
+> `subject_optional=True`, no "temporary" permissive mode.
+>
+> Every one of those restores a hole with a guard on it, which is precisely the
+> shape CLAUDE.md §11 *Removal before recognition* rejects — and the shape this
+> project keeps re-learning. The whole value of the change is that a call site
+> omitting a subject **cannot be written**, not that it is discouraged.
+>
+> If the breakage feels like too much to walk, that is a measurement of how far
+> the defect spread, not an argument for softening the fix.
 
 **Item 5's contract fix, same commit.** In `emit_for_user`, when a condition
 returns instances and *every one* is rejected at validation, log at ERROR naming
@@ -118,6 +127,29 @@ search entirely. Resolve by enumerating what actually writes to
 `agent_anomalies` (call graph into `add_anomaly`, which phase 1's signature
 change makes tractable), not by searching harder for the string.
 
+### Phase 5 — supersede. Inside this arc, not the arc that follows.
+
+DECISIONS 2026-09-01 makes supersede a condition of shipping **any**
+anomaly-writing fix. This arc rewrites every anomaly write site in the codebase.
+If supersede lands as a separate arc, there is a window in which 75 sites carry
+subjects and still duplicate — **the current defect with better metadata, and a
+window that looks like progress.** That is the failure mode to avoid, so
+supersede is phase 5 of this arc.
+
+Keyed on the subject phases 1–4 establish, matching the entry's named shape
+`(provenance_kind, provenance_ref_type, provenance_ref_id, event_kind)` — or the
+nearest equivalent `agent_anomalies` can carry, which is itself a STOP if it
+does not transfer.
+
+⚠️ **WHY PHASES 1–4 ARE NOT FOUR VIOLATIONS OF THAT CANON RULE.** A future reader
+will see four phases touching anomaly write sites without supersede and read
+them as the rule being broken four times. They are not: phases 1–4 ship **no
+behavioural fix to production**. They change a signature, fill in subjects, and
+enumerate writers — establishing the precondition the entry's prescribed fix
+requires and which the preliminary found missing. **Phase 5 is where the pass
+actually completes.** The entry says supersede ships in the same pass; this arc
+is the pass.
+
 ---
 
 ## 3. The census this arc must produce, and its one binding constraint
@@ -144,10 +176,10 @@ exception.
   whether the writer is correct. It is also the multiplier behind the 11,930
   `workflow_runs` in `awaiting_input`, so it deserves its own look rather than a
   side-effect fix.
-- **Supersede itself.** The 2026-09-01 entry makes it mandatory on any
-  anomaly-writing fix — and it is unimplementable until a subject exists. Phase 1
-  creates the precondition; supersede is the arc that follows, or the last phase
-  of this one if the operator prefers. Flagged rather than assumed.
+**Supersede is NO LONGER out of scope** — it is phase 5, per the ruling. See §2.
+Recorded here because an earlier draft of this document listed it as out of
+scope, and a reader arriving at that draft's framing would conclude the arc
+violates the 2026-09-01 entry.
 
 ---
 
@@ -166,7 +198,8 @@ exception.
 
 ## 6. Estimate
 
-**3–4 sessions**, and the uncertainty is entirely in phase 3.
+**4–5 sessions, or 6 if phase 3 goes wide.** Phase 5 (supersede) adds one to the
+earlier 3–4. The uncertainty is concentrated in phase 3.
 
 Phase 1 is one session: a signature change, 45 mechanical failures to walk, item
 5, and their positive controls. Phase 2 is one session if the sibling vocabulary
@@ -174,7 +207,7 @@ holds and two if it does not. Phase 3 is a decision session plus the edits, and
 its length depends on how many of the four have a defensible subject.
 
 ⚠️ **The estimate assumes phase 2's siblings answer.** If the 27 turn out to need
-rulings too, this is phase 3 with a larger batch and the estimate is 5. That is
+rulings too, this is phase 3 with a larger batch and the estimate is 6. That is
 measurable at the start of phase 2 by taking the agent with the most lacking
 sites that still has coverage — `year_end_close`, 7 lacking against 1 covered —
 and seeing whether one covered site is enough to answer seven.
