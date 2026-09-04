@@ -46,6 +46,27 @@ both, and staging's database was not queried. The remedy in §4 covers both, so
 the distinction did not need resolving to act — but it is not known, and should
 not be reported as known.
 
+**TIMING EVIDENCE, added 2026-09-04.** `gh secret list` reports both
+`STAGING_CI_BOT_EMAIL` and `STAGING_CI_BOT_PASSWORD` last updated **2026-05-06**
+and never since. The channel died **2026-07-28** — twelve weeks later. Names and
+timestamps only; no value was read.
+
+So the credential was not rotated out from under the channel. Something changed
+on the staging side while the secret sat still, which is what a database reset
+looks like from outside. **This is the unprovisioned-entrance shape confirmed by
+timing rather than argued from principle**, and it is the strongest case for
+putting `--ensure` in the deploy path: the failure did not require anyone to do
+anything wrong. It required only that the environment be recreated, by any
+means, with nothing responsible for putting the bot back.
+
+Still inference, not measurement — a twelve-week gap is consistent with a reset
+and does not prove one, and staging's `platform_users` was not queried. A
+read-only check was attempted and **aborted mid-flight**: the Railway project
+linked in the repo is `handsome-acceptance` / **production**, `railway
+environment` requires a TTY, and locating staging meant guessing environment
+names against a credentials table with production as the default target. The
+diagnostic was optional; the remedy is indifferent to which cause it was.
+
 ---
 
 ## 3. Why it will not self-heal

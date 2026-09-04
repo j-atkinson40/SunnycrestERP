@@ -1426,6 +1426,38 @@ Copy `frontend/.env.example` to `frontend/.env`.
 ### CRITICAL RULE
 **Never point local `DATABASE_URL` at Railway production.** Production credentials live exclusively in the Railway dashboard.
 
+### CREDENTIALS DO NOT TRANSIT A SESSION
+
+**No credential value passes through a session, in either direction. Any
+procedure that requires one is restructured or handed to James.**
+
+A secret that transits a transcript has a copy in a log, permanently, regardless
+of intent. That is a property of the medium, not of the care taken, so it is a
+standing constraint rather than a judgment made fresh each time.
+
+This binds both directions and both mechanisms:
+
+- **Out:** do not run a procedure that PRINTS a secret. `provision_ci_bot`
+  without `--ensure` generates a password and writes it to stdout; that is
+  disqualifying on its own, independent of what happens next.
+- **In:** do not write a secret into a field — `gh secret set`, a Railway
+  variable, a `.env`, a config form. Having the access does not change this.
+  This holds when the value is supplied, when the action is explicitly
+  authorized, and when it would be faster.
+
+**RESTRUCTURE FIRST, ESCALATE SECOND.** A procedure that requires a secret to
+pass through a session is usually a procedure that can be inverted so it does
+not. `provision_ci_bot --ensure` is the worked example: instead of the database
+minting a secret a human carries to a settings page, the stored secret becomes
+the source of truth and the environment-recreating path makes the database match
+it. Same outcome, nothing printed, nothing typed, and the failure mode becomes
+self-repairing. Look for that inversion before handing the task over.
+
+Reading whether a credential is PRESENT is not handling it. `gh secret list`
+returns names and timestamps, not values, and the last-updated timestamp is
+often the diagnostic — a secret unchanged for twelve weeks before a channel died
+says the credential was fine and the environment was reset out from under it.
+
 ## 8. URLs and Domains
 
 | Environment | Frontend | Backend | Platform Admin |
@@ -1992,6 +2024,19 @@ dying at a 401 before exercising anything. It was noticed once, six days in,
 counted as "six consecutive runs" and correctly attributed to the CI credential
 — and the last-pass question was still not asked, so the six-week figure and the
 never-passed condition both went unseen.
+
+WHY THIS NEEDS TO BE STRUCTURAL RATHER THAN REMEMBERED. The two questions look
+alike and differ in what it costs to answer them. *Would this run be evidence?*
+is answerable from what you already know — the branch, the deploy, the pending
+red. *Does this instrument work?* requires going and looking, and it has **no
+natural trigger**, because a broken instrument produces the same silence as a
+healthy one nobody consulted.
+
+That asymmetry is the whole problem. The cheap question gets asked because
+something prompts it; the expensive one is prompted by nothing, and skipping it
+produces no symptom. Hence a fixed check rather than an intention: **when did
+this last pass** is answerable without trusting the current run, without running
+anything, and against any channel with a history.
 
 #### Causation — proximity is not necessity
 
