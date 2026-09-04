@@ -4,7 +4,10 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, and_, event, select
+from sqlalchemy import (
+    Boolean, DateTime, ForeignKey, Numeric, String, Text,
+    and_, event, select, update,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -98,3 +101,64 @@ def _derive_tenant_from_job(mapper, connection, target: AgentAnomaly) -> None:
             "which would file the row under the wrong tenant."
         )
     target.tenant_id = job_tenant
+
+
+@event.listens_for(AgentAnomaly, "before_insert")
+def _supersede_the_open_row_for_this_subject(mapper, connection, target: AgentAnomaly) -> None:
+    """Phase 5b — supersede on write.
+
+    When an agent writes an anomaly whose key already has an OPEN row, that row
+    is superseded rather than a duplicate appended. This is what closes the
+    2026-09-01 canon requirement; phases 1-5a were precondition.
+
+    ⚠️ A NEW ROW IS WRITTEN AND THE PRIOR ROW IS NOT REOPENED. The subject is
+    what the end transition acts on; that act happened and completed, and a
+    later occurrence is a different decision on a different day. Reopening would
+    record "this category has been a problem since August" when the truth is it
+    was a problem, was fixed, and RECURRED — and recurrence is the more useful
+    fact, since a subject that keeps returning is a signal about the classifier
+    or about vendor coding. It would also break the settled note's "what did I
+    resolve on this day", because a resolved row would be open again.
+
+    ⚠️ ONLY OPEN ROWS ARE SUPERSEDED, via `open_filter()` rather than a
+    predicate written here. A row a human RESOLVED keeps its resolution — the
+    recurrence is a new row beside it, not an erasure of the decision. Enumerated
+    per-row against production 2026-09-04: 2,289 rows hold exactly two state
+    combinations (fully open, or resolved with `resolved_at` + note), zero
+    half-resolved, so `open_filter()` is complete rather than merely plausible.
+
+    ⚠️ THIS LIVES ON THE MODEL, NOT IN `BaseAgent`, BECAUSE BaseAgent IS ONE
+    WRITER OF SIX. The others are ar_payment_posting (x2), ar_invoice_posting,
+    proactive_agents and the aftercare adapter — none of which inherit from
+    BaseAgent. Putting supersede in the agent base class would have been a guard
+    reasoned from one caller, leaving five writers duplicating exactly as before.
+
+    `IS NOT DISTINCT FROM` on the subject columns keeps subjectless anomalies
+    supersedable. `= NULL` never matches, so a key that reached SQL as plain
+    equality would leave the two deliberately-held subjectless types unable to
+    supersede and therefore able to grow without bound — the exact condition
+    they were flagged for. They are per-tenant singletons, so keying them on
+    (tenant, type) is correct.
+
+    ⚠️ AND THIS OPERATOR IS DEFENSIVE, NOT LOAD-BEARING — I claimed otherwise
+    and the break test disproved it. SQLAlchemy compiles `col == None` to
+    `col IS NULL`, which matches NULLs too, so today the two forms behave
+    identically and no test can tell them apart. What this form buys is
+    independence from that coercion: rewritten as raw SQL or with a bound
+    parameter, `= NULL` silently matches nothing and subjectless rows would
+    duplicate forever with every check still green. Keep the explicit form;
+    do not believe a test is watching it.
+    """
+    now = datetime.now(timezone.utc)
+    t = AgentAnomaly.__table__
+    connection.execute(
+        update(t)
+        .where(
+            t.c.tenant_id == target.tenant_id,
+            t.c.anomaly_type == target.anomaly_type,
+            t.c.entity_type.is_not_distinct_from(target.entity_type),
+            t.c.entity_id.is_not_distinct_from(target.entity_id),
+            AgentAnomaly.open_filter(),
+        )
+        .values(superseded_at=now)
+    )

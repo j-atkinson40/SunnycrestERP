@@ -444,3 +444,4 @@ tests/test_anomaly_subject_ratchet.py
 # so a later, different leak is distinguishable from the known one.
 # ── end S-2 correction ────────────────────────────────────────────────────
 tests/test_anomaly_supersede.py
+tests/test_anomaly_supersede_5b.py
