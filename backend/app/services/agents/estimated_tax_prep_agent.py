@@ -177,7 +177,7 @@ class EstimatedTaxPrepAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="no_posted_ledger_activity",
-                entity_type="accounting_period",
+                entity_type=self._period_subject_kind(),
                 entity_id=self._period_subject_id(),
                 description=(
                     "No posted journal entries in this period or year to date, so "
@@ -221,11 +221,17 @@ class EstimatedTaxPrepAgent(BaseAgent):
                 Decimal("0.01"), ROUND_HALF_UP
             )
             method = "single_period"
+            # ⚠️ HELD WITHOUT A SUBJECT. Nothing anyone DOES resolves this; the quarter simply fills up. No operator act,
+            # therefore no end transition, therefore no subject.
+            # Operator ruling 2026-09-04: this is not an anomaly. An anomaly is a
+            # finding about the TENANT'S DATA; this is a statement about a METHOD'S PRECISION.
+            # `agent_anomalies` is the wrong container -- and the ruling was
+            # explicitly NOT to build a container for two rows. A THIRD INSTANCE
+            # DECIDES THE SHAPE. Production count today: 0. Pinned by name in
+            # tests/test_anomaly_subject_ratchet.py so a third cannot arrive
+            # quietly. docs/investigations/2026-09-04-anomaly-subject-phase23.md §3.
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.INFO,
-                # ⚠️ HELD WITHOUT A SUBJECT — Type B, phases 2-3. Nothing anyone DOES
-                # resolves this; the quarter simply fills up. No end transition, so no
-                # subject. See docs/investigations/2026-09-04-anomaly-subject-phase23.md.
                 anomaly_type="tax_estimate_rough",
                 description=(
                     "Less than one full quarter of data available. "

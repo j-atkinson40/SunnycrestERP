@@ -25,7 +25,9 @@ Raising it is the failure this file exists to prevent, and the assertion says so
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -234,3 +236,119 @@ def test_a_genuinely_quiet_fragment_logs_no_error(caplog):
         )
     finally:
         reset_registry()
+
+
+# ── The period-subject helper, and the null period that nearly shipped a raise ──
+
+
+class _PeriodSubjectStub:
+    """Exercises the real BaseAgent methods without a DB. The helpers read only
+    `self.job` and `self.tenant_id`, so binding them onto a stub tests the
+    shipped code rather than a copy of it."""
+
+    from app.services.agents.base_agent import BaseAgent as _B
+
+    _period_subject_id = _B._period_subject_id
+    _period_subject_kind = _B._period_subject_kind
+
+    def __init__(self, period_start, period_end):
+        self.tenant_id = "tenant-abc"
+        self.job = SimpleNamespace(
+            id="job-1", job_type="month_end_close",
+            period_start=period_start, period_end=period_end,
+        )
+
+
+def test_a_period_scoped_subject_uses_the_period():
+    s = _PeriodSubjectStub(date(2026, 8, 1), date(2026, 8, 31))
+    assert s._period_subject_kind() == "accounting_period"
+    assert s._period_subject_id() == "2026-08-01:2026-08-31"
+
+
+def test_a_job_with_no_period_does_not_raise():
+    """⚠️ REGRESSION. The first version of `_period_subject_id` RAISED on a null
+    period, reasoning that AgentRunner requires both dates so it could only fire
+    on a job from another path. That was true, and the other path is the common
+    one: measured against production 2026-09-04, the only month_end_close job
+    that has ever run there carries a null period, 1 of 172 cash_receipts jobs
+    does, and four job types are 100% null. The raise would have aborted the
+    step at its next run — removal before the callers comply, inside the fix for
+    exactly that mistake."""
+    s = _PeriodSubjectStub(None, None)
+    assert s._period_subject_kind() == "tenant_books"
+    assert s._period_subject_id() == "tenant-abc"
+
+    half = _PeriodSubjectStub(date(2026, 8, 1), None)
+    assert half._period_subject_kind() == "tenant_books"
+    assert half._period_subject_id() == "tenant-abc"
+
+
+def test_the_unbounded_fallback_is_not_run_scoped():
+    """POSITIVE CONTROL, and the half that makes the fallback worth having.
+
+    A fallback that varied per run would satisfy the no-raise test above while
+    reintroducing the defect the whole arc exists to remove — a fresh subject
+    every run, so nothing ever supersedes. Two distinct jobs must agree."""
+    a = _PeriodSubjectStub(None, None)
+    b = _PeriodSubjectStub(None, None)
+    b.job.id = "job-2"
+    assert a._period_subject_id() == b._period_subject_id()
+    assert "job-1" not in a._period_subject_id()
+
+
+def test_kind_and_id_cannot_disagree():
+    """They are two calls, so they could drift. Both read the same two fields;
+    this pins that an `accounting_period` kind never carries a tenant id."""
+    for ps, pe in ((date(2026, 1, 1), date(2026, 3, 31)), (None, None), (None, date(2026, 3, 31))):
+        s = _PeriodSubjectStub(ps, pe)
+        if s._period_subject_kind() == "accounting_period":
+            assert ":" in s._period_subject_id() and s._period_subject_id() != s.tenant_id
+        else:
+            assert s._period_subject_id() == s.tenant_id
+
+
+#: The two anomaly types held without subjects, BY NAME. Neither has an operator
+#: act, so neither has an end transition, so neither has a subject.
+#:
+#: ⚠️ Operator ruling 2026-09-04: `agent_anomalies` is the wrong container for
+#: both — an anomaly is a finding about the tenant's DATA, and these are about
+#: Bridgeable's roadmap and a method's precision. The ruling was explicitly NOT
+#: to build a container for two rows. A THIRD INSTANCE DECIDES THE SHAPE.
+SUBJECTLESS_BY_RULING = {
+    "tax_estimate_rough",           # clears when the quarter fills up
+    "w9_tracking_not_implemented",  # clears when Bridgeable ships the feature
+}
+
+
+def test_the_subjectless_sites_are_the_two_that_were_ruled_on():
+    """⚠️ THIS IS THE 'THEY CANNOT GROW' GUARD, and it is why the count ratchet
+    is not enough on its own.
+
+    `MAX_SITES_WITHOUT_SUBJECT` counts. It would stay satisfied if one held site
+    were fixed and a different subjectless site added — same total, different
+    population, and the swap invisible. Pinning the NAMES means a third
+    subjectless anomaly cannot arrive quietly: it has to edit this set, which is
+    the conversation the ruling asked a third instance to trigger.
+
+    Two rows is a note in a comment. Two thousand is `expense_no_gl_mapping`
+    again, which is the whole reason this arc exists.
+    """
+    found = set()
+    for f in sorted(_AGENTS.glob("*.py")):
+        lines = f.read_text().split("\n")
+        for i, line in enumerate(lines):
+            if not re.search(r"(self\._make_anomaly\(|self\.add_anomaly\()", line):
+                continue
+            window = "\n".join(lines[i : i + _WINDOW])
+            if "entity_id=" in window:
+                continue
+            m = re.search(r'anomaly_type=f?"([a-z0-9_{}]+)"', window)
+            assert m, f"{f.name}:{i+1} has no subject AND no readable type"
+            found.add(m.group(1))
+
+    assert found == SUBJECTLESS_BY_RULING, (
+        f"the set of subjectless anomaly types is {sorted(found)}, but the ruling "
+        f"covers {sorted(SUBJECTLESS_BY_RULING)}. A new subjectless type is a "
+        "decision, not an oversight — either give it a subject, or bring the "
+        "third instance to the container question the ruling deferred."
+    )

@@ -400,7 +400,7 @@ class CashReceiptsAgent(BaseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.WARNING,
                     anomaly_type="high_unmatched_ratio",
-                    entity_type="accounting_period",
+                    entity_type=self._period_subject_kind(),
                     entity_id=self._period_subject_id(),
                     description=(
                         f"Unmatched payments (${float(unmatched_total):,.2f}) "

@@ -301,12 +301,18 @@ class Prep1099Agent(BaseAgent):
             ))
 
         # CHECK C — No W-9 tracking infrastructure (always)
+        # ⚠️ HELD WITHOUT A SUBJECT. The only act that clears this is Bridgeable
+        # shipping W-9 tracking. No operator act, therefore no end transition,
+        # therefore no subject.
+        # Operator ruling 2026-09-04: this is not an anomaly. An anomaly is a
+        # finding about the TENANT'S DATA; this is a finding about BRIDGEABLE'S
+        # ROADMAP. `agent_anomalies` is the wrong container -- and the ruling was
+        # explicitly NOT to build a container for two rows. A THIRD INSTANCE
+        # DECIDES THE SHAPE. Production count today: 0. Pinned by name in
+        # tests/test_anomaly_subject_ratchet.py so a third cannot arrive
+        # quietly. docs/investigations/2026-09-04-anomaly-subject-phase23.md §3.
         anomalies.append(self._make_anomaly(
             severity=AnomalySeverity.INFO,
-            # ⚠️ HELD WITHOUT A SUBJECT — Type B, phases 2-3. The only act that clears
-            # this is Bridgeable shipping W-9 tracking. It is a product-gap notice
-            # wearing an anomaly's shape, not a decision the tenant can make.
-            # See docs/investigations/2026-09-04-anomaly-subject-phase23.md.
             anomaly_type="w9_tracking_not_implemented",
             description=(
                 "W-9 receipt tracking is not yet implemented in Bridgeable. "

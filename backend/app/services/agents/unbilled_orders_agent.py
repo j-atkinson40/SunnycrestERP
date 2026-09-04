@@ -253,7 +253,7 @@ class UnbilledOrdersAgent(BaseAgent):
             anomalies.append(self._make_anomaly(
                 severity=AnomalySeverity.WARNING,
                 anomaly_type="unbilled_backlog_growing",
-                entity_type="accounting_period",
+                entity_type=self._period_subject_kind(),
                 entity_id=self._period_subject_id(),
                 description=(
                     f"Unbilled order backlog appears to be growing: "

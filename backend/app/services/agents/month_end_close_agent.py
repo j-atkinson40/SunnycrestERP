@@ -533,7 +533,7 @@ class MonthEndCloseAgent(BaseAgent):
                     anomalies.append(self._make_anomaly(
                         severity=AnomalySeverity.WARNING,
                         anomaly_type="revenue_outlier",
-                        entity_type="accounting_period",
+                        entity_type=self._period_subject_kind(),
                         entity_id=self._period_subject_id(),
                         description=(
                             f"Total revenue ${total_revenue:,.2f} exceeds "
@@ -719,7 +719,7 @@ class MonthEndCloseAgent(BaseAgent):
                 anomalies.append(self._make_anomaly(
                     severity=AnomalySeverity.WARNING,
                     anomaly_type="low_collection_rate",
-                    entity_type="accounting_period",
+                    entity_type=self._period_subject_kind(),
                     entity_id=self._period_subject_id(),
                     description=(
                         f"Collection rate is {collection_rate_pct:.1f}% "
@@ -789,7 +789,7 @@ class MonthEndCloseAgent(BaseAgent):
                     anomalies.append(self._make_anomaly(
                         severity=AnomalySeverity.INFO,
                         anomaly_type="low_invoice_volume",
-                        entity_type="accounting_period",
+                        entity_type=self._period_subject_kind(),
                         entity_id=self._period_subject_id(),
                         description=(
                             f"Invoice count ({current_count}) is less than half "

@@ -207,34 +207,53 @@ class BaseAgent:
     # Anomaly recording
     # ------------------------------------------------------------------
 
+    def _period_subject_kind(self) -> str:
+        """Subject KIND for a period-scoped anomaly. Pairs with
+        `_period_subject_id`; both read the same two fields, so they cannot
+        disagree about which case they are in."""
+        if self.job.period_start is None or self.job.period_end is None:
+            return "tenant_books"
+        return "accounting_period"
+
     def _period_subject_id(self) -> str:
         """Subject id for an anomaly whose resolving act is bounded to this job's
         accounting period.
 
         Per DECISIONS 2026-09-04, the subject is what the END TRANSITION acts on.
-        For a revenue outlier or a collection-rate warning, the act is bounded to
-        the books for a period, and two runs over the same period are addressing
-        the same subject.
+        For a revenue outlier or a collection-rate warning the act is bounded to
+        the books for a period, and two runs over the same period address the
+        same subject.
 
-        ⚠️ DELIBERATELY NOT THE JOB ID. A subject keyed on the run is precisely
-        what the IDENTITY declaration refuses — it makes every run a new subject,
-        so nothing ever supersedes anything, which is the defect that produced
-        1,825 duplicate `expense_no_gl_mapping` rows.
+        ⚠️ DELIBERATELY NOT THE JOB ID. A run-scoped subject is what the IDENTITY
+        declaration refuses by name — it makes every run a new subject, so
+        nothing supersedes anything, which is the mechanism behind the 1,825
+        duplicate `expense_no_gl_mapping` rows.
 
-        Raises rather than returning a placeholder when the job carries no
-        period. A blank subject is indistinguishable from a legitimately absent
-        one, which is the absent-signal shape (CLAUDE.md §11). `AgentRunner`
-        requires both dates, so this can only fire on a job created some other
-        way — and that is worth hearing about.
+        ⚠️ AND DELIBERATELY NOT A RAISE, WHICH IS WHAT I WROTE FIRST. The
+        docstring reasoned that `AgentRunner.create_job` requires both dates so a
+        null period could only come from some other path — true, and the other
+        path is the common one. Measured against production 2026-09-04: the only
+        `month_end_close` job that has ever run there has a null period, as does
+        1 of 172 `cash_receipts_matching` jobs, and four whole job types are
+        100% null. Raising would have aborted the step at its next run. That is
+        removal-before-the-callers-comply, the exact error this arc's phase 1
+        docstring warns about, made inside the fix for it.
+
+        So a missing period is handled rather than refused. The subject becomes
+        the tenant's books unbounded, which is the honest reading — if the job
+        names no period, the act is not period-bounded — and which still
+        supersedes correctly, because every unbounded run yields the same
+        subject rather than a fresh one.
         """
         ps, pe = self.job.period_start, self.job.period_end
         if ps is None or pe is None:
-            raise ValueError(
-                f"agent job {self.job.id} ({self.job.job_type}) has no period, so "
-                "a period-scoped anomaly has no subject. AgentRunner.create_job "
-                "requires period_start and period_end; this job came from "
-                "somewhere else."
+            logger.warning(
+                "agent job %s (%s) has no period; anomaly subjects fall back to "
+                "tenant_books. AgentRunner.create_job requires both dates, so "
+                "this job came from another path.",
+                self.job.id, self.job.job_type,
             )
+            return self.tenant_id
         return f"{ps.isoformat()}:{pe.isoformat()}"
 
     def _make_anomaly(

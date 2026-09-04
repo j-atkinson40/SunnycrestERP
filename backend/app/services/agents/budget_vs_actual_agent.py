@@ -231,7 +231,7 @@ class BudgetVsActualAgent(BaseAgent):
         anomalies.append(self._make_anomaly(
             severity=AnomalySeverity.INFO,
             anomaly_type="budget_no_comparison_basis",
-            entity_type="accounting_period",
+            entity_type=self._period_subject_kind(),
             entity_id=self._period_subject_id(),
             description=(
                 "No budget or prior period data available for comparison. "

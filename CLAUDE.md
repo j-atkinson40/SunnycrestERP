@@ -1884,6 +1884,46 @@ brief that imposes enumeration discipline and then populates its question list f
 inherited file list has violated itself. This has happened; see the services/pulse
 sixfold undercount, 2026-09-04.
 
+### A gate reports its denominator
+
+**Every gate result is reported as a fraction of the surface it selects from.**
+"2,281 passing across 164 of 426 test files," never "2,281 passing." The scope
+is stated at the point of reading, not left for someone to go and ask.
+
+A curated manifest is a legitimate instrument. Reporting it in unscoped language
+is not, because **"gate green" reads identically whether the gate covers
+everything or a third of it.** That is the same sentence doing two different
+jobs, and the reader cannot tell which from the words.
+
+⚠️ **THE SECOND-ORDER PROPERTY IS THE REASON THIS IS A RULE AND NOT A
+PREFERENCE.** A gate that SELECTS rather than COVERS can be satisfied by adding
+files to the manifest, and it can be silently narrowed by files never being
+added. **Neither movement appears in the number.** A denominator that is never
+printed is a denominator nobody notices shrinking, and what accumulates outside
+it is not a backlog — it is an unclassified population, growing while every
+session reports green.
+
+This is the removal criterion, not a request for care. A reported denominator
+makes the scope unmissable; a remembered one asks every reader to reconstruct it
+at exactly the moment they are reading past it.
+
+Measured 2026-09-04: the backend gate covers **164 of 426** test files. The
+other 262 hold **182 red results** — 45 failed, 137 errors, across 28 files.
+Five gate numbers had been reported and accepted that day (2243, 2251, 2269,
+2274, 2281), each as "gate green, no pre-existing red," each true and each about
+38% of the files.
+
+⚠️ **A red result outside the gate is not yet a defect.** The one manifest file
+among the 28 passes 20/20 alone and 20/20 inside the gate, and errors 20/20
+under a whole-tree run — order coupling, not breakage. So some fraction of the
+182 is contamination rather than defect, **and that fraction cannot be guessed.**
+Classifying the 262 is real work; asserting their status without doing it would
+be the constructed count again.
+
+⚠️ Kin to the absent signal, one layer in. There the instrument was dead. Here
+it is alive, correct, and pointed at part of the surface — and the phrase
+reporting it is the same either way.
+
 ### Checks that are green without being evidence
 
 Extracted 2026-09-01 from the accounting arc's working record, which carries shapes
@@ -2270,6 +2310,22 @@ chain.
 
 This is the sibling of false absence at a different layer: there, the query was
 wrong; here, the query was right and its output was cut.
+
+⚠️ **THE BOUND CAME FROM THE TOOL, NOT FROM THE DATA — in both instances, and
+that is the shape.** Not "I looked at too little," which sounds like a lapse of
+diligence and would be answered by looking harder. The transform imposed a
+bound, and **the result carried no trace of having been bounded.** A truncated
+listing and a complete one are the same shape on the screen.
+
+So the operative question is about the pipeline, not the effort:
+
+    "What in this command could have bounded the output, and would I see it if it had?"
+
+Same mechanism as the constructed count one section up — `LIMIT 6` and `tail -30`
+are the same defect at different layers, one bounding the query and one bounding
+its rendering. Both produce a well-formed number that announces nothing.
+Measured 2026-09-04: both occurred within one session, by the same author,
+while that author was actively holding this entry.
 
 #### False presence from a substring match
 

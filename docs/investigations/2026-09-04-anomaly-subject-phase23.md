@@ -110,7 +110,7 @@ for a non-decision — is a disposition ruling, not this pass's call.
 Eight kinds, none invented for its own sake:
 
 ```
-accounting_period       period-bounded acts        6 sites
+accounting_period       period-bounded acts        7 sites
 fiscal_year             year-bounded acts         10 sites
 tax_year                1099 / tax-payment acts    4 sites
 budget_summary_line     metric:period              2 sites
@@ -121,12 +121,30 @@ row subjects            inventory_item, inventory_transaction,
                         statement_run, journal_entry
 ```
 
-**`_period_subject_id()` was consolidated onto `BaseAgent`** rather than
-open-coded at six sites. It returns `period_start:period_end` and **raises**
-when the job has no period rather than returning a placeholder — a blank subject
-is indistinguishable from a legitimately absent one, which is the absent-signal
-shape. `AgentRunner.create_job` requires both dates, so it can only fire on a
-job created some other way, and that is worth hearing about.
+**`_period_subject_id()` was consolidated onto `BaseAgent`.** It returns
+`period_start:period_end`.
+
+> ⚠️ **[CORRECTED 2026-09-04] TWO ERRORS IN THE PARAGRAPH THIS REPLACES.**
+> Original wording: *"...rather than open-coded at six sites. It returns
+> `period_start:period_end` and **raises** when the job has no period rather
+> than returning a placeholder — a blank subject is indistinguishable from a
+> legitimately absent one, which is the absent-signal shape.
+> `AgentRunner.create_job` requires both dates, so it can only fire on a job
+> created some other way, and that is worth hearing about."*
+>
+> **(1) Not six sites — 7 take the period as their subject kind, and the id
+> helper is called at 9**, the extra two inside the `budget_summary_line` and
+> `gl_account_period` composites. Six was a recollection, not a count, in a
+> document about not inheriting figures.
+>
+> **(2) THE RAISE WAS A LIVE REGRESSION.** The reasoning was sound and the
+> conclusion wrong, because "some other way" is the common way. Measured against
+> production: `month_end_close`'s ONLY job there has a null period, as does 1 of
+> 172 `cash_receipts_matching` jobs, and four job types are 100% null. It would
+> have aborted the step at its next run — **removal before the callers comply,
+> inside the fix for exactly that mistake.** Now returns `tenant_books` / tenant
+> id, which is the honest reading (a job naming no period has no period-bounded
+> act) and still supersedes. See `2026-09-04-anomaly-subject-phase4.md` §5.
 
 ⚠️ It is deliberately NOT the job id. A run-scoped subject is what IDENTITY
 refuses by name, and it is the mechanism behind the 1,825 duplicates.
