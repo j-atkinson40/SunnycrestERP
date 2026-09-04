@@ -1,0 +1,180 @@
+# The anomaly-subject arc — scope
+
+**Date:** 2026-09-04 · **Scope document.** No code written.
+**Status:** drafted for dispatch. Session 2 resumes after this lands.
+
+Operator ruling: **shape 2** — require a subject at `add_anomaly`, so a
+subjectless anomaly becomes *unexpressible* rather than discouraged. Item 5's
+contract fix ships in the same commit as phase 1.
+
+The argument is the criterion landed this morning (CLAUDE.md §11, *Removal
+before recognition*): prefer removing the method over asking for care. Fixing one
+writer leaves 44 sites able to reproduce the defect and relies on future authors
+remembering. The signature change is the same move as deleting `instance_key`
+rather than validating it, and as refusing `run`/`job`/`sweep` by name — the
+parameter's absence at the call site becomes the enforcement, rather than a
+convention someone must uphold.
+
+That it cannot be done mechanically is a feature. Four agents have never had
+anyone decide what their anomalies are about, and a mechanical fix would paper
+that over with whatever field was nearest.
+
+---
+
+## 1. ⚠️ The phasing figure in the ruling does not reconcile — re-derived
+
+The ruling proposed "the thirty already-passing sites first… then the forty-one
+that pass nothing but have an obvious subject. Then the four agents needing a
+ruling." Re-derived per agent:
+
+| agent | call sites | with subject | lacking |
+|---|---:|---:|---:|
+| `year_end_close_agent` | 8 | 1 | 7 |
+| `tax_package_agent` | 6 | **0** | 6 |
+| `estimated_tax_prep_agent` | 5 | **0** | 5 |
+| `month_end_close_agent` | 12 | 7 | 5 |
+| `prep_1099_agent` | 7 | 2 | 5 |
+| `budget_vs_actual_agent` | 4 | **0** | 4 |
+| `annual_budget_agent` | 3 | **0** | 3 |
+| `inventory_reconciliation_agent` | 10 | 7 | 3 |
+| `cash_receipts_agent` | 6 | 4 | 2 |
+| `expense_categorization_agent` | 4 | 2 | 2 |
+| `unbilled_orders_agent` | 6 | 4 | 2 |
+| `ar_collections_agent` | 4 | 3 | 1 |
+| **total** | **75** | **30** | **45** |
+
+**27 lacking sites sit in 8 partially-covered agents; 18 sit in 4
+zero-coverage agents. 27 + 18 = 45.** The 41 does not appear in the data under
+any grouping I can construct.
+
+**And no agent is already complete.** All twelve have at least one gap, so "the
+thirty already-passing sites" is not a phase — those thirty are scattered across
+the same twelve files the other forty-five live in. The mechanical unit is the
+*signature change*, not a set of files.
+
+Recording this rather than adopting the figure, per the ruling's own point that
+the do-not-inherit line does real work.
+
+---
+
+## 2. Phases
+
+### Phase 1 — the signature, and item 5. One commit.
+
+**The signature change.** `entity_type` and `entity_id` become required on
+`BaseAgent.add_anomaly` / `_make_anomaly`. A call site omitting either fails
+loudly rather than writing a subjectless row.
+
+⚠️ **This breaks 45 call sites at once and that is the intended mechanism**, not
+a cost to mitigate. Do not add a default, do not add a nullable escape, do not
+add a `subject_optional=True`. Any of those restores the hole with a guard on it,
+which is the shape the criterion rejects.
+
+**Item 5's contract fix, same commit.** In `emit_for_user`, when a condition
+returns instances and *every one* is rejected at validation, log at ERROR naming
+the fragment. That is the only point where a permanently-broken fragment and a
+legitimately-quiet one are distinguishable — registration cannot detect it
+without executing the condition, and the current per-instance `logger.exception`
+does not distinguish "one bad instance" from "this fragment has never once
+emitted."
+
+Higher-value than the signature change, because session 2 declares four more
+fragments into that hole.
+
+**Positive control required on both.** A signature that rejects everything and a
+signature that rejects nothing pass the same "it raised" test. And an ERROR log
+that never fires is indistinguishable from one that cannot.
+
+### Phase 2 — the 27 lacking sites in 8 partially-covered agents
+
+These agents already pass a subject somewhere, so the subject vocabulary for the
+agent is established and each lacking site can be answered against its own
+siblings. Per-site, not per-agent — a sibling passing `invoice_id` does not mean
+this site's subject is an invoice.
+
+### Phase 3 — the 18 sites in 4 zero-coverage agents, as a batch of Type B calls
+
+`tax_package` (6), `estimated_tax_prep` (5), `budget_vs_actual` (4),
+`annual_budget` (3). Nothing in these files establishes what their anomalies are
+about; there is no sibling to answer against.
+
+⚠️ **Surface all four as one batch, not one at a time.** They are the same
+question asked four times — "what is this anomaly about?" — and answering them
+together is how the answers stay consistent. Answering them serially invites
+four different framings.
+
+Expect some to have no good subject at all. An anomaly about "the budget as a
+whole" may be legitimately tenant-scoped, in which case the subject is the
+period or the budget, and that is a real answer rather than a failure.
+
+### Phase 4 — the three unlocated types, by enumeration
+
+`uncategorized_expense`, `invoice_severely_overdue`, `invoice_overdue` exist as
+unresolved production rows with **no literal occurrence anywhere under `app/`**.
+
+⚠️ **This stays a failed lookup, not an absence, until enumeration resolves it.**
+A constructed type name — an f-string, a mapping, a variable — evades a literal
+search entirely. Resolve by enumerating what actually writes to
+`agent_anomalies` (call graph into `add_anomaly`, which phase 1's signature
+change makes tractable), not by searching harder for the string.
+
+---
+
+## 3. The census this arc must produce, and its one binding constraint
+
+⚠️ **Per-row, never per-type.** `payment_unmatched_recent` carries a subject on
+**2 of 3** unresolved rows and on **204 of 204** resolved ones. Any per-type
+summary — including the one the ruling would have asked for — reports that type
+as covered. Partial coverage within a type means "does this type carry subjects"
+has no answer; only rows have answers.
+
+This is the same defect as the `LIMIT 6` claim in the preliminary, one level up:
+a summary that aggregates away the variation reports the majority and hides the
+exception.
+
+---
+
+## 4. Out of scope, explicitly
+
+- **The 1,825 orphans.** No subject, cannot be retroactively subjected from the
+  rows themselves. Deletion destroys the only record the classifier ran;
+  marking them superseded-without-subject preserves it. Operator's call, and not
+  this arc's.
+- **The `*/15` cron.** Whether the cadence is right is a separate question from
+  whether the writer is correct. It is also the multiplier behind the 11,930
+  `workflow_runs` in `awaiting_input`, so it deserves its own look rather than a
+  side-effect fix.
+- **Supersede itself.** The 2026-09-01 entry makes it mandatory on any
+  anomaly-writing fix — and it is unimplementable until a subject exists. Phase 1
+  creates the precondition; supersede is the arc that follows, or the last phase
+  of this one if the operator prefers. Flagged rather than assumed.
+
+---
+
+## 5. STOP lines for the dispatch
+
+- Any of the four zero-coverage agents where no subject is defensible even after
+  deliberation.
+- Any place the required signature cannot be satisfied without inventing a
+  subject — inventing one is worse than stopping.
+- Any call site whose subject differs from what its siblings pass, since that
+  suggests the agent's vocabulary is not what phase 2 assumes.
+- Any finding that the 2026-09-01 supersede entry's prescribed key shape does not
+  transfer to `agent_anomalies` once a subject exists.
+
+---
+
+## 6. Estimate
+
+**3–4 sessions**, and the uncertainty is entirely in phase 3.
+
+Phase 1 is one session: a signature change, 45 mechanical failures to walk, item
+5, and their positive controls. Phase 2 is one session if the sibling vocabulary
+holds and two if it does not. Phase 3 is a decision session plus the edits, and
+its length depends on how many of the four have a defensible subject.
+
+⚠️ **The estimate assumes phase 2's siblings answer.** If the 27 turn out to need
+rulings too, this is phase 3 with a larger batch and the estimate is 5. That is
+measurable at the start of phase 2 by taking the agent with the most lacking
+sites that still has coverage — `year_end_close`, 7 lacking against 1 covered —
+and seeing whether one covered site is enough to answer seven.
