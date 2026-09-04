@@ -443,3 +443,4 @@ tests/test_anomaly_subject_ratchet.py
 # company-litter ratchet. Each file's exact leak count is recorded in STATE.md
 # so a later, different leak is distinguishable from the known one.
 # ── end S-2 correction ────────────────────────────────────────────────────
+tests/test_anomaly_supersede.py

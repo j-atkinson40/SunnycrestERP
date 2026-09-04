@@ -97,7 +97,7 @@ def get_anomalies(
 
     # Resolved filter — default to unresolved-only.
     if not include_resolved:
-        base = base.filter(AgentAnomaly.resolved.is_(False))
+        base = base.filter(AgentAnomaly.open_filter())
 
     if severity_filter:
         base = base.filter(AgentAnomaly.severity == severity_filter)
@@ -127,7 +127,7 @@ def get_anomalies(
         .join(AgentJob, AgentAnomaly.agent_job_id == AgentJob.id)
         .filter(
             AgentJob.tenant_id == user.company_id,
-            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.open_filter(),
         )
         .count()
     )
@@ -136,7 +136,7 @@ def get_anomalies(
         .join(AgentJob, AgentAnomaly.agent_job_id == AgentJob.id)
         .filter(
             AgentJob.tenant_id == user.company_id,
-            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.open_filter(),
             AgentAnomaly.severity == "critical",
         )
         .count()

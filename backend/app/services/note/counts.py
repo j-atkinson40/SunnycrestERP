@@ -52,7 +52,7 @@ def _anomalies_distinct(db: Session, user: User) -> int:
         .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
         .filter(
             AgentJob.tenant_id == user.company_id,
-            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.open_filter(),
         )
         .distinct()
         .count()

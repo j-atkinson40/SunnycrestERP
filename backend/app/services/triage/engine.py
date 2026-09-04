@@ -853,7 +853,7 @@ def _mq_cash_receipts_matching_triage(
         .filter(
             AgentJob.tenant_id == user.company_id,
             AgentJob.job_type == "cash_receipts_matching",
-            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.open_filter(),
             AgentAnomaly.anomaly_type.in_(
                 (
                     "payment_possible_match",
@@ -1050,7 +1050,7 @@ def _mq_ar_collections_triage(db: Session, user: User) -> MembershipQuery:
         .filter(
             AgentJob.tenant_id == user.company_id,
             AgentJob.job_type == "ar_collections",
-            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.open_filter(),
             AgentAnomaly.anomaly_type.in_(
                 (
                     "collections_follow_up",
@@ -1169,7 +1169,7 @@ def _mq_expense_categorization_triage(db: Session, user: User) -> MembershipQuer
         .filter(
             AgentJob.tenant_id == user.company_id,
             AgentJob.job_type == "expense_categorization",
-            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.open_filter(),
             AgentAnomaly.anomaly_type.in_(
                 (
                     "expense_low_confidence",
@@ -1302,7 +1302,7 @@ def _mq_aftercare_triage(db: Session, user: User) -> MembershipQuery:
         .filter(
             AgentJob.tenant_id == user.company_id,
             AgentJob.job_type == AFTERCARE_JOB_TYPE,
-            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.open_filter(),
             AgentAnomaly.anomaly_type == ANOMALY_TYPE,
             AgentAnomaly.entity_id.isnot(None),
             AgentAnomaly.entity_id != "",

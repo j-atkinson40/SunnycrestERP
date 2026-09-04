@@ -158,3 +158,87 @@ Held. Nothing written, no migration authored.
 - Every count here states its population, per the rule landed this session.
   None of these figures include the five seeded demo rows except the 2,289
   total, which is the whole table and says so.
+
+---
+
+## 8. 5a as authored — migration `r176`, NOT RUN against production
+
+Per ruling: authored, gate-green, **held for James at his terminal.** Verified by
+upgrade → downgrade → upgrade against local `bridgeable_dev` only.
+
+- `tenant_id` — added nullable, backfilled from `agent_jobs`, set NOT NULL, indexed.
+- `entity_id` — 36 → 255.
+- `superseded_at` — nullable timestamptz.
+- `ix_agent_anomalies_open` — a NON-unique index on the eventual key, so 5c's
+  partial unique has something to build on without 5a asserting uniqueness.
+
+⚠️ **No unique constraint. `test_the_5c_index_is_deliberately_absent` pins that**,
+so a later reader cannot "finish the job" by adding it and discover the 240
+duplicates through a failed migration.
+
+### `tenant_id` is DERIVED, not asked for
+
+Six production sites and thirteen test/seed sites construct `AgentAnomaly`. A
+`tenant_id` each supplies is one each can get wrong, and wrong here files a row
+under another tenant, which the supersede key would read as another tenant's
+decision. A `before_insert` listener fills it from the job. A supplied value that
+DISAGREES raises rather than being silently overwritten — the disagreement is a
+real bug and the quiet fix would hide it.
+
+Side effect worth having: none of the thirteen test/seed sites needed changing.
+
+### The reader enumeration, which the ruling required first
+
+Eleven filter sites, all moved to `AgentAnomaly.open_filter()`:
+
+```
+triage/engine.py                4  (cash_receipts, ar_collections,
+                                    expense_categorization, aftercare queues)
+widgets/anomalies_widget_service 3  (list + total_unresolved + critical_count)
+note/counts.py                  1
+agents/approval_gate.py         1
+api/routes/agents.py            1  (resolved=false now means "still open")
+                                +1 deliberate `resolved.is_(True)`
+```
+
+⚠️ **The two widget count chips are exactly the overstatement risk** — they feed
+a badge. Left bare, they would have counted 240 machine-replaced rows as open
+work against 11 real decisions.
+
+**Pinned by a scanner, not a convention**:
+`test_no_read_site_filters_on_resolved_alone` fails on any new bare filter, with
+`resolved.is_(True)` allowed as the different question it is. Break-tested three
+ways — a returning bare filter, an `open_filter` that checks only `resolved`, and
+a derivation that overwrites instead of raising — each turning its own check red.
+
+### Classifier output validated at the write site
+
+`proposed_category` was `result.get("category", "other_expense")`, used verbatim,
+and it BECOMES A SUBJECT. Now coerced to the 15-item vocabulary, out-of-vocabulary
+values logged. The length hazard was the visible half; **the identity hazard is
+worse** — a hallucinated spelling creates a subject naming nothing, and a second
+spelling creates a second, which is `complete`/`completed` arriving through a
+field nobody treated as a key.
+
+---
+
+## 9. ⚠️ Two things the enumeration turned up, neither fixed
+
+**`anomaly_resolution_task`'s done-hook is dead.** At
+`app/services/tasks/plugins/types/anomaly_resolution_task.py:67` it does
+`if anomaly is not None and hasattr(anomaly, "is_resolved"): anomaly.is_resolved = True`.
+**The model attribute is `resolved`.** `hasattr` returns False, so the branch
+never runs — the hook loads the anomaly and does nothing, silently, with no
+exception and no log. Its module docstring claims it "updates
+AgentAnomaly.is_resolved=True via existing service path."
+
+Not fixed, because fixing it is a **behaviour change**: completing such a task
+would start resolving anomalies that today stay open. That is an
+operator-visible change and deserves its own decision, not a ride-along in a
+migration commit. It is the complete-machinery-behind-an-unprovisioned-entrance
+shape with a `hasattr` guard making it undetectable.
+
+**`tests/_tenant.py`'s docstring advertises an import that does not exist.** It
+says `from tests._tenant import canonical_tenant`; the module exports
+`make_canonical_tenant_fixture`. Cost one failed import. Expired premise —
+correct when written, silent when it stopped being true.

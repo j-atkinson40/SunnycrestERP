@@ -352,7 +352,15 @@ def list_accounting_anomalies(
     if severity:
         q = q.filter(AgentAnomaly.severity == severity)
     if resolved is not None:
-        q = q.filter(AgentAnomaly.resolved == resolved)
+        # ⚠️ `resolved=false` means "still needs attention", which is NOT the
+        # same as `resolved == false` now that a row can be superseded. A
+        # superseded row was replaced by the machine and is nobody's open work,
+        # so it belongs in neither bucket; passing no filter still returns
+        # everything, including superseded rows, for audit.
+        q = q.filter(
+            AgentAnomaly.open_filter() if resolved is False
+            else AgentAnomaly.resolved.is_(True)
+        )
     return [AgentAnomalyResponse.model_validate(a) for a in q.all()]
 
 

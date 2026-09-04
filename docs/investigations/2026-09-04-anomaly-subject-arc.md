@@ -1,5 +1,26 @@
 # The anomaly-subject arc — scope
 
+> ## ⚠️ [CORRECTED 2026-09-04] — THIS DOCUMENT'S PREMISE IS WRONG
+>
+> **A subject does not prevent duplication. It makes supersede POSSIBLE;
+> supersede is what makes it happen.**
+>
+> The arc reasoned from `expense_no_gl_mapping` — no subject, therefore 1,825
+> duplicates — and generalised backwards to "subjects prevent duplication."
+> Measured against production at phase 5's precondition probe: **192
+> `expense_classification_failed` rows against ONE `vendor_bill_line`**, each
+> carrying a real UUID subject, plus eight more colliding groups. **251
+> unresolved subjected rows collapse to 11 decisions.** None of those rows was
+> ever among the 34 this arc set out to fix.
+>
+> The 1,825 were conspicuous because they had nothing to key on, **not because
+> they were the only case.** So phases 1–4 are precondition and not repair, which
+> the phasing below already said and the framing above obscured: this document
+> reads as though filling subjects were the fix.
+>
+> **Phase 5 is the fix.** See
+> `2026-09-04-anomaly-subject-phase5-preconditions.md` §4.
+
 **Date:** 2026-09-04 · **Scope document.** No code written.
 **Status:** drafted for dispatch. Session 2 resumes after this lands.
 

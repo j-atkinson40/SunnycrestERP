@@ -64,6 +64,38 @@ No preamble, no markdown."""
 class ExpenseCategorizationAgent(BaseAgent):
     """Finds and classifies uncategorized expense lines."""
 
+    @staticmethod
+    def _validated_category(raw: object) -> str:
+        """Coerce the classifier's answer into the vocabulary it was given.
+
+        ⚠️ THIS VALUE BECOMES A SUBJECT. `expense_no_gl_mapping` writes it to
+        `agent_anomalies.entity_id`, so an unvalidated string is an unvalidated
+        SUBJECT — the thing the supersede key is built on. Two hazards, and the
+        second is worse than the first:
+
+        1. LENGTH. `entity_id` is varchar(255) after r176 and was varchar(36)
+           before it. Model output is unbounded either way.
+        2. IDENTITY. A hallucinated category creates a subject that names
+           nothing, and every future run inventing a different spelling creates
+           another one. That is `complete` / `completed` again — one thing with
+           two keys — arriving through a field nobody thought of as a key.
+
+        The model is asked for one of fifteen values and its answer was used
+        verbatim. Out-of-vocabulary answers collapse to `other_expense`, which
+        is where the classifier's own fallback already pointed, and the rejected
+        value is logged rather than swallowed so a drifting classifier is
+        visible.
+        """
+        if isinstance(raw, str) and raw in EXPENSE_CATEGORIES:
+            return raw
+        logger.warning(
+            "expense classifier returned %r, which is not one of the %d platform "
+            "categories it was given; treating as 'other_expense'. This value "
+            "would otherwise have become an anomaly subject.",
+            raw, len(EXPENSE_CATEGORIES),
+        )
+        return "other_expense"
+
     JOB_TYPE = AgentJobType.EXPENSE_CATEGORIZATION
 
     CONFIDENCE_THRESHOLD = Decimal("0.85")
@@ -191,7 +223,9 @@ class ExpenseCategorizationAgent(BaseAgent):
             try:
                 result = self._classify_single_line(line_info)
                 confidence = Decimal(str(result.get("confidence", 0)))
-                proposed_category = result.get("category", "other_expense")
+                proposed_category = self._validated_category(
+                    result.get("category", "other_expense")
+                )
                 reasoning = result.get("reasoning", "")
 
                 classification = {

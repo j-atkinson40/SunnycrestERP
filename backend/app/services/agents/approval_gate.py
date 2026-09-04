@@ -319,7 +319,7 @@ class ApprovalGateService:
                     AgentAnomaly.agent_job_id == job.id,
                     AgentAnomaly.severity == "critical",
                     AgentAnomaly.entity_type == "customer",
-                    AgentAnomaly.resolved == False,
+                    AgentAnomaly.open_filter(),
                 )
                 .all()
             )
