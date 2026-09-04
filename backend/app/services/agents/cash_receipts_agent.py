@@ -55,24 +55,6 @@ class CashReceiptsAgent(BaseAgent):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _make_anomaly(
-        self,
-        severity: AnomalySeverity,
-        anomaly_type: str,
-        description: str,
-        entity_type: str | None = None,
-        entity_id: str | None = None,
-        amount: Decimal | None = None,
-    ) -> AnomalyItem:
-        return AnomalyItem(
-            severity=severity,
-            anomaly_type=anomaly_type,
-            description=description,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            amount=amount,
-        )
-
     # ------------------------------------------------------------------
     # STEP 1 — collect_unmatched_payments
     # ------------------------------------------------------------------

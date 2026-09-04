@@ -417,6 +417,16 @@ tests/test_fragment_contract.py
 # it works or was never wired. Creates one company, torn down module-scoped.
 tests/test_note_surface.py
 
+# Anomaly-subject arc phase 1: the ratchet holding the direction until the
+# signature can be made required, plus item 5's contract fix. The ratchet is a
+# CEILING that may only shrink — 34 of 64 anomaly write sites pass no subject.
+# It ships with two positive controls, because a ratchet whose scanner matches
+# nothing passes trivially and a ceiling above the real count has stopped
+# ratcheting. The scanner control caught the arc's own 75/30/45 figures as
+# wrong: they counted 11 `def _make_anomaly(` lines as call sites.
+# No DB, no fixtures, leaks nothing.
+tests/test_anomaly_subject_ratchet.py
+
 # ── S-2 CORRECTION (2026-09-03) ───────────────────────────────────────────
 # 24 of the 62 files added above were REMOVED again the same day. They pass,
 # but they leak companies without teardown — 341 rows across the 24, exactly

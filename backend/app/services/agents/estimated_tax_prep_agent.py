@@ -79,24 +79,6 @@ class EstimatedTaxPrepAgent(BaseAgent):
     def _period_end(self):
         return self.job.period_end
 
-    def _make_anomaly(
-        self,
-        severity: AnomalySeverity,
-        anomaly_type: str,
-        description: str,
-        entity_type: str | None = None,
-        entity_id: str | None = None,
-        amount: Decimal | None = None,
-    ) -> AnomalyItem:
-        return AnomalyItem(
-            severity=severity,
-            anomaly_type=anomaly_type,
-            description=description,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            amount=amount,
-        )
-
     def _compute_quarters_elapsed(self, period_end: date) -> int:
         """How many complete quarters have passed since Jan 1 of the period_end year."""
         if period_end >= date(period_end.year, 12, 31):

@@ -89,24 +89,6 @@ class AnnualBudgetAgent(BaseAgent):
     def _period_end(self) -> date:
         return self.job.period_end
 
-    def _make_anomaly(
-        self,
-        severity: AnomalySeverity,
-        anomaly_type: str,
-        description: str,
-        entity_type: str | None = None,
-        entity_id: str | None = None,
-        amount: Decimal | None = None,
-    ) -> AnomalyItem:
-        return AnomalyItem(
-            severity=severity,
-            anomaly_type=anomaly_type,
-            description=description,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            amount=amount,
-        )
-
     def _get_assumptions(self) -> dict:
         """Load growth assumptions from job metadata or use defaults."""
         payload = self.job.report_payload or {}

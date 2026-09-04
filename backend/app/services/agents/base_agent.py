@@ -207,6 +207,47 @@ class BaseAgent:
     # Anomaly recording
     # ------------------------------------------------------------------
 
+    def _make_anomaly(
+        self,
+        severity: AnomalySeverity,
+        anomaly_type: str,
+        description: str,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        amount: Decimal | None = None,
+    ) -> AnomalyItem:
+        """Build an AnomalyItem for inclusion in StepResult.anomalies.
+
+        ⚠️ CONSOLIDATED FROM ELEVEN IDENTICAL COPIES (anomaly-subject arc, phase
+        1). Every agent carried its own byte-identical version of this helper —
+        eleven definitions, one distinct signature, bodies differing only by a
+        docstring on `month_end_close`. Eleven copies of a helper are eleven
+        places a future author can diverge, and eleven places the arc's eventual
+        signature change would have to land identically.
+
+        ⚠️ `entity_type` / `entity_id` ARE STILL OPTIONAL HERE, DELIBERATELY, AND
+        THAT IS TEMPORARY. The arc requires them, so a subjectless anomaly
+        becomes unexpressible rather than discouraged. They cannot be made
+        required yet: a required parameter fails at CALL time with TypeError,
+        not at import, and 45 of 75 call sites currently pass neither. Making
+        them required today would leave twelve scheduled production agents —
+        including month_end_close, ar_collections, cash_receipts and
+        expense_categorization — raising TypeError at their next run.
+
+        The removal still happens; it happens LAST, once every caller complies.
+        `tests/test_anomaly_subject_ratchet.py` holds the direction in the
+        meantime: the non-compliant count may only shrink. See
+        `docs/investigations/2026-09-04-anomaly-subject-arc.md`.
+        """
+        return AnomalyItem(
+            severity=severity,
+            anomaly_type=anomaly_type,
+            description=description,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            amount=amount,
+        )
+
     def add_anomaly(
         self,
         severity: AnomalySeverity,

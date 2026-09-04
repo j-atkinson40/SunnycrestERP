@@ -23,6 +23,23 @@ that over with whatever field was nearest.
 
 ## 1. ⚠️ The phasing figure in the ruling does not reconcile — re-derived
 
+> ## ⚠️ [CORRECTED 2026-09-04] — THE CALL-SITE FIGURES BELOW ARE WRONG
+>
+> **75 / 30 / 45 counted eleven `def _make_anomaly(` DEFINITIONS as call sites.**
+> The grep was `'_make_anomaly(\|add_anomaly('`, which matches a definition line
+> as readily as a call. Measured correctly: **64 call sites, 30 with a subject,
+> 34 without.** 75 = 64 + 11; 45 = 34 + the same 11.
+>
+> Two conclusions drawn from the bad figures also fall:
+> - **`ar_collections_agent` IS complete** — 3 sites, all compliant. Its "1
+>   lacking" was its own definition. So "no agent is already complete" is false.
+> - The phase split is **20 lacking across 7 partially-covered agents + 14 across
+>   4 zero-coverage agents = 34**, not 27 + 18 = 45.
+>
+> Caught by `test_call_sites_are_actually_found` — a positive control written
+> against the wrong number, which found the number wrong. Original text preserved.
+
+
 The ruling proposed "the thirty already-passing sites first… then the forty-one
 that pass nothing but have an obvious subject. Then the four agents needing a
 ruling." Re-derived per agent:

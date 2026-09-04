@@ -84,25 +84,6 @@ class MonthEndCloseAgent(BaseAgent):
     def _period_end(self) -> date:
         return self.job.period_end
 
-    def _make_anomaly(
-        self,
-        severity: AnomalySeverity,
-        anomaly_type: str,
-        description: str,
-        entity_type: str | None = None,
-        entity_id: str | None = None,
-        amount: Decimal | None = None,
-    ) -> AnomalyItem:
-        """Build an AnomalyItem for inclusion in StepResult.anomalies."""
-        return AnomalyItem(
-            severity=severity,
-            anomaly_type=anomaly_type,
-            description=description,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            amount=amount,
-        )
-
     # ------------------------------------------------------------------
     # STEP 1 — verify_invoice_coverage
     # ------------------------------------------------------------------

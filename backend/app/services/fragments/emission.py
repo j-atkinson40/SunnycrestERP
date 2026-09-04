@@ -183,6 +183,7 @@ def emit_for_user(
             )
             continue
 
+        accepted = 0
         for inst in instances:
             try:
                 _validate_instance(decl, inst)
@@ -191,7 +192,31 @@ def emit_for_user(
                     "fragment instance rejected: %s", fragment_id
                 )
                 continue
+            accepted += 1
             out.append(EmittedFragment(declaration=decl, instance=inst))
+
+        # ⚠️ THE ONLY POINT WHERE BROKEN AND QUIET ARE DISTINGUISHABLE.
+        #
+        # A fragment whose condition yields nothing is having a quiet day, which
+        # canon says is correct behaviour. A fragment whose condition yields
+        # instances and has EVERY ONE rejected is broken — and both produce an
+        # empty note. Registration cannot tell them apart without executing the
+        # condition, and the per-instance log above cannot either: it fires
+        # identically for one bad instance among ten good ones.
+        #
+        # This is the absent-signal shape at the contract layer, and the surface
+        # arc declares four more fragments into it. So the total-rejection case
+        # is raised to ERROR and named, because it is the one case that is never
+        # a quiet day.
+        if instances and accepted == 0:
+            logger.error(
+                "fragment %s produced %d instance(s) and ALL were rejected — "
+                "this fragment has emitted nothing and is broken, not quiet. "
+                "A condition that yields instances which never validate is "
+                "indistinguishable from a false condition at every other layer.",
+                fragment_id,
+                len(instances),
+            )
 
     # Urgency order. DECISIONS 2026-09-04 ("two registers"): prose fragments
     # are "composed, ordered by urgency" — unlike the standing set, which is
