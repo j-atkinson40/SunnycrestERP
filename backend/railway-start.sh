@@ -114,33 +114,22 @@ if [ "$ENV_RESOLVED" != "production" ]; then
     fi
     echo "  ✓ seed_fh_demo.py completed."
 
-    # 2026-09-04 — The CI Playwright bot is ENSURED here, not provisioned by
-    # hand. Prior to this, `provision_ci_bot.py` was a one-time manual script
-    # and NOTHING in this file or either seed re-created the bot. The result:
-    # the Playwright channel produced no green result in 99 consecutive runs
-    # (2026-07-28 → 2026-09-04), every spec dying at 401 before exercising
-    # anything, and the absence was found incidentally five and a half weeks
-    # later rather than reported by anything.
+    # 2026-09-04 — The CI bot ensure step was wired here and then REMOVED the
+    # same day, when the e2e channel it authenticated was abandoned rather than
+    # repaired (STATE.md, priority shift to production).
     #
-    # The rule this encodes: if a credential is required for something to
-    # work, its creation belongs in the path that recreates the environment,
-    # or it will be missing after the next reset. See CLAUDE.md §11.
+    # It is removed rather than left in place because it would have printed
+    # `✗ STAGING_CI_BOT_PASSWORD is not set` on EVERY deploy, forever, for a
+    # channel nobody is going to fix. A warning that fires on every deploy for
+    # work no one will do is how deploy output becomes something people skip —
+    # the same shape as the CI red that went unread for five and a half weeks,
+    # which is what this whole episode was about.
     #
-    # --ensure reads STAGING_CI_BOT_PASSWORD (same value as the GitHub secret)
-    # and makes the database match it. It never generates or prints a
-    # password, so it is safe on every deploy and cannot invalidate the
-    # secret — which is the failure mode it exists to prevent, inverted.
-    #
-    # NON-FATAL by design. The app does not need this credential to serve
-    # traffic, and aborting the deploy over a test credential would trade a
-    # dark test channel for a dark environment. The Playwright workflow is
-    # where a missing bot must surface as a failure, and it does — loudly,
-    # at 401, which is exactly how this was eventually found.
-    if python -m scripts.provision_ci_bot --ensure 2>&1; then
-        :
-    else
-        echo "  ⚠ CI bot not ensured (exit $?) — Playwright will 401 until fixed."
-    fi
+    # `provision_ci_bot --ensure` REMAINS in the script and is still correct:
+    # it reads the stored secret rather than minting one, so nothing is printed
+    # and nothing must be typed. CLAUDE.md §7 cites it as the worked example of
+    # restructuring a procedure so a credential never transits a session. If a
+    # CI channel is ever revived, restoring this is one line.
 
     # R-1.6.16 — Auto-seed dispatch demo data on testco. Pre-R-1.6.16,
     # testco's `/dispatch/funeral-schedule` rendered empty (zero

@@ -1032,29 +1032,37 @@ gate is unaffected and remains real — it runs in `ci.yml` against a fresh
 Postgres and was exercised throughout; 2243 passing at `d50094de` stands. Do
 not read "CI green" as "e2e verified" while this entry is live.
 
-**The repair is one step and is deferred, not lost:** set
-`STAGING_CI_BOT_PASSWORD` as a Railway env var on the staging service, to the
-value already in GitHub Secrets. `provision_ci_bot --ensure` is landed in
-`railway-start.sh` and will recreate the bot from it on the next deploy.
-Rotation is NOT required — the secret was last updated 2026-05-06 and the
-channel died 2026-07-28, so the credential did not drift; the environment was
-reset out from under it.
+⚠️ **THE REPAIR IS NOT COMING. This is abandonment, recorded as such.** Not
+deferred, not owed, not backlog — no one is going to fix this and the entry
+should not read as though someone might. E2E is dropped from build dispatches;
+a dispatch that names it as a gate is naming a gate that does not exist.
 
-⚠️ Until that variable exists, every staging deploy logs
-`✗ STAGING_CI_BOT_PASSWORD is not set — CI bot NOT ensured`. That is intended
-as a standing reminder, but a warning printed on every deploy becomes noise
-nobody reads — if it is still appearing when someone next reads this, either
-set the variable or make the line say "deferred, see STATE.md" rather than
-letting it train people to skip deploy output.
+Why abandoned rather than repaired: the channel has no honest target. Staging
+is the only thing it was ever pointed at, and repointing it at production is
+worse than not having it — production is a live tenant with real books, and
+these specs impersonate tenants and author themes and workflows. One developer,
+no users, and the person opening the page is the person who wrote it; direct
+review on production catches more here than a suite driving a browser against
+an environment nobody uses.
 
-⚠️ **WHEN THE CHANNEL IS REPAIRED, THE FIRST RUN IS A BASELINE, NOT A PASS.**
-Before classifying anything, prove the instrument can report failure: assert a
-spec that must fail, confirm it goes red, remove it. Then sort the real
-failures into environmental drift / genuine regressions from the three
-in-window arcs / specs that were already wrong when the channel died. The third
-bucket goes into the named baseline with its own signature and is NOT fixed on
-sight. A repaired run that comes back fully green after five weeks dark
-deserves suspicion before celebration.
+**What still runs, and is not ceremony:** the pytest gate (162 files, 2243
+passing) and vitest (339 files, 4531 passing). Their value is not proving new
+work correct — it is reporting when new work broke something nobody was looking
+at, which is the failure direct review structurally cannot catch. One command
+each. Keep them green.
+
+**Operator review is a real gate and should be RECORDED AS THE ONE THAT RAN.**
+"Reviewed on production, correct" in a commit body is honest and useful. A
+commit that says nothing about verification is the problem, because in three
+months it is indistinguishable from one that was never checked.
+
+If the channel is ever revived — not planned — two things would be required
+before its output means anything: the CI bot recreated on whatever it targets
+(`provision_ci_bot --ensure` exists for this and reads the secret rather than
+minting one), and a positive control proving the instrument can report failure,
+since a first green after a long dark window is indistinguishable from a
+channel still broken in a new way. Everything merged since 2026-07-28 would
+remain unverified by it regardless of what that first run said.
 
 **Note arc — held at the contract.** The fragment contract shipped at
 `d50094de` (registry, emission, four declarations, 22 tests, gate 162 files).
@@ -1069,6 +1077,46 @@ and the markers say so.
 trial balance as of a cutover date, open AR (aged), open AP, Plaid on the real
 operating account, historical comparison for trust. Mostly data and process
 rather than code, and it sits AHEAD of Books Review Phase 2, not beside it.
+
+**2026-09-04 — Production re-verified read-only; the 2026-07-29 figures are stale
+on four points, and there is an 8,192-row queue nobody is watching.**
+
+Derivation: `docs/investigations/2026-09-04-production-state-reverify.md`.
+Read-only through the connection-level guard; no writes, no seeds.
+
+Stale in the 07-29 entry: migration head `r147` → **`r174_gl_category_correction`**;
+`je_lines=0` → **30 lines / 15 entries** on sunnycrest; `total_runs=0` →
+**17,709 `workflow_runs`**; Plaid "not yet loaded" → **1 `plaid_items` row on
+sunnycrest** with 36 bank transactions. Unchanged: 4 companies, 18 users, 224 GL
+mappings on sunnycrest and 0 elsewhere.
+
+⚠️ **The 07-29 ordering argument rests on the two zeros and both are now false.**
+Whether the cutover arc still sits ahead of Books Review Phase 2 is a live
+question, not a settled one. Re-derive before scoping.
+
+**Sunnycrest today:** 15 JEs all inside 2026-08-06 → 08-09 (the shape of one
+sitting of manual entry, not ongoing operations — whether they are opening
+balances is UNREAD); 8 invoices (5 paid, 2 partial, 1 sent); **open AR of 3
+invoices / $4,248.93** dated 2026-04-11 → 08-02; 3 vendor bills and **0 open
+AP**; 5 customers; **0 sales orders**.
+
+⚠️ **Zero sales orders on the live tenant.** The platform's core object does not
+exist for the real customer, and eight invoices exist with no order behind them.
+Measured; the operational meaning is not established.
+
+⚠️ **8,192 `agent_jobs` in `awaiting_approval` on production**, oldest
+2026-05-06, newest 2026-09-03 — four months of continuous accumulation, still
+growing. By tenant: hopkins-fh **6,037**, sunnycrest **2,046**, st-marys 95,
+testco 14. `hopkins-fh` has 6,037 pending approvals and zero data of any kind, so
+the count is mostly manufactured by the per-tenant sweep rather than a backlog of
+real decisions — which means a real decision would now be buried in it. And
+nothing reports it: all eleven triage queues fire zero notifications (STATE
+2026-05-26), so 2,046 pending approvals on the live tenant have accumulated
+unannounced. Not triaged here; surfaced for scoping.
+
+Adjacent, unexamined: `agent_jobs.status` carries both `complete` (2,464) and
+`completed` (804). Two spellings of one terminal state is how a status filter
+becomes silently wrong.
 
 ## Production
 
