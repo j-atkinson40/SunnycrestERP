@@ -134,10 +134,50 @@ the cap." So the finding is that the operational layer's mapping is too broad
 for the standing register as canon defines it, and the excess has to go
 somewhere — prose, peek payloads, or simply not surfacing.
 
-That is a design question about which widgets earn permanence, and it is the
-operator's, not the investigator's. Surfaced under "any layer-service output
-that fits neither register": eight fit the register individually, and
-collectively they do not fit.
+### ⚠️ RESOLVED — the count above measured the wrong unit, and STOP 2 dissolves
+
+Re-measured on the operator's challenge. **Eight is the union across the whole
+mapping; the cap is seven PER ROLE.** Those are different quantities, and the
+first does not constrain the second.
+
+Per work area, from the dict:
+
+| work area | widgets |
+|---|---:|
+| Delivery Scheduling | 3 |
+| Production Scheduling | 2 |
+| Inventory Management | 2 |
+| Accounting | 2 |
+| Customer Service | 1 |
+| Inside Sales · Family Communications · Cross-tenant · HR | 0 |
+
+Vertical defaults: manufacturing **5**; funeral_home, cemetery, crematory **2**.
+
+**Measured on production: all 18 users have ZERO work_areas.**
+`jsonb_array_length(work_areas)` is 0 for every user across every role — driver,
+office, director, admin, dispatcher, production, accountant, office_staff. No
+work-area value is in use anywhere.
+
+So every real user resolves through the **vertical-default fallback**, whose
+largest set is manufacturing at **5** — comfortably under the cap. **Nothing
+exceeds seven. There is no ruling to make.**
+
+⚠️ **The ceiling is real but unreached.** A user selecting all five populated
+work areas would resolve the union of 8 and exceed the cap by one. That is
+reachable, not hypothetical — `OperatorOnboardingFlow.tsx` writes work_areas
+through `operator_profile.py`, so the path exists and is provisioned. It has
+simply never been exercised: nobody has completed that onboarding step in
+production.
+
+So the correct statement is not "the mapping is too broad" but "**the mapping's
+breadth is untested, because its input has never existed**" — the same
+untestable category as three of the six triage queues, arrived at from a
+different direction.
+
+⚠️ **And the original count was itself the shape canonised two commits earlier**
+(§11, "The constructed count — magnitude is a claim too"). Eight was bounded by
+my view of the mapping rather than by the thing the cap constrains. The
+operator caught it; the entry existed and was not applied.
 
 ---
 
