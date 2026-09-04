@@ -81,6 +81,88 @@ def generate_password() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(PASSWORD_LENGTH))
 
 
+def _ensure() -> int:
+    """Deploy-path mode: make the database match the CI secret.
+
+    ⚠️ WHY THIS EXISTS. The Playwright channel produced no green result in 99
+    consecutive runs (2026-07-28 → 2026-09-04), every spec dying at
+    `Platform admin login failed: 401`. The cause was structural rather than
+    incidental: this script was a ONE-TIME manual provisioner, and nothing in
+    `railway-start.sh` or either seed re-created the bot. A staging reset, or
+    any rotation not mirrored into GitHub Secrets, ended the channel silently
+    and permanently — a fully built gate whose authentication had no
+    provisioning path.
+
+    The inversion that fixes it: the SECRET is the source of truth and the
+    database is made to match, rather than the database generating a secret a
+    human must carry. That makes the credential's creation part of the path
+    that recreates the environment, so it survives the next reset.
+
+    Never rotates. Rotation on every deploy would invalidate the GitHub secret
+    on every deploy, which is the failure this is repairing, inverted.
+    """
+    if os.getenv("ENVIRONMENT", "").lower() == "production":
+        print("SAFETY: Refusing to provision CI bot in production.")
+        return 2
+
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        print("ERROR: DATABASE_URL environment variable is required.")
+        return 1
+
+    password = os.environ.get("STAGING_CI_BOT_PASSWORD")
+    if not password:
+        # Loud, but not fatal: the app does not need this credential to serve
+        # traffic, and failing the deploy over a test credential would trade a
+        # dark test channel for a dark environment. The Playwright workflow is
+        # where this absence must surface as a failure, and it will.
+        print(
+            "  ✗ STAGING_CI_BOT_PASSWORD is not set — CI bot NOT ensured.\n"
+            "    The Playwright channel will fail 401 until this env var is\n"
+            "    set on this environment to the same value held in GitHub\n"
+            "    Secrets. Deploy continues; the app does not need it."
+        )
+        return 4
+
+    engine = create_engine(db_url, echo=False)
+    hashed = hash_password(password)
+
+    with Session(engine) as db:
+        existing = (
+            db.query(PlatformUser)
+            .filter(PlatformUser.email == CI_BOT_EMAIL)
+            .first()
+        )
+        if existing is None:
+            db.add(
+                PlatformUser(
+                    id=str(uuid.uuid4()),
+                    email=CI_BOT_EMAIL,
+                    hashed_password=hashed,
+                    first_name=CI_BOT_FIRST_NAME,
+                    last_name=CI_BOT_LAST_NAME,
+                    role=CI_BOT_ROLE,
+                    is_active=True,
+                )
+            )
+            action = "created"
+        else:
+            # Repair drift unconditionally rather than comparing hashes: bcrypt
+            # is salted, so equal passwords produce unequal hashes and a
+            # comparison would rewrite every deploy anyway. Writing the same
+            # value is idempotent in effect.
+            existing.hashed_password = hashed
+            existing.role = CI_BOT_ROLE
+            existing.is_active = True
+            existing.updated_at = datetime.now(timezone.utc)
+            action = "ensured"
+        db.commit()
+
+    # Never prints the password.
+    print(f"  ✓ CI bot {action}: {CI_BOT_EMAIL} (role={CI_BOT_ROLE})")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -93,7 +175,22 @@ def main() -> int:
             "invalidate the GitHub secret."
         ),
     )
+    parser.add_argument(
+        "--ensure",
+        action="store_true",
+        help=(
+            "Idempotent deploy-path mode. Reads the password from "
+            "STAGING_CI_BOT_PASSWORD instead of generating one, creates the "
+            "bot if absent, and repairs the hash/role/active flag if it has "
+            "drifted. NEVER generates a password and NEVER prints one, so it "
+            "is safe to run on every deploy: the GitHub secret stays the "
+            "source of truth and the database is made to match it."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.ensure:
+        return _ensure()
 
     if os.getenv("ENVIRONMENT", "").lower() == "production":
         print("SAFETY: Refusing to provision CI bot in production.")

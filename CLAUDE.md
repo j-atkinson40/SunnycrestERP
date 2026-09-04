@@ -1926,6 +1926,36 @@ Discovered September 2026: test_phase_8_9_agents.py was red on a missing SQLite
 fixture table since before the arc began; a commit added two further missing-table
 dependencies inside that red and was completely invisible.
 
+#### Absent signal — the instrument that never worked
+
+A gate at 99-red-out-of-99 is not a saturated signal, it is an absent one.
+Saturated means real failures hide inside existing red. This never produced a
+signal at all, which is a different and worse condition, and it is detectable by
+a question nobody asked — WHEN DID THIS LAST PASS?
+
+The distinction matters because the two have different remedies and different
+blast radii. A saturated channel has a working instrument and a known red; its
+history is readable and its repair restores a signal that existed. An absent
+channel has never measured anything, so there is no baseline to return to, and
+"repaired" means "measuring for the first time."
+
+**A reason not to read an instrument is not a reason to assume it works.** This
+is the specific trap, because the reason is usually correct. Declining to run a
+check because its result would not be evidence — wrong branch, stale deploy,
+unrelated red — is right, and it stops one step short. The instrument's own
+health is a separate question from whether this run would be informative, and
+only the second one gets asked.
+
+So: before reporting that a check was skipped, and before treating any gate as
+covering anything, ask when it last passed. Not whether it is passing now.
+
+Discovered September 2026: the Playwright staging channel had produced zero
+green results in 99 consecutive runs across five and a half weeks, every spec
+dying at a 401 before exercising anything. It was noticed once, six days in,
+counted as "six consecutive runs" and correctly attributed to the CI credential
+— and the last-pass question was still not asked, so the six-week figure and the
+never-passed condition both went unseen.
+
 #### Causation — proximity is not necessity
 
 Sibling to false absence above. That entry tests a query; this tests an
@@ -2014,6 +2044,27 @@ CLASS KILLER, owed: a platform-wide read-site/write-site census over boolean
 columns and over service entry points, asking of each whether any code path in
 production produces it. Three instances found by luck is an argument for running
 the census rather than waiting for the fourth.
+
+THE PROVISIONING COROLLARY. **If a credential, token, or account is required for
+something to work, its creation belongs in the path that recreates the
+environment, or it will be missing after the next reset and the absence will
+surface incidentally.**
+
+The common mechanism across instances is that provisioning is a one-time act
+performed by a human at a terminal, and one-time human acts leave no artifact
+that any later process depends on — so nothing ever fails loudly enough to
+reveal them. The entrance is not merely unbuilt; it is unbuildable by anything
+that runs on its own.
+
+The inversion that fixes it: make the stored secret the source of truth and have
+the environment-recreating path make the world match it, rather than having a
+human carry a value from a generator to a settings page. Ensure, do not
+provision. Never rotate on a schedule something whose counterpart is updated by
+hand.
+
+Fourth instance, September 2026: the CI Playwright bot was created by a one-time
+manual script that no deploy step and no seed re-ran, so the gate it
+authenticated had no provisioning path at all.
 
 #### Enumeration defeated by presentation
 

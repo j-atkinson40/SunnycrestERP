@@ -142,3 +142,76 @@ The near-miss is the reusable part. "Do not report a green with no contact with
 the change" prevented a false claim, and would have gone on preventing anyone
 from noticing that no claim was possible. **A reason not to read an instrument
 is not a reason to assume it works.**
+
+---
+
+## 7. What the record actually claimed — enumerated 2026-09-04
+
+The operator's question: dispatches named Playwright as a required gate through
+the dark window, so did session reports (a) claim a number that did not come
+from Playwright, (b) omit it unnoticed, or (c) run it against a different
+target? Case (a) would be a false claim in the record needing correction more
+urgently than the credential.
+
+**Answer: (b), cleanly. There are no false Playwright claims in the record.**
+
+### Commits
+
+252 commits since 2026-07-28. **6** mention Playwright in their bodies (bodies
+grepped per-commit, counted as commits, not as matching lines):
+
+| Commit | Date | What it claims |
+|---|---|---|
+| `6b9a9b70` | 09-04 | this investigation |
+| `d50094de` | 09-04 | explicitly NOT run, with the reason |
+| `2d749ad1` | 09-03 | e2e Close **skipped on purpose**, with the reason |
+| `f16482a4` | 08-25 | about coverage documented before it existed |
+| `b7fd25f6` | 08-25 | incidental — dependency pinning example |
+| `799e2859` | 08-04 | incidental — untracking screenshots |
+
+**Zero claim a pass.**
+
+### STATE.md
+
+171 occurrences of "Playwright" (occurrences, not lines). Restricting to
+entries dated on or after 2026-07-28 leaves **4** lines, of which:
+
+- **`STATE.md:860`** (from `2d749ad1`, 09-03) — the only genuine in-window
+  claim, and it is honest: *"THE CLOSE WAS INCOMPLETE BY CHOICE... The
+  dispatch's staging seed + Playwright/Claude-API run was not performed."*
+- **`:1051`, `:1058`, `:1067`** — sit under `## Active deferred items`, an
+  undated section. All three were introduced by `8504f924` on **2026-05-13**,
+  ten weeks before the window opened.
+
+⚠️ **A false accusation was nearly made here, and the near-miss is the
+methodological point.** `:1067` reads *"53 of 56 Playwright gates pass"* — a
+specific pass count, which under the first pass of this analysis appeared to be
+an in-window false claim. It is not. The date attribution came from a script
+that carried the last-seen dated bullet downward, and the nearest such bullet
+was 634 lines above, in an unrelated September entry. `git log -S` on the
+literal string returned 2026-05-13.
+
+The claim is **stale, not false** — accurate when written, never revised, and
+sitting in a section whose entries carry no dates of their own. Reporting it as
+a September falsehood would have put a fabricated integrity finding into the
+record while investigating an integrity finding.
+
+The generalisation: a date inferred from document position is a constructed
+name. `git log -S` is the enumeration.
+
+### The sub-finding that matters more than the answer
+
+`STATE.md:860` recorded, on 2026-09-03, that *"Playwright had failed six
+consecutive runs on an unchanged `STAGING_CI_BOT_PASSWORD`."*
+
+Every clause is correct except the count, which was **six against an actual ~95**,
+and the classification. The credential was already correctly identified as the
+cause. What was not asked was when the channel last passed — and the answer,
+never, would have converted "a known red to skip around" into "a gate that has
+never worked," which is a different finding with a different urgency.
+
+So the channel's death was detected six days before this investigation,
+recorded honestly, and under-scoped by a factor of sixteen because the
+last-pass question was not part of the check. That is the entry now landed in
+CLAUDE.md §11 as *Absent signal*.
+
