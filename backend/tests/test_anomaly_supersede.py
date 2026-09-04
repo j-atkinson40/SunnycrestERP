@@ -124,8 +124,22 @@ def test_entity_id_holds_a_subject_longer_than_a_uuid():
     assert len(longest_phase23) == 36, "the phase 2-3 composite changed; re-check the width"
 
 
-def test_tenant_id_is_not_nullable():
-    assert not AgentAnomaly.__table__.c.tenant_id.nullable
+def test_tenant_id_is_nullable_on_purpose_until_5c():
+    """⚠️ NOT AN OVERSIGHT, AND THE FIRST DRAFT HAD IT AS NOT NULL.
+
+    Migrations run inside the deploy, before uvicorn, while Railway keeps the
+    OLD container serving. So there is a window where the new schema is live and
+    the old code -- which does not set tenant_id and has no listener -- is still
+    taking traffic. NOT NULL there would fail every anomaly insert for the
+    length of that window, against expense_categorization on a */15 cron.
+
+    Expand/contract: widen now, tighten in 5c once the writer is many deploys
+    live. Correctness in the meantime rests on the listener, not the constraint.
+    """
+    assert AgentAnomaly.__table__.c.tenant_id.nullable, (
+        "tenant_id was made NOT NULL. If that is deliberate, it belongs in 5c, "
+        "not in a migration that lands while the old writer is still serving."
+    )
 
 
 def test_tenant_is_derived_from_the_job_not_supplied(db_session):

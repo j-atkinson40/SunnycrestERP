@@ -242,3 +242,75 @@ shape with a `hasattr` guard making it undetectable.
 says `from tests._tenant import canonical_tenant`; the module exports
 `make_canonical_tenant_fixture`. Cost one failed import. Expired premise —
 correct when written, silent when it stopped being true.
+
+---
+
+## 10. The three deploy questions — answered, and one of them changed the migration
+
+### Q1. The exact command — there isn't a standalone one, and that matters
+
+`backend/railway-start.sh` runs `alembic upgrade head` **inside the deploy**,
+under a Postgres advisory boot lock, **before uvicorn starts**, and fails the
+deploy on error (R-3.1.3 fail-loud). So the production migration path is:
+
+```
+! git push origin main        # 8 commits; Railway deploys from main
+```
+
+There is no separate migrate step to run. `railway run … alembic upgrade head`
+would technically work — it injects production's `DATABASE_URL` — but it would
+apply the schema **while the deployed code is still the old code**, which is
+precisely the failure Q2 turned out to be about. **The deploy path is the right
+one; the ad-hoc one is the trap.**
+
+### Q2. ⚠️ Yes it rides a deploy — AND THE QUESTION FOUND A DEFECT
+
+Railway keeps the **old container serving while the new one boots and migrates.**
+So there is a window in which the NEW SCHEMA is live and the OLD CODE is taking
+traffic. The old code does not set `tenant_id` and has no `before_insert`
+listener.
+
+**As originally authored, r176 set `tenant_id NOT NULL`. That would have failed
+every anomaly insert for the length of that window** — against
+`expense_categorization` on a `*/15` cron plus the nightly agents.
+
+**This is the same defect canonised earlier today**: a guard reasoned about in
+isolation from who else is running. I reasoned about the migration and not about
+the deploy choreography — the sample was "the schema after", the population was
+"every writer during".
+
+**Fixed as expand/contract.** r176 leaves `tenant_id` **nullable**; NOT NULL
+moves to 5c, many deploys downstream of the listener. Correctness meanwhile does
+not rest on the constraint — the listener fills it on every insert, and
+`test_tenant_id_is_nullable_on_purpose_until_5c` pins the reasoning so a later
+reader does not "tidy it up".
+
+The deploy window itself is unchanged by r176: same rolling deploy, and the
+~5-minute outage seen earlier today is a property of the deploy, not of this
+migration.
+
+### Q3. Reversible — verified against a POPULATED table, which is a different test
+
+The earlier round-trip ran against an effectively empty table, which is exactly
+the objection. Re-run against 68 pre-existing rows plus 7 seeded probe rows
+across **two tenants**:
+
+```
+UPGRADE    74 rows backfilled, 0 NULL; every row's tenant_id == its job's
+           a 70-char entity_id accepted (old column was 36)
+DOWNGRADE  columns dropped, 75 rows intact, the 70-char subject survives
+           entity_id deliberately left at 255 -- narrowing would FAIL on it
+RE-UPGRADE 0 NULL, long subject still 70 chars
+```
+
+Probe rows removed afterward; `agent_anomalies` back to 68.
+
+⚠️ **The one asymmetry, stated because it is not true forever.** Downgrade is
+lossless *today* only because nothing writes `superseded_at` yet. **After 5b it
+is not**: rolling back would destroy the record of which rows were superseded,
+and every one of them would reappear as open work in every count. So the
+downgrade is a safe escape hatch for 5a and stops being one the moment 5b lands.
+
+⚠️ **And rollback has an order.** New code references `tenant_id` and
+`superseded_at`, so a schema downgrade under new code breaks it. Roll back the
+DEPLOY first, then the migration.

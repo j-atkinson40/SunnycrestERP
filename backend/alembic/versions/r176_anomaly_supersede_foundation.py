@@ -58,7 +58,25 @@ def upgrade() -> None:
           AND a.tenant_id IS NULL
         """
     )
-    op.alter_column("agent_anomalies", "tenant_id", nullable=False)
+    # ⚠️ DELIBERATELY LEFT NULLABLE. NOT NULL BELONGS IN A LATER MIGRATION.
+    #
+    # Migrations run inside the deploy (railway-start.sh, under the boot lock,
+    # before uvicorn starts), and Railway keeps the OLD container serving while
+    # the new one boots. So there is a window in which the new SCHEMA is live
+    # and the OLD CODE is still handling traffic -- and the old code does not
+    # set `tenant_id` and has no before_insert listener. A NOT NULL here would
+    # make every anomaly insert fail for the length of that window, against
+    # `expense_categorization` on a */15 cron and the nightly agents.
+    #
+    # This is expand/contract: widen now, tighten once the writer is live.
+    # NOT NULL rides the phase-5c migration, which is already gated on 5b's
+    # drain and by then is many deploys downstream of the listener.
+    #
+    # Correctness in the meantime does not depend on the constraint: the
+    # `before_insert` listener on AgentAnomaly derives tenant_id from the job on
+    # every insert, and `test_tenant_is_derived_from_the_job_not_supplied` pins
+    # it. The column being nullable is a statement about the deploy window, not
+    # about whether rows get a tenant.
     op.create_index(
         "ix_agent_anomalies_tenant_id", "agent_anomalies", ["tenant_id"]
     )

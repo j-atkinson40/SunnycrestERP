@@ -22,7 +22,9 @@ class AgentAnomaly(Base):
     #: what makes it a stable subject. Without this column the supersede key
     #: would collapse two tenants' anomalies into one row.
     #: ⚠️ DERIVED, NOT SUPPLIED — see the before_insert listener below.
-    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    #: Nullable until phase 5c -- see r176's expand/contract note. The
+    #: before_insert listener fills it on every insert regardless.
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     agent_run_step_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("agent_run_steps.id"), nullable=True)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
     anomaly_type: Mapped[str] = mapped_column(String(100), nullable=False)
