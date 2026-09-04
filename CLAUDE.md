@@ -1780,6 +1780,51 @@ which encodes the FK-safe deletion order in one place. The company-litter count 
 shrink. Cascade behavior in this schema is uneven — extend the helper rather than writing
 a local delete list.
 
+### Removal before recognition — how the rest of this section is meant to be used
+
+Read this before the taxonomies that follow, because it decides whether they
+apply.
+
+**When a failure shape is identified, ask whether the available method that
+produced it can be REMOVED, and prefer that to a rule asking people not to use
+it. Taxonomy is the fallback for when removal is not possible.**
+
+The distinction is not stylistic. A named shape has to be recognised in the
+moment by someone who is looking; a removed method does not, because there is
+nothing left to recognise. Recognition requires attention at exactly the point
+where attention is scarce — mid-task, on the thing that is not the topic.
+
+**A validated field is a hole with a guard on it. An absent field is not a
+hole.** That is the test for whether a removal is real.
+
+Worked examples, all September 2026, in both directions:
+
+- **Removed at the type level.** The fragment contract had a supplied
+  `instance_key`, which a condition could set from its own run. Validating it
+  would have meant checking every producer forever. The field was deleted and
+  the key derived from a declared subject, so a run-scoped key is now
+  unexpressible rather than merely forbidden.
+- **Removed at the procedure level.** `provision_ci_bot --ensure` reads the
+  stored secret instead of minting one, so nothing is printed and nothing must
+  be typed. The rule "do not let credentials transit a session" still exists,
+  but the procedure no longer asks anyone to obey it.
+- **Removed at the document level.** Dating discipline, the filing test, and
+  supersession marking each delete an inference that a reader would otherwise
+  make correctly and be wrong: date-from-position, rule-from-the-unread-document,
+  liveness-from-adjacency.
+
+**And the counter-example that proves the criterion.** The persistent-storage
+rule — deliverables to `docs/investigations/`, never `/tmp/` — was correct,
+well-argued, and written in response to a real loss. It failed for four months
+and a second loss happened underneath it. It asked for care, and it asked in a
+document the read order says to open only for *why*. Nothing about the rule was
+wrong except that obeying it required someone to be looking.
+
+So: when adding to the taxonomies below, first try to make the entry
+unnecessary. If the shape can only be named, name it — recognition is worth
+having, and most of these could not be removed. But an entry that could have
+been a deletion is a rule that will be followed until the day it matters.
+
 ### Checks that are green without being evidence
 
 Extracted 2026-09-01 from the accounting arc's working record, which carries shapes
