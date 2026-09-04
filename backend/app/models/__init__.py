@@ -37,6 +37,7 @@ from app.models.cemetery_directory import CemeteryDirectory
 from app.models.cemetery_directory_selection import CemeteryDirectorySelection
 from app.models.cemetery_directory_fetch_log import CemeteryDirectoryFetchLog
 from app.models.customer import Customer
+from app.models.daily_note import DailyNote
 from app.models.customer_accounting_mapping import CustomerAccountingMapping
 from app.models.funeral_home_cemetery_history import FuneralHomeCemeteryHistory
 from app.models.historical_order_import import HistoricalOrder, HistoricalOrderImport
@@ -380,6 +381,7 @@ from app.models.workflow_template import (
 )
 from app.models.tenant_health_score import TenantHealthScore
 from app.models.social_service_certificate import SocialServiceCertificate
+from app.models.standing_set_config import StandingSetConfig
 from app.models.urn_product import UrnProduct
 from app.models.urn_inventory import UrnInventory
 from app.models.urn_order import UrnOrder
@@ -491,6 +493,8 @@ from app.models.triage import TriageSession, TriageSnooze
 from app.models.briefing import Briefing, BRIEFING_TYPES
 
 __all__ = [
+    "DailyNote",
+    "StandingSetConfig",
     "CoordinationFocusInstance",
     "MoCPage",
     "MoCPlanningItem",

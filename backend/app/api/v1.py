@@ -59,6 +59,7 @@ from app.api.routes import intelligence as intelligence_routes
 from app.api.routes import (   # noqa: E402 — continuation of main import
     call_intelligence,
     ringcentral,
+    note,
     data_import,
     driver_announcements,
     internal,
@@ -424,6 +425,7 @@ v1_router.include_router(
     prefix="/integrations/ringcentral",
     tags=["Call Intelligence"],
 )
+v1_router.include_router(note.router, prefix="/note", tags=["Note"])
 v1_router.include_router(
     ringcentral.router,
     prefix="/integrations/ringcentral",

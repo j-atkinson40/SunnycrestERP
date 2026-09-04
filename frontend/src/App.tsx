@@ -70,6 +70,7 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import HomePage from "@/pages/home/HomePage";
+import NotePage from "@/pages/note/NotePage";
 import BridgeableMapPage from "@/pages/bridgeable-map";
 import BridgeableMapAreaPage from "@/pages/bridgeable-map-area";
 import FocusTestPage from "@/pages/dev/focus-test";
@@ -613,6 +614,9 @@ export function renderTenantSlugRoutes(
                       Home system space with default_home_route=/home).
                       Coexists with /dashboard until W-5. */}
                   <Route path="home" element={<HomePage />} />
+                  {/* Note surface, session 1 of 5. NOT the front door —
+                      /home still serves Pulse until session 5 retires it. */}
+                  <Route path="note" element={<NotePage />} />
 
                   {/* The Bridgeable Map (Tenant Ponder-Editor P2) — the
                       map of what the platform does. VIEW for every

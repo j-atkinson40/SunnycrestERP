@@ -407,6 +407,16 @@ tests/test_ringcentral_tenant_resolution.py
 # 902 -> 902 with the guard ON.
 tests/test_fragment_contract.py
 
+# Note surface session 1: day identity + the standing-set register. The cap is
+# live from this commit rather than deferred as unreachable — measured, all 18
+# production users hold zero work_areas so every user resolves through the
+# vertical default (largest set 5), but OperatorOnboardingFlow can write
+# work_areas today and a user selecting all five populated areas resolves 8.
+# The cap test is a POSITIVE CONTROL built from that real union, paired with an
+# admits-exactly-seven case — a cap that never rejects looks identical whether
+# it works or was never wired. Creates one company, torn down module-scoped.
+tests/test_note_surface.py
+
 # ── S-2 CORRECTION (2026-09-03) ───────────────────────────────────────────
 # 24 of the 62 files added above were REMOVED again the same day. They pass,
 # but they leak companies without teardown — 341 rows across the 24, exactly
