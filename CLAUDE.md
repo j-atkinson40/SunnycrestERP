@@ -1861,6 +1861,47 @@ destination and unshippable as a first step — 34 of 64 call sites passed it, a
 requiring it would have raised `TypeError` in twelve scheduled production agents
 against a live tenant's books.
 
+#### A guard reasoned from one caller is a guard reasoned from a sample
+
+The sequencing rule above says fill the callers before removing. This says how
+to know which callers there are, and it is not by reading the one in front of
+you.
+
+**Enumerate the callers. Never reason from the caller you happen to be looking
+at, however authoritative that caller looks.**
+
+⚠️ **The failure is not that the reasoning is wrong. It is that the reasoning is
+RIGHT ABOUT A SAMPLE and is then applied to the population.** A guard whose
+justification names one construction path is making a claim about every
+construction path, silently, and the claim reads exactly like the true statement
+it was derived from.
+
+This is the instrumented-path defect arriving at a smaller scale: a reachable,
+correct, verified path that is not where the traffic goes. Sample and population
+diverge, and nothing in the sample announces that it is one.
+
+THE TEST, before any guard that raises, refuses, or requires:
+
+    "How many paths construct this, and did I count them or read one?"
+
+Discovered September 2026, and the provenance is the point. A helper raised when
+its input was absent, justified in its own docstring: *"`AgentRunner.create_job`
+requires both dates, so this can only fire on a job created some other way."*
+Every word true. Measured against production, the other way is the common way —
+the only `month_end_close` job that has ever run there was built by a seed
+script and carries no period, as does one in every other job type the script
+seeds, while four whole job types are 100% null. The raise would have aborted
+the step at its next run.
+
+⚠️ **It was written by the author who had landed the sequencing rule that morning,
+inside the commit fixing that exact class.** Knowing the rule did not help,
+because the rule was about callers and the defect was about which callers you
+know of. That is the argument for a fixed test rather than a remembered
+principle.
+
+Same move as per-row over per-type, and the same family as the constructed
+count: a bound taken from the view rather than from the data.
+
 ### Figures in dispatches are never inherited
 
 Every dispatch that states a figure — a count, a file list, a set of sites, a row total —
@@ -1923,6 +1964,19 @@ be the constructed count again.
 ⚠️ Kin to the absent signal, one layer in. There the instrument was dead. Here
 it is alive, correct, and pointed at part of the surface — and the phrase
 reporting it is the same either way.
+
+**The same discipline applies to any count whose POPULATION is ambiguous, not
+only to gates.** A count that silently mixes two kinds of row reads identically
+to one whose population is known, which is the denominator problem wearing
+different clothes.
+
+Standing instance: `agent_anomalies` in production contains **five seeded demo
+rows across four types**, written by `backend/scripts/seed_accounting_demo.py`,
+which creates `AgentJob`/`AgentAnomaly` directly because both are unguarded.
+**Every count over that table states whether it includes them.** Two of the
+three anomaly types an investigation once reported as having no locatable writer
+are among those five — the "unlocated" types were seeded, and a count that had
+declared its population would have said so.
 
 ### Checks that are green without being evidence
 
