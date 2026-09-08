@@ -78,6 +78,15 @@ _PURGE_STATEMENTS = [
     "DELETE FROM period_locks WHERE tenant_id = ANY(:ids)",
     "DELETE FROM agent_jobs WHERE tenant_id = ANY(:ids)",
     "DELETE FROM agent_schedules WHERE tenant_id = ANY(:ids)",
+    # company_modules.company_id → companies with NO ON DELETE, so a company
+    # that ever had a module enabled cannot be deleted until this runs. Its
+    # ABSENCE here is why `purge_companies_by_slug` began failing with
+    # `company_modules_company_id_fkey`, and the failure is self-sustaining in
+    # the way canon describes: each failed teardown leaks the company, and the
+    # leaked rows make the next one fail. Local dev went 436 → 812 companies
+    # before anyone looked. Found 2026-09-08 by phase 5c's gate, which is
+    # unrelated to it — the errors reproduce with 5c downgraded.
+    "DELETE FROM company_modules WHERE company_id = ANY(:ids)",
     "DELETE FROM agent_alerts WHERE tenant_id = ANY(:ids)",
     "DELETE FROM tenant_alerts WHERE tenant_id = ANY(:ids)",
     # workflow_review_items reference workflow_runs (run_id CASCADE) — delete

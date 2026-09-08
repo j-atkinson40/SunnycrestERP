@@ -137,28 +137,33 @@ def test_recurrence_writes_a_new_row_and_does_not_reopen(db_session):
     )
 
 
-def test_reopening_instead_would_produce_two_open_rows_control(db_session):
-    """⚠️ CONTROL FOR THE RULING — reproduces the reopen behaviour and shows it
-    breaks the invariant, so the distinction is proven rather than asserted.
+def test_reopening_is_now_REFUSED_BY_THE_DATABASE(db_session):
+    """⚠️ THIS TEST CHANGED SHAPE UNDER 5c, AND THE CHANGE IS THE POINT.
 
-    If a recurrence REOPENED the prior row instead of writing a new one, the
-    key would hold two open rows at once. That is the exact state supersede
-    exists to prevent, and 5c's unique index would refuse to build over it."""
+    It used to reproduce the rejected reopen design and assert that it yields
+    two open rows for one key -- a control proving the invariant was real rather
+    than asserted. Under r177's partial unique index that state is no longer
+    reachable: clearing `superseded_at` on a row whose key already has an open
+    row raises `UniqueViolation`.
+
+    So the control retires and this replaces it. The old version proved the
+    design was WRONG; this proves it is now IMPOSSIBLE, which is the stronger
+    statement and the whole objective of the arc -- a validated field is a hole
+    with a guard on it, and a field the database will not accept a wrong value
+    for is not a hole.
+    """
+    from sqlalchemy.exc import IntegrityError
+
     j1, j2 = _job(db_session), _job(db_session)
     a1 = _write(db_session, j1)
     _write(db_session, j2)
     db_session.expire_all()
+    assert db_session.get(AgentAnomaly, a1.id).superseded_at is not None
 
-    # Simulate the rejected design: reopen the superseded original.
     db_session.get(AgentAnomaly, a1.id).superseded_at = None
-    db_session.flush()
-    db_session.expire_all()
-
-    still_open = [r for r in _rows(db_session, [j1.id, j2.id])
-                  if r.superseded_at is None and not r.resolved]
-    assert len(still_open) == 2, (
-        "the control did not reproduce the failure; it proves nothing"
-    )
+    with pytest.raises(IntegrityError, match="uq_agent_anomalies_open_subject"):
+        db_session.flush()
+    db_session.rollback()
 
 
 # ── What supersede must NOT touch ────────────────────────────────────
