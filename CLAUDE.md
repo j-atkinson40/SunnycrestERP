@@ -2381,6 +2381,39 @@ its rendering. Both produce a well-formed number that announces nothing.
 Measured 2026-09-04: both occurred within one session, by the same author,
 while that author was actively holding this entry.
 
+#### A guard whose protection is supplied by a layer beneath it
+
+The break test's usual job is to confirm a check can go red. Occasionally it
+does something better: it FALSIFIES the claim the check was documented with.
+
+**A guard can be correct, tested, and green while the thing actually producing
+the behaviour is something underneath it that nobody wrote down.** Remove the
+guard and nothing fails, because the lower layer still supplies the protection.
+Remove the LOWER LAYER — a refactor, a library swap, a rewrite into raw SQL —
+and the guard is still there, still documented as load-bearing, still green, and
+no longer doing anything.
+
+THE TEST, when documenting a guard as the reason something is safe:
+
+    "If I replaced this with the obvious naive version, what would go red?"
+
+If the answer is nothing, the guard is DEFENSIVE, not load-bearing. Keep it —
+independence from a coercion you did not choose is worth having — but say so,
+because the next reader will otherwise trust a test that is not watching it.
+
+Discovered September 2026: an anomaly supersede key used
+`col.is_not_distinct_from(value)` on nullable subject columns, documented as
+load-bearing on the grounds that `= NULL` never matches. Rewritten to `==`,
+every test stayed green — SQLAlchemy compiles `col == None` to `col IS NULL`, so
+the ORM was supplying the null-matching, not the operator. The operator's real
+value is surviving a rewrite that removes the ORM from the path, at which point
+`= NULL` matches nothing and the rows it protects duplicate forever with the
+whole suite still passing.
+
+⚠️ Kin to the green-without-evidence list above and distinct from all eight: the
+check is not passing for a wrong reason, it is passing for a reason that is
+CORRECT AND NOT THE ONE CLAIMED. Nothing in the result distinguishes them.
+
 #### False presence from a substring match
 
 The mirror of false absence. A filter that matches inside longer names produces

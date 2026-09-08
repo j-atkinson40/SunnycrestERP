@@ -127,6 +127,15 @@ def _supersede_the_open_row_for_this_subject(mapper, connection, target: AgentAn
     combinations (fully open, or resolved with `resolved_at` + note), zero
     half-resolved, so `open_filter()` is complete rather than merely plausible.
 
+    ⚠️ THAT IS A FACT ABOUT TODAY'S DATA, NOT A SCHEMA GUARANTEE. Nothing
+    forbids a row with `resolved=false` carrying `resolved_at` or a
+    `resolution_note` — a half-acted row. One appearing later reads as OPEN to
+    `open_filter()`, so a recurrence would supersede a row somebody had already
+    started acting on, silently. The structural version of this note is a CHECK
+    constraint (`resolved = true OR (resolved_at IS NULL AND resolved_by IS NULL
+    AND resolution_note IS NULL)`), which belongs with 5c's migration rather
+    than in a listener.
+
     ⚠️ THIS LIVES ON THE MODEL, NOT IN `BaseAgent`, BECAUSE BaseAgent IS ONE
     WRITER OF SIX. The others are ar_payment_posting (x2), ar_invoice_posting,
     proactive_agents and the aftercare adapter — none of which inherit from
