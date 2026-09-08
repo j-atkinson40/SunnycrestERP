@@ -777,3 +777,41 @@ happened. Either order is fine — whichever runs first, the end state is the sa
    injects into that one subprocess and writes no `.env`, so the letter holds —
    but the **read** form is what this session has used throughout, and a
    **write** through the same path is a different act, taken deliberately.
+
+---
+
+## 17. Expected end state — written down BEFORE the run, so the check is a diff
+
+Measured read-only 2026-09-08, immediately before handing over. Recorded here so
+verifying the run is a comparison against a stated prediction rather than a
+judgement made afterwards against nothing.
+
+```
+rows superseded                 2,077
+rows left open                     19
+audit_logs rows written             3      one per tenant WITH duplicates
+```
+
+Per tenant, rows retired:
+
+| tenant | anomalies (all) | retired |
+|---|---:|---:|
+| `090e7eeb-…` | 2,274 | 2,056 |
+| `f60ef8de-…` | 18 | 17 |
+| `36fe9f40-…` | 9 | 4 |
+
+⚠️ **Three audit rows, and the reason is worth stating** because the script
+writes one per tenant **with duplicates**, not one per tenant with anomalies.
+Those happen to be the same three here — checked rather than assumed, since a
+run producing one row where three were expected would read as a scoping failure.
+
+⚠️ **These figures move if `ar_collections` fires first.** Its nightly run
+supersedes its own 56 duplicates, after which `collections_*` drops out of the
+retired set and the totals fall by that much. **The end state is identical either
+way** — one open row per key — only the attribution differs. A smaller number
+after a nightly run is not a discrepancy.
+
+Confirm afterwards with `scripts/verify_supersede_drain.py`, whose checks 4a and
+4b cover exactly this: no key holding more than one open row, and the audit rows
+present, one per tenant, none filed against a tenant whose anomalies were never
+touched.
