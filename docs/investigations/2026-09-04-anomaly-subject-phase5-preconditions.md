@@ -723,3 +723,57 @@ not a first draft.
 
 **The script is now runnable. It is James's to run**: three tenants,
 `superseded_at` only, one open row surviving per key.
+
+---
+
+## 16. Where the dedup runs from — and it is not the migration answer
+
+Asked before anyone runs anything, because *"deploy is the migration path"* was
+established earlier and generalising it here would be wrong.
+
+**The script runs LOCALLY against the production connection. No deploy, no push,
+no deploy window.** It imports nothing from `app/` — only `sqlalchemy`, and
+`DATABASE_URL` from the environment — so there is no deployed code for it to
+depend on. Verified 2026-09-08 by running its dry-run against production.
+
+```
+cd backend
+railway run --project ad95792e-6625-4bf5-ad61-ead9c291bdf9 \
+  --environment production --service SunnycrestERP \
+  .venv/bin/python -m scripts.mark_duplicate_anomalies_superseded          # rehearse
+railway run --project ad95792e-6625-4bf5-ad61-ead9c291bdf9 \
+  --environment production --service SunnycrestERP \
+  .venv/bin/python -m scripts.mark_duplicate_anomalies_superseded --apply  # write
+```
+
+### What the rehearsal returns today, measured
+
+```
+open rows                                             2,096
+colliding keys (listener grouping, NULLs MATCH)       11   excess 2,077
+colliding keys (default-index grouping)                9   excess   252
+rows this would supersede                             2,077   -> 19 left open
+
+expense_no_gl_mapping         1,824      ar_balance_drift            2
+expense_classification_failed   191      payment_unmatched_stale     2
+collections_follow_up            29      payment_unmatched_recent    1
+collections_critical             27      high_unmatched_ratio        1
+```
+
+Counts **include** the five seeded demo rows.
+
+⚠️ `collections_*` still shows 56 because tonight's `ar_collections` run has not
+happened. Either order is fine — whichever runs first, the end state is the same.
+
+### ⚠️ Three cautions that differ from the migration case
+
+1. **What runs is the local working tree**, not a deployed artifact — the exact
+   inverse of a migration, where the deployed code is fixed at deploy time. The
+   tree must be the intended commit, and an edit changes what the next run does.
+2. **`--apply` drops the read-only connection guard** the dry-run applies. The
+   flag is the only thing between a rehearsal and a write.
+3. **It is a local process writing to production**, adjacent to CLAUDE.md §7's
+   *never point local `DATABASE_URL` at Railway production*. `railway run`
+   injects into that one subprocess and writes no `.env`, so the letter holds —
+   but the **read** form is what this session has used throughout, and a
+   **write** through the same path is a different act, taken deliberately.
