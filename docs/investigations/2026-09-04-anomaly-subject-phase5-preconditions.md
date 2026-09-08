@@ -366,3 +366,73 @@ listener is most likely to produce.
 ⚠️ **And it is a production DDL change on a live table — James's**, like every
 other write in this arc. Recorded here so 5c's dispatch can rule on it rather
 than rediscovering it.
+
+---
+
+## 12. ⚠️ The drain covers 2.7% of the backlog — measured, and it inverts §5
+
+**Read-only against production, 2026-09-08.** The operator asked whether
+something in the duplicate set will fail to drain. It does, and it is almost all
+of it.
+
+```
+colliding keys: 11        excess open rows: 2,077
+
+  2,019  ⚠️ AGENT LIVE, KEY STALE  -> will NOT drain
+     56  WILL DRAIN
+      2  ⚠️ AGENT NOT RUNNING      -> will NOT drain
+```
+
+| anomaly_type | writer | excess | last emitted | agent last ran | verdict |
+|---|---|---:|---|---|---|
+| `expense_no_gl_mapping` | `expense_categorization` | 1,824 | 2026-08-31 | 2026-09-08 | stale key |
+| `expense_classification_failed` | `expense_categorization` | 191 | 2026-08-25 | 2026-09-08 | stale key |
+| `collections_critical` | `ar_collections` | 27 | 2026-09-07 | 2026-09-07 | **drains** |
+| `collections_follow_up` ×2 | `ar_collections` | 29 | 2026-09-07 | 2026-09-07 | **drains** |
+| `ar_balance_drift` ×2 | `ar_balance_reconciliation` | 2 | 2026-08-11 | 2026-08-11 | agent dead |
+| `payment_unmatched_*`, `high_unmatched_ratio` ×4 | `cash_receipts_matching` | 4 | 2026-07-16 | 2026-09-07 | stale key |
+
+⚠️ **THE MECHANISM, WHICH §5 ASSUMED AWAY.** Supersede fires only on a **new
+write of the same key**. A live agent is necessary and **not sufficient**: if
+the underlying condition has stopped holding, the agent never re-emits that key,
+so its duplicates are never superseded. `expense_categorization` runs every 15
+minutes and has emitted nothing since 2026-08-31 — the condition resolved and
+the findings about it did not.
+
+**So "self-healing" is true and much narrower than it sounded.** It heals what is
+still recurring. Everything else is a fossil, and fossils are exactly what a
+unique index trips over.
+
+### ⚠️ And my own "240 duplicates" figure was wrong
+
+It came from a query bounded by `entity_id IS NOT NULL`, which excluded the
+1,825 NULL-subject `expense_no_gl_mapping` rows. Under the grouping the 5b
+listener actually uses — `IS NOT DISTINCT FROM`, where NULLs match — those
+1,825 are **one colliding key**, not excluded rows. The real figure is **2,077
+excess rows across 11 keys.** Sixth instance in this arc of a figure bounded by
+its query rather than by the thing.
+
+### ⚠️ A semantic disagreement 5c must resolve
+
+The 5b listener treats NULL subjects as EQUAL (`IS NOT DISTINCT FROM`). **A
+default PostgreSQL unique index treats them as DISTINCT.** Verified on
+PostgreSQL 16.13: a plain `UNIQUE (a, b)` accepts two `('t', NULL)` rows;
+`UNIQUE (a, b) NULLS NOT DISTINCT` refuses the second.
+
+**5c must use `NULLS NOT DISTINCT`**, or the two halves of the guard disagree
+about what a duplicate is — the listener refusing to write one while the index
+permits it, which is worse than either behaviour alone.
+
+⚠️ It also means the 1,825 **do** block the index once the predicate matches the
+listener. §4 said they were excluded and buildable-around; that was true of the
+`entity_id IS NOT NULL` predicate and is **false** of a predicate that agrees
+with 5b.
+
+### What this makes 5c
+
+Not "add the index after the drain." **The drain removes 56 rows. A disposition
+ruling has to remove ~2,021 before the index can build** — dominated by the
+1,825 orphans, which were already held. So the orphans stopped being a
+housekeeping item and became 5c's blocking dependency.
+
+Held, unchanged: every row of that disposition is a production write.
