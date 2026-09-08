@@ -2,6 +2,24 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ ANOMALY-SUBJECT ARC — COMPLETE IN THE REPO, NOT YET IN PRODUCTION (2026-09-08)
+
+- **⚠️ THE ENFORCEMENT CLAIM IS NOT TRUE UNTIL r177 DEPLOYS** (2026-09-08). Read this before repeating it. Phases 1–5c are authored and gate-green, and **`r177` is unapplied in production**. Until the deploy, supersede is enforced by a `before_insert` listener that raw SQL bypasses — not by the database. After it, a duplicate open row and a wrong-tenant row are both refused by constraints.
+- **What is true in production TODAY** (2026-09-08): every anomaly write site carries a subject (62 of 64; 2 held deliberately by name); supersede-on-write is live via the 5b listener; the backlog was deduplicated on 2026-09-08 leaving 19 open rows and 0 colliding keys. **What is NOT yet true**: the unique index, `NOT NULL` on `tenant_id`, and the composite FK.
+- **`expense_no_gl_mapping` can no longer produce 1,825 rows for one unmapped category** (2026-09-08) — the listener prevents it now, the index will make it unexpressible.
+- **Two post-deploy checks** (2026-09-08). If the migration fails to apply, the index found duplicate open rows: **find the writer, do not relax the index.** And tonight's `ar_collections` at ~23:07 UTC is the **first agent write under a live unique index** — run `scripts/verify_supersede_drain.py` afterwards, because a `UniqueViolation` there means the listener and the index disagree about what a duplicate is.
+
+## Held work, in the order James ruled (2026-09-08)
+
+1. **Classifier vocabulary** — 14 of 15 categories unmappable by construction. **The actual cause of the largest anomaly population**, so it precedes everything else.
+2. **`ar_aging_monitor`** — fails 3 of 4 runs since 2026-07-16 on what reads as a one-line date/datetime bug, **and feeds the collections anomalies**, so those anomalies' trustworthiness is downstream of it.
+3. **`complete`/`completed` normalisation** — data + retire the legacy writer. Not a filing risk; the severity claim that once put it higher was mine and was false.
+4. **The five seeded demo rows** in production's anomaly table.
+5. **The six accounting remedies.**
+6. **Note surface session 2** — unblocked by this arc, which gives it a real anomaly source rather than an excluded one.
+
+Also open, not ranked: the deploy window as a pre-go-live decision; whether "a local process writes to production" becomes the pattern or stays the exception.
+
 ## ✅ THE ANOMALY DEDUP RAN — 2,077 superseded, 19 open, 3 audit rows (2026-09-08)
 
 - **Ran 2026-09-08 13:33:18 UTC**, authorised by James, executed via `railway run … --apply` from the local tree against production. **Matched the prediction recorded before the run exactly**: 2,077 superseded, 19 left open, 3 `audit_logs` rows.
