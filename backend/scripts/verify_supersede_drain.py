@@ -40,16 +40,19 @@ def main() -> int:
             WHERE created_at > now() - interval '26 hours'""")).scalar()
         print(f"\nanomalies written in the last 26h: {exercised}")
         if not exercised:
-            print("⚠️ NOT YET EXERCISED — neither listener has run. This is an")
-            print("   absence of evidence, not a pass. Re-run after ~23:07 UTC.")
-            return 0
+            print("⚠️ LISTENERS NOT YET EXERCISED — no anomaly written in 26h.")
+            print("   Absence of evidence, not a pass. Re-run after ~23:07 UTC.")
+            print("   Checks 1-3 and 5 are SKIPPED; 4a/4b still run below —")
+            print("   the dedup is a manual script run and does not depend on")
+            print("   an agent having fired.")
 
         # 1. Tenant listener — every new row must carry its job's tenant.
-        bad = c.execute(text("""
+        bad = 0 if not exercised else c.execute(text("""
             SELECT count(*) FROM agent_anomalies a JOIN agent_jobs j ON j.id = a.agent_job_id
             WHERE a.created_at > now() - interval '26 hours'
               AND (a.tenant_id IS NULL OR a.tenant_id IS DISTINCT FROM j.tenant_id)""")).scalar()
-        print(f"\n1. new rows with a missing or WRONG tenant_id: {bad}")
+        print(f"\n1. new rows with a missing or WRONG tenant_id: "
+              f"{bad if exercised else 'skipped — no new rows'}")
         if bad:
             problems.append(f"{bad} new anomalies are filed under the wrong tenant or none")
 
@@ -79,8 +82,61 @@ def main() -> int:
             ORDER BY 2 DESC""")):
             print(f"   {r[0]:<32} superseded={r[1]:<6} open={r[2]}")
 
-        # 4. Did the writing job survive the listeners?
-        print("\n4. failed agent jobs in the last 26h (a listener raise lands here):")
+        # 4. THE DEDUP'S OWN TWO CONFIRMATIONS.
+        #
+        # Named as the things to check before 5c is authored. They are checks
+        # rather than notes because the second one is the FIRST REAL EXERCISE OF
+        # TENANT SCOPING ON A WRITE NOBODY IS WATCHING -- the audit rows are
+        # written per tenant by a script run once at a terminal, and if the
+        # scoping is wrong the only symptom is one tenant reading another
+        # tenant's maintenance record.
+        print("\n4a. one open row per key across the WHOLE table")
+        print("    (listener grouping: NULLs MATCH, which is what 5c's index must use)")
+        still = c.execute(text("""
+            SELECT count(*) FROM (
+              SELECT 1 FROM agent_anomalies
+              WHERE resolved = false AND superseded_at IS NULL
+              GROUP BY tenant_id, anomaly_type, entity_type, entity_id
+              HAVING count(*) > 1) z""")).scalar()
+        print(f"    keys still holding more than one open row: {still}")
+        if still:
+            problems.append(
+                f"{still} key(s) still hold >1 open row -- 5c's unique index "
+                "would refuse to build")
+
+        print("\n4b. the dedup's audit rows, present and correctly scoped")
+        arows = c.execute(text("""
+            SELECT company_id, count(*), max(created_at)
+            FROM audit_logs
+            WHERE action = 'platform_maintenance.anomalies_deduplicated'
+            GROUP BY 1 ORDER BY 1""")).fetchall()
+        if not arows:
+            print("    none -- the dedup has not run yet (or wrote no audit row)")
+        for r in arows:
+            print(f"    tenant {r[0]}  rows={r[1]}  at={r[2]}")
+        if arows:
+            # Exactly one row per tenant, and every tenant named must be one
+            # whose anomalies were actually touched.
+            dupe_tenants = [r[0] for r in arows if r[1] != 1]
+            if dupe_tenants:
+                problems.append(
+                    f"{len(dupe_tenants)} tenant(s) have more than one dedup "
+                    "audit row -- the script ran twice, or scoping is wrong")
+            orphan = c.execute(text("""
+                SELECT count(*) FROM audit_logs al
+                WHERE al.action = 'platform_maintenance.anomalies_deduplicated'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM agent_anomalies a
+                    WHERE a.tenant_id = al.company_id
+                      AND a.superseded_at IS NOT NULL)""")).scalar()
+            print(f"    audit rows naming a tenant with no superseded anomaly: {orphan}")
+            if orphan:
+                problems.append(
+                    f"{orphan} dedup audit row(s) are filed against a tenant "
+                    "whose anomalies were never touched -- WRONG TENANT")
+
+        # 5. Did the writing job survive the listeners?
+        print("\n5. failed agent jobs in the last 26h (a listener raise lands here):")
         for r in c.execute(text("""
             SELECT job_type, count(*) FROM agent_jobs
             WHERE created_at > now() - interval '26 hours' AND status IN ('failed','error')

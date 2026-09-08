@@ -2333,6 +2333,37 @@ an independent tripwire in CI — the first place it ran where the suppression d
 not travel with it. The tripwire did not catch it by being well designed; it
 caught it by running somewhere the export could not reach.
 
+#### Answering a question does not retract it — sweep where it was ASKED
+
+An open question gets written down in several places: the findings doc that
+raises it, the docstring of the thing it blocks, a STATE entry, a commit body.
+**Answering it updates the place the answer lands. Every other copy keeps
+asking, and keeps instructing.**
+
+⚠️ **The copies are not equally harmless, and the ranking is inverted from where
+attention goes.** A stale line in a findings document is noise — someone reading
+an investigation is reading history. A stale line in the DOCSTRING OF THE SCRIPT
+saying *this must not run until X is resolved* is read by someone standing at a
+terminal about to run it, after X was resolved. That is the one location where
+being wrong has an effect rather than a cost, and it is the one least likely to
+be revisited, because the answer was written somewhere more interesting.
+
+So closing a question includes a SWEEP OF WHERE IT WAS ASKED, not only an
+update of where it was answered:
+
+    "Where else does this question appear, and does that copy still instruct?"
+
+Discovered September 2026. A STOP was raised in a preconditions doc and in the
+blocking script's own module docstring. The ruling arrived, the doc was updated,
+and the docstring still read `UNRESOLVED — THIS SHOULD NOT RUN`. It was found by
+re-reading the file, not by any check — which is the argument for making the
+sweep part of the closure rather than hoping someone re-reads.
+
+⚠️ Kin to expired premise above, with the difference that matters: there, nothing
+signalled the transition. Here **something did** — a ruling was made, on a known
+date, by someone who knew it closed the question. The information to update every
+copy existed and was not spent.
+
 #### Complete machinery behind an unprovisioned entrance
 
 A subsystem can be fully built, correct, and tested downstream of a boundary
