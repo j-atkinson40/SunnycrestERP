@@ -1217,6 +1217,32 @@ These are the **correct** table names (corrected from old incorrect names):
 - `company_id` or `tenant_id` FK on all tenant-scoped tables
 - **Vertical column convention (post-r95):** Going forward, any migration introducing a column referring to a vertical must reference `verticals.slug` as a foreign key. The existing pattern of String(32) nullable `vertical` columns on `platform_themes`, `focus_compositions`, `workflow_templates`, `document_templates`, `component_configurations`, `dashboard_layouts`, `companies`, and others is preserved for backward compatibility. A future cleanup arc may migrate these to FKs; new tables should not perpetuate the String-not-FK pattern.
 
+### ⚠️ A constraint defines behaviour on DELETE too, and can REVOKE
+
+The intuition that a constraint only refuses things is wrong, and the wrong half
+is silent.
+
+**A foreign key specifies what happens on DELETE as well as what is accepted on
+INSERT, and its `ON DELETE` default is `NO ACTION`.** So adding a SECOND foreign
+key over a parent that an existing key already cascades from does not layer a
+check on top of the cascade — **it revokes it.** The delete that used to remove
+children starts raising, and nothing in the migration mentions deletes.
+
+When adding a constraint, state both halves:
+
+    "What does this refuse on INSERT, and what does it now do on DELETE?"
+
+If another constraint already covers the same parent, match its `ON DELETE`
+explicitly rather than taking the default.
+
+Discovered September 2026 in `r177`. `agent_anomalies.agent_job_id` carried an FK
+with `ON DELETE CASCADE`; a composite `(agent_job_id, tenant_id)` FK was added
+for cross-tenant integrity and omitted `ondelete`. Deleting a job with anomalies
+began to raise, surfacing as **64 teardown errors across unrelated suites** — the
+first time that day a gate caught something rather than confirming something. The
+INSERT side had been reasoned about carefully; the DELETE side had not been
+reasoned about at all.
+
 ### Timestamp column convention — two conventions in active use
 
 The codebase has two conventions for "last modified" timestamps. **Verify the actual column name on the target table before writing raw SQL UPDATE statements.** Don't assume `updated_at` exists everywhere.
@@ -2431,6 +2457,28 @@ chain.
 
 This is the sibling of false absence at a different layer: there, the query was
 wrong; here, the query was right and its output was cut.
+
+⚠️ **A TRUNCATION FLAG IS A `WHERE` CLAUSE ON THE OUTPUT STREAM.** That is the
+whole entry in one sentence, and the reason it keeps being violated by people who
+know it: `LIMIT 6` looks like part of the question, so it gets declared. `tail
+-30`, `--tb=no`, `--tb=line`, `head`, a viewport — these look like part of the
+PLUMBING, so they do not. They bound the answer exactly as hard.
+
+So the declaration rule covers output flags, not only query clauses: **state the
+bound wherever it was applied, including the ones that felt like formatting.**
+
+⚠️ And the sharpest form is a NEGATIVE result read through a suppressed channel.
+A grep returning zero against output whose tracebacks were switched off is not
+evidence of no errors; it is evidence of no tracebacks. Measured 2026-09-04 to
+09-08: three such reductions inside a single diagnosis turn — a backgrounded gate
+piped through `tail -8`, leaving a ten-line log; `--tb=no` on the re-run, so a
+grep for the error text returned zero and was nearly read as the errors being
+absent; and `--tb=line` before that, which had already suppressed the first
+diagnosis. Each was a reasonable reduction. Each destroyed the evidence the
+command was run to gather.
+
+**Remedy: capture full output to a file and read the file.** Reduce when
+displaying, never when collecting.
 
 ⚠️ **THE BOUND CAME FROM THE TOOL, NOT FROM THE DATA — in both instances, and
 that is the shape.** Not "I looked at too little," which sounds like a lapse of
