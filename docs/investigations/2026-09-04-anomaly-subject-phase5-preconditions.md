@@ -314,3 +314,55 @@ downgrade is a safe escape hatch for 5a and stops being one the moment 5b lands.
 ⚠️ **And rollback has an order.** New code references `tenant_id` and
 `superseded_at`, so a schema downgrade under new code breaks it. Roll back the
 DEPLOY first, then the migration.
+
+---
+
+## 11. For 5c — make a wrong-tenant anomaly UNEXPRESSIBLE, not merely unlikely
+
+**Proposed, proven locally, NOT applied anywhere.** Raised because the operator's
+observation is exactly right: the tenant listener's failure mode is **silent**.
+`tenant_id` is nullable until 5c, so a row filed under the wrong tenant — or
+none — inserts cleanly, becomes somebody else's open work, and raises nothing.
+Watching one night's run catches it once; a constraint catches it forever.
+
+The listener already *raises* on a supplied tenant that disagrees with the job.
+It cannot catch a tenant it DERIVED wrongly, because nothing cross-checks the
+derivation. A composite foreign key does:
+
+```sql
+ALTER TABLE agent_jobs
+  ADD CONSTRAINT uq_agent_jobs_id_tenant UNIQUE (id, tenant_id);
+
+ALTER TABLE agent_anomalies
+  ADD CONSTRAINT fk_agent_anomalies_job_tenant
+  FOREIGN KEY (agent_job_id, tenant_id) REFERENCES agent_jobs (id, tenant_id);
+```
+
+**Proven against local `bridgeable_dev`, then reverted**: an insert naming a
+tenant that is not the job's is refused with `ForeignKeyViolation`; the correct
+tenant still inserts. That is the removal criterion applied to the arc's own
+newest guard — *a validated field is a hole with a guard on it; a field the
+database will not accept a wrong value for is not a hole.*
+
+**Viability on production, re-derived rather than inherited** (read-only,
+2026-09-08; 2,301 rows, **count includes the five seeded demo rows**):
+
+| check | result |
+|---|---:|
+| anomalies whose `tenant_id` disagrees with their job | **0** |
+| anomalies with a NULL `tenant_id` | **0** |
+| orphaned `agent_job_id` | **0** |
+| duplicate `agent_jobs.id` (the UNIQUE target) | **0** |
+
+**Buildable today.**
+
+⚠️ **It belongs with 5c's `NOT NULL`, and not before it.** A composite FK
+defaults to `MATCH SIMPLE`, under which a row with ANY null in the key passes
+unchecked — so on its own it would let a NULL-tenant row straight through. The
+FK and the `NOT NULL` are one guard in two statements, and shipping the FK alone
+would be a guard that looks complete and has a hole in exactly the case the
+listener is most likely to produce.
+
+⚠️ **And it is a production DDL change on a live table — James's**, like every
+other write in this arc. Recorded here so 5c's dispatch can rule on it rather
+than rediscovering it.
