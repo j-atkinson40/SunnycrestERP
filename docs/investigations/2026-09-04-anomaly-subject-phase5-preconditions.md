@@ -76,6 +76,20 @@ versus no hole.
 ## 4. ⚠️ Blocker three — the index is not buildable on today's data, and the
 reason is the finding
 
+> ### ⚠️ [CORRECTED 2026-09-08] TWO CLAIMS IN THIS SECTION ARE FALSE
+>
+> **(1) "The 1,825 do NOT block the index."** False. That was true only of a
+> predicate bounded by `entity_id IS NOT NULL`. Under the grouping the 5b
+> listener actually uses — NULLs MATCH — the 1,825 are **one colliding key**.
+> A default unique index disagrees (NULLs distinct), which is exactly why 5c
+> must use `NULLS NOT DISTINCT`; and once it does, they block it.
+>
+> **(2) The excess figure of 240.** Re-derived 2026-09-08 with the predicate
+> declared: **2,077 excess rows across 11 keys** under the listener's grouping,
+> **252 across 9 keys** under a default index's. The difference is exactly the
+> 1,825. `WHERE resolved = false AND superseded_at IS NULL`, counts **include**
+> the five seeded demo rows.
+
 A partial unique on `(tenant_id, anomaly_type, entity_type, entity_id)
 WHERE NOT resolved AND entity_id IS NOT NULL` **would fail to create**: 9
 colliding groups.
@@ -108,6 +122,19 @@ resolved, 2,289 total.
 ---
 
 ## 5. Recommended sequencing — and it is this arc's own lesson applied
+
+> ### ⚠️ [CORRECTED 2026-09-08] "5b's SUPERSEDE-ON-WRITE DRAINS THE BACKLOG" IS FALSE
+>
+> Measured: the drain reaches **56 of 2,077** excess rows. Supersede fires only
+> on a NEW WRITE OF THE SAME KEY, so a live agent is necessary and **not
+> sufficient** — if the agent stops emitting that key, its duplicates are never
+> superseded. `expense_categorization` has run 1,322 times in seven days and
+> written nothing.
+>
+> ⚠️ **And the rows it does not reach are NOT STALE, which this document also
+> assumed.** All 1,825 `expense_no_gl_mapping` rows say `vehicle_expense` has no
+> GL mapping, and **`vehicle_expense` is still unmapped for that tenant today**.
+> The condition holds; only the reporting stopped. See §13.
 
 The index is the removal step: it makes a duplicate **unexpressible**. Canon says
 removal is LAST, after the callers comply. The 240 existing duplicates are the
@@ -436,3 +463,135 @@ ruling has to remove ~2,021 before the index can build** — dominated by the
 housekeeping item and became 5c's blocking dependency.
 
 Held, unchanged: every row of that disposition is a production write.
+
+---
+
+## 13. Phase 5c Part 1 — the downstream check, and two STOPs
+
+**Read-only against production, 2026-09-08.** Every count below states the
+`WHERE` clause that produced it, because the "240" was wrong precisely for
+lacking one.
+
+### Readers — enumerated, not inherited
+
+The 5a pass found eleven **filter** sites. This is the wider question, so it was
+re-enumerated from scratch: **33 modules** name `AgentAnomaly` or
+`agent_anomalies`. Of those, **13 mention only** (comment or import), **6 write**,
+and **14 read**. Classified by whether they use `open_filter()` or restate:
+
+| reader | predicate | effect of the mark |
+|---|---|---|
+| `triage/engine.py` ×4 (queues) | `open_filter()` | correct — queues shrink |
+| `widgets/anomalies_widget_service` ×3 (list + 2 count chips) | `open_filter()` | correct |
+| `note/counts.py` | `open_filter()` | correct |
+| `agents/approval_gate.py` | `open_filter()` | correct |
+| `api/routes/agents.py` (`resolved=false`) | `open_filter()` | correct |
+| `api/routes/agents.py` (no filter) | **none** | returns superseded rows unlabelled |
+| `agents/tax_package_agent.py:554` | **restates**, no state filter at all | blind to the mark |
+| `triage/ai_question.py:533` | **restates**, no state filter | blind to the mark |
+| 6 adapter/lookup sites | by `id` | unaffected |
+
+**Nothing counts, bills or reports against superseded rows as such** — because
+**nothing reads `superseded_at` except `open_filter()`**.
+
+⚠️ **`AgentAnomalyResponse` does not expose `superseded_at`.** No API consumer
+can tell a replaced row from a live one. The two restating readers and the
+unfiltered route are blind for the same reason.
+
+⚠️ **The two restating readers are not affected by THIS mark** — measured: they
+scope to `month_end_close` job ids, and the marked population is
+`expense_categorization` / `cash_receipts_matching` / `ar_balance_reconciliation`.
+**No overlap.** They are still wrong post-5b for agent-driven supersedes, which
+is a smaller live defect and is not this dispatch's to fix.
+
+### The population, every count with its predicate
+
+| what | `WHERE` | n | demo rows |
+|---|---|---:|---|
+| whole table | `true` | 2,301 | **includes** the 5 |
+| the seeded demo rows | `description IN (…5 literals…)` | 5 | — |
+| open | `resolved = false AND superseded_at IS NULL` | 2,096 | includes |
+| already superseded | `superseded_at IS NOT NULL` | 0 | — |
+| excess, **listener** grouping | open, `GROUP BY tenant,type,etype,eid HAVING count(*)>1` | **2,077** over 11 keys | includes |
+| excess, **default-index** grouping | same + `etype IS NOT NULL AND eid IS NOT NULL` | **252** over 9 keys | includes |
+
+The two groupings differ by exactly **1,825** — the NULL-subject set.
+
+---
+
+### ⚠️ STOP 1 — the rows are not stale, and staleness was not establishable
+
+The dispatch's ruling assumed a stale population. **It is not stale.**
+
+My first attempt to establish staleness compared each key's last write to the
+last write of its **type**. Every key returned `key_last == type_last`, so the
+test could not separate *"this condition stopped holding"* from *"this agent
+stopped emitting anything"* — the conflation the STOP line names, reproduced by
+the check written to avoid it.
+
+Establishing it from the condition instead: all 1,825 rows say
+
+> Category **`vehicle_expense`** has no GL account mapping for this tenant.
+
+and `tenant_gl_mappings` has **zero rows** for `platform_category =
+'vehicle_expense'`, for that tenant or any other. **The condition holds today.**
+The agent went quiet on 2026-08-31 because it finds no uncategorized lines to
+classify, so it never reaches the mapping check — it has run **1,322 times in
+seven days reporting `anomaly_count = 0` and writing 0 rows**, internally
+consistent and therefore not silently broken.
+
+**So marking them "stale" would delete the only record of a live problem.**
+
+⚠️ **A larger defect found underneath, out of scope and James's.** The classifier
+emits 15 platform categories; this tenant has 13 mapped; **the overlap is one**
+(`other_expense`). Fourteen of fifteen are unmappable by construction — and
+`delivery_costs` (classifier) vs `delivery_cost` (mapped) is the
+`complete`/`completed` shape a third time, in a third table.
+
+### What the authored script does instead
+
+`backend/scripts/mark_duplicate_anomalies_superseded.py` — **dedup, not
+staleness.** Keeps the **newest** open row per key, supersedes the older ones.
+That needs no staleness claim: an older duplicate genuinely *was* replaced by a
+later occurrence of the same finding, which is the rule 5b already applies
+forward. Every distinct condition stays visible as exactly one open row — 1,825
+copies of one sentence become one copy of that sentence — and it is precisely
+what the index needs and no more.
+
+Predicate-based, never an id list. Order-independent with respect to tonight's
+drain: whichever runs first, the end state is identical. Writes `superseded_at`
+alone. Dry-run by default.
+
+**Verified against a local database seeded with representative rows** through the
+ORM — a first attempt seeded via raw SQL, which **bypasses both `before_insert`
+listeners**, left `tenant_id` NULL and collapsed two tenants into one key. (That
+is worth keeping: the listener guard is bypassable by raw SQL; the proposed
+composite FK would not be.) Eleven assertions, all passing: single-row keys
+untouched, resolved rows untouched, newest kept per key including the
+NULL-subject shape, no cross-tenant collapse, and `resolved` / `resolved_at` /
+`resolution_note` never written. Before → after: 21 colliding keys → **0 under
+both groupings**.
+
+**Reversal verified on the populated table, not an empty one**: 26 rows marked,
+26 restored by `UPDATE … SET superseded_at = NULL WHERE superseded_at = '<T>'`,
+nothing else moved. Cost is the UPDATE. It depends entirely on **T being
+recorded**, so the script now prints it prominently.
+
+---
+
+### ⚠️ STOP 2 — `superseded_at` alone cannot distinguish a bulk mark
+
+The only separator is an **artifact**: this script writes one transaction
+timestamp to every row, while the listener stamps each row with its own
+`datetime.now()`. It works, and it is inference from a coincidence of
+implementation rather than a recorded fact. In three months, *"what did the
+machine replace"* returns ~2,000 rows no machine replaced, and nobody will know
+to exclude a magic timestamp.
+
+Two closures, both James's, **neither taken**: accept the shared timestamp and
+write it into STATE.md so the exclusion is discoverable; or record the operation
+in `audit_logs` so the discriminator is a row somebody wrote. A
+`superseded_reason` column is the honest schema fix and was **not** added,
+because adding one unilaterally is what the dispatch forbade.
+
+**The script should not run until this is settled.**
