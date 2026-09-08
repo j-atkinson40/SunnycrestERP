@@ -27,6 +27,18 @@ class AgentAnomaly(Base):
     #: ⚠️ DERIVED, NOT SUPPLIED — see the before_insert listener below.
     #: Nullable until phase 5c -- see r176's expand/contract note. The
     #: before_insert listener fills it on every insert regardless.
+    #:
+    #: ⚠️ 5c MAKES THIS NOT NULL **AND** ADDS A COMPOSITE FK
+    #: `(agent_job_id, tenant_id) -> agent_jobs (id, tenant_id)`, WHICH MAKES A
+    #: WRONG-TENANT ANOMALY UNEXPRESSIBLE RATHER THAN SILENT. The listener
+    #: raises on a SUPPLIED tenant that disagrees with the job; it cannot catch
+    #: one it DERIVED wrongly, because nothing cross-checks the derivation.
+    #:
+    #: ⚠️ DO NOT SHIP THE FK WITHOUT THE NOT NULL. A composite FK defaults to
+    #: MATCH SIMPLE, under which a row with ANY null in the key passes
+    #: UNCHECKED -- and a null tenant_id is precisely what a misfiring listener
+    #: produces. Split apart, the FK fails open in its own target case. They are
+    #: one guard in two statements and belong in one migration.
     tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     agent_run_step_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("agent_run_steps.id"), nullable=True)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
