@@ -37,26 +37,27 @@ SAFETY PROPERTIES
 - Idempotent. Re-running supersedes nothing new.
 - Dry-run by default. `--apply` is required to write.
 
-⚠️ DISTINGUISHABILITY — UNRESOLVED, AND THIS SHOULD NOT RUN UNTIL IT IS.
+DISTINGUISHABILITY — CLOSED. This writes a tenant-visible `audit_logs` row per
+affected tenant, and `changes.marked_at` carries the superseding timestamp.
 
-`superseded_at` alone does NOT carry enough to tell these rows from
-agent-driven supersedes. The only separator is an ARTIFACT: every row this
-script writes shares one transaction timestamp to the microsecond, while the
-listener stamps each row with its own `datetime.now()`. That works, and it is
-inference from a coincidence of implementation rather than a recorded fact.
-Nobody querying "what did the machine replace" in three months will know to
-exclude a magic timestamp, and the answer they get will include ~2,000 rows no
-machine replaced.
+That is the point of the audit row rather than a side effect of it.
+`superseded_at` ALONE cannot separate this bulk mark from an agent-driven
+supersede: the only signal is an artifact — every row this writes shares one
+transaction timestamp, while the listener stamps each row with its own
+`datetime.now()`. That works, and it is inference from a coincidence of
+implementation. Nobody asking "what did the machine replace" in three months
+would know to exclude a magic timestamp, and the answer would include ~2,000
+rows no machine replaced. The audit row makes the discriminator a thing somebody
+WROTE. The coincidence still exists; nothing depends on anyone noticing it.
 
-Two ways to close it, both James's to choose, NEITHER done here:
-  (a) accept the shared timestamp as the discriminator and write it into
-      STATE.md so the exclusion is discoverable; or
-  (b) record the operation in `audit_logs`, so the discriminator is a row
-      somebody wrote rather than a pattern somebody notices.
+⚠️ THE ACTION NAME IS LOAD-BEARING. `platform_maintenance.anomalies_deduplicated`
+is deliberately NOT a sibling of the existing `anomaly_resolved`, which means a
+PERSON DECIDED SOMETHING. This decided nothing, and a reader who conflates the
+two will believe decisions were made on their books.
 
-A third option -- a `superseded_reason` column -- is the honest schema fix and
-is NOT taken here, because adding a column unilaterally is exactly what the
-dispatch forbade.
+A `superseded_reason` column remains the honest schema fix and is still not
+taken here — adding one unilaterally is what the dispatch forbade, and the audit
+row answers the question without a migration.
 """
 
 from __future__ import annotations
