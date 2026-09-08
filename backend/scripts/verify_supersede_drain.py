@@ -136,13 +136,33 @@ def main() -> int:
                     "whose anomalies were never touched -- WRONG TENANT")
 
         # 5. Did the writing job survive the listeners?
-        print("\n5. failed agent jobs in the last 26h (a listener raise lands here):")
+        # ⚠️ SCOPED TO FAILURES THIS OPERATION COULD HAVE CAUSED.
+        #
+        # The first version counted every failure in 26h as a PROBLEM, which
+        # reported a pre-existing daily failure as damage from the dedup --
+        # proximity asserted as necessity, in the check written to verify a
+        # write. A failure that predates the operation cannot have been caused
+        # by it, and one that has been failing identically for weeks is a
+        # standing defect rather than news.
+        last_op = c.execute(text("""
+            SELECT max(created_at) FROM audit_logs
+            WHERE action = 'platform_maintenance.anomalies_deduplicated'""")).scalar()
+        print(f"\n5. failed agent jobs in the last 26h (a listener raise lands here)")
+        print(f"   operation timestamp for attribution: {last_op}")
         for r in c.execute(text("""
-            SELECT job_type, count(*) FROM agent_jobs
+            SELECT job_type, count(*), min(created_at), max(created_at),
+                   count(*) FILTER (WHERE created_at > :t) AS after_op
+            FROM agent_jobs
             WHERE created_at > now() - interval '26 hours' AND status IN ('failed','error')
-            GROUP BY 1 ORDER BY 2 DESC""")):
-            print(f"   ⚠️ {r[0]}: {r[1]}")
-            problems.append(f"{r[1]} {r[0]} job(s) failed")
+            GROUP BY 1 ORDER BY 2 DESC"""), {"t": last_op}):
+            after = r[4] if last_op else None
+            if last_op and after == 0:
+                print(f"   {r[0]}: {r[1]} failed, ALL BEFORE the operation "
+                      f"({r[2]} .. {r[3]}) — pre-existing, not attributable")
+            else:
+                print(f"   ⚠️ {r[0]}: {r[1]} failed, {after} AFTER the operation")
+                problems.append(
+                    f"{after} {r[0]} job(s) failed AFTER the operation")
         print("   (nothing above = no failures)")
 
     print("\n" + "=" * 60)

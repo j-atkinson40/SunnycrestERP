@@ -2,6 +2,22 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ✅ THE ANOMALY DEDUP RAN — 2,077 superseded, 19 open, 3 audit rows (2026-09-08)
+
+- **Ran 2026-09-08 13:33:18 UTC**, authorised by James, executed via `railway run … --apply` from the local tree against production. **Matched the prediction recorded before the run exactly**: 2,077 superseded, 19 left open, 3 `audit_logs` rows.
+- **⚠️ THE REVERSAL HANDLE — `superseded_at = '2026-09-08 13:33:18.764614+00:00'`** (2026-09-08). Also in `audit_logs.changes.marked_at`. Reversal: `UPDATE agent_anomalies SET superseded_at = NULL WHERE superseded_at = '<that>'` plus `DELETE FROM audit_logs WHERE created_at = '<that>' AND action = 'platform_maintenance.anomalies_deduplicated'`.
+- **Verified after the run** (2026-09-08): **0 keys hold more than one open row** under the listener's grouping — the condition 5c's unique index needs — and the **3 audit rows are one per tenant with 0 filed against a tenant whose anomalies were never touched.** That was the first real exercise of tenant scoping on a write nobody was watching, and it held.
+- **Retired per tenant**: 2,056 / 17 / 4. Superseded per type: `expense_no_gl_mapping` 1,824 · `expense_classification_failed` 191 · `collections_follow_up` 29 · `collections_critical` 27 · `ar_balance_drift` 2 · `payment_unmatched_stale` 2 · `payment_unmatched_recent` 1 · `high_unmatched_ratio` 1. **Counts include the five seeded demo rows.**
+- **Nothing was resolved or deleted** (2026-09-08). Only `superseded_at` was written. Each distinct finding survives as exactly one open row, including the `expense_no_gl_mapping` row reporting the still-live unmapped-category condition below.
+- **5c is now authorable against a known population** (2026-09-08): unique index with `NULLS NOT DISTINCT`, `NOT NULL` on `tenant_id`, and the composite FK **in the same migration**.
+
+## ⚠️ `ar_aging_monitor` FAILS 3 OF 4 RUNS EVERY NIGHT AND HAS FOR MONTHS (2026-09-08)
+
+- **Found incidentally while verifying the dedup, and it is NOT related to it** (2026-09-08). All observed failures predate the write; attribution checked rather than assumed.
+- **154 failures since 2026-07-16, and it is the ONLY job type that has ever failed** (2026-09-08). Measured over the last 10 days: **4 runs a day, 3 fail, every single day** — one tenant succeeds, three do not.
+- **Same deterministic error every time**: `unsupported operand type(s) for -: 'datetime.date' and 'datetime.datetime'` (2026-09-08). A date/datetime mix in the AR aging computation, per tenant.
+- **⚠️ This is a saturated signal** (2026-09-08): red every night for months, so a NEW failure in this job would be invisible. Nobody has looked because it always looks the same. Not investigated further — recorded for James.
+
 ## ⚠️ 14 OF 15 EXPENSE CLASSIFIER CATEGORIES ARE UNMAPPABLE BY CONSTRUCTION (2026-09-08)
 
 - **This is the CAUSE of the 1,825 duplicate anomalies, and it is a bigger problem than the duplicates were** (2026-09-08). The classifier emits 15 platform categories (`EXPENSE_CATEGORIES` in `expense_categorization_agent.py`); the live tenant has **13** categories mapped in `tenant_gl_mappings`; **the overlap is ONE — `other_expense`.** Every expense classified as anything else produces `expense_no_gl_mapping` and cannot post.
