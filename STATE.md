@@ -2,10 +2,12 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
-## ⚠️ ANOMALY-SUBJECT ARC — COMPLETE IN THE REPO, NOT YET IN PRODUCTION (2026-09-08)
+## ✅ ANOMALY-SUBJECT ARC — COMPLETE AND LIVE IN PRODUCTION (2026-09-08)
 
-- **⚠️ THE ENFORCEMENT CLAIM IS NOT TRUE UNTIL r177 DEPLOYS** (2026-09-08). Read this before repeating it. Phases 1–5c are authored and gate-green, and **`r177` is unapplied in production**. Until the deploy, supersede is enforced by a `before_insert` listener that raw SQL bypasses — not by the database. After it, a duplicate open row and a wrong-tenant row are both refused by constraints.
-- **What is true in production TODAY** (2026-09-08): every anomaly write site carries a subject (62 of 64; 2 held deliberately by name); supersede-on-write is live via the 5b listener; the backlog was deduplicated on 2026-09-08 leaving 19 open rows and 0 colliding keys. **What is NOT yet true**: the unique index, `NOT NULL` on `tenant_id`, and the composite FK.
+- **[CORRECTED 2026-09-08 — r177 DEPLOYED AND VERIFIED.]** Original wording, preserved: *"⚠️ THE ENFORCEMENT CLAIM IS NOT TRUE UNTIL r177 DEPLOYS… `r177` is unapplied in production… What is NOT yet true: the unique index, `NOT NULL` on `tenant_id`, and the composite FK."* True when written, and it expired at the deploy — updated here rather than left instructing, per the sweep rule.
+- **Verified in production after the deploy, read-only** (2026-09-08): alembic head `r177_anomaly_supersede_constraints`; `tenant_id` NOT NULL; `fk_agent_anomalies_job_tenant` present **with `ON DELETE CASCADE`**; `uq_agent_jobs_id_tenant` present; `uq_agent_anomalies_open_subject` built as `NULLS NOT DISTINCT` partial on `resolved = false AND superseded_at IS NULL`; the superseded non-unique index dropped. **Data intact: 2,301 rows (incl. the 5 seeded demo rows), 19 open, 2,077 superseded, 3 dedup audit rows.**
+- **So supersede is now enforced by the DATABASE, not by a listener that raw SQL bypasses** (2026-09-08). A duplicate open row and a wrong-tenant row are both refused by constraints. Every anomaly write site carries a subject (62 of 64; 2 held deliberately by name, pinned by name in the ratchet).
+- **Deploy took ~420s of API downtime** (2026-09-08), longer than the ~260s AP-1 measurement — the DDL adds to the window. Still the AP-1 shape, not a new problem.
 - **`expense_no_gl_mapping` can no longer produce 1,825 rows for one unmapped category** (2026-09-08) — the listener prevents it now, the index will make it unexpressible.
 - **Two post-deploy checks** (2026-09-08). If the migration fails to apply, the index found duplicate open rows: **find the writer, do not relax the index.** And tonight's `ar_collections` at ~23:07 UTC is the **first agent write under a live unique index** — run `scripts/verify_supersede_drain.py` afterwards, because a `UniqueViolation` there means the listener and the index disagree about what a duplicate is.
 
