@@ -661,4 +661,65 @@ audit log. That is arguably correct — it is their data and the honest thing is
 to say so — but it is a visible change to a surface they read, and it is a
 decision rather than a detail.
 
-**Still not written.** The question is answered; the closure is James's.
+> **[SUPERSEDED 2026-09-08 — the closure was ruled and is implemented below.]**
+> Original wording: *"Still not written. The question is answered; the closure is
+> James's."*
+
+---
+
+## 15. STOP 2 closed — the audit write, tenant-visible, three rows
+
+**Ruled: write it, tenant-visible.** The reasoning is worth keeping because it
+inverts what looked like a privacy question. **The visibility is the feature.**
+An audit log a tenant reads is a record of what happened to their data, and a
+platform operation touching their rows is something that happened to their data.
+Omitting it would make the log a partial record that reads as a complete one —
+the same defect as a gate that selects and reports as coverage. And a tenant
+admin who later finds 2,077 rows superseded with nothing in the log has been
+handed a mystery; the row is the answer to a question they would otherwise have
+to ask.
+
+### The action name names the actor
+
+```
+action      = platform_maintenance.anomalies_deduplicated
+entity_type = agent_anomaly     entity_id = NULL     user_id = NULL
+```
+
+⚠️ **Deliberately not a sibling of `anomaly_resolved`.** That existing entry
+means *a person decided something*. This resolved nothing, and a reader who
+conflates the two will believe decisions were made on their books. The
+`platform_maintenance.` prefix says Bridgeable operated on their data rather than
+their own system doing routine work. 43 characters against a `String(50)` column.
+
+### `changes` is written for someone who has never heard of this arc
+
+It is the only explanation they will ever get, so it leads with plain language
+rather than counts: what was done, why it was done, what they may notice, that
+**nothing was resolved, deleted or edited**, who performed it, and that it is
+reversible. The counts (`duplicate_rows_retired`,
+`distinct_findings_still_open`, `retired_by_finding_type`) come after the
+sentences, and `marked_at` carries the timestamp.
+
+⚠️ **`marked_at` IS THE DISCRIMINATOR STOP 2 ASKED FOR** — a row somebody wrote,
+naming the operation, rather than a shared-timestamp pattern somebody has to
+notice. The implementation coincidence is still there; it is no longer what the
+answer depends on.
+
+### Verified end to end against a local populated database
+
+4 rows superseded across 2 tenants; **one audit row per tenant**; action,
+entity_type, entity_id and user_id as above; the payload carrying all nine keys.
+**Tenant scoping confirmed through the real read path** —
+`audit_service.get_audit_logs` returns each tenant exactly one row and not the
+other's. **Reversal clean**: 4 anomalies un-superseded, 2 audit rows deleted, 0
+residue. Both reversal statements are printed by the script at run time.
+
+### Ships with no reader today, which is the argument for getting it right now
+
+Nobody is using the platform. The first tenant to read this log reads it after
+the fact, so there is no iteration available — the wording is the deliverable,
+not a first draft.
+
+**The script is now runnable. It is James's to run**: three tenants,
+`superseded_at` only, one open row surviving per key.

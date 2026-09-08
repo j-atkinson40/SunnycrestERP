@@ -62,7 +62,9 @@ dispatch forbade.
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import uuid
 from urllib.parse import urlparse
 
 from sqlalchemy import create_engine, text
@@ -135,23 +137,100 @@ def main() -> int:
         return 0
 
     with eng.begin() as c:
+        # Per-tenant breakdown must be captured BEFORE the UPDATE — afterwards
+        # the predicate no longer matches these rows.
+        breakdown: dict[str, dict[str, int]] = {}
+        for r in c.execute(text(f"""
+            SELECT tenant_id, anomaly_type, count(*) FROM agent_anomalies
+            WHERE id IN ({_SELECT_DOOMED}) GROUP BY 1, 2""")):
+            breakdown.setdefault(r[0], {})[r[1]] = r[2]
+
         # now() is the TRANSACTION timestamp, so every row written by this run
         # shares it to the microsecond. That is what makes the reversal below a
-        # single exact-match UPDATE — and it is also the ONLY thing separating
-        # this bulk mark from an agent-driven supersede. See DISTINGUISHABILITY.
+        # single exact-match UPDATE.
         stamp = c.execute(text("SELECT now()")).scalar()
         n = c.execute(text(f"""
             UPDATE agent_anomalies SET superseded_at = :stamp
             WHERE id IN ({_SELECT_DOOMED})"""), {"stamp": stamp}).rowcount
-        print(f"\nsuperseded {n} rows")
+        print(f"\nsuperseded {n} rows across {len(breakdown)} tenant(s)")
+
+        # ── The audit record. One row per tenant, deliberately TENANT-VISIBLE.
+        #
+        # `GET /api/v1/audit` scopes to the caller's company, so each tenant
+        # sees the operation on THEIR data and no one else's. That visibility is
+        # the point: a tenant admin who later finds rows superseded with nothing
+        # in the audit log has been handed a mystery, and a log that omits what
+        # the platform did is a partial record that reads as a complete one.
+        #
+        # ⚠️ THE ACTION NAME NAMES THE ACTOR. `anomaly_resolved` (the existing
+        # entry in this vocabulary) means a person decided something. This did
+        # not resolve anything, and a reader who conflates the two will believe
+        # decisions were made on their books. `platform_maintenance.*` says
+        # Bridgeable operated on their data.
+        #
+        # ⚠️ AND `changes` IS WRITTEN FOR SOMEONE WHO HAS NEVER HEARD OF THIS
+        # ARC. It is the only explanation they will ever get.
+        for tenant_id, by_type in breakdown.items():
+            retired = sum(by_type.values())
+            still_open = c.execute(text("""
+                SELECT count(*) FROM (
+                  SELECT 1 FROM agent_anomalies
+                  WHERE tenant_id = :t AND resolved = false AND superseded_at IS NULL
+                  GROUP BY anomaly_type, entity_type, entity_id) z"""),
+                {"t": tenant_id}).scalar()
+            payload = {
+                "summary": (
+                    "Bridgeable removed duplicate copies of accounting-agent "
+                    "findings on this account. Nothing was resolved, deleted or "
+                    "edited. Every distinct finding is still open and unchanged; "
+                    "only repeated copies of the same finding were retired."
+                ),
+                "why": (
+                    "Until now the accounting agents created a new finding every "
+                    "time they ran, instead of updating the one already there, so "
+                    "a single unresolved issue could appear hundreds of times. The "
+                    "agents now update in place. This is a one-time cleanup of the "
+                    "copies made before that change."
+                ),
+                "what_you_may_notice": (
+                    "Anomaly counts, badges and review queues will be lower. No "
+                    "issue has gone away: each distinct one still has exactly one "
+                    "open entry, and any issue that is still true is still shown."
+                ),
+                "performed_by": (
+                    "Bridgeable platform maintenance — not a user on this account."
+                ),
+                "duplicate_rows_retired": retired,
+                "distinct_findings_still_open": still_open,
+                "retired_by_finding_type": by_type,
+                "marked_at": stamp.isoformat(),
+                "reversible": (
+                    "Yes. These rows were marked superseded, not deleted, and the "
+                    "mark can be undone."
+                ),
+            }
+            c.execute(text("""
+                INSERT INTO audit_logs
+                    (id, company_id, user_id, actor_type, action, entity_type,
+                     entity_id, changes, created_at)
+                VALUES (:id, :cid, NULL, 'tenant_user',
+                        'platform_maintenance.anomalies_deduplicated',
+                        'agent_anomaly', NULL, :changes, :ts)"""),
+                {"id": str(uuid.uuid4()), "cid": tenant_id,
+                 "changes": json.dumps(payload), "ts": stamp})
+            print(f"  audit_logs row written for tenant {tenant_id}: "
+                  f"{retired} retired, {still_open} distinct findings left open")
+
         print("\n" + "=" * 68)
-        print("⚠️ RECORD THIS TIMESTAMP. IT IS THE ONLY HANDLE ON THIS OPERATION.")
+        print("⚠️ RECORD THIS TIMESTAMP. IT IS THE HANDLE ON THIS OPERATION.")
         print(f"   superseded_at = {stamp!r}")
+        print("   It is also recorded in audit_logs.changes.marked_at, which is")
+        print("   the discriminator: a row somebody wrote, not a pattern to spot.")
         print("   Reversal (restores the prior state exactly):")
         print("     UPDATE agent_anomalies SET superseded_at = NULL")
         print(f"      WHERE superseded_at = '{stamp}';")
-        print("   Cost: none beyond the UPDATE. Verified against a populated")
-        print("   local table -- 26 rows marked, 26 restored, nothing else moved.")
+        print(f"     DELETE FROM audit_logs WHERE created_at = '{stamp}'")
+        print("       AND action = 'platform_maintenance.anomalies_deduplicated';")
         print("=" * 68)
 
     with eng.connect() as c:
