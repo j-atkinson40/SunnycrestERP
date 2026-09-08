@@ -102,14 +102,21 @@ def _build_system_events_item(
     yet wired up cleanly; defer to W-4b.
     """
     from app.models.agent import AgentJob
+    from app.schemas.agent import COMPLETE_STATUSES
 
     since = datetime.now(timezone.utc) - timedelta(hours=24)
     rows: list[AgentJob] = (
         db.query(AgentJob)
         .filter(
             AgentJob.tenant_id == user.company_id,
+            # ⚠️ This query is NOT scoped by job_type, so it is the one place
+            # the two spellings of "finished" actually cost something: filtering
+            # on "complete" alone silently drops every legacy-agent completion.
+            # Measured in production 2026-09-08: 9 dropped in 24h, 63 over 7
+            # days (ap_upcoming_payments 28, collections_sequence 28,
+            # ar_aging_monitor 7). See schemas/agent.py::COMPLETE_STATUSES.
             AgentJob.status.in_(
-                ["complete", "approved", "rejected", "failed"]
+                [*COMPLETE_STATUSES, "approved", "rejected", "failed"]
             ),
             AgentJob.completed_at.isnot(None),
             AgentJob.completed_at >= since,

@@ -23,6 +23,25 @@ class AgentJobStatus(str, Enum):
     FAILED = "failed"
 
 
+#: ⚠️ `agent_jobs.status` HAS TWO SPELLINGS FOR ONE TERMINAL STATE, BOTH LIVE.
+#: `AgentJobStatus.COMPLETE` is canonical and is what `BaseAgent` and
+#: `approval_gate` write. `"completed"` is written by the older
+#: `agent_service` / `proactive_agents` path and is STILL BEING PRODUCED —
+#: measured in production 2026-09-08: 3,208 `complete` (from 2026-08-03) and
+#: 840 `completed` (from 2026-05-07, most recent 2026-09-07).
+#:
+#: The two partition cleanly by job_type: `completed` comes only from
+#: `collections_sequence`, `ap_upcoming_payments` and `ar_aging_monitor`.
+#: So a query scoped to a job_type that uses one spelling is unaffected — which
+#: is why most `status == "complete"` filters in this codebase are correct.
+#:
+#: ⚠️ A QUERY THAT DOES **NOT** SCOPE BY job_type MUST USE THIS TUPLE. Filtering
+#: on one spelling there silently drops the other's jobs, and nothing about the
+#: result looks wrong. Normalising the data to one spelling is a production
+#: write and is held with James; until then this is the honest vocabulary.
+COMPLETE_STATUSES: tuple[str, ...] = ("complete", "completed")
+
+
 class AgentJobType(str, Enum):
     MONTH_END_CLOSE = "month_end_close"
     AR_COLLECTIONS = "ar_collections"

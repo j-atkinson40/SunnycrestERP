@@ -445,3 +445,4 @@ tests/test_anomaly_subject_ratchet.py
 # ── end S-2 correction ────────────────────────────────────────────────────
 tests/test_anomaly_supersede.py
 tests/test_anomaly_supersede_5b.py
+tests/test_agent_status_spellings.py
