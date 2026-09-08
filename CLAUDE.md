@@ -1978,6 +1978,42 @@ three anomaly types an investigation once reported as having no locatable writer
 are among those five — the "unlocated" types were seeded, and a count that had
 declared its population would have said so.
 
+### A CAUSE is inherited more easily than a count
+
+*Figures in dispatches are never inherited* covers counts. This covers the
+sentence that gets built on top of one, and it is harder to catch for a reason
+worth stating: **a count looks like a measurement, so someone eventually
+re-derives it. A cause does not look like a measurement, so nobody does.**
+
+**A causal claim repeated across two or three messages stops reading as an
+inference at all.** It acquires the texture of background fact — not because
+anyone decided it was established, but because it was never phrased as a
+question after the first time.
+
+THE TEST, applied to any because-clause a decision rests on:
+
+    "Was this MEASURED, or was it inferred from two things that were?"
+
+⚠️ **The specific trap is a shared symptom.** Two different causes producing
+identical evidence is the case where inference feels safest and is worthless.
+An agent that stopped RUNNING and a condition that stopped HOLDING produce the
+same silence. A check comparing the two by that silence returns equality under
+both, so it looks like a discriminator and is one only when they differ —
+exactly when you did not need it.
+
+Discovered September 2026, twice in one arc and once inside the guard against
+it. "The condition resolved on 2026-08-31" was inferred from an agent going
+quiet, carried through three messages, and used to authorise marking 1,825 rows
+stale. The condition had not resolved: the category those rows named still had
+no GL mapping, and the agent was quiet because a step upstream stopped finding
+input. The first attempt to verify staleness compared each key's last write to
+its type's last write — which is the shared-symptom shape again, and it returned
+equality for every key.
+
+**Break the tie on the CONDITION, never on the reporter.** Ask what the finding
+claims and go look at that, rather than asking whether the thing that reported it
+is still talking.
+
 ### Checks that are green without being evidence
 
 Extracted 2026-09-01 from the accounting arc's working record, which carries shapes

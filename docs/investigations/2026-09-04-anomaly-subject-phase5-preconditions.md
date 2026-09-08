@@ -383,6 +383,16 @@ database will not accept a wrong value for is not a hole.*
 
 **Buildable today.**
 
+⚠️ **AND THE LISTENER IS BYPASSABLE, WHICH THE FK IS NOT — demonstrated by
+accident.** Seeding the 5c verification via raw SQL skipped both `before_insert`
+listeners: `tenant_id` stayed NULL and two tenants' rows collapsed into a single
+key. That is exactly the failure the composite FK prevents and the listener
+cannot, produced without trying to produce it. A guard at the ORM layer is
+simply absent for anything that does not go through the ORM — every
+`db.execute(text(...))`, every migration, every `psql` session. It strengthens
+the FK's case rather than being incidental to it: the listener is the ergonomic
+half and the constraint is the load-bearing half.
+
 ⚠️ **It belongs with 5c's `NOT NULL`, and not before it.** A composite FK
 defaults to `MATCH SIMPLE`, under which a row with ANY null in the key passes
 unchecked — so on its own it would let a NULL-tenant row straight through. The
@@ -595,3 +605,60 @@ in `audit_logs` so the discriminator is a row somebody wrote. A
 because adding one unilaterally is what the dispatch forbade.
 
 **The script should not run until this is settled.**
+
+---
+
+## 14. The `audit_logs` question, answered — it fits, and the vocabulary exists
+
+STOP 2 asked whether the bulk mark belongs in `audit_logs`, which depended on
+what that table is currently for and whether anything reads it. Both established
+read-only, 2026-09-08.
+
+**It is read, by three surfaces.** `GET /api/v1/audit` + `/audit/{id}` is a
+tenant-scoped viewer filterable by user / action / entity_type / entity_id /
+date; `vault_accounting` reads `period_locked` / `period_unlocked` rows for the
+Periods & Locks "Recent Activity" panel; `audit_service.get_audit_log` fetches
+one by id. So a row written here is not written into a void.
+
+**What it holds in production: 4,310 rows, 2026-05-07 to 2026-09-07, across
+five distinct (action, entity_type) pairs.**
+
+| action | entity_type | n |
+|---|---|---:|
+| `task.task_created` | `task_details` | 2,343 |
+| `login` | `session` | 1,922 |
+| `created` | `invoice` | 28 |
+| `created` | `customer_payment` | 14 |
+| `created` | `vendor_bill` | 3 |
+
+⚠️ **There are ~90 `log_action` call sites in the code and five pairs in the
+data.** Most of that vocabulary has never fired here. Stated as measured, not as
+a defect — `period_locked` has a writer at `vault_accounting.py:247` and zero
+rows because no period has ever been locked, which is an unexercised path rather
+than a broken one.
+
+### The shape fits, with three consequences
+
+**`entity_type="agent_anomaly"` already exists in this vocabulary.**
+`anomalies_widget_service.py:209` writes `action="anomaly_resolved"`,
+`entity_type="agent_anomaly"`, `entity_id=<the row>`. Auditing an anomaly state
+change is precedented, so the bulk mark is an addition to an established
+vocabulary rather than a new one.
+
+1. **`company_id` is NOT NULL**, and the mark spans three tenants. The operation
+   becomes **three rows**, one per tenant, not one row naming the operation.
+2. **`entity_id` is a single `String(36)`** and cannot name 2,077 rows. It would
+   be NULL — precedented, since 1,922 login rows already have a NULL entity_id —
+   with the superseding timestamp and per-type counts in `changes` (Text/JSON).
+   **That is the discriminator STOP 2 needs**: a row somebody wrote, naming the
+   timestamp, rather than a pattern somebody has to notice.
+3. **`user_id` would be NULL.** Also precedented — NULL on 2,355 of 4,310 rows.
+
+⚠️ **One thing James should decide rather than inherit: the viewer is
+TENANT-FACING.** `GET /api/v1/audit` scopes to `current_user.company_id`, so a
+tenant admin would see a maintenance operation on their data appear in their own
+audit log. That is arguably correct — it is their data and the honest thing is
+to say so — but it is a visible change to a surface they read, and it is a
+decision rather than a detail.
+
+**Still not written.** The question is answered; the closure is James's.

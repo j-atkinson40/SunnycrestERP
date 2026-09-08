@@ -2,6 +2,15 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ 14 OF 15 EXPENSE CLASSIFIER CATEGORIES ARE UNMAPPABLE BY CONSTRUCTION (2026-09-08)
+
+- **This is the CAUSE of the 1,825 duplicate anomalies, and it is a bigger problem than the duplicates were** (2026-09-08). The classifier emits 15 platform categories (`EXPENSE_CATEGORIES` in `expense_categorization_agent.py`); the live tenant has **13** categories mapped in `tenant_gl_mappings`; **the overlap is ONE — `other_expense`.** Every expense classified as anything else produces `expense_no_gl_mapping` and cannot post.
+- **The two vocabularies are different KINDS of thing** (2026-09-08). The classifier emits expense categories (`rent`, `utilities`, `payroll`, `vehicle_expense`); the tenant's mappings are account types (`current_asset`, `equity`, `revenue`, `cogs`). They were never single-sourced, and nothing checks that a classifier output can ever resolve.
+- **⚠️ `delivery_costs` (classifier) vs `delivery_cost` (mapped) is a near-miss** (2026-09-08) — the third instance of two-spellings-of-one-thing in a third table, after `complete`/`completed` on `agent_jobs` and the `AgentJobStatus` enum. A singular/plural difference is the entire reason that one category fails.
+- **The condition is LIVE, not historical** (2026-09-08). `vehicle_expense` has **zero** rows in `tenant_gl_mappings` for any tenant. The agent stopped emitting on 2026-08-31 because it finds no uncategorized lines to classify and never reaches the mapping check — 1,322 runs in 7 days, `anomaly_count=0` on every one. **Agent silence is not condition resolution**; that inference nearly authorised deleting the record of this.
+- **Consequence for the 5c dedup** (2026-09-08): it leaves ONE open row per unmappable category. That is correct behaviour reporting a genuine and currently unfixable condition, and those rows should not be read as leftovers.
+- **Near the top of the held list** (2026-09-08). Out of scope for the anomaly-subject arc; it is the thing the arc was standing on top of.
+
 ## ⚠️ `complete`/`completed` ON agent_jobs — BOTH LIVE, AND THE SEVERITY I REPORTED WAS WRONG (2026-09-08)
 
 - **Both spellings are live and still being produced** (2026-09-08). Measured: **3,208 `complete`** (from 2026-08-03, written by `BaseAgent` / `approval_gate`, and canonical per `AgentJobStatus.COMPLETE`) and **840 `completed`** (from 2026-05-07, most recent 2026-09-07, written by the older `agent_service` / `proactive_agents` path). Not a historical artifact.
