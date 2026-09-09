@@ -2043,15 +2043,18 @@ is still talking.
 ### Checks that are green without being evidence
 
 Extracted 2026-09-01 from the accounting arc's working record, which carries shapes
-1–5 from before that arc. Eight recorded shapes, each with the defect it caught.
+1–5 from before that arc. Nine recorded shapes, each with the defect it caught.
 ⚠️ None was found by a failing check — by construction, every one was green at the
 moment it was caught.
 
-**These are two mechanisms, not eight of a kind.** Shapes 1–5 share a mechanism: the
+**These are three mechanisms, not nine of a kind.** Shapes 1–5 share a mechanism: the
 check's passing state can be produced by the very defect it should catch. Shapes 6–8 are
 green-without-evidence by a different mechanism entirely — nothing about the defect
-produces the green; the check simply never had contact with what it names. They live
-together because one remedy catches all eight.
+produces the green; the check simply never had contact with what it names. One remedy
+catches all eight.
+
+⚠️ **Shape 9 is the one that remedy does not catch**, which is why it is filed
+separately and last.
 
 #### Mechanism A — the defect produces the green (1–5)
 
@@ -2103,7 +2106,37 @@ speak before trusting that it is quiet. Caught: two CI watchers on
 returns NO answer and lets you supply the wrong one yourself. It was written four minutes
 after shape 6 was described, into the instrumentation of the session that described it.
 
-#### The remedy — one test for all eight
+#### Mechanism C — green, with contact, against the wrong specification (9)
+
+**9. A check that asserts the value the implementation produces, because it was written
+from the implementation.** The check sees perfectly. It has full contact with the thing it
+names. It is simply asserting the wrong answer, because the answer was copied from the code
+rather than derived from the world the code is supposed to describe.
+
+Caught 2026-09-09: **55 literals** across eight frontend and two backend test files pinned
+`"/dispatch"` as the expected navigation target of four shipped widgets. `/dispatch` had
+never been a route in any revision of the app. Every one of those assertions was green, and
+the widgets' primary call-to-action had been landing on a 404 for four and a half months.
+
+⚠️ **A break test on shape 9 passes its own criterion and still defends the defect.**
+Break the wiring and those 55 assertions go red — correctly, specifically, exactly as the
+remedy below demands. They would also have gone red the moment someone *fixed* the dead
+route. **The check is not broken; it has been taught the defect as the specification.**
+
+This is *fixtures modelled on the implementation* reaching literals rather than fixtures,
+and the literal is the harder case: **a fixture looks like data you might have derived, and
+a literal looks like a fact.** `"/dispatch"` reads as knowledge about the app. It was a
+transcription of a mistake.
+
+**The remedy for shape 9 is different in kind from the remedy for 1–8.** No amount of
+coverage, and no positive control, reaches it — both operate inside the code's own account
+of itself. The only thing that catches it is **checking the value against the world rather
+than against the code**: click the link, resolve the id, enumerate the routes and confirm
+the target is among them. When an expected value names something outside the system — a
+route, a URL, a file path, an external id — the check is only worth what its correspondence
+to that thing is worth, and that correspondence cannot be established from inside the repo.
+
+#### The remedy — one test for shapes 1–8
 
 **Break the thing it guards and confirm it goes red — and check the break turns THAT check
 red, not merely something.**
@@ -2113,6 +2146,8 @@ the specific check green is the failure this whole list describes.
 
 **If a check cannot be made to fail, it is documentation.** File it as such or delete it;
 do not count it as coverage.
+
+⚠️ **Passing this remedy is necessary and not sufficient** — see shape 9, which passes it.
 
 **The deletion corollary: the fix is often deletion, not another test.** Both times this
 list caught asserted-but-absent coverage in a single session, the repair simplified the
