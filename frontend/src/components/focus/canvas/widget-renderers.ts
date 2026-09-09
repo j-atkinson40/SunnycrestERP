@@ -115,6 +115,17 @@ export interface WidgetRendererProps {
     // registry (the 4th host: Act-inline / Focus-core / Focus-pin /
     // park-tablet). Density hint only; widgets stay host-agnostic.
     | "park"
+    // Session 3 (peek bridge) — PeekHost renders a widget as panel
+    // content with NO /peek call. `peek_inline` is NOT a new value:
+    // it is declared in the canonical `WidgetSurface`
+    // (components/widgets/types.ts) as "Peek panel content
+    // composition (no chrome)" and on 5 backend catalog entries.
+    // Adding it here moves this union TOWARD canonical rather than
+    // away — the runtime union still lacks `dashboard_grid` and
+    // `floating_tablet`, and still carries `command_bar` + `park`
+    // which canonical lacks. That reconciliation is a queued arc,
+    // deliberately not done here.
+    | "peek_inline"
   /** S-1 — relational-pivot callback (§4.2 "click an order on the
    *  customer's card → the order's own entity surfaces appear").
    *  The HOST interprets the pivot (Act host swaps the card; Focus

@@ -304,7 +304,13 @@ export interface AncillaryPoolPinProps {
    *  variant_id. When `surface === "pulse_grid"`, Brief read-only
    *  rendering. Otherwise variant_id chooses the path (default Detail
    *  interactive). */
-  surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
+  surface?:
+    | "focus_canvas"
+    | "focus_stack"
+    | "spaces_pin"
+    | "pulse_grid"
+    // Session 3 — peek panel content, host owns chrome.
+    | "peek_inline"
 }
 
 
@@ -459,7 +465,11 @@ function AncillaryPoolGlanceVariant() {
  * Brief at 2×1 (cols=2, rows=1) — header + ~3 visible items, no
  * scrollable overflow.
  */
-function AncillaryPoolBriefVariant() {
+function AncillaryPoolBriefVariant({
+  surface,
+}: {
+  surface?: AncillaryPoolPinProps["surface"]
+}) {
   const {
     items,
     totalCount,
@@ -488,17 +498,32 @@ function AncillaryPoolBriefVariant() {
     <div
       data-slot="ancillary-pool-pin"
       data-variant="brief"
-      data-surface="pulse_grid"
-      style={{ transform: "var(--widget-tablet-transform)" }}
+      data-surface={surface ?? "pulse_grid"}
+      // Session 3 — `peek_inline` means the HOST owns chrome, so the
+      // Pattern 1 tablet treatment (frosted surface, widget shadow,
+      // tablet transform) is dropped rather than nested inside the
+      // peek panel's own border + shadow. `h-full` also goes: the
+      // panel body is height-capped and scrolls, so the content
+      // sizes to itself.
+      style={
+        surface === "peek_inline"
+          ? undefined
+          : { transform: "var(--widget-tablet-transform)" }
+      }
       className={cn(
-        // Pattern 1 frosted-glass tablet treatment matching the
-        // Detail variant for cross-surface visual continuity.
-        "relative flex h-full overflow-hidden",
-        "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
-        "rounded-none",
-        "shadow-[var(--shadow-widget-tablet)]",
+        "relative flex overflow-hidden",
+        surface === "peek_inline"
+          ? "h-auto w-full"
+          : [
+              // Pattern 1 frosted-glass tablet treatment matching the
+              // Detail variant for cross-surface visual continuity.
+              "h-full",
+              "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
+              "rounded-none",
+              "shadow-[var(--shadow-widget-tablet)]",
+              "transition-shadow duration-quick ease-settle",
+            ],
         loading && "opacity-80",
-        "transition-shadow duration-quick ease-settle",
       )}
     >
       {/* Bezel column — same structural left-edge column as Detail
@@ -893,7 +918,7 @@ export function AncillaryPoolPin(props: AncillaryPoolPinProps) {
   const isBrief =
     props.surface === "pulse_grid" || props.variant_id === "brief"
   if (isBrief) {
-    return <AncillaryPoolBriefVariant />
+    return <AncillaryPoolBriefVariant surface={props.surface} />
   }
 
   return <AncillaryPoolDetailVariant />

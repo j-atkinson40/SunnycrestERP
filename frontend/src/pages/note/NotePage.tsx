@@ -23,6 +23,7 @@
 import { useEffect, useState } from "react";
 
 import apiClient from "@/lib/api-client";
+import { usePeekOptional } from "@/contexts/peek-context";
 
 interface StandingEntry {
   entry_id: string;
@@ -77,6 +78,8 @@ interface ProseFragment {
 }
 
 export default function NotePage() {
+  // Null-safe: NotePage may render outside a PeekProvider in isolation.
+  const peek = usePeekOptional();
   const [note, setNote] = useState<TodayNote | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -126,7 +129,42 @@ export default function NotePage() {
             data-tier={e.tier}
             className="flex items-baseline justify-between border-b border-border-subtle py-2"
           >
-            <span className="text-body text-content-base">{e.label}</span>
+            {/* Session 3 — the standing line opens its target as peek panel
+                content. `openable` is the SERVER's answer, gated on the
+                widget declaring `peek_inline`; the client does not invent a
+                click for an entry the server did not mark. An entry whose
+                renderer isn't built (ar_summary) stays plain text rather than
+                opening onto "Widget unavailable".
+
+                Affordance is an underline on hover — no colour, no badge, no
+                shape, per the standing set's plain-text rule. */}
+            {e.openable && peek ? (
+              <button
+                type="button"
+                data-testid={`standing-open-${e.entry_id}`}
+                className="text-body text-content-base text-left hover:underline"
+                onMouseEnter={(ev) =>
+                  peek.openWidgetPeek({
+                    widgetId: e.target_key,
+                    label: e.label,
+                    triggerType: "hover",
+                    anchorElement: ev.currentTarget,
+                  })
+                }
+                onClick={(ev) =>
+                  peek.openWidgetPeek({
+                    widgetId: e.target_key,
+                    label: e.label,
+                    triggerType: "click",
+                    anchorElement: ev.currentTarget,
+                  })
+                }
+              >
+                {e.label}
+              </button>
+            ) : (
+              <span className="text-body text-content-base">{e.label}</span>
+            )}
             {/* Plain text. No badge, no colour, no shape. `data-count-state`
                 carries the distinction to the DOM so a reviewer (and a test)
                 can tell "no count" from "count broke" without either becoming

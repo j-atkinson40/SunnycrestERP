@@ -15,6 +15,17 @@ from app.models.user import User
 from app.services.fragments.emission import emit_for_user
 from app.services.note import get_or_create_note, render_standing_set
 from app.services.note.composition import apply_gate, record_renders
+from app.services.widgets.widget_registry import WIDGET_DEFINITIONS
+
+#: Widget ids that DECLARE they can render as peek panel content.
+#: Read from the catalog rather than hardcoded, so a widget opting in or out
+#: is one catalog edit and the note surface follows automatically.
+_PEEK_INLINE_WIDGET_IDS: set[str] = {
+    d["widget_id"]
+    for d in WIDGET_DEFINITIONS
+    if "peek_inline" in (d.get("supported_surfaces") or [])
+}
+
 
 router = APIRouter()
 
@@ -78,9 +89,19 @@ def get_today_note(
                 # three absent counts and three broken ones look identical.
                 "count_state": r.state,
                 "tier": r.tier,
-                # Session 3 wires opening. Declared, not wired, and the client
-                # must not invent a click for it.
-                "openable": False,
+                # ⚠️ Session 3 wires opening, and the DECLARATION is the gate.
+                # An entry is openable only if its widget declares
+                # `peek_inline` in `supported_surfaces`. That is not a
+                # formality: `ar_summary` is a real standing entry (the
+                # manufacturing accountant's only one) whose renderer has not
+                # been built, and it declares `["dashboard_grid"]` alone — so
+                # it correctly declines the panel here rather than opening
+                # onto "Widget unavailable". A widget refusing a surface it
+                # cannot serve is the mechanism working, not a gap.
+                "openable": (
+                    r.entry.target_surface == "peek"
+                    and r.entry.target_key in _PEEK_INLINE_WIDGET_IDS
+                ),
             }
             for r in standing
         ],
@@ -107,8 +128,11 @@ def get_today_note(
                 ],
                 "target_surface": d.fragment.declaration.target_surface,
                 "target_key": d.fragment.declaration.target_key,
-                # Session 3 wires opening; declared, not wired, exactly as the
-                # standing set's targets are.
+                # Session 3 wires opening for the STANDING SET only. Prose
+                # fragments target entities as often as widgets, which is the
+                # entity peek path and a different bridge; left unwired
+                # deliberately rather than by omission, and the client must
+                # still not invent a click for it.
                 "openable": False,
                 # Why this is here. Carried so an operator review can ask "why
                 # is this not showing?" and get an answer from the surface

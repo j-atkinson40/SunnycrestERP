@@ -957,6 +957,8 @@ export interface VaultScheduleWidgetProps {
     | "spaces_pin"
     | "pulse_grid"
     | "dashboard_grid"
+    // Session 3 — peek panel content, host owns chrome.
+    | "peek_inline"
   config?: Record<string, unknown>
   /** R-1.5: handlers gated behind _editMode for runtime editor safety. */
   _editMode?: boolean
