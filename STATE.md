@@ -2,6 +2,34 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ NOTE SESSION 3 REVERTED — standing lines open a FOCUS, and the Focus layer can't do it yet (2026-09-09)
+
+- **The peek bridge shipped, was reviewed on the running surface, and was reverted the same day.** The ruling it was built against — "a standing line never opens a Focus directly" — is **superseded**: standing lines open a **Focus on click**, read-only without edit permission. The superseded entry's *argument was sound and its premise was wrong*: it argued peek-only from uniformity, but a peek that opens on cursor travel and pins itself on pointer entry costs MORE than a click, and at 360px it cannot show a day's schedule so the user clicks through anyway. Reverted in `4cbfbd00`; survivors restored in `f05515dd`.
+- **⚠️ Found by James at the screen, not by the suite.** Not a reported finding — the build was pushed with a review checklist and one person moving a cursor found the premise was wrong. Same category as the count-versus-badge judgment in session 2's review; the second time this arc the operator gate caught something *structural* rather than cosmetic.
+- **⚠️ SESSION 5 IS BLOCKED BY THIS, and it will not announce itself.** Retiring Pulse makes `/home` a note — whose standing lines don't open. The Focus-capability work has to land **before** session 5 rather than being discovered inside it.
+- **Session 4 (settling and deferral) is unaffected** and is next. It depends on none of this.
+- **The standing set stays exactly as it is** — `openable: False`, structure present, comment stating what flips it. Narrowing it to what can open today would leave one line chosen by availability, which is what was ruled against for `ar_summary`.
+
+## ⚠️ THE FOCUS LAYER HAS NEITHER READ-ONLY NOR WORKING SCOPE — its own arc, not note work (2026-09-09)
+
+Enumerated in `docs/investigations/2026-09-09-standing-line-focus-targets.md`. These are **platform capabilities the Focus layer should have regardless of the note surface**; building them inside a note session files them where nobody looks and makes the note arc's estimate absorb work that isn't note work.
+
+- **Read-only does not exist.** Zero matches for `readOnly`/`read_only`/`canEdit`/`viewOnly` across `components/focus/`, `focus-context.tsx`, `focus-registry.ts`. `FocusConfig` declares `id`, `mode`, `displayName`, `defaultLayout`, `coreComponent`, `compositionFocusType`, `queueId` — no non-editing mode. Permission-*to-edit* exists as a concept; a Focus that **renders** non-editing does not. One build against the layer, same size whichever targets get Focuses.
+- **Scope is declared and inert.** `FocusOpenOptions.params` exists, commented "stores but does not consume" — and verified by reading the implementation: nothing consumes it (only `ReturnPill` round-trips it), and `open()` writes it to a ref while setting only `?focus=<id>`. **Scope does not survive a refresh or deep link**, though the module docstring calls the URL the source of truth after mount. A standing line means *today's* schedule; an unscoped Focus reproduces the two-steps-to-one-thing problem that killed the peek.
+- **Three of the four standing targets have no Focus at all** — `today`, `vault_schedule`, `line_status`. Twelve Focuses are registered (2 with a real `coreComponent`, 5 real via `queueId`, 5 `test-*` stubs) and none corresponds to them.
+
+## ⚠️ A MANUFACTURING ROLE WOULD OPEN THE FUNERAL BOARD — latent cross-vertical leak (2026-09-09)
+
+- `scheduling.ancillary-pool` is in the `("manufacturing", "dispatcher")` standing set, and the only Focus that fits it is **`funeral-scheduling`** — the funeral vertical's kanban board.
+- **Nothing gates Focus registration by vertical.** `FocusConfig` has no vertical field and `registerFocus` performs no check, so it *would* open, onto the wrong board's shape.
+- This **outlives the note arc**. It is a property of the Focus registry, not of the standing set, and it applies to any surface that routes a role to a Focus by name.
+
+## ⚠️ FOUR WIDGETS POINTED AT A ROUTE THAT NEVER EXISTED — `/dispatch` fixed, three others remain (2026-09-09)
+
+- **`/dispatch` was never a route in any revision** — `git log -S 'path="dispatch"'` returns nothing. The widgets wrote it 2026-04-28/29, **five weeks after** the closest real route (`delivery/dispatch`) was renamed to `/scheduling`. Fixed to `/dispatch/funeral-schedule` in `20f87a4e`; reasoning and the rejected `/scheduling` alternative in `docs/investigations/2026-09-09-dead-navigation-targets.md`.
+- **⚠️ 55 test literals asserted the dead route and stayed green.** A test that pins the value a defect produces will defend that defect — the suite could never have caught this, because it had been taught the wrong answer.
+- **Three dead targets remain, deliberately unfixed** because there is **no destination to correct them to**: `/interments` (cemetery — `disinterments` is a different concept, not a rename), `/crematory/schedule`, `/licensee-transfers/incoming`. The fix is building those pages or returning `None`; the latter is a product behaviour change for two verticals and was not ruled. **Today the Today widget's primary navigation is dead for the cemetery and crematory verticals.**
+
 ## ✅ NOTE SURFACE SESSION 2 — CLOSED, operator review run (2026-09-09)
 
 - **The surface is live at `/note` and composes prose** (2026-09-09). Verified against production after deploy: `emitted=3, rendering=3, withheld=0` for the tenant's one active user — one non-prompt on first sighting plus the two collections prompts.
