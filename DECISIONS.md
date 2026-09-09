@@ -1679,3 +1679,38 @@ is not determined, and that is a real Type B rather than a judgement call.
 Surface these as a batch with their competing resolutions named. A site that
 resists the test is signalling its membership in that batch rather than inviting
 an author to pick.
+
+---
+
+## 2026-09-09 — The peek's shipped interaction supersedes the note arc's proposed one
+
+Three values in the 2026-09-04 interaction entries were authored against a peek
+that did not exist yet. It does exist — `components/peek/`, UI/UX arc follow-up
+4, April 2026 — and is shared by the command bar, briefings, triage panels and
+saved-view rows. **The shipped behaviour wins in all three cases**, for the same
+reason each time: a gesture that differs by surface is worse than one that is
+slightly wrong everywhere.
+
+**~300ms hover entry is SUPERSEDED by the shipped `HOVER_DEBOUNCE_MS = 200`.**
+The 300 was invented to sound like a hover delay; the 200 has been in real use
+since April. A second convention on a shared peek is strictly worse than a
+slightly different delay, and there is no evidence 300 is better.
+
+**Long-press on touch is SUPERSEDED by the shipped click-collapse.** The entries
+ruled twice that touch gets long-press, both times reasoning about a peek that
+did not exist. Replacing click-collapse would change a gesture across four
+consumers to serve one. The standing set's own argument applies in reverse: one
+heavyweight interaction hidden among uniform cheap ones destroys the uniformity,
+and so does one surface whose gesture differs from every other.
+
+**Release-dismisses and its promotion path go with it**, since both only make
+sense under long-press. ⚠️ And the promotion they described — hold, then lift
+onto the panel to persist — **already ships**: entering the panel calls
+`promoteToClick()` and pins the peek.
+
+⚠️ **The ~150ms exit grace was reported missing and is not.** `PeekHost` has an
+80ms grace on anchor mouseleave, guarded so moving into the panel cancels the
+close. The report claiming otherwise had grepped one file of three, which is
+false absence from a constructed scope. Recorded here because the entry's
+exit-grace requirement reads as unbuilt work and is not; the only real gap is
+that `80` is a bare literal where `200` is a named constant.

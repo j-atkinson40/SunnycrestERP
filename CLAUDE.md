@@ -2529,6 +2529,36 @@ whole suite still passing.
 check is not passing for a wrong reason, it is passing for a reason that is
 CORRECT AND NOT THE ONE CLAIMED. Nothing in the result distinguishes them.
 
+#### A container test that cannot succeed looks exactly like one that ran
+
+`x in container` is valid Python whatever the container holds. Against a list of
+DICTS it compares a string to each dict, matches nothing, and returns False —
+**a plausible negative from a test that could never have returned True.**
+
+That is worse than a crash and worse than a wrong answer. A crash gets
+investigated; a wrong positive gets contradicted by something downstream. **A
+negative that can only ever be negative agrees with whatever you already
+suspected**, and it is most convincing when it confirms that some work does not
+exist yet — which is the direction that quietly inflates an estimate.
+
+THE TEST, before a negative from any membership or containment check:
+
+    "What is IN this container, and could a match ever have occurred?"
+
+Assert the element type first, or the negative means nothing. `assert
+isinstance(next(iter(c)), str)` is one line and converts an unfalsifiable check
+into a falsifiable one.
+
+Discovered September 2026: `k in WIDGET_DEFINITIONS` where `WIDGET_DEFINITIONS`
+is a **list of dicts**. It printed "no widget of that id" for all five standing
+targets. **All five were widget ids.** The report built on it would have said the
+peek payloads did not exist and sized a session several times too large. It was
+caught by a TypeError on an unrelated line of the same script — luck, not method.
+
+⚠️ Kin to false absence from a constructed name, one layer down: there the QUERY
+named the wrong thing, here the query is right and the CONTAINER cannot answer
+it. Both return a confident nothing.
+
 #### False presence from a substring match
 
 The mirror of false absence. A filter that matches inside longer names produces

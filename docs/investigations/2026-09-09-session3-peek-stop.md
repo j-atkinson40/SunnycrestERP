@@ -42,16 +42,50 @@ Three conflicts with §1 as dispatched:
 | dispatched | shipped |
 |---|---|
 | ~300ms hover entry delay | **`HOVER_DEBOUNCE_MS = 200`** |
-| ~150ms exit grace | **none found** — `PeekTrigger` has no mouseleave grace; `PeekHost` handles Escape and focus return |
+| ~150ms exit grace | **[CORRECTED] it EXISTS at 80ms** — see §2a |
 | long-press on touch, release dismisses | **collapses hover to click** on `matchMedia("(pointer: coarse)")` |
 
 The STOP line says do not invent a third convention silently. **200 vs 300 is a
 direct conflict**, and the touch gesture is a *replacement* of shipped behaviour
 rather than a gap being filled.
 
-⚠️ The exit grace is the one place the dispatch describes something genuinely
-missing. Its diagnosis — *the peek dies while the pointer travels into it* —
-appears to be a live defect in the shipped peek, not a hypothetical.
+> ## ⚠️ [CORRECTED 2026-09-09] THE EXIT GRACE EXISTS. THIS CLAIM WAS FALSE.
+>
+> Original wording: *"The exit grace is the one place the dispatch describes
+> something genuinely missing. Its diagnosis — the peek dies while the pointer
+> travels into it — appears to be a live defect in the shipped peek, not a
+> hypothetical."*
+>
+> **`PeekHost.tsx:120` already implements it**: an 80ms timeout on anchor
+> `mouseleave`, guarded by `overPanelRef` so moving into the panel cancels the
+> close. **And the panel-entry handler promotes hover to click**, pinning it —
+> which is the promotion path §1 proposed building.
+>
+> ⚠️ **I grepped `PeekTrigger.tsx`, found no grace, and reported that none
+> existed.** The grace lives in `PeekHost`. That is false-absence from a
+> constructed scope: I searched where I expected the code to be rather than
+> enumerating the peek modules, and reported the miss as the finding. The
+> enumeration I should have run first — `setTimeout|mouseleave|MS =` across all
+> three peek files — takes one command and shows the whole lifecycle.
+>
+> **Consequence: there is no defect to fix ahead of the rest.** A ruling was made
+> on this report to land the exit grace as a standalone commit benefiting every
+> shipped consumer. That work does not exist.
+
+### 2a. What the shipped hover lifecycle actually is
+
+```
+entry    HOVER_DEBOUNCE_MS = 200   (contexts/peek-context.tsx:85, named)
+exit     80ms grace on anchor mouseleave, cancelled by overPanelRef
+                                   (components/peek/PeekHost.tsx:120-131, LITERAL)
+promote  panel mouseenter -> promoteToClick(), pins the peek
+touch    matchMedia("(pointer: coarse)") -> hover collapses to click
+```
+
+**The one genuine finding that survives**: `200` is a named constant and `80` is
+a bare literal at its use site. The dispatch's "both values should be named
+constants, not scattered literals" holds for the exit value — a small, real fix,
+and not the defect it was reported as.
 
 ---
 
