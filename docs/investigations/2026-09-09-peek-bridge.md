@@ -531,3 +531,34 @@ exactly this build.
 The reconciliation is its own scoped piece of work with four rulings in it, and
 it sits underneath the bridge rather than inside it. It should not be absorbed
 into session 3.
+
+## Rev 3 addendum — the pin container width, measured
+
+`components/layout/sidebar.tsx:252`:
+
+```tsx
+<aside className="hidden md:flex h-full w-64 flex-col border-r ...">
+```
+
+`w-64` = 16rem = **256 px**. `PinnedSection` declares no width of its own and
+Glance renders `w-full` inside it, so Glance is authored against ~256 px (less
+padding) and the peek panel is **360 px**.
+
+**Glance fits, with room to spare.** The open Q3 caveat closes favourably on
+width.
+
+**But it opens a variant question.** `TodayWidget`'s Glance is
+`"h-15 w-full"` — a fixed **60 px** tall strip (15 × 0.25rem). At 360 px wide
+that is a thin summary bar, not a list. James's height concern was that *every
+remaining target renders a list* — Glance for `today` does not render a list at
+all, and `line_status` has no Glance and falls back to Brief regardless.
+
+Meanwhile `pulse_grid` — the surface whose chrome contract most resembles a
+host-owned panel — uses **Brief**: `operational_layer_service.py:96` dispatches
+`("ar_summary", "brief", 2, 1, 60)`.
+
+So "render Glance in the panel" may be the wrong variant. Brief is the variant
+that renders lists, is what `line_status` gives regardless, and is what the
+comparable host already requests. **Not a ruling — flagging that the variant
+choice is a live question for the build dispatch, and that the height cap
+requirement depends on its answer.**
