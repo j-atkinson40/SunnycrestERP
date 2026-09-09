@@ -82,7 +82,7 @@ function makeData(
     status: "on_track",
     headline: "0 today",
     metrics: {},
-    navigation_target: "/dispatch",
+    navigation_target: "/dispatch/funeral-schedule",
     ...p,
   }))
   return {
@@ -239,7 +239,7 @@ describe("LineStatusWidget — Brief variant", () => {
       data: makeData([
         {
           line_key: "vault",
-          navigation_target: "/dispatch",
+          navigation_target: "/dispatch/funeral-schedule",
         },
       ]),
       isLoading: false,
@@ -356,7 +356,7 @@ describe("LineStatusWidget — Detail variant", () => {
       data: makeData([
         {
           line_key: "vault",
-          navigation_target: "/dispatch",
+          navigation_target: "/dispatch/funeral-schedule",
         },
       ]),
       isLoading: false,

@@ -218,7 +218,7 @@ class TestTodayWidgetService:
         assert "vault_deliveries" in keys
         assert "unscheduled" in keys
         assert "ancillary_pool" not in keys  # no ancillary seeded
-        assert result["primary_navigation_target"] == "/dispatch"
+        assert result["primary_navigation_target"] == "/dispatch/funeral-schedule"
 
     def test_manufacturing_vault_with_ancillary_pool(self, db_session):
         from app.models.user import User
@@ -273,7 +273,7 @@ class TestTodayWidgetService:
         result = get_today_summary(db_session, user=user)
         assert result["total_count"] == 0
         assert result["categories"] == []
-        assert result["primary_navigation_target"] == "/dispatch"
+        assert result["primary_navigation_target"] == "/dispatch/funeral-schedule"
         # Date is today (verification only — service uses tenant TZ)
         assert "date" in result
 
@@ -300,7 +300,7 @@ class TestTodayWidgetService:
         assert result["categories"] == []
         # Primary target still /dispatch — manufacturing tenants land
         # there even without vault activated (other lines may exist).
-        assert result["primary_navigation_target"] == "/dispatch"
+        assert result["primary_navigation_target"] == "/dispatch/funeral-schedule"
 
     def test_funeral_home_empty_with_correct_primary_target(self, db_session):
         from app.models.user import User

@@ -416,7 +416,7 @@ describe("AncillaryPoolPin — provider contract (post-Session-B.2)", () => {
         items: [],
         total_count: 0,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     const consoleError = vi
@@ -738,7 +738,7 @@ describe("AncillaryPoolPin — Brief variant (Session B.2)", () => {
         items: [makePoolItemDataItem({ id: "a" })],
         total_count: 1,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     render(
@@ -763,7 +763,7 @@ describe("AncillaryPoolPin — Brief variant (Session B.2)", () => {
         items: [],
         total_count: 0,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     render(
@@ -801,7 +801,7 @@ describe("AncillaryPoolPin — Brief variant (Session B.2)", () => {
         ],
         total_count: 3,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     render(
@@ -842,7 +842,7 @@ describe("AncillaryPoolPin — Brief variant (Session B.2)", () => {
         ],
         total_count: 5,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     render(
@@ -870,7 +870,7 @@ describe("AncillaryPoolPin — Brief variant (Session B.2)", () => {
         items: [],
         total_count: 0,
         mode_note: "no_pool_in_purchase_mode",
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     render(
@@ -938,7 +938,7 @@ describe("AncillaryPoolPin — Brief variant (Session B.2)", () => {
         items: [],
         total_count: 0,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     render(
@@ -976,7 +976,7 @@ describe("AncillaryPoolPin — Brief variant (Session B.2)", () => {
         ],
         total_count: 2,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     render(
@@ -1015,7 +1015,7 @@ describe("AncillaryPoolPin — Session B.2 dispatcher discipline", () => {
         items: [],
         total_count: 0,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
   })

@@ -158,7 +158,7 @@ def get_ancillary_pool(
           "items": [ { id, delivery_type, type_config, ... }, ... ],
           "total_count": int,
           "mode_note": str | null,    # "no_pool_in_purchase_mode" or null
-          "primary_navigation_target": "/dispatch" | null,
+          "primary_navigation_target": "/dispatch/funeral-schedule" | null,
         }
 
     Tenant scoping: `Company.id == user.company_id` enforced server-
@@ -204,7 +204,7 @@ def get_ancillary_pool(
             "items": [],
             "total_count": 0,
             "mode_note": "no_pool_in_purchase_mode",
-            "primary_navigation_target": "/dispatch",
+            "primary_navigation_target": "/dispatch/funeral-schedule",
         }
 
     # Production / hybrid → real pool.
@@ -241,5 +241,5 @@ def get_ancillary_pool(
         "items": items,
         "total_count": len(items),
         "mode_note": None,
-        "primary_navigation_target": "/dispatch",
+        "primary_navigation_target": "/dispatch/funeral-schedule",
     }

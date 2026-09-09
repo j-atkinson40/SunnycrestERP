@@ -258,7 +258,7 @@ def _build_vault_health(
             "purchase_pending": incoming_pending,
         },
         "navigation_target": (
-            "/dispatch"
+            "/dispatch/funeral-schedule"
             if mode != "purchase"
             else "/licensee-transfers/incoming"
         ),
@@ -306,7 +306,7 @@ def get_line_status(
               "status": "on_track" | "behind" | "blocked" | "idle" | "unknown",
               "headline": "8 pours today",
               "metrics": { production_today: 8, production_unassigned: 0, ... },
-              "navigation_target": "/dispatch"
+              "navigation_target": "/dispatch/funeral-schedule"
             },
             ...
           ],

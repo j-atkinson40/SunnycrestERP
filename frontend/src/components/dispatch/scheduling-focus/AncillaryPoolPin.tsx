@@ -580,7 +580,7 @@ function AncillaryPoolBriefVariant() {
                 key={item.id}
                 item={item}
                 navigateTo={
-                  primaryNavigationTarget ?? "/dispatch"
+                  primaryNavigationTarget ?? "/dispatch/funeral-schedule"
                 }
               />
             ))}
@@ -851,7 +851,7 @@ function AncillaryPoolDetailVariant() {
                 <PoolItemStatic
                   key={item.id}
                   item={item}
-                  navigateTo="/dispatch"
+                  navigateTo="/dispatch/funeral-schedule"
                 />
               ))}
         </div>

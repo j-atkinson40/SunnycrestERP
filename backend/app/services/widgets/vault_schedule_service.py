@@ -333,7 +333,7 @@ def get_vault_schedule(
           "operating_mode": "production" | "purchase" | "hybrid" | null,
           "production": { deliveries: [...], total_count, unassigned_count, ... } | null,
           "purchase": { transfers: [...], total_count, ... } | null,
-          "primary_navigation_target": "/dispatch" | "/dispatch/incoming" | null,
+          "primary_navigation_target": "/dispatch/funeral-schedule" | "/dispatch/incoming" | null,
           "is_vault_enabled": bool
         }
 
@@ -384,7 +384,7 @@ def get_vault_schedule(
     if mode == "purchase":
         primary_target = "/licensee-transfers/incoming"
     else:
-        primary_target = "/dispatch"
+        primary_target = "/dispatch/funeral-schedule"
 
     return {
         "date": today.isoformat(),

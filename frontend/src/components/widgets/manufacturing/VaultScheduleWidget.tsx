@@ -162,7 +162,7 @@ function VaultScheduleGlance({
       type="button"
       onClick={() => {
         if (editModeActive) return
-        navigate(data?.primary_navigation_target || "/dispatch")
+        navigate(data?.primary_navigation_target || "/dispatch/funeral-schedule")
       }}
       data-slot="vault-schedule-widget"
       data-variant="glance"
@@ -312,7 +312,7 @@ function VaultScheduleBrief({ data, isLoading, error, editModeActive }: VariantP
         type="button"
         onClick={() => {
           if (editModeActive) return
-          navigate(data.primary_navigation_target || "/dispatch")
+          navigate(data.primary_navigation_target || "/dispatch/funeral-schedule")
         }}
         className={cn(
           "inline-flex items-center gap-1",
@@ -630,7 +630,7 @@ function VaultScheduleEmptyKanbanFrame({
         type="button"
         onClick={() => {
           if (editModeActive) return
-          navigate(data.primary_navigation_target || "/dispatch")
+          navigate(data.primary_navigation_target || "/dispatch/funeral-schedule")
         }}
         className={cn(
           "inline-flex items-center gap-1 mt-auto",
@@ -742,7 +742,7 @@ function VaultScheduleDetail({ data, isLoading, error, editModeActive }: Variant
         type="button"
         onClick={() => {
           if (editModeActive) return
-          navigate(data.primary_navigation_target || "/dispatch")
+          navigate(data.primary_navigation_target || "/dispatch/funeral-schedule")
         }}
         className={cn(
           "inline-flex items-center gap-1 mt-auto",

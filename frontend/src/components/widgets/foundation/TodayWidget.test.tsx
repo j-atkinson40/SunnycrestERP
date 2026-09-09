@@ -83,7 +83,7 @@ describe("TodayWidget — Glance variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 3,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ surface: "spaces_pin" })
 
@@ -102,7 +102,7 @@ describe("TodayWidget — Glance variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 0,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ variant_id: "glance" })
 
@@ -118,7 +118,7 @@ describe("TodayWidget — Glance variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 5,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ surface: "spaces_pin" })
 
@@ -134,7 +134,7 @@ describe("TodayWidget — Glance variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 0,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ surface: "spaces_pin" })
 
@@ -152,7 +152,7 @@ describe("TodayWidget — Glance variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 1,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ surface: "spaces_pin" })
 
@@ -169,7 +169,7 @@ describe("TodayWidget — Glance variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 5,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ surface: "spaces_pin" })
 
@@ -177,7 +177,7 @@ describe("TodayWidget — Glance variant (Phase W-3a)", () => {
       '[data-slot="today-widget"][data-variant="glance"]',
     ) as HTMLElement
     fireEvent.click(tablet)
-    expect(mockNavigate).toHaveBeenCalledWith("/dispatch")
+    expect(mockNavigate).toHaveBeenCalledWith("/dispatch/funeral-schedule")
   })
 
   it("Glance falls back to /dashboard when no primary_navigation_target", () => {
@@ -201,7 +201,7 @@ describe("TodayWidget — Glance variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 1,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ surface: "spaces_pin" })
 
@@ -224,7 +224,7 @@ describe("TodayWidget — Brief variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 3,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({})
 
@@ -241,7 +241,7 @@ describe("TodayWidget — Brief variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 3,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({})
 
@@ -263,16 +263,16 @@ describe("TodayWidget — Brief variant (Phase W-3a)", () => {
           key: "vault_deliveries",
           label: "5 vault deliveries",
           count: 5,
-          navigation_target: "/dispatch",
+          navigation_target: "/dispatch/funeral-schedule",
         },
         {
           key: "ancillary_pool",
           label: "2 ancillary items waiting",
           count: 2,
-          navigation_target: "/dispatch",
+          navigation_target: "/dispatch/funeral-schedule",
         },
       ],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({})
 
@@ -293,10 +293,10 @@ describe("TodayWidget — Brief variant (Phase W-3a)", () => {
           key: "vault_deliveries",
           label: "5 vault deliveries",
           count: 5,
-          navigation_target: "/dispatch",
+          navigation_target: "/dispatch/funeral-schedule",
         },
       ],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({})
 
@@ -304,7 +304,7 @@ describe("TodayWidget — Brief variant (Phase W-3a)", () => {
       '[data-slot="today-widget-category-vault_deliveries"]',
     ) as HTMLElement
     fireEvent.click(row)
-    expect(mockNavigate).toHaveBeenCalledWith("/dispatch")
+    expect(mockNavigate).toHaveBeenCalledWith("/dispatch/funeral-schedule")
   })
 
   it("Brief empty state when total = 0 + CTA to primary target", () => {
@@ -312,7 +312,7 @@ describe("TodayWidget — Brief variant (Phase W-3a)", () => {
       date: "2026-04-27",
       total_count: 0,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({})
 
@@ -326,7 +326,7 @@ describe("TodayWidget — Brief variant (Phase W-3a)", () => {
     expect(cta?.textContent).toMatch(/Open schedule/)
 
     fireEvent.click(cta as HTMLElement)
-    expect(mockNavigate).toHaveBeenCalledWith("/dispatch")
+    expect(mockNavigate).toHaveBeenCalledWith("/dispatch/funeral-schedule")
   })
 
   it("Brief empty state hides CTA when no primary_navigation_target", () => {
@@ -377,7 +377,7 @@ describe("TodayWidget — chrome continuity with AncillaryPoolPin", () => {
       date: "2026-04-27",
       total_count: 0,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ surface: "spaces_pin" })
 
@@ -393,7 +393,7 @@ describe("TodayWidget — chrome continuity with AncillaryPoolPin", () => {
       date: "2026-04-27",
       total_count: 4,
       categories: [],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     renderWidget({ surface: "spaces_pin" })
 

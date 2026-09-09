@@ -73,7 +73,7 @@ export interface AncillaryPoolWidgetData {
   items: AncillaryPoolItem[]
   total_count: number
   mode_note: "no_pool_in_purchase_mode" | null
-  primary_navigation_target: "/dispatch" | null
+  primary_navigation_target: "/dispatch/funeral-schedule" | null
 }
 
 
@@ -120,7 +120,7 @@ export interface UseAncillaryPoolResult {
   /** Whether vault product line is enabled. Read-only mode only. */
   isVaultEnabled: boolean
   /** Default navigate target for "Open in scheduling Focus" CTA. */
-  primaryNavigationTarget: "/dispatch" | null
+  primaryNavigationTarget: "/dispatch/funeral-schedule" | null
   /** Reload trigger. Context provides authoritative `reloadPool`;
    *  read-only mode wires a refetch. */
   reload: () => void
@@ -212,7 +212,7 @@ export function useAncillaryPool(): UseAncillaryPoolResult {
       operatingMode: null,
       modeNote: null,
       isVaultEnabled: true,
-      primaryNavigationTarget: "/dispatch",
+      primaryNavigationTarget: "/dispatch/funeral-schedule",
       reload: ctx.reloadPool,
       removeFromPoolOptimistic: ctx.removeFromPoolOptimistic,
     }

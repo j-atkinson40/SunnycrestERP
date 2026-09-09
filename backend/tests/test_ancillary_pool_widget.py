@@ -192,7 +192,7 @@ class TestModeDispatch:
         assert result["total_count"] == 2
         assert len(result["items"]) == 2
         assert result["mode_note"] is None
-        assert result["primary_navigation_target"] == "/dispatch"
+        assert result["primary_navigation_target"] == "/dispatch/funeral-schedule"
 
     def test_purchase_mode_returns_advisory_with_empty_items(self, db_session):
         """Purchase mode → empty items + mode_note advisory.
@@ -221,7 +221,7 @@ class TestModeDispatch:
         assert result["total_count"] == 0
         assert result["mode_note"] == "no_pool_in_purchase_mode"
         # Workspace-shape preservation: CTA preserved even in purchase mode
-        assert result["primary_navigation_target"] == "/dispatch"
+        assert result["primary_navigation_target"] == "/dispatch/funeral-schedule"
 
     def test_hybrid_mode_returns_pool_items(self, db_session):
         """Hybrid mode → real pool (vault is poured in-house and also
@@ -364,7 +364,7 @@ class TestEmptyPool:
         assert result["operating_mode"] == "production"
         assert result["items"] == []
         assert result["total_count"] == 0
-        assert result["primary_navigation_target"] == "/dispatch"
+        assert result["primary_navigation_target"] == "/dispatch/funeral-schedule"
 
 
 # ── Response shape ──────────────────────────────────────────────────
@@ -473,6 +473,6 @@ class TestAPIEndpoint:
             assert data["operating_mode"] == "production"
             assert data["is_vault_enabled"] is True
             assert data["total_count"] == 1
-            assert data["primary_navigation_target"] == "/dispatch"
+            assert data["primary_navigation_target"] == "/dispatch/funeral-schedule"
         finally:
             app.dependency_overrides.pop(get_current_user, None)

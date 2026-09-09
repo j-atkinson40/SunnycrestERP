@@ -156,7 +156,7 @@ describe("useAncillaryPool — context-absent path (Pulse fallback fetch)", () =
         ],
         total_count: 1,
         mode_note: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
   })
@@ -182,7 +182,7 @@ describe("useAncillaryPool — context-absent path (Pulse fallback fetch)", () =
         items: [],
         total_count: 0,
         mode_note: "no_pool_in_purchase_mode",
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
       },
     })
     const { result } = renderHook(() => useAncillaryPool())
@@ -192,7 +192,7 @@ describe("useAncillaryPool — context-absent path (Pulse fallback fetch)", () =
     expect(result.current.operatingMode).toBe("purchase")
     expect(result.current.modeNote).toBe("no_pool_in_purchase_mode")
     expect(result.current.isVaultEnabled).toBe(true)
-    expect(result.current.primaryNavigationTarget).toBe("/dispatch")
+    expect(result.current.primaryNavigationTarget).toBe("/dispatch/funeral-schedule")
   })
 
   it("removeFromPoolOptimistic is a no-op in read-only path", async () => {

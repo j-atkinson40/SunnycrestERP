@@ -152,7 +152,7 @@ function makeProductionData(
       driver_count: 1,
     },
     purchase: null,
-    primary_navigation_target: "/dispatch",
+    primary_navigation_target: "/dispatch/funeral-schedule",
     is_vault_enabled: true,
     ...overrides,
   }
@@ -195,7 +195,7 @@ function makeHybridData(): VaultScheduleData {
     operating_mode: "hybrid",
     production: makeProductionData().production,
     purchase: makePurchaseData().purchase,
-    primary_navigation_target: "/dispatch",
+    primary_navigation_target: "/dispatch/funeral-schedule",
     is_vault_enabled: true,
   }
 }
@@ -687,7 +687,7 @@ describe("VaultScheduleWidget — workspace-core canon (§12.6 + §12.6a)", () =
         operating_mode: "production",
         production: { deliveries: [], total_count: 0, unassigned_count: 0, assigned_count: 0, driver_count: 0 },
         purchase: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
         is_vault_enabled: true,
       },
       isLoading: false,
@@ -733,7 +733,7 @@ describe("VaultScheduleWidget — workspace-core canon (§12.6 + §12.6a)", () =
         operating_mode: "production",
         production: { deliveries: [], total_count: 0, unassigned_count: 0, assigned_count: 0, driver_count: 0 },
         purchase: null,
-        primary_navigation_target: "/dispatch",
+        primary_navigation_target: "/dispatch/funeral-schedule",
         is_vault_enabled: true,
       },
       isLoading: false,

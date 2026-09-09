@@ -617,14 +617,14 @@ describe("TestSignalCollection", () => {
     // navigation signal fires. Construct an anchor inside the
     // piece for the test.
     const anchor = document.createElement("a")
-    anchor.setAttribute("href", "/dispatch")
+    anchor.setAttribute("href", "/dispatch/funeral-schedule")
     piece.appendChild(anchor)
     fireEvent.click(anchor)
     // Verify the navigation signal fired with non-negative dwell
     expect(mockRecordNavigation).toHaveBeenCalled()
     const args = mockRecordNavigation.mock.calls[0]
     expect(args[0]).toBe("vault_schedule")  // from_component_key
-    expect(args[1]).toBe("/dispatch")  // to_route
+    expect(args[1]).toBe("/dispatch/funeral-schedule")  // to_route
     expect(typeof args[2]).toBe("number")
     expect(args[2]).toBeGreaterThanOrEqual(0)
     expect(Number.isInteger(args[2])).toBe(true)

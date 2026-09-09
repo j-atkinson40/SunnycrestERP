@@ -107,10 +107,10 @@ describe("R-1.5 widget operational-handler safety", () => {
           key: "deliveries",
           label: "Deliveries",
           count: 3,
-          navigation_target: "/dispatch",
+          navigation_target: "/dispatch/funeral-schedule",
         },
       ],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     const { TodayWidget } = await import(
       "@/components/widgets/foundation/TodayWidget"
@@ -218,7 +218,7 @@ describe("R-1.5 widget operational-handler safety", () => {
         deliveries: [],
       },
       purchase: null,
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     const { VaultScheduleWidget } = await import(
       "@/components/widgets/manufacturing/VaultScheduleWidget"
@@ -244,7 +244,7 @@ describe("R-1.5 widget operational-handler safety", () => {
           headline: "All on track",
           operating_mode: "production",
           metrics: {},
-          navigation_target: "/dispatch",
+          navigation_target: "/dispatch/funeral-schedule",
         },
       ],
     }
@@ -276,10 +276,10 @@ describe("R-1.5 control: handlers DO fire when _editMode=false", () => {
           key: "deliveries",
           label: "Deliveries",
           count: 3,
-          navigation_target: "/dispatch",
+          navigation_target: "/dispatch/funeral-schedule",
         },
       ],
-      primary_navigation_target: "/dispatch",
+      primary_navigation_target: "/dispatch/funeral-schedule",
     }
     const { TodayWidget } = await import(
       "@/components/widgets/foundation/TodayWidget"

@@ -153,7 +153,7 @@ def _build_manufacturing_vault_categories(
                     else f"{kanban_count} vault deliveries"
                 ),
                 "count": kanban_count,
-                "navigation_target": "/dispatch",
+                "navigation_target": "/dispatch/funeral-schedule",
             }
         )
     if ancillary_count > 0:
@@ -166,7 +166,7 @@ def _build_manufacturing_vault_categories(
                     else f"{ancillary_count} ancillary items waiting"
                 ),
                 "count": ancillary_count,
-                "navigation_target": "/dispatch",
+                "navigation_target": "/dispatch/funeral-schedule",
             }
         )
     if unscheduled_count > 0:
@@ -179,7 +179,7 @@ def _build_manufacturing_vault_categories(
                     else f"{unscheduled_count} unscheduled"
                 ),
                 "count": unscheduled_count,
-                "navigation_target": "/dispatch",
+                "navigation_target": "/dispatch/funeral-schedule",
             }
         )
 
@@ -206,11 +206,11 @@ def get_today_summary(
               "key": "vault_deliveries",
               "label": "5 vault deliveries",
               "count": 5,
-              "navigation_target": "/dispatch"
+              "navigation_target": "/dispatch/funeral-schedule"
             },
             ...
           ],
-          "primary_navigation_target": "/dispatch"
+          "primary_navigation_target": "/dispatch/funeral-schedule"
         }
 
     Empty state: total_count=0, categories=[], primary_navigation_target
@@ -267,14 +267,21 @@ def get_today_summary(
         total_count, categories = _build_manufacturing_vault_categories(
             db, tid, today
         )
-        primary_target = "/dispatch"
+        primary_target = "/dispatch/funeral-schedule"
     elif vertical == "manufacturing":
-        # Manufacturing tenant without vault — primary surface still
-        # dispatch (other lines may be active in future W-3d).
-        primary_target = "/dispatch"
+        # Manufacturing tenant without vault. ⚠️ `/dispatch/funeral-schedule`
+        # is the VAULT line's dispatch surface; a non-vault manufacturing
+        # tenant has no line-appropriate surface yet (Redi-Rock and
+        # wastewater schedules are named-but-unbuilt). This is the least
+        # wrong live destination, not a correct one.
+        primary_target = "/dispatch/funeral-schedule"
     elif vertical == "funeral_home":
-        # FH tenants land on /cases or /scheduling depending on role.
-        # Dispatch still exists; /cases is the canonical primary.
+        # FH tenants land on /cases or /scheduling depending on role;
+        # /cases is the canonical primary.
+        #
+        # ⚠️ An earlier comment here read "Dispatch still exists". It did
+        # not. `/dispatch` was never a route in any revision — see
+        # docs/investigations/2026-09-09-dead-navigation-targets.md.
         primary_target = "/cases"
     elif vertical == "cemetery":
         primary_target = "/interments"

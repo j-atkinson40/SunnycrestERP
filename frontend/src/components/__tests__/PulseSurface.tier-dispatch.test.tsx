@@ -212,7 +212,7 @@ describe("TestContainerQueriesLineStatus", () => {
               status: "on_track",
               headline: "8 pours today",
               metrics: {},
-              navigation_target: "/dispatch",
+              navigation_target: "/dispatch/funeral-schedule",
             },
           ],
           total_active_lines: 1,
