@@ -38,6 +38,7 @@ from app.models.cemetery_directory_selection import CemeteryDirectorySelection
 from app.models.cemetery_directory_fetch_log import CemeteryDirectoryFetchLog
 from app.models.customer import Customer
 from app.models.daily_note import DailyNote
+from app.models.note_fragment_render import NoteFragmentRender
 from app.models.customer_accounting_mapping import CustomerAccountingMapping
 from app.models.funeral_home_cemetery_history import FuneralHomeCemeteryHistory
 from app.models.historical_order_import import HistoricalOrder, HistoricalOrderImport
@@ -494,6 +495,7 @@ from app.models.briefing import Briefing, BRIEFING_TYPES
 
 __all__ = [
     "DailyNote",
+    "NoteFragmentRender",
     "StandingSetConfig",
     "CoordinationFocusInstance",
     "MoCPage",
