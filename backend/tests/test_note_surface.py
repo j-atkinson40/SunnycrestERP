@@ -476,3 +476,27 @@ def test_workload_holds_its_standing_position():
         if any(e.entry_id == "workload" for e in entries)
     ]
     assert len(holders) >= 4, f"workload lost positions without a ruling: {holders}"
+
+
+# ── The accountant's standing set may not be emptied by accident ─────
+
+
+def test_ar_summary_is_still_a_real_standing_entry():
+    """Guards the difference between "declines to open" and "was removed".
+
+    `ar_summary` is the ONLY entry in the manufacturing accountant's
+    template, and it is the one standing target whose widget has no
+    frontend renderer — it resolves to `MissingWidgetEmptyState`. That
+    combination makes it the entry most likely to be "cleaned up".
+
+    It passes the admission test on its merits: an accountant taking a
+    call about a balance is checking receivables against a name in their
+    hand at an unpredictable moment. Removing it would empty the role's
+    standing set, and emptiness is a CONSEQUENCE of removal, never a
+    reason for it. This fails loudly rather than letting that pass as a
+    successful tidy-up.
+    """
+    entries = template_for("manufacturing", "accountant")
+    keys = [e.target_key for e in entries]
+    assert "ar_summary" in keys
+    assert len(entries) >= 1

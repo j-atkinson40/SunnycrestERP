@@ -78,8 +78,21 @@ def get_today_note(
                 # three absent counts and three broken ones look identical.
                 "count_state": r.state,
                 "tier": r.tier,
-                # Session 3 wires opening. Declared, not wired, and the client
-                # must not invent a click for it.
+                # ⚠️ Declared, not wired — and the client must not invent a
+                # click for it.
+                #
+                # A first pass wired this to a PEEK and was reverted
+                # (2026-09-09). Operator review of the running surface found
+                # the peek opened on cursor travel, pinned itself on pointer
+                # entry, and at 360px could not show a day's schedule anyway —
+                # so it summarised and the user clicked through regardless.
+                # Two steps to reach what one step reaches directly.
+                #
+                # The ruling: a standing line opens a FOCUS on click,
+                # read-only without edit permission. This flag flips when that
+                # target exists, and the gate will key on whether the entry's
+                # target HAS a Focus — not on `peek_inline`, which was the
+                # reverted design's gate.
                 "openable": False,
             }
             for r in standing

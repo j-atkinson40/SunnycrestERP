@@ -48,6 +48,21 @@ import { cn } from "@/lib/utils";
 const PANEL_WIDTH = 360;
 const VIEWPORT_PAD = 12;
 
+/** Grace period after the pointer leaves the anchor, so the user can
+ *  travel into the panel without it closing underneath them. Was a
+ *  bare `80` inline; named because its sibling on the other side of the
+ *  boundary (`HOVER_DEBOUNCE_MS`) is named. Not exported — unlike that
+ *  one, this value does not cross a module boundary.
+ *
+ *  ⚠️ This has never executed in the shipped app. Every openPeek call
+ *  site passes triggerType "click", and hover-mode peeks have no
+ *  consumer — see docs/investigations/2026-09-09-unreached-hover-path.md */
+const EXIT_GRACE_MS = 80;
+
+/** Assumed full panel height for the flip-up decision below. Was a bare
+ *  `320` in two places. */
+const PANEL_FLIP_ESTIMATE = 320;
+
 
 export function PeekHost() {
   const { current, data, status, error, closePeek, promoteToClick } = usePeek();
@@ -72,9 +87,10 @@ export function PeekHost() {
     const viewportH = window.innerHeight;
     // Prefer below the anchor; flip up if not enough room.
     const desiredTop = rect.bottom + 8;
-    const wouldOverflowBottom = desiredTop + 320 > viewportH - VIEWPORT_PAD;
+    const wouldOverflowBottom =
+      desiredTop + PANEL_FLIP_ESTIMATE > viewportH - VIEWPORT_PAD;
     const top = wouldOverflowBottom
-      ? Math.max(VIEWPORT_PAD, rect.top - 8 - 320)
+      ? Math.max(VIEWPORT_PAD, rect.top - 8 - PANEL_FLIP_ESTIMATE)
       : desiredTop;
     // Prefer left-aligned with anchor; clamp into viewport.
     const left = Math.min(
@@ -124,7 +140,7 @@ export function PeekHost() {
         if (!overPanelRef.current) {
           closePeek();
         }
-      }, 80);
+      }, EXIT_GRACE_MS);
     };
     anchor.addEventListener("mouseleave", onLeaveAnchor);
     return () => anchor.removeEventListener("mouseleave", onLeaveAnchor);
