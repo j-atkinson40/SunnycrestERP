@@ -46,7 +46,13 @@ interface TodayNote {
   settled_at: string | null;
   standing_set: StandingEntry[];
   prose: ProseFragment[];
-  withheld?: { fragment_id: string; instance_key: string; gate: string }[];
+  withheld?: {
+    fragment_id: string;
+    instance_key: string;
+    gate: string;
+    deferred_until: string | null;
+    deferred_count: number;
+  }[];
 }
 
 /**
@@ -74,11 +80,57 @@ interface ProseFragment {
   target_key: string;
   openable: boolean;
   gate: string;
+  /** Prompts defer; non-prompts dismiss. Sent explicitly rather than inferred
+   *  from `kind`, so a third kind does not silently get the wrong affordance. */
+  deferrable: boolean;
+  /** Every deferral of this prompt by this reader, ever — including ones that
+   *  lapsed or were woken. Stated plainly, never escalated. */
+  deferred_count: number;
 }
+
+/** The affordances the server accepts. `date` opens the picker. */
+const DEFER_PRESETS: { preset: string; label: string }[] = [
+  { preset: "tomorrow", label: "Tomorrow" },
+  { preset: "next_week", label: "Next week" },
+  { preset: "next_month", label: "Next month" },
+];
 
 export default function NotePage() {
   const [note, setNote] = useState<TodayNote | null>(null);
   const [failed, setFailed] = useState(false);
+  /** instance_key of the prompt currently being deferred, so its controls
+   *  disable rather than accepting a second click into an in-flight request. */
+  const [deferring, setDeferring] = useState<string | null>(null);
+
+  /**
+   * ⚠️ REFETCH RATHER THAN PATCH LOCAL STATE. Deferring changes what the GATE
+   * says, and the gate is the server's. Removing the fragment client-side would
+   * be the client deciding what the note contains — and would be WRONG the
+   * moment a deferral wakes on divergence instead of suppressing.
+   */
+  async function onDefer(
+    f: ProseFragment,
+    preset: string,
+    deferredUntil?: string,
+  ) {
+    setDeferring(f.instance_key);
+    try {
+      await apiClient.post("/note/defer", {
+        fragment_id: f.fragment_id,
+        instance_key: f.instance_key,
+        preset,
+        deferred_until: deferredUntil ?? null,
+      });
+      const r = await apiClient.get<TodayNote>("/note/today");
+      setNote(r.data);
+    } catch {
+      // Unknown is not empty, here too: a failed deferral leaves the prompt
+      // exactly where it was rather than hiding it optimistically.
+      setFailed(true);
+    } finally {
+      setDeferring(null);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -151,8 +203,8 @@ export default function NotePage() {
         )}
 
         {note.prose.map((f) => (
+          <div key={f.instance_key} className="space-y-1">
           <p
-            key={f.instance_key}
             data-testid={`prose-${f.fragment_id}`}
             data-kind={f.kind}
             className="text-body text-content-base"
@@ -222,7 +274,70 @@ export default function NotePage() {
               );
             })}
           </p>
+
+          {/* ⚠️ PROMPTS DEFER. NON-PROMPTS DISMISS, and that path is not here.
+              A prompt has no "make this go away" — it leaves by its end
+              transition occurring or by the reader naming a date. */}
+          {f.deferrable && (
+            <div
+              data-testid={`defer-${f.fragment_id}`}
+              className="flex flex-wrap items-baseline gap-2 text-body-sm text-content-muted"
+            >
+              <span>See again</span>
+              {DEFER_PRESETS.map((p) => (
+                <button
+                  key={p.preset}
+                  type="button"
+                  disabled={deferring === f.instance_key}
+                  data-testid={`defer-${f.fragment_id}-${p.preset}`}
+                  onClick={() => onDefer(f, p.preset)}
+                  className="underline underline-offset-2 decoration-border-strong hover:decoration-content-base disabled:opacity-50"
+                >
+                  {p.label}
+                </button>
+              ))}
+              <input
+                type="date"
+                aria-label="Defer to a specific date"
+                data-testid={`defer-${f.fragment_id}-date`}
+                disabled={deferring === f.instance_key}
+                onChange={(e) =>
+                  e.target.value && onDefer(f, "date", e.target.value)
+                }
+                className="bg-transparent text-body-sm text-content-muted underline underline-offset-2 decoration-border-strong disabled:opacity-50"
+              />
+
+              {/* ⚠️ STATED, NEVER ESCALATED. No colour, no icon, no urgency.
+                  Someone pushing the same thing repeatedly is usually blocked
+                  on something else — that is worth seeing, and colouring it
+                  would state a judgement the surface has not earned. */}
+              {f.deferred_count > 0 && (
+                <span data-testid={`defer-count-${f.fragment_id}`}>
+                  · deferred {f.deferred_count}{" "}
+                  {f.deferred_count === 1 ? "time" : "times"}
+                </span>
+              )}
+            </div>
+          )}
+          </div>
         ))}
+
+        {/* A deferred prompt says WHEN it comes back. Without this line,
+            "withheld" and "gone" look identical to the reader who deferred it. */}
+        {(note.withheld ?? [])
+          .filter((w) => w.gate === "withheld:deferred")
+          .map((w) => (
+            <p
+              key={w.instance_key}
+              data-testid={`deferred-${w.fragment_id}`}
+              className="text-body-sm text-content-muted"
+            >
+              Deferred until {w.deferred_until}
+              {w.deferred_count > 1
+                ? ` · deferred ${w.deferred_count} times`
+                : ""}
+            </p>
+          ))}
       </section>
     </div>
   );

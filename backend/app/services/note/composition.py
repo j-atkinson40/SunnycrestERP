@@ -61,6 +61,13 @@ RENDER_PROMPT: GateVerdict = "render:prompt"
 RENDER_FIRST_SIGHTING: GateVerdict = "render:first_sighting"
 RENDER_CHANGED: GateVerdict = "render:changed"
 WITHHELD_UNCHANGED: GateVerdict = "withheld:unchanged"
+#: A prompt the reader deferred to a named date that has not arrived, whose
+#: question has not changed shape since. The ONLY thing that withholds a prompt.
+WITHHELD_DEFERRED: GateVerdict = "withheld:deferred"
+#: A deferred prompt whose condition inputs diverged from the snapshot taken at
+#: deferral. The reader deferred a decision with a known shape and the shape
+#: changed, so the deferral was made about a different question.
+RENDER_WOKEN: GateVerdict = "render:woken"
 
 
 @dataclass(frozen=True)
@@ -70,6 +77,10 @@ class GateDecision:
     change_digest: str
     #: The prior digest this was compared against, if there was one.
     prior_digest: str | None = None
+    #: The deferral in force for this identity, if any. Carried out of the gate
+    #: so the surface can say "deferred three times" and the recorder can spend
+    #: a woken one — neither of which is the gate's job to do.
+    deferral: Any | None = None
 
     @property
     def renders(self) -> bool:
@@ -140,7 +151,32 @@ def apply_gate(
         digest = change_digest(f)
 
         if f.declaration.kind == "prompt":
-            out.append(GateDecision(f, RENDER_PROMPT, digest))
+            # ⚠️ LOCAL IMPORT — `deferral` imports `change_digest` from this
+            # module, so a module-level import here is circular. The digest
+            # lives in ONE place on purpose: two implementations that sorted
+            # keys differently would wake every deferral on every view and look
+            # exactly like a world that keeps moving.
+            from app.services.note.deferral import active_deferral
+
+            held = active_deferral(
+                db,
+                user_id=user_id,
+                fragment_id=f.declaration.fragment_id,
+                instance_key=f.instance_key,
+                today=note_date,
+            )
+            if held is None:
+                out.append(GateDecision(f, RENDER_PROMPT, digest))
+            elif held.diverged(f):
+                out.append(GateDecision(
+                    f, RENDER_WOKEN, digest,
+                    prior_digest=held.row.condition_digest, deferral=held,
+                ))
+            else:
+                out.append(GateDecision(
+                    f, WITHHELD_DEFERRED, digest,
+                    prior_digest=held.row.condition_digest, deferral=held,
+                ))
             continue
 
         prior = _prior_render(
@@ -178,6 +214,16 @@ def record_renders(
     stamp = datetime.combine(note_date, datetime.min.time(), tzinfo=timezone.utc)
     written = 0
     for d in decisions:
+        # ⚠️ SPEND A WOKEN DEFERRAL HERE, NOT IN THE GATE. The gate is a pure
+        # read so that evaluating it twice does not change the answer; marking
+        # the row is a write and belongs on the write path. A deferral woken by
+        # divergence stops suppressing but STAYS as the record that it happened
+        # — `deferral_count` reads every act, including spent ones.
+        if d.verdict == RENDER_WOKEN and d.deferral is not None:
+            from app.services.note.deferral import mark_woken
+
+            mark_woken(db, d.deferral.row)
+
         if not d.renders:
             continue
         existing = db.execute(

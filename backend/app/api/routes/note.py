@@ -7,7 +7,10 @@ pretending to be the other.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -15,6 +18,12 @@ from app.models.user import User
 from app.services.fragments.emission import emit_for_user
 from app.services.note import get_or_create_note, render_standing_set
 from app.services.note.composition import apply_gate, record_renders
+from app.services.note.deferral import (
+    PRESETS,
+    DeferralError,
+    defer,
+    deferral_count,
+)
 
 router = APIRouter()
 
@@ -127,6 +136,26 @@ def get_today_note(
                 # is this not showing?" and get an answer from the surface
                 # rather than from the logs.
                 "gate": d.verdict,
+                # ⚠️ PROMPTS DEFER; NON-PROMPTS DISMISS. Carried explicitly so
+                # the client renders one affordance or the other rather than
+                # inferring which from `kind` and getting it wrong the day a
+                # third kind exists.
+                "deferrable": d.fragment.declaration.kind == "prompt",
+                # How many times this reader has deferred THIS prompt, ever —
+                # including deferrals that lapsed or were woken. Stated
+                # plainly. Someone pushing the same thing repeatedly is usually
+                # blocked on something else, and that is worth seeing rather
+                # than colouring.
+                "deferred_count": (
+                    deferral_count(
+                        db,
+                        user_id=current_user.id,
+                        fragment_id=d.fragment.declaration.fragment_id,
+                        instance_key=d.fragment.instance_key,
+                    )
+                    if d.fragment.declaration.kind == "prompt"
+                    else 0
+                ),
             }
             for d in rendering
         ],
@@ -138,8 +167,95 @@ def get_today_note(
                 "fragment_id": d.fragment.declaration.fragment_id,
                 "instance_key": d.fragment.instance_key,
                 "gate": d.verdict,
+                # A deferred prompt says WHEN it comes back. Without this,
+                # "withheld:deferred" is indistinguishable from gone.
+                "deferred_until": (
+                    d.deferral.deferred_until.isoformat()
+                    if d.deferral is not None
+                    else None
+                ),
+                "deferred_count": (
+                    d.deferral.count if d.deferral is not None else 0
+                ),
             }
             for d in decisions
             if not d.renders
         ],
+    }
+
+
+class DeferRequest(BaseModel):
+    fragment_id: str
+    instance_key: str
+    preset: str
+    #: Required when `preset == "date"`, ignored otherwise.
+    deferred_until: date | None = None
+
+
+@router.post("/defer")
+def defer_prompt(
+    body: DeferRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Defer a prompt to a named date. The note surface is its own actor.
+
+    ⚠️ THE FRAGMENT IS RE-EMITTED RATHER THAN TRUSTED FROM THE REQUEST. The
+    snapshot has to be of the condition inputs AS THEY ARE, and a client-supplied
+    digest would let a stale tab defer against a shape that no longer holds —
+    the deferral would then never wake, because it was born already diverged.
+
+    A prompt whose condition no longer holds is not deferrable: there is nothing
+    to come back. That is a 409, not a 404 — the fragment type exists, this
+    instance of it does not.
+    """
+    note = get_or_create_note(db, current_user)
+    emitted = emit_for_user(db, user=current_user)
+
+    match = next(
+        (
+            f for f in emitted
+            if f.declaration.fragment_id == body.fragment_id
+            and f.instance_key == body.instance_key
+        ),
+        None,
+    )
+    if match is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{body.fragment_id} / {body.instance_key} is not currently "
+                "emitted — its condition no longer holds, so there is nothing "
+                "to defer."
+            ),
+        )
+
+    try:
+        row = defer(
+            db,
+            company_id=current_user.company_id,
+            user_id=current_user.id,
+            daily_note_id=note.id,
+            fragment=match,
+            preset=body.preset,
+            today=note.note_date,
+            explicit_date=body.deferred_until,
+        )
+    except DeferralError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    db.commit()
+    return {
+        "deferral_id": row.id,
+        "fragment_id": row.fragment_id,
+        "instance_key": row.instance_key,
+        "deferred_until": row.deferred_until.isoformat(),
+        "preset": row.preset,
+        "deferred_count": deferral_count(
+            db,
+            user_id=current_user.id,
+            fragment_id=row.fragment_id,
+            instance_key=row.instance_key,
+        ),
+        "presets": list(PRESETS),
     }
