@@ -231,3 +231,78 @@ def test_a_RESOLVED_finding_produces_no_instance_control(db_session, user):
     after = [i for i in _collections_outstanding_condition(db_session, user=user)
              if i.subject_id == cust.id]
     assert after == [], "a resolved finding still produced a prompt"
+
+
+# ── The defect the personal_layer_service confirmation surfaced ───────
+
+
+def _task_due_today(db, user, state: str):
+    """A task assigned to `user`, due today, in `state`."""
+    from app.models.task_details import TaskDetails
+    from app.models.vault_item import VaultItem
+    from datetime import date
+
+    # ⚠️ vault_items.vault_id is NOT NULL. Read from the schema after the first
+    # version of this fixture omitted it and failed loudly — which is the right
+    # failure, and the second time in this file that inventing a shape cost a
+    # run. Reuse an existing vault rather than creating one: a test that creates
+    # a vault has to clean up a vault.
+    from app.models.vault import Vault
+
+    vault = db.query(Vault).filter(Vault.company_id == user.company_id).first()
+    if vault is None:
+        pytest.skip("no vault on the canonical tenant")
+    vi = VaultItem(
+        id=str(uuid.uuid4()), vault_id=vault.id, company_id=user.company_id,
+        item_type="task", title="probe task", is_active=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(vi); db.flush()
+    td = TaskDetails(
+        id=str(uuid.uuid4()), vault_item_id=vi.id, assignee_user_id=user.id,
+        lifecycle_shape="action" if state in ("done", "cancelled", "created",
+                                              "assigned", "in_progress", "blocked")
+        else "reminder",
+        current_state=state, due_date=date.today(),
+        visibility="operator_internal", priority="normal",
+        provenance_kind="manual_creation", event_kind="probe",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(td); db.flush()
+    return td
+
+
+def test_a_CANCELLED_task_is_not_due_today(db_session, user):
+    """⚠️ THE DEFECT. The condition filtered `completed_at IS NULL`, which reads
+    as "not finished" and MEANS "not marked done". `lifecycle.py` sets
+    completed_at only on `done`, so cancelled / acknowledged / dismissed all
+    leave it NULL — three of the four terminal states. The note would have
+    prompted someone about a task already cancelled."""
+    from app.services.fragments.platform_defaults import _tasks_due_today_condition
+
+    _task_due_today(db_session, user, "cancelled")
+    inst = _tasks_due_today_condition(db_session, user=user)
+    assert inst == [], "a cancelled task was surfaced as due today"
+
+
+def test_an_OPEN_task_IS_due_today_control(db_session, user):
+    """POSITIVE CONTROL. The test above passes on a condition that returns
+    nothing at all — which is exactly what a broken filter would do."""
+    from app.services.fragments.platform_defaults import _tasks_due_today_condition
+
+    _task_due_today(db_session, user, "in_progress")
+    inst = _tasks_due_today_condition(db_session, user=user)
+    assert len(inst) == 1, f"an open task due today produced {len(inst)} instances"
+
+
+def test_every_terminal_state_is_excluded(db_session, user):
+    """Derived from the lifecycle tables, not listed — a new terminal state is
+    picked up without anyone remembering to add it here."""
+    from app.services.fragments.platform_defaults import (
+        _TERMINAL_TASK_STATES, _tasks_due_today_condition,
+    )
+
+    assert set(_TERMINAL_TASK_STATES) == {"done", "cancelled", "acknowledged", "dismissed"}
+    for state in _TERMINAL_TASK_STATES:
+        _task_due_today(db_session, user, state)
+    assert _tasks_due_today_condition(db_session, user=user) == []

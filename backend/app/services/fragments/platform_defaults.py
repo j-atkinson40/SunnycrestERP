@@ -246,6 +246,21 @@ def _compliance_flags_condition(
     ]
 
 
+#: Terminal task states, DERIVED from the lifecycle tables rather than listed.
+#: A state added there with no outgoing transitions is terminal by construction,
+#: and this picks it up without anyone remembering to.
+def _terminal_task_states() -> tuple[str, ...]:
+    from app.services.tasks.lifecycle import ACTION_TRANSITIONS, REMINDER_TRANSITIONS
+
+    return tuple(sorted(
+        {s for s, nxt in ACTION_TRANSITIONS.items() if not nxt}
+        | {s for s, nxt in REMINDER_TRANSITIONS.items() if not nxt}
+    ))
+
+
+_TERMINAL_TASK_STATES = _terminal_task_states()
+
+
 def _tasks_due_today_condition(
     db: Session, *, user: User
 ) -> Sequence[FragmentInstance]:
@@ -275,7 +290,19 @@ def _tasks_due_today_condition(
             VaultItem.company_id == user.company_id,
             TaskDetails.assignee_user_id == user.id,
             TaskDetails.due_date == today,
-            TaskDetails.completed_at.is_(None),
+            # ⚠️ CORRECTED 2026-09-09. This filtered `completed_at IS NULL`,
+            # which reads as "not finished" and MEANS "not marked done".
+            # `lifecycle.py` sets completed_at only on `to_state == "done"`, so
+            # CANCELLED, ACKNOWLEDGED and DISMISSED tasks all leave it NULL —
+            # three of the four terminal states. The fragment would have
+            # prompted a person about a task somebody had already cancelled.
+            #
+            # Filtering on the state itself is what the layer service always
+            # did; the fragment paraphrased it and the paraphrase was wrong.
+            # Terminal set read from ACTION_TRANSITIONS / REMINDER_TRANSITIONS
+            # rather than restated here, so a new terminal state cannot leave
+            # this filter behind.
+            TaskDetails.current_state.notin_(_TERMINAL_TASK_STATES),
         )
         .order_by(TaskDetails.priority.desc())
         .limit(10)
