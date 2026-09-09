@@ -365,3 +365,46 @@ def test_the_endpoint_reports_WHY_each_fragment_rendered(db_session, user):
     payload = get_today_note(current_user=user, db=db_session)
     for item in payload["prose"]:
         assert item["gate"].startswith("render:"), item
+
+
+def test_the_amount_is_measured_and_DELIBERATELY_unlinked(db_session, user):
+    """⚠️ OPERATOR REVIEW, 2026-09-09. Linked, the amount pulled the eye harder
+    than the customer name — the badge question arriving in prose rather than in
+    a count.
+
+    It stays MEASURED, because it is a fact and carries its provenance in the
+    payload, with no href. The customer name remains the only place to click,
+    which is where the decision starts.
+
+    ⚠️ This pins an EXPERIMENT, not a settled design. If the aesthetics arc gives
+    measured-and-unlinked its own mark, this test changes with it — it exists so
+    the amount cannot quietly become a link again without someone deciding to.
+    """
+    cust = _customer(db_session, user)
+    _collections_finding(db_session, user, cust.id, "collections_critical", "3750.00")
+    inst = [i for i in _collections_outstanding_condition(db_session, user=user)
+            if i.subject_id == cust.id][0]
+
+    by_kind = {r.kind: r for r in inst.payload.referenced_items}
+    assert "customer_balance" in by_kind, "the amount lost its provenance entirely"
+    assert by_kind["customer_balance"].href is None, (
+        "the amount is linked again; review ruled it measured-but-unlinked"
+    )
+    assert by_kind["customer"].href, (
+        "the customer name must stay linked — it is where the decision starts"
+    )
+
+
+def test_a_measured_span_may_be_unlinked_but_never_unsourced(db_session, user):
+    """POSITIVE CONTROL for the distinction the test above rests on. "Unlinked"
+    and "unsourced" are different: the first is about reachability, the second
+    about provenance. Collapsing them would let a claim with no source render as
+    measured."""
+    from app.services.fragments.synthesis import SynthesisError, compose, measured
+
+    with pytest.raises(SynthesisError, match="carries no reference"):
+        compose([measured("$1", None)], title="t")  # type: ignore[arg-type]
+
+    ok = compose([measured("$1", ReferencedItem(kind="k", entity_id="e",
+                                                label="l", href=None))], title="t")
+    assert ok.referenced_items[0].href is None

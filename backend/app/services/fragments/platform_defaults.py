@@ -413,10 +413,24 @@ def _collections_outstanding_condition(db: Session, *, user: User) -> Sequence[F
                                label=cust.name or customer_id, href=href),
             ),
             plain(" has "),
+            # ⚠️ MEASURED BUT UNLINKED — an operator-review experiment, 2026-09-09,
+            # not a settled design. Linked, the amount pulled the eye harder than
+            # the customer name, which is the badge question arriving in prose
+            # rather than in a count: the number competing for attention with the
+            # thing the sentence is actually about.
+            #
+            # It stays MEASURED — it is a fact and carries its provenance in the
+            # payload — with `href=None`, so the renderer marks it semantically
+            # and does not style it as a second link. The customer name remains
+            # the only place to click, which is where the decision starts.
+            #
+            # Revisit with the aesthetics arc: measured-and-unlinked currently
+            # renders visually as plain, which is the experiment, not a claim
+            # that the distinction does not matter.
             measured(
                 f"${float(amount):,.2f}" if amount is not None else "a balance",
                 ReferencedItem(kind="customer_balance", entity_id=customer_id,
-                               label="outstanding balance", href=href),
+                               label="outstanding balance", href=None),
             ),
             plain(" outstanding"),
         ]

@@ -67,6 +67,14 @@ class StandingEntry:
     #: demand. No colour escalation, no growth to catch the eye, no red.
     count_source: str | None = None
 
+    #: ⚠️ HELD FOR SESSION 5 (operator review, 2026-09-09): a `99+` CAP.
+    #: A count that keeps growing is a number that starts competing for
+    #: attention, which is the growth-to-catch-the-eye this register already
+    #: refuses in the note above. Capping the display is the obvious answer and
+    #: it is a rendering decision that belongs with owner/backup routing and
+    #: Pulse retirement, not bolted on here. Recorded so it is a decision taken
+    #: rather than a default inherited.
+    #:
     #: Free-form, register-opaque.
     metadata: Mapping[str, Any] | None = None
 

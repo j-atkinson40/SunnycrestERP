@@ -168,11 +168,29 @@ export default function NotePage() {
                * separate badge saying "this is real".
                */
               if (sp.state === "measured") {
+                /*
+                 * ⚠️ MEASURED-AND-UNLINKED IS A REAL STATE, not a missing href.
+                 * A measured span always carries its provenance in the payload;
+                 * whether that provenance is REACHABLE is a separate fact. The
+                 * collections amount is measured and deliberately unlinked
+                 * (operator review, 2026-09-09) because linked it pulled the eye
+                 * harder than the customer name -- the badge question arriving
+                 * in prose. Rendering an <a> with no href would keep the link
+                 * styling and defeat the experiment.
+                 */
+                if (!sp.href) {
+                  return (
+                    <span key={i} data-state="measured" data-linked="false">
+                      {sp.text}
+                    </span>
+                  );
+                }
                 return (
                   <a
                     key={i}
-                    href={sp.href ?? undefined}
+                    href={sp.href}
                     data-state="measured"
+                    data-linked="true"
                     className="underline underline-offset-2 decoration-border-strong hover:decoration-content-base"
                   >
                     {sp.text}

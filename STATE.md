@@ -2,6 +2,17 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ✅ NOTE SURFACE SESSION 2 — CLOSED, operator review run (2026-09-09)
+
+- **The surface is live at `/note` and composes prose** (2026-09-09). Verified against production after deploy: `emitted=3, rendering=3, withheld=0` for the tenant's one active user — one non-prompt on first sighting plus the two collections prompts.
+- **⚠️ THE SUBSTRATE WAS BUILT AND LEFT UNWIRED FOR MOST OF THE SESSION** (2026-09-09). Gate, synthesis and both fragments were complete, tested and break-tested while `GET /note/today` returned `"prose": []` **by construction** — every test passed because every test exercised the substrate directly. The catching question inverts the §11 form: not "what produces this system's input?" but **"what CONSUMES this, and has anyone ever seen it?"**
+- **Operator review, four outcomes** (2026-09-09):
+  1. **The prose reads as a fact, not a demand — kept.** *"Lakeside Funeral Directors has $3,750.00 outstanding."*
+  2. **The amount is now MEASURED BUT UNLINKED.** Linked, it pulled the eye harder than the customer name — the badge question arriving in prose rather than in a count. It keeps its provenance in the payload and loses its href; the name stays the only place to click. **An experiment, not a settled design**, pinned by a test so it cannot quietly become a link again.
+  3. **The three standing lines are `absent`, not silently `unavailable`** — confirmed in production: `count_source=None` on all three, nothing failed. They are blank *because* removing `anomalies` took away the only entry in that template that declared a count.
+  4. **A `99+` cap is HELD FOR SESSION 5**, recorded at `StandingEntry` rather than here alone, because that is where someone would otherwise add it by default.
+- **`personal_layer_service` confirmed EASIER, so the 5-session estimate holds** (2026-09-09). Two streams declared, ONE live — `_build_approvals_item` returns `None` unconditionally, deferred 2026-05-04 to a Phase W-4b that never shipped. The live one is already covered by `TASKS_DUE_TODAY`. Zero new fragments, zero standing entries. **Sessions 3–5 do not change shape.** Full derivation: `docs/investigations/2026-09-09-personal-layer-confirmation.md`.
+
 ## ⚠️ EIGHT ANOMALY ROWS ARE UNREACHABLE BY ANY AGENT, PERMANENTLY (2026-09-09)
 
 - **A subjected write can never supersede its own unsubjected predecessor** (2026-09-09). The 5b listener and r177's index both match with `IS NOT DISTINCT FROM`, which treats NULL as equal to NULL — the property that makes the two AGREE. It also makes a NULL-subject row and a subjected row permanently DISTINCT, so nothing an agent writes will ever match these. **Nothing about them looks wrong; they answer no query and age silently.**
