@@ -137,3 +137,84 @@ column does not exist — the column is `note_date`. It raised `ProgrammingError
 rather than returning a plausible empty result, so the constructed name was
 caught by the database rather than by me. Had the column existed under a
 different meaning, the zero would have been reportable and wrong.
+
+---
+
+# REVISION — the transition probe ran, and it corrects this document
+
+**2026-09-09, same day.** The ruling asked the decisive question: *are terminal
+states absent because the path is broken, or because nobody has used the
+platform?* Both answers produce identical evidence, so the tie was broken on the
+condition — by exercising a real transition and looking for the row.
+
+## The path works. The absence is honest.
+
+`backend/tests/tasks/test_lifecycle_event_landing.py`, 6 tests, all passing.
+A real transition produces exactly what settling needs:
+
+```
+task.transition      user_id=<actor>  changes={"from":"assigned","to":"in_progress"}
+task.transition      user_id=<actor>  changes={"from":"in_progress","to":"done"}
+task.task_completed  user_id=<actor>  changes={"from_state":...,"to_state":"done"}
+completed_at         set
+```
+
+`task_completed` and `task_cancelled` are **distinct events**
+(`lifecycle.events_for_transition`), each audited with the actor. So the
+terminal-state ruling — *the record says what happened, not that it was
+completed* — is directly implementable: "you completed X" from
+`task.task_completed`, "you cancelled X" from `task.task_cancelled`. No forcing
+into completion, no silence. Break-tested: making cancellation also emit
+`task_completed` fails exactly the test that forbids it; break verified applied
+and reverted.
+
+**So settling is untestable, not unbuildable.** Production has 2,345 tasks in
+`created` because nobody has worked one, not because the emitter is broken.
+
+## ⚠️ The actor claim above was WRONG, and wrong in the alarming direction
+
+This document stated: *"no recorded event in production carries an actor."* That
+was true of the rows sampled and **false as a claim about the machinery**, which
+is the difference that mattered.
+
+- **Task transitions record the actor.** Proven above.
+- **All six anomaly writers set `resolved_by`** — `agents.py:386`,
+  `ar_collections_adapter.py:219`, `cash_receipts_adapter.py:189`,
+  `expense_categorization_adapter.py:215`, `aftercare_adapter.py:339`,
+  `anomalies_widget_service.py:198`. Enumerated without truncation.
+- **The 205 NULLs are machine resolutions, deliberately unattributed.** Measured
+  in production: all 205 carry a `resolution_note` naming
+  `clear_agent_backlog`, all on 2026-08-10. That script documents the choice in
+  its own header — *"`resolved_by` stays NULL — no human made this call, and
+  attributing it"* would be false. NULL is the honest value.
+
+I inferred a structural defect from a data absence. That is the shared-symptom
+trap named in the ruling, and the first version of this document walked into it.
+
+## Two truncation errors while establishing this
+
+Both produced a confident false statement before being caught:
+
+1. `grep ... | head -6` over anomaly writers returned six model files and I
+   printed *"(empty = nothing ever sets it)"*. `agents.py:386` sets it and was
+   below the cut. **A truncation flag is a WHERE clause on the output stream** —
+   applied here, by the author holding the rule, inside the investigation the
+   rule exists for.
+2. The first probe asserted action `task.task_status_changed`. The action is
+   `task.transition`; the subscriber returns early for that event name because
+   `lifecycle.apply_transition` writes the row itself. A constructed name.
+
+A third near-miss: the first probe created a task **with** an assignee, which
+lands it in `assigned`, making the `created → assigned` transition a no-op that
+emits nothing. Reading that empty result as a broken emitter would have been a
+third false defect from the same session.
+
+## What stands from the original document
+
+- **Settling does not ship this session.** It would be built against zero real
+  events and reviewed against fixtures, and the operator gate would have nothing
+  real to look at.
+- `expense_posting_map` emits zero by construction and has no surface.
+- The note surface has rendered 3 fragments total across 3 daily notes.
+- Day identity and condition-input enumeration confirmed; the `signal_service`
+  dependency was not as described.
