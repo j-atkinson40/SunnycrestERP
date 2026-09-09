@@ -39,42 +39,15 @@ import type {
 } from "@/types/peek";
 
 
-/** Session 3 (peek bridge) — a peek has two kinds of target.
- *
- *  "entity" is the original: an id that resolves to a tenant-owned
- *  row, fetched from `GET /peek/{type}/{id}`.
- *
- *  "widget" is the note surface's standing target: a widget id
- *  resolved against the widget renderer registry on the CLIENT.
- *  It makes NO /peek call — the widget self-fetches via
- *  `useWidgetData`, exactly as it does on every other surface.
- *  That is why the p50<100ms peek budget is untouched: there is no
- *  request to be slow. `_peek_saved_view` declined to execute a
- *  view on the peek path for this reason and that ruling stands. */
-export type PeekTargetKind = "entity" | "widget";
-
-export interface PeekEntityTarget {
-  targetKind: "entity";
+export interface CurrentPeek {
   entityType: PeekEntityType;
   entityId: string;
-}
-
-export interface PeekWidgetTarget {
-  targetKind: "widget";
-  widgetId: string;
-  /** Header text. Comes from the standing entry's `label`
-   *  (`note/registry.py` `_e(entry_id, label, target_key)`) because
-   *  there is no peek response to read `display_label` from. */
-  label: string;
-}
-
-export type CurrentPeek = (PeekEntityTarget | PeekWidgetTarget) & {
   triggerType: PeekTriggerType;
   anchorElement: HTMLElement | null;
   // Each open assigns a fresh nonce so panels can ignore stale
   // close-then-reopen races.
   openId: string;
-};
+}
 
 
 export type PeekStatus = "idle" | "loading" | "loaded" | "error";
@@ -93,15 +66,6 @@ export interface PeekContextValue {
   openPeek: (args: {
     entityType: PeekEntityType;
     entityId: string;
-    triggerType: PeekTriggerType;
-    anchorElement?: HTMLElement | null;
-  }) => void;
-  /** Session 3 — open a peek whose content is a WIDGET, resolved
-   *  client-side from the widget renderer registry. Makes no network
-   *  request. Same 200ms hover debounce as `openPeek`. */
-  openWidgetPeek: (args: {
-    widgetId: string;
-    label: string;
     triggerType: PeekTriggerType;
     anchorElement?: HTMLElement | null;
   }) => void;
@@ -212,7 +176,6 @@ export function PeekProvider({ children }: { children: ReactNode }) {
       // No-op if same entity + same trigger mode is already open.
       if (
         current
-        && current.targetKind === "entity"
         && current.entityType === entityType
         && current.entityId === entityId
         && current.triggerType === triggerType
@@ -224,7 +187,6 @@ export function PeekProvider({ children }: { children: ReactNode }) {
       const myGen = ++genRef.current;
       const openId = `peek_${myGen}`;
       const next: CurrentPeek = {
-        targetKind: "entity",
         entityType,
         entityId,
         triggerType,
@@ -255,53 +217,6 @@ export function PeekProvider({ children }: { children: ReactNode }) {
     [current, cancelInFlight, fetchAndShow],
   );
 
-  /** Session 3 — widget-target open. Deliberately does NOT call
-   *  `fetchAndShow`: there is no /peek request for a widget target.
-   *  Status is set straight to "loaded" and `data` cleared, so the
-   *  host renders the widget branch rather than a skeleton. */
-  const openWidgetPeek = useCallback<PeekContextValue["openWidgetPeek"]>(
-    ({ widgetId, label, triggerType, anchorElement }) => {
-      if (
-        current
-        && current.targetKind === "widget"
-        && current.widgetId === widgetId
-        && current.triggerType === triggerType
-      ) {
-        return;
-      }
-
-      cancelInFlight();
-      const myGen = ++genRef.current;
-      const next: CurrentPeek = {
-        targetKind: "widget",
-        widgetId,
-        label,
-        triggerType,
-        anchorElement: anchorElement ?? null,
-        openId: `peek_${myGen}`,
-      };
-
-      const show = () => {
-        setCurrent(next);
-        setData(null);
-        setStatus("loaded");
-        setError(null);
-      };
-
-      if (triggerType === "hover") {
-        hoverTimerRef.current = window.setTimeout(() => {
-          hoverTimerRef.current = null;
-          if (myGen !== genRef.current) return;
-          show();
-        }, HOVER_DEBOUNCE_MS);
-        return;
-      }
-
-      show();
-    },
-    [current, cancelInFlight],
-  );
-
   const promoteToClick = useCallback(() => {
     setCurrent((prev) =>
       prev && prev.triggerType === "hover"
@@ -324,7 +239,6 @@ export function PeekProvider({ children }: { children: ReactNode }) {
     status,
     error,
     openPeek,
-    openWidgetPeek,
     closePeek,
     promoteToClick,
   };

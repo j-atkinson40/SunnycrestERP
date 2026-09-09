@@ -33,9 +33,7 @@ function ConsumerProbe() {
     <div>
       <span data-testid="status">{status}</span>
       <span data-testid="error">{error ?? ""}</span>
-      <span data-testid="entity-id">
-        {current?.targetKind === "entity" ? current.entityId : ""}
-      </span>
+      <span data-testid="entity-id">{current?.entityId ?? ""}</span>
       <span data-testid="trigger-type">{current?.triggerType ?? ""}</span>
       <span data-testid="display-label">{data?.display_label ?? ""}</span>
       <button

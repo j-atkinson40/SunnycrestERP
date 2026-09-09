@@ -24,13 +24,7 @@
 
 import type { IntelligenceStream, ReferencedItem } from "@/types/pulse";
 
-/** What a fragment opens. Mirrors `TargetSurface` in the Python contract.
- *
- *  ⚠️ NAME COLLISION: a DIFFERENT `TargetSurface` exists at
- *  `lib/widget-builder/types/composition-blob.ts`
- *  ("focus_canvas" | "page_canvas" | "palette_preview") — that one is
- *  the widget-builder's variant-authoring target. Unrelated concept,
- *  same name. Noted rather than renamed; a rename is its own change. */
+/** What a fragment opens. Mirrors `TargetSurface` in the Python contract. */
 export type TargetSurface = "peek" | "focus" | "window";
 
 /**

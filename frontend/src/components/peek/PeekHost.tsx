@@ -36,7 +36,6 @@ import { Button } from "@/components/ui/button";
 import { InlineError } from "@/components/ui/inline-error";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { usePeek } from "@/contexts/peek-context";
-import { getWidgetRenderer } from "@/components/focus/canvas/widget-renderers";
 import { CasePeekRenderer } from "./renderers/CasePeekRenderer";
 import { ContactPeekRenderer } from "./renderers/ContactPeekRenderer";
 import { InvoicePeekRenderer } from "./renderers/InvoicePeekRenderer";
@@ -48,55 +47,6 @@ import { cn } from "@/lib/utils";
 
 const PANEL_WIDTH = 360;
 const VIEWPORT_PAD = 12;
-
-/** Grace period after the pointer leaves the anchor, so the user can
- *  travel into the panel without it closing underneath them. Was a
- *  bare `80` inline; named here because its sibling on the other side
- *  of the boundary (`HOVER_DEBOUNCE_MS`) is named. Not exported —
- *  unlike that one, this value does not cross a module boundary. */
-const EXIT_GRACE_MS = 80;
-
-/** Session 3 — the panel had NO height constraint. Entity peeks are
- *  fixed-field and never reached one; widget targets render Brief,
- *  which renders LISTS. The body scrolls, not the panel, so the
- *  header and footer stay put.
- *
- *  ⚠️ Chosen against the rendered result at review, not derived. */
-const PANEL_BODY_MAX_HEIGHT = 240;
-
-/** Assumed full panel height for the flip-up decision below. This was
- *  a bare `320` in two places; named because it now has to stay
- *  consistent with PANEL_BODY_MAX_HEIGHT + header + footer. */
-const PANEL_FLIP_ESTIMATE = 320;
-
-
-/** Session 3 — widget targets resolve a renderer from the widget
- *  registry on the client. No /peek call was made, so there is no
- *  `data`; the widget self-fetches via `useWidgetData`.
- *
- *  Variant is Brief, not Glance: Glance is authored for the 256px
- *  sidebar (`w-64`) and `today`'s Glance is a fixed 60px strip that
- *  renders no list, while `line_status` declares no Glance at all.
- *  Brief is what renders lists and what `pulse_grid` requests.
- *
- *  Unregistered ids fall through to `MissingWidgetEmptyState` inside
- *  `getWidgetRenderer` — an honest "Widget unavailable" with the
- *  offending id visible. `ar_summary` is deliberately in that state
- *  until its renderer is built.
- *
- *  Kept at module scope (rather than a `useMemo` inside the host) so
- *  the registry lookup is a plain render-time read of a stable
- *  component reference. */
-function PeekWidgetContent({ widgetId }: { widgetId: string }) {
-  const WidgetComponent = getWidgetRenderer(widgetId, "brief");
-  return (
-    <WidgetComponent
-      widgetId={widgetId}
-      variant_id="brief"
-      surface="peek_inline"
-    />
-  );
-}
 
 
 export function PeekHost() {
@@ -122,10 +72,9 @@ export function PeekHost() {
     const viewportH = window.innerHeight;
     // Prefer below the anchor; flip up if not enough room.
     const desiredTop = rect.bottom + 8;
-    const wouldOverflowBottom =
-      desiredTop + PANEL_FLIP_ESTIMATE > viewportH - VIEWPORT_PAD;
+    const wouldOverflowBottom = desiredTop + 320 > viewportH - VIEWPORT_PAD;
     const top = wouldOverflowBottom
-      ? Math.max(VIEWPORT_PAD, rect.top - 8 - PANEL_FLIP_ESTIMATE)
+      ? Math.max(VIEWPORT_PAD, rect.top - 8 - 320)
       : desiredTop;
     // Prefer left-aligned with anchor; clamp into viewport.
     const left = Math.min(
@@ -175,7 +124,7 @@ export function PeekHost() {
         if (!overPanelRef.current) {
           closePeek();
         }
-      }, EXIT_GRACE_MS);
+      }, 80);
     };
     anchor.addEventListener("mouseleave", onLeaveAnchor);
     return () => anchor.removeEventListener("mouseleave", onLeaveAnchor);
@@ -200,8 +149,6 @@ export function PeekHost() {
   const onPanelMouseLeave = useCallback(() => {
     overPanelRef.current = false;
   }, []);
-
-
 
   const renderer = useMemo(() => {
     if (!data) return null;
@@ -230,14 +177,6 @@ export function PeekHost() {
   if (!current || !pos) return null;
 
   const isClickMode = current.triggerType === "click";
-  const isWidget = current.targetKind === "widget";
-  // Header text: widget targets never fetched a peek, so there is no
-  // `display_label`. The standing entry carries the label instead
-  // (`note/registry.py` `_e(entry_id, label, target_key)`).
-  const headerLabel = isWidget ? current.label : data?.display_label;
-  const kindLabel = isWidget
-    ? "widget"
-    : current.entityType.replace("_", " ");
 
   return (
     <>
@@ -254,7 +193,7 @@ export function PeekHost() {
         ref={panelRef}
         role={isClickMode ? "dialog" : "tooltip"}
         aria-modal={isClickMode ? "true" : undefined}
-        aria-label={headerLabel ?? "Loading preview"}
+        aria-label={data?.display_label ?? "Loading preview"}
         tabIndex={isClickMode ? -1 : undefined}
         onMouseEnter={onPanelMouseEnter}
         onMouseLeave={onPanelMouseLeave}
@@ -267,21 +206,21 @@ export function PeekHost() {
         )}
         data-testid="peek-host-panel"
         data-trigger-type={current.triggerType}
-        data-target-kind={current.targetKind}
-        data-entity-type={isWidget ? undefined : current.entityType}
-        data-entity-id={isWidget ? undefined : current.entityId}
-        data-widget-id={isWidget ? current.widgetId : undefined}
+        data-entity-type={current.entityType}
+        data-entity-id={current.entityId}
       >
         {/* Header */}
         <div className="flex items-start gap-2 border-b px-3 py-2">
           <div className="flex-1 min-w-0">
-            {headerLabel ? (
-              <p className="text-sm font-medium truncate">{headerLabel}</p>
+            {data ? (
+              <p className="text-sm font-medium truncate">
+                {data.display_label}
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground">Loading…</p>
             )}
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-              {kindLabel}
+              {current.entityType.replace("_", " ")}
             </p>
           </div>
           {isClickMode && (
@@ -298,23 +237,16 @@ export function PeekHost() {
         </div>
 
         {/* Body */}
-        <div
-          className="overflow-y-auto px-3 py-2.5 text-sm"
-          style={{ maxHeight: PANEL_BODY_MAX_HEIGHT }}
-          data-testid="peek-host-body"
-        >
-          {isWidget && <PeekWidgetContent widgetId={current.widgetId} />}
-          {!isWidget && status === "loading" && (
-            <SkeletonCard lines={4} showHeader={false} />
-          )}
-          {!isWidget && status === "error" && (
+        <div className="px-3 py-2.5 text-sm">
+          {status === "loading" && <SkeletonCard lines={4} showHeader={false} />}
+          {status === "error" && (
             <InlineError
               message="Couldn't load preview."
               hint={error ?? undefined}
               size="sm"
             />
           )}
-          {!isWidget && status === "loaded" && renderer}
+          {status === "loaded" && renderer}
         </div>
 
         {/* Footer */}

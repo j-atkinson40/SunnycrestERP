@@ -535,13 +535,7 @@ function TodayPulseGlance({
 export interface TodayWidgetProps {
   widgetId?: string
   variant_id?: VariantId
-  surface?:
-    | "focus_canvas"
-    | "focus_stack"
-    | "spaces_pin"
-    | "pulse_grid"
-    // Session 3 — peek panel content, host owns chrome.
-    | "peek_inline"
+  surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
   /** R-1.5: when true, operational handlers no-op. Defense-in-depth
    *  for runtime editor edit mode (in addition to SelectionOverlay's
    *  capture-phase click suppression). */

@@ -46,13 +46,6 @@ export const CONTAINER_ATOM_TYPES: ReadonlySet<AtomType> = new Set([
 
 export type VariantId = "glance" | "brief" | "detail" | "deep";
 
-/** Which authoring target a variant was composed against.
- *
- *  ⚠️ NAME COLLISION: a DIFFERENT `TargetSurface` exists at
- *  `types/fragments.ts` ("peek" | "focus" | "window") — that one is
- *  the note surface's fragment target, written by `note/registry.py`'s
- *  `_e(...)` as `target_surface="peek"`. Unrelated concept, same
- *  name. Noted rather than renamed; a rename is its own change. */
 export type TargetSurface =
   | "focus_canvas"
   | "page_canvas"

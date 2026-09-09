@@ -823,7 +823,6 @@ WIDGET_DEFINITIONS: list[dict] = [
             "spaces_pin",
             "dashboard_grid",
             "focus_canvas",
-            "peek_inline",
         ],
         "default_surfaces": ["pulse_grid", "dashboard_grid"],
         "intelligence_keywords": [
@@ -998,7 +997,6 @@ WIDGET_DEFINITIONS: list[dict] = [
             "spaces_pin",
             "dashboard_grid",
             "focus_canvas",
-            "peek_inline",
         ],
         "default_surfaces": ["pulse_grid", "dashboard_grid"],
         "intelligence_keywords": [
@@ -1103,7 +1101,6 @@ WIDGET_DEFINITIONS: list[dict] = [
             "pulse_grid",
             "dashboard_grid",
             "focus_canvas",
-            "peek_inline",
         ],
         "default_surfaces": ["pulse_grid", "dashboard_grid"],
         "intelligence_keywords": [
@@ -1262,7 +1259,6 @@ WIDGET_DEFINITIONS: list[dict] = [
             "pulse_grid",
             "spaces_pin",
             "dashboard_grid",
-            "peek_inline",
         ],
         "default_surfaces": ["focus_canvas"],
         "intelligence_keywords": [
