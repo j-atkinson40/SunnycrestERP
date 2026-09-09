@@ -74,6 +74,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.services.fragments.registry import register_fragment
+from app.services.fragments.synthesis import compose, measured, plain
 from app.services.fragments.types import (
     Audience,
     EndTransition,
@@ -324,6 +325,165 @@ def _tasks_due_today_condition(
     ]
 
 
+# ── Session 2 — the two fragments composed server-side ───────────────
+
+COLLECTIONS_OUTSTANDING = "collections_outstanding"
+EXPENSE_POSTING_MAP = "expense_posting_map"
+
+#: Types the collections agent writes against a customer subject. Enumerated
+#: from `ar_collections_agent`, not guessed: escalate / critical / follow_up.
+_COLLECTIONS_TYPES = (
+    "collections_escalate", "collections_critical", "collections_follow_up",
+)
+
+
+def _collections_outstanding_condition(db: Session, *, user: User) -> Sequence[FragmentInstance]:
+    """One instance per CUSTOMER with an open collections finding.
+
+    ⚠️ THE SUBJECT IS THE CUSTOMER, and it survives the arc's test: the act that
+    ends this is contacting them about the balance, and that act is per-customer.
+    Two customers would need two conversations, so a subject of "the receivables
+    book" is too coarse by the arc's own guard.
+
+    ⚠️ AND ONE CUSTOMER YIELDS ONE INSTANCE EVEN WITH SEVERAL FINDINGS. A customer
+    carrying both a follow_up and a critical is one conversation, not two — the
+    severities are attributes of the subject, not separate subjects. This is the
+    category ruling applied one table over.
+    """
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+    from app.models.customer import Customer
+
+    rows = (
+        db.query(AgentAnomaly, Customer)
+        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
+        .join(Customer, Customer.id == AgentAnomaly.entity_id)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentAnomaly.entity_type == "customer",
+            AgentAnomaly.anomaly_type.in_(_COLLECTIONS_TYPES),
+            AgentAnomaly.open_filter(),
+        )
+        .order_by(AgentAnomaly.created_at.desc())
+        .all()
+    )
+
+    by_customer: dict[str, list] = {}
+    for anom, cust in rows:
+        by_customer.setdefault(cust.id, []).append((anom, cust))
+
+    out: list[FragmentInstance] = []
+    for customer_id, pairs in by_customer.items():
+        anom, cust = pairs[0]
+        amount = anom.amount
+        href = f"/customers/{customer_id}"
+
+        spans = [
+            plain(""),
+            measured(
+                cust.name or "This customer",
+                ReferencedItem(kind="customer", entity_id=customer_id,
+                               label=cust.name or customer_id, href=href),
+            ),
+            plain(" has "),
+            measured(
+                f"${float(amount):,.2f}" if amount is not None else "a balance",
+                ReferencedItem(kind="customer_balance", entity_id=customer_id,
+                               label="outstanding balance", href=href),
+            ),
+            plain(" outstanding"),
+        ]
+        if len(pairs) > 1:
+            spans.append(plain(f", across {len(pairs)} findings"))
+        spans.append(plain("."))
+
+        out.append(FragmentInstance(
+            subject_id=customer_id,
+            payload=compose(spans, title="Outstanding balance", priority=60),
+            scope={"customer_id": customer_id, "queue_id": "ar_collections_triage"},
+            #: (2) enumerable and snapshottable — the gate digests THIS, not the
+            #: sentence. Amount and finding-count are what "did anything move?"
+            #: means for a collections conversation.
+            condition_inputs={
+                "amount": str(amount) if amount is not None else None,
+                "finding_count": len(pairs),
+                "types": sorted({a.anomaly_type for a, _ in pairs}),
+            },
+        ))
+    return out
+
+
+def _expense_posting_map_condition(db: Session, *, user: User) -> Sequence[FragmentInstance]:
+    """One instance per classifier category that is BLOCKING A REAL LINE.
+
+    ⚠️ GROUNDED ON BLOCKED WORK, NOT ON CONFIGURATION COMPLETENESS, and that is
+    the whole difference between this fragment and the one first dispatched.
+    "Categories with no GL account" is true of 15 of 15, for every tenant,
+    indefinitely — because no type -> account surface exists. As a prompt that
+    emits fifteen unresolvable items every day, which is the failure the note
+    surface exists to prevent, arriving through its first prompt.
+
+    Conditioned on a line that cannot post, it emits when work is actually stuck
+    and resolves when that category gets an account. Today it emits ZERO, and
+    that is the composition gate's own thesis rather than a defect: production
+    holds ten vendor bill lines.
+
+    ⚠️ INVALID CATEGORIES ARE EXCLUDED DELIBERATELY. Two production lines carry
+    `nonexistent_category`, which is not in the classifier's vocabulary. A line
+    categorised into something that does not exist is a data defect, not a
+    missing posting map, and folding it in here would report the wrong problem
+    with confidence.
+    """
+    from app.models.vendor_bill import VendorBill
+    from app.models.vendor_bill_line import VendorBillLine
+    from app.services.agents.expense_categorization_agent import EXPENSE_CATEGORIES
+
+    # ⚠️ VendorBillLine HAS NO company_id. It is tenant-scoped through its bill,
+    # the same shape agent_anomalies had before r176 — so the tenant filter must
+    # be a join, not a column, and writing `VendorBillLine.company_id` fails at
+    # import rather than leaking across tenants. Checked, not assumed.
+    lines = (
+        db.query(VendorBillLine)
+        .join(VendorBill, VendorBill.id == VendorBillLine.bill_id)
+        .filter(
+            VendorBill.company_id == user.company_id,
+            VendorBillLine.deleted_at.is_(None),
+            VendorBillLine.expense_category.isnot(None),
+            VendorBillLine.expense_category.in_(list(EXPENSE_CATEGORIES)),
+        )
+        .all()
+    )
+
+    blocked: dict[str, int] = {}
+    for line in lines:
+        # ⚠️ NO PARENT RESOLUTION. `tenant_gl_mappings` answers account -> type;
+        # the inverse is one-to-many (42 accounts carry `expense`), so resolving
+        # to a parent would post payroll to whichever row came back. Refusing to
+        # post is strictly better than posting confidently to the wrong account.
+        blocked[line.expense_category] = blocked.get(line.expense_category, 0) + 1
+
+    out: list[FragmentInstance] = []
+    for category, line_count in sorted(blocked.items()):
+        out.append(FragmentInstance(
+            subject_id=category,
+            payload=compose(
+                [
+                    measured(
+                        f"{line_count} expense line{'s' if line_count != 1 else ''}",
+                        ReferencedItem(kind="vendor_bill_line", entity_id=category,
+                                       label=f"{category} lines", href=None),
+                    ),
+                    plain(f" classified as {category} cannot post: there is no "
+                          f"account recorded for that category."),
+                ],
+                title="Expense posting map", priority=55,
+            ),
+            scope={"platform_category": category},
+            condition_inputs={"category": category, "blocked_lines": line_count},
+        ))
+    return out
+
+
 # ── Seed ─────────────────────────────────────────────────────────────
 
 
@@ -381,6 +541,52 @@ def seed() -> None:
                 entity_kind="task",
                 resolved_when="task_reaches_terminal_state",
                 past_tense="you completed {count} task{plural} due today",
+            ),
+        )
+    )
+
+    register_fragment(
+        FragmentDeclaration(
+            fragment_id=COLLECTIONS_OUTSTANDING,
+            label="Outstanding balances",
+            kind="prompt",
+            # ⚠️ LIFTED, NOT CHOSEN. `ar_collections_triage` gates on
+            # `invoice.approve`, and this fragment's target IS that queue. A
+            # fragment that surfaces work whose target the reader cannot open
+            # would be telling them about someone else's decision.
+            audience=Audience(required_permission="invoice.approve"),
+            condition=_collections_outstanding_condition,
+            target_surface="focus",
+            target_key="ar_collections_triage",
+            subject_kind="customer",
+            end_transition=EndTransition(
+                entity_kind="customer",
+                resolved_when="collections_finding_resolved",
+                past_tense="you worked {count} outstanding balance{plural}",
+            ),
+        )
+    )
+
+    register_fragment(
+        FragmentDeclaration(
+            fragment_id=EXPENSE_POSTING_MAP,
+            label="Expense posting map",
+            kind="prompt",
+            audience=Audience(required_permission="invoice.approve"),
+            condition=_expense_posting_map_condition,
+            target_surface="focus",
+            # ⚠️ DECLARED AND NOT WIRED. The surface where a category's posting
+            # account is chosen DOES NOT EXIST — that is its own build. Declared
+            # so the target is stated rather than invented, and deliberately not
+            # pointed at a placeholder: a destination that has to be removed
+            # later is worse than one that was never offered. Same treatment the
+            # standing set's peek targets got in session 1.
+            target_key="expense_posting_map",
+            subject_kind="expense_category",
+            end_transition=EndTransition(
+                entity_kind="expense_category",
+                resolved_when="category_posting_account_recorded",
+                past_tense="you recorded a posting account for {count} categor{plural}",
             ),
         )
     )

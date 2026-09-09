@@ -106,6 +106,15 @@ class FragmentPayload:
     referenced_items: tuple[ReferencedItem, ...] = ()
     priority: int = 50
 
+    #: ⚠️ THE THREE TEXT STATES, added session 2. Typed spans rather than
+    #: substring markers: marking "the label" inside a sentence where the label
+    #: occurs twice puts the mark in the wrong place and nothing looks wrong.
+    #: Empty for payloads built before spans existed; `synthesized_text` remains
+    #: the single source every current consumer reads, and is DERIVED from the
+    #: spans when they are present so the two cannot drift.
+    #: See `fragments/synthesis.py`.
+    spans: tuple[Any, ...] = ()
+
 
 @dataclass(frozen=True)
 class Audience:

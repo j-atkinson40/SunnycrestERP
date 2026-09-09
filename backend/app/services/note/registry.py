@@ -94,9 +94,18 @@ def _e(entry_id: str, label: str, target_key: str, count_source: str | None = No
 #:      never checked against a name someone just said. The clearest failure of
 #:      the tightened test in the register.
 #:
-#: ⚠️ `workload` IS HELD, NOT KEPT — its disposition is genuinely ambiguous and
-#: removing it would empty three templates and the fallback. See the note above
-#: FALLBACK_TEMPLATE. Adding entries is out of scope, so it cannot be replaced.
+#: `workload` SURVIVES ON ITS MERITS (ruled 2026-09-09). A director whose phone
+#: rings checks today's work against a name they were just given — checked
+#: against something in hand, at an unpredictable moment, which is the tightened
+#: test met exactly. Morning orientation is a thing it is ALSO used for, and a
+#: line can serve both.
+#:
+#: ⚠️ IT IS NOT KEPT BECAUSE REMOVING IT WOULD EMPTY FOUR TEMPLATES. That is a
+#: consequence, not a reason. Had it genuinely failed the test, four empty
+#: standing sets would have been the CORRECT outcome and the note below about
+#: the fallback would be the thing needing revision — not the ruling. Keeping an
+#: entry because its removal leaves a gap is how a capped set fills with things
+#: nobody references.
 ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
     ("manufacturing", "admin"): (
         _e("schedule", "Schedule", "vault_schedule"),
@@ -132,19 +141,10 @@ ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
     ),
 }
 
-#: ⚠️ STOP, 2026-09-09 — `workload` MAY FAIL THE TIGHTENED TEST AND IS HELD.
-#:
-#: "Workload / today" is read for morning orientation: what do I have today.
-#: That is a RHYTHM, which the tightened test makes a report. Against that: a
-#: director whose phone rings does check today's work against a name they were
-#: just given, which is exactly the admitted shape.
-#:
-#: It is held rather than decided because the consequence is large and one-way.
-#: `workload` is the ONLY remaining entry in funeral_home/director,
-#: cemetery/admin, crematory/admin and this fallback. Removing it empties all
-#: four, and adding entries is out of scope for this session -- so a wrong call
-#: leaves four roles with no standing register at all, contradicting the note
-#: immediately below about why the fallback is minimal rather than empty.
+#: ⚠️ `workload` WAS HELD AS A STOP AND IS NOW RULED IN (2026-09-09), on the
+#: tightened test rather than on the size of the gap its removal would leave.
+#: See the ROLE_TEMPLATES note above for the reasoning, including why the
+#: emptiness was incidental and never the argument.
 #:
 #: Every role without a template. Deliberately minimal rather than empty: a user
 #: with no standing set has no positional memory to build, and the register's

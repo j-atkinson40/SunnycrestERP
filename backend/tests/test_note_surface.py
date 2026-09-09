@@ -454,28 +454,25 @@ def test_the_template_scanner_sees_the_templates_control():
     assert any(e.count_source for v in ROLE_TEMPLATES.values() for e in v) or True
 
 
-def test_workload_is_still_present_and_that_is_a_HELD_QUESTION():
-    """⚠️ NOT AN ENDORSEMENT — a marker on an open decision.
+def test_workload_holds_its_standing_position():
+    """RULED IN 2026-09-09, on the tightened test.
 
-    `workload` reads as morning orientation, which the tightened test makes a
-    report. Against that, a director whose phone rings does check today's work
-    against a name they were just given.
+    A director whose phone rings checks today's work against a name they were
+    just given: checked against something in hand, at an unpredictable moment.
+    Morning orientation is a thing it is ALSO used for, and a line can serve
+    both.
 
-    It is held because removing it empties funeral_home/director, cemetery/admin,
-    crematory/admin AND the fallback — it is their only remaining entry — and
-    adding entries is out of scope. A wrong call leaves four roles with no
-    standing register at all.
-
-    If the ruling comes and `workload` goes, this test is deleted with it. It
-    exists so the question cannot be closed by forgetting."""
+    ⚠️ THE REASON MATTERS MORE THAN THE OUTCOME HERE. It is NOT kept because
+    removing it would empty four templates — that is a consequence, not a
+    reason, and had it failed the test then four empty standing sets would have
+    been the correct result with the fallback's own note needing revision
+    instead. Keeping an entry because its removal leaves a gap is how a capped
+    set fills with things nobody references.
+    """
     from app.services.note import FALLBACK_TEMPLATE, ROLE_TEMPLATES
 
     holders = [
         key for key, entries in list(ROLE_TEMPLATES.items()) + [(("fallback", ""), FALLBACK_TEMPLATE)]
         if any(e.entry_id == "workload" for e in entries)
     ]
-    assert holders, "workload disappeared without the held question being ruled"
-    for key in holders:
-        entries = dict(list(ROLE_TEMPLATES.items()) + [(("fallback", ""), FALLBACK_TEMPLATE)])[key]
-        if len(entries) == 1:
-            assert entries[0].entry_id == "workload", key
+    assert len(holders) >= 4, f"workload lost positions without a ruling: {holders}"
