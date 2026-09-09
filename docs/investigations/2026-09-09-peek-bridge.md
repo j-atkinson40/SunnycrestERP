@@ -124,21 +124,40 @@ So the view-keyed concept is not something this arc would invent. It ships. The
 build is not "design view-keyed peeks" — it is "decide where the two dispatches
 meet."
 
-### The standing targets are not one keyspace
+### The standing targets — one keyspace, one gap
 
 The five standing targets span **two** registries, not one:
 
-| Target | Keyspace | Resolves? |
-|---|---|---|
-| `today` | widget id — `widgets/foundation/register.ts:102` | yes |
-| `vault_schedule` | widget id — `widgets/manufacturing/register.ts:63` | yes |
-| `line_status` | widget id — `widgets/manufacturing/register.ts:74` | yes |
-| `scheduling.ancillary-pool` | widget id — `dispatch/scheduling-focus/register.ts:84` | yes |
-| `ar_summary` | **intelligence-registry key** — `constants/intelligence-registries.ts:45` | **no renderer** |
+**REVISED 2026-09-09 (rev 2) — the first version of this section was wrong.**
 
-`ar_summary` is a role-scoped digest key under `full_admin`
-(`{key, label, description}`), in a different registry with no widget and no
-renderer. Any option below serves at most 4 of 5 targets without additional work.
+All five standing targets come from one place: `backend/app/services/note/
+registry.py`, where `_e()` hard-codes `target_surface="peek"` for every entry.
+All five are widget ids in the backend catalog
+(`services/widgets/widget_registry.py`, 42 entries). There is one keyspace, not
+two.
+
+| Target | In backend catalog | Frontend renderer | `supported_surfaces` |
+|---|---|---|---|
+| `today` | yes | `widgets/foundation/register.ts:102` | pulse_grid, spaces_pin, dashboard_grid, focus_canvas |
+| `vault_schedule` | yes | `widgets/manufacturing/register.ts:63` | pulse_grid, spaces_pin, dashboard_grid, focus_canvas |
+| `line_status` | yes | `widgets/manufacturing/register.ts:74` | pulse_grid, dashboard_grid, focus_canvas |
+| `scheduling.ancillary-pool` | yes | `dispatch/scheduling-focus/register.ts:84` | focus_canvas, focus_stack, pulse_grid, spaces_pin, dashboard_grid |
+| `ar_summary` | **yes** — `widget_registry.py:211` | **none registered** | **`dashboard_grid` only** |
+
+`ar_summary` is a real declared widget titled "Accounts Receivable", category
+`financial`, permission `ar.view`, and `operational_layer_service.py:96`
+dispatches it as a Pulse piece at variant `brief`. What it lacks is a **frontend
+renderer** — so it resolves through `getWidgetRenderer`'s unregistered path to
+`MissingWidgetEmptyState`, the honest "Widget unavailable" state that shows the
+offending widget_id.
+
+It is also the **only** entry in the `("manufacturing", "accountant")` standing
+set (`registry.py:129`). Removing it does not shrink that role's standing set —
+it empties it.
+
+The `ar_summary` string in `constants/intelligence-registries.ts:45` is a
+**name collision in dead config** — that file has zero importers anywhere in
+`frontend/src`.
 
 ---
 
@@ -164,6 +183,64 @@ The parity gate already exists: `__tests__/widget-renderer-parity.test.ts`,
 added after a real production bug where the backend's canonical
 `scheduling.ancillary-pool` paired with a legacy frontend
 `funeral-scheduling.ancillary-pool` registration.
+
+### The chrome table (rev 2)
+
+**What the host supplies today** (`PeekHost.tsx:195–240`): a fixed-position
+container with `rounded-lg border bg-card shadow-lg` + ring, a bordered header
+(`border-b px-3 py-2`) rendering `display_label` and the entity type as an
+eyebrow, an optional close button in click mode, and a `px-3 py-2.5` body.
+
+Note the header reads `data.display_label` and `current.entityType` — both come
+from the `/peek` response. A widget path that makes no `/peek` call has neither,
+so the host needs a label source regardless of the chrome ruling. The standing
+entry already carries one: `_e(entry_id, label, target_key)` — e.g. "Receivables".
+
+**What each widget supplies itself**, at the variant a 360px panel would request:
+
+| Target | Variant selected | Own surface/shadow | Own title | Surface-discriminated? |
+|---|---|---|---|---|
+| `today` | Glance | **yes** — frosted glass, `shadow-[var(--shadow-widget-tablet)]`, fixed `h-15` | eyebrow only | **yes** — separate `pulse_grid` branch renders `h-full w-full`, no surface |
+| `scheduling.ancillary-pool` | Glance | **yes** — same frosted tablet + shadow | eyebrow | **partly** — glance block hard-codes `data-surface="spaces_pin"` |
+| `vault_schedule` | Glance | no | `<h3>` | no — glance is surface-agnostic |
+| `line_status` | **Brief** (no Glance) | no | `<h3>` | yes — Brief has a `pulse_grid` branch |
+
+**The discriminators**, which decide what a peek host actually receives:
+
+```
+AncillaryPoolPin:888   surface === "spaces_pin" || variant_id === "glance"  → Glance
+TodayWidget:566        surface === "spaces_pin" || variant_id === "glance"  → Glance
+TodayWidget:603        if (surface === "pulse_grid")                        → different Glance chrome
+VaultScheduleWidget:984  variant === "glance"                               → Glance
+LineStatusWidget:659   props.variant_id ?? "brief"; no Glance branch        → Brief
+```
+
+So passing `variant_id="glance"` with an unrecognised surface today yields:
+`today` and `scheduling.ancillary-pool` take the **spaces_pin tablet path** —
+frosted surface, widget shadow, and a fixed `h-15` — nested inside the host's
+own `border bg-card shadow-lg`. Double surface, double shadow, and a fixed
+height fighting a 360px panel. `vault_schedule` renders clean. `line_status`
+renders Brief.
+
+**This is the wrapper-versus-per-widget answer.** A wrapper alone does not work
+for two of four, because those two bring their own surface in the Glance path
+and will keep doing so no matter what the host wraps them in. The host cannot
+own chrome it does not control.
+
+**And `surface` is not a styling token that "lives in one place."** It is a
+DB-backed capability declaration: `widget_definitions.supported_surfaces` is a
+JSONB column (`models/widget_definition.py:113`), validated by
+`variant_target_compatible_with_supported_surfaces`
+(`services/widget_definitions/validators.py:38`), filtered on by
+`GET /widgets` (`routes/widgets.py:84` — *"Returns widgets that declare
+`surface` in their supported_surfaces"*), and mirrored by a frontend invariant
+test (`default_surfaces ⊆ supported_surfaces`). All 42 catalog entries declare
+it; 29 are `["dashboard_grid"]` and 7 are `["spaces_pin", "pulse_grid"]`.
+
+Adding a surface value therefore touches the catalog rows, the validator, the
+filter endpoint, and ~14 local frontend unions — but it also *buys* the thing
+those layers provide: a widget can declare whether it is willing to render in a
+peek panel, and `ar_summary` (`["dashboard_grid"]` only) would correctly decline.
 
 **But the surface union is not centrally owned, and has already drifted.**
 Measured under `components/widgets/` + `components/dispatch/`: **14 files**
@@ -252,20 +329,39 @@ is exported only because it crosses a module boundary, and this value does not.
 
 Per standing discipline, stated rather than quietly fixed:
 
-1. **"All five standing targets are widget ids among 42."** False for
-   `ar_summary`, which is an intelligence-registry key with no widget and no
-   renderer. Four of five are widget ids. The original claim came from a
-   membership test against a registry that did not contain it.
+1. **"All five standing targets are widget ids among 42."** This was
+   reported false in rev 1. **Rev 1 was itself wrong, and rev 2 restores the
+   original claim.** All five ARE widget ids in the backend catalog, including
+   `ar_summary` (`widget_registry.py:211`). Rev 1 matched the string in
+   `constants/intelligence-registries.ts` — a name collision in a file with zero
+   importers — and concluded a second keyspace that does not exist. The real
+   defect is narrower and different: `ar_summary` has **no frontend renderer**,
+   and its catalog entry declares `supported_surfaces: ["dashboard_grid"]` only.
+   A wrong cause was reported for a real symptom.
 2. **Mid-investigation, I reported "two of the five don't resolve."** Wrong for
    `scheduling.ancillary-pool`, which does resolve — my grep anchored
    `registerWidgetRenderer("key"` to a single line, and that call is written
    across three lines (`register.ts:84–87`). Corrected before any conclusion
    rested on it. One of five does not resolve, not two.
-3. **The "42 widget ids" figure is not re-verified here** and should not be
-   inherited. Registration happens via side-effect imports at runtime, so a
-   static count is a lower bound, not a census. 22 `registerWidgetRenderer`
-   call sites were counted — that is **lines matched, one call per line**, from
-   a single registry, excluding tests.
+3. **The "42" figure — two different numbers were being conflated.**
+   - **42 is exact**, and enumerable: `"widget_id":` keys in
+     `services/widgets/widget_registry.py`, a static list in one file. Parsed by
+     line-range, 42 records, all 42 carrying `supported_surfaces`.
+   - **22 is a lower bound**: `registerWidgetRenderer` call sites (lines
+     matched, one call per line, excluding tests). Registration is by
+     side-effect import, so no static count of the *frontend* registry is
+     complete.
+
+   The enumeration problem applies only to the frontend registry. The backend
+   catalog is the SOT and is countable. **The gap between them is the defect
+   surface** — up to 20 declared widgets with no renderer, of which `ar_summary`
+   is one.
+
+4. **A constructed-scope miss, caught in flight.** A regex parse of the catalog
+   used `\{[^{}]*"widget_id"[^{}]*\}`, which cannot match blocks containing
+   nested dicts. It returned 29 of 42 and reported four standing targets as
+   "NOT IN CATALOG". That is a miss on a constructed scope, not an absence.
+   Re-parsed by line ranges before anything rested on it.
 
 ---
 
@@ -284,9 +380,12 @@ and a `WidgetPeekRenderer` to the switch.
   widget, not a renderer.
 - **Also:** `entity_id` stops meaning a row; the 404/400 taxonomy misaligns;
   `navigate_url` needs a destination per widget.
-- **Serves:** 4 of 5 targets. `ar_summary` needs its own path regardless.
+- **Serves:** 4 of 5 targets. `ar_summary` needs a renderer regardless.
 - **Size:** largest. Grows per widget added.
-- **Note:** this is the option `_peek_saved_view` already declined on the record.
+- **RULED OUT 2026-09-09.** James: overturning the `_peek_saved_view` budget
+  precedent to make a widget peek work would be reversing a correct earlier
+  ruling because it has become inconvenient. **No widget content goes through
+  `/peek`.**
 
 ### Option B — Host-level bridge (widget rendered client-side in the panel)
 
@@ -299,10 +398,15 @@ every other surface.
   panel needs the height cap and overflow rule Q3 identifies as missing.
 - **Avoids:** the latency gate entirely (no new server work on the hot path),
   the row assumption, and the error-taxonomy mismatch.
-- **Serves:** 4 of 5. Degrades honestly via `MissingWidgetEmptyState`.
+- **Serves:** 4 of 5. `ar_summary` degrades honestly via
+  `MissingWidgetEmptyState` — which is what it already does in Pulse today.
 - **Size:** smallest. Makes the "second concept sharing a host" explicit rather
   than disguising it as a seventh entity type.
 - **Cost of honesty:** `PeekHost` visibly becomes two things.
+- **SELECTED 2026-09-09** as the direction. The budget is honoured because there
+  is no request to be slow. Two dispatches meeting at a host, not one absorbing
+  the other. Chrome sub-ruling (wrapper vs per-widget) still open — see the
+  chrome table under Q2.
 
 ### Option C — Two hosts, one trigger
 
@@ -314,11 +418,17 @@ entity abstraction stays untouched and uniform.
 - **Size:** medium, and mostly extraction. Cleanest separation; most new surface
   area; two places for hover behaviour to drift.
 
-### Option D — Serve the four, defer `ar_summary`
+### Option D — Serve the four, resolve `ar_summary` separately
 
-Not an architecture — a scope cut applicable to A, B, or C. Worth naming because
-`ar_summary` is the only target requiring a new renderer *and* a new keyspace
-bridge, and it is one of five.
+Not an architecture — a scope cut applicable to A, B, or C. Revised in rev 2:
+`ar_summary` needs **a frontend renderer**, not a keyspace bridge. Three sub-options:
+
+- **D1 — build the renderer.** It is a declared widget with a catalog entry,
+  a title, and a permission. Its `supported_surfaces` would need widening.
+- **D2 — remove it from the standing set.** This **empties** the
+  `("manufacturing", "accountant")` standing set; it is that role's only entry.
+- **D3 — repoint the entry** at a target that has a renderer. Changes what the
+  accountant's standing line means, which is a content decision, not a build one.
 
 ---
 
