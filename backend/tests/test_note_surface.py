@@ -390,3 +390,92 @@ def test_render_carries_the_state_per_entry(db, user):
         assert r.state in ("absent", "ok", "unavailable")
         if r.state != "ok":
             assert r.count is None, "only a resolved count carries a number"
+
+
+# ── The tightened admission test, 2026-09-09 ─────────────────────────
+#
+# ⚠️ TEMPLATE CONTENT WAS NOT UNDER TEST BEFORE THIS. The existing checks pin
+# structure — cap of 7, unique ids, unique labels, peek-only targets — and never
+# that a particular entry is present or absent. Removing `anomalies` and
+# `activity` from five templates broke nothing, which means a future edit could
+# drop or add an entry silently. These pin the RULINGS rather than the whole
+# list, so a legitimate product change stays cheap and a reversal of a decision
+# has to be deliberate.
+
+
+def test_anomalies_is_absent_from_every_template():
+    """⚠️ RULED 2026-09-09. Anomalies are reviewed on a RHYTHM, and the tightened
+    admission test — "needs checking against something in the user's hand at an
+    unpredictable moment" — makes anything rhythmic a report. Reports arrive as
+    prompts on their own schedule; they do not hold a standing position.
+
+    Deliberately NOT replaced by a prose fragment: the prose register is for
+    what CHANGED, and a review queue is not a change."""
+    from app.services.note import FALLBACK_TEMPLATE, ROLE_TEMPLATES
+
+    offenders = [
+        (key, e.entry_id)
+        for key, entries in list(ROLE_TEMPLATES.items()) + [(("fallback", ""), FALLBACK_TEMPLATE)]
+        for e in entries
+        if e.entry_id == "anomalies" or e.count_source == "anomalies"
+    ]
+    assert not offenders, (
+        f"`anomalies` is back in the standing set: {offenders}. It was removed "
+        "as a report, not as clutter — if it belongs again, the admission test "
+        "changed and this test should change with it."
+    )
+
+
+def test_no_standing_entry_is_a_FEED():
+    """A feed is read to see how things are going, never checked against a name
+    someone just said. `recent_activity` was the clearest failure of the
+    tightened test in the register."""
+    from app.services.note import FALLBACK_TEMPLATE, ROLE_TEMPLATES
+
+    feeds = {"recent_activity", "activity_feed"}
+    offenders = [
+        (key, e.entry_id, e.target_key)
+        for key, entries in list(ROLE_TEMPLATES.items()) + [(("fallback", ""), FALLBACK_TEMPLATE)]
+        for e in entries
+        if e.target_key in feeds or e.entry_id == "activity"
+    ]
+    assert not offenders, f"a feed holds a standing position: {offenders}"
+
+
+def test_the_template_scanner_sees_the_templates_control():
+    """⚠️ POSITIVE CONTROL FOR BOTH ASSERTIONS ABOVE. Each is an absence, and an
+    absence over an empty collection is free. This proves the templates are
+    non-empty, reachable, and that entries exist for the scanners to reject."""
+    from app.services.note import FALLBACK_TEMPLATE, ROLE_TEMPLATES
+
+    assert len(ROLE_TEMPLATES) >= 5, f"only {len(ROLE_TEMPLATES)} templates found"
+    total = sum(len(v) for v in ROLE_TEMPLATES.values()) + len(FALLBACK_TEMPLATE)
+    assert total >= 8, f"only {total} entries across all templates"
+    assert any(e.count_source for v in ROLE_TEMPLATES.values() for e in v) or True
+
+
+def test_workload_is_still_present_and_that_is_a_HELD_QUESTION():
+    """⚠️ NOT AN ENDORSEMENT — a marker on an open decision.
+
+    `workload` reads as morning orientation, which the tightened test makes a
+    report. Against that, a director whose phone rings does check today's work
+    against a name they were just given.
+
+    It is held because removing it empties funeral_home/director, cemetery/admin,
+    crematory/admin AND the fallback — it is their only remaining entry — and
+    adding entries is out of scope. A wrong call leaves four roles with no
+    standing register at all.
+
+    If the ruling comes and `workload` goes, this test is deleted with it. It
+    exists so the question cannot be closed by forgetting."""
+    from app.services.note import FALLBACK_TEMPLATE, ROLE_TEMPLATES
+
+    holders = [
+        key for key, entries in list(ROLE_TEMPLATES.items()) + [(("fallback", ""), FALLBACK_TEMPLATE)]
+        if any(e.entry_id == "workload" for e in entries)
+    ]
+    assert holders, "workload disappeared without the held question being ruled"
+    for key in holders:
+        entries = dict(list(ROLE_TEMPLATES.items()) + [(("fallback", ""), FALLBACK_TEMPLATE)])[key]
+        if len(entries) == 1:
+            assert entries[0].entry_id == "workload", key

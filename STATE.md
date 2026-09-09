@@ -2,6 +2,24 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ EIGHT ANOMALY ROWS ARE UNREACHABLE BY ANY AGENT, PERMANENTLY (2026-09-09)
+
+- **A subjected write can never supersede its own unsubjected predecessor** (2026-09-09). The 5b listener and r177's index both match with `IS NOT DISTINCT FROM`, which treats NULL as equal to NULL — the property that makes the two AGREE. It also makes a NULL-subject row and a subjected row permanently DISTINCT, so nothing an agent writes will ever match these. **Nothing about them looks wrong; they answer no query and age silently.**
+- **Eight rows, measured** (`resolved=false AND superseded_at IS NULL AND entity_type IS NULL`, no LIMIT): **five are the seeded demo rows** and stay held with the rest of that question; **three are real.**
+- **The three-row fix, stated rather than reconstructed** (2026-09-09). Subject values are what the CURRENT write sites would produce, derived from each row's own job period — not guessed:
+
+```sql
+UPDATE agent_anomalies SET entity_type='expense_category', entity_id='vehicle_expense'
+ WHERE id='31323a8b-ac5d-44bf-a9ea-7f16f22bc945';   -- expense_no_gl_mapping, 08-31
+UPDATE agent_anomalies SET entity_type='accounting_period', entity_id='2026-07-01:2026-07-16'
+ WHERE id='ceee900a-cac6-4b08-bb8a-5bb3e7e97a41';   -- high_unmatched_ratio, 07-16
+UPDATE agent_anomalies SET entity_type='accounting_period', entity_id='2026-08-01:2026-08-03'
+ WHERE id='5caa65a4-908b-4ba8-9fa3-50c8789280eb';   -- high_unmatched_ratio, 08-03
+```
+
+- **Safe under r177's unique index** (2026-09-09). The two `high_unmatched_ratio` rows take DIFFERENT subjects because their jobs cover different periods, and no other open row of either type holds those subjects — so no `(tenant, type, entity_type, entity_id)` collision. An UPDATE that collided would be refused by the index, which is the check working rather than a risk.
+- **James's to run.** All three rather than one: a consistent table is worth more than a minimal diff, and the two `high_unmatched_ratio` rows have the same defect for the same reason.
+
 ## ✅ ANOMALY-SUBJECT ARC — COMPLETE AND LIVE IN PRODUCTION (2026-09-08)
 
 - **✅ CONFIRMED ON THE FIRST AGENT WRITE UNDER THE LIVE INDEX** (2026-09-09). `ar_collections` ran 2026-09-08 23:02 UTC — both jobs reached `awaiting_approval`, their normal terminal state, **with no error and no `UniqueViolation`**. It wrote 3 rows and superseded exactly 3 (`collections_follow_up` 29→31, `collections_critical` 27→28), and **every collections subject holds exactly one open row.** The 5b listener and r177's unique index agree about what a duplicate is, which was the failure mode the design was built to rule out. **The arc is closed in practice as well as in schema.**

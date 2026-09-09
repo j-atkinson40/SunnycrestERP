@@ -74,12 +74,34 @@ def _e(entry_id: str, label: str, target_key: str, count_source: str | None = No
 # `today` widget is a work summary — "Today's work summary ... vault deliveries,
 # ancillary pool items waiting, and unscheduled deliveries" — so it is named for
 # what it contains, per vertical.
+#: ⚠️ THE ADMISSION TEST TIGHTENED, 2026-09-09. It was "referenced most days".
+#: It is now:
+#:
+#:     NEEDS CHECKING AGAINST SOMETHING IN THE USER'S HAND
+#:     AT AN UNPREDICTABLE MOMENT.
+#:
+#: The difference is not strictness, it is KIND. Anything looked at on a rhythm
+#: -- each morning, end of week -- is a REPORT, and reports arrive as prompts on
+#: their own schedule. A standing line earns its position by being the thing you
+#: reach for when someone is on the phone and you do not know in advance what
+#: they will ask.
+#:
+#: REMOVED under the tightened test:
+#:   `anomalies` -- ruled out directly. Anomalies are reviewed on a rhythm, so
+#:      they are a report. NOT replaced by a prose fragment: the note's prose
+#:      register is for what changed, and a review queue is not a change.
+#:   `activity` ("Recent activity") -- a feed. Read to see how things are going,
+#:      never checked against a name someone just said. The clearest failure of
+#:      the tightened test in the register.
+#:
+#: ⚠️ `workload` IS HELD, NOT KEPT — its disposition is genuinely ambiguous and
+#: removing it would empty three templates and the fallback. See the note above
+#: FALLBACK_TEMPLATE. Adding entries is out of scope, so it cannot be replaced.
 ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
     ("manufacturing", "admin"): (
         _e("schedule", "Schedule", "vault_schedule"),
         _e("production", "Production", "line_status"),
         _e("deliveries", "Deliveries", "today"),
-        _e("anomalies", "Anomalies", "anomalies", count_source="anomalies"),
     ),
     ("manufacturing", "production"): (
         _e("schedule", "Schedule", "vault_schedule"),
@@ -95,25 +117,35 @@ ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
     # line is dropped here rather than carried for symmetry. Two entries is a
     # correct standing set; the admission test is "referenced most days".
     ("manufacturing", "accountant"): (
-        _e("anomalies", "Anomalies", "anomalies", count_source="anomalies"),
         _e("ar", "Receivables", "ar_summary"),
     ),
     # The three non-manufacturing verticals share the sparse default the
     # operational layer already falls back to. Two entries, not five.
     ("funeral_home", "director"): (
         _e("workload", "Workload", "today"),
-        _e("activity", "Recent activity", "recent_activity"),
     ),
     ("cemetery", "admin"): (
         _e("workload", "Workload", "today"),
-        _e("activity", "Recent activity", "recent_activity"),
     ),
     ("crematory", "admin"): (
         _e("workload", "Workload", "today"),
-        _e("activity", "Recent activity", "recent_activity"),
     ),
 }
 
+#: ⚠️ STOP, 2026-09-09 — `workload` MAY FAIL THE TIGHTENED TEST AND IS HELD.
+#:
+#: "Workload / today" is read for morning orientation: what do I have today.
+#: That is a RHYTHM, which the tightened test makes a report. Against that: a
+#: director whose phone rings does check today's work against a name they were
+#: just given, which is exactly the admitted shape.
+#:
+#: It is held rather than decided because the consequence is large and one-way.
+#: `workload` is the ONLY remaining entry in funeral_home/director,
+#: cemetery/admin, crematory/admin and this fallback. Removing it empties all
+#: four, and adding entries is out of scope for this session -- so a wrong call
+#: leaves four roles with no standing register at all, contradicting the note
+#: immediately below about why the fallback is minimal rather than empty.
+#:
 #: Every role without a template. Deliberately minimal rather than empty: a user
 #: with no standing set has no positional memory to build, and the register's
 #: whole value is that position means something.

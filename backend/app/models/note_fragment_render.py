@@ -6,6 +6,27 @@ IDENTITY. "The same true thing, unchanged" is only expressible if something
 remembers what was said and what it was said about, and `daily_notes` records
 that a day existed, not what it contained.
 
+⚠️ TWO INVARIANTS THIS TABLE'S CORRECTNESS DEPENDS ON. Both live here rather
+than only in the gate, because both are the kind of thing simplified later by
+someone who cannot see why from the query alone.
+
+  (i) ONLY ROWS THAT RENDERED ARE WRITTEN. A withheld fragment must NOT refresh
+      the stored digest. If it did, a value drifting a little each day would
+      never accumulate into a change, and the gate would go permanently quiet on
+      exactly the slow movement it exists to notice. The natural "upsert on every
+      evaluation" is the wrong shape here.
+
+  (ii) THE GATE READS STRICTLY BEFORE TODAY. The note re-composes on every view.
+      If today's own row counted as "the previous note", the first view would
+      write it and the second would find it unchanged and withhold -- a fragment
+      that appears once and vanishes on reload, which reads as a bug and is worse
+      than never rendering. `note_date <` , never `<=`.
+
+⚠️ AND `change_digest` IS COMPUTED FROM `condition_inputs`, NEVER FROM THE PROSE.
+Wording must be stable across refreshes, so digesting the prose couples the gate
+to the synthesiser: fixing a comma in a template would make every fragment on the
+surface read as changed, and the note would announce that the whole world moved.
+
 ⚠️ AND IT IS ONLY IMPLEMENTABLE BECAUSE IDENTITY EXISTS. The key stored here is
 `EmittedFragment.instance_key`, derived from the declared subject and never from
 the evaluation. A run-scoped key would make every day's evaluation a new
