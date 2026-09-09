@@ -439,3 +439,95 @@ Not an architecture — a scope cut applicable to A, B, or C. Revised in rev 2:
 - Whether any peek trigger surface today passes a non-entity key.
 - How TypeScript assignability tolerates the existing `surface` union drift at
   `REGISTRY.set(widgetType, component)`.
+
+---
+
+# Rev 3 — STOP: the surface consolidation is not mechanical
+
+**2026-09-09.** James ruled: add the surface value, but consolidate the drifted
+unions first as its own commit, and *"if consolidation turns out to be more than
+mechanical, STOP rather than absorbing it."*
+
+**It is more than mechanical. Nothing was consolidated. No code changed.**
+
+## The value already exists, and it is named `peek_inline`
+
+`components/widgets/types.ts:39` declares the canonical surface enum, and it
+already contains:
+
+```ts
+| "peek_inline"       // Peek panel content composition (no chrome)
+```
+
+Its documented semantics are exactly the chrome ruling: the widget composes
+*content*, the host owns *chrome*. So "add the surface value" is largely "adopt
+the value that was declared for this and never wired." Session 3's original STOP
+— `peek_inline` declared but unimplemented — was pointing at this.
+
+`recent_activity` is the **only** widget declaring it: backend
+`supported_surfaces` includes `peek_inline`, and `RecentActivityWidget.tsx:11`
+cites *"§12.5 composition rules (peek_inline surface)"*. None of the four
+standing targets declare it.
+
+## Why consolidation is not mechanical: four vocabularies that disagree
+
+| Declaration | Members |
+|---|---|
+| **Canonical** `WidgetSurface` — `components/widgets/types.ts:39` | pulse_grid, focus_canvas, focus_stack, spaces_pin, floating_tablet, dashboard_grid, **peek_inline** |
+| **Duplicate** `WidgetSurface` — `lib/widget-builder/types/surface-mapping.ts:21` | identical 7, separately declared |
+| **Runtime** `WidgetRendererProps.surface` — `widget-renderers.ts` | focus_canvas, focus_stack, spaces_pin, pulse_grid, **command_bar**, **park** |
+| **Backend** `supported_surfaces` — 42 catalog entries | dashboard_grid, focus_canvas, focus_stack, peek_inline, pulse_grid, spaces_pin |
+
+Set differences:
+
+- in canonical, **not** in runtime: `dashboard_grid`, `floating_tablet`, `peek_inline`
+- in runtime, **not** in canonical: `command_bar`, `park`
+- in backend, **not** in runtime: `dashboard_grid`, `peek_inline`
+- in backend, not in canonical: none
+
+The runtime prop union — the one every dispatch site actually passes — is the
+outlier in **both** directions. `command_bar` (S-1 entity-portal arc) and `park`
+(S-5 park arc) are real hosts that were added to the prop union without being
+added to the canonical enum.
+
+## And the widget files are in three states, not one
+
+- **~7 files** declare inline literal unions, several including `dashboard_grid`
+  (which the runtime union lacks).
+- **4 files** declare `surface?: string` — unconstrained, no union at all:
+  `CalendarGlanceWidget`, `CalendarSummaryWidget`, `EmailGlanceWidget`,
+  `CalendarConsentPendingWidget`.
+- **1 file** imports the shared props type.
+
+## The decisions consolidation would force
+
+None of these are mechanical, and each changes meaning:
+
+1. Are `command_bar` and `park` canonical surfaces? If yes, the canonical enum
+   is wrong and grows to 9. If no, the runtime union is wrong and two shipped
+   arcs are passing values outside the taxonomy.
+2. Does `dashboard_grid` belong in the runtime union? The backend declares it on
+   29 of 42 widgets and 7+ frontend files list it, but no dispatch site can
+   currently pass it type-safely.
+3. Do the 4 `surface?: string` files get the union, and does that break them?
+   Widening `string` → union is a narrowing, and narrowing can fail to compile.
+4. Is the peek value `peek_inline` (declared, with "no chrome" semantics) or a
+   new `peek_panel`? Rev 2 assumed a new value; the codebase already has one.
+
+## Also found: a name collision on `TargetSurface`
+
+Two unrelated concepts share the name:
+
+- `types/fragments.ts:28` — `"peek" | "focus" | "window"` (the note arc's target
+  surface; `note/registry.py`'s `_e()` writes `target_surface="peek"`)
+- `lib/widget-builder/types/composition-blob.ts:49` —
+  `focus_canvas | page_canvas | palette_preview` (variant authoring)
+
+Not blocking, but it means "target surface" is ambiguous in conversation about
+exactly this build.
+
+## Recommendation (not taken — this is a STOP)
+
+The reconciliation is its own scoped piece of work with four rulings in it, and
+it sits underneath the bridge rather than inside it. It should not be absorbed
+into session 3.
