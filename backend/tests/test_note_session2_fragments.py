@@ -306,3 +306,62 @@ def test_every_terminal_state_is_excluded(db_session, user):
     for state in _TERMINAL_TASK_STATES:
         _task_due_today(db_session, user, state)
     assert _tasks_due_today_condition(db_session, user=user) == []
+
+
+# ── The endpoint — the seam that was missing ─────────────────────────
+#
+# ⚠️ THE SUBSTRATE WAS BUILT AND NEVER WIRED. The gate, synthesis and both
+# fragments were complete and `GET /note/today` still returned `"prose": []` by
+# construction, because it never called `emit_for_user`. Every test above passed
+# and the surface showed nothing — a whole session's work invisible, with
+# nothing failing. These tests exist so that cannot recur silently.
+
+
+def test_the_endpoint_SERVES_prose_when_a_fragment_emits(db_session, user):
+    """⚠️ THE MISSING SEAM. Everything else can be green while this returns []."""
+    from app.api.routes.note import get_today_note
+
+    cust = _customer(db_session, user)
+    _collections_finding(db_session, user, cust.id, "collections_critical", "3750.00")
+
+    payload = get_today_note(current_user=user, db=db_session)
+    assert "prose" in payload
+    mine = [p for p in payload["prose"] if p["instance_key"].endswith(cust.id)]
+    assert mine, (
+        f"the endpoint served {len(payload['prose'])} prose items and none was "
+        "the collections fragment — the substrate is not wired to the surface"
+    )
+    frag = mine[0]
+    assert frag["kind"] == "prompt"
+    assert frag["text"], "prose item carries no text"
+    assert any(sp["state"] == "measured" and sp["href"] for sp in frag["spans"]), (
+        "no measured span carries a link — the link IS the provenance mark"
+    )
+
+
+def test_the_endpoint_serves_an_EMPTY_prose_list_on_a_quiet_day_control(db_session, user):
+    """POSITIVE CONTROL, and the pair that makes the test above mean something.
+
+    A quiet day producing an empty region is correct permanent behaviour, so
+    `prose: []` is a real state — not the "not wired yet" state it was before.
+    The two are indistinguishable from outside, which is exactly how a whole
+    session's work stayed invisible."""
+    from app.api.routes.note import get_today_note
+
+    payload = get_today_note(current_user=user, db=db_session)
+    assert isinstance(payload["prose"], list)
+    assert "withheld" in payload, (
+        "the surface must be able to answer 'should there be more here?' — on a "
+        "quiet day that is the question an operator actually has"
+    )
+
+
+def test_the_endpoint_reports_WHY_each_fragment_rendered(db_session, user):
+    """Carried so an operator review asks the surface, not the logs."""
+    from app.api.routes.note import get_today_note
+
+    cust = _customer(db_session, user)
+    _collections_finding(db_session, user, cust.id, "collections_critical", "10.00")
+    payload = get_today_note(current_user=user, db=db_session)
+    for item in payload["prose"]:
+        assert item["gate"].startswith("render:"), item

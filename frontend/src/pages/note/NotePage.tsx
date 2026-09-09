@@ -45,7 +45,35 @@ interface TodayNote {
   subject_id: string;
   settled_at: string | null;
   standing_set: StandingEntry[];
-  prose: unknown[];
+  prose: ProseFragment[];
+  withheld?: { fragment_id: string; instance_key: string; gate: string }[];
+}
+
+/**
+ * One run of prose in exactly one of the three text states.
+ *
+ * ⚠️ THE SERVER SENDS SPANS, NOT A STRING PLUS SUBSTRINGS TO MARK. Marking by
+ * substring puts the mark in the wrong place whenever a label occurs twice, and
+ * the output looks correct. Nothing here searches for anything.
+ */
+interface ProseSpan {
+  text: string;
+  state: "measured" | "inferred" | "plain";
+  href: string | null;
+  entity_id: string | null;
+}
+
+interface ProseFragment {
+  fragment_id: string;
+  instance_key: string;
+  kind: "prompt" | "non_prompt";
+  title: string;
+  text: string;
+  spans: ProseSpan[];
+  target_surface: string;
+  target_key: string;
+  openable: boolean;
+  gate: string;
 }
 
 export default function NotePage() {
@@ -115,12 +143,68 @@ export default function NotePage() {
       </section>
 
       {/* Prose region — session 2. Empty is a real state, not a gap. */}
-      <section aria-label="Prose" data-testid="prose-region">
+      <section aria-label="Prose" data-testid="prose-region" className="space-y-4">
         {note.prose.length === 0 && (
           <p className="text-body text-content-muted">
             Nothing needs saying today.
           </p>
         )}
+
+        {note.prose.map((f) => (
+          <p
+            key={f.instance_key}
+            data-testid={`prose-${f.fragment_id}`}
+            data-kind={f.kind}
+            className="text-body text-content-base"
+          >
+            {f.spans.map((sp, i) => {
+              /*
+               * ⚠️ THREE STATES, DISTINGUISHED WITHOUT COLOUR. Functional colour
+               * is reserved for meaning per DESIGN_LANGUAGE, so a reader who
+               * cannot separate red from green must still tell a measurement
+               * from an inference.
+               *
+               * MEASURED — a link. THE LINK IS THE PROVENANCE MARK; there is no
+               * separate badge saying "this is real".
+               */
+              if (sp.state === "measured") {
+                return (
+                  <a
+                    key={i}
+                    href={sp.href ?? undefined}
+                    data-state="measured"
+                    className="underline underline-offset-2 decoration-border-strong hover:decoration-content-base"
+                  >
+                    {sp.text}
+                  </a>
+                );
+              }
+              /*
+               * INFERRED — unlinked, marked. Dotted underline is the DOCUMENTED
+               * PLACEHOLDER: the exact treatment belongs to the aesthetics arc
+               * and must survive the chrome/steel language. It is recorded as a
+               * placeholder so it gets revisited rather than inherited.
+               */
+              if (sp.state === "inferred") {
+                return (
+                  <span
+                    key={i}
+                    data-state="inferred"
+                    className="underline decoration-dotted underline-offset-2 decoration-content-subtle"
+                  >
+                    {sp.text}
+                  </span>
+                );
+              }
+              /* CONNECTIVE TISSUE — plain. The words making the other two a sentence. */
+              return (
+                <span key={i} data-state="plain">
+                  {sp.text}
+                </span>
+              );
+            })}
+          </p>
+        ))}
       </section>
     </div>
   );
