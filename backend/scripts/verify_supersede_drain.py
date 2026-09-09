@@ -136,33 +136,53 @@ def main() -> int:
                     "whose anomalies were never touched -- WRONG TENANT")
 
         # 5. Did the writing job survive the listeners?
-        # ⚠️ SCOPED TO FAILURES THIS OPERATION COULD HAVE CAUSED.
+        # ⚠️ SCOPED BY BASELINE, NOT BY TIMESTAMP — third refinement, and the
+        # first two were both wrong in the same direction.
         #
-        # The first version counted every failure in 26h as a PROBLEM, which
-        # reported a pre-existing daily failure as damage from the dedup --
-        # proximity asserted as necessity, in the check written to verify a
-        # write. A failure that predates the operation cannot have been caused
-        # by it, and one that has been failing identically for weeks is a
-        # standing defect rather than news.
+        # v1 counted every failure in 26h as a PROBLEM, so a pre-existing daily
+        # failure read as damage from the dedup. v2 bounded on the operation's
+        # timestamp -- better, and still wrong, because A JOB THAT FAILS EVERY
+        # NIGHT IS ALWAYS "AFTER" ANY OPERATION. ar_aging_monitor has failed 3 of
+        # 4 runs nightly since 2026-07-16 with ONE distinct error message; under
+        # v2 it was reported as attributable damage every single time.
+        #
+        # A channel that is always red needs a BASELINE to be informative at all.
+        # So a failure is news only if the error message is one never seen before
+        # the operation, or the count exceeds what that job type was already
+        # doing. Everything else is printed and labelled standing.
         last_op = c.execute(text("""
             SELECT max(created_at) FROM audit_logs
             WHERE action = 'platform_maintenance.anomalies_deduplicated'""")).scalar()
-        print(f"\n5. failed agent jobs in the last 26h (a listener raise lands here)")
-        print(f"   operation timestamp for attribution: {last_op}")
+        print("\n5. failed agent jobs in the last 26h (a listener raise lands here)")
         for r in c.execute(text("""
-            SELECT job_type, count(*), min(created_at), max(created_at),
-                   count(*) FILTER (WHERE created_at > :t) AS after_op
+            SELECT job_type, count(*), max(error_message) AS msg
             FROM agent_jobs
             WHERE created_at > now() - interval '26 hours' AND status IN ('failed','error')
-            GROUP BY 1 ORDER BY 2 DESC"""), {"t": last_op}):
-            after = r[4] if last_op else None
-            if last_op and after == 0:
-                print(f"   {r[0]}: {r[1]} failed, ALL BEFORE the operation "
-                      f"({r[2]} .. {r[3]}) — pre-existing, not attributable")
+            GROUP BY 1 ORDER BY 2 DESC""")):
+            jt, n, msg = r[0], r[1], r[2]
+            base = c.execute(text("""
+                SELECT count(DISTINCT created_at::date), count(*)
+                FROM agent_jobs WHERE job_type = :jt AND status IN ('failed','error')
+                  AND created_at < now() - interval '26 hours'"""), {"jt": jt}).fetchone()
+            days, prior = base[0] or 0, base[1] or 0
+            rate = (prior / days) if days else 0
+            seen = c.execute(text("""
+                SELECT count(*) FROM agent_jobs
+                WHERE job_type = :jt AND status IN ('failed','error')
+                  AND error_message = :m AND created_at < now() - interval '26 hours'"""),
+                {"jt": jt, "m": msg}).scalar()
+            new_msg = seen == 0
+            above = n > rate * 1.5 and rate > 0
+            if new_msg or above or rate == 0:
+                print(f"   ⚠️ {jt}: {n} failed — "
+                      f"{'NEW error message' if new_msg else 'above baseline'} "
+                      f"(prior rate {rate:.1f}/day over {days} days)")
+                problems.append(f"{n} {jt} job(s) failed — new or above baseline")
             else:
-                print(f"   ⚠️ {r[0]}: {r[1]} failed, {after} AFTER the operation")
-                problems.append(
-                    f"{after} {r[0]} job(s) failed AFTER the operation")
+                print(f"   {jt}: {n} failed, matching a standing baseline of "
+                      f"{rate:.1f}/day over {days} days, same error message "
+                      f"({seen} prior occurrences) — NOT news, but see STATE: "
+                      f"this channel is saturated and hides new failures")
         print("   (nothing above = no failures)")
 
     print("\n" + "=" * 60)
