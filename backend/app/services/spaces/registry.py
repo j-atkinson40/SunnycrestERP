@@ -716,18 +716,28 @@ class SystemSpaceTemplate:
 
 
 SYSTEM_SPACE_TEMPLATES: list[SystemSpaceTemplate] = [
-    # Phase W-4a — Home system space (always-first, contains Pulse).
-    # Per BRIDGEABLE_MASTER §3.26.1.1, Home is "always present, always
-    # first in navigation" and renders the Pulse — the platform's
-    # primary Monitor surface and most distinctive product feature.
-    # Seeded for every active user regardless of role/permission;
-    # `default_home_route="/home"` so DotNav click navigates straight
-    # to PulseSurface. `display_order=-2000` ranks it leftmost of all
-    # system spaces (Settings is -1000). Pins are intentionally empty:
-    # Pulse is intelligence-composed, not user-curated, so the Home
-    # space's pin list is conceptually meaningless. The space exists
-    # to give DotNav an always-present leftmost slot that routes to
-    # the Pulse.
+    # Home system space (always-first). Per BRIDGEABLE_MASTER §3.26.1.1,
+    # Home is "always present, always first in navigation" — that framing
+    # STANDS; what it renders changed. Seeded for every active user
+    # regardless of role/permission; `default_home_route="/home"` so a
+    # DotNav Home click lands on the daily note. `display_order=-2000`
+    # ranks it leftmost of all system spaces (Settings is -1000).
+    #
+    # ⚠️ THE `pins=[]` RATIONALE CHANGED WITH THE SURFACE, 2026-09-10.
+    # It read "Pulse is intelligence-composed, not user-curated, so the
+    # pin list is conceptually meaningless." That argument does not
+    # survive: the note has TWO registers and they differ on exactly this
+    # point. Prose fragments are composed; the STANDING SET is configured,
+    # positionally stable, and deliberately not composable — composition
+    # destroys the positional memory that makes a standing line cheap to
+    # use (DECISIONS 2026-09-04).
+    #
+    # Pins stay empty for a DIFFERENT and weaker reason: the note's
+    # configured register is the standing set, which has its own
+    # per-role config and cap of 7, and duplicating it as space pins
+    # would give one surface two configuration surfaces that could
+    # disagree. If that ever stops being true, this is a real decision
+    # rather than a meaningless list.
     SystemSpaceTemplate(
         template_id="home",
         name="Home",

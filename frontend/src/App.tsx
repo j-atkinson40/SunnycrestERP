@@ -605,18 +605,34 @@ export function renderTenantSlugRoutes(
                     <Route path="dashboard" element={<Dashboard />} />
                   </Route>
 
-                  {/* Phase W-4a Commit 5 — Home Space's PulseSurface.
-                      No permission gate (Home is the canonical
-                      cross-vertical / cross-permission landing space
-                      per BRIDGEABLE_MASTER §3.26.1.1). DotNav routes
-                      every authenticated user here when they click
-                      the Home dot (Phase W-4a Commit 1 seeded the
-                      Home system space with default_home_route=/home).
-                      Coexists with /dashboard until W-5. */}
-                  <Route path="home" element={<HomePage />} />
-                  {/* Note surface, session 1 of 5. NOT the front door —
-                      /home still serves Pulse until session 5 retires it. */}
+                  {/* THE FRONT DOOR (note arc session 5, 2026-09-10).
+                      /home serves the daily note. No permission gate —
+                      Home remains the canonical cross-vertical landing
+                      space per BRIDGEABLE_MASTER §3.26.1.1, whose
+                      entry-point canon STANDS; only what /home renders
+                      changed. DotNav's Home dot and RootRedirect both
+                      still route here.
+
+                      ⚠️ MOUNTED DIRECTLY, NOT VIA <HomePage />. HomePage
+                      is also the runtime editor's root AND catch-all
+                      element (see the R-1.6.9 block below), so swapping
+                      its body would have silently repointed the runtime
+                      editor's default surface too — a coupling that
+                      surfaces months later. The two mounts mean
+                      different things and are now separate.
+
+                      Pulse remains reachable at /pulse until the
+                      implementation is removed; removing it while
+                      anything still routed to it would be a live outage
+                      rather than a caught reference. */}
+                  <Route path="home" element={<NotePage />} />
+                  {/* Kept: /note was the note's address for sessions 1-4
+                      and is linked from deferral records written then.
+                      Same surface, two addresses, until those age out. */}
                   <Route path="note" element={<NotePage />} />
+                  {/* Pulse's own route — the surface is retired but the
+                      code is still present. Step 4 removes both. */}
+                  <Route path="pulse" element={<HomePage />} />
 
                   {/* The Bridgeable Map (Tenant Ponder-Editor P2) — the
                       map of what the platform does. VIEW for every

@@ -156,9 +156,26 @@ export function NotificationDropdown() {
         }
       >
         <Bell className="size-4" />
+        {/* ⚠️ A COUNT, NOT A BADGE (note arc session 5, 2026-09-10).
+            Per DECISIONS 2026-09-04: "a count is a fact you read, a badge
+            is a demand. No color escalation, no growth to catch the eye."
+            That was ruled for standing lines; this header now sits above
+            the note, and the red pill was the Pulse-era demand that made
+            the arc necessary.
+
+            What changed: bg-status-error -> none, rounded-full pill ->
+            none, semibold -> normal, and the "99+" cap is gone. A capped
+            count is a truncated fact; 143 unread is the fact, and the
+            header can hold it in tabular-nums.
+
+            Not hidden, not moved, not made less legible — a person who
+            wants the number still reads it in the same place. */}
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-error px-1 text-micro font-semibold font-mono text-[oklch(0.98_0.006_82)]">
-            {unreadCount > 99 ? "99+" : unreadCount}
+          <span
+            data-testid="notification-count"
+            className="absolute -top-1 -right-1 text-micro tabular-nums text-content-muted"
+          >
+            {unreadCount}
           </span>
         )}
       </Popover.Trigger>

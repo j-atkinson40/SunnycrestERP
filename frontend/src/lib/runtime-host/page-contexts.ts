@@ -34,7 +34,7 @@ export interface PageContextEntry {
  *  `unmapped:{path}` page_context. */
 export const PAGE_CONTEXT_MAP: ReadonlyArray<PageContextEntry> = [
   { pattern: "/dashboard", pageContext: "dashboard", label: "Dashboard" },
-  { pattern: "/home", pageContext: "home", label: "Home Pulse" },
+  { pattern: "/home", pageContext: "home", label: "Home (daily note)" },
   {
     pattern: "/funeral-home/dashboard",
     pageContext: "funeral_home_dashboard",
