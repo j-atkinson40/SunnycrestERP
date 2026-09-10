@@ -2,6 +2,15 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ THREE ANCILLARY MUTATION ENDPOINTS HAVE NO CAPABILITY GATE (2026-09-10)
+
+Found while declaring `editPermission` on the funeral-scheduling Focus; surfaced, not fixed.
+
+- **`POST /extensions/funeral-kanban/ancillary/{id}/{attach,assign-standalone,return-to-pool}` carry only `get_current_user` plus a router-level `require_module("driver_delivery")`** (2026-09-10). `app/api/routes/ancillary_orders.py` never imports `require_permission` — established by enumerating the dependencies on all three endpoints, not by a grep miss. So any authenticated user in a tenant with that module enabled can attach, detach and reassign ancillaries.
+- **⚠️ The new Focus read-only affordance is the ONLY thing refusing those three today**, which is exactly what an affordance must never be relied on to be. That is why `FocusConfig.editPermission` now states in its own declaration that it is not a security control.
+- **A single `editPermission` per Focus is coarser than the enforcement beneath it, in both directions** (2026-09-10). `funeral-scheduling` declares `delivery.edit`; the drag's main mutation (`PATCH /delivery/deliveries/{id}`) requires exactly that, but finalize/revert require `delivery.finalize_schedule` and hole-dug requires `delivery.edit_hole_dug`. A user holding `delivery.edit` alone sees those controls ENABLED and receives a 403.
+- **Not fixed here deliberately.** Tightening those endpoints changes how the permission model is APPLIED, which belongs to the modules that own them — the Focus arc reads the model, it does not rewrite it.
+
 ## ⚠️ THREE THINGS THE WORK LOG'S SESSION NEEDS, RECORDED BEFORE IT STARTS (2026-09-10)
 
 Established by the Focus-capability arc's preliminary — the work log and settling are **not one thing in two tenses**. Full derivation: `docs/investigations/2026-09-10-worklog-vs-settling.md`.

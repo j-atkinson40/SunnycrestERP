@@ -251,7 +251,33 @@ export interface FocusConfig {
    *  edit by default and we forgot". A Focus with actions and no
    *  `editPermission` is readable as an unanswered question rather than as a
    *  decision, which is why it is optional rather than defaulted to something
-   *  permissive-looking. */
+   *  permissive-looking.
+   *
+   *  ⚠️⚠️ THIS IS AN AFFORDANCE, NOT A SECURITY CONTROL.
+   *
+   *  It decides whether a control is OFFERED. It never decides whether an
+   *  action is ALLOWED. Do not rely on it to protect anything — the server is
+   *  the boundary, and this field does not know what the server checks.
+   *
+   *  That is not a general caution. Measured 2026-09-10 for
+   *  `funeral-scheduling`, whose single `editPermission: "delivery.edit"` sits
+   *  over FOUR different server postures:
+   *
+   *    · `PATCH /delivery/deliveries/{id}` — the drag's main mutation —
+   *      requires `delivery.edit`. Aligned.
+   *    · finalize / revert require `delivery.finalize_schedule`. A user with
+   *      `delivery.edit` and not that one sees an ENABLED control and gets 403.
+   *    · hole-dug requires `delivery.edit_hole_dug`. Same shape.
+   *    · the ancillary attach / assign-standalone / return-to-pool endpoints
+   *      require NO CAPABILITY AT ALL — only `get_current_user` plus a
+   *      router-level `require_module`. For those, this UI gate is the only
+   *      thing refusing, which is exactly what an affordance must never be
+   *      relied on to be.
+   *
+   *  So a single key per Focus is coarser than the enforcement beneath it, in
+   *  both directions. Recorded rather than fixed: tightening those endpoints is
+   *  a change to how the permission model is APPLIED, which belongs to the
+   *  modules that own them. */
   editPermission?: string
 }
 
