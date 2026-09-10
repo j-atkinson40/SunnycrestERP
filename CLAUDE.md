@@ -2515,6 +2515,19 @@ command was run to gather.
 **Remedy: capture full output to a file and read the file.** Reduce when
 displaying, never when collecting.
 
+⚠️ **THE ACTION, because the principle above has now been violated four times by
+people who were holding it: ANY COMMAND WHOSE OUTPUT FEEDS AN ABSENCE CLAIM GETS
+ITS FULL LENGTH CHECKED BEFORE THE CLAIM IS WRITTEN.** `wc -l` the file, compare
+it to what you read, and only then write the sentence. Not a reminder to be
+careful — a step with an output, performed before the claim exists, because
+every violation so far was committed by someone who knew the principle and did
+not have a moment at which checking was the next thing to do.
+
+Instance, 2026-09-10: a full backend suite wrote 1,921 lines to one file while a
+background task file captured only the four-line `tail` of it. A grep over the
+four-line file returned nothing and was one sentence away from being reported as
+"no failures in note territory."
+
 ⚠️ **A BOUND IS A DEFECT IN THE METHOD WHETHER OR NOT IT CHANGED THE ANSWER.**
 
 This is the entry's hardest case, and the only one that cannot be caught by
@@ -2635,6 +2648,23 @@ default-exports made five tests pass against a member that does not exist.
 The check has contact with something — just not with reality. Build fixtures
 from the contract, not from the caller, and where a double stands in for a real
 module, assert the real module's shape somewhere.
+
+⚠️ **THE GENERAL FORM: A FIXTURE DERIVED FROM THE SAME READING AS THE
+IMPLEMENTATION IS NOT INDEPENDENT EVIDENCE.** Both halves inherit one
+misunderstanding and then confirm each other, which is indistinguishable from
+agreement between two independent things.
+
+**THE TELL IS THAT THE TEST PASSES ON INPUTS THE SYSTEM CANNOT ACTUALLY
+PRODUCE.** That question is answerable without knowing what the defect is, which
+is what makes it usable: ask of any fixture whether the shipped code path could
+have produced this row, and go and look.
+
+Instance, 2026-09-10: a settling fixture built tasks with NO ASSIGNEE, while the
+fragment that emits the prompt filters `assignee_user_id == user.id` — so the
+tests settled a prompt over tasks that could never have produced it. The
+implementation had the matching gap (it filtered on the actor and never on the
+assignee), so fixture and code agreed, and the defect they jointly hid wrote
+settled records onto the wrong person's note.
 
 Corollary for test SELECTION, not assertion: when replacing a check that
 conflated two things, the tests that matter are the ones where the two DISAGREE.
