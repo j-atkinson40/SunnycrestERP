@@ -226,6 +226,30 @@ def defer(
     return row
 
 
+def until_label(until: date, *, today: date) -> str:
+    """How a person says this date, on the day they are reading it.
+
+    ⚠️ COMPUTED FROM THE DATE, NOT FROM THE STORED PRESET. "Next week" is what
+    was clicked, and it is the right words for about a day — by Thursday a
+    Monday-clicked "next week" is three days away and the phrase has quietly
+    become false. The date is the fact; the phrasing has to be re-derived
+    against the day it is read on, or it is a claim that expires without
+    signalling.
+
+    ISO past a week, because "in 23 days" is not how anyone holds a date that
+    far out. The settled note will use ISO throughout — a record read weeks
+    later has no "tomorrow" to be relative to.
+    """
+    delta = until.toordinal() - today.toordinal()
+    if delta <= 0:
+        return "today"
+    if delta == 1:
+        return "tomorrow"
+    if delta <= 7:
+        return f"in {delta} days"
+    return until.isoformat()
+
+
 def mark_woken(db: Session, row: NoteFragmentDeferral) -> None:
     """Spend a deferral that divergence woke. Caller commits.
 

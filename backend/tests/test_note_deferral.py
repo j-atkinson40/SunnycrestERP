@@ -472,3 +472,160 @@ def test_the_endpoint_refuses_an_unknown_preset(db_session, user):
         assert exc.value.status_code == 400
     finally:
         reset_registry()
+
+
+# ── The review's findings, pinned ────────────────────────────────────
+
+
+def test_the_deferral_record_CARRIES_ITS_SUBJECT(db_session, user):
+    """⚠️ OPERATOR REVIEW, 2026-09-09. "Deferred until 2026-09-10" rendered
+    alone, naming nothing — a record of an act with no object.
+
+    The deferred fragment keeps its sentence and the record appends to it.
+    Without this the record is unreadable the next day, and with fragments
+    rendering as adjacent lines it also reads as belonging to whichever prompt
+    sits above it.
+    """
+    from app.api.routes.note import get_today_note
+
+    reset_registry()
+    try:
+        _declare("rev_a", inputs={"total": 10})
+        _defer_via_endpoint(db_session, user, "rev_a", "tomorrow")
+
+        payload = get_today_note(current_user=user, db=db_session)
+        held = [w for w in payload["withheld"] if w["fragment_id"] == "rev_a"]
+        assert held, "precondition: nothing withheld"
+        rec = held[0]
+
+        assert rec["text"], (
+            "the deferral record carries no sentence — it names the act and "
+            "not what was deferred"
+        )
+        assert rec["title"]
+        # ⚠️ NOT `assert rec["spans"]`. This file's synthetic payload carries no
+        # spans, so a non-empty assertion here would be about the FIXTURE, not
+        # the code — and it failed for exactly that reason on first write. The
+        # real claim is that the record serialises spans through the SAME path
+        # prose does; `test_the_record_serialises_spans_like_prose` makes it
+        # against a payload that has some.
+        assert "spans" in rec
+    finally:
+        reset_registry()
+
+
+def test_the_record_says_the_date_the_way_a_person_would(db_session, user):
+    """"Set aside until tomorrow", not "until 2026-09-10", on the live note."""
+    from app.api.routes.note import get_today_note
+
+    reset_registry()
+    try:
+        _declare("rev_b", inputs={"total": 10})
+        _defer_via_endpoint(db_session, user, "rev_b", "tomorrow")
+
+        payload = get_today_note(current_user=user, db=db_session)
+        rec = [w for w in payload["withheld"] if w["fragment_id"] == "rev_b"][0]
+        assert rec["deferred_until_label"] == "tomorrow"
+        # ⚠️ AND THE ISO DATE SURVIVES ALONGSIDE IT. The settled note reads
+        # weeks later and has no "tomorrow" to be relative to.
+        assert rec["deferred_until"], "the ISO date was dropped"
+    finally:
+        reset_registry()
+
+
+def test_the_label_is_re_derived_per_read_not_frozen_at_deferral():
+    """⚠️ "next week" stops being true on Thursday.
+
+    The label is computed against the day it is READ on. A stored phrase would
+    expire without signalling — the sentence reads the same on the day it stops
+    being true as on the day it was written.
+    """
+    from app.services.note.deferral import until_label
+
+    target = date(2026, 9, 17)
+    assert until_label(target, today=date(2026, 9, 16)) == "tomorrow"
+    assert until_label(target, today=date(2026, 9, 13)) == "in 4 days"
+    assert until_label(target, today=date(2026, 9, 1)) == "2026-09-17"
+
+
+def test_the_REAL_registered_fragments_get_the_right_affordance(db_session, user):
+    """⚠️ Asserted against the REAL registry, not a synthetic non-prompt.
+
+    `anomaly_watchlist` is the one the review could not see. A test that only
+    ever declares its own fragments proves the code handles fragments it was
+    handed, not the ones that actually ship.
+    """
+    from app.services.fragments.registry import get_registry
+
+    reset_registry()
+    try:
+        registry = get_registry()  # lazily seeds the platform defaults
+        expected = {
+            "anomaly_watchlist": False,
+            "compliance_flags": False,
+            "tasks_due_today": True,
+            "collections_outstanding": True,
+            "expense_posting_map": True,
+        }
+        for fid, deferrable in expected.items():
+            decl = registry.get(fid)
+            assert decl is not None, (
+                f"{fid} is not registered; registry holds {sorted(registry)}"
+            )
+            assert (decl.kind == "prompt") is deferrable, (
+                f"{fid} is kind={decl.kind!r}; expected deferrable={deferrable}"
+            )
+    finally:
+        reset_registry()
+
+
+def test_the_record_serialises_spans_like_prose(db_session, user):
+    """One serialiser, two consumers — asserted against a payload WITH spans.
+
+    A deferred record whose measured spans stopped being links would lose
+    provenance on exactly the copy someone reads a week later, and nothing
+    about the sentence would look wrong.
+    """
+    from app.api.routes.note import get_today_note
+    from app.services.fragments.types import ReferencedItem
+    from app.services.fragments.synthesis import measured, plain
+
+    reset_registry()
+    try:
+        spans = (
+            plain("Lakeside owes "),
+            measured("$3,750.00", ReferencedItem(
+                kind="customer", entity_id="cust-1",
+                label="Lakeside", href="/ar/x",
+            )),
+        )
+        register_fragment(FragmentDeclaration(
+            fragment_id="rev_spans", label="rev_spans", kind="prompt",
+            audience=Audience.any_authenticated(),
+            condition=lambda db, *, user: [FragmentInstance(
+                subject_id="cust-1",
+                payload=FragmentPayload(
+                    title="T", synthesized_text="Lakeside owes $3,750.00",
+                    spans=spans,
+                ),
+                scope={"k": 1}, condition_inputs={"total": 10},
+            )],
+            target_surface="peek", target_key="t", subject_kind="invoice",
+            end_transition=EndTransition(entity_kind="invoice",
+                                         resolved_when="paid", past_tense="paid"),
+        ))
+
+        before = get_today_note(current_user=user, db=db_session)
+        prose = [x for x in before["prose"] if x["fragment_id"] == "rev_spans"][0]
+
+        _defer_via_endpoint(db_session, user, "rev_spans", "tomorrow")
+        after = get_today_note(current_user=user, db=db_session)
+        rec = [w for w in after["withheld"] if w["fragment_id"] == "rev_spans"][0]
+
+        assert rec["spans"] == prose["spans"], (
+            "the deferred record's spans diverged from the prose's — two "
+            "serialisers, and the record is the one that loses provenance"
+        )
+        assert any(sp["state"] == "measured" and sp["href"] for sp in rec["spans"])
+    finally:
+        reset_registry()

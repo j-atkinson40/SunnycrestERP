@@ -23,7 +23,28 @@ from app.services.note.deferral import (
     DeferralError,
     defer,
     deferral_count,
+    until_label,
 )
+
+def _spans(fragment) -> list[dict]:
+    """⚠️ ONE SERIALISER, USED BY PROSE AND BY THE DEFERRAL RECORD.
+
+    The record of a deferral carries the SAME sentence the prompt carried, in
+    the same three text states. A second implementation here would drift, and
+    the drift would show up as a deferred record whose measured spans stopped
+    being links — provenance quietly lost on exactly the copy someone reads a
+    week later.
+    """
+    return [
+        {
+            "text": sp.text,
+            "state": sp.kind,
+            "href": sp.reference.href if sp.reference else None,
+            "entity_id": sp.reference.entity_id if sp.reference else None,
+        }
+        for sp in fragment.instance.payload.spans
+    ]
+
 
 router = APIRouter()
 
@@ -118,15 +139,7 @@ def get_today_note(
                 "kind": d.fragment.declaration.kind,
                 "title": d.fragment.instance.payload.title,
                 "text": d.fragment.instance.payload.synthesized_text,
-                "spans": [
-                    {
-                        "text": sp.text,
-                        "state": sp.kind,
-                        "href": sp.reference.href if sp.reference else None,
-                        "entity_id": sp.reference.entity_id if sp.reference else None,
-                    }
-                    for sp in d.fragment.instance.payload.spans
-                ],
+                "spans": _spans(d.fragment),
                 "target_surface": d.fragment.declaration.target_surface,
                 "target_key": d.fragment.declaration.target_key,
                 # Session 3 wires opening; declared, not wired, exactly as the
@@ -167,10 +180,34 @@ def get_today_note(
                 "fragment_id": d.fragment.declaration.fragment_id,
                 "instance_key": d.fragment.instance_key,
                 "gate": d.verdict,
+                # ⚠️ THE RECORD CARRIES ITS SUBJECT.
+                #
+                # Operator review, 2026-09-09: "Deferred until 2026-09-10" was
+                # rendered alone, with no indication of WHAT was deferred. A
+                # record of an act with no object is unreadable the next day and
+                # worse than nothing on a settled note read next week — and with
+                # two fragments rendering as adjacent lines, a floating record
+                # also reads as belonging to whichever prompt happens to sit
+                # above it.
+                #
+                # So the deferred fragment keeps its sentence and the record
+                # appends to it. The prompt is still WITHHELD — this is not a
+                # re-render, it is the note saying what the reader chose to
+                # postpone, about whom.
+                "title": d.fragment.instance.payload.title,
+                "text": d.fragment.instance.payload.synthesized_text,
+                "spans": _spans(d.fragment),
                 # A deferred prompt says WHEN it comes back. Without this,
                 # "withheld:deferred" is indistinguishable from gone.
                 "deferred_until": (
                     d.deferral.deferred_until.isoformat()
+                    if d.deferral is not None
+                    else None
+                ),
+                # How a person says that date TODAY. Re-derived per read rather
+                # than stored, because "next week" stops being true on Thursday.
+                "deferred_until_label": (
+                    until_label(d.deferral.deferred_until, today=note.note_date)
                     if d.deferral is not None
                     else None
                 ),

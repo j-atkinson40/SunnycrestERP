@@ -50,7 +50,13 @@ interface TodayNote {
     fragment_id: string;
     instance_key: string;
     gate: string;
+    /** The deferred fragment's own sentence — the record carries its subject. */
+    title: string;
+    text: string;
+    spans: ProseSpan[];
     deferred_until: string | null;
+    /** How a person says that date TODAY ("tomorrow", "in 4 days", ISO). */
+    deferred_until_label: string | null;
     deferred_count: number;
   }[];
 }
@@ -95,12 +101,96 @@ const DEFER_PRESETS: { preset: string; label: string }[] = [
   { preset: "next_month", label: "Next month" },
 ];
 
+/**
+ * ⚠️ ONE SPAN RENDERER, USED BY PROSE AND BY THE DEFERRAL RECORD.
+ *
+ * The record of a deferral carries the SAME sentence the prompt carried, in the
+ * same three text states. A second copy of this would drift, and the drift
+ * would show up as a deferred record whose measured spans stopped being links —
+ * provenance quietly lost on exactly the copy someone reads a week later.
+ */
+function Spans({ spans }: { spans: ProseSpan[] }) {
+  return (
+    <>
+      {spans.map((sp, i) => {
+            
+              /*
+               * ⚠️ THREE STATES, DISTINGUISHED WITHOUT COLOUR. Functional colour
+               * is reserved for meaning per DESIGN_LANGUAGE, so a reader who
+               * cannot separate red from green must still tell a measurement
+               * from an inference.
+               *
+               * MEASURED — a link. THE LINK IS THE PROVENANCE MARK; there is no
+               * separate badge saying "this is real".
+               */
+              if (sp.state === "measured") {
+                /*
+                 * ⚠️ MEASURED-AND-UNLINKED IS A REAL STATE, not a missing href.
+                 * A measured span always carries its provenance in the payload;
+                 * whether that provenance is REACHABLE is a separate fact. The
+                 * collections amount is measured and deliberately unlinked
+                 * (operator review, 2026-09-09) because linked it pulled the eye
+                 * harder than the customer name -- the badge question arriving
+                 * in prose. Rendering an <a> with no href would keep the link
+                 * styling and defeat the experiment.
+                 */
+                if (!sp.href) {
+                  return (
+                    <span key={i} data-state="measured" data-linked="false">
+                      {sp.text}
+                    </span>
+                  );
+                }
+                return (
+                  <a
+                    key={i}
+                    href={sp.href}
+                    data-state="measured"
+                    data-linked="true"
+                    className="underline underline-offset-2 decoration-border-strong hover:decoration-content-base"
+                  >
+                    {sp.text}
+                  </a>
+                );
+              }
+              /*
+               * INFERRED — unlinked, marked. Dotted underline is the DOCUMENTED
+               * PLACEHOLDER: the exact treatment belongs to the aesthetics arc
+               * and must survive the chrome/steel language. It is recorded as a
+               * placeholder so it gets revisited rather than inherited.
+               */
+              if (sp.state === "inferred") {
+                return (
+                  <span
+                    key={i}
+                    data-state="inferred"
+                    className="underline decoration-dotted underline-offset-2 decoration-content-subtle"
+                  >
+                    {sp.text}
+                  </span>
+                );
+              }
+              /* CONNECTIVE TISSUE — plain. The words making the other two a sentence. */
+              return (
+                <span key={i} data-state="plain">
+                  {sp.text}
+                </span>
+              );
+                  })}
+    </>
+  );
+}
+
+
 export default function NotePage() {
   const [note, setNote] = useState<TodayNote | null>(null);
   const [failed, setFailed] = useState(false);
   /** instance_key of the prompt currently being deferred, so its controls
    *  disable rather than accepting a second click into an in-flight request. */
   const [deferring, setDeferring] = useState<string | null>(null);
+  /** instance_key whose date picker is open, so the row shows three presets and
+   *  one labelled control rather than four things that look alike. */
+  const [picking, setPicking] = useState<string | null>(null);
 
   /**
    * ⚠️ REFETCH RATHER THAN PATCH LOCAL STATE. Deferring changes what the GATE
@@ -129,6 +219,7 @@ export default function NotePage() {
       setFailed(true);
     } finally {
       setDeferring(null);
+      setPicking(null);
     }
   }
 
@@ -209,70 +300,7 @@ export default function NotePage() {
             data-kind={f.kind}
             className="text-body text-content-base"
           >
-            {f.spans.map((sp, i) => {
-              /*
-               * ⚠️ THREE STATES, DISTINGUISHED WITHOUT COLOUR. Functional colour
-               * is reserved for meaning per DESIGN_LANGUAGE, so a reader who
-               * cannot separate red from green must still tell a measurement
-               * from an inference.
-               *
-               * MEASURED — a link. THE LINK IS THE PROVENANCE MARK; there is no
-               * separate badge saying "this is real".
-               */
-              if (sp.state === "measured") {
-                /*
-                 * ⚠️ MEASURED-AND-UNLINKED IS A REAL STATE, not a missing href.
-                 * A measured span always carries its provenance in the payload;
-                 * whether that provenance is REACHABLE is a separate fact. The
-                 * collections amount is measured and deliberately unlinked
-                 * (operator review, 2026-09-09) because linked it pulled the eye
-                 * harder than the customer name -- the badge question arriving
-                 * in prose. Rendering an <a> with no href would keep the link
-                 * styling and defeat the experiment.
-                 */
-                if (!sp.href) {
-                  return (
-                    <span key={i} data-state="measured" data-linked="false">
-                      {sp.text}
-                    </span>
-                  );
-                }
-                return (
-                  <a
-                    key={i}
-                    href={sp.href}
-                    data-state="measured"
-                    data-linked="true"
-                    className="underline underline-offset-2 decoration-border-strong hover:decoration-content-base"
-                  >
-                    {sp.text}
-                  </a>
-                );
-              }
-              /*
-               * INFERRED — unlinked, marked. Dotted underline is the DOCUMENTED
-               * PLACEHOLDER: the exact treatment belongs to the aesthetics arc
-               * and must survive the chrome/steel language. It is recorded as a
-               * placeholder so it gets revisited rather than inherited.
-               */
-              if (sp.state === "inferred") {
-                return (
-                  <span
-                    key={i}
-                    data-state="inferred"
-                    className="underline decoration-dotted underline-offset-2 decoration-content-subtle"
-                  >
-                    {sp.text}
-                  </span>
-                );
-              }
-              /* CONNECTIVE TISSUE — plain. The words making the other two a sentence. */
-              return (
-                <span key={i} data-state="plain">
-                  {sp.text}
-                </span>
-              );
-            })}
+            <Spans spans={f.spans} />
           </p>
 
           {/* ⚠️ PROMPTS DEFER. NON-PROMPTS DISMISS, and that path is not here.
@@ -296,16 +324,36 @@ export default function NotePage() {
                   {p.label}
                 </button>
               ))}
-              <input
-                type="date"
-                aria-label="Defer to a specific date"
-                data-testid={`defer-${f.fragment_id}-date`}
-                disabled={deferring === f.instance_key}
-                onChange={(e) =>
-                  e.target.value && onDefer(f, "date", e.target.value)
-                }
-                className="bg-transparent text-body-sm text-content-muted underline underline-offset-2 decoration-border-strong disabled:opacity-50"
-              />
+              {/* ⚠️ THE PICKER HAS TO ANNOUNCE ITSELF.
+                  Operator review, 2026-09-09: a bare <input type="date"> renders
+                  as today's date and read as a FOURTH PRESET — the only control
+                  on the surface whose function was not apparent from its
+                  appearance. It is revealed by a labelled control instead, so
+                  the row is three presets and one obvious "or pick a date". */}
+              {picking === f.instance_key ? (
+                <input
+                  type="date"
+                  autoFocus
+                  aria-label="Defer to a specific date"
+                  data-testid={`defer-${f.fragment_id}-date`}
+                  disabled={deferring === f.instance_key}
+                  onBlur={() => setPicking(null)}
+                  onChange={(e) =>
+                    e.target.value && onDefer(f, "date", e.target.value)
+                  }
+                  className="bg-transparent text-body-sm text-content-muted underline underline-offset-2 decoration-border-strong disabled:opacity-50"
+                />
+              ) : (
+                <button
+                  type="button"
+                  disabled={deferring === f.instance_key}
+                  data-testid={`defer-${f.fragment_id}-pick`}
+                  onClick={() => setPicking(f.instance_key)}
+                  className="underline underline-offset-2 decoration-border-strong hover:decoration-content-base disabled:opacity-50"
+                >
+                  or pick a date…
+                </button>
+              )}
 
               {/* ⚠️ STATED, NEVER ESCALATED. No colour, no icon, no urgency.
                   Someone pushing the same thing repeatedly is usually blocked
@@ -324,19 +372,34 @@ export default function NotePage() {
 
         {/* A deferred prompt says WHEN it comes back. Without this line,
             "withheld" and "gone" look identical to the reader who deferred it. */}
+        {/* ⚠️ A DEFERRED PROMPT KEEPS ITS SENTENCE.
+            Operator review, 2026-09-09: "Deferred until 2026-09-10" rendered
+            alone, naming nothing. A record of an act with no object is
+            unreadable the next day — and with fragments rendering as adjacent
+            lines, a floating record reads as belonging to whichever prompt sits
+            above it. The sentence stays; the record appends to it, so the
+            deferral belongs to Lakeside rather than floating free.
+
+            Muted, because this is a record of something set aside, not a
+            prompt. The prompt is still WITHHELD — this is not a re-render. */}
         {(note.withheld ?? [])
           .filter((w) => w.gate === "withheld:deferred")
           .map((w) => (
-            <p
+            <div
               key={w.instance_key}
               data-testid={`deferred-${w.fragment_id}`}
-              className="text-body-sm text-content-muted"
+              className="space-y-0.5 text-content-muted"
             >
-              Deferred until {w.deferred_until}
-              {w.deferred_count > 1
-                ? ` · deferred ${w.deferred_count} times`
-                : ""}
-            </p>
+              <p className="text-body">
+                <Spans spans={w.spans} />
+              </p>
+              <p className="text-body-sm" data-testid={`deferred-record-${w.fragment_id}`}>
+                Set aside until {w.deferred_until_label ?? w.deferred_until}
+                {w.deferred_count > 1
+                  ? ` · deferred ${w.deferred_count} times`
+                  : ""}
+              </p>
+            </div>
           ))}
       </section>
     </div>
