@@ -94,33 +94,6 @@ Naming: Earlier work in this cluster used “decision workspace” or “focused
 
 ## 3. Spaces (Monitor) 
 
-> ## ⚠️ THE THESIS STANDS; THE PULSE EXECUTION IS SUPERSEDED — 2026-09-04
->
-> **This section is accurate about the surface that ships today, and is no longer
-> authoritative about the surface being built.** Per DECISIONS 2026-09-04
-> ("Monitor is a daily note, not a dashboard"), Monitor becomes a per-user,
-> per-day note surface — prose fragments over a positionally stable standing set —
-> rather than a per-Space composed widget surface.
->
-> **§3.2 is NOT superseded.** Its five obligations — surface what's actionable
-> now; show ambient state; highlight what's changed; provide go-deeper paths;
-> adapt to context — remain the test the new surface must pass. §3.2 already
-> indicts the dashboard on its own terms ("A static dashboard list does maybe 30%
-> of #4 and nothing else"), and the note answers all five: 1/3/5 in prose, 2 in
-> the standing set, 4 in peeks and Focus entrances.
->
-> **Superseded:** §3.1's "Each Space has one composed Monitor surface (the Pulse /
-> Home)" — scope moves to one note per user per day, with Space as a filter on
-> which fragments appear rather than a separate surface — and the layered
-> widget-composition execution in §3.3 and §3.4, plus §8.2 and §8.4.
->
-> **The rewrite ships with the implementation, not before it.** Pulse is shipped
-> across 115 code files and is the tenant front door.
->
-> Inventory + derivations:
-> `docs/investigations/2026-09-04-monitor-supersession-inventory.md`.
-
-
 A Space is a persistent context the user lives in: a domain like Funeral Direction, Production, Business, Schedule, or a cross-tenant relationship like “Sunnycrest ↔ Hopkins”. Spaces hold navigation structure and a composed Monitor surface. They are where users _return_ ; they are not where users _focus into_ . 
 
 ## 3.1 The Monitor Reframe 
@@ -129,7 +102,7 @@ Dashboard-list-in-nav is the wrong primitive. A list of dashboards in nav is a f
 
 domains, adapting to your role and time of day. 
 
-Most SaaS defaults to dashboard-lists because it’s the easy build. Bridgeable rejects this. Each Space has one composed Monitor surface (the Pulse / Home), not a sidebar list of destinations. 
+Most SaaS defaults to dashboard-lists because it’s the easy build. Bridgeable rejects this. Monitor is one note per user per day. A Space filters which fragments appear on it; it is not a separate surface and does not carry its own composed Monitor. 
 
 ## 3.2 What Monitor Should Actually Do 
 
@@ -147,51 +120,38 @@ If Monitor is the experienced coworker who walks in and says “here’s what’
 
 A static dashboard list does maybe 30% of #4 and nothing else. 
 
-## 3.3 The Pulse Surface (per Space) 
+**Checked against the note as built, 2026-09-10.** Obligations 1–4 are met. #1 by prompts, #2 by the standing set, #3 structurally — non-prompts render only on change against the previous note's state per their identity, which a dashboard cannot express at all. #4 by peeks from standing lines and by Focus entrances carrying their scope, which answers this section's own charge that a static dashboard does "maybe 30% of #4 and nothing else."
 
-When a user enters a Space, they land on its Pulse — a composed surface that draws from several layers: 
+#5 is met on two of four axes. The note adapts by role and by permission. It does not adapt to time of day, workload, or prior behaviour — no time-of-day input exists in note composition. Those two were Pulse's least-evidenced features and were not rebuilt. Stated here rather than claimed as met, because an obligation reported satisfied is not revisited.
 
-- Personal layer (top) — your work, your decisions waiting, your @mentions, things assigned to you, focuses you have pending. _“What does this person need to do now?”_ 
 
-- Operational layer (middle) — the rhythm of this space’s domain right now (today’s services, today’s pours, current inventory, active customers — whatever the canonical “ambient state” is). _“What’s happening?”_ 
+## 3.3 The Note Surface (per user, per day)
 
-- Anomaly / Insight layer (interleaved) — Intelligence-detected unusual patterns, items trending toward deadlines, conflicts emerging, opportunities. _“What should I know?”_ 
+A user lands on their note. It has two registers and they behave oppositely.
 
-- Activity layer (sidebar or rail) — recent changes scoped to this space. _“What’s been happening?”_ 
+**Prose fragments** are composed by Intelligence, ordered by urgency, and present only when there is something to say. They are typed and individually sourced rather than produced by one generation call — each knows its own source query, so provenance is structural, and wording is stable across refreshes, which is the precondition for trust.
 
-Composition is dynamic. Time of day matters (morning briefing vs end-of-day summary). Day of week matters. Role matters. User behavior matters (if you always check inventory first, that floats up). 
+**The standing set** is configured, never composed. Positionally stable, capped at 7 per role, resolved through a cascade of code role template → tenant override → user override. Composition would destroy the positional memory that makes a standing line cheap.
 
-### Task substrate consumption (v1.5)
+The relationship: the standing set is the floor and prose is the exception layer. The schedule sits there as one word all day; when there is a conflict in it, prose says so above, with a link into the conflict. The schedule is on the wall, and someone tells you when it's broken.
 
-Pulse Personal layer renders task state as canonical "what needs attention" source for the viewing user. The `_build_tasks_item` implementation at `backend/app/services/pulse/personal_layer_service.py:111` queries VaultItem WHERE item_type='task' joined to task_details, filtered by user assignment + visibility + non-terminal lifecycle states (action shape: {created, assigned, in_progress, blocked}; reminder shape: {informational}). Pagination, sorting, projection follow existing Pulse Personal layer conventions.
+The note has a live phase and a settled phase. During the day it is about what needs doing. At a tenant-configured settling hour it becomes a record of what was done — a distinct past-tense fragment generated from recorded events, not the live fragment relabelled.
 
-The `_build_tasks_item` function was scaffolded-but-deferred at original Pulse Personal layer implementation (returned `None` pending wire decision); v1.5 task substrate B3 (`1c8dbbd`) wired the deferred stub against post-r107 task substrate. The deferred-handler-body pattern (CLAUDE.md §4 Task Substrate subsection — subscriber registry section) describes the general discipline; `_build_tasks_item` is a canonical pre-substrate instance of the pattern.
+A prompt leaves the note only by resolution or by dated deferral. There is no dismiss for prompts. A resolution reaches everyone who held the prompt and no one else.
 
-Pulse Personal layer cache invalidates on task lifecycle events via `pulse_invalidator` subscriber (registered in task substrate B1 foundation; handler body active post-B3 consumer integration). Task state changes propagate to Pulse rendering within sync dispatch latency.
+**What the four Pulse layers became.** Personal, Operational, Anomaly/Insight and Activity were composition layers on one surface. Personal and Anomaly/Insight are prose fragments. Operational is the standing set. Activity remains a separate channel — persistent state and ambient events do not merge, because merging them produces notifications.
 
-Cross-reference: CLAUDE.md §4 Task Substrate subsection for substrate shape; `docs/investigations/task_substrate_v1_completion.md` §2 for v1 reference instances.
+**What did not survive.** Composition was to be dynamic by time of day, day of week, and prior behaviour. Role adaptation survives; the other three do not, and no time-of-day input exists in note composition. They were the least-evidenced features here and were not rebuilt.
 
-## 3.4 Components of the Monitor Surface 
+**Task substrate.** The note's prompt fragments read task state; the substrate itself is unaffected by Pulse's removal. Substrate shape is canon in CLAUDE.md §4 (including both lifecycle shapes); v1 reference instances are in `docs/investigations/task_substrate_v1_completion.md` §2.
 
-The Pulse assembles from a set of pluggable components. Same composition machinery serves all of them: 
+## 3.4 Components of the Monitor Surface
 
-- Live data widgets — schedule view, inventory levels, queue depths, financial scoreboards 
+The note has two registers, not a component catalogue. A user should never have to ask "is that thing a dashboard or a saved view or a report?" — Pulse answered that by making everything a component on one surface; the note answers it more strongly, with one surface and two registers rather than eight component types.
 
-- Saved views — user-curated filtered Vault views (e.g., “high-value customers due for follow-up”) 
+The eight components are instructive about the difference. Two of them — anomaly cards and the activity stream — are exactly what the tightened admission test later removed from the standing set: an anomaly queue is reviewed on a rhythm, so it is a report, and activity is read to see how things are going, never checked against a name someone just said. This section's own list contains the counter-examples the current rule was written against.
 
-- Anomaly cards — Intelligence-surfaced “this is unusual” items 
-
-- Pending decisions — items waiting for user action with one-click “Open in Focus” affordance 
-
-- Activity stream — recent changes scoped to this space 
-
-- Briefing card — Intelligence-generated summary of what changed since last visit 
-
-- Action shortcuts — common tasks for this space 
-
-- People presence — who else is currently active in this space 
-
-Critically: saved views are components on the Pulse, not separate destinations. The user shouldn’t have to remember “is that thing a dashboard or a saved view or a report?” It’s all one composed surface. 
+Briefings are unaffected and ship as their own primitive with their own scheduler. "People presence" and "action shortcuts" were declared here and never built.
 
 ## 3.5 Editability 
 
@@ -1072,12 +1032,9 @@ Single-tenant Focus primitive is plausible for September demo. Cross-location is
 
 When the aesthetics arc completes, sequencing conversation should cover: which Focus(es) ship for September? Which Monitor surfaces are reframed for September vs. later? Live collaboration is probably post-September (cursors etc. don’t need to land for the Wilbert demo). 
 
-## 8.2 Naming of the Pulse Surface 
+## 8.2 Naming of the Monitor Surface
 
-> ⚠️ **Superseded 2026-09-04** — see the marker at §3. The Monitor thesis in
-> §3.2 stands; this Pulse execution detail does not.
-
-“Pulse” is the working name for each Space’s primary Monitor surface. Alternatives: “Live View” (descriptive but flat), “Home” (clear but generic), “The Surface” (too abstract). Decide before building. 
+Settled by deletion rather than by choice. "Pulse" was the working name for a surface that has been removed; the surface is the note.
 
 ## 8.3 Spaces Overview vs. Cross-Space Overview 
 
@@ -1089,12 +1046,9 @@ _Cross-Space Overview_ — the leadership Pulse composing across spaces (Section
 
 May share real estate. May be siblings. Worth deciding. 
 
-## 8.4 Monitor’s Default Landing per Space 
+## 8.4 Monitor’s Default Landing per Space
 
-> ⚠️ **Superseded 2026-09-04** — see the marker at §3. The Monitor thesis in
-> §3.2 stands; this Pulse execution detail does not.
-
-Each Space’s Pulse should be role-defaulted (Funeral Direction → director-shaped composition; Production → plant manager-shaped). Configurable per-user with sensible role defaults. Specifics TBD per Space. 
+Per-Space *composition* is gone; per-Space *landing* survives. Spaces still carry `default_home_route`, and the Home system space still routes every user to `/home`. What changed is what `/home` renders.
 
 ## 8.5 Action Suggestions in Empty Command Bar 
 

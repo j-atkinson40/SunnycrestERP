@@ -54,55 +54,26 @@ Workflow Arc Phase 8a operationalizes this principle in three ways:
 
 ---
 
-## 1a. Core UX Philosophy — "Monitor through hubs. Act through the command bar."
-
-> ## ⚠️ SUPERSEDED IN PART — 2026-09-04
->
-> **This section is accurate about the surface that ships today, and is no longer
-> authoritative about the surface being built.** Read it to understand `/home` as
-> it currently behaves. Do not design new work against it.
->
-> Per DECISIONS 2026-09-04 ("Monitor is a daily note, not a dashboard"), the
-> Monitor primitive is replaced by a per-user, per-day note surface. Nine sites in
-> this section depend on Monitor-as-dashboard: the section title, MODE 1 in full,
-> Decision Framework Question 1, the "if a feature is both" block, both the
-> INCOMPLETE and COMPLETE clauses, and Rules 2, 3, and 4.
->
-> ⚠️ **Rule 3's four-leg completeness test is SUSPENDED, not shortened.** It closes
-> "If you cannot specify all four, the feature is not fully designed," and its
-> first leg is "Which hub(s) get a widget for this feature." Removing that leg
-> leaves a four-leg gate that no feature can satisfy, so the test would fail every
-> design or be quietly ignored — and a stated gate that everyone ignores is worse
-> than no gate. Until the rewrite lands, specify the remaining three legs (command
-> bar workflow, natural-language inputs, UI backup page) and treat the hub-widget
-> leg as not applicable. **Rules 1, 5, and 6 are unaffected and remain in force**,
-> as do MODE 2 and everything from "Spaces — Context Switching" onward.
->
-> **The rewrite ships with the implementation, not before it.** `/home` serves the
-> Pulse surface to every authenticated tenant user today
-> (`frontend/src/components/root-redirect.tsx`), across 115 code files. Rewriting
-> this section to describe the note surface now would put a description of an
-> unbuilt surface into the document dispatches are told to read first, while
-> leaving the shipped surface with no canon at all — the same map-describes-a-
-> nonexistent-surface defect the S-4 arc exists to repair, manufactured
-> deliberately in the foundational document.
->
-> Inventory + derivations:
-> `docs/investigations/2026-09-04-monitor-supersession-inventory.md`.
+## 1a. Core UX Philosophy — "Monitor through the note. Act through the command bar."
 
 **This is the foundational design principle of Bridgeable. Every feature decision must be evaluated against it.**
 
 ### The Two Modes
 
-**MODE 1 — MONITORING (Hub Dashboards)**
+**MODE 1 — MONITORING (The Daily Note)**
 
 Monitoring is passive awareness. The platform surfaces what matters without being asked.
 
 - Information comes to the user — they do not hunt for it
-- Hub dashboards are role-aware: admins see team metrics, directors see their cases, drivers see their deliveries
-- Morning briefing, operations board, compliance hub, case dashboard — all monitoring surfaces
-- Widgets are the unit of monitoring
-- A user scanning their hub should know everything they need to know for their day without clicking anything
+- The note is per-user and per-day. Space selection filters which fragments appear; it is not a separate surface
+- Monitoring is DIFFERENTIAL. The note reports change, exception, and decision-need. It does not report state. A three-line note on a quiet day is correct behaviour, not a failure, and an empty prose region is the honest output of a day where nothing needed saying
+- Two registers, and only one of them is composed:
+  - **Prose fragments** — composed by Intelligence, ordered by urgency, present only when there is something to say
+  - **The standing set** — configured, positionally stable, always present. Capped at 7 per role. Admission test: does someone need to check this against something in their hand at an unpredictable moment? Anything looked at on a rhythm is a report, not a standing line
+- Every factual claim carries its provenance. A measured span is one the system knows; whether that provenance is reachable as a link is a separate fact, and a measured span may be deliberately unlinked. Unlinked text with no provenance is connective tissue. Inference is typographically distinct from measurement
+- Every standing-set label is a noun. An imperative does a badge's work through language: "Needs attention" satisfied every colour and growth prohibition and still pulled the eye
+- A standing line's target is always a peek, never a Focus. The set's value is that every entry costs the same; one heavyweight click hidden among seven cheap ones destroys it
+- A user reading their note should know what needs deciding today and what changed since yesterday. They should not have to read it to learn that nothing happened
 
 **MODE 2 — ACTING (Command Bar)**
 
@@ -120,10 +91,12 @@ Acting is intent-driven execution. The user states what they want in natural lan
 When designing any new feature, ask these two questions:
 
 **Question 1: Does the user need to NOTICE this without asking?**
-- If yes → it belongs in a hub dashboard widget
-- It should surface automatically based on role
-- The user should see it when they open their hub
-- Example: "3 compliance items due this week" → Widget on the manufacturing hub dashboard
+- If yes → it declares a FRAGMENT
+- A fragment declares five things or it does not ship: who sees it (a permission predicate — lacking the permission means the fragment does not exist, not that it renders inert), what condition brings it into existence, what identity two evaluations of the same subject share, what it opens and with what scope, and what state transition ends it
+- **Prompt** if it carries a bounded decision and a declared end transition. Prompts render whenever their condition holds
+- **Non-prompt** otherwise. Non-prompts render only on change against the previous note's state for that identity. Truth is not sufficient for rendering
+- A standing line only if it meets the admission test above, and only within the cap
+- Example: "3 compliance items due this week" → a prompt fragment opening the compliance Focus scoped to those three
 
 **Question 2: Does the user DO this when they have an intent?**
 - If yes → it belongs in the command bar as a workflow
@@ -133,21 +106,20 @@ When designing any new feature, ask these two questions:
 - Example: "Create a vault order for Hopkins" → Command bar workflow with natural language overlay → UI order form exists but is the backup
 
 **If a feature is both (needs monitoring AND action):**
-- Put a summary widget on the hub
-- The widget has a quick-action button
-- The button triggers the command bar workflow or navigates to the relevant page
-- Example: "3 overdue compliance items [Review →]" → Widget surfaces the problem (monitoring) → [Review →] takes action (acting)
+- A prompt fragment IS both. It surfaces the thing and carries the entrance
+- The entrance is scoped: a fragment opening a Focus opens it already scoped to what the sentence named. An unscoped landing makes the user filter for what they were just told
+- Example: "4 deliveries to schedule for tomorrow" → surfaces the decision and opens the scheduling Focus scoped to tomorrow
 
 ### What This Means in Practice
 
 **A feature is INCOMPLETE if:**
 - It can only be accessed by navigating to a page
-- It has no command bar workflow or hub widget entry point
+- It has no command bar workflow, and no fragment declaration if it has a monitoring aspect
 - A user needs to know WHERE to go to do it
 - It requires filling out a traditional form when natural language could collect the same data
 
 **A feature is COMPLETE if:**
-- Monitoring aspects surface in the appropriate hub
+- Monitoring aspects declare a fragment, with all five declarations satisfied
 - Action aspects are accessible from the command bar
 - Natural language handles multi-field data entry
 - The UI page exists for deep editing / complex cases but is not required for the primary use case
@@ -169,17 +141,17 @@ When designing any new feature, ask these two questions:
 
 1. **Never design a feature as form-only.** Every feature that collects user input must have a command bar workflow with natural language extraction as the primary entry point. The form is secondary.
 
-2. **Never design a monitoring feature as page-only.** Every metric, status, or alert that users need to notice must have a hub widget representation. A page for detail is fine. A page as the only surface is not.
+2. **Never design a monitoring feature as page-only.** Every metric, status or alert a user needs to notice must declare a fragment. A page for detail is fine; a page as the only surface is not. This does NOT mean everything gets a line — the composition gate decides whether a true fragment is worth saying, and a fragment that would say the same thing every day is a report, not a note fragment.
 
 3. **When recommending a new feature, always specify:**
-   - Which hub(s) get a widget for this feature
+   - The fragment it declares, with all five declarations, if it has a monitoring aspect
    - What the command bar workflow looks like
    - What natural language inputs it accepts
    - What the UI backup page looks like
    If you cannot specify all four, the feature is not fully designed.
 
 4. **When writing a build prompt, always include:**
-   - The hub widget if the feature has a monitoring aspect
+   - The fragment declaration if the feature has a monitoring aspect
    - The command bar workflow registration if it has an action aspect
    - The overlay config (natural language vs. form)
    - The UI page as the backup path
