@@ -31,6 +31,9 @@ across this seam from either side.
 
 from __future__ import annotations
 
+import json
+from urllib.parse import quote
+
 import logging
 from dataclasses import dataclass
 from typing import Sequence
@@ -39,6 +42,13 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.services.fragments.registry import get_registry
+#: ⚠️ DERIVED FROM MEASUREMENT, NOT PICKED. The largest real predicate is
+#: `collections_outstanding` at 124 URL-encoded characters; the smallest real
+#: EXPANSION that must be refused is a five-id list at 355. 256 sits between
+#: them with room for a predicate roughly twice the largest real one, and
+#: refuses even a short id list.
+MAX_PREDICATE_URL_CHARS = 256
+
 from app.services.fragments.types import (
     FragmentDeclaration,
     FragmentInstance,
@@ -135,11 +145,32 @@ def _validate_instance(
             "this instance is ABOUT. The instance key is derived from it, and "
             "the surface arc keys deferral and settling on that."
         )
-    if not inst.scope:
+    if not inst.predicate:
         raise FragmentEmissionError(
-            f"{decl.fragment_id}/{inst.subject_id}: declaration (3) requires "
-            "a NON-EMPTY scope. A fragment must carry scope into what it "
-            "opens; an empty scope is an unscoped href in a dict."
+            f"{decl.fragment_id}/{inst.subject_id}: declaration (3) requires a "
+            "NON-EMPTY predicate. A fragment must carry scope into what it "
+            "opens; an empty predicate is an unscoped href in a dict."
+        )
+    # ⚠️ THE PREDICATE HAS TO FIT IN A URL, AND THAT IS ENFORCED HERE RATHER
+    # THAN TRUSTED. Measured 2026-09-10: five anomaly ids cost 355 URL-encoded
+    # characters, so ~30 reaches the practical ceiling. A predicate that
+    # exceeded it would work locally and break the day someone shared a link —
+    # a failure whose trigger is not the code path but the DATA VOLUME, which
+    # is the kind that ships.
+    #
+    # The bound is on SIZE, not on type: `severity_in: ["critical","high"]` is
+    # a genuine predicate that happens to be a list, while `anomaly_ids` is an
+    # expansion that happens to be one. Type cannot separate them; the split
+    # declares which is which, and this catches a predicate that is secretly
+    # an expansion anyway.
+    encoded = quote(json.dumps(dict(inst.predicate), sort_keys=True, default=str))
+    if len(encoded) > MAX_PREDICATE_URL_CHARS:
+        raise FragmentEmissionError(
+            f"{decl.fragment_id}/{inst.subject_id}: the predicate is "
+            f"{len(encoded)} URL-encoded characters, over the "
+            f"{MAX_PREDICATE_URL_CHARS} limit. A predicate names what the "
+            "entrance MEANS and must survive a shared link; an id list belongs "
+            "in `expansion`, which is payload and never reaches the URL."
         )
     if inst.condition_inputs is None:
         raise FragmentEmissionError(

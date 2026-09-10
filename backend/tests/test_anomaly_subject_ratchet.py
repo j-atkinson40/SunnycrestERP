@@ -177,7 +177,7 @@ def test_a_fragment_whose_instances_all_reject_logs_an_error(caplog):
                     FragmentInstance(
                         subject_id="",
                         payload=FragmentPayload(title="T", synthesized_text="x"),
-                        scope={"a": 1},
+                        predicate={"a": 1},
                         condition_inputs={},
                     )
                 ],

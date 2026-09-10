@@ -22,7 +22,7 @@ import * as triageService from "@/services/triage-service"
 function renderCore(config: FocusConfig) {
   return render(
     <MemoryRouter>
-      <TriageQueueCore focusId={config.id} config={config} readOnly={false} />
+      <TriageQueueCore focusId={config.id} config={config} readOnly={false} scope={{}} />
     </MemoryRouter>,
   )
 }

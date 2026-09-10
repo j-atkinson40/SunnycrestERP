@@ -13,6 +13,7 @@
  * outside.
  */
 
+import { useFocusOptional } from "@/contexts/focus-context"
 import { getFocusConfig, type CoreMode } from "@/contexts/focus-registry"
 
 import type { CoreProps } from "./cores/_shared"
@@ -49,6 +50,11 @@ export function ModeDispatcher({ focusId }: { focusId: string }) {
   // asking for itself — a core that forgot to ask looks exactly like a core
   // whose user happens to hold the permission.
   const readOnly = useFocusReadOnly(config)
+  // ⚠️ NULL-SAFE, for the reason §1 learned the hard way: a hook that throws
+  // outside its provider makes this component unrenderable in every context
+  // that lacks one, and several legitimately do. Unscoped is a real state.
+  const focus = useFocusOptional()
+  const scope = focus?.currentFocus?.params ?? {}
   if (!config) {
     return <UnknownFocusError focusId={focusId} />
   }
@@ -65,7 +71,12 @@ export function ModeDispatcher({ focusId }: { focusId: string }) {
     <div className="flex h-full flex-col">
       {readOnly ? <ReadOnlyNotice permission={config.editPermission} /> : null}
       <div className="min-h-0 flex-1">
-        <Renderer focusId={focusId} config={config} readOnly={readOnly} />
+        <Renderer
+          focusId={focusId}
+          config={config}
+          readOnly={readOnly}
+          scope={scope}
+        />
       </div>
     </div>
   )

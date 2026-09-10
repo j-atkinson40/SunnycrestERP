@@ -220,10 +220,42 @@ class FragmentInstance:
     So the condition supplies the SUBJECT and the contract computes the key.
     See `EmittedFragment.instance_key`.
 
-    `scope` is (3)'s instance half and is REQUIRED NON-EMPTY.
+    ──────────────────────────────────────────────────────────────────────
+    ⚠️ (3)'s INSTANCE HALF IS TWO FIELDS, NOT ONE (2026-09-10)
+
+    `scope` was a single mapping until the Focus-capability arc built the first
+    real scoped entrance and found it doing two jobs with different lifetimes:
+
+      PREDICATE  — what the entrance MEANS. "Tasks due 2026-09-10 assigned to
+                   this user." Survives a refresh, a deep link, and a week.
+                   This is what goes in a URL.
+      EXPANSION  — what that predicate HAPPENED TO SELECT when the fragment was
+                   composed. The 4 task ids. Stale the moment anything changes.
+                   Payload only. NEVER a URL key.
+
+    Measured: `anomaly_ids` for five anomalies costs 355 URL-encoded characters,
+    so ~30 ids reaches the practical URL ceiling and an id list is the worst
+    possible thing to navigate on. And in every registered fragment the id list
+    was the expansion of a predicate the same mapping already carried.
+
+    ⚠️ SPLIT RATHER THAN CONVENTION, DELIBERATELY. The alternative was reading
+    key names — `anomaly_ids` is expansion-shaped, `severity_filter` is
+    predicate-shaped — which is an inference at every future declaration whose
+    failure is SILENT: the entrance works, and it breaks the day someone shares
+    the link or the list passes thirty. Split, an entrance declares which half
+    it navigates on and an id list in a URL is unexpressible rather than
+    discouraged.
+
+    Same conflation as one column holding both `account → type` and
+    `type → account`.
+
+    `predicate` is REQUIRED NON-EMPTY. `expansion` is optional and defaults to
+    empty — a fragment that selected nothing in particular has nothing to
+    freeze.
+
     `condition_inputs` is (2)'s snapshot: the enumerable inputs that caused this
-    instance to exist, which the surface arc's deferral diffs to wake a
-    deferred prompt on divergence.
+    instance to exist, which deferral diffs to wake a deferred prompt on
+    divergence.
     """
 
     #: (5) IDENTITY — what this instance is ABOUT, stable for as long as the
@@ -232,8 +264,13 @@ class FragmentInstance:
     #: day"); a run id, a job id, or a timestamp of evaluation is not.
     subject_id: str
     payload: FragmentPayload
-    scope: Mapping[str, Any]
-    condition_inputs: Mapping[str, Any]
+    #: What the entrance MEANS. URL-carryable, re-derivable, required non-empty.
+    predicate: Mapping[str, Any]
+    #: What the predicate SELECTED at composition. Payload; never a URL key.
+    #: ⚠️ The settled note is exactly where this is correct and the predicate
+    #: would lie — a record must not re-derive.
+    expansion: Mapping[str, Any] = field(default_factory=dict)
+    condition_inputs: Mapping[str, Any] = field(default_factory=dict)
 
 
 #: A condition is `(db, *, user) -> Sequence[FragmentInstance]`. Zero instances

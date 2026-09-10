@@ -120,7 +120,7 @@ def _declare(fid: str, *, kind: str = "prompt", inputs: dict, subject="subj-1"):
         condition=lambda db, *, user: [FragmentInstance(
             subject_id=subject,
             payload=FragmentPayload(title="T", synthesized_text="prose"),
-            scope={"k": 1}, condition_inputs=dict(inputs),
+            predicate={"k": 1}, condition_inputs=dict(inputs),
         )],
         target_surface="peek", target_key="t", subject_kind="invoice",
         end_transition=(EndTransition(entity_kind="invoice",
@@ -609,7 +609,7 @@ def test_the_record_serialises_spans_like_prose(db_session, user):
                     title="T", synthesized_text="Lakeside owes $3,750.00",
                     spans=spans,
                 ),
-                scope={"k": 1}, condition_inputs={"total": 10},
+                predicate={"k": 1}, condition_inputs={"total": 10},
             )],
             target_surface="peek", target_key="t", subject_kind="invoice",
             end_transition=EndTransition(entity_kind="invoice",

@@ -90,6 +90,14 @@ UPDATE agent_anomalies SET entity_type='accounting_period', entity_id='2026-08-0
 - **`expense_no_gl_mapping` can no longer produce 1,825 rows for one unmapped category** (2026-09-08) — the listener prevents it now, the index will make it unexpressible.
 - **Two post-deploy checks** (2026-09-08). If the migration fails to apply, the index found duplicate open rows: **find the writer, do not relax the index.** And tonight's `ar_collections` at ~23:07 UTC is the **first agent write under a live unique index** — run `scripts/verify_supersede_drain.py` afterwards, because a `UniqueViolation` there means the listener and the index disagree about what a duplicate is.
 
+## ⚠️ SECURITY — THREE ENDPOINTS WHERE THE UI IS THE ONLY ENFORCEMENT (2026-09-10)
+
+**Owed to whoever owns the deliveries module. Not an arc item, and not fixed by the arc that found it.**
+
+- **`POST /extensions/funeral-kanban/ancillary/{id}/{attach,assign-standalone,return-to-pool}` require NO CAPABILITY** (2026-09-10). Only `get_current_user` plus a router-level `require_module("driver_delivery")`. `app/api/routes/ancillary_orders.py` never imports `require_permission` — established by enumerating the dependencies on all three endpoints, not from a grep miss. Any authenticated user in a tenant with that module enabled can attach, detach and reassign ancillaries.
+- **⚠️ Since 2026-09-10 the Focus read-only affordance is the only thing refusing them**, and an affordance must never be the enforcement. It decides whether a control is offered, never whether an action is allowed. This entry exists because "the UI is the only enforcement" is the kind of condition that stays true for a year.
+- **Sibling finding, same date:** a single `FocusConfig.editPermission` is coarser than the enforcement beneath it in both directions. `funeral-scheduling` declares `delivery.edit`; the drag's main mutation requires exactly that, while finalize/revert require `delivery.finalize_schedule` and hole-dug requires `delivery.edit_hole_dug` — so a user holding `delivery.edit` alone sees those controls ENABLED and receives a 403.
+
 ## Held work, in the order James ruled (2026-09-08)
 
 1. **Classifier vocabulary** — 14 of 15 categories unmappable by construction. **The actual cause of the largest anomaly population**, so it precedes everything else.

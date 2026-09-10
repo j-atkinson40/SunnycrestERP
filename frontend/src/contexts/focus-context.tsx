@@ -14,11 +14,24 @@
  *
  * State shape + URL discipline
  * ────────────────────────────
- * The URL is the source of truth after initial mount. `open(id)`
- * pushes `?focus=<id>` via useSearchParams; `close()` removes the
- * param. A useEffect watches the param and reconciles context state.
+ * The URL is the source of truth after initial mount. `open(id, {params})`
+ * pushes `?focus=<id>` AND `?fscope=<json>` via useSearchParams; `close()`
+ * removes both. A useEffect watches them and reconciles context state.
  * Browser back/forward naturally dismisses/reopens the Focus because
  * navigation rewrites the URL, which re-triggers the reconcile.
+ *
+ * ⚠️ THE SECOND HALF OF THAT SENTENCE WAS FALSE UNTIL 2026-09-10, and it sat
+ * exactly where someone would come to learn how scope works. `open()` wrote
+ * `params` to a ref and set only `focus`, so scope did NOT survive a refresh
+ * or a deep link — while this paragraph said the URL was the source of truth.
+ * Nothing consumed `params` at all; only `ReturnPill` round-tripped it.
+ *
+ * ⚠️ `fscope` CARRIES THE PREDICATE, NEVER THE EXPANSION. A predicate is what
+ * the entrance MEANS ("tasks due 2026-09-10 assigned to this user") and
+ * re-derives; an expansion is the id list that predicate happened to select
+ * when the fragment was composed, and it is stale the moment anything changes.
+ * The fragment contract declares the two halves separately and bounds the
+ * predicate at 256 URL-encoded characters — five ids measured 355.
  *
  * Persistence — optimistic loading (Session 4)
  * ────────────────────────────────────────────
@@ -151,6 +164,43 @@ export interface FocusContextValue {
 }
 
 
+/** The query parameter carrying a Focus's PREDICATE.
+ *
+ *  ⚠️ ONE PARAM HOLDING JSON, NOT ONE PARAM PER KEY. A predicate carries
+ *  strings, numbers, booleans, nulls and short string lists — `severity_in:
+ *  ["critical","high"]` is a real one — and per-key query params flatten all of
+ *  those to strings. A predicate that round-tripped `false` as `"false"` would
+ *  re-derive against a different world than the one the sentence described.
+ *
+ *  ⚠️ PREDICATE ONLY. The expansion — the id list a predicate happened to
+ *  select — is payload and never reaches here. It is bounded server-side at
+ *  emission (256 URL-encoded characters) because a URL cannot carry one at
+ *  scale: five ids measured 355 characters.
+ */
+const FOCUS_SCOPE_PARAM = "fscope";
+
+function encodeScope(params: Record<string, unknown>): string | null {
+  const keys = Object.keys(params ?? {});
+  if (keys.length === 0) return null;
+  return JSON.stringify(params);
+}
+
+function decodeScope(raw: string | null): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    // A non-object here is a malformed or hand-edited URL. Returning {} keeps
+    // the Focus openable and unscoped rather than crashing the surface — an
+    // unscoped landing is a worse experience, not a broken one.
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+
 const FocusContext = createContext<FocusContextValue | null>(null);
 
 
@@ -209,6 +259,8 @@ export function FocusProvider({ children }: { children: ReactNode }) {
   const pendingParamsRef = useRef<Record<string, unknown> | null>(null);
 
   const focusParam = searchParams.get("focus");
+  const scopeParam = searchParams.get(FOCUS_SCOPE_PARAM);
+  const scopeFromUrl = useMemo(() => decodeScope(scopeParam), [scopeParam]);
 
   // Debounced layout-write scheduler. Holds a timer id per-session;
   // each updateSessionLayout call cancels the previous timer and
@@ -227,7 +279,8 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     pendingWriteLayoutRef.current = null;
   }, []);
 
-  // Sync state FROM URL. The URL is the source of truth after initial
+  // Sync state FROM URL — including the scope. The URL is the source of
+  // truth after initial mount, and since 2026-09-10 that is true of scope too
   // mount; this effect reconciles context state whenever it changes.
   useEffect(() => {
     if (focusParam) {
@@ -245,7 +298,11 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         const newFocus: FocusState = {
           id: focusParam,
           openedAt: new Date(),
-          params: pendingParamsRef.current ?? {},
+          // ⚠️ THE URL WINS. The ref only carries scope across the single
+          // render between `open()` and this effect; on a refresh or a deep
+          // link there is no ref and the URL is all there is. Preferring the
+          // ref would make a shared link silently unscoped.
+          params: scopeFromUrl,
           layoutState: seededLayout,
           sessionId: null,
           draftState: null,
@@ -356,6 +413,16 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         (prev) => {
           const next = new URLSearchParams(prev);
           next.set("focus", id);
+          // ⚠️ THE SCOPE GOES IN THE URL. It did not until 2026-09-10: `open`
+          // wrote params to a ref and set only `focus`, so scope did not
+          // survive a refresh or a deep link while this module's own docstring
+          // called the URL the source of truth. A scoped entrance whose scope
+          // evaporates on reload lands the user somewhere they must re-filter,
+          // which is the two-steps-to-one-thing failure the peek was reverted
+          // for.
+          const encoded = encodeScope(options?.params ?? {});
+          if (encoded) next.set(FOCUS_SCOPE_PARAM, encoded);
+          else next.delete(FOCUS_SCOPE_PARAM);
           return next;
         },
         { replace: false },
@@ -369,6 +436,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete("focus");
+        next.delete(FOCUS_SCOPE_PARAM);
         return next;
       },
       { replace: false },

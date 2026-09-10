@@ -74,7 +74,7 @@ def _declare(fid: str, *, kind: str, inputs: dict, subject: str = "subj-1"):
         condition=lambda db, *, user: [FragmentInstance(
             subject_id=subject,
             payload=FragmentPayload(title="T", synthesized_text="prose"),
-            scope={"k": 1}, condition_inputs=dict(inputs),
+            predicate={"k": 1}, condition_inputs=dict(inputs),
         )],
         target_surface="peek", target_key="t", subject_kind="invoice",
         end_transition=(EndTransition(entity_kind="invoice",
@@ -218,7 +218,7 @@ def test_the_digest_ignores_the_PROSE(db_session, user):
                 subject_id="subj-1",
                 payload=FragmentPayload(title="DIFFERENT",
                                         synthesized_text="entirely different wording"),
-                scope={"k": 1}, condition_inputs={"total": 10},
+                predicate={"k": 1}, condition_inputs={"total": 10},
             )],
             target_surface="peek", target_key="t", subject_kind="invoice",
         ))
@@ -239,10 +239,10 @@ def test_two_subjects_do_not_share_a_verdict(db_session, user):
             condition=lambda db, *, user: [
                 FragmentInstance(subject_id="A",
                                  payload=FragmentPayload(title="A", synthesized_text="a"),
-                                 scope={"k": 1}, condition_inputs={"v": 1}),
+                                 predicate={"k": 1}, condition_inputs={"v": 1}),
                 FragmentInstance(subject_id="B",
                                  payload=FragmentPayload(title="B", synthesized_text="b"),
-                                 scope={"k": 1}, condition_inputs={"v": 2}),
+                                 predicate={"k": 1}, condition_inputs={"v": 2}),
             ],
             target_surface="peek", target_key="t", subject_kind="invoice",
         ))
@@ -266,7 +266,7 @@ def test_the_gate_can_render_at_all_control():
         _declare("np", kind="non_prompt", inputs={"total": 1})
         f = FragmentInstance(subject_id="s",
                              payload=FragmentPayload(title="t", synthesized_text="x"),
-                             scope={"k": 1}, condition_inputs={"total": 1})
+                             predicate={"k": 1}, condition_inputs={"total": 1})
         assert change_digest.__name__ == "change_digest"
         from app.services.fragments.registry import get_registry
         assert "np" in get_registry(), "the fixture did not even register"

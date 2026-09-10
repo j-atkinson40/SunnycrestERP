@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { useFocusReadOnly } from "./useFocusReadOnly";
 import type { FocusConfig } from "@/contexts/focus-registry";
 
-const authState = { hasPermission: (_k: string) => false, isAdmin: false };
+const authState = { hasPermission: () => false, isAdmin: false };
 vi.mock("@/contexts/auth-context", () => ({
   useAuthOptional: () => authState,
 }));

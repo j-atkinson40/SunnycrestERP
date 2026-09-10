@@ -54,6 +54,8 @@ export interface SchedulingFocusWithAccessoriesProps {
   /** ⚠️ The dispatcher passes this identically to bespoke and mode-generic
    *  cores, so a specialized core cannot quietly opt out of the edit gate. */
   readOnly: boolean
+  /** The open Focus's predicate. See `CoreProps.scope`. */
+  scope: Record<string, unknown>
 }
 
 
@@ -61,6 +63,7 @@ export function SchedulingFocusWithAccessories({
   focusId,
   config,
   readOnly,
+  scope: _scope,
 }: SchedulingFocusWithAccessoriesProps) {
   const { company } = useAuth()
   const compositionFocusType = config.compositionFocusType ?? config.id

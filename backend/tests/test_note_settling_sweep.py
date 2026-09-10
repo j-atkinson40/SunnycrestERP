@@ -56,9 +56,13 @@ def _isolate(db_session, user):
             db_session.query(m).filter(m.user_id == user.id).delete(
                 synchronize_session=False
             )
-        db_session.query(DailyNote).filter(DailyNote.user_id == user.id).delete(
-            synchronize_session=False
-        )
+        # ⚠️ PURGE BY TENANT, NOT BY USER. `tenants_scanned` counts TENANTS:
+        # a note belonging to any other user on this company keeps the tenant
+        # in the scan, and the differential test below reads that as "adding a
+        # note did nothing".
+        db_session.query(DailyNote).filter(
+            DailyNote.company_id == user.company_id
+        ).delete(synchronize_session=False)
         db_session.commit()
     purge()
     yield
@@ -186,10 +190,33 @@ def test_a_sweep_never_raises_out_of_one_tenant(db_session, user):
 
 
 def test_a_tenant_with_no_notes_is_not_scanned(db_session, user):
-    """Nothing to settle is not a question worth asking 96 times a day."""
-    stats = sweep_notes_to_settle(db_session)
-    assert stats["tenants_scanned"] == 0, (
-        f"scanned {stats['tenants_scanned']} tenants with no notes at all"
+    """Nothing to settle is not a question worth asking 96 times a day.
+
+    ⚠️ ASSERTED DIFFERENTIALLY, NOT AS A GLOBAL COUNT. The first version
+    asserted `tenants_scanned == 0`, which is a claim about the WHOLE DATABASE:
+    any other test's leftover `daily_notes` row falsifies it. It passed alone
+    and in the scoped gate and failed only in the full-tree run — the shape
+    where a test asserts a global property and the suite around it supplies
+    counter-examples.
+
+    The real claim is about THIS tenant: adding a note makes it scanned, and
+    removing it makes it not. That holds whatever else is in the database.
+    """
+    before = sweep_notes_to_settle(db_session)["tenants_scanned"]
+
+    _settled_note(db_session, user, date.today())
+    with_note = sweep_notes_to_settle(db_session)["tenants_scanned"]
+    assert with_note == before + 1, (
+        f"a tenant that gained a note was not scanned ({before} -> {with_note})"
+    )
+
+    db_session.query(DailyNote).filter(DailyNote.user_id == user.id).delete(
+        synchronize_session=False
+    )
+    db_session.commit()
+    after = sweep_notes_to_settle(db_session)["tenants_scanned"]
+    assert after == before, (
+        f"a tenant with no notes was still scanned ({before} -> {after})"
     )
 
 

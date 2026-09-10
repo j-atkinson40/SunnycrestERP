@@ -152,7 +152,7 @@ describe("SchedulingFocusWithAccessories", () => {
       <SchedulingFocusWithAccessories
         focusId="funeral-scheduling"
         config={makeConfig()}
-        readOnly={false}
+        readOnly={false} scope={{}}
       />,
     )
     const core = screen.getByTestId("scheduling-kanban-core")
@@ -171,7 +171,7 @@ describe("SchedulingFocusWithAccessories", () => {
       <SchedulingFocusWithAccessories
         focusId="funeral-scheduling"
         config={makeConfig()}
-        readOnly={false}
+        readOnly={false} scope={{}}
       />,
     )
     const wrapper = screen.getByTestId("scheduling-kanban-core").closest(
@@ -194,7 +194,7 @@ describe("SchedulingFocusWithAccessories", () => {
       <SchedulingFocusWithAccessories
         focusId="funeral-scheduling"
         config={makeConfig()}
-        readOnly={false}
+        readOnly={false} scope={{}}
       />,
     )
     const wrapper = screen.getByTestId("scheduling-kanban-core").closest(
@@ -214,7 +214,7 @@ describe("SchedulingFocusWithAccessories", () => {
       <SchedulingFocusWithAccessories
         focusId="funeral-scheduling"
         config={makeConfig()}
-        readOnly={false}
+        readOnly={false} scope={{}}
       />,
     )
     const wrapper = screen.getByTestId("scheduling-kanban-core").closest(
@@ -234,7 +234,7 @@ describe("SchedulingFocusWithAccessories", () => {
       <SchedulingFocusWithAccessories
         focusId="funeral-scheduling"
         config={makeConfig()}
-        readOnly={false}
+        readOnly={false} scope={{}}
       />,
     )
     expect(screen.getByTestId("scheduling-kanban-core")).toBeTruthy()
@@ -266,7 +266,7 @@ describe("SchedulingFocusWithAccessories", () => {
       <SchedulingFocusWithAccessories
         focusId="other-focus"
         config={makeConfig({ compositionFocusType: undefined })}
-        readOnly={false}
+        readOnly={false} scope={{}}
       />,
     )
     expect(screen.getByTestId("scheduling-kanban-core")).toBeTruthy()

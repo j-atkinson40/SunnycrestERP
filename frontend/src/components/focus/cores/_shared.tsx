@@ -24,6 +24,16 @@ export interface CoreProps {
    *  that silently drops an action the user could otherwise have taken is
    *  indistinguishable from one that is broken. */
   readOnly: boolean
+  /** The open Focus's PREDICATE — what this entrance means.
+   *
+   *  ⚠️ NOT the expansion. The fragment contract splits them: a predicate
+   *  ("tasks due 2026-09-10 assigned to this user") re-derives and survives a
+   *  shared link; the id list it selected at composition is payload and never
+   *  reaches a URL. A core scopes itself from this and queries for itself.
+   *
+   *  Empty when the Focus was opened unscoped, which is a real state — not
+   *  every entrance names a subset. */
+  scope: Record<string, unknown>
 }
 
 

@@ -210,6 +210,8 @@ export interface FocusConfig {
      *  answer the mode-generic cores do — the dispatcher passes it identically
      *  either way, so a bespoke core cannot quietly opt out of the gate. */
     readOnly: boolean
+    /** The open Focus's predicate. See `CoreProps.scope`. */
+    scope: Record<string, unknown>
   }>
   /** Optional decoupling between the registered Focus id and the
    *  composition lookup key. May 2026 (composition runtime

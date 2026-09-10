@@ -166,7 +166,7 @@ describe("ModeDispatcher — coreComponent override (Phase B Session 4 Phase 4.2
 vi.mock("@/contexts/auth-context", () => ({
   useAuthOptional: () => mockAuth,
 }))
-const mockAuth = { hasPermission: (_k: string) => false, isAdmin: false }
+const mockAuth = { hasPermission: () => false, isAdmin: false }
 
 describe("ModeDispatcher — read-only", () => {
   afterEach(() => {

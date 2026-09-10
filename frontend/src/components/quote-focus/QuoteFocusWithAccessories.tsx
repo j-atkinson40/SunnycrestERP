@@ -59,6 +59,8 @@ export interface QuoteFocusWithAccessoriesProps {
   /** ⚠️ The dispatcher passes this identically to bespoke and mode-generic
    *  cores, so a specialized core cannot quietly opt out of the edit gate. */
   readOnly: boolean
+  /** The open Focus's predicate. See `CoreProps.scope`. */
+  scope: Record<string, unknown>
 }
 
 /** 300ms — matches the arc's saved-view / draft write debounces. Wide
@@ -71,6 +73,7 @@ export function QuoteFocusWithAccessories({
   focusId,
   config,
   readOnly,
+  scope: _scope,
 }: QuoteFocusWithAccessoriesProps) {
   void focusId
   void config

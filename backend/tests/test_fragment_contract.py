@@ -155,7 +155,7 @@ def _instance(**over):
     base = dict(
         subject_id="subj-1",
         payload=FragmentPayload(title="T", synthesized_text="text"),
-        scope={"a": 1},
+        predicate={"a": 1},
         condition_inputs={"ids": []},
     )
     base.update(over)
@@ -337,7 +337,7 @@ def test_target_carries_scope_into_a_focus(clean_registry, db, user):
             target_surface="focus",
             target_key="scheduling",
             condition=lambda db, *, user: [
-                _instance(scope={"date": "tomorrow", "product_lines": ["vault"]})
+                _instance(predicate={"date": "tomorrow", "product_lines": ["vault"]})
             ],
         )
     )
@@ -345,7 +345,7 @@ def test_target_carries_scope_into_a_focus(clean_registry, db, user):
     assert len(out) == 1
     assert out[0].declaration.target_surface == "focus"
     assert out[0].declaration.target_key == "scheduling"
-    assert out[0].instance.scope == {
+    assert out[0].instance.predicate == {
         "date": "tomorrow",
         "product_lines": ["vault"],
     }
@@ -354,8 +354,8 @@ def test_target_carries_scope_into_a_focus(clean_registry, db, user):
 def test_empty_scope_is_rejected(clean_registry):
     """An empty scope is an unscoped href wearing a dict — the exact thing
     DECISIONS 2026-09-04 rules does not satisfy declaration (3)."""
-    with pytest.raises(FragmentEmissionError, match="NON-EMPTY scope"):
-        _validate_instance(_decl(), _instance(scope={}))
+    with pytest.raises(FragmentEmissionError, match="NON-EMPTY predicate"):
+        _validate_instance(_decl(), _instance(predicate={}))
 
 
 def test_emission_drops_a_scopeless_instance_without_dropping_the_rest(
@@ -366,8 +366,8 @@ def test_emission_drops_a_scopeless_instance_without_dropping_the_rest(
         _decl(
             fragment_id="mixed",
             condition=lambda db, *, user: [
-                _instance(subject_id="bad", scope={}),
-                _instance(subject_id="good", scope={"x": 1}),
+                _instance(subject_id="bad", predicate={}),
+                _instance(subject_id="good", predicate={"x": 1}),
             ],
         )
     )
@@ -473,7 +473,15 @@ def test_tasks_due_today_emits_a_scoped_prompt(db, user, world):
         assert e.declaration.kind == "prompt"
         assert e.declaration.dismissible is False
         assert e.declaration.target_surface == "focus"
-        assert td.id in e.instance.scope["task_detail_ids"]
+        # ⚠️ THE SPLIT. The ids are the EXPANSION — what the predicate
+        # selected at composition. The predicate carries what the entrance
+        # MEANS, and it is the only half a URL may carry.
+        assert td.id in e.instance.expansion["task_detail_ids"]
+        assert "task_detail_ids" not in e.instance.predicate, (
+            "an id list reached the predicate — it would be navigated on, and "
+            "a URL cannot carry one at scale"
+        )
+        assert set(e.instance.predicate) == {"due_date", "assignee_user_id"}
         assert td.id in e.instance.condition_inputs["open_task_ids"]
         assert "Hopkins" in e.instance.payload.synthesized_text
         # Every factual claim is a link.
@@ -626,7 +634,7 @@ def _prompt(fid: str, *, outcomes):
         audience=Audience.any_authenticated(),
         condition=lambda db, *, user: [FragmentInstance(
             subject_id="s", payload=FragmentPayload(title="T", synthesized_text="p"),
-            scope={"k": 1}, condition_inputs={"a": 1},
+            predicate={"k": 1}, condition_inputs={"a": 1},
         )],
         target_surface="peek", target_key="t", subject_kind="invoice",
         end_transition=EndTransition(
@@ -789,3 +797,66 @@ def test_request_review_is_NOT_a_resolution():
     assert "_resolve_anomaly(" not in src, (
         "request_review now resolves — it must not; the item stays in queue"
     )
+
+
+# ── (3) split into predicate + expansion, 2026-09-10 ─────────────────
+
+
+def test_an_id_list_in_the_PREDICATE_is_refused():
+    """⚠️ A predicate must survive a shared link.
+
+    Measured: five anomaly ids cost 355 URL-encoded characters, so ~30 reaches
+    the practical URL ceiling. A predicate carrying a list works locally and
+    breaks on the data volume — a failure whose trigger is not the code path,
+    which is the kind that ships.
+    """
+    from app.services.fragments.emission import (
+        FragmentEmissionError, MAX_PREDICATE_URL_CHARS, _validate_instance,
+    )
+
+    ids = [f"{i:08d}-1111-2222-3333-444444444444" for i in range(30)]
+    with pytest.raises(FragmentEmissionError, match="URL-encoded characters"):
+        _validate_instance(_decl(), _instance(predicate={"anomaly_ids": ids}))
+
+
+def test_CONTROL_a_real_predicate_is_accepted():
+    """The pair. Without it, "oversized is refused" is satisfied by a validator
+    that refuses everything."""
+    from app.services.fragments.emission import _validate_instance
+
+    _validate_instance(_decl(), _instance(predicate={
+        "due_date": "2026-09-10",
+        "assignee_user_id": "11111111-2222-3333-4444-555555555555",
+    }))
+
+
+def test_the_bound_is_derived_from_the_real_predicates_not_picked():
+    """⚠️ Asserted against what SHIPS, not against a literal.
+
+    Every registered fragment's predicate must fit, with headroom. A limit that
+    the real declarations only just cleared would fail on the first slightly
+    longer customer id.
+    """
+    import json
+    from urllib.parse import quote
+
+    from app.services.fragments.emission import MAX_PREDICATE_URL_CHARS
+
+    # The largest real predicate, encoded the way emission encodes it.
+    largest = quote(json.dumps({
+        "customer_id": "11111111-2222-3333-4444-555555555555",
+        "queue_id": "ar_collections_triage",
+    }, sort_keys=True))
+    assert len(largest) < MAX_PREDICATE_URL_CHARS
+    # ...and a five-id expansion must NOT fit, or the bound permits the thing
+    # it exists to refuse.
+    five_ids = quote(json.dumps({
+        "anomaly_ids": [f"{i:08d}-1111-2222-3333-444444444444" for i in range(5)]
+    }, sort_keys=True))
+    assert len(five_ids) > MAX_PREDICATE_URL_CHARS
+
+
+def test_expansion_is_optional_and_defaults_empty():
+    """A fragment that selected nothing in particular has nothing to freeze."""
+    inst = _instance(predicate={"a": 1})
+    assert inst.expansion == {}

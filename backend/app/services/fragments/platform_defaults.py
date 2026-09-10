@@ -160,11 +160,13 @@ def _anomaly_watchlist_condition(
                 priority=95,
             ),
             # (3) SCOPE — carried into the peek. The old item opened nothing.
-            scope={
-                "anomaly_ids": [r.entity_id for r in refs],
+            # (3) PREDICATE — what the entrance MEANS, and all a URL carries.
+            predicate={
                 "severity_filter": "critical" if critical else None,
                 "include_resolved": False,
             },
+            # EXPANSION — what that selected when composed. Payload only.
+            expansion={"anomaly_ids": [r.entity_id for r in refs]},
             # (2) SNAPSHOT — the enumerable inputs. The surface arc's deferral
             # diffs these to wake a deferred prompt on divergence; for a
             # non-prompt they still drive per-fragment regeneration.
@@ -234,11 +236,14 @@ def _compliance_flags_condition(
             ),
             # The old payload carried `"navigation_target": "/safety"` — an
             # unscoped href. This carries the actual flag set instead.
-            scope={
-                "notification_ids": [r.entity_id for r in refs],
+            # ⚠️ `severity_in` IS A PREDICATE THAT HAPPENS TO BE A LIST, and
+            # `notification_ids` is an expansion that happens to be one. Type
+            # cannot tell them apart, which is why the halves are declared.
+            predicate={
                 "category": "safety_alert",
                 "severity_in": ["critical", "high"],
             },
+            expansion={"notification_ids": [r.entity_id for r in refs]},
             condition_inputs={
                 "unread_alert_ids": sorted(r.entity_id for r in refs),
                 "count": n,
@@ -340,11 +345,13 @@ def _tasks_due_today_condition(
                 referenced_items=refs,
                 priority=90,
             ),
-            scope={
-                "task_detail_ids": [r.entity_id for r in refs],
+            # The ids ARE what due_date + assignee select, so the URL carries
+            # the two and re-derives the list.
+            predicate={
                 "due_date": today.isoformat(),
                 "assignee_user_id": user.id,
             },
+            expansion={"task_detail_ids": [r.entity_id for r in refs]},
             condition_inputs={
                 "open_task_ids": sorted(r.entity_id for r in refs),
                 "due_date": today.isoformat(),
@@ -442,7 +449,11 @@ def _collections_outstanding_condition(db: Session, *, user: User) -> Sequence[F
         out.append(FragmentInstance(
             subject_id=customer_id,
             payload=compose(spans, title="Outstanding balance", priority=60),
-            scope={"customer_id": customer_id, "queue_id": "ar_collections_triage"},
+            # No expansion: one customer is already the thing itself.
+            predicate={
+                "customer_id": customer_id,
+                "queue_id": "ar_collections_triage",
+            },
             #: (2) enumerable and snapshottable — the gate digests THIS, not the
             #: sentence. Amount and finding-count are what "did anything move?"
             #: means for a collections conversation.
@@ -520,7 +531,7 @@ def _expense_posting_map_condition(db: Session, *, user: User) -> Sequence[Fragm
                 ],
                 title="Expense posting map", priority=55,
             ),
-            scope={"platform_category": category},
+            predicate={"platform_category": category},
             condition_inputs={"category": category, "blocked_lines": line_count},
         ))
     return out
