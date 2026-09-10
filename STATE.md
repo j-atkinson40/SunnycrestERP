@@ -2,6 +2,71 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## Held work, in the order James ruled (2026-09-10)
+
+Supersedes the 2026-09-08 ranking below. Every item carries its own origin date;
+none inherits this heading's.
+
+1. **`CLAUDE.md:381` still says "hub widget"** (2026-09-10). In the §3 Design
+   Philosophy table — "Should this be a triage queue, a saved view, or a hub
+   widget?" It names a surface that no longer exists, in the file the read order
+   opens EVERY SESSION, and it sits outside §1a so the nine-site rewrite left a
+   tenth standing. Needs no decision.
+2. **`note/types.py:18-20` quotes the SUPERSEDED standing-set admission test**
+   (2026-09-10). It reads "referenced most days"; the test was tightened
+   2026-09-09 and `note/registry.py:77` carries the real one. Same shape as item 1
+   — the answer landed in one place and the neighbour kept asking. Needs no
+   decision. Items 1 and 2 are one small commit.
+3. **The deferred-handler-body pattern has no canonical home** (2026-09-10). It was
+   described only inside PLATFORM_ARCHITECTURE §3.3's task-substrate subsection, by
+   cross-reference to a CLAUDE.md §4 section that has NEVER contained it, with one
+   named instance — `_build_tasks_item` — deleted with Pulse. ⚠️ Re-derive from
+   commit `1c8dbbd`, NOT from the surviving paragraph: that paragraph is the only
+   remaining account, which is exactly what disqualifies it as the source. Land it
+   in CLAUDE.md §4 where §3.3 always claimed it was.
+4. **`ar_aging_monitor`** (2026-09-08) — fails 3 of 4 runs since 2026-07-16 on what
+   reads as a one-line date/datetime bug, **and feeds the collections anomalies**,
+   so those anomalies' trustworthiness is downstream of it. See its own section.
+5. **The classifier posting-map surface** (2026-09-09) — a level error over a
+   missing surface. See its own section; it supersedes the 2026-09-08 framing.
+6. **Three canon documents are marked but NOT rewritten** (2026-09-10).
+   BRIDGEABLE_MASTER (289 Pulse-mentioning lines), PLATFORM_PRODUCT_PRINCIPLES (29),
+   PLATFORM_INTERACTION_MODEL (5, four substantive). Marked in `fee03496` /
+   `ade442d8`; still assert Pulse as live, with the marker the only thing saying
+   otherwise. ⚠️ "Canon describes what exists" is true of CLAUDE.md §1a and
+   PLATFORM_ARCHITECTURE §3 and NOT of the platform's canon as a whole. A held
+   position, not a closed one.
+7. **The percentile metric across 15 BLOCKING latency gates** (2026-09-10).
+   `statistics.quantiles(d, n=100)[-1]` uses the EXCLUSIVE method, which at n=30
+   extrapolates past the data — measured producing a "p99" of 616ms against an
+   observed max of 411ms. A percentile cannot exceed the maximum. ⚠️ The bias
+   OVERESTIMATES, so gates have run stricter than intended: no shipped latency
+   claim was wrong in the dangerous direction, and every recorded headroom figure
+   UNDERSTATES the real headroom. Produces spurious reds, not false greens.
+8. **`pulse_signals` table is orphaned** (2026-09-10). Model deleted in `bf2412df`;
+   table not dropped, because `r182` was scoped to the two CHECK constraints and a
+   table drop is a different act. 0 rows in production and dev. Leaving it
+   reproduces the `tenant_settings` debt this file already documents.
+9. **`complete`/`completed` on `agent_jobs`** (2026-09-08) — data plus retire the
+   legacy writer. Not a filing risk; the severity claim that once put it higher was
+   the executor's and was false.
+10. **The `/pulse` prefix rename** (2026-09-10). Two non-Pulse endpoints —
+    `/email-threads-for-customer` and `/calendar-events-for-customer` — were rescued
+    from the removal in `bf2412df` with their URLs deliberately UNCHANGED. Zero
+    frontend callers; one backend test suite. ⚠️ `frontend/src/styles/pulse-density.css`
+    is the same shape and is LIVE — load-bearing for surviving widgets' container
+    queries. Both are names that now describe nothing, and the next person to meet
+    either will reason from the name.
+11. **Three ancillary endpoints with no capability gate** (2026-09-10) — owed to the
+    deliveries module. See its own section.
+
+Also open, not ranked: the five seeded demo rows in production's anomaly table
+(2026-09-08); the six accounting remedies (2026-09-08); the deploy window as a
+pre-go-live decision (2026-09-08); whether "a local process writes to production"
+becomes the pattern or stays the exception (2026-09-08); `types/fragments.ts` has
+zero importers and declares the contract's pre-`outcomes`, pre-predicate/expansion
+shapes (2026-09-10).
+
 ## ⚠️ THREE ANCILLARY MUTATION ENDPOINTS HAVE NO CAPABILITY GATE (2026-09-10)
 
 Found while declaring `editPermission` on the funeral-scheduling Focus; surfaced, not fixed.
@@ -98,7 +163,7 @@ UPDATE agent_anomalies SET entity_type='accounting_period', entity_id='2026-08-0
 - **⚠️ Since 2026-09-10 the Focus read-only affordance is the only thing refusing them**, and an affordance must never be the enforcement. It decides whether a control is offered, never whether an action is allowed. This entry exists because "the UI is the only enforcement" is the kind of condition that stays true for a year.
 - **Sibling finding, same date:** a single `FocusConfig.editPermission` is coarser than the enforcement beneath it in both directions. `funeral-scheduling` declares `delivery.edit`; the drag's main mutation requires exactly that, while finalize/revert require `delivery.finalize_schedule` and hole-dug requires `delivery.edit_hole_dug` — so a user holding `delivery.edit` alone sees those controls ENABLED and receives a 403.
 
-## Held work, in the order James ruled (2026-09-08)
+## [SUPERSEDED 2026-09-10 — see "Held work, in the order James ruled (2026-09-10)" at the top of this file] Held work, in the order James ruled (2026-09-08)
 
 1. **Classifier vocabulary** — 14 of 15 categories unmappable by construction. **The actual cause of the largest anomaly population**, so it precedes everything else.
 2. **`ar_aging_monitor`** — fails 3 of 4 runs since 2026-07-16 on what reads as a one-line date/datetime bug, **and feeds the collections anomalies**, so those anomalies' trustworthiness is downstream of it.
