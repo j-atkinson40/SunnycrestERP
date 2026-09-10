@@ -6,6 +6,47 @@
 
 This document articulates Bridgeable's interaction philosophy. It answers the question: *how does Bridgeable behave?* The visual register lives in [`DESIGN_LANGUAGE.md` §0](DESIGN_LANGUAGE.md). The execution standard lives in [`PLATFORM_QUALITY_BAR.md`](PLATFORM_QUALITY_BAR.md). The synthesis is in [`PLATFORM_DESIGN_THESIS.md`](PLATFORM_DESIGN_THESIS.md).
 
+> ## ⚠️ THE INTERACTION MODEL STANDS; PULSE AS THE ARRIVING SURFACE IS SUPERSEDED — 2026-09-10
+>
+> **Nothing about how Bridgeable behaves is superseded.** Summon, arrange, park,
+> dismiss; the workshop reference; floating tablets; chip conversation; the pause
+> sensor; the three modes of presence — all unchanged. Per DECISIONS 2026-09-04
+> ("Monitor is a daily note, not a dashboard"), what changes is the SURFACE that
+> arrives: a per-user, per-day note — prose fragments over a positionally stable
+> standing set — rather than an Intelligence-composed widget grid.
+>
+> **Four mentions are affected. They are listed rather than left to be found,
+> because this document is otherwise entirely live and a reader should not have to
+> re-derive which sentences the marker reaches:**
+>
+> - **"Tab-forest navigation" §, "Pulse (arrives) — Home Space surfaces what's
+>   relevant."** Read as "the arriving surface." The verb is unchanged; only its
+>   surface is replaced.
+> - **"Widgets as canonical tablet realization" §, "the bridge between the Decide
+>   primitive (Focus) and the Monitor primitive (Pulse)."** The bridge is real and
+>   the Monitor end of it is now the note. Focus entrances open FROM the note, and
+>   carry their scope — see the fragment contract's TARGET + SCOPE declaration.
+> - **Same §, "default Pulse pin variant"** in the Brief-variant table. The
+>   `pulse_grid` widget surface is retired; `spaces_pin` and `peek_inline` are the
+>   two the note uses. The variant vocabulary itself (glance / brief / detail /
+>   deep) is unaffected.
+> - **"Mobile / tablet translation" §, "the primary path is still Pulse + command
+>   bar."** Still two paths, still the same relationship to the tab bar; the first
+>   is now the note.
+>
+> ⚠️ **"Operators… handle quick state flips from widgets pinned to Pulse" needs
+> care rather than substitution.** The note's standing set carries live counts and
+> deliberately carries no affordances — a standing line does not open a Focus on
+> click (DECISIONS 2026-09-04), and quick state flips from it are not a shipped
+> behaviour. Where flips belong on the note surface is open, not answered by
+> swapping the noun.
+>
+> Marked 2026-09-10, alongside BRIDGEABLE_MASTER and PLATFORM_PRODUCT_PRINCIPLES.
+> The first marking pass selected documents by the presence of a marker rather
+> than by where Pulse is asserted; this document was in neither set.
+>
+> Derivations: `docs/investigations/2026-09-10-home-front-door.md`.
+
 ---
 
 ## The reference frame — Tony Stark's workshop
