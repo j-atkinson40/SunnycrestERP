@@ -44,6 +44,41 @@ settle it, read here.
 
 ## The Bridgeable Thesis: One Surface, Three Verbs
 
+> ## ⚠️ THE THESIS STANDS; PULSE AS ITS FIRST VERB IS SUPERSEDED — 2026-09-10
+>
+> **One surface and three verbs is not superseded. The surface named below is.**
+> Per DECISIONS 2026-09-04 ("Monitor is a daily note, not a dashboard"), the
+> arriving surface becomes a per-user, per-day note — prose fragments over a
+> positionally stable standing set — rather than an Intelligence-composed widget
+> grid.
+>
+> **Read "Pulse (arrives)" as "the arriving surface."** Everything the verb claims
+> survives the replacement: work comes to the user rather than being hunted for;
+> it is opinionated per role; it learns per-user and compounds per-tenant; nav is
+> fallback rather than structure. The note arc's argument was never that arrival
+> was the wrong verb — it was that a grid of widgets cannot supply the causal and
+> temporal connective tissue an experienced coworker supplies, and so cannot say
+> *because*.
+>
+> **"Focus launched from Pulse" and "user returns to Pulse" hold** with the note
+> as the surface returned to; the Focus verb is unchanged.
+>
+> ⚠️ **"Critical during Pulse learning period for every new tenant"** — the
+> learning-period framing is Pulse-specific and does not transfer unexamined. The
+> note's standing set is configured rather than learned, so a new tenant's floor
+> is present on day one rather than accumulated.
+>
+> This document is the tiebreaker for contested product decisions, which is why
+> the marker is here rather than only in the architecture docs: a session
+> resolving a tie against "Pulse (arrives)" would be resolving it against a
+> retired surface.
+>
+> Marked 2026-09-10, later than the CLAUDE.md §1a and PLATFORM_ARCHITECTURE §3
+> markers, because the original pass selected documents by the presence of a
+> marker rather than by where Pulse is asserted.
+>
+> Derivations: `docs/investigations/2026-09-10-home-front-door.md`.
+
 The pure expression of Bridgeable is a single canvas that brings
 work to the user. Nav is fallback, not structure. Three interaction
 verbs serve the work:

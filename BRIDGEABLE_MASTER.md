@@ -4058,6 +4058,49 @@ Future single-vertical entities (cremations, interments, plot_reservations, etc.
 
 ## 3.26 Spaces and Pulse Architecture
 
+> ## ⚠️ THE SPACES PRIMITIVE STANDS; THE PULSE EXECUTION IS SUPERSEDED — 2026-09-10
+>
+> **This section is accurate about the surface that ships today, and is no longer
+> authoritative about the surface being built.** Per DECISIONS 2026-09-04
+> ("Monitor is a daily note, not a dashboard"), the Monitor primitive is replaced
+> by a per-user, per-day note surface — prose fragments over a positionally stable
+> standing set — rather than a per-Space composed widget surface.
+>
+> **Spaces are NOT superseded.** The six Space types, the portal access modes, the
+> affinity model, and everything from §3.26.3 onward that concerns Spaces as a
+> context primitive stand unchanged. What is superseded is **Pulse** — the
+> composed widget surface a Space was said to contain — and the claims that follow
+> from it.
+>
+> **Superseded:** §3.26.1.1's "Contains the Pulse" and its canonical-entry-point
+> amendment (see the pointed marker there); §3.26.2 Pulse Architecture in full,
+> including tetris composition, the two content primitives, the layer model, and
+> the viewport-fit math; and every downstream claim that Home Space's content is
+> an intelligence-composed widget grid.
+>
+> ⚠️ **"Home Pulse is Bridgeable's primary differentiator" is superseded as a
+> statement about Pulse and retained as a statement about the platform.** The
+> differentiator was never the grid; it was that the surface knows what the user
+> needs. The note arc's position is that a dashboard structurally cannot say
+> *because* — it can show inventory at 3 and required at 6, and separately show
+> that Tuesday's pour slipped, and never connect them. The claim survives the
+> execution that carried it.
+>
+> **The rewrite ships with the implementation, not before it.** Pulse serves
+> `/home` to every authenticated tenant user today.
+>
+> ⚠️ **Why this marker is dated ten weeks after the markers on CLAUDE.md §1a and
+> PLATFORM_ARCHITECTURE §3.** The original marking pass selected documents by the
+> presence of a marker rather than by where Pulse is asserted — circular, and it
+> left this document, at 289 Pulse-mentioning lines, carrying the majority of the
+> platform's live Pulse canon unmarked while 46 marked lines elsewhere were
+> protected. Corrected on ruling, 2026-09-10.
+>
+> Inventory + derivations:
+> `docs/investigations/2026-09-04-monitor-supersession-inventory.md`,
+> `docs/investigations/2026-09-04-pulse-salvage.md`,
+> `docs/investigations/2026-09-10-home-front-door.md`.
+
 ### Overview
 
 Spaces are Bridgeable's primary user-facing organizational primitive. Every operator's experience of the platform is mediated through Spaces. The Spaces system is not merely "tabs" or "workspaces" — it's a unified primitive that subsumes what other platforms split into separate concerns: dashboards, portals, settings surfaces, and intelligent home pages.
@@ -4067,6 +4110,32 @@ Spaces are Bridgeable's primary user-facing organizational primitive. Every oper
 The Bridgeable platform recognizes six distinct Space types, each serving different user needs:
 
 #### 1. Home Space
+
+> ⚠️ **SUPERSEDED 2026-09-10 — this subsection names the exact change and calls
+> itself explicit canon, so it is marked in place rather than by the section
+> marker above.**
+>
+> Per DECISIONS 2026-09-04, Home Space's content becomes the daily note. Three
+> claims below are superseded: **"Contains the Pulse"**; the strategic-positioning
+> paragraph insofar as it describes a composed widget view; and the **Canonical
+> entry point (Phase W-4a Step 4 amendment)** paragraph, which states that
+> authenticated tenant users land on Home Space "rendering Pulse at `/home`" and
+> that "the frontend's `RootRedirect` component honors this canon."
+>
+> **The entry-point canon itself STANDS.** Home Space remains the canonical entry
+> point, `RootRedirect` still routes authenticated tenant users to `/home`, and
+> the specialized-role carve-outs (drivers to their portal, console-track users to
+> `/console/*`) are unchanged. **What changes is what `/home` renders.** The route,
+> the redirect, and the always-present-always-first framing all survive; only the
+> surface behind them is replaced.
+>
+> ⚠️ **"The user does not configure Pulse content directly" does NOT carry over
+> wholesale.** The note has two registers and they differ on exactly this point:
+> prose fragments are composed and not user-configured, but the standing set IS
+> configured, positionally stable, and deliberately not composable by intelligence
+> — because composition destroys the positional memory that makes a standing line
+> cheap to use. Any downstream reasoning that treats Home Space content as
+> uniformly intelligence-composed is reasoning about Pulse, not about the note.
 The platform's primary Monitor surface. Contains the Pulse — an intelligent, dynamically-composed view of what matters to the user right now. Always present, always first in navigation. The user does not configure Pulse content directly; the platform composes it based on the user's work areas, time of day, and behavioral signals.
 
 **Strategic positioning:** Home Pulse is Bridgeable's primary differentiator. Most platforms have user-curated dashboards; Bridgeable has a Pulse that knows what the user needs. Custom Space creation rate is a platform health metric — when Pulse works well, users rarely need other Spaces.
