@@ -18,6 +18,7 @@ from app.models.user import User
 from app.services.fragments.emission import emit_for_user
 from app.services.note import get_or_create_note, render_standing_set
 from app.services.note.composition import apply_gate, record_renders
+from app.services.note.spans import serialise_spans
 from app.services.note.deferral import (
     PRESETS,
     DeferralError,
@@ -27,23 +28,12 @@ from app.services.note.deferral import (
 )
 
 def _spans(fragment) -> list[dict]:
-    """⚠️ ONE SERIALISER, USED BY PROSE AND BY THE DEFERRAL RECORD.
+    """Prose and the deferral record, through the one serialiser.
 
-    The record of a deferral carries the SAME sentence the prompt carried, in
-    the same three text states. A second implementation here would drift, and
-    the drift would show up as a deferred record whose measured spans stopped
-    being links — provenance quietly lost on exactly the copy someone reads a
-    week later.
+    Settled records use the same function directly — see
+    `app/services/note/spans.py` for why there is only one.
     """
-    return [
-        {
-            "text": sp.text,
-            "state": sp.kind,
-            "href": sp.reference.href if sp.reference else None,
-            "entity_id": sp.reference.entity_id if sp.reference else None,
-        }
-        for sp in fragment.instance.payload.spans
-    ]
+    return serialise_spans(fragment.instance.payload.spans)
 
 
 router = APIRouter()

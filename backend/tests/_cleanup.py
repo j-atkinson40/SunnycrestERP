@@ -87,6 +87,28 @@ _PURGE_STATEMENTS = [
     # before anyone looked. Found 2026-09-08 by phase 5c's gate, which is
     # unrelated to it — the errors reproduce with 5c downgraded.
     "DELETE FROM company_modules WHERE company_id = ANY(:ids)",
+    # ⚠️ ADDED 2026-09-10, ENUMERATED RATHER THAN ONE AT A TIME.
+    #
+    # `purge_companies_by_slug` began failing on a `tax_periods` FK. Adding just
+    # that table would have fixed the symptom and left the next one waiting, so
+    # the FK surface was enumerated instead: of 387 tables that FK-reference
+    # `companies`, this helper covered 58. These seven are the ones the `ts-%`
+    # test tenants actually populate, found by counting rows rather than by
+    # reading model files.
+    #
+    # ⚠️ THE OTHER 322 ARE STILL UNCOVERED. This helper is a hand-maintained
+    # list over a 387-table surface, and it fails on whichever table a new test
+    # first populates — silently, as a teardown error attributed to whoever ran
+    # last. A dependency-ordered dynamic purge is the real fix and is not this
+    # session's work; recorded so the next failure is recognised as this
+    # pattern rather than re-diagnosed.
+    "DELETE FROM tax_periods WHERE company_id = ANY(:ids)",
+    "DELETE FROM briefings WHERE company_id = ANY(:ids)",
+    "DELETE FROM delivery_settings WHERE company_id = ANY(:ids)",
+    "DELETE FROM document_deliveries WHERE company_id = ANY(:ids)",
+    "DELETE FROM focus_sessions WHERE company_id = ANY(:ids)",
+    "DELETE FROM ai_settings WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM financial_health_scores WHERE tenant_id = ANY(:ids)",
     "DELETE FROM agent_alerts WHERE tenant_id = ANY(:ids)",
     "DELETE FROM tenant_alerts WHERE tenant_id = ANY(:ids)",
     # workflow_review_items reference workflow_runs (run_id CASCADE) — delete
