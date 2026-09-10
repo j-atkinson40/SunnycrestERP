@@ -65,10 +65,22 @@ def test_no_read_site_filters_on_resolved_alone():
     The one permitted exception is an explicit `resolved.is_(True)` — asking for
     resolved rows is a different question, not the open-work question.
     """
+    # ⚠️ THE MATCH IS BOUNDED, 2026-09-10. A bare substring test also matches
+    # `AgentAnomaly.resolved_at` and `AgentAnomaly.resolved_by` — sibling
+    # COLUMNS, not the open-work filter. The settling session's collections
+    # query was the first code to reference them by class attribute, and was
+    # flagged for lines that were never what this guard is about. False
+    # presence from a substring match: the same shape as a search for "ring"
+    # matching `spring_burial`.
+    #
+    # `(?![_A-Za-z0-9])` makes `resolved` mean `resolved` rather than the
+    # prefix of a longer name. `test_the_scanner_still_sees_a_bare_filter` is
+    # the positive control that this did not simply stop matching.
+    bare = re.compile(r"AgentAnomaly\.resolved(?![_A-Za-z0-9])")
     offenders: list[str] = []
     for f in sorted(_APP.rglob("*.py")):
         for i, line in enumerate(f.read_text().split("\n"), 1):
-            if "AgentAnomaly.resolved" not in line:
+            if not bare.search(line):
                 continue
             if "AgentAnomaly.resolved.is_(True)" in line:
                 continue  # deliberate: the resolved-rows question
@@ -220,3 +232,32 @@ def test_the_5c_index_is_deliberately_absent():
         f"a unique index appeared on agent_anomalies: {idx}. That is phase 5c "
         "and it must wait for 5b's drain."
     )
+
+
+def test_the_scanner_still_sees_a_bare_filter():
+    """⚠️ POSITIVE CONTROL for the bounded match, 2026-09-10.
+
+    The scanner above was tightened so `AgentAnomaly.resolved_at` stops reading
+    as `AgentAnomaly.resolved`. A tightening that simply stopped matching
+    anything would satisfy the guard trivially and forever — a scanner matching
+    nothing passes `assert not offenders` perfectly.
+
+    So: the real thing must still be caught, and the siblings must not be.
+    """
+    import re
+
+    bare = re.compile(r"AgentAnomaly\.resolved(?![_A-Za-z0-9])")
+
+    for caught in (
+        "AgentAnomaly.resolved == False",
+        "AgentAnomaly.resolved.is_(False),",
+        ".filter(AgentAnomaly.resolved)",
+    ):
+        assert bare.search(caught), f"the scanner stopped seeing {caught!r}"
+
+    for ignored in (
+        "AgentAnomaly.resolved_at >= start,",
+        "AgentAnomaly.resolved_by == user.id,",
+        "select(AgentAnomaly.resolution_outcome)",
+    ):
+        assert not bare.search(ignored), f"the scanner still trips on {ignored!r}"

@@ -355,6 +355,33 @@ def job_briefing_sweep():
     _run_global("BRIEFING_SWEEP", sweep_briefings_to_generate)
 
 
+def job_note_settling_sweep():
+    """The note surface's live-to-settled transition.
+
+    ⚠️ THIS IS THE NOTE ARC'S FIRST SCHEDULED WRITER. Every other job the arc
+    added reads; this one writes daily to every user's note. Registered in its
+    own commit so the deploy that turns it on is identifiable rather than
+    incidental.
+
+    One global cron; per-tenant local timing in application code against
+    `Company.timezone` — the briefings precedent. A trigger per tenant would
+    scale with tenant count and hide scheduling state.
+
+    ⚠️ THE WINDOW IS EVALUATED ~96 TIMES A DAY PER TENANT and settling must
+    happen once per user per day. That is NOT enforced by the sweep being
+    careful about the window — it is enforced by `settle_note` being idempotent
+    on (note, fragment, instance, outcome). A wrong window costs a redundant
+    call, not a duplicated summary.
+
+    Two passes: settle the just-ended day at the tenant's settling hour, and
+    re-run settling for notes settled in the last 24h so that an action
+    occurring after settling still lands on the day it happened — the settled
+    note is append-only, not immutable.
+    """
+    from app.services.note.settling_sweep import sweep_notes_to_settle
+    _run_global("NOTE_SETTLING_SWEEP", sweep_notes_to_settle)
+
+
 def job_dispatch_auto_finalize():
     """Phase B Session 1 — auto-finalize pending schedules at 1pm
     tenant-local.
@@ -548,6 +575,7 @@ JOB_REGISTRY: dict[str, callable] = {
     # /workflows/{id}/start endpoint.
     "quote_auto_expiry": job_quote_auto_expiry,
     "briefing_sweep": job_briefing_sweep,
+    "note_settling_sweep": job_note_settling_sweep,
     "dispatch_auto_finalize": job_dispatch_auto_finalize,
 }
 
@@ -831,6 +859,20 @@ def register_all_jobs():
         CronTrigger(minute="*/15"),
         id="briefing_sweep",
         name="briefing_sweep",
+        replace_existing=True,
+        misfire_grace_time=900,
+    )
+
+    # EVERY 15 MINUTES — the note surface's live-to-settled transition.
+    # ⚠️ FIRST SCHEDULED WRITER FROM THE NOTE ARC. Per-tenant settling hour
+    # (default midnight, tenant-local) is checked in application code; see
+    # `app.services.note.settling_sweep`. Idempotence is in `settle_note`, not
+    # in the window check.
+    scheduler.add_job(
+        job_note_settling_sweep,
+        CronTrigger(minute="*/15"),
+        id="note_settling_sweep",
+        name="note_settling_sweep",
         replace_existing=True,
         misfire_grace_time=900,
     )
