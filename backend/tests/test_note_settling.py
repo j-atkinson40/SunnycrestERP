@@ -88,6 +88,26 @@ def _isolate(db_session, user):
 
 
 def _note(db, user, d: date) -> DailyNote:
+    """Get-or-create. ⚠️ CREATE-ONLY WAS A LEAK, AND MINE (2026-09-10).
+
+    `daily_notes` has a unique on (user_id, note_date). The `_isolate` fixture
+    purges notes for `user` only, so the first §2 test to build a note for the
+    COLLEAGUE left a row nothing cleaned up, and the next run's insert violated
+    the constraint.
+
+    It passed on the run I wrote it on, because the colleague had no note yet.
+    That is a test whose result depends on the state a previous run left — the
+    thing this file's own `_isolate` docstring exists to prevent, reintroduced
+    one fixture over. Get-or-create removes the failure rather than asking the
+    purge to grow a second user.
+    """
+    existing = (
+        db.query(DailyNote)
+        .filter(DailyNote.user_id == user.id, DailyNote.note_date == d)
+        .first()
+    )
+    if existing is not None:
+        return existing
     n = DailyNote(
         id=str(uuid.uuid4()), company_id=user.company_id, user_id=user.id,
         note_date=d, created_at=datetime.now(timezone.utc),
@@ -107,22 +127,45 @@ def _rendered_prompt(db, user, note, fragment_id, instance_key):
     db.flush()
 
 
-def _task_reaching(db, user, *, due: date, terminal: str):
-    """A task due on `due` that this user drives to `terminal`. Real path."""
+def _task_reaching(
+    db, user, *, due: date, terminal: str, assignee=None, actor=None,
+):
+    """A task due on `due`, ASSIGNED to someone, driven to `terminal`.
+
+    ⚠️ `assignee` WAS MISSING AND THE FIXTURE WAS WRONG (2026-09-10, §2).
+
+    This created an UNASSIGNED task. `tasks_due_today`'s condition filters
+    `TaskDetails.assignee_user_id == user.id`, so a task with no assignee could
+    never have produced the prompt these tests then settle — the fixture built a
+    population the fragment does not emit over.
+
+    It passed because settling filtered on the ACTOR and never on the assignee,
+    so fixture and implementation shared one wrong assumption and agreed. That
+    is CLAUDE.md §11's "fixtures modelled on the implementation": the check had
+    contact with something, just not with the contract.
+
+    `assignee` and `actor` are now separable, which is the whole point of §2 —
+    a prompt one person holds can be resolved by another.
+    """
+    assignee = assignee or user
+    actor = actor or user
     td = create_task_with_provenance(
         db, company_id=user.company_id, provenance_kind="manual_creation",
         provenance_ref_type=None, provenance_ref_id=str(uuid.uuid4()),
         event_kind="manual", task_type_key="generic_task",
         title="settling fixture", created_by_user_id=user.id, due_date=due,
+        assignee_user_id=assignee.id,
     )
     db.commit()
+    # Created WITH an assignee, so it starts `assigned` — stepping through
+    # "assigned" again would be a no-op transition that emits nothing.
     path = {
-        "done": ["assigned", "in_progress", "done"],
-        "cancelled": ["assigned", "cancelled"],
+        "done": ["in_progress", "done"],
+        "cancelled": ["cancelled"],
     }[terminal]
-    for s in path:
-        transition_task(db, task_details_id=td.id, to_state=s,
-                        actor_user_id=user.id)
+    for st in path:
+        transition_task(db, task_details_id=td.id, to_state=st,
+                        actor_user_id=actor.id)
     db.commit()
     return td
 
@@ -393,3 +436,159 @@ def test_the_endpoint_serves_an_EMPTY_settled_list_on_an_unsettled_day(
     db_session.commit()
     payload = get_today_note(current_user=user, db=db_session)
     assert payload["settled"] == []
+
+
+# ── §2 — resolution lines go to HOLDERS, whoever acted ───────────────────
+
+
+@pytest.fixture
+def colleague(db_session, user):
+    """A second user on the same tenant who can also act."""
+    from app.models.user import User
+    other = (
+        db_session.query(User)
+        .filter(User.company_id == TESTCO_ID, User.id != user.id)
+        .first()
+    )
+    if other is None:
+        pytest.skip("canonical tenant has only one user")
+    return other
+
+
+def test_a_COLLEAGUES_resolution_settles_onto_the_holders_note(
+    db_session, user, colleague
+):
+    """⚠️ THE §2 RULE, and the failure it repairs.
+
+    Before this, both resolvers required the reader to BE the actor. A prompt
+    resolved by a colleague settled onto nobody's note — the holder watched it
+    vanish, silently, which is exactly what DECISIONS 2026-09-04 ruled against:
+    prompts leave by resolution or dated deferral, never silently.
+    """
+    today = date.today()
+    note = _note(db_session, user, today)
+    key = f"tasks_due_today:user_day:{user.id}:{today.isoformat()}"
+    _rendered_prompt(db_session, user, note, "tasks_due_today", key)
+
+    # The task is the HOLDER's. The COLLEAGUE moves it.
+    _task_reaching(
+        db_session, user, due=today, terminal="done",
+        assignee=user, actor=colleague,
+    )
+
+    res = settle_note(db_session, user=user, note=note)
+    db_session.commit()
+    assert res.written == 1, f"unsettleable={res.unsettleable}"
+
+    rec = db_session.query(NoteSettledRecord).filter_by(
+        daily_note_id=note.id, outcome_key="done"
+    ).one()
+    name = f"{colleague.first_name} {colleague.last_name}".strip()
+    assert name in rec.text, rec.text
+    # ⚠️ And it does NOT claim the reader did it.
+    assert not rec.text.lower().startswith("you "), rec.text
+
+
+def test_the_readers_own_resolution_still_says_you(db_session, user):
+    """Attribution is from the reader's seat: their own act reads "You"."""
+    today = date.today()
+    note = _note(db_session, user, today)
+    key = f"tasks_due_today:user_day:{user.id}:{today.isoformat()}"
+    _rendered_prompt(db_session, user, note, "tasks_due_today", key)
+    _task_reaching(db_session, user, due=today, terminal="done",
+                   assignee=user, actor=user)
+
+    settle_note(db_session, user=user, note=note)
+    db_session.commit()
+    rec = db_session.query(NoteSettledRecord).filter_by(
+        daily_note_id=note.id, outcome_key="done"
+    ).one()
+    assert rec.text.startswith("You completed"), rec.text
+
+
+def test_two_actors_on_one_outcome_name_both_WITHOUT_per_person_counts(
+    db_session, user, colleague
+):
+    """⚠️ The sentence may say WHO. It may never say HOW MANY EACH.
+
+    Per DECISIONS 2026-09-04 attribution "is never aggregated into per-user
+    resolution counts". `OutcomeTally.actor_ids` is a set precisely so that a
+    per-actor number is unexpressible rather than merely discouraged — the
+    removal-over-recognition test.
+    """
+    today = date.today()
+    note = _note(db_session, user, today)
+    key = f"tasks_due_today:user_day:{user.id}:{today.isoformat()}"
+    _rendered_prompt(db_session, user, note, "tasks_due_today", key)
+
+    _task_reaching(db_session, user, due=today, terminal="done",
+                   assignee=user, actor=user)
+    _task_reaching(db_session, user, due=today, terminal="done",
+                   assignee=user, actor=colleague)
+
+    settle_note(db_session, user=user, note=note)
+    db_session.commit()
+    rec = db_session.query(NoteSettledRecord).filter_by(
+        daily_note_id=note.id, outcome_key="done"
+    ).one()
+
+    name = f"{colleague.first_name} {colleague.last_name}".strip()
+    assert "You and" in rec.text and name in rec.text, rec.text
+    # ONE record, total count 2 — not two records of one each.
+    assert rec.count == 2, rec.count
+    # The only number in the sentence is the count of THINGS.
+    assert rec.text.count("2") == 1 and "1" not in rec.text, rec.text
+
+
+def test_a_COLLEAGUES_OWN_task_does_NOT_settle_onto_your_note(
+    db_session, user, colleague
+):
+    """⚠️ The other half of the same old bug, and the more embarrassing one.
+
+    `_tally_task_terminals` filtered on the ACTOR and never on the assignee. So
+    moving a COLLEAGUE'S task that happened to be due today wrote a record onto
+    YOUR note claiming work about a task that was never yours and never in your
+    prompt.
+
+    This test fails against the pre-§2 resolver. It is the case where the two
+    filters DISAGREE, which is the only place the fix is observable.
+    """
+    today = date.today()
+    note = _note(db_session, user, today)
+    key = f"tasks_due_today:user_day:{user.id}:{today.isoformat()}"
+    _rendered_prompt(db_session, user, note, "tasks_due_today", key)
+
+    # Assigned to the colleague; the READER moves it. Old code counted this.
+    _task_reaching(db_session, user, due=today, terminal="done",
+                   assignee=colleague, actor=user)
+
+    res = settle_note(db_session, user=user, note=note)
+    db_session.commit()
+    assert res.written == 0, (
+        "a task assigned to someone else settled onto this note: "
+        f"{[r.text for r in db_session.query(NoteSettledRecord).filter_by(daily_note_id=note.id)]}"
+    )
+
+
+def test_a_NON_holder_gets_no_record_and_no_filter_says_so(
+    db_session, user, colleague
+):
+    """Holders-only is STRUCTURAL: no render row, no record.
+
+    The colleague never rendered this prompt, so their note has nothing to
+    iterate. Nothing checks "is this person a holder" because nothing has to.
+    """
+    today = date.today()
+    holder_note = _note(db_session, user, today)
+    key = f"tasks_due_today:user_day:{user.id}:{today.isoformat()}"
+    _rendered_prompt(db_session, user, holder_note, "tasks_due_today", key)
+    _task_reaching(db_session, user, due=today, terminal="done",
+                   assignee=user, actor=user)
+
+    other_note = _note(db_session, colleague, today)
+    res = settle_note(db_session, user=colleague, note=other_note)
+    db_session.commit()
+    assert res.written == 0
+    assert db_session.query(NoteSettledRecord).filter_by(
+        daily_note_id=other_note.id
+    ).count() == 0

@@ -600,13 +600,13 @@ def seed() -> None:
                 resolved_when="task_reaches_terminal_state",
                 outcomes=(
                     Outcome("done",
-                            "you completed {count} task{plural} due today"),
+                            "{actor} completed {count} task{plural} due today"),
                     Outcome("cancelled",
-                            "you cancelled {count} task{plural} due today"),
+                            "{actor} cancelled {count} task{plural} due today"),
                     Outcome("acknowledged",
-                            "you acknowledged {count} task{plural} due today"),
+                            "{actor} acknowledged {count} task{plural} due today"),
                     Outcome("dismissed",
-                            "you dismissed {count} task{plural} due today"),
+                            "{actor} dismissed {count} task{plural} due today"),
                 ),
             ),
         )
@@ -641,10 +641,10 @@ def seed() -> None:
                 resolved_when="collections_finding_resolved",
                 outcomes=(
                     Outcome("emailed",
-                            "you emailed {count} customer{plural} about an "
+                            "{actor} emailed {count} customer{plural} about an "
                             "outstanding balance"),
                     Outcome("skipped",
-                            "you skipped {count} outstanding balance{plural}"),
+                            "{actor} skipped {count} outstanding balance{plural}"),
                 ),
             ),
         )
@@ -677,8 +677,15 @@ def seed() -> None:
                 outcomes=(
                     Outcome(
                         "recorded",
-                        "you recorded a posting account for {count} "
-                        "categor{plural}",
+                        # ⚠️ REWORDED 2026-09-10. This read "…for {count} "
+                        # "categor{plural}", and `plural` is only ever "" or
+                        # "s" — so it rendered "1 categor" and "3 categors".
+                        # Both wrong, and invisible because this outcome is
+                        # unreachable by construction and has never rendered.
+                        # Phrased around a regular plural instead of teaching
+                        # the interpolator irregular ones.
+                        "{actor} recorded {count} category posting "
+                        "account{plural}",
                     ),
                 ),
             ),
