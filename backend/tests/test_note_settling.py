@@ -347,3 +347,49 @@ def test_the_settled_record_serialises_spans_through_the_ONE_serialiser(
         "the count is not marked measured — it was counted from events"
     )
 
+
+
+# ── The seam. Everything above can be green while nothing is served. ──
+
+
+def test_the_ENDPOINT_serves_settled_records(db_session, user):
+    """⚠️ THE SEAM. Session 2 shipped a complete substrate that the endpoint
+    never called; every test passed and the surface showed nothing.
+
+    A settling job that writes records nobody reads is indistinguishable from a
+    job that does not run.
+    """
+    from app.api.routes.note import get_today_note
+
+    today = date.today()
+    note = _note(db_session, user, today)
+    key = f"tasks_due_today:user_day:{user.id}:{today.isoformat()}"
+    _rendered_prompt(db_session, user, note, "tasks_due_today", key)
+    _task_reaching(db_session, user, due=today, terminal="done")
+    _task_reaching(db_session, user, due=today, terminal="cancelled")
+    settle_note(db_session, user=user, note=note)
+    db_session.commit()
+
+    payload = get_today_note(current_user=user, db=db_session)
+
+    assert "settled" in payload, "the endpoint does not serve settled records"
+    outcomes = {r["outcome_key"]: r for r in payload["settled"]}
+    assert set(outcomes) == {"done", "cancelled"}, (
+        f"served {sorted(outcomes)} — both endings must reach the surface"
+    )
+    assert "completed" in outcomes["done"]["text"]
+    assert "cancelled" in outcomes["cancelled"]["text"]
+    assert outcomes["done"]["spans"], "the settled record reached the surface without spans"
+    assert outcomes["done"]["occurred_through"], "no visible timestamp"
+
+
+def test_the_endpoint_serves_an_EMPTY_settled_list_on_an_unsettled_day(
+    db_session, user
+):
+    """The control: `settled` is always a list, and empty is a real state."""
+    from app.api.routes.note import get_today_note
+
+    _note(db_session, user, date.today())
+    db_session.commit()
+    payload = get_today_note(current_user=user, db=db_session)
+    assert payload["settled"] == []

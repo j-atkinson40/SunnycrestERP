@@ -7,13 +7,16 @@ pretending to be the other.
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
+from app.models.note_settled_record import NoteSettledRecord
 from app.models.user import User
 from app.services.fragments.emission import emit_for_user
 from app.services.note import get_or_create_note, render_standing_set
@@ -165,6 +168,35 @@ def get_today_note(
         # ⚠️ What the gate WITHHELD, and why. Not rendered as prose — it is the
         # answer to "should there be more here?", which on a quiet day is the
         # question an operator will actually have.
+        # ⚠️ THE SETTLED RECORD IS SERVED, OR SETTLING IS INVISIBLE.
+        #
+        # Session 2 shipped a complete substrate that `GET /note/today` never
+        # called, and every test passed while the surface showed nothing. The
+        # settled note is the same shape of risk: a job that writes records
+        # nobody reads is indistinguishable from a job that does not run.
+        #
+        # Frozen text and frozen spans are served as stored — NOT re-rendered.
+        # Re-serialising the spans would resolve them against today's world,
+        # which is a link quietly showing today's data under yesterday's
+        # sentence.
+        "settled": [
+            {
+                "fragment_id": r.fragment_id,
+                "instance_key": r.instance_key,
+                "outcome_key": r.outcome_key,
+                "count": r.count,
+                "text": r.text,
+                "spans": json.loads(r.spans) if r.spans else [],
+                # The visible timestamp. The settled note is append-only, so a
+                # reader can see a record arrived after the rest of the day.
+                "occurred_through": r.occurred_through.isoformat(),
+            }
+            for r in db.execute(
+                select(NoteSettledRecord)
+                .where(NoteSettledRecord.daily_note_id == note.id)
+                .order_by(NoteSettledRecord.occurred_through)
+            ).scalars().all()
+        ],
         "withheld": [
             {
                 "fragment_id": d.fragment.declaration.fragment_id,

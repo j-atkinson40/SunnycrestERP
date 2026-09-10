@@ -46,6 +46,16 @@ interface TodayNote {
   settled_at: string | null;
   standing_set: StandingEntry[];
   prose: ProseFragment[];
+  /** Past-tense records of what actually happened. Frozen at settling. */
+  settled?: {
+    fragment_id: string;
+    instance_key: string;
+    outcome_key: string;
+    count: number;
+    text: string;
+    spans: ProseSpan[];
+    occurred_through: string;
+  }[];
   withheld?: {
     fragment_id: string;
     instance_key: string;
@@ -284,6 +294,34 @@ export default function NotePage() {
           </div>
         ))}
       </section>
+
+      {/* ⚠️ THE SETTLED REGION. What the day turned out to be.
+
+          Rendered ABOVE the live prose when present, because on a settled note
+          the past tense is the subject and anything still live is the
+          remainder. Muted: this is a record, not a prompt.
+
+          The spans are rendered exactly as stored — the same serialiser, but
+          the values were frozen at settling. A settled sentence whose links
+          re-resolved would show today's data under yesterday's words. */}
+      {(note.settled ?? []).length > 0 && (
+        <section
+          aria-label="Settled"
+          data-testid="settled-region"
+          className="space-y-1 border-b border-border-subtle pb-4"
+        >
+          {(note.settled ?? []).map((r) => (
+            <p
+              key={`${r.instance_key}:${r.outcome_key}`}
+              data-testid={`settled-${r.fragment_id}-${r.outcome_key}`}
+              data-outcome={r.outcome_key}
+              className="text-body text-content-base"
+            >
+              <Spans spans={r.spans} />
+            </p>
+          ))}
+        </section>
+      )}
 
       {/* Prose region — session 2. Empty is a real state, not a gap. */}
       <section aria-label="Prose" data-testid="prose-region" className="space-y-4">
