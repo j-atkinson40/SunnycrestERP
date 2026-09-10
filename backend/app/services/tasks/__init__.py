@@ -2,7 +2,7 @@
 
 Modules:
 - lifecycle: dual-shape state machine (action + reminder) + transition guards.
-- subscribers: subscriber registry (7 events, 6 subscribers, sync exec).
+- subscribers: subscriber registry (7 events, 7 subscribers, sync exec).
 - plugins: 3 plugin category contracts + 5 task type behavior plugins.
 - service: top-level CRUD + façade preserving 8 existing Task consumers.
 
@@ -23,7 +23,6 @@ from app.services.tasks.subscribers import (  # noqa: F401
     notification_subscriber,
     audit_subscriber,
     briefings_subscriber,
-    pulse_subscriber,
     workflow_subscriber,
     focus_subscriber,
     jcf_subscriber,

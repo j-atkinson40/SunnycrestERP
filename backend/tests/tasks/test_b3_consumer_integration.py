@@ -3,7 +3,7 @@
 8 consumer-integration items shipped in B3:
   1. Pulse _build_tasks_item wire
   2. Briefings 3 helpers
-  3. 4 subscriber bodies (briefings_invalidator, pulse_invalidator,
+  3. subscriber bodies (briefings_invalidator,
      workflow_resumer, focus_closer)
   4. 3 workflow node types (create_task, wait_for_task_completion,
      route_on_task_outcome)
@@ -77,144 +77,26 @@ def _make_task(
 
 
 # ══════════════════════════════════════════════════════════════════
-# Item 1 — Pulse _build_tasks_item wire
+# Item 1 — REMOVED 2026-09-10 with Pulse
 # ══════════════════════════════════════════════════════════════════
+#
+# ⚠️ `TestPulseBuildTasksItem` verified that the task substrate's wire
+# reached `pulse.personal_layer_service._build_tasks_item`. Pulse is
+# retired; that consumer does not exist, so the test of it goes rather
+# than acquiring a fixture. A fixture here would have manufactured the
+# consumer it was meant to verify — the check would pass and mean
+# nothing, which is the shape this arc has now found six times.
+#
+# ⚠️ AND `TestPulseInvalidator` under Item 3 went for the same reason:
+# it exercised a subscriber body that is no longer registered. Coverage
+# of the OTHER six subscribers is unchanged, and the registry-level
+# assertion that every event still has a subscriber is what actually
+# protects the substrate here.
+#
+# Item numbering is left as-is. Renumbering would detach seven classes
+# from the arc doc that names them.
 
 
-class TestPulseBuildTasksItem:
-    def test_returns_none_when_no_assigned_tasks(self, ts_ctx):
-        db = SessionLocal()
-        try:
-            from app.models.user import User
-            from app.services.pulse.personal_layer_service import _build_tasks_item
-
-            user = db.query(User).filter(User.id == ts_ctx["user_id"]).first()
-            result = _build_tasks_item(db, user=user)
-            # User may have ambient prior-test tasks. Just verify it's
-            # either None or a properly shaped LayerItem.
-            if result is not None:
-                assert result.kind == "stream"
-                assert result.component_key == "tasks_assigned"
-        finally:
-            db.close()
-
-    def test_returns_layer_item_with_assigned_action_task(self, ts_ctx):
-        db = SessionLocal()
-        try:
-            from app.models.user import User
-            from app.services.pulse.personal_layer_service import _build_tasks_item
-
-            _make_task(
-                db,
-                company_id=ts_ctx["company_id"],
-                assignee_user_id=ts_ctx["user_id"],
-                title=f"pulse-test-{_new_id()[:6]}",
-            )
-            db.commit()
-
-            user = db.query(User).filter(User.id == ts_ctx["user_id"]).first()
-            result = _build_tasks_item(db, user=user)
-            assert result is not None
-            assert result.kind == "stream"
-            assert result.component_key == "tasks_assigned"
-            assert result.payload["total_count"] >= 1
-            assert isinstance(result.payload["top_items"], list)
-        finally:
-            db.close()
-
-    def test_excludes_terminal_action_states(self, ts_ctx):
-        db = SessionLocal()
-        try:
-            from app.models.user import User
-            from app.services.pulse.personal_layer_service import _build_tasks_item
-
-            td = _make_task(
-                db,
-                company_id=ts_ctx["company_id"],
-                assignee_user_id=ts_ctx["user_id"],
-                title=f"pulse-done-{_new_id()[:6]}",
-            )
-            transition_task(
-                db,
-                task_details_id=td.id,
-                to_state="in_progress",
-                actor_user_id=ts_ctx["user_id"],
-            )
-            transition_task(
-                db,
-                task_details_id=td.id,
-                to_state="done",
-                actor_user_id=ts_ctx["user_id"],
-            )
-            db.commit()
-
-            user = db.query(User).filter(User.id == ts_ctx["user_id"]).first()
-            result = _build_tasks_item(db, user=user)
-            # Find this td's id in top_items, if any
-            if result is not None:
-                td_ids = [it["id"] for it in result.payload["top_items"]]
-                assert td.id not in td_ids
-        finally:
-            db.close()
-
-    def test_excludes_portal_visibility(self, ts_ctx):
-        """Operator-only visibility filter: portal_family does NOT surface."""
-        db = SessionLocal()
-        try:
-            from app.models.user import User
-            from app.services.pulse.personal_layer_service import _build_tasks_item
-
-            td = _make_task(
-                db,
-                company_id=ts_ctx["company_id"],
-                assignee_user_id=ts_ctx["user_id"],
-                visibility="portal_family",
-                title=f"portal-vis-{_new_id()[:6]}",
-            )
-            db.commit()
-
-            user = db.query(User).filter(User.id == ts_ctx["user_id"]).first()
-            result = _build_tasks_item(db, user=user)
-            if result is not None:
-                td_ids = [it["id"] for it in result.payload["top_items"]]
-                assert td.id not in td_ids
-        finally:
-            db.close()
-
-    def test_priority_rank_urgent_above_normal(self, ts_ctx):
-        db = SessionLocal()
-        try:
-            from app.models.user import User
-            from app.services.pulse.personal_layer_service import _build_tasks_item
-
-            normal_td = _make_task(
-                db,
-                company_id=ts_ctx["company_id"],
-                assignee_user_id=ts_ctx["user_id"],
-                title=f"normal-{_new_id()[:6]}",
-                priority="normal",
-            )
-            urgent_td = _make_task(
-                db,
-                company_id=ts_ctx["company_id"],
-                assignee_user_id=ts_ctx["user_id"],
-                title=f"urgent-{_new_id()[:6]}",
-                priority="urgent",
-            )
-            db.commit()
-
-            user = db.query(User).filter(User.id == ts_ctx["user_id"]).first()
-            result = _build_tasks_item(db, user=user)
-            assert result is not None
-            top_ids = [it["id"] for it in result.payload["top_items"]]
-            # urgent should appear before normal in top items
-            if urgent_td.id in top_ids and normal_td.id in top_ids:
-                assert top_ids.index(urgent_td.id) < top_ids.index(normal_td.id)
-        finally:
-            db.close()
-
-
-# ══════════════════════════════════════════════════════════════════
 # Item 2 — Briefings 3 helpers
 # ══════════════════════════════════════════════════════════════════
 
@@ -332,30 +214,6 @@ class TestBriefingsHelpers:
 # ══════════════════════════════════════════════════════════════════
 # Item 3 — 4 subscriber bodies
 # ══════════════════════════════════════════════════════════════════
-
-
-class TestPulseInvalidator:
-    def test_invalidates_for_assigned_user(self, ts_ctx):
-        db = SessionLocal()
-        try:
-            with patch(
-                "app.services.pulse.composition_cache.invalidate_for_user",
-                return_value=0,
-            ) as mock_inv:
-                _make_task(
-                    db,
-                    company_id=ts_ctx["company_id"],
-                    assignee_user_id=ts_ctx["user_id"],
-                    title=f"pulse-inv-{_new_id()[:6]}",
-                )
-                db.commit()
-                # Subscriber fires synchronously on task_created.
-                mock_inv.assert_called()
-                # At least one call references our user.
-                called_user_ids = [c.args[0] for c in mock_inv.call_args_list]
-                assert ts_ctx["user_id"] in called_user_ids
-        finally:
-            db.close()
 
 
 class TestBriefingsInvalidator:

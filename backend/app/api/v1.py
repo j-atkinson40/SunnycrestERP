@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     accounting,
+    customer_composition_sources,
     accounting_connection,
     ai,
     ai_command,
@@ -78,7 +79,6 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     focus as focus_routes,
     onboarding_touches,
     operator_profile as operator_profile_routes,
-    pulse as pulse_routes,
     company_entities,
     carrier_portal,
     cases,
@@ -451,9 +451,13 @@ v1_router.include_router(
     tags=["Phase W-4a Operator Profile"],
 )
 v1_router.include_router(
-    pulse_routes.router,
+    customer_composition_sources.router,
+    # ⚠️ PREFIX PRESERVED, NOT CHOSEN. These two endpoints answered on
+    # /api/v1/pulse/* before Pulse was removed and still do, so the removal
+    # changed no URL. The prefix is now a misnomer and a rename is owed —
+    # see the module docstring. Nothing in the frontend calls either route.
     prefix="/pulse",
-    tags=["Phase W-4a Pulse"],
+    tags=["Customer Composition Sources"],
 )
 v1_router.include_router(
     bundles.router, prefix="/products", tags=["Product Bundles"]

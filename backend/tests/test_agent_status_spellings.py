@@ -31,18 +31,40 @@ def test_the_canonical_spelling_is_in_the_vocabulary():
     assert "complete" in COMPLETE_STATUSES and "completed" in COMPLETE_STATUSES
 
 
-def test_the_activity_feed_accepts_both_spellings():
-    """⚠️ THE ONE GENUINELY EXPOSED SITE. It is not scoped by job_type, so a
-    single-spelling filter drops every legacy-agent completion from the feed —
-    9 in 24h, 63 over 7 days, measured 2026-09-08. Nothing about the result
-    looks wrong, which is why it survived."""
-    src = (_APP / "services" / "pulse" / "activity_layer_service.py").read_text()
-    assert "COMPLETE_STATUSES" in src, (
-        "the activity feed no longer references the shared vocabulary; a "
-        "single-spelling filter here silently drops legacy-agent completions"
-    )
-    assert '"complete", "approved", "rejected", "failed"' not in src, (
-        "the single-spelling list is back"
+def test_no_unscoped_single_spelling_filter_exists_anywhere():
+    """⚠️ REWRITTEN 2026-09-10 WHEN THE SITE IT GUARDED WAS DELETED.
+
+    This read ONE file by path — `services/pulse/activity_layer_service.py` —
+    and asserted the fix was present in it. That file was "the one genuinely
+    exposed site": an activity feed not scoped by job_type, where a
+    single-spelling filter silently dropped every legacy-agent completion
+    (9 in 24h, 63 over 7 days, measured 2026-09-08).
+
+    Pulse was retired 2026-09-10 and the activity layer went with it, so the
+    test could not pass — it was reading a file that no longer exists.
+
+    ⚠️ THE GUARD IS NOT DELETED, BECAUSE THE BUG CLASS IS NOT. What was
+    site-specific about it was an accident of where the defect happened to be
+    found. Asserting the fix is present in one named file is a check that dies
+    with the file and says nothing about anywhere else — a constructed scope,
+    the same shape as a constructed name. This version ENUMERATES instead, so
+    it protects every file including ones not yet written.
+
+    Verified at rewrite time: `COMPLETE_STATUSES` now has exactly one reference
+    in `app/` — its own definition in `schemas/agent.py`. The exposure went
+    with Pulse; the vocabulary is currently unconsumed, and the next unscoped
+    completion filter anyone writes should reach for it.
+    """
+    offenders = []
+    for f in sorted(_APP.rglob("*.py")):
+        src = f.read_text()
+        if '"complete", "approved", "rejected", "failed"' in src:
+            offenders.append(str(f.relative_to(_APP)))
+    assert offenders == [], (
+        "single-spelling completion filter is back in: "
+        f"{offenders}. Use COMPLETE_STATUSES from app.schemas.agent — the "
+        "legacy agents write 'completed' and an unscoped filter drops them "
+        "with nothing about the result looking wrong."
     )
 
 

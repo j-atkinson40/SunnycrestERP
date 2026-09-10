@@ -108,7 +108,7 @@ class ComponentConfiguration(Base):
         ),
         CheckConstraint(
             "component_kind IN ('widget', 'focus', 'focus-template', "
-            "'document-block', 'pulse-widget', 'workflow-node', 'layout', "
+            "'document-block', 'workflow-node', 'layout', "
             "'composite')",
             name="ck_component_configs_kind",
         ),

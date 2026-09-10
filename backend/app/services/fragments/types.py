@@ -5,7 +5,8 @@ Per DECISIONS 2026-09-04 ("Monitor is a daily note, not a dashboard" and
 
 ⚠️ THE PAYLOAD IS A RENAME, NOT A REBUILD. `FragmentPayload` below is
 `IntelligenceStream` from `frontend/src/types/pulse.ts:64-71` and
-`app/services/pulse/types.py`, under fragment terminology. It already carried
+`app/services/pulse/types.py` (deleted 2026-09-10), under fragment
+terminology. It already carried
 `synthesized_text` + `referenced_items {kind, entity_id, label, href}` +
 `priority`, and `AnomalyIntelligenceStream.tsx` already renders it as prose with
 inline chips. The salvage investigation (`docs/investigations/2026-09-04-pulse-

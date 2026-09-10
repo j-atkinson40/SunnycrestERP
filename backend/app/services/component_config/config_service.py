@@ -107,7 +107,6 @@ def _validate_kind(kind: str) -> None:
         "focus",
         "focus-template",
         "document-block",
-        "pulse-widget",
         "workflow-node",
         "layout",
         "composite",

@@ -1,4 +1,15 @@
-"""Phase W-4a Commit 1 — schema + Home system space + operator onboarding.
+"""Home system space + operator onboarding + the surviving half of r61.
+
+⚠️ THIS FILE WAS "Phase W-4a Commit 1" AND IS NO LONGER ONLY THAT. Pulse was
+retired 2026-09-10 and two of its six classes went with it —
+`TestPulseSignalModel` in full, and two of `TestSchema`'s three tests. What
+remains was never Pulse: the Home system space still seeds for every user, the
+defensive login reseed still runs, and the operator profile still drives
+`users.work_areas`, which the note surface reads.
+
+Kept under its old filename deliberately: renaming would detach the git history
+of four classes that did not change. The name is stale; the contents are not.
+
 
 Verifies:
   • Migration r61 schema landed (work_areas, responsibilities_description,
@@ -121,61 +132,12 @@ class TestSchema:
         assert hasattr(User, "work_areas")
         assert hasattr(User, "responsibilities_description")
 
-    def test_pulse_signals_table_exists(self, db_session):
-        from sqlalchemy import inspect
-
-        i = inspect(db_session.get_bind())
-        cols = {c["name"] for c in i.get_columns("pulse_signals")}
-        # Per migration r61 schema
-        assert {
-            "id",
-            "user_id",
-            "company_id",
-            "signal_type",
-            "layer",
-            "component_key",
-            "timestamp",
-            "metadata",
-        }.issubset(cols)
-
-    def test_pulse_signals_has_user_timestamp_index(self, db_session):
-        from sqlalchemy import inspect
-
-        i = inspect(db_session.get_bind())
-        idx_names = {ix["name"] for ix in i.get_indexes("pulse_signals")}
-        assert "ix_pulse_signals_user_timestamp" in idx_names
-        assert "ix_pulse_signals_company_timestamp" in idx_names
-
-
-class TestPulseSignalModel:
-    def test_round_trip(self, db_session):
-        from app.models.pulse_signal import PulseSignal
-
-        ctx = _make_tenant_user_token()
-        sig = PulseSignal(
-            id=str(uuid.uuid4()),
-            user_id=ctx["user_id"],
-            company_id=ctx["company_id"],
-            signal_type="dismiss",
-            layer="anomaly",
-            component_key="anomalies",
-            timestamp=datetime.now(timezone.utc),
-            signal_metadata={
-                "component_key": "anomalies",
-                "time_of_day": "morning",
-                "work_areas_at_dismiss": ["Production Scheduling"],
-            },
-        )
-        db_session.add(sig)
-        db_session.commit()
-        # Re-read from DB
-        row = db_session.query(PulseSignal).filter_by(id=sig.id).one()
-        assert row.signal_type == "dismiss"
-        assert row.layer == "anomaly"
-        assert row.signal_metadata["time_of_day"] == "morning"
-
-
-# ── Home system space ───────────────────────────────────────────────
+    # ⚠️ test_pulse_signals_table_exists and
+    # test_pulse_signals_has_user_timestamp_index were REMOVED 2026-09-10
+    # with Pulse. r61 created two things under one name — a `work_areas`
+    # column on `users` AND the `pulse_signals` table. Only the table went;
+    # the column above is read by operator_profile, the onboarding flow and
+    # the NOTE's own standing-set registry, so its coverage stays here.
 
 
 class TestHomeSystemSpace:

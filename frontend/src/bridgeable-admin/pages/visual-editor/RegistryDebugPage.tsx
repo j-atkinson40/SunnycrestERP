@@ -45,7 +45,6 @@ const COMPONENT_KINDS: ComponentKind[] = [
   "focus",
   "focus-template",
   "document-block",
-  "pulse-widget",
   "workflow-node",
   "layout",
   "composite",

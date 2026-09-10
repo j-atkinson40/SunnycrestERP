@@ -93,7 +93,6 @@ export function InspectorPanel({
       "focus",
       "focus-template",
       "document-block",
-      "pulse-widget",
       "workflow-node",
       "layout",
       "composite",

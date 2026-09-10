@@ -519,7 +519,7 @@ export default function ComponentEditorPage() {
         </WorkflowCanvasContextFrame>
       )
     }
-    // Fallback for layout / composite / pulse-widget kinds.
+    // Fallback for layout / composite kinds.
     return (
       <div className="flex h-full items-center justify-center bg-surface-base p-6">
         <div className="rounded-md border border-border-subtle bg-surface-elevated p-6">

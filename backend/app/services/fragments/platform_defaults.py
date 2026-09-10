@@ -273,7 +273,8 @@ def _tasks_due_today_condition(
     """Tasks assigned to this user and due today → one PROMPT fragment.
 
     ⚠️ THIS IS THE SUB-ARC'S ONLY PROMPT, and it is deliberately a real one
-    rather than a fixture. It rides the task substrate that `pulse_subscriber`
+    rather than a fixture. It rides the task substrate that the retired
+    `pulse_subscriber`
     already watches — the same five lifecycle events (task_created,
     task_assigned, task_status_changed, task_completed, task_cancelled) — so
     the surface arc's fragment-keyed regeneration has a live source to wire to

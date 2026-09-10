@@ -38,17 +38,39 @@ def test_seven_event_types_defined():
     assert set(EVENT_TYPES) == expected
 
 
-def test_six_v1_subscribers_registered():
+def test_v1_subscribers_registered():
+    """A FLOOR over names. ⚠️ `pulse_invalidator` was removed from this set
+    2026-09-10 when Pulse was retired; the other five are unchanged."""
     subs = get_subscribers()
     expected = {
         "notification_dispatcher",
         "audit_writer",
         "briefings_invalidator",
-        "pulse_invalidator",
         "workflow_resumer",
         "focus_closer",
     }
     assert set(subs) >= expected
+
+
+def test_every_event_type_has_at_least_one_subscriber():
+    """⚠️ THE INVARIANT THE NAME-FLOOR ABOVE DOES NOT PROTECT.
+
+    A `>=` over names cannot notice that an EVENT lost its last subscriber —
+    the set can be satisfied while some event fires into nothing. Removing
+    `pulse_invalidator` took a subscriber off all five of its events, and the
+    question that mattered was never "are the expected names present" but
+    "does anything still listen to each event".
+
+    Enumerated rather than asserted at a count, so a future removal that
+    orphans an event fails here with the event named.
+    """
+    from app.services.tasks.subscribers.registry import EVENT_TYPES, _REGISTRY
+
+    orphaned = [
+        e for e in EVENT_TYPES
+        if not any(e in sub.event_types for sub in _REGISTRY.values())
+    ]
+    assert orphaned == [], f"events with no subscriber: {orphaned}"
 
 
 def test_is_registered_true():

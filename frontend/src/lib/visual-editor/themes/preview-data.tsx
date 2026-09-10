@@ -1063,7 +1063,6 @@ export const GROUP_ICONS: Record<string, ReactNode> = {
   "focus-template": <Wand2 size={14} />,
   "document-block": <FileText size={14} />,
   "workflow-node": <Workflow size={14} />,
-  "pulse-widget": <Bell size={14} />,
   layout: <Settings size={14} />,
   composite: <BookOpen size={14} />,
 }

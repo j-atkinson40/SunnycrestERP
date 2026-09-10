@@ -20,7 +20,6 @@ export type ComponentKind =
   | "focus"
   | "focus-template"
   | "document-block"
-  | "pulse-widget"
   | "workflow-node"
   | "layout"
   | "composite"

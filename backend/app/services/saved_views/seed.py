@@ -482,7 +482,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
     # Five filtered views over the `delivery` entity type. These seeds
     # remain part of the platform's saved-view library; Pulse
     # composition for manufacturing dispatchers (Phase W-4a Commit 3
-    # `app/services/pulse/composition_engine.py`) surfaces work through
+    # the retired Pulse composition engine) surfaced work through
     # the Widget Library catalog (vault_schedule etc.), not directly
     # through saved views — but the saved-view library remains
     # available for tenants to compose their own custom dashboards.

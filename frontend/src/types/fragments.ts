@@ -3,26 +3,49 @@
  *
  * Per DECISIONS 2026-09-04 ("Prose fragments declare four things or they don't
  * ship"). The shapes here are the wire contract for the note surface; any
- * change to one side requires a coordinated change to the other, in the manner
- * of `types/pulse.ts`.
+ * change to one side requires a coordinated change to the other.
  *
- * ⚠️ THE PAYLOAD IS A RENAME, NOT A REBUILD. `FragmentPayload` is
- * `IntelligenceStream` (`types/pulse.ts:64-71`) under fragment terminology. The
- * salvage investigation (`docs/investigations/2026-09-04-pulse-salvage.md`)
- * established that the body — synthesized prose plus typed entity links plus a
- * priority — was already correct, and that the four DECLARATIONS were what was
- * missing. `AnomalyIntelligenceStream.tsx` already renders this shape as prose
- * with inline chips.
+ * THE PAYLOAD WAS A RENAME, NOT A REBUILD. `FragmentPayload` was
+ * `IntelligenceStream` under fragment terminology. The salvage investigation
+ * established that the body — synthesized prose, typed entity links, a
+ * priority — was already correct and that the four DECLARATIONS were missing.
  *
- * ⚠️ PULSE RENDERING IS DELIBERATELY UNTOUCHED. The rename is additive: the old
- * names stay where they are and keep working, because changing Pulse rendering
- * is out of this sub-arc's scope and Pulse is retired wholesale by the surface
- * arc rather than migrated. `_PayloadShapesAgree` below is a compile-time link
- * between the two names — if either shape drifts, `tsc` fails rather than the
- * two quietly diverging until the surface arc discovers it.
+ * ⚠️ PULSE IS GONE AS OF 2026-09-10, and the paragraph that used to sit here
+ * said its rendering was "deliberately untouched" and that the old names "stay
+ * where they are and keep working." Neither is true now. The rename is no
+ * longer additive; this file is the only home of these shapes.
+ *
+ * ──────────────────────────────────────────────────────────────────────
+ * ⚠️ THIS FILE HAS ZERO IMPORTERS AND IS STALE IN TWO WAYS. Surfaced rather
+ * than fixed or quietly left, because both are decisions the note arc has
+ * already taken on the PYTHON side and this mirror never followed:
+ *
+ *   `EndTransition.past_tense` is a single template. The contract replaced it
+ *     with per-outcome `outcomes: Outcome[]`, because one template cannot
+ *     carry four terminal states (done / cancelled / acknowledged / dismissed).
+ *   `FragmentInstance.scope` is one mapping. The contract split it into
+ *     `predicate` (URL-carryable, re-derives) and `expansion` (payload only,
+ *     never a URL key).
+ *
+ * A mirror nothing imports, describing a contract that moved twice, is a
+ * document pretending to be code. Either it acquires a consumer and is brought
+ * up to date, or it is deleted. Not decided here.
  */
 
-import type { IntelligenceStream, ReferencedItem } from "@/types/pulse";
+/**
+ * ⚠️ `ReferencedItem` MOVED HERE 2026-09-10, when Pulse was retired.
+ *
+ * It was imported from `@/types/pulse`. That module is gone; this shape was
+ * always the fragment's, wearing Pulse's address because Pulse was written
+ * first. Definition is byte-identical to the one it replaces.
+ */
+export interface ReferencedItem {
+  /** "anomaly" | "delivery" | "task" | etc. The renderer dispatches on kind. */
+  kind: string;
+  entity_id: string;
+  label: string;
+  href: string | null;
+}
 
 /** What a fragment opens. Mirrors `TargetSurface` in the Python contract. */
 export type TargetSurface = "peek" | "focus" | "window";
@@ -54,18 +77,21 @@ export interface FragmentPayload {
  * references, priority. If any of those four change shape on either side, this
  * assignment stops type-checking.
  */
-type _PayloadBodyOf<T> = Pick<
-  T,
-  Extract<keyof T, "title" | "synthesized_text" | "referenced_items" | "priority">
->;
-export type PayloadShapesAgree = _PayloadBodyOf<IntelligenceStream> extends
-  _PayloadBodyOf<FragmentPayload>
-  ? true
-  : never;
-
-/** Forces the assertion above to be evaluated rather than merely declared. A
- *  type alias alone is erased; this const makes drift a build failure. */
-export const PAYLOAD_SHAPES_AGREE: PayloadShapesAgree = true;
+/**
+ * ⚠️ THE ASSERTION WAS RETIRED WITH PULSE, 2026-09-10, NOT RELOCATED.
+ *
+ * `PayloadShapesAgree` / `PAYLOAD_SHAPES_AGREE` compared this payload's body
+ * against `IntelligenceStream`'s and failed the build if either drifted. It
+ * existed to prove that the rename WAS a rename while both shapes were live.
+ *
+ * Both are not live any more. Keeping a copy of `IntelligenceStream` in this
+ * file purely so the assertion still compiled would have preserved the guard
+ * by manufacturing the thing it guards against — a hole with a guard on it,
+ * where an absent field is not a hole. There is nothing left to drift FROM,
+ * so the check is deleted rather than made vacuous.
+ *
+ * `_PayloadBodyOf` went with it; it had no other caller.
+ */
 
 /** (4) END TRANSITION — present iff `kind === "prompt"`. */
 export interface EndTransition {

@@ -69,7 +69,6 @@ import PlatformApp from "@/PlatformApp";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
-import HomePage from "@/pages/home/HomePage";
 import NotePage from "@/pages/note/NotePage";
 import BridgeableMapPage from "@/pages/bridgeable-map";
 import BridgeableMapAreaPage from "@/pages/bridgeable-map-area";
@@ -538,8 +537,9 @@ export default function App() {
 export interface RenderTenantSlugRoutesOpts {
   /**
    * R-1.6.9: When true, replace the root `<RootRedirect />` and the
-   * catch-all `<NotFound />` routes with a direct `<HomePage />` mount
-   * at both `/` and `*`. Used by `<TenantRouteTree />` (the runtime
+   * catch-all `<NotFound />` routes with a direct `<NotePage />` mount
+   * at both `/` and `*`. (Was `<HomePage />` until 2026-09-10; HomePage
+   * was the Pulse mount and went with it.) Used by `<TenantRouteTree />` (the runtime
    * editor's tenant route tree) to prevent `<Navigate to="/home" />`
    * from bouncing the URL out of the `/runtime-editor/*` parent route.
    *
@@ -613,26 +613,19 @@ export function renderTenantSlugRoutes(
                       changed. DotNav's Home dot and RootRedirect both
                       still route here.
 
-                      ⚠️ MOUNTED DIRECTLY, NOT VIA <HomePage />. HomePage
-                      is also the runtime editor's root AND catch-all
-                      element (see the R-1.6.9 block below), so swapping
-                      its body would have silently repointed the runtime
-                      editor's default surface too — a coupling that
-                      surfaces months later. The two mounts mean
-                      different things and are now separate.
-
-                      Pulse remains reachable at /pulse until the
-                      implementation is removed; removing it while
-                      anything still routed to it would be a live outage
-                      rather than a caught reference. */}
+                      Mounted directly. It was routed through <HomePage />
+                      until 2026-09-10, which was ALSO the runtime
+                      editor's root and catch-all element — so changing
+                      one surface would silently have moved the other.
+                      Separating them was what made this route safe to
+                      point at the note; HomePage has since been deleted
+                      with Pulse, and the R-1.6.9 block below now mounts
+                      the note directly too. */}
                   <Route path="home" element={<NotePage />} />
                   {/* Kept: /note was the note's address for sessions 1-4
                       and is linked from deferral records written then.
                       Same surface, two addresses, until those age out. */}
                   <Route path="note" element={<NotePage />} />
-                  {/* Pulse's own route — the surface is retired but the
-                      code is still present. Step 4 removes both. */}
-                  <Route path="pulse" element={<HomePage />} />
 
                   {/* The Bridgeable Map (Tenant Ponder-Editor P2) — the
                       map of what the platform does. VIEW for every
@@ -1981,21 +1974,30 @@ export function renderTenantSlugRoutes(
                *  invalid tenant URLs are visible.
                *
                *  Runtime editor flow (excludeRootRedirect=true): both `/`
-               *  and `*` mount HomePage directly. Skips the
+               *  and `*` mount NotePage directly. Skips the
                *  `<Navigate to="/home" replace />` inside RootRedirect,
                *  which would have absolute-navigated out of the
                *  `/runtime-editor/*` parent route and bounced the user
-               *  to `admin.<domain>/home`. Catch-all also renders
-               *  HomePage so the runtime editor never falls through to
-               *  a 404 — under impersonation we always show tenant-shaped
+               *  to `admin.<domain>/home`. Catch-all also renders the
+               *  note so the runtime editor never falls through to a
+               *  404 — under impersonation we always show tenant-shaped
                *  content.
                *
-               *  See /tmp/picker_navigation_bug.md for the originating
-               *  investigation. */}
+               *  ⚠️ THESE WERE <HomePage /> UNTIL 2026-09-10. HomePage was
+               *  a three-line wrapper whose whole body was the Pulse
+               *  mount, and it is deleted with Pulse. The runtime editor
+               *  now renders what a tenant operator actually lands on —
+               *  the daily note — which is what "tenant-shaped content"
+               *  meant all along. The R-1.6.9 invariant is unchanged:
+               *  RootRedirect and NotFound must both be absent here.
+               *
+               *  The originating investigation was written to /tmp and is
+               *  gone; `docs/investigations/2026-09-10-home-front-door.md`
+               *  carries the mount analysis that replaced it. */}
               {excludeRootRedirect ? (
                 <>
-                  <Route index element={<HomePage />} />
-                  <Route path="*" element={<HomePage />} />
+                  <Route index element={<NotePage />} />
+                  <Route path="*" element={<NotePage />} />
                 </>
               ) : (
                 <>

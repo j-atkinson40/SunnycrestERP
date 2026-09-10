@@ -10,7 +10,8 @@
  * `admin.<domain>/home` (empty AdminLayout chrome).
  *
  * Fix: parameterize `renderTenantSlugRoutes({ excludeRootRedirect: true })`
- * to swap RootRedirect + NotFound for HomePage at both root and `*`.
+ * to swap RootRedirect + NotFound for the tenant home surface at both
+ * root and `*` (HomePage until 2026-09-10, NotePage since).
  * TenantRouteTree passes the opt; production tenant boot path uses the
  * default (no opts) so RootRedirect continues to dispatch role-based
  * landing.
@@ -18,7 +19,7 @@
  * R-2.x note: paths inside renderTenantSlugRoutes were converted from
  * absolute (`<Route path="/login">`) to relative (`<Route path="login">`)
  * + the two root routes became `<Route index>` (RR v7 idiom). The
- * R-1.6.9 invariant is preserved — HomePage still renders at the root
+ * R-1.6.9 invariant is preserved — the home surface still renders at the root
  * slot when excludeRootRedirect=true, RootRedirect at the root slot
  * otherwise — but the path-string predicates below were updated to
  * match the new relative shape + index-route discriminator.
@@ -30,7 +31,6 @@ import { Children, type ReactElement, isValidElement } from "react"
 import { describe, expect, it } from "vitest"
 
 import { renderTenantSlugRoutes } from "@/App"
-import HomePage from "@/pages/home/HomePage"
 
 
 /**
@@ -95,40 +95,25 @@ function findIndexRoutes(fragment: ReactElement): ReactElement[] {
 }
 
 
-/**
- * ⚠️ WHAT A COMPONENT RENDERS, not what a route mounts.
+/*
+ * ⚠️ `rendersTypeName` LIVED HERE AND WAS DELETED 2026-09-10, ON PURPOSE.
  *
- * `elementTypeName` below reads the element a Route MOUNTS. That is the
- * right instrument for the R-1.6.9 invariant (RootRedirect must be absent
- * from the tree) and the WRONG instrument for "the runtime editor still
- * shows Pulse" — a Route mounting <HomePage /> keeps mounting <HomePage />
- * however HomePage's body is rewritten.
+ * It shallow-invoked a component and read what came back, because
+ * `elementTypeName` below reads what a Route MOUNTS — and the runtime editor
+ * mounted <HomePage />, a three-line wrapper whose body was the Pulse mount.
+ * Asserting the mount stayed green through any body swap: CLAUDE.md §11 shape
+ * 9, in the one position that could have caught the coupling. Measured at the
+ * time: with the defect applied and the old assertions in place, 13 passed and
+ * 0 failed.
  *
- * That gap was live: session 5 of the note arc pointed /home at the daily
- * note, and the obvious way to do it was to swap HomePage's body. These
- * assertions would have stayed green while the runtime editor's root and
- * catch-all silently became the note surface. Green without contact —
- * CLAUDE.md §11 shape 9, in the one position that could have caught it.
+ * The helper is gone because the INDIRECTION is gone. Both slots now mount the
+ * surface component directly, so `elementTypeName` reads the surface and there
+ * is no wrapper left to swap. Removing what made the guard necessary is a
+ * better fix than keeping a guard that passes — an absent field is not a hole.
  *
- * This helper shallow-invokes the component and reads what comes back, so
- * a body swap goes red.
+ * If a wrapper is ever reintroduced at either slot, the guard has to come back
+ * with it. The rule it encoded: assert what renders, not what is mounted.
  */
-function rendersTypeName(Component: () => ReactElement | null): string {
-  const out = Component()
-  if (!isValidElement(out)) return "<no-element>"
-  const t: unknown = out.type
-  if (typeof t === "string") return t
-  if (typeof t === "function") {
-    const fn = t as { name?: string; displayName?: string }
-    return fn.displayName || fn.name || "<anon-fn>"
-  }
-  if (typeof t === "object" && t !== null) {
-    const obj = t as { displayName?: string; name?: string }
-    return obj.displayName || obj.name || "<anon-obj>"
-  }
-  return "<unknown>"
-}
-
 function elementTypeName(el: ReactElement | undefined): string {
   if (!el) return "<undefined>"
   const elementProp = (el.props as { element?: unknown } | null)?.element
@@ -167,16 +152,13 @@ describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
   })
 
   describe("excludeRootRedirect=true — runtime editor flow", () => {
-    it("mounts <HomePage /> at the root index slot (NOT RootRedirect)", () => {
+    it("mounts <NotePage /> at the root index slot (NOT RootRedirect)", () => {
       const fragment = renderTenantSlugRoutes({ excludeRootRedirect: true })
       const indexRoutes = findIndexRoutes(fragment)
       expect(indexRoutes.length).toBeGreaterThan(0)
       const lastIndex = indexRoutes[indexRoutes.length - 1]
-      expect(elementTypeName(lastIndex)).toBe("HomePage")
-      // ⚠️ And that HomePage still renders PULSE. The line above asserts
-      // the mount; this asserts the surface. Without it, repointing
-      // HomePage's body at another surface leaves this test green.
-      expect(rendersTypeName(HomePage)).toBe("PulseSurface")
+      // The mount IS the surface now — no wrapper in between.
+      expect(elementTypeName(lastIndex)).toBe("NotePage")
       // R-1.6.9 regression guard: RootRedirect must NOT be in the tree
       // anywhere when excludeRootRedirect=true. Otherwise the runtime
       // editor would still trigger the absolute /home navigation.
@@ -186,13 +168,12 @@ describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
       expect(allRootRedirects).toHaveLength(0)
     })
 
-    it("mounts <HomePage /> at path='*' (NOT NotFound)", () => {
+    it("mounts <NotePage /> at path='*' (NOT NotFound)", () => {
       const fragment = renderTenantSlugRoutes({ excludeRootRedirect: true })
       const catchAlls = findRoutesByPath(fragment, (p) => p === "*")
       expect(catchAlls.length).toBeGreaterThan(0)
       const lastCatch = catchAlls[catchAlls.length - 1]
-      expect(elementTypeName(lastCatch)).toBe("HomePage")
-      expect(rendersTypeName(HomePage)).toBe("PulseSurface")
+      expect(elementTypeName(lastCatch)).toBe("NotePage")
     })
 
     it("R-1.6.9 invariant — no NotFound anywhere when excludeRootRedirect=true", () => {
@@ -212,8 +193,8 @@ describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
      * remaining 102. Under the editor shell's nested <Routes> mount
      * (TenantRouteTree inside RuntimeEditorShell inside Studio Live),
      * absolute-path child routes don't match against the splat
-     * remainder pathname — the catch-all wins, HomePage mounts in
-     * place of the intended page. The invariant below fails loudly
+     * remainder pathname — the catch-all wins, the home surface mounts
+     * in place of the intended page. The invariant below fails loudly
      * if a future commit reintroduces an absolute path.
      *
      * The `index` route + `*` catch-all are excluded (no literal
@@ -299,13 +280,14 @@ describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
   /**
    * THE FRONT DOOR — note arc session 5, 2026-09-10.
    *
-   * /home serves the daily note. It is mounted DIRECTLY rather than via
-   * <HomePage />, because HomePage is also the runtime editor's root and
-   * catch-all element; routing both through one component would mean a
-   * change to either surface silently moved the other.
+   * /home serves the daily note, mounted directly. It went through
+   * <HomePage /> for one session — which was also the runtime editor's
+   * root and catch-all element, so a change to either surface would
+   * silently have moved the other. Separating them is what made the
+   * front-door move safe; HomePage is now deleted with Pulse and both
+   * slots mount the surface directly.
    *
-   * These assertions are about the SURFACE at each route, which is what
-   * the two mounts differing is for.
+   * These assertions are about the SURFACE at each route.
    */
   describe("front door: /home is the note, /pulse is Pulse", () => {
     it("mounts <NotePage /> at `home` in the production tenant tree", () => {
@@ -322,18 +304,24 @@ describe("renderTenantSlugRoutes — R-1.6.9 parameterization", () => {
       expect(elementTypeName(notes[0])).toBe("NotePage")
     })
 
-    it("does NOT route `home` through HomePage — the runtime editor owns that", () => {
+    it("has NO `pulse` route — the holding address went with the code", () => {
+      /* `/pulse` existed for exactly one session, so the front door could
+       * move before the implementation was removed. Removal-last is
+       * satisfied; the address has no surface behind it now. */
       const fragment = renderTenantSlugRoutes()
-      const homes = findRoutesByPath(fragment, (p) => p === "home")
-      expect(elementTypeName(homes[0])).not.toBe("HomePage")
+      expect(findRoutesByPath(fragment, (p) => p === "pulse")).toHaveLength(0)
     })
 
-    it("keeps Pulse reachable at `pulse` until its code is removed", () => {
-      const fragment = renderTenantSlugRoutes()
-      const pulses = findRoutesByPath(fragment, (p) => p === "pulse")
-      expect(pulses).toHaveLength(1)
-      expect(elementTypeName(pulses[0])).toBe("HomePage")
-      expect(rendersTypeName(HomePage)).toBe("PulseSurface")
+    it("routes `home` and the runtime-editor slots at the SAME surface", () => {
+      /* They used to differ — /home was the note, the editor slots were
+       * Pulse via HomePage. With Pulse gone both show what a tenant
+       * operator actually lands on, and nothing sits in between. */
+      const prod = renderTenantSlugRoutes()
+      const rte = renderTenantSlugRoutes({ excludeRootRedirect: true })
+      const home = findRoutesByPath(prod, (p) => p === "home")[0]
+      const idx = findIndexRoutes(rte).slice(-1)[0]
+      expect(elementTypeName(home)).toBe("NotePage")
+      expect(elementTypeName(idx)).toBe("NotePage")
     })
   })
 })

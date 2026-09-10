@@ -40,7 +40,6 @@ export type ComponentKind =
   | "focus"
   | "focus-template"
   | "document-block"
-  | "pulse-widget"
   | "workflow-node"
   | "layout"
   | "composite"
@@ -287,7 +286,7 @@ export interface RegistrationMetadata {
   /** Whether this component can be placed on a Focus composition
    * canvas. When omitted, defaults to TRUE for `widget`/`focus`/
    * `focus-template` kinds and FALSE for `document-block`/
-   * `workflow-node`/`pulse-widget`/`layout`/`composite`/
+   * `workflow-node`/`layout`/`composite`/
    * `entity-card`/`button`/`form-input`/`surface-card` kinds (the
    * latter group has its own composition surfaces or is a primitive
    * that composes inside other components). Components that override
