@@ -51,6 +51,26 @@ class AgentAnomaly(Base):
     resolved_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    #: ⚠️ THE STRUCTURED OUTCOME. Which ACT resolved this row — "emailed",
+    #: "skipped" — as a key, not as prose. r180, 2026-09-10.
+    #:
+    #: `resolution_note` already said which act occurred, in a sentence: "Sent
+    #: via triage — ..." / "Skipped via triage — ...". That is enough for a human
+    #: reading one row and NOT enough to select a settled note's wording, which
+    #: would mean prefix-matching text a person typed. The note surface already
+    #: rejected substring marking for spans; a settled record is the same
+    #: failure one layer up, on the copy someone reads a week later as evidence
+    #: of what they did.
+    #:
+    #: NULL means the resolving act did not declare an outcome — which is the
+    #: honest state for every row written before this column, and for the five
+    #: other adapters that resolve anomalies without declaring one. A fragment
+    #: whose resolution lands here as NULL is NOT SETTLEABLE; settling reports
+    #: it rather than guessing from the note.
+    resolution_outcome: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )
     #: Set when a later run produced the same subject+type for this tenant.
     #: ⚠️ DELIBERATELY NOT `resolved=True`. Marking a duplicate resolved claims a
     #: HUMAN acted on it — a false statement in the audit trail, and one that

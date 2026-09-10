@@ -20,6 +20,7 @@ from app.services.fragments.registry import (  # noqa: F401
 from app.services.fragments.types import (  # noqa: F401
     Audience,
     EndTransition,
+    Outcome,
     FragmentDeclaration,
     FragmentDeclarationError,
     FragmentInstance,

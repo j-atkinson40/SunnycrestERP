@@ -131,6 +131,42 @@ def _validate(decl: FragmentDeclaration) -> None:
             "probably a prompt."
         )
 
+    # (4) continued — HOW it can end, added 2026-09-10.
+    #
+    # ⚠️ A PROMPT DECLARES EVERY WAY IT ENDS, AND EACH ENDING'S OWN WORDS.
+    # The single-template form could not carry `tasks_due_today`, which has four
+    # terminal outcomes and had one sentence. Enforced at registration rather
+    # than discovered at settling time, because a settled note that says the
+    # wrong thing is read as evidence and never contradicted.
+    if decl.end_transition is not None:
+        et = decl.end_transition
+        if not et.outcomes:
+            raise FragmentDeclarationError(
+                f"{decl.fragment_id}: declaration (4) END TRANSITION declares no "
+                "OUTCOMES. A prompt states every way it can end and the words for "
+                "each — a fragment that ends two ways and says one thing is what "
+                "this replaced."
+            )
+        keys = [o.key for o in et.outcomes]
+        dupes = {k for k in keys if keys.count(k) > 1}
+        if dupes:
+            raise FragmentDeclarationError(
+                f"{decl.fragment_id}: declaration (4) has duplicate outcome keys "
+                f"{sorted(dupes)}. The key selects the wording; two rows for one "
+                "key means the settled record is decided by list order."
+            )
+        for o in et.outcomes:
+            if not o.key or not o.key.strip():
+                raise FragmentDeclarationError(
+                    f"{decl.fragment_id}: an outcome has no key. The key is "
+                    "matched against a STRUCTURED field on the recorded event."
+                )
+            if not o.past_tense or not o.past_tense.strip():
+                raise FragmentDeclarationError(
+                    f"{decl.fragment_id}: outcome {o.key!r} has no past_tense. "
+                    "An ending with no words settles into silence."
+                )
+
 
 def register_fragment(decl: FragmentDeclaration) -> None:
     """Register one fragment type. Validates the four declarations first."""

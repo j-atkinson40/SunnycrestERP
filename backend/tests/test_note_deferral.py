@@ -22,7 +22,7 @@ from app.services.fragments import (
     register_fragment, reset_registry,
 )
 from app.services.fragments.emission import emit_for_user
-from app.services.fragments.types import EndTransition
+from app.services.fragments.types import EndTransition, Outcome
 from app.services.note.composition import (
     RENDER_PROMPT, RENDER_WOKEN, WITHHELD_DEFERRED, apply_gate, record_renders,
 )
@@ -124,7 +124,8 @@ def _declare(fid: str, *, kind: str = "prompt", inputs: dict, subject="subj-1"):
         )],
         target_surface="peek", target_key="t", subject_kind="invoice",
         end_transition=(EndTransition(entity_kind="invoice",
-                                      resolved_when="paid", past_tense="was paid")
+                                      resolved_when="paid",
+                                      outcomes=(Outcome("paid", "was paid"),))
                         if kind == "prompt" else None),
     ))
 
@@ -612,7 +613,8 @@ def test_the_record_serialises_spans_like_prose(db_session, user):
             )],
             target_surface="peek", target_key="t", subject_kind="invoice",
             end_transition=EndTransition(entity_kind="invoice",
-                                         resolved_when="paid", past_tense="paid"),
+                                         resolved_when="paid",
+                                         outcomes=(Outcome("paid", "paid"),)),
         ))
 
         before = get_today_note(current_user=user, db=db_session)

@@ -142,26 +142,66 @@ class Audience:
 
 
 @dataclass(frozen=True)
-class EndTransition:
-    """(4) END TRANSITION — the state change that resolves a prompt.
+class Outcome:
+    """One way a prompt can end, and the words for that ending.
 
-    Declarative rather than callable: the surface arc's resolver reads
-    `resolved_when` to decide whether a rendered prompt has been satisfied, and
-    the settling job reads `past_tense` to render the settled note's record of
-    what was done. Holding these as data rather than as a closure is what lets
-    the settled note be generated from events that actually occurred rather
-    than from a re-run of the condition.
+    ⚠️ `key` IS MATCHED AGAINST A STRUCTURED FIELD ON THE RECORDED EVENT, never
+    against prose. A settled record is what someone reads a week later as
+    evidence of what they did; selecting its wording by substring-matching a
+    note a human typed would put that record downstream of free text. This
+    surface already rejected substring marking for spans, for the same reason
+    and one layer up.
+    """
+
+    #: The structured discriminator. Matched against the outcome the resolving
+    #: act RECORDED — a terminal state, an enum value — not parsed from a note.
+    key: str
+    #: This ending's own past tense. `{count}` and `{plural}` interpolate.
+    past_tense: str
+
+
+@dataclass(frozen=True)
+class EndTransition:
+    """(4) END TRANSITION — how a prompt ends, and what each ending reads as.
+
+    Declarative rather than callable: the resolver reads `resolved_when` to
+    decide whether a rendered prompt has been satisfied, and settling reads the
+    matching `Outcome.past_tense` to render the settled note's record of what
+    was done. Holding these as data rather than as a closure is what lets the
+    settled note be generated from events that actually occurred rather than
+    from a re-run of the condition.
+
+    ──────────────────────────────────────────────────────────────────────
+    ⚠️ OUTCOMES ARE PLURAL, AND THAT IS THE WHOLE CHANGE (2026-09-10)
+
+    This field was a single `past_tense: str` until the settling session found
+    it could not carry the note. `tasks_due_today` has FOUR terminal outcomes —
+    done, cancelled, acknowledged, dismissed — and one template. A cancelled
+    task resolves the prompt and was not completed.
+
+    No phrasing fixes that. A single phrase either flattens the four ("you
+    closed 4 tasks") or states one of them falsely about the other three. The
+    contract had fewer slots than the world has endings.
+
+    So a fragment now declares not just THAT it ends but HOW IT CAN END, and
+    each ending carries its own words. The single-template form is deleted
+    rather than deprecated: a fragment that can end two ways and says one thing
+    is now unexpressible rather than merely discouraged.
     """
 
     #: Domain object whose state change resolves this prompt.
     entity_kind: str
-    #: Declarative key the surface arc's resolver dispatches on.
+    #: Declarative key the resolver dispatches on.
     resolved_when: str
-    #: Past-tense template for the settled note. DECISIONS 2026-09-04
-    #: ("live phase and settled phase") requires the settled form be a
-    #: DISTINCT fragment generated from events that occurred — this is the
-    #: template for that, not a rewording of the live text.
-    past_tense: str
+    #: Every way this prompt can end. At least one; keys unique.
+    outcomes: tuple[Outcome, ...]
+
+    def outcome(self, key: str) -> Outcome | None:
+        """The words for one ending, or None if this fragment cannot end that way."""
+        for o in self.outcomes:
+            if o.key == key:
+                return o
+        return None
 
 
 @dataclass(frozen=True)

@@ -21,7 +21,7 @@ from app.services.fragments import (
     register_fragment, reset_registry,
 )
 from app.services.fragments.emission import emit_for_user
-from app.services.fragments.types import EndTransition
+from app.services.fragments.types import EndTransition, Outcome
 from app.services.note.composition import (
     RENDER_CHANGED, RENDER_FIRST_SIGHTING, RENDER_PROMPT, WITHHELD_UNCHANGED,
     apply_gate, change_digest, record_renders,
@@ -78,7 +78,8 @@ def _declare(fid: str, *, kind: str, inputs: dict, subject: str = "subj-1"):
         )],
         target_surface="peek", target_key="t", subject_kind="invoice",
         end_transition=(EndTransition(entity_kind="invoice",
-                                      resolved_when="paid", past_tense="was paid")
+                                      resolved_when="paid",
+                                      outcomes=(Outcome("paid", "was paid"),))
                         if kind == "prompt" else None),
     ))
 

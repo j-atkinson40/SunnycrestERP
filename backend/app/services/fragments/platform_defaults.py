@@ -81,6 +81,7 @@ from app.services.fragments.types import (
     FragmentDeclaration,
     FragmentInstance,
     FragmentPayload,
+    Outcome,
     ReferencedItem,
 )
 
@@ -578,10 +579,24 @@ def seed() -> None:
             target_key="task_triage",
             subject_kind="user_day",
             # (4) END TRANSITION — a prompt must declare how it leaves.
+            # ⚠️ FOUR ENDINGS, FOUR SENTENCES. The terminal states are
+            # ('acknowledged', 'cancelled', 'dismissed', 'done') — measured from
+            # the lifecycle tables, not assumed — and only ONE of them is
+            # completion. The key is the terminal state itself, which the
+            # transition records structurally in `to`.
             end_transition=EndTransition(
                 entity_kind="task",
                 resolved_when="task_reaches_terminal_state",
-                past_tense="you completed {count} task{plural} due today",
+                outcomes=(
+                    Outcome("done",
+                            "you completed {count} task{plural} due today"),
+                    Outcome("cancelled",
+                            "you cancelled {count} task{plural} due today"),
+                    Outcome("acknowledged",
+                            "you acknowledged {count} task{plural} due today"),
+                    Outcome("dismissed",
+                            "you dismissed {count} task{plural} due today"),
+                ),
             ),
         )
     )
@@ -600,10 +615,26 @@ def seed() -> None:
             target_surface="focus",
             target_key="ar_collections_triage",
             subject_kind="customer",
+            # ⚠️ "YOU WORKED N BALANCES" WAS ONE SENTENCE FOR TWO OPPOSITE ACTS.
+            # Emailing a customer and skipping them are not the same thing, and
+            # the settled note is what "what did I decide Tuesday" reads. The key
+            # matches `agent_anomalies.resolution_outcome`, added r180 — NOT the
+            # free-text resolution_note, which would put the record downstream of
+            # substring-matching prose a human typed.
+            #
+            # `request_review` is deliberately absent: it stamps a note and
+            # leaves the item QUEUED. It is not a resolution, and a settled
+            # record claiming it was would claim work that is still pending.
             end_transition=EndTransition(
                 entity_kind="customer",
                 resolved_when="collections_finding_resolved",
-                past_tense="you worked {count} outstanding balance{plural}",
+                outcomes=(
+                    Outcome("emailed",
+                            "you emailed {count} customer{plural} about an "
+                            "outstanding balance"),
+                    Outcome("skipped",
+                            "you skipped {count} outstanding balance{plural}"),
+                ),
             ),
         )
     )
@@ -624,10 +655,21 @@ def seed() -> None:
             # standing set's peek targets got in session 1.
             target_key="expense_posting_map",
             subject_kind="expense_category",
+            # One ending, and it is currently unreachable — this fragment emits
+            # zero because the surface where a category's posting account is
+            # chosen does not exist. Left DECLARED: unreachable-by-construction
+            # is the honest state, and it becomes settleable when that surface
+            # ships. Ruled 2026-09-10.
             end_transition=EndTransition(
                 entity_kind="expense_category",
                 resolved_when="category_posting_account_recorded",
-                past_tense="you recorded a posting account for {count} categor{plural}",
+                outcomes=(
+                    Outcome(
+                        "recorded",
+                        "you recorded a posting account for {count} "
+                        "categor{plural}",
+                    ),
+                ),
             ),
         )
     )

@@ -208,17 +208,34 @@ def _draft_for_customer(
     return None
 
 
+#: The acts that resolve a collections finding, as KEYS. These match the
+#: outcome keys on `collections_outstanding`'s end transition — a settled note
+#: selects its wording from this value, never from `resolution_note`.
+OUTCOME_EMAILED = "emailed"
+OUTCOME_SKIPPED = "skipped"
+
+
 def _resolve_anomaly(
     db: Session,
     *,
     anomaly: AgentAnomaly,
     user_id: str,
     note: str,
+    outcome: str,
 ) -> None:
+    """Resolve a finding, recording WHICH ACT did it.
+
+    ⚠️ `outcome` IS REQUIRED, DELIBERATELY. A resolving act that does not say
+    which act it was cannot be settled — and the alternative to requiring it is
+    recovering it later by prefix-matching `note`, which is prose a human typed.
+    Making the parameter required means a future resolver that forgets fails at
+    the call, not in a settled record someone reads a week later as evidence.
+    """
     anomaly.resolved = True
     anomaly.resolved_by = user_id
     anomaly.resolved_at = datetime.now(timezone.utc)
     anomaly.resolution_note = note
+    anomaly.resolution_outcome = outcome
     db.flush()
 
 
@@ -311,6 +328,7 @@ def send_customer_email(
             f"Sent via triage — {tier} tier collection email to "
             f"{recipient} (delivery_id={delivery_result.get('delivery_id')})"
         ),
+        outcome=OUTCOME_EMAILED,
     )
     db.commit()
     return {
@@ -346,6 +364,7 @@ def skip_customer(
         anomaly=anomaly,
         user_id=user.id,
         note=f"Skipped via triage — {reason}",
+        outcome=OUTCOME_SKIPPED,
     )
     db.commit()
     return {

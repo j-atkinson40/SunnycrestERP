@@ -30,6 +30,7 @@ import pytest
 
 from app.database import SessionLocal
 from app.services.fragments import (
+    Outcome,
     Audience,
     EndTransition,
     FragmentDeclaration,
@@ -209,7 +210,8 @@ def test_non_prompt_with_end_transition_does_not_register(clean_registry):
             _decl(
                 kind="non_prompt",
                 end_transition=EndTransition(
-                    entity_kind="x", resolved_when="y", past_tense="z"
+                    entity_kind="x", resolved_when="y",
+                    outcomes=(Outcome("z", "z happened"),)
                 ),
             )
         )
@@ -238,7 +240,7 @@ def test_prompt_declares_end_transition_and_is_not_dismissible(clean_registry):
         end_transition=EndTransition(
             entity_kind="task",
             resolved_when="task_reaches_terminal_state",
-            past_tense="you completed {count}",
+            outcomes=(Outcome("done", "you completed {count}"),),
         ),
     )
     register_fragment(decl)
@@ -265,7 +267,8 @@ def test_the_two_kinds_disagree_on_dismiss(clean_registry):
             fragment_id="p2",
             kind="prompt",
             end_transition=EndTransition(
-                entity_kind="t", resolved_when="r", past_tense="p"
+                entity_kind="t", resolved_when="r",
+                outcomes=(Outcome("p", "p happened"),)
             ),
         )
     )
@@ -603,3 +606,186 @@ def test_platform_default_keys_are_stable_across_evaluations(db, user):
     a = emit_for_user(db, user=user)
     b = emit_for_user(db, user=user)
     assert [e.instance_key for e in a] == [e.instance_key for e in b]
+
+
+# ── (4) continued — HOW a prompt ends, 2026-09-10 ────────────────────
+#
+# ⚠️ `past_tense: str` became `outcomes: tuple[Outcome, ...]` because one
+# template could not carry `tasks_due_today`, which has FOUR terminal outcomes.
+# A single phrase either flattens them ("you closed 4 tasks") or states one
+# falsely about the other three. These tests pin the replacement.
+
+
+def _prompt(fid: str, *, outcomes):
+    from app.services.fragments.types import (
+        Audience, EndTransition, FragmentDeclaration, FragmentInstance,
+        FragmentPayload,
+    )
+    return FragmentDeclaration(
+        fragment_id=fid, label=fid, kind="prompt",
+        audience=Audience.any_authenticated(),
+        condition=lambda db, *, user: [FragmentInstance(
+            subject_id="s", payload=FragmentPayload(title="T", synthesized_text="p"),
+            scope={"k": 1}, condition_inputs={"a": 1},
+        )],
+        target_surface="peek", target_key="t", subject_kind="invoice",
+        end_transition=EndTransition(
+            entity_kind="invoice", resolved_when="paid", outcomes=outcomes,
+        ),
+    )
+
+
+def test_a_prompt_declaring_NO_outcomes_does_not_register():
+    """An ending with no declared ways to end settles into nothing."""
+    from app.services.fragments import register_fragment, reset_registry
+    from app.services.fragments.types import FragmentDeclarationError
+
+    reset_registry()
+    try:
+        with pytest.raises(FragmentDeclarationError, match="no OUTCOMES"):
+            register_fragment(_prompt("no_out", outcomes=()))
+    finally:
+        reset_registry()
+
+
+def test_duplicate_outcome_keys_do_not_register():
+    """Two rows for one key means list order decides what the record says."""
+    from app.services.fragments import Outcome, register_fragment, reset_registry
+    from app.services.fragments.types import FragmentDeclarationError
+
+    reset_registry()
+    try:
+        with pytest.raises(FragmentDeclarationError, match="duplicate outcome keys"):
+            register_fragment(_prompt("dupe", outcomes=(
+                Outcome("done", "you did it"),
+                Outcome("done", "you also did it"),
+            )))
+    finally:
+        reset_registry()
+
+
+def test_an_outcome_with_no_words_does_not_register():
+    from app.services.fragments import Outcome, register_fragment, reset_registry
+    from app.services.fragments.types import FragmentDeclarationError
+
+    reset_registry()
+    try:
+        with pytest.raises(FragmentDeclarationError, match="no past_tense"):
+            register_fragment(_prompt("silent", outcomes=(Outcome("done", ""),)))
+    finally:
+        reset_registry()
+
+
+def test_CONTROL_a_well_formed_multi_outcome_prompt_DOES_register():
+    """The control. Every refusal above is measured against this."""
+    from app.services.fragments import (
+        Outcome, get_fragment, register_fragment, reset_registry,
+    )
+
+    reset_registry()
+    try:
+        register_fragment(_prompt("ok", outcomes=(
+            Outcome("done", "you completed {count}"),
+            Outcome("cancelled", "you cancelled {count}"),
+        )))
+        decl = get_fragment("ok")
+        assert decl is not None
+        assert [o.key for o in decl.end_transition.outcomes] == ["done", "cancelled"]
+        assert decl.end_transition.outcome("cancelled").past_tense.startswith(
+            "you cancelled"
+        )
+        assert decl.end_transition.outcome("nope") is None
+    finally:
+        reset_registry()
+
+
+def test_tasks_due_today_declares_ONE_OUTCOME_PER_TERMINAL_STATE():
+    """⚠️ Derived from the LIFECYCLE TABLES, not from the declaration.
+
+    A test that read the fragment's own outcome list and asserted it matched
+    itself would pass no matter which states were missing. The expected set
+    comes from the world the fragment describes.
+    """
+    from app.services.fragments.platform_defaults import _TERMINAL_TASK_STATES
+    from app.services.fragments.registry import get_registry
+
+    decl = get_registry()["tasks_due_today"]
+    declared = {o.key for o in decl.end_transition.outcomes}
+    assert declared == set(_TERMINAL_TASK_STATES), (
+        f"terminal states are {sorted(_TERMINAL_TASK_STATES)} and the fragment "
+        f"declares {sorted(declared)} — a task ending a way the fragment does "
+        "not declare settles into silence"
+    )
+
+
+def test_each_terminal_outcome_has_ITS_OWN_words():
+    """Four endings, four sentences — not one phrase reused."""
+    from app.services.fragments.registry import get_registry
+
+    decl = get_registry()["tasks_due_today"]
+    phrases = [o.past_tense for o in decl.end_transition.outcomes]
+    assert len(set(phrases)) == len(phrases), (
+        f"two terminal outcomes share wording: {phrases}"
+    )
+    by_key = {o.key: o.past_tense for o in decl.end_transition.outcomes}
+    assert "completed" in by_key["done"]
+    assert "cancelled" in by_key["cancelled"]
+    assert "completed" not in by_key["cancelled"], (
+        "a cancelled task reads as completed — the flattening this replaced"
+    )
+
+
+def test_the_collections_ADAPTER_and_the_DECLARATION_agree_on_keys():
+    """⚠️ THE COUPLING. Settling selects wording by matching these.
+
+    Asserted between the two SIDES rather than against a literal: a constant
+    copied into the test would keep agreeing with itself after either side
+    drifted, and the symptom would be a settled record that silently finds no
+    template.
+    """
+    from app.services.fragments.registry import get_registry
+    from app.services.workflows.ar_collections_adapter import (
+        OUTCOME_EMAILED, OUTCOME_SKIPPED,
+    )
+
+    declared = {o.key for o in get_registry()["collections_outstanding"].end_transition.outcomes}
+    emitted = {OUTCOME_EMAILED, OUTCOME_SKIPPED}
+    assert declared == emitted, (
+        f"the fragment declares {sorted(declared)} and the adapter emits "
+        f"{sorted(emitted)} — a resolution whose key matches no outcome settles "
+        "into silence"
+    )
+
+
+def test_resolving_a_finding_REQUIRES_declaring_which_act_did_it():
+    """A resolver that forgets fails at the call, not in a settled record."""
+    import inspect
+
+    from app.services.workflows.ar_collections_adapter import _resolve_anomaly
+
+    sig = inspect.signature(_resolve_anomaly)
+    assert "outcome" in sig.parameters, "the outcome is not even accepted"
+    assert sig.parameters["outcome"].default is inspect.Parameter.empty, (
+        "`outcome` has a default — a resolver that forgets it would write NULL "
+        "and the record would have to be recovered from prose"
+    )
+
+
+def test_request_review_is_NOT_a_resolution():
+    """⚠️ It stamps a note and leaves the item QUEUED.
+
+    Read as a resolution — which a first pass did — the settled note would claim
+    work that is still pending. Asserted on the CONTRACT it returns, not on the
+    absence of a call.
+    """
+    import inspect
+
+    from app.services.workflows import ar_collections_adapter as adapter
+
+    src = inspect.getsource(adapter.request_review_customer)
+    assert '"anomaly_resolved": False' in src, (
+        "request_review no longer declares itself unresolved"
+    )
+    assert "_resolve_anomaly(" not in src, (
+        "request_review now resolves — it must not; the item stays in queue"
+    )
