@@ -30,8 +30,13 @@ export type TriageWorkspaceVariant = "page" | "focus";
 
 export function TriageWorkspace({
   variant = "page",
+  readOnly = false,
 }: {
   variant?: TriageWorkspaceVariant;
+  /** ⚠️ The user may SEE the queue and not act on it. Controls are DISABLED,
+   *  never hidden — a vanished action tells the user nothing about why, and
+   *  a triage queue with no palette is indistinguishable from a broken one. */
+  readOnly?: boolean;
 }) {
   const isPage = variant === "page";
   const navigate = useNavigate();
@@ -197,13 +202,13 @@ export function TriageWorkspace({
         <TriageFlowControls
           flow={config.flow_controls}
           onSnooze={handleSnooze}
-          disabled={working}
+          disabled={working || readOnly}
         />
 
         <TriageActionPalette
           actions={config.action_palette}
           onAct={handleAct}
-          disabled={working}
+          disabled={working || readOnly}
         />
       </section>
 

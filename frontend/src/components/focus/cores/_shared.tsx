@@ -16,6 +16,14 @@ import type { FocusConfig } from "@/contexts/focus-registry"
 export interface CoreProps {
   focusId: string
   config: FocusConfig
+  /** ⚠️ The user may SEE this and not change it. Computed once by the
+   *  dispatcher via `useFocusReadOnly`, never re-derived per core.
+   *
+   *  A core receiving `readOnly` DISABLES its actions; it does not hide them.
+   *  A control that vanishes tells the user nothing about why, and a Focus
+   *  that silently drops an action the user could otherwise have taken is
+   *  indistinguishable from one that is broken. */
+  readOnly: boolean
 }
 
 
@@ -54,5 +62,26 @@ export function CoreHeader({
       </p>
       <h2 className="text-h2 font-display text-content-strong">{title}</h2>
     </header>
+  )
+}
+
+
+/** States the read-only condition once, where the actions are.
+ *
+ *  ⚠️ THE REASON IS THE POINT. "Disabled" with no explanation reads as broken;
+ *  this says the permission is absent, which is a different thing and is
+ *  actionable — the user knows to ask for it rather than to report a bug.
+ */
+export function ReadOnlyNotice({ permission }: { permission?: string }) {
+  return (
+    <div
+      data-testid="focus-read-only-notice"
+      className="flex items-baseline gap-2 border-b border-border-subtle px-4 py-2 text-body-sm text-content-muted"
+    >
+      <span>View only — you can see this and not change it.</span>
+      {permission ? (
+        <span className="font-mono text-caption">requires {permission}</span>
+      ) : null}
+    </div>
   )
 }

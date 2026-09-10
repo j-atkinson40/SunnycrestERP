@@ -101,7 +101,7 @@ describe("QuoteFocusWithAccessories — S-3b edit canvas", () => {
 
   it("renders the edit canvas with editable rows seeded from the extraction", () => {
     mockExtraction = draft
-    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} />)
+    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} readOnly={false} />)
     expect(screen.getByTestId("quote-edit-canvas")).toBeInTheDocument()
     // The seeded line renders as an editable row (product + qty input).
     expect(screen.getByText("Monticello")).toBeInTheDocument()
@@ -114,13 +114,13 @@ describe("QuoteFocusWithAccessories — S-3b edit canvas", () => {
 
   it("offers the add-line affordance", () => {
     mockExtraction = draft
-    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} />)
+    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} readOnly={false} />)
     expect(screen.getByTestId("quote-add-line")).toBeInTheDocument()
   })
 
   it("re-hosts the price-list pin with products derived from the LIVE draft", () => {
     mockExtraction = draft
-    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} />)
+    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} readOnly={false} />)
     const pin = screen.getByTestId("fake:quote-focus:price-list")
     expect(pin).toHaveAttribute("data-surface", "focus_canvas")
     expect(pin).toHaveAttribute(
@@ -131,7 +131,7 @@ describe("QuoteFocusWithAccessories — S-3b edit canvas", () => {
 
   it("suppresses the price-list pin when there are no lines (empty canvas)", () => {
     mockExtraction = { ...draft, lines: [] }
-    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} />)
+    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} readOnly={false} />)
     expect(screen.getByTestId("quote-edit-canvas")).toBeInTheDocument()
     expect(
       screen.queryByTestId("fake:quote-focus:price-list"),
@@ -140,7 +140,7 @@ describe("QuoteFocusWithAccessories — S-3b edit canvas", () => {
 
   it("renders the save primary as deferred (no materialization path yet)", () => {
     mockExtraction = draft
-    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} />)
+    render(<QuoteFocusWithAccessories focusId="quote-building" config={cfg} readOnly={false} />)
     const save = screen.getByTestId("quote-save")
     expect(save).toBeDisabled()
   })

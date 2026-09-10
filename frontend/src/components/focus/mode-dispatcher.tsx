@@ -16,7 +16,8 @@
 import { getFocusConfig, type CoreMode } from "@/contexts/focus-registry"
 
 import type { CoreProps } from "./cores/_shared"
-import { EscToDismissHint } from "./cores/_shared"
+import { useFocusReadOnly } from "./useFocusReadOnly"
+import { EscToDismissHint, ReadOnlyNotice } from "./cores/_shared"
 import { KanbanCore } from "./cores/KanbanCore"
 import { SingleRecordCore } from "./cores/SingleRecordCore"
 import { EditCanvasCore } from "./cores/EditCanvasCore"
@@ -44,6 +45,10 @@ const MODE_RENDERERS: Record<CoreMode, React.ComponentType<CoreProps>> = {
 
 export function ModeDispatcher({ focusId }: { focusId: string }) {
   const config = getFocusConfig(focusId)
+  // ⚠️ COMPUTED ONCE, HERE. Every core receives the same answer rather than
+  // asking for itself — a core that forgot to ask looks exactly like a core
+  // whose user happens to hold the permission.
+  const readOnly = useFocusReadOnly(config)
   if (!config) {
     return <UnknownFocusError focusId={focusId} />
   }
@@ -52,7 +57,18 @@ export function ModeDispatcher({ focusId }: { focusId: string }) {
   // back to the mode-generic MODE_RENDERERS entry otherwise. Open-
   // closed: adding a new specialized core doesn't touch this dispatch.
   const Renderer = config.coreComponent ?? MODE_RENDERERS[config.mode]
-  return <Renderer focusId={focusId} config={config} />
+  // ⚠️ THE NOTICE IS THE LAYER'S, NOT EACH CORE'S. Stated once here so a new
+  // core cannot ship read-only without saying so — and so the wording cannot
+  // drift between cores, which would make the same condition read as two
+  // different states.
+  return (
+    <div className="flex h-full flex-col">
+      {readOnly ? <ReadOnlyNotice permission={config.editPermission} /> : null}
+      <div className="min-h-0 flex-1">
+        <Renderer focusId={focusId} config={config} readOnly={readOnly} />
+      </div>
+    </div>
+  )
 }
 
 

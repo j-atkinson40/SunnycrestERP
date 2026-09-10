@@ -14,7 +14,7 @@
  *   ┌── Focus surface ──────────────────────────────────────────┐
  *   │ ┌── kanban region (flex-1) ──┐ ┌── accessory rail ──────┐ │
  *   │ │                             │ │                         │ │
- *   │ │   <SchedulingKanbanCore />  │ │  <CompositionRenderer/> │ │
+ *   │ │   <SchedulingKanbanCore/>  │ │  <CompositionRenderer/> │ │
  *   │ │   (unchanged operational    │ │  editorMode={false}     │ │
  *   │ │    surface — drag, finalize,│ │  → real widgets via     │ │
  *   │ │    date select, scribe, etc.)│ │   getWidgetRenderer    │ │
@@ -51,12 +51,16 @@ import type { FocusConfig } from "@/contexts/focus-registry"
 export interface SchedulingFocusWithAccessoriesProps {
   focusId: string
   config: FocusConfig
+  /** ⚠️ The dispatcher passes this identically to bespoke and mode-generic
+   *  cores, so a specialized core cannot quietly opt out of the edit gate. */
+  readOnly: boolean
 }
 
 
 export function SchedulingFocusWithAccessories({
   focusId,
   config,
+  readOnly,
 }: SchedulingFocusWithAccessoriesProps) {
   const { company } = useAuth()
   const compositionFocusType = config.compositionFocusType ?? config.id
@@ -91,7 +95,11 @@ export function SchedulingFocusWithAccessories({
         data-slot="scheduling-focus-with-accessories"
         data-accessory-rail="absent"
       >
-        <SchedulingKanbanCore focusId={focusId} config={config} />
+        <SchedulingKanbanCore
+          focusId={focusId}
+          config={config}
+          readOnly={readOnly}
+        />
       </div>
     )
   }
@@ -103,7 +111,11 @@ export function SchedulingFocusWithAccessories({
       data-accessory-rail="present"
     >
       <div className="flex-1 min-w-0">
-        <SchedulingKanbanCore focusId={focusId} config={config} />
+        <SchedulingKanbanCore
+          focusId={focusId}
+          config={config}
+          readOnly={readOnly}
+        />
       </div>
       <aside
         className="w-72 flex-shrink-0 overflow-y-auto"

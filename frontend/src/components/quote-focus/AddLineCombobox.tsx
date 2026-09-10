@@ -32,10 +32,15 @@ import {
 } from "@/services/quote-preview-service"
 
 export interface AddLineComboboxProps {
+  /** Read-only Focus: the control stays visible and refuses. Hiding it would
+   *  tell the user nothing about why they cannot add a line. */
+  disabled?: boolean
+
   onAdd: (line: { productRef: string; productId?: string }) => void
 }
 
-export function AddLineCombobox({ onAdd }: AddLineComboboxProps) {
+export function AddLineCombobox({
+  disabled = false, onAdd }: AddLineComboboxProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
@@ -71,7 +76,7 @@ export function AddLineCombobox({ onAdd }: AddLineComboboxProps) {
     <FocusPopover open={open} onOpenChange={setOpen}>
       <FocusPopoverTrigger
         render={
-          <Button variant="outline" size="sm" data-testid="quote-add-line">
+          <Button disabled={disabled} variant="outline" size="sm" data-testid="quote-add-line">
             <Plus className="size-3.5" />
             Add line
           </Button>

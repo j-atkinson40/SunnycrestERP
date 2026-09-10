@@ -89,6 +89,9 @@ registerWidgetRenderer(
 
 registerFocus({
   id: "funeral-scheduling",
+  // The board's mutations are moving a delivery and finalizing the day.
+  // Without this, the board renders and drag + finalize refuse.
+  editPermission: "delivery.edit",
   mode: "kanban",
   displayName: "Funeral Scheduling",
   coreComponent: SchedulingFocusWithAccessories,

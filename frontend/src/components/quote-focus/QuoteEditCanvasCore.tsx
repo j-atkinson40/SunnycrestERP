@@ -28,6 +28,10 @@ import { AddLineCombobox } from "./AddLineCombobox"
 import type { DraftAction, QuoteDraft } from "./draft-reducer"
 
 export interface QuoteEditCanvasCoreProps {
+  /** ⚠️ Read-only DISABLES the line inputs and the add control; it does not
+   *  hide the quote. The director sees every line and cannot reprice it. */
+  readOnly?: boolean
+
   draft: QuoteDraft
   dispatch: React.Dispatch<DraftAction>
   price: QuotePreviewResponse | null
@@ -35,6 +39,7 @@ export interface QuoteEditCanvasCoreProps {
 }
 
 export function QuoteEditCanvasCore({
+  readOnly = false,
   draft,
   dispatch,
   price,
@@ -85,6 +90,7 @@ export function QuoteEditCanvasCore({
           <ul>
             {draft.lines.map((line, i) => (
               <LineRow
+                readOnly={readOnly}
                 key={line.lineId}
                 index={i}
                 productRef={line.productRef}
@@ -117,6 +123,7 @@ export function QuoteEditCanvasCore({
       {/* Add line */}
       <div className="border-t border-border-subtle pt-3">
         <AddLineCombobox
+          disabled={readOnly}
           onAdd={(l) =>
             dispatch({
               type: "addLine",
@@ -161,6 +168,7 @@ export function QuoteEditCanvasCore({
 }
 
 interface LineRowProps {
+  readOnly?: boolean
   index: number
   productRef: string
   quantity: number
@@ -172,6 +180,7 @@ interface LineRowProps {
 }
 
 function LineRow({
+  readOnly = false,
   productRef,
   quantity,
   override,
@@ -215,6 +224,7 @@ function LineRow({
 
       {/* Qty */}
       <Input
+        disabled={readOnly}
         type="number"
         min={1}
         value={quantity}
@@ -258,6 +268,7 @@ function LineRow({
       {/* Remove */}
       <button
         type="button"
+        disabled={readOnly}
         onClick={onRemove}
         aria-label={`Remove ${productRef}`}
         className="flex size-6 items-center justify-center rounded text-content-subtle hover:bg-status-error-muted hover:text-status-error"

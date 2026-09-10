@@ -56,6 +56,9 @@ import {
 export interface QuoteFocusWithAccessoriesProps {
   focusId: string
   config: FocusConfig
+  /** ⚠️ The dispatcher passes this identically to bespoke and mode-generic
+   *  cores, so a specialized core cannot quietly opt out of the edit gate. */
+  readOnly: boolean
 }
 
 /** 300ms — matches the arc's saved-view / draft write debounces. Wide
@@ -67,6 +70,7 @@ const REPRICE_DEBOUNCE_MS = 200
 export function QuoteFocusWithAccessories({
   focusId,
   config,
+  readOnly,
 }: QuoteFocusWithAccessoriesProps) {
   void focusId
   void config
@@ -183,6 +187,7 @@ export function QuoteFocusWithAccessories({
           dispatch={dispatch}
           price={price}
           pricing={pricing}
+          readOnly={readOnly}
         />
         {/* Save — the one chrome primary. DEFERRED: materialization to the
             quotes hub lands in a follow-on. The draft is already durably

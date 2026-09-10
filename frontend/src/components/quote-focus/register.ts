@@ -25,5 +25,7 @@ registerFocus({
   id: QUOTE_FOCUS_ID,
   mode: "editCanvas",
   displayName: "Quote",
+  // Adding, removing and repricing lines is quote authorship.
+  editPermission: "ar.create_quote",
   coreComponent: QuoteFocusWithAccessories,
 })

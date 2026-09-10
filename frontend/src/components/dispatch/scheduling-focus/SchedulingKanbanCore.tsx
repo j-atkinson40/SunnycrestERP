@@ -115,6 +115,9 @@ const UNASSIGNED_LANE_ID = "__UNASSIGNED__"
 export interface SchedulingKanbanCoreProps {
   focusId: string
   config: FocusConfig
+  /** ⚠️ Read-only DISABLES drag and the finalize control; it does not hide
+   *  the board. The user sees the day and cannot move it. */
+  readOnly?: boolean
 }
 
 
@@ -153,7 +156,7 @@ function formatDayLabel(targetIso: string, todayIso: string): string {
 // ── Core renderer ───────────────────────────────────────────────────
 
 
-export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
+export function SchedulingKanbanCore({ focusId, readOnly = false }: SchedulingKanbanCoreProps) {
   void focusId  // reserved — could inform logging / telemetry later
 
   const { currentFocus, close } = useFocus()
@@ -702,8 +705,10 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
   // widget drags flow through Canvas's separate listener, not this
   // one.
   useDndMonitor({
-    onDragStart: handleDragStart,
-    onDragEnd: handleDragEnd,
+    // ⚠️ Drag is the kanban's mutation. Read-only removes the handlers
+    // rather than letting a drop land and silently do nothing.
+    onDragStart: readOnly ? undefined : handleDragStart,
+    onDragEnd: readOnly ? undefined : handleDragEnd,
     onDragCancel: handleDragCancel,
   })
 
@@ -1038,7 +1043,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
               <button
                 type="button"
                 onClick={handleFinalize}
-                disabled={finalizing || loading || deliveries.length === 0}
+                disabled={readOnly || finalizing || loading || deliveries.length === 0}
                 data-slot="scheduling-focus-finalize"
                 className={cn(
                   "inline-flex items-center gap-1",

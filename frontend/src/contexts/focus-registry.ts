@@ -206,6 +206,10 @@ export interface FocusConfig {
   coreComponent?: React.ComponentType<{
     focusId: string
     config: FocusConfig
+    /** See `editPermission`. A specialized core receives the same read-only
+     *  answer the mode-generic cores do — the dispatcher passes it identically
+     *  either way, so a bespoke core cannot quietly opt out of the gate. */
+    readOnly: boolean
   }>
   /** Optional decoupling between the registered Focus id and the
    *  composition lookup key. May 2026 (composition runtime
@@ -231,6 +235,24 @@ export interface FocusConfig {
    *  a backend `triage_queues.queue_id` (e.g. "workflow_review_triage").
    *  Ignored by non-triageQueue modes. */
   queueId?: string
+  /** ⚠️ WHICH CAPABILITY GATES EDITING THIS FOCUS. 2026-09-10.
+   *
+   *  A Focus opened by a user who lacks this permission RENDERS ITS CONTENT
+   *  AND REFUSES ITS ACTIONS. Read-only is a capability of the layer, not of
+   *  any one Focus.
+   *
+   *  The value is an existing capability key — `invoice.approve`,
+   *  `delivery.view` — checked through the same `hasPermission` every other
+   *  gated surface uses. This introduces NO new permission model: the platform
+   *  has one, keys are module-scoped by convention, and a fourth model was
+   *  explicitly not wanted.
+   *
+   *  ⚠️ OMITTING IT MEANS "THIS FOCUS HAS NO EDIT GATE", not "everyone may
+   *  edit by default and we forgot". A Focus with actions and no
+   *  `editPermission` is readable as an unanswered question rather than as a
+   *  decision, which is why it is optional rather than defaulted to something
+   *  permissive-looking. */
+  editPermission?: string
 }
 
 
@@ -342,6 +364,16 @@ registerFocus({
 // workflow_review_triage queue, where the Legacy Order workflow stages its
 // proof for approval. Open via ?focus=decision-triage. The next triage Focus
 // (cash receipts, month-end) registers the same way with its own queueId.
+// ⚠️ THE FIVE TRIAGE FOCUSES DELIBERATELY DECLARE NO `editPermission`.
+//
+// Their queue config already carries `required_permission`, and today that
+// gates ACCESS — a user without it does not see the queue at all. Read-only
+// would mean something different: see the queue, and not act on it.
+//
+// Which of those two is right is a product decision about triage, not a gap in
+// this capability, and declaring a key here would silently convert one model
+// into the other. Left undeclared, which per `editPermission`'s contract reads
+// as "no gate declared" — an open question rather than a decision.
 registerFocus({
   id: "decision-triage",
   mode: "triageQueue",

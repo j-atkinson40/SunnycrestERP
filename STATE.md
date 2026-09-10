@@ -2,6 +2,15 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ THREE THINGS THE WORK LOG'S SESSION NEEDS, RECORDED BEFORE IT STARTS (2026-09-10)
+
+Established by the Focus-capability arc's preliminary — the work log and settling are **not one thing in two tenses**. Full derivation: `docs/investigations/2026-09-10-worklog-vs-settling.md`.
+
+- **The collections adapter writes ZERO audit rows, and that is a gap in the audit log on its own merits** (2026-09-10). `ar_collections_adapter` resolves anomalies without writing an audit row: production holds **205 resolved anomalies and 3 `agent_anomaly` audit rows**. The audit log is tenant-visible — established when the anomaly dedup wrote to it — so an act that resolves a finding and leaves no trace is a hole regardless of what reads it. **Making the adapter write is probably right for that reason alone; reading `agent_anomalies` alongside would build the work log around the hole rather than closing it.** Ruled as a framing, not yet as a build.
+- **⚠️ 12 OF 28 INVOICE `created` ROWS CARRY NO ACTOR** (2026-09-10, production). A work log saying "you created 28 invoices" would claim twelve acts it cannot attribute to anyone — the same first-person-without-an-actor failure that stopped settling, arriving in a count instead of a sentence. Either the log counts only attributable acts, or it says something honest about the rest. **A real decision, and it must not be discovered mid-build.**
+- **The work log will be near-empty on production, for the same reason settling is** (2026-09-10). Unbounded, exactly **two** audit actions carry an actor: `login` (1922) and `created` (33), and there are **no `sales_order`, `quote` or `product` rows at all**. That needs saying plainly in that session's report so an empty log does not read as a defect.
+- **§2 of the Focus-capability arc is a hard dependency.** "Clicking *4 sales orders entered* lands on those four" is precisely scope-that-survives-the-URL.
+
 ## ⚠️ NOTE SESSION 3 REVERTED — standing lines open a FOCUS, and the Focus layer can't do it yet (2026-09-09)
 
 - **The peek bridge shipped, was reviewed on the running surface, and was reverted the same day.** The ruling it was built against — "a standing line never opens a Focus directly" — is **superseded**: standing lines open a **Focus on click**, read-only without edit permission. The superseded entry's *argument was sound and its premise was wrong*: it argued peek-only from uniformity, but a peek that opens on cursor travel and pins itself on pointer entry costs MORE than a click, and at 360px it cannot show a day's schedule so the user clicks through anyway. Reverted in `4cbfbd00`; survivors restored in `f05515dd`.

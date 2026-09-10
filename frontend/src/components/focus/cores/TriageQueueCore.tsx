@@ -22,7 +22,7 @@ import { TriageWorkspace } from "@/components/triage/TriageWorkspace"
 import { CoreHeader, EscToDismissHint, type CoreProps } from "./_shared"
 
 
-export function TriageQueueCore({ config }: CoreProps) {
+export function TriageQueueCore({ config, readOnly }: CoreProps) {
   if (!config.queueId) {
     return (
       <div className="flex h-full flex-col gap-4">
@@ -44,7 +44,7 @@ export function TriageQueueCore({ config }: CoreProps) {
       <CoreHeader modeLabel="triageQueue" title={config.displayName} />
       <div className="min-h-0 flex-1 overflow-auto">
         <TriageSessionProvider queueId={config.queueId}>
-          <TriageWorkspace variant="focus" />
+          <TriageWorkspace variant="focus" readOnly={readOnly} />
         </TriageSessionProvider>
       </div>
       <EscToDismissHint />

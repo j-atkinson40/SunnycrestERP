@@ -2515,6 +2515,29 @@ command was run to gather.
 **Remedy: capture full output to a file and read the file.** Reduce when
 displaying, never when collecting.
 
+⚠️ **A BOUND IS A DEFECT IN THE METHOD WHETHER OR NOT IT CHANGED THE ANSWER.**
+
+This is the entry's hardest case, and the only one that cannot be caught by
+noticing a wrong result. Every other instance recorded here was found because
+the conclusion was false. A bound that did not happen to bite produces a TRUE
+answer by luck, agrees with everything downstream, and is never revisited.
+
+Measured 2026-09-10: a production probe asked "which audit actions carry an
+actor" with `LIMIT 8` and reported the answer as complete. Re-run unbounded,
+production had exactly two — so the bound never bit and the conclusion was
+right. **The same query against the local database would have been truncated at
+8 of 11.** The method was wrong in both places; only the environment decided
+whether it mattered.
+
+So the test is not "did this look wrong". It is:
+
+    "Was a bound applied, and did I remove it before believing the result?"
+
+**The only way to know whether a bound bit is to remove it and look**, which
+costs one re-run. Correctness of the conclusion is not evidence about the
+method, and a right answer reached through a bounded read is the version nobody
+catches.
+
 ⚠️ **THE BOUND CAME FROM THE TOOL, NOT FROM THE DATA — in both instances, and
 that is the shape.** Not "I looked at too little," which sounds like a lapse of
 diligence and would be answered by looking harder. The transform imposed a
