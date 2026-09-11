@@ -725,7 +725,9 @@ Task provenance is polymorphic across 12 `provenance_kind` values (workflow_step
 
 v1 ships 5 task type behavior plugins: `generic_task`, `review_approval_task`, `scheduled_recurring_task`, `customer_communication_task`, `anomaly_resolution_task`. Future task types register additively against the substrate.
 
-**Subscriber registry.** Task lifecycle events fire to a subscriber registry (7 event types × 6 v1 subscribers; sync dispatch with isolated try/except per subscriber at `backend/app/services/tasks/subscribers/`). v1 subscribers: `audit_writer` (active at substrate-foundation), `notification_dispatcher` (active post-B2 (c) refactor), `briefings_invalidator`, `pulse_invalidator`, `workflow_resumer`, `focus_closer` (all active post-B3 consumer integration).
+**Subscriber registry.** Task lifecycle events fire to a subscriber registry (sync dispatch with isolated try/except per subscriber at `backend/app/services/tasks/subscribers/`). The registry holds seven v1 subscribers over seven event types: `audit_writer`, `briefings_invalidator`, `focus_closer`, `jcf_closer`, `notification_dispatcher`, `reconciliation_flag_returner`, `workflow_resumer`.
+
+⚠️ Enumerated live 2026-09-11, count and names from the same read. The clause this replaces said "7 event types × 6 v1 subscribers" and then listed six that included `pulse_invalidator`, deleted with Pulse in `bf2412df` — wrong in two ways at once, because the count travelled separately from the list. `audit_writer` registers no `event_types` and therefore takes the default, which is all seven; the other six declare subsets.
 
 #### The deferred-handler-body pattern
 
