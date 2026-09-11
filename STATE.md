@@ -50,10 +50,52 @@ broken."
 
 `sweep_notes_to_settle` is among the 8 and was written during this arc.
 
-**Two separable fixes.** (a) The wrapper should not record a run that produced
-an error as a clean completion — a platform change to a live substrate,
-touching all 25. (b) The 8 silent swallowers need a durable failure record, or
-need to stop swallowing. Neither is started.
+### The swallow question, answered 2026-09-11 — before the 0a dispatch
+
+The open question was whether "fix the wrapper" means "fix 11 targets", since
+the wrapper cannot see an exception a target already caught. **It does not.**
+
+⚠️ **Classify by COVERAGE, not by loop-nesting.** My first pass asked whether a
+handler sat inside a `for`, and that proxy is wrong: a narrow `try` around one
+optional write is neither per-item tolerance nor a whole-body abort, and
+`run_uncleared_check_monitor` was misfiled by it. The measure that works is
+try-span over function-span.
+
+    OWNS THE JOB (>0.7) — one failure aborts everything
+      run_ar_aging_monitor        0.96
+      run_collections_sequence    0.96
+      run_ap_upcoming_payments    0.80
+
+    GUARDS A STEP OR A LOOP ITERATION (<0.7) — the other 8
+
+**All three whole-job swallowers are the `agent_service` trio, and all three
+ALREADY REPORT — twice.** They `return {"error": str(e)}` and they write
+`agent_jobs.status='failed'`. They are the best-instrumented of the eleven.
+`_run_per_tenant` simply **discards the return value**.
+
+So the shape is:
+
+  (a) **The wrapper reads what it is already being told.** Inspecting the
+      return value for an `error` key converts all three silent-abort cases
+      into recorded failures with ZERO target changes. Small, and it is the
+      whole of the `ar_aging_monitor` visibility problem.
+  (b) **No target needs to stop swallowing.** The other 8 guard a step or an
+      iteration; that tolerance is correct design and should stay.
+  (c) ⚠️ **The residual gap is SYSTEMIC per-item failure.** A tolerant loop in
+      which EVERY item fails returns normally and reports green — tolerance
+      built for one bad row is silent for a broken world. Closing that needs
+      the targets to report a skipped-count and the wrapper to record partial.
+      That is the removal-shaped half: **the wrapper currently accepts any
+      return value, including `None`, as success.** Requiring a structured
+      result makes silent success unexpressible rather than discouraged.
+
+(a) and (b) are one small build. (c) is a separate and larger one.
+
+⚠️ **A correction to this section's own first draft:** it said
+`sweep_notes_to_settle` was "written that way" as if defective. Measured at
+0.63 with its handler inside a loop, its swallow is per-item tolerance and is
+CORRECT. It belongs among the 8 that leave no durable record, and it does not
+belong among the jobs that abort silently.
 
 ## Held work, in the order James ruled (2026-09-10, re-ranked 2026-09-11)
 
