@@ -1,5 +1,39 @@
 # Item (c) preliminary — there is no single scheduler substrate
 
+> ## ⚠️ CORRECTED 2026-09-11, SAME DAY — THE COUNTS BELOW WERE WRONG
+>
+> This document reported **28 scheduled jobs**, **15 through a wrapper**, and
+> **10 with no record**. All three were undercounts, and the cause is the defect
+> the document itself is about.
+>
+> `scheduler.py` registers ten jobs in a LOOP over a `nightly_jobs` table. A
+> static count of `add_job` CALL SITES sees that as one. Counting call sites
+> instead of registrations is the wrong unit — reported while committing it.
+>
+> **Corrected, by expanding the loop:**
+>
+> ```
+> scheduled REGISTRATIONS ........ 37   (27 static + 10 from the loop)
+> JOB_REGISTRY entries ........... 29
+> through a wrapper .............. 25   ← 0a covers these
+> hand-rolled (_log_job_run) ......  3   ← 0a does NOT reach
+> no job_runs row at all .......... 9   (4 in-file + 5 calendar/email sweeps)
+> ```
+>
+> **And there is NO registry discrepancy.** Every one of the 29 registry entries
+> IS scheduled. Eight scheduled jobs are absent from the registry — the moc,
+> workflow-time-check, calendar and email sweeps, none of which is meant to be
+> hand-fired. 37 − 8 = 29, exactly.
+>
+> ⚠️ **The ten I listed as "in the registry, never scheduled" are the loop's ten**,
+> `ar_aging_monitor` among them — which production shows running 264 times. That
+> alone should have stopped the claim: a job cannot be unscheduled and running.
+>
+> The findings below SURVIVE with different denominators. Ten of twenty-eight
+> becomes nine of thirty-seven; the hand-rolled three and the
+> highest-traffic-job-on-an-uncovered-path finding are unchanged.
+
+
 **Date:** 2026-09-11 · **HEAD:** `b69d9c73` · **Read-only. No code changed.**
 
 Two answers. §0b first, because it was the one asked for first.
