@@ -2,6 +2,32 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ THE SATURATED SIGNAL'S SECOND COST — unexecuted code wearing the look of tested code (2026-09-11)
+
+Named 2026-09-11, from the `ar_aging_monitor` fix. CLAUDE.md §11's *Saturated
+signal* entry says a constant failure hides NEW failures of a different kind in
+the same territory. It does something worse as well:
+
+**A constant failure also hides EXISTING defects on the lines it never reaches.**
+
+Everything past the raise is unexecuted code that looks tested, because the
+function has "run" nightly for months and its job type appears in every
+scheduler log. Nothing distinguishes a line that ran and worked from a line
+that was never reached.
+
+Worked instance: `run_ar_aging_monitor` raised on a `date` minus a `datetime`
+at the top of its loop, 163 times between 2026-07-16 and 2026-09-10. One line
+further down, all three alert branches read `inv.invoice_number` against a
+column named `Invoice.number`. The second defect was invisible to code review,
+invisible to every test that never invoked the function, and would have shipped
+inside a "one-line fix" — swapping one exception for another in a table nobody
+reads.
+
+**The consequence for method:** when repairing a saturated signal, RUN the
+repaired path before believing the repair is the whole of it. The size of the
+fix is not evidence about the size of the problem; a one-line cause can sit in
+front of an arbitrary amount of never-executed code.
+
 ## ⚠️ `job_runs` IS GREEN BY CONSTRUCTION FOR 11 OF 25 SCHEDULED JOBS (2026-09-11)
 
 Enumerated 2026-09-11 by AST over `scheduler.py`'s 25 wrapped jobs, then over
@@ -105,10 +131,14 @@ precede everything, because until they land every green in `job_runs` is
 uninterpretable for 11 of 25 jobs. Items 1-3 below are unchanged and still
 next after them.
 
-  0a. **The `_run_per_tenant` / `_run_global` wrapper** must not record an
-      errored run as a clean completion (2026-09-11). Touches all 25 jobs.
-  0b. **The 8 swallowers that leave no durable trace** need one, or need to
-      stop swallowing (2026-09-11).
+  0a. ✅ **DONE 2026-09-11 (`292d8662`)** — the wrapper reads the error it was
+      already being handed. The three whole-job swallowers already returned
+      `{"error": ...}` AND wrote `agent_jobs.status='failed'`; `_run_per_tenant`
+      discarded the return value. Zero target changes.
+  0b. ✅ **RESOLVED AS NOT-A-DEFECT 2026-09-11** — the other 8 swallow per-item
+      inside a loop, which is correct tolerance. None was asked to stop.
+      ⚠️ The residual is (c) below, and it is pinned by a test rather than a
+      comment: `test_NONE_IS_STILL_SUCCESS_and_that_is_the_remaining_gap`.
   0c. **`ar_aging_monitor`'s one-line fix** (2026-09-11) — `date.today()` minus
       a `DateTime` column. Zero blast radius: it has never written an alert or
       a sequence, and the note's collections findings come from
@@ -132,10 +162,22 @@ next after them.
       different table. `ar_aging_*` alerts number 0 of 285 today. The stream
       feeds a severity-count widget on the financials board.
 
-      So bounding is not a semantic change to a threshold-crossing design —
-      two of three branches simply have no dedup, and that is a defect
-      independent of the date bug. **Fix the dedup with the one-liner, or the
-      one-liner starts a permanent nightly stream.**
+      ✅ **DONE 2026-09-11 (`9b01b0a4`)** — date normalisation plus a guard on
+      all three bands, one alert per invoice per band EVER (not per open
+      alert: guarding on unresolved lets a dismissed alert re-fire nightly
+      forever). Subject rides structured in `action_payload` because the
+      invoice number sits in prose and matching it there would put dedup
+      downstream of a template. A GUARD, not a constraint — `agent_alerts`
+      has only a PK and a tenant FK.
+
+      ⚠️ **AND IT WAS NEVER A ONE-LINE FIX.** A SECOND bug sat one line past
+      the raise: all three branches read `inv.invoice_number` against a column
+      named `Invoice.number` (`invoice_number` is the API's field name).
+      Shipping the date fix alone would have swapped one exception for
+      another. Found by running the function, not by reading it.
+
+      First production run now emits 6 alerts on night one and nothing on
+      night two.
 
 Supersedes the 2026-09-08 ranking below. Every item carries its own origin date;
 none inherits this heading's.
