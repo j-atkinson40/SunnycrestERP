@@ -110,12 +110,32 @@ next after them.
   0b. **The 8 swallowers that leave no durable trace** need one, or need to
       stop swallowing (2026-09-11).
   0c. **`ar_aging_monitor`'s one-line fix** (2026-09-11) — `date.today()` minus
-      a `DateTime` column. Now known to have ZERO blast radius: it has never
-      written an alert or a sequence, and the note's collections findings come
-      from `ar_collections`, which normalises correctly. ⚠️ The risk is the
-      first SUCCESSFUL run emitting a backlog accumulated since 2026-07-16.
-      Supersedes item 4's investigation framing —
+      a `DateTime` column. Zero blast radius: it has never written an alert or
+      a sequence, and the note's collections findings come from
+      `ar_collections`, which normalises correctly.
       `docs/investigations/2026-09-11-ar-aging-monitor.md`.
+
+      ⚠️ **THE BACKLOG IS NOT THE PROBLEM. THE RECURRENCE IS.** Measured on
+      production 2026-09-11, the emission shape is neither "per threshold
+      crossing" nor "one per currently-overdue invoice":
+
+          ar_aging_31   guarded by `if not existing` sequence — ONCE per invoice
+          ar_aging_61   create_alert sits OUTSIDE the guard — EVERY NIGHT in band
+          ar_aging_90   unconditional — EVERY NIGHT, INDEFINITELY
+
+      Open invoices today: 2 at 1-30 days (no alert), 4 at 31-60, 0 at 61-90,
+      2 at 90+ (123 and 147 days). So the first fixed run emits **6 alerts**,
+      not two months' worth — and then **2 every night, unbounded**.
+
+      ⚠️ **AND SUPERSEDE DOES NOT COVER THIS.** `AgentAlert` has no unique
+      constraint and no supersede; the supersede arc was `agent_anomalies`, a
+      different table. `ar_aging_*` alerts number 0 of 285 today. The stream
+      feeds a severity-count widget on the financials board.
+
+      So bounding is not a semantic change to a threshold-crossing design —
+      two of three branches simply have no dedup, and that is a defect
+      independent of the date bug. **Fix the dedup with the one-liner, or the
+      one-liner starts a permanent nightly stream.**
 
 Supersedes the 2026-09-08 ranking below. Every item carries its own origin date;
 none inherits this heading's.
