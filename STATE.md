@@ -2,7 +2,78 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
-## Held work, in the order James ruled (2026-09-10)
+## ⚠️ `job_runs` IS GREEN BY CONSTRUCTION FOR 11 OF 25 SCHEDULED JOBS (2026-09-11)
+
+Enumerated 2026-09-11 by AST over `scheduler.py`'s 25 wrapped jobs, then over
+each target function — not by grepping for a pattern, because "swallows and
+returns" has several shapes.
+
+`_run_per_tenant` / `_run_global` count a tenant as successful when the target
+returns without RAISING, then record the run `"completed" if errors == 0`. A
+target that catches its own exception and returns is therefore recorded as a
+clean success. **11 of 25 targets do exactly that.**
+
+    SWALLOW A BROAD EXCEPTION WITHOUT RE-RAISING — 11 of 25
+      activate_scheduled_versions          price_increase_service.py:320
+      enrich_payment_patterns              proactive_agents.py:801
+      raise_tasks_for_health_findings      audit_health_tasks.py:146
+      run_ap_upcoming_payments             agent_service.py:331
+      run_ar_aging_monitor                 agent_service.py:82
+      run_collections_sequence             agent_service.py:174
+      run_discount_expiry_monitor          proactive_agents.py:913
+      run_reorder_suggestion_job           proactive_agents.py:22
+      run_uncleared_check_monitor          proactive_agents.py:393
+      sweep_briefings_to_generate          briefings/scheduler_integration.py:64
+      sweep_notes_to_settle                note/settling_sweep.py:103
+
+⚠️ **AND ONLY 3 OF THE 11 LEAVE A DURABLE TRACE.** The three `agent_service`
+jobs write `agent_jobs.status='failed'`, which is how `ar_aging_monitor`'s 163
+failures are knowable at all. **The other 8 record nothing** — they log and
+return, and logs rotate. `activate_scheduled_versions` does not even log.
+
+Measured on production 2026-09-11:
+
+    job_runs        62,788 completed · 1,039 failed · 10 running
+    agent_jobs      failures exist for EXACTLY ONE job_type: ar_aging_monitor
+    discrepancy     ar_aging_monitor — agent_jobs failed=163, job_runs=264,
+                    job_runs failed=0
+
+⚠️ **`job_runs` CAN record a failure — 1,039 of them.** The mechanism works.
+The 11 swallowers never reach it. So a green there means "the function
+returned", which is a real measurement of the wrong quantity — CLAUDE.md §11
+shape 9, in the table an operator consults to ask whether the nightly jobs ran.
+
+⚠️ **For those 8 job types the question "is this failing?" has NO ANSWER from
+any durable store.** Not "we measured and found zero" — unanswerable. That is
+the difference between "one job is broken" and "we do not know which jobs are
+broken."
+
+`sweep_notes_to_settle` is among the 8 and was written during this arc.
+
+**Two separable fixes.** (a) The wrapper should not record a run that produced
+an error as a clean completion — a platform change to a live substrate,
+touching all 25. (b) The 8 silent swallowers need a durable failure record, or
+need to stop swallowing. Neither is started.
+
+## Held work, in the order James ruled (2026-09-10, re-ranked 2026-09-11)
+
+⚠️ **Re-ranked 2026-09-11.** The `job_runs` enumeration that item 4 produced is
+DONE (see the section above) and displaced the list: two platform fixes now
+precede everything, because until they land every green in `job_runs` is
+uninterpretable for 11 of 25 jobs. Items 1-3 below are unchanged and still
+next after them.
+
+  0a. **The `_run_per_tenant` / `_run_global` wrapper** must not record an
+      errored run as a clean completion (2026-09-11). Touches all 25 jobs.
+  0b. **The 8 swallowers that leave no durable trace** need one, or need to
+      stop swallowing (2026-09-11).
+  0c. **`ar_aging_monitor`'s one-line fix** (2026-09-11) — `date.today()` minus
+      a `DateTime` column. Now known to have ZERO blast radius: it has never
+      written an alert or a sequence, and the note's collections findings come
+      from `ar_collections`, which normalises correctly. ⚠️ The risk is the
+      first SUCCESSFUL run emitting a backlog accumulated since 2026-07-16.
+      Supersedes item 4's investigation framing —
+      `docs/investigations/2026-09-11-ar-aging-monitor.md`.
 
 Supersedes the 2026-09-08 ranking below. Every item carries its own origin date;
 none inherits this heading's.
@@ -59,6 +130,21 @@ none inherits this heading's.
     either will reason from the name.
 11. **Three ancillary endpoints with no capability gate** (2026-09-10) — owed to the
     deliveries module. See its own section.
+
+⚠️ **THE ONBOARDING CHAIN, recorded 2026-09-11 — not urgent, and becomes urgent
+the day someone onboards.** `OperatorOnboardingFlow` is now reachable ONLY by
+direct URL: its entry point was a `PulseSurface` banner, deleted 2026-09-10. It
+is the SOLE writer of `users.work_areas`. The note's standing-set registry
+resolves per work area, and all 18 production users have zero — so every user
+sits on the vertical-default fallback and the only path to changing that is
+unreachable. Related: `onboarding_completed` is computed, served on the wire
+type, and read by NOTHING since its only consumer was that banner.
+
+⚠️ **`CLAUDE.md` carries six stale surface assertions outside §1a**
+(2026-09-11). :381 (the division-of-labour table, whose answer cell points at a
+document that does not cover note fragments), plus :267, :283, :289, :293 and
+:723. The §1a rewrite fixed nine sites INSIDE §1a; scope taken from a section
+boundary behaved exactly like scope taken from a filename. James authors.
 
 Also open, not ranked: the five seeded demo rows in production's anomaly table
 (2026-09-08); the six accounting remedies (2026-09-08); the deploy window as a
