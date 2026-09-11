@@ -146,3 +146,73 @@ would have produced a table that looked like an answer.
   on different paths.
 - The calendar/email absence is from grepping the files those functions are
   defined in, after locating them by definition rather than assuming a path.
+
+---
+
+## Addendum — runtime enumeration is workable. Two conditions. (2026-09-11)
+
+Asked before the ratchet is drafted: can the scheduler be enumerated in a test
+without the loop's ten needing a database?
+
+**Yes. Run, not reasoned:**
+
+```python
+from app import scheduler as S
+S.register_all_jobs()          # no DB, no start()
+S.scheduler.get_jobs()         # -> 37
+```
+
+`register_all_jobs()` contains **no** `SessionLocal` / `query` / `commit` /
+`execute` call — checked by AST, not by reading. `scheduler.running` stays
+`False` throughout.
+
+⚠️ **And it returns 37, which is the corrected figure arrived at by a different
+method.** Two independent instruments agreeing is worth more than either alone —
+the static count said 28 and was wrong; the AST-plus-loop expansion said 37; the
+runtime enumeration says 37.
+
+**It identifies the bypassers by job id, which is what a ratchet needs:**
+
+```
+routes through a wrapper : 25
+bypasses a wrapper       : 12
+   calendar_subscription_renewal_sweep   email_subscription_renewal_sweep
+   calendar_token_refresh_sweep          email_token_refresh_sweep
+   dispatch_auto_finalize                moc_event_matcher
+   email_imap_polling_sweep              moc_schedule_sweep
+   onboarding_pattern                    platform_health_recalculate
+   platform_incident_dispatcher          workflow_time_based_check
+```
+
+That is the declared exception list, and it is 12 — matching the earlier
+classification exactly (3 hand-rolled + 4 unlogged in-file + 5 external).
+
+### ⚠️ Condition 1 — `register_all_jobs()` is NOT idempotent
+
+Called twice it yields **74** jobs, not 37, despite every `add_job` passing
+`replace_existing=True`.
+
+**Mechanism, established rather than guessed:** an unstarted scheduler holds jobs
+as `_pending_jobs` (measured: 37 pending), and `replace_existing` consults the
+JOBSTORE. While pending, there is nothing to replace against.
+
+`scheduler.remove_all_jobs()` works and returns the count to 0, so the ratchet
+must call it in setup *and* teardown — not teardown alone, since another test may
+have registered first.
+
+### ⚠️ Condition 2 — it mutates a module-level singleton
+
+`scheduler` is a module-level `BackgroundScheduler`. Five existing test files
+import `app.scheduler`: `test_scheduler_reported_errors`,
+`test_audit_health_tasks_hc1`, `test_note_settling_sweep`, `test_responders`,
+`test_zip_alarm`. None of them reads `get_jobs()` — they call the wrappers
+directly or monkeypatch the logging — so the risk is low and it is not zero. The
+`remove_all_jobs()` bracket covers it.
+
+### What this rules out
+
+A ratchet that greps `add_job` call sites. It reports 28, misses the loop's ten,
+and would have to be maintained in step with a registration style it cannot see.
+**Building the guard on the method that produced the wrong count would install
+that failure permanently** — the same argument as asserting what renders rather
+than what is mounted.
