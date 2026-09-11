@@ -79,11 +79,58 @@ def log_activity(
 # ---------------------------------------------------------------------------
 
 
+def _aging_alert_exists(
+    db: Session, tenant_id: str, alert_type: str, invoice_id: str
+) -> bool:
+    """Has this invoice already produced this band's alert?
+
+    ⚠️ A GUARD, NOT A CONSTRAINT, AND THE DIFFERENCE IS RECORDED DELIBERATELY.
+    `agent_alerts` carries only a primary key and a tenant FK — no unique
+    constraint, no index beyond tenant_id, and no subject columns. Enumerated
+    from `pg_constraint` against production 2026-09-11, not read off the model.
+    So two concurrent runs could both pass this check and both insert. The
+    scheduler fires one run at a time, so that is a real weakness and not a
+    live one.
+
+    ⚠️ THE SUBJECT RIDES IN `action_payload`, AND THAT IS A NEW CONVENTION.
+    Measured before adopting it: 222 rows have a non-null `action_payload`, of
+    which 218 are JSON `null` and 4 are objects carrying `bill_ids`. There was
+    no convention to follow, so this establishes one rather than extending it.
+
+    ⚠️ AND IT IS STRUCTURED BECAUSE THE ALTERNATIVE IS PROHIBITED. The invoice
+    number appears in every aging alert's `title`, and matching it there would
+    put dedup downstream of prose a template composed — the same prohibition
+    the settled-record work landed one table over. A subject is a field or it
+    is not a subject.
+    """
+    from sqlalchemy import cast, String as SAString
+
+    return db.query(
+        db.query(AgentAlert)
+        .filter(
+            AgentAlert.tenant_id == tenant_id,
+            AgentAlert.alert_type == alert_type,
+            cast(AgentAlert.action_payload["invoice_id"], SAString)
+            == f'"{invoice_id}"',
+        )
+        .exists()
+    ).scalar()
+
+
 def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
     """Check aging thresholds and create alerts for invoices crossing boundaries."""
     job = _create_job(db, tenant_id, "ar_aging_monitor")
     try:
         now = date.today()
+        # ⚠️ `Invoice.due_date` is DateTime(timezone=True) NOT NULL, and `now`
+        # is a date. `date - datetime` raises, which is what failed 163 runs
+        # between 2026-07-16 and 2026-09-10 with one distinct message. The
+        # subtraction below sits BEFORE the `days_overdue <= 0` guard, so it
+        # tripped on the first invoice of every tenant that had one — three of
+        # four nightly, while the fourth had no open invoices and completed.
+        #
+        # The correct form already existed in `ar_collections_agent.py:116`,
+        # computing the same thing from the same table.
         open_invoices = (
             db.query(Invoice)
             .filter(
@@ -97,8 +144,21 @@ def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
         alerts_created = 0
         sequences_started = 0
 
+        # ⚠️ A SECOND BUG LIVED HERE, MASKED BY THE FIRST. All three branches
+        # below read `inv.invoice_number`; the column is `Invoice.number`.
+        # `invoice_number` is the API's field name — `routes/sales.py:982` maps
+        # `"invoice_number": inv.number` — and this job reached for the wire
+        # name. The date error raised first, on the line above, so this
+        # AttributeError was never reached in 163 failures.
+        #
+        # Fixing the date alone would have swapped one exception for another
+        # and the job would still have produced nothing, now failing with a
+        # different message in a table nobody reads. Found by a test, not by
+        # reading.
         for inv in open_invoices:
-            days_overdue = (now - inv.due_date).days if inv.due_date else 0
+            due = inv.due_date
+            due_day = due.date() if hasattr(due, "date") else due
+            days_overdue = (now - due_day).days if due_day else 0
             if days_overdue <= 0:
                 continue
 
@@ -113,7 +173,9 @@ def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
                     .filter(AgentCollectionSequence.invoice_id == inv.id, AgentCollectionSequence.completed == False)
                     .first()
                 )
-                if not existing:
+                if not existing and not _aging_alert_exists(
+                    db, tenant_id, "ar_aging_31", inv.id
+                ):
                     db.add(AgentCollectionSequence(
                         tenant_id=tenant_id, customer_id=inv.customer_id,
                         invoice_id=inv.id, sequence_step=1,
@@ -121,8 +183,9 @@ def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
                     ))
                     create_alert(
                         db, tenant_id, "ar_aging_31", "info",
-                        f"{cust_name} — Invoice #{inv.invoice_number or inv.id[:8]} is now {days_overdue} days past due",
+                        f"{cust_name} — Invoice #{inv.number or inv.id[:8]} is now {days_overdue} days past due",
                         f"Collection sequence started. Balance: ${balance:,.2f}",
+                        action_payload={"invoice_id": inv.id},
                     )
                     sequences_started += 1
                     alerts_created += 1
@@ -137,23 +200,34 @@ def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
                 if seq and seq.sequence_step < 2:
                     seq.sequence_step = 2
                     seq.next_scheduled_at = datetime.now(timezone.utc)
-                create_alert(
-                    db, tenant_id, "ar_aging_61", "warning",
-                    f"{cust_name} — Invoice #{inv.invoice_number or inv.id[:8]} is now {days_overdue} days past due",
-                    f"Second notice scheduled. Balance: ${balance:,.2f}",
-                )
-                alerts_created += 1
+                # ⚠️ THIS CALL SAT OUTSIDE THE GUARD ABOVE. It re-fired every
+                # night an invoice stayed in the 61-90 band — up to 30 alerts
+                # for one invoice. Never observed because the job has never
+                # completed a loop iteration since the band was reachable.
+                if not _aging_alert_exists(db, tenant_id, "ar_aging_61", inv.id):
+                    create_alert(
+                        db, tenant_id, "ar_aging_61", "warning",
+                        f"{cust_name} — Invoice #{inv.number or inv.id[:8]} is now {days_overdue} days past due",
+                        f"Second notice scheduled. Balance: ${balance:,.2f}",
+                        action_payload={"invoice_id": inv.id},
+                    )
+                    alerts_created += 1
 
             # 90+ days — critical
             elif days_overdue > 90:
-                create_alert(
-                    db, tenant_id, "ar_aging_90", "action_required",
-                    f"{cust_name} has ${balance:,.2f} outstanding 90+ days",
-                    f"Recommend credit hold review. Invoice #{inv.invoice_number or inv.id[:8]} is {days_overdue} days past due.",
-                    action_label="Review Account",
-                    action_url=f"/customers/{inv.customer_id}",
-                )
-                alerts_created += 1
+                # ⚠️ UNCONDITIONAL, AND THE WORST OF THE THREE — it re-fired
+                # every night for as long as the invoice stayed open, without
+                # bound. Two production invoices sit at 123 and 147 days.
+                if not _aging_alert_exists(db, tenant_id, "ar_aging_90", inv.id):
+                    create_alert(
+                        db, tenant_id, "ar_aging_90", "action_required",
+                        f"{cust_name} has ${balance:,.2f} outstanding 90+ days",
+                        f"Recommend credit hold review. Invoice #{inv.number or inv.id[:8]} is {days_overdue} days past due.",
+                        action_label="Review Account",
+                        action_url=f"/customers/{inv.customer_id}",
+                        action_payload={"invoice_id": inv.id},
+                    )
+                    alerts_created += 1
 
         summary = {"invoices_checked": len(open_invoices), "alerts_created": alerts_created, "sequences_started": sequences_started}
         log_activity(db, tenant_id, "ar_aging_monitor", f"Checked {len(open_invoices)} invoices, created {alerts_created} alerts", job.id)
