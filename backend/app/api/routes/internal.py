@@ -52,10 +52,27 @@ def trigger_job(
 def list_jobs(
     current_user: User = Depends(get_current_user),
 ):
-    """List all registered jobs."""
+    """List the manually-triggerable jobs.
+
+    ⚠️ `triggerable_count` IS NOT THE NUMBER OF SCHEDULED JOBS, AND THIS FIELD
+    WAS CALLED `count` UNTIL 2026-09-11. `JOB_REGISTRY` is the subset a person
+    can fire by hand — measured that day at 29, against 37 jobs the scheduler
+    actually registers. The eight absent ones (the moc, workflow-time-check,
+    calendar and email sweeps) are not meant to be hand-fired.
+
+    A bare `count` served alongside `jobs` reads as "the jobs", and 29 of 37 was
+    a wrong number with nothing in the response saying so. Renamed rather than
+    documented, because a caller reading `count` as the job total is already
+    wrong and a docstring does not reach them. No consumers existed at the
+    rename: enumerated across frontend and backend for the route path, the
+    handler name, and `JOB_REGISTRY` itself.
+    """
     from app.scheduler import JOB_REGISTRY
 
-    return {"jobs": sorted(JOB_REGISTRY.keys()), "count": len(JOB_REGISTRY)}
+    return {
+        "jobs": sorted(JOB_REGISTRY.keys()),
+        "triggerable_count": len(JOB_REGISTRY),
+    }
 
 
 @router.get("/jobs/runs")

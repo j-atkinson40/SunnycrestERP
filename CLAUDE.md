@@ -1278,7 +1278,7 @@ backend/
 │   ├── main.py              # FastAPI app, middleware, startup/shutdown
 │   ├── config.py            # pydantic-settings, reads .env
 │   ├── database.py          # SQLAlchemy engine + SessionLocal
-│   ├── scheduler.py         # APScheduler — 13 registered jobs + JOB_REGISTRY
+│   ├── scheduler.py         # APScheduler — see §10 for the four job populations
 │   ├── worker.py            # Background job queue worker (polls DB/Redis)
 │   ├── models/              # 157 model files, 170 exports in __init__.py
 │   ├── services/            # 109 service files (business logic)
@@ -1594,7 +1594,20 @@ First live tenant: `sunnycrest.getbridgeable.com`
 
 ## 10. Agent Jobs
 
-### Scheduled (13 total) — `backend/app/scheduler.py`
+### Scheduled — `backend/app/scheduler.py`
+
+⚠️ **FOUR POPULATIONS, MEASURED 2026-09-11, AND NO SINGLE NUMBER DESCRIBES THE SET.**
+
+- **37 scheduled registrations** — 27 static `add_job` calls plus 10 registered in a loop over `nightly_jobs`. A static count of call sites reports 28 and is wrong.
+- **29 in `JOB_REGISTRY`** — precisely the manually-triggerable subset. The 8 absent (moc event matcher, moc schedule sweep, workflow time check, calendar ×2, email ×3) are not meant to be hand-fired.
+- **27 route through a wrapper.**
+- **10 do not.**
+
+The table below is the **nightly agent and intelligence jobs only** — a subset,
+not the 37. ⚠️ It also still lists `safety_program_generation`, which was retired
+in Phase 8d.1 and is not registered; that row is why the heading's former "13
+total" and the table's 14 rows disagreed, and it is left in place pending a
+ruling rather than deleted here.
 
 | Job | Schedule | Source File |
 |-----|----------|-------------|
@@ -1613,7 +1626,7 @@ First live tenant: `sunnycrest.getbridgeable.com`
 | `onboarding_pattern` | 1st of month 4:13am ET | `network_intelligence_service.py` |
 | `safety_program_generation` | 1st of month 6:00am ET | `safety_program_generation_service.py` |
 
-All jobs use `_run_per_tenant()` or `_run_global()` wrappers with per-session DB isolation and error logging. All are manually triggerable via `JOB_REGISTRY` dict and the agent trigger API endpoint.
+Most jobs route through `_run_per_tenant()` or `_run_global()`, which provide per-session DB isolation and record a `job_runs` row. Ten do not, and the exception list in `backend/tests/test_scheduler_wrapper_ratchet.py` names each with its reason — three record their own rows, two are dry-run sweeps that deliberately record nothing, five iterate input that does not yet exist and will need revisiting when it does. A new scheduled job either routes through a wrapper or is added to that list deliberately. All are manually triggerable via `JOB_REGISTRY` dict and the agent trigger API endpoint.
 
 ### Per-user Scheduled Jobs (new pattern — Phase 6)
 
