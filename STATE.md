@@ -2,6 +2,104 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⏸ THE EXPENSE POSTING MAP — DESIGNED, MEASURED, AND HELD (2026-09-11)
+
+**Held for want of production data, not for want of a design.** The design below
+is measured rather than assumed; it should not need re-deriving.
+
+### Why held
+
+Production holds **ten vendor bill lines**: 8 with a NULL `expense_category`, 2
+with the literal string `nonexistent_category`. **Zero carry a real classifier
+category.** The surface's whole premise is an unmapped category arriving with its
+bill line visible, so there is nothing to run the repaired path on and nothing
+for an operator review to look at. Fixtures written by the author are not
+independent evidence of a condition that has never occurred.
+
+It waits for real bills.
+
+### The design, ruled 2026-09-11
+
+- **There is no mapping. There is a SUGGESTION.** The system proposes an account;
+  a person posts the line. Calling it a mapping-with-confirmation would leave a
+  row someone later treats as authoritative.
+- **Per-line subject**, not per-category.
+- **Nothing auto-posts, ever.** A product ruling, not a property of the
+  implementation — which is what lets the suggestion improve (last account used
+  for this vendor and category, ranked first) without becoming a rule.
+- **Surface:** triage item shows the bill line, a ranked account picker,
+  accountant picks, line posts. No mapping table, so no cardinality to get wrong.
+- **Unmapped categories continue to refuse to post.** Unchanged.
+
+### The measurements behind it
+
+**A flat `(tenant, category) → account` table is the wrong cardinality.**
+`payroll` has eight candidate accounts among the 42 carrying
+`platform_category='expense'` — OFFICER SALARIES, OFFICE SALARIES, ADMINISTRATIVE
+SALARIES, SALES SALARIES, PAYROLL TAXES, 401K MATCH, UNEMPLOYMENT TAXES, PAYROLL
+PREPARATION. `insurance` five, `advertising` four.
+
+**Candidates cross account types.** VEHICLE matches 6 accounts under
+`delivery_cost` AND `expense`; RENT 5 under three types. So the mapping cannot
+nest under the parent either. `utilities` resolves to a **`cogs`** account.
+
+**The discriminator does not exist on the thing being posted.**
+`VendorBillLine` has 11 columns — no product line, no department, no cost centre.
+The chart discriminates on product line (PRECAST/VAULT/FUNERAL), role
+(OFFICER/staff) and function (MFG/DELIVERY/A&S). Vendor is the only structured
+candidate and it does not separate officer from office salaries.
+
+⚠️ **A flat mapping would reproduce, one grain finer, the defect this arc already
+rejected** — posting every salary line to whichever salary account was picked
+first, silently and confidently.
+
+**Per-line is forced, not preferred.** Under the ruling there is no mapping to
+write, so a per-CATEGORY anomaly can never close. An anomaly that cannot close is
+worse than the duplication the supersede arc fixed. The subject is what the end
+transition acts on; the transition is posting a line.
+
+### Consequences owed when it resumes
+
+1. The fragment's four declarations are **rewritten, not adjusted** —
+   `subject_kind`, `entity_kind`, `resolved_when` and the `recorded` outcome all
+   encode the mapping model.
+2. ⚠️ **The existing open `expense_no_gl_mapping` row is LEFT ALONE (ruled).** It
+   has no subject — `entity_type` and `entity_id` are both NULL, written
+   2026-08-31, before the anomaly-subject arc landed 2026-09-08. Its category
+   appears only in description prose. It gets superseded by a correctly-subjected
+   successor when one is written, or it does not. Closing it by hand is a
+   production write for one harmless row; resolving it by reading prose is the
+   move rejected three times.
+3. Whether `expense_no_gl_mapping` is renamed — its text says "Add a mapping in
+   Settings → GL Accounts", and under the ruling there is no mapping to add.
+
+Derivations: `docs/investigations/2026-09-11-expense-posting-map-cardinality.md`
+and `…-posting-map-consequences.md`.
+
+## ⚠️ A GUARD THAT SCANS SOURCE HAS A BLIND SPOT THE SIZE OF EVERYTHING THAT ISN'T SOURCE (2026-09-11)
+
+`AgentAnomaly.open_filter()` is `resolved IS FALSE AND superseded_at IS NULL`.
+Its docstring says in capitals to use it rather than a bare `resolved` filter, and
+`tests/test_anomaly_supersede.py::test_no_read_site_filters_on_resolved_alone` is
+a SCANNER enforcing that — deliberately a scanner rather than a convention.
+
+⚠️ It scans source. A probe typed into a terminal against production is not
+source. Measured 2026-09-11: an ad-hoc query filtered on `resolved` alone and
+reported **1,825 open** `expense_no_gl_mapping` rows where the true figure is
+**1** — off by the entire superseded backlog, in the direction that reads as
+alarming, and contradicting a STATE figure that was correct.
+
+**The shape:** machinery built to make a defect unrepeatable in the codebase
+leaves it fully available in the one context where nothing checks — the
+investigative query, which is also where numbers that drive decisions come from.
+A scanner's coverage is its corpus.
+
+**The action:** when querying production for a figure a decision rests on, use
+the model's own predicate rather than re-expressing it in SQL. If the predicate
+has a name in code, the name is there because the naive form was wrong.
+
+⚠️ Candidate for CLAUDE.md §11 — recorded here pending a ruling on placement.
+
 ## CANON DEBT — "no known stale sites by a method that doesn't assume a form" (2026-09-11)
 
 ⚠️ **NOT "closed". The honest close is "nothing found by X", with X named.**
