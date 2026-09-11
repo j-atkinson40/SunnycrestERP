@@ -194,7 +194,8 @@ export function registerWidgetRenderer(
  *  production. Step 5 split the fallback paths.
  *
  *  Callers (Canvas, BottomSheet, StackRail, StackExpandedOverlay,
- *  PulsePiece, PinnedSection) invoke this once per render and pass
+ *  PinnedSection, CommandBarSurfaceHost, ParkCanvas, CompositionRenderer)
+ *  invoke this once per render and pass
  *  `widgetId` + variant_id + surface to the resulting component.
  *
  *  Phase W-1 — variant_id parameter is optional + accepted for API

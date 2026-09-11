@@ -7,7 +7,8 @@
  * (composition_blob NULL / undefined).
  *
  * Existing callers of `getWidgetRenderer` (Canvas, BottomSheet,
- * StackRail, StackExpandedOverlay, PulsePiece, PinnedSection)
+ * StackRail, StackExpandedOverlay, PinnedSection, and the command-bar
+ * and park hosts)
  * continue to work UNCHANGED — they only deal in widget_id +
  * config without the composition_blob axis. Hand-coded widget
  * render path is intentionally untouched (regression preservation

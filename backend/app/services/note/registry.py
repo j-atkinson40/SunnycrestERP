@@ -15,12 +15,13 @@ in-repo patterns rather than inventing a tier:
 
 A director's standing set is a vertical design artifact, not tenant data. It
 belongs on the code side of the same code-declared/config-enabled split the
-fragment registry follows, where "referenced most days" is a design decision
-someone argued for rather than a value a tenant drifted into.
+fragment registry follows, where the admission test (see below) is a design
+decision someone argued for rather than a value a tenant drifted into.
 
-⚠️ THE TEMPLATES BELOW ARE DELIBERATELY SPARSE. Canon's admission test is
-"referenced most days", not "useful sometimes", and most roles should sit well
-below the cap of 7. Session 1 seeds only what the operational layer's
+⚠️ THE TEMPLATES BELOW ARE DELIBERATELY SPARSE. The admission test is the
+tightened one recorded at `STANDING_SET_TEMPLATES` below — needs checking
+against something in the user's hand at an unpredictable moment — and most
+roles should sit well below the cap of 7. Session 1 seeds only what the operational layer's
 decomposition actually supports; adding entries is cheap and removing them from
 under a user who has learned their positions is not.
 """
@@ -122,9 +123,9 @@ ROLE_TEMPLATES: dict[tuple[str, str], tuple[StandingEntry, ...]] = {
         _e("ancillary", "Ancillary pool", "scheduling.ancillary-pool"),
         _e("deliveries", "Deliveries", "today"),
     ),
-    # An accountant does not reference deliveries most days, so the work-summary
+    # An accountant is not asked about a delivery mid-call, so the work-summary
     # line is dropped here rather than carried for symmetry. Two entries is a
-    # correct standing set; the admission test is "referenced most days".
+    # correct standing set under the tightened admission test.
     ("manufacturing", "accountant"): (
         _e("ar", "Receivables", "ar_summary"),
     ),

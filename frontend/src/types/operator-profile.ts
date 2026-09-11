@@ -14,8 +14,18 @@ export interface OperatorProfile {
   responsibilities_description: string | null
   /**
    * True when the user has explicitly completed the onboarding flow
-   * OR has at least one work area set. Drives the first-login prompt
-   * on PulseSurface — banner shows when `false`.
+   * OR has at least one work area set.
+   *
+   * ⚠️ COMPUTED, SERVED, AND READ BY NOTHING as of 2026-09-11. It drove
+   * `PulseFirstLoginBanner`, deleted with Pulse on 2026-09-10, and that
+   * was its only consumer. The field is still computed server-side and
+   * still on this wire type; no surface consults it.
+   *
+   * Left in place rather than removed: a first-run hint is the named
+   * mitigation for peek discoverability, so this is a field waiting for
+   * a surface rather than dead weight. Recorded as owed — if no surface
+   * claims it, it should go, because a served field nobody reads is a
+   * hole with a guard on it.
    */
   onboarding_completed: boolean
   /**

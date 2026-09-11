@@ -9,8 +9,9 @@
  *  • Auto-save: Textarea onChange flushes after 1s idle (debounced).
  *    Card click toggles save immediately.
  *  • Save-and-continue: explicit button stamps
- *    `preferences.onboarding_touches.operator_profile = true` so the
- *    PulseSurface first-login banner stops appearing.
+ *    `preferences.onboarding_touches.operator_profile = true`. ⚠️ This
+ *    stopped the `PulseFirstLoginBanner` from appearing; that banner was
+ *    deleted with Pulse on 2026-09-10 and nothing reads the flag now.
  *
  * Visual contract per DESIGN_LANGUAGE §13.6:
  *  • Multi-select cards with brass border + filled background on
@@ -21,9 +22,16 @@
  *    requiring at least one work area (vertical-default fallback
  *    handles the empty case)
  *
- * Page lives at `/onboarding/operator-profile`. Reachable via direct
- * URL today; PulseSurface (Phase W-4a Commit 5) will surface a banner
- * pointing here when `onboarding_completed === false`.
+ * Page lives at `/onboarding/operator-profile`. ⚠️ REACHABLE ONLY BY
+ * DIRECT URL. The comment here promised that PulseSurface "will surface
+ * a banner pointing here when `onboarding_completed === false`" — Pulse
+ * was retired 2026-09-10, so nothing points here at all.
+ *
+ * That matters beyond a stale sentence: `users.work_areas` is written
+ * ONLY by this page, and the note's standing-set registry resolves per
+ * work area. All 18 production users have zero work areas, which is why
+ * every user falls to the vertical default. The one surface that could
+ * change that is now unreachable unless someone types the URL.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"

@@ -386,10 +386,13 @@ function TodayBriefCard({
  *
  * Sidebar (spaces_pin) keeps the Pattern 1 frosted-glass tablet
  * (`TodayGlanceTablet` above) — that's the cross-surface continuity
- * with AncillaryPoolPin Glance. Pulse needs a distinct render because
- * (a) PulsePiece already supplies Pattern 2 chrome at its root, so
- * any nested Pattern 1 frosted-glass would be wrong, and (b) the
- * canon mandates three density tiers per cell-height range.
+ * with AncillaryPoolPin Glance. ⚠️ The second render existed because
+ * PULSE needed it: PulsePiece supplied Pattern 2 chrome at its root, so
+ * a nested Pattern 1 frosted-glass would have been wrong. Pulse was
+ * retired 2026-09-10 and PulsePiece went with it. The density tiers in
+ * `pulse-density.css` are STILL LIVE and still load-bearing for every
+ * surface the canvas registry dispatches this widget to, so the render
+ * stays; only the reason named here changed.
  *
  * Three nested density variants share the same underlying data; the
  * @container query CSS in `pulse-density.css` dispatches which one

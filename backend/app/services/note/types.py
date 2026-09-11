@@ -14,10 +14,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
-#: DECISIONS 2026-09-04: "Standing set is capped at 7 per role, admission test
-#: 'referenced most days' rather than 'useful sometimes.' Most roles will sit
-#: well below it; a role approaching 7 is a signal about that role's design, not
-#: grounds to raise the cap."
+#: DECISIONS 2026-09-04: "Standing set is capped at 7 per role... Most roles
+#: will sit well below it; a role approaching 7 is a signal about that role's
+#: design, not grounds to raise the cap."
+#:
+#: ⚠️ THE CAP IS FROM 2026-09-04. THE ADMISSION TEST IS NOT, AND THIS DOCSTRING
+#: QUOTED THE SUPERSEDED ONE UNTIL 2026-09-11. It read "referenced most days
+#: rather than useful sometimes"; the test was TIGHTENED 2026-09-09 and
+#: `note/registry.py` carries the live one — NEEDS CHECKING AGAINST SOMETHING IN
+#: THE USER'S HAND AT AN UNPREDICTABLE MOMENT. The difference is kind, not
+#: strictness: anything looked at on a rhythm is a report.
+#:
+#: The tightening landed in the neighbouring file and this one kept asking the
+#: old question. Quote the cap here; point at registry.py for the test, so there
+#: is one copy of a thing that has already changed once.
 #:
 #: ⚠️ ENFORCED LIVE FROM THIS COMMIT, not deferred as unreachable. Measured
 #: 2026-09-04: all 18 production users have zero `work_areas`, so every user

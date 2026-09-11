@@ -1323,8 +1323,10 @@ WIDGET_DEFINITIONS: list[dict] = [
     # future scoped Pulses) by inheritance — no per-scope supported_
     # surfaces extension needed. Communications layer composition
     # (`communications_layer_service.py`) deferred to W-4b sequence
-    # step 6 per §3.26.6.4; widget renders today on home Pulse via the
-    # existing PulseSurface infrastructure when user pins it.
+    # step 6 per §3.26.6.4. ⚠️ This said the widget "renders today on
+    # home Pulse via the existing PulseSurface infrastructure"; Pulse was
+    # retired 2026-09-10. It renders wherever the canvas widget registry
+    # dispatches it — Focus accessories, Space pins, command-bar surfaces.
     #
     # Per §14.5: three density tiers — Default (≥121px) renders full
     # icon + count + sender + footer; Compact (101-120px) collapses
