@@ -339,28 +339,37 @@ def job_network_readiness():
     _run_global("NETWORK_READINESS", suggest_cemetery_connections_for_new_tenants)
 
 
-def job_onboarding_pattern():
-    """Run onboarding timeline prediction for all tenants."""
+def _onboarding_pattern_for_tenant(db, tenant_id: str):
+    """One tenant's onboarding-timeline prediction.
+
+    Split out so `job_onboarding_pattern` can use `_run_per_tenant` rather than
+    reimplementing it. The `preset` lookup lives here because
+    `predict_onboarding_timeline` needs a tenant_type and the wrapper passes
+    only (db, tenant_id).
+    """
     from app.models.company import Company
     from app.services.network_intelligence_service import predict_onboarding_timeline
 
-    tenant_ids = _get_active_tenant_ids()
-    logger.info(f"[ONBOARDING_PATTERN] Starting for {len(tenant_ids)} tenants")
-    success = 0
-    errors = 0
-    for tid in tenant_ids:
-        db = SessionLocal()
-        try:
-            company = db.query(Company).filter(Company.id == tid).first()
-            tenant_type = getattr(company, "preset", "manufacturing") if company else "manufacturing"
-            predict_onboarding_timeline(db, tid, tenant_type)
-            success += 1
-        except Exception as e:
-            errors += 1
-            logger.error(f"[ONBOARDING_PATTERN] Error for tenant {tid}: {e}", exc_info=True)
-        finally:
-            db.close()
-    logger.info(f"[ONBOARDING_PATTERN] Complete: {success} ok, {errors} errors")
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    tenant_type = (
+        getattr(company, "preset", "manufacturing") if company else "manufacturing"
+    )
+    predict_onboarding_timeline(db, tenant_id, tenant_type)
+
+
+def job_onboarding_pattern():
+    """⚠️ REIMPLEMENTED `_run_per_tenant` UNTIL 2026-09-11, MINUS THE LOGGING.
+
+    21 lines that called `_get_active_tenant_ids()`, looped per tenant with its
+    own `SessionLocal`, caught per-tenant, counted success/errors, and logged a
+    summary — every behaviour of the wrapper except `_log_job_run`. So it wrote
+    no `job_runs` row, and the question "did the monthly onboarding prediction
+    run" had no durable answer.
+
+    Behaviour is preserved exactly: the wrapper also isolates per tenant,
+    continues past a failure, and counts both. What it adds is the row.
+    """
+    _run_per_tenant("ONBOARDING_PATTERN", _onboarding_pattern_for_tenant)
 
 
 def job_quote_auto_expiry():
@@ -831,12 +840,34 @@ def register_all_jobs():
     # Handles time_of_day and time_after_event workflow triggers.
     # Lazy import to avoid boot-time circulars.
     def _run_workflow_time_check():
-        try:
-            from app.services.workflow_scheduler import check_time_based_workflows
-            result = check_time_based_workflows()
-            logger.info(f"Workflow time check: {result}")
-        except Exception as e:
-            logger.error(f"Workflow time check failed: {e}")
+        """⚠️ ROUTED THROUGH `_run_global` 2026-09-11, AND THE RAISE IS THE POINT.
+
+        This caught every exception and logged it, writing no `job_runs` row.
+        `check_time_based_workflows` RAISES `RuntimeError` when any workflow
+        fails to start — its docstring says "a partial sweep is never reported
+        as clean", and the raise is deliberate, per-pair isolation plus a loud
+        failure.
+
+        Catching that raise here defeated it exactly one layer up. Anyone
+        reading the target would conclude partial failures are visible; they
+        were logged and forgotten. A target built to refuse silent partial
+        success, silenced by its caller.
+
+        `_run_global` now records the run — `failed` with the message on a
+        raise, `completed` otherwise.
+
+        ⚠️ The lambda discards `_db` because `check_time_based_workflows()`
+        takes no arguments and opens its own session (scheduler jobs must not
+        share sessions). `_run_global` opens one it will not use; that is one
+        idle connection per 15 minutes and is the cost of not changing a
+        signature shared with other callers.
+        """
+        from app.services.workflow_scheduler import check_time_based_workflows
+
+        _run_global(
+            "WORKFLOW_TIME_BASED_CHECK",
+            lambda _db: check_time_based_workflows(),
+        )
 
     scheduler.add_job(
         _run_workflow_time_check,

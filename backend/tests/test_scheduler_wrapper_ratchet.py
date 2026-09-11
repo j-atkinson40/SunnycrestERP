@@ -38,33 +38,52 @@ from app import scheduler as sched
 #: The two wrappers that write `job_runs` and interpret a reported error.
 WRAPPERS = {"_run_per_tenant", "_run_global"}
 
-#: ⚠️ THIS LIST IS DEBT, NOT DESIGN. Every entry is a scheduled job whose runs
-#: are invisible or hand-logged. Adding a line here is a decision that a new job
-#: should be invisible too — which is almost never what anyone wants.
+#: ⚠️ NOT EVERY ENTRY IS DEBT. Three kinds, and the difference is load-bearing:
 #:
-#: Categories, measured 2026-09-11:
-#:   hand-rolled  — calls `_log_job_run` / `_complete_job_run` itself. Writes a
-#:                  `job_runs` row, but nothing reads a returned error, so the
-#:                  0a fix (292d8662) does not reach it.
-#:   no-job_runs  — writes no `job_runs` row at all. "Did it run?" is
-#:                  unanswerable from any durable store.
+#:   DEBT        — should route through a wrapper and does not yet. Fix it.
+#:   DESIGN      — should NOT route through a wrapper. A `job_runs` row asserts
+#:                 a job ran and did its work; these have no work to do, so a
+#:                 row would be a false positive rather than a record.
+#:   CONDITIONAL — correctly silent TODAY because its input set is empty on
+#:                 production. ⚠️ That flips the day someone connects an
+#:                 account, and NOTHING WILL ANNOUNCE IT. The condition is
+#:                 stated so the next reader inherits it rather than the
+#:                 conclusion.
+#:
+#: Adding a DEBT line means accepting that a job's runs are hand-logged or
+#: invisible. Adding a DESIGN line means arguing the job has nothing to report.
+#: Measured 2026-09-11; `workflow_time_based_check` and `onboarding_pattern`
+#: left this list the same day by being routed through wrappers.
 BYPASSES_WRAPPER: dict[str, str] = {
-    # hand-rolled (3)
-    "dispatch_auto_finalize": "hand-rolled — and the highest-volume job on production",
-    "platform_health_recalculate": "hand-rolled",
-    "platform_incident_dispatcher": "hand-rolled",
-    # no job_runs row at all, defined in scheduler.py (4)
-    "moc_event_matcher": "no-job_runs",
-    "moc_schedule_sweep": "no-job_runs",
-    "onboarding_pattern": "no-job_runs",
-    "workflow_time_based_check": "no-job_runs",
-    # no job_runs row at all, defined in services/*/sweeps.py (5)
-    "calendar_subscription_renewal_sweep": "no-job_runs (external)",
-    "calendar_token_refresh_sweep": "no-job_runs (external)",
-    "email_imap_polling_sweep": "no-job_runs (external)",
-    "email_subscription_renewal_sweep": "no-job_runs (external)",
-    "email_token_refresh_sweep": "no-job_runs (external)",
+    # ── DEBT — hand-rolled, calls _log_job_run itself (3) ────────────────
+    # These DO write a job_runs row. They are here because they bypass the
+    # wrappers, not because they are invisible. Verified 2026-09-11 that none
+    # has 0a's discarded-return-value defect: their targets raise or tolerate
+    # per-item, and none returns an {"error": ...} marker for a caller to read.
+    "dispatch_auto_finalize": "DEBT hand-rolled — highest-volume job on production",
+    "platform_health_recalculate": "DEBT hand-rolled",
+    "platform_incident_dispatcher": "DEBT hand-rolled",
+
+    # ── DESIGN — dry-run, does not act (2) ───────────────────────────────
+    # Both log literally "(dry-run)". `moc_event_matcher` already logs only
+    # when `result.get("processed")` is truthy. At 1/min and 1/15min, a row per
+    # run would be ~1,536/day asserting completed work that never happens.
+    "moc_event_matcher": "DESIGN dry-run — does not act; a row would be a false positive",
+    "moc_schedule_sweep": "DESIGN dry-run — does not act; a row would be a false positive",
+
+    # ── CONDITIONAL — no input on production (5) ─────────────────────────
+    # ⚠️ THE CONDITION, measured 2026-09-11: calendar_accounts = 0 and
+    # email_accounts = 0. Every run of all five iterates an empty set, so their
+    # silence is correct rather than missing. Connect one account and these
+    # become jobs doing real work with no record — and no test, log or alert
+    # will say so. Re-measure the two counts before assuming this still holds.
+    "calendar_subscription_renewal_sweep": "CONDITIONAL — 0 calendar_accounts",
+    "calendar_token_refresh_sweep": "CONDITIONAL — 0 calendar_accounts",
+    "email_imap_polling_sweep": "CONDITIONAL — 0 email_accounts; fires every 5 min",
+    "email_subscription_renewal_sweep": "CONDITIONAL — 0 email_accounts",
+    "email_token_refresh_sweep": "CONDITIONAL — 0 email_accounts",
 }
+
 
 
 @pytest.fixture
@@ -197,6 +216,35 @@ def test_no_STALE_entries_in_the_exception_list(registered):
     assert stale == [], (
         f"BYPASSES_WRAPPER names job(s) that are no longer registered: {stale}. "
         "Remove the line — the debt was paid or the job was renamed."
+    )
+
+
+def test_no_entry_is_REDUNDANT_which_is_what_makes_this_a_ratchet(registered):
+    """⚠️ THE DIRECTION. Without this the list can only grow.
+
+    `test_no_STALE_entries...` catches a line naming a job that is no longer
+    REGISTERED. It does not catch a line naming a job that now routes through a
+    wrapper correctly — that entry is harmless to the run and permanently
+    over-permissive, and nothing about it looks wrong.
+
+    So when someone repairs a bypasser they are forced to delete its line, and
+    the list shrinks. That is the difference between a ratchet and an inventory:
+    a ratchet's direction is enforced, not intended.
+
+    Measured 2026-09-11: `workflow_time_based_check` and `onboarding_pattern`
+    were routed through wrappers and removed from the list the same day. Had
+    this test not existed, leaving their lines behind would have cost nothing
+    and pre-approved anything later registered under those ids.
+    """
+    by_id = {j.id: j for j in registered}
+    redundant = sorted(
+        job_id for job_id in BYPASSES_WRAPPER
+        if job_id in by_id and _routes_through_wrapper(by_id[job_id].func)
+    )
+    assert redundant == [], (
+        f"BYPASSES_WRAPPER names job(s) that now route through a wrapper: "
+        f"{redundant}. Delete the line — the debt is paid, and leaving it there "
+        f"pre-approves anything later registered under that id."
     )
 
 
