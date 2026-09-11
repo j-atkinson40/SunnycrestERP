@@ -2228,6 +2228,36 @@ Consequence: verify derivations on claims you AGREE with. Agreement is not
 confirmation. When an investigation records how a claim was reached, the
 derivation is auditable; when it records only the claim, it is not.
 
+#### A confession is a claim, and it is the one nobody audits
+
+Self-criticism carries the same burden of evidence as any other assertion. An
+overstated fault is a false claim, and aiming it at yourself does not make it
+true.
+
+⚠️ **This is the only entry here whose failure mode is that the claim SURVIVES
+BECAUSE IT WAS SELF-DIRECTED.** Every other false claim in this file was caught
+because somebody checked. Candour reads as reliability, so a confession is
+received as evidence of care rather than as an assertion about the world — and
+nothing in the reviewer's habits points at it. The reader's attention moves to
+whether you were honest, which you were, and away from whether you were right.
+
+THE TEST, applied to your own fault-finding exactly as to a finding about the
+code:
+
+    "Did I measure this fault, or does admitting it just read well?"
+
+An invented fault is not a harmless excess of rigour. It misdirects the next
+session, it can mark correct work as suspect, and it inflates the record of
+what went wrong — which is the same bias as *Reconstruction recovers errors
+first*, produced deliberately rather than by memory.
+
+Discovered September 2026. A commit recorded that a job the author had written
+during that same arc "was written that way" among a list of defective ones. It
+was measured afterwards at 0.63 try-coverage with its handler inside a loop —
+per-item tolerance, which is the CORRECT design. The job belonged on a
+different list. The self-criticism was specific, plausible, volunteered, and
+wrong, and it had already been committed.
+
 #### Saturated signal
 
 An already-red check cannot report a new failure.
