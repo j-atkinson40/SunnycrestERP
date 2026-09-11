@@ -86,6 +86,39 @@ def _complete_job_run(run_id: str, status: str, duration: float, **kwargs):
         db.close()
 
 
+def _reported_error(result) -> str | None:
+    """An error a target REPORTED rather than raised.
+
+    ⚠️ THE VISIBILITY GAP WAS A DISCARDED CAPABILITY, NOT A MISSING ONE
+    (2026-09-11). Three job targets own their whole body in a try/except —
+    `run_ar_aging_monitor`, `run_collections_sequence`,
+    `run_ap_upcoming_payments`, measured at 0.96/0.96/0.80 try-span over
+    function-span. All three catch, record `agent_jobs.status='failed'`, AND
+    `return {"error": str(e)}`. Then this module threw the return value away
+    and counted the tenant a success.
+
+    Measured on production before this landed: `job_runs` held 264
+    AR_AGING_MONITOR runs, every one `completed` with `error_count=0`, while
+    `agent_jobs` held 163 failures for the same job over the same window. The
+    table an operator consults to ask "did the nightly jobs run?" had said yes
+    264 times about a job that aborted on three of four tenants every night
+    since 2026-07-16.
+
+    ⚠️ ONLY AN EXPLICIT MARKER COUNTS. A falsy return, `None` included, is
+    still treated as success here. That is deliberate and it is the REMAINING
+    gap, not an oversight: eight other targets swallow per-item inside a loop,
+    which is correct tolerance for one bad row and silent for a broken world —
+    a loop in which every item fails still returns normally. Closing that needs
+    targets to report a skipped-count and a structured result that makes silent
+    success unexpressible. Separate build; do not widen this function into it.
+    """
+    if isinstance(result, dict):
+        err = result.get("error")
+        if err:
+            return str(err)
+    return None
+
+
 def _run_per_tenant(job_name: str, func, *extra_args):
     """Run a function for each active tenant with its own DB session."""
     run_id = _log_job_run(job_name)
@@ -98,8 +131,17 @@ def _run_per_tenant(job_name: str, func, *extra_args):
     for tid in tenant_ids:
         db = SessionLocal()
         try:
-            func(db, tid, *extra_args)
-            success += 1
+            result = func(db, tid, *extra_args)
+            reported = _reported_error(result)
+            if reported is None:
+                success += 1
+            else:
+                # Caught by the target, reported back, and previously discarded.
+                errors += 1
+                last_error = reported
+                logger.error(
+                    f"[{job_name}] Reported error for tenant {tid}: {reported}"
+                )
         except Exception as e:
             errors += 1
             last_error = str(e)
@@ -128,8 +170,16 @@ def _run_global(job_name: str, func):
     try:
         result = func(db)
         duration = time.monotonic() - t0
-        logger.info(f"[{job_name}] Complete: {result} ({duration:.1f}s)")
-        _complete_job_run(run_id, status="completed", duration=duration)
+        reported = _reported_error(result)
+        if reported is None:
+            logger.info(f"[{job_name}] Complete: {result} ({duration:.1f}s)")
+            _complete_job_run(run_id, status="completed", duration=duration)
+        else:
+            logger.error(f"[{job_name}] Reported error: {reported}")
+            _complete_job_run(
+                run_id, status="failed", duration=duration,
+                error_count=1, error_message=reported,
+            )
     except Exception as e:
         duration = time.monotonic() - t0
         logger.error(f"[{job_name}] Error: {e}", exc_info=True)
