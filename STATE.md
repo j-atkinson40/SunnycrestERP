@@ -2,32 +2,6 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
-## ⚠️ THE SATURATED SIGNAL'S SECOND COST — unexecuted code wearing the look of tested code (2026-09-11)
-
-Named 2026-09-11, from the `ar_aging_monitor` fix. CLAUDE.md §11's *Saturated
-signal* entry says a constant failure hides NEW failures of a different kind in
-the same territory. It does something worse as well:
-
-**A constant failure also hides EXISTING defects on the lines it never reaches.**
-
-Everything past the raise is unexecuted code that looks tested, because the
-function has "run" nightly for months and its job type appears in every
-scheduler log. Nothing distinguishes a line that ran and worked from a line
-that was never reached.
-
-Worked instance: `run_ar_aging_monitor` raised on a `date` minus a `datetime`
-at the top of its loop, 163 times between 2026-07-16 and 2026-09-10. One line
-further down, all three alert branches read `inv.invoice_number` against a
-column named `Invoice.number`. The second defect was invisible to code review,
-invisible to every test that never invoked the function, and would have shipped
-inside a "one-line fix" — swapping one exception for another in a table nobody
-reads.
-
-**The consequence for method:** when repairing a saturated signal, RUN the
-repaired path before believing the repair is the whole of it. The size of the
-fix is not evidence about the size of the problem; a one-line cause can sit in
-front of an arbitrary amount of never-executed code.
-
 ## ⚠️ `job_runs` IS GREEN BY CONSTRUCTION FOR 11 OF 25 SCHEDULED JOBS (2026-09-11)
 
 Enumerated 2026-09-11 by AST over `scheduler.py`'s 25 wrapped jobs, then over

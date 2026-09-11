@@ -2273,6 +2273,24 @@ information content is zero.
 This subsumes the weaker "unwired detector" framing. Unwired describes who is
 listening. Saturated describes whether there is anything new to hear.
 
+⚠️ **AND IT HIDES EXISTING DEFECTS ON THE LINES IT NEVER REACHES, not only new
+ones.** Everything past the raise is UNEXECUTED CODE WEARING THE LOOK OF TESTED
+CODE: the function has "run" nightly for months, its job type appears in every
+scheduler log, and nothing distinguishes a line that ran and worked from a line
+that was never reached.
+
+**RUN THE REPAIRED PATH BEFORE BELIEVING THE REPAIR IS THE WHOLE OF IT. THE SIZE
+OF THE FIX IS NOT EVIDENCE ABOUT THE SIZE OF THE PROBLEM** — a one-line cause can
+sit in front of an arbitrary amount of never-executed code.
+
+Discovered September 2026. `run_ar_aging_monitor` raised on a `date` minus a
+`datetime` at the top of its loop, 163 times across eight weeks. One line
+further down, all three alert branches read `inv.invoice_number` against a
+column named `Invoice.number` — `invoice_number` is the API's field name. The
+second defect was invisible to review, invisible to every test that never
+invoked the function, and would have shipped inside a fix its author had already
+described as one line. It appeared the moment a test ran the function.
+
 OPERATIONAL CONSEQUENCE — quarantine is deliberate saturation:
 
 Every QUARANTINE verdict MUST record the file's exact failure signature at
