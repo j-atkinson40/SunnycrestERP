@@ -727,6 +727,47 @@ v1 ships 5 task type behavior plugins: `generic_task`, `review_approval_task`, `
 
 **Subscriber registry.** Task lifecycle events fire to a subscriber registry (7 event types × 6 v1 subscribers; sync dispatch with isolated try/except per subscriber at `backend/app/services/tasks/subscribers/`). v1 subscribers: `audit_writer` (active at substrate-foundation), `notification_dispatcher` (active post-B2 (c) refactor), `briefings_invalidator`, `pulse_invalidator`, `workflow_resumer`, `focus_closer` (all active post-B3 consumer integration).
 
+#### The deferred-handler-body pattern
+
+Register the wiring at foundation; defer only the body.
+
+A consumer that isn't ready yet is registered anyway — in the registry, receiving real
+events, satisfying registry-level invariants — with a handler body that does nothing but
+log. The docstring declares which version fills it in.
+
+What this buys, stated narrowly because the canonical instance measured narrower than the
+pattern was described:
+
+- **Dispatch, isolation and naming are exercised from day one.** The subscriber is
+  registered, receives real events, and satisfies the same invariants as a working one.
+  Whatever would break about the wiring breaks immediately rather than at the moment
+  someone writes the body.
+- **The deferral declares its own target version.** `"v1.0: no-op. v1.5: invalidate
+  briefings cache for affected user."` The no-op reads as deliberate rather than
+  unfinished, and the version is a commitment rather than a wish.
+
+**What it does NOT buy: the event contract.** Filling the body may widen the event set,
+because the body is what determines which events it needs — and that is exactly the part
+being deferred. Measured at 1c8dbbd, four bodies filled with 305 insertions and 33
+deletions: two of the four subscribers renegotiated their event types on the way in
+(briefings 3→5, pulse 3→5; focus and workflow unchanged). A reader who takes "registered at
+foundation, body filled later" to mean the registration is settled will under-estimate what
+filling it in disturbs.
+
+**The hazard, which is the reason this entry names the pattern rather than only
+recommending it.** A registered no-op is indistinguishable at runtime from a working
+subscriber. It appears in the registry, it receives events, it returns normally. The only
+thing separating "deferred on purpose" from "quietly broken" is the declared-version
+docstring — a comment, not a mechanism.
+
+So the docstring is load-bearing. A deferred handler without one is not this pattern; it is
+a handler that does nothing, and nothing about the system will ever say so. If you defer a
+body, declare the version that fills it. If you find a no-op handler with no declared
+version, do not assume it was deliberate.
+
+This is the same gap `test_NONE_IS_STILL_SUCCESS` pins one layer up: a return value that
+carries no information about whether work happened reads as success either way.
+
 **Producer integration.** (c)'s 8 producer sites flow through task substrate post-v1.5 B2 refactor: producer call-sites create tasks via `task_service.create_task_with_provenance`; notification dispatch fires from task-creation events via subscriber registry rather than producer-direct dispatch. Parity preserved bit-for-bit at recipient side. Site mapping documented at task substrate v1 completion artifact §2 producer refactor section (`docs/investigations/task_substrate_v1_completion.md`).
 
 **Reference instances.** v1 task substrate shipped across 3 commits: `2fba161` (B1 substrate foundation + r108 Focus extension), `a400d1b` (B2 (c) producer refactor), `1c8dbbd` (B3 consumer integration + r109 routing rules + v1 arc close). v1 build prompt at `docs/investigations/task_substrate_v2_v1_build_prompt.md`; v1 completion artifact at `docs/investigations/task_substrate_v1_completion.md`. v2 sub-arcs (10-triage-queue adapters, family portal, substrate refinements) await operator-observable signals per task substrate v2 phasing doc §5.
