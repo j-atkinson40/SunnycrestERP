@@ -2,6 +2,41 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## CANON DEBT — "no known stale sites by a method that doesn't assume a form" (2026-09-11)
+
+⚠️ **NOT "closed". The honest close is "nothing found by X", with X named.**
+
+A sweep result is a statement about the METHOD, not about the population.
+
+What happened, recorded because it is the reason the status reads this way. The
+first sweep (`c8d6f051`) used `\bPulse\b` and reported **six** sites as the
+population. There were **nine**:
+
+    :267 :283 :289 :293 :381 :723   found by the capitalised-standalone match
+    :728                            pulse_invalidator — found by ACCIDENT,
+                                    reading the paragraph next to an insertion
+    :469 :571                       pulse-widget — found only by the
+                                    form-enumerated second pass
+
+Neither `pulse_invalidator` nor `pulse-widget` is capitalised or standalone, so
+the first pattern could not have found either. All nine are now fixed —
+`a0ad9186`, `8cd23fb3`, `aad039a0` — and the rule that would have caught them
+landed at CLAUDE.md §11 ("a pattern can encode an assumption about FORM").
+
+**Method of the second pass:** case-insensitive, no word boundary, forms
+enumerated before the pattern was written, every hit classified rather than
+counted. That is better and it is not exhaustive. A reader meeting a tenth stale
+site should treat it as expected rather than as a surprise.
+
+**Deliberately unchanged:** `:265` describes PLATFORM_PRODUCT_PRINCIPLES'
+contents, and that document is MARKED rather than rewritten — describing a marked
+document accurately is not staleness. `:1966` and the §11 entries are history.
+
+⚠️ **And three canon documents remain MARKED BUT NOT REWRITTEN** —
+BRIDGEABLE_MASTER (289 Pulse-mentioning lines), PLATFORM_PRODUCT_PRINCIPLES (29),
+PLATFORM_INTERACTION_MODEL (5). "Canon describes what exists" is true of
+CLAUDE.md and PLATFORM_ARCHITECTURE and NOT of the platform's canon as a whole.
+
 ## ⚠️ `job_runs` IS GREEN BY CONSTRUCTION FOR 11 OF 25 SCHEDULED JOBS (2026-09-11)
 
 Enumerated 2026-09-11 by AST over `scheduler.py`'s 25 wrapped jobs, then over
@@ -218,11 +253,10 @@ sits on the vertical-default fallback and the only path to changing that is
 unreachable. Related: `onboarding_completed` is computed, served on the wire
 type, and read by NOTHING since its only consumer was that banner.
 
-⚠️ **`CLAUDE.md` carries six stale surface assertions outside §1a**
-(2026-09-11). :381 (the division-of-labour table, whose answer cell points at a
-document that does not cover note fragments), plus :267, :283, :289, :293 and
-:723. The §1a rewrite fixed nine sites INSIDE §1a; scope taken from a section
-boundary behaved exactly like scope taken from a filename. James authors.
+✅ **`CLAUDE.md`'s stale surface assertions — DONE 2026-09-11.** Six found by
+the first sweep, three more by the form-enumerated second pass. See the canon-debt
+status section above; the status is "nothing found by a method that doesn't assume
+a form", not "clean".
 
 Also open, not ranked: the five seeded demo rows in production's anomaly table
 (2026-09-08); the six accounting remedies (2026-09-08); the deploy window as a
