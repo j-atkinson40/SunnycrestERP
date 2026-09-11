@@ -2216,6 +2216,30 @@ walks the filesystem and never enters a directory that does not start with
 where care does not. No amount of attention distinguishes a constructed name
 from a real enumeration at the moment of writing it.
 
+⚠️ **A PATTERN CAN ALSO ENCODE AN ASSUMPTION ABOUT FORM, WHICH IS A DISTINCT
+FAILURE FROM A WRONG NAME.** The name can be right and the CASING wrong. One
+subject wears several: `Pulse`, `pulse`, `pulse_invalidator`, `pulse-widget`,
+`PULSE`, `services/pulse/`. A word-boundary match on the display form — the
+capitalised standalone noun — finds the prose and misses every identifier,
+snake_case symbol, kebab-case enum value, path segment and screaming constant.
+
+**THE ACTION: when sweeping for references to a removed thing, ENUMERATE THE
+FORMS ITS NAME TAKES BEFORE WRITING THE PATTERN.** Case-insensitive, no word
+boundary, then classify what comes back. Five strings for one subject is
+ordinary.
+
+And a sweep built on a form assumption must be re-read as INCOMPLETE rather than
+clean: it found what that form finds, and the remaining population is unknown
+rather than empty.
+
+Discovered September 2026, and the provenance is the point. A sweep for stale
+references to a retired surface used `\bPulse\b` — inside the sweep written
+specifically to catch what a constructed pattern would miss. It reported six
+sites. A case-insensitive re-run found three more it could not have found:
+`pulse_invalidator` in a live subscriber list, and `pulse-widget` twice in a
+ComponentKind enumeration whose CHECK constraint had already dropped the value.
+The first surfaced only because someone read the paragraph next to it.
+
 Discovered September 2026, Sales & Orders census: five distinct false absences
 across four namespaces, none caught by review, each caught only by re-deriving
 with a different method.
