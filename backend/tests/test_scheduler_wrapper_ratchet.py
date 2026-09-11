@@ -41,6 +41,8 @@ WRAPPERS = {"_run_per_tenant", "_run_global"}
 #: ⚠️ NOT EVERY ENTRY IS DEBT. Three kinds, and the difference is load-bearing:
 #:
 #:   DEBT        — should route through a wrapper and does not yet. Fix it.
+#:                 ⚠️ CURRENTLY EMPTY. Every entry below is DESIGN or
+#:                 CONDITIONAL, re-read 2026-09-11. Nothing here is owed work.
 #:   DESIGN      — should NOT route through a wrapper. A `job_runs` row asserts
 #:                 a job ran and did its work; these have no work to do, so a
 #:                 row would be a false positive rather than a record.
@@ -55,14 +57,35 @@ WRAPPERS = {"_run_per_tenant", "_run_global"}
 #: Measured 2026-09-11; `workflow_time_based_check` and `onboarding_pattern`
 #: left this list the same day by being routed through wrappers.
 BYPASSES_WRAPPER: dict[str, str] = {
-    # ── DEBT — hand-rolled, calls _log_job_run itself (3) ────────────────
-    # These DO write a job_runs row. They are here because they bypass the
-    # wrappers, not because they are invisible. Verified 2026-09-11 that none
-    # has 0a's discarded-return-value defect: their targets raise or tolerate
-    # per-item, and none returns an {"error": ...} marker for a caller to read.
-    "dispatch_auto_finalize": "DEBT hand-rolled — highest-volume job on production",
-    "platform_health_recalculate": "DEBT hand-rolled",
-    "platform_incident_dispatcher": "DEBT hand-rolled",
+    # ── DESIGN — hand-rolled, and correct as built (3) ───────────────────
+    # ⚠️ RE-ANNOTATED FROM "DEBT" 2026-09-11 AFTER A SECOND READ. The first
+    # pass called these debt because they bypass the wrappers. They do — and
+    # nothing a wrapper provides is missing from any of them:
+    #
+    #   a job_runs row ......... all three write their own
+    #   a reported error ....... none of their targets returns an {"error": ...}
+    #                            marker, so there is nothing for a caller to
+    #                            read; 0a's fix has no purchase here
+    #   failure recorded ....... established per job below
+    #
+    # `dispatch_auto_finalize` also records `success_count` from the result, so
+    # an all-items-failed run shows 0 — MORE informative than the wrapper path,
+    # which records only that the function returned.
+    #
+    # ⚠️ They do NOT get per-tenant session isolation: `_run_per_tenant` opens a
+    # SessionLocal per tenant, these share one for the whole run. That matters
+    # only if a poisoned transaction can go unnoticed, and for each it cannot:
+    "dispatch_auto_finalize": "DESIGN — rolls back per item; records success_count",
+    "platform_incident_dispatcher": "DESIGN — target has no broad except; failures propagate and are recorded",
+    # ⚠️ `platform_health_recalculate` is correct BY ARRANGEMENT RATHER THAN BY
+    # DESIGN, and the arrangement is worth stating because it is easy to undo.
+    # `calculate_all_tenant_health` swallows per tenant WITHOUT a rollback on a
+    # shared session, so one tenant's DB error poisons the transaction and every
+    # later tenant fails into the same handler. What saves it is that the
+    # closing `db.commit()` sits OUTSIDE the try — the poisoned session raises
+    # there, propagates, and the run is recorded `failed` with nothing
+    # persisted. Wrap that commit in a try and the cascade becomes silent.
+    "platform_health_recalculate": "DESIGN — but see the note above; an unguarded final commit is what makes it loud",
 
     # ── DESIGN — dry-run, does not act (2) ───────────────────────────────
     # Both log literally "(dry-run)". `moc_event_matcher` already logs only

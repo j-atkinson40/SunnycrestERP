@@ -1603,11 +1603,8 @@ First live tenant: `sunnycrest.getbridgeable.com`
 - **27 route through a wrapper.**
 - **10 do not.**
 
-The table below is the **nightly agent and intelligence jobs only** — a subset,
-not the 37. ⚠️ It also still lists `safety_program_generation`, which was retired
-in Phase 8d.1 and is not registered; that row is why the heading's former "13
-total" and the table's 14 rows disagreed, and it is left in place pending a
-ruling rather than deleted here.
+The table below is the **nightly agent and intelligence jobs only** — 13 of the
+37, not the whole set.
 
 | Job | Schedule | Source File |
 |-----|----------|-------------|
@@ -1624,7 +1621,6 @@ ruling rather than deleted here.
 | `reorder_suggestion` | Monday 6:12am ET | `proactive_agents.py` |
 | `network_snapshot` | 1st of month 2:17am ET | `network_intelligence_service.py` |
 | `onboarding_pattern` | 1st of month 4:13am ET | `network_intelligence_service.py` |
-| `safety_program_generation` | 1st of month 6:00am ET | `safety_program_generation_service.py` |
 
 Most jobs route through `_run_per_tenant()` or `_run_global()`, which provide per-session DB isolation and record a `job_runs` row. Ten do not, and the exception list in `backend/tests/test_scheduler_wrapper_ratchet.py` names each with its reason — three record their own rows, two are dry-run sweeps that deliberately record nothing, five iterate input that does not yet exist and will need revisiting when it does. A new scheduled job either routes through a wrapper or is added to that list deliberately. All are manually triggerable via `JOB_REGISTRY` dict and the agent trigger API endpoint.
 
