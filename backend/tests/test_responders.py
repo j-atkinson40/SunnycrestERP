@@ -103,10 +103,30 @@ def real_tenant(db):
     db.add(co)
     db.commit()
     yield co.id
-    db.execute(
-        __import__("sqlalchemy").text("DELETE FROM companies WHERE id = :i"),
-        {"i": co.id},
-    )
+
+    # ⚠️ THE INCIDENTS GO TOO, AND FK ORDER DECIDES THE SEQUENCE.
+    #
+    # A first version deleted only the company. That left the incident behind —
+    # `platform_incidents.tenant_id` has NO foreign key, so nothing cascaded —
+    # and the leak MOVED ONE TABLE UPSTREAM rather than closing: measured at
+    # +2 orphaned incidents per run of this file. Constraining
+    # `tenant_health_scores` displaced the litter; it did not eliminate it,
+    # because the producer is a test that creates and deletes a company and
+    # every UNCONSTRAINED child of that company inherits the orphan.
+    #
+    # It then broke this file: with enough accumulated `infra` incidents the
+    # responder escalates instead of resolving, and test_infra_probe_resolves
+    # started failing on state its own fixture had left behind.
+    #
+    # `platform_notifications.incident_id` is ON DELETE NO ACTION, so it raises
+    # rather than cascading — notifications first, then incidents, then company.
+    sa = __import__("sqlalchemy")
+    db.execute(sa.text(
+        "DELETE FROM platform_notifications WHERE incident_id IN "
+        "(SELECT id FROM platform_incidents WHERE tenant_id = :i)"), {"i": co.id})
+    db.execute(sa.text(
+        "DELETE FROM platform_incidents WHERE tenant_id = :i"), {"i": co.id})
+    db.execute(sa.text("DELETE FROM companies WHERE id = :i"), {"i": co.id})
     db.commit()
 
 
