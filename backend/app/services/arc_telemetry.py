@@ -8,9 +8,27 @@ is already persisted per-execution and aggregated.
 Scope per approved Phase 7 plan:
   - No new table
   - Counters cleared on process restart (documented in UI)
-  - Five tracked endpoints: command_bar_query, saved_view_execute,
-    nl_extract, triage_next_item, triage_apply_action
+  - Tracked endpoints: see TRACKED_ENDPOINTS. ⚠️ This line said "Five" and
+    listed five while the tuple held EIGHT -- saved_view_preview, peek_fetch
+    and quote_preview were appended by later phases without the prose being
+    updated. Do not restate the count here; the tuple is the enumeration.
   - Per-endpoint rolling 1000-sample latency buffer for p50/p99
+
+⚠️ THE p99 THIS MODULE REPORTS IS NOT A LATENCY ANY REQUEST EXPERIENCED, below
+99 samples. `statistics.quantiles(..., n=100)` uses the default "exclusive"
+method, which projects past the observed tails: measured, the reported p99
+exceeds the largest actual sample by up to 93% at n=2, decaying to 0% at n=99.
+The buffer refills from empty on every process restart, so the surface is least
+trustworthy right after a deploy -- when an operator is most likely to read it.
+
+p50 from the same call is SOUND at every n (verified against statistics.median
+across five distribution shapes; see tests/test_arc_telemetry_percentile.py).
+
+The repair is a pending decision, not an oversight: below the threshold the
+surface must show the max and say so, show nothing and say why, or show the p99
+with its sample count attached. ⚠️ It must NOT clamp the value to the observed
+max -- that yields a number always exactly equal to the maximum, still labelled
+p99.
 
 For long-term observability, post-arc roadmap covers real APM.
 """
