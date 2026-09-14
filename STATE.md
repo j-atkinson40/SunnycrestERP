@@ -146,10 +146,34 @@ ceiling sits on the per-run growth and not on any of the numbers above.
 `tenant_health_scores` has **NO FOREIGN KEY AT ALL** on `tenant_id`. Nothing
 enforced a parent, so nothing cascaded and nothing complained.
 
-Enumerated across all **391** tables carrying a `company_id`/`tenant_id` column:
-**exactly one holds orphans.** The other 390 are at zero — their constraints did
-the work. This is not a cleanup that was forgotten; it is a constraint that was
-never added, and the cleanup would have to be re-run forever.
+⚠️ **[CORRECTED 2026-09-14 — see the r183 entry above.]** This paragraph
+originally read:
+
+> Enumerated across all **391** tables carrying a `company_id`/`tenant_id`
+> column: **exactly one holds orphans.** The other 390 are at zero — their
+> constraints did the work.
+
+**The first clause was measured. The second was inferred from it and is false.**
+Exactly one table holds orphans — that stands. But "the other 390 are at zero
+because their constraints did the work" conflates two populations: **370 of the
+391 have a constraint; 21 do not.** Twenty unconstrained tables are at zero for
+a reason that is nothing to do with constraints — 14 are empty, and 6 have rows
+and simply have not accumulated orphans yet.
+
+⚠️ So the 6 are clean **by luck of traffic, not by design**, and the leak is not
+slow: dropping this constraint for a single break-test run produced 2 orphans
+immediately. `platform_incidents.tenant_id` is one of the 21, which is why a
+fabricated tenant id was accepted at the incident and refused one table
+downstream — the constraint that exists caught what the constraint that does not
+let through.
+
+The two clauses fitted together too well to be checked separately. That is the
+correction: **a consistency read passed because a measured half made an inferred
+half look measured.**
+
+This is still not a cleanup that was forgotten; it is a constraint that was never
+added, and the cleanup would have to be re-run forever. It is simply 21
+constraints that were never added, of which r183 is one.
 
 ### The FK is addable after the purge, BY CONSTRUCTION
 
