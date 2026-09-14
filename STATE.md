@@ -46,6 +46,23 @@ thirty, inflated ~1.7× past the worst thing that actually happened.
    a database reset. A gate that passes in the morning and fails at 6pm on
    unchanged code is this, not a regression.
 
+   ⚠️ **CORRECTED 2026-09-14 — THIS UNDERSTATED CAUSE 2, AND NOT BY A LITTLE.**
+   It was written as a factor that makes a slow sample *more likely*. Measured
+   on the workflow-scope gates, it is not a contributing factor — **it is the
+   whole of the measurement**: `?scope=core` returned **1,608 rows, of which 6
+   are canonical platform workflows and 1,602 are uncleaned test fixtures**.
+
+   ⚠️ And those figures are a SNAPSHOT, which is the finding restated. Measured
+   again four hours and three full-tree runs later in the same session:
+   **1,720 core rows**, the same 6 canonical, 1,714 fixtures. The table grew
+   +112 while being investigated, at the measured +34 per full run.
+
+   So the correct statement is: **for some gates the litter is the dominant
+   term, not a perturbation.** A gate whose endpoint reads a table the suite
+   writes to is measuring accumulated fixtures with a little real data mixed in.
+   See `scripts/purge_test_litter.py` and the UNOWNED LITTER tripwire in
+   `tests/conftest.py`.
+
 They compose. Neither is visible in the reported number.
 
 ### What this does NOT say
