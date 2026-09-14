@@ -31,52 +31,89 @@ def db():
 # ── control 1: the counter sees a real population ────────────────────────
 
 
-def test_the_counter_CAN_SEE_each_class_by_seeding_one(db):
+def test_the_counter_CAN_SEE_the_class_that_is_still_possible(db):
     """⚠️ CONTROL. A counter matching nothing satisfies "did not grow" forever.
 
-    ⚠️ ITS FIRST VERSION ASSERTED THE COUNTER CURRENTLY READS NON-ZERO, and told
-    the reader that a zero meant the purge had run and the tripwire should become
-    a ceiling of 0. BOTH HALVES WERE WRONG. It conflated "the instrument works"
-    with "there is litter right now" — so it went red the moment the purge
-    succeeded, which is the one moment the instrument was most obviously fine.
-    And its advice was wrong: the purge clears the STOCK, not the FLOW. The next
-    full run puts +34 and +1,364 back, so a ceiling of 0 on the absolute count
-    is unreachable while the fixtures leak.
+    ⚠️ THIS TEST HAS NOW BEEN REWRITTEN TWICE, AND BOTH REWRITES ARE THE POINT.
 
-    This version proves CAPABILITY instead of observing state: seed one row in
-    each class, confirm each is counted, remove them. It holds at zero litter and
-    at sixty thousand.
+    v1 asserted the counter currently reads non-zero. It went red the moment the
+    purge succeeded — conflating "the instrument works" with "there is litter
+    right now" — and its failure message pointed the reader at a ceiling of 0,
+    which was wrong because the purge clears stock and not flow.
+
+    v2 proved capability by seeding one row in EACH class. That broke at r183:
+    the new foreign key REFUSES an orphaned health score, so the control could
+    no longer construct its own subject. The control failing because the defect
+    became impossible is the best outcome available to it.
+
+    v3, here, splits the two classes because they are no longer the same kind of
+    thing. `global_workflows` is still reachable and is proved by construction.
+    `orphaned_health_scores` is UNEXPRESSIBLE and is proved by refusal.
     """
     before = _litter_counts()
     assert before is not None, "no database — the control cannot run"
     assert set(before) == {"orphaned_health_scores", "global_workflows"}
     assert all(isinstance(v, int) for v in before.values())
 
+    # ── the class that can still happen: prove the counter sees it ──
     wf_id = str(uuid.uuid4())
-    hs_id = str(uuid.uuid4())
-    ghost_tenant = str(uuid.uuid4())  # deliberately not a company
     db.execute(text(
         "INSERT INTO workflows (id, name, tier, scope, trigger_type, is_active, "
         "is_system, created_at) VALUES (:i, :n, 1, 'core', 'manual', true, true, now())"),
         {"i": wf_id, "n": f"SEES-CONTROL-{wf_id[:8]}"})
-    db.execute(text(
-        "INSERT INTO tenant_health_scores (id, tenant_id, created_at) "
-        "VALUES (:i, :t, now())"), {"i": hs_id, "t": ghost_tenant})
     db.commit()
     try:
         after = _litter_counts()
         assert after["global_workflows"] == before["global_workflows"] + 1, (
             "the counter did not see a seeded global workflow"
         )
-        assert after["orphaned_health_scores"] == before["orphaned_health_scores"] + 1, (
-            "the counter did not see a seeded orphaned health score"
-        )
     finally:
         db.execute(text("DELETE FROM workflows WHERE id = :i"), {"i": wf_id})
-        db.execute(text("DELETE FROM tenant_health_scores WHERE id = :i"), {"i": hs_id})
         db.commit()
-    # The control must not itself leak — it would trip the tripwire it tests.
-    assert _litter_counts() == before
+    assert _litter_counts() == before, "the control leaked"
+
+
+def test_an_ORPHANED_HEALTH_SCORE_IS_UNEXPRESSIBLE(db):
+    """⚠️ THE CLASS IS CLOSED, NOT MERELY EMPTY — AND THE DIFFERENCE IS TESTABLE.
+
+    r183 added `tenant_health_scores.tenant_id -> companies.id ON DELETE
+    CASCADE`. Before it, 60,469 orphans had accumulated because nothing enforced
+    a parent. A zero count would look identical whether the constraint exists or
+    someone simply purged yesterday, so this asserts the REFUSAL rather than the
+    count: an orphan cannot be written at all.
+
+    ⚠️ If this ever passes by returning zero instead of raising, the constraint
+    has been dropped and the tripwire's strict allowance for this class is
+    guarding nothing.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    ghost = str(uuid.uuid4())  # deliberately not a company
+    with pytest.raises(IntegrityError):
+        db.execute(text(
+            "INSERT INTO tenant_health_scores (id, tenant_id, created_at) "
+            "VALUES (:i, :t, now())"), {"i": str(uuid.uuid4()), "t": ghost})
+        db.commit()
+    db.rollback()
+
+    # And the ON DELETE half, which is what closes the accumulation path:
+    # a company's scores go with it rather than being left behind.
+    from app.models.company import Company
+    from app.models.tenant_health_score import TenantHealthScore
+
+    co = Company(id=str(uuid.uuid4()), name="LITTER-FK-CONTROL",
+                 slug=f"litfk-{uuid.uuid4().hex[:8]}", is_active=True)
+    db.add(co); db.commit()
+    hs = TenantHealthScore(id=str(uuid.uuid4()), tenant_id=co.id)
+    db.add(hs); db.commit()
+    hs_id = hs.id
+    assert db.execute(text("SELECT count(*) FROM tenant_health_scores WHERE id=:i"),
+                      {"i": hs_id}).scalar() == 1
+    db.execute(text("DELETE FROM companies WHERE id=:i"), {"i": co.id}); db.commit()
+    assert db.execute(text("SELECT count(*) FROM tenant_health_scores WHERE id=:i"),
+                      {"i": hs_id}).scalar() == 0, (
+        "the score survived its company — ON DELETE CASCADE is not in force"
+    )
 
 
 def test_the_predicate_EXCLUDES_rows_that_are_not_litter(db):

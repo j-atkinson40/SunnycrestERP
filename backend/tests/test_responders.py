@@ -76,6 +76,41 @@ def _create_incident(
 
 
 @pytest.fixture()
+def real_tenant(db):
+    """A tenant that EXISTS, for responders that write tenant-scoped rows.
+
+    ⚠️ ADDED AT r183. Two tests here passed a fabricated `tenant_id` such as
+    `tenant-infra-<hex>` into an incident; the responder then wrote a
+    `tenant_health_scores` row for it. `platform_incidents.tenant_id` has no
+    foreign key, so the incident was accepted — but the health score is now
+    constrained, and a score for a company that never existed is exactly the
+    row that accumulated 60,469 times.
+
+    So these tests were not merely using a placeholder; they were a source of
+    the litter the constraint closes. The fixture gives them a real company and
+    removes it afterwards — and the removal now takes the health scores with it,
+    via ON DELETE CASCADE, which is the behaviour being relied on rather than
+    worked around.
+    """
+    from app.models.company import Company
+
+    co = Company(
+        id=str(uuid.uuid4()),
+        name="RESPONDER-FIXTURE",
+        slug=f"resp-{uuid.uuid4().hex[:8]}",
+        is_active=True,
+    )
+    db.add(co)
+    db.commit()
+    yield co.id
+    db.execute(
+        __import__("sqlalchemy").text("DELETE FROM companies WHERE id = :i"),
+        {"i": co.id},
+    )
+    db.commit()
+
+
+@pytest.fixture()
 def db():
     session = SessionLocal()
     try:
@@ -230,10 +265,10 @@ def test_escalate_tier_no_handler_stays_pending(db: Session):
 # ── Test 6: auth transient failure auto-resolves ──────────────────────────
 
 
-def test_auth_transient_resolves(db: Session):
+def test_auth_transient_resolves(db: Session, real_tenant):
     """A single auth failure is treated as transient and resolved."""
     msg = _unique_msg("JWT expired during request")
-    tenant_id = f"tenant-auth-{uuid.uuid4().hex[:8]}"
+    tenant_id = real_tenant  # was a fabricated id; see the fixture docstring
     incident = _create_incident(
         db,
         category="auth",
@@ -301,7 +336,7 @@ def test_auth_breach_escalates(db: Session):
 # ── Test 8: infra probe passes → auto-resolves ───────────────────────────
 
 
-def test_infra_probe_resolves(db: Session):
+def test_infra_probe_resolves(db: Session, real_tenant):
     """A single infra failure with passing DB probe is auto-resolved."""
     msg = _unique_msg("DB connection pool exhausted")
     incident = _create_incident(
@@ -309,7 +344,7 @@ def test_infra_probe_resolves(db: Session):
         category="infra",
         tier="auto_fix",
         error_message=msg,
-        tenant_id=f"tenant-infra-{uuid.uuid4().hex[:8]}",
+        tenant_id=real_tenant,  # was fabricated; see the fixture docstring
     )
     db.flush()
 

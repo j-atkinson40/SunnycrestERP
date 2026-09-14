@@ -94,35 +94,31 @@ def _company_count() -> int | None:
 #: regression in its own noise. So the direction is enforced instead: the leak
 #: per run may fall and may not rise.
 #:
-#: ⚠️ CORRECTED 2026-09-14 AFTER THE PURGE, AND THE CORRECTION IS THE AWKWARD
-#: KIND — A CEILING WENT UP.
+#: ⚠️ ONE ENTRY, AND THE OTHER WAS DELETED RATHER THAN TUNED.
 #:
-#: The first values came from ONE run: +34 and +1,364. The comment above them
-#: said, in advance, that one observation is not a distribution and that a later
-#: excess should prompt another measurement rather than a bigger number. A second
-#: full run then measured +34 and +1,366, and the tripwire fired on a two-row
-#: overshoot — 0.15%.
+#: `orphaned_health_scores` used to sit here at 1,364, then 1,400 after a
+#: two-row overshoot showed the first value was a sample minimum mistaken for a
+#: bound. It is GONE as of r183, which added the foreign key
+#: `tenant_health_scores.tenant_id -> companies.id ON DELETE CASCADE`.
 #:
-#: So 1,364 was never a valid ceiling; it was a sample minimum mistaken for a
-#: bound. ⚠️ THAT IS A DIFFERENT ACT FROM RELAXING A GUARD AFTER A REGRESSION,
-#: and the difference is only defensible because both observations are recorded
-#: here. A ceiling raised without its measurements on the page is a retired
-#: guard whatever the commit message says.
+#: ⚠️ THE ABSENCE OF A KEY HERE IS STRICTER THAN A ZERO, NOT WEAKER. The
+#: comparison below reads `_LEAK_CEILING.get(k, 0)`, so a class with no entry
+#: tolerates NO growth at all. The counter still counts it; what changed is that
+#: any growth now fails the session.
 #:
-#:   global_workflows        observed +34, +34      -> held at 34
-#:   orphaned_health_scores  observed +1,364, +1,366 -> 1,400
+#: And it is structurally unreachable rather than merely unobserved: deleting a
+#: company now deletes its health scores, so the mechanism that produced 60,469
+#: orphans — create tenant, compute scores, purge tenant, leave scores — cannot
+#: complete. That is the difference between a class that cannot recur and one
+#: that cannot recur silently.
 #:
-#: The 1,400 carries ~2.5% over the maximum observed: enough to absorb the
-#: measured drift and modest suite growth, not enough to hide a real increase.
-#:
-#: ⚠️ AND IT SHOULD BE DELETED RATHER THAN TUNED AGAIN. The health-score leak is
-#: structural — scores are generated per tenant and the tenant is purged without
-#: them, because `tenant_health_scores` has no foreign key. Adding it with
-#: ON DELETE CASCADE makes this class's delta ZERO BY CONSTRUCTION, at which
-#: point the entry goes and the strict delta stands. See STATE.
+#: `global_workflows` remains, unaffected by r183 and measured at exactly +34 on
+#: four separate full-tree runs. Those rows have `company_id IS NULL`, so no
+#: company-scoped constraint can ever reach them; closing that one needs fixture
+#: teardown, not a foreign key. Lower it as fixtures gain teardown; at 0, delete
+#: this dict and let the strict delta stand alone.
 _LEAK_CEILING = {
     "global_workflows": 34,
-    "orphaned_health_scores": 1400,
 }
 
 

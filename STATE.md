@@ -53,6 +53,72 @@ max is 412.2ms.** One outlier in 20 samples extrapolated past the data. It appea
 in none of the five full-tree failure sets measured today. That is the p99
 extrapolation defect, not a latency problem, and it belongs to the budget item.
 
+## ✅ r183 — THE FK LANDED, AND ONE CLAIM BELOW WAS WRONG (2026-09-14)
+
+`tenant_health_scores.tenant_id -> companies.id ON DELETE CASCADE`, migration
+`r183_tenant_health_scores_company_fk`. Applied to the LOCAL dev database as
+verification; James runs it wherever else it matters.
+
+### ⚠️ CORRECTION: "EXACTLY ONE HAS NO FOREIGN KEY" IS FALSE
+
+The entry below says exactly one table of 391 holds orphans AND exactly one has
+no foreign key — "the same table". **The first half is true. The second is not.**
+
+Re-enumerated 2026-09-14: of 391 (table, column) pairs carrying a
+`company_id`/`tenant_id`, **370 have an FK to `companies.id` and 21 do NOT.**
+
+`tenant_health_scores` is the only one of the 21 that had accumulated orphans.
+The other 20 are clean **today** — 14 are empty tables never exercised, and 6
+have rows but no orphans yet. ⚠️ The mechanism is identical and latent in all of
+them: `activity_log`, `agent_anomalies`, `ai_agent_runs`, `ai_company_insights`,
+`ai_name_suggestions`, `ai_pattern_alerts`, `ai_rescue_drafts`,
+`ai_upsell_insights`, `cash_flow_forecasts`, `company_migration_reviews`,
+`duplicate_reviews`, `extension_widgets`, `legacy_proof_photos`,
+`legacy_proof_versions`, `order_personalization_photos`, `platform_incidents`,
+`platform_notifications`, `ponder_engagement`, `user_ai_preferences`,
+`user_widget_layouts`.
+
+**r183 fixes the instance that fired. The class is 21 and is a separate ruling.**
+
+### Verified, not assumed
+
+- **Leaf claim, four ways:** FK catalog (nothing references it), column-name
+  sweep (three health-score-ish columns, all scalars — one is a `String(20)`
+  status defaulting to `"unknown"`), ORM relationships (none in either
+  direction), code grep across five name forms.
+- **Fails loudly on violations:** run with 1,368 orphans present, it raised
+  `ForeignKeyViolation` naming the constraint and the offending key, and left
+  the revision at `r182`. No pre-delete, no swallow.
+- **Both halves of the constraint:** deleting a company removes its scores
+  (CASCADE); inserting a score for a non-existent tenant is refused (INSERT).
+- **upgrade → downgrade → upgrade** against the populated database, clean.
+
+### ⚠️ The class is closed, demonstrated rather than argued
+
+Orphan growth per full-tree run, before and after:
+
+    before r183:  +1,364 / +1,366 / +1,364 / +1,368   (four runs)
+    after  r183:  0 / 0                                (two runs)
+
+⚠️ And the inverse was demonstrated by accident: dropping the constraint for
+**one test run** produced 2 orphans immediately, which then blocked re-adding it.
+
+### The tripwire after r183
+
+`orphaned_health_scores` was **deleted from `_LEAK_CEILING`, not set to zero**.
+The comparison reads `.get(k, 0)`, so a class with no entry tolerates no growth
+at all — the absence is stricter than a zero.
+
+What remains: **`global_workflows: 34`**, unaffected by r183 and measured at
+exactly +34 on six full-tree runs. Those rows have `company_id IS NULL`, so no
+company-scoped constraint can reach them; closing that needs fixture teardown.
+
+⚠️ Two tests in `test_responders.py` were **producing** the litter — passing a
+fabricated `tenant_id` into an incident whose responder then wrote a health
+score for it. They now use a real company. `platform_incidents.tenant_id` is one
+of the 21 unconstrained columns, which is why the fabricated id was accepted at
+the incident and refused one table downstream.
+
 ## ⚠️ TEST LITTER: A MISSING FOREIGN KEY, NOT A CLEANUP GAP (2026-09-14)
 
 **The cause is an absent constraint. The purge treats a symptom.** Recorded so the
