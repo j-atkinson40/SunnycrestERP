@@ -69,8 +69,17 @@ def trigger_job(
     }
     runner = direct_runners.get(body.job_type)
     if runner:
-        result = runner(db, current_user.company_id)
-        return result
+        outcome = runner(db, current_user.company_id)
+        # Shape preserved ADDITIVELY. Pre-migration this returned the summary dict
+        # (or `{"error": ...}`) at the top level; those keys still sit at the top
+        # level, with the outcome's own fields alongside. No consumer was found in
+        # the frontend, but this is a public route -- an additive change costs one
+        # line and removes the question.
+        response = {**outcome.detail, "state": outcome.state,
+                    "succeeded": outcome.succeeded, "failed": outcome.failed}
+        if outcome.reason is not None:
+            response["error"] = outcome.reason
+        return response
 
     # Scheduler-registered jobs (run via scheduler wrappers)
     from app.scheduler import JOB_REGISTRY

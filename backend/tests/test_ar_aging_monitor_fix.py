@@ -106,8 +106,8 @@ def test_a_datetime_due_date_no_longer_raises(db_session):
     invoice, before the `days_overdue <= 0` guard could skip anything."""
     _overdue(db_session, 100)
     result = run_ar_aging_monitor(db_session, TENANT)
-    assert "error" not in result, result
-    assert result["invoices_checked"] >= 1
+    assert result.reason is None, result
+    assert result.detail["invoices_checked"] >= 1
 
 
 def test_a_not_yet_due_invoice_is_skipped_not_crashed_on(db_session):
@@ -120,7 +120,7 @@ def test_a_not_yet_due_invoice_is_skipped_not_crashed_on(db_session):
     )
     db_session.add(inv); db_session.commit()
     result = run_ar_aging_monitor(db_session, TENANT)
-    assert "error" not in result
+    assert result.reason is None
     assert _alerts(db_session, "ar_aging_90", inv.id) == []
 
 
@@ -173,3 +173,56 @@ def test_two_invoices_in_one_band_get_one_alert_EACH(db_session):
     run_ar_aging_monitor(db_session, TENANT)
     assert len(_alerts(db_session, "ar_aging_90", a.id)) == 1
     assert len(_alerts(db_session, "ar_aging_90", b.id)) == 1
+
+
+# ── the abort path, with a NONZERO count ─────────────────────────────────
+
+
+def test_an_ABORT_reports_the_work_it_ALREADY_COMMITTED(db_session, monkeypatch):
+    """⚠️ THE CLAIM (c) COMMIT 2a RESTS ON, RUN RATHER THAN REASONED.
+
+    `create_alert` commits per alert. So a run that dies mid-loop has durable
+    rows behind it, and an `aborted` outcome that reported an implicit zero
+    would be a FALSE record rather than an incomplete one.
+
+    The existing abort test in test_reconciliation_matching_rework breaks the
+    read at the very top, so it can only ever assert zero — which is exactly the
+    value an unwired counter would also produce. This one lets work through
+    first, so the assertion discriminates.
+    """
+    for _ in range(3):
+        _overdue(db_session, 100)
+
+    from app.services import agent_service
+
+    real = agent_service.create_alert
+    calls = {"n": 0}
+
+    def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise RuntimeError("injected mid-loop failure")
+        return real(*a, **k)
+
+    monkeypatch.setattr(agent_service, "create_alert", flaky)
+
+    result = run_ar_aging_monitor(db_session, TENANT)
+
+    # Control that the break APPLIED — a marker count, not a green.
+    assert calls["n"] == 3, f"injection never fired: {calls['n']} calls"
+
+    assert result.state == "aborted"
+    assert result.reason == "injected mid-loop failure"
+
+    committed = (
+        db_session.query(AgentAlert)
+        .filter(AgentAlert.tenant_id == TENANT,
+                AgentAlert.alert_type.like("ar_aging%"))
+        .count()
+    )
+    # The reported count EQUALS the durable rows. Both halves matter: nonzero
+    # rules out an unwired counter, and equality rules out a counter that
+    # over-reports work the abort rolled back.
+    assert committed == 2, f"expected 2 committed before the injection, got {committed}"
+    assert result.detail["alerts_created"] == committed
+    assert result.succeeded >= committed > 0

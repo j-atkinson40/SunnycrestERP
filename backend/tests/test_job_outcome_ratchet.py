@@ -53,7 +53,7 @@ POPULATION: list[tuple[str, str]] = [
 
 #: ⚠️ LOWER THIS AS TARGETS MIGRATE. Never raise it. When it reaches 0, the
 #: wrapper stops accepting anything else (commit 3) and this ceiling is deleted.
-UNMIGRATED_CEILING = 13
+UNMIGRATED_CEILING = 10
 
 
 def _resolve(mod: str, name: str):
@@ -114,7 +114,13 @@ def test_a_MIGRATED_target_is_named_not_merely_counted(monkeypatch):
     green ratchet is evidence the detector discriminates rather than evidence it
     matches nothing.
     """
-    mod, name = POPULATION[0]
+    # Must pick a target that is CURRENTLY unmigrated -- POPULATION[0] was
+    # hardcoded, and the moment it migrated the patch stopped moving the count
+    # while the test still claimed to prove the detector discriminates. The
+    # control needs its own control: assert we actually found one to patch.
+    unmigrated_now = [(m, n) for m, n in POPULATION if not _returns_outcome(_resolve(m, n))]
+    assert unmigrated_now, "nothing left to patch -- delete this control at commit 3"
+    mod, name = unmigrated_now[0]
     module = importlib.import_module(mod)
 
     def _migrated(*a, **k):

@@ -13,6 +13,7 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.services.job_outcome import JobOutcome
 from app.models.agent import AgentActivityLog, AgentAlert, AgentCollectionSequence, AgentJob
 from app.models.customer import Customer
 from app.models.invoice import Invoice
@@ -117,9 +118,18 @@ def _aging_alert_exists(
     ).scalar()
 
 
-def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
+def run_ar_aging_monitor(db: Session, tenant_id: str) -> JobOutcome:
     """Check aging thresholds and create alerts for invoices crossing boundaries."""
     job = _create_job(db, tenant_id, "ar_aging_monitor")
+    # Hoisted above the `try` so the abort path can report committed work.
+    # `create_alert` commits per alert, so a run that dies mid-loop leaves
+    # durable rows that an implicit zero would understate. Initialised inside
+    # the try (as these were), they are unbound for the 21 lines before their
+    # assignment, and reading them in the handler would raise UnboundLocalError
+    # over the top of the real exception.
+    alerts_created = 0
+    sequences_started = 0
+
     try:
         now = date.today()
         # ⚠️ `Invoice.due_date` is DateTime(timezone=True) NOT NULL, and `now`
@@ -140,9 +150,6 @@ def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
             )
             .all()
         )
-
-        alerts_created = 0
-        sequences_started = 0
 
         # ⚠️ A SECOND BUG LIVED HERE, MASKED BY THE FIRST. All three branches
         # below read `inv.invoice_number`; the column is `Invoice.number`.
@@ -229,15 +236,26 @@ def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
                     )
                     alerts_created += 1
 
-        summary = {"invoices_checked": len(open_invoices), "alerts_created": alerts_created, "sequences_started": sequences_started}
+        detail = {"invoices_checked": len(open_invoices), "alerts_created": alerts_created, "sequences_started": sequences_started}
         log_activity(db, tenant_id, "ar_aging_monitor", f"Checked {len(open_invoices)} invoices, created {alerts_created} alerts", job.id)
-        _complete_job(db, job, summary)
-        return summary
+        _complete_job(db, job, detail)
+        # `succeeded` is durable artifacts created, summed across kinds so a run
+        # that produced only one kind still reads as `ok` rather than `no_work`.
+        # The per-kind breakdown stays in `detail`, so nothing is lost.
+        return JobOutcome.worked(succeeded=alerts_created + sequences_started, **detail)
 
     except Exception as e:
         _complete_job(db, job, error=str(e))
         logger.error(f"AR aging monitor failed for tenant {tenant_id}: {e}")
-        return {"error": str(e)}
+        # Counts survive the abort: `create_alert` commits per alert, so work
+        # done before the exception is durable. An implicit zero here would
+        # understate committed rows -- a false record, not an incomplete one.
+        return JobOutcome.aborted(
+            str(e),
+            succeeded=alerts_created + sequences_started,
+            alerts_created=alerts_created,
+            sequences_started=sequences_started,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -245,9 +263,17 @@ def run_ar_aging_monitor(db: Session, tenant_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def run_collections_sequence(db: Session, tenant_id: str) -> dict:
+def run_collections_sequence(db: Session, tenant_id: str) -> JobOutcome:
     """Process due collection sequences — generate email drafts for human review."""
     job = _create_job(db, tenant_id, "collections_sequence")
+    # Hoisted above the `try` so the abort path can report committed work.
+    # `create_alert` commits per alert, so a run that dies mid-loop leaves
+    # durable rows that an implicit zero would understate. Initialised inside
+    # the try (as these were), they are unbound for the 13 lines before their
+    # assignment, and reading them in the handler would raise UnboundLocalError
+    # over the top of the real exception.
+    drafts_created = 0
+
     try:
         now = datetime.now(timezone.utc)
         due_sequences = (
@@ -261,7 +287,6 @@ def run_collections_sequence(db: Session, tenant_id: str) -> dict:
             .all()
         )
 
-        drafts_created = 0
         for seq in due_sequences:
             invoice = db.query(Invoice).filter(Invoice.id == seq.invoice_id).first()
             customer = db.query(Customer).filter(Customer.id == seq.customer_id).first()
@@ -315,15 +340,25 @@ def run_collections_sequence(db: Session, tenant_id: str) -> dict:
                 action_url=f"/ar/collections/{seq.id}/review",
             )
 
-        summary = {"sequences_processed": len(due_sequences), "drafts_created": drafts_created}
+        detail = {"sequences_processed": len(due_sequences), "drafts_created": drafts_created}
         log_activity(db, tenant_id, "collections_sequence", f"Processed {len(due_sequences)} sequences, created {drafts_created} drafts", job.id)
-        _complete_job(db, job, summary)
-        return summary
+        _complete_job(db, job, detail)
+        # `succeeded` is durable artifacts created, summed across kinds so a run
+        # that produced only one kind still reads as `ok` rather than `no_work`.
+        # The per-kind breakdown stays in `detail`, so nothing is lost.
+        return JobOutcome.worked(succeeded=drafts_created, **detail)
 
     except Exception as e:
         _complete_job(db, job, error=str(e))
         logger.error(f"Collections sequence failed for tenant {tenant_id}: {e}")
-        return {"error": str(e)}
+        # Counts survive the abort: `create_alert` commits per alert, so work
+        # done before the exception is durable. An implicit zero here would
+        # understate committed rows -- a false record, not an incomplete one.
+        return JobOutcome.aborted(
+            str(e),
+            succeeded=drafts_created,
+            drafts_created=drafts_created,
+        )
 
 
 def _draft_collections_email(
@@ -402,7 +437,7 @@ def _collections_fallback_body(
 # ---------------------------------------------------------------------------
 
 
-def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
+def run_ap_upcoming_payments(db: Session, tenant_id: str) -> JobOutcome:
     """Check upcoming AP bills and create payment alerts.
 
     D-3/C-2 rewire (operator's call: REWRITE): pre-rework this imported the
@@ -423,6 +458,17 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
     from app.utils.company_name_resolver import resolve_vendor_name
 
     job = _create_job(db, tenant_id, "ap_upcoming_payments")
+    # Hoisted above the `try` so the abort path can report committed work.
+    # `create_alert` commits per alert, so a run that dies mid-loop leaves
+    # durable rows that an implicit zero would understate. Initialised inside
+    # the try (as these were), they are unbound for the 16 lines before their
+    # assignment, and reading them in the handler would raise UnboundLocalError
+    # over the top of the real exception.
+    alerts_created = 0
+    overdue_total = Decimal(0)
+    due_this_week = Decimal(0)
+    due_soon = []
+
     try:
         today = date.today()
         fourteen_days = today + timedelta(days=14)
@@ -438,11 +484,6 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
             )
             .all()
         )
-
-        alerts_created = 0
-        overdue_total = Decimal(0)
-        due_this_week = Decimal(0)
-        due_soon = []
 
         for bill in open_bills:
             vendor_name = resolve_vendor_name(bill.vendor)
@@ -500,15 +541,25 @@ def run_ap_upcoming_payments(db: Session, tenant_id: str) -> dict:
                 )
                 alerts_created += 1
 
-        summary = {"bills_checked": len(open_bills), "alerts_created": alerts_created}
+        detail = {"bills_checked": len(open_bills), "alerts_created": alerts_created}
         log_activity(db, tenant_id, "ap_upcoming_payments", f"Checked {len(open_bills)} bills", job.id)
-        _complete_job(db, job, summary)
-        return summary
+        _complete_job(db, job, detail)
+        # `succeeded` is durable artifacts created, summed across kinds so a run
+        # that produced only one kind still reads as `ok` rather than `no_work`.
+        # The per-kind breakdown stays in `detail`, so nothing is lost.
+        return JobOutcome.worked(succeeded=alerts_created, **detail)
 
     except Exception as e:
         _complete_job(db, job, error=str(e))
         logger.error(f"AP upcoming payments failed for tenant {tenant_id}: {e}")
-        return {"error": str(e)}
+        # Counts survive the abort: `create_alert` commits per alert, so work
+        # done before the exception is durable. An implicit zero here would
+        # understate committed rows -- a false record, not an incomplete one.
+        return JobOutcome.aborted(
+            str(e),
+            succeeded=alerts_created,
+            alerts_created=alerts_created,
+        )
 
 
 # ---------------------------------------------------------------------------

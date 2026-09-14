@@ -259,11 +259,11 @@ class TestAPUpcomingRewire:
 
         result = run_ap_upcoming_payments(db, co)
 
-        assert "error" not in result, f"agent failed: {result}"
+        assert result.reason is None, f"agent failed: {result}"
         # bills_checked = the 4 open-status bills in window (incl. zero-balance)
-        assert result["bills_checked"] == 4
+        assert result.detail["bills_checked"] == 4
         expected_alerts = 3 + (1 if today.weekday() == 0 else 0)
-        assert result["alerts_created"] == expected_alerts
+        assert result.detail["alerts_created"] == expected_alerts
 
         from app.models.agent import AgentAlert
         alerts = db.query(AgentAlert).filter(AgentAlert.tenant_id == co).all()
@@ -288,7 +288,15 @@ class TestAPUpcomingRewire:
 
         # The agent framework's loud-record contract: the job is FAILED with
         # the error recorded — never a green run with zero alerts.
-        assert "error" in result
+        assert result.reason is not None
+        assert result.state == "aborted"
+        # ⚠️ THIS ASSERTION IS THE CONTROL ON THE HOIST. The counters used to be
+        # initialised INSIDE the try, 16 lines after it opened; this test breaks
+        # the read at the very top, so reading `alerts_created` in the handler
+        # would have raised UnboundLocalError OVER THE TOP of the real exception.
+        # Zero here is a measured zero, not an absent one.
+        assert result.succeeded == 0
+        assert result.detail["alerts_created"] == 0
         from app.models.agent import AgentJob
         job = (db.query(AgentJob)
                .filter(AgentJob.tenant_id == co, AgentJob.job_type == "ap_upcoming_payments")
