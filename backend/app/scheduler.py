@@ -89,11 +89,23 @@ def _complete_job_run(run_id: str, status: str, duration: float, **kwargs):
 def _outcome_of(result):
     """A `JobOutcome` if the target returned one, else None.
 
-    ⚠️ COMMIT 1 OF 3 — INTRODUCED, NOT YET PRODUCED BY ANYTHING. No target
-    returns a `JobOutcome` today, so this path is dormant. It exists first
-    because the removal rule forbids the reverse order: a wrapper that refuses
-    the old shapes before its callers are migrated converts a latent ambiguity
-    into a nightly TypeError against live tenants.
+    ⚠️ THE `else None` IS PERMANENT DESIGN, NOT A MIGRATION WINDOW.
+
+    It was built as commit 1 of 3, with commit 3 intended to delete it and make
+    the wrapper REFUSE anything that is not a `JobOutcome`. That commit was
+    stopped and the tolerance was ruled permanent on 2026-09-14, because the
+    refusal's population is every wrapper caller (27) while the defect's
+    population was only the targets that SWALLOW (13). Refusing today would
+    raise TypeError nightly in 14 jobs that never had the defect.
+
+    The direction is held by `tests/test_wrapper_return_population_ratchet.py`
+    instead: the count of wrapper targets not returning a `JobOutcome` may only
+    shrink, and it derives that count from this module's call sites rather than
+    from a maintained list. A new wrapper call site either returns a
+    `JobOutcome` or moves a number.
+
+    ⚠️ Do not "finish the migration" by deleting this branch. Fourteen callers
+    depend on it and eleven of them are outside item (c) entirely.
     """
     from app.services.job_outcome import JobOutcome
 
@@ -119,12 +131,18 @@ def _reported_error(result) -> str | None:
     since 2026-07-16.
 
     ⚠️ ONLY AN EXPLICIT MARKER COUNTS. A falsy return, `None` included, is
-    still treated as success here. That is deliberate and it is the REMAINING
-    gap, not an oversight: eight other targets swallow per-item inside a loop,
-    which is correct tolerance for one bad row and silent for a broken world —
-    a loop in which every item fails still returns normally. Closing that needs
-    targets to report a skipped-count and a structured result that makes silent
-    success unexpressible. Separate build; do not widen this function into it.
+    still treated as success here.
+
+    ⚠️ SUPERSEDED 2026-09-14. This used to call that "the REMAINING gap" and
+    point at a separate build to close it. Item (c) was that build and it is
+    CLOSED: all thirteen swallowing targets now return a `JobOutcome`, and none
+    of them reaches this branch any more — `_outcome_of` answers first.
+
+    What still reaches here is the fourteen wrapper targets that RAISE on
+    failure rather than swallowing. They never had the silent-success defect, so
+    treating their falsy returns as success is correct rather than tolerated.
+    Widening this function to treat `None` as failure would break them and fix
+    nothing. Do not do it; see the ratchet for what holds the line instead.
     """
     outcome = _outcome_of(result)
     if outcome is not None:

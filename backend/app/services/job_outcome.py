@@ -8,10 +8,17 @@ Tolerance built for one bad row is silent for a broken world.
 ⚠️ THE STATE IS DERIVED, NEVER SUPPLIED
 
 There is no `state` field. `ok` alongside a nonzero failure count is not a
-combination a wrapper has to reject — it CANNOT BE WRITTEN. That is the removal
-the item asked for rather than validation against it, and it means no author
+combination a wrapper has to reject — it CANNOT BE WRITTEN. It means no author
 ever decides which state their run is in: `ok` and `completed_with_errors` come
 from the same constructor, separated by the data.
+
+⚠️ THIS IS THE REMOVAL THE ITEM ASKED FOR, AND IT IS THE ONLY ONE THAT SHIPPED.
+The plan also called for the wrappers to REFUSE non-`JobOutcome` returns. That
+was stopped on 2026-09-14: the refusal's population is every wrapper caller,
+not the targets that carried the defect. The removal that mattered happened
+here, in the type — inside this type, a clean run with failures is
+unexpressible. The wrapper-level refusal would only have restated it for
+callers that already cannot express it.
 
 ──────────────────────────────────────────────────────────────────────────
 ⚠️ `skipped` APPEARS NOWHERE, DELIBERATELY

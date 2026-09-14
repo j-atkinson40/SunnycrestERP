@@ -5,10 +5,28 @@
 starts at the full population and each migration lowers it.
 
 WHY A CEILING AND NOT AN ASSERTION OF ZERO. The removal rule: you cannot remove
-a method while its callers still use it. A wrapper that refuses the old shapes
-before the thirteen are migrated turns a latent ambiguity into a nightly
-TypeError against live tenants. So the direction is enforced first, the callers
-move second, and the refusal lands last.
+a method while its callers still use it. So the direction is enforced first and
+the callers move second.
+
+⚠️ THE THIRD STEP DID NOT HAPPEN, AND THE REASON IS THE MOST USEFUL THING IN
+THIS FILE. This paragraph used to end "and the refusal lands last." It does not
+land. The refusal was specified against "the enumeration says zero unmigrated"
+without naming WHICH enumeration, and the two differ because they answer
+different questions:
+
+    (c)'s population   = targets that SWALLOW            13   this file
+    the refusal's      = every caller of the wrapper     27   test_removal_
+                                                              precondition_ratchet
+
+Fourteen wrapper callers RAISE on failure. They never had the silent-success
+defect and return ints, dicts and None perfectly correctly. Refusing
+non-JobOutcome returns would have raised TypeError in all fourteen, nightly,
+against live tenants — the exact outage the sequencing rule above exists to
+prevent, reached by satisfying its precondition with the wrong measurement.
+
+Ruled 2026-09-14: the tolerance is permanent design. The direction is held by a
+ratchet whose population is DERIVED from scheduler.py's call sites rather than
+declared in a list — because a declared list is what failed here.
 
 THE POPULATION IS 13, ON TWO DIFFERENT GROUNDS. Twelve targets SWALLOW, so "all
 items failed" is indistinguishable from "nothing to do" — that is (c)'s defect.
@@ -51,8 +69,18 @@ POPULATION: list[tuple[str, str]] = [
     ("app.services.workflow_scheduler", "check_time_based_workflows"),
 ]
 
-#: ⚠️ LOWER THIS AS TARGETS MIGRATE. Never raise it. When it reaches 0, the
-#: wrapper stops accepting anything else (commit 3) and this ceiling is deleted.
+#: ⚠️ AT 0 AND STAYING THERE. Item (c) is CLOSED: every target that swallows
+#: returns a `JobOutcome`.
+#:
+#: This used to read "when it reaches 0, the wrapper stops accepting anything
+#: else (commit 3) and this ceiling is deleted." ⚠️ IT REACHED 0 AND THAT DID
+#: NOT FOLLOW. `POPULATION` below is the targets that SWALLOW; the wrapper's
+#: callers are a strictly larger set of 27, fourteen of which raise instead and
+#: never had the defect. Refusing non-JobOutcome returns would have raised
+#: TypeError nightly in those fourteen. Ruled 2026-09-14: the tolerance is
+#: permanent design, held by test_wrapper_return_population_ratchet.py.
+#:
+#: This ceiling stays at 0 as a regression guard on (c)'s own population.
 UNMIGRATED_CEILING = 0
 
 
@@ -234,6 +262,11 @@ def test_global_records_completed_with_errors_and_counts(recorded):
 
 
 def test_global_still_accepts_the_OLD_shapes(recorded):
-    """Commit 1 accepts both. Refusing the old shape is commit 3."""
+    """The wrapper accepts both, permanently.
+
+    Was: "Commit 1 accepts both. Refusing the old shape is commit 3."
+    Commit 3 was stopped 2026-09-14 -- the refusal's population is all 27
+    wrapper callers, not (c)'s 13. This is now a specification.
+    """
     sched._run_global("T", lambda db: {"generated": 3})
     assert recorded["status"] == "completed"

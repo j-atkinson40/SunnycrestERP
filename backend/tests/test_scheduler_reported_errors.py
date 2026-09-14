@@ -10,12 +10,19 @@ on 2026-09-11. A fixture derived from reading the WRAPPER would have been the
 same reading twice and would have proved nothing about the shipped path.
 
 ⚠️ SUPERSEDED 2026-09-14 by (c) commits 2a and 2c: all four now return
-`JobOutcome.aborted(...)`. These tests are RETAINED and still green, because
-until commit 3 the wrapper must keep accepting the old shapes — a wrapper that
-refuses them before its callers have all moved converts a latent ambiguity into
-a nightly TypeError against live tenants. They are the pin on that tolerance,
-not a claim about what the targets currently return. Commit 3 deletes them with
-the tolerance.
+`JobOutcome.aborted(...)`. These tests are RETAINED and still green, and they
+are NOT a claim about what those four currently return.
+
+⚠️ THEY PIN A PERMANENT TOLERANCE, NOT A MIGRATION WINDOW. An earlier version
+of this paragraph said commit 3 would delete them along with the wrapper's
+acceptance of old shapes. Commit 3 was stopped and the tolerance was ruled
+DESIGN on 2026-09-14: the refusal's population is all 27 wrapper callers, while
+the defect's was the 13 that swallow. Fourteen callers raise on failure, never
+had the defect, and return ints/dicts/None perfectly correctly.
+
+So the wrapper keeps accepting those shapes indefinitely, and these tests are
+what stops that acceptance drifting. Read them as a specification, not as debt.
+`tests/test_wrapper_return_population_ratchet.py` holds the population line.
 """
 from __future__ import annotations
 
@@ -48,7 +55,7 @@ def test_a_non_dict_return_is_not_an_error():
         assert sch._reported_error(v) is None
 
 
-def test_NONE_IS_STILL_SUCCESS_and_that_is_the_remaining_gap():
+def test_NONE_IS_STILL_SUCCESS_and_that_is_DELIBERATE():
     """⚠️ DELIBERATE, AND ASSERTED SO IT STAYS DELIBERATE.
 
     Eight targets swallowed per-item inside a loop and returned nothing. That
@@ -59,15 +66,23 @@ def test_NONE_IS_STILL_SUCCESS_and_that_is_the_remaining_gap():
     RED at the commit migrating the last None-returning target, and be deleted
     there. That prediction was WRONG, and the reason is worth keeping: this
     asserts on `_reported_error(None)`, a PURE HELPER. It is not coupled to the
-    population at all. Every target has now migrated — `generate_draft_invoices`
-    was the last `-> None` one, at (c) 2c — and this test did not move.
+    population at all. Every swallowing target has now migrated —
+    `generate_draft_invoices` was the last `-> None` one, at (c) 2c — and this
+    test did not move.
 
     A test that was expected to fail and did not is the same shape as a break
     test that comes back green: the prediction was about the wrong mechanism.
 
-    The assertion stays until commit 3, which removes the wrapper's tolerance
-    for non-JobOutcome returns. Until then, `None` reaching `_reported_error`
-    remains possible from unmigrated code paths outside this population.
+    ⚠️ AND THE TOLERANCE IT PINS IS NOW DESIGN, NOT DEBT. The falsy-is-success
+    branch stays permanently. Fourteen wrapper targets RAISE on failure instead
+    of swallowing; they never had the silent-success defect, and their falsy
+    returns are correct. Widening `_reported_error` to treat `None` as failure
+    would break those fourteen and fix nothing — the eight loops this docstring
+    once pointed at are migrated and no longer reach here.
+
+    This test exists so that widening it is a decision someone makes against a
+    red test rather than a tweak. That was always its job; what changed is that
+    there is no longer a commit pending to delete it.
     """
     assert sch._reported_error(None) is None
 

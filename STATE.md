@@ -2,6 +2,67 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ✅ ITEM (c) CLOSED — silent success removed at the TYPE, wrapper tolerance kept as DESIGN (2026-09-14)
+
+**2026-09-14.** Thirteen scheduled-job targets that swallowed per-item failures
+can no longer report a clean run when everything failed. `JobOutcome` derives its
+state, so `ok` with a nonzero failure count is not rejected — it is
+**unexpressible**.
+
+### ⚠️ The wrapper-level refusal was planned, specified, and ABANDONED. Read this before "finishing" it.
+
+The plan was three commits, ending with the wrappers refusing anything that is
+not a `JobOutcome`. Commit 3 was stopped. Its precondition — *"the enumeration
+says zero unmigrated"* — **did not name which enumeration**, and the two differ
+because they answer different questions:
+
+| | population | count |
+|---|---|---|
+| the **defect** (c) fixed | targets that **swallow** | 13 |
+| the **refusal** would bind | every **caller of the wrapper** | 27 |
+
+Fourteen wrapper callers **raise** on failure instead of swallowing. They never
+had the silent-success defect and return ints, dicts and `None` correctly.
+Refusing non-`JobOutcome` returns would have raised `TypeError` in all fourteen,
+nightly, against live tenants — the exact latent-to-live conversion the
+sequencing rule exists to prevent, reached by satisfying its precondition with
+the wrong measurement.
+
+**Ruling: the tolerance is permanent design, not debt.** Migrating fourteen jobs
+that have no defect, to satisfy a refusal aimed at a defect they do not have, is
+churn with a nightly `TypeError` as its failure mode; eleven are outside (c)
+entirely. A *narrower* refusal is worse than none — a rule with a carve-out must
+name what is carved out, and that name is a declared population, which is the
+thing that failed here.
+
+⚠️ **Do not delete `_outcome_of`'s `else None`, and do not widen
+`_reported_error` to treat `None` as failure.** Both are load-bearing for the
+fourteen. `test_NONE_IS_STILL_SUCCESS_and_that_is_DELIBERATE` pins it as a
+specification.
+
+### What holds the line instead
+
+`backend/tests/test_wrapper_return_population_ratchet.py` — a standing bound, not
+a countdown. **It DERIVES its population** from `scheduler.py`'s wrapper call
+sites rather than declaring a list, because the declared list is precisely what
+failed: `POPULATION` was right about (c) and was then read as though it described
+the wrappers' callers. A new wrapper call site now either returns a `JobOutcome`
+or moves a number, with no list for anyone to forget.
+
+Cross-checked at **27 by two methods that fail differently** — this file's AST
+walk, and `test_scheduler_wrapper_ratchet`'s runtime registration. That agreement
+is why this population is trustworthy where the previous three were not.
+
+### Also landed under (c)
+
+- `job_runs.status` gained `completed_with_errors` — see the entry below.
+- A live nightly crash fixed: `run_discount_expiry_monitor` died on
+  `Decimal * float` outside its try, plus a silent `or` that read a real `0.00`
+  discount as absent. Found by RUNNING a migrated path, not by reading it.
+- `check_time_based_workflows` stopped raising on a partial sweep; it reports
+  `completed_with_errors`, which is the state that did not exist when the raise
+  was written.
+
 ## ⚠️ `job_runs.status` GAINED `completed_with_errors` ON 2026-09-14
 
 **2026-09-14.** Written for the first time by (c) commit 2b. Before that date no

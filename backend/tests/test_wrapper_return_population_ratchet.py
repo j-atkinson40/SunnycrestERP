@@ -1,4 +1,4 @@
-"""(c) commit 3's PRECONDITION — and it does not hold yet.
+"""The wrapper-return population: derived, bounded, and permanently tolerated.
 
 ⚠️ THE POPULATION FOR THE REMOVAL IS NOT (c)'s POPULATION, AND CONFLATING THEM
 WOULD HAVE CAUSED A LIVE OUTAGE.
@@ -22,10 +22,24 @@ failure rather than swallowing, so they never had the silent-success defect.
 That says nothing about what they RETURN, and the refusal is about what they
 return.
 
-Enforcing the refusal today would raise TypeError in fourteen scheduled jobs,
+Enforcing the refusal would raise TypeError in fourteen scheduled jobs,
 nightly, against live tenants -- the exact conversion of a latent defect into a
-live outage that CLAUDE.md's sequencing rule exists to prevent. The direction is
-enforced here instead; the removal waits for the ceiling to reach 0.
+live outage that CLAUDE.md's sequencing rule exists to prevent.
+
+⚠️ RULED 2026-09-14: THE REFUSAL IS NOT DEFERRED, IT IS ABANDONED, AND THE
+TOLERANCE IS DESIGN.
+
+Migrating fourteen jobs that have no defect, to satisfy a refusal whose purpose
+was to fix a defect they do not have, is churn with a nightly TypeError as its
+failure mode -- and eleven of them are outside item (c) entirely. A NARROWER
+refusal is worse than none: a rule with a carve-out has to name what is carved
+out, and that name is a declared population, which is the thing that just
+failed.
+
+So this file is not a countdown. The ceiling is a STANDING BOUND: it may only
+shrink, it is not required to reach 0, and nothing is waiting on it. What it
+buys is that the population cannot GROW silently -- every new wrapper call site
+either returns a `JobOutcome` or moves a number.
 
 ⚠️ THIS RATCHET DERIVES ITS POPULATION RATHER THAN DECLARING IT. The declared
 list is what went wrong: `POPULATION` was right about (c) and was then read as
@@ -45,8 +59,9 @@ import pytest
 SCHEDULER = pathlib.Path(__file__).resolve().parents[1] / "app" / "scheduler.py"
 WRAPPERS = ("_run_per_tenant", "_run_global")
 
-#: ⚠️ LOWER AS TARGETS MIGRATE. Never raise. At 0, commit 3 may remove the
-#: wrappers' tolerance for non-JobOutcome returns -- and this file goes with it.
+#: ⚠️ A STANDING BOUND, NOT A COUNTDOWN. May only shrink; is not required to
+#: reach 0. Nothing is waiting on this number, and reaching 0 does NOT
+#: authorise removing the wrappers' tolerance -- see the ruling above.
 REMOVAL_CEILING = 14
 
 #: Independent cross-check: the scheduler-wrapper ratchet measured 27 jobs
@@ -170,7 +185,7 @@ def test_the_detector_DISCRIMINATES(monkeypatch):
 
 def test_the_two_POPULATIONS_are_different_and_that_is_the_finding():
     """⚠️ THE ENTRY POINT FOR ANYONE WHO READS `UNMIGRATED_CEILING == 0` AND
-    CONCLUDES THE REMOVAL IS SAFE.
+    CONCLUDES THE WRAPPERS CAN NOW REFUSE NON-JobOutcome RETURNS.
 
     (c)'s population is targets that SWALLOW. This file's population is targets
     the WRAPPER CALLS. The first is a strict subset of the second, and the
@@ -200,7 +215,7 @@ def test_the_two_POPULATIONS_are_different_and_that_is_the_finding():
     assert len(wrapper_names) > len(swallowers), (
         f"{len(wrapper_names)} wrapper targets vs {len(swallowers)} swallowers"
     )
-    assert len(_unmigrated()) > 0, (
-        "if this is 0 the removal's precondition now holds -- delete this file "
-        "with commit 3"
-    )
+    # ⚠️ NOT asserted as > 0. This file outlives the gap: if every wrapper
+    # target ever returns a JobOutcome the tolerance STILL stays, because
+    # removing it buys nothing and costs fourteen callers. The ratchet keeps
+    # holding the population line for whatever is added next.
