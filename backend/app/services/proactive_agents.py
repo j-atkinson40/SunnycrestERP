@@ -970,11 +970,30 @@ def run_discount_expiry_monitor(db: Session, company_id: str) -> JobOutcome:
             customer = db.query(Customer).filter(Customer.id == inv.customer_id).first()
             cust_name = customer.name if customer else "Unknown"
             discount_val = float(inv.total) * 0.05
+            # ⚠️ WAS `float(inv.discounted_total or inv.total * 0.95)`, TWO BUGS
+            # IN ONE EXPRESSION.
+            #
+            # 1. `inv.total * 0.95` is Decimal * float and RAISES TypeError.
+            #    `total` is NUMERIC(12,2); `discounted_total` is NUMERIC(10,2)
+            #    NULLABLE, so the fallback fires whenever it is null -- and it
+            #    sat OUTSIDE the try below, so it killed the whole nightly job
+            #    for any tenant with exactly one invoice in a deadline group.
+            #    Same class as the date-minus-datetime bug that cost ar_aging
+            #    163 runs: mixed types in an unguarded expression.
+            #
+            # 2. `or` treats a legitimate discounted_total of 0.00 as absent and
+            #    silently substitutes 95% of the total -- a wrong number with no
+            #    error. `is not None` is the correct test for a nullable column.
+            discounted = (
+                float(inv.discounted_total)
+                if inv.discounted_total is not None
+                else float(inv.total) * 0.95
+            )
             title = f"Discount expires {urgency}: {cust_name}"
             message = (
                 f"Invoice #{inv.number} for ${float(inv.total):.2f} has an early payment "
                 f"discount of ${discount_val:.2f} expiring {urgency}. "
-                f"If {cust_name} pays ${float(inv.discounted_total or inv.total * 0.95):.2f} "
+                f"If {cust_name} pays ${discounted:.2f} "
                 f"by {expiry_date.strftime('%B %d')}, they save ${discount_val:.2f}."
             )
         else:
