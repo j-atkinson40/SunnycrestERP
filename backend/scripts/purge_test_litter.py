@@ -246,6 +246,27 @@ def main() -> int:
         n = _write_restore(conn, canonical, args.restore_file)
         print(f"\nrestore file: {args.restore_file}  ({n} rows)")
 
+        # ⚠️ THE FAIL-SAFE IS NOW BY DESIGN, NOT BY ORDERING.
+        #
+        # The first --apply run raised between writing the restore file and the
+        # first DELETE, so nothing was lost — but that was the ACCIDENT of where
+        # the error happened to land, not a property of the script. Had the
+        # survey sat inside the write block, the same error arrives mid-delete
+        # with a partial restore file and no way to tell what is missing.
+        #
+        # So the guarantee is made explicit: the restore file must account for
+        # EVERY row the delete will remove, counted from the same survey the
+        # delete uses. If it does not, nothing is deleted.
+        expected = (
+            s["orphans"] + s["workflows"] + s["steps_cascade"]
+            + sum(k for _, _, k in s["blocking"])
+        )
+        if n != expected:
+            print(f"REFUSING: restore file holds {n} rows but the delete will "
+                  f"remove {expected}. Nothing deleted.")
+            return 5
+        print(f"  covers all {expected} rows the delete will remove — verified")
+
         # ⚠️ END THE READ TRANSACTION BEFORE OPENING THE WRITE ONE.
         # SQLAlchemy AUTOBEGINS a transaction on the first read, so `conn.begin()`
         # here raises InvalidRequestError — which it did, after the restore file

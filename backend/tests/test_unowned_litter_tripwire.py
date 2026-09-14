@@ -31,22 +31,52 @@ def db():
 # ── control 1: the counter sees a real population ────────────────────────
 
 
-def test_the_counter_SEES_a_nonempty_population():
+def test_the_counter_CAN_SEE_each_class_by_seeding_one(db):
     """⚠️ CONTROL. A counter matching nothing satisfies "did not grow" forever.
 
-    Both classes are non-empty on this database today. If the purge has been
-    run and both are legitimately zero, this test must be replaced by the
-    ceiling it makes possible — NOT deleted, which would leave the tripwire
-    unverified.
+    ⚠️ ITS FIRST VERSION ASSERTED THE COUNTER CURRENTLY READS NON-ZERO, and told
+    the reader that a zero meant the purge had run and the tripwire should become
+    a ceiling of 0. BOTH HALVES WERE WRONG. It conflated "the instrument works"
+    with "there is litter right now" — so it went red the moment the purge
+    succeeded, which is the one moment the instrument was most obviously fine.
+    And its advice was wrong: the purge clears the STOCK, not the FLOW. The next
+    full run puts +34 and +1,364 back, so a ceiling of 0 on the absolute count
+    is unreachable while the fixtures leak.
+
+    This version proves CAPABILITY instead of observing state: seed one row in
+    each class, confirm each is counted, remove them. It holds at zero litter and
+    at sixty thousand.
     """
-    counts = _litter_counts()
-    assert counts is not None, "no database — the control cannot run"
-    assert set(counts) == {"orphaned_health_scores", "global_workflows"}
-    assert sum(counts.values()) > 0, (
-        f"both classes read zero: {counts}. Either the purge has run — in which "
-        "case convert this tripwire to a ceiling of 0, which is stronger — or "
-        "the predicates stopped matching and the tripwire is now blind."
-    )
+    before = _litter_counts()
+    assert before is not None, "no database — the control cannot run"
+    assert set(before) == {"orphaned_health_scores", "global_workflows"}
+    assert all(isinstance(v, int) for v in before.values())
+
+    wf_id = str(uuid.uuid4())
+    hs_id = str(uuid.uuid4())
+    ghost_tenant = str(uuid.uuid4())  # deliberately not a company
+    db.execute(text(
+        "INSERT INTO workflows (id, name, tier, scope, trigger_type, is_active, "
+        "is_system, created_at) VALUES (:i, :n, 1, 'core', 'manual', true, true, now())"),
+        {"i": wf_id, "n": f"SEES-CONTROL-{wf_id[:8]}"})
+    db.execute(text(
+        "INSERT INTO tenant_health_scores (id, tenant_id, created_at) "
+        "VALUES (:i, :t, now())"), {"i": hs_id, "t": ghost_tenant})
+    db.commit()
+    try:
+        after = _litter_counts()
+        assert after["global_workflows"] == before["global_workflows"] + 1, (
+            "the counter did not see a seeded global workflow"
+        )
+        assert after["orphaned_health_scores"] == before["orphaned_health_scores"] + 1, (
+            "the counter did not see a seeded orphaned health score"
+        )
+    finally:
+        db.execute(text("DELETE FROM workflows WHERE id = :i"), {"i": wf_id})
+        db.execute(text("DELETE FROM tenant_health_scores WHERE id = :i"), {"i": hs_id})
+        db.commit()
+    # The control must not itself leak — it would trip the tripwire it tests.
+    assert _litter_counts() == before
 
 
 def test_the_predicate_EXCLUDES_rows_that_are_not_litter(db):

@@ -42,6 +42,17 @@ So this is not done. It is a floor reset, and it will need repeating until the
 fixtures gain teardown and the FK lands. The tripwire's delta is what measures
 the flow; the numbers above measure a moment.
 
+⚠️ Run TWICE on 2026-09-14 — the second time to clear the residue the first run's
+own verification had regrown. Leak rate measured across four full runs:
+**+34 global workflows every time**, and orphaned health scores at
+**+1,364 / +1,366 / +1,364 / +1,368**.
+
+⚠️ `test_workflow_fork_latency` fails in isolated runs of its file with
+p50 = 7.1ms against a 200ms budget and p99 = 731.2ms against 500 — **while its own
+max is 412.2ms.** One outlier in 20 samples extrapolated past the data. It appears
+in none of the five full-tree failure sets measured today. That is the p99
+extrapolation defect, not a latency problem, and it belongs to the budget item.
+
 ## ⚠️ TEST LITTER: A MISSING FOREIGN KEY, NOT A CLEANUP GAP (2026-09-14)
 
 **The cause is an absent constraint. The purge treats a symptom.** Recorded so the
