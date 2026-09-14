@@ -2,6 +2,74 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ EVERY p99 IN THE BACKEND LATENCY SUITE IS AN EXTRAPOLATION (2026-09-14)
+
+**2026-09-14. Measured: 15 of 15 latency files, no exceptions.** Each computes
+`statistics.quantiles(durations, n=100)[-1]` over a sample of **10 to 50**
+points. With fewer than 100 samples the 99th cut point is always **beyond the
+largest observed value** — Python's default `method="exclusive"` assumes the
+sample under-covers the tails and projects past them.
+
+| n | files |
+|---|---|
+| 10 | briefing_generation · nl_creation (per entity) |
+| 20 | ai_question · saved_view_preview · workflow_scope_phase8a |
+| 24 | peek · quote_preview · command_bar_portal |
+| 30 | cash_receipts_triage · phase8c_triage · phase8d_triage · safety_program_triage · triage |
+| 50 | command_bar · saved_view_execute |
+
+### The worked instance, reproduced
+
+`test_cash_receipts_triage_latency` failed a full-tree run reporting
+`p99=738.9ms` against a 300ms budget — **while reporting `max=445.8ms` in the
+same line.** A p99 above the maximum is the tell.
+
+Reconstructed from 29 fast samples plus one slow one at n=30:
+
+```
+quantiles(n=100)[-1]                  = 740.6 ms   ← what the gate asserts
+max(data)                             = 445.8 ms
+quantiles(..., method="inclusive")[-1]= 321.9 ms
+nearest-rank 99th                     =  18.5 ms
+```
+
+**740.6 reconstructed vs 738.9 observed.** The gate fires on ONE slow sample in
+thirty, inflated ~1.7× past the worst thing that actually happened.
+
+### Two independent causes, same symptom
+
+1. **The metric extrapolates** (above). Structural, present since these gates
+   were written, affects all 15.
+2. **The test database grows across repeated full-suite runs**, which makes an
+   occasional slow sample more likely. ⚠️ This is why it reads as
+   *intermittency*: the number gets worse across a working day and better after
+   a database reset. A gate that passes in the morning and fails at 6pm on
+   unchanged code is this, not a regression.
+
+They compose. Neither is visible in the reported number.
+
+### What this does NOT say
+
+⚠️ **It does not say the gates are worthless or that the budgets are wrong.**
+p50 is computed from the same call and is sound — `cash_receipts` sits at
+19ms against a 100ms target, 5× headroom. The p50 half of every gate is
+evidence. Only the p99 half is a projection.
+
+⚠️ **It does not say latency is fine.** A one-in-thirty sample at 445ms on a
+100ms-p50 endpoint is a real tail worth explaining. The finding is that the
+NUMBER asserted is not the number observed, not that there is nothing there.
+
+### Before changing anything
+
+The fix is not obviously "switch to `method='inclusive'`" — that still
+interpolates, just without projecting past the data. A nearest-rank 99th over
+n=30 is the 30th-fastest of 30, i.e. the max, which makes the gate a max-check
+under a p99 name. Either raise n to >=100 per gate (cost: suite time) or assert
+on an honest statistic and rename it. **Both are decisions, not cleanups.**
+
+⚠️ Any such change alters 15 BLOCKING gates at once and must not ride inside an
+unrelated commit.
+
 ## ✅ ITEM (c) CLOSED — silent success removed at the TYPE, wrapper tolerance kept as DESIGN (2026-09-14)
 
 **2026-09-14.** Thirteen scheduled-job targets that swallowed per-item failures
