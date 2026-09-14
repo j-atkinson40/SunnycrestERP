@@ -31,6 +31,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.services.job_outcome import JobOutcome
+
 logger = logging.getLogger(__name__)
 
 #: Provenance for every task this raises. `anomaly_detection` rather than
@@ -145,7 +147,7 @@ def _open_finding_codes(db: Session, tenant_id: str) -> set[str]:
 
 def raise_tasks_for_health_findings(
     db: Session, tenant_id: str, *, created_by_user_id: str | None = None
-) -> dict[str, Any]:
+) -> JobOutcome:
     """Run the health check and raise a task per actionable finding.
 
     ⚠️ RUNS THE CHECK. It deliberately does not read `GET /reports/audit-health`,
@@ -235,11 +237,16 @@ def raise_tasks_for_health_findings(
 
     db.commit()
 
-    return {
-        "tenant_id": tenant_id,
-        "check_date": check_date,
-        "created": created,
-        "suppressed": suppressed,
-        "failed": failed,
-        "overall_score": result["overall_score"],
-    }
+    # ⚠️ `failed` RENAMED to `failed_codes` in the detail. It holds a list of
+    # finding codes; the outcome's own `failed` is an int. Two different things
+    # were sharing one name, and the kwarg collision is what surfaced it.
+    return JobOutcome.worked(
+        succeeded=len(created),
+        failed=len(failed),
+        tenant_id=tenant_id,
+        check_date=check_date,
+        created=created,
+        suppressed=suppressed,
+        failed_codes=failed,
+        overall_score=result["overall_score"],
+    )

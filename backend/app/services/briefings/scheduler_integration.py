@@ -51,6 +51,8 @@ from app.services.briefings.generator import (
 from app.services.briefings.preferences import get_preferences
 from app.services.briefings.types import BriefingType
 
+from app.services.job_outcome import JobOutcome
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,7 +63,7 @@ SWEEP_WINDOW_MINUTES = 15  # matches CronTrigger(minute="*/15")
 # ── Public entry ────────────────────────────────────────────────────
 
 
-def sweep_briefings_to_generate(db: Session) -> dict[str, Any]:
+def sweep_briefings_to_generate(db: Session) -> JobOutcome:
     """Run one sweep pass.
 
     Called by `scheduler.py::job_briefing_sweep` every 15 minutes.
@@ -138,7 +140,9 @@ def sweep_briefings_to_generate(db: Session) -> dict[str, Any]:
                 stats["errors"] += 1
 
     logger.info("briefing sweep: %s", stats)
-    return stats
+    return JobOutcome.worked(
+        succeeded=stats["briefings_generated"], failed=stats["errors"], **stats
+    )
 
 
 # ── Helpers ─────────────────────────────────────────────────────────

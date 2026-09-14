@@ -154,7 +154,7 @@ _IN_WINDOW = datetime(2026, 4, 21, 14, 5, 0, tzinfo=timezone.utc)
 
 
 class TestPairIsolation:
-    def test_one_pair_failure_isolated_sweep_completes_then_raises(
+    def test_one_pair_failure_isolated_sweep_COMPLETES_WITH_ERRORS(
         self, db_session, caplog
     ):
         """The load-bearing case: two tenant-scoped workflows both due to
@@ -186,10 +186,19 @@ class TestPairIsolation:
                     "datetime",
                     _FrozenDatetime(_IN_WINDOW),
                 )
-                with pytest.raises(RuntimeError, match="failed to fire"):
-                    workflow_scheduler.check_time_based_workflows()
+                outcome = workflow_scheduler.check_time_based_workflows()
 
-        # Isolation: the good pair fired despite the bad pair raising.
+        # ⚠️ THIS USED TO ASSERT `pytest.raises(RuntimeError)`. (c) commit 2b
+        # gave the partial sweep its own state instead. The three properties
+        # this test actually protects — isolation, a nonzero error count, and a
+        # loud per-pair log — are unchanged; only the CHANNEL changed, from an
+        # exception to a state the wrapper can record.
+        assert outcome.state == "completed_with_errors"
+        assert outcome.failed == 1
+        assert outcome.succeeded >= 1, "the good pair still fired"
+        assert outcome.detail["start_errors"] == 1
+
+        # Isolation: the good pair fired despite the bad pair failing.
         assert _count_scheduled_runs(db_session, good_wf, tenant_id) == 1
         assert _count_scheduled_runs(db_session, bad_wf, tenant_id) == 0
         # Recorded loudly, with the failing pair's identity.
@@ -217,8 +226,8 @@ class TestPairIsolation:
             )
             summary = workflow_scheduler.check_time_based_workflows()
 
-        assert summary["start_errors"] == 0
-        assert summary["scheduled_fired"] >= 1
+        assert summary.detail["start_errors"] == 0
+        assert summary.detail["scheduled_fired"] >= 1
         assert _count_scheduled_runs(db_session, wf_id, tenant_id) == 1
 
     def test_expected_non_fire_is_not_a_start_error(self, db_session):
@@ -242,5 +251,5 @@ class TestPairIsolation:
             )
             summary = workflow_scheduler.check_time_based_workflows()
 
-        assert summary["start_errors"] == 0
+        assert summary.detail["start_errors"] == 0
         assert _count_scheduled_runs(db_session, wf_id, tenant_id) == 0

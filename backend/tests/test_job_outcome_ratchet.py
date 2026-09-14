@@ -53,7 +53,7 @@ POPULATION: list[tuple[str, str]] = [
 
 #: ⚠️ LOWER THIS AS TARGETS MIGRATE. Never raise it. When it reaches 0, the
 #: wrapper stops accepting anything else (commit 3) and this ceiling is deleted.
-UNMIGRATED_CEILING = 10
+UNMIGRATED_CEILING = 3
 
 
 def _resolve(mod: str, name: str):

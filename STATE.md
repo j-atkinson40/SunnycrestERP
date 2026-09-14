@@ -2,6 +2,59 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ `job_runs.status` GAINED `completed_with_errors` ON 2026-09-14
+
+**2026-09-14.** Written for the first time by (c) commit 2b. Before that date no
+row could carry it.
+
+**A `completed` row dated before 2026-09-14 is not evidence of a clean run** — it
+is a row from a period when a partially-failed run had nowhere else to go. Any
+query comparing job health across that boundary must read pre-boundary
+`completed` as `completed OR completed_with_errors`, or it will report the
+introduction of a state as a deterioration in job health.
+
+`error_count` carries two units and the column does not say which. On a
+`completed_with_errors` row it counts FAILED ITEMS. On a `failed` per-tenant row
+it counts TENANTS. Read `status` first. Marked in `app/models/job_run.py`.
+
+One behaviour changed with it: `check_time_based_workflows` RAISED `RuntimeError`
+on any pair failure and now returns a failure count instead. Same information,
+same per-pair logging, recorded as `completed_with_errors` rather than `failed` —
+the sweep did complete for every other pair.
+
+## ⚠️ FULL-TREE TEST BASELINES ARE RE-MEASURED PER SESSION, NOT INHERITED (2026-09-14)
+
+**2026-09-14.** A full-tree baseline is stable WITHIN a run and not ACROSS runs.
+
+Measured: (c) commit 1 recorded 42 failed. Re-running the full tree at that exact
+commit, unchanged, roughly a day later: **43 failed**. Same code, different world
+— shared database state moved in between.
+
+So **a figure recorded in a prior session is not a baseline**, and a later run
+showing a higher number is not by itself a regression. The rule "new failures by
+test-id diff against a full-tree baseline" stands, with the correction that the
+baseline must be **re-measured in the same session as the comparison**, by
+stashing the work and re-running. A test-id diff between two same-session runs is
+evidence; a count compared against yesterday's count is not.
+
+⚠️ Specifically: **(c) commit 1's body says 42. Do not read a later 43 as a
+regression caused by commit 1.** Commits 2a and 2b each diffed against a
+freshly-measured baseline and found zero new failures by test-id.
+
+## ⚠️ `POST /api/v1/agents/jobs/trigger` HAS NO KNOWN CONSUMER (2026-09-14)
+
+**2026-09-14.** Enumerated across six name forms in the frontend: `jobs/trigger`,
+`trigger_job`, `triggerJob`, `job_type`, `jobType`, `agents/jobs` — the four
+`agents/jobs` hits are all `GET /agents/jobs` or client-side route strings.
+Nothing calls the trigger endpoint.
+
+(c) commit 2a preserved its response shape additively anyway, since it is a public
+route. ⚠️ The consequence is that `state` / `succeeded` / `failed` are now part of
+that response and **nobody designed them as an API contract** — they are an
+implementation detail that leaked outward through a route with no consumer to
+justify it. If the endpoint stays unconsumed, the right move is to delete it
+rather than to maintain the shape.
+
 ## ⏸ THE EXPENSE POSTING MAP — DESIGNED, MEASURED, AND HELD (2026-09-11)
 
 **Held for want of production data, not for want of a design.** The design below

@@ -74,7 +74,7 @@ class TestAFindingBecomesATask:
         """Renders, not compiles: the row is read back from the database."""
         _stale_draft(env["s"], env["co"])
         out = aht.raise_tasks_for_health_findings(env["s"], env["co"])
-        assert "stale_drafts" in out["created"]
+        assert "stale_drafts" in out.detail["created"]
 
         rows = _tasks(env["s"], env["co"])
         codes = {r.provenance_ref_id.split("@", 1)[0] for r in rows}
@@ -93,7 +93,7 @@ class TestAFindingBecomesATask:
         """A tenant with nothing wrong is all green. Raising a task that says
         nothing is wrong is noise with a lifecycle attached."""
         out = aht.raise_tasks_for_health_findings(env["s"], env["co"])
-        assert out["created"] == []
+        assert out.detail["created"] == []
         assert _tasks(env["s"], env["co"]) == []
 
 
@@ -104,9 +104,9 @@ class TestSuppressionAndRecurrence:
         _stale_draft(env["s"], env["co"])
         first = aht.raise_tasks_for_health_findings(env["s"], env["co"])
         second = aht.raise_tasks_for_health_findings(env["s"], env["co"])
-        assert "stale_drafts" in first["created"]
-        assert "stale_drafts" in second["suppressed"]
-        assert "stale_drafts" not in second["created"]
+        assert "stale_drafts" in first.detail["created"]
+        assert "stale_drafts" in second.detail["suppressed"]
+        assert "stale_drafts" not in second.detail["created"]
         assert len([r for r in _tasks(env["s"], env["co"])
                     if r.provenance_ref_id.startswith("stale_drafts@")]) == 1
 
@@ -128,7 +128,7 @@ class TestSuppressionAndRecurrence:
         env["s"].commit()
 
         again = aht.raise_tasks_for_health_findings(env["s"], env["co"])
-        assert "stale_drafts" in again["created"], (
+        assert "stale_drafts" in again.detail["created"], (
             "the condition recurred and nothing was raised — a resolved task "
             "must not silence the next occurrence"
         )
@@ -143,7 +143,7 @@ class TestSuppressionAndRecurrence:
                    if r.provenance_ref_id.startswith("stale_drafts@"))
         row.current_state = terminal
         env["s"].commit()
-        assert "stale_drafts" in aht.raise_tasks_for_health_findings(env["s"], env["co"])["created"]
+        assert "stale_drafts" in aht.raise_tasks_for_health_findings(env["s"], env["co"]).detail["created"]
 
     def test_the_terminal_set_is_derived_not_restated(self):
         """A second hand-written list of terminal states would stop suppressing
@@ -193,8 +193,8 @@ class TestItRunsTheCheckRatherThanReadingAStoredRow:
         env["s"].commit()
 
         out = aht.raise_tasks_for_health_findings(env["s"], env["co"])
-        assert "ghost_finding" not in out["created"]
-        assert out["check_date"] == str(date.today())
+        assert "ghost_finding" not in out.detail["created"]
+        assert out.detail["check_date"] == str(date.today())
 
 
 class TestReachability:
@@ -235,5 +235,7 @@ class TestOneFailureDoesNotCostTheOthers:
 
         monkeypatch.setattr("app.services.tasks.service.create_task_with_provenance", boom)
         out = aht.raise_tasks_for_health_findings(env["s"], env["co"])
-        assert out["failed"], "a failure must be reported, never returned as a clean run"
-        assert out["created"] == []
+        assert out.failed == 1, "a failure must be reported, never returned as a clean run"
+        assert out.detail["failed_codes"], "and the code must be named, not just counted"
+        assert out.state == "completed_with_errors"
+        assert out.detail["created"] == []

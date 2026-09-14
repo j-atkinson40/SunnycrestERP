@@ -51,6 +51,8 @@ from app.models.company import Company
 from app.models.workflow import Workflow, WorkflowEnrollment, WorkflowRun
 from app.services import workflow_engine
 
+from app.services.job_outcome import JobOutcome
+
 
 logger = logging.getLogger(__name__)
 
@@ -321,14 +323,23 @@ def _active_time_based_workflows(db) -> list:
     )
 
 
-def check_time_based_workflows() -> dict:
+def check_time_based_workflows() -> JobOutcome:
     """APScheduler job — runs every 15 minutes.
 
     Creates fresh DB session (scheduler jobs must not share sessions).
-    Returns a summary: {"time_of_day_fired": int, "time_after_fired": int,
-    "scheduled_fired": int, "scheduled_skipped_invalid_cron": int,
-    "start_errors": int}. Raises RuntimeError if start_errors > 0 (a partial
-    sweep is never reported as clean — S-1c per-pair isolation + loud raise).
+
+    Returns a `JobOutcome`. `succeeded` is the total pairs fired across all
+    three trigger kinds; `failed` is `start_errors`. `detail` carries the
+    former summary verbatim: time_of_day_fired, time_after_fired,
+    scheduled_fired, scheduled_skipped_invalid_cron, start_errors.
+
+    ⚠️ SUPERSEDED 2026-09-14 ((c) commit 2b). This used to read "Raises
+    RuntimeError if start_errors > 0 (a partial sweep is never reported as
+    clean — S-1c per-pair isolation + loud raise)." The INTENT is unchanged and
+    still enforced: a partial sweep is never reported as clean. What changed is
+    that it is now reported as `completed_with_errors` rather than as a raise,
+    because the sweep genuinely completed for every other pair. S-1c per-pair
+    isolation is untouched; each failure is still logged where it happens.
     """
     db = SessionLocal()
     fired_tod = 0
@@ -475,11 +486,22 @@ def check_time_based_workflows() -> dict:
         "start_errors": start_errors,
     }
     if start_errors > 0:
-        # Loud failure: the sweep completed for every other pair and each
-        # failure is durably logged above, but a partial sweep must NOT be
-        # reported as a clean run — surface it to the scheduler/monitor.
-        raise RuntimeError(
-            f"check_time_based_workflows: {start_errors} workflow/tenant "
-            f"pair(s) failed to fire; see logs. summary={summary}"
+        # ⚠️ THIS USED TO RAISE RuntimeError, AND THE COMMENT SAID WHY: "a
+        # partial sweep must NOT be reported as a clean run." That was correct
+        # and it was a choice between two options — clean, or raise — because
+        # the third did not exist. `completed_with_errors` IS the third option.
+        #
+        # Nothing becomes quieter. Each failure is still logged where it
+        # happened, the count still reaches `job_runs.error_count`, and the run
+        # is still distinguishable from a clean one. What changes is that the
+        # sweep is no longer recorded as having FAILED when it completed for
+        # every other pair -- which is what raising made it say.
+        logger.error(
+            "check_time_based_workflows: %d workflow/tenant pair(s) failed to "
+            "fire; see logs. summary=%s", start_errors, summary,
         )
-    return summary
+    return JobOutcome.worked(
+        succeeded=fired_tod + fired_tae + fired_sched,
+        failed=start_errors,
+        **summary,
+    )

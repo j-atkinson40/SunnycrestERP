@@ -11,6 +11,8 @@ from decimal import Decimal
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
+from app.services.job_outcome import JobOutcome
+
 logger = logging.getLogger(__name__)
 
 
@@ -798,7 +800,7 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def enrich_payment_patterns(db: Session, company_id: str) -> dict:
+def enrich_payment_patterns(db: Session, company_id: str) -> JobOutcome:
     """Calculate and store payment behavioral patterns per customer."""
     import statistics
     from datetime import date as _date
@@ -819,6 +821,7 @@ def enrich_payment_patterns(db: Session, company_id: str) -> dict:
     )
 
     updated = 0
+    failed = 0
     for customer in customers:
         payments = (
             db.query(CustomerPayment)
@@ -895,6 +898,10 @@ def enrich_payment_patterns(db: Session, company_id: str) -> dict:
             profile.profile_data = existing
             updated += 1
         except Exception as e:
+            # Counted, not only logged: a run where every customer failed
+            # previously returned {"customers_updated": 0}, which is what a run
+            # with no customers also returns.
+            failed += 1
             logger.warning(
                 "Could not update behavioral profile for customer %s: %s", customer.id, e
             )
@@ -902,7 +909,12 @@ def enrich_payment_patterns(db: Session, company_id: str) -> dict:
     if updated > 0:
         db.commit()
 
-    return {"customers_updated": updated}
+    return JobOutcome.worked(
+        succeeded=updated,
+        failed=failed,
+        customers_updated=updated,
+        customers_scanned=len(customers),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -910,7 +922,7 @@ def enrich_payment_patterns(db: Session, company_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def run_discount_expiry_monitor(db: Session, company_id: str) -> dict:
+def run_discount_expiry_monitor(db: Session, company_id: str) -> JobOutcome:
     """Alert on early payment discounts expiring within 3 days."""
     from collections import defaultdict
     from datetime import date, timedelta
@@ -935,13 +947,16 @@ def run_discount_expiry_monitor(db: Session, company_id: str) -> dict:
     )
 
     if not expiring:
-        return {"alerts_created": 0}
+        # Distinct from "all the alerts failed" — which is the collapse the
+        # old `{"alerts_created": 0}` could not distinguish itself from.
+        return JobOutcome.nothing_to_do(invoices_expiring=0)
 
     by_date = defaultdict(list)
     for inv in expiring:
         by_date[inv.discount_deadline].append(inv)
 
     alerts_created = 0
+    failed = 0
     for expiry_date, invoices in by_date.items():
         days_until = (expiry_date - today).days
         urgency = (
@@ -986,11 +1001,17 @@ def run_discount_expiry_monitor(db: Session, company_id: str) -> dict:
             db.add(alert)
             alerts_created += 1
         except Exception as e:
+            failed += 1
             logger.warning("Could not create discount expiry alert: %s", e)
 
     if alerts_created > 0:
         db.commit()
-    return {"alerts_created": alerts_created, "invoices_expiring": len(expiring)}
+    return JobOutcome.worked(
+        succeeded=alerts_created,
+        failed=failed,
+        alerts_created=alerts_created,
+        invoices_expiring=len(expiring),
+    )
 
 
 # ---------------------------------------------------------------------------

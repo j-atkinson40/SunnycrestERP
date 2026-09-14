@@ -8,6 +8,7 @@ Handles:
 - Midnight activation of scheduled versions
 """
 
+import logging
 import uuid
 from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
@@ -22,6 +23,10 @@ from app.models.price_update_settings import PriceUpdateSettings
 from app.models.product import Product
 from app.models.product_price_tier import ProductPriceTier
 from app.services import notification_service
+
+from app.services.job_outcome import JobOutcome
+
+logger = logging.getLogger(__name__)
 
 # ── Rounding ──────────────────────────────────────────────────────────────
 
@@ -317,7 +322,7 @@ def activate_version(
 
 # ── Midnight activation job ──────────────────────────────────────────────
 
-def activate_scheduled_versions(db: Session) -> int:
+def activate_scheduled_versions(db: Session) -> JobOutcome:
     """Called by scheduler — activate all versions whose effective_date is today."""
     today = date.today()
     versions = (
@@ -329,13 +334,25 @@ def activate_scheduled_versions(db: Session) -> int:
         .all()
     )
     count = 0
+    failed = 0
     for v in versions:
         try:
             activate_version(db, v.tenant_id, v.id)
             count += 1
         except Exception:
-            continue
-    return count
+            # ⚠️ WAS A BARE `continue` — swallowed AND unlogged. A run where
+            # every activation failed returned 0, identical to a run where
+            # nothing was scheduled. That is the silent success (c) exists to
+            # make unexpressible, and this is the only group-B target where the
+            # failure count had to be AUTHORED rather than forwarded.
+            failed += 1
+            logger.exception(
+                "price version activation failed for version %s (tenant=%s)",
+                v.id, v.tenant_id,
+            )
+    return JobOutcome.worked(
+        succeeded=count, failed=failed, versions_due=len(versions)
+    )
 
 
 # ── Version items ────────────────────────────────────────────────────────

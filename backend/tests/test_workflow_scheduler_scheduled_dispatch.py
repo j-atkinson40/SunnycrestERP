@@ -351,7 +351,7 @@ class TestSchedulerSweepIntegration:
         ):
             result = workflow_scheduler.check_time_based_workflows()
 
-        assert result["scheduled_fired"] >= 1, result
+        assert result.detail["scheduled_fired"] >= 1, result
         assert _count_scheduled_runs(db_session, wf_id, tenant_id) == 1
 
         run = (
@@ -410,7 +410,7 @@ class TestSchedulerSweepIntegration:
             ):
                 result = workflow_scheduler.check_time_based_workflows()
 
-        assert result["scheduled_skipped_invalid_cron"] >= 1
+        assert result.detail["scheduled_skipped_invalid_cron"] >= 1
         assert _count_scheduled_runs(db_session, bad_wf, tenant_id) == 0
         assert _count_scheduled_runs(db_session, good_wf, tenant_id) == 1
         assert any(
@@ -434,7 +434,7 @@ class TestSchedulerSweepIntegration:
         ):
             result = workflow_scheduler.check_time_based_workflows()
 
-        assert result["time_of_day_fired"] >= 1
+        assert result.detail["time_of_day_fired"] >= 1
         assert _count_scheduled_runs(db_session, wf_id, tenant_id) >= 1
 
 

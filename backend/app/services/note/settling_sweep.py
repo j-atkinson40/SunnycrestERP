@@ -47,6 +47,8 @@ from app.models.daily_note import DailyNote
 from app.models.user import User
 from app.services.note.settling import settle_note
 
+from app.services.job_outcome import JobOutcome
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TZ = "America/New_York"
@@ -100,7 +102,7 @@ def hour_fell_in_window(
     return 0 <= delta < window_minutes * 60
 
 
-def sweep_notes_to_settle(db: Session) -> dict[str, Any]:
+def sweep_notes_to_settle(db: Session) -> JobOutcome:
     """One sweep pass. Called every 15 minutes. Returns a summary for auditing."""
     stats: dict[str, Any] = {
         "tenants_scanned": 0,
@@ -190,4 +192,6 @@ def sweep_notes_to_settle(db: Session) -> dict[str, Any]:
             db.rollback()
             logger.exception("settling sweep failed for company %s", company.id)
 
-    return stats
+    return JobOutcome.worked(
+        succeeded=stats["notes_settled"], failed=stats["errors"], **stats
+    )

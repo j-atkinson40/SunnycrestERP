@@ -879,21 +879,27 @@ def register_all_jobs():
     # Handles time_of_day and time_after_event workflow triggers.
     # Lazy import to avoid boot-time circulars.
     def _run_workflow_time_check():
-        """⚠️ ROUTED THROUGH `_run_global` 2026-09-11, AND THE RAISE IS THE POINT.
+        """⚠️ ROUTED THROUGH `_run_global` 2026-09-11.
 
         This caught every exception and logged it, writing no `job_runs` row.
-        `check_time_based_workflows` RAISES `RuntimeError` when any workflow
-        fails to start — its docstring says "a partial sweep is never reported
-        as clean", and the raise is deliberate, per-pair isolation plus a loud
-        failure.
+        Catching defeated the target's partial-failure signal exactly one layer
+        up: anyone reading the target would conclude partial failures are
+        visible; they were logged and forgotten. A target built to refuse
+        silent partial success, silenced by its caller.
 
-        Catching that raise here defeated it exactly one layer up. Anyone
-        reading the target would conclude partial failures are visible; they
-        were logged and forgotten. A target built to refuse silent partial
-        success, silenced by its caller.
+        ⚠️ SUPERSEDED 2026-09-14 by (c) commit 2b, AND THE SUPERSESSION IS THE
+        WHOLE POINT OF THAT COMMIT. This paragraph used to say "the raise is
+        the point" and described `check_time_based_workflows` RAISING
+        `RuntimeError` on any pair failure. It no longer raises. It returns a
+        `JobOutcome` whose `failed` count carries the same information, and
+        `_run_global` records the run as `completed_with_errors` rather than
+        `failed` — because the sweep DID complete for every other pair, which
+        is what the raise was forced to misreport when the only two available
+        states were clean and failed.
 
-        `_run_global` now records the run — `failed` with the message on a
-        raise, `completed` otherwise.
+        `_run_global` records `failed` with the message if the target raises
+        for some other reason, `completed_with_errors` when the outcome carries
+        failures, `completed` otherwise.
 
         ⚠️ The lambda discards `_db` because `check_time_based_workflows()`
         takes no arguments and opens its own session (scheduler jobs must not

@@ -152,7 +152,7 @@ def test_the_catch_up_pass_reaches_a_recently_settled_note(db_session, user):
     _settled_note(db_session, user, today)
 
     stats = sweep_notes_to_settle(db_session)
-    assert stats["catch_up_notes"] >= 1, (
+    assert stats.detail["catch_up_notes"] >= 1, (
         f"the settled note was not revisited: {stats}"
     )
 
@@ -166,11 +166,11 @@ def test_repeated_firing_does_not_double_anything(db_session, user):
     second = sweep_notes_to_settle(db_session)
     third = sweep_notes_to_settle(db_session)
 
-    assert second["records_written"] == 0
-    assert third["records_written"] == 0
+    assert second.detail["records_written"] == 0
+    assert third.detail["records_written"] == 0
     assert db_session.query(NoteSettledRecord).filter(
         NoteSettledRecord.user_id == user.id
-    ).count() == first["records_written"]
+    ).count() == first.detail["records_written"]
 
 
 def test_a_sweep_never_raises_out_of_one_tenant(db_session, user):
@@ -185,8 +185,8 @@ def test_a_sweep_never_raises_out_of_one_tenant(db_session, user):
     _settled_note(db_session, user, date.today())
 
     stats = sweep_notes_to_settle(db_session)
-    assert stats["errors"] == 0
-    assert stats["tenants_scanned"] >= 1
+    assert stats.detail["errors"] == 0
+    assert stats.detail["tenants_scanned"] >= 1
 
 
 def test_a_tenant_with_no_notes_is_not_scanned(db_session, user):
@@ -202,10 +202,10 @@ def test_a_tenant_with_no_notes_is_not_scanned(db_session, user):
     The real claim is about THIS tenant: adding a note makes it scanned, and
     removing it makes it not. That holds whatever else is in the database.
     """
-    before = sweep_notes_to_settle(db_session)["tenants_scanned"]
+    before = sweep_notes_to_settle(db_session).detail["tenants_scanned"]
 
     _settled_note(db_session, user, date.today())
-    with_note = sweep_notes_to_settle(db_session)["tenants_scanned"]
+    with_note = sweep_notes_to_settle(db_session).detail["tenants_scanned"]
     assert with_note == before + 1, (
         f"a tenant that gained a note was not scanned ({before} -> {with_note})"
     )
@@ -214,7 +214,7 @@ def test_a_tenant_with_no_notes_is_not_scanned(db_session, user):
         synchronize_session=False
     )
     db_session.commit()
-    after = sweep_notes_to_settle(db_session)["tenants_scanned"]
+    after = sweep_notes_to_settle(db_session).detail["tenants_scanned"]
     assert after == before, (
         f"a tenant with no notes was still scanned ({before} -> {after})"
     )
