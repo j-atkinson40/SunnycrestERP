@@ -1,0 +1,42 @@
+gate                                         n   p50*    max* | cur p50 new p50 | cur p99 new tail | verdict
+aftercare-apply-action-latency              30   18.5    29.8 |     200     100 |     500      100 | 
+aftercare-next-item-latency                 30   28.4    30.4 |     100     100 |     300      100 | 
+ai-question-latency                         20    3.9     5.0 |    1500      25 |    3000       25 | cannot fire -> tighten
+ar-collections-apply-action-latency         30   13.1    16.9 |     200      50 |     500      100 | 
+ar-collections-next-item-latency            30   13.3    15.2 |     100      50 |     300       50 | 
+briefing-generate-latency                   10   20.8    21.6 |    2000     100 |    5000      100 | cannot fire -> tighten
+cash-receipts-triage-apply-action-latency   30   13.5    20.8 |     200      50 |     500      100 | 
+cash-receipts-triage-next-item-latency      30   18.8   374.3 |     100     100 |     300     2500 | STOP honest stat over budget
+catalog-fetch-apply-action-latency          30    5.1     5.9 |     200      25 |     500       25 | cannot fire -> tighten
+catalog-fetch-next-item-latency             30    2.9     3.4 |     100      10 |     300       25 | cannot fire -> tighten
+command-bar-latency                         50    3.7     4.2 |     100      25 |     300       25 | cannot fire -> tighten
+expense-categorization-apply-action-latency  30   14.0    19.3 |     200      50 |     500      100 | 
+expense-categorization-next-item-latency    30   18.3    20.5 |     100     100 |     300      100 | 
+month-end-close-apply-action-latency        30    8.9   369.0 |     200      50 |     500     2500 | STOP honest stat over budget
+month-end-close-next-item-latency           30    3.4     4.5 |     100      25 |     300       25 | cannot fire -> tighten
+nl-creation-latency                         30    5.1     6.9 |     600      25 |    1200       25 | cannot fire -> tighten
+peek-latency                                24    2.8     3.7 |     100      10 |     300       25 | cannot fire -> tighten
+portal-latency                              24    3.6     6.9 |     150      25 |     400       25 | cannot fire -> tighten
+quote-preview-latency                       24    5.5     7.4 |     200      25 |     500       25 | cannot fire -> tighten
+safety-program-apply-action-latency         30    7.1     7.9 |     200      25 |     500       25 | cannot fire -> tighten
+safety-program-next-item-latency            30    4.1     5.1 |     100      25 |     300       25 | cannot fire -> tighten
+saved-view-execute-latency                  50   10.4    12.0 |     150      50 |     500       50 | 
+saved-view-preview-latency                  20    5.6     7.2 |     150      25 |     500       25 | cannot fire -> tighten
+spaces-with-system-latency                  20    2.4     2.9 |     100      10 |     300       10 | cannot fire -> tighten
+triage-apply-action-latency                 30    5.8     7.1 |     200      25 |     500       25 | cannot fire -> tighten
+triage-next-item-latency                    30    3.5     4.5 |     100      25 |     300       25 | cannot fire -> tighten
+workflow-fork-latency                       20    6.0     7.0 |     200      25 |     500       25 | cannot fire -> tighten
+workflow-scope-core-latency                 20  261.9   274.6 |     100    1000 |     300     1000 | STOP fails p50
+workflow-scope-core-used-by-latency         20  466.4   504.4 |     100    2500 |     300     2500 | STOP fails p50
+workflow-scope-vertical-latency             20   21.1    27.3 |     100     100 |     300      100 | 
+
+* worst observed across 3 full passes. Headroom 3.0x, DERIVED:
+  measured worst run-to-run spread 1.43x (max) x measured intra-day drift 1.19x
+  (cash-receipts max 445.8ms this morning vs 374.3ms now) = 1.70x of pure noise;
+  3.0x leaves ~1.76x for a genuine regression before the gate fires.
+
+STOP gates: 4
+   cash-receipts-triage-next-item-latency       honest tail budget 2500 > current 300
+   month-end-close-apply-action-latency         honest tail budget 2500 > current 500
+   workflow-scope-core-latency                  fails p50 now
+   workflow-scope-core-used-by-latency          fails p50 now
