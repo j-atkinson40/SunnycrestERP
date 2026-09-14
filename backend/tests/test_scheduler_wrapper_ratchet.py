@@ -75,8 +75,13 @@ BYPASSES_WRAPPER: dict[str, str] = {
     # ⚠️ They do NOT get per-tenant session isolation: `_run_per_tenant` opens a
     # SessionLocal per tenant, these share one for the whole run. That matters
     # only if a poisoned transaction can go unnoticed, and for each it cannot:
+    # ⚠️ CORRECTED 2026-09-14. This said "highest-volume job on production".
+    # It is THIRD — platform_incident_dispatcher 25,815, briefing_sweep 23,420,
+    # dispatch_auto_finalize 10,398. The original measurement read a
+    # DESC-sorted list through `tail`, which cut the head, so the third-largest
+    # was reported as the largest.
     "dispatch_auto_finalize": "DESIGN — rolls back per item; records success_count",
-    "platform_incident_dispatcher": "DESIGN — target has no broad except; failures propagate and are recorded",
+    "platform_incident_dispatcher": "DESIGN — no broad except, failures propagate; highest-volume job type on production at 25,815 runs",
     # ⚠️ `platform_health_recalculate` is correct BY ARRANGEMENT RATHER THAN BY
     # DESIGN, and the arrangement is worth stating because it is easy to undo.
     # `calculate_all_tenant_health` swallows per tenant WITHOUT a rollback on a
