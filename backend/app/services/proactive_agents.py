@@ -21,20 +21,25 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def run_reorder_suggestion_job(db: Session, tenant_id: str) -> dict:
+def run_reorder_suggestion_job(db: Session, tenant_id: str) -> JobOutcome:
     """Daily: check vault replenishment needs for buyer/hybrid tenants."""
     from app.models import Company, VaultSupplier, PurchaseOrder, AgentAlert
     from app.services.vault_inventory_service import build_suggested_order
 
     company = db.query(Company).filter(Company.id == tenant_id).first()
     if not company:
-        return {"suggestions": 0}
+        # ⚠️ A MISSING TENANT IS NOT "NOTHING TO DO", it is a broken call. Pre-2c
+        # this was `{"suggestions": 0}` -- the same value the stock-is-fine path
+        # returned. Seven returns carried that zero; see the git history of
+        # test_job_outcome_group_c_characterization.py for the enumeration.
+        return JobOutcome.aborted("tenant not found", tenant_id=tenant_id)
 
     mode = company.vault_fulfillment_mode or "produce"
 
     # Producers handle replenishment through production scheduling
     if mode == "produce":
-        return {"suggestions": 0, "mode": "produce"}
+        # NOT APPLICABLE -- producers replenish through production scheduling.
+        return JobOutcome.nothing_to_do(skipped="mode_produce", mode=mode)
 
     supplier = db.query(VaultSupplier).filter(
         VaultSupplier.company_id == tenant_id,
@@ -57,17 +62,23 @@ def run_reorder_suggestion_job(db: Session, tenant_id: str) -> dict:
             )
             db.add(alert)
             db.commit()
+            alerted = True
         except Exception as e:
+            alerted = False
             logger.warning("Could not create supplier missing alert: %s", e)
-        return {"suggestions": 0, "error": "no_supplier"}
+        # A CONFIGURATION DEFECT, not an empty day. The tenant asked to purchase
+        # vaults and named no supplier; the job cannot run for them until that
+        # is fixed. `aborted` carries the alert-write result so a failure to
+        # even NOTIFY is visible.
+        return JobOutcome.aborted("no vault supplier configured", alert_written=alerted)
 
     suggestion = build_suggested_order(db, tenant_id)
     if not suggestion:
-        return {"suggestions": 0}
+        return JobOutcome.nothing_to_do(reason_detail="no_suggestion_built")
 
     any_needs_reorder = any(item["reason"] in ("below_reorder_point", "urgent") for item in suggestion["suggested_items"])
     if not any_needs_reorder and not suggestion.get("urgent"):
-        return {"suggestions": 0, "status": "stock_ok"}
+        return JobOutcome.nothing_to_do(status="stock_ok")
 
     # Check if PO already exists for this delivery window
     existing_po = db.query(PurchaseOrder).filter(
@@ -76,7 +87,7 @@ def run_reorder_suggestion_job(db: Session, tenant_id: str) -> dict:
         PurchaseOrder.status.in_(["draft", "sent"]),
     ).first()
     if existing_po:
-        return {"suggestions": 0, "status": "po_exists"}
+        return JobOutcome.nothing_to_do(status="po_exists", purchase_order_id=existing_po.id)
 
     # Build message
     import json
@@ -114,9 +125,9 @@ def run_reorder_suggestion_job(db: Session, tenant_id: str) -> dict:
         db.commit()
     except Exception as e:
         logger.warning("Could not create reorder alert: %s", e)
-        return {"suggestions": 0, "error": str(e)}
+        return JobOutcome.aborted(str(e), urgent=suggestion["urgent"])
 
-    return {"suggestions": 1, "urgent": suggestion["urgent"]}
+    return JobOutcome.worked(succeeded=1, urgent=suggestion["urgent"])
 
 
 def run_receiving_discrepancy_monitor(db: Session, tenant_id: str) -> dict:
@@ -392,7 +403,7 @@ def run_missing_entry_detector(db: Session, tenant_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def run_uncleared_check_monitor(db: Session, tenant_id: str) -> dict:
+def run_uncleared_check_monitor(db: Session, tenant_id: str) -> JobOutcome:
     """Flag checks outstanding for 45+ days."""
     # Health Triage P1: model moved app.models.reconciliation →
     # app.models.financial_account (clean rename — same class, same fields:
@@ -400,7 +411,10 @@ def run_uncleared_check_monitor(db: Session, tenant_id: str) -> dict:
     # never existed; this crashed run_uncleared_check_monitor every fire.
     from app.models.financial_account import ReconciliationAdjustment
 
-    results = {"flagged": 0}
+    # Initialised BEFORE the try that assigns them -- the UnboundLocalError
+    # class from (c) commit 2a, where every counter sat inside its own try.
+    insights_written = 0
+    insight_failures = 0
     cutoff = date.today() - timedelta(days=45)
 
     stale_checks = (
@@ -412,8 +426,6 @@ def run_uncleared_check_monitor(db: Session, tenant_id: str) -> dict:
         )
         .all()
     )
-
-    results["flagged"] = len(stale_checks)
 
     # Session-1 rider: the count becomes a REAL insight instead of a
     # discarded return value (the census found this fired nightly and
@@ -437,9 +449,26 @@ def run_uncleared_check_monitor(db: Session, tenant_id: str) -> dict:
                                  "total_amount": total},
                 generated_by_job="uncleared_check_monitor",
             )
+            insights_written = 1
         except Exception:
+            # Counted now. Previously this logged and returned
+            # {"flagged": N} -- the SAME value a successful run returned, so a
+            # run that found 12 stale checks and failed to surface any of them
+            # was indistinguishable from one that surfaced all 12.
+            insight_failures = 1
             logger.exception("uncleared_check_monitor: insight write failed")
-    return results
+
+    if not stale_checks:
+        return JobOutcome.nothing_to_do(flagged=0)
+
+    # ⚠️ `succeeded` is INSIGHTS WRITTEN, not checks flagged. `flagged` is what
+    # the query FOUND; it is not work the job performed, and counting it as
+    # success would report a run that surfaced nothing as a productive one.
+    return JobOutcome.worked(
+        succeeded=insights_written,
+        failed=insight_failures,
+        flagged=len(stale_checks),
+    )
 
 
 # ---------------------------------------------------------------------------

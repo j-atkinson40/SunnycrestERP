@@ -53,7 +53,7 @@ POPULATION: list[tuple[str, str]] = [
 
 #: ⚠️ LOWER THIS AS TARGETS MIGRATE. Never raise it. When it reaches 0, the
 #: wrapper stops accepting anything else (commit 3) and this ceiling is deleted.
-UNMIGRATED_CEILING = 3
+UNMIGRATED_CEILING = 0
 
 
 def _resolve(mod: str, name: str):
@@ -114,23 +114,31 @@ def test_a_MIGRATED_target_is_named_not_merely_counted(monkeypatch):
     green ratchet is evidence the detector discriminates rather than evidence it
     matches nothing.
     """
-    # Must pick a target that is CURRENTLY unmigrated -- POPULATION[0] was
-    # hardcoded, and the moment it migrated the patch stopped moving the count
-    # while the test still claimed to prove the detector discriminates. The
-    # control needs its own control: assert we actually found one to patch.
-    unmigrated_now = [(m, n) for m, n in POPULATION if not _returns_outcome(_resolve(m, n))]
-    assert unmigrated_now, "nothing left to patch -- delete this control at commit 3"
-    mod, name = unmigrated_now[0]
+    # ⚠️ INVERTED AT (c) 2c, BECAUSE THE POPULATION RAN OUT.
+    #
+    # It first patched a hardcoded POPULATION[0] and silently stopped proving
+    # anything the moment that element migrated. 2a repointed it at the first
+    # CURRENTLY-unmigrated target -- correct then, and dead now that the
+    # ceiling is 0 and there is nothing left to patch.
+    #
+    # The control's job never changed: prove the detector DISCRIMINATES rather
+    # than matching everything. With every target migrated, the discriminating
+    # move is the inverse -- un-migrate one and confirm the detector notices.
+    # This version cannot rot the same way: it has no expiry, because it
+    # manufactures its own subject instead of borrowing one from the population.
+    mod, name = POPULATION[0]
     module = importlib.import_module(mod)
 
-    def _migrated(*a, **k):
-        return JobOutcome.nothing_to_do()
+    def _unmigrated(*a, **k):
+        return {"suggestions": 0}
 
-    monkeypatch.setattr(module, name, _migrated)
-    assert _returns_outcome(_resolve(mod, name)) is True
+    baseline = [n for m, n in POPULATION if not _returns_outcome(_resolve(m, n))]
+    assert baseline == [], f"ceiling is 0 but these are unmigrated: {baseline}"
+
+    monkeypatch.setattr(module, name, _unmigrated)
+    assert _returns_outcome(_resolve(mod, name)) is False
     still = [n for m, n in POPULATION if not _returns_outcome(_resolve(m, n))]
-    assert name not in still
-    assert len(still) == UNMIGRATED_CEILING - 1
+    assert still == [name], f"the detector named {still}, expected exactly [{name}]"
 
 
 # ── the type ─────────────────────────────────────────────────────────────

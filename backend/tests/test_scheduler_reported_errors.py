@@ -2,12 +2,20 @@
 
 Item 0a of the 2026-09-10 held-work list.
 
-⚠️ THE FIXTURE SHAPE IS MEASURED, NOT INVENTED. `{"error": str(e)}` is what
-`run_ar_aging_monitor`, `run_collections_sequence`, `run_ap_upcoming_payments`
-and `run_reorder_suggestion_job` actually return from their broad except
-handlers — enumerated by AST over every target `scheduler.py` wraps, 2026-09-11.
-A fixture derived from reading the WRAPPER would be the same reading twice and
-would prove nothing about the shipped path.
+⚠️ THE FIXTURE SHAPE WAS MEASURED, NOT INVENTED — AND IS NOW HISTORICAL.
+`{"error": str(e)}` is what `run_ar_aging_monitor`, `run_collections_sequence`,
+`run_ap_upcoming_payments` and `run_reorder_suggestion_job` returned from their
+broad except handlers, enumerated by AST over every target `scheduler.py` wraps
+on 2026-09-11. A fixture derived from reading the WRAPPER would have been the
+same reading twice and would have proved nothing about the shipped path.
+
+⚠️ SUPERSEDED 2026-09-14 by (c) commits 2a and 2c: all four now return
+`JobOutcome.aborted(...)`. These tests are RETAINED and still green, because
+until commit 3 the wrapper must keep accepting the old shapes — a wrapper that
+refuses them before its callers have all moved converts a latent ambiguity into
+a nightly TypeError against live tenants. They are the pin on that tolerance,
+not a claim about what the targets currently return. Commit 3 deletes them with
+the tolerance.
 """
 from __future__ import annotations
 
@@ -43,14 +51,23 @@ def test_a_non_dict_return_is_not_an_error():
 def test_NONE_IS_STILL_SUCCESS_and_that_is_the_remaining_gap():
     """⚠️ DELIBERATE, AND ASSERTED SO IT STAYS DELIBERATE.
 
-    Eight targets swallow per-item inside a loop and return nothing. That
+    Eight targets swallowed per-item inside a loop and returned nothing. That
     tolerance is correct for one bad row and silent for a broken world — a
     loop in which every item fails still returns normally.
 
-    Closing it needs a structured result that makes silent success
-    unexpressible, which is a separate build. Pinned here so that widening
-    `_reported_error` to treat `None` as failure is a decision someone makes
-    against a red test, rather than a tweak that quietly changes 25 jobs.
+    ⚠️ CORRECTION, 2026-09-14. (c) commit 1's body predicted this test would go
+    RED at the commit migrating the last None-returning target, and be deleted
+    there. That prediction was WRONG, and the reason is worth keeping: this
+    asserts on `_reported_error(None)`, a PURE HELPER. It is not coupled to the
+    population at all. Every target has now migrated — `generate_draft_invoices`
+    was the last `-> None` one, at (c) 2c — and this test did not move.
+
+    A test that was expected to fail and did not is the same shape as a break
+    test that comes back green: the prediction was about the wrong mechanism.
+
+    The assertion stays until commit 3, which removes the wrapper's tolerance
+    for non-JobOutcome returns. Until then, `None` reaching `_reported_error`
+    remains possible from unmigrated code paths outside this population.
     """
     assert sch._reported_error(None) is None
 

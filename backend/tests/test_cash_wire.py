@@ -265,7 +265,12 @@ class TestMonitorWrites:
             "WHERE id = :i"), {"i": adj.id})
         db.commit()
         out = run_uncleared_check_monitor(db, world["co"])
-        assert out["flagged"] == 1
+        # SUPERSEDED by (c) 2c step 2. Was: `assert out["flagged"] == 1`.
+        assert out.detail["flagged"] == 1
+        # And the insight write is now reported, which is what this test was
+        # really about -- the count is no longer discarded.
+        assert out.succeeded == 1
+        assert out.failed == 0
         n = db.execute(sql_text(
             "SELECT count(*) FROM behavioral_insights WHERE tenant_id = :c "
             "AND headline LIKE '%outstanding 45+%'"), {"c": world["co"]}).scalar()

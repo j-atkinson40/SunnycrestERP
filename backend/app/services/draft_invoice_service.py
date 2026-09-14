@@ -30,6 +30,8 @@ from app.models.customer import Customer
 from app.models.invoice import Invoice
 from app.models.sales_order import CANCEL_SPELLINGS, SalesOrder
 
+from app.services.job_outcome import JobOutcome
+
 logger = logging.getLogger(__name__)
 
 
@@ -176,7 +178,7 @@ def _stamp_billing_policy(invoice) -> None:
 # ---------------------------------------------------------------------------
 
 
-def generate_draft_invoices(db: Session, tenant_id: str) -> None:
+def generate_draft_invoices(db: Session, tenant_id: str) -> JobOutcome:
     """Generate end-of-day draft invoices for a single tenant.
 
     Idempotent — orders that already have an invoice are skipped.
@@ -188,7 +190,9 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
     # Only run if tenant has enabled end-of-day batch mode
     mode = getattr(settings, "invoice_generation_mode", None)
     if mode != "end_of_day":
-        return
+        # NOT APPLICABLE to this tenant, which is a different fact from "no
+        # work today" below. Both are `no_work`; the detail says which.
+        return JobOutcome.nothing_to_do(skipped="mode_not_end_of_day", mode=mode)
 
     require_driver = getattr(settings, "require_driver_status_updates", False)
 
@@ -246,21 +250,37 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
             tenant_id,
             today,
         )
-        return
+        return JobOutcome.nothing_to_do(
+            orders_due=len(all_today), uninvoiced=0, mode="end_of_day"
+        )
 
     from app.services import sales_service
     from app.services.agent_service import create_alert, log_activity
 
     if require_driver:
-        _generate_require_driver_mode(
+        stats = _generate_require_driver_mode(
             db, tenant_id, uninvoiced, today, tomorrow, now,
             sales_service, create_alert, log_activity,
         )
     else:
-        _generate_auto_confirm_mode(
+        stats = _generate_auto_confirm_mode(
             db, tenant_id, uninvoiced, today, tomorrow, now,
             sales_service, create_alert, log_activity,
         )
+
+    # `succeeded` is DRAFT INVOICES CREATED, deliberately. In require_driver
+    # mode a day where no driver confirmed anything drafts nothing and raises an
+    # unconfirmed-services alert; that reads as `no_work`, which is accurate --
+    # the job's product is invoices -- with `unconfirmed` in the detail saying
+    # why there were none. Counting the alert as a success would mix units and
+    # make a blocked day look like a productive one.
+    return JobOutcome.worked(
+        succeeded=stats["created"],
+        failed=stats["failed"],
+        mode="require_driver" if require_driver else "auto_confirm",
+        orders_uninvoiced=len(uninvoiced),
+        **{k: v for k, v in stats.items() if k != "failed"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +294,12 @@ def _generate_auto_confirm_mode(
 ):
     """Auto-mark unconfirmed orders as delivered, then generate draft invoices."""
     created_invoices: list[Invoice] = []
+    # WARNING: `exception_count` is NOT a failure count. It counts invoices
+    # carrying DRIVER exceptions -- a business concept -- and sits eight lines
+    # above an exception handler it has nothing to do with. `failed_count` is
+    # the failure count, authored by (c) commit 2c.
     exception_count = 0
+    failed_count = 0
     auto_confirmed_count = 0
 
     for order in uninvoiced:
@@ -331,13 +356,18 @@ def _generate_auto_confirm_mode(
             )
 
         except Exception as exc:
+            failed_count += 1
             logger.error(
                 "[DRAFT_INVOICE_GENERATOR] Failed to create draft invoice for order %s: %s",
                 order.id, exc,
             )
 
     if not created_invoices:
-        return
+        # ⚠️ THIS EARLY RETURN IS THE COLLAPSE. Pre-2c it returned bare `None`
+        # whether nothing was eligible or every single creation raised. The
+        # failure count travels out of here now, so those two stop being the
+        # same event.
+        return {"created": 0, "failed": failed_count, "auto_confirmed": auto_confirmed_count}
 
     db.commit()
 
@@ -377,9 +407,12 @@ def _generate_auto_confirm_mode(
 
     logger.info(
         "[DRAFT_INVOICE_GENERATOR] Tenant %s: created %d draft invoices "
-        "(%d auto-confirmed, %d with exceptions)",
-        tenant_id, count, auto_confirmed_count, exception_count,
+        "(%d auto-confirmed, %d with exceptions, %d failed)",
+        tenant_id, count, auto_confirmed_count, exception_count, failed_count,
     )
+    return {"created": count, "failed": failed_count,
+            "auto_confirmed": auto_confirmed_count,
+            "with_driver_exceptions": exception_count}
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +429,12 @@ def _generate_require_driver_mode(
     unconfirmed = [o for o in uninvoiced if o.status not in DRIVER_CONFIRMED_STATUSES]
 
     created_invoices: list[Invoice] = []
+    # WARNING: `exception_count` is NOT a failure count. It counts invoices
+    # carrying DRIVER exceptions -- a business concept -- and sits eight lines
+    # above an exception handler it has nothing to do with. `failed_count` is
+    # the failure count, authored by (c) commit 2c.
     exception_count = 0
+    failed_count = 0
 
     for order in confirmed:
         try:
@@ -441,6 +479,7 @@ def _generate_require_driver_mode(
             )
 
         except Exception as exc:
+            failed_count += 1
             logger.error(
                 "[DRAFT_INVOICE_GENERATOR] Failed to create draft invoice for order %s: %s",
                 order.id, exc,
@@ -482,9 +521,12 @@ def _generate_require_driver_mode(
 
     logger.info(
         "[DRAFT_INVOICE_GENERATOR] Tenant %s: created %d draft invoices, "
-        "%d unconfirmed services flagged",
-        tenant_id, len(created_invoices), len(unconfirmed),
+        "%d unconfirmed services flagged, %d failed",
+        tenant_id, len(created_invoices), len(unconfirmed), failed_count,
     )
+    return {"created": len(created_invoices), "failed": failed_count,
+            "unconfirmed": len(unconfirmed),
+            "with_driver_exceptions": exception_count}
 
 
 def _create_unconfirmed_alert(db, tenant_id, unconfirmed, today, create_alert):

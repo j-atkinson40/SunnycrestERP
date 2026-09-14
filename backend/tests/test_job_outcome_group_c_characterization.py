@@ -58,6 +58,13 @@ def _isolate(db_session):
             "DELETE FROM delivery_settings WHERE company_id=:t"), {"t": TENANT})
         db_session.execute(text(
             "DELETE FROM customers WHERE company_id=:t AND name='Group C Fixture'"), {"t": TENANT})
+        db_session.execute(text(
+            "DELETE FROM reconciliation_adjustments WHERE tenant_id=:t AND description LIKE 'GRPC %'"), {"t": TENANT})
+        db_session.execute(text(
+            "DELETE FROM reconciliation_runs WHERE tenant_id=:t AND financial_account_id IN "
+            "(SELECT id FROM financial_accounts WHERE tenant_id=:t AND account_name='Group C Account')"), {"t": TENANT})
+        db_session.execute(text(
+            "DELETE FROM financial_accounts WHERE tenant_id=:t AND account_name='Group C Account'"), {"t": TENANT})
         db_session.commit()
     purge(); yield; purge()
 
@@ -95,23 +102,32 @@ def _order(db, *, status: str = "delivered"):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_CHAR_not_applicable_returns_None(db_session):
+def test_not_applicable_is_NO_WORK_with_a_reason(db_session):
     """Tenant is not in end_of_day mode. The job does not apply to it at all."""
     from app.services.draft_invoice_service import generate_draft_invoices
 
     _settings(db_session, mode="immediate")
-    assert generate_draft_invoices(db_session, TENANT) is None
+    out = generate_draft_invoices(db_session, TENANT)
+    # SUPERSEDED by (c) 2c step 2. Was: `assert ... is None`
+    assert out.state == "no_work"
+    assert out.detail["skipped"] == "mode_not_end_of_day"
 
 
-def test_CHAR_no_work_returns_None(db_session):
+def test_no_work_is_NO_WORK_without_a_skip_reason(db_session):
     """In end_of_day mode with nothing uninvoiced."""
     from app.services.draft_invoice_service import generate_draft_invoices
 
     _settings(db_session, mode="end_of_day")
-    assert generate_draft_invoices(db_session, TENANT) is None
+    out = generate_draft_invoices(db_session, TENANT)
+    # SUPERSEDED by (c) 2c step 2. Was: `assert ... is None`
+    # Same STATE as not-applicable above, and that is correct -- both did no
+    # work. The detail is what separates them, and it now exists.
+    assert out.state == "no_work"
+    assert "skipped" not in out.detail
+    assert out.detail["uninvoiced"] == 0
 
 
-def test_CHAR_success_returns_None(db_session):
+def test_success_is_OK(db_session):
     """One eligible order, invoice created. Work HAPPENED."""
     from app.models.invoice import Invoice
     from app.services.draft_invoice_service import generate_draft_invoices
@@ -119,7 +135,11 @@ def test_CHAR_success_returns_None(db_session):
     _settings(db_session, mode="end_of_day")
     order = _order(db_session)
 
-    assert generate_draft_invoices(db_session, TENANT) is None
+    out = generate_draft_invoices(db_session, TENANT)
+    # SUPERSEDED by (c) 2c step 2. Was: `assert ... is None`
+    assert out.state == "ok"
+    assert out.succeeded == 1
+    assert out.failed == 0
 
     # Control that work actually happened — without this the test below
     # proves nothing, because "no invoice created" is also what a broken
@@ -130,7 +150,7 @@ def test_CHAR_success_returns_None(db_session):
     assert made == 1, "fixture did not produce an invoice; the collapse test below would be vacuous"
 
 
-def test_CHAR_EVERY_ITEM_FAILED_also_returns_None(db_session, monkeypatch):
+def test_EVERY_ITEM_FAILED_is_COMPLETED_WITH_ERRORS(db_session, monkeypatch):
     """⚠️ WRONGNESS. Two eligible orders, EVERY invoice creation raises.
 
     Returns None — byte-identical to the not-applicable case, the no-work case,
@@ -164,7 +184,14 @@ def test_CHAR_EVERY_ITEM_FAILED_also_returns_None(db_session, monkeypatch):
             .filter(Invoice.company_id == TENANT,
                     Invoice.sales_order_id.in_([o1.id, o2.id])).count()) == 0
 
-    assert result is None  # ← the wrongness, asserted
+    # SUPERSEDED by (c) 2c step 2. Was: `assert result is None  # the wrongness`
+    #
+    # ⚠️ THIS IS THE WHOLE OF (c) IN ONE ASSERTION. The three tests above and
+    # this one exercise four different things that were ALL `None`. They are
+    # now no_work/skipped, no_work/uninvoiced, ok, and completed_with_errors.
+    assert result.state == "completed_with_errors"
+    assert result.failed == 2
+    assert result.succeeded == 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -172,7 +199,7 @@ def test_CHAR_EVERY_ITEM_FAILED_also_returns_None(db_session, monkeypatch):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_CHAR_reorder_collapses_distinct_outcomes_onto_one_number(db_session):
+def test_reorder_SEVEN_ZEROS_became_three_aborts_and_four_no_works(db_session):
     """⚠️ WRONGNESS, READ OFF THE SOURCE RATHER THAN EXERCISED.
 
     Each of these branches needs a different inventory fixture to reach, and
@@ -189,19 +216,32 @@ def test_CHAR_reorder_collapses_distinct_outcomes_onto_one_number(db_session):
     returns = [ast.unparse(n.value) for n in ast.walk(fn)
                if isinstance(n, ast.Return) and n.value is not None]
 
-    zeros = [r for r in returns if "'suggestions': 0" in r]
-    assert len(zeros) == 7, f"expected 7 zero-returns, found {len(zeros)}: {zeros}"
+    # SUPERSEDED by (c) 2c step 2. This previously asserted SEVEN returns all
+    # carrying `'suggestions': 0`, and that the set contained `mode: produce`,
+    # `status: stock_ok`, `status: po_exists`, `error: no_supplier` and
+    # `error: str(e)` -- five different facts wearing one number.
+    #
+    # The seven are now three aborts and four no-works. The count is held so
+    # that COLLAPSING THEM BACK goes red: anyone who returns a bare zero from a
+    # new branch, or merges two of these, breaks this test.
+    assert not [r for r in returns if "'suggestions': 0" in r], \
+        f"a bare zero-return is back: {[r for r in returns if chr(39)+'suggestions'+chr(39)+': 0' in r]}"
 
-    # They are NOT the same outcome. Present in the set, all wearing the zero:
-    joined = " | ".join(zeros)
-    assert "'mode': 'produce'" in joined      # not applicable to this tenant
-    assert "'status': 'stock_ok'" in joined   # no work needed
-    assert "'status': 'po_exists'" in joined  # no work needed, different reason
-    assert "'error': 'no_supplier'" in joined # a data defect
-    assert "'error': str(e)" in joined        # an abort
+    aborts = [r for r in returns if "JobOutcome.aborted" in r]
+    no_work = [r for r in returns if "JobOutcome.nothing_to_do" in r]
+    worked = [r for r in returns if "JobOutcome.worked" in r]
 
-    # Only ONE return reports work done.
-    assert len([r for r in returns if "'suggestions': 1" in r]) == 1
+    assert len(aborts) == 3, f"expected 3 aborts, got {aborts}"
+    assert len(no_work) == 4, f"expected 4 no-works, got {no_work}"
+    assert len(worked) == 1, f"expected 1 worked, got {worked}"
+    assert len(aborts) + len(no_work) == 7, "the seven zeros must still be seven returns"
+
+    # And they are still DISTINGUISHABLE -- each carries its own detail.
+    joined = " | ".join(aborts + no_work)
+    assert "mode_produce" in joined
+    assert "stock_ok" in joined
+    assert "po_exists" in joined
+    assert "no vault supplier configured" in joined
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -209,7 +249,7 @@ def test_CHAR_reorder_collapses_distinct_outcomes_onto_one_number(db_session):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_CHAR_uncleared_check_swallows_per_item_failures_uncounted(db_session, monkeypatch):
+def test_uncleared_check_COUNTS_its_insight_failures(db_session, monkeypatch):
     """⚠️ WRONGNESS. The per-item handler logs and drops. A run whose every
     item failed returns the same empty result as a run with no items."""
     import ast, inspect
@@ -219,13 +259,100 @@ def test_CHAR_uncleared_check_swallows_per_item_failures_uncounted(db_session, m
     fn = ast.parse(src).body[0]
     handlers = [h for h in ast.walk(fn) if isinstance(h, ast.ExceptHandler)]
     assert handlers, "expected at least one except handler"
+    # SUPERSEDED by (c) 2c step 2. This previously asserted the handler LOGS
+    # AND DOES NOT COUNT, and carried a staleness guard (`not hasattr(out,
+    # "failed")`) so it would go red rather than quietly vacuous once migrated.
+    # The guard fired, which is the only reason this block is being rewritten
+    # rather than silently passing against a function it no longer describes.
     for h in handlers:
         bodies = [ast.unparse(s) for s in h.body]
-        # Logs. Does not count, does not re-raise.
         assert any("logger." in b for b in bodies), bodies
-        assert not any("+=" in b for b in bodies), f"already counts: {bodies}"
-        assert not any(b.startswith("raise") for b in bodies), bodies
+        assert any("insight_failures" in b for b in bodies), \
+            f"the handler stopped counting: {bodies}"
 
-    # And the clean path returns a bare container with no failure channel.
     out = proactive_agents.run_uncleared_check_monitor(db_session, TENANT)
-    assert not hasattr(out, "failed"), "already migrated — this characterization is stale"
+    assert hasattr(out, "failed"), "regressed to a shape with no failure channel"
+    # ⚠️ `succeeded` is INSIGHTS WRITTEN, not checks FLAGGED. With no stale
+    # checks this is no_work; the distinction that matters is that a run which
+    # found checks and failed to surface them is no longer identical to one
+    # that surfaced them all.
+    assert out.state in ("no_work", "ok", "completed_with_errors")
+    assert out.failed == 0
+
+
+def _stale_check(db, *, days_old: int = 60):
+    """An outstanding-check adjustment older than the 45-day cutoff."""
+    from app.models.financial_account import (
+        FinancialAccount, ReconciliationAdjustment, ReconciliationRun,
+    )
+    acct = FinancialAccount(
+        id=str(uuid.uuid4()), tenant_id=TENANT, account_type="bank",
+        account_name="Group C Account", is_active=True, is_primary=False, sort_order=99,
+    )
+    db.add(acct); db.commit()
+    run = ReconciliationRun(
+        id=str(uuid.uuid4()), tenant_id=TENANT, financial_account_id=acct.id,
+        status="completed", statement_date=date.today() - timedelta(days=days_old),
+        statement_closing_balance=Decimal("0.00"), total_statement_transactions=0,
+        auto_cleared_count=0, suggested_count=0, unmatched_count=0,
+        outstanding_checks_total=Decimal("0.00"), outstanding_deposits_total=Decimal("0.00"),
+        adjustments_total=Decimal("0.00"), difference=Decimal("0.00"),
+    )
+    db.add(run); db.commit()
+    adj = ReconciliationAdjustment(
+        id=str(uuid.uuid4()), tenant_id=TENANT, reconciliation_run_id=run.id,
+        adjustment_type="outstanding_check", description="GRPC stale check",
+        amount=Decimal("125.00"),
+        created_at=datetime.now(timezone.utc) - timedelta(days=days_old),
+    )
+    db.add(adj); db.commit()
+    return adj
+
+
+def test_uncleared_check_a_FAILED_INSIGHT_is_not_a_clean_run(db_session, monkeypatch):
+    """⚠️ THIS TEST EXISTS BECAUSE A BREAK TEST CAUGHT ITS ABSENCE.
+
+    2c was written coverage-first specifically to avoid 2b's miss, and STILL
+    left this count untested: the coverage written first was STRUCTURAL (an AST
+    assertion on the handler) plus a no-work path. Neither runs the failure
+    branch. Break I silenced `insight_failures` and twenty tests stayed green.
+
+    Writing coverage first is not the same as covering the thing you are about
+    to author. The break test is what tells them apart.
+    """
+    from app.services import behavioral_analytics_service, proactive_agents
+
+    _stale_check(db_session)
+
+    calls = {"n": 0}
+
+    def exploding(*a, **k):
+        calls["n"] += 1
+        raise RuntimeError("injected insight-write failure")
+
+    monkeypatch.setattr(behavioral_analytics_service, "generate_insight", exploding)
+
+    out = proactive_agents.run_uncleared_check_monitor(db_session, TENANT)
+
+    # Control that the break APPLIED.
+    assert calls["n"] == 1, f"generate_insight was never reached: {calls['n']}"
+
+    assert out.detail["flagged"] >= 1, "the query found nothing; this test is vacuous"
+    assert out.failed == 1
+    assert out.succeeded == 0
+    assert out.state == "completed_with_errors"
+
+
+def test_uncleared_check_a_WRITTEN_INSIGHT_is_ok(db_session):
+    """The control, so the test above is read against a working path rather
+    than against itself. Same fixture, no injection."""
+    from app.services import proactive_agents
+
+    _stale_check(db_session)
+
+    out = proactive_agents.run_uncleared_check_monitor(db_session, TENANT)
+
+    assert out.detail["flagged"] >= 1
+    assert out.failed == 0
+    assert out.succeeded == 1
+    assert out.state == "ok"

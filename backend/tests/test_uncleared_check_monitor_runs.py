@@ -26,6 +26,21 @@ def db():
     s.close()
 
 
+@pytest.fixture(autouse=True)
+def _no_litter(db):
+    """⚠️ PRE-EXISTING COMPANY LITTER, fixed here because (c) 2c is the commit
+    that touched this file. The test COMMITS a Company and the `db` fixture only
+    rolls back -- a rollback after a commit reverts nothing. The session-scoped
+    tripwire caught it: 453 companies in, 454 out.
+
+    Per CLAUDE.md the litter count can only shrink, and the FK-safe order lives
+    in tests/_cleanup.py rather than in a local delete list.
+    """
+    yield
+    from tests._cleanup import purge_companies_by_slug
+    purge_companies_by_slug(db, "p1r-%")
+
+
 def test_uncleared_check_monitor_runs_against_real_schema(db):
     co = Company(
         id=str(uuid.uuid4()),
@@ -41,5 +56,10 @@ def test_uncleared_check_monitor_runs_against_real_schema(db):
     # + the filter on tenant_id/adjustment_type/created_at runs) — pre-fix this
     # raised ImportError before any query.
     result = run_uncleared_check_monitor(db, co.id)
-    assert isinstance(result, dict)
-    assert result.get("flagged") == 0  # fresh tenant, no outstanding checks
+    # SUPERSEDED by (c) 2c step 2. Was: `assert isinstance(result, dict)` +
+    # `result.get("flagged") == 0`. The witness is unchanged -- the query still
+    # has to EXECUTE for any of this to be reached.
+    from app.services.job_outcome import JobOutcome
+    assert isinstance(result, JobOutcome)
+    assert result.detail["flagged"] == 0  # fresh tenant, no outstanding checks
+    assert result.state == "no_work"
