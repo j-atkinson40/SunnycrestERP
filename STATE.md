@@ -53,6 +53,63 @@ max is 412.2ms.** One outlier in 20 samples extrapolated past the data. It appea
 in none of the five full-tree failure sets measured today. That is the p99
 extrapolation defect, not a latency problem, and it belongs to the budget item.
 
+## ✅ r184 — THE CLASS IS CLOSED. 0 ORPHANS ACROSS ALL 391 COLUMNS (2026-09-14)
+
+Every `company_id`/`tenant_id` column now carries a foreign key to `companies.id`.
+Migration `r184_tenant_column_company_fks`: the remaining **20** with `ON DELETE
+CASCADE`, plus the two `platform_incidents` referrers moved from `NO ACTION` to
+`CASCADE` so the cascade onto incidents does not raise.
+
+⚠️ **THE GUARD IS THE DURABLE PIECE, NOT THE TWENTY CONSTRAINTS.**
+`tests/test_tenant_column_fk_guard.py` derives every tenant-scoped column from
+`information_schema` at run time and fails naming any without a constraint. A
+table added tomorrow is in scope tomorrow with nobody updating a list.
+
+It replaces a hand-maintained one: `purge_companies_by_slug` deletes from 72
+tables, covered **one** of the 20, and its own docstring has said for months that
+"the other 322 are still uncovered … it fails on whichever table a new test first
+populates — silently." That helper should stop being load-bearing rather than be
+extended.
+
+### Why twenty at once
+
+A partial application DISPLACES rather than fixes, measured not predicted: r183
+constrained health scores, and the follow-up produced **+2 orphaned
+`platform_incidents` per run** — then broke its own test, because accumulated
+`infra` incidents make the responder escalate rather than resolve.
+
+An orphan can only land where there is no constraint. Constrain the whole set and
+there is nowhere left to displace to.
+
+⚠️ **And the producer needed no fixing.** Deleting a company is ordinary test
+behaviour — 98 files do it, 51 through the shared helper and 42 hand-rolled. It
+produces litter only where a constraint is missing.
+
+### Verified
+
+- Guard **red naming exactly 20** before the migration, **green** after, red again
+  on downgrade. upgrade → downgrade → upgrade clean on the populated database.
+- Two-hop cascade run, not asserted: company → 2 chained incidents → notification,
+  all removed, self-reference did not raise.
+- **0 orphans across all 391 tenant-scoped columns** after a full-tree run.
+
+### Four tests were producing the litter
+
+`test_responders` (×4) and `test_reframe_r2` wrote fabricated ids —
+`tenant-breach-…`, `r2-co` — into columns that had no constraint to refuse them.
+They now use real companies, removed in teardown, relying on the new cascade
+rather than working around it.
+
+### What remains
+
+The tripwire's `global_workflows: 34` ceiling is **unaffected** — those rows have
+`company_id IS NULL`, so no company-scoped constraint can reach them. Closing that
+needs fixture teardown.
+
+⚠️ The ORM convention is **not** fixed: zero of the 20 declared a `ForeignKey`, and
+a migration leaves that intact. The guard is what stops table 21; a model-layer fix
+would stop it earlier.
+
 ## ✅ r183 — THE FK LANDED, AND ONE CLAIM BELOW WAS WRONG (2026-09-14)
 
 `tenant_health_scores.tenant_id -> companies.id ON DELETE CASCADE`, migration

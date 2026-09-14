@@ -309,9 +309,9 @@ def test_auth_transient_resolves(db: Session, real_tenant):
 # ── Test 7: auth breach threshold escalates + notifies ────────────────────
 
 
-def test_auth_breach_escalates(db: Session):
+def test_auth_breach_escalates(db: Session, real_tenant):
     """5+ auth failures for the same tenant in 1 hour triggers breach escalation."""
-    tenant_id = f"tenant-breach-{uuid.uuid4().hex[:8]}"
+    tenant_id = real_tenant  # r184 constrains platform_incidents.tenant_id
 
     # Create 5 prior auth failures in the last hour
     for i in range(5):
@@ -420,9 +420,9 @@ def test_infra_repeated_escalates(db: Session):
 # ── Test 10: config drift → preset reapplied ─────────────────────────────
 
 
-def test_config_preset_reapplied(db: Session):
+def test_config_preset_reapplied(db: Session, real_tenant):
     """Config drift incident triggers preset reapplication."""
-    tenant_id = f"tenant-config-{uuid.uuid4().hex[:8]}"
+    tenant_id = real_tenant  # r184 constrains platform_incidents.tenant_id
     msg = _unique_msg("Module config drifted from manufacturing preset")
     incident = _create_incident(
         db,

@@ -39,6 +39,17 @@ VERT = f"reframe2-{uuid.uuid4().hex[:6]}"
 @pytest.fixture(scope="module")
 def world():
     db = SessionLocal()
+    # ⚠️ r184 constrains ponder_engagement.company_id -> companies.id. This file
+    # used "r2-co" as a bare string, which is exactly the shape that stranded
+    # rows when a company was deleted: no constraint, so no complaint. It is a
+    # real company now, removed in teardown — and the removal takes the
+    # engagement rows with it via ON DELETE CASCADE.
+    from app.models.company import Company
+
+    if not db.get(Company, "r2-co"):
+        db.add(Company(id="r2-co", name="Reframe2 Test Co",
+                       slug=f"r2-co-{uuid.uuid4().hex[:8]}", is_active=True))
+        db.commit()
     db.execute(sql_text(
         "INSERT INTO verticals (slug, display_name) VALUES (:v, :n) "
         "ON CONFLICT (slug) DO NOTHING"
@@ -80,6 +91,7 @@ def world():
     db.execute(sql_text("DELETE FROM moc_task_catalog WHERE vertical = :v"), {"v": VERT})
     db.execute(sql_text("DELETE FROM ponder_engagement WHERE ponder_key LIKE 'job:%' AND company_id = 'r2-co'"))
     db.execute(sql_text("DELETE FROM verticals WHERE slug = :v"), {"v": VERT})
+    db.execute(sql_text("DELETE FROM companies WHERE id = 'r2-co'"))
     db.commit()
     db.close()
 
