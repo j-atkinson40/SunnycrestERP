@@ -154,19 +154,41 @@ def _survey(conn, canonical: list[str]) -> dict:
     return out
 
 
+def _restore_order(sources):
+    """Parents before children, which is the reverse of the delete order."""
+    parents = [x for x in sources if x[0] in ("workflows", ORPHAN_TABLE)]
+    children = [x for x in sources if x[0] not in ("workflows", ORPHAN_TABLE)]
+    return parents + children
+
+
 def _write_restore(conn, canonical: list[str], path: str) -> int:
-    """Plain INSERTs for everything about to be deleted. Written BEFORE any delete."""
+    """Plain INSERTs for EVERY row about to be deleted. Written BEFORE any delete.
+
+    ⚠️ THE BLOCKING CHILDREN ARE INCLUDED, AND WERE NOT IN THE FIRST VERSION.
+    That version covered workflows, workflow_steps and the orphan table while the
+    docstring claimed "everything about to be deleted" — the 9 rows in
+    workflow_enrollments / workflow_runs that are deleted first, to stop the
+    ON DELETE NO ACTION constraints raising, would have been unrecoverable. The
+    blocking tables are derived from the same catalog query the delete uses, so
+    the two cannot drift apart.
+    """
     p = {"canonical": canonical}
     written = 0
+    sources = [
+        (tbl, f'SELECT * FROM "{tbl}" WHERE {col} IN ({LITTER_WORKFLOW_SQL})')
+        for tbl, col in _blocking_children(conn)
+    ] + [
+        ("workflows", f"SELECT * FROM workflows WHERE id IN ({LITTER_WORKFLOW_SQL})"),
+        ("workflow_steps",
+         f"SELECT * FROM workflow_steps WHERE workflow_id IN ({LITTER_WORKFLOW_SQL})"),
+        (ORPHAN_TABLE, f"SELECT * FROM {ORPHAN_TABLE} WHERE {ORPHAN_PREDICATE}"),
+    ]
     with open(path, "w") as fh:
         fh.write(f"-- purge_test_litter restore file, {datetime.now(timezone.utc).isoformat()}\n")
-        fh.write("-- Apply with: psql <db> < this file. Order is significant.\n")
-        for label, sql in (
-            ("workflows", f"SELECT * FROM workflows WHERE id IN ({LITTER_WORKFLOW_SQL})"),
-            ("workflow_steps",
-             f"SELECT * FROM workflow_steps WHERE workflow_id IN ({LITTER_WORKFLOW_SQL})"),
-            (ORPHAN_TABLE, f"SELECT * FROM {ORPHAN_TABLE} WHERE {ORPHAN_PREDICATE}"),
-        ):
+        fh.write("-- Apply with: psql <db> < this file.\n")
+        fh.write("-- ORDER IS SIGNIFICANT and is the REVERSE of the delete order:\n")
+        fh.write("-- parents (workflows) must exist before their children are re-inserted.\n")
+        for label, sql in _restore_order(sources):
             res = conn.execute(text(sql), p)
             cols = list(res.keys())
             for row in res:
@@ -223,6 +245,16 @@ def main() -> int:
 
         n = _write_restore(conn, canonical, args.restore_file)
         print(f"\nrestore file: {args.restore_file}  ({n} rows)")
+
+        # ⚠️ END THE READ TRANSACTION BEFORE OPENING THE WRITE ONE.
+        # SQLAlchemy AUTOBEGINS a transaction on the first read, so `conn.begin()`
+        # here raises InvalidRequestError — which it did, after the restore file
+        # was written and before any DELETE. The script failed safe, but only by
+        # luck of ordering: had the survey run inside the write block the error
+        # would have come mid-delete. This is the "one statement per connection,
+        # or check transaction state before believing a result" rule, biting the
+        # script written under it.
+        conn.rollback()
 
         with conn.begin():
             for tbl, col, _ in s["blocking"]:

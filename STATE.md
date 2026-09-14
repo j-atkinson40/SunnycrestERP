@@ -2,6 +2,46 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ✅ THE PURGE RAN (2026-09-14) — STOCK CLEARED, FLOW UNCHANGED
+
+**Run at James's request against `localhost:5432/bridgeable_dev`.** Restore file
+at `~/purge_test_litter_restore_2026-09-14.sql` (67,586 rows of INSERTs).
+
+| | before | after |
+|---|---|---|
+| orphaned `tenant_health_scores` | 60,469 | **0** |
+| global non-canonical workflows | 2,096 | **0** |
+| `scope=core` active | 1,720 | **6** |
+| canonical workflows present | 36/36 | **36/36** |
+| orphans across all 391 tenant-scoped tables | 1 table | **0 tables** |
+
+Verified independently of the script's own report.
+
+### ⚠️ THREE BLOCKING GATES RECOVERED — BY DELETING DATA, NOT BY CHANGING CODE
+
+    test_workflow_scope_core_latency            p50 249.4ms -> 5.3ms
+    test_workflow_scope_core_with_used_by       p50 439.3ms -> 5.8ms
+    test_saved_view_execute_latency             (also recovered)
+
+Full tree 44 failed -> **41 failed**, zero new. The two workflow-scope gates were
+the STOP in the preliminary, diagnosed as an N+1. **The N+1 is still there** —
+slope 1.00 queries per row, unchanged — it simply costs nothing at 6 rows. The
+defect was never the loop; it was 1,714 fixture rows being iterated.
+
+⚠️ `test_saved_view_execute_latency` had been attributed to machine-load flake.
+Its earlier flipping is now ambiguous between the two causes, not explained by
+either alone.
+
+### ⚠️ THE FLOW IS UNCHANGED. THE PURGE CLEARED STOCK ONLY.
+
+Measured across three full runs after the purge: **+34 global workflows and
++1,364/+1,366 orphaned health scores per run.** Within minutes of finishing, a
+handful of test files had put 46 workflows back.
+
+So this is not done. It is a floor reset, and it will need repeating until the
+fixtures gain teardown and the FK lands. The tripwire's delta is what measures
+the flow; the numbers above measure a moment.
+
 ## ⚠️ TEST LITTER: A MISSING FOREIGN KEY, NOT A CLEANUP GAP (2026-09-14)
 
 **The cause is an absent constraint. The purge treats a symptom.** Recorded so the
