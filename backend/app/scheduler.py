@@ -86,6 +86,20 @@ def _complete_job_run(run_id: str, status: str, duration: float, **kwargs):
         db.close()
 
 
+def _outcome_of(result):
+    """A `JobOutcome` if the target returned one, else None.
+
+    ⚠️ COMMIT 1 OF 3 — INTRODUCED, NOT YET PRODUCED BY ANYTHING. No target
+    returns a `JobOutcome` today, so this path is dormant. It exists first
+    because the removal rule forbids the reverse order: a wrapper that refuses
+    the old shapes before its callers are migrated converts a latent ambiguity
+    into a nightly TypeError against live tenants.
+    """
+    from app.services.job_outcome import JobOutcome
+
+    return result if isinstance(result, JobOutcome) else None
+
+
 def _reported_error(result) -> str | None:
     """An error a target REPORTED rather than raised.
 
@@ -112,6 +126,10 @@ def _reported_error(result) -> str | None:
     targets to report a skipped-count and a structured result that makes silent
     success unexpressible. Separate build; do not widen this function into it.
     """
+    outcome = _outcome_of(result)
+    if outcome is not None:
+        # An abort is the typed form of the `{"error": ...}` marker below.
+        return outcome.reason
     if isinstance(result, dict):
         err = result.get("error")
         if err:
@@ -128,6 +146,12 @@ def _run_per_tenant(job_name: str, func, *extra_args):
     success = 0
     errors = 0
     last_error = None
+    # ⚠️ SEPARATE FROM `errors`, WHICH COUNTS TENANTS. A tenant whose target
+    # reports item-level failures COMPLETED — it is not a failed tenant — but
+    # the RUN is not clean. Folding item failures into `error_count` would
+    # give that column two meanings depending on the job, which is the defect
+    # `skipped` already has one layer down.
+    degraded = False
     for tid in tenant_ids:
         db = SessionLocal()
         try:
@@ -135,6 +159,9 @@ def _run_per_tenant(job_name: str, func, *extra_args):
             reported = _reported_error(result)
             if reported is None:
                 success += 1
+                outcome = _outcome_of(result)
+                if outcome is not None and outcome.failed:
+                    degraded = True
             else:
                 # Caught by the target, reported back, and previously discarded.
                 errors += 1
@@ -152,7 +179,11 @@ def _run_per_tenant(job_name: str, func, *extra_args):
     logger.info(f"[{job_name}] Complete: {success} ok, {errors} errors ({duration:.1f}s)")
     _complete_job_run(
         run_id,
-        status="completed" if errors == 0 else "failed",
+        status=(
+            "failed" if errors
+            else "completed_with_errors" if degraded
+            else "completed"
+        ),
         duration=duration,
         tenant_count=len(tenant_ids),
         success_count=success,
@@ -171,9 +202,17 @@ def _run_global(job_name: str, func):
         result = func(db)
         duration = time.monotonic() - t0
         reported = _reported_error(result)
+        outcome = _outcome_of(result)
         if reported is None:
+            degraded = outcome is not None and bool(outcome.failed)
             logger.info(f"[{job_name}] Complete: {result} ({duration:.1f}s)")
-            _complete_job_run(run_id, status="completed", duration=duration)
+            _complete_job_run(
+                run_id,
+                status="completed_with_errors" if degraded else "completed",
+                duration=duration,
+                success_count=outcome.succeeded if outcome else None,
+                error_count=outcome.failed if outcome else None,
+            )
         else:
             logger.error(f"[{job_name}] Reported error: {reported}")
             _complete_job_run(
