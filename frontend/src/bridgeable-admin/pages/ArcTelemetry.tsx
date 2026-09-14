@@ -24,7 +24,12 @@ interface EndpointCounter {
   error_rate: number;
   samples: number;
   p50_ms: number | null;
-  p99_ms: number | null;
+  // The slow-end value, and WHICH statistic it is. Below 99 samples a p99
+  // cannot be computed from the buffer, so the backend reports the observed
+  // maximum and says "max". The label travels with the value; the value is
+  // never relabelled. See app/services/arc_telemetry.py::_tail.
+  tail_ms: number | null;
+  tail_stat: "p99" | "max" | null;
 }
 
 interface IntelWindow {
@@ -129,6 +134,16 @@ export function ArcTelemetry() {
             <span className="font-mono">{formatUptime(uptime)}</span>).
             Intelligence aggregations below are persisted and survive
             restarts.
+            <div className="mt-1">
+              The buffer refills from empty on every deploy. A 99th percentile
+              needs 99 samples, so below that the slow-end column shows the{" "}
+              <span className="font-medium">slowest request so far</span>,
+              marked{" "}
+              <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800">
+                max
+              </span>
+              . It is never a percentile wearing a percentile's name.
+            </div>
           </div>
         </div>
       </div>
@@ -145,9 +160,9 @@ export function ArcTelemetry() {
                 <th className="px-3 py-2 text-left">Endpoint</th>
                 <th className="px-3 py-2 text-right">Requests</th>
                 <th className="px-3 py-2 text-right">p50</th>
-                <th className="px-3 py-2 text-right">p99</th>
-                <th className="px-3 py-2 text-right">Errors</th>
+                <th className="px-3 py-2 text-right">Slow end</th>
                 <th className="px-3 py-2 text-right">Samples</th>
+                <th className="px-3 py-2 text-right">Errors</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -161,7 +176,36 @@ export function ArcTelemetry() {
                     {formatMs(e.p50_ms)}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {formatMs(e.p99_ms)}
+                    <span>{formatMs(e.tail_ms)}</span>
+                    {e.tail_stat && (
+                      <span
+                        className={
+                          "ml-1.5 rounded px-1 py-0.5 text-[10px] font-medium " +
+                          (e.tail_stat === "p99"
+                            ? "bg-gray-100 text-gray-600"
+                            : "bg-amber-100 text-amber-800")
+                        }
+                        title={
+                          e.tail_stat === "p99"
+                            ? "99th percentile — a latency an actual request recorded"
+                            : `Only ${e.samples} samples buffered; a p99 needs 99. ` +
+                              "This is the slowest request so far, not a percentile."
+                        }
+                      >
+                        {e.tail_stat}
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    className={
+                      "px-3 py-2 text-right tabular-nums " +
+                      (e.samples > 0 && e.samples < 99
+                        ? "text-amber-800"
+                        : "text-gray-500")
+                    }
+                    title="Samples in the rolling buffer. Below 99 the slow-end column reports a max, not a p99."
+                  >
+                    {e.samples}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {e.error_count > 0 ? (
@@ -171,9 +215,6 @@ export function ArcTelemetry() {
                     ) : (
                       <span className="text-gray-400">0</span>
                     )}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-400">
-                    {e.samples}
                   </td>
                 </tr>
               ))}

@@ -24,11 +24,25 @@ trustworthy right after a deploy -- when an operator is most likely to read it.
 p50 from the same call is SOUND at every n (verified against statistics.median
 across five distribution shapes; see tests/test_arc_telemetry_percentile.py).
 
-The repair is a pending decision, not an oversight: below the threshold the
-surface must show the max and say so, show nothing and say why, or show the p99
-with its sample count attached. ⚠️ It must NOT clamp the value to the observed
-max -- that yields a number always exactly equal to the maximum, still labelled
-p99.
+⚠️ RESOLVED 2026-09-14 — THE LABEL CHANGES, THE VALUE IS NEVER RELABELLED.
+
+Below `_P99_MIN_SAMPLES` no p99 is computed at all. `_tail()` returns the
+observed MAX together with the string "max", and the surface renders that name.
+At or above the threshold it returns a real p99 and says "p99". Same column,
+true at both ends, and the transition is visible to the reader rather than
+silent.
+
+Rejected: blanking the cell (a blank meaning "not enough data" and a blank
+meaning "broken" are indistinguishable, and the column would blank after every
+deploy — exactly when someone looks). Rejected: keeping the p99 label and
+attaching the sample count (still a number that never happened, weighable only
+by a reader who already knows this paragraph exists).
+
+⚠️ AND NEVER clamp an interpolated value to the observed max. That yields a
+number always exactly equal to the maximum while still called p99 — the same
+lie with a smaller error bar. Guarded by
+test_the_reported_p99_is_NEVER_IDENTICALLY_THE_MAXIMUM, which fires only on
+rows whose label says "p99".
 
 For long-term observability, post-arc roadmap covers real APM.
 """
@@ -122,8 +136,13 @@ def snapshot() -> dict:
             "error_count": int,
             "error_rate": float,
             "samples": int,  # size of rolling buffer
-            "p50_ms": float | None,
-            "p99_ms": float | None,
+            "p50_ms": float | None,       # sound at every n
+            "tail_ms": float | None,      # the slow-end value
+            "tail_stat": str | None,      # "p99" | "max" -- WHICH statistic
+                                          # tail_ms actually is. Below
+                                          # _P99_MIN_SAMPLES a p99 cannot be
+                                          # computed, so the max is reported
+                                          # and says so.
           },
           ...
         ]
@@ -142,10 +161,12 @@ def snapshot() -> dict:
                     "error_rate": 0.0,
                     "samples": 0,
                     "p50_ms": None,
-                    "p99_ms": None,
+                    "tail_ms": None,
+                    "tail_stat": None,
                 })
                 continue
             latencies = list(counter.latencies_ms)
+            tail_ms, tail_stat = _tail(latencies)
             snapshot_data.append({
                 "endpoint": endpoint,
                 "request_count": counter.request_count,
@@ -156,8 +177,9 @@ def snapshot() -> dict:
                     else 0.0
                 ),
                 "samples": len(latencies),
-                "p50_ms": _percentile(latencies, 50),
-                "p99_ms": _percentile(latencies, 99),
+                "p50_ms": _p50(latencies),
+                "tail_ms": tail_ms,
+                "tail_stat": tail_stat,
             })
 
     return {
@@ -166,18 +188,56 @@ def snapshot() -> dict:
     }
 
 
-def _percentile(samples: list[float], p: int) -> float | None:
+#: ⚠️ MEASURED, NOT CHOSEN. `statistics.quantiles(xs, n=100)` uses the default
+#: "exclusive" method, which assumes the sample under-covers the tails and
+#: projects past them. 99 is the smallest n at which the 99th cut point falls
+#: INSIDE the data; below it the result is an extrapolation and exceeds the
+#: largest sample by up to 93%. Pinned by
+#: tests/test_arc_telemetry_percentile.py::test_the_threshold_is_EXACTLY_99_samples.
+_P99_MIN_SAMPLES = 99
+
+
+def _p50(samples: list[float]) -> float | None:
+    """The median. Sound at every sample count.
+
+    ⚠️ THIS REPLACED A GENERAL `_percentile(samples, p)`. The general form could
+    be asked for a 99th percentile it had no data to compute, and was — that is
+    the defect this module carried. Narrowing the helper to the one statistic it
+    can always answer makes the wrong question UNASKABLE rather than guarded.
+    The slow end goes through `_tail`, which reports which statistic it used.
+    """
     if not samples:
         return None
-    if len(samples) == 1:
-        return float(samples[0])
-    try:
-        # statistics.quantiles with n=100 gives us percentile boundaries.
-        q = statistics.quantiles(samples, n=100)
-        idx = max(0, min(len(q) - 1, p - 1))
-        return float(q[idx])
-    except statistics.StatisticsError:
-        return float(statistics.median(samples))
+    return float(statistics.median(samples))
+
+
+def _tail(samples: list[float]) -> tuple[float | None, str | None]:
+    """The slow-end statistic AND THE NAME OF THE STATISTIC ACTUALLY USED.
+
+    Returns `(value, "p99")` when there are enough samples for a p99 to mean
+    something, `(value, "max")` when there are not, `(None, None)` when there is
+    nothing at all.
+
+    ⚠️ THE LABEL TRAVELS WITH THE VALUE, DELIBERATELY. The alternative — keep
+    calling it p99 and quietly substitute the max below the threshold — is the
+    defect in a different costume: a number that is always exactly the maximum,
+    labelled as something else. Callers render whichever name comes back.
+    """
+    if not samples:
+        return None, None
+    if len(samples) >= _P99_MIN_SAMPLES:
+        # ⚠️ NEAREST-RANK, NOT INTERPOLATION, AND IT IS THE CODEBASE'S OWN
+        # PATTERN. `intelligence.py` computes its p95 as
+        # `rows[int(0.95 * (len(rows) - 1))]` over an ORDER BY -- always a value
+        # some request actually recorded. `quantiles()` interpolates BETWEEN
+        # order statistics: on 119 samples at 20ms and one at 450ms it returns
+        # 359.7ms, which is inside the data range and which nothing measured.
+        # Within-range is not the same as true.
+        #
+        # This module diverged from a working pattern rather than lacking one.
+        ordered = sorted(samples)
+        return float(ordered[int(0.99 * (len(ordered) - 1))]), "p99"
+    return float(max(samples)), "max"
 
 
 def reset_for_testing() -> None:
