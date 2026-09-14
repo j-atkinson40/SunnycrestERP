@@ -2,6 +2,80 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ TEST LITTER: A MISSING FOREIGN KEY, NOT A CLEANUP GAP (2026-09-14)
+
+**The cause is an absent constraint. The purge treats a symptom.** Recorded so the
+FK item starts from measurement rather than re-deriving it.
+
+### ⚠️ EVERY ABSOLUTE BELOW HAS A KNOWN SLOPE. QUOTE THEM WITH THEIR TIMESTAMP.
+
+Readings taken **2026-09-14 17:54 UTC**. They moved three times *while being
+discussed*, entirely from this session's own test runs:
+
+| | earlier reading | 17:54 UTC | moved by |
+|---|---|---|---|
+| orphaned `tenant_health_scores` | 55,013 | **60,469** | +5,456 |
+| `scope=core` active workflows | 1,608 | **1,720** | +112 |
+| global non-canonical workflows | 1,960 | **2,096** | +136 |
+
+One full-tree run adds +34 global workflows and +1,364 orphaned scores.
+
+⚠️ **A figure from this entry quoted without its timestamp is a reading presented
+as a fact.** The delta is the only stable thing here, which is why the tripwire's
+ceiling sits on the per-run growth and not on any of the numbers above.
+
+### The cause
+
+`tenant_health_scores` has **NO FOREIGN KEY AT ALL** on `tenant_id`. Nothing
+enforced a parent, so nothing cascaded and nothing complained.
+
+Enumerated across all **391** tables carrying a `company_id`/`tenant_id` column:
+**exactly one holds orphans.** The other 390 are at zero — their constraints did
+the work. This is not a cleanup that was forgotten; it is a constraint that was
+never added, and the cleanup would have to be re-run forever.
+
+### The FK is addable after the purge, BY CONSTRUCTION
+
+- Types match: both `varchar(36)`, both already `NOT NULL`. No separate
+  nullability migration.
+- **The purge's predicate IS the constraint's violation set** — the same
+  expression, not merely the same shape. So violations reach zero by
+  construction rather than by measurement, and the migration cannot fail on data
+  the purge has not already removed.
+- Only **6** rows survive the purge. The table is essentially all litter.
+
+⚠️ Same ordering as `r177`, and stronger: there, the dedup and the unique index
+were the same *shape*. Here they are the same predicate.
+
+### ⚠️ `ON DELETE CASCADE`, AND THE CATALOG MAJORITY IS THE WRONG GUIDE
+
+Derived from the catalog: of **370** FKs to `companies.id` from a
+company/tenant column, **83% are `NO ACTION`**, 17% `CASCADE`.
+
+**Take `CASCADE` anyway.** The majority describes tables where refusing a delete
+is meaningful. `tenant_health_scores` is derived data at a leaf with nothing
+referencing it; the scores are meaningless once the tenant is gone.
+
+The distinction that decides it: **`NO ACTION` makes the constraint a guard;
+`CASCADE` makes it a removal.** With `CASCADE` the class cannot recur. With
+`NO ACTION` it cannot recur *silently* — every future tenant deletion either
+fails or leaves orphans, which is the mechanism that produced 60,469 of them.
+
+Evidence that the convention is not neutral: purging the litter workflows is hard
+precisely *because* three referrers of `workflows.id` are `NO ACTION` and raise
+instead of cascading. `NO ACTION` is what made that cleanup expensive.
+
+### Sequence
+
+1. **James runs** `python -m scripts.purge_test_litter` (report), then `--apply`.
+2. **The FK follows**, with `CASCADE`. The tripwire's delta on that table then
+   becomes structurally zero rather than observed zero.
+3. **The 21 latency budgets come after both** — derived against a database that
+   describes six workflows rather than 1,720.
+
+⚠️ Deriving the budgets before step 1 would encode the litter into 21 BLOCKING
+gates permanently, and each would look like a considered number.
+
 ## ⚠️ EVERY p99 IN THE BACKEND LATENCY SUITE IS AN EXTRAPOLATION (2026-09-14)
 
 **2026-09-14. Measured: 15 of 15 latency files, no exceptions.** Each computes
