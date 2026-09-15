@@ -45,10 +45,21 @@ interface ByCallerRow {
   cost_usd: number;
 }
 
+interface GcCounters {
+  gen2_collections: number;
+  gen2_pause_ms_max: number | null;
+  gen2_pause_ms_total: number;
+  // null until BOTH enough collections and a long enough window support a rate.
+  // The basis string says which is missing — see arc_telemetry._gc_snapshot.
+  gen2_per_hour: number | null;
+  gen2_rate_basis: string;
+}
+
 interface TelemetryResponse {
   endpoint_counters: {
     process_uptime_seconds: number;
     endpoints: EndpointCounter[];
+    gc: GcCounters;
   };
   intelligence: {
     windows: Record<string, IntelWindow>;
@@ -147,6 +158,58 @@ export function ArcTelemetry() {
           </div>
         </div>
       </div>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold flex items-center gap-1.5">
+          <Clock className="h-4 w-4" />
+          Garbage collection (this process)
+        </h2>
+        <div className="rounded-md border px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-500">
+                Gen-2 collections
+              </div>
+              <div className="tabular-nums text-lg">
+                {data.endpoint_counters.gc.gen2_collections}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-500">
+                Longest pause
+              </div>
+              <div className="tabular-nums text-lg">
+                {formatMs(data.endpoint_counters.gc.gen2_pause_ms_max)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-500">
+                Rate
+              </div>
+              <div className="tabular-nums text-lg">
+                {data.endpoint_counters.gc.gen2_per_hour == null ? (
+                  <span className="text-gray-400">—</span>
+                ) : (
+                  <>
+                    {data.endpoint_counters.gc.gen2_per_hour.toFixed(1)}
+                    <span className="ml-1 text-xs text-gray-500">/hour</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-gray-500">
+            {data.endpoint_counters.gc.gen2_rate_basis}
+          </div>
+          <div className="mt-1 text-xs text-gray-500">
+            A gen-2 collection walks the whole heap and blocks the process. This
+            service runs a single worker, so a pause stalls every request in
+            flight, not one worker&rsquo;s share. Measured locally at ~380&ndash;470&nbsp;ms
+            over ~2.1M tracked objects; this panel is here to find out how often
+            it actually happens in production.
+          </div>
+        </div>
+      </section>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold flex items-center gap-1.5">

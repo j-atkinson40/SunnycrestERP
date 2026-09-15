@@ -49,6 +49,7 @@ For long-term observability, post-arc roadmap covers real APM.
 
 from __future__ import annotations
 
+import gc
 import statistics
 import threading
 import time
@@ -77,6 +78,113 @@ _COUNTERS: dict[str, _EndpointCounter] = {}
 # Process-startup timestamp — shown in the UI so viewers know how
 # long the counters have been collecting.
 _PROCESS_START_TS: float = time.time()
+
+
+#: ⚠️ GENERATION-2 GC, MEASURED BECAUSE A 380ms PAUSE WAS FOUND BY ACCIDENT.
+#:
+#: A triage latency gate was failing on one sample ~20x its median. Measured
+#: 2026-09-15: the slow call issued the SAME 86 statements and the SAME 9ms of
+#: SQL as every other call — all ~390ms was a generation-2 collection, timed at
+#: the source via `gc.callbacks`. Disabling gc removed it entirely.
+#:
+#: The heap it walks is the APPLICATION's: 2,082,954 tracked objects after
+#: `import app.main`, on Python's default thresholds (2000, 10, 10), with no
+#: file under app/ touching gc. A forced collection costs 432ms, and an
+#: immediately repeated one costs 468ms — the cost is WALKING the permanent
+#: heap, not reclaiming garbage.
+#:
+#: ⚠️ AND THE SERVICE RUNS ONE UVICORN PROCESS WITH NO --workers, so a pause
+#: stalls everything in flight rather than one worker's share. That makes the
+#: frequency an availability question, not a per-endpoint latency one.
+#:
+#: What is NOT known is how often production collects. Collections are
+#: allocation-driven, not request-driven, so it cannot be inferred from traffic.
+#: This records it. It deliberately does NOT fix it: shipping `gc.freeze()`
+#: alongside its own measurement would mean the "before" reading never existed.
+_GC = {
+    "gen2_collections": 0,
+    "gen2_pause_ms_total": 0.0,
+    "gen2_pause_ms_max": 0.0,
+    "_started_at": 0.0,
+}
+
+#: ⚠️ TWO CONDITIONS, AND THE SECOND ONE I GOT WRONG FIRST.
+#:
+#: A rate needs an INTERVAL, and one event gives no interval — it gives an upper
+#: bound on frequency and nothing else. Hence the minimum count.
+#:
+#: But a count alone is not enough: the first implementation gated on count only
+#: and reported **4,888,149 collections per hour** from two collections in a
+#: zero-second window. The DENOMINATOR has to support the rate too.
+#:
+#: ⚠️ SO THE RULE IS THE ONE THIS MODULE WAS JUST REPAIRED FOR: DO NOT
+#: EXTRAPOLATE PAST THE OBSERVATION WINDOW. A per-hour rate from four minutes of
+#: uptime is the same defect as a p99 from thirty samples — a real statistic
+#: computed over a span that cannot carry it, labelled as though it could.
+#: `gen2_per_hour` therefore stays None until the process has been up an hour,
+#: and below that the surface reports the count and the window instead.
+_GC_MIN_COLLECTIONS_FOR_RATE = 2
+_GC_MIN_UPTIME_S_FOR_RATE = 3600.0
+
+
+def _gc_callback(phase: str, info: dict) -> None:
+    """⚠️ THIS RUNS ON EVERY COLLECTION, INCLUDING GEN-0, WHICH IS CONSTANT.
+
+    The generation check is therefore the first statement and the common path is
+    one dict lookup and one comparison. Nothing is allocated here, and no lock is
+    taken: a lock acquired inside a collection would add contention to the pause
+    it is trying to measure, and the cost of a torn counter is a wrong statistic,
+    not wrong behaviour.
+    """
+    if info.get("generation") != 2:
+        return
+    if phase == "start":
+        _GC["_started_at"] = time.perf_counter()
+        return
+    started = _GC["_started_at"]
+    if not started:
+        return
+    _GC["_started_at"] = 0.0
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    _GC["gen2_collections"] += 1
+    _GC["gen2_pause_ms_total"] += elapsed_ms
+    if elapsed_ms > _GC["gen2_pause_ms_max"]:
+        _GC["gen2_pause_ms_max"] = elapsed_ms
+
+
+gc.callbacks.append(_gc_callback)
+
+
+def _gc_snapshot(uptime_seconds: float) -> dict:
+    """Gen-2 collection stats, with the rate qualified by what supports it."""
+    n = _GC["gen2_collections"]
+    per_hour = None
+    if (n >= _GC_MIN_COLLECTIONS_FOR_RATE
+            and uptime_seconds >= _GC_MIN_UPTIME_S_FOR_RATE):
+        per_hour = n / (uptime_seconds / 3600.0)
+
+    mins = uptime_seconds / 60.0
+    if n == 0:
+        basis = f"none observed in {mins:.0f} min of uptime"
+    elif n < _GC_MIN_COLLECTIONS_FOR_RATE:
+        basis = f"{n} in {mins:.0f} min — one event gives no interval"
+    elif uptime_seconds < _GC_MIN_UPTIME_S_FOR_RATE:
+        basis = (f"{n} in {mins:.0f} min — too short to state an hourly rate "
+                 "without extrapolating past the window")
+    else:
+        basis = f"{n} over {uptime_seconds / 3600.0:.1f} h of uptime"
+    return {
+        "gen2_collections": n,
+        "gen2_pause_ms_max": _GC["gen2_pause_ms_max"] or None,
+        "gen2_pause_ms_total": _GC["gen2_pause_ms_total"],
+        "gen2_per_hour": per_hour,
+        "gen2_rate_basis": basis,
+        # ⚠️ HEAP SIZE IS DELIBERATELY ABSENT. It is what determines the pause
+        # cost, so it is the obvious thing to report — but `len(gc.get_objects())`
+        # materialises a list of every tracked object, two million of them here,
+        # and would itself cause the kind of pause this is measuring. An
+        # instrument that perturbs what it observes is worse than a missing field.
+    }
 
 
 TRACKED_ENDPOINTS = (
@@ -129,6 +237,13 @@ def snapshot() -> dict:
     Shape:
       {
         "process_uptime_seconds": float,
+        "gc": {                        # generation-2 collections in THIS process
+          "gen2_collections": int,
+          "gen2_pause_ms_max": float | None,
+          "gen2_pause_ms_total": float,
+          "gen2_per_hour": float | None,   # None until a rate is supportable
+          "gen2_rate_basis": str,          # what the number above rests on
+        },
         "endpoints": [
           {
             "endpoint": str,
@@ -182,9 +297,11 @@ def snapshot() -> dict:
                 "tail_stat": tail_stat,
             })
 
+    uptime = time.time() - _PROCESS_START_TS
     return {
-        "process_uptime_seconds": time.time() - _PROCESS_START_TS,
+        "process_uptime_seconds": uptime,
         "endpoints": snapshot_data,
+        "gc": _gc_snapshot(uptime),
     }
 
 
