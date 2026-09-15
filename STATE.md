@@ -2,6 +2,106 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ✅ THE FORK GATE HAS TEARDOWN, AND THE FLOW IS +34 → +11 (2026-09-15)
+
+`test_workflow_fork_latency` created 23 global `scope="core"` workflows per run and
+deleted none, while its docstring said **"we delete the fork after measurement."** That
+sentence had been false since it was written, and it also understated what it was
+claiming: the test creates SOURCES as well as forks and neither was deleted.
+
+Fixed by a function-scoped fixture that deletes **by recorded id**, not by a name
+pattern — `ForkSrc-%` would miss a rename, match rows this run did not create, and stop
+matching silently. Full write-up:
+`docs/investigations/2026-09-15-fork-gate-teardown-and-the-claim-sweep.md`.
+
+**Verified by counting rows, because the docstring already claimed what the code did not
+do (2026-09-15).**
+
+    three runs of the file, before    +23  +23  +23
+    three runs of the file, after       0    0    0
+    full tree, before                 +34
+    full tree, after                  +11
+
+⚠️ **Teardown-on-failure break-tested.** `assert False` after the rows exist (marker
+count 1): the test failed, the leak delta was **0**. Fixture finalisation runs on
+failure; a `try/finally` in the test body would not have covered a failure before the
+`try`.
+
+### ⚠️ THE +34 WAS NEVER ONE LEAK — ATTRIBUTED TEST BY TEST (2026-09-15)
+
+Per-test attribution on a full-tree run, by the row class the tripwire defines rather
+than by any name:
+
+    23  test_workflow_scope_latency_phase8a::test_workflow_fork_latency   <- fixed
+     5  tasks/test_b3_consumer_integration::TestWorkflowNodeTypes
+     4  test_workflow_scope_phase8a  (TestForkEndpoint x3, TestCountTenants x1)
+     1  test_moc_ponder    1  test_classification_tier_3_registry
+     1  test_moc_tenant_map, and -1 from a later test in the same file
+    --
+    34   — matching the four-run figure recorded on 2026-09-14 exactly
+
+⚠️ **THE REMAINING 11 IS A DIFFERENT SHAPE AND NEEDS ITS OWN ITEM.** The fork gate
+CLAIMED cleanup it did not do. None of the five remaining producers claims anything:
+`test_workflow_scope_phase8a` (+4) has no row-deleting teardown at all; the other three
+have substantial teardown (2, 9 and 16 delete calls) that does not reach these rows.
+⚠️ A shared-helper hypothesis was tested and does NOT hold — `make_workflow` has 33 call
+sites in 7 files and exactly ONE passes a null tenant.
+
+### RATCHET LOWERED 34 → 11, WITH BOTH CONTROLS (2026-09-15)
+
+`tests/conftest.py::_LEAK_CEILING["global_workflows"]`, set to the measured residual with
+the attribution recorded beside it. An absence looks the same whether the instrument
+works or not, so both halves were shown: ceiling temporarily 4 against a file that leaks
+5 **fires** (`global_workflows: +5 (ceiling 4)`); the same file at ceiling 11 is
+**silent**.
+
+⚠️ **A latent defect in that tripwire, surfaced and NOT fixed.** Its failure message
+builds from `_LEAK_CEILING[k]` while its condition reads `_LEAK_CEILING.get(k, 0)`. If
+`orphaned_health_scores` — deliberately keyless — ever grew, the guard would raise
+`KeyError` instead of printing its explanation. It still fails the session; it would fail
+unreadably. One character.
+
+### ⚠️ THE SWEEP: ONE FALSE CLAIM IN 127 (2026-09-15)
+
+The search key was the CLAIM, not the leak — a leak is invisible until it accumulates,
+a sentence saying "we clean up" is greppable today. 549 files under `backend/tests/` and
+`backend/scripts/`, 15,391 docstrings and comments (docstrings via `ast`, comments via
+`tokenize`), 54 enumerated verb forms → 841 texts hit → **127 files make a
+self-referential cleanup claim** → 104 contain something that deletes a row → **23 read
+individually → exactly ONE is false**, the fork gate.
+
+⚠️ **THE NARROWING WAS WRONG TWICE AND THE POSITIVE CONTROL IS WHAT SAID SO.** v1 counted
+`finally:` as cleanup — the fork gate has `finally: db.close()` around the block that
+CREATES its rows, so the guilty file landed in "has a mechanism" and the survivor set came
+back clean at 4, all false positives. v2's `\.delete\(\)` missed every multi-line
+`.delete(\n  synchronize_session=False)`. A narrowing that loses its own control proves
+nothing, and it looked like a clean result.
+
+⚠️ **What the sweep cannot see, stated so the negative means something:** a file whose
+mechanism exists but cleans the WRONG rows. `tasks/test_b3_consumer_integration` is
+exactly that and was found by row attribution instead. Two instruments, neither
+sufficient.
+
+### ⚠️ THE COMPANY TRIPWIRE FIRES EVERY FULL-TREE RUN, AND BLAMES THE WRONG TEST (2026-09-15)
+
+    435 -> 1,886   +1,451
+  2,109 -> 3,547   +1,438
+  3,563 -> 5,001   +1,438
+
+Reported as `ERROR at teardown of test_zip_ambiguity::TestHarmlessTodayIsNotHarmlessForever`
+— the last test in the session, which has nothing to do with it. ⚠️ That id was mis-read
+earlier the same day and recorded in a test-id diff as a `test_zip_ambiguity` error. The
+guard works; its attribution is misleading and has already cost one wrong reading. Unlike
+the workflow class this one is LOUD, and it is a separate, large item.
+
+### ⚠️ THE FLOW IS CLOSED; THE STOCK IS NOT (2026-09-15)
+
+`scope='core'` stood at **775 after the repair against 16 real `wf_sys_*`**. The fix stops
+the growth and removes nothing already there, so `workflow-scope-core` and `core-used-by`
+still fail their p50 budgets. **The budgets still cannot be derived** — closing the flow
+is the precondition, not the remedy. Clearing stock is a destructive write to the
+development database and is James's call.
+
 ## ✅ THE LATENCY GATES NOW EXCLUDE GEN-2 GC PAUSES (2026-09-15)
 
 Ruled and shipped. 15 gate files, 21 timed regions, 31 gate invocations, all of them.
@@ -100,6 +200,11 @@ Its earlier flipping is now ambiguous between the two causes, not explained by
 either alone.
 
 ### ⚠️ THE FLOW IS UNCHANGED. THE PURGE CLEARED STOCK ONLY.
+
+**[PARTLY SUPERSEDED 2026-09-15 by the fork-teardown entry at the top of this
+file.]** The +34 below was measured correctly and is no longer current: 23 of it
+was `test_workflow_fork_latency`, which now tears down, and the flow is **+11**.
+The stock claim still stands — nothing has been deleted since the purge.
 
 Measured across three full runs after the purge: **+34 global workflows and
 +1,364/+1,366 orphaned health scores per run.** Within minutes of finishing, a
@@ -296,6 +401,8 @@ discussed*, entirely from this session's own test runs:
 | global non-canonical workflows | 1,960 | **2,096** | +136 |
 
 One full-tree run adds +34 global workflows and +1,364 orphaned scores.
+**[CORRECTED 2026-09-15: +11 global workflows since the fork gate gained
+teardown; the orphaned-scores half was closed by r183.]**
 
 ⚠️ **A figure from this entry quoted without its timestamp is a reading presented
 as a fact.** The delta is the only stable thing here, which is why the tripwire's

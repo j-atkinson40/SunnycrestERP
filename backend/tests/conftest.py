@@ -112,13 +112,37 @@ def _company_count() -> int | None:
 #: complete. That is the difference between a class that cannot recur and one
 #: that cannot recur silently.
 #:
-#: `global_workflows` remains, unaffected by r183 and measured at exactly +34 on
-#: four separate full-tree runs. Those rows have `company_id IS NULL`, so no
-#: company-scoped constraint can ever reach them; closing that one needs fixture
-#: teardown, not a foreign key. Lower it as fixtures gain teardown; at 0, delete
-#: this dict and let the strict delta stand alone.
+#: `global_workflows` remains, unaffected by r183 and previously measured at
+#: exactly +34 on four separate full-tree runs. Those rows have
+#: `company_id IS NULL`, so no company-scoped constraint can ever reach them;
+#: closing that one needs fixture teardown, not a foreign key. Lower it as
+#: fixtures gain teardown; at 0, delete this dict and let the strict delta stand
+#: alone.
+#:
+#: ⚠️ RATCHETED 34 -> 11 ON 2026-09-15, AND THE 23 THAT LEFT HAVE A NAME.
+#:
+#: The +34 was never one leak. Attributed per test on a full-tree run — by the
+#: row class this dict defines, not by a name pattern — it was:
+#:
+#:     23  test_workflow_scope_latency_phase8a::test_workflow_fork_latency
+#:      4  test_workflow_scope_phase8a  (TestForkEndpoint x3, TestCountTenants x1)
+#:      5  tasks/test_b3_consumer_integration::TestWorkflowNodeTypes
+#:      1  test_moc_ponder      1  test_classification_tier_3_registry
+#:      1  test_moc_tenant_map, and -1 from a later test in the same file
+#:     --
+#:     34
+#:
+#: The fork gate now tears down by recorded id and contributes 0, measured over
+#: three runs of the file and one full tree. 11 remains, re-measured on the
+#: full-tree run that set this number.
+#:
+#: ⚠️ THE REMAINING 11 IS NOT THE SAME SHAPE and should not be swept up as more
+#: of the same. The fork gate CLAIMED in its docstring to delete what it left;
+#: none of these five does. One (`test_workflow_scope_phase8a`) has no
+#: row-deleting teardown at all; the other three have substantial teardown that
+#: does not reach these particular rows. That is a different item.
 _LEAK_CEILING = {
-    "global_workflows": 34,
+    "global_workflows": 11,
 }
 
 

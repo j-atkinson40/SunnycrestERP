@@ -137,6 +137,21 @@ def headers(seeded_tenant):
     }
 
 
+def _fork_id(response) -> str:
+    """The id of the fork just created, asserted rather than fished for.
+
+    ⚠️ If the serializer ever stops returning `id`, teardown would silently
+    register nothing and the leak would come back with the fixture still in
+    place and still looking correct. That is this file's own failure mode
+    repeating one level up, so it fails here instead.
+    """
+    body = response.json()
+    assert isinstance(body, dict) and body.get("id"), (
+        f"fork response carries no id to tear down: {str(body)[:200]}"
+    )
+    return body["id"]
+
+
 def _sample(client, headers, path: str) -> Gen2Excluded:
     """Returns the SAMPLER, not a bare list.
 
@@ -249,12 +264,75 @@ def test_spaces_list_with_system_space_latency(
     )
 
 
-def test_workflow_fork_latency(client, headers, seeded_tenant):
+@pytest.fixture
+def created_workflow_ids():
+    """⚠️ THE TEARDOWN THIS FILE CLAIMED TO HAVE AND DID NOT.
+
+    Until 2026-09-15 `test_workflow_fork_latency` created 23 global
+    `scope="core"` workflows per run and deleted none, while its docstring said
+    *"we delete the fork after measurement."* That sentence had been false since
+    it was written. It survived because it is a SAFETY claim, and a safety claim
+    is the category a reader is least likely to test — testing it means
+    constructing the failure it says cannot happen.
+
+    ⚠️ DELETION IS BY RECORDED ID, NOT BY NAME. A `name LIKE 'ForkSrc-%'` sweep
+    would be a constructed scope: it would miss anything renamed, it would match
+    rows this run did not create, and it would silently stop matching the day
+    the name changes. The test appends every id it creates — sources as it makes
+    them, forks as the endpoint returns them — and teardown deletes exactly
+    those.
+
+    ⚠️ IT RUNS ON FAILURE. Fixture finalisation happens whether the test passed,
+    failed or raised. A `try/finally` in the test body would too, but only from
+    the point the `try` is entered; the first failure before that would have
+    reinstated the leak permanently.
+
+    `workflow_steps` and `workflow_step_params` are ON DELETE CASCADE from
+    `workflows` (read from the FK catalogue, not assumed), so they go with the
+    parent. `workflows.forked_from_workflow_id` is SET NULL, so a fork does NOT
+    disappear with its source and has to be recorded in its own right.
+    """
+    created: list[str] = []
+    yield created
+    if not created:
+        return
+
+    from app.database import SessionLocal
+    from app.models.workflow import Workflow
+
+    db = SessionLocal()
+    try:
+        removed = (
+            db.query(Workflow)
+            .filter(Workflow.id.in_(created))
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    # ⚠️ The control on the teardown, not on the test. A delete that removes
+    # fewer rows than were recorded has left some behind, and the whole reason
+    # this fixture exists is that nobody was checking.
+    assert removed == len(created), (
+        f"teardown recorded {len(created)} workflow rows and deleted {removed} "
+        f"— {len(created) - removed} row(s) are still in the database"
+    )
+
+
+def test_workflow_fork_latency(
+    client, headers, seeded_tenant, created_workflow_ids
+):
     """Fork copies a workflow + its steps + its platform-default
     params. Budget wider (200ms/500ms) because it's a multi-table
     write path. The test uses a freshly-created source workflow for
-    each sample so the AlreadyForked check doesn't kick in; we
-    delete the fork after measurement."""
+    each sample so the AlreadyForked check doesn't kick in.
+
+    Every row created here — the sources AND the forks — is registered with
+    `created_workflow_ids` and deleted in that fixture's teardown. See its
+    docstring for why this is by id rather than by name, and for what the
+    previous version of this sentence claimed.
+    """
     from app.database import SessionLocal
     from app.models.workflow import Workflow, WorkflowStep
 
@@ -295,6 +373,9 @@ def test_workflow_fork_latency(client, headers, seeded_tenant):
     finally:
         db.close()
 
+    # Registered AFTER the commit, so nothing unwritten is queued for deletion.
+    created_workflow_ids.extend(source_ids)
+
     # Warm up with the first _WARMUP_COUNT sources.
     for i in range(_WARMUP_COUNT):
         r = client.post(
@@ -303,6 +384,7 @@ def test_workflow_fork_latency(client, headers, seeded_tenant):
             headers=headers,
         )
         assert r.status_code == 200, r.text
+        created_workflow_ids.append(_fork_id(r))
 
     # Measured samples use the remaining sources.
     with Gen2Excluded() as gc_s:
@@ -314,6 +396,7 @@ def test_workflow_fork_latency(client, headers, seeded_tenant):
                     headers=headers,
                 )
             assert r.status_code == 200, r.text
+            created_workflow_ids.append(_fork_id(r))
 
     _assert_budget(
         gc_s,
