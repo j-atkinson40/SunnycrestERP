@@ -22,17 +22,30 @@ actually feels per keystroke-equivalent.
 Environment opt-outs:
   - `TRIAGE_LATENCY_DISABLE=1` skips the test (underpowered CI
     runners only).
+
+⚠️ WHAT THIS GATE EXCLUDES — generation-2 GC pauses, and nothing else.
+A full collection on this application's heap costs ~450 ms whatever the
+garbage volume, because the cost is walking ~2.08M permanent objects. It
+lands on whichever request is in flight. Every sample here is measured with
+`tests/_gc_latency.Gen2Excluded`, which subtracts the collector's own
+interval from the sample it landed in and SAYS SO in the printed diagnostic,
+every run, including when nothing was excluded. Nothing is disabled, frozen
+or tuned: the endpoint runs under exactly the runtime that ships. gen-0 and
+gen-1 stay in the number, and an allocation ceiling on gen-0 keeps the
+regression signal the exclusion would otherwise remove. Ruled 2026-09-15;
+see docs/investigations/2026-09-15-latency-gates-exclude-gc.md.
 """
 
 from __future__ import annotations
 
 import os
 import statistics
-import time
 import uuid
 from datetime import datetime, timezone
 
 import pytest
+
+from tests._gc_latency import Gen2Excluded, assert_allocation_ceiling
 
 
 _TARGET_NEXT_P50_MS: float = 100.0
@@ -42,6 +55,13 @@ _TARGET_ACTION_P99_MS: float = 500.0
 _WARMUP_COUNT: int = 3
 _SAMPLE_COUNT: int = 30
 _SEED_TASK_COUNT: int = 20
+
+#: ⚠️ ALLOCATION CEILINGS — the half of the gate that excluding gen-2
+#: pauses would otherwise delete. Counted in gen-0 collections over the
+#: sample loop (see tests/_gc_latency.py). Measured 2026-09-15 over 3-4
+#: runs with a spread of <= 1, times 3 headroom.
+_ALLOC_CEIL_NEXT: int = 10
+_ALLOC_CEIL_ACTION: int = 20
 
 
 if os.environ.get("TRIAGE_LATENCY_DISABLE") == "1":
@@ -158,26 +178,26 @@ def test_triage_next_item_latency_gate(client, headers):
     for _ in range(_WARMUP_COUNT):
         client.post(f"/api/v1/triage/sessions/{session_id}/next", headers=headers)
 
-    durations_ms: list[float] = []
-    for _ in range(_SAMPLE_COUNT):
-        t0 = time.perf_counter()
-        r = client.post(
-            f"/api/v1/triage/sessions/{session_id}/next", headers=headers
-        )
-        t1 = time.perf_counter()
-        # 200 when item exists, 204 when exhausted — both acceptable
-        # for latency purposes (the engine still did its scan).
-        assert r.status_code in (200, 204), (
-            f"next_item → {r.status_code} {r.text[:120]}"
-        )
-        durations_ms.append((t1 - t0) * 1000.0)
+    with Gen2Excluded() as gc_s:
+        for _ in range(_SAMPLE_COUNT):
+            with gc_s.sample():
+                r = client.post(
+                    f"/api/v1/triage/sessions/{session_id}/next", headers=headers
+                )
+            # 200 when item exists, 204 when exhausted — both acceptable
+            # for latency purposes (the engine still did its scan).
+            assert r.status_code in (200, 204), (
+                f"next_item → {r.status_code} {r.text[:120]}"
+            )
+
+    durations_ms = gc_s.durations_ms
 
     p50 = statistics.median(durations_ms)
     p99 = statistics.quantiles(durations_ms, n=100)[-1]
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms "
         f"(n={_SAMPLE_COUNT}, min={min(durations_ms):.1f}ms "
-        f"max={max(durations_ms):.1f}ms)"
+        f"max={max(durations_ms):.1f}ms) [{gc_s.exclusion_note()}]"
     )
     print(f"\n[triage-next-item-latency] {diag}")
 
@@ -189,6 +209,7 @@ def test_triage_next_item_latency_gate(client, headers):
         f"triage next_item p99 {p99:.1f}ms > target "
         f"{_TARGET_NEXT_P99_MS}ms — {diag}"
     )
+    assert_allocation_ceiling(gc_s, _ALLOC_CEIL_NEXT, "triage-next-item")
 
 
 def test_triage_apply_action_latency_gate(client, headers, seeded_tenant):
@@ -236,27 +257,27 @@ def test_triage_apply_action_latency_gate(client, headers, seeded_tenant):
             headers=headers,
         )
 
-    durations_ms: list[float] = []
-    for i in range(_SAMPLE_COUNT):
-        tid = task_ids[_WARMUP_COUNT + i]
-        t0 = time.perf_counter()
-        r = client.post(
-            f"/api/v1/triage/sessions/{session_id}/items/{tid}/action",
-            json={"action_id": "complete"},
-            headers=headers,
-        )
-        t1 = time.perf_counter()
-        assert r.status_code == 200, (
-            f"apply_action → {r.status_code} {r.text[:120]}"
-        )
-        durations_ms.append((t1 - t0) * 1000.0)
+    with Gen2Excluded() as gc_s:
+        for i in range(_SAMPLE_COUNT):
+            tid = task_ids[_WARMUP_COUNT + i]
+            with gc_s.sample():
+                r = client.post(
+                    f"/api/v1/triage/sessions/{session_id}/items/{tid}/action",
+                    json={"action_id": "complete"},
+                    headers=headers,
+                )
+            assert r.status_code == 200, (
+                f"apply_action → {r.status_code} {r.text[:120]}"
+            )
+
+    durations_ms = gc_s.durations_ms
 
     p50 = statistics.median(durations_ms)
     p99 = statistics.quantiles(durations_ms, n=100)[-1]
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms "
         f"(n={_SAMPLE_COUNT}, min={min(durations_ms):.1f}ms "
-        f"max={max(durations_ms):.1f}ms)"
+        f"max={max(durations_ms):.1f}ms) [{gc_s.exclusion_note()}]"
     )
     print(f"\n[triage-apply-action-latency] {diag}")
 
@@ -268,3 +289,4 @@ def test_triage_apply_action_latency_gate(client, headers, seeded_tenant):
         f"triage apply_action p99 {p99:.1f}ms > target "
         f"{_TARGET_ACTION_P99_MS}ms — {diag}"
     )
+    assert_allocation_ceiling(gc_s, _ALLOC_CEIL_ACTION, "triage-apply-action")

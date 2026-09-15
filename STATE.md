@@ -2,6 +2,73 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ✅ THE LATENCY GATES NOW EXCLUDE GEN-2 GC PAUSES (2026-09-15)
+
+Ruled and shipped. 15 gate files, 21 timed regions, 31 gate invocations, all of them.
+`tests/_gc_latency.Gen2Excluded` measures each sample and subtracts the collector's own
+interval from the sample it landed in. Nothing is disabled, frozen or tuned — the
+endpoint runs under exactly the runtime that ships, and
+`test_the_runtime_is_UNCHANGED_during_and_after_sampling` fails if that ever stops being
+true. Full write-up: `docs/investigations/2026-09-15-latency-gates-exclude-gc.md`.
+
+**Verified, not inherited (2026-09-15).** A gen-2 pause is **456ms with ZERO garbage** and
+**514ms after freeing a million objects** — +12.7% for the entire million. It is the
+permanent heap that costs, confirmed on both axes.
+
+⚠️ **But "proportional to 2.08M tracked objects" is too strong, measured 2026-09-15.**
+2.0M synthetic tracked objects cost **70ms**; 2.08M application objects cost **464ms** —
+6.6x for the same object count. The cost tracks REFERENCES TRAVERSED, not objects. The
+honest form is "proportional to the permanent heap it must walk".
+
+**Which gates are affected has no endpoint-shaped answer (2026-09-15).** Each file run
+alone: 8-9 collections in the first test's SETUP, then exactly one CALL-phase collection
+(357-403ms) in **6 of 15 files**, the same test on both passes — including the two the
+preliminary named independently. All 15 run together: **ZERO** in any of the 30 gates.
+The set moves between runs of the same file. It is a property of where the process is in
+its allocation history, not of the endpoint, so the exclusion applies to all of them.
+⚠️ And test-side frequency says nothing about production frequency — that is what
+`arc_telemetry._gc_snapshot` is for.
+
+**The allocation signal is asserted, because excluding the pause could otherwise delete
+it (2026-09-15).** gen-2 pause = THE RUNTIME COLLECTED (excluded); gen-0 count = THIS
+ENDPOINT MADE IT COLLECT (asserted, per gate, measured x3 headroom). The gen-2 count
+could not have done that job: in-sample it is 0 or 1 everywhere and is dominated by
+process phase, while gen-0 counts were identical across separate processes.
+
+### ⚠️ 13 OF 15 FILES SAY "BLOCKING CI GATE" AND CI DOES NOT RUN THEM (2026-09-15)
+
+`tests/ci_gate.txt` holds `test_command_bar_latency.py` and
+`test_command_bar_portal_latency.py` and no other latency file. Established two ways.
+Not fixed here — adding thirteen files to CI is a decision about CI runtime.
+
+### ⚠️ THE FLOW HAS A NAME: `test_workflow_fork_latency` (2026-09-15)
+
+The 2026-09-14 purge entry below is headed **"STOCK CLEARED, FLOW UNCHANGED"** and
+measured the flow at **+34 global workflows per run** without naming a producer.
+**23 of the 34 are this one test.** It creates `_SAMPLE_COUNT + _WARMUP_COUNT` = 23
+global `scope="core"` workflows with 3 steps each and has **no teardown of any kind** —
+no `yield`, no delete, no purge. ⚠️ Its docstring says *"we delete the fork after
+measurement"*, describing cleanup the code has never performed.
+
+**One day after the purge took `scope=core` from 1,720 rows to 6, it is back to 673** —
+**621 of them named `ForkSrc-*`**, 16 real `wf_sys_*`, plus 3,243 orphaned
+`workflow_steps`. `GET /workflows?scope=core` fires an aggregate per row, so the fork
+gate makes the scope gate in the same file permanently slower every time it runs:
+measured +23 rows and +4.6ms p50 per run, three consecutive runs.
+
+⚠️ **So the preliminary's STOPs (a)/(b) — 261.9ms and 466.4ms p50 — are a row-count
+reading, not an endpoint property.** A budget derived from them would be measuring test
+hygiene. The two gates fail again today at p50 118-206ms.
+
+⚠️ **This session's own measurement runs are a substantial share of the 621.** Measuring
+GC meant running that file about twenty times. Its `_LEAK_CEILING` entry in conftest is
+34, calibrated just above a 23-row leak, so the tripwire has never fired on it.
+
+⚠️ **And one of the 2026-09-14 entry's open observations is now half-explained.** It
+recorded `test_workflow_fork_latency` at `p99 = 731.2ms` "while its own max is 412.2ms"
+and filed the whole thing as p99 extrapolation. **The 412.2ms max was a gen-2
+collection.** Post-change the gate reports `p50=6.7ms p99=8.4ms`.
+
 ## ✅ THE PURGE RAN (2026-09-14) — STOCK CLEARED, FLOW UNCHANGED
 
 **Run at James's request against `localhost:5432/bridgeable_dev`.** Restore file

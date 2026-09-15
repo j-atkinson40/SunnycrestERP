@@ -26,6 +26,18 @@ Environment opt-outs:
   - `COMMAND_BAR_LATENCY_DISABLE=1` skips the test (for environments
     that can't hit the latency target, e.g. underpowered CI runners).
     Use sparingly.
+
+⚠️ WHAT THIS GATE EXCLUDES — generation-2 GC pauses, and nothing else.
+A full collection on this application's heap costs ~450 ms whatever the
+garbage volume, because the cost is walking ~2.08M permanent objects. It
+lands on whichever request is in flight. Every sample here is measured with
+`tests/_gc_latency.Gen2Excluded`, which subtracts the collector's own
+interval from the sample it landed in and SAYS SO in the printed diagnostic,
+every run, including when nothing was excluded. Nothing is disabled, frozen
+or tuned: the endpoint runs under exactly the runtime that ships. gen-0 and
+gen-1 stay in the number, and an allocation ceiling on gen-0 keeps the
+regression signal the exclusion would otherwise remove. Ruled 2026-09-15;
+see docs/investigations/2026-09-15-latency-gates-exclude-gc.md.
 """
 
 from __future__ import annotations
@@ -39,6 +51,8 @@ from decimal import Decimal
 
 import pytest
 
+from tests._gc_latency import Gen2Excluded, assert_allocation_ceiling
+
 
 # ── Config ───────────────────────────────────────────────────────────
 
@@ -46,6 +60,12 @@ _TARGET_P50_MS: float = 100.0
 _TARGET_P99_MS: float = 300.0
 _WARMUP_COUNT: int = 5
 _SAMPLE_COUNT: int = 50
+
+#: ⚠️ ALLOCATION CEILINGS — the half of the gate that excluding gen-2
+#: pauses would otherwise delete. Counted in gen-0 collections over the
+#: sample loop (see tests/_gc_latency.py). Measured 2026-09-15 over 3-4
+#: runs with a spread of <= 1, times 3 headroom.
+_ALLOC_CEIL_QUERY: int = 20
 
 # Mixed-shape query set — every shape the user types.
 _QUERY_SHAPES: list[str] = [
@@ -384,17 +404,17 @@ def test_command_bar_p50_p99_under_budget(client, headers, seeded_tenant):
         _post("Dashboard")
 
     # Sample N calls with mixed shapes.
-    durations_ms: list[float] = []
-    for i in range(_SAMPLE_COUNT):
-        q = _QUERY_SHAPES[i % len(_QUERY_SHAPES)]
-        t0 = time.perf_counter()
-        resp = _post(q)
-        t1 = time.perf_counter()
-        # Record only successful queries — 5xx responses shouldn't
-        # distort percentile math, but should also fail the test
-        # separately.
-        assert resp.status_code == 200, f"query {q!r} → {resp.status_code}"
-        durations_ms.append((t1 - t0) * 1000.0)
+    with Gen2Excluded() as gc_s:
+        for i in range(_SAMPLE_COUNT):
+            q = _QUERY_SHAPES[i % len(_QUERY_SHAPES)]
+            with gc_s.sample():
+                resp = _post(q)
+            # Record only successful queries — 5xx responses shouldn't
+            # distort percentile math, but should also fail the test
+            # separately.
+            assert resp.status_code == 200, f"query {q!r} → {resp.status_code}"
+
+    durations_ms = gc_s.durations_ms
 
     p50 = statistics.median(durations_ms)
     # statistics.quantiles(n=100) returns 99 cut points; last is p99.
@@ -403,7 +423,7 @@ def test_command_bar_p50_p99_under_budget(client, headers, seeded_tenant):
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms "
         f"(n={_SAMPLE_COUNT}, sample min={min(durations_ms):.1f}ms "
-        f"max={max(durations_ms):.1f}ms, affinity=ENABLED)"
+        f"max={max(durations_ms):.1f}ms, affinity=ENABLED) [{gc_s.exclusion_note()}]"
     )
     # Emit stats into pytest output for visibility on green runs.
     print(f"\n[command-bar-latency] {diag}")
@@ -414,3 +434,4 @@ def test_command_bar_p50_p99_under_budget(client, headers, seeded_tenant):
     assert p99 <= _TARGET_P99_MS, (
         f"command-bar p99 {p99:.1f}ms > target {_TARGET_P99_MS}ms — {diag}"
     )
+    assert_allocation_ceiling(gc_s, _ALLOC_CEIL_QUERY, "command-bar")

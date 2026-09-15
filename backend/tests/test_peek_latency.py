@@ -22,6 +22,18 @@ is the right thing to gate on for a cross-cutting endpoint.
 
 Environment opt-out:
   PEEK_LATENCY_DISABLE=1 skips (underpowered CI runners only).
+
+⚠️ WHAT THIS GATE EXCLUDES — generation-2 GC pauses, and nothing else.
+A full collection on this application's heap costs ~450 ms whatever the
+garbage volume, because the cost is walking ~2.08M permanent objects. It
+lands on whichever request is in flight. Every sample here is measured with
+`tests/_gc_latency.Gen2Excluded`, which subtracts the collector's own
+interval from the sample it landed in and SAYS SO in the printed diagnostic,
+every run, including when nothing was excluded. Nothing is disabled, frozen
+or tuned: the endpoint runs under exactly the runtime that ships. gen-0 and
+gen-1 stay in the number, and an allocation ceiling on gen-0 keeps the
+regression signal the exclusion would otherwise remove. Ruled 2026-09-15;
+see docs/investigations/2026-09-15-latency-gates-exclude-gc.md.
 """
 
 from __future__ import annotations
@@ -35,11 +47,19 @@ from decimal import Decimal
 
 import pytest
 
+from tests._gc_latency import Gen2Excluded, assert_allocation_ceiling
+
 
 _TARGET_P50_MS: float = 100.0
 _TARGET_P99_MS: float = 300.0
 _WARMUP_COUNT: int = 3
 _SAMPLE_COUNT: int = 24
+
+#: ⚠️ ALLOCATION CEILINGS — the half of the gate that excluding gen-2
+#: pauses would otherwise delete. Counted in gen-0 collections over the
+#: sample loop (see tests/_gc_latency.py). Measured 2026-09-15 over 3-4
+#: runs with a spread of <= 1, times 3 headroom.
+_ALLOC_CEIL_PEEK: int = 10
 
 
 if os.environ.get("PEEK_LATENCY_DISABLE") == "1":
@@ -293,23 +313,23 @@ def test_peek_latency_gate(client, headers, seeded_tenant):
         r = client.get(f"/api/v1/peek/{et}/{eid}", headers=headers)
         assert r.status_code == 200, r.text
 
-    durations_ms: list[float] = []
-    for i in range(_SAMPLE_COUNT):
-        et, eid = shapes[i % len(shapes)]
-        t0 = time.perf_counter()
-        r = client.get(f"/api/v1/peek/{et}/{eid}", headers=headers)
-        t1 = time.perf_counter()
-        assert r.status_code == 200, (
-            f"peek {et}/{eid} → {r.status_code} {r.text[:120]}"
-        )
-        durations_ms.append((t1 - t0) * 1000.0)
+    with Gen2Excluded() as gc_s:
+        for i in range(_SAMPLE_COUNT):
+            et, eid = shapes[i % len(shapes)]
+            with gc_s.sample():
+                r = client.get(f"/api/v1/peek/{et}/{eid}", headers=headers)
+            assert r.status_code == 200, (
+                f"peek {et}/{eid} → {r.status_code} {r.text[:120]}"
+            )
+
+    durations_ms = gc_s.durations_ms
 
     p50 = statistics.median(durations_ms)
     p99 = statistics.quantiles(durations_ms, n=100)[-1]
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms "
         f"(n={_SAMPLE_COUNT}, min={min(durations_ms):.1f}ms "
-        f"max={max(durations_ms):.1f}ms)"
+        f"max={max(durations_ms):.1f}ms) [{gc_s.exclusion_note()}]"
     )
     print(f"\n[peek-latency] {diag}")
 
@@ -319,3 +339,4 @@ def test_peek_latency_gate(client, headers, seeded_tenant):
     assert p99 <= _TARGET_P99_MS, (
         f"peek p99 {p99:.1f}ms > target {_TARGET_P99_MS}ms — {diag}"
     )
+    assert_allocation_ceiling(gc_s, _ALLOC_CEIL_PEEK, "peek")

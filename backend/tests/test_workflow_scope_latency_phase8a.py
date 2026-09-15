@@ -16,6 +16,18 @@ baseline was p50=15ms / p99=20ms against the same fixture set.
 20 samples sequential per endpoint, mixed shapes where relevant.
 
 Opt-out: WORKFLOW_ARC_LATENCY_DISABLE=1 skips.
+
+⚠️ WHAT THIS GATE EXCLUDES — generation-2 GC pauses, and nothing else.
+A full collection on this application's heap costs ~450 ms whatever the
+garbage volume, because the cost is walking ~2.08M permanent objects. It
+lands on whichever request is in flight. Every sample here is measured with
+`tests/_gc_latency.Gen2Excluded`, which subtracts the collector's own
+interval from the sample it landed in and SAYS SO in the printed diagnostic,
+every run, including when nothing was excluded. Nothing is disabled, frozen
+or tuned: the endpoint runs under exactly the runtime that ships. gen-0 and
+gen-1 stay in the number, and an allocation ceiling on gen-0 keeps the
+regression signal the exclusion would otherwise remove. Ruled 2026-09-15;
+see docs/investigations/2026-09-15-latency-gates-exclude-gc.md.
 """
 
 from __future__ import annotations
@@ -27,6 +39,8 @@ import uuid
 
 import pytest
 
+from tests._gc_latency import Gen2Excluded, assert_allocation_ceiling
+
 
 _TARGET_P50_MS: float = 100.0
 _TARGET_P99_MS: float = 300.0
@@ -34,6 +48,16 @@ _TARGET_FORK_P50_MS: float = 200.0
 _TARGET_FORK_P99_MS: float = 500.0
 _WARMUP_COUNT: int = 3
 _SAMPLE_COUNT: int = 20
+
+#: ⚠️ ALLOCATION CEILINGS — the half of the gate that excluding gen-2 pauses
+#: would otherwise delete. Counted in gen-0 collections over the sample loop
+#: (see tests/_gc_latency.py). Measured 2026-09-15 over 3-4 runs with a spread
+#: of <= 1, times 3 headroom.
+_ALLOC_CEIL_CORE: int = 120
+_ALLOC_CEIL_CORE_USED_BY: int = 120
+_ALLOC_CEIL_VERTICAL: int = 5
+_ALLOC_CEIL_SPACES: int = 5
+_ALLOC_CEIL_FORK: int = 10
 
 
 if os.environ.get("WORKFLOW_ARC_LATENCY_DISABLE") == "1":
@@ -113,30 +137,37 @@ def headers(seeded_tenant):
     }
 
 
-def _sample(client, headers, path: str) -> list[float]:
+def _sample(client, headers, path: str) -> Gen2Excluded:
+    """Returns the SAMPLER, not a bare list.
+
+    ⚠️ The sampler, not `sampler.durations_ms`. The exclusion note and the
+    allocation count travel with the numbers to the place the numbers are
+    read; handing back a list would leave a gate reporting a figure whose
+    qualification had been dropped two frames up.
+    """
     # Warm up.
     for _ in range(_WARMUP_COUNT):
         r = client.get(path, headers=headers)
         assert r.status_code == 200, r.text
-    durations = []
-    for _ in range(_SAMPLE_COUNT):
-        t0 = time.perf_counter()
-        r = client.get(path, headers=headers)
-        t1 = time.perf_counter()
-        assert r.status_code == 200, f"{path} → {r.status_code} {r.text[:120]}"
-        durations.append((t1 - t0) * 1000.0)
-    return durations
+    with Gen2Excluded() as gc_s:
+        for _ in range(_SAMPLE_COUNT):
+            with gc_s.sample():
+                r = client.get(path, headers=headers)
+            assert r.status_code == 200, f"{path} → {r.status_code} {r.text[:120]}"
+    return gc_s
 
 
 def _assert_budget(
-    durations: list[float], *, p50_budget: float, p99_budget: float, label: str
+    gc_s: Gen2Excluded, *, p50_budget: float, p99_budget: float, label: str,
+    allocation_ceiling: int,
 ):
+    durations = gc_s.durations_ms
     p50 = statistics.median(durations)
     p99 = statistics.quantiles(durations, n=100)[-1]
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms "
         f"(n={_SAMPLE_COUNT}, min={min(durations):.1f}ms "
-        f"max={max(durations):.1f}ms)"
+        f"max={max(durations):.1f}ms) [{gc_s.exclusion_note()}]"
     )
     print(f"\n[{label}-latency] {diag}")
     assert p50 <= p50_budget, (
@@ -145,43 +176,47 @@ def _assert_budget(
     assert p99 <= p99_budget, (
         f"{label} p99 {p99:.1f}ms > {p99_budget}ms — {diag}"
     )
+    assert_allocation_ceiling(gc_s, allocation_ceiling, label)
 
 
 def test_workflow_scope_core_latency(client, headers):
-    durations = _sample(client, headers, "/api/v1/workflows?scope=core")
+    gc_s = _sample(client, headers, "/api/v1/workflows?scope=core")
     _assert_budget(
-        durations,
+        gc_s,
         p50_budget=_TARGET_P50_MS,
         p99_budget=_TARGET_P99_MS,
         label="workflow-scope-core",
+        allocation_ceiling=_ALLOC_CEIL_CORE,
     )
 
 
 def test_workflow_scope_core_with_used_by_latency(client, headers):
     """With include_used_by=true, each row fires an aggregate —
     should still stay within budget for Phase 8a data sizes."""
-    durations = _sample(
+    gc_s = _sample(
         client,
         headers,
         "/api/v1/workflows?scope=core&include_used_by=true",
     )
     _assert_budget(
-        durations,
+        gc_s,
         p50_budget=_TARGET_P50_MS,
         p99_budget=_TARGET_P99_MS,
         label="workflow-scope-core-used-by",
+        allocation_ceiling=_ALLOC_CEIL_CORE_USED_BY,
     )
 
 
 def test_workflow_scope_vertical_latency(client, headers):
-    durations = _sample(
+    gc_s = _sample(
         client, headers, "/api/v1/workflows?scope=vertical"
     )
     _assert_budget(
-        durations,
+        gc_s,
         p50_budget=_TARGET_P50_MS,
         p99_budget=_TARGET_P99_MS,
         label="workflow-scope-vertical",
+        allocation_ceiling=_ALLOC_CEIL_VERTICAL,
     )
 
 
@@ -204,12 +239,13 @@ def test_spaces_list_with_system_space_latency(
     finally:
         db.close()
 
-    durations = _sample(client, headers, "/api/v1/spaces")
+    gc_s = _sample(client, headers, "/api/v1/spaces")
     _assert_budget(
-        durations,
+        gc_s,
         p50_budget=_TARGET_P50_MS,
         p99_budget=_TARGET_P99_MS,
         label="spaces-with-system",
+        allocation_ceiling=_ALLOC_CEIL_SPACES,
     )
 
 
@@ -269,21 +305,20 @@ def test_workflow_fork_latency(client, headers, seeded_tenant):
         assert r.status_code == 200, r.text
 
     # Measured samples use the remaining sources.
-    durations = []
-    for i in range(_WARMUP_COUNT, _WARMUP_COUNT + _SAMPLE_COUNT):
-        t0 = time.perf_counter()
-        r = client.post(
-            f"/api/v1/workflows/{source_ids[i]}/fork",
-            json={},
-            headers=headers,
-        )
-        t1 = time.perf_counter()
-        assert r.status_code == 200, r.text
-        durations.append((t1 - t0) * 1000.0)
+    with Gen2Excluded() as gc_s:
+        for i in range(_WARMUP_COUNT, _WARMUP_COUNT + _SAMPLE_COUNT):
+            with gc_s.sample():
+                r = client.post(
+                    f"/api/v1/workflows/{source_ids[i]}/fork",
+                    json={},
+                    headers=headers,
+                )
+            assert r.status_code == 200, r.text
 
     _assert_budget(
-        durations,
+        gc_s,
         p50_budget=_TARGET_FORK_P50_MS,
         p99_budget=_TARGET_FORK_P99_MS,
         label="workflow-fork",
+        allocation_ceiling=_ALLOC_CEIL_FORK,
     )

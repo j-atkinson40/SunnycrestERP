@@ -24,23 +24,44 @@ the approved spec requirement).
 
 Opt-out:
   AI_QUESTION_LATENCY_DISABLE=1 skips (underpowered CI only).
+
+⚠️ WHAT THIS GATE EXCLUDES — generation-2 GC pauses, and nothing else.
+A full collection on this application's heap costs ~450 ms whatever the
+garbage volume, because the cost is walking ~2.08M permanent objects. It
+lands on whichever request is in flight. Every sample here is measured with
+`tests/_gc_latency.Gen2Excluded`, which subtracts the collector's own
+interval from the sample it landed in and SAYS SO in the printed diagnostic,
+every run, including when nothing was excluded. Nothing is disabled, frozen
+or tuned: the endpoint runs under exactly the runtime that ships. gen-0 and
+gen-1 stay in the number, and an allocation ceiling on gen-0 keeps the
+regression signal the exclusion would otherwise remove. Ruled 2026-09-15;
+see docs/investigations/2026-09-15-latency-gates-exclude-gc.md.
 """
 
 from __future__ import annotations
 
 import os
 import statistics
-import time
 import uuid
 from datetime import date, timedelta
 
 import pytest
+
+from tests._gc_latency import Gen2Excluded, assert_allocation_ceiling
 
 
 _TARGET_P50_MS: float = 1500.0
 _TARGET_P99_MS: float = 3000.0
 _WARMUP_COUNT: int = 2
 _SAMPLE_COUNT: int = 20
+
+#: ⚠️ ALLOCATION CEILINGS — the half of the gate that excluding gen-2
+#: pauses would otherwise delete. Counted in gen-0 collections over the
+#: sample loop (see tests/_gc_latency.py). Measured 2026-09-15 over 3-4
+#: runs with a spread of <= 1, times 3 headroom.
+_ALLOC_CEIL_ASK: int = 10
+#: The to_tier loop allocates nothing tracked at all; observed 0.
+_ALLOC_CEIL_CONFIDENCE: int = 5
 
 
 if os.environ.get("AI_QUESTION_LATENCY_DISABLE") == "1":
@@ -193,23 +214,23 @@ def test_ask_question_latency_gate(client, headers, seeded_tenant, monkeypatch):
     # 10-req/min budget.
     from app.services.triage.ai_question import _reset_rate_limiter
 
-    durations_ms: list[float] = []
-    for _ in range(_SAMPLE_COUNT):
-        _reset_rate_limiter()
-        t0 = time.perf_counter()
-        r = client.post(url, json={"question": "Why?"}, headers=headers)
-        t1 = time.perf_counter()
-        assert r.status_code == 200, (
-            f"/ask → {r.status_code} {r.text[:120]}"
-        )
-        durations_ms.append((t1 - t0) * 1000.0)
+    with Gen2Excluded() as gc_s:
+        for _ in range(_SAMPLE_COUNT):
+            _reset_rate_limiter()
+            with gc_s.sample():
+                r = client.post(url, json={"question": "Why?"}, headers=headers)
+            assert r.status_code == 200, (
+                f"/ask → {r.status_code} {r.text[:120]}"
+            )
+
+    durations_ms = gc_s.durations_ms
 
     p50 = statistics.median(durations_ms)
     p99 = statistics.quantiles(durations_ms, n=100)[-1]
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms "
         f"(n={_SAMPLE_COUNT}, min={min(durations_ms):.1f}ms "
-        f"max={max(durations_ms):.1f}ms)"
+        f"max={max(durations_ms):.1f}ms) [{gc_s.exclusion_note()}]"
     )
     print(f"\n[ai-question-latency] {diag}")
 
@@ -219,6 +240,7 @@ def test_ask_question_latency_gate(client, headers, seeded_tenant, monkeypatch):
     assert p99 <= _TARGET_P99_MS, (
         f"/ask p99 {p99:.1f}ms > target {_TARGET_P99_MS}ms — {diag}"
     )
+    assert_allocation_ceiling(gc_s, _ALLOC_CEIL_ASK, "ai-question")
 
 
 def test_confidence_mapping_under_1ms():
@@ -228,12 +250,26 @@ def test_confidence_mapping_under_1ms():
     # Warm up.
     for _ in range(100):
         to_tier(0.85)
-    start = time.perf_counter()
+
+    # ⚠️ ONE SAMPLE AROUND THE WHOLE LOOP, NOT ONE PER CALL. The thing being
+    # measured is ~100ns; a context manager per iteration would be most of the
+    # measurement. A gen-2 pause landing anywhere in the 10,000 calls is
+    # excluded from the total before it is divided, which is the same
+    # correction the endpoint gates make, applied at the granularity this
+    # measurement can carry.
     N = 10_000
-    for _ in range(N):
-        to_tier(0.85)
-    elapsed_per_call_ms = (time.perf_counter() - start) * 1000.0 / N
-    print(f"\n[confidence-mapping] per-call avg = {elapsed_per_call_ms:.4f}ms")
-    assert elapsed_per_call_ms < 1.0, (
-        f"confidence.to_tier per-call {elapsed_per_call_ms:.4f}ms exceeds 1ms budget"
+    with Gen2Excluded() as gc_s:
+        with gc_s.sample():
+            for _ in range(N):
+                to_tier(0.85)
+
+    elapsed_per_call_ms = gc_s.durations_ms[0] / N
+    print(
+        f"\n[confidence-mapping] per-call avg = {elapsed_per_call_ms:.4f}ms "
+        f"[{gc_s.exclusion_note()}]"
     )
+    assert elapsed_per_call_ms < 1.0, (
+        f"confidence.to_tier per-call {elapsed_per_call_ms:.4f}ms exceeds 1ms "
+        f"budget — {gc_s.exclusion_note()}"
+    )
+    assert_allocation_ceiling(gc_s, _ALLOC_CEIL_CONFIDENCE, "confidence-mapping")

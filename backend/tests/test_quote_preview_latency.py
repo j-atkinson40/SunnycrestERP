@@ -8,22 +8,41 @@ fire), so its own budget: p50 < 200 ms, p99 < 500 ms.
 Methodology mirrors tests/test_command_bar_portal_latency.py: seed a
 tenant + products, warm up, then time N sequential samples against the
 real endpoint. Company rows are torn down (litter tripwire).
+
+⚠️ WHAT THIS GATE EXCLUDES — generation-2 GC pauses, and nothing else.
+A full collection on this application's heap costs ~450 ms whatever the
+garbage volume, because the cost is walking ~2.08M permanent objects. It
+lands on whichever request is in flight. Every sample here is measured with
+`tests/_gc_latency.Gen2Excluded`, which subtracts the collector's own
+interval from the sample it landed in and SAYS SO in the printed diagnostic,
+every run, including when nothing was excluded. Nothing is disabled, frozen
+or tuned: the endpoint runs under exactly the runtime that ships. gen-0 and
+gen-1 stay in the number, and an allocation ceiling on gen-0 keeps the
+regression signal the exclusion would otherwise remove. Ruled 2026-09-15;
+see docs/investigations/2026-09-15-latency-gates-exclude-gc.md.
 """
 
 from __future__ import annotations
 
 import os
 import statistics
-import time
 import uuid
 from decimal import Decimal
 
 import pytest
 
+from tests._gc_latency import Gen2Excluded, assert_allocation_ceiling
+
 _TARGET_P50_MS = 200.0
 _TARGET_P99_MS = 500.0
 _WARMUP_COUNT = 3
 _SAMPLE_COUNT = 24
+
+#: ⚠️ ALLOCATION CEILINGS — the half of the gate that excluding gen-2
+#: pauses would otherwise delete. Counted in gen-0 collections over the
+#: sample loop (see tests/_gc_latency.py). Measured 2026-09-15 over 3-4
+#: runs with a spread of <= 1, times 3 headroom.
+_ALLOC_CEIL_QUOTE: int = 15
 
 if os.environ.get("QUOTE_PREVIEW_LATENCY_DISABLE") == "1":
     pytest.skip(
@@ -165,21 +184,22 @@ def test_quote_preview_latency_gate(client, seeded):
         r = client.post(url, json=payloads[i % len(payloads)], headers=headers)
         assert r.status_code == 200, r.text
 
-    durations_ms: list[float] = []
-    for i in range(_SAMPLE_COUNT):
-        t0 = time.perf_counter()
-        r = client.post(url, json=payloads[i % len(payloads)], headers=headers)
-        t1 = time.perf_counter()
-        assert r.status_code == 200, r.text
-        durations_ms.append((t1 - t0) * 1000.0)
+    with Gen2Excluded() as gc_s:
+        for i in range(_SAMPLE_COUNT):
+            with gc_s.sample():
+                r = client.post(url, json=payloads[i % len(payloads)], headers=headers)
+            assert r.status_code == 200, r.text
+
+    durations_ms = gc_s.durations_ms
 
     p50 = statistics.median(durations_ms)
     p99 = statistics.quantiles(durations_ms, n=100)[-1]
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms (n={_SAMPLE_COUNT}, "
-        f"min={min(durations_ms):.1f}ms max={max(durations_ms):.1f}ms)"
+        f"min={min(durations_ms):.1f}ms max={max(durations_ms):.1f}ms) [{gc_s.exclusion_note()}]"
     )
     print(f"\n[quote-preview-latency] {diag}")
 
     assert p50 <= _TARGET_P50_MS, f"quote-preview p50 {p50:.1f}ms — {diag}"
     assert p99 <= _TARGET_P99_MS, f"quote-preview p99 {p99:.1f}ms — {diag}"
+    assert_allocation_ceiling(gc_s, _ALLOC_CEIL_QUOTE, "quote-preview")

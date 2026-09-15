@@ -25,22 +25,41 @@ latency the user actually experiences per keystroke.
 
 Environment opt-outs:
   - `NL_CREATION_LATENCY_DISABLE=1` skips the test.
+
+⚠️ WHAT THIS GATE EXCLUDES — generation-2 GC pauses, and nothing else.
+A full collection on this application's heap costs ~450 ms whatever the
+garbage volume, because the cost is walking ~2.08M permanent objects. It
+lands on whichever request is in flight. Every sample here is measured with
+`tests/_gc_latency.Gen2Excluded`, which subtracts the collector's own
+interval from the sample it landed in and SAYS SO in the printed diagnostic,
+every run, including when nothing was excluded. Nothing is disabled, frozen
+or tuned: the endpoint runs under exactly the runtime that ships. gen-0 and
+gen-1 stay in the number, and an allocation ceiling on gen-0 keeps the
+regression signal the exclusion would otherwise remove. Ruled 2026-09-15;
+see docs/investigations/2026-09-15-latency-gates-exclude-gc.md.
 """
 
 from __future__ import annotations
 
 import os
 import statistics
-import time
 import uuid
 
 import pytest
+
+from tests._gc_latency import Gen2Excluded, assert_allocation_ceiling
 
 
 _TARGET_P50_MS: float = 600.0
 _TARGET_P99_MS: float = 1200.0
 _WARMUP_COUNT: int = 3
 _SAMPLE_COUNT_PER_ENTITY: int = 10
+
+#: ⚠️ ALLOCATION CEILINGS — the half of the gate that excluding gen-2
+#: pauses would otherwise delete. Counted in gen-0 collections over the
+#: sample loop (see tests/_gc_latency.py). Measured 2026-09-15 over 3-4
+#: runs with a spread of <= 1, times 3 headroom.
+_ALLOC_CEIL_EXTRACT: int = 25
 
 
 if os.environ.get("NL_CREATION_LATENCY_DISABLE") == "1":
@@ -188,7 +207,7 @@ def test_nl_creation_extract_p50_p99_under_budget(
     # Keep whatever state is live; if the env has a key, real calls
     # happen. The gate budget accommodates both paths.
 
-    durations_ms: list[float] = []
+    gc_s = Gen2Excluded()
     try:
         # Warm-up
         for _ in range(_WARMUP_COUNT):
@@ -203,26 +222,27 @@ def test_nl_creation_extract_p50_p99_under_budget(
                 )
 
         # Sample
-        for entity_type, shapes in _SHAPES.items():
-            for i in range(_SAMPLE_COUNT_PER_ENTITY):
-                input_text = shapes[i % len(shapes)]
-                t0 = time.perf_counter()
-                r = client.post(
-                    "/api/v1/nl-creation/extract",
-                    json={
-                        "entity_type": entity_type,
-                        "natural_language": input_text,
-                    },
-                    headers=headers,
-                )
-                t1 = time.perf_counter()
-                assert r.status_code == 200, (
-                    f"extract {entity_type!r} → {r.status_code} {r.text[:120]}"
-                )
-                durations_ms.append((t1 - t0) * 1000.0)
+        with gc_s:
+            for entity_type, shapes in _SHAPES.items():
+                for i in range(_SAMPLE_COUNT_PER_ENTITY):
+                    input_text = shapes[i % len(shapes)]
+                    with gc_s.sample():
+                        r = client.post(
+                            "/api/v1/nl-creation/extract",
+                            json={
+                                "entity_type": entity_type,
+                                "natural_language": input_text,
+                            },
+                            headers=headers,
+                        )
+                    assert r.status_code == 200, (
+                        f"extract {entity_type!r} → {r.status_code} {r.text[:120]}"
+                    )
     finally:
         if prev_key is not None:
             os.environ["ANTHROPIC_API_KEY"] = prev_key
+
+    durations_ms = gc_s.durations_ms
 
     p50 = statistics.median(durations_ms)
     p99 = statistics.quantiles(durations_ms, n=100)[-1]
@@ -230,7 +250,7 @@ def test_nl_creation_extract_p50_p99_under_budget(
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms "
         f"(n={len(durations_ms)}, min={min(durations_ms):.1f}ms "
-        f"max={max(durations_ms):.1f}ms)"
+        f"max={max(durations_ms):.1f}ms) [{gc_s.exclusion_note()}]"
     )
     print(f"\n[nl-creation-latency] {diag}")
 
@@ -240,3 +260,4 @@ def test_nl_creation_extract_p50_p99_under_budget(
     assert p99 <= _TARGET_P99_MS, (
         f"nl-creation extract p99 {p99:.1f}ms > target {_TARGET_P99_MS}ms — {diag}"
     )
+    assert_allocation_ceiling(gc_s, _ALLOC_CEIL_EXTRACT, "nl-creation-extract")
