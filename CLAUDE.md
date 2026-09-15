@@ -2290,6 +2290,25 @@ consecutive runs" against an actual ninety-five, because six was what the
 default listing showed. The finding was right and produced no action for six
 more days. See "Absent signal" below.
 
+#### A result that is too clean
+
+A conclusion suspiciously strong is the same signal as one that contradicts a
+number already in view, and it is the cheaper of the two to notice — a
+contradiction needs a second number to compare against, and this needs only the
+one.
+
+Measured 2026-09-14, three times in one item: "covers none of 370" for a helper
+known to work (the regex matched whole DELETE statements, not table names); "all
+20 columns are character(36)" (a display truncation of "character varying",
+already being built into a type-based hypothesis); and a uuid-shape test
+flagging 150 rows as fabricated (they belong to a seeded tenant whose id is not a
+uuid). Two of the three were noticed because the answer was too strong, before
+anything disproved them.
+
+The action: when a probe returns zero, all, none, or every, re-derive it by a
+method that shares no assumption with the first. A clean answer is a claim about
+the instrument as much as about the world.
+
 #### Conclusion survives, derivation falsified
 
 The worst case is not a wrong conclusion. It is a RIGHT conclusion reached
