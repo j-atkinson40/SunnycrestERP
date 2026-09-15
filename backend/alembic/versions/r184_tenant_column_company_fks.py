@@ -4,8 +4,13 @@ Revision ID: r184_tenant_column_company_fks
 Revises: r183_tenant_health_scores_company_fk
 Create Date: 2026-09-14
 
-⚠️ PREREQUISITE: `python -m scripts.purge_test_litter --apply` if the suite has
-run since the last purge. `ADD CONSTRAINT` fails on a single violating row, and
+⚠️ APPLIED BY THE DEPLOY. `railway-start.sh:45` runs `alembic upgrade head` on
+every deploy and aborts it on failure, so merging to `main` applies this to
+production. See r183's header: `purge_test_litter` refuses on
+`ENVIRONMENT=production`, so the remedy below is a DEVELOPMENT remedy only.
+
+⚠️ PREREQUISITE (development): `python -m scripts.purge_test_litter --apply` if
+the suite has run since the last purge. `ADD CONSTRAINT` fails on a single violating row, and
 it fails loudly — no pre-delete here and no exception handler, same as r183.
 Measured immediately before authoring: 0 violations across all 20.
 

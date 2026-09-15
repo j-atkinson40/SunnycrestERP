@@ -53,6 +53,42 @@ max is 412.2ms.** One outlier in 20 samples extrapolated past the data. It appea
 in none of the five full-tree failure sets measured today. That is the p99
 extrapolation defect, not a latency problem, and it belongs to the budget item.
 
+## ⚠️ MERGING A MIGRATION TO `main` IS A PRODUCTION WRITE (2026-09-15)
+
+**`backend/railway-start.sh:45` runs `alembic upgrade head` on every deploy and
+aborts the deploy if it fails.** So there is no separate "run it against
+production" step for a migration. The push is the application.
+
+r183 and r184 were already live on production before anyone went to apply them —
+verified read-only: revision `r184_tenant_column_company_fks`, **391 of 391**
+tenant-scoped columns constrained, both `platform_incidents` referrers at
+CASCADE. Nothing was run by hand.
+
+⚠️ **AND THE REMEDY THOSE MIGRATIONS DOCUMENT DOES NOT EXIST ON PRODUCTION.**
+`scripts/purge_test_litter.py` refuses when `ENVIRONMENT=production` — correctly;
+it is a development tool. So the runbook "r183 fails loudly, and the remedy is
+`purge_test_litter --apply`" is true of development and **false of production**.
+
+Had production held violating rows, r183 would have failed, taken the deploy red,
+and left no documented recovery — the decision would have been what to do with
+real orphaned data, under time pressure, with the site mid-deploy.
+
+It did not happen. Measured read-only: production holds 4 companies, 4 health
+scores, **0 violations across all 20 columns**. A young production database does
+not run a test suite, so the litter mechanism never applied there. **The risk was
+zero by luck of the environment, not by anything anyone checked.**
+
+### What this changes
+
+- A migration PR is a production change at merge time, not at some later manual
+  step. Treat "push when ready" on a migration as authorising the production
+  apply, because that is what it does.
+- A migration whose failure mode is "aborts the deploy" needs its production
+  precondition checked BEFORE the merge, read-only, not after.
+- ⚠️ Any migration documenting a recovery procedure must say which environments
+  that procedure runs in. Both r183 and r184 named a remedy that refuses on the
+  environment where failure would hurt most.
+
 ## ✅ r184 — THE CLASS IS CLOSED. 0 ORPHANS ACROSS ALL 391 COLUMNS (2026-09-14)
 
 Every `company_id`/`tenant_id` column now carries a foreign key to `companies.id`.

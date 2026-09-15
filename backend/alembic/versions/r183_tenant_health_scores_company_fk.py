@@ -4,9 +4,27 @@ Revision ID: r183_tenant_health_scores_company_fk
 Revises: r182_retire_pulse_widget_kind
 Create Date: 2026-09-14
 
-⚠️ PREREQUISITE: `python -m scripts.purge_test_litter --apply` MUST HAVE RUN,
-AND RUN RECENTLY. This is not a suggestion and it is not satisfied by "we ran it
-once".
+⚠️ CORRECTED 2026-09-15 — THIS MIGRATION IS APPLIED BY THE DEPLOY, NOT BY HAND,
+AND ITS DOCUMENTED REMEDY DOES NOT EXIST ON PRODUCTION.
+
+`backend/railway-start.sh:45` runs `alembic upgrade head` on every deploy and
+ABORTS THE DEPLOY if it fails. So merging this to `main` IS applying it to
+production; there is no separate manual step, and the original text below
+describing one was wrong about the environment it mattered in.
+
+⚠️ AND `scripts/purge_test_litter.py` REFUSES when `ENVIRONMENT=production` — by
+design, it is a development-database tool. So on production the remedy named
+below is unavailable: had violations existed, this migration would have failed,
+taken the deploy red, and left no documented recovery. Verified read-only before
+the fact was noticed: production held 0 violations across all 20 columns and 0
+orphaned health scores, so the risk did not materialise. It was still run.
+
+If production ever does hold violating rows, the decision is what to do with
+REAL orphaned data, and it is not this file's to make.
+
+⚠️ ORIGINAL PREREQUISITE, WHICH STILL APPLIES TO DEVELOPMENT DATABASES:
+`python -m scripts.purge_test_litter --apply` MUST HAVE RUN, AND RUN RECENTLY.
+This is not a suggestion and it is not satisfied by "we ran it once".
 
 `tenant_health_scores` accumulates rows whose owning company no longer exists at
 a measured **+1,364 to +1,368 per full-tree test run** (four observations,
