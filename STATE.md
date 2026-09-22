@@ -2,6 +2,50 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 📏 BACKEND GATE BASELINE — ALL FOUR NUMBERS (2026-09-22)
+
+⚠️ **Recorded with the conditions it was measured under, because the number that
+moved was the one nobody was recording.**
+
+    measured   2026-09-22 15:41 UTC, commit aee39780 + the live-server guard
+    command    .venv/bin/python -m pytest tests/ -q
+    server     RUNNING — uvicorn app.main:app on localhost:8000
+    files      458 test files on disk
+
+    failed     44
+    passed     6,557
+    errors     1        <- the company-litter tripwire, at teardown of the
+                          session's last test
+    skipped    8        xfailed 7
+
+⚠️ **THE SAME TREE WITH NO SERVER READS 51 / 6,421 / 118**, and the 117-error
+difference is entirely the HTTP integration suites failing to reach
+`localhost:8000`. An erroring test asserts nothing, so that run had 117 tests
+covering the API — including every test of the personalization availability
+surface — silently checking nothing. See CLAUDE.md §11 *An erroring test asserts
+nothing*.
+
+**A rise in `errors` against this baseline is a STOP, the same as new failures.**
+
+### ⚠️ THE SUITE NOW REFUSES TO RUN BLIND (2026-09-22)
+
+`tests/_live_server.py` + `tests/test_live_server_precondition.py`. With no
+server the run reports **1 failure and 2 reasoned skips instead of 117 errors**,
+and every other suite still executes.
+
+⚠️ The first version raised at module level and was wrong in an instructive way:
+a collection error is FATAL to pytest, and it was measured aborting a run that
+also contained 21 unrelated tests, none of which executed. That converts "117
+tests were unchecked" into "nothing ran". The shipped version SKIPS the affected
+suites with a reason and puts the loudness in one always-collected test that
+fails.
+
+Enumerated by what they do rather than by name: exactly **two** files call the
+API over the wire — `test_audit_comprehensive.py` and `test_comprehensive.py`.
+Every other `httpx` user in `tests/` mocks at the transport boundary, and
+`test_self_repair_complete.py` matched only on a `BASE_URL=postgresql://…`
+docstring.
+
 ## ✅ THE FORK GATE HAS TEARDOWN, AND THE FLOW IS +34 → +11 (2026-09-15)
 
 `test_workflow_fork_latency` created 23 global `scope="core"` workflows per run and

@@ -21,6 +21,14 @@ import pytest
 BASE_URL = os.environ.get("STAGING_URL", "http://localhost:8000")
 API = f"{BASE_URL}/api/v1"
 
+# ⚠️ REFUSE TO RUN BLIND. Without a server every test here raises ConnectError
+# during setup and asserts nothing, while an in-session diff reports the run as
+# unchanged. Fail once, naming the URL, instead of 117 times. See
+# tests/_live_server.py for what this cost on 2026-09-22.
+from tests._live_server import require_live_server  # noqa: E402
+
+require_live_server(BASE_URL)
+
 ADMIN_EMAIL = "admin@testco.com"
 ADMIN_PASSWORD = "TestAdmin123!"
 OFFICE_EMAIL = "office@testco.com"

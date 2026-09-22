@@ -2028,6 +2028,40 @@ three anomaly types an investigation once reported as having no locatable writer
 are among those five — the "unlocated" types were seeded, and a count that had
 declared its population would have said so.
 
+### An erroring test asserts nothing
+
+**Errors are "unchecked", never "unchanged".** A diff that sees the same errors
+before and after has proven nothing about the code they cover — it has proven
+that the same tests failed to run twice. Report errors alongside failures, and
+treat a RISE in errors as a STOP, exactly as new failures are.
+
+⚠️ THE ASYMMETRY IS WHAT MAKES THIS NECESSARY. A failing test is loud and gets
+read. An erroring test is counted in a separate column, summarised as a
+footnote, and — because it fails identically on both sides of a comparison —
+survives a test-id diff looking like agreement. "Zero new, zero gone" is a true
+sentence that can be said over a hundred tests which executed no assertions.
+
+Discovered 2026-09-22. The two HTTP integration suites call the API over the
+wire at `STAGING_URL` or `http://localhost:8000`. No server was running, so
+every test raised `httpcore.ConnectError` during setup: **117 errors, including
+every test of the personalization availability surface, on the same session that
+changed it.** The in-session diff reported the run as clean, correctly and
+uselessly, and the gap was only found by comparing against a figure recorded a
+week earlier.
+
+Two things follow, and the second is the one that generalises:
+
+- A baseline is recorded with **all four numbers — failed, passed, errors, and
+  the file count** — plus the conditions it was measured under. Three of those
+  were being reported and the fourth was the one that moved.
+- A suite that depends on something outside the repo should **refuse to run
+  blind** rather than rely on someone remembering to provide it. See
+  `tests/_live_server.py`: one loud failing precondition test, and explicit
+  skips for the suites that cannot run — ⚠️ not a module-level raise, which
+  produces a collection error, which pytest treats as fatal and which measured
+  as aborting an entire run over one unreachable server.
+
+
 ### A CAUSE is inherited more easily than a count
 
 *Figures in dispatches are never inherited* covers counts. This covers the
