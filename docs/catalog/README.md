@@ -39,10 +39,44 @@ its own commit, with the existing products asserted identical before and after.
 
 **4. The colour answers unblock the portal mapping.** Four portal vaults cannot
 be mapped until they are answered — `white-tribute`/`gray-tribute`,
-`white-venetian`/`venetian`, the same urn pair, and `universal-urn`. If a colour
-is "one product, a choice", it becomes a **fourth personalization question**
-alongside legacy print, nameplate and vinyl — which is the finish question
-deferred earlier arriving through the catalog rather than through capture.
+`white-venetian`/`venetian`, the same urn pair, and `universal-urn`.
+
+⚠️ **CORRECTED 2026-09-22. This paragraph ended:** *"If a colour is 'one product,
+a choice', it becomes a **fourth personalization question** alongside legacy
+print, nameplate and vinyl — which is the finish question deferred earlier
+arriving through the catalog rather than through capture."* **That is wrong, and
+wrong in a way that would have damaged the model built this week.**
+
+**Colour is not personalization, whichever way the answer goes.**
+Personalization is something ADDED to the vault, and every answer in
+`services/personalization/` maps to a job the plant does — fit a nameplate,
+apply a print, affix an emblem. That totality is asserted by
+`test_every_answer_maps_to_tasks_within_the_canonical_four`. Colour decides
+WHICH VAULT is pulled or poured. It has no job in that mapping, and forcing it
+in would have made the question layer lie about what personalization is — the
+answer set would have held one answer that produces no task, indistinguishable
+from the `none` case the totality test exists to keep separate.
+
+If colour is a choice rather than a product, it is a question the call capture
+asks **about the product**, next to "which vault" — not a fourth personalization
+question. It belongs to the capture schema, not to `questions.py`.
+
+⚠️ The generated sheet was checked and does NOT carry this error: its COLOUR
+guidance says only "separate product" or "one product, colour is a choice", with
+the price-or-process test. Nothing needed regenerating.
+
+**4a. Made or bought in — ruled yes, and NOT on an existing column.**
+⚠️ Two columns look like they already express this and neither does:
+
+| column | what it actually means |
+|---|---|
+| `Product.source` | **row provenance** — `manual`, `catalog_builder`, `csv_import`, and `seeder` as the seeder writes it. How the RECORD got here, not how the vault is obtained. Overloading it would put two unrelated meanings in one 30-character string |
+| `Product.is_direct_ship_product` | a **fulfilment route** — Wilbert ships an urn straight to the funeral home. A bought-in vault still sits in Sunnycrest's yard, so this is close and different |
+
+So the new column is right. The reason it earns one is operational rather than
+tidy: **a bought-in vault must never land on the pour schedule or count against
+production capacity, and nothing can currently tell the two apart.** It ships
+with the seeder change.
 
 **5. What still needs deciding and is not in the sheet.** Whether the seeder's
 bought-in sizes should exist at all — `Continental 34"`, `Graveliner 34"`,
