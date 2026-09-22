@@ -2909,6 +2909,26 @@ head and caused a real outage. A remembered "X is broken/down/blocked" is a
 hypothesis to confirm against live ground truth, not a fact to act on.
 Investigation-first is the cheap path, not the ceremonial one.
 
+### Prototype before dispatch
+
+Before a new surface is dispatched, build a clickable prototype and review it. The
+prototype replaces the operator review: it answers whether this is the right thing to
+build. It does not replace the preliminary. A prototype has no data model, so it cannot
+answer whether the thing is buildable as drawn, and a dispatch written from a prototype
+still gets its read-only preliminary.
+
+⚠️ **A prototype's omissions are not rulings.** What it does not show is not evidence of
+removal. The call-to-print prototype showed no deferral controls and no standing set, and
+both read as decisions until checked.
+
+Rulings made while prototyping are recorded in DECISIONS, because the prototype file will
+be superseded and its reasons should not go with it.
+
+⚠️ Filed here rather than in DECISIONS because it changes what a session DOES before
+writing a dispatch, and the filing test below is the rule that sent it. A process rule
+filed in the document nobody opens for process is the persistent-storage defect again.
+
+
 ### Investigation framing — existence-first
 
 Investigation questions ask **what exists, by any mechanism, exhaustively**. They never

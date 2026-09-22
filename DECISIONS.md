@@ -1382,6 +1382,17 @@ which is the material-change stream fragments need. Fragment regeneration adopts
 stream rather than introducing a parallel one. (Investigator finding, 2026-09-04;
 see docs/investigations/.)
 
+⚠️ **THE PARAGRAPH BELOW IS SUPERSEDED IN ITS FIRST SENTENCE [marked 2026-09-22].**
+"Every factual claim is a link" no longer holds. CLAUDE.md §1a — *"whether that
+provenance is reachable as a link is a separate fact, and a measured span may be
+deliberately unlinked"* — is the live rule, and the 2026-09-22 entry *Links mark
+entities and destinations, not amounts* states what links now mark. The rest of the
+paragraph stands: inference must still be typographically distinguishable from
+measurement. The rest of this entry — the four declarations, typed and individually
+sourced fragments, scope carried into whatever the fragment opens — is untouched.
+
+Original text, unaltered:
+
 Every factual claim is a link, and the link is the provenance mark. Unlinked text is
 connective tissue. Inference ("because the pour slipped") must be typographically
 distinguishable from measurement — the user must be able to tell at a glance what the
@@ -1508,7 +1519,18 @@ path and buys uniformity in the common one.
 
 ---
 
-## 2026-09-04 — Three text states in the note, distinguished without color
+## 2026-09-04 — Three text states in the note, distinguished without color [SUPERSEDED 2026-09-22 on the COUNT; the colour ruling stands]
+
+⚠️ **THREE IS NOW FOUR.** The 2026-09-22 entry *Links mark entities and destinations,
+not amounts* splits measured into measured-and-linked and measured-and-deliberately-
+unlinked, matching CLAUDE.md §1a and the renderer as built in session 2. The
+distinction this entry exists to protect — what the system knows versus what it
+thinks — survives intact, because inferred text still carries its mark.
+
+⚠️ **The second half of this entry is NOT superseded.** No colour carries the
+epistemic distinction; that ruling is untouched and still in force.
+
+Original text, unaltered:
 
 Text on the note is in one of exactly three states: measured, which is a link; inferred,
 which is unlinked and carries a distinguishing mark; and connective tissue, which is
@@ -1812,3 +1834,130 @@ contradicted it anywhere a reader would look. It then propagated twice more from
 into the §3.2 appendix as a met obligation, and into a ruling made from CLAUDE.md two weeks
 later. That is why this entry exists: a marker pointing at a commit body asks every reader
 to run `git show`, and readers do not.
+
+---
+
+## 2026-09-22 — The note is written as a coworker's note, not a list
+
+The note is prose paragraphs with links, not a card of bulleted items. It groups items by
+kind and leads with the worst — money together, and within money the overdue before the
+merely large. It addresses the user directly ("owes you", "you got"). The voice is
+recognisably written by someone and is not chatty. A quiet day is two sentences with no
+grouping and no lead-in. The reason: a list gives every item equal weight, while a note
+that says "money first" and puts the 31-day overdue beside the 12-day one is telling you
+what matters, which is the whole value of a note over a dashboard. Grouping carries
+meaning, so composition must actually group by kind rather than wrap lines.
+
+---
+
+## 2026-09-22 — The note never reports what the user just did
+
+A line that tells the user something they know because they did it seconds ago is noise.
+After creating an order the note says it is ready to be scheduled, not that it is in and
+has no driver. The note is also live: when the user completes half of what a line asked —
+schedules the order — that half disappears and the line shortens to what remains. This is
+the differential rule applied to the user's own actions.
+
+---
+
+## 2026-09-22 — Links mark entities and destinations, not amounts
+
+In note prose, the thing you would go to is a link — a customer, an order, a schedule.
+Amounts, counts and dates are not links. Links are the text colour with a hairline
+underline that brightens on hover; they carry no colour of their own. The reason: eight
+coloured links in one paragraph read as a list of links with prose between them. Removing
+the colour and linking only entities keeps the underline as the provenance mark while
+letting the prose read as prose.
+
+The note's text is therefore in one of four states, not three: measured and linked;
+measured and deliberately unlinked; inferred, which carries a distinguishing mark; and
+connective tissue. The distinction that must stay visible at a glance is between what the
+system knows and what it thinks, and it survives because inferred text is marked. A
+measured-unlinked amount and connective tissue both render plain, which is harmless,
+because connective tissue makes no claim. This matches CLAUDE.md §1a and the renderer as
+built in session 2.
+
+---
+
+## 2026-09-22 — The call overlay sits over the note, and flags what is missing before the call ends
+
+An inbound call opens a panel anchored bottom-right over the note, not a centred modal and
+not a Focus — the user is still on their day. It shows a live transcript and an order-
+capture list with captured and needed counts. When the caller has said everything they
+intend to and a required field is still empty, that field is flagged while the call is
+still live, so the operator asks before hanging up. This is the core value of the overlay:
+a new hire does not know what is missing until the call is over and has to call back. The
+system knowing the gap during the call is what closes that.
+
+---
+
+## 2026-09-22 — A call ends in a summary in the same panel, and approving it creates the order
+
+Ending the call turns the overlay into a call summary in the same position — every captured
+field, each editable, and a notes field. Its action is Approve & Create Sales Order.
+Approving collapses the overlay and returns the user to the note. No separate full-screen
+review step.
+
+---
+
+## 2026-09-22 — The scheduling focus is a board with context cards around it
+
+Scheduling is a Focus: a driver kanban at the centre with context cards beside it — time
+off for that day, ancillary stops (urn drop-offs, cremation trays) and a scoped comms panel.
+Cards carry family name, firm, time, place, ETA, deliver-to, location, equipment and
+product. Assignment is by real drag, not animation. The unassigned column sizes to its
+contents. Clicking the background closes the Focus and returns to the note. Context cards
+must not displace one another when they appear. Business rule: when the place is
+graveside, the ETA is the service time; for church and funeral home services the ETA is
+later, after the procession.
+
+---
+
+## 2026-09-22 — Selecting two runs shows the drive between them and whether they fit
+
+Click a card to select it; shift-click a second to open a route card showing the drive
+time, distance, the gap between the two ETAs, and a verdict — fits with time to spare,
+tight, or overlapping and needing two drivers. The verdict is the point: pairing two runs is
+a routing decision, and the card answers it rather than just drawing a map. A stop with no
+fixed time says it can ride along with the other.
+
+---
+
+## 2026-09-22 — Comms is one scoped panel, used wherever a Focus needs discussion
+
+A comms panel is a platform piece, not a feature. It appears on the scheduling Focus as a
+dispatcher-only chat and on the Legacy Focus as the print-shop email thread. Each instance
+is scoped to the people with the relevant permission and states who can see it. Built once
+and reused; building it inside one Focus would force the other to copy it.
+
+---
+
+## 2026-09-22 — Legacy panels are the licensed artwork, with editable layers on top
+
+A Legacy background is the exact licensed image, never redrawn or approximated — families
+choose from licensed images and the proof must match what prints. Name, dates and emblems
+are separate layers above it that can be moved, resized and removed. Emblems come from a
+library card and are dragged onto the panel. Layers anchor by their centre, and while
+dragging they snap to the panel's centre and to the centre and edges of other layers, with
+visible guides.
+
+---
+
+## 2026-09-22 — Legacy approval runs a named workflow and says so before you press it
+
+The Legacy Focus has two equal actions: Send proof to funeral home, which shows the address
+it will go to, and Approve & Send to Print, which shows what it triggers. There is no
+Request changes action, because changes are made in place. Approving saves the file as
+"{Background} - {Deceased name}.tif" to the configured folder and emails the print shop.
+The Focus then shifts to an approved state: the panel locked exactly as edited, the order
+details, and the print-shop thread.
+
+---
+
+## 2026-09-22 — Prototype-before-dispatch is ruled, and lives in CLAUDE.md
+
+New surfaces are prototyped and reviewed before they are dispatched. The rule itself is in
+**CLAUDE.md, `### Prototype before dispatch`**, under *Ground-truth-first*, not here —
+it changes what a session DOES before writing a dispatch, and CLAUDE.md's own filing test
+sends such rules there. This entry exists so the ruling is findable from both directions;
+a reader who comes to DECISIONS looking for why should follow it to the rule that binds.
