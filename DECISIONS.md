@@ -1904,16 +1904,21 @@ review step.
 
 ---
 
-## 2026-09-22 — The scheduling focus is a board with context cards around it
+## 2026-09-22 — The scheduling focus is a board with focus context cards around it
 
-Scheduling is a Focus: a driver kanban at the centre with context cards beside it — time
-off for that day, ancillary stops (urn drop-offs, cremation trays) and a scoped comms panel.
-Cards carry family name, firm, time, place, ETA, deliver-to, location, equipment and
+Scheduling is a Focus: a driver kanban at the centre with focus context cards beside it —
+time off for that day, ancillary stops (urn drop-offs, cremation trays) and a scoped comms
+panel. Cards carry family name, firm, time, place, ETA, deliver-to, location, equipment and
 product. Assignment is by real drag, not animation. The unassigned column sizes to its
-contents. Clicking the background closes the Focus and returns to the note. Context cards
-must not displace one another when they appear. Business rule: when the place is
+contents. Clicking the background closes the Focus and returns to the note. Focus context
+cards must not displace one another when they appear. Business rule: when the place is
 graveside, the ETA is the service time; for church and funeral home services the ETA is
 later, after the procession.
+
+Focus context cards are a distinct primitive from **call context cards**, which arrive as a
+call establishes facts and collapse when the next one arrives — the opposite arrival rule.
+See `Call context cards arrive full and collapse on arrival, not on overflow`. The two share
+a word and nothing else: separate component trees, nothing in common between them.
 
 ---
 
@@ -2000,8 +2005,14 @@ switched off, because personalization availability is read from it.
 
 Whether personalization is required is not a property of the order. It depends on whether
 this tenant offers personalization on the vault named — Sunnycrest does not offer nameplates
-on the Monticello where neighbouring licensees do. The condition therefore lives in the
-product catalog and the schema points at it.
+on the Monticello where neighbouring licensees do.
+
+Whether personalization is required is therefore determined by the vault named, but the
+answer is not a property of the vault: it is the licensee's decision about that vault, and
+it is stored with the licensee. The availability reader
+(wilbert_program_enrollments.personalization_config.availability, keyed product then
+question) is what the schema consults. A later session looking in the product catalog will
+find nothing there.
 
 ---
 
@@ -2030,7 +2041,12 @@ the capture list fails it.
 
 ---
 
-## 2026-09-22 — Context cards arrive full and collapse on arrival, not on overflow
+## 2026-09-22 — Call context cards arrive full and collapse on arrival, not on overflow
+
+Call context cards are a distinct primitive from **focus context cards**, which are pinned
+beside a Focus and must not displace one another when they appear — the opposite arrival
+rule. See `The scheduling focus is a board with focus context cards around it`. The two share
+a word and nothing else: separate component trees, nothing in common between them.
 
 Every card behaves identically. It arrives expanded. When the next card arrives it collapses
 to a single line carrying its most useful fact — "Wilbert Funeral Home · $3,750.00 across 2
