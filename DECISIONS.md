@@ -2001,7 +2001,7 @@ switched off, because personalization availability is read from it.
 
 ---
 
-## 2026-09-22 — Conditional requirements read the product catalog
+## 2026-09-22 — Conditional requirements are determined by the vault, not stored on it
 
 Whether personalization is required is not a property of the order. It depends on whether
 this tenant offers personalization on the vault named — Sunnycrest does not offer nameplates
@@ -2027,9 +2027,9 @@ surface read under time pressure.
 
 ---
 
-## 2026-09-22 — The context panel is a second register on the call
+## 2026-09-22 — Call context cards are a second register on the call
 
-The capture list is what the system needs; the context panel is what the operator can
+The capture list is what the system needs; the call context cards are what the operator can
 usefully say. Cards appear as the call establishes facts — the customer once identified, the
 vault once named, the cemetery once known — each carrying what the operator would otherwise
 put the caller on hold to look up: personalization options to offer, price, dimensions,
@@ -2038,6 +2038,9 @@ weight, drive time, a sexton's number.
 Admission test, in the same form as the standing set's: does this answer something the
 operator would otherwise have to look up mid-call? A card that restates what is already in
 the capture list fails it.
+
+Whether these are a new surface or a seventh type of the existing triage context panel is
+not ruled here; it is a build question, not a naming one.
 
 ---
 
