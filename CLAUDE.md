@@ -2492,6 +2492,10 @@ dependencies inside that red and was completely invisible.
 #### Absent signal — the instrument that never worked
 
 A gate at 99-red-out-of-99 is not a saturated signal, it is an absent one.
+[CORRECTED 2026-09-22 — original wording kept. The channel this described is
+**427**-red-out-of-427-most-recent, and it is a SATURATED signal, not an absent
+one: it passed 41 times, last on 2026-05-11. The sentence states the distinction
+correctly and picks the wrong side of it. See the correction below.]
 Saturated means real failures hide inside existing red. This never produced a
 signal at all, which is a different and worse condition, and it is detectable by
 a question nobody asked — WHEN DID THIS LAST PASS?
@@ -2513,11 +2517,39 @@ So: before reporting that a check was skipped, and before treating any gate as
 covering anything, ask when it last passed. Not whether it is passing now.
 
 Discovered September 2026: the Playwright staging channel had produced zero
-green results in 99 consecutive runs across five and a half weeks, every spec
-dying at a 401 before exercising anything. It was noticed once, six days in,
-counted as "six consecutive runs" and correctly attributed to the CI credential
-— and the last-pass question was still not asked, so the six-week figure and the
-never-passed condition both went unseen.
+green results across a window this entry originally recorded as "99 consecutive
+runs across five and a half weeks", every spec dying at a 401 before exercising
+anything. It was noticed once, six days in, counted as "six consecutive runs"
+and correctly attributed to the CI credential — and the last-pass question was
+still not asked, so the figure and the never-passed condition both went unseen.
+
+⚠️ **CORRECTED 2026-09-22: IT IS 427 CONSECUTIVE NON-GREEN RUNS ACROSS 133 DAYS,
+AND 99 WAS THIS ENTRY COMMITTING ITS OWN DEFECT.** Re-derived by enumerating the
+workflow's full history rather than a default listing: 505 runs, last success
+2026-05-11, **907 commits on main since**. The 99 was a constructed count — the
+number the tool showed — inside the entry that names constructed counts. The
+escalation 6 → 99 → 427 is the same error made three times at increasing scale,
+each time by someone who had read the rule.
+
+⚠️ AND THE EXAMPLE IS FILED UNDER THE WRONG HEADING. This entry calls the
+channel *the instrument that never worked*. It worked: **41 successful runs**,
+the last on 2026-05-11. So Playwright staging is a SATURATED signal by the
+distinction drawn three paragraphs up — it produced a signal, went red, and
+stayed red — not an absent one. The rule the entry teaches is sound and the case
+it teaches from was mis-classified, which happened because nobody asked *when did
+this last pass* of the channel itself. The heading is left as written; a genuinely
+absent instrument would look identical from inside, and that is the point worth
+keeping.
+
+⚠️ AND THE CAUSE IN THE SENTENCE ABOVE IS NOT THE CURRENT CAUSE. "Every spec
+dying at a 401" was true of the runs then examined and is not true of the
+channel. Sampled across the streak, the failure changes at least three times,
+and as of 2026-09-22 the specs do not run at all: the deploy gate times out
+because staging's frontend never serves the target commit, and it says so in
+terms — *"Tests were NOT run; this is a DEPLOY problem, not a test failure."*
+The 401 is real, sits in a different job, and is downstream. A single cause
+attached to a long red window is a *CAUSE inherited more easily than a count*,
+two entries below. See `docs/investigations/2026-09-22-ci-red.md`.
 
 WHY THIS NEEDS TO BE STRUCTURAL RATHER THAN REMEMBERED. The two questions look
 alike and differ in what it costs to answer them. *Would this run be evidence?*
