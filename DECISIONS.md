@@ -1474,7 +1474,25 @@ promotion path is the part to reconsider, not the release-dismisses default.
 
 ---
 
-## 2026-09-04 — A standing line never opens a Focus directly
+## 2026-09-04 — A standing line never opens a Focus directly [SUPERSEDED 2026-09-09 by commit `4cbfbd00`; marked 2026-09-22]
+
+⚠️ **SUPERSEDED. The rule below is not in force.** On operator review of the
+running surface, `4cbfbd00` (reverting `3d21e919`, the session-3 peek bridge)
+ruled that a standing line opens its FOCUS on click, read-only for a user
+without edit permission. Its commit body states the supersession in terms: *"That
+supersedes 'a standing line never opens a Focus directly'."*
+
+The uniformity argument below survives the reversal with the opposite conclusion:
+every standing line opens its Focus, so every entry still costs the same. What was
+wrong was the premise, not the reasoning — a peek that opens on cursor travel and
+pins itself on pointer entry costs MORE than a click, and at 360px the schedule
+cannot be read anyway, so the peek summarised and the user clicked through.
+
+⚠️ **This entry went unmarked for thirteen days, and CLAUDE.md re-asserted it.**
+The reversal was recorded only in a commit body, which no read order points at.
+The §1a rewrite then took the peek-only rule from a ruled-items list and put it
+back into the document read every session. Corrected in CLAUDE.md on 2026-09-22.
+The original text is left below exactly as written.
 
 Standing lines always peek. Focus entrances come from prose fragments, or from inside a
 peek, never from the standing line itself. The standing set's value is that all of its
@@ -1714,3 +1732,60 @@ close. The report claiming otherwise had grepped one file of three, which is
 false absence from a constructed scope. Recorded here because the entry's
 exit-grace requirement reads as unbuilt work and is not; the only real gap is
 that `80` is a bare literal where `200` is a named constant.
+
+---
+
+## 2026-09-22 — The note's register is the standing set, not pins
+
+The note's always-present register is the standing set, and it keeps its name and its
+rules: per role, capped at seven, admitted only if it is checked against something in the
+user's hand at an unpredictable moment, labelled with a noun, and carrying no description.
+A Space's pins are a different primitive — per user per Space, around twenty, any target —
+and are not the note's register. The call-to-print prototype put pins in the standing set's
+position under the name "Pinned"; that is not adopted, because renaming a register is how
+its rules get dropped without anyone deciding to drop them.
+
+Descriptions are dropped. "View today's full kanban schedule" is an imperative, which does
+a badge's work through language, and a description doubles the scan cost of every row and
+costs the positional memory the register exists for.
+
+Whether a Space's pins should also appear on the note is open, and would need its own
+admission test.
+
+---
+
+## 2026-09-22 — Activity counts carry no colour
+
+Counts in Today's Activity are neutral. Once one count is coloured, every uncoloured count
+reads as having failed to earn a colour, and a cancellation is not bad news.
+
+This extends the standing-line rule — a count is a fact you read, a badge is a demand — to
+the settled activity region, which that rule was not written for. Recorded as an extension
+of the rule, not as a case it already covered.
+
+---
+
+## 2026-09-22 — Deferral remains on the note
+
+The call-to-print prototype showed no deferral controls; deferral is not removed. Prompts
+leave the note only by resolution or by deferral to a named date, and re-deferral stays
+visible. A note without deferral would be one whose prompts can only be acted on, which
+changes what a prompt is.
+
+---
+
+## 2026-09-22 — Create actions are not on the note
+
+New Order, New Quote and similar create actions do not appear on the note. They are Act
+affordances on a Monitor surface; they are unscoped entrances on a surface whose entrances
+carry scope; and they fail the standing set's admission test — a create action is not
+something checked against something in the user's hand.
+
+The command bar already registers them: `backend/app/services/command_bar/registry.py:423`
+seeds `create.sales_order` (label "New sales order", aliases including "new order" and
+"create order") and `:435` seeds `create.quote` (label "New quote"). Verified at the line
+numbers given, 2026-09-22.
+
+Discoverability is handled by an onboarding touch, which decays once learned, rather than
+by permanent chrome. This is ruled on principle because no tenant is live, and should be
+revisited against the first month of real use.
