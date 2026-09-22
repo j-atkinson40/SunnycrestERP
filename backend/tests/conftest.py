@@ -201,6 +201,48 @@ def _unowned_litter_tripwire():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _platform_user_run_teardown():
+    """Delete every `platform_users` row THIS session minted, keyed on RUN_ID.
+
+    ⚠️ KEYED ON THE RUN ID, NOT ON A NAME PATTERN. A pattern-based delete
+    (`platform-%@bridgeable.test`) would reach another session's rows and, if a
+    real address ever matched, a real user. `RUN_ID` is not shared and not
+    guessable, so this touches only what this session created. See
+    `tests/_ids.py` for why the run id exists at all.
+
+    ⚠️ THIS RUNS EVEN WHEN TESTS FAIL. Everything after `yield` in a
+    session-scoped fixture executes at session end regardless of test outcome —
+    which is the point, because the first failing run would otherwise reinstate
+    the leak permanently. It does NOT run if the interpreter is killed
+    (SIGKILL, a crash); for that case set `BRIDGEABLE_TEST_RUN_ID` before the
+    run and sweep on the known id afterwards.
+
+    It deliberately does NOT assert. Its job is to stop the growth; reporting
+    whether the growth stopped belongs to the tripwires, and a teardown that
+    also fails the session would mask which of the two noticed.
+    """
+    yield
+    try:
+        from app.database import SessionLocal
+
+        from tests._ids import RUN_ID, RUN_ID_LIKE
+
+        db = SessionLocal()
+        try:
+            n = db.execute(
+                text("DELETE FROM platform_users WHERE email LIKE :p"),
+                {"p": RUN_ID_LIKE},
+            ).rowcount
+            db.commit()
+            if n:
+                print(f"\n[run teardown] deleted {n} platform_users for run {RUN_ID}")
+        finally:
+            db.close()
+    except Exception as exc:  # no DB in this run, or the table is absent
+        print(f"\n[run teardown] skipped: {type(exc).__name__}: {exc}")
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _company_litter_tripwire():
     before = _company_count()
     yield

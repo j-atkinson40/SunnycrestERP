@@ -17,6 +17,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from tests._ids import RUN_ID
 
 
 # ─── Fixtures ──────────────────────────────────────────────────
@@ -118,7 +119,7 @@ def _make_tenant_with_admin(vertical: str = "manufacturing"):
         from app.models.platform_user import PlatformUser
         platform_admin = PlatformUser(
             id=str(uuid.uuid4()),
-            email=f"platform-{suffix}@bridgeable.test",
+            email=f"platform-{RUN_ID}-{suffix}@bridgeable.test",
             hashed_password="x",
             first_name="Platform",
             last_name="Admin",

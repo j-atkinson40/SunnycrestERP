@@ -23,6 +23,7 @@ from app.services.maps_of_content.task_catalog import (
     patch_task,
     resolve_task_catalog,
 )
+from tests._ids import RUN_ID
 
 VERT = "manufacturing"
 
@@ -209,7 +210,7 @@ def api():
     vocabulary.seed_minimal(s)
     suffix = _uuid.uuid4().hex[:6]
     pu = PlatformUser(
-        id=str(_uuid.uuid4()), email=f"taskedit-{suffix}@bridgeable.test",
+        id=str(_uuid.uuid4()), email=f"taskedit-{RUN_ID}-{suffix}@bridgeable.test",
         hashed_password="x", first_name="P", last_name="A",
         role="super_admin", is_active=True,
     )

@@ -28,6 +28,7 @@ from app.services.maps_of_content.triggers import (
     patch_trigger,
     validate_trigger,
 )
+from tests._ids import RUN_ID
 
 VERT = "manufacturing"
 
@@ -209,7 +210,7 @@ def api():
     trigger_events.seed_events(s)
     suffix = _uuid.uuid4().hex[:6]
     pu = PlatformUser(
-        id=str(_uuid.uuid4()), email=f"trig-{suffix}@bridgeable.test",
+        id=str(_uuid.uuid4()), email=f"trig-{RUN_ID}-{suffix}@bridgeable.test",
         hashed_password="x", first_name="P", last_name="A",
         role="super_admin", is_active=True,
     )

@@ -14,6 +14,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from tests._ids import RUN_ID
 
 
 # ─── Fixtures ──────────────────────────────────────────────────
@@ -36,7 +37,7 @@ def _make_platform_admin():
         suffix = uuid.uuid4().hex[:6]
         platform_admin = PlatformUser(
             id=str(uuid.uuid4()),
-            email=f"plugin-reg-{suffix}@bridgeable.test",
+            email=f"plugin-reg-{RUN_ID}-{suffix}@bridgeable.test",
             hashed_password="x",
             first_name="Plugin",
             last_name="Reg",

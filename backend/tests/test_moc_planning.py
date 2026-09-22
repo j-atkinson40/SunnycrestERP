@@ -21,6 +21,7 @@ from app.database import SessionLocal
 from app.models.moc_planning_item import MoCPlanningItem
 from app.models.platform_user import PlatformUser
 from app.services.maps_of_content import planning
+from tests._ids import RUN_ID
 
 MOC = "/api/platform/admin/moc"
 
@@ -35,10 +36,10 @@ def db():
 @pytest.fixture
 def users(db):
     suffix = uuid.uuid4().hex[:6]
-    a = PlatformUser(id=str(uuid.uuid4()), email=f"plan-a-{suffix}@bridgeable.test",
+    a = PlatformUser(id=str(uuid.uuid4()), email=f"plan-a-{RUN_ID}-{suffix}@bridgeable.test",
                      hashed_password="x", first_name="A", last_name="P",
                      role="super_admin", is_active=True)
-    b = PlatformUser(id=str(uuid.uuid4()), email=f"plan-b-{suffix}@bridgeable.test",
+    b = PlatformUser(id=str(uuid.uuid4()), email=f"plan-b-{RUN_ID}-{suffix}@bridgeable.test",
                      hashed_password="x", first_name="B", last_name="P",
                      role="super_admin", is_active=True)
     db.add_all([a, b])

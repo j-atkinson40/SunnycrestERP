@@ -23,6 +23,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from tests._ids import RUN_ID
 
 
 # ─── fixtures ─────────────────────────────────────────────────────────
@@ -79,7 +80,7 @@ def _make_ctx() -> dict:
         db.add(tenant_user)
         platform_user = PlatformUser(
             id=str(uuid.uuid4()),
-            email=f"p-{suffix}@bridgeable.test",
+            email=f"p-{RUN_ID}-{suffix}@bridgeable.test",
             hashed_password="x",
             first_name="P",
             last_name="U",

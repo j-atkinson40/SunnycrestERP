@@ -44,6 +44,7 @@ from app.services.focus_template_inheritance import (
     update_template,
     validate_substrate_blob,
 )
+from tests._ids import RUN_ID
 
 
 API_ROOT = "/api/platform/admin/focus-template-inheritance"
@@ -603,7 +604,7 @@ class _ApiCtx:
         self.s.add(self.user)
         self.platform_admin = PlatformUser(
             id=str(uuid.uuid4()),
-            email=f"platform-substrate-{suffix}@bridgeable.test",
+            email=f"platform-substrate-{RUN_ID}-{suffix}@bridgeable.test",
             hashed_password="x",
             first_name="P",
             last_name="A",

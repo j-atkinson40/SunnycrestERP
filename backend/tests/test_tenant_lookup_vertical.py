@@ -19,6 +19,7 @@ from app.core.security import create_access_token
 from app.database import SessionLocal
 from app.models.company import Company
 from app.models.platform_user import PlatformUser
+from tests._ids import RUN_ID
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ def ctx():
     s = SessionLocal()
     suffix = uuid.uuid4().hex[:6]
     admin = PlatformUser(
-        id=str(uuid.uuid4()), email=f"p1-{suffix}@bridgeable.test",
+        id=str(uuid.uuid4()), email=f"p1-{RUN_ID}-{suffix}@bridgeable.test",
         hashed_password="x", first_name="P", last_name="1",
         role="super_admin", is_active=True,
     )

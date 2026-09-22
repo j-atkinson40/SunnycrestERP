@@ -26,6 +26,7 @@ from app.services.focus_template_inheritance import (
     update_core,
 )
 from app.services.maps_of_content.service import resolve_references
+from tests._ids import RUN_ID
 
 
 @pytest.fixture
@@ -146,7 +147,7 @@ def test_core_response_carries_icon(env):
     db = env["db"]
     suffix = env["suffix"]
     admin = PlatformUser(
-        id=str(uuid.uuid4()), email=f"icon-{suffix}@bridgeable.test",
+        id=str(uuid.uuid4()), email=f"icon-{RUN_ID}-{suffix}@bridgeable.test",
         hashed_password="x", first_name="I", last_name="C",
         role="super_admin", is_active=True,
     )

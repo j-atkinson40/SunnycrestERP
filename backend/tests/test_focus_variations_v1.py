@@ -39,6 +39,7 @@ from app.services.focus_template_inheritance import (
     update_core,
 )
 from app.services.maps_of_content.task_catalog import upsert_task
+from tests._ids import RUN_ID
 
 MOC_ROOT = "/api/platform/admin/moc"
 FTI_ROOT = "/api/platform/admin/focus-template-inheritance"
@@ -65,7 +66,7 @@ def admin_headers():
     suffix = uuid.uuid4().hex[:6]
     admin = PlatformUser(
         id=str(uuid.uuid4()),
-        email=f"fv-{suffix}@bridgeable.test",
+        email=f"fv-{RUN_ID}-{suffix}@bridgeable.test",
         hashed_password="x",
         first_name="F",
         last_name="V",

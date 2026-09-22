@@ -20,6 +20,7 @@ from app.models.focus_composition import FocusComposition
 from app.models.focus_core import FocusCore
 from app.models.focus_template import FocusTemplate
 from app.models.platform_user import PlatformUser
+from tests._ids import RUN_ID
 
 
 API_ROOT = "/api/platform/admin/focus-template-inheritance"
@@ -94,7 +95,7 @@ def ctx():
 
         platform_admin = PlatformUser(
             id=str(uuid.uuid4()),
-            email=f"platform-{suffix}@bridgeable.test",
+            email=f"platform-{RUN_ID}-{suffix}@bridgeable.test",
             hashed_password="x",
             first_name="P",
             last_name="A",

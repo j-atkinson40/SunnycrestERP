@@ -19,6 +19,7 @@ from app.models.company import Company
 from app.models.edge_panel_composition import EdgePanelComposition
 from app.models.edge_panel_template import EdgePanelTemplate
 from app.models.platform_user import PlatformUser
+from tests._ids import RUN_ID
 
 
 API_ROOT = "/api/platform/admin/edge-panel-inheritance"
@@ -92,7 +93,7 @@ def ctx():
 
         platform_admin = PlatformUser(
             id=str(uuid.uuid4()),
-            email=f"platform-{suffix}@bridgeable.test",
+            email=f"platform-{RUN_ID}-{suffix}@bridgeable.test",
             hashed_password="x",
             first_name="P",
             last_name="A",

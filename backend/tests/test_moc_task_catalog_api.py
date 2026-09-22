@@ -16,6 +16,7 @@ from app.core.security import create_access_token
 from app.database import SessionLocal
 from app.models.platform_user import PlatformUser
 from app.services.maps_of_content.task_catalog import upsert_task
+from tests._ids import RUN_ID
 
 VERT = "manufacturing"
 URL = "/api/platform/admin/moc/tasks"
@@ -37,7 +38,7 @@ def ctx():
     db = SessionLocal()
     suffix = uuid.uuid4().hex[:6]
     pu = PlatformUser(
-        id=str(uuid.uuid4()), email=f"moc2b-{suffix}@bridgeable.test",
+        id=str(uuid.uuid4()), email=f"moc2b-{RUN_ID}-{suffix}@bridgeable.test",
         hashed_password="x", first_name="P", last_name="A",
         role="super_admin", is_active=True,
     )

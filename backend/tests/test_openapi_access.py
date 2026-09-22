@@ -18,6 +18,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from tests._ids import RUN_ID
 
 
 # ─── Helpers ──────────────────────────────────────────────────
@@ -48,7 +49,7 @@ def _make_platform_admin_token() -> str:
         suffix = uuid.uuid4().hex[:6]
         pu = PlatformUser(
             id=str(uuid.uuid4()),
-            email=f"openapi-test-{suffix}@bridgeable.test",
+            email=f"openapi-test-{RUN_ID}-{suffix}@bridgeable.test",
             hashed_password="x",
             first_name="OpenAPI",
             last_name="Test",

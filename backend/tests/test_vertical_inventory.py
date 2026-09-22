@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from tests._ids import RUN_ID
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ def _make_platform_admin() -> dict:
         suffix = uuid.uuid4().hex[:6]
         platform_admin = PlatformUser(
             id=str(uuid.uuid4()),
-            email=f"studio-inv-{suffix}@bridgeable.test",
+            email=f"studio-inv-{RUN_ID}-{suffix}@bridgeable.test",
             hashed_password="x",
             first_name="Studio",
             last_name="Inv",
