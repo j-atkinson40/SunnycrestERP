@@ -2062,6 +2062,56 @@ Two things follow, and the second is the one that generalises:
   as aborting an entire run over one unreachable server.
 
 
+### A gate that mutates shared state is not repeatable
+
+**Two runs of a pair must start from the same state, or the second is measuring a
+different world.** A before-and-after comparison assumes the only difference
+between the runs is the change under test. A gate that writes to a shared
+database breaks that assumption itself.
+
+Measured 2026-09-22 on a baseline/after pair over the full backend tree. The
+baseline run left the company table 31 rows higher than it found it; the
+after-run began from exactly that state, and a session tripwire that had fired
+on the first run was silent on the second. The test-id diff was still sound —
+zero new failures, correctly — but the error that disappeared between the runs
+was caused by the first run, not fixed by the change.
+
+⚠️ **THE COUPLING IS EASY TO MISS BECAUSE THE SECOND RUN LOOKS BETTER.** A
+number that improves reads as progress and gets reported as progress. Ask of any
+before-and-after pair: **what did the first run change that the second one then
+started from?**
+
+Where the shared state cannot be reset between runs, say so with the numbers
+rather than presenting them as a clean comparison.
+
+### A check whose condition can be satisfied by the damage it detects
+
+**State a tripwire's condition against an expected value, never against the
+run's own starting point.** A condition of the form `after > before` reports the
+first occurrence of the damage and then goes quiet forever, because from the
+second run onward the damage is part of `before`. It reports on the state that
+does not need reporting.
+
+⚠️ **AND THE DELTA IS BLIND TO CHURN, WHICH IS WORSE THAN BEING BLIND TO
+RESIDUE.** A run that deletes 430 rows and creates 430 rows satisfies
+`after == before` exactly. Measured 2026-09-22: the COMPANY LITTER tripwire
+reported clean on a run during whose own window **430 of the 435 companies then
+resident were created** — 98.9% of the table, turned over inside the run that
+called it clean. The +31 the previous run had reported was not the litter; it
+was the amount by which one run's turnover failed to balance.
+
+A ceiling does not fix it. The sibling `_unowned_litter_tripwire` carries a
+one-way ratchet on its ceiling, which is worth having, but ratchets **permitted
+growth** rather than **permitted total** — so rows already resident are invisible
+to it forever and an equal delete-and-create passes. Both session tripwires in
+the tree share the shape; it is a shape, not a patch to one fixture.
+
+The repair is an absolute expected value, ratcheted downward, checked after
+teardown when the count should have returned to the seeded population. Note the
+ordering: switching an absolute condition on before clearing the existing residue
+turns every run red on a true finding, so **clean first, then tighten**. See
+`docs/investigations/2026-09-22-litter-tripwire-condition.md`.
+
 ### A CAUSE is inherited more easily than a count
 
 *Figures in dispatches are never inherited* covers counts. This covers the
