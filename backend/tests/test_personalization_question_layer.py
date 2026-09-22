@@ -148,6 +148,136 @@ def test_every_v1_combination_ROUND_TRIPS_through_v2_and_the_task_mapping():
     assert combos == 2 ** len(CANONICAL_OPTION_TYPES) == 16
 
 
+def test_the_round_trip_compares_WHAT_EACH_TASK_CARRIES_not_only_which_exist():
+    """⚠️ THE HALF THE ORIGINAL PROOF WAS MISSING.
+
+    Comparing task SETS proves the plant does the same jobs. It cannot see a
+    family's choice being reinterpreted: `{"symbol": "Cross"}` degrading to the
+    answer `other` still produces a `vinyl` task, so the set matched and the
+    proof stayed green while the answer was wrong.
+
+    This compares the value each task carries — which symbol, which series — so
+    that mismatch fails the proof instead of needing someone to read a payload.
+    Break-tested: `test_…` below removes the display-form acceptance and this
+    goes red, where the set-only proof did not.
+    """
+    for payload, expected in (
+        ({"symbol": "Cross"}, "Cross"),              # v1's display form
+        ({"symbol": "cross"}, "Cross"),              # the id form
+        ({"symbol": "Star of David"}, "Star of David"),
+    ):
+        v1 = {"schema_version": 1,
+              "options": {"vinyl": payload, "legacy_print": None,
+                          "physical_nameplate": None, "physical_emblem": None}}
+        v2 = rec.to_v2(v1)
+        assert rec.v1_carried_values(v1) == rec.v2_carried_values(v2), (
+            f"{payload} lost its symbol through the transform"
+        )
+        assert rec.v2_carried_values(v2)["vinyl"] == expected
+
+
+def test_all_EIGHT_display_labels_map_to_their_ids():
+    """Confirmed exactly, not sampled — the fallback must be for genuinely
+    unknown symbols, not for half the catalogue."""
+    from app.services.personalization.questions import VINYL_ANSWER_BY_LABEL
+
+    assert len(VINYL_ANSWER_BY_LABEL) == 8
+    for label in VINYL_SYMBOLS:
+        v1 = {"schema_version": 1,
+              "options": {"vinyl": {"symbol": label}, "legacy_print": None,
+                          "physical_nameplate": None, "physical_emblem": None}}
+        answer = rec.answers_of(rec.to_v2(v1))[QUESTION_LIFES_REFLECTIONS]
+        assert answer == VINYL_ANSWER_BY_LABEL[label], (
+            f"{label!r} did not map to its id; it became {answer!r}"
+        )
+
+
+def test_an_unrecognised_symbol_is_REPORTED_when_it_falls_back(caplog):
+    """⚠️ A silent degrade to `other` is the same defect wearing another label."""
+    before = rec.unrecognised_symbol_count
+    v1 = {"schema_version": 1,
+          "options": {"vinyl": {"symbol": "Kraken"}, "legacy_print": None,
+                      "physical_nameplate": None, "physical_emblem": None}}
+    with caplog.at_level("WARNING"):
+        v2 = rec.to_v2(v1)
+    assert rec.answers_of(v2)[QUESTION_LIFES_REFLECTIONS] == "other"
+    assert rec.unrecognised_symbol_count == before + 1, "the fallback was not counted"
+    assert any("Kraken" in r.getMessage() for r in caplog.records), (
+        "the fallback was not logged"
+    )
+    # the original text survives, so nothing is lost even when unrecognised
+    assert v2["answers"][QUESTION_LIFES_REFLECTIONS]["free_text"] == "Kraken"
+
+
+def test_NOTHING_BUT_THE_DOWNGRADE_READS_legacy_v1_options():
+    """⚠️ `legacy_v1_options` is a stale copy the moment anyone edits the
+    answers. It is safe only while it is write-once and read by exactly one
+    function. Enumerated from the AST across backend/, not by grepping for the
+    literal — a source search for the key finds this test.
+    """
+    import ast
+    import pathlib
+
+    backend = pathlib.Path(__file__).resolve().parent.parent
+    key = rec.LEGACY_V1_OPTIONS_KEY
+    readers: list[str] = []
+    for path in list((backend / "app").rglob("*.py")) + \
+                list((backend / "scripts").rglob("*.py")) + \
+                list((backend / "alembic").rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and node.value == key:
+                readers.append(f"{path.relative_to(backend)}:{node.lineno}")
+    # The only place the literal may appear is where the constant is DEFINED.
+    assert readers == ["app/services/personalization/records.py:"
+                       + str(_constant_lineno())], (
+        f"the v1 backup key is referenced outside its definition: {readers}"
+    )
+
+    # ⚠️ AND THE LITERAL IS THE WEAKER HALF. Anyone reading it would sensibly
+    # use the CONSTANT, which the literal search cannot see. Enumerate the name
+    # too, and pin which functions may mention it.
+    by_name: list[str] = []
+    for path in list((backend / "app").rglob("*.py")) + \
+                list((backend / "scripts").rglob("*.py")) + \
+                list((backend / "alembic").rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            # ⚠️ LOADS ONLY. The assignment target at module level is the
+            # DEFINITION, not a use of it, and counting it would make this
+            # assertion about where the constant lives rather than who reads it.
+            if (isinstance(node, ast.Name)
+                    and node.id == "LEGACY_V1_OPTIONS_KEY"
+                    and isinstance(node.ctx, ast.Load)):
+                enclosing = _enclosing_function(tree, node.lineno)
+                by_name.append(f"{path.relative_to(backend)}::{enclosing}")
+    assert set(by_name) <= {
+        "app/services/personalization/records.py::to_v2",   # writes it
+        "app/services/personalization/records.py::to_v1",   # the only reader
+    }, f"the v1 backup key is used outside to_v1/to_v2: {sorted(set(by_name))}"
+
+
+def _enclosing_function(tree, lineno: int) -> str:
+    import ast as _ast
+    best = "<module>"
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            if node.lineno <= lineno <= (node.end_lineno or node.lineno):
+                best = node.name
+    return best
+
+
+def _constant_lineno() -> int:
+    import ast
+    import pathlib
+    src = (pathlib.Path(rec.__file__)).read_text()
+    for node in ast.walk(ast.parse(src)):
+        if (isinstance(node, ast.Assign)
+                and getattr(node.targets[0], "id", None) == "LEGACY_V1_OPTIONS_KEY"):
+            return node.value.lineno
+    raise AssertionError("LEGACY_V1_OPTIONS_KEY definition not found")
+
+
 def test_the_production_row_becomes_cover_emblem_only_and_keeps_everything_else():
     v2 = rec.to_v2(PRODUCTION_ROW)
     assert rec.answers_of(v2)[QUESTION_NAMEPLATE_COVER_EMBLEM] == "cover_emblem_only"

@@ -34,6 +34,15 @@ tested, is that the round-tripped mapping EQUALS the original mapping.
 from __future__ import annotations
 
 import copy
+import logging
+
+logger = logging.getLogger(__name__)
+
+#: ⚠️ COUNTED, NOT JUST LOGGED. A migration that silently reinterprets an
+#: unrecognised symbol as `other` is the same defect as the one this module was
+#: just repaired for, wearing a different label. The migration prints this count
+#: so a run that degraded anything says so on the deploy log.
+unrecognised_symbol_count = 0
 
 from app.services.personalization_config import (
     OPTION_TYPE_LEGACY_PRINT,
@@ -61,6 +70,17 @@ SCHEMA_VERSION_V1 = 1
 SCHEMA_VERSION_V2 = 2
 
 #: The key under which v2 keeps the original v1 `options` object.
+#:
+#: ⚠️ TWO RULES MAKE THIS SAFE, AND IT IS UNSAFE WITHOUT BOTH.
+#:
+#: 1. NOTHING BUT `to_v1` MAY READ IT. It is a copy, and it goes stale the
+#:    moment anyone edits a migrated record's answers. A downgrade would then
+#:    restore the OLD choice and silently drop the edit. Enforced by
+#:    `test_NOTHING_BUT_THE_DOWNGRADE_READS_legacy_v1_options`, which
+#:    enumerates both the literal and the constant from the AST.
+#: 2. IT IS REMOVED ONCE r185 IS CONFIRMED ON PRODUCTION. It exists to make one
+#:    migration reversible, not to live in the record. Until then no record it
+#:    is attached to should have its answers edited.
 LEGACY_V1_OPTIONS_KEY = "legacy_v1_options"
 ANSWERS_KEY = "answers"
 
@@ -116,7 +136,14 @@ def _vinyl_answer(options: dict) -> tuple[str, str | None]:
         return VINYL_ANSWER_BY_LABEL[symbol], None
     # A vinyl choice whose symbol is missing or unrecognised is still a vinyl
     # choice. `other` is the answer that can hold it, and the free text carries
-    # whatever was said.
+    # whatever was said. ⚠️ REPORTED, NEVER SILENT.
+    global unrecognised_symbol_count
+    unrecognised_symbol_count += 1
+    logger.warning(
+        "personalization v1->v2: vinyl symbol %r matched neither an answer id "
+        "nor a display label; recorded as %r with the original text preserved "
+        "as free text", symbol, ANSWER_OTHER,
+    )
     free_text = symbol if isinstance(symbol, str) else None
     return ANSWER_OTHER, free_text
 
@@ -191,3 +218,58 @@ def v1_task_types(record: dict) -> set[str]:
         OPTION_TYPE_LEGACY_PRINT, OPTION_TYPE_PHYSICAL_NAMEPLATE,
         OPTION_TYPE_PHYSICAL_EMBLEM, OPTION_TYPE_VINYL,
     ) if _chosen(options, t)}
+
+
+def v1_carried_values(record: dict) -> dict[str, str | None]:
+    """What each v1 task CARRIES, read straight from `options`.
+
+    ⚠️ THIS IS THE HALF THE ROUND-TRIP PROOF WAS MISSING. Comparing task SETS
+    proves the plant does the same jobs; it cannot see a family's choice being
+    reinterpreted, because `{"symbol": "Cross"}` degrading to the answer `other`
+    still produces a `vinyl` task. Comparing what each task carries does see it.
+
+    Vinyl symbols are normalised to their DISPLAY LABEL so the two sides are
+    comparable whichever form v1 happened to store.
+    """
+    options = record.get("options") or {}
+    out: dict[str, str | None] = {}
+    for option_type in (
+        OPTION_TYPE_LEGACY_PRINT, OPTION_TYPE_PHYSICAL_NAMEPLATE,
+        OPTION_TYPE_PHYSICAL_EMBLEM, OPTION_TYPE_VINYL,
+    ):
+        payload = options.get(option_type)
+        if payload is None:
+            continue
+        if option_type == OPTION_TYPE_VINYL:
+            symbol = payload.get("symbol") if isinstance(payload, dict) else None
+            if symbol in VINYL_ANSWERS:
+                out[option_type] = VINYL_ANSWERS[symbol]        # id -> label
+            elif isinstance(symbol, str) and symbol in VINYL_ANSWER_BY_LABEL:
+                out[option_type] = symbol                        # already a label
+            else:
+                out[option_type] = symbol                        # unrecognised
+        elif option_type == OPTION_TYPE_LEGACY_PRINT:
+            out[option_type] = (
+                payload.get("series") if isinstance(payload, dict) else None
+            )
+        else:
+            out[option_type] = None      # nameplate/emblem carry nothing
+    return out
+
+
+def v2_carried_values(record: dict) -> dict[str, str | None]:
+    """The same reading, taken from the v2 answers via the task mapping."""
+    from .tasks import tasks_for_answer
+
+    out: dict[str, str | None] = {}
+    for question_id, entry in record.get(ANSWERS_KEY, {}).items():
+        for task in tasks_for_answer(
+            question_id, entry["answer"], free_text=entry.get("free_text")
+        ):
+            if "symbol_label" in task.detail:
+                out[task.task_type] = task.detail["symbol_label"]
+            elif "series" in task.detail:
+                out[task.task_type] = task.detail["series"]
+            else:
+                out[task.task_type] = None
+    return out

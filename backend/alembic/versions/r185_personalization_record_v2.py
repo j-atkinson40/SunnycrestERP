@@ -57,9 +57,12 @@ depends_on = None
 
 
 def _transform(direction: str) -> None:
+    from app.services.personalization import records as rec
     from app.services.personalization.records import (
         SCHEMA_VERSION_V1, SCHEMA_VERSION_V2, to_v1, to_v2,
     )
+
+    before_fallbacks = rec.unrecognised_symbol_count
 
     conn = op.get_bind()
     want = SCHEMA_VERSION_V1 if direction == "up" else SCHEMA_VERSION_V2
@@ -77,7 +80,15 @@ def _transform(direction: str) -> None:
                     "CAST(:p AS jsonb) WHERE id = :i"),
             {"p": json.dumps(fn(payload)), "i": row_id},
         )
+    degraded = rec.unrecognised_symbol_count - before_fallbacks
     print(f"r185: {direction}graded {len(rows)} vault_personalization record(s)")
+    if degraded:
+        # ⚠️ SAID OUT LOUD ON THE DEPLOY LOG. A symbol that matched neither an
+        # answer id nor a display label was recorded as `other` with its text
+        # preserved. That is recoverable, and it is not something a deploy
+        # should do quietly.
+        print(f"r185: ⚠️ {degraded} vinyl symbol(s) were unrecognised and "
+              f"recorded as 'other' with their original text preserved")
 
 
 def upgrade() -> None:
