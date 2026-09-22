@@ -2071,8 +2071,10 @@ Admission test, in the same form as the standing set's: does this answer somethi
 operator would otherwise have to look up mid-call? A card that restates what is already in
 the capture list fails it.
 
-Whether these are a new surface or a seventh type of the existing triage context panel is
-not ruled here; it is a build question, not a naming one.
+These are a new surface, not a seventh type of the existing triage context panel. Ruled
+2026-09-22: the two disagree about who owns a card's open state, and a seventh type cannot
+reach that disagreement. See `Call context cards are a new surface, not a seventh triage
+context-panel type`.
 
 Prototype: `docs/prototypes/2026-09-capture-schema.html`.
 
@@ -2106,3 +2108,38 @@ Detecting that needs the transcript, and a card opening mid-sentence on a wrong 
 worse than a manual click. Left manual.
 
 Prototype: `docs/prototypes/2026-09-capture-schema.html`.
+
+---
+
+## 2026-09-22 — Call context cards are a new surface, not a seventh triage context-panel type
+
+Call context cards are built as a new surface in the call overlay. They are **not** a
+seventh type of the triage context panel, and no shipped triage code is modified: the 19
+configured panels across 10 queues and the three Playwright specs covering them stay
+untouched.
+
+The two disagree about **who owns a card's open state**, and that is the whole of it.
+Triage context panels are operator-driven and independent — each `PanelCard` holds its own
+open state in local `useState` seeded from `default_collapsed`, and no card knows another
+card exists. Call context cards are system-driven and coordinated — arrival order decides
+collapse, and a card collapses because a different card arrived.
+
+A seventh type could not reach that disagreement. A type is a body: one case in `PanelBody`,
+receiving its props and returning JSX. Arrival, coordinated collapse, the one-line
+data-derived summary and the held-open ASKING state all live in the card chrome and the
+rail, above where a type can see. Of the five behaviours the call cards need, exactly one —
+click a collapsed card to reopen — already exists.
+
+Two further couplings made the type route worse than it looks. Every panel body is handed a
+`TriageItem` and a `sessionId`, and the rail renders only when a triage session exists; a
+call has neither. And panel composition is configured by the triage queue, so a seventh type
+in the call overlay — which has no queue and no template, only the feature flag
+`ai_settings.after_call_intelligence_enabled` — would need a configuration owner invented
+for it.
+
+A shared primitive extracted from both was considered and not taken. It is the only option
+that touches shipped triage code, it would pay extraction cost against a second consumer
+whose requirements are partly unbuilt, and the behaviour it would have to parameterise is
+precisely the one the two surfaces disagree on.
+
+Derivation: `docs/investigations/2026-09-22-call-context-cards-surface-or-type.md`.
