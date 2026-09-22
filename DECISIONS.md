@@ -1850,7 +1850,11 @@ meaning, so composition must actually group by kind rather than wrap lines.
 
 ---
 
-## 2026-09-22 — The note never reports what the user just did
+## 2026-09-22 — The live note never narrates the user's own recent actions back to them [RETITLED 2026-09-22; original title preserved below]
+
+⚠️ **Original title: "The note never reports what the user just did".** Corrected the same day it landed. Read without its body the original forbids the settled note and the work log, which exist precisely to record what the user did.
+
+**Title narrowed: this governs the LIVE note.** The settled note and the work log exist to record what the user did — "you replied to 5 emails" is correct there. The live note says what needs attention or what became possible; the record says what happened. Titles get quoted without their bodies, so the title must carry the scope.
 
 A line that tells the user something they know because they did it seconds ago is noise.
 After creating an order the note says it is ready to be scheduled, not that it is in and
