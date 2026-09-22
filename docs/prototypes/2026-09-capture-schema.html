@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Capture schema — prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080808;--card:#111;--card2:#161616;--panel:#151515;--panel2:#1c1c1c;
+  --fg:#ededed;--fg2:#9d9d9d;--fg3:#666;--fg4:#4a4a4a;
+  --rule:rgba(255,255,255,.07);--rule2:rgba(255,255,255,.14);
+  --ok:#4fb573;--need:#e0a84a;--info:#6f9fe0;
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);-webkit-font-smoothing:antialiased;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);min-height:100%}
+.wrap{max-width:1320px;margin:0 auto;padding:1.5rem 1.3rem 4rem}
+h1{font-size:1.4rem;font-weight:500;letter-spacing:-.01em}
+.sub{color:var(--fg3);font-size:.88rem;margin-top:.3rem;line-height:1.5;max-width:70ch}
+.tabs{display:flex;gap:.4rem;margin:1.3rem 0 1.4rem;border-bottom:1px solid var(--rule)}
+.tab{font:inherit;font-size:.9rem;background:none;border:none;color:var(--fg3);padding:.55rem .9rem;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--fg);border-bottom-color:var(--fg)}
+.pane{display:none}.pane.on{display:block}
+
+.live{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.92fr) 300px;gap:1.1rem;align-items:start}
+@media(max-width:1100px){.live{grid-template-columns:minmax(0,1fr) 290px}}
+@media(max-width:860px){.live{grid-template-columns:1fr}}
+
+.ov{background:var(--panel);border:1px solid var(--rule2);border-radius:13px;overflow:hidden}
+.ovh{display:flex;align-items:center;gap:.6rem;padding:.75rem .95rem;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:p 1.8s ease-in-out infinite}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
+.who{flex:1;min-width:110px}
+.who .n{font-size:.9rem;font-weight:500}
+.who .s{font-size:.74rem;color:var(--fg3)}
+.pill{font-size:.72rem;padding:.24rem .55rem;border-radius:6px;background:var(--panel2);border:1px solid var(--rule);color:var(--fg2);white-space:nowrap}
+.pill.ok{color:var(--ok);border-color:rgba(79,181,115,.35)}
+.pill.need{color:var(--need);border-color:rgba(224,168,74,.35)}
+.caps{padding:.55rem;display:flex;flex-direction:column;gap:.28rem}
+.cap{display:flex;align-items:flex-start;gap:.6rem;background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:.48rem .68rem;
+  animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.mk{flex:0 0 auto;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--fg4);margin-top:.14rem;display:flex;align-items:center;justify-content:center;font-size:.6rem;color:transparent}
+.cap .k{font-size:.7rem;letter-spacing:.06em;color:var(--fg3)}
+.cap .v{font-size:.86rem;color:var(--fg4);font-style:italic;margin-top:.04rem}
+.cap .hint{font-size:.69rem;color:var(--fg4);margin-top:.14rem;line-height:1.4}
+.cap.answered{border-color:rgba(79,181,115,.3);background:rgba(79,181,115,.05)}
+.cap.answered .mk{background:var(--ok);border-color:var(--ok);color:#080808}
+.cap.answered .v{color:var(--fg);font-style:normal}
+.cap.needed{border-color:rgba(224,168,74,.5);background:rgba(224,168,74,.06)}
+.cap.needed .mk{border-color:var(--need)}
+.cap.needed .k{color:var(--need)}
+.cap.needed .v{color:var(--need);font-style:normal;opacity:.9}
+.cap.unconfig{border-color:rgba(224,168,74,.35);background:rgba(224,168,74,.04)}
+.cap.unconfig .mk{border-color:var(--need);border-style:dashed}
+.cap.unconfig .k{color:var(--need)}
+.cap.unconfig .v{color:var(--need);font-style:normal;opacity:.9}
+.grp{font-size:.65rem;letter-spacing:.13em;text-transform:uppercase;color:var(--fg4);padding:.55rem .3rem .12rem}
+
+/* ---- context panel ---- */
+.ctx{display:flex;flex-direction:column;gap:.75rem;min-height:60px}
+.ctxempty{font-size:.8rem;color:var(--fg4);border:1px dashed var(--rule2);border-radius:11px;padding:1.1rem .9rem;line-height:1.55}
+.cc{background:var(--card);border:1px solid var(--rule2);border-radius:11px;overflow:hidden;animation:pop .32s cubic-bezier(.2,.8,.3,1)}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.cch{display:flex;align-items:center;gap:.5rem;padding:.55rem .8rem;border-bottom:1px solid var(--rule);
+  font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3)}
+.cch .dots{margin-left:auto;color:var(--fg4);letter-spacing:.1em}
+.ccb{padding:.65rem .8rem;display:flex;flex-direction:column;gap:.5rem}
+.ccname{font-size:1rem;font-weight:500}
+.ccsub{font-size:.75rem;color:var(--fg3);margin-top:.1rem}
+.kv{display:flex;justify-content:space-between;gap:1rem;font-size:.8rem;padding:.3rem 0;border-bottom:1px solid var(--rule)}
+.kv:last-child{border-bottom:none}
+.kv .k2{color:var(--fg3)}
+.kv .v2{color:var(--fg);text-align:right}
+.kv .v2.miss{color:var(--need)}
+.ask{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:.55rem .65rem}
+.ask .t2{font-size:.66rem;letter-spacing:.11em;text-transform:uppercase;color:var(--info);margin-bottom:.35rem}
+.ask ul{list-style:none;display:flex;flex-direction:column;gap:.3rem}
+.ask li{font-size:.81rem;color:var(--fg);line-height:1.4;display:flex;gap:.45rem}
+.ask li::before{content:"·";color:var(--fg4)}
+.ask .opts{font-size:.74rem;color:var(--fg2)}
+.flagline{font-size:.76rem;color:var(--need);background:rgba(224,168,74,.07);border:1px solid rgba(224,168,74,.28);border-radius:7px;padding:.45rem .6rem;line-height:1.45}
+
+
+.cc.collapsed .ccb{display:none}
+.cc.collapsed{cursor:pointer}
+.cc.collapsed:hover{border-color:var(--fg4)}
+.cch{cursor:pointer}
+.ccsum{font-size:.79rem;color:var(--fg2);padding:.5rem .8rem;border-top:1px solid var(--rule);display:none;line-height:1.4}
+.cc.collapsed .ccsum{display:block}
+.cc.collapsed .ccsum b{color:var(--fg);font-weight:500}
+.chev{margin-left:auto;color:var(--fg4);font-size:.7rem;transition:transform .2s}
+.cc.live-card .chev{opacity:.25}
+.cc.collapsed .chev{transform:rotate(-90deg)}
+.cch .dots{margin-left:.4rem}
+.cc.live-card .cch span:first-child{color:var(--info)}
+.livetag{font-size:.6rem;letter-spacing:.1em;color:var(--info);border:1px solid rgba(111,159,224,.35);border-radius:4px;padding:.03rem .3rem;margin-left:.45rem}
+
+/* ---- controls ---- */
+.side{display:flex;flex-direction:column;gap:.9rem}
+.box{background:var(--card);border:1px solid var(--rule);border-radius:11px;overflow:hidden}
+.boxh{padding:.55rem .8rem;border-bottom:1px solid var(--rule);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;color:var(--fg3)}
+.boxb{padding:.7rem .8rem;display:flex;flex-direction:column;gap:.5rem}
+.lbl{font-size:.71rem;color:var(--fg3)}
+.chips{display:flex;flex-wrap:wrap;gap:.32rem;margin-top:.28rem}
+.chip{font:inherit;font-size:.77rem;background:var(--panel2);border:1px solid var(--rule2);color:var(--fg2);border-radius:6px;padding:.3rem .58rem;cursor:pointer;transition:.15s}
+.chip:hover{border-color:var(--fg3);color:var(--fg)}
+.chip.on{background:rgba(79,181,115,.14);border-color:rgba(79,181,115,.5);color:#9fe0b8}
+.chip.vault.on{background:rgba(111,159,224,.16);border-color:rgba(111,159,224,.55);color:#bcd4f5}
+.note2{font-size:.73rem;color:var(--fg4);line-height:1.5}
+.reset{font:inherit;font-size:.77rem;background:none;border:1px solid var(--rule2);color:var(--fg3);border-radius:6px;padding:.33rem .7rem;cursor:pointer;align-self:flex-start}
+.reset:hover{color:var(--fg);border-color:var(--fg3)}
+
+/* ---- settings ---- */
+.stwo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:1.2rem;align-items:start}
+@media(max-width:980px){.stwo{grid-template-columns:1fr}}
+.row{display:flex;align-items:flex-start;gap:.7rem;padding:.55rem 0;border-bottom:1px solid var(--rule)}
+.row:last-child{border-bottom:none}
+.row .t{flex:1;min-width:0}
+.row .t .n{font-size:.87rem}
+.row .t .d{font-size:.72rem;color:var(--fg3);margin-top:.1rem;line-height:1.45}
+.sw2{flex:0 0 auto;width:34px;height:19px;border-radius:10px;background:#2a2a2a;border:1px solid var(--rule2);position:relative;cursor:pointer;transition:.2s;margin-top:.12rem}
+.sw2::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--fg3);transition:.2s}
+.sw2.on{background:rgba(79,181,115,.3);border-color:rgba(79,181,115,.6)}
+.sw2.on::after{left:17px;background:var(--ok)}
+.sw2.locked{opacity:.4;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;font-size:.79rem}
+th,td{text-align:left;padding:.45rem .5rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);font-weight:400}
+td.vault{font-weight:500;white-space:nowrap}
+.ans{display:inline-block;font-size:.69rem;border:1px solid var(--rule2);border-radius:4px;padding:.08rem .33rem;margin:.09rem .13rem .09rem 0;color:var(--fg2);cursor:pointer;user-select:none}
+.ans.on{background:rgba(79,181,115,.14);border-color:rgba(79,181,115,.45);color:#9fe0b8}
+.ans.dim{opacity:.32}
+.none{font-size:.71rem;color:var(--fg4)}
+.unconf{font-size:.71rem;color:var(--need)}
+.callout{background:var(--card2);border:1px solid var(--rule2);border-left:2px solid var(--need);border-radius:8px;padding:.65rem .8rem;font-size:.79rem;line-height:1.55;color:var(--fg2);margin-top:.9rem}
+.callout b{color:var(--fg);font-weight:500}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Capture schema</h1>
+  <div class="sub">The model extracts what the call said. The server decides what's missing, against a schema whose conditions read the product catalog. The context panel is the operator's half — what they can usefully ask about, once the call has established enough to know.</div>
+
+  <div class="tabs">
+    <button class="tab on" data-p="live">Live capture</button>
+    <button class="tab" data-p="settings">Settings</button>
+  </div>
+
+  <div class="pane on" id="p-live">
+    <div class="live">
+      <div class="ov">
+        <div class="ovh">
+          <span class="live-dot"></span>
+          <div class="who"><div class="n">(315) 555-0147</div><div class="s">Wilbert Funeral Home · RingCentral</div></div>
+          <span class="pill ok"><b id="c-ans">0</b> captured</span>
+          <span class="pill need"><b id="c-need">0</b> needed</span>
+        </div>
+        <div class="caps" id="caps"></div>
+      </div>
+
+      <div class="ctx" id="ctx"></div>
+
+      <div class="side">
+        <div class="box">
+          <div class="boxh">Caller says…</div>
+          <div class="boxb">
+            <div><div class="lbl">Order details</div><div class="chips" id="ch-base"></div></div>
+            <div><div class="lbl">Vault</div><div class="chips" id="ch-vault"></div></div>
+            <div><div class="lbl">Personalization</div><div class="chips" id="ch-pers"></div></div>
+            <button class="reset" id="reset">Reset call</button>
+          </div>
+        </div>
+        <div class="box">
+          <div class="boxh">What to look at</div>
+          <div class="boxb">
+            <div class="note2">Personalization questions don't exist until a vault is named. Nothing pending, nothing struck out.</div>
+            <div class="note2">Name a vault and a card appears with what the operator can offer — that's the cue to ask, not a row in the checklist.</div>
+            <div class="note2"><b>Monticello</b> and <b>Grave Liner</b> take none: no questions, and the card says so plainly.</div>
+            <div class="note2"><b>Salute</b> permits emblem-only; <b>Bronze Triune</b> doesn't.</div>
+            <div class="note2"><b>Monarch</b> has nothing configured — the card flags it and the questions are asked anyway.</div>
+            <div class="note2">Click <b>Funeral home</b>, then <b>Vault</b>, then <b>Cemetery</b>: older cards collapse to one line as newer ones arrive. Click a collapsed card to reopen it — it stays open.</div>
+            <div class="note2">Every card behaves the same: arrives full, collapses when the next one arrives. The one exception is an unanswered question — a card marked <b>ASKING</b> is held open until it's answered, then rejoins the normal rule.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" id="p-settings">
+    <div class="stwo">
+      <div>
+        <div class="box">
+          <div class="boxh">What this tenant captures</div>
+          <div class="boxb" id="fieldToggles"></div>
+        </div>
+        <div class="callout">Switching a field off removes it from the capture list entirely — never asked, never counted as missing. <b>Vault</b> can't be switched off, because personalization availability is read from it.</div>
+      </div>
+      <div>
+        <div class="box">
+          <div class="boxh">Personalization offered, per vault</div>
+          <div style="padding:.3rem .45rem .5rem"><table id="availTable"></table></div>
+        </div>
+        <div class="callout">Each cell is the set of answers that vault permits. An answer that isn't lit isn't offered — no exclusion rules, only shorter lists. <b>Monarch</b> has nothing configured, which is different from offering nothing.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var QUESTIONS = {
+  legacy_print:{label:"Legacy print", answers:{none:"None", legacy_series:"Legacy Series", legacy_custom_series:"Legacy Custom Series"}},
+  nameplate_cover_emblem:{label:"Nameplate & cover emblem", answers:{none:"None", nameplate_only:"Nameplate only", cover_emblem_only:"Cover emblem only", nameplate_and_cover_emblem:"Nameplate & cover emblem"}},
+  lifes_reflections:{label:"Life's Reflections vinyl", answers:{none:"None", cross:"Cross", star_of_david:"Star of David", praying_hands:"Praying Hands", floral:"Floral", patriotic_american_flag:"Patriotic / Flag", masonic:"Masonic", dove:"Dove", other:"Other"}}
+};
+
+// availability: vault -> question -> permitted answers. null = not configured.
+var VAULTS = {
+  "Bronze Triune":{legacy_print:["legacy_series","legacy_custom_series"], nameplate_cover_emblem:["nameplate_only","nameplate_and_cover_emblem"], lifes_reflections:["cross","star_of_david","praying_hands","floral","patriotic_american_flag","masonic","dove","other"]},
+  "Continental":{nameplate_cover_emblem:["nameplate_only"]},
+  "Salute":{nameplate_cover_emblem:["nameplate_only","cover_emblem_only","nameplate_and_cover_emblem"]},
+  "Monticello":{},
+  "Grave Liner":{},
+  "Monarch":null
+};
+
+// catalog facts — real figures from Sunnycrest's spec sheet and seeder where they exist
+var CATALOG = {
+  "Bronze Triune":{price:null, inside:'86 x 30 x 25½', outside:'91¼ x 35¼', weight:'3,000 lb', made:'Manufactured'},
+  "Continental":  {price:null, inside:'86 x 30 x 25½', outside:'90½ x 34½', weight:'2,700 lb', made:'Manufactured'},
+  "Salute":       {price:1475, inside:'86 x 30 x 25½', outside:'90½ x 34½', weight:'2,000 lb', made:'Manufactured'},
+  "Monticello":   {price:1405, inside:'86 x 30 x 25½', outside:'90½ x 34½', weight:'2,000 lb', made:'Manufactured'},
+  "Grave Liner":  {price:null, inside:'86 x 30 x 25½', outside:'89½ x 33½', weight:'1,800 lb', made:'Manufactured'},
+  "Monarch":      {price:null, inside:'86 x 30 x 25½', outside:'89½ x 33½', weight:'1,800 lb', made:'Manufactured'}
+};
+
+var CUSTOMER = {name:"Wilbert Funeral Home", contact:"Tom Harding", terms:"Net 30",
+  balance:"$3,750.00 across 2 invoices", overdue:false, usual:"Usually orders full equipment"};
+
+var BASE=[
+  {id:"funeral_home",label:"Funeral home",value:"Wilbert Funeral Home"},
+  {id:"contact",label:"Contact",value:"Tom Harding"},
+  {id:"deceased",label:"Deceased name",value:"John Smith"},
+  {id:"dates",label:"Dates",value:"Mar 14, 1948 — Sep 14, 2026"},
+  {id:"service",label:"Service",value:"St. Mary's · Thu 10:00 AM"},
+  {id:"cemetery",label:"Cemetery",value:"Forest Lawn · Auburn"},
+  {id:"equipment",label:"Cemetery equipment",value:"Full setup"}
+];
+
+var state={answered:{},vault:null,pers:{},fieldsOn:{}};
+BASE.forEach(function(f){state.fieldsOn[f.id]=true;});
+
+function availFor(q){
+  if(!state.vault) return {kind:"unknown"};
+  var cfg=VAULTS[state.vault];
+  if(cfg===null) return {kind:"unconfigured"};
+  var perm=cfg[q];
+  if(!perm||!perm.length) return {kind:"notoffered"};
+  return {kind:"offered",answers:perm};
+}
+
+function render(){
+  var el=document.getElementById('caps'); el.innerHTML='';
+  var n={answered:0,needed:0};
+  function add(cls,k,v,hint){
+    var d=document.createElement('div'); d.className='cap '+cls;
+    d.innerHTML='<span class="mk">&#10003;</span><div><div class="k">'+k+'</div><div class="v">'+v+'</div>'+(hint?'<div class="hint">'+hint+'</div>':'')+'</div>';
+    el.appendChild(d);
+  }
+  function group(t){var d=document.createElement('div');d.className='grp';d.textContent=t;el.appendChild(d);}
+
+  group('Order');
+  BASE.forEach(function(f){
+    if(!state.fieldsOn[f.id])return;
+    if(state.answered[f.id]){add('answered',f.label,f.value);n.answered++;}
+    else{add('needed',f.label,'Still needed');n.needed++;}
+  });
+  if(state.vault){add('answered','Vault / product',state.vault);n.answered++;}
+  else{add('needed','Vault / product','Still needed');n.needed++;}
+
+  // personalization questions exist only when the vault is known AND the question applies
+  var shown=[];
+  Object.keys(QUESTIONS).forEach(function(q){
+    var a=availFor(q);
+    if(a.kind==='unknown'||a.kind==='notoffered')return;
+    shown.push([q,a]);
+  });
+  if(shown.length){
+    group('Personalization');
+    shown.forEach(function(pair){
+      var q=pair[0],a=pair[1],Q=QUESTIONS[q],chosen=state.pers[q];
+      if(chosen){add('answered',Q.label,Q.answers[chosen]);n.answered++;return;}
+      if(a.kind==='unconfigured'){
+        add('unconfig',Q.label,'Nothing configured — ask anyway','Not-configured is not the same as not-offered');
+        n.needed++;return;
+      }
+      add('needed',Q.label,'Still needed','Legal answers: None · '+a.answers.map(function(x){return Q.answers[x];}).join(' · '));
+      n.needed++;
+    });
+  }
+
+  document.getElementById('c-ans').textContent=n.answered;
+  document.getElementById('c-need').textContent=n.needed;
+  renderCtx(); renderChips();
+}
+
+/* ---------- context panel ---------- */
+/* Cards that tell the operator what to ASK stay open (live).
+   Cards that answer something already asked collapse when a newer card arrives.
+   Collapse is predictable — driven by arrival order, never by available height.
+   Collapsed state is remembered per card, so a manual open stays open. */
+var ctxManual = {};   // card id -> true (user opened) / false (user closed)
+
+function ctxCards(){
+  var out=[];
+  if(state.answered.funeral_home){
+    out.push({
+      id:'customer', icon:'▤', title:'Customer', live:false,
+      summary: '<b>'+CUSTOMER.name+'</b> · '+CUSTOMER.balance,
+      body:'<div><div class="ccname">'+CUSTOMER.name+'</div><div class="ccsub">'+CUSTOMER.contact+' · '+CUSTOMER.terms+'</div></div>'+
+        '<div><div class="kv"><span class="k2">Open balance</span><span class="v2">'+CUSTOMER.balance+'</span></div>'+
+        '<div class="kv"><span class="k2">Overdue</span><span class="v2">None</span></div>'+
+        '<div class="kv"><span class="k2">Usually</span><span class="v2">'+CUSTOMER.usual+'</span></div></div>'
+    });
+  }
+  if(state.vault){
+    var v=state.vault, cfg=VAULTS[v], cat=CATALOG[v], offered=[];
+    if(cfg){
+      Object.keys(QUESTIONS).forEach(function(q){
+        var perm=cfg[q];
+        if(perm&&perm.length) offered.push({label:QUESTIONS[q].label, opts:perm.map(function(x){return QUESTIONS[q].answers[x];}).join(', ')});
+      });
+    }
+    var body='<div><div class="ccname">'+v+'</div><div class="ccsub">'+cat.made+'</div></div>';
+    var sum;
+    if(cfg===null){
+      body+='<div class="flagline">No personalization configured for this vault. The questions are still asked — not configured is not the same as offering none.</div>';
+      sum='<b>'+v+'</b> · personalization not configured';
+    } else if(!offered.length){
+      body+='<div class="ask"><div class="t2">Personalization</div><div class="opts">The '+v+' takes none. Nothing to ask.</div></div>';
+      sum='<b>'+v+'</b> · no personalization';
+    } else {
+      body+='<div class="ask"><div class="t2">Can offer — ask about</div><ul>'+
+        offered.map(function(o){return '<li><span><b>'+o.label+'</b><div class="opts">'+o.opts+'</div></span></li>';}).join('')+'</ul></div>';
+      sum='<b>'+v+'</b> · '+offered.length+' to ask about';
+    }
+    body+='<div>'+
+      '<div class="kv"><span class="k2">Price</span><span class="v2'+(cat.price===null?' miss':'')+'">'+(cat.price===null?'not in the catalog':'$'+cat.price.toLocaleString()+'.00')+'</span></div>'+
+      '<div class="kv"><span class="k2">Inside</span><span class="v2">'+cat.inside+'</span></div>'+
+      '<div class="kv"><span class="k2">Outside</span><span class="v2">'+cat.outside+'</span></div>'+
+      '<div class="kv"><span class="k2">Weight</span><span class="v2">'+cat.weight+'</span></div></div>';
+    // live while any of its questions is still unanswered
+    var stillAsking = false;
+    Object.keys(QUESTIONS).forEach(function(q){
+      var a=availFor(q);
+      if((a.kind==='offered'||a.kind==='unconfigured') && !state.pers[q]) stillAsking=true;
+    });
+    out.push({id:'vault', icon:'◈', title:'Vault', live:stillAsking, summary:sum, body:body});
+  }
+  if(state.answered.cemetery){
+    out.push({
+      id:'cemetery', icon:'⚑', title:'Cemetery', live:false,
+      summary:'<b>Forest Lawn</b> · Auburn · 38 min',
+      body:'<div><div class="ccname">Forest Lawn Cemetery</div><div class="ccsub">Auburn, NY</div></div>'+
+        '<div><div class="kv"><span class="k2">Drive from plant</span><span class="v2">38 min</span></div>'+
+        '<div class="kv"><span class="k2">Sexton</span><span class="v2">Ray Duffy · (315) 555-0188</span></div>'+
+        '<div class="kv"><span class="k2">Note</span><span class="v2">Gate closes 4:30 PM</span></div></div>'
+    });
+  }
+  return out;
+}
+
+function renderCtx(){
+  var c=document.getElementById('ctx'); c.innerHTML='';
+  var cards=ctxCards();
+  if(!cards.length){
+    c.innerHTML='<div class="ctxempty">Context appears here as the call establishes facts — the customer once they\'re identified, the vault once it\'s named, and whatever else the operator would otherwise have to look up mid-call.</div>';
+    return;
+  }
+  var newest = cards[cards.length-1].id;
+  cards.forEach(function(card){
+    // default: live cards stay open; a non-live card collapses once it is not the newest
+    var auto = card.live ? false : (card.id !== newest);
+    var collapsed = (card.id in ctxManual) ? ctxManual[card.id] : auto;
+    if(card.live){ collapsed = false; delete ctxManual[card.id]; }  // held open; rejoins the normal rule when answered
+    var d=document.createElement('div');
+    d.className='cc'+(collapsed?' collapsed':'')+(card.live?' live-card':'');
+    d.innerHTML='<div class="cch"><span>'+card.icon+'</span><span>'+card.title+'</span>'+
+      (card.live?'<span class="livetag">ASKING</span>':'')+
+      '<span class="chev">▾</span><span class="dots">⋯</span></div>'+
+      '<div class="ccsum">'+card.summary+'</div>'+
+      '<div class="ccb">'+card.body+'</div>';
+    var toggle=function(){
+      if(card.live) return;              // the one exception: an unanswered question holds it open
+      ctxManual[card.id]=!collapsed; renderCtx();
+    };
+    d.querySelector('.cch').onclick=toggle;
+    d.querySelector('.ccsum').onclick=toggle;
+    c.appendChild(d);
+  });
+}
+
+function renderChips(){
+  var b=document.getElementById('ch-base'); b.innerHTML='';
+  BASE.forEach(function(f){
+    if(!state.fieldsOn[f.id])return;
+    var c=document.createElement('button');
+    c.className='chip'+(state.answered[f.id]?' on':''); c.textContent=f.label;
+    c.onclick=function(){state.answered[f.id]=!state.answered[f.id];render();};
+    b.appendChild(c);
+  });
+  var v=document.getElementById('ch-vault'); v.innerHTML='';
+  Object.keys(VAULTS).forEach(function(name){
+    var c=document.createElement('button');
+    c.className='chip vault'+(state.vault===name?' on':'');
+    c.textContent=name+(VAULTS[name]===null?' *':'');
+    c.onclick=function(){state.vault=(state.vault===name?null:name);state.pers={};render();};
+    v.appendChild(c);
+  });
+  var p=document.getElementById('ch-pers'); p.innerHTML='';
+  if(!state.vault){p.innerHTML='<span class="note2">Name a vault first.</span>';return;}
+  var any=false;
+  Object.keys(QUESTIONS).forEach(function(q){
+    var a=availFor(q); if(a.kind==='notoffered')return;
+    var allowed=a.kind==='offered'?['none'].concat(a.answers):Object.keys(QUESTIONS[q].answers);
+    allowed.forEach(function(ans){
+      any=true;
+      var c=document.createElement('button');
+      c.className='chip'+(state.pers[q]===ans?' on':'');
+      c.textContent=QUESTIONS[q].answers[ans]; c.title=QUESTIONS[q].label;
+      c.onclick=function(){state.pers[q]=(state.pers[q]===ans?null:ans);render();};
+      p.appendChild(c);
+    });
+  });
+  if(!any)p.innerHTML='<span class="note2">The '+state.vault+' takes no personalization.</span>';
+}
+
+document.getElementById('reset').onclick=function(){state.answered={};state.vault=null;state.pers={};render();};
+
+function renderSettings(){
+  var t=document.getElementById('fieldToggles'); t.innerHTML='';
+  BASE.concat([{id:'__vault',label:'Vault / product',locked:true,note:'Personalization availability is read from it'}]).forEach(function(f){
+    var r=document.createElement('div'); r.className='row';
+    var on=f.id==='__vault'?true:state.fieldsOn[f.id];
+    r.innerHTML='<div class="t"><div class="n">'+f.label+'</div>'+(f.note?'<div class="d">'+f.note+'</div>':'')+'</div><div class="sw2'+(on?' on':'')+(f.locked?' locked':'')+'"></div>';
+    var sw=r.querySelector('.sw2');
+    if(!f.locked)sw.onclick=function(){state.fieldsOn[f.id]=!state.fieldsOn[f.id];renderSettings();render();};
+    t.appendChild(r);
+  });
+  var tb=document.getElementById('availTable'), qs=Object.keys(QUESTIONS);
+  var h='<tr><th>Vault</th>'+qs.map(function(q){return '<th>'+QUESTIONS[q].label+'</th>';}).join('')+'</tr>';
+  Object.keys(VAULTS).forEach(function(name){
+    var cfg=VAULTS[name];
+    h+='<tr><td class="vault">'+name+'</td>';
+    qs.forEach(function(q){
+      if(cfg===null){h+='<td><span class="unconf">not configured</span></td>';return;}
+      var perm=cfg[q];
+      if(!perm||!perm.length){h+='<td><span class="none">not offered</span></td>';return;}
+      var Q=QUESTIONS[q];
+      h+='<td>'+Object.keys(Q.answers).filter(function(a){return a!=='none';}).map(function(a){
+        var on=perm.indexOf(a)>=0;
+        return '<span class="ans'+(on?' on':' dim')+'" data-v="'+name+'" data-q="'+q+'" data-a="'+a+'">'+Q.answers[a]+'</span>';
+      }).join('')+'</td>';
+    });
+    h+='</tr>';
+  });
+  tb.innerHTML=h;
+  [].slice.call(tb.querySelectorAll('.ans')).forEach(function(s){
+    s.onclick=function(){
+      var v=s.dataset.v,q=s.dataset.q,a=s.dataset.a,cfg=VAULTS[v];
+      if(cfg===null)return;
+      if(!cfg[q])cfg[q]=[];
+      var i=cfg[q].indexOf(a);
+      if(i>=0)cfg[q].splice(i,1);else cfg[q].push(a);
+      if(!cfg[q].length)delete cfg[q];
+      state.pers={};renderSettings();render();
+    };
+  });
+}
+
+[].slice.call(document.querySelectorAll('.tab')).forEach(function(b){
+  b.onclick=function(){
+    [].slice.call(document.querySelectorAll('.tab')).forEach(function(x){x.classList.toggle('on',x===b);});
+    [].slice.call(document.querySelectorAll('.pane')).forEach(function(p){p.classList.toggle('on',p.id==='p-'+b.dataset.p);});
+  };
+});
+
+renderSettings(); render();
+</script>
+</body>
+</html>

@@ -10,18 +10,28 @@ Naming: `YYYY-MM-<surface>.html`.
 
 | File | Title | Entries it produced |
 |---|---|---|
-| `2026-09-call-to-print.html` | Bridgeable — From Call to Print | The sixteen `2026-09-22` entries in DECISIONS, from the note's register through legacy approval |
+| `2026-09-call-to-print.html` | Bridgeable — From Call to Print | The sixteen `2026-09-22` entries, from the note's register through legacy approval |
+| `2026-09-capture-schema.html` | Capture schema — prototype | The seven `2026-09-22` capture-schema entries (`c54d3e93`, corrected by `d44cc958` and `19844464`) |
 
-## Missing
+Both files are saved byte-identical to the reviewed artifact, verified with `cmp`.
+They are records, not living documents — a prototype is superseded by the thing it
+was used to decide, and editing one after the fact would break the correspondence
+the entries rest on.
 
-**The capture-schema prototype is not in this repo.** The seven capture-schema
-entries landed 2026-09-22 (`c54d3e93`, corrected by `d44cc958` and `19844464`) cite
-no prototype, because the file was not available when they landed and is not on the
-machine that landed them. It was expected at `2026-09-capture-schema.html`.
+## Rendering
 
-Checked 2026-09-22 with `find -L` across Downloads, Desktop and Documents — the only
-Bridgeable prototype present is the call-to-print one above, confirmed by its title
-and by occurrence counts of capture-schema vocabulary in it (`required` 0,
-`nameplate` 0, `context card` 0).
+`2026-09-call-to-print.html` is fully self-contained: 6 embedded data URIs, no
+external references.
 
-When it turns up, save it here and amend the seven entries to cite it.
+`2026-09-capture-schema.html` loads IBM Plex Sans and Mono from Google Fonts —
+three `<link>` references, the only external requests it makes. Offline it falls
+back to system fonts; nothing structural depends on them. The refs were left in
+place rather than inlined, to keep the file identical to what was reviewed.
+
+## Citation status
+
+The seven capture-schema entries in DECISIONS **do not yet cite this prototype**.
+They landed on 2026-09-22 at a point when the file was not available, and the
+dispatch's own fallback was to land without the path and record its absence. The
+file arrived later the same day. Amending the seven entries to carry the path is a
+canon edit and has not been made.
