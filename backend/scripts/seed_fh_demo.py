@@ -466,7 +466,7 @@ _WILBERT_VINYL_DISPLAY_LABEL = "Life's Reflections"
 # seed for FC-2026-0001 (canonical post-r74 4-options vocabulary).
 def _hopkins_demo_canvas_state(case_id: str) -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "template_type": "burial_vault_personalization_studio",
         "canvas_layout": {
             "elements": [
@@ -499,11 +499,21 @@ def _hopkins_demo_canvas_state(case_id: str) -> dict:
         "birth_date_display": "March 3, 1942",
         "death_date_display": "April 9, 2026",
         "nameplate_text": None,
-        "options": {
-            "legacy_print": None,
-            "physical_nameplate": None,
-            "physical_emblem": {},
-            "vinyl": None,
+        # ⚠️ NATIVE v2 (r185). The family's choice is recorded as an ANSWER, not
+        # as the shop tasks it produces. This demo chose a cover emblem and no
+        # nameplate, which is `cover_emblem_only` — the answer that exists only
+        # because Salute permits emblem without nameplate.
+        #
+        # Deliberately NOT built by running the v1 dict through `to_v2`: that
+        # would attach `legacy_v1_options`, which exists so MIGRATED records can
+        # downgrade exactly. A record born at v2 has no v1 to return to, and
+        # `to_v1` raises on it, correctly.
+        "answers": {
+            "legacy_print": {"answer": "none", "free_text": None},
+            "nameplate_cover_emblem": {
+                "answer": "cover_emblem_only", "free_text": None,
+            },
+            "lifes_reflections": {"answer": "none", "free_text": None},
         },
         "family_approval_status": "approved",
     }
@@ -955,7 +965,7 @@ _SUNNYCREST_URN_EMBLEM_CATALOG = ["rose", "cross", "dove"]
 # ``urn_product`` slot per Phase 2A factory dispatch.
 def _hopkins_step2_demo_canvas_state(case_id: str) -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "template_type": "urn_vault_personalization_studio",
         "canvas_layout": {
             "elements": [
@@ -988,11 +998,21 @@ def _hopkins_step2_demo_canvas_state(case_id: str) -> dict:
         "birth_date_display": "January 12, 1945",
         "death_date_display": "April 15, 2026",
         "nameplate_text": None,
-        "options": {
-            "legacy_print": None,
-            "physical_nameplate": None,
-            "physical_emblem": {},
-            "vinyl": None,
+        # ⚠️ NATIVE v2 (r185). The family's choice is recorded as an ANSWER, not
+        # as the shop tasks it produces. This demo chose a cover emblem and no
+        # nameplate, which is `cover_emblem_only` — the answer that exists only
+        # because Salute permits emblem without nameplate.
+        #
+        # Deliberately NOT built by running the v1 dict through `to_v2`: that
+        # would attach `legacy_v1_options`, which exists so MIGRATED records can
+        # downgrade exactly. A record born at v2 has no v1 to return to, and
+        # `to_v1` raises on it, correctly.
+        "answers": {
+            "legacy_print": {"answer": "none", "free_text": None},
+            "nameplate_cover_emblem": {
+                "answer": "cover_emblem_only", "free_text": None,
+            },
+            "lifes_reflections": {"answer": "none", "free_text": None},
         },
         "family_approval_status": "approved",
     }

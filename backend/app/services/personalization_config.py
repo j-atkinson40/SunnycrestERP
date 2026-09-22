@@ -6,7 +6,16 @@ Canonical 4-options vocabulary per BRIDGEABLE_MASTER.md §3.26.11.12.19.2 (Path 
 - ``physical_nameplate`` — physical nameplate engraving on vault
 - ``physical_emblem`` — physical emblem affixed to vault
 - ``vinyl`` — vinyl-applied personalization (canonical name; per-tenant display label customization
-  per Q1 — e.g., Wilbert tenant displays "Life's Reflections", Sunnycrest tenant displays "Vinyl")
+  per Q1)
+
+⚠️ CORRECTED 2026-09-22 — THE WORKED EXAMPLE HAD THE TENANTS THE WRONG WAY ROUND.
+This read: *"e.g., Wilbert tenant displays 'Life's Reflections', Sunnycrest tenant
+displays 'Vinyl'"*. Sunnycrest's own ordering portal labels the field
+**"Life's Reflections® Vinyl"** (`lib/products.ts`, read 2026-09-22 — see
+docs/investigations/2026-09-22-ordering-portal-personalization.md). The mechanism
+— a canonical substrate value with a per-tenant display override — is unchanged
+and correct; only the example naming which tenant overrides what was wrong, and
+it was wrong about the one tenant whose surface we can read.
 
 Substrate canonicalization migrated to canonical vocabulary at r74_personalization_vocabulary_canonicalization
 (Step-0 migration of Personalization Studio implementation arc).
@@ -86,7 +95,9 @@ PERSONALIZATION_TIERS: dict = {
 
 # Per-tenant default display labels.
 # Tenants override via Company.settings_json.personalization_display_labels.
-# Canonical example per Q1: Wilbert tenant overrides VINYL display label to "Life's Reflections".
+# ⚠️ Example corrected 2026-09-22: Sunnycrest's own portal displays
+# "Life's Reflections® Vinyl", so Sunnycrest is an overriding tenant, not the
+# one taking the default. See the module docstring.
 DEFAULT_DISPLAY_LABELS: dict[str, str] = {
     OPTION_TYPE_LEGACY_PRINT: "Legacy Print",
     OPTION_TYPE_PHYSICAL_NAMEPLATE: "Nameplate",
@@ -237,10 +248,17 @@ def get_display_label_for_tenant(option_type: str, company_settings_json: dict |
     ``Company.settings_json.personalization_display_labels`` JSONB override; falls back to
     ``DEFAULT_DISPLAY_LABELS`` per canonical default.
 
-    Per Q1 canonical resolution: Wilbert tenant overrides ``vinyl`` display label to
-    "Life's Reflections"; Sunnycrest tenant displays default "Vinyl"; cross-tenant
-    DocumentShare grant payload carries canonical ``vinyl`` substrate value (per-tenant
-    display labels apply at rendering layer only, NOT at substrate persistence layer).
+    Per Q1 canonical resolution: a tenant may override the ``vinyl`` display label
+    to "Life's Reflections"; cross-tenant DocumentShare grant payload carries the
+    canonical ``vinyl`` substrate value (per-tenant display labels apply at the
+    rendering layer only, NOT at the substrate persistence layer).
+
+    ⚠️ CORRECTED 2026-09-22. This said *"Sunnycrest tenant displays default
+    'Vinyl'"*. Sunnycrest's own ordering portal labels it
+    "Life's Reflections® Vinyl", so Sunnycrest is an overriding tenant. The
+    example is removed rather than reversed — which tenant overrides what is a
+    fact about tenant configuration, not about this function, and naming one in
+    a docstring is how it went stale in the first place.
 
     Args:
         option_type: Canonical option type per ``CANONICAL_OPTION_TYPES``.
