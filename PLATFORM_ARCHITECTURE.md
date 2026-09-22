@@ -120,7 +120,9 @@ If Monitor is the experienced coworker who walks in and says “here’s what’
 
 A static dashboard list does maybe 30% of #4 and nothing else. 
 
-**Checked against the note as built, 2026-09-10.** Obligations 1–4 are met. #1 by prompts, #2 by the standing set, #3 structurally — non-prompts render only on change against the previous note's state per their identity, which a dashboard cannot express at all. #4 by peeks from standing lines and by Focus entrances carrying their scope, which answers this section's own charge that a static dashboard does "maybe 30% of #4 and nothing else."
+**Checked against the note as built, 2026-09-10. #4 CORRECTED 2026-09-22 — see below.** Obligations 1–3 are met; #4 is partly met. #1 by prompts, #2 by the standing set, #3 structurally — non-prompts render only on change against the previous note's state per their identity, which a dashboard cannot express at all. #4 by Focus entrances carrying their scope. From prose fragments this is built. From standing lines it is ruled but not yet built — standing lines open nothing until their Focus targets exist — so #4 is partly met, not met.
+
+⚠️ The clause above read *"#4 by peeks from standing lines and by Focus entrances carrying their scope"* and reported obligations 1–4 as met. It was written on 2026-09-10, the day AFTER the peek bridge was reverted (`4cbfbd00`, 2026-09-09), and so credited #4 to a mechanism that no longer existed. This matters more than an ordinary stale line because of what the next paragraph says of #5: an obligation reported satisfied is not revisited.
 
 #5 is met on two of four axes. The note adapts by role and by permission. It does not adapt to time of day, workload, or prior behaviour — no time-of-day input exists in note composition. Those two were Pulse's least-evidenced features and were not rebuilt. Stated here rather than claimed as met, because an obligation reported satisfied is not revisited.
 

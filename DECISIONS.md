@@ -1789,3 +1789,26 @@ numbers given, 2026-09-22.
 Discoverability is handled by an onboarding touch, which decays once learned, rather than
 by permanent chrome. This is ruled on principle because no tenant is live, and should be
 revisited against the first month of real use.
+
+---
+
+## 2026-09-22 — A standing line opens its Focus on click
+
+A standing line opens its Focus on click, read-only for a user without edit permission.
+This supersedes the earlier rule that a standing line only ever peeks.
+
+A peek bridge was built on 2026-09-09 (`3d21e919`) and reviewed on the running surface: it
+opened on ordinary cursor travel, pinned itself when the pointer entered it, and at peek
+size could not show a day's schedule, so every peek became a click-through anyway. It was
+reverted (`4cbfbd00`). The earlier rule's argument — that every standing entry should cost
+the same — was sound; its premise, that a peek was the cheap option, was wrong. Every entry
+still costs the same: one click to the full surface.
+
+Not yet built: standing lines render `openable: False` until their Focus targets exist.
+
+⚠️ **This ruling lived only in a commit body until this entry.** With no DECISIONS record,
+the §1a rewrite re-asserted the superseded rule from a list of ruled items, and nothing
+contradicted it anywhere a reader would look. It then propagated twice more from there —
+into the §3.2 appendix as a met obligation, and into a ruling made from CLAUDE.md two weeks
+later. That is why this entry exists: a marker pointing at a commit body asks every reader
+to run `git show`, and readers do not.

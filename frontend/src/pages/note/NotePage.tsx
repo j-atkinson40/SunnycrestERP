@@ -9,9 +9,14 @@
  * What this renders: the standing set, and an empty prose region.
  *
  * What it deliberately does NOT do:
- *  • Standing lines do not open. Opening is peek behaviour and peek is session
- *    3. A placeholder click would have to be removed later, and removing an
- *    interaction users have learned is worse than never shipping it.
+ *  • Standing lines do not open yet. The ruling is that a standing line opens
+ *    its Focus on click, read-only without edit permission; the flag flips when
+ *    the Focus targets exist (see backend/app/api/routes/note.py).
+ *
+ *    ⚠️ This read "Opening is peek behaviour and peek is session 3" until
+ *    2026-09-22. The conclusion was right and the reason was the superseded
+ *    rule — reversed 2026-09-09 in 4cbfbd00 — sitting in the first thing a
+ *    developer reads before touching this file.
  *  • No badges. Counts render as plain text — no colour escalation, no growth
  *    to catch the eye, no red. Per DECISIONS 2026-09-04: a count is a fact the
  *    user reads; a badge is a demand.
