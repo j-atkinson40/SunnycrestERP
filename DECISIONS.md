@@ -1848,6 +1848,8 @@ that says "money first" and puts the 31-day overdue beside the 12-day one is tel
 what matters, which is the whole value of a note over a dashboard. Grouping carries
 meaning, so composition must actually group by kind rather than wrap lines.
 
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
+
 ---
 
 ## 2026-09-22 — The live note never narrates the user's own recent actions back to them [RETITLED 2026-09-22; original title preserved below]
@@ -1861,6 +1863,8 @@ After creating an order the note says it is ready to be scheduled, not that it i
 has no driver. The note is also live: when the user completes half of what a line asked —
 schedules the order — that half disappears and the line shortens to what remains. This is
 the differential rule applied to the user's own actions.
+
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
 
 ---
 
@@ -1881,6 +1885,8 @@ measured-unlinked amount and connective tissue both render plain, which is harml
 because connective tissue makes no claim. This matches CLAUDE.md §1a and the renderer as
 built in session 2.
 
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
+
 ---
 
 ## 2026-09-22 — The call overlay sits over the note, and flags what is missing before the call ends
@@ -1893,6 +1899,8 @@ still live, so the operator asks before hanging up. This is the core value of th
 a new hire does not know what is missing until the call is over and has to call back. The
 system knowing the gap during the call is what closes that.
 
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
+
 ---
 
 ## 2026-09-22 — A call ends in a summary in the same panel, and approving it creates the order
@@ -1901,6 +1909,8 @@ Ending the call turns the overlay into a call summary in the same position — e
 field, each editable, and a notes field. Its action is Approve & Create Sales Order.
 Approving collapses the overlay and returns the user to the note. No separate full-screen
 review step.
+
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
 
 ---
 
@@ -1920,6 +1930,8 @@ call establishes facts and collapse when the next one arrives — the opposite a
 See `Call context cards arrive full and collapse on arrival, not on overflow`. The two share
 a word and nothing else: separate component trees, nothing in common between them.
 
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
+
 ---
 
 ## 2026-09-22 — Selecting two runs shows the drive between them and whether they fit
@@ -1930,6 +1942,8 @@ tight, or overlapping and needing two drivers. The verdict is the point: pairing
 a routing decision, and the card answers it rather than just drawing a map. A stop with no
 fixed time says it can ride along with the other.
 
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
+
 ---
 
 ## 2026-09-22 — Comms is one scoped panel, used wherever a Focus needs discussion
@@ -1938,6 +1952,8 @@ A comms panel is a platform piece, not a feature. It appears on the scheduling F
 dispatcher-only chat and on the Legacy Focus as the print-shop email thread. Each instance
 is scoped to the people with the relevant permission and states who can see it. Built once
 and reused; building it inside one Focus would force the other to copy it.
+
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
 
 ---
 
@@ -1950,6 +1966,8 @@ library card and are dragged onto the panel. Layers anchor by their centre, and 
 dragging they snap to the panel's centre and to the centre and edges of other layers, with
 visible guides.
 
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
+
 ---
 
 ## 2026-09-22 — Legacy approval runs a named workflow and says so before you press it
@@ -1961,6 +1979,8 @@ Request changes action, because changes are made in place. Approving saves the f
 The Focus then shifts to an approved state: the panel locked exactly as edited, the order
 details, and the print-shop thread.
 
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
+
 ---
 
 ## 2026-09-22 — Prototype-before-dispatch is ruled, and lives in CLAUDE.md
@@ -1970,6 +1990,8 @@ New surfaces are prototyped and reviewed before they are dispatched. The rule it
 it changes what a session DOES before writing a dispatch, and CLAUDE.md's own filing test
 sends such rules there. This entry exists so the ruling is findable from both directions;
 a reader who comes to DECISIONS looking for why should follow it to the rule that binds.
+
+Prototype: `docs/prototypes/2026-09-call-to-print.html`.
 
 ---
 
@@ -1982,6 +2004,8 @@ that were NOT mentioned and are needed", which puts the one judgment that must b
 the least reliable component: the flag cannot be trusted to fire, cannot be trusted not to
 fire spuriously, and cannot be tested.
 
+Prototype: `docs/prototypes/2026-09-capture-schema.html`.
+
 ---
 
 ## 2026-09-22 — Required means answered, not filled
@@ -1991,6 +2015,8 @@ requirement. A drop-off with no equipment is answered; an order where equipment 
 mentioned is not. This is what makes the missing set checkable: an answer set defines what
 counts as answered.
 
+Prototype: `docs/prototypes/2026-09-capture-schema.html`.
+
 ---
 
 ## 2026-09-22 — Capture fields are tenant-configurable over a platform default
@@ -1998,6 +2024,8 @@ counts as answered.
 Which fields a tenant captures is configuration, not a fixed list. A tenant may switch a
 field off, and it is then never asked and never counted as missing. The vault cannot be
 switched off, because personalization availability is read from it.
+
+Prototype: `docs/prototypes/2026-09-capture-schema.html`.
 
 ---
 
@@ -2014,6 +2042,8 @@ it is stored with the licensee. The availability reader
 question) is what the schema consults. A later session looking in the product catalog will
 find nothing there.
 
+Prototype: `docs/prototypes/2026-09-capture-schema.html`.
+
 ---
 
 ## 2026-09-22 — The capture list shows only the questions that apply
@@ -2024,6 +2054,8 @@ rows, no counter for questions that may never apply. The list holds what is answ
 is still needed, and nothing else. An earlier prototype showed unresolved questions as
 pending and resolved-away ones as struck through; operator review rejected both as noise on a
 surface read under time pressure.
+
+Prototype: `docs/prototypes/2026-09-capture-schema.html`.
 
 ---
 
@@ -2041,6 +2073,8 @@ the capture list fails it.
 
 Whether these are a new surface or a seventh type of the existing triage context panel is
 not ruled here; it is a build question, not a naming one.
+
+Prototype: `docs/prototypes/2026-09-capture-schema.html`.
 
 ---
 
@@ -2070,3 +2104,5 @@ collapsible from the moment it arrives, and looks and behaves like every other c
 Not ruled: whether a card should re-open itself when the conversation returns to its subject.
 Detecting that needs the transcript, and a card opening mid-sentence on a wrong guess is
 worse than a manual click. Left manual.
+
+Prototype: `docs/prototypes/2026-09-capture-schema.html`.

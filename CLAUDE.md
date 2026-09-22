@@ -2482,6 +2482,35 @@ produces no symptom. Hence a fixed check rather than an intention: **when did
 this last pass** is answerable without trusting the current run, without running
 anything, and against any channel with a history.
 
+#### An instrument that cannot see returns what a true absence returns
+
+The entry above concerns a channel that never produced a signal. This concerns the
+one-line version that applies to every query you run: **an empty result and a blind
+instrument are the same result.**
+
+**Before reading an empty result as absence, make the instrument report a member you
+already know is there.** One positive control, before the claim exists.
+
+Discovered 2026-09-22. `find ~/Downloads` returned zero files while `ls` on the same
+directory returned 68 — silently, with no stderr and no non-zero exit. Every absence
+claim made with `find` over a home directory that session was void.
+
+⚠️ **THE FIRST DIAGNOSIS OF WHY WAS WRONG, AND THE CORRECTION IS THE HALF WORTH
+KEEPING.** It was reported — in a commit body, confidently — as macOS TCC blocking
+the read. It was not. `~/Downloads`, `~/Desktop` and `~/Documents` are all symlinks
+into Dropbox, and `find` does not follow symlinks without `-L`. `find -L` returns 66
+where `find` returned 0. Nothing was blocked. The instrument was pointed at a link
+and answered about the link — correctly, and uselessly.
+
+That is why the check is *show me a member*, not *check the permissions*. The
+positive control works whatever the cause and costs one command. Diagnosing the
+cause first is the step that went wrong here, and it is not required: the control
+would have caught a TCC block, a symlink, a wrong path, and a typo identically.
+
+⚠️ Kin to *false absence from a constructed name*, one layer down. There the query
+named the wrong thing; here the query is right and the instrument cannot reach what
+it names. Both return a confident nothing.
+
 #### Causation — proximity is not necessity
 
 Sibling to false absence above. That entry tests a query; this tests an
