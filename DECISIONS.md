@@ -1965,3 +1965,89 @@ New surfaces are prototyped and reviewed before they are dispatched. The rule it
 it changes what a session DOES before writing a dispatch, and CLAUDE.md's own filing test
 sends such rules there. This entry exists so the ruling is findable from both directions;
 a reader who comes to DECISIONS looking for why should follow it to the rule that binds.
+
+---
+
+## 2026-09-22 — The model extracts; the server decides what is missing
+
+The extraction model pulls values out of the transcript. It does not decide what an order
+requires. A deterministic server-side function compares the extracted values against a
+schema and produces the missing set. Today the seeded prompt asks the model for "field names
+that were NOT mentioned and are needed", which puts the one judgment that must be reliable in
+the least reliable component: the flag cannot be trusted to fire, cannot be trusted not to
+fire spuriously, and cannot be tested.
+
+---
+
+## 2026-09-22 — Required means answered, not filled
+
+A required field is one that must be ANSWERED. "None" is a valid answer and clears the
+requirement. A drop-off with no equipment is answered; an order where equipment was never
+mentioned is not. This is what makes the missing set checkable: an answer set defines what
+counts as answered.
+
+---
+
+## 2026-09-22 — Capture fields are tenant-configurable over a platform default
+
+Which fields a tenant captures is configuration, not a fixed list. A tenant may switch a
+field off, and it is then never asked and never counted as missing. The vault cannot be
+switched off, because personalization availability is read from it.
+
+---
+
+## 2026-09-22 — Conditional requirements read the product catalog
+
+Whether personalization is required is not a property of the order. It depends on whether
+this tenant offers personalization on the vault named — Sunnycrest does not offer nameplates
+on the Monticello where neighbouring licensees do. The condition therefore lives in the
+product catalog and the schema points at it.
+
+---
+
+## 2026-09-22 — The capture list shows only the questions that apply
+
+A question the vault does not offer is not shown. A question whose applicability is not yet
+known — because no vault has been named — is not shown either. No pending rows, no struck-out
+rows, no counter for questions that may never apply. The list holds what is answered and what
+is still needed, and nothing else. An earlier prototype showed unresolved questions as
+pending and resolved-away ones as struck through; operator review rejected both as noise on a
+surface read under time pressure.
+
+---
+
+## 2026-09-22 — The context panel is a second register on the call
+
+The capture list is what the system needs; the context panel is what the operator can
+usefully say. Cards appear as the call establishes facts — the customer once identified, the
+vault once named, the cemetery once known — each carrying what the operator would otherwise
+put the caller on hold to look up: personalization options to offer, price, dimensions,
+weight, drive time, a sexton's number.
+
+Admission test, in the same form as the standing set's: does this answer something the
+operator would otherwise have to look up mid-call? A card that restates what is already in
+the capture list fails it.
+
+---
+
+## 2026-09-22 — Context cards arrive full and collapse on arrival, not on overflow
+
+Every card behaves identically. It arrives expanded. When the next card arrives it collapses
+to a single line carrying its most useful fact — "Wilbert Funeral Home · $3,750.00 across 2
+invoices", not "Customer" — enough to decide whether to open it. Clicking a collapsed card
+reopens it, and it stays open.
+
+Collapse is driven by arrival order, never by available height, so the same call behaves the
+same on a laptop and an external monitor.
+
+Cards collapse rather than dismiss because mid-call is exactly when someone needs a figure
+they glanced at two minutes ago.
+
+The one exception: a card with an unanswered question is held open and marked ASKING. When
+its questions are answered it rejoins the normal rule immediately. The exception is the
+unanswered question, not the card type — a vault that offers no personalization is
+collapsible from the moment it arrives, and looks and behaves like every other card.
+
+Not ruled: whether a card should re-open itself when the conversation returns to its subject.
+Detecting that needs the transcript, and a card opening mid-sentence on a wrong guess is
+worse than a manual click. Left manual.
