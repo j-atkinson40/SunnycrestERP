@@ -52,6 +52,29 @@ from sqlalchemy import text
 
 # FK-safe order: children before parents. agent_run_steps + agent_anomalies
 # cascade from agent_jobs; the non-cascading referrers are cleared first.
+#: ⚠️ `platform_users` IS DELIBERATELY ABSENT, AND ITS ABSENCE IS NOT THE
+#: OVERSIGHT IT LOOKS LIKE. Every statement below is company-scoped
+#: (`WHERE … = ANY(:ids)`), and `platform_users` has neither a `company_id` nor a
+#: `tenant_id` — it is the separate platform-realm identity store (Phase 8e.2).
+#: The only company-scoped statement expressible over it is none at all; the only
+#: unscoped one would delete the four real dev accounts along with the litter.
+#:
+#: Its teardown therefore lives in `conftest.py::_platform_user_run_teardown`,
+#: keyed on `tests/_ids.RUN_ID`, which is run-scoped rather than company-scoped
+#: and is the right shape for a table with no tenant column.
+#:
+#: This note exists because 7,786 rows accumulated here unreported — no teardown
+#: reached the table and no tripwire counted it — and a reader checking "is
+#: platform_users cleaned up?" against this list would have concluded it was
+#: simply forgotten.
+#:
+#: ⚠️ THIS LIST IS ALSO INCOMPLETE FOR COMPANIES, measured 2026-09-23. It deletes
+#: from 72 tables; **327** tables reference one of those without `ON DELETE
+#: CASCADE`, of which **77 hold rows**. `purge_test_companies` raises partway —
+#: `quotes.customer_id` blocks `DELETE FROM customers` — so a company purge
+#: through this list currently cannot complete. Repairing it needs a topological
+#: order built from `pg_constraint`, not another hand-added line. See
+#: `docs/investigations/2026-09-23-litter-clean-applied.md`.
 _PURGE_STATEMENTS = [
     # Email classification substrate. Classifications reference email_messages
     # AND workflow_runs/workflows (workflow_run_id / selected_workflow_id) — so

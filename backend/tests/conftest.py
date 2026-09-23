@@ -201,8 +201,16 @@ def _unowned_litter_tripwire():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _platform_user_run_teardown():
+def _platform_user_run_teardown(_platform_user_run_tripwire):
     """Delete every `platform_users` row THIS session minted, keyed on RUN_ID.
+
+    ⚠️ THE ARGUMENT IS THE ORDERING AND IT IS EASY TO GET BACKWARDS. Finalisers
+    run in REVERSE order of setup. Taking the tripwire as an argument sets the
+    tripwire up FIRST, which makes this teardown's finaliser run FIRST — delete,
+    then check. The opposite wiring (tripwire depending on teardown) checks
+    before deleting and fails every run; it was written that way, shipped to a
+    full-tree run, and the tripwire reported 81 rows that the teardown then
+    deleted a moment later.
 
     ⚠️ KEYED ON THE RUN ID, NOT ON A NAME PATTERN. A pattern-based delete
     (`platform-%@bridgeable.test`) would reach another session's rows and, if a
@@ -240,6 +248,58 @@ def _platform_user_run_teardown():
             db.close()
     except Exception as exc:  # no DB in this run, or the table is absent
         print(f"\n[run teardown] skipped: {type(exc).__name__}: {exc}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _platform_user_run_tripwire():
+    """After teardown, ZERO `platform_users` rows may carry this run's id.
+
+    ⚠️ RUN-SCOPED, NOT A RESIDENT TOTAL, AND THE CHOICE IS DELIBERATE. An
+    absolute total (`after > 4`) would also catch another run's leftovers, which
+    sounds stronger and is the wrong instrument here for two reasons: it fails
+    when someone legitimately adds a real platform account, and it reports a
+    condition this run cannot act on. Zero-rows-for-THIS-run asks only "did this
+    session clean up after itself", which is the question a session can answer
+    and the one that stays true as the table's legitimate population changes.
+
+    ⚠️ It is NOT a delta. `after > before` was the shape that let 7,786 rows
+    accumulate — it goes quiet once the damage is resident, and it reads an equal
+    delete-and-create as clean. This asserts an absolute: the expected count for
+    this run's id is zero, always, and no history can satisfy it accidentally.
+
+    ⚠️ THE ORDERING LIVES ON THE TEARDOWN, NOT HERE. `_platform_user_run_teardown`
+    takes THIS fixture as an argument, which sets this one up first and therefore
+    finalises it last — delete, then check. Do not add a dependency here; that
+    inverts it, and the inverted version checks before deleting and fails every
+    run with a number equal to whatever the run legitimately created.
+    """
+    yield
+    if os.environ.get("BRIDGEABLE_ALLOW_COMPANY_LITTER"):
+        return
+    try:
+        from app.database import SessionLocal
+
+        from tests._ids import RUN_ID, RUN_ID_LIKE
+
+        db = SessionLocal()
+        try:
+            left = db.execute(
+                text("SELECT count(*) FROM platform_users WHERE email LIKE :p"),
+                {"p": RUN_ID_LIKE},
+            ).scalar()
+        finally:
+            db.close()
+    except Exception:
+        return  # no DB in this run — the tripwire stands down
+    if left:
+        pytest.fail(
+            f"PLATFORM USER LITTER: {left} platform_users row(s) still carry "
+            f"this run's id ({RUN_ID}) after teardown. A fixture minted an "
+            "identifier without the run id, or committed after the teardown "
+            "ran. Mint via the `-{RUN_ID}-{suffix}@` shape (see tests/_ids.py) "
+            "so teardown can find it.",
+            pytrace=False,
+        )
 
 
 @pytest.fixture(scope="session", autouse=True)

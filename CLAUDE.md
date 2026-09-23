@@ -1830,6 +1830,24 @@ which encodes the FK-safe deletion order in one place. The company-litter count 
 shrink. Cascade behavior in this schema is uneven — extend the helper rather than writing
 a local delete list.
 
+⚠️ **CORRECTED 2026-09-23 — "THE FK-SAFE DELETION ORDER" IS NOT WHAT IT ENCODES, AND A
+SESSION TRUSTED THIS LINE AND WAS WRONG TO.** The helper deletes from **72** tables.
+Measured from `pg_constraint`: **1,176** FK constraints exist, **327** tables reference a
+purged table without `ON DELETE CASCADE`, and **77** of those hold rows. A company purge
+through it **raises partway** — `quotes.customer_id` blocks `DELETE FROM customers` — so
+it cannot currently complete.
+
+What it actually encodes is *an* order over the union of tables the accounting and
+workflow suites happened to touch, which is what its own docstring claims and is a
+narrower thing than this line said. The overstatement is the same defect as a filename
+that promises more than the file holds, one layer up: **canon asserting completeness is
+believed precisely because canon is the place you check.**
+
+"Extend the helper" also reads as the whole remedy and is not. 147 of the 327 reference
+only `companies` and belong at the schema level as `ON DELETE CASCADE`, which is what
+`r183`/`r184` did for 21 tenant-scoped columns — every one of those stops needing to be
+in any list. See `docs/investigations/2026-09-23-company-fk-order.md`.
+
 ### Removal before recognition — how the rest of this section is meant to be used
 
 Read this before the taxonomies that follow, because it decides whether they
@@ -2261,6 +2279,24 @@ do not count it as coverage.
 list caught asserted-but-absent coverage in a single session, the repair simplified the
 code rather than adding to it.
 
+⚠️ **A BREAK TEST NEEDS A SUBJECT THAT PERSISTS.** The remedy above assumes the break
+has something to act on. When it does not, the check comes back green and the green
+means nothing — which looks exactly like a blind guard and is the opposite conclusion.
+
+Discovered 2026-09-23. A teardown was broken on purpose to confirm its tripwire would
+fire. The break was applied and verified present on disk; the tripwire stayed green.
+That read as "the guard is blind", and it was not: the test file chosen for the break
+rolls its rows back, so the disabled teardown had nothing to fail to delete. Re-run
+against a file whose rows demonstrably persist — confirmed by the teardown's own
+"deleted 9 rows" line — the tripwire fired immediately and correctly.
+
+**So confirm the subject survives the transaction before reading a break test's
+result.** The cheap check is a positive control on the subject, not on the guard: make
+the case produce the artifact once, with the guard intact, and only then break it.
+
+Same shape as *a container test that cannot succeed* one section down — a result that
+could only ever have come out one way, presented as though it discriminated.
+
 #### The counterweight
 
 This list is not an argument that guards are untrustworthy. The session-scoped COMPANY
@@ -2272,6 +2308,39 @@ not the thing it is warning about.
 The distinction is what a green result is evidence OF. A check that would still pass under
 the defect proves nothing. A check that re-derives from a different direction proves
 something, and is worth its cost.
+
+#### A diff is a per-hunk instrument and cannot see a file-level error
+
+**After a mechanical edit across many files, PARSE EACH FILE. Do not review the
+diff and stop.**
+
+A diff shows changed lines with a little context. It has no opinion about the file
+those lines landed in, so an edit that is locally correct and globally invalid is
+invisible to it — and reviewing harder does not help, because every hunk genuinely
+reads correctly.
+
+Discovered 2026-09-23. An import was inserted into 25 test files by a script that
+placed it after "the last line matching `^(import |from )`". In seven of them that
+line was the OPENING line of a multi-line `from … import (`, so the new import
+landed between the parenthesis and the first name:
+
+    from app.services.maps_of_content.task_catalog import (
+    from tests._ids import RUN_ID
+        TaskValidationError,
+
+Seven files stopped parsing. Each hunk was two lines and looked exactly like the
+eighteen correct ones. `ast.parse` over all 25 found it in one command; the review
+that preceded it had not.
+
+⚠️ **THE REMEDY IS CHEAPER THAN THE REVIEW IT REPLACES**, which is the argument for
+doing it every time rather than when a mechanical edit feels risky. One loop, one
+second. The fix was to re-insert using `ast` to find the END line of the last
+top-level import node, which is the question the regex was pretending to answer.
+
+Generalises past imports: any edit positioned by matching a line rather than by
+parsing structure — inserting into a list literal, a decorator stack, a docstring, a
+multi-line call — can land inside a construct the pattern could not see. **If the
+edit was placed by a regex, verify it with a parser.**
 
 ### Failures in the other direction — negatives, derivations, and dead signals
 
@@ -2859,6 +2928,46 @@ whole suite still passing.
 ⚠️ Kin to the green-without-evidence list above and distinct from all eight: the
 check is not passing for a wrong reason, it is passing for a reason that is
 CORRECT AND NOT THE ONE CLAIMED. Nothing in the result distinguishes them.
+
+#### A stated reason is checked less than an unstated one
+
+The entry above concerns a guard whose real mechanism was never written down. This
+is the inverse and it is worse: the mechanism IS written down, in the place a
+reader will look, and it is wrong.
+
+**A written reason redirects the reader's question.** Without one, they ask *does
+this work?* With one, they ask *does the code match the explanation?* — and code
+that faithfully implements a backwards explanation passes that check every time.
+The docstring becomes the specification, and nothing re-derives the specification.
+
+⚠️ **SO WHEN AN ORDERING OR LIFECYCLE CLAIM IS WRITTEN DOWN, PROVE IT BY
+OBSERVATION RATHER THAN BY ARGUMENT.** Run it and look. Lifecycle claims —
+finaliser order, teardown sequencing, signal delivery, commit timing — are exactly
+where argument feels sufficient and is not, because the reasoning is short enough
+to seem checkable by reading.
+
+Discovered 2026-09-23. A session-scoped tripwire was given a dependency on the
+teardown it watched, with a docstring explaining that this ordered the teardown
+first: *"a fixture's finalisers run in reverse order of setup, so taking the
+teardown as an argument puts it later in setup and therefore earlier in
+teardown."* Every clause of that is true except the conclusion, which is
+inverted — being later in setup makes a fixture finalise EARLIER, so the check
+ran BEFORE the delete it was meant to verify. The fix was to move the dependency
+onto the other fixture; the argument that produced the bug reads as plausibly as
+the one that fixes it.
+
+⚠️ **AND THE DETECTOR IS WORTH MORE THAN THE RULE: TWO INSTRUMENTS DISAGREEING
+BEATS EITHER AGREEING WITH EXPECTATION.** The same run reported *"deleted 81
+platform_users"* and *"81 rows still carry this run's id after teardown"*.
+Neither reading looked wrong on its own — 81 deleted is what a working teardown
+says, and 81 remaining is what a real leak says. The contradiction is what
+carried the information, and it was available only because both instruments
+reported a NUMBER rather than a status.
+
+So prefer guards that emit a quantity over guards that emit pass/fail, and put
+two of them on anything whose ordering you have reasoned about rather than
+watched. A single green instrument agreeing with what you expected is the weakest
+evidence in this file.
 
 #### A container test that cannot succeed looks exactly like one that ran
 
