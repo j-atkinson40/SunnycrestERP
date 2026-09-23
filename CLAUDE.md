@@ -3200,6 +3200,38 @@ database state its seed path does not reproduce.
 create that state or clear it, never assume it.** Assuming empty is the form that
 hides, because empty is what a half-seeded database looks like.
 
+#### Before concluding a gate would have caught something, check its environment can contain it
+
+**A gate cannot see a defect that cannot exist in its environment.** Not "did not
+notice" — could not host. That is a different question from coverage, and it is
+the one that goes unasked, because "is this file in the gate?" feels like the
+whole question and is answerable.
+
+Discovered 2026-09-23. A whole class of defect was found on a laptop that 427 CI
+runs could not have seen:
+
+    the environment with the seeds has NO suite
+    the environments with a suite have NO seeds
+
+CI runs migrations then pytest, no seeds. Staging runs every seed and then starts
+a server — Playwright exercises it over HTTP. A fixture-versus-seed collision
+exists only inside a pytest process running against a seeded database, and **no
+configured job is one.** The three tests that were green-because-a-row-was-absent
+would have stayed green in CI forever, and it is not a gap in the manifest — the
+row could not be there.
+
+THE TEST, before crediting or blaming a gate:
+
+    "Could this defect have EXISTED in that gate's environment?"
+
+If the environment cannot produce the precondition, the gate's silence carries no
+information about the defect, and widening the manifest will not change that.
+
+⚠️ Kin to *a gate reports its denominator*, one level down. There the question is
+which files the gate selects; here it is which STATES the gate's world can be in.
+A gate can cover 100% of files and still be blind to everything that needs a
+seeded database, a second tenant, or a clock that is not today.
+
 #### A mechanical transform cannot tell a meaningful value from a fact
 
 **When a transform touches every value of one type, its exceptions are found by
@@ -3531,20 +3563,33 @@ occurrences. The failure is invisible because the result is well-formed and plau
 Always report the unit measured. Distinct from enumeration-defeated-by-presentation,
 where members are hidden rather than the unit being wrong.
 
-⚠️ **THIRD INSTANCE 2026-09-23, AND IT SUGGESTS A BETTER REMEDY THAN "REPORT THE
-UNIT".** A file was reported as holding 74 date literals; a transform over it
-replaced **91**. Reporting the unit would not have helped — "74 lines" is true and
-still the wrong input to a decision about 91 values.
+⚠️ **THE REMEDY ABOVE IS WEAKER THAN IT LOOKS, AND THE GENERAL RULE REPLACES IT.**
 
-**VERIFY A COUNT BY WHAT THE OPERATION ACTUALLY PROCESSED, NOT BY A SEPARATE COUNT
-OF WHAT YOU EXPECT IT TO.** The transform printed `replaced 91`, and that is the
-only number that was ever evidence. A count taken by a different instrument than
-the one doing the work is a prediction, and predictions are what this file is
-about.
+**A COUNT TAKEN BY A DIFFERENT INSTRUMENT THAN THE ONE DOING THE WORK IS A
+PREDICTION, NOT A MEASUREMENT.**
 
-Same shape as `$?` after a pipeline and as `find` over a symlink: an instrument
-answering a question ADJACENT to the one asked. Three of them in one session, all
-mine, none caught by care.
+"Report the unit measured" would not have caught the third instance. On
+2026-09-23 `grep -c` reported 74 date literals in a file where a transform
+replaced **91** — "74 lines" is TRUE, correctly labelled, and still the wrong
+input to a decision about 91 values. The unit was not the problem; the instrument
+was.
+
+What caught it was the transform printing `replaced 91` — **the operation
+reporting what it actually processed.** That is the only reading that can be
+checked, because it comes from the thing whose behaviour is in question.
+
+So: when an operation is about to act on N things, get N from the operation, not
+from a separate count of what you expect it to find. Where the operation cannot
+report, make it — a counter costs one line and converts a prediction into a
+measurement.
+
+⚠️ **THIS IS ONE SHAPE, NOT THREE.** `$?` after a pipeline reports the last
+command's status rather than the one you meant. `find` over a symlink reports on
+the link rather than the directory. A delta tripwire reports the run's change
+rather than the table's contents. Each is an instrument answering a question
+ADJACENT to the one asked, and each produces a well-formed answer that survives
+review. All four occurred in a single session, all by an author holding the file
+that names them.
 
 **Fixtures modeled on the implementation.** A test that passes because it shares the
 code's wrong assumption. Fixtures must be derived from the specification or from real
