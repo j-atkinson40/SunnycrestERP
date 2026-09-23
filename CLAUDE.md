@@ -1376,6 +1376,29 @@ cd frontend && npm install && npm run dev
 
 ### Local dev seeding
 
+⚠️ **HOW TO GET A WORKING LOCAL DEV DATABASE: `bash backend/scripts/seed_dev.sh`.**
+That is the whole answer, and it is here because its absence cost a dropped database
+on 2026-09-23.
+
+**The two scripts named below are not sufficient, and nothing said so.** There are
+**65** `seed_*.py`; the two here build TENANTS. The Intelligence prompt catalogue —
+which **47 tests require** — is built by a separate family (`seed_intelligence_*`,
+`seed_triage_*`). A session read this section, ran what it named, got a database that
+looked right, and 47 tests failed.
+
+The canonical sequence already existed as `scripts/run_canonical_seeds.sh` (every
+`seed_*.py`, alphabetically, minus the `manual` tier declared in
+`scripts/seed_manifest.py`). Its locked decision #5 is *"Local dev unaffected — this
+runs from railway-start.sh only"*, so it was written down and not anywhere a person
+setting up a local database would look. `seed_dev.sh` closes that: migrations, then the
+four fail-loud seeds in `railway-start.sh`'s order, then the canonical runner.
+
+⚠️ It writes all seed output to a log file rather than the terminal, because
+`seed_sunnycrest.py` prints a generated admin password when it creates that user on a
+fresh database. Read the log; do not paste it. An agent must not surface its contents.
+
+The two below remain accurate about what they individually do:
+
 The local `bridgeable_dev` database ships empty after `alembic upgrade head`. Two seed scripts populate usable tenants:
 
 - **Default test tenant (most sessions):** `DATABASE_URL=postgresql://localhost:5432/bridgeable_dev python backend/scripts/seed_staging.py` → creates the `testco` manufacturing tenant ("Test Vault Co", id `staging-test-001`) with 7 users, 8 company entities, 25 products, 10 orders, 3 invoices, 1 price list, 5 KB categories. Idempotent via slug-adoption (re-running cleans + re-seeds).
@@ -1970,6 +1993,35 @@ principle.
 Same move as per-row over per-type, and the same family as the constructed
 count: a bound taken from the view rather than from the data.
 
+### A dispatch that forbids an outcome while ordering its cause is a defect in the dispatch
+
+**When an instruction and a prohibition collide, STOP AND REPORT rather than
+choosing between them.** Picking one silently is how the collision stays
+invisible — the executor obeys half an instruction and nobody learns the half
+were incompatible.
+
+⚠️ This is not the same as a risky instruction, and the difference is why it needs
+its own entry. A risky instruction can be obeyed carefully. **A self-contradictory
+one cannot be obeyed at all**, and the executor who tries will produce the
+forbidden outcome while believing they were following orders.
+
+Discovered 2026-09-23. A dispatch read *"do not print or handle any credential"*
+and, in the same part, authorised running a seed whose own docstring states it
+generates an admin password and prints it once. Both clauses were clear. Together
+they were impossible. The seed ran, the password entered the session, and the
+prohibition had been stated the whole time — including in the docstring the
+executor had already read.
+
+**The tell is that obeying the instruction requires disobeying the rule beside
+it.** Ask it of any dispatch carrying both a prohibition and a command: *can both
+be true at once?* If not, that is a finding about the dispatch, and it is cheaper
+to report before acting than to report afterwards.
+
+The restructure existed and neither party reached for it: redirect the command's
+stdout to a file outside the session, or set the variable that suppresses
+generation. **A prohibition with no stated way to comply is a prohibition that
+will be broken** — see *RESTRUCTURE FIRST, ESCALATE SECOND* in §7.
+
 ### Figures in dispatches are never inherited
 
 Every dispatch that states a figure — a count, a file list, a set of sites, a row total —
@@ -2427,6 +2479,35 @@ had it after `alembic upgrade head`, before any seed ran.
 COMBINATION** — see *Conclusion survives, derivation falsified*. Keeping the row
 was correct. Nothing downstream would ever have contradicted the reason given for
 keeping it, and the next reader inherits "this row has no creator" as a fact.
+
+#### A measurement is only as wide as its population
+
+The entries above catch results that are WRONG. This catches a result that is
+RIGHT and is then used to support something larger than it measured — which is
+harder, because re-checking the measurement confirms it every time.
+
+**State the population a result covers, and enumerate that population with a
+command rather than from memory of the relevant subset.**
+
+Discovered 2026-09-23, and the consequence is the reason it is here rather than
+in DECISIONS. Three seed scripts were run against a scratch database, completed
+cleanly, and were reported as evidence that dropping and re-seeding the dev
+database was viable. The measurement was sound: those three do succeed, in 12
+seconds, producing the expected tenants.
+
+**There are 65 `seed_*.py`.** The three build TENANTS; the Intelligence prompt
+catalogue is built by a separate family. The reseed was authorised on that
+evidence, the database was dropped, and 47 tests failed against a database
+missing a catalogue nobody had measured for.
+
+⚠️ **THE TELL IS A CONCLUSION PHRASED MORE BROADLY THAN THE THING THAT WAS RUN.**
+"A reseed produces a working database" is a claim about *seeding*; what was run
+was *three scripts*. Nothing about the result announces the gap, because the
+result is true.
+
+`ls scripts/seed_*.py` — one command, would have returned 65. Compare the entry
+above: the same failure at the same scale, one class of file instead of one
+directory of them.
 
 #### The constructed count — magnitude is a claim too
 
