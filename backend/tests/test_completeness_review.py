@@ -55,6 +55,10 @@ canonical_tenant = make_canonical_tenant_fixture(
 )
 
 
+from tests._completeness_anchor import D, _anchor  # noqa: F401
+
+
+
 def _decline(
     db,
     key: str,
@@ -119,15 +123,15 @@ class TestMissingIsReachable:
     fails. That is the point — the quiet version was the broken one."""
 
     def test_the_window_reaches_past_the_due_date(self):
-        window = ex.periods_in_window("daily", date(2026, 8, 13))
+        window = ex.periods_in_window("daily", D())
         oldest_end = window[0][1]
         exp = ex.VERTICAL["manufacturing"][0]
-        assert ex.due_on(exp, oldest_end) < date(2026, 8, 13), (
+        assert ex.due_on(exp, oldest_end) < D(), (
             "no period in the window is past due — `missing` cannot fire"
         )
 
     def test_a_normal_day_produces_actionable_rows(self, db):
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        rows = review(db, TENANT, "manufacturing", D())
         assert any(r.verdict in ACTIONABLE for r in rows), (
             "every row is quiet — the review cannot report a gap"
         )
@@ -135,7 +139,7 @@ class TestMissingIsReachable:
     def test_the_current_period_alone_can_never_be_missing(self):
         """Stated as its own test so the reason is legible: this is WHY the
         window exists, not an incidental property of it."""
-        today = date(2026, 8, 13)
+        today = D()
         exp = ex.VERTICAL["manufacturing"][0]
         _, end = ex.period_for(exp.cadence, today)
         assert today <= ex.due_on(exp, end)
@@ -143,7 +147,7 @@ class TestMissingIsReachable:
 
 class TestNoGracefulPath:
     def test_every_declared_expectation_appears(self, db):
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        rows = review(db, TENANT, "manufacturing", D())
         declared = {e.key for e in ex.for_tenant(TENANT, "manufacturing")}
         assert {r.key for r in rows} == declared, (
             "an expectation produced no row at all — the silent skip this "
@@ -161,20 +165,20 @@ class TestNoGracefulPath:
             matters_because="—",
         )
         monkeypatch.setattr(ex, "PLATFORM", [broken])
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        rows = review(db, TENANT, "manufacturing", D())
         got = [r for r in rows if r.key == "broken_probe"]
         assert got, "the broken expectation vanished instead of reporting"
         assert all(r.verdict == UNKNOWN for r in got)
         assert all(r.observed is None for r in got), "a failed probe reported a count"
 
     def test_every_verdict_is_a_declared_member(self, db):
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        rows = review(db, TENANT, "manufacturing", D())
         assert {r.verdict for r in rows} <= set(VERDICTS)
 
     def test_every_row_carries_a_role(self, db):
         """The obligation is a ROLE'S. A row nobody owes cannot be queried back
         to a person who can answer it, which is A-3's whole exit path."""
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        rows = review(db, TENANT, "manufacturing", D())
         assert all(r.role_slug for r in rows)
 
 
@@ -182,16 +186,16 @@ class TestDecliningIsNotDeletion:
     def test_a_declined_obligation_still_renders(self, db):
         """⚠️ THE DISTINCTION THAT IS THE DESIGN. Declined and never-declared
         must not look identical; filtering the row out would make them so."""
-        _decline(db, "production_log_daily", date(2026, 5, 1))
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        _decline(db, "production_log_daily", D(-104))
+        rows = review(db, TENANT, "manufacturing", D())
         got = [r for r in rows if r.key == "production_log_daily"]
         assert got, "the declined obligation disappeared — indistinguishable "
         assert all(r.verdict == DECLINED for r in got)
         assert "no on-site pours" in got[0].detail, "the reason was dropped"
 
     def test_declined_is_not_actionable(self, db):
-        _decline(db, "production_log_daily", date(2026, 5, 1), reason="x")
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        _decline(db, "production_log_daily", D(-104), reason="x")
+        rows = review(db, TENANT, "manufacturing", D())
         assert DECLINED not in ACTIONABLE
         assert all(r.verdict != MISSING for r in rows if r.key == "production_log_daily")
 
@@ -210,9 +214,9 @@ class TestDecliningIsNotDeletion:
         """
         from app.services.completeness.collapse import collapse, summarise
 
-        _decline(db, "production_log_daily", date(2026, 5, 1))
+        _decline(db, "production_log_daily", D(-104))
         shown, closing = summarise(collapse(
-            review(db, TENANT, "manufacturing", date(2026, 8, 13))
+            review(db, TENANT, "manufacturing", D())
         ))
         got = [r for r in shown if r.key == "production_log_daily"]
         assert got, (
@@ -236,9 +240,9 @@ class TestDecliningIsNotDeletion:
         from app.services.completeness.collapse import Run, summarise
 
         declined = Run("d", "Deliveries", "driver", DECLINED,
-                       date(2026, 8, 13), date(2026, 8, 13), 1, "Declined 1 May: no fleet")
+                       D(), D(), 1, "Declined 1 May: no fleet")
         current = Run("b", "Bank feed", "admin", NOT_YET_DUE,
-                      date(2026, 8, 13), date(2026, 8, 13), 1, "Due 14 Aug.")
+                      D(), D(), 1, "Due 14 Aug.")
         shown, closing = summarise([declined, current])
 
         assert declined in shown, "the declination was folded into the quiet count"
@@ -260,7 +264,7 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
     """
 
     KEY = "production_log_daily"
-    AS_OF = date(2026, 8, 13)
+    AS_OF = D()
 
     def _decline(self, db, on, revoked=None):
         _decline(db, self.KEY, on, revoked=revoked)
@@ -273,48 +277,48 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
         before = {r.period_start: r.verdict for r in self._rows(db)}
         assert MISSING in before.values(), "fixture assumption broke"
 
-        self._decline(db, date(2026, 8, 11))
+        self._decline(db, D(-2))
         after = {r.period_start: r.verdict for r in self._rows(db)}
 
         assert set(before) == set(after), (
             "declining changed WHICH periods are evaluated — the window is not "
             "the declination's to decide"
         )
-        earlier = [p for p in after if p < date(2026, 8, 11)]
+        earlier = [p for p in after if p < D(-2)]
         assert earlier, "no period precedes the declination; test proves nothing"
         assert all(after[p] == before[p] for p in earlier), (
             f"declining rewrote earlier periods: "
             f"{ {p: (before[p], after[p]) for p in earlier if before[p] != after[p]} }"
         )
-        assert all(after[p] == DECLINED for p in after if p >= date(2026, 8, 11))
+        assert all(after[p] == DECLINED for p in after if p >= D(-2))
 
     def test_a_revocation_resumes_the_obligation(self, db):
         """`[declined_on, revoked_on)` — the period a tenant resumes in is OWED,
         not forgiven. An inclusive end would leave that period ambiguous between
         the two episodes that touch it."""
-        self._decline(db, date(2026, 8, 8), revoked=date(2026, 8, 11))
+        self._decline(db, D(-5), revoked=D(-2))
         got = {r.period_start: r.verdict for r in self._rows(db)}
 
-        assert got[date(2026, 8, 8)] == DECLINED
-        assert got[date(2026, 8, 10)] == DECLINED, "revocation started a day early"
-        assert got[date(2026, 8, 11)] != DECLINED, (
+        assert got[D(-5)] == DECLINED
+        assert got[D(-3)] == DECLINED, "revocation started a day early"
+        assert got[D(-2)] != DECLINED, (
             "the obligation was still declined on the day it was resumed"
         )
 
     @pytest.mark.parametrize("period_start,expected", [
-        (date(2026, 8, 7), False),   # before it
-        (date(2026, 8, 8), True),    # the day it begins — inclusive
-        (date(2026, 8, 10), True),   # inside
-        (date(2026, 8, 11), False),  # the day it is revoked — EXCLUSIVE
-        (date(2026, 8, 12), False),  # after
+        (D(-6), False),   # before it
+        (D(-5), True),    # the day it begins — inclusive
+        (D(-3), True),   # inside
+        (D(-2), False),  # the day it is revoked — EXCLUSIVE
+        (D(-1), False),  # after
     ])
     def test_the_range_is_half_open(self, period_start, expected):
-        d = ex.Declination("k", "r", date(2026, 8, 8), "R. Okafor", "admin",
-                           revoked_on=date(2026, 8, 11))
+        d = ex.Declination("k", "r", D(-5), "R. Okafor", "admin",
+                           revoked_on=D(-2))
         assert (ex.declination_covering([d], period_start) is not None) is expected
 
     def test_an_unrevoked_declination_has_no_end(self):
-        d = ex.Declination("k", "r", date(2026, 8, 8), "R. Okafor", "admin")
+        d = ex.Declination("k", "r", D(-5), "R. Okafor", "admin")
         assert ex.declination_covering([d], date(2099, 1, 1)) is not None
 
     def test_overlapping_episodes_resolve_by_a_stated_rule(self):
@@ -322,10 +326,10 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
         episode. If they ever exist the answer must be a RULE (most recent
         statement wins), not whichever the list happened to hold first, which is
         the ordering-decides-the-outcome defect this repo has shipped twice."""
-        old = ex.Declination("k", "old", date(2026, 1, 1), "R. Okafor", "admin")
-        new = ex.Declination("k", "new", date(2026, 8, 1), "R. Okafor", "admin")
-        assert ex.declination_covering([old, new], date(2026, 8, 5)).reason == "new"
-        assert ex.declination_covering([new, old], date(2026, 8, 5)).reason == "new"
+        old = ex.Declination("k", "old", D(-224), "R. Okafor", "admin")
+        new = ex.Declination("k", "new", D(-12), "R. Okafor", "admin")
+        assert ex.declination_covering([old, new], D(-8)).reason == "new"
+        assert ex.declination_covering([new, old], D(-8)).reason == "new"
 
 
 class TestEvidenceAgainstADeclinationIsAFinding:
@@ -337,10 +341,10 @@ class TestEvidenceAgainstADeclinationIsAFinding:
     looked for."""
 
     KEY = "production_log_daily"
-    AS_OF = date(2026, 8, 13)
+    AS_OF = D()
 
     def _decline(self, db):
-        _decline(db, self.KEY, date(2026, 5, 1))
+        _decline(db, self.KEY, D(-104))
 
     def test_the_probe_runs_on_a_declined_period(self, db):
         """The capability claim, asserted directly. `observed` is the probe's
@@ -440,14 +444,14 @@ class TestTheDeclinationTable:
         monkeypatched dict used to skip."""
         from app.services.completeness.declinations import load_for_tenant
 
-        _decline(db, self.KEY, date(2026, 5, 1), reason="no on-site pours",
+        _decline(db, self.KEY, D(-104), reason="no on-site pours",
                  name="R. Okafor", role="admin")
         got = load_for_tenant(db, TENANT)
 
         assert self.KEY in got, f"nothing loaded for {self.KEY}: {list(got)}"
         (d,) = got[self.KEY]
         assert d.expectation_key == self.KEY
-        assert d.declined_on == date(2026, 5, 1)
+        assert d.declined_on == D(-104)
         assert d.reason == "no on-site pours"
         assert d.declined_by_name == "R. Okafor"
         assert d.declined_by_role_slug == "admin"
@@ -461,10 +465,10 @@ class TestTheDeclinationTable:
         range check decides which governs which period."""
         from app.services.completeness.declinations import load_for_tenant
 
-        _decline(db, self.KEY, date(2026, 3, 1), revoked=date(2026, 6, 1))
+        _decline(db, self.KEY, D(-165), revoked=D(-73))
         got = load_for_tenant(db, TENANT)
         assert got.get(self.KEY), "a revoked episode was dropped by the loader"
-        assert got[self.KEY][0].revoked_on == date(2026, 6, 1)
+        assert got[self.KEY][0].revoked_on == D(-73)
 
     def test_episodes_accumulate_rather_than_replace(self, db):
         """Declined, resumed, declined again is THREE rows on one obligation —
@@ -472,9 +476,9 @@ class TestTheDeclinationTable:
         in-row rather than a second kind of record."""
         from app.services.completeness.declinations import load_for_tenant
 
-        _decline(db, self.KEY, date(2026, 1, 1), revoked=date(2026, 3, 1))
-        _decline(db, self.KEY, date(2026, 5, 1), revoked=date(2026, 7, 1))
-        _decline(db, self.KEY, date(2026, 8, 1))
+        _decline(db, self.KEY, D(-224), revoked=D(-165))
+        _decline(db, self.KEY, D(-104), revoked=D(-43))
+        _decline(db, self.KEY, D(-12))
         assert len(load_for_tenant(db, TENANT)[self.KEY]) == 3
 
     def test_at_most_one_LIVE_episode_is_enforced_by_the_index(self, db):
@@ -486,19 +490,19 @@ class TestTheDeclinationTable:
         """
         from sqlalchemy.exc import IntegrityError
 
-        _decline(db, self.KEY, date(2026, 5, 1))
+        _decline(db, self.KEY, D(-104))
         with pytest.raises(IntegrityError):
-            _decline(db, self.KEY, date(2026, 6, 1))
+            _decline(db, self.KEY, D(-73))
         db.rollback()
 
     def test_a_revoked_episode_does_not_block_a_new_one(self, db):
         """The other half of the same index, and the half a plain unique would
         have broken: a tenant who resumes must be able to decline again."""
-        _decline(db, self.KEY, date(2026, 1, 1), revoked=date(2026, 3, 1))
-        _decline(db, self.KEY, date(2026, 5, 1))  # must not raise
+        _decline(db, self.KEY, D(-224), revoked=D(-165))
+        _decline(db, self.KEY, D(-104))  # must not raise
 
     @pytest.mark.parametrize("revoked_on,revoked_at_set", [
-        (date(2026, 6, 1), False),   # effective date, never recorded
+        (D(-73), False),   # effective date, never recorded
         (None, True),                # recorded, no effective date
     ])
     def test_the_two_revocation_columns_cannot_disagree(
@@ -533,7 +537,7 @@ class TestTheDeclinationTable:
                 ),
                 {
                     "i": str(uuid.uuid4()), "t": TENANT, "k": self.KEY,
-                    "d": date(2026, 1, 1), "ron": revoked_on,
+                    "d": D(-224), "ron": revoked_on,
                     "rat": datetime.now(timezone.utc) if revoked_at_set else None,
                     "c": datetime.now(timezone.utc),
                 },
@@ -544,12 +548,12 @@ class TestTheDeclinationTable:
     def test_a_coherent_revocation_is_accepted(self, db):
         """The control. A constraint that refused everything would satisfy the
         test above and break the feature."""
-        _decline(db, self.KEY, date(2026, 1, 1), revoked=date(2026, 6, 1))
+        _decline(db, self.KEY, D(-224), revoked=D(-73))
 
     def test_declinations_do_not_leak_across_tenants(self, db):
         from app.services.completeness.declinations import load_for_tenant
 
-        _decline(db, self.KEY, date(2026, 5, 1))
+        _decline(db, self.KEY, D(-104))
         assert load_for_tenant(db, "some-other-tenant") == {}
 
     def test_the_author_is_named_on_the_rendered_row(self, db):
@@ -557,8 +561,8 @@ class TestTheDeclinationTable:
         obligation until someone revokes it; the cheapest thing that stops it
         being used to clear a report is that the row says who answered. Stored
         and never read would be the shape this arc keeps finding."""
-        _decline(db, self.KEY, date(2026, 5, 1), name="R. Okafor", role="admin")
-        rows = [r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        _decline(db, self.KEY, D(-104), name="R. Okafor", role="admin")
+        rows = [r for r in review(db, TENANT, "manufacturing", D())
                 if r.key == self.KEY]
         assert rows
         assert "R. Okafor" in rows[0].detail, (
@@ -589,7 +593,7 @@ class TestNothingIsOwedBeforeTheTenantExisted:
     def test_the_window_stops_at_the_start_date(self):
         """Back-filling red to the beginning of the calendar is how a report
         teaches its reader to ignore it."""
-        as_of = date(2026, 8, 13)
+        as_of = D()
         started = as_of - timedelta(days=2)
         window = ex.periods_in_window("daily", as_of, not_before=started)
         assert all(e >= started for _, e in window), (
@@ -597,12 +601,17 @@ class TestNothingIsOwedBeforeTheTenantExisted:
         )
 
     def test_no_bound_means_the_full_lookback(self):
-        assert len(ex.periods_in_window("daily", date(2026, 8, 13))) == (
+        assert len(ex.periods_in_window("daily", D())) == (
             ex.LOOKBACK["daily"] + 1
         )
 
 
 class TestPeriodArithmetic:
+    # ⚠️ ABSOLUTE DATES ON PURPOSE — these are the one block that must NOT be
+    # anchored. They assert CALENDAR arithmetic: a weekly period starting on a
+    # Monday, a monthly period spanning a real month, and February in a leap
+    # year. Anchor offsets landed them on an arbitrary weekday and month and
+    # broke all three; the scenario elsewhere is relative, this is not.
     @pytest.mark.parametrize("cadence,as_of,start,end", [
         ("daily", date(2026, 8, 13), date(2026, 8, 13), date(2026, 8, 13)),
         ("weekly", date(2026, 8, 13), date(2026, 8, 10), date(2026, 8, 16)),
@@ -614,7 +623,7 @@ class TestPeriodArithmetic:
 
     def test_windows_do_not_overlap_or_gap(self):
         """A duplicated period double-counts a gap; a skipped one hides it."""
-        w = ex.periods_in_window("daily", date(2026, 8, 13))
+        w = ex.periods_in_window("daily", D())
         for (_, prev_end), (nxt_start, _) in zip(w, w[1:]):
             assert nxt_start == prev_end + timedelta(days=1)
 
@@ -637,30 +646,30 @@ class TestTheNothingHappenedPath:
         db.flush()
 
     def test_a_claim_turns_missing_into_reported_none(self, db):
-        past = date(2026, 8, 8)
-        before = [r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        past = D(-5)
+        before = [r for r in review(db, TENANT, "manufacturing", D())
                   if r.key == "production_log_daily" and r.period_start == past]
         assert before and before[0].verdict == MISSING, "fixture assumption broke"
 
         self._claim(db, "production_log_daily", past, past)
-        after = [r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        after = [r for r in review(db, TENANT, "manufacturing", D())
                  if r.key == "production_log_daily" and r.period_start == past]
         assert after[0].verdict == REPORTED_NONE
 
     def test_the_claimant_is_named_on_the_row(self, db):
         """The accountability IS the evidence — a nil claim nobody signed is
         just silence with extra steps."""
-        past = date(2026, 8, 8)
+        past = D(-5)
         self._claim(db, "production_log_daily", past, past)
-        row = next(r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        row = next(r for r in review(db, TENANT, "manufacturing", D())
                    if r.key == "production_log_daily" and r.period_start == past)
         assert "J. Atkinson" in row.detail and "production" in row.detail
 
     def test_reported_none_is_not_arrived(self, db):
         """A month of nil claims must not render as a month of work."""
-        past = date(2026, 8, 8)
+        past = D(-5)
         self._claim(db, "production_log_daily", past, past)
-        row = next(r for r in review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        row = next(r for r in review(db, TENANT, "manufacturing", D())
                    if r.key == "production_log_daily" and r.period_start == past)
         assert row.verdict != ARRIVED
         assert row.verdict not in ACTIONABLE, "a signed nil claim is not a gap"
@@ -690,7 +699,7 @@ class TestRunCollapse:
 
     def test_a_run_of_missing_days_becomes_one_row(self, db):
         from app.services.completeness.collapse import collapse
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13))
+        rows = review(db, TENANT, "manufacturing", D())
         runs = collapse(rows)
         assert len(runs) < len(rows), "nothing collapsed"
         bank = [r for r in runs if r.key == "bank_feed_daily" and r.verdict == MISSING]
@@ -700,14 +709,14 @@ class TestRunCollapse:
 
     def test_collapse_never_merges_different_verdicts(self, db):
         from app.services.completeness.collapse import collapse
-        for r in collapse(review(db, TENANT, "manufacturing", date(2026, 8, 13))):
+        for r in collapse(review(db, TENANT, "manufacturing", D())):
             assert r.verdict in VERDICTS
 
     def test_the_quiet_are_counted_not_enumerated(self, db):
         """Silence is what a reader fills in with an assumption."""
         from app.services.completeness.collapse import collapse, summarise
         shown, closing = summarise(collapse(review(db, TENANT, "manufacturing",
-                                                   date(2026, 8, 13))))
+                                                   D())))
         # Against RENDERED, not a restatement of the selection predicate — an
         # assertion that re-derives the implementation passes whatever the
         # implementation does, which is how `declined` went missing.
@@ -719,8 +728,8 @@ class TestRunCollapse:
         can see it. Folding it into the quiet count would hide the single thing
         the carve-out could be abused to do."""
         from app.services.completeness.collapse import Run, summarise
-        r = Run("k", "L", "production", REPORTED_NONE, date(2026, 8, 1),
-                date(2026, 8, 30), 30, "30 periods reported empty.")
+        r = Run("k", "L", "production", REPORTED_NONE, D(-12),
+                D(17), 30, "30 periods reported empty.")
         shown, _ = summarise([r])
         assert r in shown and not r.actionable
 
@@ -739,7 +748,7 @@ class TestOnlyTheRoleThatOwesItMayClaim:
         """⚠️ PROMPTED, NOT REMEMBERED. A quiet day produces no reason to open
         anything; role-filtering is what lets this power a prompt where the
         person already is, rather than a page they had to choose to visit."""
-        rows = review(db, TENANT, "manufacturing", date(2026, 8, 13),
+        rows = review(db, TENANT, "manufacturing", D(),
                       role_slug="production")
         assert rows, "role filter returned nothing"
         assert {r.role_slug for r in rows} == {"production"}

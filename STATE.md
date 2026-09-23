@@ -18,11 +18,14 @@ different worlds.
                96 intelligence_prompts, migration head r185
     denominator 445 test files — the whole tests/ tree, not a manifest
 
-        51 failed | 6575 passed | 0 errors | 12 skipped (+5 xfailed)
+        42 failed | 6582 passed | 0 errors | 12 skipped (+7 xfailed)
 
-    (54 before the three tax/zip fixes below; that reading and this one differ by
-    exactly those three, confirmed by test-id diff. Preflight AND postflight both
-    HTTP 200 — a preflight alone cannot show the server stayed up.)
+    Progression, each step confirmed by test-id diff with zero new failures:
+        54  first reading against a correctly-seeded database
+        51  after the three tax/zip fixtures learned to clear first
+        42  after the nine date-anchored completeness tests were fixed
+    Preflight AND postflight both HTTP 200 — a preflight alone cannot show the
+    server stayed up for the run.
 
 ⚠️ **THE GATE IS ±1** on
 `test_vertical_inventory::TestRecentEdits::test_editor_email_resolved_when_user_present`
@@ -43,7 +46,28 @@ break-tested.
 runs there and no test suite runs against staging's database, so it has been in
 this state since those seeds were written. **OPEN.**
 
-**10 MEASURED, NOT FIXED — needs a ruling.** `test_completeness_review` (×8),
+**9 of those 10 FIXED 2026-09-23** — ruled: fix the tests, not the seed. The
+production bound is correct; the tests encoded when the database happened to be
+seeded. They now derive their anchor from the tenant's `created_at` via
+`tests/_completeness_anchor.py`, self-sizing so it survives a cadence whose window
+grows. Break-tested: restoring the literal fails exactly those eight, plus the
+ninth in `test_completeness_declining` which passed `as_of=None`.
+
+⚠️ `TestPeriodArithmetic` is deliberately NOT anchored — it asserts CALENDAR
+arithmetic (a Monday week-start, a real month, a leap February). The first
+blanket transform broke all three; they are absolute on purpose now, with the
+reason recorded at the block.
+
+**1 OF THE 10 REMAINS, AND IT IS NOT A SEED PROBLEM.**
+`test_integrations_area::TestDependents::test_derived_from_the_spine` asserts
+`automation_count >= 2` — "Pull + Cash Receipts (min)". But
+`_INTEGRATIONS["plaid"]["automation_names"]` lists exactly one name,
+`Pull Bank Transactions`. `Cash Receipts Matching` exists in `moc_task_catalog`
+and is referenced by jobs; the Plaid config simply does not claim it. Either the
+config is short a name or the test's expectation is stale. **Needs a ruling —
+changing production config to satisfy a test is not a session's call.**
+
+Superseded, kept for the record — the original framing of all ten: `test_completeness_review` (×8),
 `test_completeness_declining` (×1), `test_integrations_area` (×1). Cause measured,
 not inferred: `review()` bounds itself by `_tenant_start`
 (`app/services/completeness/review.py:216`) — *"Nothing is owed for a period

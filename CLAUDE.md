@@ -3200,6 +3200,38 @@ database state its seed path does not reproduce.
 create that state or clear it, never assume it.** Assuming empty is the form that
 hides, because empty is what a half-seeded database looks like.
 
+#### A test that clears a table is declaring a dependency, and the set is enumerable
+
+The entry above says a test can pass because data is missing. **This is how to
+find those tests without waiting for a reseed to expose them.**
+
+A test that truncates or deletes from a table before asserting is stating, in
+code, that its result depends on that table's contents. That statement is
+greppable. So the interesting set is not the tests that clear — it is the tests
+that use the same table and DO NOT.
+
+    for each table T:
+        clearers = tests that DELETE FROM T / TRUNCATE T
+        users    = tests that reference T at all
+        SUSPECTS = users - clearers        # ← the list worth reading
+
+⚠️ **THIS IS TRIAGE, NOT A DEFECT LIST.** Measured 2026-09-23 across the backend
+suite: 80 files clear at least one of 127 tables. For `tax_jurisdictions` it gave
+5 clearers, 7 users, and 2 suspects — both checked, both clean. The value is the
+ratio: it turned "which of 445 test files silently depend on database state" into
+two files to read, and it would have named the three that were actually broken
+before the reseed found them.
+
+The signal degrades as the table gets more common — `companies` shows 43 clearers
+against 103 users, which is noise, because almost everything touches it. **Narrow,
+domain-specific tables are where this works**: `tax_jurisdictions`,
+`moc_task_catalog` (24/33, 9 suspects), `workflow_templates` (18/24, 6).
+
+The deeper point is that an established pattern followed by SOME files is a map
+of what the others forgot. It costs one query and it was available the whole
+time — three files already cleared `tax_jurisdictions` before seeding their own
+while two did not, and nobody ran the comparison.
+
 #### A container test that cannot succeed looks exactly like one that ran
 
 `x in container` is valid Python whatever the container holds. Against a list of

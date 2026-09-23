@@ -32,6 +32,7 @@ from app.models.user import User
 from app.services.completeness.declinations import live_for_tenant
 
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
+from tests._completeness_anchor import D
 
 TENANT = TESTCO_ID
 KEY = "production_log_daily"
@@ -379,7 +380,11 @@ class TestTheTenantWideReadsAreGatedAndTheSelfScopedOnesAreNot:
     def test_my_obligations_returns_only_what_that_person_owes(self, db):
         """WHY it can stay open: it cannot show you anyone else's obligations, so
         there is nothing for a gate to protect."""
-        got = api.my_obligations(None, _user(db, "production"), db)
+        # ⚠️ `as_of` DERIVED, NOT None. `None` means today, and `review()` owes
+        # nothing for a period before the tenant began — so on any database
+        # seeded recently this returns zero rows and the assertion below fails
+        # for a reason unrelated to what it tests. See tests/_completeness_anchor.
+        got = api.my_obligations(D(), _user(db, "production"), db)
         assert got["rows"], "fixture assumption broke — production owes something"
         assert {r["role_slug"] for r in got["rows"]} == {"production"}
 

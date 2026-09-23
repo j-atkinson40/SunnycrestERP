@@ -50,6 +50,16 @@ TIERS: dict[str, tuple[str, str]] = {
         "passed when the previous container still served); an ops tool, "
         "not a boot seed",
     ),
+    "seed_accounting_demo": (
+        "manual",
+        "an --tenant-slug-REQUIRED ops tool, not a boot seed. It is the only "
+        "seed with argparse `required=True`, so the runner's bare invocation "
+        "exits rc=2 on EVERY canonical run — including every staging deploy, "
+        "where it has been a standing WARN in the boot log. Same shape as "
+        "seed_reconciliation_test below: giving it a default tenant would seed "
+        "demo accounting data into that tenant on every deploy, which is the "
+        "harm that entry exists to prevent. Run it explicitly with a slug.",
+    ),
     "seed_reconciliation_test": (
         "manual",
         "W-2 reconciliation matcher test substrate — an on-demand ops tool, "
