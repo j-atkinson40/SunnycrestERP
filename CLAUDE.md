@@ -2662,6 +2662,48 @@ would have caught a TCC block, a symlink, a wrong path, and a typo identically.
 named the wrong thing; here the query is right and the instrument cannot reach what
 it names. Both return a confident nothing.
 
+#### A fix that converts a loud failure into a quiet one is a regression
+
+Even when it is more correct. **Correctness and detectability are separate
+properties, and a change can trade the second for the first without anyone
+pricing the trade.**
+
+The preceding entries are about instruments that cannot speak. This is about
+choosing to silence one — usually while improving the thing it was watching, which
+is why it does not feel like a loss.
+
+THE TEST, before replacing anything that currently fails:
+
+    "How does this fail now, how would it fail after, and which failure
+     would I find out about?"
+
+If the current version fails loudly and the replacement fails silently, the
+replacement needs a NEW detector as part of the same change, not as a follow-up.
+
+Discovered 2026-09-23. The hand-written company purge order was incomplete — 72
+tables against 327 that reference a purged table without cascade. It failed the
+way an incomplete list fails: `purge_test_companies` raised a `ForeignKeyViolation`
+on the first table it could not reach, deleted nothing, and rolled back. **That
+crash is the entire reason the incompleteness was ever discovered**; it had been
+wrong for an unknown period and nothing else had reported it.
+
+The obvious improvement is to generate the order from `pg_constraint`, which is
+strictly more complete and cannot go stale when a table is added. It is also
+strictly quieter: a generated order COMPLETES. When it is wrong it does not raise,
+it deletes — and the measurement on that database said the rows it would reach are
+85% legitimate data and 5.6% the litter being targeted.
+
+⚠️ So the more correct option was the more dangerous one, and only because of how
+it fails. The resolution was not to reject it but to split it: **generate the
+ORDER, never the SCOPE.** The ordering is a pure function of the catalogue and is
+machine-checkable — assert no cycles survive the declared nulling, assert every
+blocking table is emitted. The predicate deciding WHICH ROWS is not checkable that
+way and stays hand-written and read by a person.
+
+The general form: when replacing a loud failure, find the part of the new design
+that can still be verified mechanically and keep the rest under human review.
+Silence is acceptable only where something else is watching.
+
 #### Causation — proximity is not necessity
 
 Sibling to false absence above. That entry tests a query; this tests an
