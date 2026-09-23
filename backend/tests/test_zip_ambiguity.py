@@ -79,8 +79,23 @@ def db():
 
 @pytest.fixture
 def twelve(db):
-    """Sunnycrest's twelve counties, configured on the canonical tenant."""
+    """Sunnycrest's twelve counties, configured on the canonical tenant.
+
+    ⚠️ CLEARS THE TENANT'S EXISTING JURISDICTIONS FIRST. `seed_staging` creates a
+    `Cayuga` jurisdiction for this tenant (seed_staging.py:1107). Without this
+    delete the resolver sees both it and the lowercase `cayuga` added below, and
+    these tests were green ONLY on a database where the seed had not run — which
+    is what an under-seeded local dev database looked like until 2026-09-23. The
+    same clear-first shape is already used by test_quote_unification_u1,
+    test_quote_unification_u23 and test_tax_filing_arc.
+    """
+    from sqlalchemy import text as _sql
+
     from app.models.tax import TaxJurisdiction, TaxRate
+
+    db.execute(_sql("DELETE FROM tax_jurisdictions WHERE tenant_id = :c"), {"c": TENANT})
+    db.execute(_sql("DELETE FROM tax_rates WHERE tenant_id = :c"), {"c": TENANT})
+    db.flush()
 
     for county, pct in SUNNYCREST.items():
         rate = TaxRate(id=str(uuid.uuid4()), tenant_id=TENANT,

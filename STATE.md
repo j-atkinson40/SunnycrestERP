@@ -2,6 +2,75 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 📏 BACKEND GATE BASELINE — THE FIRST READING AGAINST A CORRECTLY-SEEDED DB (2026-09-23)
+
+⚠️ **THIS SUPERSEDES THE 2026-09-22 BASELINE BELOW, WHICH IS NOT COMPARABLE.** That
+reading was taken against a database missing most of its seed data — 3 of 65
+`seed_*.py` had ever been run locally, so the Intelligence prompt catalogue was
+absent and `tax_jurisdictions` was empty. Its 43 failures were partly an artifact
+of what was missing. Do not treat 54 as a regression against 43; they measure
+different worlds.
+
+    measured   2026-09-23, after `bash backend/scripts/seed_dev.sh`
+    command    .venv/bin/python -m pytest tests/ -q --no-header -p no:randomly
+    server     RUNNING — uvicorn app.main:app on localhost:8000, /api/health 200
+    database   bridgeable_dev, dropped and re-seeded 2026-09-23; 5 tenants,
+               96 intelligence_prompts, migration head r185
+    denominator 445 test files — the whole tests/ tree, not a manifest
+
+        51 failed | 6575 passed | 0 errors | 12 skipped (+5 xfailed)
+
+    (54 before the three tax/zip fixes below; that reading and this one differ by
+    exactly those three, confirmed by test-id diff. Preflight AND postflight both
+    HTTP 200 — a preflight alone cannot show the server stayed up.)
+
+⚠️ **THE GATE IS ±1** on
+`test_vertical_inventory::TestRecentEdits::test_editor_email_resolved_when_user_present`
+— order-coupled via `_RECENT_EDITS_LIMIT = 10` over a 7-day window. A one-test
+difference between runs is not necessarily signal.
+
+### The 13 that separate 54 from the old 43 — open findings, not regressions
+
+**3 MEASURED, and FIXED 2026-09-23.** `test_zip_ambiguity` (×2) and
+`test_tax_readiness` (×1) were green only because `tax_jurisdictions` was EMPTY.
+`seed_staging:1107` creates a `Cayuga` jurisdiction; the fixtures added their own
+lowercase `cayuga` without clearing first, so the seeded row shadowed it. Fixed by
+adopting the clear-first pattern already used in `test_quote_unification_u1`,
+`_u23` and `test_tax_filing_arc`. Verified with the conflicting row present and
+break-tested.
+
+⚠️ **THE SAME CONFLICT EXISTS ON STAGING AND IS UNOBSERVED.** The full seed set
+runs there and no test suite runs against staging's database, so it has been in
+this state since those seeds were written. **OPEN.**
+
+**10 MEASURED, NOT FIXED — needs a ruling.** `test_completeness_review` (×8),
+`test_completeness_declining` (×1), `test_integrations_area` (×1). Cause measured,
+not inferred: `review()` bounds itself by `_tenant_start`
+(`app/services/completeness/review.py:216`) — *"Nothing is owed for a period
+before that"* — and the tests hard-code `date(2026, 8, 13)` against a testco that
+a fresh seed creates today. All four expectations return `not_yet_due`.
+
+The production behaviour is correct and documented. Two legitimate fixes:
+derive the tests' `as_of` from the tenant's `created_at`, or backdate the seeded
+tenant. The second also fixes any other test with the same assumption and changes
+seed data globally. **Not chosen — James's call.**
+
+### Also open, from the same pass
+
+- **`seed_accounting_demo` fails on every canonical run, including every staging
+  deploy.** It is the ONLY seed with `required=True` (`--tenant-slug`) and exits
+  rc=2 on the runner's bare invocation. It matches `seed_reconciliation_test`,
+  which is declared `manual` in `seed_manifest.py` for exactly that reason.
+  Recommendation: declare it `manual`. Giving it a default tenant would seed demo
+  accounting data on every deploy — the harm that entry warns about.
+- **The runner's exit code carries no information about seeds.** `set +e`,
+  `exit 0` at `run_canonical_seeds.sh:176`, locked decision #2 — deliberate, to
+  avoid deploy-lockout. Every seed can fail without changing it. Verify seeding by
+  produced state, never by exit status.
+- **The company leak is unchanged.** 5 → 435 across one run. 354 company
+  construction sites across 283 files; only 52 purge. The company tripwire cannot
+  go absolute until companies carry a run id.
+
 ## 📏 BACKEND GATE BASELINE — ALL FOUR NUMBERS (2026-09-22)
 
 ⚠️ **Recorded with the conditions it was measured under, because the number that

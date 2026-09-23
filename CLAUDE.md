@@ -1993,6 +1993,39 @@ principle.
 Same move as per-row over per-type, and the same family as the constructed
 count: a bound taken from the view rather than from the data.
 
+### Documentation can be accurate and still be the wrong answer
+
+**When documentation answers a narrower question than the one being asked, its
+SCOPE LINE is the thing to read first.** Not its content — its boundary.
+
+This is not staleness and it is not error. Every sentence can be true, current,
+and carefully written, and the document can still mislead, because the reader
+arrives with a question the author was not answering.
+
+⚠️ **AND IT SURVIVES VERIFICATION.** Checking a stale claim finds it false;
+checking these finds them true, which is why "I read the documentation" feels
+like sufficient diligence and is not.
+
+Discovered 2026-09-23. `scripts/run_canonical_seeds.sh` records the full 65-seed
+sequence and states its own boundary in a locked decision: *"Local dev unaffected
+— this runs from railway-start.sh only."* CLAUDE.md §7's local-dev section named
+two seed scripts, accurately describing what those two do. A session read §7, ran
+what it named, got a database that looked right, and dropped the real one on that
+basis — 47 tests then failed for want of a prompt catalogue built by a family of
+seeds neither document mentioned, because neither document was answering "what
+constitutes a complete database".
+
+Nothing was false. "Three seeds" was what the local-dev documentation said.
+
+**The repair is a pointer, not a correction** — §7 now names `seed_dev.sh` first
+and says plainly that the two scripts below it are insufficient. A document that
+is correct within its scope needs its scope made visible, not its content
+rewritten.
+
+⚠️ Kin to *a gate reports its denominator*: there the number needed its
+population; here the instruction needs its boundary. Both are true statements
+that mislead by omitting what they do not cover.
+
 ### A dispatch that forbids an outcome while ordering its cause is a defect in the dispatch
 
 **When an instruction and a prohibition collide, STOP AND REPORT rather than
@@ -3132,6 +3165,40 @@ So prefer guards that emit a quantity over guards that emit pass/fail, and put
 two of them on anything whose ordering you have reasoned about rather than
 watched. A single green instrument agreeing with what you expected is the weakest
 evidence in this file.
+
+#### A test can pass because data is MISSING
+
+The green-without-evidence list covers checks that pass for the wrong reason. This
+is narrower and nastier: the check is fine, the assertion is fine, and the
+**database is missing a row that would have contradicted it.**
+
+⚠️ **A SUITE THAT HAS ONLY EVER RUN AGAINST ONE DATABASE STATE CANNOT DISTINGUISH
+A PASSING TEST FROM AN UNTESTED ONE.** Both are green. The distinction only appears
+when the state changes, and if the state never changes it never appears at all.
+
+Discovered 2026-09-23. Three tests were green for months against a local database
+where `tax_jurisdictions` held zero rows. `seed_staging` creates a `Cayuga`
+jurisdiction for that tenant; the tests insert their own lowercase `cayuga` and
+assert the resolver returns it. With the seeded row present the resolver returns
+the seeded one and all three go red. They had never tested what their names
+claim — they tested a resolver with exactly one candidate.
+
+The tell was available and nobody had reason to look: three sibling files
+(`test_quote_unification_u1`, `_u23`, `test_tax_filing_arc`) all `DELETE FROM
+tax_jurisdictions WHERE tenant_id = :c` before seeding their own. **An established
+clear-first pattern that some files follow and others do not is a map of which
+tests are state-dependent.**
+
+⚠️ **AND THE SAME GAP HID TEN MORE, IN THE OPPOSITE DIRECTION.** On the same
+reseed, ten tests went red because the database now LACKED accumulated state:
+`review()` bounds itself by `_tenant_start` — *"Nothing is owed for a period
+before that"* — and the tests hard-code `date(2026, 8, 13)` against a tenant that
+a fresh seed creates today. Both directions are the same defect: a test coupled to
+database state its seed path does not reproduce.
+
+**The practical check: a test that depends on a table's contents should either
+create that state or clear it, never assume it.** Assuming empty is the form that
+hides, because empty is what a half-seeded database looks like.
 
 #### A container test that cannot succeed looks exactly like one that ran
 

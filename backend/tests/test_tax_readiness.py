@@ -59,7 +59,17 @@ def db():
 def jurisdictions(db):
     """Cayuga 8%, Ontario 7.5%, Seneca 8%, Yates 8% — enough for 14456 to be
     genuinely rate-ambiguous and 13021 to resolve."""
+    from sqlalchemy import text as _sql
+
     from app.models.tax import TaxJurisdiction, TaxRate
+
+    # ⚠️ Clear the tenant's seeded jurisdictions first — see the same
+    # note in tests/test_zip_ambiguity.py::twelve. seed_staging creates a
+    # `Cayuga` row for this tenant; without this these tests pass only
+    # against a database where the seed never ran.
+    db.execute(_sql("DELETE FROM tax_jurisdictions WHERE tenant_id = :c"), {"c": TENANT})
+    db.execute(_sql("DELETE FROM tax_rates WHERE tenant_id = :c"), {"c": TENANT})
+    db.flush()
 
     for county, pct in (("cayuga", "8"), ("ontario", "7.5"),
                         ("seneca", "8"), ("yates", "8")):
