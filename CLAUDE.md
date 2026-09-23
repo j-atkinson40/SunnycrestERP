@@ -3200,10 +3200,45 @@ database state its seed path does not reproduce.
 create that state or clear it, never assume it.** Assuming empty is the form that
 hides, because empty is what a half-seeded database looks like.
 
-#### A test that clears a table is declaring a dependency, and the set is enumerable
+#### A mechanical transform cannot tell a meaningful value from a fact
 
-The entry above says a test can pass because data is missing. **This is how to
-find those tests without waiting for a reseed to expose them.**
+**When a transform touches every value of one type, its exceptions are found by
+RUNNING it, not by inspecting it.**
+
+A regex sees `date(2026, 8, 13)`. It cannot see that one occurrence is "the day
+this scenario happens" and another is "a Thursday, whose week begins on the
+Monday two days earlier". Both are dates. Only the second is a claim about the
+calendar, and only the second breaks when you move it.
+
+⚠️ **AND REVIEWING THE DIFF DOES NOT FIND THEM** — every hunk reads correctly,
+which is the same property as *a diff is a per-hunk instrument*. The failures are
+the instrument. Run the suite, read what broke, and classify the exceptions from
+the wreckage.
+
+Discovered 2026-09-23. A transform re-expressed 91 date literals as offsets from a
+tenant-derived anchor, fixing eight tests and breaking three others that assert
+calendar arithmetic: a weekly period starting on a Monday, a monthly period
+spanning a real month, February in a leap year. Anchored, they landed on an
+arbitrary weekday and month.
+
+**The repair is to make the exception explicit where the next transform will read
+it** — those four parametrize rows now carry absolute dates and a comment saying
+they are absolute ON PURPOSE and why. An exception that is merely correct gets
+re-broken; an exception that explains itself does not.
+
+Generalises past dates. Any sweep over values of one type — ids, paths, slugs,
+currency, timezones — will contain some that encode a fact about the world rather
+than a choice the code made.
+
+#### A test that clears a table is declaring a dependency — a triage filter, not a map
+
+The entry above says a test can pass because data is missing. **This narrows the
+search for those tests. It does not identify them.**
+
+⚠️ **NAMED CAREFULLY, BECAUSE THE FIRST NAME OVERSOLD IT.** This was written up as
+"a map of which tests are state-dependent". It is not a map — it produced two
+candidates and both were clean. It is a filter whose value is a RATIO, and a
+filter that finds nothing is still working.
 
 A test that truncates or deletes from a table before asserting is stating, in
 code, that its result depends on that table's contents. That statement is
@@ -3495,6 +3530,21 @@ not things it must know:
 occurrences. The failure is invisible because the result is well-formed and plausible.
 Always report the unit measured. Distinct from enumeration-defeated-by-presentation,
 where members are hidden rather than the unit being wrong.
+
+⚠️ **THIRD INSTANCE 2026-09-23, AND IT SUGGESTS A BETTER REMEDY THAN "REPORT THE
+UNIT".** A file was reported as holding 74 date literals; a transform over it
+replaced **91**. Reporting the unit would not have helped — "74 lines" is true and
+still the wrong input to a decision about 91 values.
+
+**VERIFY A COUNT BY WHAT THE OPERATION ACTUALLY PROCESSED, NOT BY A SEPARATE COUNT
+OF WHAT YOU EXPECT IT TO.** The transform printed `replaced 91`, and that is the
+only number that was ever evidence. A count taken by a different instrument than
+the one doing the work is a prediction, and predictions are what this file is
+about.
+
+Same shape as `$?` after a pipeline and as `find` over a symlink: an instrument
+answering a question ADJACENT to the one asked. Three of them in one session, all
+mine, none caught by care.
 
 **Fixtures modeled on the implementation.** A test that passes because it shares the
 code's wrong assumption. Fixtures must be derived from the specification or from real

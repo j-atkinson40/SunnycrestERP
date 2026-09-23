@@ -30,7 +30,19 @@ _INTEGRATIONS = {
         "requires": "A bank login (through Plaid's secure widget — "
                     "Bridgeable never sees your credentials) and an "
                     "administrator to connect it.",
-        "automation_names": ("Pull Bank Transactions",),
+        #: ⚠️ EVERY automation this integration actually feeds, not just the one
+        #: that carries its name. `Cash Receipts Matching` runs on the bank
+        #: transactions Plaid pulls — it is live, active and referenced by jobs
+        #: in `moc_task_catalog`, and the config simply did not claim it. The
+        #: panel therefore under-reported what a Plaid outage would take down,
+        #: which is the one question this derivation exists to answer.
+        #:
+        #: Ruled 2026-09-23 after confirming the blast radius: `_INTEGRATIONS`
+        #: is consumed ONLY by `integration_summary` and
+        #: `build_integration_ponder`, both reached from `@router.get`
+        #: endpoints. It drives display. Adding a name here turns nothing on —
+        #: no scheduling, no permission, no execution reads this dict.
+        "automation_names": ("Pull Bank Transactions", "Cash Receipts Matching"),
     },
 }
 

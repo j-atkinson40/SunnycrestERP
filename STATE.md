@@ -18,12 +18,16 @@ different worlds.
                96 intelligence_prompts, migration head r185
     denominator 445 test files — the whole tests/ tree, not a manifest
 
-        42 failed | 6582 passed | 0 errors | 12 skipped (+7 xfailed)
+        41 failed | 6583 passed | 0 errors | 12 skipped (+7 xfailed)
 
     Progression, each step confirmed by test-id diff with zero new failures:
         54  first reading against a correctly-seeded database
         51  after the three tax/zip fixtures learned to clear first
         42  after the nine date-anchored completeness tests were fixed
+        41  after the Plaid config stopped under-declaring its automations
+
+    ⚠️ ALL 13 of the differences between 54 and the old 43 are now accounted
+    for individually. 41 is the residue that predates this arc.
     Preflight AND postflight both HTTP 200 — a preflight alone cannot show the
     server stayed up for the run.
 
@@ -58,7 +62,16 @@ arithmetic (a Monday week-start, a real month, a leap February). The first
 blanket transform broke all three; they are absolute on purpose now, with the
 reason recorded at the block.
 
-**1 OF THE 10 REMAINS, AND IT IS NOT A SEED PROBLEM.**
+**THE LAST OF THE 10 — FIXED 2026-09-23. The config was short, not the test.**
+`_INTEGRATIONS["plaid"]["automation_names"]` named one automation; `Cash Receipts
+Matching` is active, is in `moc_task_catalog`, and is referenced by jobs. The
+panel therefore under-reported what a Plaid outage would take down — the one
+question that derivation exists to answer.
+
+⚠️ Blast radius confirmed BEFORE the edit: `_INTEGRATIONS` is read only by
+`integration_summary` and `build_integration_ponder`, both behind `@router.get`.
+No scheduling, permission, execution or commit path reads it. Adding a name turns
+nothing on. Original framing follows:
 `test_integrations_area::TestDependents::test_derived_from_the_spine` asserts
 `automation_count >= 2` — "Pull + Cash Receipts (min)". But
 `_INTEGRATIONS["plaid"]["automation_names"]` lists exactly one name,
