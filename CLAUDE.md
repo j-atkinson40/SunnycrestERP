@@ -2382,6 +2382,18 @@ the case produce the artifact once, with the guard intact, and only then break i
 Same shape as *a container test that cannot succeed* one section down — a result that
 could only ever have come out one way, presented as though it discriminated.
 
+⚠️ **STATED GENERALLY: A CONTROL THAT CANNOT DISTINGUISH ITSELF FROM A FAILURE IS NOT A
+CONTROL.** Both instances produced the SAME reading as a broken harness. The rolled-back
+rows gave "guard green" while the guard was disabled. And on 2026-09-23 a sink-based
+observation of the e2e production fail-open reported `received 0` for the FIXED run and for
+the deliberately-BROKEN one — because the script could not resolve its import and neither
+run happened at all.
+
+So a control needs a value it can only produce by working. "Zero violations", "nothing
+received", "no output", "no errors" are all satisfied by an instrument that never ran.
+**Require the control to be NON-ZERO, and read that number before the result it is vouching
+for.**
+
 #### The counterweight
 
 This list is not an argument that guards are untrustworthy. The session-scoped COMPANY
@@ -3199,6 +3211,49 @@ database state its seed path does not reproduce.
 **The practical check: a test that depends on a table's contents should either
 create that state or clear it, never assume it.** Assuming empty is the form that
 hides, because empty is what a half-seeded database looks like.
+
+#### A client-side error can be evidence the server already did the thing
+
+**An error reported by the caller does not mean the request failed. It means the
+CALLER failed — which can happen entirely after the server committed.**
+
+The asymmetry is the whole point: a request travels, the server acts, and only
+then does a response have to come back and satisfy the client. Anything that
+breaks on the return leg produces a failure message for work that has already
+happened.
+
+⚠️ **AND THE REPORTED FAILURE IS THE ONLY THING ANYONE READS.** A spec logs
+"blocked", a run goes red, and the natural conclusion — nothing got through — is
+exactly backwards. Nobody goes looking for the side effect of a call they were
+told failed.
+
+Discovered 2026-09-23, and it is not obtainable by reading the code. While
+break-testing the e2e production fail-open against a local sink, the broken run
+reported the page's `fetch` as **BLOCKED** while the sink's log showed
+`REACHED POST /api/v1/write`. CORS had rejected the **response**; the POST had
+already landed. Had that run happened against the real production host, a person
+reading the spec output would have concluded nothing was written.
+
+The shapes that do this, all on the return leg:
+
+    CORS rejection          request sent, response refused by the browser
+    client timeout          server still working, or finished
+    connection reset        after the write, before the reply
+    response-parse failure  200 received, body unparseable
+    client-side abort       fires after the bytes are on the wire
+
+THE TEST, whenever a failed call could have had a side effect:
+
+    "Did this fail on the way OUT, or on the way BACK?"
+
+If the answer is "back", or unknown, **go and look at the server's state** — the
+error is not evidence either way. This is why the verification for that fix
+observed a SINK rather than the client: the only trustworthy account of whether a
+request arrived comes from the thing it arrived at.
+
+⚠️ Corollary for retries: a retry after a return-leg failure is a SECOND write.
+The client cannot tell the difference between "never arrived" and "arrived and
+the reply was lost", and by default it guesses the first.
 
 #### A failure can be the only thing preventing a worse one
 
