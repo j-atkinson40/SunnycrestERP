@@ -27,6 +27,30 @@ vertical_default catalog — no per-tenant map seeding needed (and none
 wanted: his map content is his to author).
 
 Idempotent; exit 0 either way. Refuses on ENVIRONMENT=production.
+
+⚠️ THIS SEED IS NOT THE HAZARD. A DROP-AND-RESEED AROUND IT IS.
+
+On 2026-09-23 the local dev database was dropped and rebuilt from these seeds, to
+clear 430 accumulated test companies. That was safe FOR ONE REASON AND ONLY ONE:
+dev's sunnycrest was empty — 4 agent_anomalies and 1 user, nothing authored.
+
+On STAGING the tenant was created BY HAND, and this file is ensure-only and
+preserve-aware precisely because of that. The same drop-and-reseed there destroys
+the operator's authored work, and this seed cannot restore it: it creates the
+company shell, the admin user, the role catalog and missing module rows, and
+deliberately nothing else. The content is his.
+
+So the reasoning does not transfer with the habit. Before rebuilding any database
+that holds this tenant, measure what sunnycrest actually contains there; do not
+infer it from the fact that it worked on dev. See
+docs/investigations/2026-09-23-dev-db-reseed.md.
+
+⚠️ AND THIS SEED PRINTS A GENERATED PASSWORD WHEN IT CREATES THE ADMIN USER, which
+is what "printed ONCE" above means. Under CLAUDE.md §7 no credential value may
+transit a session in either direction, so an agent running this against a fresh
+database MUST NOT surface its stdout — redirect it to a file the operator reads,
+or set SUNNYCREST_ADMIN_TEMP_PASSWORD beforehand so nothing is generated. This was
+violated on 2026-09-23 and the password required rotation.
 """
 from __future__ import annotations
 

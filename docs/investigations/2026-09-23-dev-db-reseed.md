@@ -164,3 +164,91 @@ A pre-clean dump already exists, outside `/tmp` deliberately:
 
 The scratch database was dropped after measurement; recreating it is the 12.4 seconds
 above.
+
+---
+
+# ADDENDUM — the reseed was applied, and my enumeration of "the seeds" was wrong
+
+**2026-09-23, after the reseed.** Two STOP lines fired. Recorded here because the
+investigation above is what authorised the action, and its central claim was incomplete.
+
+## What happened
+
+The reseed executed cleanly against dev: 492 tables, head `r185`, five tenants,
+`platform_users` 0, app starts without the platform-admin env vars. Every STOP check in
+the apply step passed.
+
+Then the suite ran:
+
+```
+before reseed   43 failed | 6585 passed | 0 errors
+after  reseed   90 failed | 6534 passed | 1 error
+                +47 new failures, 3 gone
+```
+
+The 47 cluster in `test_briefing_vertical_terminology.py` and
+`test_ai_question_prompt_terminology.py`. Cause:
+
+```
+intelligence_prompts            3 rows
+intelligence_prompt_versions    3 rows
+```
+
+The seeded Intelligence prompt catalogue is not there.
+
+## The defect: I enumerated "the seeds" as three
+
+**There are 65 `scripts/seed_*.py`. I ran 3.**
+
+`seed_staging`, `seed_fh_demo` and `seed_sunnycrest` build the *tenants*. The prompt
+catalogue is built by a separate family — `seed_intelligence_phase2c`,
+`seed_intelligence_followup2`, `seed_intelligence_phase6`, `seed_triage_phase8b`,
+`seed_triage_phase8d1`, and others — none of which I ran or listed.
+
+⚠️ **AND THE SCRATCH-DATABASE TEST INHERITED THE SAME OMISSION.** §1 above reports the
+scratch DB as evidence that a reseed produces a working database. It ran the same three
+seeds, so it demonstrated that those three succeed — not that the result is a working dev
+database. The measurement was sound and the conclusion drawn from it was wider than the
+measurement.
+
+⚠️ `seed_dispatch_demo.py` is *named in CLAUDE.md §7* as part of testco's setup and I
+missed it too, while reading that same section for the tenant list.
+
+One command — `ls scripts/seed_*.py` — would have shown 65. This is the third enumeration
+failure in this session and the first with a consequence: the `alembic/versions/` miss
+produced a wrong provenance claim, this one dropped a database.
+
+## STOP lines fired
+
+1. **Row delta non-zero.** Companies went `5 → 435` across one suite run. The reseed
+   reset the resident count; it did nothing about the per-run leak, exactly as predicted
+   before the run — 231 of 283 company-creating files do not purge, and companies carry no
+   run id. `platform_users` held at `0 → 0` with `deleted 81` reported, so Part 1's
+   mechanism works.
+2. **The company tripwire consequently cannot go absolute.** It fired on `5 → 435`, which
+   is now a *true and useful* report rather than the silence it gave on a littered
+   database. Part 3 is not attempted: an absolute condition would fail every run for a
+   cause nobody can act on until companies carry a run id.
+
+## Current state of dev
+
+```
+companies 435   users 442   platform_users 0
+intelligence_prompts 3   products 26
+```
+
+Neither the old state nor a correct new one.
+
+## Two ways out, not chosen
+
+- **Restore.** `~/bridgeable-restore/bridgeable_dev-pre-reseed-20260923-074706.dump`
+  (4.8 MB, 3,694 objects, verified readable) returns the pre-reseed database including the
+  four platform accounts and the full prompt catalogue.
+- **Forward-fix.** Run the missing seeds. ⚠️ **Which of the 65 constitute a correct dev
+  seed is not documented anywhere I found**, and that absence is the underlying defect —
+  it is why three looked like a complete answer. Establishing that list is the real
+  deliverable, and it should be written down as an ordered, runnable sequence rather than
+  reconstructed by the next session.
+
+⚠️ Whichever is taken, the post-reseed baseline in this addendum is **not** a floor. It
+was measured against an incompletely seeded database.

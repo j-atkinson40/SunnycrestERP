@@ -2406,6 +2406,28 @@ Discovered September 2026, Sales & Orders census: five distinct false absences
 across four namespaces, none caught by review, each caught only by re-deriving
 with a different method.
 
+⚠️ **AN ENUMERATION THAT OMITS A WHOLE CLASS IS NOT AN ENUMERATION, AND IN THIS
+REPO "WHAT CREATES THIS ROW" HAS THREE HOMES:**
+
+    app/                  runtime code
+    scripts/              seeds and one-off tooling
+    alembic/versions/     ⚠️ MIGRATIONS WRITE DATA, NOT ONLY SCHEMA
+
+The third is the one that gets dropped, because "migration" reads as a schema
+word. It is not: migrations insert rows, backfill columns, and seed reference
+data, and a row they created has no author anywhere else.
+
+Measured 2026-09-23. The `default` company was reported — in a committed
+investigation — as having "no established provenance; nothing in `app/` or
+`scripts/` is recorded as creating it", and was kept on that basis. It is created
+by `alembic/versions/a2f3b4c5d6e7_add_multi_tenancy.py:48`. A scratch database
+had it after `alembic upgrade head`, before any seed ran.
+
+⚠️ **THE CONCLUSION WAS RIGHT AND THE METHOD WAS WRONG, WHICH IS THE DANGEROUS
+COMBINATION** — see *Conclusion survives, derivation falsified*. Keeping the row
+was correct. Nothing downstream would ever have contradicted the reason given for
+keeping it, and the next reader inherits "this row has no creator" as a fact.
+
 #### The constructed count — magnitude is a claim too
 
 Sibling of the entry above, at the same mechanism and a different target. That
@@ -2937,6 +2959,25 @@ are the same defect at different layers, one bounding the query and one bounding
 its rendering. Both produce a well-formed number that announces nothing.
 Measured 2026-09-04: both occurred within one session, by the same author,
 while that author was actively holding this entry.
+
+⚠️ **AND `$?` AFTER A PIPELINE IS THE LAST COMMAND'S STATUS, NOT THE ONE YOU
+MEANT.** The same defect at the status layer rather than the content layer:
+`some_command | tail -4` exits with `tail`'s status, and `tail` succeeds at
+displaying the output of a crash.
+
+**Check the status of the command you mean — or, better, verify by the state it
+produced rather than by any exit code.**
+
+Measured 2026-09-23. Four seed scripts were run as
+`/usr/bin/time -p env … | tail -N` and their `$?` captured. All four reported `0`
+and would have reported `0` had every one of them crashed. The reseed was
+reported instead on what the database contained afterwards — 492 tables, the
+expected migration head, five named tenants — which a failed run cannot produce.
+
+The state check is strictly better than fixing the pipe, because it does not
+depend on getting the plumbing right a second time. `PIPESTATUS`/`set -o
+pipefail` work and are worth using, but they are another thing to remember; a
+row count is evidence.
 
 #### A guard whose protection is supplied by a layer beneath it
 
