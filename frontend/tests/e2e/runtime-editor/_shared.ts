@@ -92,7 +92,7 @@ export async function setupPage(page: Page): Promise<void> {
       const response = await route.fetch({ url })
       await route.fulfill({ response })
     } catch {
-      await route.continue()
+      await route.abort()  // FAIL CLOSED — never fall through to production. See tests/e2e/PROD_INTERCEPT.md
     }
   })
 }

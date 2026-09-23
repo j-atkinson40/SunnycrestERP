@@ -20,7 +20,42 @@ different worlds.
 
         40 failed | 6584 passed | 0 errors | 12 skipped (+7 xfailed)
 
-⚠️ **CI IS GREEN IN SIMULATION — THE FIRST TIME SINCE 2026-05-11.** Step 1 of the
+⚠️ **THE E2E SUITE COULD WRITE TO PRODUCTION, AND THE DEAD CREDENTIAL WAS WHAT
+STOPPED IT. CLOSED 2026-09-23.** Every Playwright spec rewrites
+`api.getbridgeable.com` -> staging and, on rewrite failure, did
+`catch { route.continue() }` — forwarding the ORIGINAL request, host, method and
+body, to production. 42 of 42 sites; zero used `route.abort()`. The catch fires
+when staging is unreachable, which had been true for 13 days.
+
+It never fired only because every run died at login on a 401 before any page
+loaded. **Provisioning the credential without this fix would have made it live.**
+
+Observed against a local sink standing in for production, so the break test could
+not send the request it was checking for:
+
+    fail-closed (abort)     sink received 0
+    fail-open   (continue)  sink received 1:  REACHED POST /api/v1/write
+
+⚠️ In the failing run the page reported the fetch as BLOCKED (CORS on the
+response) while the request had already landed — the page-level symptom does not
+indicate prevention.
+
+All 42 now abort. Guard: `frontend/src/lib/prod-intercept-fail-closed.test.ts`,
+an AST scan inside `npm test`, break-tested on two spellings. Rationale:
+`frontend/tests/e2e/PROD_INTERCEPT.md`.
+
+**`provision_ci_bot --ensure` is now safe to run.**
+
+⚠️ **CI IS GREEN — CONFIRMED ON THE REAL CHANNEL, 2026-09-23.** `bc216649`:
+Frontend CI success, Backend CI success. Playwright's deploy gate PASSED (zero
+timeouts); all 86 failures are the 401. First green since 2026-05-11.
+
+⚠️ **AND THE "STUCK FRONTEND NEEDS RAILWAY" ITEM WAS A REPO DEFECT.**
+`npm run build` is `tsc -b && vite build`, so a TS error meant vite never ran and
+`version.json` froze. Frontend stuck at `8fd6fbd` (09-10 08:47); the TS error
+landed in `0b157e5f` (09-10 13:27). Fixed in the push. Never needed the dashboard.
+
+⚠️ **CI WAS GREEN IN SIMULATION FIRST — THE FIRST TIME SINCE 2026-05-11.** Step 1 of the
 sequenced plan is done. CI's own manifest (`tests/ci_gate.txt`, 169 files) run
 against CI's own database shape (migrations only, NO seeds):
 

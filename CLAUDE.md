@@ -3200,6 +3200,71 @@ database state its seed path does not reproduce.
 create that state or clear it, never assume it.** Assuming empty is the form that
 hides, because empty is what a half-seeded database looks like.
 
+#### A failure can be the only thing preventing a worse one
+
+**Before repairing a broken thing, ask what its being broken has been
+preventing.**
+
+A failure that stops a process early stops everything downstream of it, including
+whatever harm the downstream would have done. Fixing it does not just restore the
+intended behaviour — it releases every consequence that was queued behind the
+stall, and nobody reviews those, because they were never visible.
+
+Discovered 2026-09-23. The Playwright e2e suite rewrites every
+`api.getbridgeable.com` call to staging, and on rewrite failure did
+`catch { route.continue() }` — forwarding the ORIGINAL request, original host,
+method and body, to **production**. 42 of 42 sites; none used `route.abort()`.
+The catch fires when staging is unreachable, which had been true for 13 days.
+
+It had not fired because since 2026-05-11 every run died at the login step on a
+401 from a dead CI credential — before any page loaded, so before any intercepted
+traffic existed. **The broken credential was the safety mechanism.** Provisioning
+it, the obvious repair, would have made a live test suite start writing to
+production on the first run where staging was down.
+
+⚠️ **THE TELL IS A REPAIR THAT UNBLOCKS RATHER THAN CORRECTS.** Fixing a
+credential, re-enabling a disabled job, raising a timeout, removing a guard that
+"fails for an unrelated reason" — each restores flow through a path nobody has
+inspected while it was blocked. Ask what runs next, and whether anyone has looked
+at it recently.
+
+The ordering that follows: **close the downstream hazard first, or in the same
+change.** Never "fix the blocker, then audit what it unblocked" — between those
+two steps the system is running.
+
+#### Two failures that look unrelated can be one
+
+**Symptoms separate in the telling are not evidence of separate causes**,
+especially when they surface in different systems and are reported by different
+channels.
+
+Discovered 2026-09-23. Two items sat on a blocker list for 13 days as independent
+problems:
+
+    "the staging frontend is stuck at 8fd6fbd — needs the Railway dashboard"
+    "the e2e gate is red on a dead CI credential"
+
+One cause. `npm run build` is `tsc -b && vite build`; a TypeScript error meant
+`tsc` failed, so `vite build` never ran, so the `closeBundle` plugin never emitted
+`version.json`, so the deploy gate correctly refused to run e2e against a stale
+bundle and reported a **deploy timeout**. A single unused-import-class error at
+13:27 froze frontend deploys 4h40m after the last good build.
+
+Fixing three TypeScript errors resolved the "dashboard" item outright. It had
+never been an infrastructure problem.
+
+⚠️ **THE DISTANCE BETWEEN CAUSE AND SYMPTOM IS WHAT HIDES IT** — a type error in a
+test file, surfacing as a deployment that will not advance, reported by a gate in
+a third system. Each hop is legitimate; the chain is invisible from either end.
+
+THE TEST, when two failures share a start date:
+
+    "Did these begin at the same time? And does anything connect them
+     through a build, a deploy, or a gate?"
+
+Same-day onset is cheap to check with `git log` and is the strongest available
+hint that a list of problems is shorter than it looks.
+
 #### A rule that is read and violated is placed wrong, not worded wrong
 
 **When the same shape recurs, ask where the reader was looking at the moment of

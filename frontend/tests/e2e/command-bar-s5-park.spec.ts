@@ -28,7 +28,7 @@ async function setupPage(page: Page) {
     try {
       await route.fulfill({ response: await route.fetch({ url }) })
     } catch {
-      await route.continue()
+      await route.abort()  // FAIL CLOSED — never fall through to production. See tests/e2e/PROD_INTERCEPT.md
     }
   })
   await page.goto("/", { waitUntil: "commit" })
