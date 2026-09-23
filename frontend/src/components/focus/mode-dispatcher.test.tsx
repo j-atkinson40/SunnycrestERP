@@ -166,7 +166,13 @@ describe("ModeDispatcher — coreComponent override (Phase B Session 4 Phase 4.2
 vi.mock("@/contexts/auth-context", () => ({
   useAuthOptional: () => mockAuth,
 }))
-const mockAuth = { hasPermission: () => false, isAdmin: false }
+// ⚠️ TYPED TO THE REAL CONTRACT, NOT INFERRED FROM THE FIRST VALUE.
+// `auth-context` declares `hasPermission: (key: string) => boolean`. Left
+// un-annotated, TS infers `() => boolean` from the initial stub and then
+// rejects every later assignment that actually inspects the key — which is
+// every CONTROL case below. The mock must declare the shape it stands in for.
+const mockAuth: { hasPermission: (key: string) => boolean; isAdmin: boolean } =
+  { hasPermission: () => false, isAdmin: false }
 
 describe("ModeDispatcher — read-only", () => {
   afterEach(() => {

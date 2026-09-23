@@ -23,8 +23,24 @@ from app.services.fragments.synthesis import (
 from app.services.fragments.types import ReferencedItem
 from tests._tenant import TESTCO_ID, make_canonical_tenant_fixture
 
+# ⚠️ `vendor_bill_lines` REMOVED — it has neither `company_id` nor `tenant_id`,
+# so `drop_company` refuses it by assertion ("naming it in child_tables would
+# silently leave rows behind"). That assertion is correct; naming it here was the
+# bug. The teardown raised, the company was never dropped, and the session
+# COMPANY LITTER tripwire fired — 1 company in, 2 out.
+#
+# ⚠️ AND IT ONLY EVER FAILED ON A DATABASE WITHOUT SEEDS. Where `testco` already
+# exists the fixture takes its `if not created: return` branch and never reaches
+# `drop_company`, so the bad entry is unreachable and invisible. That is the
+# conditional-teardown shape `tests/_tenant.py` warns about in its own comment,
+# biting the file that imports it: CI has no seeds, so CI is the only place this
+# could surface — and it did, on every run.
+#
+# Nothing is lost by removing it. `db_session` rolls back and the vendor-bill
+# test only flushes, so no bill or line ever persists; `vendor_bills` is kept
+# because it IS company-scoped and costs a harmless no-op DELETE.
 canonical_tenant = make_canonical_tenant_fixture(
-    child_tables=("agent_anomalies", "agent_jobs", "vendor_bill_lines", "vendor_bills")
+    child_tables=("agent_anomalies", "agent_jobs", "vendor_bills")
 )
 
 

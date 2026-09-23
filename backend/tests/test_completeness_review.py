@@ -55,7 +55,7 @@ canonical_tenant = make_canonical_tenant_fixture(
 )
 
 
-from tests._completeness_anchor import D, _anchor  # noqa: F401
+from tests._completeness_anchor import D, R, _anchor  # noqa: F401
 
 
 
@@ -123,10 +123,10 @@ class TestMissingIsReachable:
     fails. That is the point — the quiet version was the broken one."""
 
     def test_the_window_reaches_past_the_due_date(self):
-        window = ex.periods_in_window("daily", D())
+        window = ex.periods_in_window("daily", R())
         oldest_end = window[0][1]
         exp = ex.VERTICAL["manufacturing"][0]
-        assert ex.due_on(exp, oldest_end) < D(), (
+        assert ex.due_on(exp, oldest_end) < R(), (
             "no period in the window is past due — `missing` cannot fire"
         )
 
@@ -139,7 +139,7 @@ class TestMissingIsReachable:
     def test_the_current_period_alone_can_never_be_missing(self):
         """Stated as its own test so the reason is legible: this is WHY the
         window exists, not an incidental property of it."""
-        today = D()
+        today = R()
         exp = ex.VERTICAL["manufacturing"][0]
         _, end = ex.period_for(exp.cadence, today)
         assert today <= ex.due_on(exp, end)
@@ -240,9 +240,9 @@ class TestDecliningIsNotDeletion:
         from app.services.completeness.collapse import Run, summarise
 
         declined = Run("d", "Deliveries", "driver", DECLINED,
-                       D(), D(), 1, "Declined 1 May: no fleet")
+                       R(), R(), 1, "Declined 1 May: no fleet")
         current = Run("b", "Bank feed", "admin", NOT_YET_DUE,
-                      D(), D(), 1, "Due 14 Aug.")
+                      R(), R(), 1, "Due 14 Aug.")
         shown, closing = summarise([declined, current])
 
         assert declined in shown, "the declination was folded into the quiet count"
@@ -264,13 +264,18 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
     """
 
     KEY = "production_log_daily"
-    AS_OF = D()
+    # ⚠️ NO `AS_OF = D()` CLASS ATTRIBUTE. A class body is evaluated at COLLECTION
+    # time, before any fixture has run — so the anchor would query a tenant that
+    # does not exist yet and abort the whole file with a collection error. That is
+    # strictly worse than the failures it replaces: a collection error takes every
+    # other test in the file with it. Call `D()` inside the methods, where the
+    # canonical-tenant fixture has already ensured the row.
 
     def _decline(self, db, on, revoked=None):
         _decline(db, self.KEY, on, revoked=revoked)
 
     def _rows(self, db):
-        return [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
+        return [r for r in review(db, TENANT, "manufacturing", D())
                 if r.key == self.KEY]
 
     def test_periods_before_the_declination_keep_their_verdict(self, db):
@@ -306,19 +311,19 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
         )
 
     @pytest.mark.parametrize("period_start,expected", [
-        (D(-6), False),   # before it
-        (D(-5), True),    # the day it begins — inclusive
-        (D(-3), True),   # inside
-        (D(-2), False),  # the day it is revoked — EXCLUSIVE
-        (D(-1), False),  # after
+        (R(-6), False),   # before it
+        (R(-5), True),    # the day it begins — inclusive
+        (R(-3), True),   # inside
+        (R(-2), False),  # the day it is revoked — EXCLUSIVE
+        (R(-1), False),  # after
     ])
     def test_the_range_is_half_open(self, period_start, expected):
-        d = ex.Declination("k", "r", D(-5), "R. Okafor", "admin",
-                           revoked_on=D(-2))
+        d = ex.Declination("k", "r", R(-5), "R. Okafor", "admin",
+                           revoked_on=R(-2))
         assert (ex.declination_covering([d], period_start) is not None) is expected
 
     def test_an_unrevoked_declination_has_no_end(self):
-        d = ex.Declination("k", "r", D(-5), "R. Okafor", "admin")
+        d = ex.Declination("k", "r", R(-5), "R. Okafor", "admin")
         assert ex.declination_covering([d], date(2099, 1, 1)) is not None
 
     def test_overlapping_episodes_resolve_by_a_stated_rule(self):
@@ -326,10 +331,10 @@ class TestADeclinationGovernsOnlyThePeriodsItCovers:
         episode. If they ever exist the answer must be a RULE (most recent
         statement wins), not whichever the list happened to hold first, which is
         the ordering-decides-the-outcome defect this repo has shipped twice."""
-        old = ex.Declination("k", "old", D(-224), "R. Okafor", "admin")
-        new = ex.Declination("k", "new", D(-12), "R. Okafor", "admin")
-        assert ex.declination_covering([old, new], D(-8)).reason == "new"
-        assert ex.declination_covering([new, old], D(-8)).reason == "new"
+        old = ex.Declination("k", "old", R(-224), "R. Okafor", "admin")
+        new = ex.Declination("k", "new", R(-12), "R. Okafor", "admin")
+        assert ex.declination_covering([old, new], R(-8)).reason == "new"
+        assert ex.declination_covering([new, old], R(-8)).reason == "new"
 
 
 class TestEvidenceAgainstADeclinationIsAFinding:
@@ -341,7 +346,12 @@ class TestEvidenceAgainstADeclinationIsAFinding:
     looked for."""
 
     KEY = "production_log_daily"
-    AS_OF = D()
+    # ⚠️ NO `AS_OF = D()` CLASS ATTRIBUTE. A class body is evaluated at COLLECTION
+    # time, before any fixture has run — so the anchor would query a tenant that
+    # does not exist yet and abort the whole file with a collection error. That is
+    # strictly worse than the failures it replaces: a collection error takes every
+    # other test in the file with it. Call `D()` inside the methods, where the
+    # canonical-tenant fixture has already ensured the row.
 
     def _decline(self, db):
         _decline(db, self.KEY, D(-104))
@@ -351,7 +361,7 @@ class TestEvidenceAgainstADeclinationIsAFinding:
         result, so `None` on every declined row is what "we never looked" looks
         like — which is exactly what shipped."""
         self._decline(db)
-        rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
+        rows = [r for r in review(db, TENANT, "manufacturing", D())
                 if r.key == self.KEY]
         assert rows and all(r.verdict == DECLINED for r in rows)
         assert all(r.observed is not None for r in rows), (
@@ -371,7 +381,7 @@ class TestEvidenceAgainstADeclinationIsAFinding:
 
         self._decline(db)
         monkeypatch.setattr(rv, "_probe", lambda *a, **k: 3)
-        rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
+        rows = [r for r in review(db, TENANT, "manufacturing", D())
                 if r.key == self.KEY]
 
         assert rows and all(r.verdict == CONTRADICTED for r in rows)
@@ -394,7 +404,7 @@ class TestEvidenceAgainstADeclinationIsAFinding:
 
         self._decline(db)
         monkeypatch.setattr(rv, "_probe", lambda *a, **k: 3)
-        runs = [r for r in collapse(review(db, TENANT, "manufacturing", self.AS_OF))
+        runs = [r for r in collapse(review(db, TENANT, "manufacturing", D()))
                 if r.key == self.KEY]
 
         assert len(runs) == 1 and runs[0].periods > 1, "nothing collapsed"
@@ -415,7 +425,7 @@ class TestEvidenceAgainstADeclinationIsAFinding:
 
         self._decline(db)
         monkeypatch.setattr(rv, "_probe", lambda *a, **k: None)
-        rows = [r for r in review(db, TENANT, "manufacturing", self.AS_OF)
+        rows = [r for r in review(db, TENANT, "manufacturing", D())
                 if r.key == self.KEY]
 
         assert rows and all(r.verdict == DECLINED for r in rows), (
@@ -501,13 +511,19 @@ class TestTheDeclinationTable:
         _decline(db, self.KEY, D(-224), revoked=D(-165))
         _decline(db, self.KEY, D(-104))  # must not raise
 
-    @pytest.mark.parametrize("revoked_on,revoked_at_set", [
-        (D(-73), False),   # effective date, never recorded
-        (None, True),                # recorded, no effective date
+    # ⚠️ PARAMETRIZED OVER AN OFFSET, NOT A DATE. A decorator's argument list is
+    # evaluated at COLLECTION time, before any fixture has run, so `D()` here
+    # would query a tenant that may not exist and abort the whole file. The
+    # offset is inert; the test resolves it once the `db` fixture has ensured
+    # the tenant. See tests/_completeness_anchor.py.
+    @pytest.mark.parametrize("revoked_offset,revoked_at_set", [
+        (-73, False),   # effective date, never recorded
+        (None, True),   # recorded, no effective date
     ])
     def test_the_two_revocation_columns_cannot_disagree(
-        self, db, revoked_on, revoked_at_set
+        self, db, revoked_offset, revoked_at_set
     ):
+        revoked_on = D(revoked_offset) if revoked_offset is not None else None
         """⚠️ THEY COULD, AND IT WAS MEASURED BEFORE THE CHECK EXISTED.
 
         `revoked_on` is the effective date; `revoked_at` is when the revocation
@@ -593,7 +609,7 @@ class TestNothingIsOwedBeforeTheTenantExisted:
     def test_the_window_stops_at_the_start_date(self):
         """Back-filling red to the beginning of the calendar is how a report
         teaches its reader to ignore it."""
-        as_of = D()
+        as_of = R()
         started = as_of - timedelta(days=2)
         window = ex.periods_in_window("daily", as_of, not_before=started)
         assert all(e >= started for _, e in window), (
@@ -601,7 +617,7 @@ class TestNothingIsOwedBeforeTheTenantExisted:
         )
 
     def test_no_bound_means_the_full_lookback(self):
-        assert len(ex.periods_in_window("daily", D())) == (
+        assert len(ex.periods_in_window("daily", R())) == (
             ex.LOOKBACK["daily"] + 1
         )
 
@@ -623,7 +639,7 @@ class TestPeriodArithmetic:
 
     def test_windows_do_not_overlap_or_gap(self):
         """A duplicated period double-counts a gap; a skipped one hides it."""
-        w = ex.periods_in_window("daily", D())
+        w = ex.periods_in_window("daily", R())
         for (_, prev_end), (nxt_start, _) in zip(w, w[1:]):
             assert nxt_start == prev_end + timedelta(days=1)
 

@@ -3200,6 +3200,82 @@ database state its seed path does not reproduce.
 create that state or clear it, never assume it.** Assuming empty is the form that
 hides, because empty is what a half-seeded database looks like.
 
+#### A rule that is read and violated is placed wrong, not worded wrong
+
+**When the same shape recurs, ask where the reader was looking at the moment of
+use.** Not whether the rule is clear — clarity is not the failing variable when the
+person who broke it could recite it.
+
+Measured across one session, 2026-09-23. Four instances of a single shape, an
+instrument answering a question ADJACENT to the one asked:
+
+    $?  after a pipeline      reported `tail`'s status, not the command's
+    find over a symlink       reported on the link, not the directory
+    grep -c                   counted lines, not occurrences
+    a delta tripwire          measured the run's change, not the table
+
+Three were already named in this file. Every one was committed by an author who
+had read the entry naming it, some of them within the hour. Re-wording would have
+changed nothing.
+
+⚠️ **THE COMMON PROPERTY IS THAT NONE OF THEM WAS THE TOPIC.** Each happened
+inside a command written to answer some other question — how many seeds ran, is
+this file present, how many literals are there. The rule lives in a document
+consulted when instruments are the subject; the violation happens when they are
+the plumbing.
+
+So the repair is placement and shape, not prose:
+
+- Prefer a rule that **removes the method** over one that asks for care — see
+  *Removal before recognition*. `find -L`, `PIPESTATUS`, and a transform printing
+  its own count are all removals.
+- Where removal is impossible, attach the warning to the **point of use** rather
+  than the canon section: a docstring on the function, a comment at the call, a
+  note in the seeder that prints a password. A reader mid-task reads what is in
+  front of them.
+- Treat recurrence as evidence about the rule's LOCATION. A fourth instance is
+  not a fourth lapse of attention; it is the same lapse, and attention is not the
+  variable to adjust.
+
+⚠️ Kin to *the filing test* and to the persistent-storage rule that failed for
+four months in DECISIONS while being correct the whole time. This entry is
+itself in the document it is describing, and is therefore subject to its own
+finding.
+
+#### A manifest maintained by adding what passes converges on covering only what passes
+
+**A gate whose scope is chosen by its own results is measuring its scope, not the
+tree.**
+
+Measured 2026-09-23. `tests/ci_gate.txt` selects 169 of 446 test files — 38%. Of
+the 41 failures in a full-tree run, spread across 25 distinct files:
+
+    in the manifest:   0
+    outside it:       25
+
+Every failing file is outside the gate, and the gate reported 2,333 green.
+
+⚠️ **THAT IS NOT A COINCIDENCE ABOUT WHICH TESTS ARE BROKEN. IT IS WHAT THE
+SELECTION PROCESS PRODUCES.** A file is added when it passes; a file that fails is
+left out until someone fixes it, and nobody does, because the gate is green. The
+manifest and the green reinforce each other, and neither movement appears in the
+number — which is *a gate reports its denominator* with a mechanism attached.
+
+THE TEST, for any curated manifest:
+
+    "Of the things currently broken, how many are in it?"
+
+If the answer is none, the manifest is not a sample of the tree. A random 38%
+would contain roughly 38% of the failures; zero is a signal about how membership
+is decided, not about luck.
+
+⚠️ **THE FIX IS NOT SIMPLY TO WIDEN IT** — widening surfaces every known failure
+at once, into a channel that may already be red for something else. The order is
+the same one that applies to any loud-to-quiet change: make the channel
+trustworthy, then widen, then read what breaks with each item accounted for
+individually. Until then, every report of the gate states its denominator so the
+gap stays visible.
+
 #### Before concluding a gate would have caught something, check its environment can contain it
 
 **A gate cannot see a defect that cannot exist in its environment.** Not "did not

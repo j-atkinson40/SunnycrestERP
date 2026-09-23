@@ -76,3 +76,28 @@ def D(offset: int = 0) -> date:
     """A scenario date, `offset` days from the anchor."""
     return _anchor() + timedelta(days=offset)
 
+
+
+#: ⚠️ THE PURE COUNTERPART, AND THE DISTINCTION IS LOAD-BEARING.
+#: `D()` reads the database. That is correct inside a test that takes the `db`
+#: fixture, where the canonical tenant already exists — and FATAL anywhere
+#: evaluated at COLLECTION time, because no fixture has run and the tenant may
+#: not exist at all. A class body and a `@pytest.mark.parametrize` argument list
+#: are both collection-time.
+#:
+#: Measured 2026-09-23 against a CI-shaped database (migrations only, no seeds):
+#: two class attributes and one parametrize list called `D()` during collection
+#: and aborted the WHOLE FILE with a collection error — strictly worse than the
+#: nine failures the anchor was added to fix, because a collection error takes
+#: every other test in the file with it. Same shape as the module-level raise in
+#: `tests/_live_server.py`, which is recorded there for the same reason.
+#:
+#: So: tests that touch the database use `D()`. Tests that assert pure
+#: date arithmetic — "is this range half-open", "does the window overlap" — use
+#: `R()`, which needs nothing and cannot fail at import.
+REF: date = date(2026, 8, 13)
+
+
+def R(offset: int = 0) -> date:
+    """A fixed reference date, `offset` days from REF. No database."""
+    return REF + timedelta(days=offset)

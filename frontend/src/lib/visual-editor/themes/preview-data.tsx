@@ -29,7 +29,6 @@
 
 import {
   AlertTriangle,
-  Bell,
   BookOpen,
   Building2,
   Calendar,

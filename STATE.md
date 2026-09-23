@@ -18,13 +18,43 @@ different worlds.
                96 intelligence_prompts, migration head r185
     denominator 445 test files — the whole tests/ tree, not a manifest
 
-        41 failed | 6583 passed | 0 errors | 12 skipped (+7 xfailed)
+        40 failed | 6584 passed | 0 errors | 12 skipped (+7 xfailed)
+
+⚠️ **CI IS GREEN IN SIMULATION — THE FIRST TIME SINCE 2026-05-11.** Step 1 of the
+sequenced plan is done. CI's own manifest (`tests/ci_gate.txt`, 169 files) run
+against CI's own database shape (migrations only, NO seeds):
+
+        2333 passed | 28 skipped | 0 failed | 0 errors | exit 0
+        companies 1 -> 1 (no leak)
+
+2333 and 28 match CI's reported counts exactly, which is what makes the
+simulation evidence rather than encouragement. Frontend: `npx tsc -b` 0 errors,
+4433 tests across 337 files, clean build.
+
+**What was fixed, both unambiguous:**
+- Frontend, 3 errors. Two mocks declared `{ hasPermission: () => false }`, which
+  TS infers as `() => boolean` — narrower than the real
+  `(key: string) => boolean`, so every CONTROL case that inspects the key was
+  rejected. One unused `Bell` import. ⚠️ `tsc --noEmit` reports ZERO of these;
+  only `tsc -b`, which CI runs, sees them.
+- Backend, 1 error. `test_note_session2_fragments` named `vendor_bill_lines` in
+  `child_tables`; it has neither `company_id` nor `tenant_id`, so `drop_company`
+  refuses it by assertion, the teardown raised, the company was never dropped and
+  the COMPANY LITTER tripwire fired. ⚠️ It could only ever fail WITHOUT seeds —
+  where `testco` exists the fixture returns before reaching `drop_company`, so
+  the bad entry was unreachable locally and CI was the only place it surfaced.
 
     Progression, each step confirmed by test-id diff with zero new failures:
         54  first reading against a correctly-seeded database
         51  after the three tax/zip fixtures learned to clear first
         42  after the nine date-anchored completeness tests were fixed
         41  after the Plaid config stopped under-declaring its automations
+        40  after step 1 (one gone unattributed — see below)
+
+    ⚠️ The 41 -> 40 step is the ONE movement in this progression not attributed:
+    `test_plaid_b2::TestPreserveRider::test_cleanup_leaves_the_connection_standing`
+    went green and none of step 1's changes plausibly reach it. Recorded as
+    order-coupled rather than claimed as a fix.
 
     ⚠️ ALL 13 of the differences between 54 and the old 43 are now accounted
     for individually. 41 is the residue that predates this arc.
