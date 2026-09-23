@@ -83,10 +83,27 @@ export PATH="$(dirname "$PY"):${PATH}"
   echo "=== alembic upgrade head ==="
   alembic upgrade head
   echo "=== fail-loud seeds (railway-start.sh order) ==="
-  "$PY" -m scripts.seed_staging --idempotent
-  "$PY" -m scripts.seed_fh_demo --apply --idempotent
-  "$PY" -m scripts.seed_dispatch_demo
-  "$PY" -m scripts.seed_edge_panel_inheritance
+  # THESE FOUR ARE THE FAIL-LOUD SET AND THIS SCRIPT USED TO IGNORE THAT.
+  # railway-start.sh aborts the deploy when one of them fails (R-1.6.3, after a
+  # TypeError in seed_fh_demo went unnoticed for six phases and shipped a
+  # half-seeded tenant behind a green deploy). Run from here they had no such
+  # discipline: there is no `set -e`, so a crash printed a traceback into the
+  # log and the next seed ran anyway. Two of the four are covered indirectly by
+  # the row floors below; seed_dispatch_demo and seed_edge_panel_inheritance are
+  # not covered by anything, so their failure was invisible.
+  failed_loud=""
+  for mod in "seed_staging --idempotent" \
+             "seed_fh_demo --apply --idempotent" \
+             "seed_dispatch_demo" \
+             "seed_edge_panel_inheritance"; do
+      # Word-splitting is intended here: each entry is a module plus its flags.
+      # shellcheck disable=SC2086
+      "$PY" -m scripts.${mod}
+      if [ $? -ne 0 ]; then
+          echo "!!! fail-loud seed FAILED: ${mod}"
+          failed_loud="${failed_loud} ${mod%% *}"
+      fi
+  done
   echo "=== canonical runner (everything else, minus the manual tier) ==="
   env -u RAILWAY_GIT_COMMIT_SHA bash scripts/run_canonical_seeds.sh
 } >"${LOG}" 2>&1
@@ -98,9 +115,17 @@ rc=$?
 echo "[seed-dev] --- verification (state, not exit codes) ---"
 "$PY" - <<'PYEOF'
 import os
+import sys
+
 from sqlalchemy import create_engine, text
+
 e = create_engine(os.environ["DATABASE_URL"])
-want = {"companies": 5, "intelligence_prompts": 50}
+# WARN tax_jurisdictions IS IN THIS FLOOR ON PURPOSE AND IS NOT A ROUND NUMBER.
+# It is the table whose emptiness made three tests pass for months (see CLAUDE.md
+# 11, "A test can pass because data is MISSING"). A floor of 1 is the difference
+# between "the seeds ran" and "the seeds produced the shape a deploy produces",
+# which is the entire reason this script is worth running in CI.
+want = {"companies": 5, "intelligence_prompts": 50, "tax_jurisdictions": 1}
 with e.connect() as c:
     head = c.execute(text("SELECT version_num FROM alembic_version")).scalar()
     print(f"  migration head      {head}")
@@ -108,12 +133,50 @@ with e.connect() as c:
     for t, floor in want.items():
         n = c.execute(text(f"SELECT count(*) FROM {t}")).scalar()
         flag = "ok" if n >= floor else "TOO LOW"
-        if n < floor: ok = False
+        if n < floor:
+            ok = False
         print(f"  {t:20}{n:>6}   (expect >= {floor})  {flag}")
     print("  RESULT:", "usable" if ok else "INCOMPLETE — read the log")
+sys.exit(0 if ok else 1)
 PYEOF
+verify_rc=$?   # read IMMEDIATELY - no pipe, no intervening command.
 
 echo "[seed-dev] canonical runner summary:"
 grep -E "^\[seed-runner\] Done" "${LOG}" | sed 's/^/  /'
 grep -E "^\[seed-runner\] WARN" "${LOG}" | sed 's/^/  /'
+
+# THE RUNNER'S OWN FAILURE COUNT, READ FROM ITS REPORT RATHER THAN ITS EXIT
+# CODE. run_canonical_seeds.sh exits 0 even when seeds fail - locked decision
+# #2, and correct for the staging boot path it was written for, where one bad
+# demo seed must not abort a deploy. That policy belongs to the runner. It does
+# not belong to a caller whose whole job is to answer "did seeding work", so the
+# count is re-read here instead of inherited.
+seed_failures=$(grep -oE "^\[seed-runner\] Done\. [0-9]+ seeds attempted, [0-9]+ succeeded, [0-9]+ failed" "${LOG}" | grep -oE "[0-9]+ failed" | grep -oE "^[0-9]+")
+: "${seed_failures:=unknown}"
+
 echo "[seed-dev] done (runner rc=${rc}); full output in ${LOG}"
+
+# EXIT NON-ZERO WHEN SEEDING DID NOT WORK. Until 2026-09-23 this script printed
+# "INCOMPLETE - read the log" and exited 0, so a broken database and a working
+# one were the same result to anything downstream: a human skimming the last
+# line, and any CI step running this. A script that reports a failure it does
+# not signal is the quiet half of the loud-to-quiet trade in CLAUDE.md 11.
+if [ "${seed_failures}" = "unknown" ]; then
+    echo "[seed-dev] FAILED: could not read the runner's Done line from ${LOG}." >&2
+    echo "[seed-dev] That means the runner did not finish - treat as a failure." >&2
+    exit 1
+fi
+if [ -n "${failed_loud# }" ]; then
+    echo "[seed-dev] FAILED: fail-loud seed(s):${failed_loud}" >&2
+    echo "[seed-dev] These abort a Railway deploy; they abort this too." >&2
+    exit 1
+fi
+if [ "${seed_failures}" -ne 0 ]; then
+    echo "[seed-dev] FAILED: ${seed_failures} seed(s) failed - see WARN lines above." >&2
+    exit 1
+fi
+if [ "${verify_rc}" -ne 0 ]; then
+    echo "[seed-dev] FAILED: the database did not reach the expected state." >&2
+    exit 1
+fi
+echo "[seed-dev] OK: ${seed_failures} seed failures, state verified."

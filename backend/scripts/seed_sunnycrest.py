@@ -49,8 +49,15 @@ docs/investigations/2026-09-23-dev-db-reseed.md.
 is what "printed ONCE" above means. Under CLAUDE.md §7 no credential value may
 transit a session in either direction, so an agent running this against a fresh
 database MUST NOT surface its stdout — redirect it to a file the operator reads,
-or set SUNNYCREST_ADMIN_TEMP_PASSWORD beforehand so nothing is generated. This was
-violated on 2026-09-23 and the password required rotation.
+or set SUNNYCREST_ADMIN_TEMP_PASSWORD beforehand. This was violated on
+2026-09-23 and the password required rotation.
+
+⚠️ AND THAT SECOND REMEDY DID NOT WORK UNTIL 2026-09-23. The sentence above used
+to end "so nothing is generated", which was true and beside the point: the print
+was unconditional, so setting the variable changed WHICH value was printed, not
+whether. Measured with it set, against a fresh database, the password line still
+appeared. It is now conditional — supplying a password suppresses the line, and
+that is what makes this file safe to run in CI.
 """
 from __future__ import annotations
 
@@ -118,9 +125,12 @@ def main() -> int:
                     "admin role missing after seed_default_roles — refusing "
                     "to create a role-less user"
                 )
-            temp_password = os.environ.get(
-                "SUNNYCREST_ADMIN_TEMP_PASSWORD"
-            ) or secrets.token_urlsafe(12)
+            # ⚠️ `supplied` IS KEPT SEPARATELY BECAUSE THE PRINT BELOW DEPENDS
+            # ON IT. Collapsing this back into a single `or` expression loses
+            # the only thing that distinguishes "we minted a secret the
+            # operator has no other copy of" from "the caller already has it".
+            supplied = os.environ.get("SUNNYCREST_ADMIN_TEMP_PASSWORD")
+            temp_password = supplied or secrets.token_urlsafe(12)
             admin = User(
                 id=str(uuid.uuid4()), company_id=company.id, email=ADMIN_EMAIL,
                 first_name="Jim", last_name="Atkinson",
@@ -130,9 +140,24 @@ def main() -> int:
             db.add(admin)
             db.commit()
             created.append("admin_user")
-            # Printed ONCE, at creation, never stored — rotate on first login.
-            print(f"[seed_sunnycrest] TEMP admin password for {ADMIN_EMAIL}: "
-                  f"{temp_password}  (rotate on first login)")
+            # ⚠️ PRINTED ONLY WHEN WE GENERATED IT. A generated password exists
+            # nowhere else, so printing it once is the only way the operator
+            # ever learns it. A SUPPLIED one the caller already holds, and
+            # echoing it just copies a secret into a log for no benefit.
+            #
+            # This condition was missing until 2026-09-23 and the docstring
+            # above promised it anyway — "set SUNNYCREST_ADMIN_TEMP_PASSWORD
+            # beforehand so nothing is generated" is true about generation and
+            # was false about printing, which is the half that matters. Measured
+            # with the variable set: the password line still appeared in the
+            # log. A stated remedy that does not work is worse than none,
+            # because it is the one a reader checks and stops at.
+            if supplied is None:
+                print(f"[seed_sunnycrest] TEMP admin password for {ADMIN_EMAIL}: "
+                      f"{temp_password}  (rotate on first login)")
+            else:
+                print(f"[seed_sunnycrest] admin {ADMIN_EMAIL} created with the "
+                      "supplied SUNNYCREST_ADMIN_TEMP_PASSWORD (not printed)")
 
         # Modules: create-if-missing ONLY. An existing row's enabled flag is
         # the operator's — a deliberately-disabled module must stay disabled.

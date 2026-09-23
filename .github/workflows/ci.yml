@@ -76,6 +76,71 @@ jobs:
       - name: Run Alembic migrations
         run: alembic upgrade head
 
+      # ⚠️ SEEDS, BETWEEN MIGRATIONS AND PYTEST. Until 2026-09-23 CI went
+      # migrations → pytest, so the suite tested against a database shape no
+      # deploy ever produces. The environment with the seeds (staging) had no
+      # suite; the environments with a suite (CI, local) had no seeds. That gap
+      # is why three tests passed for months because `tax_jurisdictions` was
+      # EMPTY — a defect no CI run could have seen, because the row could not
+      # exist in CI's world at all.
+      #
+      # Measured on a fresh database 2026-09-23: 90s, 51 seeds attempted, 51
+      # succeeded, 0 failed. (An earlier estimate of ~12s was taken on an
+      # already-seeded database and measured the idempotent path, which is not
+      # the path CI takes — CI's database is fresh every run.)
+      #
+      # `scripts/seed_dev.sh` is used as-is rather than forked into a CI
+      # variant, deliberately: a second copy of the sequence is a second thing
+      # to keep in step, and the whole point of this step is that CI and local
+      # dev build the SAME database. It already refuses a non-local
+      # DATABASE_URL, and CI's is localhost.
+      - name: Seed the canonical set
+        run: |
+          # ⚠️ EPHEMERAL, PER-RUN, AND NEVER PRINTED. seed_sunnycrest generates
+          # an admin password when it must CREATE that user, which on CI's
+          # always-fresh database is every run. Supplying one means it generates
+          # nothing and — since the 2026-09-23 fix — prints nothing either.
+          # Generated here so no credential value is ever stored, committed, or
+          # passed through a session; the database it belongs to is destroyed
+          # with the runner.
+          export SUNNYCREST_ADMIN_TEMP_PASSWORD="$(openssl rand -base64 24)"
+          export SEED_DEV_LOG="$RUNNER_TEMP/seed-dev.log"
+          bash scripts/seed_dev.sh || {
+            # ⚠️ FILTERED, NOT TRUSTED. The export above should mean no password
+            # line exists, and the next step asserts exactly that — but the next
+            # step does not run on this path, and this is the path that prints
+            # the log. Relying on the ordering would make the failure branch the
+            # one place the guarantee is unchecked. Dropping the line here costs
+            # nothing and removes the question.
+            echo "::group::seed log (credential lines filtered)"
+            grep -v "TEMP admin password for" "$SEED_DEV_LOG"
+            echo "::endgroup::"
+            exit 1
+          }
+
+      # ⚠️ THE LOG IS ONLY SAFE TO PRINT BECAUSE OF THE EXPORT ABOVE, SO CHECK
+      # THAT RATHER THAN TRUST IT. Two-sided on purpose: "no password line" is
+      # satisfied by a seed that never ran, so the suppression notice is read
+      # FIRST and must be present. That notice is printed on the same branch
+      # that creates the admin, so it cannot appear unless the credential path
+      # actually executed.
+      - name: Assert no credential reached the seed log
+        run: |
+          LOG="$RUNNER_TEMP/seed-dev.log"
+          notice=$(grep -c "SUNNYCREST_ADMIN_TEMP_PASSWORD (not printed)" "$LOG" || true)
+          leaked=$(grep -c "TEMP admin password for" "$LOG" || true)
+          echo "suppression notices: $notice   (positive control, must be >= 1)"
+          echo "password lines:      $leaked   (must be 0)"
+          if [ "$notice" -lt 1 ]; then
+            echo "CONTROL FAILED: the admin-creation branch did not run, so a" >&2
+            echo "zero password count proves nothing. Do not read it as clean." >&2
+            exit 1
+          fi
+          if [ "$leaked" -ne 0 ]; then
+            echo "A generated credential reached the CI log. Rotate it." >&2
+            exit 1
+          fi
+
       # Scoped test gate (S-5). Runs a CURATED set of tests known green
       # against the fresh migrated DB (see tests/ci_gate.txt for the list +
       # why it's scoped, not the whole suite). This is the first pytest that
