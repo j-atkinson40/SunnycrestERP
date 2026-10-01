@@ -84,10 +84,13 @@ jobs:
       # EMPTY — a defect no CI run could have seen, because the row could not
       # exist in CI's world at all.
       #
-      # Measured on a fresh database 2026-09-23: 90s, 51 seeds attempted, 51
-      # succeeded, 0 failed. (An earlier estimate of ~12s was taken on an
-      # already-seeded database and measured the idempotent path, which is not
-      # the path CI takes — CI's database is fresh every run.)
+      # ⚠️ COST, AND THE THIRD READING IS THE ONLY ONE TAKEN HERE. ~12s was the
+      # first estimate, measured on an already-seeded database — the idempotent
+      # path, not the path CI takes. 90s was the second, on a fresh local
+      # database. Both were simulations. Measured on this runner 2026-10-01,
+      # first real execution: **222s**, 51 seeds attempted, 51 succeeded, 0
+      # failed. The step is ~2.5x slower here than on a laptop, and the backend
+      # job went 12m54s -> 17m08s.
       #
       # `scripts/seed_dev.sh` is used as-is rather than forked into a CI
       # variant, deliberately: a second copy of the sequence is a second thing

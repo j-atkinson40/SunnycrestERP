@@ -6,8 +6,9 @@ environments with a suite have no seeds.*
 
 **Three headlines, and the second is the STOP.**
 
-1. **The step works and costs 90s**, not the ~12s predicted. 51 seeds attempted, 51
-   succeeded, 0 failed on a fresh database.
+1. **The step works.** 51 seeds attempted, 51 succeeded, 0 failed on a fresh database.
+   ⚠️ Cost was published here as 90s and **the real channel says 222s** — see §7. Both
+   earlier figures were laptop readings.
 2. ⚠️ **Two tests fail, one root, and it is NOT the `tax_jurisdictions` class that was
    expected.** On a seeded database, **eight of nine** declared automation refs on the
    accounting jobs resolve to nothing. Test-vs-seed is genuinely ambiguous. **Needs a
@@ -144,7 +145,9 @@ seed_dev.sh, end to end          90s and 96s on two fresh databases
   51 attempted, 51 succeeded, 0 failed, 13 skipped (both runs)
 ```
 
-Against the backend job's existing ~5-minute gate that is roughly a 30% increase.
+⚠️ **SUPERSEDED BY THE REAL CHANNEL 2026-10-01 — 222s, not 90s.** See §7. Both figures
+above are laptop readings; the step had never executed in a GitHub runner when they were
+taken, which §6 listed as an open item. It is ~2.5× slower there.
 
 ---
 
@@ -439,3 +442,79 @@ baseline's error count of 0 was never evidence of no leak.**
   not read.
 - Whether `seed_dev.sh` completes inside a GitHub runner. It has now been run four times
   on macOS against local Postgres. **The simulation is not the reading.**
+
+---
+
+## 7. The real channel, 2026-10-01 — first execution outside a laptop
+
+Pushed as `6c28748e` (in `2a205d0d`). CI run `36911452737`, job `110534820722`.
+
+```
+Seed Idempotency Gate              success
+Frontend CI                        success    tsc, vitest, build all green
+Backend CI                         FAILURE    on the two predicted tests, nothing else
+Playwright Staging                 failure    unprovisioned ci-bot, unrelated and expected
+```
+
+**Both new steps passed.**
+
+```
+✓ Seed the canonical set
+✓ Assert no credential reached the seed log
+X Run scoped test gate
+```
+
+### What the steps actually reported
+
+```
+[seed-dev] python : python                     ← setup-python's alias, as intended
+[seed-dev] --- verification (state, not exit codes) ---
+  migration head      r185_personalization_record_v2
+  companies                5   (expect >= 5)  ok
+  intelligence_prompts    96   (expect >= 50)  ok
+  tax_jurisdictions        1   (expect >= 1)  ok
+  RESULT: usable
+[seed-runner] Done. 51 seeds attempted, 51 succeeded, 0 failed, 13 skipped.
+[seed-dev] OK: 0 seed failures, state verified.
+
+suppression notices: 1   (positive control, must be >= 1)
+password lines:      0   (must be 0)
+```
+
+The control is non-zero, so the zero beside it is suppression rather than a seed that never
+ran. ⚠️ **`tax_jurisdictions = 1` in CI is the whole point of this step**: the row that was
+absent for months, present now in the environment the suite runs in.
+
+### The gate failed exactly as predicted, to the test id and the count
+
+```
+CI       2 failed, 2354 passed, 5 skipped, 218 warnings in 675.42s
+LOCAL    2 failed, 2354 passed, 5 skipped, 221 warnings
+```
+
+Same two ids, same three counts. That is the strongest available evidence that the
+CI-shaped local axis in §2 was genuinely CI-shaped, and it means §2's STOP is not a local
+artefact — **8 of 9 automation refs resolve to nothing in CI too, and the two tests that
+depend on them are now red on the real channel.** The ruling is what unblocks it; relaxing
+the tests would make this green and leave the gap.
+
+### ⚠️ The cost figure was wrong, and it was wrong in the direction that matters
+
+```
+~12s   first estimate   — idempotent path, not the path CI takes
+ 90s   second           — fresh LOCAL database
+222s   THE READING      — fresh database, in the runner, 2026-10-01
+```
+
+Backend CI went **12m54s → 17m08s**. The gate itself is unchanged (675s here vs 668s on the
+pre-seed run); the whole delta is seeding. §6 listed "whether `seed_dev.sh` completes inside
+a GitHub runner" as unestablished, and the honest reading of that is that **every timing
+figure published before today was a simulation**. The step works; it costs 2.5× what the
+laptop said.
+
+## 8. Still open after this run
+
+- §2's STOP, now reproduced in CI rather than only locally.
+- §4's `_BEGAN` recommendation. `tests/_tenant.py` is still unmodified.
+- Playwright remains blocked on `provision_ci_bot --ensure`, which is owner-gated and
+  unrelated to this change.
