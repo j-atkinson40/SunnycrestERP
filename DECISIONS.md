@@ -2146,15 +2146,15 @@ Derivation: `docs/investigations/2026-09-22-call-context-cards-surface-or-type.m
 
 ---
 
-## 2026-10-01 — The assistant is the primary way to act in the platform
+## 2026-10-01 — Opas is the primary way to act in the platform
 
-Every action in Bridgeable is reachable through the assistant. Navigation, pages and
-Focuses remain, but the assistant is the default entrance for anyone who does not already
-know where a thing lives. This extends the existing command bar ("just tell me what you
+Every action in Bridgeable is reachable through Opas. Navigation, pages and Focuses
+remain, but Opas is the default entrance for anyone who does not already know where a
+thing lives. This extends the existing command bar ("just tell me what you
 need") into the platform's main surface for Act.
 
-The assistant is invoked two ways: a keyboard shortcut (Cmd/Ctrl+K), which opens the bar
-centered, and a floating sphere, which opens the bar from its own position. The sphere can
+Opas is invoked two ways: a keyboard shortcut (Cmd/Ctrl+K), which opens the bar centered,
+and a floating sphere, which opens the bar from its own position. The sphere can
 be dragged anywhere and settles against the nearest viewport edge; position persists per
 user.
 
@@ -2167,11 +2167,14 @@ sphere returns, rendering any glow that accrued while the Focus was open.
 written without knowing that `Cmd+K` is deliberately dead inside a Focus —
 `CommandBarProvider.tsx:109-110` matches the chord and then returns early on `focusIsOpen`,
 and PA:827 gives the reason as a primitive boundary rather than an implementation
-convenience. A Focus exists to hold
-someone on one decision, and a glowing sphere in the corner is the distraction it was built
-to remove. Mutual exclusivity stands; it was not retired by inattention.
+convenience. A Focus exists to hold someone on one decision, and a glowing sphere in the
+corner is the distraction it was built to remove. Mutual exclusivity stands; it was not
+retired by inattention.
 
-The product name is undecided; this entry uses "the assistant."
+The assistant is named Opas, Finnish for guide. The name is pending a trademark check for
+software (Opas AI Inc. is the known neighbor; OPAS is also the Open Process Automation
+Standard in industrial control). Until that clears, the name is not used in anything
+public.
 
 ---
 
@@ -2188,9 +2191,9 @@ quiet). Priority when several apply: needs you, then working, then suggestion. N
 blinking, no badge. The glow clears the moment its reason does.
 
 Whatever the glow means is always the first row when the bar opens, and acting on that row
-is one click into the relevant Focus or record. The note is for reading the day; the
-assistant holds the single next action. The note and the assistant both render fragments
-emitted under the fragment contract, so they cannot disagree.
+is one click into the relevant Focus or record. The note is for reading the day; Opas holds
+the single next action. The note and Opas both render fragments emitted under the
+fragment contract, so they cannot disagree.
 
 ---
 
@@ -2214,9 +2217,9 @@ in personal settings. Personal settings layer over tenant defaults and cannot lo
 
 ## 2026-10-01 — Standing orders: user-authored instructions, compiled at authoring time
 
-Users create standing orders by describing them to the assistant ("every weekday at 4, show
-me today's orders by product"). The assistant confirms its interpretation; on confirmation
-the standing order is stored as a saved definition: a query (a saved view), a schedule, and
+Users create standing orders by describing them to Opas ("every weekday at 4, show me
+today's orders by product"). Opas confirms its interpretation; on confirmation the
+standing order is stored as a saved definition: a query (a saved view), a schedule, and
 recipients. Language-model interpretation happens only at authoring. Each run executes the
 saved definition, so results are deterministic and comparable run to run.
 
@@ -2234,7 +2237,7 @@ if the vocabulary needs to be fully clean.
 
 ---
 
-## 2026-10-01 — The assistant has a dedicated page
+## 2026-10-01 — Opas has a dedicated page
 
 Sections: standing orders (yours and team templates; pause, resume, delete, open last run);
 history (every request, its interpretation and what was done, searchable, with open-again /
@@ -2243,11 +2246,11 @@ accepted, declined, with undo and bring-back); attention settings (which fragmen
 glow, quiet hours, hide the sphere). Admins additionally see tenant deadlines, role-to-glow
 routing, templates and usage.
 
-Every action the assistant takes is written to the platform audit trail as performed by the
-assistant on behalf of the user. The history section is the user's view of that record,
-retained per tenant policy.
+Every action Opas takes is written to the platform audit trail as performed by Opas on
+behalf of the user. The history section is the user's view of that record, retained per
+tenant policy.
 
 Buildable as stated, verified 2026-10-01: `audit_logs.actor_type` is a plain `String(20)`
 with no CHECK constraint (added by `r42`, values `tenant_user` and `portal_user` today), so
 a third value needs no migration — and `actor_type` plus `user_id` already carries both
-halves of "performed by the assistant on behalf of the user" without a schema change.
+halves of "performed by Opas on behalf of the user" without a schema change.
