@@ -1615,7 +1615,7 @@ is sized at 5 sessions rather than the 4 the salvage-heavy reading predicted.
 
 ---
 
-## 2026-09-04 — A fragment declares five things; IDENTITY is the fifth
+## 2026-09-04 — A fragment declares five things; IDENTITY is the fifth [SUPERSEDED 2026-10-01 — a fragment declares six things; see "The sphere's glow renders fragments"]
 
 The fragment contract requires a fifth declaration:
 
@@ -2143,3 +2143,111 @@ whose requirements are partly unbuilt, and the behaviour it would have to parame
 precisely the one the two surfaces disagree on.
 
 Derivation: `docs/investigations/2026-09-22-call-context-cards-surface-or-type.md`.
+
+---
+
+## 2026-10-01 — The assistant is the primary way to act in the platform
+
+Every action in Bridgeable is reachable through the assistant. Navigation, pages and
+Focuses remain, but the assistant is the default entrance for anyone who does not already
+know where a thing lives. This extends the existing command bar ("just tell me what you
+need") into the platform's main surface for Act.
+
+The assistant is invoked two ways: a keyboard shortcut (Cmd/Ctrl+K), which opens the bar
+centered, and a floating sphere, which opens the bar from its own position. The sphere can
+be dragged anywhere and settles against the nearest viewport edge; position persists per
+user.
+
+The sphere is present on every screen except inside a Focus. Command Bar and Focus remain
+mutually exclusive (`PLATFORM_ARCHITECTURE.md:827`): in-Focus lookup stays with Focus Chat,
+and outside events affecting the decision stay with the activity feed. On Focus exit the
+sphere returns, rendering any glow that accrued while the Focus was open.
+
+⚠️ The first draft of this entry had the sphere on every screen without exception, and was
+written without knowing that `Cmd+K` is deliberately dead inside a Focus —
+`CommandBarProvider.tsx:109-110` matches the chord and then returns early on `focusIsOpen`,
+and PA:827 gives the reason as a primitive boundary rather than an implementation
+convenience. A Focus exists to hold
+someone on one decision, and a glowing sphere in the corner is the distraction it was built
+to remove. Mutual exclusivity stands; it was not retired by inattention.
+
+The product name is undecided; this entry uses "the assistant."
+
+---
+
+## 2026-10-01 — The sphere's glow renders fragments; it is not a notification system
+
+The glow behind the sphere is a second renderer of fragments, alongside the note. It
+introduces no parallel alerting system. A fragment that qualifies for the glow declares so
+in its contract; its existing end transition clears the glow for every recipient (owner and
+backup alike).
+
+Five states, one at a time: quiet (no glow), suggestion (steel, slow breathe), working
+(neutral, slow sweep), needs you (terracotta, steady), done (single green bloom, then
+quiet). Priority when several apply: needs you, then working, then suggestion. No counts, no
+blinking, no badge. The glow clears the moment its reason does.
+
+Whatever the glow means is always the first row when the bar opens, and acting on that row
+is one click into the relevant Focus or record. The note is for reading the day; the
+assistant holds the single next action. The note and the assistant both render fragments
+emitted under the fragment contract, so they cannot disagree.
+
+---
+
+## 2026-10-01 — Time-based nudges use tenant-declared deadlines, never inferred thresholds
+
+A nudge such as "tomorrow's funerals are not scheduled" fires against a time the tenant
+declares (e.g. funeral scheduling cutoff, 2:00 PM), with a platform default.
+
+This is consistent with the 2026-09-04 entry deferring backup escalation, which declined to
+set a threshold no evidence could justify. A declared operating deadline is a fact about the
+tenant, not an inferred threshold.
+
+Queue-based fragments (e.g. reconciliation has unprocessed items) qualify for the glow only
+past a declared time of day or threshold, not whenever the queue is non-empty. A glow that
+is always on teaches users to ignore it.
+
+Tenant admins may mark a nudge as required for a role; users cannot disable required nudges
+in personal settings. Personal settings layer over tenant defaults and cannot loosen them.
+
+---
+
+## 2026-10-01 — Standing orders: user-authored instructions, compiled at authoring time
+
+Users create standing orders by describing them to the assistant ("every weekday at 4, show
+me today's orders by product"). The assistant confirms its interpretation; on confirmation
+the standing order is stored as a saved definition: a query (a saved view), a schedule, and
+recipients. Language-model interpretation happens only at authoring. Each run executes the
+saved definition, so results are deterministic and comparable run to run.
+
+A standing order runs with its creator's permissions. Admins may publish standing orders as
+tenant templates. Completion renders as the done glow, with the result as the first row in
+the bar.
+
+Standing orders are not called Skills in the product; that name is reserved for the
+Bridgeable Skills Passport (`BRIDGEABLE_MASTER.md:987`).
+
+⚠️ "Standing orders" is the third `standing *` noun in the platform, after the note's
+standing set and standing line. Kept deliberately: those two are canon terms for parts of
+the note, and this is a user-facing name for a different object. "Routines" is the fallback
+if the vocabulary needs to be fully clean.
+
+---
+
+## 2026-10-01 — The assistant has a dedicated page
+
+Sections: standing orders (yours and team templates; pause, resume, delete, open last run);
+history (every request, its interpretation and what was done, searchable, with open-again /
+run-again); glows (each glow, its trigger and what cleared it); suggestions (offered,
+accepted, declined, with undo and bring-back); attention settings (which fragment types may
+glow, quiet hours, hide the sphere). Admins additionally see tenant deadlines, role-to-glow
+routing, templates and usage.
+
+Every action the assistant takes is written to the platform audit trail as performed by the
+assistant on behalf of the user. The history section is the user's view of that record,
+retained per tenant policy.
+
+Buildable as stated, verified 2026-10-01: `audit_logs.actor_type` is a plain `String(20)`
+with no CHECK constraint (added by `r42`, values `tenant_user` and `portal_user` today), so
+a third value needs no migration — and `actor_type` plus `user_id` already carries both
+halves of "performed by the assistant on behalf of the user" without a schema change.

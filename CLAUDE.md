@@ -92,7 +92,7 @@ When designing any new feature, ask these two questions:
 
 **Question 1: Does the user need to NOTICE this without asking?**
 - If yes → it declares a FRAGMENT
-- A fragment declares five things or it does not ship: who sees it (a permission predicate — lacking the permission means the fragment does not exist, not that it renders inert), what condition brings it into existence, what identity two evaluations of the same subject share, what it opens and with what scope, and what state transition ends it
+- A fragment declares six things or it does not ship: who sees it (a permission predicate — lacking the permission means the fragment does not exist, not that it renders inert), what condition brings it into existence, what identity two evaluations of the same subject share, what it opens and with what scope, what state transition ends it, and whether it qualifies for the sphere's glow. ⚠️ The sixth is new as of 2026-10-01 and the count has now moved twice — five was itself a correction of four. The glow is a second renderer of fragments, not a parallel alerting system, which is exactly why eligibility is declared here rather than configured somewhere else
 - **Prompt** if it carries a bounded decision and a declared end transition. Prompts render whenever their condition holds
 - **Non-prompt** otherwise. Non-prompts render only on change against the previous note's state for that identity. Truth is not sufficient for rendering
 - A standing line only if it meets the admission test above, and only within the cap
@@ -119,7 +119,7 @@ When designing any new feature, ask these two questions:
 - It requires filling out a traditional form when natural language could collect the same data
 
 **A feature is COMPLETE if:**
-- Monitoring aspects declare a fragment, with all five declarations satisfied
+- Monitoring aspects declare a fragment, with all six declarations satisfied
 - Action aspects are accessible from the command bar
 - Natural language handles multi-field data entry
 - The UI page exists for deep editing / complex cases but is not required for the primary use case
@@ -144,7 +144,7 @@ When designing any new feature, ask these two questions:
 2. **Never design a monitoring feature as page-only.** Every metric, status or alert a user needs to notice must declare a fragment. A page for detail is fine; a page as the only surface is not. This does NOT mean everything gets a line — the composition gate decides whether a true fragment is worth saying, and a fragment that would say the same thing every day is a report, not a note fragment.
 
 3. **When recommending a new feature, always specify:**
-   - The fragment it declares, with all five declarations, if it has a monitoring aspect
+   - The fragment it declares, with all six declarations, if it has a monitoring aspect
    - What the command bar workflow looks like
    - What natural language inputs it accepts
    - What the UI backup page looks like
