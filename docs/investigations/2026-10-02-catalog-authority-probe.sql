@@ -107,25 +107,91 @@ ORDER BY 1, 3 DESC, 2;
 -- =====================================================================
 -- PRODUCTION OUTPUT — paste here when run
 -- =====================================================================
--- Run date (UTC):
--- Run by:
+-- Run date (UTC): 2026-10-02
+-- Run by: Claude, via the CLAUDE.md §7 sanctioned path —
+--   railway run --project … --environment production --service SunnycrestERP --
+--   .venv/bin/python <script>, with
+--   create_engine(url, connect_args={"options": "-c default_transaction_read_only=on"})
+--   and the credential never printed.
 -- Database host (redacted to host/port/db only, per CLAUDE.md §7):
+--   host=shuttle.proxy.rlwy.net port=57253 db=railway
 --
 -- Paste the full result table below this line, unedited and untruncated. A
 -- bounded or tidied paste is a bounded reading, and the ruling that follows
 -- would inherit the bound (CLAUDE.md §11, "a truncation flag is a WHERE clause
 -- on the output stream").
 --
---   <output>
+--   metric                                               | product_name | n
+--   -----------------------------------------------------+--------------+----
+--   0 CONTROL: tenant rows matched                       |              | 1
+--   1 product rows                                       |              | 4
+--   2 products on >=1 order line                         |              | 0
+--   4 order lines with NO product_id                     |              | 0
+--   6 order lines pointing at a NON-Sunnycrest product   |              | 0
+--   (5 rows)
 --
--- RULING THAT FOLLOWED (which of the five readings above, and why):
+-- ⚠️ THIS PROBE ASKED THE WRONG POPULATION, AND ITS READING RULES ARE THEREFORE
+-- WRONG. Metrics 2, 4 and 6 partition the order-LINE population, so all three
+-- reading 0 is also exactly what an empty line population looks like. A direct
+-- count settled it: Sunnycrest has 0 sales_orders and 0 sales_order_lines in
+-- production — and 8 INVOICES. This tenant bills through invoices, not through
+-- sales orders, so "what customers were actually billed for" was never in this
+-- query's reach. Rule "1 > 0 and 2 = 0" above would have ruled the 4 products
+-- seed residue. That ruling would have been false.
 --
---   <ruling>
+-- SUPPLEMENTARY READ (same sanctioned path, same host):
+--   sales_orders for Sunnycrest            0
+--   sales_order_lines on those orders      0
+--   invoices for Sunnycrest                8
+--   ALL products, every tenant            33
 --
--- Still open after the ruling, per the scoping investigation:
+-- INVOICE-LINE READ — the population that actually answers the question:
+--   0 CONTROL invoice lines total                             12
+--   1 lines with a product_id                                  7
+--   2 lines with NO product_id                                 5
+--   3 product name on a line   Monticello Burial Vault         3
+--   3 product name on a line   Urn Vault - Standard            2
+--   3 product name on a line   Continental Burial Vault        1
+--   3 product name on a line   Graveside Setup Service         1
+--   4 DESCRIPTION, no product  "Services rendered"             5
+--   5 the 4 Sunnycrest product names: Continental Burial Vault,
+--     Graveside Setup Service, Monticello Burial Vault, Urn Vault - Standard
+--
+-- RULING THAT FOLLOWED:
+--
+--   THE PRODUCTS TABLE IS AUTHORITATIVE. All 4 Sunnycrest product rows are
+--   referenced by real invoice lines — 7 of 12 lines — on invoices customers were
+--   billed against. These are not seed residue; they are the only product rows in
+--   the platform with billing provenance.
+--
+--   BOTH SEEDERS ARE WRONG WHEREVER THEY DISAGREE WITH IT, and the disagreement
+--   is not only membership but CONVENTION. Production writes a class suffix:
+--   "Continental Burial Vault", not sunnycrest_product_seeder's bare "Continental".
+--   That matches catalog_template_seeder's style ("Bronze Triune Urn Vault") and
+--   contradicts sunnycrest_product_seeder's (55 names, many bare). So the resolver
+--   builds against the table, and the seeders' naming is evidence of nothing.
+--
+--   THE DESCRIPTIONS ARE NOT A SOURCE. The 5 product-less lines all read
+--   "Services rendered" — generic, carrying no product identity. The third
+--   outcome (descriptions outrank the table) is ruled OUT on the data.
+--
+--   BUT THE AUTHORITATIVE SET IS FOUR ROWS, NOT A CATALOGUE. It settles the
+--   convention and the authority question; it does not supply the ~55-product
+--   range Sunnycrest sells. Extending it is a product decision — what to add, in
+--   whose words — not a reconciliation anyone can derive from these three reads.
+--
+-- Still open after the ruling:
 --   - "Bronze Triune" vs "Bronze Triune Urn Vault" must be split into
 --     same-product-spelled-differently vs actually-different-SKU before any
 --     reconciliation. A vault and an urn vault are different things, so some of
 --     the 46 non-matches are correct disagreement rather than inconsistency, and
---     those need the opposite treatment from a misspelling.
+--     those need the opposite treatment from a misspelling. ⚠️ Production's
+--     convention narrows this: it suffixes the class, so "Bronze Triune" and
+--     "Bronze Triune Urn Vault" are likely TWO SKUs under production's own naming,
+--     not one misspelled. That is a hypothesis from 4 rows, not a finding.
+--   - The 4 authoritative rows do not cover what Sunnycrest sells. Extending the
+--     table is a product decision and it gates the resolver.
+--   - ⚠️ A PROBE LIMITATION TO CARRY: this file's reading rules were written
+--     against sales-order lines, and the tenant bills through invoices. Any future
+--     probe of "what was billed" asks BOTH paths, or states which one it asked.
 -- =====================================================================
