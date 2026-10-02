@@ -24,8 +24,14 @@ SOURCE OF THE NAMES AND DESCRIPTIONS: the committed dump at
 `docs/investigations/2026-10-02-production-catalog-dump.md` (landed in
 `ed6b649b`), read mechanically rather than retyped. It is in git, so it reads
 identically in every environment, and it carries all 37 rows' exact strings.
-Verified by set equality before generation: the dump's SKUs minus the mapping's
-are exactly {UV-SAL}.
+Verified by set equality before generation: the dump's 37 SKUs and the mapping's
+are the SAME SET — symmetric difference empty, 37 shared.
+
+⚠️ THIS PARAGRAPH SAID "minus the mapping's are exactly {UV-SAL}" UNTIL THE
+CORRECTION BELOW LANDED. That was true of the draft that dropped UV-SAL and became
+false the moment the data was fixed. The data blocks were regenerated and three
+prose claims in this same docstring were not — found by a review sweep, not by any
+check. Answering a question does not retract the copies of it.
 
 ⚠️ ALL 37 SKUs CARRY ACROSS, AND AN EARLIER DRAFT OF THIS MIGRATION DROPPED ONE
 ON A WRONG READING. That draft excluded `UV-SAL`, holding that Wilbert sells one
@@ -114,8 +120,10 @@ FAMILIES: list[tuple[str, str]] = [
 #: (family_slug, form, ownership, product_display_name, sort_order,
 #:  [(sku, option_label, variant_display_name, variant_description, sort_order)])
 #:
-#: Four family slugs appear twice — triune, venetian, monticello, graveliner —
-#: once per form. That is why there are 16 families and 20 products, and it is the
+#: FIVE family slugs appear twice — triune, venetian, monticello, salute and
+#: graveliner — once per form. That is why there are 16 families and 21 products:
+#: 21 - 16 = 5, and the arithmetic is what caught this comment still saying "four"
+#: and "20" after the UV-SAL correction added Salute Urn Vault. It is also the
 #: reason a family is a lookup table rather than a level of the hierarchy.
 PRODUCTS: list[tuple] = [
     (
