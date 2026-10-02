@@ -1829,6 +1829,19 @@ Process conventions discovered during the Workflow Builder rebuild + inline-para
 
 **Repo-on-Drive-mount fragility — migrate to `~/Projects/`.** The project root currently lives under a Google Drive CloudStorage path (`~/Library/CloudStorage/GoogleDrive-…/My Drive/…`). Mid-session this caused an **actual filesystem outage** — `git` and file reads returned `Operation not permitted` / `EPERM` for several minutes while the Drive file-provider was in a denied/reconnecting state, blocking all work until it resynced. This is now justified-by-incident: migrating the repo to a local path (`~/Projects/`) is recommended to remove the dependency on the Drive mount's availability. Until then: a transient `Operation not permitted` on git/reads is the mount, not the repo — surface it, hold, and resume when access returns (nothing is lost; the working tree is intact).
 
+⚠️ **WHEN A FILE'S DATA CHANGES, ITS OWN DESCRIPTION OF THAT DATA IS PART OF THE
+CHANGE.** Docstrings, module headers and the comments above a data literal are tested by
+nobody and read by everybody. Measured 2026-10-02: a migration's data was regenerated to
+fix a defect and three claims in the docstring directly above it were not. Two carried a
+stale figure and were greppable; the third — "four family slugs appear twice" — held no
+stale number and no stale identifier, and was caught only by arithmetic over the corrected
+data.
+
+⚠️ **AND BECAUSE THIS CANON RECORDS CORRECTIONS BY QUOTING WHAT WAS WRONG, A SEARCH FOR A
+SUPERSEDED STRING RETURNS HITS PERMANENTLY.** The count cannot reach zero and should not.
+Read the hits; do not count them — only reading distinguishes a preserved quotation from a
+live assertion. See DECISIONS 2026-10-02, "A file's account of itself is untested prose".
+
 **Stale-view-after-deploy — hard-refresh an open staging tab.** Railway's native GitHub-integration deploy does NOT auto-reload an already-open staging tab. After a push, **hard-refresh** the tab before judging behavior — a tab opened against the pre-deploy bundle can show a degraded/"unsaved" or "Network Error" state mid-deploy that looks like a regression but is just the old bundle against the new (or restarting) backend. This is expected deploy choreography, not a bug; confirm against a freshly-loaded tab.
 
 ### Characterization before extraction
@@ -1852,6 +1865,13 @@ deserve to be visible rather than riding along inside a move.
 **Exception — security-adjacent fixes do not queue behind refactors.** A cross-tenant
 read or an unenforced permission ships first, as its own commit, before the extraction
 it was found during.
+
+⚠️ **AND A RESHAPE'S CONSUMER LIST COMES FROM THE ORM CLASS, NOT THE TABLE NAME.**
+SQLAlchemy code references the mapped class, so a search for the table name misses every
+import. Measured 2026-10-02: grepping `product_catalog_templates` found three consumers;
+grepping `ProductCatalogTemplate` found four, and the fourth —
+`price_list_analysis_service` — was on nobody's list and filtered on a column the reshape
+was about to move.
 
 ### Money math is hand-proven — including aggregates
 
@@ -2104,6 +2124,15 @@ its premises, not only its figures".
 
 **Canon, dispatches and build instructions that bind navigation name the realm they bind:
 tenant, admin, or platform. An unqualified "nav" is a defect.**
+
+⚠️ **AND A DISPATCH MAY NOT RELY ON A DOCUMENT THAT IS NOT IN THE REPOSITORY.** Where the
+executor has not read it, move the ORIGINAL BYTES into the repo — do not describe it and
+do not have it reconstructed. **An executor asked to commit a file it has only been told
+about should refuse:** a file whose header reads "verbatim" and whose actual source is a
+conversation is worse than no file, because it reads as authoritative. Measured 2026-10-02:
+a licensee spec sheet drove three hours of rulings as description, and was located by
+md5 — not by name — two directories away. See DECISIONS 2026-10-02, "A builder cannot cite
+a document that lives only in the chat".
 
 ### A gate reports its denominator
 
@@ -3834,6 +3863,28 @@ produce a false claim, and only the boundary fixes it. Measured 2026-10-02: one 
 held four times — a heading search, a date-based default, an undeclared grep filter, then
 self-reference. Only the fourth needed a boundary rather than a better instrument. See
 DECISIONS 2026-10-02, "The two-entrances rule binds the tenant realm".
+
+⚠️ **AND A VERIFICATION IS ONLY AS STRONG AS THE WEAKEST OF FOUR THINGS.** Before
+reporting one as passed, state its **SUBJECT**, its **POPULATION**, its **BASELINE**, and
+where its **EXPECTED VALUE** came from.
+
+- **Name the subject.** Where two databases, branches or files are in play, say which one
+  the check ran against. A migration round-tripped on a scratch database proves nothing
+  about the environment the suite uses.
+- **Compare sets, not counts.** Equal cardinalities pass while membership is wrong — eight
+  required fields against eight produced fields, three of them simultaneously missing and
+  misspelled.
+- **A comparison against a missing baseline FAILS**, rather than reporting everything as
+  new. `comm` against a cleared file returns the whole right-hand side, and "41 new, 0
+  gone" is a plausible answer indistinguishable from a real regression.
+- **Prefer a declared expectation to a self-relative delta.** A delta guard is silent at
+  saturation — quiet exactly when the leak is worst.
+- **An expected value derived from the hypothesis cannot test the hypothesis.** It tests
+  execution against intent, which is all it can ever do. Where the source carries its own
+  labels, compare against those.
+
+See DECISIONS 2026-10-02, "Five ways a verification passed while the thing it verified was
+wrong" — all five measured in one day, and the last one passed.
 
 **Fixtures modeled on the implementation.** A test that passes because it shares the
 code's wrong assumption. Fixtures must be derived from the specification or from real
