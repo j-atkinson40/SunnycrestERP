@@ -186,7 +186,13 @@ That is the demo. That is the product. Navigation-first software cannot do this.
 - **Pinned items** (saved views, nav routes, triage queues) rendered in the sidebar
 - **Default home** (optional — defaults to whichever space is marked `is_default`)
 
-Spaces are a **view overlay on the existing vertical navigation, not a replacement**. The base nav from `navigation-service.ts` stays visible; spaces add a `PinnedSection` above it and shift the visual accent. Every route remains reachable from every space via Cmd+K.
+Spaces are a **view overlay, not a navigation structure**. A space adds a `PinnedSection`
+and shifts the visual accent. Where the base nav from `navigation-service.ts` is present it
+is a fallback for users who already know where a thing lives; it is not how a feature
+becomes reachable, and a new tenant-realm page does not acquire an entry in it. Every route
+is reachable from every space through Opas — the sphere, or Cmd+K — which is the entrance.
+See DECISIONS 2026-10-02, "Navigation chrome is a fallback, not the structure" and "The
+two-entrances rule binds the tenant realm".
 
 **Canonical example — funeral director's day has three spaces:**
 - **Arrangement mode** (warm accent) — operationalizes the "Funeral Direction" hub from the master doc. Pins: cases, new case, my active cases, this week's services.
@@ -3814,6 +3820,20 @@ That finds where the current heading first appears, so an entry retitled after l
 resolves to the retitling commit rather than to its landing. Confirm the landing against the
 commit that introduced the entry body. See DECISIONS 2026-10-02, "A title search measures the
 title's history, not the entry's landing".
+
+⚠️ **AND A POPULATION CLAIM STATES ITS BOUNDARY, NOT ONLY ITS PREDICATE.** A canon entry
+making a population claim states the population's boundary. An entry written into a document
+cannot be exhaustive over that document: its own text, and the text of entries landed
+alongside it, fall inside any unfiltered search of the file. Bound the population to text
+preceding the entry, or to a named prior entry, and state that boundary in the claim itself
+so a reader reproduces the same set.
+
+This is a different failure from an instrument answering an adjacent question. There, a
+better instrument fixes the claim. Here a correct instrument and a declared predicate still
+produce a false claim, and only the boundary fixes it. Measured 2026-10-02: one entry was
+held four times — a heading search, a date-based default, an undeclared grep filter, then
+self-reference. Only the fourth needed a boundary rather than a better instrument. See
+DECISIONS 2026-10-02, "The two-entrances rule binds the tenant realm".
 
 **Fixtures modeled on the implementation.** A test that passes because it shares the
 code's wrong assumption. Fixtures must be derived from the specification or from real
