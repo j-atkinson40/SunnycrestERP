@@ -2254,3 +2254,108 @@ Buildable as stated, verified 2026-10-01: `audit_logs.actor_type` is a plain `St
 with no CHECK constraint (added by `r42`, values `tenant_user` and `portal_user` today), so
 a third value needs no migration — and `actor_type` plus `user_id` already carries both
 halves of "performed by Opas on behalf of the user" without a schema change.
+
+---
+
+## 2026-10-02 — Navigation chrome is a fallback, not the structure
+
+Supersedes two CLAUDE.md sites: §1a "Spaces — Context Switching for Power Operators",
+the clause binding the base nav from navigation-service as persistent structure, and §11
+"Frontend Pages", the standing instruction to add a nav item for every new route.
+
+The platform has two entrances. The note brings information to the user; its links open
+what they name. Opas is the entrance to everything else. Navigation chrome — sidebars, the
+base nav, section menus — is a convenience for users who already know where a thing lives.
+It is not the discoverability structure, and a feature does not become reachable by
+appearing in it. A browsable index of everything lives on the Opas page. NavDots are
+unaffected: they remain the Space switcher and were never bound as primary structure.
+
+A new page does not acquire a nav item by default. A route is reachable when Opas can open
+it, and, where the work is a bounded decision, when a note link or Opas opens its Focus. A
+nav entry is added only when a specific user need is named for it.
+
+This also resolves a contradiction already standing inside CLAUDE.md §1a, which held that
+pages, forms and nav exist as a backup while binding the base nav as persistent structure.
+The backup reading wins.
+
+---
+
+## 2026-10-02 — Mobile is the completeness test
+
+A capability is not finished until it can be reached on a phone, from a note link or by
+asking Opas. Anything reachable only through navigation chrome, a desktop-only affordance,
+or a page the user must already know to visit is an orphan and the design is incomplete.
+
+This is an entrance test, not a layout requirement. It does not oblige every surface to be
+built for a phone. It obliges every surface to be entered from one.
+
+---
+
+## 2026-10-02 — Opas degrades to deterministic search; the model is never load-bearing for reachability
+
+Name and number lookup, opening a known Focus, and starting a capture by its type resolve
+through deterministic search and routing, with no model call. Language understanding sits
+on top of that core, never in place of it.
+
+A model-provider outage, a rate limit, or no signal therefore degrades Opas to search. It
+does not make the platform unusable. Because navigation chrome is a fallback rather than
+the structure, this is a hard requirement and not a nicety: without it, an outage leaves
+the user with no entrance at all.
+
+Every Opas capability declares itself model-required or deterministic. A capability that
+cannot state which it is does not ship.
+
+---
+
+## 2026-10-02 — One capture engine, one template per object type, shared with the call overlay
+
+Extends "The model extracts; the server decides what is missing", "Required means answered,
+not filled", and "Capture fields are tenant-configurable over a platform default". Those
+govern the schema's semantics; none of them says where the schema lives or which surfaces
+read it.
+
+There is one capture engine. Every object type a user can create — sales order, quote,
+purchase order, email, text message, calendar event, disinterment case, time-off request —
+is a template on that engine, declaring its fields, which are required, what each field
+depends on, and its review layout. Adding a creatable object means writing a template, not
+building a surface.
+
+The RingCentral call overlay and the Opas overlay read the same engine and the same
+templates. Two implementations of the missing-set rule is a defect, not a variation: the
+rule is load-bearing, and a second copy will drift from the first without anyone noticing
+which one is right.
+
+Measured state at the time of this entry: app/services/capture/ is imported by nothing in
+app/, and CallOverlay.tsx builds its captured and still-needed display from a hardcoded
+per-field list. The shared engine is unbuilt rather than merely unused, and the call
+overlay's hardcoded list is the copy to retire.
+
+---
+
+## 2026-10-02 — Nothing is created, sent or changed until the user approves the finished object
+
+Generalizes the call-scoped rule in "A call ends in a summary in the same panel, and
+approving creates the order" to every object type and every surface.
+
+A capture ends in the finished object as it will exist — a sales order with its lines and
+total, an email with its recipients and body, a calendar event with its attendees — and a
+single action that creates or sends it. There is no separate full-screen review step and no
+partial write before approval. This holds for orders, quotes, purchase orders, emails,
+texts and calendar events alike, and whether the capture ran in the call overlay, the Opas
+overlay, or on a phone.
+
+A capture abandoned before approval writes nothing. No draft row, no held record.
+
+---
+
+## 2026-10-02 — A title search measures the title's history, not the entry's landing
+
+`git log -S"<heading>" --reverse -- DECISIONS.md` finds the commit where the current heading
+first appears. An entry retitled after landing therefore resolves to the retitling commit
+rather than to its landing, and the audit reports wrong provenance without failing. Two
+2026-10-01 Opas entries resolved to the rename commit 2a205d0d this way; both landed in
+0b8d07d7.
+
+When provenance matters, confirm the landing against the commit that introduced the entry
+body, not its heading. An instrument that shares a failure mode with the thing it measures
+produces a prediction, not a measurement.
