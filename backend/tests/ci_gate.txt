@@ -448,3 +448,4 @@ tests/test_anomaly_supersede_5b.py
 tests/test_agent_status_spellings.py
 tests/test_note_composition_gate.py
 tests/test_note_session2_fragments.py
+tests/test_platform_catalog_specs_r193.py
