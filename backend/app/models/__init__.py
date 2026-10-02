@@ -402,6 +402,9 @@ from app.models.wilbert_territory import WilbertTerritory
 from app.models.wilbert_program_enrollment import WilbertProgramEnrollment
 from app.models.historical_product import HistoricalProduct
 from app.models.product_alias import ProductAlias
+from app.models.product_family import ProductFamily
+from app.models.product_template import ProductTemplate
+from app.models.product_variant_template import ProductVariantTemplate
 from app.models.data_import_session import DataImportSession
 from app.models.configurable_item_registry import ConfigurableItemRegistry
 from app.models.tenant_item_config import TenantItemConfig
@@ -860,6 +863,9 @@ __all__ = [
     "WilbertProgramEnrollment",
     "HistoricalProduct",
     "ProductAlias",
+    "ProductVariantTemplate",
+    "ProductTemplate",
+    "ProductFamily",
     "DataImportSession",
     "ConfigurableItemRegistry",
     "TenantItemConfig",
