@@ -2359,3 +2359,57 @@ rather than to its landing, and the audit reports wrong provenance without faili
 When provenance matters, confirm the landing against the commit that introduced the entry
 body, not its heading. An instrument that shares a failure mode with the thing it measures
 produces a prediction, not a measurement.
+
+---
+
+## 2026-10-02 — The Opas overlay supersedes the command bar's six-rule test; the discriminator is the anchored core
+
+Supersedes PLATFORM_ARCHITECTURE.md §4.4 Rules 1, 2 and 4 outright, and in Rule 3 the
+clauses "Page underneath stays interactive" and "No blur, no push-back". Rule 3's
+"Lightweight, not full-screen. Floats over the page." stands.
+
+§4.4's framing — "Violating any of them means the surface should be a Focus instead" — no
+longer discriminates between the two primitives. The Opas overlay breaks four of the six by
+design and is not a Focus. Those six rules described the command bar as first conceived;
+Opas is a different primitive, not that one grown larger. Exceptions would leave a test
+that returns the wrong answer, so the test is replaced rather than amended.
+
+The overlay: opening Opas, by the sphere or Cmd/Ctrl+K, blurs the page behind it and grows
+one command line out of the sphere. That command line keeps focus for the whole session; the
+user never clicks into a new box to continue. Each request produces its own floating pane
+above the page. Panes are draggable by any non-interactive surface, the frontmost pane is
+the referent for "it", "that", "them" and "the record", several panes coexist, and one line
+may act on more than one of them.
+
+The session is bounded by the user, not by the action. Esc or a click on the blurred page
+tucks the session into the sphere; reopening restores every pane where it was. The session
+ends on "clear" or after inactivity, and its history is recorded on the Opas page. The page
+behind is deliberately not interactive while the overlay is open, because a click there is
+the dismiss gesture.
+
+The replacement discriminator: a Focus has an anchored core; the overlay never does. Panes
+are references and captures, not decisions. A decision-shaped request tucks the overlay
+away and opens a Focus. Mutual exclusivity, as landed in "Opas is the primary way to act in
+the platform", is unchanged.
+
+---
+
+## 2026-10-02 — A dispatch declares the source of its premises, not only its figures
+
+Extends "figures in dispatches are never inherited". An unverified figure produces one
+wrong line; an unverified premise shapes the whole task.
+
+The 2026-10-02 STATE.md audit was dispatched on two premises: that the file's migration head
+read r95, and that it was four and a half months stale. Both came from the copy of STATE.md
+attached to the claude.ai Project, a 2026-05-13 snapshot, while the repository file read
+r176 and was roughly four weeks stale. The dispatch named no source for either, so the
+executor could not check them and reported both as inherited.
+
+Any premise a dispatch rests on names its source. A premise sourced from outside the
+repository is marked as such, and verifying it against the repository is the first step of
+the work.
+
+The project-attached copies of CLAUDE.md, STATE.md, DECISIONS.md, DESIGN_LANGUAGE.md and
+PLATFORM_ARCHITECTURE.md are snapshots, not canon. They are re-synced from the repository at
+arc-close and stamped with the commit they were synced from, so divergence is visible rather
+than silent. Canon is the repository file.
