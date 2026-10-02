@@ -2413,3 +2413,18 @@ The project-attached copies of CLAUDE.md, STATE.md, DECISIONS.md, DESIGN_LANGUAG
 PLATFORM_ARCHITECTURE.md are snapshots, not canon. They are re-synced from the repository at
 arc-close and stamped with the commit they were synced from, so divergence is visible rather
 than silent. Canon is the repository file.
+
+---
+
+## 2026-10-02 — Amendment: §4.4 Rule 6's wording outlives its force
+
+"The Opas overlay supersedes the command bar's six-rule test" (2026-10-02, b487a4a9) names
+Rules 1, 2, 4 and part of 3 and leaves Rule 6 standing, correctly: Rule 6's force is
+origin-by-mention, and the overlay's panes are produced by requests. Cmd+K opened the command
+bar while Rule 6 was in force, so Rule 6 never forbade a deliberate open gesture; it
+constrains what appears.
+
+Its literal phrase "No 'open' state" nonetheless now sits beside a session that is opened,
+tucked and restored. That reading is governed by Rules 1 and 2, both superseded, so the
+phrase is residue rather than a live contradiction. Recorded here so a reader hitting it does
+not take it as binding on the session.
