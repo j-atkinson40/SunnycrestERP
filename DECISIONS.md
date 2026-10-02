@@ -2477,3 +2477,148 @@ a document cannot be exhaustive over a document that will contain it.
 Three earlier attempts at this paragraph failed on measurement — a heading search, a
 date-based default, an undeclared grep filter. The fourth failed on self-reference, which no
 predicate fixes and only a stated population boundary does.
+
+---
+
+## 2026-10-02 — Five ways a verification passed while the thing it verified was wrong
+
+All five were measured in one day. They share a shape — the check was sound and its
+subject, population, baseline or expected value was not — and they are recorded
+together because recognising the shape is what catches the sixth.
+
+An absent baseline. `comm` against a file the session scratchpad had cleared returned
+the whole right-hand side, so all 41 red test ids read as new. The tell was that
+"41 new, 0 gone" is too clean. A comparison whose baseline is missing must fail;
+reporting everything as new is a plausible answer indistinguishable from a real
+regression.
+
+A cardinality instead of a set. A capture check compared eight required fields against
+eight produced fields and passed while three of the eight were simultaneously missing
+and misspelled. Eight equals eight whatever the eight are. This is the round-trip entry
+one level down: that one compared task sets where it should have compared carried
+values; this compares counts where it should compare sets.
+
+The wrong subject. A migration's round trip — upgrade, break tests, downgrade,
+re-upgrade — ran against a scratch database while the suite ran against dev, which had
+never seen the migration. Two databases were in play and the verified one was not under
+test. A verification states which subject it ran against or it has verified nothing in
+particular.
+
+A delta where an absolute was needed. The company-litter tripwire compares row counts
+before and after a run. On a database already at maximum pollution the delta is zero and
+the guard is silent — quiet exactly when the leak is worst. A guard comparing to a
+declared expectation fails loudly; one comparing to its own starting point cannot fail
+at saturation.
+
+An expected value derived from the hypothesis. A backfill's check asserted the symmetric
+difference against production would be exactly one SKU — an expectation written by the
+same reasoning that wrongly excluded that SKU. It passed. A check whose expected value
+comes from the hypothesis tests execution against intent, which is all it can ever do.
+What would have caught it was comparing against the source's own labels, which sat in a
+committed file the whole time and which nobody read.
+
+Before trusting a verification, name its subject, its population, its baseline and the
+provenance of its expected value. It is only as strong as the weakest of the four.
+
+---
+
+## 2026-10-02 — A file's account of itself is untested prose
+
+A migration's docstring described its own data. The data was regenerated to correct a
+defect; three claims in the docstring above it were not, and the docstring is what a
+reader checks first. Two carried a stale figure and were greppable. The third — "four
+family slugs appear twice" — contained no stale number and no stale identifier. It was a
+derived claim that became false when the data beneath it changed, and arithmetic over the
+corrected data caught it: twenty-one products across sixteen families is five repeated
+slugs, not four.
+
+Docstrings, module headers and the comments above a data literal are tested by nobody and
+read by everybody. When a file's data changes, its own description of that data is part of
+the change.
+
+The corollary costs something. This canon records corrections by quoting what was wrong,
+so a search for a superseded string returns hits for as long as the correction stands. The
+count can never reach zero and should not. Only reading each hit distinguishes a preserved
+quotation from a live assertion, which is the set-not-count rule arriving at grep output.
+
+---
+
+## 2026-10-02 — A builder cannot cite a document that lives only in the chat
+
+Sunnycrest's licensee spec sheet arrived as an upload to the Opus tab. Every ruling made
+from it over the following three hours — dimensions, weights, which products physically
+accept which personalization — reached the Code tab as description rather than as a file.
+The executor was asked to cite a line from it, could not, and correctly refused to
+reconstruct it: a file whose header reads "licensee spec sheet, verbatim" and whose actual
+source is a conversation is worse than no file, because it reads as authoritative.
+
+A document a dispatch relies on is in the repository before the dispatch relies on it.
+Where the executor has not read it, the original bytes are moved, not retyped. This is the
+same defect as the project-attached canon copies diverging from the repository, and it is
+found the same way: by asking which line a claim came from.
+
+---
+
+## 2026-10-02 — Two names for one product makes a gap analysis report absences that are not there
+
+docs/catalog/sunnycrest-catalog-review.xlsx, built 2026-09-22 expressly to compare a
+licensee product list against the seeder, reports two products as NOT IN SEEDER that are
+present under a second name:
+
+Basic Gray (P410) is present as Salute Urn Vault, UV-SAL. Wilbert sells the two as one
+listing, "Basic Gray/Salute Urn Vault". Universal (P400WS) is present as White & Silver
+Urn Vault, UV-WS, product line Universal.
+
+Both false negatives have one cause, and the sheet's own purpose was finding gaps. Four
+sources in this repository name the same products differently — production's catalog
+templates, the Sunnycrest tenant seeder, the licensee spec sheet, and that review sheet —
+and two of the four are ours.
+
+Alias reconciliation is therefore not fuzzy matching for what a caller says on the phone.
+It is the precondition for treating those sources as describing one catalog, and the
+platform alias table is upstream of the resolver rather than part of it. An alias row is a
+claim about what one source document meant, pointing at the one variant that source
+denotes. Ambiguity is computed at query time over family, product and variant names plus
+aliases, because what is ambiguous depends on what the catalog holds now.
+
+---
+
+## 2026-10-02 — A platform catalog gated on admin credentials produces a different catalog per environment
+
+product_catalog_templates holds 37 rows on production, 25 on dev, and 25 on any fresh
+`alembic upgrade head`. The 37 exist only because seed_wilbert_templates runs at runtime
+through a startup hook inside seed_platform_admin(), whose body is gated on
+PLATFORM_ADMIN_EMAIL and PLATFORM_ADMIN_PASSWORD. Where those are unset, the catalog is
+whatever an old migration's bulk insert left.
+
+A backfill reading that table would have produced a different catalog per environment. The
+r188 backfill defines the catalog inline and reads the table for nothing, which is why it
+yields the same 16 families, 21 products and 37 variants on a fresh database holding a
+different 25 rows.
+
+Platform reference data does not depend on a credential being present. A tenant's catalog
+is not an administrative artifact, and this divergence is what made a dev measurement wrong
+about the platform catalog for as long as anyone cared to look.
+
+---
+
+## 2026-10-02 — The call-to-order path produces an order with no product on it, and nothing creates it
+
+Measured while scoping the capture engine.
+
+create_draft_order_from_extraction uses vault_type only as a gate. It resolves customer and
+cemetery and creates a SalesOrder with no line items, so the shipped path produces an order
+header with no product.
+
+call_intelligence.py exposes four endpoints, all read-only apart from reprocess. There is
+no approve-and-create endpoint, so the landed entry "A call ends in a summary in the same
+panel, and approving creates the order" describes the prototype rather than the shipped
+system.
+
+Resolving a spoken vault name to a product therefore gates RingCentral provisioning, not
+merely the capture engine's conditional half. Making the overlay reachable without it would
+ship a capture list that silently never asks about personalization, which the
+vault_product_id is None path omits by design.
+
+Recorded in the shape the RingCentral entrance gap was: the pipeline is demonstrable, and
+the gap is named rather than presented as a connected system.
