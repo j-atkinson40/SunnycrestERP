@@ -402,6 +402,7 @@ from app.models.wilbert_territory import WilbertTerritory
 from app.models.wilbert_program_enrollment import WilbertProgramEnrollment
 from app.models.historical_product import HistoricalProduct
 from app.models.product_alias import ProductAlias
+from app.models.platform_product_alias import PlatformProductAlias
 from app.models.product_family import ProductFamily
 from app.models.product_template import ProductTemplate
 from app.models.product_variant_template import ProductVariantTemplate
@@ -863,6 +864,7 @@ __all__ = [
     "WilbertProgramEnrollment",
     "HistoricalProduct",
     "ProductAlias",
+    "PlatformProductAlias",
     "ProductVariantTemplate",
     "ProductTemplate",
     "ProductFamily",
