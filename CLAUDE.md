@@ -1700,7 +1700,19 @@ export default function FeaturePage() {
   return <div className="space-y-6 p-6">...</div>
 }
 ```
-Register route in `frontend/src/App.tsx`. Add nav item in `frontend/src/services/navigation-service.ts`.
+Register route in `frontend/src/App.tsx`.
+
+Tenant-realm pages: declare the page's Opas entrance — the request that opens it — and, if
+the page is a bounded decision, the Focus it opens as. Nav is a fallback, not how a page
+becomes reachable.
+
+Interim, until the Opas capability catalog exists: a nav item in
+`frontend/src/services/navigation-service.ts` is permitted as a temporary entrance and must
+carry the comment `// interim-entrance: remove when Opas can open this page`. Shipping a page
+with no entrance at all is not the alternative.
+
+Admin- and platform-realm pages: add the nav or rail entry as substrate, per DECISIONS
+2026-05-27.
 
 ### Nightly Agent Jobs
 Add function in the appropriate service file. Add wrapper in `backend/app/scheduler.py`. Add to `JOB_REGISTRY`. Per-tenant jobs use `_run_per_tenant()`.
@@ -2077,6 +2089,15 @@ Corollary: a dispatch's own scope figures are subject to its own method constrai
 brief that imposes enumeration discipline and then populates its question list from an
 inherited file list has violated itself. This has happened; see the services/pulse
 sixfold undercount, 2026-09-04.
+
+**AND A DISPATCH NAMES THE SOURCE OF EVERY PREMISE, NOT ONLY EVERY FIGURE.** A premise
+sourced outside the repository is marked as such, and verifying it against the repository is
+the first step of the work. An unverified figure produces one wrong line; an unverified
+premise shapes the whole task. See DECISIONS 2026-10-02, "A dispatch declares the source of
+its premises, not only its figures".
+
+**Canon, dispatches and build instructions that bind navigation name the realm they bind:
+tenant, admin, or platform. An unqualified "nav" is a defect.**
 
 ### A gate reports its denominator
 
@@ -3786,6 +3807,13 @@ rather than the table's contents. Each is an instrument answering a question
 ADJACENT to the one asked, and each produces a well-formed answer that survives
 review. All four occurred in a single session, all by an author holding the file
 that names them.
+
+**And the same shape reaches PROVENANCE, not only counts.** When reporting which commit
+landed a DECISIONS.md or CLAUDE.md entry, do not resolve it with `git log -S"<heading>"`.
+That finds where the current heading first appears, so an entry retitled after landing
+resolves to the retitling commit rather than to its landing. Confirm the landing against the
+commit that introduced the entry body. See DECISIONS 2026-10-02, "A title search measures the
+title's history, not the entry's landing".
 
 **Fixtures modeled on the implementation.** A test that passes because it shares the
 code's wrong assumption. Fixtures must be derived from the specification or from real
