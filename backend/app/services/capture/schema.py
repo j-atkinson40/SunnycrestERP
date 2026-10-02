@@ -101,6 +101,39 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
 ) + _personalization_fields()
 
 
+#: Object type -> the platform-default field set for that type.
+#:
+#: ⚠️ A REGISTRY RATHER THAN A SECOND TUPLE. `resolve_schema` already takes
+#: `platform_fields` as a keyword, so keying by object type adds a mapping and
+#: changes neither that signature nor `PLATFORM_DEFAULT_FIELDS`'s contents. The
+#: second object type is then a row here, not a refactor — which is what
+#: DECISIONS 2026-10-02 "One capture engine, one template per object type"
+#: requires. Funeral order is the only entry today; quote, purchase order,
+#: email, text message and calendar event each need their own template and have
+#: none anywhere in the codebase.
+FUNERAL_ORDER = "funeral_order"
+
+CAPTURE_TEMPLATES: dict[str, tuple[FieldDefinition, ...]] = {
+    FUNERAL_ORDER: PLATFORM_DEFAULT_FIELDS,
+}
+
+
+def template_for(object_type: str) -> tuple[FieldDefinition, ...]:
+    """The platform-default fields for an object type.
+
+    Raises rather than falling back to the funeral order: a typo that silently
+    captured the wrong object's fields would be worse than a crash, and an
+    unregistered type is a programming error rather than a user condition.
+    """
+    try:
+        return CAPTURE_TEMPLATES[object_type]
+    except KeyError:
+        raise KeyError(
+            f"no capture template for object type {object_type!r}; "
+            f"registered: {sorted(CAPTURE_TEMPLATES)}"
+        ) from None
+
+
 class FieldNotSwitchable(ValueError):
     """Raised when configuration tries to switch off a field that may not be."""
 

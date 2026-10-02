@@ -11,6 +11,7 @@ from datetime import date, datetime, time, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.services import capture
 from app.models.company_entity import CompanyEntity
 from app.models.ringcentral_call_extraction import RingCentralCallExtraction
 from app.models.ringcentral_call_log import RingCentralCallLog
@@ -24,6 +25,30 @@ logger = logging.getLogger(__name__)
 # `scripts/seed_intelligence_phase2c.py`). R-8 audit flagged it as escaped;
 # pre-flight verification showed the runtime path already routes through
 # `intelligence_service.execute()`. Constant removed for hygiene.
+
+
+def _captured_from_result(result: dict) -> dict[str, object]:
+    """Extraction-payload keys -> capture-schema field ids.
+
+    ⚠️ THREE OF THE EIGHT NAMES DIFFER AND GETTING ONE WRONG FAILS SILENTLY:
+    `vault_type`/`vault`, `funeral_home_name`/`funeral_home` and
+    `cemetery_name`/`cemetery`. A mismatched key reads as unanswered forever, so
+    the field is reported missing on every call and nothing raises. Pinned by
+    `tests/test_call_extraction_missing_set.py`.
+
+    A module-level function rather than an inline dict purely so that test can
+    reach it without a Claude call.
+    """
+    return {
+        capture.VAULT_FIELD_ID: result.get("vault_type"),
+        "funeral_home": result.get("funeral_home_name"),
+        "deceased_name": result.get("deceased_name"),
+        "vault_size": result.get("vault_size"),
+        "cemetery": result.get("cemetery_name"),
+        "burial_date": _parse_date(result.get("burial_date")),
+        "burial_time": _parse_time(result.get("burial_time")),
+        "grave_location": result.get("grave_location"),
+    }
 
 
 def _parse_date(val: str | None) -> date | None:
@@ -139,6 +164,66 @@ def extract_order_from_transcript(
     if not master_company_id and result.get("funeral_home_name"):
         master_company_id = _fuzzy_match_company(db, tenant_id, result["funeral_home_name"])
 
+    # ── THE SERVER DECIDES WHAT IS MISSING ────────────────────────────────
+    # Until 2026-10-02 this was `missing_fields=result.get("missing_fields", [])`
+    # — the MODEL's own list of what it thought was absent. DECISIONS 2026-09-22
+    # "The model extracts; the server decides what is missing" ruled against
+    # exactly that: the one judgment that must be reliable sat in the least
+    # reliable component, where it could neither be trusted to fire nor trusted
+    # not to fire spuriously, and could not be tested.
+    #
+    # ⚠️ THE PAYLOAD AND THE SCHEMA USE DIFFERENT NAMES FOR THREE OF THE EIGHT
+    # FIELDS, and mapping them wrong fails silently — those three would read as
+    # unanswered forever and be reported missing on every call. Mapped here
+    # rather than inside the capture package so that package stays
+    # consumer-agnostic: the Opas overlay arrives with its own payload shape and
+    # brings its own adapter.
+    #
+    # Parsed values, not raw strings, so the missing set describes the row that
+    # is actually stored: an unparseable date persists as NULL, and calling that
+    # "answered" would make the two disagree.
+    captured = _captured_from_result(result)
+    template = capture.template_for(capture.FUNERAL_ORDER)
+
+    # ⚠️ `vault_product_id=None` IS PERMANENT HERE, NOT A TRANSIENT UNKNOWN, AND
+    # THAT IS THE DIFFERENCE THAT MATTERS. `resolve_schema` treats None as
+    # "applicability unknown, so not shown and not counted" — the right
+    # behaviour for a capture list a user is filling in, where a vault is about
+    # to be named. At THIS call site no vault is ever named: `vault_type` is
+    # free text the model produced and nothing resolves a vault NAME to a
+    # product id anywhere in the codebase (measured 2026-10-02 —
+    # `create_draft_order_from_extraction` below uses it only as a gate and
+    # creates an order with no line items).
+    #
+    # THE UNBLOCKER IS THE VAULT-NAME RESOLVER. Until it exists the three
+    # conditional personalization questions are omitted from both the answered
+    # and the missing set on every call. That is acceptable only because this
+    # overlay is unreachable in production — RingCentral has no OAuth entrance
+    # and no tenant holds a token — so no user receives the prompts it removes.
+    # Closing it is a gate on RC provisioning, not an independent improvement.
+    capture_state = capture.evaluate(
+        captured, vault_product_id=None, platform_fields=template
+    )
+
+    # Counted, not silent. A permanent omission that nobody measures is the
+    # loud-failure-made-quiet regression CLAUDE.md names; this gives the cost a
+    # number instead of an argument.
+    # ⚠️ THE COUNT COMES FROM `evaluate`'s OWN OUTPUT, not from recounting the
+    # template. `not_applicable` is what the operation actually skipped; a
+    # separate count of what we expect it to skip is a prediction (CLAUDE.md §11,
+    # "a count taken by a different instrument than the one doing the work").
+    if capture_state.not_applicable:
+        logger.info(
+            "capture: call %s — %d field(s) computed server-side, "
+            "%d skipped as not-applicable because the vault is unresolved %s; "
+            "missing=%s",
+            call_id,
+            len(capture_state.answered) + len(capture_state.missing),
+            len(capture_state.not_applicable),
+            list(capture_state.not_applicable),
+            list(capture_state.missing),
+        )
+
     extraction = RingCentralCallExtraction(
         id=str(uuid.uuid4()),
         tenant_id=tenant_id,
@@ -154,7 +239,7 @@ def extract_order_from_transcript(
         grave_location=result.get("grave_location"),
         special_requests=result.get("special_requests"),
         confidence_json=result.get("confidence", {}),
-        missing_fields=result.get("missing_fields", []),
+        missing_fields=list(capture_state.missing),
         call_summary=result.get("call_summary"),
         call_type=result.get("call_type", "other"),
         urgency=result.get("urgency", "standard"),

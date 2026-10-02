@@ -12,6 +12,9 @@ it does not decide what an order requires. That split is the ruling
 
 from app.services.capture.missing import CaptureState, evaluate
 from app.services.capture.schema import (
+    CAPTURE_TEMPLATES,
+    FUNERAL_ORDER,
+    template_for,
     FieldDefinition,
     PLATFORM_DEFAULT_FIELDS,
     TenantCaptureConfig,
@@ -20,11 +23,14 @@ from app.services.capture.schema import (
 )
 
 __all__ = [
+    "CAPTURE_TEMPLATES",
     "CaptureState",
+    "FUNERAL_ORDER",
     "FieldDefinition",
     "PLATFORM_DEFAULT_FIELDS",
     "TenantCaptureConfig",
     "VAULT_FIELD_ID",
     "evaluate",
     "resolve_schema",
+    "template_for",
 ]
