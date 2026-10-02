@@ -157,6 +157,48 @@ ORDER BY 1, 3 DESC, 2;
 --   5 the 4 Sunnycrest product names: Continental Burial Vault,
 --     Graveside Setup Service, Monticello Burial Vault, Urn Vault - Standard
 --
+-- ⚠️⚠️ THE RULING BELOW IS VOID. RETRACTED 2026-10-02, SAME DAY, BY MEASUREMENT.
+--
+-- All 4 Sunnycrest product rows carry a DEMO% sku, and
+-- scripts/seed_accounting_demo.py:312-315 defines exactly those four with exactly
+-- those skus and prices:
+--     ("Monticello Burial Vault",  "DEMO2-P001", 1250.00)
+--     ("Continental Burial Vault", "DEMO2-P002", 1850.00)
+--     ("Urn Vault - Standard",     "DEMO2-P003",  425.00)
+--     ("Graveside Setup Service",  "DEMO2-P004",  300.00)
+-- That seeder's MARKER is "DEMO2" and its docstring says every seeded row carries
+-- it. Its customers are demo too (Hopkins, St Mary's, Riverside, Fairview,
+-- Lakeside = DEMO2-C001..C005), so the 8 invoices and 12 invoice lines that gave
+-- these products their "billing provenance" are demo rows referencing demo rows.
+--
+-- THE REASONING WAS: 7 of 12 invoice lines reference all 4 products, therefore
+-- they have billing provenance, therefore the products table is authoritative.
+-- Every step was true and the conclusion is false, because the population was
+-- synthetic. I checked that the rows were REFERENCED and never that they were
+-- REAL. CLAUDE.md §11 already names this seeder as a known writer of demo rows
+-- into production, and §12 already requires every count over such a table to
+-- state whether it includes them. I did not.
+--
+-- CORRECTED STATE: production holds NO real Sunnycrest product data and NO real
+-- billing data. The outcome is the one James named as the alternative — nothing is
+-- authoritative yet, and extending the catalog is a genuine product decision.
+--
+-- WHAT SURVIVES THE RETRACTION, because it does not rest on the demo rows:
+--   - Production's product_catalog_templates holds exactly 37 rows: Burial Vaults
+--     19, Urn Vaults 12, Cemetery Equipment 6 — exactly catalog_template_seeder's
+--     three lists. That IS the live platform convention in production.
+--   - Therefore "Bronze Triune Burial Vault" (BV-BTRI) and "Bronze Triune Urn
+--     Vault" (UV-BTRI) both exist as distinct platform rows IN PRODUCTION. Two
+--     SKUs, confirmed against the live table rather than a never-run seeder.
+--   - Dev's product_catalog_templates holds 25 DIFFERENT rows, from the
+--     x1y2z3a4b5c6 migration's bulk_insert. The seeder has never run on dev
+--     because its only caller sits inside seed_platform_admin(), gated on
+--     PLATFORM_ADMIN_EMAIL and PLATFORM_ADMIN_PASSWORD, both unset there.
+--
+-- See docs/investigations/2026-10-02-platform-catalog-discrepancies.md
+--
+-- ORIGINAL RULING, PRESERVED AS WRITTEN AND NOT TO BE ACTED ON:
+--
 -- RULING THAT FOLLOWED:
 --
 --   THE PRODUCTS TABLE IS AUTHORITATIVE. All 4 Sunnycrest product rows are
