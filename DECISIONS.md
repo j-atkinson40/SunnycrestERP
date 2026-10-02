@@ -2428,3 +2428,52 @@ Its literal phrase "No 'open' state" nonetheless now sits beside a session that 
 tucked and restored. That reading is governed by Rules 1 and 2, both superseded, so the
 phrase is residue rather than a live contradiction. Recorded here so a reader hitting it does
 not take it as binding on the session.
+
+---
+
+## 2026-10-02 — The two-entrances rule binds the tenant realm; the admin and platform realms keep conventional navigation
+
+Scopes "Navigation chrome is a fallback, not the structure" (2026-10-02) and resolves its
+unnamed overlap with "Discoverability canon for operator-facing substrate cycles"
+(2026-05-27), whose requirement that substrate cycles ship entry-point wiring uses an
+unqualified "nav/rail" while every instance of it names a Studio builder rail, an
+admin-realm host, or a platform-realm endpoint.
+
+The note-and-Opas entrance model is a tenant-realm product. In the tenant realm, navigation
+chrome is a fallback and a new page acquires no nav item by default. In the admin and
+platform realms — the Studio builder and its rails, admin pages, platform-realm endpoints —
+conventional navigation remains the structure, and the 2026-05-27 requirement to ship
+entry-point wiring as substrate rather than follow-up stands unchanged.
+
+Whether Opas eventually serves the admin realm is open and is not decided here.
+
+The realm is not inferable from the date a rule was written. A first draft of this entry set
+a blanket default — that "nav" in any rule written before 2026-10-02 meant admin-realm
+navigation — and that default contradicted this entry at CLAUDE.md:86, which holds that
+pages, forms and nav are a backup rather than the default, and mis-scoped the command-bar
+ranking rules at :160 and :163 into a realm this entry says has no Opas. All three are
+tenant-realm. A blanket reinterpretation of prior text is only safe over an enumerated
+population, the same way a count is only safe with a declared denominator.
+
+Two senses of the word must be separated before any such population can be read. Navigation
+as CHROME — a sidebar, the base nav, a rail, a nav item — is what this entry and "Navigation
+chrome is a fallback, not the structure" demote. Navigation as ACT — a user moving from one
+page to another — is untouched by either.
+
+The population is DECISIONS.md text preceding the 2026-10-01 entry "Opas is the primary way
+to act in the platform", enumerated unfiltered. Every match within it falls into one of three
+groups. Binding navigation chrome, all admin-realm or Studio: :64, :146, :448, :658, :668,
+:672. A false positive, the substring inside "unavoidable": :420. Tenant-realm but using
+navigation in the act sense, all from the park arc and unaffected by either entry: :971,
+:1001, :1048. Ten of ten. In CLAUDE.md, :86, :160 and :163 bind tenant-realm chrome and
+stand; :189 and :1703 are superseded.
+
+Both exclusions are deliberate. The 2026-10-01 entry's own "Navigation, pages and Focuses
+remain" is tenant-realm chrome, but it is the text this arc scopes rather than prior text
+needing interpretation — it is the coexistence wording that paragraph two replaces with
+demotion. And matches inside the 2026-10-02 entries are excluded of necessity: a claim about
+a document cannot be exhaustive over a document that will contain it.
+
+Three earlier attempts at this paragraph failed on measurement — a heading search, a
+date-based default, an undeclared grep filter. The fourth failed on self-reference, which no
+predicate fixes and only a stated population boundary does.
