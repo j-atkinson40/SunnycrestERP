@@ -16,6 +16,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -42,10 +43,25 @@ class ProductVariantTemplate(Base):
     #: they are cited in investigation documents and in this week's analysis, so a
     #: regenerated SKU would break those references silently.
     sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: ⚠️ THE EXACT SOURCE NAME, NOT A COMPOSED ONE. "Bronze" + "Triune Burial
+    #: Vault" composes plausibly, which is the trap — `"19 inch"` +
+    #: `"Loved & Cherished"` is not `Loved & Cherished 19"`, and "Universal" +
+    #: "Universal Urn Vault" is nonsense. This is also the string that lands on
+    #: an invoice and that the resolver has to match.
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: Per-row in the source, which is what makes it variant-level rather than
+    #: the product's. The product's description stays null rather than invented.
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     #: The variant's value on its product's axis — a finish, a model, a height.
     option_label: Mapped[str] = mapped_column(String(100), nullable=False)
     #: The only attribute that varies WITHIN a product rather than across one.
     tier: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    #: Wilbert publishes these. The product image shows the shell; the
+    #: variant image shows the finish — which is the Universal / Basic Gray
+    #: case exactly: one product, two variant images.
+    image_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -95,6 +95,11 @@ class ProductTemplate(Base):
     #: Where the figures came from and when. A spec Bridgeable asserts wrongly is
     #: discovered by a driver at a graveside with a family present, so the record
     #: carries its own provenance instead of relying on recall.
+    #: Wilbert publishes these. The product image shows the shell; the
+    #: variant image shows the finish — which is the Universal / Basic Gray
+    #: case exactly: one product, two variant images.
+    image_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+
     spec_source: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     spec_asof: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
