@@ -1,0 +1,56 @@
+# Sunnycrest's own licensee product spec sheet.
+#
+# Uploaded by James 2026-10-02. THE SOURCE for dimensions, weights and
+# personalization capability in Phase 2b of the platform catalog arc.
+#
+# Committed because every ruling made from it on 2026-10-02 was otherwise
+# uncheckable by anyone but him: it arrived as a chat upload, so "the spec sheet
+# says X" was a transcription of a file that did not exist in the repository.
+# This is the file itself, copied byte-for-byte and verified
+# md5 = ab25952750488f826c4738aab9744b18 against the upload. Not retyped.
+#
+# 31 data rows, 6 columns. UTF-8 with BOM, no trailing newline — read with
+# encoding="utf-8-sig". Dimensions are mixed-number inches ("91 1/4", "25 1/2")
+# and are sixteenths-exact, which is why the catalog stores them as
+# Numeric(8,4) rather than as strings.
+#
+# CONVENTION, verified against this file rather than described: the bare product
+# name is the BURIAL form and the urn form is suffixed "Urn Vault". True in all
+# four cases where both appear (lines 5/22, 6/23, 7/24, 13/29). The platform
+# aliases seeded in r191 cite these line numbers.
+#
+# Weights are ABSENT for every urn vault, every Loved & Cherished and the six
+# non-manufactured vaults. A lift rating and a truck load depend on that number,
+# so it is left absent rather than inferred from a sibling product.
+﻿Product,IN (inches) LxWxH,OUT (inches) LxW,Weight (Approx.),Type,Personalization
+Wilbert Bronze ,86 x 30 x 25½,91¼ x 35¼,3000,Burial Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Bronze Triune,86 x 30 x 25½,91¼ x 35¼,3000,Burial Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Copper Triune ,86 x 30 x 25½,91¼ x 35¼,3000,Burial Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Stainless Steel Triune(SST),86 x 30 x 25½,91¼ x 35¼,3000,Burial Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Veteran,86 x 30 x 25½,91¼ x 35¼,3000,Burial Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Cameo Rose,86 x 30 x 25½,91¼ x 35¼,3000,Burial Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Venetian,86 x 30 x 25½,90½ x 34½,2800,Burial Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Continental,86 x 30 x 25½,90½ x 34½,2700,Burial Vault,Nameplate + Emblem
+Salute,86 x 30 x 25½,90½ x 34½,2000,Burial Vault,Nameplate + Emblem
+Monticello,86 x 30 x 25½,90½ x 34½,2000,Burial Vault,
+Monarch,86 x 30 x 25½,89½ x 33½,1800,Burial Vault,
+Grave Liner,86 x 30 x 25½,89½ x 33½,1800,Burial Vault,
+"Monticello 34""",90 x 34 x 28,95 x 39,,Non-Manufactured Burial Vault,
+"Large 34""",90 x 34 x 28,94 x 39,,Non-Manufactured Burial Vault,
+"Large 36""",90 x 36 x 28,94 x 40,,Non-Manufactured Burial Vault,
+"Large 40""",94 x 40 x 32,98 x 44,,Non-Manufactured Burial Vault,
+Youth MT,68 x 24 x 21,72 x 28,,Non-Manufactured Burial Vault,
+Youth GL,61 x 22 x 21,63 x 25,,Non-Manufactured Burial Vault,
+Bronze Triune Urn Vault,12½ x 12½ x 13¾,14-5/16 x 14-5/16,,Urn Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Copper Triune Urn Vault,12½ x 12½  x 13¾,14-5/16 x 14-5/16,,Urn Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Stainless Steel Triune (SST) Urn Vault,12½ x 12½  x 13¾,14-5/16 x 14-5/16,,Urn Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Veteran Urn Vault,12½ x 12½ x 13¾,14-5/16 x 14-5/16,,Urn Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Cameo Rose Urn Vault,12½ x 12½ x 13¾,14-5/16 x 14-5/16,,Urn Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Venetian Urn Vault,12½ x 12½ x 13¾,14-5/16 x 14-5/16,,Urn Vault,"Legacy,Life's Reflections,Nameplate + Emblem"
+Monticello Urn Vault,12½ x 12½ x 13¾,14-5/16 x 14-5/16,,Urn Vault,
+Universal Urn Vault (P400WS),13 x 10¼ x 10,16  x  13¼ x 13,,Urn Vault,
+Basic Gray Urn Vault (P410),13 x 10¼ x 10,16  x  13¼ x 13,,Urn Vault,
+Graveliner Urn Vault,14½ x 12 x 10 , 151/2 x 18 x 13,,Urn Vault,
+Loved & Cherished  31,31-1/8 x 10-5/8 x 12-1/4,36-1/4 x 15-3/8 x 14,,L&C,
+Loved & Cherished  24,23-5/16 x 9-1/8 x 10-1/8,26 x 11-13/16 x 11-1/4,,L&C,
+Loved & Cherished 19,18 3/8 x 8 x 7,20 1/16 x 9 ¾ x 8 3/4,,L&C,
