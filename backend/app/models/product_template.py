@@ -88,8 +88,19 @@ class ProductTemplate(Base):
     #: `wilbert_program_enrollments.personalization_config.availability`, ruled on
     #: separately (DECISIONS 2026-09-22). Capability BOUNDS availability; it does
     #: not replace it, and a question absent here cannot be offered by anyone.
-    personalization_capability: Mapped[list] = mapped_column(
-        JSON, nullable=False, default=list
+    #: ⚠️ NULL IS NOT `[]`, AND r186 COULD NOT SAY SO. `[]` is a FINDING — this
+    #: product physically takes no personalization. NULL is an ABSENCE — nobody
+    #: has established what it takes. r186 shipped this NOT NULL with
+    #: `default=list`, so all 21 rows read `[]` and asserted the finding by
+    #: default for products the spec sheet says nothing about. r192 dropped NOT
+    #: NULL and reset every row; r193 set the 15 the sheet covers.
+    #:
+    #: Same defect shape as `is_manufactured` in
+    #: `docs/investigations/2026-10-02-platform-catalog-discrepancies.md` §4 — a
+    #: NOT NULL column default read as a deliberate decision. Caught before a
+    #: consumer trusted it rather than after.
+    personalization_capability: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True
     )
 
     #: Where the figures came from and when. A spec Bridgeable asserts wrongly is

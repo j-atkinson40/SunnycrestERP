@@ -7,6 +7,7 @@ it, and in time a line's identity resolves through it.
 """
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
@@ -15,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -61,6 +63,24 @@ class ProductVariantTemplate(Base):
     #: variant image shows the finish — which is the Universal / Basic Gray
     #: case exactly: one product, two variant images.
     image_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+
+    #: ⚠️ SPEC OVERRIDES. NULL MEANS READ THROUGH TO THE PRODUCT, which is the
+    #: normal case — every other product's variants are FINISHES, and a finish
+    #: does not change the object's size. Only `Loved & Cherished` populates
+    #: these: its three variants are SIZES (19", 24", 31") differing in all six
+    #: dimensions, so the product tier has nothing true to say and stores NULL.
+    #:
+    #: Same platform-default-over-tenant shape the catalog already uses one tier
+    #: up — the narrower scope stores only its deltas, resolution happens at READ
+    #: time, and a variant agreeing with its product stores nothing so the two
+    #: tiers cannot disagree by omission. Added r192.
+    inside_length_in: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    inside_width_in: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    inside_height_in: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    outside_length_in: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    outside_width_in: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    outside_height_in: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    weight_lb: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
 
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
