@@ -1325,6 +1325,39 @@ cannot measure has no business claiming.
 was undocumented; here a value's real provenance is. Both read as decisions and
 were neither.
 
+#### ⚠️ A DEFAULT CAN LIVE IN MORE THAN ONE LAYER, and dropping one is not dropping it
+
+**A column can carry a database `server_default` AND a SQLAlchemy `default=` on its
+model. Dropping the first without the second leaves every new row still acquiring
+the value — and when the writer inserts through the ORM, the migration looks
+complete while changing nothing.**
+
+This is the enforcement gap of the rule above, not a separate rule. The rule says
+a migration must leave "not established" distinguishable from a measured value;
+this says where to look to be sure you actually did.
+
+Measured 2026-10-03 in `r196`. `product_catalog_templates.is_manufactured` carried
+`server_default=true` from `x1y2z3a4b5c6:253` **and**
+`mapped_column(Boolean, default=True)` on the model. `catalog_template_seeder`
+inserts through the ORM, so dropping only the server default would have left every
+seeded row asserting `True` — with a green migration and a correct-looking
+`information_schema` readout.
+
+⚠️ **AND NEITHER `assert_no_schema_drift` NOR A SCHEMA DUMP CAN SEE THIS.** The
+drift guard compares model→DB on COLUMN EXISTENCE; a Python-side default is not a
+database object at all. `information_schema.column_default` reads `NULL` and is
+telling the truth. The only place the second default exists is the model file.
+
+**THE CHECK, before believing a default is gone:**
+
+    grep the model for `default=` on that column, and ask which path inserts.
+
+⚠️ Second instance in one day of a model/DB divergence being the operative fact —
+the first was `products.variant_template_id`, added by `r186` and declared nowhere,
+so the link the whole catalog design resolves through was unreachable. **The drift
+guard is blind in both directions here**: it cannot see a DB column the model omits
+(DB-extra is noise by design) and it cannot see a model default the DB never had.
+
 ### Timestamp column convention — two conventions in active use
 
 The codebase has two conventions for "last modified" timestamps. **Verify the actual column name on the target table before writing raw SQL UPDATE statements.** Don't assume `updated_at` exists everywhere.
@@ -2521,6 +2554,34 @@ do not count it as coverage.
 **The deletion corollary: the fix is often deletion, not another test.** Both times this
 list caught asserted-but-absent coverage in a single session, the repair simplified the
 code rather than adding to it.
+
+⚠️ **THE ROUND TRIP IS NOT A UNIVERSAL UNDO — know the restore path BEFORE breaking.**
+
+A migration's `downgrade()` reverses **only what that migration wrote**. A break test
+that damages rows the migration deliberately does NOT own cannot be undone by it: the
+round trip completes, reports success, and leaves the damage standing.
+
+This is the cost side of break-testing, and it is recorded precisely because the
+technique is load-bearing here. Breaking a check is the only way to know it can fire;
+that is not a reason to break things whose restore path is unknown.
+
+Measured 2026-10-03 while gating `r196`. The migration drops a default on
+`product_catalog_templates` and deliberately leaves its ROWS alone — their values vary
+and carry a real per-category decision. A break test set every row to `true` to prove
+the vary-check could fire. It fired, correctly. Then `r196 → r195 → head` ran clean and
+restored nothing, because those rows were written by `x1y2z3a4b5c6`, several hundred
+revisions earlier. Recovered by reading that migration's own literals.
+
+**THE CHECK, before any destructive break test:**
+
+    "Which migration wrote these rows, and does the one under test own them?"
+
+If it does not, the restore path is that earlier migration's literals, a backup, or a
+rebuild — and it is cheaper to know which before the break than after.
+
+⚠️ Kin to *a gate that mutates shared state is not repeatable*: there the first run
+changed what the second started from; here the break changes what the round trip
+cannot change back.
 
 ⚠️ **A BREAK TEST NEEDS A SUBJECT THAT PERSISTS.** The remedy above assumes the break
 has something to act on. When it does not, the check comes back green and the green

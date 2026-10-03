@@ -76,3 +76,58 @@ it only reverses what the migration under test actually wrote.
 - That the deploy will succeed. The head is read from `alembic_version` afterwards.
 - Anything about whether any licensee actually pours. That is the question
   onboarding will ask; this migration only stops the schema answering it by default.
+
+---
+
+## 6. ⚠️ The two tiers are NOT in conflict — the template value is the PRE-FILL
+
+Recorded here because a later reader meeting `product_catalog_templates` holding
+`true` for a vault while every `products` row holds NULL will read it as the two
+tiers disagreeing. **They do not. They answer different questions.**
+
+### The template split is the Wilbert generalization
+
+```
+WILBERT_BURIAL_VAULTS  19   is_manufactured=True     licensees POUR vaults under licence
+WILBERT_URN_VAULTS     12   is_manufactured=True     same
+CEMETERY_EQUIPMENT      6   is_manufactured=False    licensees BUY their equipment
+```
+
+That is not an arbitrary per-category literal. It is the statement *"a Wilbert
+licensee manufactures the vaults and purchases the equipment"* — true of the
+network as a whole, which is exactly what a PLATFORM tier is for.
+
+### So each tier has a coherent and different job
+
+| tier | holds | answers |
+|---|---|---|
+| `product_catalog_templates.is_manufactured` | the Wilbert generalization | **what a licensee probably does** — the onboarding PRE-FILL |
+| `products.is_manufactured` | NULL until asked | **what THIS licensee actually does** — the answer |
+
+**The pre-fill is a proposal; the tenant value is the decision.** That is the same
+platform-default-over-tenant shape the catalog already uses for themes, component
+config, capture fields and personalization availability — a platform tier that
+suggests and a tenant tier that decides.
+
+### Sunnycrest is the exception, and that is why it looked broken
+
+Sunnycrest buys every vault it sells and pours none. So at onboarding it would
+correct **every vault row from the pre-filled `true` to `false`** — a large,
+visible, deliberate set of corrections. The next licensee probably accepts the
+defaults almost entirely.
+
+⚠️ **This is why the old default looked correct.** `products` defaulted to `false`,
+which is right for Sunnycrest and wrong for most of the network — and Sunnycrest is
+the only tenant anyone could check it against. A value that is correct by accident
+on the single available sample is the hardest kind to notice, because every
+verification agrees with it. See `2026-10-03-is-manufactured-production.md` §3.
+
+### What this means for the two tiers going forward
+
+- **A template row holding `true` beside a NULL product row is the system working**,
+  not drift. Do not "reconcile" them.
+- **Do not copy the template value into `products` at provisioning.** That would
+  convert a proposal into an answer silently and reinstate exactly the defect r196
+  removed — this time wearing provenance.
+- The copy becomes legitimate only when a human has been **shown** the pre-fill and
+  accepted it. The acceptance is the measurement; the pre-fill is not.
