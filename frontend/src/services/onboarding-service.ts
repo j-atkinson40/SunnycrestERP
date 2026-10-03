@@ -65,8 +65,7 @@ export async function advanceScenario(
 // --- Product Library ---
 
 export async function getProductLibrary(params?: {
-  preset?: string;
-  category?: string;
+  form?: string;
 }): Promise<ProductTemplate[]> {
   const { data } = await apiClient.get("/tenant-onboarding/product-library", { params });
   return data;

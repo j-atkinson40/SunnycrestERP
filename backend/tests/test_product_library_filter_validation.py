@@ -132,18 +132,18 @@ def _get(client, ctx, **params):
 
 @pytest.fixture(scope="module")
 def known(db):
-    """The values actually present — the same derivation the service uses."""
-    cats = sorted(
+    """The values actually present — the same derivation the service uses.
+
+    ⚠️ Reads the NEW catalog since 2b-3 Commit 2. `category` and `preset` are gone:
+    the vocabulary moved to `form`, which was free because the endpoint had returned
+    500 on every call since 2026-03-17 and no client ever received the old values.
+    """
+    forms = sorted(
         v for (v,) in db.execute(
-            text("SELECT DISTINCT category FROM product_catalog_templates")
+            text("SELECT DISTINCT form FROM product_templates")
         ) if v is not None
     )
-    presets = sorted(
-        v for (v,) in db.execute(
-            text("SELECT DISTINCT preset FROM product_catalog_templates")
-        ) if v is not None
-    )
-    return {"categories": cats, "presets": presets}
+    return {"forms": forms}
 
 
 class TestTheEndpointAnswersAtAll:
@@ -159,44 +159,50 @@ class TestTheEndpointAnswersAtAll:
         """⚠️ POSITIVE CONTROL. Every rejection test below asserts a NON-200. If
         the catalog were empty they would still pass while proving nothing about
         filtering."""
-        assert known["categories"], "no categories in the catalog — tests below are vacuous"
+        assert known["forms"], "no forms in the catalog — tests below are vacuous"
         r = _get(client, ctx)
         assert len(r.json()) > 0
 
 
 class TestAnUnknownFilterIsLoud:
-    def test_unknown_category_is_422_not_an_empty_list(self, client, ctx):
-        r = _get(client, ctx, category="Definitely Not A Category")
+    def test_unknown_form_is_422_not_an_empty_list(self, client, ctx):
+        r = _get(client, ctx, form="Definitely Not A Form")
         assert r.status_code == 422, (
             f"got {r.status_code} with body {r.text[:200]} — an unknown filter "
             f"must not quietly return []"
         )
-        assert r.json()["detail"]["field"] == "category"
+        assert r.json()["detail"]["field"] == "form"
 
-    def test_unknown_preset_is_422(self, client, ctx):
-        r = _get(client, ctx, preset="not-a-preset")
+    def test_the_OLD_vocabulary_is_now_loudly_rejected(self, client, ctx):
+        """⚠️ The vocabulary move is a VISIBLE break, by design. A client still
+        sending "Burial Vaults" is told so, with the accepted set, rather than
+        handed an empty catalog."""
+        r = _get(client, ctx, form="Burial Vaults")
         assert r.status_code == 422
-        assert r.json()["detail"]["field"] == "preset"
+        assert "burial_vault" in r.json()["detail"]["known_values"]
 
     def test_the_error_names_what_IS_accepted(self, client, ctx, known):
         """The whole point: a client that missed a vocabulary change is told the
         vocabulary rather than left to guess from an empty list."""
-        r = _get(client, ctx, category="Definitely Not A Category")
-        assert r.json()["detail"]["known_values"] == known["categories"]
+        r = _get(client, ctx, form="Definitely Not A Form")
+        assert r.json()["detail"]["known_values"] == known["forms"]
 
 
 class TestKnownValuesStillWork:
-    def test_each_known_category_returns_rows(self, client, ctx, known):
+    def test_each_known_form_returns_rows(self, client, ctx, known):
         """⚠️ THE CONTROL ON THE REJECTIONS. A validator that rejected EVERYTHING
         would satisfy every test above. This proves it accepts what it should —
         and it is derived from the data, so it is correct in any environment."""
-        for cat in known["categories"]:
-            r = _get(client, ctx, category=cat)
-            assert r.status_code == 200, f"{cat!r} rejected: {r.text[:200]}"
-            assert len(r.json()) > 0, f"{cat!r} accepted but returned nothing"
+        for f in known["forms"]:
+            r = _get(client, ctx, form=f)
+            assert r.status_code == 200, f"{f!r} rejected: {r.text[:200]}"
+            assert len(r.json()) > 0, f"{f!r} accepted but returned nothing"
 
-    def test_each_known_preset_returns_rows(self, client, ctx, known):
-        for p in known["presets"]:
-            r = _get(client, ctx, preset=p)
-            assert r.status_code == 200, f"{p!r} rejected: {r.text[:200]}"
-            assert len(r.json()) > 0
+    def test_the_library_returns_variants_not_products(self, client, ctx, db):
+        """⚠️ The silent-halving guard. The old flat rows were sellable things,
+        which are VARIANTS; products would offer far fewer."""
+        n = len(_get(client, ctx).json())
+        variants = db.execute(text("SELECT count(*) FROM product_variant_templates")).scalar_one()
+        products = db.execute(text("SELECT count(*) FROM product_templates")).scalar_one()
+        assert n == variants
+        assert n != products

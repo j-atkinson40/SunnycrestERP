@@ -136,14 +136,28 @@ export interface HelpDismissal {
 
 export interface ProductTemplate {
   id: string;
-  preset: string;
-  category: string;
+  /** One of: burial_vault | grave_liner | infant | urn_vault | urn | equipment.
+   *  Replaced `category` at 2b-3 Commit 2 — the old three-value vocabulary had no
+   *  faithful translation ("Burial Vaults" covered burial_vault, grave_liner AND
+   *  infant). Safe to change without a deprecation window because the endpoint
+   *  returned 500 on every call from 2026-03-17 until then, so no client ever
+   *  received the old values. */
+  form: string;
   product_name: string;
   product_description: string | null;
   sku_prefix: string | null;
-  default_unit: string | null;
-  is_manufactured: boolean;
   sort_order: number;
+  /* ⚠️ `preset`, `default_unit` and `is_manufactured` are GONE, and each for its
+   * own reason:
+   *   preset           — held one value on every row; the new catalog is
+   *                      platform-wide and has no preset concept.
+   *   default_unit     — the new catalog has NO unit column. The old values were
+   *                      not uniform (24 "each", 1 "sqft" in dev), so this is
+   *                      information genuinely lost in the move, not a field
+   *                      dropped as redundant. Flagged for the catalog, not
+   *                      papered over here.
+   *   is_manufactured  — the new product tier never had it, and r196 ruled the
+   *                      tenant copy NULL until onboarding asks. */
 }
 
 export interface ProductImportItem {

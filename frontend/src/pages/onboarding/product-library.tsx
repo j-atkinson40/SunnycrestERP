@@ -22,8 +22,8 @@ interface SelectedProduct {
 function groupByCategory(templates: ProductTemplate[]): Record<string, ProductTemplate[]> {
   const groups: Record<string, ProductTemplate[]> = {};
   for (const t of templates) {
-    if (!groups[t.category]) groups[t.category] = [];
-    groups[t.category].push(t);
+    if (!groups[t.form]) groups[t.form] = [];
+    groups[t.form].push(t);
   }
   // Sort each category by sort_order
   for (const key of Object.keys(groups)) {
@@ -32,18 +32,46 @@ function groupByCategory(templates: ProductTemplate[]): Record<string, ProductTe
   return groups;
 }
 
-const CATEGORY_ORDER = [
-  "Burial Vaults",
-  "Wastewater",
-  "Redi-Rock",
-  "Rosetta Hardscapes",
+/** The Feb 1 2026 price list's own order, read top to bottom: burial vaults, the
+ *  non-reinforced liners sitting with them, Loved & Cherished, then page two's urn
+ *  vaults and urns, then graveside equipment.
+ *
+ *  ⚠️ ORDERED TO MATCH HOW SUNNYCREST ALREADY PRESENTS THE CATALOG TO FUNERAL
+ *  HOMES, not invented. Same authority as everything else in this arc — the price
+ *  list is authoritative for catalog membership and organisation.
+ *
+ *  ⚠️ IT REPLACES A LIST INHERITED FROM DEV. The previous value was
+ *  ["Burial Vaults", "Wastewater", "Redi-Rock", "Rosetta Hardscapes"] — the
+ *  `x1y2z3a4b5c6` migration's categories. Production's were "Burial Vaults",
+ *  "Urn Vaults", "Cemetery Equipment", so TWO OF PRODUCTION'S THREE were already
+ *  unknown to it and sorted alphabetically after the known one. The ordering has
+ *  been half-wrong in production the whole time and nobody saw it, because the
+ *  page never loaded. */
+const FORM_ORDER = [
+  "burial_vault",
+  "grave_liner",
+  "infant",
+  "urn_vault",
+  "urn",
+  "equipment",
 ];
+
+/** Human labels. Unknown forms fall through to the raw value rather than being
+ *  hidden — an unlabelled section is visible; a dropped one is not. */
+const FORM_LABELS: Record<string, string> = {
+  burial_vault: "Burial Vaults",
+  grave_liner: "Grave Liners",
+  infant: "Infant",
+  urn_vault: "Urn Vaults",
+  urn: "Urns",
+  equipment: "Cemetery Equipment",
+};
 
 function sortedCategories(groups: Record<string, ProductTemplate[]>): string[] {
   const keys = Object.keys(groups);
   return keys.sort((a, b) => {
-    const ai = CATEGORY_ORDER.indexOf(a);
-    const bi = CATEGORY_ORDER.indexOf(b);
+    const ai = FORM_ORDER.indexOf(a);
+    const bi = FORM_ORDER.indexOf(b);
     if (ai === -1 && bi === -1) return a.localeCompare(b);
     if (ai === -1) return 1;
     if (bi === -1) return -1;
@@ -93,19 +121,49 @@ export default function ProductLibraryPage() {
   const [selections, setSelections] = useState<Map<string, SelectedProduct>>(new Map());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  // Fetch templates
-  useEffect(() => {
+  // Fetch templates.
+  //
+  // ⚠️ THREE DISTINCT STATES, AND THE REASON IS 200 DAYS OF SILENCE. This route
+  // returned 500 on EVERY call from 2026-03-17 to 2026-10-03, and the page's only
+  // response was `toast.error("Failed to load product library")` with `templates`
+  // left as []. That message is indistinguishable from a dropped connection, and
+  // the page still rendered as a plausible EMPTY CATALOG — so a permanent server
+  // error impersonated a legitimate state for 200 days and nobody chased it.
+  //
+  // A failure must not be able to impersonate a legitimate state. Same rule as
+  // NULL versus a measured value, in the UI layer.
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const fetchLibrary = () => {
+    setLoading(true);
+    setLoadError(null);
     onboardingService
-      .getProductLibrary({ preset: "manufacturing" })
+      .getProductLibrary()
       .then((data) => {
         setTemplates(data);
-        // Expand all categories by default
-        const cats = new Set(data.map((t) => t.category));
-        setExpandedCategories(cats);
+        setExpandedCategories(new Set(data.map((t) => t.form)));
       })
-      .catch(() => toast.error("Failed to load product library"))
+      .catch((err) => {
+        // Name what happened. A status is chaseable; "failed to load" is not.
+        const status = err?.response?.status;
+        const detail = err?.response?.data?.detail;
+        const named =
+          typeof detail === "string"
+            ? detail
+            : detail?.error === "unknown_filter_value"
+              ? `Unknown ${detail.field} "${detail.value}". Expected one of: ${(detail.known_values ?? []).join(", ")}.`
+              : null;
+        setLoadError(
+          status
+            ? `Server returned ${status}${named ? ` — ${named}` : ""}`
+            : "Could not reach the server.",
+        );
+        setTemplates([]);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(fetchLibrary, []);
 
   const grouped = useMemo(() => groupByCategory(templates), [templates]);
   const categories = useMemo(() => sortedCategories(grouped), [grouped]);
@@ -233,6 +291,38 @@ export default function ProductLibraryPage() {
         </div>
       </div>
 
+      {/* ⚠️ FAILED — never silently an empty list. Names the status and offers retry. */}
+      {!loading && loadError && (
+        <Card className="border-status-error/30 bg-status-error-muted">
+          <div className="space-y-3 p-6">
+            <h2 className="text-body font-medium text-status-error">
+              Couldn't load the product library
+            </h2>
+            <p className="text-body-sm text-content-base">{loadError}</p>
+            <p className="text-caption text-content-muted">
+              This is a server error, not an empty catalog. Nothing has been changed.
+            </p>
+            <Button variant="outline" onClick={fetchLibrary}>
+              Try again
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* ⚠️ EMPTY — the request SUCCEEDED and returned nothing. A different fact. */}
+      {!loading && !loadError && templates.length === 0 && (
+        <Card>
+          <div className="space-y-2 p-6">
+            <h2 className="text-body font-medium text-content-base">
+              No products to show
+            </h2>
+            <p className="text-body-sm text-content-muted">
+              The request succeeded, but the starter library is empty.
+            </p>
+          </div>
+        </Card>
+      )}
+
       {/* Categories */}
       <div className="space-y-4">
         {categories.map((category) => {
@@ -242,7 +332,7 @@ export default function ProductLibraryPage() {
           const allCatSelected = catSelectedCount === items.length;
 
           return (
-            <Card key={category}>
+            <Card key={FORM_LABELS[category] ?? category}>
               {/* Category header */}
               <button
                 type="button"
@@ -251,7 +341,7 @@ export default function ProductLibraryPage() {
               >
                 <div className="flex items-center gap-3">
                   <ChevronIcon open={expanded} />
-                  <h2 className="text-base font-semibold">{category}</h2>
+                  <h2 className="text-base font-semibold">{FORM_LABELS[category] ?? category}</h2>
                   <Badge variant="secondary">
                     {items.length} product{items.length !== 1 ? "s" : ""}
                   </Badge>
@@ -322,11 +412,14 @@ export default function ProductLibraryPage() {
                                     {template.sku_prefix}
                                   </Badge>
                                 )}
-                                {template.default_unit && (
-                                  <span className="text-[10px] text-muted-foreground">
-                                    per {template.default_unit}
-                                  </span>
-                                )}
+                                {/* ⚠️ `per <unit>` REMOVED, not relocated. The new
+                                    catalog has NO unit column, and the old values
+                                    were not uniform (24 "each", 1 "sqft" in dev),
+                                    so this is information genuinely lost in the
+                                    move rather than a redundant field dropped.
+                                    Rendering a hardcoded "each" would have been a
+                                    guess wearing the old field's clothes. Flagged
+                                    for the catalog; not papered over here. */}
                               </div>
                             </div>
                           </div>

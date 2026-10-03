@@ -1790,26 +1790,79 @@ def _known_values(db: Session, column) -> list[str]:
 
 def get_product_templates(
     db: Session,
-    preset: str | None = None,
-    category: str | None = None,
-) -> list[ProductCatalogTemplate]:
-    """Get product catalog templates, optionally filtered.
+    form: str | None = None,
+) -> list[dict]:
+    """The starter product library, from the PLATFORM CATALOG (r186-r196).
 
-    Raises `UnknownFilterValue` if a supplied filter matches nothing — see that
-    class for why silence was the wrong behaviour.
+    ⚠️ VARIANTS, NOT PRODUCTS. The old flat table's rows were each one SELLABLE
+    thing; they map 1:1 onto variants and collapse onto far fewer products.
+    Returning products would offer "Triune Burial Vault" where a licensee expects
+    to tick "Bronze Triune", and silently shrink the library.
+
+    ⚠️ `category` AND `preset` ARE GONE, AND THE BREAK IS FREE. This endpoint has
+    returned 500 on EVERY call since 2026-03-17 (the route passed `company.id` into
+    a signature that does not take it), so no caller has ever received a response
+    containing the old vocabulary. The warrant for changing it without a
+    deprecation window is that THE ENDPOINT NEVER WORKED — not that a break was
+    judged acceptable. Those are different justifications and only the first is
+    available here.
+
+    - `category` -> `form`, with its six real values. The old three-value category
+      had no faithful translation: "Burial Vaults" covered what are now
+      `burial_vault`, `grave_liner` AND `infant`.
+    - `preset` is dropped. It held one value ("manufacturing") on every row, and
+      the new catalog is platform-wide with no preset concept. Removed from the
+      route and the caller together so nothing is silently ignored.
+
+    Raises `UnknownFilterValue` for a form that matches nothing.
     """
-    query = db.query(ProductCatalogTemplate)
-    if preset:
-        known = _known_values(db, ProductCatalogTemplate.preset)
-        if preset not in known:
-            raise UnknownFilterValue("preset", preset, known)
-        query = query.filter(ProductCatalogTemplate.preset == preset)
-    if category:
-        known = _known_values(db, ProductCatalogTemplate.category)
-        if category not in known:
-            raise UnknownFilterValue("category", category, known)
-        query = query.filter(ProductCatalogTemplate.category == category)
-    return query.order_by(ProductCatalogTemplate.sort_order).all()
+    from app.models.product_template import ProductTemplate
+    from app.models.product_variant_template import ProductVariantTemplate
+
+    q = (
+        db.query(
+            ProductVariantTemplate.id,
+            ProductVariantTemplate.display_name,
+            ProductVariantTemplate.sku,
+            ProductVariantTemplate.description,
+            ProductVariantTemplate.sort_order,
+            ProductTemplate.form,
+            ProductTemplate.display_name.label("product_display_name"),
+            ProductTemplate.description.label("product_description"),
+        )
+        .join(
+            ProductTemplate,
+            ProductTemplate.id == ProductVariantTemplate.product_template_id,
+        )
+    )
+    if form:
+        known = sorted(
+            v for (v,) in db.query(ProductTemplate.form).distinct().all() if v
+        )
+        if form not in known:
+            raise UnknownFilterValue("form", form, known)
+        q = q.filter(ProductTemplate.form == form)
+
+    rows = q.order_by(
+        ProductTemplate.form,
+        ProductTemplate.family_slug,
+        ProductVariantTemplate.sort_order,
+    ).all()
+
+    return [
+        {
+            "id": r.id,
+            "form": r.form,
+            "product_name": r.display_name,
+            # ⚠️ Falls through to the PRODUCT's description when the variant has
+            # none — the new catalog puts detail on whichever tier carries it, and
+            # writing NULL here would lose text that exists one level up.
+            "product_description": r.description or r.product_description,
+            "sku_prefix": r.sku,
+            "sort_order": r.sort_order,
+        }
+        for r in rows
+    ]
 
 
 def import_product_templates(

@@ -179,15 +179,20 @@ def advance_scenario(
 
 @router.get("/product-library")
 def get_product_library(
-    preset: str | None = Query(None),
-    category: str | None = Query(None),
+    form: str | None = Query(
+        None,
+        description=(
+            "burial_vault | grave_liner | infant | urn_vault | urn | equipment. "
+            "An unrecognised value returns 422 naming the accepted set."
+        ),
+    ),
     current_user: User = Depends(get_current_user),
     company: Company = Depends(get_current_company),
     db: Session = Depends(get_db),
 ):
     """Get product catalog templates for the starter library.
 
-    ⚠️ An unrecognised `preset` or `category` returns **422**, not an empty list.
+    ⚠️ An unrecognised `form` returns **422**, not an empty list.
     Until 2026-10-03 it filtered everything out and returned `[]`, so a client
     that missed a vocabulary change saw an empty catalog with no signal. The
     response body names the values that ARE accepted.
@@ -199,9 +204,7 @@ def get_product_library(
         # below. `product_catalog_templates` is PLATFORM-TIER and has no
         # `company_id` column at all, so the argument was never meaningful; the
         # `company` dependency is retained only to enforce tenant auth.
-        return tenant_onboarding_service.get_product_library(
-            db, preset=preset, category=category
-        )
+        return tenant_onboarding_service.get_product_library(db, form=form)
     except tenant_onboarding_service.UnknownFilterValue as exc:
         raise HTTPException(
             status_code=422,
