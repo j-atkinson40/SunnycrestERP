@@ -3222,6 +3222,30 @@ depend on getting the plumbing right a second time. `PIPESTATUS`/`set -o
 pipefail` work and are worth using, but they are another thing to remember; a
 row count is evidence.
 
+⚠️ **AND FOR CI STATUS SPECIFICALLY, HERE IS THE COMMAND. READ THE FIELD:**
+
+    gh run view <id> --json status,conclusion --jq '.status, .conclusion'
+    gh run view <id> --json jobs --jq '.jobs[] | "\(.conclusion)\t\(.name)"'
+
+**Never infer CI status from the exit code of a watch, and never pipe a status
+command.** `gh run watch --exit-status | tail -30` reports `tail`'s status, so a
+red run reads as success.
+
+This is stated as a command rather than as a principle because the principle is
+already two paragraphs up and was violated anyway. Measured 2026-10-03 on
+`8def1779`: a watch piped through `tail` reported exit 0 and was reported as a
+clean channel; `--json conclusion` returned `failure`. That is the FOURTH
+instance of this shape in one arc — after `$?` over seed pipelines, `find` over a
+symlink, and `grep -c` counting lines — and the third committed by an author who
+had read the entry naming it. The rule was never the missing piece. The command
+is.
+
+Which is the removal criterion applied to this file's own longest-standing
+failure: `--json conclusion` has no exit-code-of-a-pipe to misread, so there is
+nothing left to get wrong rather than a reminder to be careful. See *Removal
+before recognition* in this section, and *a rule that is read and violated is
+placed wrong, not worded wrong*.
+
 #### A guard whose protection is supplied by a layer beneath it
 
 The break test's usual job is to confirm a check can go red. Occasionally it
