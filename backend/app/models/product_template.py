@@ -88,17 +88,28 @@ class ProductTemplate(Base):
     #: `wilbert_program_enrollments.personalization_config.availability`, ruled on
     #: separately (DECISIONS 2026-09-22). Capability BOUNDS availability; it does
     #: not replace it, and a question absent here cannot be offered by anyone.
-    #: ⚠️ NULL IS NOT `[]`, AND r186 COULD NOT SAY SO. `[]` is a FINDING — this
-    #: product physically takes no personalization. NULL is an ABSENCE — nobody
-    #: has established what it takes. r186 shipped this NOT NULL with
-    #: `default=list`, so all 21 rows read `[]` and asserted the finding by
-    #: default for products the spec sheet says nothing about. r192 dropped NOT
-    #: NULL and reset every row; r193 set the 15 the sheet covers.
+    #: ⚠️ NULL IS NOT `[]`. `[]` is a FINDING — this product physically takes no
+    #: personalization. NULL is an ABSENCE — nobody has established what it
+    #: takes. Before r192 the column was `JSON NOT NULL`, so the absence was
+    #: inexpressible and all 21 rows read `[]`, asserting the finding for the six
+    #: products the spec sheet says nothing about. r192 dropped NOT NULL and
+    #: reset every row; r193 set the 15 the sheet covers.
     #:
-    #: Same defect shape as `is_manufactured` in
-    #: `docs/investigations/2026-10-02-platform-catalog-discrepancies.md` §4 — a
-    #: NOT NULL column default read as a deliberate decision. Caught before a
-    #: consumer trusted it rather than after.
+    #: ⚠️ CORRECTED 2026-10-03 — THE `[]` DID NOT COME FROM THE COLUMN DEFAULT.
+    #: This comment, and `b0f682b3`'s commit message, both said it did. The
+    #: column's `default=list` existed, but the rows never took it: `r188:409`
+    #: writes `"personalization_capability": []` as a hardcoded literal inside
+    #: its insert loop, unconditionally, for all 21 products. Same effect,
+    #: different writer — and the difference matters, because a literal reads as
+    #: deliberate and a review asking "is the default safe?" finds no default in
+    #: play.
+    #:
+    #: Same false assertion as `is_manufactured`
+    #: (`docs/investigations/2026-10-02-platform-catalog-discrepancies.md` §4),
+    #: which IS the default-driven form — `u3v4w5x6y7z8` adds it to an already
+    #: populated `products` with `server_default=text("false")`. Two mechanisms,
+    #: one defect. CLAUDE.md §5, "A migration must leave not established
+    #: distinguishable from a measured value"; DECISIONS 2026-10-03.
     personalization_capability: Mapped[Optional[list]] = mapped_column(
         JSON, nullable=True
     )

@@ -1264,6 +1264,67 @@ first time that day a gate caught something rather than confirming something. Th
 INSERT side had been reasoned about carefully; the DELETE side had not been
 reasoned about at all.
 
+### ⚠️ A migration must leave "not established" distinguishable from a measured value
+
+**A column added to a populated table is nullable unless every existing row has
+been shown to satisfy the value. A value written uniformly across a bulk insert
+is the same assertion about every row it touches and needs the same showing —
+whether it arrives from a `DEFAULT` or from a literal in the migration's own
+data.**
+
+    NULL            not established
+    a non-null value    we measured this
+
+⚠️ **THE LITERAL FORM IS THE MORE DANGEROUS OF THE TWO, AND IT IS THE ONE A
+DEFAULT-FOCUSED REVIEW CANNOT SEE.** It reads as deliberate, because someone
+typed it. A reviewer asking *"is the default safe?"* finds no default in play and
+moves on.
+
+Two instances, September–October 2026, same false assertion by two mechanisms:
+
+- **The default-driven form.** `u3v4w5x6y7z8` adds `products.is_manufactured` as
+  `Boolean, nullable=False, server_default=text("false")` to a table that already
+  held rows. Every pre-existing product thereby asserts "we do not make this",
+  which was never measured for any of them.
+  `docs/investigations/2026-10-02-platform-catalog-discrepancies.md` §4 records a
+  null-if-equal rule that would have read that default as a deliberate tenant
+  override and pinned **every Wilbert vault as not-manufactured, permanently**,
+  against the platform's own definition.
+
+- **The literal-driven form.** `r186` declares
+  `product_templates.personalization_capability` as `JSON NOT NULL DEFAULT list`,
+  and `r188:409` then writes `"personalization_capability": []` as a hardcoded
+  literal inside its insert loop, unconditionally, for all 21 products. Each row
+  asserts "this product physically takes no personalization". Nothing measured
+  it. `r192` dropped the NOT NULL and reset every row; `r193` set the 15 the spec
+  sheet covers and left the other 6 NULL.
+
+**Both defaults are PLAUSIBLE VALUES, which is why neither assertion was
+visible.** "Not manufactured" and "takes no personalization" both read like data.
+A default of `-1`, or an empty string in a name column, announces itself; a
+defensible business value does not.
+
+⚠️ **AND THIS RULE WAS FIRST DRAFTED COVERING DEFAULTS ONLY, WHICH WOULD NOT HAVE
+CAUGHT THE INSTANCE THAT PROMPTED IT.** r186 created the column and r188 created
+the rows — there was no populated table at the moment the column was added, and
+the `[]` came from a literal rather than from the default. A reviewer applying
+the narrow version to r186/r188 finds nothing to check. The wording above covers
+both mechanisms for that reason, and the near miss is the entry's point rather
+than a footnote to it. See DECISIONS 2026-10-03, "Not established is a value, and
+two mechanisms erase it".
+
+**The test, before any migration that puts a value on a row it did not create:**
+
+    "Did I measure this for every row I am about to write it to,
+     or am I filling a column?"
+
+If the second, the column is nullable and the rows stay NULL. A migration that
+cannot measure has no business claiming.
+
+⚠️ Kin to the `is_not_distinct_from` entry in §11 — there a guard's real mechanism
+was undocumented; here a value's real provenance is. Both read as decisions and
+were neither.
+
 ### Timestamp column convention — two conventions in active use
 
 The codebase has two conventions for "last modified" timestamps. **Verify the actual column name on the target table before writing raw SQL UPDATE statements.** Don't assume `updated_at` exists everywhere.

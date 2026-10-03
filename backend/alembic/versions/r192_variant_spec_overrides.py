@@ -29,11 +29,19 @@ TWO CHANGES, AND THE SECOND IS A RETRACTION.
 2. ⚠️ `product_templates.personalization_capability` BECOMES NULLABLE, AND ALL 21
    EXISTING VALUES ARE RESET TO NULL.
 
-   r186 declared it `JSON NOT NULL DEFAULT list`, so every one of the 21 rows
-   currently reads `[]`. Under the semantics this column is for, `[]` is a
-   CLAIM — "this product can take no personalization at all" — and it was never
-   measured for any of them. It is a column default wearing a measurement's
-   clothes, asserted 21 times.
+   r186 declared it `JSON NOT NULL`, so every one of the 21 rows currently reads
+   `[]`. Under the semantics this column is for, `[]` is a CLAIM — "this product
+   can take no personalization at all" — and it was never measured for any of
+   them. It is a measurement's clothes on something nobody measured, asserted 21
+   times.
+
+   ⚠️ CORRECTED 2026-10-03 — THE WRITER WAS A LITERAL, NOT THE COLUMN DEFAULT.
+   This docstring first said the `DEFAULT list` put `[]` on every row. It did
+   not: `r188:409` writes `"personalization_capability": []` as a hardcoded
+   literal inside its insert loop, unconditionally, for all 21 products, so the
+   default was never reached. The effect is identical and the mechanism is not,
+   and the mechanism is the half a reviewer inspects — asking "is the default
+   safe?" finds no default in play. See DECISIONS 2026-10-03.
 
    The distinction the column exists to carry is exactly:
 

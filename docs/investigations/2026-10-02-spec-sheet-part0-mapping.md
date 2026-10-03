@@ -12,10 +12,12 @@ question ids, before r192/r193 wrote anything.
    product-level spec assumption holds everywhere else.
 3. ⚠️ **The md5 in every dispatch is of the PAYLOAD, not the file.** `md5 <file>`
    does not reproduce it, and nothing said so.
-4. ⚠️ **`personalization_capability` was `NOT NULL DEFAULT list`, so all 21
-   products asserted "takes no personalization"** — a column default wearing a
-   measurement's clothes. This is the `is_manufactured` defect, caught before a
-   consumer trusted it.
+4. ⚠️ **`personalization_capability` was `NOT NULL`, so all 21 products asserted
+   "takes no personalization"** — a measurement's clothes on something nobody
+   measured. Same false assertion as `is_manufactured`, caught before a consumer
+   trusted it. ⚠️ **CORRECTED 2026-10-03:** this said `NOT NULL DEFAULT list` and
+   blamed the default. The writer was `r188:409`, a hardcoded literal in the
+   insert loop — see §5.
 5. ⚠️ **The dispatch names four products as having an empty personalization set.
    Eight in-scope products do.** The four are correct and not exhaustive.
 6. ⚠️ **My width-exceeds-length check reported zero flagged over 128 comparisons
@@ -267,8 +269,8 @@ would have fired a STOP on a condition that was in fact satisfied.
 
 ## 5. ⚠️ `personalization_capability` could not express "unknown"
 
-r186 declared it `JSON NOT NULL DEFAULT list`. All 21 products therefore read
-`[]`, and under the semantics the column exists for:
+r186 declared it `JSON NOT NULL`. All 21 products therefore read `[]`, and under
+the semantics the column exists for:
 
     []     the product physically takes NO personalization   — a FINDING
     NULL   nobody has established what it takes              — an ABSENCE

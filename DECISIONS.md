@@ -2622,3 +2622,61 @@ vault_product_id is None path omits by design.
 
 Recorded in the shape the RingCentral entrance gap was: the pipeline is demonstrable, and
 the gap is named rather than presented as a connected system.
+
+---
+
+## 2026-10-03 — Not established is a value, and two mechanisms erase it
+
+A migration must leave "not established" distinguishable from a measured value. The binding
+form is in CLAUDE.md §5; this entry carries the reasoning and the near miss, because the near
+miss is the point.
+
+The rule exists because the same false assertion was produced twice this arc by two different
+mechanisms, and only one of them is what a schema review looks at.
+
+**The default-driven form.** `u3v4w5x6y7z8` adds `products.is_manufactured` as `Boolean,
+nullable=False, server_default=text("false")` to a table that already held rows. Every
+pre-existing product thereby asserts "we do not make this". Nobody measured that for any of
+them. `docs/investigations/2026-10-02-platform-catalog-discrepancies.md` §4 records a
+null-if-equal rule that would have read the default as a deliberate tenant override and pinned
+every Wilbert vault as not-manufactured permanently, against the platform's own definition.
+
+**The literal-driven form.** `r186` declares `product_templates.personalization_capability` as
+`JSON NOT NULL DEFAULT list`; `r188:409` then writes `"personalization_capability": []` as a
+hardcoded literal inside its insert loop, unconditionally, for all 21 products. Each row
+asserts "this product physically takes no personalization". Nothing measured it. `r192` dropped
+the NOT NULL and reset every row; `r193` set the 15 the spec sheet covers and left six NULL.
+
+Both defaults are PLAUSIBLE VALUES, which is why neither assertion was visible. "Not
+manufactured" and "takes no personalization" both read like data. A default of `-1`, or an
+empty string in a name column, announces itself; a defensible business value does not.
+
+**THE NEAR MISS, WHICH IS WHY THIS ENTRY EXISTS RATHER THAN JUST THE RULE.** The rule was first
+drafted covering defaults only — "a column added to a populated table is nullable unless every
+existing row has been shown to satisfy the default." That version would not have caught the
+instance that prompted it. r186 created the column and r188 created the rows, so there was no
+populated table at the moment the column was added, and the `[]` arrived from a literal rather
+than from the default. A reviewer applying the narrow version to r186/r188 finds no default in
+play and moves on. The rule was widened before landing, and the widening came from measuring
+the mechanism rather than from re-reading the draft.
+
+That is the third instance this arc of a check that could not fire on the thing it was written
+for — after a width-exceeds-length comparison that skipped the only row it existed for, and a
+delta tripwire silent at saturation. The pattern is not carelessness in drafting. It is that a
+check and its subject get specified from the same understanding, so a wrong understanding
+produces a check that agrees with itself. See CLAUDE.md §11, "A control that cannot distinguish
+itself from a failure is not a control" and "An expected value derived from the hypothesis
+cannot test the hypothesis".
+
+**THE WRONG ATTRIBUTION OF RECORD IS `b0f682b3`.** Its commit message states that r186's column
+default wrote `[]` into all 21 rows, and the model docstring it landed said the same. The effect
+was exactly that; the mechanism was not. The `[]` came from r188's explicit literal. The commit
+is not amended — a wrong attribution in a commit message is corrected where people read it,
+not erased, and this log is additive. The docstring is corrected in the commit that lands this
+entry, because blame lands on the docstring.
+
+Corollary for review, stated because it is the half a reader can act on: when a column holds a
+uniform value across every row of a table, that uniformity is a question, not a reassurance.
+Ask which writer produced it and whether that writer measured anything. `r188`'s loop and
+`u3v4w5x6y7z8`'s default are indistinguishable from the database side; both produce a column
+where every row agrees.
