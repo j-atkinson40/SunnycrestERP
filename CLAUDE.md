@@ -2549,6 +2549,23 @@ the specific check green is the failure this whole list describes.
 **If a check cannot be made to fail, it is documentation.** File it as such or delete it;
 do not count it as coverage.
 
+⚠️ **AND WHEN REPORTING BREAK TESTS, STATE THE BREAK ALONGSIDE EACH ASSERTION IT WAS
+APPLIED TO.** "Break-tested" as a bare claim cannot be checked by a reader, and an
+assertion whose break silently failed to fire is INVISIBLE in a summary — it looks
+exactly like one that was never listed.
+
+Name the break, name the assertion it turned red, and name the control that proved
+the break landed. A reader can then see which assertions have a firing break and
+which only appear to.
+
+Measured 2026-10-03, and the number is the argument: **two break tests in a single
+commit looked discriminating and were not.** The first resolved through a code path
+the break did not touch; the second was written specifically to fix that and still
+resolved through the same path, because the fixture name chosen happened to feed it.
+Only the third fired. Both failures were found by RUNNING, neither by reading — and
+a summary saying "break-tested, all green" would have been true of every one of
+those three states while meaning something different each time.
+
 ⚠️ **Passing this remedy is necessary and not sufficient** — see shape 9, which passes it.
 
 **The deletion corollary: the fix is often deletion, not another test.** Both times this
@@ -3323,6 +3340,28 @@ The state check is strictly better than fixing the pipe, because it does not
 depend on getting the plumbing right a second time. `PIPESTATUS`/`set -o
 pipefail` work and are worth using, but they are another thing to remember; a
 row count is evidence.
+
+⚠️ **NEVER PIPE A COMMAND WHOSE EXIT STATUS YOU INTEND TO READ. REDIRECT, READ
+THE STATUS, THEN READ THE FILE:**
+
+    npx tsc > /tmp/tsc.out 2>&1; echo $?; head -8 /tmp/tsc.out
+
+**That ordering is the whole practice** — status first, from the command itself,
+then whatever reduction you wanted. The reduction can no longer stand between you
+and the status because it happens afterwards.
+
+⚠️ **THIS IS ONE SHAPE, NOT THREE SEPARATE CAUTIONS**, and naming them together is
+the point. Measured 2026-10-03, all three in a single day:
+
+    gh run watch --exit-status | tail -30   reported 0; CI had FAILED
+    alembic upgrade | grep -c "Running"     counted LOG LINES; the migration
+                                            had rolled back
+    npx tsc | head -8                       reported 0 while printing 2 errors
+
+Each was committed by an author who had read the paragraph above it, twice by one
+who had edited that paragraph the same morning. **The reminder is not the fix.** A
+pipe that cannot sit between you and a status is the fix, which is why this is
+written as a command rather than as a principle — see *Removal before recognition*.
 
 ⚠️ **AND FOR CI STATUS SPECIFICALLY, HERE IS THE COMMAND. READ THE FIELD:**
 

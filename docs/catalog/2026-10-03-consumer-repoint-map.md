@@ -285,3 +285,53 @@ are done and green.
 - **Whether the price-list prompt gets better or worse with 52 entries.** More
   candidates could improve recall or dilute matching. Measurable after step 1, not
   before.
+
+---
+
+# Ruling, 2026-10-03 — unit of measure is a precast-vertical concern
+
+Commit 2 removed the `per <unit>` display because the new catalog has no unit
+column and the old `default_unit` was not uniform. **The row that made it
+non-uniform has now been identified, and it settles the question.**
+
+## The measurement
+
+```
+dev        Burial Vaults        each  8
+           Redi-Rock            each  6
+           Wastewater           each  7
+           Rosetta Hardscapes   each  3
+           Rosetta Hardscapes   sqft  1   ← `Rosetta Pavers` / `RH-PAV`
+
+production Burial Vaults        each 19
+           Urn Vaults           each 12
+           Cemetery Equipment   each  6
+           rows whose unit is NOT 'each': 0
+```
+
+**The single exception in either environment is `Rosetta Pavers`, a hardscape
+paver sold by the square foot** — from the Rosetta vertical, which is deferred
+until the funeral side is live.
+
+## The ruling
+
+**Unit of measure is a PRECAST-VERTICAL concern. Every funeral-side product is
+sold `each`. The column gets added when that vertical lands — not now, and not as
+a hardcoded default.**
+
+Production carries 37 funeral rows and **zero** of them is anything but `each`, so
+nothing in the funeral catalog needs the field today. A paver is the one shape that
+does, and pavers are not shipping.
+
+⚠️ **The removal stands either way, and this ruling is why it was a REMOVAL rather
+than a default.** Rendering a hardcoded `"each"` would have been a guess wearing the
+old field's clothes — correct for 37 of 37 production rows and wrong the first time
+a paver appears, with nothing to distinguish "measured as each" from "we assumed".
+That is the `is_manufactured` defect exactly: a plausible value filling a column
+nobody measured. The blank is the honest state until the vertical that needs the
+field arrives with it.
+
+⚠️ **AND IT WAS CONFIRMED RATHER THAN INHERITED.** The hypothesis — "the sqft row is
+probably a hardscape item" — was supplied and was correct, and was still checked
+against both databases before being recorded. A ruling resting on a plausible guess
+about a single row is the shape this arc has spent the day catching.
