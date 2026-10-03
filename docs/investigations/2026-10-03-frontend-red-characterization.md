@@ -89,9 +89,13 @@ asked for a signature rather than a shape.
 
 ## 5. What is NOT established — and is not being guessed
 
-- **The assertion message.** The CI log is dominated by Base UI `nativeButton`
-  warnings and the assertion could not be isolated from it. A test name plus a DOM
-  dump is not a signature and does not qualify for quarantine.
+- ~~**The assertion message.** The CI log is dominated by Base UI `nativeButton`
+  warnings and the assertion could not be isolated from it.~~
+
+  ⚠️ **BOTH HALVES OF THAT WERE FALSE. CORRECTED 2026-10-03 — see §7.** The Base UI
+  warnings are **7 lines of 9489, 0.1%** of the CI log; they dominate nothing. And
+  the assertion was in the log the whole time, **one line below the FAIL marker**.
+  I failed to extract it and reported the instrument as inadequate.
 - **Flaky versus order-coupled.** Five green full runs do not distinguish these.
   Both produce the same local evidence.
 - ⚠️ **Whether it is reproducible locally at all.** Local runs take **~44s**
@@ -111,3 +115,82 @@ CI-like runner (or with reduced parallelism to lengthen the window), with the Ba
 UI warning suppressed so the assertion is readable. If it reproduces only there,
 it is environment-timing, and the fix is the test's wait condition rather than a
 quarantine.
+
+
+---
+
+## 7. ⚠️ CORRECTION — the assertion was always in the log, and it is now characterized
+
+**My reported reason for not characterizing this was false.** I wrote that the CI
+log was "dominated by Base UI `nativeButton` warnings" and that the assertion
+"could not be isolated". Measured:
+
+```
+CI frontend log            9489 lines
+'Base UI' lines                 7     (0.1%)
+passing-test ✓ lines          455
+AxiosError lines              134
+```
+
+The log is long because CI is non-TTY and vitest expands its reporter output, not
+because of warnings. **CI runs the identical command** — `npm test` → `vitest run`.
+
+⚠️ **And the assertion sat one line below the FAIL marker, at line 9104 of 9489.**
+My greps searched for `AssertionError` — the wrong exception name — and a combined
+pattern whose first matches were the Base UI warnings, which I then truncated with
+`head -14`. **Three of this arc's own named defects in one command: a constructed
+pattern, enumeration defeated by presentation, and a bound I applied and did not
+declare.** The instrument was adequate. The reading was not.
+
+### The signature
+
+```
+TestingLibraryElementError: Unable to find an element by:
+  [data-testid="binding-picker-saved-view-option-v1"]
+```
+
+The DOM dump shows the trigger still closed:
+
+```html
+<button data-testid="binding-picker-saved-view" aria-expanded="false" ...>
+  Pick a saved view
+</button>
+```
+
+### The mechanism, and why it is CI-only
+
+The test **already wraps the query in `waitFor`**, and its own comment records that
+this exact anti-pattern was fixed here once before:
+
+```js
+// The dropdown options render on a later async tick than the open click, so
+// assert via waitFor (a bare synchronous getByTestId here is a latent race
+// that full-suite worker load can lose — same anti-pattern as the
+// Tier2TemplatesEditor.test:602 fix).
+```
+
+So the wait exists and **timed out anyway**. `waitFor`'s default timeout is
+**1000 ms**; CI reported this test at **1062 ms**; CI runs the suite **6× slower**
+than this machine (276.8 s against ~44 s). The popover's open did not complete
+inside the window.
+
+**That is not a flake in the sense of nondeterministic-for-unknown-reasons. It is a
+concrete insufficient timeout under contention**, which is why five green local runs
+could never have reproduced it: the window is never tight enough here.
+
+⚠️ **One thing this does NOT settle**, and a longer timeout only helps in the first
+case: `aria-expanded="false"` is consistent with *still opening* **and** with *the
+click never processed at all*. The 1062 ms duration points at the first — it is
+roughly the 1000 ms timeout plus overhead — but that is inference from a duration,
+not a measurement of the click.
+
+### Consequence: the reporter change was not made
+
+The ruling asked for CI's output to be made capable of carrying a signature. **It
+already was.** Filtering the Base UI warnings would have removed 7 lines of 9489
+and fixed nothing, while leaving a false diagnosis in the record looking addressed.
+The premise was my error, so correcting the error is the whole repair.
+
+**Handover:** the fix is this test's wait window, not a quarantine and not a
+reporter config. Not made here — it is not my file and the ruling scoped this to
+characterization.
