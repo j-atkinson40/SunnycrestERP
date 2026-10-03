@@ -235,6 +235,28 @@ _PURGE_STATEMENTS = [
     "DELETE FROM task_details WHERE vault_item_id IN (SELECT id FROM vault_items WHERE company_id = ANY(:ids))",
     "DELETE FROM vault_items WHERE company_id = ANY(:ids)",
     "DELETE FROM vaults WHERE company_id = ANY(:ids)",
+    # ⚠️ PRODUCTS, ADDED 2026-10-03, AND THIS IS A PARTIAL FIX THAT SAYS SO.
+    # `products` was absent entirely, so ANY test creating a product row could not
+    # purge its company at all — `DELETE FROM companies` raised on
+    # products_company_id_fkey. Found by the first test to create one
+    # (test_import_product_templates_r2b3).
+    #
+    # ⚠️ 21 TABLES REFERENCE `products`, ALL `NO ACTION`. Of those, only
+    # `sales_order_lines` and `invoice_lines` are deleted above. The other 19 —
+    # quote_lines, purchase_order_lines, inventory_items, inventory_transactions,
+    # bill_of_materials, bom_lines, work_orders, work_order_products,
+    # production_log_entries, ops_production_log_entries, production_mold_configs,
+    # product_aliases, product_bundle_components, product_price_tiers,
+    # product_substitution_rules (x2), stock_replenishment_rules,
+    # historical_orders, historical_products — will still block this delete if a
+    # test created one.
+    #
+    # Placed here rather than completed, because completing it is the larger job
+    # CLAUDE.md §11 describes: 147 of the 327 non-cascading references belong at
+    # the SCHEMA level as ON DELETE CASCADE, not in a hand-maintained list. This
+    # makes the common case work and leaves the rest to fail LOUDLY rather than
+    # pretending coverage.
+    "DELETE FROM products WHERE company_id = ANY(:ids)",
     "DELETE FROM users WHERE company_id = ANY(:ids)",
     "DELETE FROM roles WHERE company_id = ANY(:ids)",
     "DELETE FROM companies WHERE id = ANY(:ids)",

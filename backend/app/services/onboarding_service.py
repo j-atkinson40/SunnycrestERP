@@ -1865,31 +1865,87 @@ def get_product_templates(
     ]
 
 
+class UnknownTemplate(ValueError):
+    """A requested template id that is not in the platform catalog.
+
+    ⚠️ RAISED, NOT SKIPPED. Until 2026-10-03 an unknown id hit `continue` and the
+    function returned a LOWER COUNT with no error — a caller that sent five ids and
+    got three products back had no way to learn which two were dropped or why. The
+    count was the only signal and it was easy to miss.
+
+    Free to change: `import_product_templates` has never provisioned a tenant in
+    either environment (measured 2026-10-03 — no product carries the copy's
+    fingerprint, and `add_products` is incomplete for every tenant), and its only UI
+    route returned 500 from 2026-03-17. There is no caller relying on the silence.
+    """
+
+    def __init__(self, template_id) -> None:
+        self.template_id = template_id
+        super().__init__(f"no platform variant with id {template_id!r}")
+
+
 def import_product_templates(
     db: Session, tenant_id: str, items: list
 ) -> int:
-    """Import selected product templates as real products for the tenant.
+    """Import selected platform VARIANTS as real products for the tenant.
 
-    Each item should have: template_id, optional price, optional sku.
+    Each item should have: template_id (a variant id), optional price, optional sku.
     Returns the count of products created.
+
+    ⚠️ `template_id` IS A VARIANT ID. The old flat table's rows were each one
+    sellable thing and map 1:1 onto variants; a licensee ticks "Bronze Triune", not
+    "Triune Burial Vault".
+
+    ⚠️ AND THIS IS WHERE `variant_template_id` FINALLY EARNS ITS DECLARATION. r186
+    added the column and nothing could write it — it had no ORM attribute until
+    r196 — so every tenant product was an orphan with no route back to the platform
+    definition it came from. Setting it here is what makes a supplier price increase
+    or a corrected spec able to find the rows it should reach.
+
+    ⚠️ `is_manufactured` IS NOT COPIED, DELIBERATELY. The platform tier's value is
+    the onboarding PRE-FILL — the Wilbert generalisation that licensees pour vaults
+    and buy equipment. The tenant value is the ANSWER. Copying one into the other
+    would convert a proposal into a measurement silently, and reinstate exactly the
+    defect r196 removed, this time with a provenance trail making it look measured.
+    The acceptance is the measurement; the pre-fill is not. See
+    `docs/investigations/2026-10-03-r196-production-preflight.md` §6.
+
+    ⚠️ `unit_of_measure` IS NOT SET. The platform catalog has no unit column, and
+    writing a hardcoded "each" would be a guess wearing the old field's clothes —
+    correct for all 37 production rows and wrong the first time a paver appears.
+    Ruled a precast-vertical concern; the column arrives with that vertical.
     """
+    from app.models.product_template import ProductTemplate
+    from app.models.product_variant_template import ProductVariantTemplate
+
     count = 0
     for item in items:
         template_id = item.template_id if hasattr(item, "template_id") else item.get("template_id")
         price = item.price if hasattr(item, "price") else item.get("price")
         sku = item.sku if hasattr(item, "sku") else item.get("sku")
 
-        template = db.query(ProductCatalogTemplate).get(template_id)
-        if not template:
-            continue
+        row = (
+            db.query(ProductVariantTemplate, ProductTemplate)
+            .join(
+                ProductTemplate,
+                ProductTemplate.id == ProductVariantTemplate.product_template_id,
+            )
+            .filter(ProductVariantTemplate.id == template_id)
+            .one_or_none()
+        )
+        if row is None:
+            raise UnknownTemplate(template_id)
+        variant, parent = row
 
         product = Product(
             company_id=tenant_id,
-            name=template.product_name,
-            description=template.product_description,
-            sku=sku or (template.sku_prefix if template.sku_prefix else None),
+            name=variant.display_name,
+            # Falls through to the PRODUCT's description when the variant has none —
+            # the catalog puts detail on whichever tier carries it.
+            description=variant.description or parent.description,
+            sku=sku or variant.sku,
             price=price,
-            unit_of_measure=template.default_unit,
+            variant_template_id=variant.id,
             is_active=True,
         )
         db.add(product)
