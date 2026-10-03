@@ -87,6 +87,29 @@ class Product(Base):
     wholesale_cost: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     markup_percent: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
+    #: ⚠️ THE LINK FROM A TENANT PRODUCT TO ITS PLATFORM DEFINITION, added by
+    #: r186 and NOT declared here until 2026-10-03. The column existed with no
+    #: ORM attribute, so nothing could resolve through it — and the whole
+    #: platform-catalog design turns on that resolution.
+    #:
+    #: NULL means TENANT OWNERSHIP: the product was authored by the tenant and has
+    #: no platform definition. It is an ABSENCE, not a third ownership value —
+    #: r186 declares `_OWNERSHIP = ("wilbert", "licensee_common")` and notes that a
+    #: third value would let a row claim tenant ownership while pointing at a
+    #: platform variant, which is a state with no meaning.
+    #:
+    #: ⚠️ `assert_no_schema_drift` DID NOT AND CANNOT CATCH THIS. It is model→DB
+    #: only, and its own docstring declares DB-extra columns to be noise — so every
+    #: column a migration adds and nobody declares is invisible to it by design.
+    #: Three more such columns remain on this table; see
+    #: `docs/investigations/2026-10-03-price-list-reconciliation.md` §1.
+    variant_template_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("product_variant_templates.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
