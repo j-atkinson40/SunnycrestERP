@@ -1,6 +1,7 @@
 """Use Claude Sonnet to analyze price lists and match to Wilbert catalog."""
 import json
 import logging
+from typing import NamedTuple
 import re
 from decimal import Decimal
 
@@ -8,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.price_list_import import PriceListImport, PriceListImportItem
-from app.models.product_catalog_template import ProductCatalogTemplate
+from app.models.product_catalog_template import ProductCatalogTemplate  # noqa: F401 — still imported for the legacy type
+from app.models.product_template import ProductTemplate
+from app.models.product_variant_template import ProductVariantTemplate
 
 logger = logging.getLogger(__name__)
 ANALYSIS_MODEL = "claude-sonnet-4-20250514"
@@ -396,6 +399,71 @@ _URN_INDICATORS = re.compile(
 )
 
 
+#: Humanised `form` values for the prompt's `Category` field.
+#: ⚠️ `decided`, not measured. The old table's `category` had three values and the
+#: new catalog's `form` has six, so there is no faithful translation — "Burial
+#: Vaults" used to contain what are now `burial_vault`, `grave_liner` AND `infant`.
+#: The two the price list actually sections by keep their exact old strings; the
+#: rest get a label rather than being collapsed back into three and losing the
+#: distinction r186 introduced.
+_FORM_LABELS = {
+    "burial_vault": "Burial Vaults",
+    "urn_vault": "Urn Vaults",
+    "grave_liner": "Grave Liners",
+    "infant": "Infant",
+    "equipment": "Cemetery Equipment",
+    "urn": "Urns",
+}
+
+
+class _CatalogRow(NamedTuple):
+    """One sellable thing, shaped like the old flat template row.
+
+    ⚠️ ATTRIBUTE NAMES ARE DELIBERATELY THE OLD ONES. `_promote_exact_matches` and
+    the `template_map` at the end of `analyze_price_list` read `.id` and
+    `.product_name`; keeping those names means the repoint touches the catalog
+    source and the classifier, not every consumer of the list. The three NEW
+    fields are what the classifier needed and the old table could not supply.
+    """
+
+    id: str            # the VARIANT id — what `template_id` now refers to
+    product_name: str  # the variant's exact display name
+    category: str      # humanised form, for the prompt
+    sku_prefix: str
+    form: str          # ⚠️ the classification, as a column
+    family_slug: str
+    option_label: str
+
+
+def _catalog_rows(db: Session) -> list[_CatalogRow]:
+    """Every platform variant, newest catalog. Ordered for a stable prompt."""
+    rows = (
+        db.query(
+            ProductVariantTemplate.id,
+            ProductVariantTemplate.display_name,
+            ProductVariantTemplate.sku,
+            ProductVariantTemplate.option_label,
+            ProductTemplate.form,
+            ProductTemplate.family_slug,
+        )
+        .join(ProductTemplate, ProductTemplate.id == ProductVariantTemplate.product_template_id)
+        .order_by(ProductTemplate.form, ProductTemplate.family_slug, ProductVariantTemplate.sort_order)
+        .all()
+    )
+    return [
+        _CatalogRow(
+            id=r[0],
+            product_name=r[1],
+            category=_FORM_LABELS.get(r[4], r[4]),
+            sku_prefix=r[2],
+            form=r[4],
+            family_slug=r[5],
+            option_label=r[3],
+        )
+        for r in rows
+    ]
+
+
 def _fix_urn_vault_items(items: list[dict], templates: list) -> list[dict]:
     """Post-process: ensure urn vault items have 'Urn Vault' in the name and
     are matched to the correct urn vault template (not burial vault).
@@ -405,16 +473,42 @@ def _fix_urn_vault_items(items: list[dict], templates: list) -> list[dict]:
     2. Claude set template_name to an urn vault but template_id points to burial vault
     3. Claude matched to a burial vault template but extracted_name says "Urn Vault"
     """
-    # Build lookups
-    urn_templates_by_base: dict[str, object] = {}
-    burial_template_ids: set[str] = set()
-    for t in templates:
-        name_lower = t.product_name.lower()
-        if "urn vault" in name_lower:
-            base = name_lower.replace(" urn vault", "").strip()
-            urn_templates_by_base[base] = t
-        elif "burial vault" in name_lower:
-            burial_template_ids.add(t.id)
+    # ---- lookups, from the `form` COLUMN rather than from the name ----------
+    #
+    # ⚠️ THIS USED TO STRING-MATCH, AND IT WORKED BY ACCIDENT.
+    #
+    #     if "urn vault" in name_lower:   ...
+    #     elif "burial vault" in name_lower: ...
+    #
+    # That classified correctly only because every row in the OLD flat table
+    # happened to be named "<something> Burial Vault" or "<something> Urn Vault"
+    # — a naming convention nobody declared and nothing enforced. The new catalog
+    # breaks it on its face: `Wilbert Bronze`, `Graveliner`,
+    # `Graveliner (Social Service)`, `Loved & Cherished 19"` and all twelve
+    # stocked urns match NEITHER branch and would classify as neither.
+    #
+    # The fix is not a better pattern. `form` is the classification, stated by the
+    # schema, and reading it is exact. Same move as r194's unique constraint:
+    # stop inferring a fact the schema can state.
+    by_id = {t.id: t for t in templates}
+    burial_template_ids = {t.id for t in templates if t.form == "burial_vault"}
+
+    # ⚠️ AND THE URN COUNTERPART IS NOW EXACT. The old code found it by stripping
+    # " urn vault" off a name and hoping the remainder matched. A burial variant
+    # and its urn twin share a FAMILY and an OPTION LABEL — `triune`/`Bronze` is
+    # BV-BTRI and UV-BTRI — so the pairing is a key lookup with no string surgery
+    # and no dependence on how either one is spelled.
+    urn_by_key = {
+        (t.family_slug, t.option_label): t
+        for t in templates
+        if t.form == "urn_vault"
+    }
+    # Name fallback, for items Claude matched to no template at all.
+    urn_templates_by_base = {
+        t.product_name.lower().replace(" urn vault", "").strip(): t
+        for t in templates
+        if t.form == "urn_vault"
+    }
 
     for item in items:
         extracted = item.get("extracted_name", "")
@@ -427,10 +521,17 @@ def _fix_urn_vault_items(items: list[dict], templates: list) -> list[dict]:
         if template_name and "urn vault" in template_name.lower():
             if "urn vault" not in extracted.lower():
                 item["extracted_name"] = template_name
-            # Ensure template_id also points to the urn vault template (not burial vault)
-            tpl_base = template_name.lower().replace(" urn vault", "").strip()
-            if tpl_base in urn_templates_by_base:
-                correct_tpl = urn_templates_by_base[tpl_base]
+            # Ensure template_id also points to the urn vault template (not burial vault).
+            # ⚠️ Prefer the EXACT family+option pairing; fall back to the name only
+            # when Claude gave an id we cannot resolve.
+            correct_tpl = None
+            matched = by_id.get(template_id)
+            if matched is not None:
+                correct_tpl = urn_by_key.get((matched.family_slug, matched.option_label))
+            if correct_tpl is None:
+                tpl_base = template_name.lower().replace(" urn vault", "").strip()
+                correct_tpl = urn_templates_by_base.get(tpl_base)
+            if correct_tpl is not None:
                 if template_id != correct_tpl.id:
                     logger.info(
                         "Fixing urn vault template_id: %s → %s for '%s'",
@@ -462,15 +563,24 @@ def _fix_urn_vault_items(items: list[dict], templates: list) -> list[dict]:
             base = base.replace(suffix, "")
         base = base.strip()
 
+        # ⚠️ EXACT PATH FIRST: if Claude matched a BURIAL variant, its urn twin is
+        # the same family + option label. No name surgery, and it works for rows
+        # the old stripping could never have handled (Wilbert Bronze, Graveliner).
+        correct_tpl = None
+        matched = by_id.get(template_id)
+        if matched is not None and matched.form == "burial_vault":
+            correct_tpl = urn_by_key.get((matched.family_slug, matched.option_label))
+
         # Also try from template_name
-        if base not in urn_templates_by_base:
+        if correct_tpl is None and base not in urn_templates_by_base:
             alt_base = template_name.lower().replace(" burial vault", "").strip()
             if alt_base in urn_templates_by_base:
                 base = alt_base
 
         # Correct to the urn vault template
-        if base in urn_templates_by_base:
-            correct_tpl = urn_templates_by_base[base]
+        if correct_tpl is None:
+            correct_tpl = urn_templates_by_base.get(base)
+        if correct_tpl is not None:
             logger.info(
                 "Correcting urn vault: '%s' → '%s' (template %s)",
                 extracted, correct_tpl.product_name, correct_tpl.id,
@@ -744,16 +854,17 @@ def analyze_price_list(db: Session, import_id: str) -> None:
     imp.status = "matching"
     db.commit()
 
-    # Build catalog reference from product_catalog_templates
-    templates = (
-        db.query(ProductCatalogTemplate)
-        .filter(ProductCatalogTemplate.preset == "manufacturing")
-        .all()
-    )
+    # Build catalog reference from the PLATFORM CATALOG (r186-r196).
+    # ⚠️ VARIANTS, NOT PRODUCTS. The old flat table's 37 rows were each one
+    # SELLABLE THING; they map 1:1 onto variants and collapse onto only 21
+    # products. Reading products here would offer "Triune Burial Vault" where a
+    # price list says "Bronze Triune", and silently shrink the candidate set.
+    templates = _catalog_rows(db)
 
     catalog_ref = "\n".join(
         [
-            f"Template ID: {t.id} | Name: {t.product_name} | Category: {t.category} | SKU Prefix: {t.sku_prefix}"
+            f"Template ID: {t.id} | Name: {t.product_name} | Category: {t.category}"
+            f" | SKU Prefix: {t.sku_prefix} | Form: {t.form}"
             for t in templates
         ]
     )
