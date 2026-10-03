@@ -150,10 +150,37 @@ describe("BindingPicker", () => {
     // via waitFor (a bare synchronous getByTestId here is a latent race
     // that full-suite worker load can lose — same anti-pattern as the
     // Tier2TemplatesEditor.test:602 fix).
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("binding-picker-saved-view-option-v1"),
-      ).toBeInTheDocument(),
+    //
+    // ⚠️ THAT FIX WAS THE RIGHT SHAPE AND THE WRONG MAGNITUDE. The waitFor
+    // above was added and still timed out: CI run 37125242228 failed here with
+    //
+    //   TestingLibraryElementError: Unable to find an element by:
+    //     [data-testid="binding-picker-saved-view-option-v1"]
+    //
+    // and a DOM dump showing the trigger still closed (aria-expanded="false").
+    // waitFor's DEFAULT window is 1000 ms; CI measured this test at 1062 ms,
+    // and CI runs the suite ~6x slower than a dev machine (276.8 s against
+    // ~44 s). The popover's open did not finish inside the default window.
+    //
+    // ⚠️ THIS IS AN EXPERIMENT, NOT A FIX DECLARED DONE. The failure rate is
+    // 2 in 8 pushes, so ONE green CI run is the most likely outcome whether or
+    // not this worked. It is evidenced only by several consecutive clean
+    // pushes. If it fails again unchanged, the hypothesis was wrong and the
+    // live suspect becomes the click never processing at all —
+    // aria-expanded="false" is consistent with both, and only the first is
+    // helped by more time.
+    //
+    // ⚠️ AND IT CANNOT BE REPRODUCED LOCALLY, WHICH IS THE EXPECTED RESULT AND
+    // NOT A REASON TO DOUBT IT. Five full local suite runs were green; this
+    // machine is never slow enough to close the window. A failure mode that
+    // cannot manifest locally reads exactly like a flake that will not
+    // reproduce, and the two call for opposite responses.
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId("binding-picker-saved-view-option-v1"),
+        ).toBeInTheDocument(),
+      { timeout: 5_000 },
     )
     expect(
       screen.queryByTestId("binding-picker-saved-view-option-v2"),
