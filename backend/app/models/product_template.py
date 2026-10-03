@@ -21,6 +21,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,6 +49,21 @@ class ProductTemplate(Base):
             "ownership IN ('" + "', '".join(OWNERSHIP) + "')",
             name="ck_product_templates_ownership",
         ),
+        #: ⚠️ THE NATURAL KEY THE CATALOG RESOLVES THROUGH, enforced by r194.
+        #: Unenforced until then, while `product_variant_templates.sku`,
+        #: `product_families.slug` and the alias table's composite key all were —
+        #: three of r186's four tables held their natural key and this one did not.
+        #:
+        #: The failure mode was silent: `r193:607` resolves products into a Python
+        #: dict keyed on exactly this pair, and a duplicate COLLAPSES rather than
+        #: raising, leaving one product permanently unreachable. A constraint, not
+        #: care at the call site, because a check that cannot fail is not a check.
+        UniqueConstraint(
+            "family_slug", "form", name="uq_product_templates_family_form"
+        ),
+        #: ⚠️ Largely redundant now — the unique constraint's own index serves
+        #: `family_slug`-prefix lookups. Kept because r194 is deliberately a
+        #: single-change migration; dropping it is a later cleanup.
         Index("ix_product_templates_family", "family_slug"),
     )
 

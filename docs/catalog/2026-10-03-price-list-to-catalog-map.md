@@ -14,6 +14,9 @@ Source: `docs/catalog/2026-02-01-sunnycrest-funeral-price-list.pdf`, md5
    `decided`, except the urns which are `inferred`.
 3. ⚠️ **`(family_slug, form)` is NOT a database constraint**, and three proposed
    rows collide on it.
+   ⚠️ **BOTH HALVES SUPERSEDED 2026-10-03.** `r194` makes it a constraint, and R2
+   makes the three rows VARIANTS, which need no family/form key. The collision is
+   now unexpressible rather than avoided. See the Revision section.
 4. The price list is **not a product list** — it carries products, services and
    fees on one page, and only the first become catalog rows.
 
@@ -263,3 +266,148 @@ added        3    odd-sized variants
 ⚠️ **Blocked until §3d is ruled**, and the unique constraint on
 `(family_slug, form)` should land as its own migration **before** any row that
 would collide on it.
+
+---
+
+# Revision, 2026-10-03 — rulings applied, counts re-derived
+
+Supersedes §3a, §3d and §5 above. Earlier text left in place; read this for the
+live version.
+
+## R1. `UV-VET`'s SKU never changes — closed, not deferred
+
+**RULED:** the SKU stays `UV-VET` **permanently**. Only `display_name` changes, to
+`Veteran Triune Urn Vault`.
+
+**The cosmetic inconsistency with `UV-BTRI`/`UV-CTRI`/`UV-SSTRI`/`UV-CRTRI` is
+DELIBERATE and is not to be re-opened.** A SKU is an identifier: it is unambiguous,
+it is referenced in `r188:262`, in `r189`'s and `r191`'s docstrings, in two
+investigation documents and in `catalog_template_seeder.py:49`, and renaming it for
+consistency is churn with real blast radius and no user-visible benefit.
+
+Recorded here rather than deferred because a deferred decision comes back. ⚠️ If
+you are reading this because `UV-VET` looks wrong next to its siblings: it is
+wrong, it is known, and it stays.
+
+## R2. ⚠️ Odd sizes are VARIANTS, not products — supersedes §3d
+
+The `(family_slug, form)` collision in §3d **dissolves**: a variant does not need a
+family/form key of its own.
+
+| price list item | becomes a variant of | basis |
+|---|---|---|
+| `Continental 34"` | `continental` / `burial_vault` | **inferred** — see falsifier below |
+| `Graveliner 34"` | `graveliner` / `grave_liner` | **inferred** — same |
+| `Graveliner 38"` | `graveliner` / `grave_liner` | **inferred** — same |
+
+**Precedent:** `Loved & Cherished` is one product with three sizes at three
+different prices ($239 / $374 / $452). Price is already variant-capable, so
+`Continental 34"` at $2,179 against `Continental` at $1,607 is not an obstacle.
+
+### ⚠️ The inference moved somewhere more honest, and this is the point
+
+The earlier reading assigned these rows NULL reinforcement *because the price list
+states no tier for them*. As variants **they do not carry the attribute at all** —
+reinforcement lives on the product, and `Continental` is `Single Reinforced` on the
+page, measured.
+
+So the claim is no longer *"Continental 34" is Single Reinforced"* — which the
+document does not say — but *"Continental 34" is a Continental"*, which is the
+real question and is genuinely an inference.
+
+**FALSIFIER:** a source showing the odd size is built differently from its parent —
+a different wall thickness, a different reinforcement, a different mold line. The
+price list's `ODD SIZED` grouping is weak contrary evidence: it organizes them away
+from their parents. Nothing resolves it, and nothing needs to until something reads
+a dimension.
+
+### ⚠️ One wrinkle the ruling creates, flagged not resolved
+
+`option_label` is a single string, and these products would then carry **two axes
+in one field**:
+
+```
+graveliner / grave_liner    GL-STD  "Standard"        ← grade axis
+                            GL-SS   "Social Service"  ← grade axis
+                            NEW     "34 inch"         ← size axis
+                            NEW     "38 inch"         ← size axis
+
+continental / burial_vault  BV-CON  "Continental"     ← not an axis value at all
+                            NEW     "34 inch"         ← size axis
+```
+
+`Loved & Cherished` is clean because every variant is a size (`19 inch`, `24 inch`,
+`31 inch`). These are not. ⚠️ `BV-CON`'s existing `option_label` is `Continental` —
+the product's own name, not a value on any axis — so adding `34 inch` beside it
+makes the field mean two different things in one product.
+
+Three options, all **decided**:
+
+1. **Accept the mixing.** `option_label` becomes "whatever distinguishes this
+   variant", which is what it already is for `Tent` (`Single`/`Double`).
+2. **Normalise the base label** — `BV-CON`'s `option_label` becomes `Standard`,
+   matching `GL-STD`. One row changed, and the axis reads consistently.
+   **Recommended.**
+3. **Add an axis column** to `product_variant_templates`. Largest change; defers
+   nothing else.
+
+Needs a ruling before Migration B writes these three rows.
+
+## R3. Reinforcement — re-derived, and the count is UNCHANGED
+
+The ruling notes the 7 explicit NULLs need re-deriving because the odd sizes leave
+the set. **Re-derived: they were never in it.** §3b's table covers the **21 products
+that exist today**, and the odd sizes were not among them — they were proposed as
+new products in §3d, and are now variants, so they never touched this set in either
+reading.
+
+**14 measured tiers + 7 NULL stands.** The 7 break down as 2 where the source
+withholds a tier (`universal` / urn_vault has its own group with no reinforcement
+word; `loved-and-cherished` has its own block) and 5 where the concept does not
+apply (the equipment products).
+
+## R4. James's answers — and they resolve oppositely
+
+Both items were absent from the price list and looked identical on the page. They
+are not the same fact.
+
+| item | ruling | basis |
+|---|---|---|
+| `Vault Placer` | price **$0.00** is CORRECT. No additional cost. | **measured** — James, 2026-10-03. The seeder's `0.00` (`:241`) is a real price, not a placeholder. |
+| `CE-CT` Cremation Table | the product **EXISTS**. Keep it. It is simply not on the February 2026 price list. | **measured** — James, 2026-10-03. ⚠️ Its price is **NULL — not established, and NOT $0.00.** He said it exists, not that it is free. |
+
+⚠️ **This pair is the distinction worth keeping.** Two items, both absent from the
+price list, resolving in opposite directions: one is *priced at zero*, the other has
+*no established price*. Had either been defaulted — to `0.00` for tidiness, or to
+"absent therefore delete" — the difference would have been erased and nothing
+downstream would have contradicted it.
+
+Same line as `Pine Box`'s "Call Office" versus not-priced, and the same line as
+`personalization_capability`'s `[]` versus NULL. **Third instance this arc**, now in
+three different columns.
+
+`CE-CT` is therefore **not** a membership gap and must not be deleted as one. Set
+(c) resolves completely: six package components plus one product that exists and
+is not currently listed.
+
+## R5. Revised row counts for Migration B
+
+```
+changed    1    UV-VET display_name -> "Veteran Triune Urn Vault"
+                (sku unchanged, permanently — R1)
+updated   21    reinforcement: 14 measured tiers + 7 NULL  (unchanged — R3)
+added      8    urn products        (new `urn` form)
+added     12    urn variants
+added      3    odd-size VARIANTS   (0 new products — R2)
+                Continental 34" -> continental/burial_vault
+                Graveliner 34"  -> graveliner/grave_liner
+                Graveliner 38"  -> graveliner/grave_liner
+changed    1    BV-CON option_label "Continental" -> "Standard"  [IF R2 option 2]
+```
+
+**Was:** 2 odd-sized products + 3 variants, and a blocker on `(family_slug, form)`.
+**Now:** 0 products, 3 variants, no collision — and `r194` has made the collision
+impossible rather than merely avoided.
+
+⚠️ **Blocked on R2's option ruling** (the two-axes-in-one-field question) before the
+three odd-size variants can be written. Everything else in Migration B is ruled.
