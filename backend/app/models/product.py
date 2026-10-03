@@ -87,6 +87,21 @@ class Product(Base):
     wholesale_cost: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     markup_percent: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
+    #: ⚠️ NULL MEANS NOT ESTABLISHED. Declared here for the first time at r196 —
+    #: `u3v4w5x6y7z8` added the column and nothing ever declared it, so it was
+    #: structurally unreachable rather than merely unread.
+    #:
+    #: It carried `server_default=false` on an already-populated table, so every
+    #: product asserted "we do not make this" without anyone deciding it. Measured
+    #: in production 2026-10-03: 33 rows, ZERO true. Wilbert's model is licensed
+    #: local manufacture, so most licensees POUR — the tenant tier defaulted to the
+    #: uncommon answer, and the only tenant available to check it against reality
+    #: (Sunnycrest, which buys) is the exception that made it look right.
+    #:
+    #: r196 dropped the default and nulled every row. It is populated at
+    #: onboarding, by asking the licensee which products they make.
+    is_manufactured: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
     #: ⚠️ THE LINK FROM A TENANT PRODUCT TO ITS PLATFORM DEFINITION, added by
     #: r186 and NOT declared here until 2026-10-03. The column existed with no
     #: ORM attribute, so nothing could resolve through it — and the whole

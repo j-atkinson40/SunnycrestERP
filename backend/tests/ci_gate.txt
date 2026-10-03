@@ -452,3 +452,4 @@ tests/test_platform_catalog_specs_r193.py
 tests/test_spec_sheet_provenance.py
 tests/test_price_list_provenance.py
 tests/test_price_list_catalog_r195.py
+tests/test_is_manufactured_r196.py
