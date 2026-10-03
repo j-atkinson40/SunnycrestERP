@@ -16,12 +16,17 @@ something exists or what it is called, the price list wins.
    ODD SIZED items.** Different names, different count. 2b-3's product list is dead.
 2. ⚠️ **`sunnycrest_product_seeder` already matches the price list exactly** — all
    four ODD SIZED items, at the price list's prices, with SKUs.
+   ⚠️ **UNDERSTATED; see §9.** It matches on essentially ALL 54 items, not four —
+   49 products including the twelve stocked urns, the graveside packages and every
+   fee line. This line was written from a four-row sample.
 3. ⚠️ **Our own catalog contains a one-product-two-names defect**: `UV-VET`
    "Veteran Urn Vault" against every sibling's "… Triune Urn Vault".
 4. **Reinforcement needs no schema change.** `product_templates.reinforcement`
    already exists, nullable, and is NULL on all 21.
 5. **The r193 Universal/Salute split was already correct.** Size of correction: zero.
-6. **Twelve stocked urns and five graveside packages have no catalog counterpart.**
+6. **Twelve stocked urns and five graveside packages have no PLATFORM-tier
+   counterpart.** ⚠️ Qualified after §9: they exist in Sunnycrest's TENANT seeder
+   at the price list's exact prices. The gap is at the platform tier only.
 
 ---
 
@@ -308,3 +313,166 @@ cannot distinguish them.
 - **What `Graveliner(SS)` means commercially.** `GL-SS` carries option_label
   "Social Service"; whether that is a real grade was already open from r188.
 - **Whether the 25-row production tenant is real or seeded.** Out of scope.
+
+---
+
+# Addendum, 2026-10-03 — sets by name with proposed tier, and the hypothesis on record
+
+## 9. ⚠️ First, a correction that reframes §5
+
+**`sunnycrest_product_seeder.py` carries 49 products and is essentially the price
+list, item for item, at the price list's exact prices** — not just the four Odd
+Sized items §5 reported. It carries all 14 burial vaults, all 11 urn vaults, all
+**12 stocked urns** (`P445 Country Bouquet $151` … `P310P Pebble Dust $118`), the
+**graveside packages**, and all **5 fee lines**.
+
+§5 said "the tenant seeder is aligned to the Feb 2026 price list" on the strength
+of four rows. It is aligned on essentially all of them.
+
+⚠️ **And this is where I nearly recorded a false absence.** Two greps for the
+urns and the equipment each printed a static label reading *"(empty above = not
+present)"* — while the grep output directly above them showed matches. The labels
+were unconditional `echo`s, not conditionals. A reader skimming labels rather than
+output would have taken the opposite conclusion from the same command. Recorded
+because it is the *enumeration defeated by presentation* shape pointed at myself:
+the instrument was right and its caption was wrong.
+
+**Two further findings from the seeder:**
+
+- ⚠️ **The seeder calls it `Veteran Triune Urn Vault`** (`:173`). So the price list
+  and the tenant seeder agree on "Triune"; the **spec sheet and the platform
+  catalog** both drop it. The platform catalog inherited the spec sheet's naming,
+  and the rename ruled for `UV-VET` restores the majority reading rather than
+  inventing one.
+- ⚠️ **`Vault Placer` at `$0.00`** (`:241`) is in the seeder and **not on the price
+  list** — a catalog-only item at tenant tier, outside this reconciliation's
+  frame, and unexplained.
+
+## 10. ⚠️ The seeder's tier placement is NOT evidence of ownership
+
+The question was whether `Continental 34"`, `Graveliner 34"`, `Graveliner 38"` and
+`Pine Box` are "already right" at tenant tier, or placed there accidentally.
+
+**Neither. The placement is correct for what the seeder is, and carries no
+information about platform tier.**
+
+`sunnycrest_product_seeder` is Sunnycrest's TENANT fixture. Every product in it
+sits at tenant tier **by construction** — including `Wilbert Bronze`,
+`Bronze Triune` and `Tribute`, which are unambiguously Wilbert definitions and
+which nobody would call tenant-owned. So "it already exists at tenant tier" is
+equally true of Wilbert Bronze, and proves nothing about who defined it.
+
+What the seeder establishes: **Sunnycrest sells these, at these prices.** What it
+cannot establish: **who defined them.** Ownership needs a source this
+reconciliation does not have — another licensee's price list, or Wilbert's own
+catalog. Stated rather than smoothed, because the instinct it answers is
+reasonable and the evidence does not reach it.
+
+## 11. Set (b) — 27 price-list-only items, with proposed tier
+
+⚠️ **GUESSING is marked. It is a legitimate answer and is not smoothed.**
+
+| # | item | price | proposed tier | confidence |
+|---|---|---|---|---|
+| 1 | `Continental 34"` | $2,179 | wilbert | ⚠️ **GUESSING** — Continental is Wilbert's, so an oversize Continental is plausibly Wilbert's too. No source confirms Wilbert publishes a 34". Could equally be licensee-sourced. |
+| 2 | `Graveliner 34"` | $1,492 | licensee_common | moderate — follows the standing "Graveliner odd sizes" assignment |
+| 3 | `Graveliner 38"` | $2,060 | licensee_common | moderate — same |
+| 4 | `Pine Box` | Call Office | tenant | **confident** — not a Wilbert product; "Call Office" pricing reads as ad-hoc |
+| 5 | `Veteran Triune` (urn) | $822 | wilbert | **confident — NOT A NEW PRODUCT.** This is `UV-VET` under the price list's name. Ruled: rename. |
+| 6–11 | `P445 Country Bouquet` $151, `P440 Jewel` $142, `P440A Moon Stone` $142, `P440B Sedona` $142, `P363 Victorian` $212, `P600 Arlington` $462 | | ⚠️ **wilbert** (definition) | ⚠️ **DISAGREEING with the earlier `tenant` assignment** — see below |
+| 12–14 | Regal Line: `P300 Cream & Gold` $124, `P300WS White & Silver` $110, `P300P Pebble Dust` $113 | | ⚠️ **wilbert** (definition) | same disagreement |
+| 15–17 | Tribute Line: `P310 Cream & Gold` $135, `P310WS White & Silver` $111, `P310P Pebble Dust` $118 | | ⚠️ **wilbert** (definition) | same disagreement |
+| 18–22 | `Full Equipment` $300, `Lowering Device & Grass` $185, `Lowering Device Only` $140, `Tent Only` $225, `Extra Chairs (over 8)` $5 | | tenant | **confident** — Sunnycrest's packaging and its dual pricing; the components already exist at platform tier |
+| 23–27 | `Sunday & Holiday` $550, `Saturday Spring Burial` $200, `Late Arrival per ½ hr` $75, `Legacy Rush Fee` $100, `Late Notice` $250 | | tenant | **confident** — Sunnycrest's terms |
+
+### ⚠️ The disagreement, stated plainly: the twelve stocked urns
+
+The standing assignment puts the twelve urns at **tenant**. **I think the
+DEFINITION is Wilbert's and only the stocking decision and the price are
+Sunnycrest's.**
+
+The evidence is the numbering. `P445`, `P440`, `P363`, `P600`, `P300`, `P310` are
+the same **P-number scheme** as `P400WS` and `P410` on the spec sheet — and those
+two we already ruled are Wilbert products (`Universal Urn Vault` and the
+`Basic Gray`/`Salute` listing). A tenant does not mint P-numbers; Wilbert does.
+
+So "urns we stock" reads as a stocking statement about Wilbert-defined products,
+not as a claim of authorship. That matters because a Wilbert-defined urn should
+resolve through `variant_template_id` for every licensee that stocks it, while a
+tenant-authored one should not exist at platform tier at all.
+
+⚠️ **This is inference from a naming scheme and could be wrong.** If Sunnycrest
+buys these from a non-Wilbert supplier who also uses P-numbers, the standing
+assignment is right and mine is not. Not resolvable from either document.
+
+## 12. Set (c) — 7 catalog-only variants, with proposed tier
+
+| sku | name | proposed tier | note |
+|---|---|---|---|
+| `UV-VET` | Veteran Urn Vault | wilbert | **rename to `Veteran Triune Urn Vault`** per ruling. Not a membership gap. |
+| `CE-LD` | Lowering Device | licensee_common | offered only inside packages, never as a line item |
+| `CE-GM` | Grass Mats | licensee_common | component of `Lowering Device & Grass` |
+| `CE-CH` | Graveside Chairs | licensee_common | the price list charges only for `Extra Chairs (over 8)`, so the first 8 are included in a package |
+| `CE-TS` | Cemetery Tent - Single | licensee_common | ⚠️ the price list has one `Tent Only` with **no size split** — one price, two variants, the same shape §3 reports for Tribute and Venetian |
+| `CE-TD` | Cemetery Tent - Double | licensee_common | same |
+| `CE-CT` | Cremation Table | ⚠️ **GUESSING** | **appears nowhere on the price list — not as an item, not as a package component.** No evidence Sunnycrest offers one. Keeping it is a guess; removing it is also a guess. |
+
+**Six of the seven are not membership gaps** — they are components the price list
+sells inside packages rather than separately, which is §6c's modelling question
+rather than a missing-product question. Only `CE-CT` is genuinely unaccounted for.
+
+## 13. The shells-vs-products hypothesis — ON RECORD, NOT ACTED ON
+
+Recorded here in full so whoever next needs dimensions for an odd-sized vault
+finds the reasoning rather than re-deriving it.
+
+**The question.** The spec sheet carries six "Non-Manufactured Burial Vault" rows
+whose names appear nowhere on the price list; the price list carries four ODD
+SIZED items whose names appear nowhere on the spec sheet.
+
+**The hypothesis.** The spec sheet records **shells** (a size, with dimensions)
+while the price list names **products** (a thing you order, with a price). One
+shell can carry more than one product, and a reinforced product has a thicker wall
+and therefore a larger outside dimension at the same inside dimension.
+
+**The arithmetic that suggests it.** The spec sheet's two 34" rows share an inside
+size and differ only in outside length:
+
+```
+Monticello 34"   inside 90 × 34 × 28   outside 95 × 39
+Large 34"        inside 90 × 34 × 28   outside 94 × 39
+```
+
+The price list's two 34" items differ in tier and price:
+
+```
+Continental 34"  $2,179    Continental is Single Reinforced
+Graveliner 34"   $1,492    Graveliner is Non Reinforced
+```
+
+Pairing the larger outside with the reinforced product gives
+`Monticello 34"` → `Continental 34"` and `Large 34"` → `Graveliner 34"`.
+
+**Why it was NOT acted on.** It is name-shape reasoning with arithmetic on top,
+which is precisely the move that produced **both** false negatives in
+`sunnycrest-catalog-review.xlsx`. The arithmetic is consistent with the hypothesis
+and also consistent with coincidence: one inch of outside length across two rows is
+a thin thread to hang a product identity on, and the pairing assigns
+`Monticello 34"` to a product named **Continental**, which no reading of the names
+supports.
+
+It also does not close:
+
+- `Graveliner 38"` has **no spec-sheet row** — the sheet has 36" and 40", no 38".
+- `Large 36"`, `Large 40"`, `Youth MT`, `Youth GL` have **no price-list item**.
+
+**Ruled 2026-10-03:** spec-sheet-only names do not become products. The price list
+is authoritative for membership, and these are not on it. They stay recorded as
+unmatched dimension rows and nothing loads them.
+
+⚠️ **When this question returns, it will have a consumer.** The moment something
+needs dimensions for `Continental 34"` — a clearance check, a truck load, a lift
+rating — the mapping stops being a naming puzzle and acquires a test: does the
+dimension it yields match the object in the yard. **That is when to answer it, and
+the answer should come from measuring a vault, not from re-reading these two
+documents.** Nothing in either one can settle it.
