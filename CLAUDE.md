@@ -2092,6 +2092,24 @@ principle.
 Same move as per-row over per-type, and the same family as the constructed
 count: a bound taken from the view rather than from the data.
 
+⚠️ **AND THE SIBLINGS ARE OFTEN IN THE SAME FILE, WHICH IS WHERE THE QUESTION
+STOPS GETTING ASKED.** A fix applied at the site where the bug was observed, in a
+file whose other call sites have the same shape, verifies green at the only place
+anyone looked — and the file now reads as fixed. **Ask "where else does this
+pattern appear" of the FILE before closing, not only of the codebase.**
+
+Measured 2026-10-03, the third instance this arc: `BindingPicker.test.tsx` queries
+a dropdown option in three places, one with a `waitFor` and two bare. Its own
+comment records that the bare-query race was fixed here once before, citing the
+precedent it followed. It was fixed at one of three sites, and the comment
+describing the class sits directly above the single site that got it.
+
+Kin to DECISIONS 2026-10-03, "Consistency within a file is not evidence that the
+file is consistent" — there the sibling cases were tables across two migrations;
+here they are call sites eighty lines apart. The question is the same and so is
+the reason it goes unasked: the cases resemble each other, so checking one feels
+like checking the kind.
+
 ### Documentation can be accurate and still be the wrong answer
 
 **When documentation answers a narrower question than the one being asked, its
@@ -2153,6 +2171,29 @@ The restructure existed and neither party reached for it: redirect the command's
 stdout to a file outside the session, or set the variable that suppresses
 generation. **A prohibition with no stated way to comply is a prohibition that
 will be broken** — see *RESTRUCTURE FIRST, ESCALATE SECOND* in §7.
+
+### A quantitative word arrives with its quantity or not at all
+
+**"Dominated by", "most", "almost all", "the bulk of", "swamped", "a handful" —
+these are measurements in a sentence's clothing. State the number or use a word
+that does not promise one.**
+
+⚠️ The failure is not vagueness. It is that a quantitative word is ACTIONABLE in a
+way an impression is not: it reads as a finding, so it gets built on. An
+impression reported as "the log is hard to read" produces a question. The same
+impression reported as "the log is DOMINATED by X" produces a work item.
+
+Measured 2026-10-03. A CI failure was reported as uncharacterizable because "the
+log is dominated by Base UI `nativeButton` warnings". That sentence travelled into
+a dispatch, which correctly ordered the warnings filtered so the instrument could
+carry a signature. Measured before acting: **7 lines of 9489 — 0.1%.** They
+dominated nothing, the log was long because a non-TTY reporter expands its output,
+and the assertion had been one line below the FAIL marker the whole time. Filtering
+would have removed seven lines, fixed nothing, and left a false diagnosis looking
+addressed.
+
+The remedy is not to hedge. It is that **a word implying a proportion is a claim
+about a proportion**, and the proportion is usually one command away.
 
 ### Figures in dispatches are never inherited
 
