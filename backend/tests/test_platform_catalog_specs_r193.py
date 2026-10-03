@@ -65,7 +65,19 @@ EXPECTED_SOURCED = {
     ("loved-and-cherished", "infant"),
 }
 
-#: The 6 with no row in the sheet. Tribute plus the five equipment products.
+#: Products with no row in the spec sheet. Tribute plus the five equipment
+#: products — and, since r195, the eight stocked-urn products.
+#:
+#: ⚠️ GREW FROM 6 TO 14 AT r195, AND THE GROWTH IS CORRECT. The spec sheet is a
+#: VAULT spec sheet; it predates the urns and says nothing about them, so they
+#: belong in the unsourced set exactly as Tribute does. This suite's claim is
+#: global — "every product without a CSV row has NULL specs" — and a global claim
+#: has to grow with the table rather than be scoped away from the new rows.
+#:
+#: The two tests that failed when r195 landed failed CORRECTLY: they pinned a
+#: 21-product population and the catalog became 29. Reported as regressions rather
+#: than silently widened, because a test whose expected set is edited to match
+#: whatever the code now does has stopped testing anything.
 EXPECTED_UNSOURCED = {
     ("tribute", "burial_vault"),
     ("chairs", "equipment"),
@@ -73,6 +85,15 @@ EXPECTED_UNSOURCED = {
     ("grass-mats", "equipment"),
     ("lowering-device", "equipment"),
     ("tent", "equipment"),
+    # r195 — the twelve stocked urns, eight products on the `urn` form
+    ("country-bouquet", "urn"),
+    ("jewel", "urn"),
+    ("moon-stone", "urn"),
+    ("sedona", "urn"),
+    ("victorian", "urn"),
+    ("arlington", "urn"),
+    ("regal", "urn"),
+    ("tribute-urn", "urn"),
 }
 
 SPEC_COLS = (

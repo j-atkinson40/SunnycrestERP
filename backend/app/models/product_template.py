@@ -27,9 +27,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-#: The five forms a product takes. Controlled because `form` is what splits one
-#: family into rows, so a typo would silently create a sixth form.
-FORMS = ("burial_vault", "urn_vault", "grave_liner", "infant", "equipment")
+#: The SIX forms a product takes. Controlled because `form` is what splits one
+#: family into rows, so a typo would silently create a seventh.
+#: ⚠️ Said "five" until 2026-10-03 and was edited to a six-tuple in the same
+#: change — the count and the data travelling separately, which CLAUDE.md §11
+#: names and which r188's docstring did twice.
+#: ⚠️ `urn` is NOT `urn_vault` — an urn is not a vault, and r195 added it as a
+#: distinct form rather than folding twelve stocked urns into the vault form.
+FORMS = (
+    "burial_vault", "urn_vault", "grave_liner", "infant", "equipment", "urn",
+)
 
 #: ⚠️ EXACTLY TWO VALUES. Tenant ownership is a `products` row whose
 #: `variant_template_id` IS NULL — absence, not a third value. A third value here

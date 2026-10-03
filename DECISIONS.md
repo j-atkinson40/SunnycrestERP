@@ -2680,3 +2680,46 @@ uniform value across every row of a table, that uniformity is a question, not a 
 Ask which writer produced it and whether that writer measured anything. `r188`'s loop and
 `u3v4w5x6y7z8`'s default are indistinguishable from the database side; both produce a column
 where every row agrees.
+
+---
+
+## 2026-10-03 — Consistency within a file is not evidence that the file is consistent
+
+`r186` created four tables and enforced the natural key on three of them —
+`product_variant_templates` UNIQUE (sku), `product_families` PRIMARY KEY (slug),
+`platform_product_aliases` UNIQUE (variant_template_id, alias_text_normalized) — and gave
+`product_templates` nothing but an `id` primary key and a non-unique index on `family_slug`.
+
+The consequence surfaced two migrations later, inside one function. `r193:607` builds two
+lookup dicts eight lines apart:
+
+```python
+products = {(r.family_slug, r.form): r.id for r in ...}   # key NOT enforced
+variants = {r.sku: r.id for r in ...}                     # key enforced
+```
+
+They look identical and they are not. A duplicate in the second cannot exist. A duplicate in
+the first would be **silently collapsed** by the dict — last row wins — leaving one product
+permanently unreachable with nothing raised. Demonstrated rather than argued: two rows in,
+dict size one.
+
+**The reviewable unit was the wrong size.** Reading `r186` whole, the four `create_table`
+calls look alike and the constraint on three of them reads as the house style. Reading
+`r193` whole, the two dicts look alike and both read as safe. Neither file contains the
+discrepancy; it lives between them, in a decision nobody made — nobody chose to leave
+`product_templates` unenforced, which is precisely why no review caught it.
+
+So **internal consistency is not evidence of correctness, and it is actively misleading**:
+a file whose four cases resemble each other invites the reader to check one and generalise.
+The question that finds this class is not *does this file agree with itself* but *does each
+case agree with its siblings elsewhere* — here, four tables that should all have held their
+natural key, three of which did.
+
+`r194` fixes the instance by making a duplicate unexpressible rather than discouraged. The
+general form stays open and is worth naming: wherever a migration creates several tables of
+one kind, enumerate the invariants that should hold across all of them and check each
+table against that list, not against the other tables in the file.
+
+⚠️ Kin to CLAUDE.md §11's *a guard reasoned from one caller is a guard reasoned from a
+sample*. There the sample was call sites; here it is sibling tables. Both produce reasoning
+that is right about what it examined and wrong about the population.

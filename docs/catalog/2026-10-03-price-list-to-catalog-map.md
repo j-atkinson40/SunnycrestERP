@@ -411,3 +411,65 @@ impossible rather than merely avoided.
 
 ⚠️ **Blocked on R2's option ruling** (the two-axes-in-one-field question) before the
 three odd-size variants can be written. Everything else in Migration B is ruled.
+
+---
+
+# Rulings applied, 2026-10-03 — `option_label` and `BV-CON`. Built in r195.
+
+## R6. `option_label` stays ONE axis — RULED
+
+Graveliner carries `Standard`, `Social Service`, `34 inch`, `38 inch` as a **flat
+heterogeneous list**. Basis: **decided**.
+
+⚠️ **It looks like a grade axis crossed with a size axis ONLY IF THE CROSS-PRODUCT
+EXISTS, AND IT DOES NOT.** There is no Graveliner SS at 34" on the price list, in
+`sunnycrest_product_seeder`, or in anything James has said. Two axes would create
+**six slots to hold four real things**, and the two empties would then need a
+reason to be empty that nobody has.
+
+The axis is *"which graveliner"* — not "size" and not "grade".
+
+**FALSIFIER, recorded:** any source offering a crossed configuration — Graveliner
+SS in 34" or 38", or similar. That is the day it becomes two axes. It is not today,
+and building for it now is the same move as mapping shells to products before
+anything needs dimensions.
+
+⚠️ **The falsifier is test-enforced, not merely written down.**
+`test_price_list_catalog_r195.py::test_graveliner_carries_a_flat_heterogeneous_axis`
+asserts the label set by **equality**, so a crossed configuration appearing fails
+the suite — which is exactly when this ruling should be revisited rather than
+worked around. Break-tested: inserting `GL-SS34` "Social Service 34 inch" turned
+it red.
+
+## R7. `BV-CON`'s `option_label` becomes `Standard` — RULED
+
+Basis: **decided**, explicitly not measured. The price list says `Continental`, not
+`Continental Standard`.
+
+`Continental` as an option label is **degenerate** — it restates the product rather
+than naming a value on any axis. That is invisible while there is one variant and
+wrong the moment `34 inch` joins it. Parallel to `GL-STD` **by our choice**, not by
+the source.
+
+## R8. What r195 actually built
+
+```
+form `urn` added to ck_product_templates_form
+8 families, 8 products, 12 variants      the stocked urns, ownership wilbert (inferred)
+3 variants                               BV-CON34, GL-34, GL-38 on existing parents
+1 display_name                           UV-VET -> "Veteran Triune Urn Vault" (sku unchanged)
+1 option_label                           BV-CON "Continental" -> "Standard"
+14 reinforcement tiers                   measured; 7 products stay NULL
+```
+
+Catalog is now **29 products / 52 variants**, reproduced identically from empty on
+a scratch database.
+
+⚠️ **No price was written for anything**, because `product_templates` has no price
+column. James's two rulings — `Vault Placer` at **$0.00** (measured, correct) and
+`CE-CT` at **NULL** (exists, price not established, NOT zero) — are recorded here
+and had nothing to write. `test_no_price_column_exists_to_have_defaulted` pins the
+reason they could not have been confused at this tier.
+
+⚠️ **`CE-CT` is not deleted and is test-pinned.** Absence from a price list is not
+absence from the world.
