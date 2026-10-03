@@ -22,9 +22,56 @@
 # CLAUDE.md and revisit.
 name: Playwright Staging
 
+# ⚠️ THE PUSH TRIGGER WAS REMOVED 2026-10-03. THIS IS NOW MANUAL-ONLY.
+#
+# NOTHING HERE IS DELETED. All 101 spec files, the 41 runtime-editor specs, the
+# deploy gate and the report upload are intact and this workflow still runs in
+# full via `workflow_dispatch` or the Actions "Run workflow" button. What was
+# removed is the CHANNEL — the per-push column that was permanently red.
+#
+# MEASURED 2026-10-03 by enumerating the workflow's whole history, not a default
+# listing (the figure in CLAUDE.md §11 was itself wrong twice before, at 6 and
+# then 99, each time from a truncated listing):
+#
+#     517 runs total      41 success · 405 failure · 71 cancelled
+#     last success        2026-05-11T18:32:23Z   (run 25689507900)
+#     runs since          439
+#     days dark           145
+#     commits on main during the dark window   975
+#
+# ⚠️ TWO FIGURES IN THIS HEADER WERE WRONG WHEN FIRST WRITTEN, both from a
+# miscounted enumeration, both corrected before commit. '202 spec files' was a
+# repo-wide find that counted a `.claude/worktrees` copy twice (101 + 101).
+# '43 runtime-editor specs' was an `ls` file count, not a spec count (41).
+# Recorded because this header's whole argument is that a number nobody
+# re-derives is a number nobody can trust.
+#
+# WHY REMOVING IT IS THE REPAIR RATHER THAN NEGLECT. A channel red for 439
+# consecutive runs cannot report a new failure — the red it would emit is already
+# being emitted. It is a SATURATED signal (CLAUDE.md §11), and worse, it trains
+# every reader to skip a column that might one day matter. Every genuine red
+# arriving beside it now costs a paragraph of reasoning to dismiss, and a check
+# you have to argue with is not a check.
+#
+# ⚠️ THE FAIL-OPEN THAT ONCE MADE THIS DANGEROUS IS CLOSED. CLAUDE.md §11 records
+# that these specs used to `route.continue()` on a failed staging rewrite, which
+# forwarded the ORIGINAL request to production — and that the dead CI credential
+# was the only thing preventing it from firing. Verified 2026-10-03: 46
+# `route.abort()` sites against 7 `route.continue()`, and `tests/e2e/PROD_INTERCEPT.md`
+# documents the convention explicitly. The 7 remaining are legitimate (stalling a
+# fetch to observe a loading skeleton). So making this manual-only introduces no
+# new hazard.
+#
+# TO BRING IT BACK: restore the `push:` block below. It is one revert. But the
+# channel should only return with an OWNER — the credential provisioned
+# (`provision_ci_bot --ensure`, which prints nothing), the deploy gate confirmed
+# working, and someone who reads its result. Re-enabling it red just restores the
+# noise.
+#
+# ⚠️ THIS IS JAMES'S CALL. Whether staging E2E exists as a per-push gate is a
+# product-infrastructure decision, not a cleanup. Flagged rather than assumed.
+
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # Don't race back-to-back pushes — last one wins.
