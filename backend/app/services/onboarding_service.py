@@ -1745,16 +1745,69 @@ def advance_scenario(
 # ---------------------------------------------------------------------------
 
 
+class UnknownFilterValue(ValueError):
+    """A filter value that matches nothing in the catalog.
+
+    ⚠️ RAISED SO AN UNRECOGNISED VALUE IS LOUD. Until 2026-10-03 an unknown
+    `category` or `preset` simply filtered everything out and returned `[]` — a
+    client that missed a vocabulary change saw an EMPTY CATALOG and no signal.
+    That is the worst form of a contract break: indistinguishable from "we stock
+    nothing", and silent on both sides.
+
+    It matters now because 2b-3 is about to move that vocabulary. The old
+    `category` has three values; the new catalog's `form` has six, and the old
+    "Burial Vaults" covers what are now `burial_vault`, `grave_liner` and
+    `infant`. Any caller not updated in step would get `[]`.
+
+    Carries the valid set so the error names what IS accepted — the client does
+    not have to guess, and the message is correct in whichever environment it
+    fires.
+    """
+
+    def __init__(self, field: str, value: str, valid: list[str]) -> None:
+        self.field = field
+        self.value = value
+        self.valid = valid
+        known = ", ".join(repr(v) for v in valid) if valid else "(none — the catalog is empty)"
+        super().__init__(f"unknown {field} {value!r}; known values: {known}")
+
+
+def _known_values(db: Session, column) -> list[str]:
+    """The DISTINCT values actually present, not a hardcoded list.
+
+    ⚠️ A CONSTANT WOULD BE WRONG IN ONE ENVIRONMENT. Measured 2026-10-03: dev
+    holds categories 'Burial Vaults', 'Redi-Rock', 'Rosetta Hardscapes',
+    'Wastewater' (written by the x1y2z3a4b5c6 migration) while production holds
+    'Burial Vaults', 'Urn Vaults', 'Cemetery Equipment' (written by
+    catalog_template_seeder, which has never run on dev because it is gated on
+    PLATFORM_ADMIN_*). Neither population is the other's subset, so any list
+    hardcoded from one would reject valid values in the other.
+    """
+    return sorted(
+        v for (v,) in db.query(column).distinct().all() if v is not None
+    )
+
+
 def get_product_templates(
     db: Session,
     preset: str | None = None,
     category: str | None = None,
 ) -> list[ProductCatalogTemplate]:
-    """Get product catalog templates, optionally filtered."""
+    """Get product catalog templates, optionally filtered.
+
+    Raises `UnknownFilterValue` if a supplied filter matches nothing — see that
+    class for why silence was the wrong behaviour.
+    """
     query = db.query(ProductCatalogTemplate)
     if preset:
+        known = _known_values(db, ProductCatalogTemplate.preset)
+        if preset not in known:
+            raise UnknownFilterValue("preset", preset, known)
         query = query.filter(ProductCatalogTemplate.preset == preset)
     if category:
+        known = _known_values(db, ProductCatalogTemplate.category)
+        if category not in known:
+            raise UnknownFilterValue("category", category, known)
         query = query.filter(ProductCatalogTemplate.category == category)
     return query.order_by(ProductCatalogTemplate.sort_order).all()
 

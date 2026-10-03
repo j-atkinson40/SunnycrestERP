@@ -185,10 +185,33 @@ def get_product_library(
     company: Company = Depends(get_current_company),
     db: Session = Depends(get_db),
 ):
-    """Get product catalog templates for the starter library."""
-    return tenant_onboarding_service.get_product_library(
-        db, company.id, preset=preset, category=category
-    )
+    """Get product catalog templates for the starter library.
+
+    ⚠️ An unrecognised `preset` or `category` returns **422**, not an empty list.
+    Until 2026-10-03 it filtered everything out and returned `[]`, so a client
+    that missed a vocabulary change saw an empty catalog with no signal. The
+    response body names the values that ARE accepted.
+    """
+    try:
+        # ⚠️ `company.id` is NOT passed. It was, and it made this endpoint raise
+        # `TypeError: got multiple values for argument 'preset'` on EVERY call —
+        # a 500 on a live route, found 2026-10-03 while adding the validation
+        # below. `product_catalog_templates` is PLATFORM-TIER and has no
+        # `company_id` column at all, so the argument was never meaningful; the
+        # `company` dependency is retained only to enforce tenant auth.
+        return tenant_onboarding_service.get_product_library(
+            db, preset=preset, category=category
+        )
+    except tenant_onboarding_service.UnknownFilterValue as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "unknown_filter_value",
+                "field": exc.field,
+                "value": exc.value,
+                "known_values": exc.valid,
+            },
+        ) from exc
 
 
 @router.post("/product-library/import", status_code=201)

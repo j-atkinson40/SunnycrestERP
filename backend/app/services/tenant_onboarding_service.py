@@ -15,6 +15,7 @@ from app.services.onboarding_service import (  # noqa: F401
     start_scenario,
     advance_scenario,
     get_product_templates as get_product_library,
+    UnknownFilterValue,
     import_product_templates,
     create_data_import,
     update_data_import,
