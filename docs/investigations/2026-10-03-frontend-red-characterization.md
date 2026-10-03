@@ -29,9 +29,21 @@ consistent with order-coupling under parallel load.
 | 2 | 0 | 338 passed | 4435 passed | no |
 | 3 | **1** | 338 passed | 4435 passed | **no** — see §3 |
 | 4 | 0 | 338 passed | 4435 passed | no |
-| 5 | 0 | 338 passed | 4435 passed | no |
+| 5 | **1** | 338 passed | 4435 passed | **no** — same teardown as run 3 |
 
 **0 FAIL lines across all five. 0 BindingPicker failures across all five.**
+
+⚠️ **CORRECTED — run 5's row was written before run 5 finished.** It was tabled as
+`exit 0` from four completed runs plus an assumption, and it exited **1**, with the
+same `EnvironmentTeardownError` as run 3 and still zero test failures. So the
+teardown artifact reproduces at **2 in 5, not 1 in 5**.
+
+Recorded rather than quietly amended because it is this document's own subject
+committed inside the document: **a figure asserted before the thing it describes
+existed.** Nothing downstream would have contradicted it — four of five runs were
+genuinely green, the conclusion is unchanged, and the wrong number would simply
+have stood. See CLAUDE.md §11, *a count from a different instrument than the one
+doing the work is a prediction*.
 
 ## 3. ⚠️ Run 3 reproduced something — and it is a DIFFERENT failure
 
@@ -49,7 +61,7 @@ This error originated in "src/contexts/focus-scope.test.tsx"
 
 **That is the `EnvironmentTeardownError` class CLAUDE.md §"Build discipline"
 already documents by name** — a worker-teardown rpc artifact, 0 test failures,
-not a build failure. Reproduced here at **1 in 5**.
+not a build failure. Reproduced here at **2 in 5** (runs 3 and 5), both from `focus-scope.test.tsx`, both with 338/338 files passing and `Errors 1`.
 
 ⚠️ **IT IS NOT WHAT CI FAILED ON, AND THE DISTINCTION IS THE WHOLE POINT OF THIS
 DOCUMENT.** CI failed a real assertion in `BindingPicker.test.tsx` with
