@@ -271,8 +271,15 @@ def seed_platform_admin():
                 print(f"WARNING: Extension seeding failed — {exc}")
                 db.rollback()
 
-            from app.services.catalog_template_seeder import seed_wilbert_templates
-            seed_wilbert_templates(db)
+            # ⚠️ `seed_wilbert_templates` REMOVED 2026-10-03 (2b-3 Commit 4). It
+            # wrote 37 rows into `product_catalog_templates` on startup, gated on
+            # PLATFORM_ADMIN_* — which is why dev never had them and production
+            # did. The platform catalog is now built by MIGRATIONS (r186-r196):
+            # versioned, reproducible from empty, and already applied. A startup
+            # seeder cannot be any of those.
+            #
+            # The table itself is NOT dropped — that is Phase 3. It simply has no
+            # writer and no reader now.
 
             from app.services.functional_area_service import seed_functional_areas
             seed_functional_areas(db)

@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.price_list_import import PriceListImport, PriceListImportItem
-from app.models.product_catalog_template import ProductCatalogTemplate  # noqa: F401 — still imported for the legacy type
 from app.models.product_template import ProductTemplate
 from app.models.product_variant_template import ProductVariantTemplate
 

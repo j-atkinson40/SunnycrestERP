@@ -124,7 +124,11 @@ class TestTemplatesKeepTheirDecisions:
 
     def test_the_python_side_default_is_gone(self):
         """Dropping the server default alone would have fixed nothing for the path
-        that actually inserts — the seeder goes through the ORM."""
+        that actually inserted — the seeder went through the ORM.
+
+        ⚠️ Past tense since 2b-3 Commit 4: that seeder is deleted. The assertion
+        still matters because the Python-side default would re-assert on ANY future
+        ORM insert, and the column outlives its writer until Phase 3 drops it."""
         from app.models.product_catalog_template import ProductCatalogTemplate
 
         col = ProductCatalogTemplate.__table__.c.is_manufactured
@@ -133,23 +137,21 @@ class TestTemplatesKeepTheirDecisions:
         assert col.nullable is True
 
 
-class TestTheSeedersWritesAreUnchanged:
-    def test_the_three_writes_still_vary(self):
-        """⚠️ Reads the SOURCE, not the database — the ruling to keep these was
-        made from the literals, so the literals are what must not drift. Three
-        loops, three categories, one of them different."""
-        from pathlib import Path
-
-        src = (
-            Path(__file__).resolve().parents[1]
-            / "app" / "services" / "catalog_template_seeder.py"
-        ).read_text()
-        writes = [
-            ln.strip() for ln in src.splitlines() if "is_manufactured=" in ln
-        ]
-        assert len(writes) == 3, f"expected 3 writes, found {len(writes)}: {writes}"
-        assert writes.count("is_manufactured=True,") == 2
-        assert writes.count("is_manufactured=False,") == 1
+# ⚠️ `TestTheSeedersWritesAreUnchanged` REMOVED at 2b-3 Commit 4, deliberately.
+#
+# It read `catalog_template_seeder.py` and asserted its three literals still varied
+# (True for Burial Vaults, True for Urn Vaults, False for Cemetery Equipment) —
+# the evidence for r196's ruling that those rows carry per-row DECISIONS and must
+# not be nulled. That file has been deleted; the catalog is built by migrations now.
+#
+# The claim did not go with it. `test_the_values_actually_vary` below asserts the
+# same thing against the LIVE DATA, which is the better instrument anyway: it tests
+# what the rows hold rather than what a file says they should. And the literals
+# themselves are preserved in r196's docstring and in
+# docs/investigations/2026-10-03-r196-production-preflight.md.
+#
+# Removed rather than left to fail, because a test that errors on a missing file
+# reports "the source moved", not "the ruling is wrong".
 
 
 class TestTheTwoTablesDisagreeOnPurpose:

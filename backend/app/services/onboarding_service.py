@@ -18,7 +18,6 @@ from app.models.onboarding_integration_setup import OnboardingIntegrationSetup
 from app.models.onboarding_scenario import OnboardingScenario
 from app.models.onboarding_scenario_step import OnboardingScenarioStep
 from app.models.product import Product
-from app.models.product_catalog_template import ProductCatalogTemplate
 from app.schemas.onboarding import (
     OnboardingTemplateCreate,
     OnboardingTemplateUpdate,
@@ -1779,7 +1778,7 @@ def _known_values(db: Session, column) -> list[str]:
     holds categories 'Burial Vaults', 'Redi-Rock', 'Rosetta Hardscapes',
     'Wastewater' (written by the x1y2z3a4b5c6 migration) while production holds
     'Burial Vaults', 'Urn Vaults', 'Cemetery Equipment' (written by
-    catalog_template_seeder, which has never run on dev because it is gated on
+    catalog_template_seeder (DELETED at 2b-3 Commit 4), which never ran on dev — gated on
     PLATFORM_ADMIN_*). Neither population is the other's subset, so any list
     hardcoded from one would reject valid values in the other.
     """

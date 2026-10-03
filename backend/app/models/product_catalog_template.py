@@ -26,9 +26,13 @@ class ProductCatalogTemplate(Base):
     #: have left every ORM-created row still asserting True.
     #:
     #: ⚠️ EXISTING ROWS WERE NOT NULLED, deliberately. Their values VARY (15 true /
-    #: 10 false on bridgeable_dev) because `catalog_template_seeder` writes True for
+    #: 10 false on bridgeable_dev) because `catalog_template_seeder` wrote True for
     #: Burial Vaults, True for Urn Vaults and False for Cemetery Equipment — vaults
     #: are poured, cemetery equipment is bought. Those are decisions, not a fill,
+    #: ⚠️ That seeder was DELETED at 2b-3 Commit 4 — the catalog is built by
+    #: migrations now. The literals it wrote are preserved in r196's docstring
+    #: and in docs/investigations/2026-10-03-r196-production-preflight.md, and
+    #: the live claim is carried by test_is_manufactured_r196's data assertion.
     #: and CLAUDE.md §5's rule is aimed at values written UNIFORMLY.
     is_manufactured: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
