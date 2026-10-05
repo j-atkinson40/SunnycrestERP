@@ -1696,24 +1696,89 @@ First live tenant: `sunnycrest.getbridgeable.com`
 | Network Intelligence | Built | `network_intelligence_service.py` |
 | Report Commentary (AI) | Stub | `report_intelligence_service.py` |
 
-### Onboarding — Manufacturing Preset (25 items)
+### Onboarding — Manufacturing Preset (28 items)
+
+⚠️ **CORRECTED 2026-10-05, AND THE COUNT WAS THE LEAST OF IT.** This section
+previously read *"Manufacturing Preset (25 items)"* over a 14-row table. Measured
+against `MANUFACTURING_CHECKLIST_ITEMS`:
+
+- the preset has **28 items — 16 must_complete, 8 should_complete, 4 optional**;
+- **7 of the 14 keys listed did not exist in the preset.** Two
+  (`connect_accounting`, `setup_price_list`) belong to the **funeral_home**
+  preset; two (`accounting_import_review`, `setup_tax_rates`) appear elsewhere in
+  `onboarding_service.py` but in no preset; and three —
+  `setup_financial_accounts`, `setup_purchasing_settings`,
+  `setup_inter_licensee_pricing` — **appear nowhere in `app/` at all**;
+- **5 of the 7 real keys carried the wrong sort order** (`setup_tax_jurisdictions`
+  5→8, `add_employees` 9→13, `setup_safety_training` 10→14,
+  `setup_scheduling_board` 11→15, `configure_cross_tenant` 13→16).
+
+The tiers of the 7 real keys were correct. Nothing else in the table was.
+
+⚠️ **IT WAS FOUND BY NEEDING THE DATA, NOT BY REVIEW.** A session confirming
+which checklist items gate onboarding read the preset instead of this table, and
+the two disagreed. A reader who trusted the table would have planned work around
+three item keys that have never existed — and because the table is *plausible*
+(every phantom name reads like a real onboarding step), nothing about it invites
+checking. Same shape as §11's *figures in dispatches are never inherited*, one
+layer up: this is canon, which is the place you check.
+
+**Build the list from `MANUFACTURING_CHECKLIST_ITEMS`, not from here.** This table
+is a convenience copy and will drift again; the module is authoritative.
 
 | Sort | Key | Tier |
 |------|-----|------|
-| 2 | `connect_accounting` | must_complete |
-| 3 | `accounting_import_review` | must_complete |
-| 4 | `setup_tax_rates` | must_complete |
-| 5 | `setup_tax_jurisdictions` | must_complete |
+| 2 | `vault_production_setup` | must_complete |
+| 3 | `data_migration` | must_complete |
+| 4 | `import_order_history` | must_complete |
+| 5 | `review_customer_types` | must_complete |
 | 6 | `add_products` | must_complete |
-| 7 | `setup_price_list` | should_complete |
-| 8 | `setup_financial_accounts` | should_complete |
-| 9 | `add_employees` | must_complete |
-| 10 | `setup_safety_training` | must_complete |
-| 11 | `setup_scheduling_board` | must_complete |
-| 12 | `setup_purchasing_settings` | optional |
-| 13 | `configure_cross_tenant` | must_complete |
-| 75 | `setup_inter_licensee_pricing` | optional |
+| 7 | `company_branding` | must_complete |
+| 8 | `setup_tax_jurisdictions` | must_complete |
+| 9 | `verify_tax_readiness` | must_complete |
+| 10 | `setup_charge_accounts` | must_complete |
+| 11 | `setup_cemeteries` | must_complete |
+| 12 | `setup_quick_orders` | must_complete |
+| 13 | `add_employees` | must_complete |
+| 14 | `setup_safety_training` | must_complete |
+| 15 | `setup_scheduling_board` | must_complete |
+| 16 | `configure_cross_tenant` | must_complete |
 | 99 | `setup_team_intelligence` | must_complete |
+| 201 | `set_inventory_minimums` | should_complete |
+| 202 | `setup_charges` | should_complete |
+| 203 | `invite_team` | should_complete |
+| 204 | `setup_sms_confirmation` | should_complete |
+| 205 | `run_vault_scenario` | should_complete |
+| 206 | `run_production_log_scenario` | should_complete |
+| 207 | `setup_vault_molds` | should_complete |
+| 210 | `complete_vault_lifecycle_training` | should_complete |
+| 301 | `setup_safety` | optional |
+| 302 | `explore_extensions` | optional |
+| 303 | `complete_urn_catalog` | optional |
+| 304 | `run_month_end_scenario` | optional |
+
+The **funeral_home** preset has 12 items (6 must_complete, 4 should_complete, 2
+optional) and is not reproduced here.
+
+**How an item completes.** Every item is `action_type: navigate` to a frontend
+page; completion fires through `check_completion(db, tenant_id, item_key)` from
+whatever route or service finishes the work, or through
+`POST /tenant-onboarding/checklist/items/{item_key}/complete`.
+
+⚠️ **A HOOK EXISTING IS NOT A HOOK FIRING.** `onboarding_hooks.on_product_created`
+has **zero callers** — its one reference imports it and does nothing (the comment
+at `production_log_service.py:143` says "Fire onboarding hook"; no fire). Nothing
+on the product-creation path completes `add_products`. The live mechanism is the
+direct `check_completion` call in `POST /product-library/import`, plus triggers in
+`price_list_import.py` and `unified_import_service.py`. ⚠️ **Do not wire
+`on_product_created` without deciding that separately** — it would fire on every
+product-creation path, and both it and the import route's direct call would then
+run.
+
+**Dependency gating is computed in the frontend** (`onboarding-hub.tsx`), over the
+`depends_on` column, which the checklist route serves as a **JSON string** rather
+than a list because that route carries no `response_model`. Any new consumer needs
+the same `JSON.parse` fallback the hub has.
 
 ## 10. Agent Jobs
 
