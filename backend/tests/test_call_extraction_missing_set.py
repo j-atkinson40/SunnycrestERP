@@ -267,16 +267,15 @@ class TestTheServerDecidesWhatIsCapturedToo:
         assert set(state.answered) & set(state.missing) == set(), (
             "a field cannot be both answered and missing"
         )
-        covered = set(state.answered) | set(state.missing) | set(state.not_applicable)
-        # ⚠️ Plus the fourth bucket CaptureState has no slot for: optional and
-        # unanswered. Named rather than folded in — see test_capture_schema.
-        optional_unanswered = {
-            f.field_id for f in template
-            if not f.required and f.field_id not in covered
-        }
-        assert covered | optional_unanswered == {f.field_id for f in template}, (
-            f"these template fields appear in no bucket: "
-            f"{ {f.field_id for f in template} - covered - optional_unanswered}"
+        # ⚠️ FOUR SETS, FROM THE TYPE ITSELF. For one commit this test derived
+        # the optional-unanswered bucket locally because CaptureState had no slot
+        # for it; it has one now, so the assertion reads the type rather than
+        # reconstructing what the type forgot.
+        covered = (set(state.answered) | set(state.missing)
+                   | set(state.unanswered_optional) | set(state.not_applicable))
+        assert covered == {f.field_id for f in template}, (
+            f"these template fields appear in no set: "
+            f"{ {f.field_id for f in template} - covered}"
         )
 
     def test_none_is_answered_and_lands_in_answered_not_missing(self):
@@ -291,6 +290,71 @@ class TestTheServerDecidesWhatIsCapturedToo:
         )
         assert "grave_location" in state.answered
         assert "grave_location" not in state.missing
+
+    def test_an_optional_unanswered_field_has_a_home(self):
+        """⚠️ THE SET THAT DID NOT EXIST, AND WHY IT HAD TO.
+
+        `date_of_birth`, `date_of_death` and `cemetery_equipment` are optional and
+        nothing extracts them from a call. Before 2026-10-05 they were in no set
+        at all — not answered, not missing, not inapplicable — so a consumer
+        reading CaptureState could not tell them from fields the engine had
+        forgotten. "Absent from all three sets" is not a state.
+        """
+        template = _template()
+        state = capture.evaluate(
+            _captured_from_result(FULL_RESULT),
+            vault_product_id=None,
+            platform_fields=template,
+        )
+        assert set(state.unanswered_optional) == UNEXTRACTABLE_OPTIONAL
+        # and they are NOT reported as gaps
+        assert not (set(state.unanswered_optional) & set(state.missing))
+        assert state.is_complete is False, "the required gap still stands"
+
+    def test_an_order_IS_COMPLETE_with_optional_fields_unanswered(self):
+        """⚠️ THE READY-TO-APPROVE STATE, AND NOTHING TESTED IT UNTIL A BREAK TEST
+        CAME BACK BLIND.
+
+        Every other test here has a required gap outstanding, so `is_complete` is
+        False for that reason and folding `unanswered_optional` into it changed
+        nothing — break E3 turned zero tests red. The discriminating case is the
+        one a licensee actually reaches: every REQUIRED field answered, the
+        optional dates and equipment left blank, order ready to approve.
+
+        If `is_complete` ever folds in `unanswered_optional`, no order is
+        approvable until someone answers three fields the design does not require.
+        That is the whole reason the property was left alone.
+        """
+        template = _template()
+        answers = {
+            f.field_id: "x" for f in template
+            if f.required and not f.is_conditional
+        }
+        state = capture.evaluate(
+            answers, vault_product_id=None, platform_fields=template)
+
+        assert state.missing == (), (
+            f"a required field is still unanswered: {state.missing}"
+        )
+        assert state.unanswered_optional, (
+            "no optional field is unanswered — this test cannot discriminate"
+        )
+        assert state.is_complete is True, (
+            "an order with only OPTIONAL fields unanswered is not complete — "
+            "nothing would ever be approvable"
+        )
+
+    def test_an_ANSWERED_optional_field_is_answered_not_optional_unanswered(self):
+        """⚠️ THE CONTROL. A set that collected every optional field regardless of
+        its answer would satisfy the test above."""
+        template = _template()
+        state = capture.evaluate(
+            {**_captured_from_result(FULL_RESULT), "date_of_birth": "1948-03-14"},
+            vault_product_id=None,
+            platform_fields=template,
+        )
+        assert "date_of_birth" in state.answered
+        assert "date_of_birth" not in state.unanswered_optional
 
     def test_the_model_cannot_influence_the_answered_set(self):
         """⚠️ THE DISCRIMINATING CASE, and the mirror of what r196-era code did

@@ -8,10 +8,28 @@ least reliable component — a flag that cannot be trusted to fire, cannot be
 trusted not to fire spuriously, and cannot be tested. Ruled 2026-09-22, `The
 model extracts; the server decides what is missing`.
 
-⚠️ THREE OUTCOMES, NOT TWO. A field is answered, or missing, or IT DOES NOT
-APPLY — and the third is absent from both sets rather than reported as missing.
-A Monticello order at a licensee that offers no personalization on the Monticello
-must not report personalization as missing; there is nothing to ask.
+⚠️ FOUR OUTCOMES, AND THE FOURTH WAS ADDED 2026-10-05 BECAUSE IT WAS FALLING OUT.
+A field is answered, or missing, or UNANSWERED-BUT-OPTIONAL, or IT DOES NOT APPLY.
+The last two are absent from `missing` rather than reported there: a Monticello
+order at a licensee offering no personalization on the Monticello must not report
+personalization as missing, and an optional field nobody mentioned is not a gap.
+
+⚠️ THE SETS EXHAUST THE RESOLVED SCHEMA, AND THAT IS NOW AN INVARIANT RATHER THAN
+AN ACCIDENT. Until 2026-10-05 three sets appeared to partition the fields — but
+only because EVERY template field was required. `evaluate` adds an unanswered
+field to `missing` only when it is required, so the moment optional fields existed
+(`date_of_birth`, `date_of_death`, `cemetery_equipment`) they landed in NO SET:
+not answered, not missing, not inapplicable. A consumer reading `CaptureState`
+could not see them at all.
+
+⚠️ AND THAT WAS THE THIRD TIME THIS TYPE DESCRIBED LESS THAN `evaluate` KNEW.
+`answered` was computed and discarded until r197; NOT_CONFIGURED is computed by
+`resolve_schema` and still discarded here; optional-unanswered fell out entirely.
+Each time a consumer re-derived from the resolved schema instead — which is two
+sources of truth about field state at the server, immediately after the same
+duplication was removed at the client. The row layer's workaround (reading
+`ResolvedField` directly) stays correct and is no longer the only way to see this
+one.
 
 ⚠️ `none` IS AN ANSWER. It clears the requirement. Absence of the key, or a
 `None` value, is unanswered. Those two are different and the difference is the
@@ -43,10 +61,23 @@ class UnpermittedAnswer(ValueError):
 
 @dataclass(frozen=True)
 class CaptureState:
-    """The answer to "where is this order up to?"."""
+    """The answer to "where is this order up to?".
+
+    ⚠️ THE FOUR SETS EXHAUST THE RESOLVED SCHEMA AND ARE DISJOINT. Every field the
+    schema resolved appears in exactly one, and `not_applicable` covers the
+    platform fields the schema dropped. A field in none of them is a defect in
+    `evaluate`, not a state.
+    """
 
     answered: tuple[str, ...]
+    #: Required, applicable, unanswered. The reported gap.
     missing: tuple[str, ...]
+    #: ⚠️ OPTIONAL, APPLICABLE, UNANSWERED — added 2026-10-05, when it stopped
+    #: being empty. Not a gap, so never in `missing`; not an answer, so never in
+    #: `answered`. It needs its own name because "absent from all three sets" is
+    #: indistinguishable from "the engine forgot about it", and a surface that
+    #: renders a row per field has to know the difference.
+    unanswered_optional: tuple[str, ...]
     #: Fields that do not apply to this vault at this tenant. Reported
     #: separately so a caller can tell "nothing to ask" from "not asked yet";
     #: the capture list renders neither.
@@ -54,6 +85,10 @@ class CaptureState:
 
     @property
     def is_complete(self) -> bool:
+        """⚠️ UNCHANGED, DELIBERATELY. Completeness is about gaps, and an
+        unanswered OPTIONAL field is not one. Folding `unanswered_optional` in
+        here would make every order incomplete until someone answered three
+        fields the design does not require."""
         return not self.missing
 
 
@@ -96,12 +131,17 @@ def evaluate(
 
     answered: list[str] = []
     missing: list[str] = []
+    unanswered_optional: list[str] = []
 
     for resolved in applicable:
         value = extracted.get(resolved.field_id)
         if not is_answered(value):
+            # ⚠️ BOTH BRANCHES APPEND. The optional arm used to `continue`
+            # silently, which is how optional fields came to belong to no set.
             if resolved.required:
                 missing.append(resolved.field_id)
+            else:
+                unanswered_optional.append(resolved.field_id)
             continue
         _reject_unpermitted(resolved, value)
         answered.append(resolved.field_id)
@@ -112,6 +152,7 @@ def evaluate(
     return CaptureState(
         answered=tuple(answered),
         missing=tuple(missing),
+        unanswered_optional=tuple(unanswered_optional),
         not_applicable=not_applicable,
     )
 

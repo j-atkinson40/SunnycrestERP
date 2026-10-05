@@ -269,53 +269,42 @@ def test_the_vault_itself_is_reported_missing_when_not_named():
 # ── shape guards ────────────────────────────────────────────────────────
 
 
-def test_every_platform_field_lands_in_a_set_or_is_OPTIONAL_AND_UNANSWERED():
-    """⚠️ RENAMED AND WEAKENED 2026-10-05, AND THE WEAKENING IS A FINDING.
+def test_the_four_sets_partition_every_platform_field():
+    """⚠️ A REAL PARTITION AGAIN, AND THE HISTORY IS THE POINT.
 
-    This asserted that `answered`, `missing` and `not_applicable` partition the
-    applicable fields. That held only because EVERY template field was required.
-    It is now false: `date_of_birth`, `date_of_death` and `cemetery_equipment`
-    are optional, and `evaluate` adds an unanswered field to `missing` ONLY if it
-    is required —
+    This asserted a THREE-set partition and was correct only because every
+    template field was required. The moment optional fields existed
+    (`date_of_birth`, `date_of_death`, `cemetery_equipment`, 2026-10-05) they
+    landed in NO set — `evaluate` added an unanswered field to `missing` only when
+    required, and the optional arm fell through a bare `continue`.
 
-        if not is_answered(value):
-            if resolved.required:
-                missing.append(...)
-            continue              # <- optional unanswered: in NO set
+    For one commit this test was weakened to assert the real four buckets with the
+    fourth computed here, which made the gap visible instead of asserted away.
+    `CaptureState.unanswered_optional` now exists, so the assertion is a clean
+    partition over the type's own sets rather than over a set the test derives.
 
-    — so an optional unanswered field appears in none of the three.
-
-    ⚠️ THAT IS A GAP IN `CaptureState`, NOT IN THIS TEST, and it is reported
-    rather than patched. A consumer reading only `CaptureState` cannot see those
-    fields at all: they are not answered, not missing, and not inapplicable. It
-    does not bite today because the row layer gives them `NOT_MENTIONED` from the
-    resolved schema rather than from `CaptureState` — which is the third time that
-    type has turned out to be narrower than what the engine knows.
-
-    Adding a fourth set is a change to a public type with live callers and is not
-    this commit's business. The test now pins the REAL partition, including the
-    fourth bucket, so the gap is visible instead of asserted away.
+    ⚠️ EXHAUSTIVE AND DISJOINT, both checked. Exhaustive alone would pass if a
+    field appeared in two sets; disjoint alone would pass if one fell out.
     """
     from app.services.capture import SALES_ORDER, template_for
-    from app.services.capture.missing import is_answered
 
     template = template_for(SALES_ORDER)
-    answers = complete_non_personalization_answers()
-    state = _evaluate(VAULT_ALL_THREE, answers)
+    state = _evaluate(VAULT_ALL_THREE, complete_non_personalization_answers())
 
-    in_a_set = set(state.answered) | set(state.missing) | set(state.not_applicable)
-    optional_unanswered = {
-        f.field_id for f in template
-        if not f.required and not is_answered(answers.get(f.field_id))
+    sets = {
+        "answered": set(state.answered),
+        "missing": set(state.missing),
+        "unanswered_optional": set(state.unanswered_optional),
+        "not_applicable": set(state.not_applicable),
     }
-    all_ids = {f.field_id for f in template}
-
-    assert in_a_set | optional_unanswered == all_ids, (
-        f"fields in no bucket at all: {sorted(all_ids - in_a_set - optional_unanswered)}"
+    union = set().union(*sets.values())
+    assert union == {f.field_id for f in template}, (
+        f"in no set: {sorted({f.field_id for f in template} - union)}"
     )
-    assert not (set(state.answered) & set(state.missing))
-    assert not (set(state.answered) & set(state.not_applicable))
-    assert not (set(state.missing) & set(state.not_applicable))
+    total = sum(len(v) for v in sets.values())
+    assert total == len(union), (
+        f"a field is in more than one set — {total} entries over {len(union)} fields"
+    )
 
 
 def test_unknown_extracted_keys_are_ignored_not_rejected():
