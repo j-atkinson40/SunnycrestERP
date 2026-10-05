@@ -38,19 +38,64 @@ def _serialize_call(call: RingCentralCallLog) -> dict:
     }
 
 
+#: The extracted fields, in capture-template order where they correspond. Each is
+#: serialized as `{value, confidence}` — see `_field`.
+_EXTRACTED_FIELDS = (
+    "funeral_home_name",
+    "deceased_name",
+    "vault_type",
+    "vault_size",
+    "cemetery_name",
+    "burial_date",
+    "burial_time",
+    "grave_location",
+    "special_requests",
+)
+
+
+def _field(ext: RingCentralCallExtraction, name: str) -> dict | None:
+    """One extracted field as `{value, confidence}`, or `None` when unanswered.
+
+    ⚠️ THE SERVER NOW SENDS THE SHAPE ITS CONSUMERS ALREADY ASSUMED. Until
+    2026-10-05 this serializer emitted flat strings plus one separate
+    `confidence` dict, while **all three** client consumers typed every field as
+    `{value, confidence}` and read `field?.value`:
+
+        contexts/call-context.tsx     CallExtraction       (the SSE payload type)
+        components/call/CallOverlay   ActiveCallCard (4), ReviewCard (10)
+        pages/calls/call-log          ExtractionDetails (10)
+
+    `"a string"?.value` is `undefined`, so **every captured value came through as
+    undefined on every surface** — fourteen rendered entries across two surfaces,
+    none of which has ever displayed anything. `missing_fields` is `string[]` on
+    both sides and worked throughout, which is the asymmetry in one line.
+
+    THE FLAT FORM HAD NO CONSUMERS. Three independent client sites agreed with
+    each other and disagreed with the server, so the server was the one to move.
+    Measured 2026-10-05: `_serialize_extraction` has exactly one call site, and
+    nothing reads `confidence_json` except this function.
+
+    ⚠️ `confidence` IS `number | None`, NOT a defaulted number. The model supplies
+    confidence per field and may omit one. `1.0` would assert certainty nothing
+    measured and `0.0` would assert doubt nothing measured — both are the
+    not-established defect CLAUDE.md §5 names, in a float. `None` means the model
+    did not say, and the client renders no percentage for it.
+    """
+    raw = getattr(ext, name)
+    if raw is None:
+        return None
+    value = raw.isoformat() if hasattr(raw, "isoformat") else str(raw)
+    if value.strip() == "":
+        return None
+    confidences = ext.confidence_json or {}
+    conf = confidences.get(name)
+    return {"value": value, "confidence": conf if isinstance(conf, (int, float)) else None}
+
+
 def _serialize_extraction(ext: RingCentralCallExtraction) -> dict:
     return {
         "id": ext.id,
-        "funeral_home_name": ext.funeral_home_name,
-        "deceased_name": ext.deceased_name,
-        "vault_type": ext.vault_type,
-        "vault_size": ext.vault_size,
-        "cemetery_name": ext.cemetery_name,
-        "burial_date": ext.burial_date.isoformat() if ext.burial_date else None,
-        "burial_time": ext.burial_time.isoformat() if ext.burial_time else None,
-        "grave_location": ext.grave_location,
-        "special_requests": ext.special_requests,
-        "confidence": ext.confidence_json,
+        **{name: _field(ext, name) for name in _EXTRACTED_FIELDS},
         "missing_fields": ext.missing_fields or [],
         # ⚠️ Served alongside `missing_fields` so the client renders both and
         # derives neither (r197). `or []` collapses NULL into the empty list

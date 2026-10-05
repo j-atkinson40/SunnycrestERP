@@ -2,6 +2,7 @@
 // filtering, search, and expandable rows for extraction details.
 
 import { useCallback, useEffect, useState } from "react";
+import type { CallExtractionField } from "@/contexts/call-context";
 import apiClient from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,10 +28,11 @@ import { cn } from "@/lib/utils";
 // Types
 // ---------------------------------------------------------------------------
 
-interface CallExtractionField {
-  value: string;
-  confidence: number;
-}
+// ⚠️ IMPORTED, NOT REDECLARED. This file carried its own copy of
+// `CallExtractionField` until 2026-10-05 — a second definition of the server's
+// contract, which is how a shape disagreement went unnoticed on two surfaces at
+// once. One definition, in call-context, which is where the SSE payload type
+// already lives.
 
 interface CallLogExtraction {
   deceased_name: CallExtractionField | null;
@@ -39,11 +41,9 @@ interface CallLogExtraction {
   burial_time: CallExtractionField | null;
   cemetery_name: CallExtractionField | null;
   grave_location: CallExtractionField | null;
-  service_location: CallExtractionField | null;
-  service_date: CallExtractionField | null;
-  service_time: CallExtractionField | null;
-  special_instructions: CallExtractionField | null;
+  special_requests: CallExtractionField | null;
   missing_fields: string[];
+  answered_fields: string[];
   draft_order_id: string | null;
 }
 
@@ -107,10 +107,11 @@ function ExtractionDetails({ extraction }: { extraction: CallLogExtraction }) {
     ["Burial time", extraction.burial_time],
     ["Cemetery", extraction.cemetery_name],
     ["Grave location", extraction.grave_location],
-    ["Service location", extraction.service_location],
-    ["Service date", extraction.service_date],
-    ["Service time", extraction.service_time],
-    ["Special instructions", extraction.special_instructions],
+    // ⚠️ Four entries removed 2026-10-05 — service_location, service_date,
+    // service_time, special_instructions. None has a column on
+    // ringcentral_call_extractions, so none could ever render. See
+    // CallOverlay.tsx for the full reasoning; this file carried the same list.
+    ["Special requests", extraction.special_requests],
   ];
 
   const captured = entries.filter(([, f]) => f?.value);
@@ -133,7 +134,7 @@ function ExtractionDetails({ extraction }: { extraction: CallLogExtraction }) {
                 <span className="text-muted-foreground">{label}</span>
                 <div className="text-right">
                   <span className="font-medium">{field!.value}</span>
-                  {field!.confidence < 0.8 && (
+                  {field!.confidence !== null && field!.confidence < 0.8 && (
                     <span className="ml-1 text-amber-600 text-[10px]">
                       ({Math.round(field!.confidence * 100)}%)
                     </span>

@@ -18,22 +18,47 @@ import { useAuth } from "@/contexts/auth-context";
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * One extracted field as the server sends it.
+ *
+ * ⚠️ `confidence` IS NULLABLE, DELIBERATELY. The model supplies confidence per
+ * field and may omit one; the server sends `null` rather than defaulting,
+ * because `1.0` would assert certainty nothing measured and `0.0` would assert
+ * doubt nothing measured. Render no percentage when it is null.
+ *
+ * ⚠️ This shape is the CONTRACT, and until 2026-10-05 the server did not send
+ * it — it sent flat strings plus one separate `confidence` dict, so
+ * `field?.value` was `undefined` for every field on every surface and no
+ * captured value has ever rendered. Three client sites assumed this shape; the
+ * flat form had no consumers, so the server moved.
+ */
 export interface CallExtractionField {
   value: string;
-  confidence: number;
+  confidence: number | null;
 }
 
 export interface CallExtraction {
+  /* ⚠️ EXACTLY THE FIELDS THE SERVER SENDS — `_EXTRACTED_FIELDS` in
+   * app/api/routes/call_intelligence.py. Four names were removed on 2026-10-05
+   * because they existed only here: `service_location`, `service_date`,
+   * `service_time` and `special_instructions` had no column on
+   * `ringcentral_call_extractions`, so they could never carry a value.
+   *
+   * `service_location` is a REAL requirement — a real `sales_orders` column read
+   * by the scheduling Focus — and it enters the SALES-ORDER CAPTURE TEMPLATE
+   * rather than this type. Nothing extracts it from a call yet, so it reports as
+   * still-needed, which is correct. `service_date` / `service_time` are already
+   * captured as `burial_date` / `burial_time` (the draft-order writer maps one
+   * onto the other). `special_instructions` is `special_requests` here. */
+  funeral_home_name: CallExtractionField | null;
   deceased_name: CallExtractionField | null;
   vault_type: CallExtractionField | null;
+  vault_size: CallExtractionField | null;
+  cemetery_name: CallExtractionField | null;
   burial_date: CallExtractionField | null;
   burial_time: CallExtractionField | null;
-  cemetery_name: CallExtractionField | null;
   grave_location: CallExtractionField | null;
-  service_location: CallExtractionField | null;
-  service_date: CallExtractionField | null;
-  service_time: CallExtractionField | null;
-  special_instructions: CallExtractionField | null;
+  special_requests: CallExtractionField | null;
   missing_fields: string[];
   /**
    * ⚠️ SERVER-COMPUTED, LIKE `missing_fields`. Field ids the capture engine

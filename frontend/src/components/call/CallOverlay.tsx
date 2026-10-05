@@ -3,7 +3,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCall, type ActiveCall } from "@/contexts/call-context";
+import {
+  useCall,
+  type ActiveCall,
+  type CallExtractionField,
+} from "@/contexts/call-context";
 import { MinimizedCallPill } from "./MinimizedCallPill";
 import { cn } from "@/lib/utils";
 import {
@@ -344,18 +348,30 @@ function ReviewCard({
   const extraction = call.extraction;
   if (!extraction) return null;
 
-  const captured: { label: string; value: string; confidence: number }[] = [];
-  const entries: [string, { value: string; confidence: number } | null][] = [
+  const captured: { label: string; value: string; confidence: number | null }[] = [];
+  // ⚠️ FOUR ENTRIES REMOVED 2026-10-05, because they could never render: this
+  // list named `service_location`, `service_date`, `service_time` and
+  // `special_instructions`, none of which has a column on
+  // `ringcentral_call_extractions`. `tsc` could not see that while the client
+  // declared them on its own type; tightening the type to exactly what the
+  // server sends is what surfaced them.
+  //
+  // `service_location` is a real requirement and now lives in the SALES-ORDER
+  // CAPTURE TEMPLATE, so it appears in the server's still-needed set instead.
+  // `service_date`/`service_time` are already captured as `burial_date` /
+  // `burial_time`. `special_instructions` is `special_requests`.
+  //
+  // ⚠️ THIS WHOLE LIST IS STILL A CLIENT-DERIVED CAPTURED SET and is retired in
+  // the next commit in favour of `extraction.answered_fields`. It is corrected
+  // rather than rewritten here so the contract change compiles on its own.
+  const entries: [string, CallExtractionField | null][] = [
     ["Deceased", extraction.deceased_name],
     ["Vault type", extraction.vault_type],
     ["Burial date", extraction.burial_date],
     ["Burial time", extraction.burial_time],
     ["Cemetery", extraction.cemetery_name],
     ["Grave location", extraction.grave_location],
-    ["Service location", extraction.service_location],
-    ["Service date", extraction.service_date],
-    ["Service time", extraction.service_time],
-    ["Special instructions", extraction.special_instructions],
+    ["Special requests", extraction.special_requests],
   ];
 
   for (const [label, field] of entries) {
@@ -425,7 +441,7 @@ function ReviewCard({
                 <span className="text-green-700 shrink-0">{f.label}</span>
                 <div className="text-right">
                   <span className="font-medium text-green-900">{f.value}</span>
-                  {f.confidence < 0.8 && (
+                  {f.confidence !== null && f.confidence < 0.8 && (
                     <span className="ml-1 text-amber-600 text-[10px]">
                       ({Math.round(f.confidence * 100)}%)
                     </span>
