@@ -35,6 +35,14 @@ export interface CallExtraction {
   service_time: CallExtractionField | null;
   special_instructions: CallExtractionField | null;
   missing_fields: string[];
+  /**
+   * ⚠️ SERVER-COMPUTED, LIKE `missing_fields`. Field ids the capture engine
+   * determined are answered. Render this; do not re-derive it from the
+   * extraction columns — two components did exactly that, with two different
+   * hardcoded lists, and neither ever rendered (every field is typed here as
+   * `{value, confidence}` while the server sends flat strings). See r197.
+   */
+  answered_fields: string[];
   draft_order_id: string | null;
 }
 

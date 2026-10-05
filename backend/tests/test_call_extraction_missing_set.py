@@ -161,3 +161,156 @@ class TestTheConditionalOmissionIsPinnedInBothDirections:
             {}, vault_product_id=None, platform_fields=template
         )
         assert set(state.missing) == _unconditional_ids(template)
+
+
+class TestTheServerDecidesWhatIsCapturedToo:
+    """⚠️ THE UNSTATED HALF OF THE RULE, persisted by r197.
+
+    `The model extracts; the server decides what is missing` left `answered`
+    unspecified. The server computed it, wrote it to one log line and discarded
+    it, so the client had nothing to render for "captured" and re-derived it —
+    twice, from two hardcoded lists that disagree with each other and with the
+    template. The pair is now symmetric: both are server-computed, both are
+    persisted, the client renders both and derives neither.
+
+    ⚠️ These are CONSTRUCTED INPUTS over an EMPTY TABLE, like the rest of this
+    file. `ringcentral_call_extractions` holds 0 rows and the overlay has no
+    production entrance, so there is no behaviour to compare against — this is
+    the whole of the evidence, not a net under a working path.
+    """
+
+    def test_the_answered_set_is_not_empty_for_a_full_result(self):
+        """⚠️ POSITIVE CONTROL FIRST. Every assertion below is about the CONTENT
+        of the answered set; if it were empty they would pass while proving
+        nothing."""
+        template = _template()
+        state = capture.evaluate(
+            _captured_from_result(FULL_RESULT),
+            vault_product_id=None,
+            platform_fields=template,
+        )
+        assert len(state.answered) == len(_unconditional_ids(template)), (
+            f"expected all {len(_unconditional_ids(template))} unconditional "
+            f"fields answered from a full result; got {state.answered}"
+        )
+
+    def test_answered_and_missing_partition_the_applicable_fields(self):
+        """The two sets are complements, not two opinions. Anything neither
+        answered nor missing must be in `not_applicable` — the third outcome."""
+        template = _template()
+        state = capture.evaluate(
+            {"deceased_name": "John Smith", "cemetery": "St Mary's"},
+            vault_product_id=None,
+            platform_fields=template,
+        )
+        assert set(state.answered) == {"deceased_name", "cemetery"}
+        assert set(state.answered) & set(state.missing) == set(), (
+            "a field cannot be both answered and missing"
+        )
+        covered = set(state.answered) | set(state.missing) | set(state.not_applicable)
+        assert covered == {f.field_id for f in template}, (
+            f"these template fields appear in no set: "
+            f"{ {f.field_id for f in template} - covered}"
+        )
+
+    def test_none_is_answered_and_lands_in_answered_not_missing(self):
+        """`none` clears a requirement — the ruling this engine is built on. It
+        must appear in `answered`, which is only checkable now that `answered`
+        is a persisted output rather than a log line."""
+        template = _template()
+        state = capture.evaluate(
+            {"grave_location": "none"},
+            vault_product_id=None,
+            platform_fields=template,
+        )
+        assert "grave_location" in state.answered
+        assert "grave_location" not in state.missing
+
+    def test_the_model_cannot_influence_the_answered_set(self):
+        """⚠️ THE DISCRIMINATING CASE, and the mirror of what r196-era code did
+        wrong with `missing`. A model that volunteers its own answered list must
+        not be able to add a field to the real one."""
+        template = _template()
+        poisoned = dict(FULL_RESULT)
+        poisoned["answered_fields"] = ["legacy_print", "nameplate_cover_emblem"]
+        state = capture.evaluate(
+            _captured_from_result(poisoned),
+            vault_product_id=None,
+            platform_fields=template,
+        )
+        assert "legacy_print" not in state.answered
+        assert "nameplate_cover_emblem" not in state.answered
+
+
+class TestTheColumnAndTheSerializer:
+    """r197's two halves: the column exists as declared, and the pair is served."""
+
+    def test_the_column_is_nullable_with_no_default(self):
+        """⚠️ NULL means no answered set was computed for this row; `[]` means
+        the capture answered nothing. A default would assert the second for rows
+        nothing computed one for — CLAUDE.md §5."""
+        from app.models.ringcentral_call_extraction import RingCentralCallExtraction
+
+        col = RingCentralCallExtraction.__table__.c.answered_fields
+        assert col.nullable is True
+        assert col.default is None, "a Python-side default would re-assert on insert"
+        assert col.server_default is None
+
+    def test_the_serializer_returns_both_halves(self):
+        """The asymmetry this closes was visible here: `missing_fields` was
+        served and `answered_fields` did not exist."""
+        import inspect
+
+        from app.api.routes import call_intelligence
+
+        src = inspect.getsource(call_intelligence._serialize_extraction)
+        assert '"missing_fields"' in src
+        assert '"answered_fields"' in src, (
+            "the serializer sends missing but not answered — the client is left "
+            "to re-derive the captured set, which is the defect r197 removes"
+        )
+
+    def test_the_client_type_declares_the_server_computed_pair(self):
+        """⚠️ READS THE SHIPPED CLIENT. A field the server sends and the client
+        does not declare cannot be rendered, and nothing in the backend would
+        say so — the same gap that let two hardcoded lists live."""
+        import pathlib
+
+        ts = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src"
+              / "contexts" / "call-context.tsx").read_text()
+        assert "missing_fields: string[];" in ts
+        assert "answered_fields: string[];" in ts, (
+            "the client does not declare answered_fields, so it cannot render "
+            "the server's captured set"
+        )
+
+    def test_the_service_persists_the_answered_set(self):
+        """⚠️ A SOURCE ASSERTION, AND I AM SAYING SO RATHER THAN DRESSING IT UP.
+
+        This reads the construction site instead of exercising it. That is the
+        weaker kind of test — it pins what the file says, not what the code does,
+        and a data test would be better.
+
+        A data test is not reachable today: the only path that constructs a
+        `RingCentralCallExtraction` is `extract_call_data`, which is gated on a
+        Claude call, and the table holds 0 rows because the overlay has no
+        production entrance. There is nothing to read back and no seam to call.
+
+        What it does catch is the regression that matters: someone deleting the
+        `answered_fields=` line while `missing_fields=` stays, which is exactly
+        the asymmetry r197 exists to remove and which no other test in this file
+        would notice. Replace this with a behavioural test when the extraction
+        path becomes callable — the condition is RingCentral provisioning, the
+        same gate the conditional-omission tests above are waiting on.
+        """
+        import inspect
+
+        from app.services import call_extraction_service
+
+        src = inspect.getsource(call_extraction_service)
+        assert "missing_fields=list(capture_state.missing)" in src
+        assert "answered_fields=list(capture_state.answered)" in src, (
+            "the service computes answered and does not persist it — the r197 "
+            "asymmetry is back, and the client is left to re-derive the "
+            "captured set"
+        )

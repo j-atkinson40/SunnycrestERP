@@ -52,6 +52,12 @@ def _serialize_extraction(ext: RingCentralCallExtraction) -> dict:
         "special_requests": ext.special_requests,
         "confidence": ext.confidence_json,
         "missing_fields": ext.missing_fields or [],
+        # ⚠️ Served alongside `missing_fields` so the client renders both and
+        # derives neither (r197). `or []` collapses NULL into the empty list
+        # because the client needs an array; no row can legitimately be NULL
+        # here — the writer always sets it, and the overlay has no production
+        # entrance, so no row predates the column.
+        "answered_fields": ext.answered_fields or [],
         "call_summary": ext.call_summary,
         "call_type": ext.call_type,
         "urgency": ext.urgency,

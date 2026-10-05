@@ -34,6 +34,16 @@ class RingCentralCallExtraction(Base):
 
     # Missing fields list
     missing_fields: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    #: ⚠️ THE SERVER DECIDES WHAT IS CAPTURED, NOT ONLY WHAT IS MISSING. Added
+    #: r197. Its sibling above was persisted from the start; this one was
+    #: computed by `capture.evaluate`, written to a single log line and thrown
+    #: away — so the client had nothing to render for "captured" and re-derived
+    #: it twice, from two disagreeing hardcoded lists. The pair is now
+    #: symmetric: the client renders both and derives neither.
+    #:
+    #: NULL means no answered set was computed for this row, which is not the
+    #: same as `[]` ("the capture answered nothing"). See r197's docstring.
+    answered_fields: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Call metadata
     call_summary: Mapped[str | None] = mapped_column(Text, nullable=True)

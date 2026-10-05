@@ -240,6 +240,10 @@ def extract_order_from_transcript(
         special_requests=result.get("special_requests"),
         confidence_json=result.get("confidence", {}),
         missing_fields=list(capture_state.missing),
+        # ⚠️ BOTH HALVES PERSISTED, r197. `answered` used to be computed here and
+        # discarded after one log line, which is why two client components built
+        # their own captured lists. Neither set is the client's to derive.
+        answered_fields=list(capture_state.answered),
         call_summary=result.get("call_summary"),
         call_type=result.get("call_type", "other"),
         urgency=result.get("urgency", "standard"),
