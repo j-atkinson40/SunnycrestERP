@@ -2603,6 +2603,49 @@ the target is among them. When an expected value names something outside the sys
 route, a URL, a file path, an external id — the check is only worth what its correspondence
 to that thing is worth, and that correspondence cannot be established from inside the repo.
 
+#### Editing a document to match a belief is the moment to verify the belief
+
+The entry above concerns a check written from the implementation. This is the same
+mechanism aimed at prose, and it is worse in one specific way: **the documents are
+often the last independent witnesses to a fact.** "Correcting" one removes the
+contradiction instead of resolving it, and afterwards nothing disagrees — which
+reads as confirmation.
+
+⚠️ **THE TELL IS THE INTENTION TO EDIT, NOT A DOUBT ABOUT THE CLAIM.** Doubt
+prompts checking on its own. Reaching for a file to bring it into line does not,
+because by then the belief has stopped being a hypothesis and become the reason
+for the task. The document is about to be overwritten BY the thing it could have
+falsified.
+
+**So: before changing a document to agree with you, read it as evidence against
+you.** It and the belief came from different sources, which is exactly what makes
+it worth reading first.
+
+Measured 2026-10-05. `docs/investigations/rc_provisioning_scope.md` was accurate —
+eight provisioning pieces, two exist, #3 authorize endpoint ABSENT — and was one
+step from being rewritten toward the false claim that RingCentral token storage
+did not exist. It exists, encrypted, in `Company.settings_json`, and the OAuth
+callback exists too; only the authorize endpoint is missing, which is what the
+document said. The edit was stopped by accident: STATE.md was opened in the same
+pass and contradicted it.
+
+⚠️ Two properties of that near-miss are worth keeping, because both make it
+likelier rather than less likely to recur:
+
+- **The conclusion the false claim supported was CORRECT** (zero extraction rows;
+  the migration safe). So nothing downstream would ever have objected — this is
+  *conclusion survives, derivation falsified* with an edit queued behind it.
+- **It had already been AMPLIFIED by a second party** before being caught,
+  restated as a scope finding and used to justify the edit. A derivation offered
+  confidently returns as a premise, and the second voice reads as corroboration
+  while being an echo. ⚠️ It passed less scrutiny precisely because it CONFIRMED A
+  PATTERN both parties had been finding all day — which is the bias this whole
+  section exists to catch, running in the reviewer's direction.
+
+Kin to *conclusion survives, derivation falsified* and to the persistent-storage
+rule that failed for four months: a document can be right and still lose, and here
+it nearly lost to being helpfully updated.
+
 #### The remedy — one test for shapes 1–8
 
 **Break the thing it guards and confirm it goes red — and check the break turns THAT check
