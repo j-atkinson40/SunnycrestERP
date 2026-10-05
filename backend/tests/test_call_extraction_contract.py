@@ -18,9 +18,26 @@ vitest mocks the API client. The overlay is unreachable in production, so nobody
 could look at it either. A contract needs a test that reads BOTH SIDES, which is
 what the set-equality test below is.
 
-⚠️ COLD PATH. The overlay has no production entrance — `ringcentral_call_log`
-holds 0 rows in production, measured 2026-10-05 — so these tests are the whole of
-the evidence, not a net under a working path.
+⚠️ COLD PATH, AND THE TWO REASONS ARE DIFFERENT. `ringcentral_call_log` holds 0
+rows in production (measured 2026-10-05), so no surface has ever had an
+extraction to render.
+
+UNREACHABLE and UNEXERCISED are not the same, and only one applies to each
+surface:
+
+    CallOverlay      UNREACHABLE  — no authorize endpoint, so no tenant can
+                                   connect a phone system and no call arrives
+    /calls call log  REACHABLE, UNEXERCISED — the route is mounted and a user
+                                   can open it; it renders nothing because the
+                                   table is empty
+
+I asserted the first about both and the second was the truth for the call log.
+The distinction matters here because it decides what a test can stand in for: on
+an unreachable surface these tests are the only possible evidence, while on a
+reachable-but-empty one they are the evidence until the first real row arrives.
+
+Either way these tests are the whole of the evidence, not a net under a working
+path.
 """
 from __future__ import annotations
 
