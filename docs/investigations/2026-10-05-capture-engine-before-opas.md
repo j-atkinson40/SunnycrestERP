@@ -2,8 +2,13 @@
 
 **Read-only investigation. No code, no migrations, no tests. 2026-10-05.**
 
-Subject: `backend/app/services/capture/` — three files, 553 lines
+Subject: `backend/app/services/capture/` — three files, **420 lines**
 (`__init__.py` 36, `missing.py` 140, `schema.py` 244).
+
+⚠️ *This line first read "553 lines" over the same three correct components.
+36 + 140 + 244 = 420; 553 was arithmetic I did not check against the parts I had
+already written down. Corrected 2026-10-05. The figure is load-bearing for
+nothing in this report, which is exactly why it survived being written.*
 
 ---
 
@@ -252,7 +257,12 @@ And the two client lists disagree with each other and with the template:
 |---|---|---|
 | template | **11** | `vault`, `vault_size`, `cemetery`, `funeral_home`, … |
 | `ActiveCallCard:227-237` | **4** | Deceased, **Vault** (`vault_type`), Burial date, **Cemetery** (`cemetery_name`) |
-| `ReviewCard:350-360` | **10** | + Burial time, Grave location, **Service location, Service date, Service time, Special instructions** |
+| `ReviewCard:349-358` | **10** | + Burial time, Grave location, **Service location, Service date, Service time, Special instructions** |
+
+⚠️ *The 10 is correct. A post-commit check reported 9 and the check was wrong —
+its `sed` range began at 350 and cut the first entry, at 349. Resolved by reading
+the list rather than re-counting it, and the line reference above is corrected
+from `350-360` to `349-358`.*
 
 Three different field sets. `ReviewCard` shows four fields the template does not
 contain at all. Neither list contains the three personalization questions. And
