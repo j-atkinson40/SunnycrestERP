@@ -30,7 +30,12 @@ logger = logging.getLogger(__name__)
 def _captured_from_result(result: dict) -> dict[str, object]:
     """Extraction-payload keys -> capture-schema field ids.
 
-    ⚠️ THREE OF THE EIGHT NAMES DIFFER AND GETTING ONE WRONG FAILS SILENTLY:
+    ⚠️ `vault_size` IS NO LONGER MAPPED — the template field was removed
+    2026-10-05 and size is an input to RESOLVING the vault rather than an answer
+    beside it. `result["vault_size"]` is still extracted and still stored on the
+    row; it belongs to the resolver, not to this adapter.
+
+    ⚠️ THREE OF THE SEVEN NAMES DIFFER AND GETTING ONE WRONG FAILS SILENTLY:
     `vault_type`/`vault`, `funeral_home_name`/`funeral_home` and
     `cemetery_name`/`cemetery`. A mismatched key reads as unanswered forever, so
     the field is reported missing on every call and nothing raises. Pinned by
@@ -43,7 +48,6 @@ def _captured_from_result(result: dict) -> dict[str, object]:
         capture.VAULT_FIELD_ID: result.get("vault_type"),
         "funeral_home": result.get("funeral_home_name"),
         "deceased_name": result.get("deceased_name"),
-        "vault_size": result.get("vault_size"),
         "cemetery": result.get("cemetery_name"),
         "burial_date": _parse_date(result.get("burial_date")),
         "burial_time": _parse_time(result.get("burial_time")),

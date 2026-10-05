@@ -138,27 +138,27 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     FieldDefinition(VAULT_FIELD_ID, "Vault", switchable=False),
     FieldDefinition("funeral_home", "Funeral home"),
     FieldDefinition("deceased_name", "Deceased name"),
-    # ⚠️ REDUNDANT, AND DELIBERATELY NOT REMOVED YET — 2026-10-05.
+    # ⚠️ `vault_size` REMOVED 2026-10-05 BY RULING. It was here, required, with a
+    # warrant explaining why it stayed. Both halves of that warrant have now
+    # resolved:
     #
-    # Since 2b-3 the VARIANT is the size: three families differ only by size
-    # (`continental` BV-CON/BV-CON34, `graveliner` GL-34/GL-38,
+    # REDUNDANT — since 2b-3 the VARIANT is the size. Three families differ only
+    # by size (`continental` BV-CON/BV-CON34, `graveliner` GL-34/GL-38,
     # `loved-and-cherished` LC-19/24/31) and six variants carry it in the display
-    # name. So choosing the product determines the size, and asking separately
-    # creates two sources for one fact.
+    # name. Asking separately created two sources for one fact.
     #
-    # ⚠️ IT STAYS BECAUSE REMOVING IT WOULD LOSE THE SIZE ENTIRELY. Nothing
-    # resolves a spoken vault phrase to a variant — measured 2026-10-05: there is
-    # NO resolver in `app/`, and `platform_product_aliases`, which has exactly the
-    # right columns and 5 seeded rows, has ZERO readers outside `app/models/` and
-    # the migrations that made it. So nothing can turn "Continental, 34 inch" into
-    # BV-CON34, and with this field gone the size would be neither captured nor
-    # recoverable.
+    # AND NO LONGER UNRECOVERABLE — the blocker was that nothing could turn
+    # "Continental, 34 inch" into BV-CON34. `product_name_resolver` does, and
+    # `Continental 34 inch` / `34in` / `34"` all resolve to it.
     #
-    # THE SEQUENCE: build the resolver on the alias table, THEN remove this. The
-    # same resolver gates the three permanently-omitted personalization questions
-    # (`vault_product_id` is permanently None at the call site) and RC
-    # provisioning. Ruled redundant, blocked on the resolver.
-    FieldDefinition("vault_size", "Size"),
+    # ⚠️ SIZE IS NOW AN INPUT TO RESOLVING THE VAULT, NOT A FIELD BESIDE IT, and
+    # that is the ruling's actual content rather than a tidy-up. A director either
+    # names the product ("34 inch Continental") or asks for a class ("we need an
+    # oversized, what have you got?"). Either way the size arrives inside the
+    # product phrase, and the resolver is what reads it — which is also why
+    # `ringcentral_call_extractions.vault_size` KEEPS its column: the extractor
+    # may still hear a size separately, and it is fed to the resolver rather than
+    # answered as a field.
     FieldDefinition("cemetery", "Cemetery"),
     FieldDefinition("burial_date", "Burial date"),
     FieldDefinition("burial_time", "Burial time"),

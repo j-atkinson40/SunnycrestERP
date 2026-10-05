@@ -109,11 +109,12 @@ CAPTURE_SALES_ORDER = Surface(
                 (FieldSource("cemetery"), FieldSource("burial_time")), join=_DOT),),
             edit_target="cemetery"),
 
-        # ⚠️ GAP: `vault_size` IS NOT SOURCED HERE, deliberately. The prototype
-        # shows "Wilbert Bronze" with no size, and the field is ruled redundant
-        # (the variant is the size) but kept until a resolver exists. Sourcing it
-        # would render a size the design does not show; leaving it unsourced makes
-        # it appear in `orphan_field_ids`, which is the correct report.
+        # ⚠️ NO SIZE ROW, AND NO LONGER A GAP. This comment used to record
+        # `vault_size` as deliberately unsourced — the prototype shows
+        # "Wilbert Bronze" with no size, and the field was ruled redundant but
+        # kept until a resolver existed. The resolver exists and the field is
+        # gone, so there is nothing to source: the variant IS the size, and the
+        # product name is the whole answer.
         Row(id="vault", label="Vault / Product", order=7,
             sources=(FieldSource("vault"),)),
 

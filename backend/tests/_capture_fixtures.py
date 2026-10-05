@@ -87,7 +87,6 @@ _ANSWER_BY_FIELD: dict[str, object] = {
     "vault": "Monticello",
     "funeral_home": "Hopkins Funeral Home",
     "deceased_name": "John Michael Smith",
-    "vault_size": "standard adult",
     "cemetery": "St. Mary's",
     "burial_date": "2026-10-01",
     "burial_time": "10:00",

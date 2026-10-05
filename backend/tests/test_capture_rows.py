@@ -81,7 +81,7 @@ class TestRowsAreNotFields:
     def test_neither_surface_has_one_row_per_field(self):
         """The assertion the scope error would have failed."""
         n_fields = len(template_for(SALES_ORDER))
-        assert n_fields == 15
+        assert n_fields == 14
         assert len(CAPTURE_SALES_ORDER.rows) == 9 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
@@ -269,20 +269,28 @@ class TestAmendmentOneOrderedSources:
 
 
 class TestAmendmentTwoOrphansOverTheUnion:
-    def test_the_orphan_set_is_exactly_the_two_known_fields(self):
-        """⚠️ SET EQUALITY, AND EACH HAS A DIFFERENT CAUSE — which is the whole
-        value of making this computable rather than silent.
+    def test_the_orphan_set_is_exactly_the_one_known_field(self):
+        """⚠️ THE SET SHRANK, AND THAT IS THE PROPERTY WORKING.
 
-        `grave_location`  captured at order time, shown on the driver's surface,
-                          which is NOT DECLARED. Correct to report.
-        `vault_size`      ruled REDUNDANT (the variant is the size) and kept only
-                          because no resolver exists to recover size from the
-                          vault phrase.
+        It held TWO fields with TWO different causes, which was the argument for
+        making orphanhood computable rather than silent:
+
+            grave_location  captured at order time, shown on the driver's
+                            surface, which is NOT DECLARED. Still correct to
+                            report, and still reported.
+            vault_size      ruled REDUNDANT and kept only because no resolver
+                            could recover a size from the vault phrase.
+
+        The second cause was resolved on 2026-10-05: `product_name_resolver`
+        reads a size out of the phrase, so the field was removed and left the set
+        by being FIXED rather than by being suppressed.
+
+        ⚠️ That is the whole point of the report. A design that could not name
+        this class would have carried a redundant required field indefinitely,
+        because nothing would ever have pointed at it.
         """
         t = frozenset(f.field_id for f in template_for(SALES_ORDER))
-        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == {
-            "grave_location", "vault_size"
-        }
+        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == {"grave_location"}
 
     def test_per_surface_absence_is_not_orphanhood(self):
         """⚠️ THE DISCRIMINATING TEST. `burial_date` has no row on the CAPTURE
