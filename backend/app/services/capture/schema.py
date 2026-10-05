@@ -82,6 +82,33 @@ class FieldDefinition:
     switchable: bool = True
     #: Set for the three personalization questions. When present the field
     #: applies only if the named vault offers that question.
+    #:
+    #: ⚠️ THIS IS ONE CONDITIONAL SHAPE, NOT THE CONDITIONAL MECHANISM, and a
+    #: SECOND SHAPE IS ALREADY KNOWN. Recorded here so Piece 4's generalisation
+    #: is derived from two cases rather than from the only one anyone had looked
+    #: at — which is the failure this arc has been cataloguing.
+    #:
+    #:   1. PERSONALIZATION (built, this field). Depends on an EXTERNAL
+    #:      AVAILABILITY LOOKUP: `read_availability(personalization_config,
+    #:      vault_product_id, question_id)` reads the licensee's config for the
+    #:      named vault. The condition's input is outside the capture payload,
+    #:      and resolving it needs a product id the payload does not carry.
+    #:
+    #:   2. `service_location_other` (NOT BUILT — do not add it as a plain
+    #:      field). Applies only when `service_location == "other"`. Depends on
+    #:      ANOTHER FIELD'S VALUE IN THE SAME TEMPLATE. No external lookup, no
+    #:      product id, and resolvable from the extracted values alone — which
+    #:      `resolve_schema` never sees, because it resolves the schema BEFORE
+    #:      `evaluate` compares anything against it.
+    #:
+    #: ⚠️ That ordering is the real obstacle, and it is why shape 2 is not a
+    #: small addition. Shape 1 is answerable from configuration at schema-resolve
+    #: time; shape 2 is answerable only from the answers, so a mechanism covering
+    #: both cannot resolve applicability once, up front, the way this one does.
+    #:
+    #: A third shape — tenant setting, user role, time of day, another object's
+    #: state — should cost one declaration, and the proposal must say what it
+    #: would cost rather than assume it is free.
     question_id: str | None = None
 
     @property
