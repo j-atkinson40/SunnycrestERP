@@ -276,3 +276,72 @@ class TestTheSchemaGuards:
         v = variants[0]
         r = _post(client, ctx, {"template_ids": [v.id]})
         assert r.status_code == 422
+
+
+class TestTheAcceptanceBar:
+    """⚠️ 2b-3's acceptance bar, verbatim and in one test.
+
+    *"The library loads, a selection imports, the checklist item completes, and
+    quick_orders unlocks."*
+
+    Written because the first three clauses each have their own test above and
+    passing all three still would not have demonstrated the fourth. The gate on
+    quick orders is computed in the FRONTEND (`onboarding-hub.tsx:147`) over the
+    `depends_on` field of the checklist payload, so whether it unlocks depends on
+    something no backend test was looking at: that `depends_on` is served at all.
+
+    ⚠️ It is served as a JSON STRING (`'["add_products"]'`), not a list — the
+    route carries no `response_model`, so FastAPI serialises the ORM column
+    as-is. That is why the frontend has a `JSON.parse` fallback, and why this
+    test parses the same way rather than asserting a list.
+    """
+
+    def test_the_whole_bar(self, client, ctx, db, variants):
+        import json
+
+        from app.services import tenant_onboarding_service as TOS
+
+        TOS.initialize_checklist(db, ctx["company_id"], "manufacturing")
+        db.commit()
+        H = {"Authorization": f"Bearer {ctx['token']}", "X-Company-Slug": ctx["slug"]}
+
+        # 1. the library loads
+        lib = client.get("/api/v1/tenant-onboarding/product-library", headers=H)
+        assert lib.status_code == 200, lib.text
+        assert len(lib.json()) > 0
+
+        def items():
+            r = client.get("/api/v1/tenant-onboarding/checklist", headers=H)
+            assert r.status_code == 200, r.text
+            return {i["item_key"]: i for i in r.json()["items"]}
+
+        def unmet(by_key, key):
+            raw = by_key[key].get("depends_on")
+            deps = json.loads(raw) if isinstance(raw, str) else (raw or [])
+            return [d for d in deps if by_key.get(d, {}).get("status") != "completed"]
+
+        before = items()
+        # ⚠️ POSITIVE CONTROL: quick orders must be LOCKED first, or "unlocked"
+        # afterwards proves nothing. This is the assertion that makes the rest
+        # of the test discriminating.
+        assert unmet(before, "setup_quick_orders") == ["add_products"], (
+            "setup_quick_orders is not blocked on add_products before the import "
+            "— the dependency is absent from the payload, so the unlock below "
+            "would be vacuous"
+        )
+
+        # 2. a selection imports
+        v = variants[0]
+        imp = client.post(
+            "/api/v1/tenant-onboarding/product-library/import",
+            json={"products": [{"template_id": v.id, "price": 1895}]},
+            headers=H,
+        )
+        assert imp.status_code == 201, imp.text
+        assert imp.json()["imported_count"] == 1
+
+        after = items()
+        # 3. the checklist item completes
+        assert after["add_products"]["status"] == "completed"
+        # 4. quick_orders unlocks
+        assert unmet(after, "setup_quick_orders") == []
