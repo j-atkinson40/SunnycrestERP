@@ -143,6 +143,50 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     FieldDefinition("burial_date", "Burial date"),
     FieldDefinition("burial_time", "Burial time"),
     FieldDefinition("grave_location", "Grave section / lot / space"),
+    # ⚠️ ADDED 2026-10-05, `required=True` BY RULING, AND THE NEXT READER WILL
+    # CHECK THE COLUMN AND CONCLUDE THE OPPOSITE — so this note is here rather
+    # than in an investigation doc.
+    #
+    # `sales_orders.service_location` is `nullable=True`, and both sales schemas
+    # type it `str | None = None`. THAT IS STORAGE PERMISSIVENESS, NOT A
+    # STATEMENT ABOUT THE REQUIREMENT. Nullable means the database will accept a
+    # row without it; it says nothing about whether a licensee taking an order
+    # should be asked. In this codebase a nullable column or a default has
+    # repeatedly turned out to be an unexamined default rather than a decision —
+    # see §5 on `is_manufactured`, where a server_default asserted a fact nobody
+    # chose about every row in the table.
+    #
+    # THE TEST FOR `required` IN THIS ENGINE is not "can the column hold NULL".
+    # It is "does every real instance have an answer". Every funeral has a
+    # service location, and `graveside` is an ANSWER rather than an absence — the
+    # column's own enum ('church', 'funeral_home', 'graveside', 'other') covers
+    # every real case, so the field is always answerable. That is the module
+    # docstring's `required means ANSWERED, not filled` applied: `none` clears a
+    # requirement, and here there is no `none` to need.
+    #
+    # Operationally load-bearing, not bookkeeping. The adjacent `eta` column is
+    # documented "Estimated cemetery arrival (procession ETA); null for
+    # graveside" — the scheduling board's ETA is only interpretable once the
+    # service location is known, and a driver depends on it.
+    #
+    # ⚠️ IT WILL REPORT AS MISSING ON EVERY CALL, PERMANENTLY FOR NOW, and that
+    # is correct rather than a defect. Nothing extracts it: the managed prompt
+    # does not ask for it, `ringcentral_call_extractions` has no column, and
+    # `_captured_from_result` cannot map what the payload does not carry. A
+    # required field nobody has answered IS missing. Pinned in both directions in
+    # `test_call_extraction_missing_set.py` so neither a widening omission nor a
+    # silent drop goes unnoticed.
+    #
+    # ⚠️ AND IT IS THE FIELD THE SECOND CONDITIONAL SHAPE HANGS OFF — see the
+    # note on `FieldDefinition.question_id` above. `service_location_other`
+    # applies only when this field answers `"other"`, which the engine cannot
+    # express today. That companion is deliberately NOT added here.
+    #
+    # APPENDED rather than inserted among the burial fields, deliberately:
+    # `resolve_schema` returns fields in platform order and that order reaches
+    # the UI, so reordering existing entries is a visible change this commit is
+    # not making.
+    FieldDefinition("service_location", "Service location"),
 ) + _personalization_fields()
 
 

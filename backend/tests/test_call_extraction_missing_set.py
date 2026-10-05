@@ -51,8 +51,26 @@ def _template():
     return capture.template_for(capture.SALES_ORDER)
 
 
+#: ⚠️ REQUIRED, AND PERMANENTLY UNEXTRACTABLE AT THIS CALL SITE. Added to the
+#: template 2026-10-05 by ruling: every funeral has a service location and
+#: `graveside` is an answer rather than an absence. Nothing extracts it — the
+#: managed prompt does not ask, `ringcentral_call_extractions` has no column, and
+#: `_captured_from_result` cannot map what the payload does not carry. So a
+#: "complete" call result still leaves exactly this one field missing, and that
+#: is CORRECT: a required field nobody answered is missing.
+#:
+#: Named here rather than repeated as a literal so the next reader finds one fact
+#: with one reason, and so a second such field has somewhere to join.
+UNEXTRACTABLE_REQUIRED = {"service_location"}
+
+
 def _unconditional_ids(template):
     return {f.field_id for f in template if not f.is_conditional}
+
+
+def _extractable_unconditional_ids(template):
+    """Unconditional fields the call payload can actually supply."""
+    return _unconditional_ids(template) - UNEXTRACTABLE_REQUIRED
 
 
 def _conditional_ids(template):
@@ -65,7 +83,20 @@ class TestTheKeyMapping:
         both missing and misspelled, which is the pair of mistakes most likely to
         occur together during a rename."""
         template = _template()
-        assert set(_captured_from_result(FULL_RESULT)) == _unconditional_ids(template)
+        assert (set(_captured_from_result(FULL_RESULT))
+                == _extractable_unconditional_ids(template))
+
+    def test_the_only_unmappable_unconditional_field_is_the_named_one(self):
+        """⚠️ THE GROWTH, ASSERTED IN BOTH DIRECTIONS. The adapter covers every
+        unconditional field except `service_location`. If a second field ever
+        becomes unmappable this fails and the exception has to be declared
+        deliberately rather than absorbed into a shrinking set."""
+        template = _template()
+        gap = _unconditional_ids(template) - set(_captured_from_result(FULL_RESULT))
+        assert gap == UNEXTRACTABLE_REQUIRED, (
+            f"the unmappable set is {sorted(gap)}, declared "
+            f"{sorted(UNEXTRACTABLE_REQUIRED)}"
+        )
 
     def test_the_three_renamed_keys_land_on_the_schema_ids(self):
         """The whole point of the helper. `vault_type` is not `vault`."""
@@ -89,14 +120,24 @@ class TestTheKeyMapping:
 
 
 class TestTheServerComputesTheMissingSet:
-    def test_a_full_result_leaves_nothing_missing(self):
+    def test_a_full_result_leaves_exactly_the_unextractable_field_missing(self):
+        """⚠️ RENAMED FROM `..._leaves_nothing_missing`, 2026-10-05, and the
+        rename is the finding. A full call result is no longer complete, because
+        `service_location` joined the template as required and nothing extracts
+        it. `state.missing == ()` was true of an 11-field template and is now
+        false — asserting the exact remainder rather than relaxing to
+        `len(missing) <= 1` keeps the claim checkable."""
         state = capture.evaluate(
             _captured_from_result(FULL_RESULT),
             vault_product_id=None,
             platform_fields=_template(),
         )
-        assert state.missing == ()
-        assert state.is_complete
+        assert set(state.missing) == UNEXTRACTABLE_REQUIRED
+        assert not state.is_complete, (
+            "a call-sourced capture cannot be complete while a required field "
+            "has no extraction source — if this passes, either the field was "
+            "made optional or something started supplying it"
+        )
 
     def test_an_absent_field_is_reported_missing_by_its_schema_id(self):
         result = {k: v for k, v in FULL_RESULT.items() if k != "cemetery_name"}
@@ -115,7 +156,9 @@ class TestTheServerComputesTheMissingSet:
             vault_product_id=None,
             platform_fields=_template(),
         )
-        assert state.missing == ()
+        # The model's bogus entry is absent; what remains is the one field the
+        # payload cannot carry, not anything the model said.
+        assert set(state.missing) == UNEXTRACTABLE_REQUIRED
 
 
 class TestTheConditionalOmissionIsPinnedInBothDirections:
@@ -189,9 +232,9 @@ class TestTheServerDecidesWhatIsCapturedToo:
             vault_product_id=None,
             platform_fields=template,
         )
-        assert len(state.answered) == len(_unconditional_ids(template)), (
-            f"expected all {len(_unconditional_ids(template))} unconditional "
-            f"fields answered from a full result; got {state.answered}"
+        assert set(state.answered) == _extractable_unconditional_ids(template), (
+            f"expected every extractable unconditional field answered from a "
+            f"full result; got {sorted(state.answered)}"
         )
 
     def test_answered_and_missing_partition_the_applicable_fields(self):

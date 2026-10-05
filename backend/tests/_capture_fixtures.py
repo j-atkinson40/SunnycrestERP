@@ -78,19 +78,59 @@ FIXTURE_PERSONALIZATION_CONFIG: dict = {
 }
 
 
+#: A realistic answer per unconditional template field.
+#:
+#: ⚠️ A LOOKUP, NOT THE RETURN VALUE. `complete_non_personalization_answers`
+#: below derives its KEYS from the template and reads values from here, so the
+#: fixture cannot claim completeness it does not have.
+_ANSWER_BY_FIELD: dict[str, object] = {
+    "vault": "Monticello",
+    "funeral_home": "Hopkins Funeral Home",
+    "deceased_name": "John Michael Smith",
+    "vault_size": "standard adult",
+    "cemetery": "St. Mary's",
+    "burial_date": "2026-10-01",
+    "burial_time": "10:00",
+    "grave_location": "Section 4, Lot 12",
+    # One of the column's four enum values ('church', 'funeral_home',
+    # 'graveside', 'other'). Added with the field, 2026-10-05.
+    "service_location": "church",
+}
+
+
 def complete_non_personalization_answers() -> dict[str, object]:
     """Every platform field that is not a personalization question, answered.
 
     Lets a test isolate the conditional behaviour: whatever comes back missing
     is a personalization question, because nothing else is left unanswered.
+
+    ⚠️ DERIVED FROM THE TEMPLATE, AND IT RAISES ON AN UNKNOWN FIELD. This used
+    to be a hardcoded dict of eight entries under exactly the docstring above —
+    a universal claim that silently became false the moment the template grew.
+    Adding `service_location` on 2026-10-05 turned seven tests red, all of them
+    testing personalization rather than this fixture, because "complete" had
+    quietly changed meaning underneath them.
+
+    Deriving the keys makes the claim true by construction. Raising on a field
+    with no entry in `_ANSWER_BY_FIELD` is the part that matters: the next field
+    added to the template gets a loud, specific failure naming what to supply,
+    instead of seven confusing ones somewhere else. A fixture that defaulted
+    would have been worse than the hardcoded version — it would answer new
+    fields with something nobody chose.
     """
-    return {
-        "vault": "Monticello",
-        "funeral_home": "Hopkins Funeral Home",
-        "deceased_name": "John Michael Smith",
-        "vault_size": "standard adult",
-        "cemetery": "St. Mary's",
-        "burial_date": "2026-10-01",
-        "burial_time": "10:00",
-        "grave_location": "Section 4, Lot 12",
-    }
+    from app.services.capture import SALES_ORDER, template_for
+
+    out: dict[str, object] = {}
+    for f in template_for(SALES_ORDER):
+        if f.is_conditional:
+            continue
+        if f.field_id not in _ANSWER_BY_FIELD:
+            raise AssertionError(
+                f"the capture template gained unconditional field "
+                f"{f.field_id!r} ({f.label!r}) and this fixture has no answer "
+                f"for it. Add one to _ANSWER_BY_FIELD in tests/_capture_fixtures.py "
+                f"— do not let it default, or every 'nothing is missing' test "
+                f"starts asserting something nobody chose."
+            )
+        out[f.field_id] = _ANSWER_BY_FIELD[f.field_id]
+    return out
