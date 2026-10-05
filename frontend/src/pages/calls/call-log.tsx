@@ -100,21 +100,17 @@ function DirectionIcon({ direction, status }: { direction: string; status: strin
 // ---------------------------------------------------------------------------
 
 function ExtractionDetails({ extraction }: { extraction: CallLogExtraction }) {
-  const entries: [string, CallExtractionField | null][] = [
-    ["Deceased", extraction.deceased_name],
-    ["Vault type", extraction.vault_type],
-    ["Burial date", extraction.burial_date],
-    ["Burial time", extraction.burial_time],
-    ["Cemetery", extraction.cemetery_name],
-    ["Grave location", extraction.grave_location],
-    // ⚠️ Four entries removed 2026-10-05 — service_location, service_date,
-    // service_time, special_instructions. None has a column on
-    // ringcentral_call_extractions, so none could ever render. See
-    // CallOverlay.tsx for the full reasoning; this file carried the same list.
-    ["Special requests", extraction.special_requests],
-  ];
-
-  const captured = entries.filter(([, f]) => f?.value);
+  // ⚠️ THE THIRD HARDCODED LIST, RETIRED 2026-10-05. This page derived its own
+  // captured set from ten extraction columns — identical in content to the call
+  // overlay's ReviewCard and disagreeing with ActiveCallCard's four. None of the
+  // three ever rendered: the client typed every field `{value, confidence}` and
+  // the server sent flat strings.
+  //
+  // ⚠️ AND THIS PAGE IS ROUTED AT /calls, unlike the overlay — so the broken
+  // captured display was reachable here. Both sets now come from the capture
+  // engine. Values are not shown; see CallOverlay.tsx for why (template ids vs
+  // extraction keys) and why that belongs to the unbuilt review layout.
+  const captured = extraction.answered_fields ?? [];
   const missing = extraction.missing_fields ?? [];
 
   return (
@@ -129,17 +125,10 @@ function ExtractionDetails({ extraction }: { extraction: CallLogExtraction }) {
             </span>
           </div>
           <div className="space-y-1.5">
-            {captured.map(([label, field]) => (
-              <div key={label} className="flex justify-between text-xs">
-                <span className="text-muted-foreground">{label}</span>
-                <div className="text-right">
-                  <span className="font-medium">{field!.value}</span>
-                  {field!.confidence !== null && field!.confidence < 0.8 && (
-                    <span className="ml-1 text-amber-600 text-[10px]">
-                      ({Math.round(field!.confidence * 100)}%)
-                    </span>
-                  )}
-                </div>
+            {captured.map((f) => (
+              <div key={f} className="flex items-center gap-1.5 text-xs">
+                <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />
+                <span className="font-medium">{f.replace(/_/g, " ")}</span>
               </div>
             ))}
           </div>

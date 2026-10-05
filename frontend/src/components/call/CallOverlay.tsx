@@ -3,11 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  useCall,
-  type ActiveCall,
-  type CallExtractionField,
-} from "@/contexts/call-context";
+import { useCall, type ActiveCall } from "@/contexts/call-context";
 import { MinimizedCallPill } from "./MinimizedCallPill";
 import { cn } from "@/lib/utils";
 import {
@@ -227,19 +223,12 @@ function ActiveCallCard({
   const timer = useCallTimer(call.answered_at || call.started_at);
   const extraction = call.extraction;
 
-  // Collect what we've heard so far
-  const heardFields: { label: string; value: string }[] = [];
-  if (extraction) {
-    if (extraction.deceased_name?.value)
-      heardFields.push({ label: "Deceased", value: extraction.deceased_name.value });
-    if (extraction.vault_type?.value)
-      heardFields.push({ label: "Vault", value: extraction.vault_type.value });
-    if (extraction.burial_date?.value)
-      heardFields.push({ label: "Burial date", value: extraction.burial_date.value });
-    if (extraction.cemetery_name?.value)
-      heardFields.push({ label: "Cemetery", value: extraction.cemetery_name.value });
-  }
-
+  // ⚠️ BOTH SETS COME FROM THE SERVER. This used to derive the captured list
+  // from four hardcoded fields; ReviewCard derived a different ten and the call
+  // log a third. None ever rendered — see the contract commit. The capture
+  // engine decides what is answered and what is still needed, and this renders
+  // what it decided.
+  const answeredFields = extraction?.answered_fields ?? [];
   const missingFields = extraction?.missing_fields ?? [];
 
   return (
@@ -293,16 +282,16 @@ function ActiveCallCard({
       )}
 
       {/* Heard So Far */}
-      {heardFields.length > 0 && (
+      {answeredFields.length > 0 && (
         <div className="mx-4 mt-3 rounded-lg border bg-gray-50 p-3">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
             Heard So Far
           </p>
           <div className="space-y-1">
-            {heardFields.map((f) => (
-              <div key={f.label} className="flex justify-between text-xs">
-                <span className="text-muted-foreground">{f.label}</span>
-                <span className="font-medium">{f.value}</span>
+            {answeredFields.map((f) => (
+              <div key={f} className="flex items-center gap-1.5 text-xs">
+                <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />
+                <span className="font-medium">{f.replace(/_/g, " ")}</span>
               </div>
             ))}
           </div>
@@ -348,39 +337,27 @@ function ReviewCard({
   const extraction = call.extraction;
   if (!extraction) return null;
 
-  const captured: { label: string; value: string; confidence: number | null }[] = [];
-  // ⚠️ FOUR ENTRIES REMOVED 2026-10-05, because they could never render: this
-  // list named `service_location`, `service_date`, `service_time` and
-  // `special_instructions`, none of which has a column on
-  // `ringcentral_call_extractions`. `tsc` could not see that while the client
-  // declared them on its own type; tightening the type to exactly what the
-  // server sends is what surfaced them.
+  // ⚠️ THE SERVER'S SETS, NOT THIS COMPONENT'S. This derived ten fields from
+  // the extraction columns; ActiveCallCard derived four and the call log a
+  // third ten. All three disagreed and none ever rendered, because the client
+  // typed every field `{value, confidence}` while the server sent flat strings.
+  // The capture engine computes `answered_fields` and `missing_fields`; both are
+  // rendered, neither is derived.
   //
-  // `service_location` is a real requirement and now lives in the SALES-ORDER
-  // CAPTURE TEMPLATE, so it appears in the server's still-needed set instead.
-  // `service_date`/`service_time` are already captured as `burial_date` /
-  // `burial_time`. `special_instructions` is `special_requests`.
+  // ⚠️ VALUES ARE NOT SHOWN, AND THAT IS A DELIBERATE LOSS RATHER THAN AN
+  // OVERSIGHT. `answered_fields` holds CAPTURE-TEMPLATE ids (`vault`,
+  // `cemetery`, `funeral_home`) while the payload is keyed by EXTRACTION names
+  // (`vault_type`, `cemetery_name`, `funeral_home_name`) — three of them differ.
+  // Looking up a value per id would mean a fourth hand-written mapping on the
+  // client, which is the class of thing this change removes. Rendering ids the
+  // way `missing_fields` already does costs no new list.
   //
-  // ⚠️ THIS WHOLE LIST IS STILL A CLIENT-DERIVED CAPTURED SET and is retired in
-  // the next commit in favour of `extraction.answered_fields`. It is corrected
-  // rather than rewritten here so the contract change compiles on its own.
-  const entries: [string, CallExtractionField | null][] = [
-    ["Deceased", extraction.deceased_name],
-    ["Vault type", extraction.vault_type],
-    ["Burial date", extraction.burial_date],
-    ["Burial time", extraction.burial_time],
-    ["Cemetery", extraction.cemetery_name],
-    ["Grave location", extraction.grave_location],
-    ["Special requests", extraction.special_requests],
-  ];
-
-  for (const [label, field] of entries) {
-    if (field?.value) {
-      captured.push({ label, value: field.value, confidence: field.confidence });
-    }
-  }
-
+  // Showing values alongside them is the REVIEW LAYOUT question: canon says a
+  // template declares one and none exists (recorded as unbuilt in
+  // app/services/capture/schema.py). It is the server's to answer, by sending
+  // label and value keyed by template id — not this component's to guess.
   const missing = extraction.missing_fields ?? [];
+  const captured = extraction.answered_fields ?? [];
 
   return (
     <div className="w-[420px] rounded-xl border bg-white shadow-2xl overflow-hidden animate-in slide-in-from-right-5 fade-in duration-300">
@@ -437,16 +414,11 @@ function ReviewCard({
           </div>
           <div className="space-y-1.5">
             {captured.map((f) => (
-              <div key={f.label} className="flex items-start justify-between text-xs gap-2">
-                <span className="text-green-700 shrink-0">{f.label}</span>
-                <div className="text-right">
-                  <span className="font-medium text-green-900">{f.value}</span>
-                  {f.confidence !== null && f.confidence < 0.8 && (
-                    <span className="ml-1 text-amber-600 text-[10px]">
-                      ({Math.round(f.confidence * 100)}%)
-                    </span>
-                  )}
-                </div>
+              <div key={f} className="flex items-center gap-1.5 text-xs">
+                <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />
+                <span className="font-medium text-green-900">
+                  {f.replace(/_/g, " ")}
+                </span>
               </div>
             ))}
           </div>
