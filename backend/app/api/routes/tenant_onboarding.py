@@ -23,6 +23,7 @@ from app.schemas.tenant_onboarding import (
     IntegrationSetupCreate,
     IntegrationSetupUpdate,
     ProductTemplateImportRequest,
+    ProductTemplateImportResponse,
     SchedulingBoardConfig,
     ScenarioAdvance,
     WhiteGloveRequest,
@@ -217,17 +218,89 @@ def get_product_library(
         ) from exc
 
 
-@router.post("/product-library/import", status_code=201)
+@router.post(
+    "/product-library/import",
+    status_code=201,
+    response_model=ProductTemplateImportResponse,
+)
 def import_products(
     data: ProductTemplateImportRequest,
     current_user: User = Depends(get_current_user),
     company: Company = Depends(get_current_company),
     db: Session = Depends(get_db),
 ):
-    """Import selected product templates as real products."""
-    return tenant_onboarding_service.import_product_templates(
-        db, company.id, data.template_ids, current_user.id
-    )
+    """Import the licensee's selected variants as their own products.
+
+    ⚠️ THIS ROUTE RAISED 500 ON EVERY CALL FROM 2026-03-17 TO 2026-10-05. Four
+    defects, fixed together on purpose — three of them were stacked, so repairing
+    any one alone would have moved the failure rather than removed it:
+
+    1. **ARITY.** It passed four positional arguments (`db`, company id,
+       `template_ids`, user id) to a three-parameter function, so every call
+       raised `TypeError` before touching the database.
+
+    2. **THE SCHEMA DISCARDED THE PRICES.** It declared `template_ids` only
+       while the client sent `{template_ids, products}`, and Pydantic's default
+       extra-ignore dropped `products` silently — every price the licensee had
+       just typed. ⚠️ Fixing the arity WITHOUT fixing the schema would have
+       produced a 201 and a catalog of priceless products, which is a worse
+       failure than the 500 because nothing would have reported it.
+
+    3. **AN UNKNOWN VARIANT ID WAS A 500.** The service raises `UnknownTemplate`
+       by design — a caller sending five ids and receiving three products has no
+       way to learn which two were dropped — but nothing caught it here. Now 422,
+       naming the id.
+
+    4. **NO `response_model`.** Returned a bare `int` against a response schema
+       that was referenced by nothing and promised a `product_ids` field the
+       service never produced.
+
+    ⚠️ AND THE COMPLETION TRIGGER, which is not a fourth defect but the reason
+    this route existing was not sufficient. `import_product_templates` fires no
+    `check_completion`, and the library page navigates away without calling the
+    complete route — so before today a successful import left `add_products`
+    open, and `setup_quick_orders` (`depends_on: ["add_products"]`) never
+    unlocked. The acceptance bar for 2b-3 is "a selection imports, the checklist
+    item completes, and quick_orders unlocks"; the first clause needed 1-4 and
+    the rest needed this.
+
+    ⚠️ Fired HERE rather than inside the service deliberately. The service is a
+    copy function whose docstring is an explicit contract about what it writes
+    and what it pointedly does not (`is_manufactured`, `unit_of_measure`), pinned
+    by 12 tests. Completing an onboarding item is a fact about this route's
+    caller, not about copying a row. `check_completion` is documented never to
+    raise and is idempotent, and the service has already committed by the time it
+    runs, so it observes the products it is reporting on.
+    """
+    try:
+        imported = tenant_onboarding_service.import_product_templates(
+            db, company.id, data.products
+        )
+    except tenant_onboarding_service.UnknownTemplate as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "field": "products.template_id",
+                "message": (
+                    "No platform variant has that id. `template_id` is a VARIANT "
+                    "id, not a product-tier id — the library offers "
+                    "'Bronze Triune', not 'Triune Burial Vault'."
+                ),
+                # ⚠️ `.template_id`, NOT `.args[0]` — the exception formats a
+                # human message into args[0], so args[0] is the sentence and
+                # the id is the attribute. Caught by the test asserting on the
+                # field's value rather than on its presence.
+                "value": exc.template_id,
+            },
+        ) from exc
+
+    if imported:
+        # Best-effort by contract: check_completion logs and returns False on
+        # error rather than raising, so a trigger failure cannot roll back an
+        # import the licensee already completed.
+        tenant_onboarding_service.check_completion(db, company.id, "add_products")
+
+    return ProductTemplateImportResponse(imported_count=imported)
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -86,13 +86,63 @@ class ProductTemplateResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProductImportItem(BaseModel):
+    """One sellable variant the licensee ticked, with the price THEY set.
+
+    ⚠️ `price` IS TENANT-AUTHORED DATA, not a platform value. The platform
+    catalog carries no price — what a licensee charges for a Bronze Triune is
+    their decision, and this field is how it arrives. A schema that accepted
+    only `template_id` would discard the entire commercial half of the import.
+    """
+
+    template_id: str  # a VARIANT id — see import_product_templates
+    price: float | None = Field(default=None, ge=0)
+    sku: str | None = None
+
+
 class ProductTemplateImportRequest(BaseModel):
-    template_ids: list[str]
+    """⚠️ `products` IS AUTHORITATIVE. `template_ids` is redundant and accepted
+    only because the shipped client sends both.
+
+    Until 2026-10-05 this schema declared `template_ids` ALONE. The frontend has
+    sent `{template_ids, products}` since 2026-03-17, so Pydantic's default
+    extra-ignore silently dropped `products` — and with it every price the
+    licensee had just typed. The route then passed `template_ids` to a service
+    expecting items, so the request never got far enough for the loss to show.
+
+    The client derives `template_ids` from `products` (`products.map(p =>
+    p.template_id)` at product-library.tsx:253), so the two cannot disagree in
+    practice. If they ever do, that is a client defect and `_agree` says so
+    rather than silently preferring one.
+    """
+
+    products: list[ProductImportItem] = Field(min_length=1)
+    #: Redundant. Kept so the shipped payload validates; never read.
+    template_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _agree(self) -> "ProductTemplateImportRequest":
+        if self.template_ids is None:
+            return self
+        if sorted(self.template_ids) != sorted(p.template_id for p in self.products):
+            raise ValueError(
+                "template_ids and products disagree. `products` is authoritative; "
+                "template_ids is redundant and should be derived from it. "
+                f"template_ids={sorted(self.template_ids)} "
+                f"products={sorted(p.template_id for p in self.products)}"
+            )
+        return self
 
 
 class ProductTemplateImportResponse(BaseModel):
+    """⚠️ `product_ids` REMOVED 2026-10-05. It was declared 2026-03-17 and never
+    produced: no route in this file carried a `response_model`, so this class was
+    referenced by nothing, and the route returned a bare `int`. Removing a field
+    that was never serialised cannot break a client. The count is what the
+    frontend reads (`result.imported_count`).
+    """
+
     imported_count: int
-    product_ids: list[str]
 
 
 # ---------------------------------------------------------------------------

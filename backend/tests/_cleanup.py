@@ -257,6 +257,33 @@ _PURGE_STATEMENTS = [
     # makes the common case work and leaves the rest to fail LOUDLY rather than
     # pretending coverage.
     "DELETE FROM products WHERE company_id = ANY(:ids)",
+    # --- the onboarding family, added 2026-10-05 ----------------------------
+    # ⚠️ ALL TEN WERE ABSENT, so any test that initialized an onboarding
+    # checklist could not purge its company. Surfaced by the product-import
+    # route repair, whose completion test calls `initialize_checklist` and whose
+    # teardown then failed on tenant_onboarding_checklists_tenant_id_fkey.
+    #
+    # Order is children-first and taken from pg_constraint, not from memory:
+    #   onboarding_scenario_steps   -> onboarding_scenarios
+    #   onboarding_checklist_items  -> tenant_onboarding_checklists, users
+    #   onboarding_checklists       -> onboarding_templates, users
+    # Every one is ON DELETE NO ACTION (confdeltype 'a'), which is why each
+    # blocks the companies delete independently.
+    #
+    # ⚠️ The two that also reference `users` must precede the users delete
+    # below — onboarding_checklist_items.completed_by and
+    # onboarding_help_dismissals.employee_id. Placing this block after
+    # `products` and before `users` satisfies both.
+    "DELETE FROM onboarding_scenario_steps WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM onboarding_scenarios WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM onboarding_checklist_items WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM tenant_onboarding_checklists WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM onboarding_checklists WHERE company_id = ANY(:ids)",
+    "DELETE FROM onboarding_templates WHERE company_id = ANY(:ids)",
+    "DELETE FROM onboarding_data_imports WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM onboarding_integration_setups WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM onboarding_help_dismissals WHERE tenant_id = ANY(:ids)",
+    "DELETE FROM extension_customer_onboarding WHERE tenant_id = ANY(:ids)",
     "DELETE FROM users WHERE company_id = ANY(:ids)",
     "DELETE FROM roles WHERE company_id = ANY(:ids)",
     "DELETE FROM companies WHERE id = ANY(:ids)",
