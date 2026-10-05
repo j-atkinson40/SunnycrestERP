@@ -27,6 +27,79 @@ logger = logging.getLogger(__name__)
 # `intelligence_service.execute()`. Constant removed for hygiene.
 
 
+def resolve_and_evaluate(db: Session, result: dict):
+    """Resolve the vault phrase and evaluate the capture against it.
+
+    Returns `(resolution, capture_state)`.
+
+    ⚠️ THIS EXISTS AS A SEAM BECAUSE A BREAK TEST CAME BACK BLIND. The resolve
+    and the evaluate used to sit inline in `extract_call_data`, which is gated on
+    a Claude call — so reverting `vault_product_id` to None, the exact behaviour
+    this change removes, turned NO test red. The tests exercised the two pieces
+    and reconstructed their combination, which is not the same as exercising the
+    path. One function, callable without a model, and the break fires.
+
+    ⚠️ THREE OUTCOMES, AND THE MIDDLE ONE MUST NOT LOOK LIKE THE THIRD.
+    `Resolution.variant_template_id` is None for an ambiguous set BY DESIGN, so
+    reading it alone collapses "which of these two?" into "we found nothing" —
+    exactly what the resolver returns a set to prevent. The caller persists the
+    set and its discriminator so the capture can ask the question.
+    """
+    resolution = _resolve_vault_phrase(db, result)
+    state = capture.evaluate(
+        _captured_from_result(result),
+        vault_product_id=resolution.variant_template_id,
+        platform_fields=capture.template_for(capture.SALES_ORDER),
+    )
+    return resolution, state
+
+
+def _resolve_vault_phrase(db: Session, result: dict):
+    """Resolve the extraction's vault phrase to catalog candidates.
+
+    ⚠️ THE SIZE IS APPENDED, NOT ANSWERED SEPARATELY. `vault_size` left the
+    capture template on 2026-10-05 because the product name carries the size — a
+    director says "34 inch Continental" or asks for a class. The extractor may
+    still hear the two apart, so they are rejoined here: "Continental" is
+    ambiguous between BV-CON and BV-CON34, and "Continental 34 inch" is not.
+
+    ⚠️ The phrase is tried WITH the size first and WITHOUT it second. A size the
+    catalog does not stock ("Continental 40 inch") would otherwise resolve to
+    nothing when the bare family would at least have offered candidates — a
+    no-match where a question was available.
+    """
+    from app.services.product_name_resolver import build_index, resolve
+
+    phrase = (result.get("vault_type") or "").strip()
+    size = (result.get("vault_size") or "").strip()
+    if not phrase:
+        return resolve(build_index(db), None)
+
+    index = build_index(db)
+    if size:
+        with_size = resolve(index, f"{phrase} {size}")
+        if with_size.resolved:
+            return with_size
+    return resolve(index, phrase)
+
+
+def _resolution_payload(resolution) -> dict:
+    """The row's record of what the phrase resolved to.
+
+    ⚠️ SKUs, NOT IDS, IN `candidates`. A uuid tells a reader nothing; `BV-BTRI`
+    and `UV-BTRI` show at a glance that the question is burial-versus-urn. The
+    resolved id is carried separately and is the only machine-readable half.
+    """
+    return {
+        "phrase": resolution.phrase,
+        "resolved_variant_id": resolution.variant_template_id,
+        "candidates": [c.sku for c in resolution.candidates],
+        "discriminator": (
+            resolution.discriminator.value if resolution.discriminator else None
+        ),
+    }
+
+
 def _captured_from_result(result: dict) -> dict[str, object]:
     """Extraction-payload keys -> capture-schema field ids.
 
@@ -186,28 +259,23 @@ def extract_order_from_transcript(
     # Parsed values, not raw strings, so the missing set describes the row that
     # is actually stored: an unparseable date persists as NULL, and calling that
     # "answered" would make the two disagree.
-    captured = _captured_from_result(result)
-    template = capture.template_for(capture.SALES_ORDER)
 
-    # ⚠️ `vault_product_id=None` IS PERMANENT HERE, NOT A TRANSIENT UNKNOWN, AND
-    # THAT IS THE DIFFERENCE THAT MATTERS. `resolve_schema` treats None as
-    # "applicability unknown, so not shown and not counted" — the right
-    # behaviour for a capture list a user is filling in, where a vault is about
-    # to be named. At THIS call site no vault is ever named: `vault_type` is
-    # free text the model produced and nothing resolves a vault NAME to a
-    # product id anywhere in the codebase (measured 2026-10-02 —
-    # `create_draft_order_from_extraction` below uses it only as a gate and
-    # creates an order with no line items).
+    # ⚠️ `vault_product_id` IS RESOLVED HERE AS OF 2026-10-05, AND THAT CLOSES THE
+    # OLDEST OPEN THING IN THIS ARC.
     #
-    # THE UNBLOCKER IS THE VAULT-NAME RESOLVER. Until it exists the three
-    # conditional personalization questions are omitted from both the answered
-    # and the missing set on every call. That is acceptable only because this
-    # overlay is unreachable in production — RingCentral has no OAuth entrance
-    # and no tenant holds a token — so no user receives the prompts it removes.
-    # Closing it is a gate on RC provisioning, not an independent improvement.
-    capture_state = capture.evaluate(
-        captured, vault_product_id=None, platform_fields=template
-    )
+    # This block used to pass None and explain, at length, that None was
+    # PERMANENT: `resolve_schema` omits the three conditional personalization
+    # questions when it has no vault, and nothing in the codebase turned a vault
+    # NAME into a product id. The consequence was never stated as plainly as it
+    # deserved — those three questions had never been asked on any call. Not
+    # intermittently. Never. `resolve_schema`'s only conditional branch had never
+    # executed.
+    #
+    # `product_name_resolver` resolves the phrase. The size goes in with it,
+    # because the ruling that removed `vault_size` made size an INPUT to
+    # resolving rather than a field beside it — "Continental" + "34 inch"
+    # resolves to BV-CON34 where "Continental" alone is ambiguous.
+    vault_resolution, capture_state = resolve_and_evaluate(db, result)
 
     # Counted, not silent. A permanent omission that nobody measures is the
     # loud-failure-made-quiet regression CLAUDE.md names; this gives the cost a
@@ -248,6 +316,9 @@ def extract_order_from_transcript(
         # discarded after one log line, which is why two client components built
         # their own captured lists. Neither set is the client's to derive.
         answered_fields=list(capture_state.answered),
+        # ⚠️ PERSISTED FOR ALL THREE OUTCOMES, including the ambiguous one. That
+        # is the whole point of r198 — see the column's comment.
+        vault_resolution=_resolution_payload(vault_resolution),
         call_summary=result.get("call_summary"),
         call_type=result.get("call_type", "other"),
         urgency=result.get("urgency", "standard"),

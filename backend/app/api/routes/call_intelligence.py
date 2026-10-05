@@ -103,6 +103,11 @@ def _serialize_extraction(ext: RingCentralCallExtraction) -> dict:
         # here — the writer always sets it, and the overlay has no production
         # entrance, so no row predates the column.
         "answered_fields": ext.answered_fields or [],
+        # ⚠️ Served so the client can ask the question an ambiguity implies.
+        # `None` when no resolution was attempted; a dict with an empty
+        # `candidates` list when the phrase matched nothing. Those are different
+        # states and the client can tell them apart.
+        "vault_resolution": ext.vault_resolution,
         "call_summary": ext.call_summary,
         "call_type": ext.call_type,
         "urgency": ext.urgency,

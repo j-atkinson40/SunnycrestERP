@@ -68,6 +68,29 @@ export interface CallExtraction {
    * `{value, confidence}` while the server sends flat strings). See r197.
    */
   answered_fields: string[];
+  /**
+   * ⚠️ WHAT THE VAULT PHRASE RESOLVED TO, AND THE AMBIGUOUS CASE IS THE POINT.
+   *
+   *   resolved     candidates has one entry, resolved_variant_id is set
+   *   AMBIGUOUS    several candidates, resolved_variant_id null, and
+   *                `discriminator` names the question to ask —
+   *                "form" → burial or urn? "size" → which size?
+   *                "line" → which product line? "option" → which finish?
+   *   no match     candidates is empty
+   *   not attempted  the whole field is null
+   *
+   * Render the ambiguous case as a QUESTION, never as a failure. "Bronze
+   * Triune — burial or urn vault?" is one thing an operator can ask a caller who
+   * is still on the phone; an empty capture list is a dead end. The server
+   * deliberately does not pick: `cream and gold` matches a Regal and a Tribute
+   * urn, and picking would sell the Regal silently every time.
+   */
+  vault_resolution: {
+    phrase: string;
+    resolved_variant_id: string | null;
+    candidates: string[];
+    discriminator: "form" | "line" | "size" | "option" | null;
+  } | null;
   draft_order_id: string | null;
 }
 

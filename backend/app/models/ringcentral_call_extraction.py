@@ -44,6 +44,20 @@ class RingCentralCallExtraction(Base):
     #: NULL means no answered set was computed for this row, which is not the
     #: same as `[]` ("the capture answered nothing"). See r197's docstring.
     answered_fields: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    #: ⚠️ WHAT THE VAULT PHRASE RESOLVED TO. Added r198. Three outcomes, and the
+    #: middle one is why this column exists:
+    #:
+    #:   {"resolved_variant_id": "...", "candidates": ["BV-CON34"]}
+    #:   {"resolved_variant_id": null, "candidates": ["BV-BTRI","UV-BTRI"],
+    #:    "discriminator": "form"}          <- ambiguous: a QUESTION, not a failure
+    #:   {"resolved_variant_id": null, "candidates": []}
+    #:
+    #: Without it the ambiguous case reaches the client as an empty capture list,
+    #: indistinguishable from no match — which discards the whole reason
+    #: `product_name_resolver` returns a set rather than a winner.
+    #:
+    #: NULL means no resolution was attempted for this row.
+    vault_resolution: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Call metadata
     call_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
