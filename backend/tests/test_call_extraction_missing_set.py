@@ -48,7 +48,7 @@ FULL_RESULT = {
 
 
 def _template():
-    return capture.template_for(capture.FUNERAL_ORDER)
+    return capture.template_for(capture.SALES_ORDER)
 
 
 def _unconditional_ids(template):

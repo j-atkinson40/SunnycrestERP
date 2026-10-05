@@ -183,7 +183,7 @@ def extract_order_from_transcript(
     # is actually stored: an unparseable date persists as NULL, and calling that
     # "answered" would make the two disagree.
     captured = _captured_from_result(result)
-    template = capture.template_for(capture.FUNERAL_ORDER)
+    template = capture.template_for(capture.SALES_ORDER)
 
     # ⚠️ `vault_product_id=None` IS PERMANENT HERE, NOT A TRANSIENT UNKNOWN, AND
     # THAT IS THE DIFFERENCE THAT MATTERS. `resolve_schema` treats None as

@@ -2330,6 +2330,32 @@ app/, and CallOverlay.tsx builds its captured and still-needed display from a ha
 per-field list. The shared engine is unbuilt rather than merely unused, and the call
 overlay's hardcoded list is the copy to retire.
 
+⚠️ [CORRECTED 2026-10-05 — the paragraph above is preserved as written and is now false in
+both halves.] **The engine IS imported from app/** since `27d4fe46`, by
+`call_extraction_service.py`, which calls `template_for` and `evaluate` — 2 app/ call edges
+against 15 in tests. **And there are TWO hardcoded client lists, not one**: `ActiveCallCard`
+(4 fields) and `ReviewCard` (10), which disagree with each other and with the template's 11.
+
+Three things the entry could not have known and a reader should not infer from it:
+
+- **`capture_state.answered` is the root cause of those lists.** The server computes it,
+  writes it to one log line, and discards it, while `missing` is persisted. The client has
+  nothing to render for "captured" and so re-derives it. This entry's companion rule — *the
+  model extracts; the server decides what is missing* — has an unstated half: **the server
+  decides what is CAPTURED too, and the client renders both and derives neither.** The two
+  lists are what its absence produced, not an independent lapse.
+- **The template key was `"funeral_order"`**, which is not one of the eight object types
+  this entry enumerates. Renamed to `"sales_order"` on 2026-10-05 by ruling, on the warrant
+  that the call-to-order flow captures one object across three surfaces and what varies is
+  the field set. Recorded at `app/services/capture/schema.py`.
+- **"its review layout" has no representation anywhere.** Measured 2026-10-05: zero hits
+  across `backend/app` and `frontend/src`. Fields, required flags and dependencies are data;
+  the layout is JSX per card. Recorded as unbuilt in `schema.py` so its absence is not
+  mistaken for its presence.
+
+Full measurement: `docs/investigations/2026-10-05-capture-engine-before-opas.md` and
+`2026-10-05-piece1-phantom-fields.md`.
+
 ---
 
 ## 2026-10-02 — Nothing is created, sent or changed until the user approves the finished object

@@ -49,6 +49,24 @@ from app.services.personalization.questions import QUESTIONS
 VAULT_FIELD_ID = "vault"
 
 
+#: ⚠️ REVIEW LAYOUT IS UNBUILT, AND THIS NOTE EXISTS SO ITS ABSENCE IS NOT
+#: MISTAKEN FOR ITS PRESENCE. DECISIONS 2026-10-02 says a template declares four
+#: things: its fields, which are required, what each field depends on, AND ITS
+#: REVIEW LAYOUT. The first three are below. The fourth has no representation
+#: anywhere — measured 2026-10-05, zero hits for `summary_layout` / `review
+#: layout` / `summaryLayout` across `backend/app` and `frontend/src`.
+#:
+#: Today the review layout is encoded as JSX per card in `CallOverlay.tsx`, which
+#: is why two surfaces render two different field lists. Giving it a
+#: representation is NET-NEW DESIGN, not a reshape of anything here, and it is
+#: not blocking a second template — a template can declare fields today and
+#: inherit whatever rendering the surface does.
+#:
+#: A reader asking "does a template carry its layout?" should get `no, and
+#: deliberately not yet` from this file rather than infer `yes` from the canon
+#: entry.
+
+
 @dataclass(frozen=True)
 class FieldDefinition:
     """One thing an order is asked for.
@@ -108,13 +126,33 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
 #: changes neither that signature nor `PLATFORM_DEFAULT_FIELDS`'s contents. The
 #: second object type is then a row here, not a refactor — which is what
 #: DECISIONS 2026-10-02 "One capture engine, one template per object type"
-#: requires. Funeral order is the only entry today; quote, purchase order,
-#: email, text message and calendar event each need their own template and have
-#: none anywhere in the codebase.
-FUNERAL_ORDER = "funeral_order"
+#: requires. Sales order is the only entry today; quote, purchase order, email,
+#: text message and calendar event each need their own template and have none
+#: anywhere in the codebase.
+#:
+#: ⚠️ RENAMED FROM `FUNERAL_ORDER` / `"funeral_order"` ON 2026-10-05, BY RULING.
+#: The warrant: the call-to-order flow captures an order which then appears on
+#: the note for scheduling and is rendered by the sales-order surface — ONE
+#: object across three surfaces, not a funeral-specific variant of one. The
+#: template key is therefore the OBJECT TYPE, and what varies between tenants
+#: and verticals is the FIELD SET, which is what `tenant_config` and the
+#: platform/tenant split already express. That is the same shape the product
+#: catalog uses: one `product_templates` row per product, tenant deltas on top.
+#:
+#: ⚠️ `"funeral_order"` was never one of the eight object types DECISIONS
+#: 2026-10-02 enumerates (sales order, quote, purchase order, email, text
+#: message, calendar event, disinterment case, time-off request), so a second
+#: template added beside it would have had no sales order to sit beside. The
+#: rename settles that before a second template is written rather than after.
+#:
+#: ⚠️ NOT TO BE CONFUSED WITH `SalesOrder.order_type == "funeral"`, which is a
+#: live column VALUE distinguishing funeral from retail and wholesale orders and
+#: is untouched by this rename. The capture key names the OBJECT; order_type
+#: classifies an instance of it.
+SALES_ORDER = "sales_order"
 
 CAPTURE_TEMPLATES: dict[str, tuple[FieldDefinition, ...]] = {
-    FUNERAL_ORDER: PLATFORM_DEFAULT_FIELDS,
+    SALES_ORDER: PLATFORM_DEFAULT_FIELDS,
 }
 
 
