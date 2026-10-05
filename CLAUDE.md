@@ -2293,6 +2293,36 @@ addressed.
 The remedy is not to hedge. It is that **a word implying a proportion is a claim
 about a proportion**, and the proportion is usually one command away.
 
+### A dispatch may only cite sources the executor can reach
+
+**Chat uploads, PDFs supplied in conversation, and claude.ai artifacts are
+reachable from the design side and NOT from the build side.** A cited URL that
+resolves for the author and 404s for the reader has the same exposure as a cited
+figure, and worse consequences when it is authorising the part that must not be
+guessed.
+
+**The fix is always the same: move the bytes into the repo, with digests, before
+the dispatch references them.**
+
+Three instances in three days, each costing a round trip:
+
+- the Sunnycrest spec sheet — drove three hours of rulings as description, then
+  located by md5 two directories away;
+- the February 2026 price list — same shape, found by digest rather than by name;
+- the call-to-print prototype — cited by artifact URL whose id resolved to
+  nothing in the author's own artifact listing, while authorising the display
+  shape the dispatch had just said must not be invented.
+
+⚠️ **AND A DIGEST IS PART OF THE CITATION, NOT A COURTESY.** The third instance
+ended with a file in the repo that reproduced every marker measured on the cited
+revision and still had a different size and md5 — same design, different version.
+Without digests that substitution is invisible and gets made silently; with them
+it is a stated caveat on every figure taken from it.
+
+⚠️ An executor asked to commit a file it has only been told about should refuse.
+A file whose header says "verbatim" and whose actual source is a conversation is
+worse than no file, because it reads as authoritative.
+
 ### Figures in dispatches are never inherited
 
 Every dispatch that states a figure — a count, a file list, a set of sites, a row total —
