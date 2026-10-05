@@ -269,15 +269,53 @@ def test_the_vault_itself_is_reported_missing_when_not_named():
 # ── shape guards ────────────────────────────────────────────────────────
 
 
-def test_every_platform_field_lands_in_exactly_one_of_the_three_sets():
-    """⚠️ Totality. A field that fell out of all three would be silently
-    un-askable, which is the defect this whole layer replaces."""
-    state = _evaluate(VAULT_ALL_THREE, {})
-    placed = set(state.answered) | set(state.missing) | set(state.not_applicable)
-    assert placed == {f.field_id for f in PLATFORM_DEFAULT_FIELDS}
-    assert len(state.answered) + len(state.missing) + len(state.not_applicable) == len(
-        PLATFORM_DEFAULT_FIELDS
-    ), "a field appears in more than one set"
+def test_every_platform_field_lands_in_a_set_or_is_OPTIONAL_AND_UNANSWERED():
+    """⚠️ RENAMED AND WEAKENED 2026-10-05, AND THE WEAKENING IS A FINDING.
+
+    This asserted that `answered`, `missing` and `not_applicable` partition the
+    applicable fields. That held only because EVERY template field was required.
+    It is now false: `date_of_birth`, `date_of_death` and `cemetery_equipment`
+    are optional, and `evaluate` adds an unanswered field to `missing` ONLY if it
+    is required —
+
+        if not is_answered(value):
+            if resolved.required:
+                missing.append(...)
+            continue              # <- optional unanswered: in NO set
+
+    — so an optional unanswered field appears in none of the three.
+
+    ⚠️ THAT IS A GAP IN `CaptureState`, NOT IN THIS TEST, and it is reported
+    rather than patched. A consumer reading only `CaptureState` cannot see those
+    fields at all: they are not answered, not missing, and not inapplicable. It
+    does not bite today because the row layer gives them `NOT_MENTIONED` from the
+    resolved schema rather than from `CaptureState` — which is the third time that
+    type has turned out to be narrower than what the engine knows.
+
+    Adding a fourth set is a change to a public type with live callers and is not
+    this commit's business. The test now pins the REAL partition, including the
+    fourth bucket, so the gap is visible instead of asserted away.
+    """
+    from app.services.capture import SALES_ORDER, template_for
+    from app.services.capture.missing import is_answered
+
+    template = template_for(SALES_ORDER)
+    answers = complete_non_personalization_answers()
+    state = _evaluate(VAULT_ALL_THREE, answers)
+
+    in_a_set = set(state.answered) | set(state.missing) | set(state.not_applicable)
+    optional_unanswered = {
+        f.field_id for f in template
+        if not f.required and not is_answered(answers.get(f.field_id))
+    }
+    all_ids = {f.field_id for f in template}
+
+    assert in_a_set | optional_unanswered == all_ids, (
+        f"fields in no bucket at all: {sorted(all_ids - in_a_set - optional_unanswered)}"
+    )
+    assert not (set(state.answered) & set(state.missing))
+    assert not (set(state.answered) & set(state.not_applicable))
+    assert not (set(state.missing) & set(state.not_applicable))
 
 
 def test_unknown_extracted_keys_are_ignored_not_rejected():

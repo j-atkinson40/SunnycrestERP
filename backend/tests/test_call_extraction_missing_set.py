@@ -63,6 +63,18 @@ def _template():
 #: with one reason, and so a second such field has somewhere to join.
 UNEXTRACTABLE_REQUIRED = {"service_location"}
 
+#: Unconditional, unmapped by the adapter, and NOT required — so they never
+#: appear in `missing` and their absence is invisible in the missing set.
+#:
+#: ⚠️ KEPT SEPARATE FROM THE REQUIRED SET ON PURPOSE. Both are "the adapter
+#: cannot supply this", but only the required one is a reported gap. Merging them
+#: would make the suite assert that optional unmapped fields show up as missing,
+#: which is the opposite of what optional means. Added 2026-10-05 with the three
+#: new fields; nothing extracts dates or equipment from a call yet.
+UNEXTRACTABLE_OPTIONAL = {"date_of_birth", "date_of_death", "cemetery_equipment"}
+
+UNEXTRACTABLE = UNEXTRACTABLE_REQUIRED | UNEXTRACTABLE_OPTIONAL
+
 
 def _unconditional_ids(template):
     return {f.field_id for f in template if not f.is_conditional}
@@ -70,7 +82,7 @@ def _unconditional_ids(template):
 
 def _extractable_unconditional_ids(template):
     """Unconditional fields the call payload can actually supply."""
-    return _unconditional_ids(template) - UNEXTRACTABLE_REQUIRED
+    return _unconditional_ids(template) - UNEXTRACTABLE
 
 
 def _conditional_ids(template):
@@ -93,9 +105,8 @@ class TestTheKeyMapping:
         deliberately rather than absorbed into a shrinking set."""
         template = _template()
         gap = _unconditional_ids(template) - set(_captured_from_result(FULL_RESULT))
-        assert gap == UNEXTRACTABLE_REQUIRED, (
-            f"the unmappable set is {sorted(gap)}, declared "
-            f"{sorted(UNEXTRACTABLE_REQUIRED)}"
+        assert gap == UNEXTRACTABLE, (
+            f"the unmappable set is {sorted(gap)}, declared {sorted(UNEXTRACTABLE)}"
         )
 
     def test_the_three_renamed_keys_land_on_the_schema_ids(self):
@@ -203,7 +214,13 @@ class TestTheConditionalOmissionIsPinnedInBothDirections:
         state = capture.evaluate(
             {}, vault_product_id=None, platform_fields=template
         )
-        assert set(state.missing) == _unconditional_ids(template)
+        # ⚠️ REQUIRED only. Optional unconditional fields are never "missing" —
+        # see test_capture_schema's partition test for why CaptureState has no
+        # bucket for them at all.
+        required_unconditional = {
+            f.field_id for f in template if not f.is_conditional and f.required
+        }
+        assert set(state.missing) == required_unconditional
 
 
 class TestTheServerDecidesWhatIsCapturedToo:
@@ -251,9 +268,15 @@ class TestTheServerDecidesWhatIsCapturedToo:
             "a field cannot be both answered and missing"
         )
         covered = set(state.answered) | set(state.missing) | set(state.not_applicable)
-        assert covered == {f.field_id for f in template}, (
-            f"these template fields appear in no set: "
-            f"{ {f.field_id for f in template} - covered}"
+        # ⚠️ Plus the fourth bucket CaptureState has no slot for: optional and
+        # unanswered. Named rather than folded in — see test_capture_schema.
+        optional_unanswered = {
+            f.field_id for f in template
+            if not f.required and f.field_id not in covered
+        }
+        assert covered | optional_unanswered == {f.field_id for f in template}, (
+            f"these template fields appear in no bucket: "
+            f"{ {f.field_id for f in template} - covered - optional_unanswered}"
         )
 
     def test_none_is_answered_and_lands_in_answered_not_missing(self):

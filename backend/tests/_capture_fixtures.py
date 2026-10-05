@@ -95,6 +95,12 @@ _ANSWER_BY_FIELD: dict[str, object] = {
     # One of the column's four enum values ('church', 'funeral_home',
     # 'graveside', 'other'). Added with the field, 2026-10-05.
     "service_location": "church",
+    # Added with the Dates row, 2026-10-05. Strings because the capture layer
+    # takes whatever the extractor produced; parsing is the adapter's job.
+    "date_of_birth": "1948-03-14",
+    "date_of_death": "2026-09-14",
+    # A product reference. "Full setup" is the prototype's own value.
+    "cemetery_equipment": "Full setup",
 }
 
 

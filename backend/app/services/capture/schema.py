@@ -138,6 +138,26 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     FieldDefinition(VAULT_FIELD_ID, "Vault", switchable=False),
     FieldDefinition("funeral_home", "Funeral home"),
     FieldDefinition("deceased_name", "Deceased name"),
+    # ⚠️ REDUNDANT, AND DELIBERATELY NOT REMOVED YET — 2026-10-05.
+    #
+    # Since 2b-3 the VARIANT is the size: three families differ only by size
+    # (`continental` BV-CON/BV-CON34, `graveliner` GL-34/GL-38,
+    # `loved-and-cherished` LC-19/24/31) and six variants carry it in the display
+    # name. So choosing the product determines the size, and asking separately
+    # creates two sources for one fact.
+    #
+    # ⚠️ IT STAYS BECAUSE REMOVING IT WOULD LOSE THE SIZE ENTIRELY. Nothing
+    # resolves a spoken vault phrase to a variant — measured 2026-10-05: there is
+    # NO resolver in `app/`, and `platform_product_aliases`, which has exactly the
+    # right columns and 5 seeded rows, has ZERO readers outside `app/models/` and
+    # the migrations that made it. So nothing can turn "Continental, 34 inch" into
+    # BV-CON34, and with this field gone the size would be neither captured nor
+    # recoverable.
+    #
+    # THE SEQUENCE: build the resolver on the alias table, THEN remove this. The
+    # same resolver gates the three permanently-omitted personalization questions
+    # (`vault_product_id` is permanently None at the call site) and RC
+    # provisioning. Ruled redundant, blocked on the resolver.
     FieldDefinition("vault_size", "Size"),
     FieldDefinition("cemetery", "Cemetery"),
     FieldDefinition("burial_date", "Burial date"),
@@ -187,6 +207,31 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # the UI, so reordering existing entries is a visible change this commit is
     # not making.
     FieldDefinition("service_location", "Service location"),
+    # ⚠️ ADDED 2026-10-05. The decedent's dates, as TWO fields composed into one
+    # `Dates` row — see the row layer in `rows.py`. Two fields rather than one
+    # because they are two facts with two answers; the single row is a display
+    # decision, and conflating them in the schema would make "born but death
+    # date unknown" unexpressible.
+    #
+    # ⚠️ THEY BECOME REQUIRED WHEN A LEGACY PRINT IS CHOSEN — the Legacy
+    # nameplate prints name and dates — which is a condition on ANOTHER FIELD'S
+    # VALUE, the second conditional shape the engine cannot express yet (see
+    # `FieldDefinition.question_id` above). Captured unconditionally until Piece 4
+    # lands. ⚠️ `required=False` for now: making them required today would report
+    # them missing on every non-personalized order, which is a different false
+    # claim from the one we are avoiding.
+    FieldDefinition("date_of_birth", "Date of birth", required=False),
+    FieldDefinition("date_of_death", "Date of death", required=False),
+    # ⚠️ A PRODUCT REFERENCE, NOT FREE TEXT. The catalog sells 5 `equipment`
+    # products (measured 2026-10-05), the scheduling board renders equipment
+    # chips, and a driver's kit is built from it — so the answer resolves to a
+    # catalog row exactly as `vault` does.
+    #
+    # ⚠️ ITS DESTINATION IS A KNOWN GAP, RECORDED SO IT IS NOT A SILENT ONE. Where
+    # an equipment selection LANDS on the order waits on the graveside-services
+    # model, which is deliberately unbuilt. Capture it now; the mapping follows
+    # services. Without this note the field reads as finished.
+    FieldDefinition("cemetery_equipment", "Cemetery equipment", required=False),
 ) + _personalization_fields()
 
 
