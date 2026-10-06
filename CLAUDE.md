@@ -2003,7 +2003,78 @@ Process conventions discovered during the Workflow Builder rebuild + inline-para
 
 **Scope is the STOP gate, not a line count.** Bound a phase by *what it touches*, not by LOC. Numeric ceilings false-trip on test-thoroughness and JSX/gesture verbosity, which inflate line count over logic without indicating scope creep — observed repeatedly (P1 landed ~582 vs a ~580 estimate; P3a ~452 vs ~370; P3b-1a ~338 vs a 250 "ceiling"), every one on-spec. The live STOP signal is "is this still just the bounded thing (the gesture / the helper / the rail-flip)?" — if a keyboard listener, an inspector change, a new infra dependency, or an out-of-scope file appears, STOP and surface. A high line count with on-spec scope is not a STOP; verbose JSX is expected. Dispatches should phrase STOP triggers as scope predicates, not numbers (a numeric ceiling, if given, is a soft flag to re-confirm scope, not a hard halt).
 
-**The `EnvironmentTeardownError` flake (r21/DocumentsTab class) is environmental — 0 test failures.** vitest intermittently emits `EnvironmentTeardownError: [vitest-worker]: Closing rpc while "onUserConsoleLog" was pending` under parallel full-suite load (often surfacing via `DocumentsTab.test.tsx`). It is a worker-teardown rpc artifact, **not a test failure** — the suite reports 0 failures, and the implicated file passes in isolation (DocumentsTab: 21/21 ×2). Do not treat it as a build failure, do not re-derive its cause each time, and do not let it block a commit. Confirm 0 *test* failures, re-run once (it usually doesn't recur, or recurs harmlessly), note "the known r21/DocumentsTab environmental class," and proceed. The capture-or-clean-streak discipline is satisfied by one clean run + the characterization.
+⚠️ **CORRECTED 2026-10-06 — THE CHARACTERISATION WAS RIGHT AND THE INSTRUCTION
+KEPT CI DARK FOR 89 COMMITS.** This entry read, in full:
+
+> **The `EnvironmentTeardownError` flake (r21/DocumentsTab class) is environmental
+> — 0 test failures.** vitest intermittently emits `EnvironmentTeardownError:
+> [vitest-worker]: Closing rpc while "onUserConsoleLog" was pending` under parallel
+> full-suite load (often surfacing via `DocumentsTab.test.tsx`). It is a
+> worker-teardown rpc artifact, **not a test failure** — the suite reports 0
+> failures, and the implicated file passes in isolation (DocumentsTab: 21/21 ×2).
+> Do not treat it as a build failure, do not re-derive its cause each time, and **do
+> not let it block a commit.** Confirm 0 *test* failures, re-run once (it usually
+> doesn't recur, or recurs harmlessly), note "the known r21/DocumentsTab
+> environmental class," and proceed. The capture-or-clean-streak discipline is
+> satisfied by one clean run + the characterization.
+
+**The diagnosis above is CORRECT and stays in force.** The class is environmental.
+It is a worker-teardown rpc artifact. It is not a test failure, and the suite does
+report 0 failures. None of that changed.
+
+⚠️ **WHAT IS FALSE IS THE CONCLUSION, AND ONLY FOR CI: VITEST EXITS 1 ON AN
+UNHANDLED ERROR REGARDLESS OF HOW MANY TESTS PASSED.** So "do not let it block a
+commit" — true of a local commit, where you are the one deciding — becomes, in CI,
+an instruction to walk past the thing holding the channel down. The job is red, and
+red means dark.
+
+Measured on run `37457088736`, 2026-10-06:
+
+    Test Files  338 passed (338)
+    Tests       4435 passed | 3 skipped | 1 todo (4439)
+    Errors      1 error
+    ##[error]Process completed with exit code 1
+
+    EnvironmentTeardownError: [vitest-worker]: Closing rpc while
+    "onUserConsoleLog" was pending
+    originated in src/components/focus/canvas/WidgetChrome.test.tsx
+
+Nothing failed. The job was red. **CI last passed 2026-09-23 and this is why — 42
+runs and 89 commits**, every one of which deployed, because nothing gates a deploy
+(see §7's corrected staging-deploy note).
+
+⚠️ **NOTE THE HOST FILE. The class is not DocumentsTab's.** This entry names it the
+"r21/DocumentsTab class" and hedges with "often surfacing via"; the observed instance
+originated in `WidgetChrome.test.tsx`. A name taken from the first file it was seen in
+is a constructed name (§11) and will send the next reader to the wrong file.
+
+**THE FIX, AND THE DISTINCTION IT TURNS ON.** `disableConsoleIntercept: true` in
+`frontend/vite.config.ts`. Vitest forwards every console call from the worker to the
+main process over rpc; with interception disabled the rpc is **never made**, so the
+pending call cannot exist.
+
+    going green by removing the CAUSE       disableConsoleIntercept
+                                            the rpc is never made
+
+    going green by removing the REPORTING   dangerouslyIgnoreUnhandledErrors
+                                            silences EVERY unhandled error,
+                                            including real ones, forever
+
+**Only the first is a fix.** The second produces the identical green and converts a
+loud failure into a quiet one — which §11 names as a regression in its own right, and
+which would have left the next genuine unhandled error undetectable. Cost of the fix,
+stated: console output loses its per-test attribution header.
+
+⚠️ **THE SHAPE THIS INSTANCE ADDS, which is why the correction is this long.** Every
+other green-without-evidence entry in §11 describes a check that could not fire, or
+fired into a channel nobody read — things nobody chose. **This was a documented
+instruction to ignore a check that was firing correctly.** It was written down,
+filed where it would be read, read, and followed. A compensating control that works
+is how the defect survives; this is one that was published.
+
+So: when writing guidance that a failure may be disregarded, state the SCOPE of the
+disregard. "Does not block a commit" and "does not block the gate" are different
+permissions, and the second one is not yours to grant.
 
 **Read build reports against the acknowledgement, not just for green gates.** A green build (tsc + vitest + build all passing) can still have drifted from the agreed design — green proves "it works," not "it's what we agreed." The semanticParams legibility drift (a prior cleanup repointing the sentence-engine exclusion at the wrong set) shipped green and was caught only by cross-checking the build-complete report's *wording* against the acknowledged intent, not by any failing test. When reporting a build, state what was built in terms the operator can check against the acknowledgement; when reviewing one, verify intent, not just the gate.
 
