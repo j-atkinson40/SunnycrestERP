@@ -5,6 +5,8 @@ import { OfflineBanner } from "@/components/core/OfflineBanner";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
 import { SpaceProvider } from "@/contexts/space-context";
 import { PeekProvider } from "@/contexts/peek-context";
+import { OpasProvider } from "@/contexts/opas-context";
+import { OpasHost } from "@/components/opas/OpasHost";
 import { Focus } from "@/components/focus/Focus";
 import { ReturnPill } from "@/components/focus/ReturnPill";
 // Phase R-0 — shared-bundle refactor (Runtime-Aware Editor foundation).
@@ -508,6 +510,14 @@ export default function App() {
             so the bar can hide while a Focus is open). */}
         <Focus />
         <ReturnPill />
+        {/* Opas — the sphere, veil and glass panes. Mounted HERE because it must sit
+            inside CommandBarProvider (it consumes useCommandBar to stay mutually
+            exclusive with the bar, via the bar's own exported close()) and inside the
+            Focus context (a Focus open hides the sphere, as it hides the bar).
+            CommandBarProvider is NOT modified. Admin-only via useAuth().isAdmin. */}
+        <OpasProvider>
+          <OpasHost />
+        </OpasProvider>
         <Routes>
           {slug ? renderTenantSlugRoutes() : (
             <>

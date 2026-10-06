@@ -27,6 +27,40 @@ from app.database import SessionLocal
 from app.services.catalog_pane_service import list_variants, variant_detail
 
 
+# ⚠️ THE ONLY THING STOPPING THIS FILE WRITING TO THE WRONG DATABASE, AND IT IS NEW. Asked
+# 2026-10-06 how this file is prevented from running anywhere but a test database, the
+# honest answer was: it is not. `tests/conftest.py` carries NO check on `DATABASE_URL` —
+# the "refuses a non-local DATABASE_URL" note I half-remembered is in `ci.yml`, about
+# `seed_dev.sh`, not about pytest.
+#
+# This matters here specifically because `TestTheAliasGateIsConfirmedOnly` INSERTS. The
+# insert is inside a savepoint that is rolled back, so nothing should outlive it — but
+# "should" is doing the work, and CLAUDE.md §7 is a rule rather than a mechanism. A guard
+# that lives where the writing happens runs whether or not anyone remembers it.
+#
+# ⚠️ DELIBERATELY SCOPED TO THIS FILE. A conftest-level guard would bind all 477 test
+# files at once, and a change that broad is not this slice's to make — it belongs with the
+# fixture-isolation work. Reported rather than widened.
+_ALLOWED_DB_HOSTS = ("localhost", "127.0.0.1", "::1", "")
+
+
+def _refuse_a_non_local_database() -> None:
+    import os
+    from urllib.parse import urlparse
+
+    url = os.environ.get("DATABASE_URL", "")
+    host = (urlparse(url).hostname or "") if url else ""
+    if host not in _ALLOWED_DB_HOSTS:
+        raise RuntimeError(
+            f"refusing to run: DATABASE_URL points at host {host!r}, and this file "
+            f"INSERTS (inside a rolled-back savepoint). Permitted hosts: "
+            f"{_ALLOWED_DB_HOSTS}."
+        )
+
+
+_refuse_a_non_local_database()
+
+
 @pytest.fixture(scope="module")
 def db():
     s = SessionLocal()
@@ -293,3 +327,135 @@ class TestTheAliasGateIsConfirmedOnly:
             assert after == before, "the gate changed the confirmed set"
         finally:
             sp.rollback()
+
+
+# ---------------------------------------------------------------------------
+# The two endpoints refuse anonymous callers
+# ---------------------------------------------------------------------------
+
+class TestBothEndpointsRequireAuthentication:
+    """⚠️ THESE DID NOT EXIST UNTIL ASKED FOR, AND THE COMMIT THEY GUARD PUTS TWO LIVE
+    READ-ONLY ENDPOINTS INTO PRODUCTION. The suite above tests the SERVICE; nothing tested
+    the ROUTE, so `Depends(get_current_user)` was asserted by reading the source. Reading a
+    decorator is not a test: it cannot catch a later refactor that drops it, and canon is
+    explicit that a guard nobody exercises is documentation.
+
+    The catalog is platform data and not secret, but an unauthenticated endpoint is a
+    tenant-boundary hole regardless of what it returns — and `variant_detail` takes the
+    caller's `company_id` for the availability lookup, so an anonymous caller would have to
+    be given somebody's.
+    """
+
+    @pytest.fixture(scope="class")
+    def client(self):
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        return TestClient(app)
+
+    def test_the_list_endpoint_refuses_an_anonymous_caller(self, client):
+        r = client.get("/api/v1/catalog-pane/variants")
+        assert r.status_code in (401, 403), (
+            f"anonymous GET returned {r.status_code}; the endpoint is open"
+        )
+
+    def test_the_detail_endpoint_refuses_an_anonymous_caller(self, client, rows):
+        vid = rows[0]["variant_template_id"]
+        r = client.get(f"/api/v1/catalog-pane/variants/{vid}")
+        assert r.status_code in (401, 403), (
+            f"anonymous GET returned {r.status_code}; the endpoint is open"
+        )
+
+    def test_a_bad_token_is_refused_by_TOKEN_DECODE_not_just_by_host(self, client):
+        """⚠️ THIS NEEDED A `Host` HEADER TO BE A DISCRIMINATING TEST AT ALL.
+
+        Written without one it asserted 401/403 and got **404 Company not found** — TENANT
+        RESOLUTION refused the request before token decode ever ran, because TestClient's
+        default host is `testserver`. Still a refusal, and no data leaked, but it proves
+        the wrong thing: an endpoint whose token check had been deleted outright would ALSO
+        404 on that host, and this test would have passed over the hole.
+
+        Measured, all four paths:
+
+            no header, any host              403 Not authenticated
+            malformed header, any host       403 Not authenticated
+            junk bearer + company host       401 Invalid or expired token   <- this test
+            junk bearer + non-company host   404 Company not found
+        """
+        r = client.get(
+            "/api/v1/catalog-pane/variants",
+            headers={
+                "Authorization": "Bearer not-a-real-token",
+                "Host": "testco.getbridgeable.com",
+            },
+        )
+        assert r.status_code == 401, (
+            f"a junk bearer token reaching token decode returned {r.status_code}, not 401"
+        )
+
+    def test_the_unversioned_mount_is_guarded_too(self, client):
+        """⚠️ v1_router IS INCLUDED TWICE in app.main, so these routes also answer at
+        /api/catalog-pane/*. A guard proven on one prefix says nothing about the other, and
+        the duplicate mount is pre-existing rather than mine."""
+        r = client.get("/api/catalog-pane/variants")
+        assert r.status_code in (401, 403, 404), (
+            f"the unversioned mount returned {r.status_code}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# The resolve endpoint — a candidate SET, never a choice
+# ---------------------------------------------------------------------------
+
+class TestResolveReturnsASetNotAChoice:
+    """⚠️ A THIRD ENDPOINT WHERE PART 1 SPECIFIED TWO, and the reason is that the resolver
+    is server-side. Routing a product phrase needs `product_name_resolver`, which strips
+    trademark marks before NFKD, applies a suffix list, parses sizes and reads
+    `platform_product_aliases WHERE is_confirmed IS TRUE`. Re-implementing that in
+    TypeScript would be a second copy of the same rules, free to drift from the one the
+    capture engine resolves through.
+    """
+
+    def _resolve(self, db, phrase):
+        from app.services.product_name_resolver import build_index, resolve
+
+        return resolve(build_index(db), phrase)
+
+    def test_an_exact_name_resolves_to_one_candidate(self, db):
+        r = self._resolve(db, "Wilbert Bronze Burial Vault")
+        assert r.resolved is True
+        assert len(r.candidates) == 1
+
+    def test_an_ambiguous_phrase_returns_EVERY_candidate_and_a_discriminator(self, db):
+        """⚠️ THE BRANCH THE RULING CHANGED. `variant_template_id` is None here BY DESIGN;
+        the overlay renders a numbered pick from the set. A resolver that picked would
+        destroy the only information that tells a director why they are being asked."""
+        r = self._resolve(db, "Bronze Triune")
+        assert r.resolved is False
+        assert len(r.candidates) > 1
+        assert r.discriminators, "an ambiguous set with nothing to narrow it is unanswerable"
+
+    def test_an_unknown_phrase_returns_an_empty_set_not_a_guess(self, db):
+        r = self._resolve(db, "nonsense zzz not a product")
+        assert r.candidates == ()
+        assert r.resolved is False
+
+    def test_a_confirmed_alias_resolves(self, db):
+        """⚠️ Aliases are the only route to some variants, which is why `build_index` reads
+        the alias table rather than comprehending over variants."""
+        from sqlalchemy import text
+
+        alias = db.execute(text(
+            "SELECT alias_text FROM platform_product_aliases WHERE is_confirmed IS TRUE LIMIT 1"
+        )).scalar()
+        assert alias is not None, "no confirmed alias exists; this cannot discriminate"
+        assert self._resolve(db, alias).candidates, f"{alias!r} resolved to nothing"
+
+    def test_the_endpoint_refuses_an_anonymous_caller(self):
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        r = TestClient(app).post("/api/v1/catalog-pane/resolve", json={"phrase": "x"})
+        assert r.status_code in (401, 403), f"anonymous POST returned {r.status_code}"
