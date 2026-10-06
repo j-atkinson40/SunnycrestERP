@@ -2,6 +2,32 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⏸️ PARKED — WIDENING CI BEYOND `ci_gate.txt` (2026-10-06)
+
+- **2026-10-06 — PARKED by James.** Widening CI beyond `tests/ci_gate.txt`. Origin:
+  James's dispatch of 2026-10-06, following the CI re-baseline in `32f8adde`.
+- **2026-10-06 — The measurement being parked.** CI runs ONE pytest invocation,
+  `pytest $(grep -vE '^\s*#|^\s*$' tests/ci_gate.txt | tr '\n' ' ')` at
+  `.github/workflows/ci.yml:160` — **177 of 461 backend test files (38%)**. The other
+  284 are not run by CI at all, so they are UNMEASURED, not green.
+- **2026-10-06 — 41 known failures sit OUTSIDE the manifest.** CLAUDE.md §11's
+  entry *"a manifest maintained by adding what passes converges on covering only what
+  passes"* records the measurement: of the failures in a full-tree run, **zero** were
+  inside the gate. That is a property of how membership is decided, not luck.
+- **2026-10-06 — TRIGGER TO REOPEN, either of:** before a second licensee onboards,
+  OR when work begins in an area the unmeasured files cover.
+- **2026-10-06 — Until then, every gate report states its denominator.** "Gate green"
+  is not a sentence this repo may use unqualified; §11 *"a gate reports its
+  denominator"* already binds this and the park does not relax it.
+- **2026-10-06 — ⚠️ WIDENING IS NOT A ONE-STEP MOVE when it reopens.** It surfaces
+  every known failure at once into a channel that may be red for something else.
+  §11's ordering applies: make the channel trustworthy, THEN widen, THEN account for
+  each surfaced item individually with one of the three dispositions (fixed /
+  quarantined-with-unskip-condition / deleted). "Known and ignored" is not one.
+- **2026-10-06 — Why this is parked rather than dropped.** The park is a decision with
+  a trigger, not a backlog item. An unmeasured population that nobody has decided
+  about is the state 89 commits went through; this entry is what makes it a decision.
+
 ## 📏 BACKEND GATE BASELINE — THE FIRST READING AGAINST A CORRECTLY-SEEDED DB (2026-09-23)
 
 ⚠️ **THIS SUPERSEDES THE 2026-09-22 BASELINE BELOW, WHICH IS NOT COMPARABLE.** That
