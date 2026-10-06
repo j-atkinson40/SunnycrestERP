@@ -39,11 +39,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+from app.services.capture.conditions import (
+    Always,
+    AnyAnswered,
+    Applicability,
+    AvailabilityOffered,
+    Condition,
+    ConditionContext,
+    EqualsValue,
+    Never,
+    NotEqualsValue,
+    Verdict,
+    topological_order,
+)
+
 from app.services.personalization.availability import (
     AvailabilityState,
     read_availability,
 )
-from app.services.personalization.questions import QUESTIONS
+from app.services.personalization.questions import ANSWER_NONE, QUESTIONS
 
 #: The one field that may not be switched off. See the module docstring.
 VAULT_FIELD_ID = "vault"
@@ -71,49 +85,48 @@ VAULT_FIELD_ID = "vault"
 class FieldDefinition:
     """One thing an order is asked for.
 
-    `required` is about whether an ANSWER is needed, never about whether a value
-    is non-empty — see the module docstring.
+    TWO CONDITION SLOTS, answering different questions:
+
+      applies_when    is this field asked AT ALL?
+      required_when   is leaving it unanswered a GAP?
+
+    ⚠️ BOTH ARE NEEDED AND COLLAPSING THEM LOSES A CASE. `date_of_birth` is always
+    SHOWN and becomes a gap only once personalization is chosen, so its
+    `applies_when` is `Always()` and its `required_when` is conditional.
+    `nameplate_date_format` is the other way round. One slot cannot express both.
+
+    `required_when=Always()` replaces the old `required=True`; `Never()` means
+    PROMPTED-BUT-NEVER-REQUIRED, which is what `eta` is.
+
+    Neither slot is about whether a value is non-empty — see the module docstring.
+    `is_answered` decides what answered means, and `"none"` is an answer.
     """
 
     field_id: str
     label: str
-    required: bool = True
+    #: Governs membership in the resolved schema.
+    applies_when: Condition = Always()
+    #: Governs whether an unanswered APPLICABLE field is reported as missing.
+    required_when: Condition = Always()
     #: False only for the vault. Everything else a tenant may turn off.
+    #:
+    #: ⚠️ THE TENANT SWITCH IS EVALUATED BEFORE ANY CONDITION, so a disabled field
+    #: is NOT_APPLICABLE and never INDETERMINATE. Otherwise the indeterminate set
+    #: would accumulate fields nobody is waiting on an answer for.
     switchable: bool = True
-    #: Set for the three personalization questions. When present the field
-    #: applies only if the named vault offers that question.
-    #:
-    #: ⚠️ THIS IS ONE CONDITIONAL SHAPE, NOT THE CONDITIONAL MECHANISM, and a
-    #: SECOND SHAPE IS ALREADY KNOWN. Recorded here so Piece 4's generalisation
-    #: is derived from two cases rather than from the only one anyone had looked
-    #: at — which is the failure this arc has been cataloguing.
-    #:
-    #:   1. PERSONALIZATION (built, this field). Depends on an EXTERNAL
-    #:      AVAILABILITY LOOKUP: `read_availability(personalization_config,
-    #:      vault_product_id, question_id)` reads the licensee's config for the
-    #:      named vault. The condition's input is outside the capture payload,
-    #:      and resolving it needs a product id the payload does not carry.
-    #:
-    #:   2. `service_location_other` (NOT BUILT — do not add it as a plain
-    #:      field). Applies only when `service_location == "other"`. Depends on
-    #:      ANOTHER FIELD'S VALUE IN THE SAME TEMPLATE. No external lookup, no
-    #:      product id, and resolvable from the extracted values alone — which
-    #:      `resolve_schema` never sees, because it resolves the schema BEFORE
-    #:      `evaluate` compares anything against it.
-    #:
-    #: ⚠️ That ordering is the real obstacle, and it is why shape 2 is not a
-    #: small addition. Shape 1 is answerable from configuration at schema-resolve
-    #: time; shape 2 is answerable only from the answers, so a mechanism covering
-    #: both cannot resolve applicability once, up front, the way this one does.
-    #:
-    #: A third shape — tenant setting, user role, time of day, another object's
-    #: state — should cost one declaration, and the proposal must say what it
-    #: would cost rather than assume it is free.
-    question_id: str | None = None
 
     @property
     def is_conditional(self) -> bool:
-        return self.question_id is not None
+        """⚠️ MEANS "applicability is conditional" — what every existing caller used
+        it for when it meant `question_id is not None`."""
+        return not isinstance(self.applies_when, Always)
+
+    @property
+    def required(self) -> bool:
+        """⚠️ UNCONDITIONALLY required. A conditionally-required field reads False
+        here; its live verdict is stamped on `ResolvedField.required_verdict` by
+        `resolve_schema`, which is what display callers should read."""
+        return isinstance(self.required_when, Always)
 
 
 def _personalization_fields() -> tuple[FieldDefinition, ...]:
@@ -125,9 +138,9 @@ def _personalization_fields() -> tuple[FieldDefinition, ...]:
         FieldDefinition(
             field_id=q.question_id,
             label=q.display_label,
-            required=True,
+            applies_when=AvailabilityOffered(q.question_id),
+            required_when=Always(),
             switchable=True,
-            question_id=q.question_id,
         )
         for q in QUESTIONS
     )
@@ -160,28 +173,58 @@ NAMEPLATE_DATE_FORMATS: tuple[str, ...] = ("written", "numeric", "years")
 #: If you cannot, the column is nullable and the rows stay NULL (CLAUDE.md §5).
 NAMEPLATE_DATE_FORMAT_DEFAULT = "written"
 
-#: ⚠️ CONDITIONS THE ENGINE CANNOT YET EXPRESS. Recorded so Piece 4 has an
-#: inventory rather than a memory, and so nobody implements one of them ad hoc.
+#: ⚠️ THE VOCABULARY WAS A COMMENT UNTIL 2026-10-06, AND TWO CONDITIONS COMPARE
+#: AGAINST IT. It lived only at `app/models/sales_order.py:123` as
+#: `# 'church', 'funeral_home', 'graveside', 'other'`, on a `String(20)` with no
+#: CHECK constraint. `service_location_other` applies when the answer is `other`
+#: and `eta` applies when it is anything but `graveside`, so a typo in either
+#: literal — `"gravesite"`, `"Other"` — makes that condition SILENTLY NEVER FIRE,
+#: which is indistinguishable from an answer of no.
 #:
-#: Every entry is VALUE-DEPENDENT: the condition reads another field's ANSWER,
-#: which `resolve_schema` never sees — it resolves applicability ONCE, UP FRONT,
-#: before `evaluate` compares anything against the answers. That ordering is what
-#: Piece 4 has to break honestly rather than work around.
+#: `test_piece4_conditionals.py` asserts every literal any condition compares
+#: against is a member of this tuple, so the typo fails loudly instead. A database
+#: CHECK is a separate decision and is not taken here.
+SERVICE_LOCATIONS: tuple[str, ...] = ("church", "funeral_home", "graveside", "other")
+SERVICE_LOCATION_OTHER = "other"
+SERVICE_LOCATION_GRAVESIDE = "graveside"
+
+#: ⚠️ DERIVED FROM `QUESTIONS`, NOT TYPED OUT — the same argument
+#: `_personalization_fields` makes. Five of the eight conditional fields read this
+#: tuple, so a hand-written copy would be a second list able to drift from the first.
+PERSONALIZATION_FIELD_IDS: tuple[str, ...] = tuple(q.question_id for q in QUESTIONS)
+
+#: "Any personalization is chosen", as one object the three dependents share.
 #:
-#:   date_of_birth          required when ANY personalization is chosen
-#:   date_of_death          required when ANY personalization is chosen
-#:   nameplate_date_format  applies  when ANY personalization is chosen
-#:   service_location_other applies  when service_location == "other"
-#:   eta                    applies  when service_location != "graveside"
+#: ⚠️ `ignoring={ANSWER_NONE}` IS THE WHOLE PREDICATE. `"none"` is an ANSWER — the
+#: family declined — so answering "none" to all three must make this FALSE and must
+#: NOT demand the dates. A truthiness test would read "none" as a choice.
+ANY_PERSONALIZATION_CHOSEN = AnyAnswered(
+    PERSONALIZATION_FIELD_IDS, ignoring=frozenset({ANSWER_NONE})
+)
+
+#: ⚠️ THE EIGHT CONDITIONAL FIELDS, IN FOUR GROUPS. Built 2026-10-06; this comment
+#: previously said these were conditions "the engine cannot yet express".
 #:
-#: ⚠️ FIVE OF THE SEVEN HANG OFF ONE CHOICE — personalization — so VALUE-DEPENDENCE
-#: IS THE LOAD-BEARING SHAPE and the availability lookup the three personalization
-#: questions use is the EXCEPTION. A mechanism generalised from that lookup alone
-#: would have served one case and missed five, which is the single-instance
-#: generalisation this arc has spent three days catching.
+#:   vault availability (lookup)        the three personalization questions
+#:   any personalization chosen         date_of_birth, date_of_death,
+#:                                      nameplate_date_format
+#:   service_location == "other"        service_location_other
+#:   service_location != "graveside"    eta
 #:
-#: Deliberately prose rather than a data structure: a declaration format invented
-#: before the mechanism would fix the shape of the thing it is meant to describe.
+#: ⚠️ THE COUNT WAS WRONG IN TWO DOCUMENTS AND IN THIS COMMENT, AND THE CORRECTION
+#: IS KEPT BECAUSE THE SHAPE RECURS. This read *"FIVE OF THE SEVEN HANG OFF ONE
+#: CHOICE — personalization"* over a list of five value-dependent entries. Of those
+#: five, THREE hang off personalization and two hang off `service_location`; adding
+#: the three availability-gated questions gives EIGHT conditional fields, not seven.
+#: Two counts and two groupings were in play at once because the count travelled
+#: separately from the list — see CLAUDE.md §11, *figures are never inherited*.
+#:
+#: FIVE OF THE EIGHT ARE VALUE-DEPENDENT and three use the availability lookup, so
+#: value-dependence is the load-bearing shape and the lookup is the exception. A
+#: mechanism generalised from the lookup alone would have served three cases and
+#: missed five.
+#:
+#: The mechanism is `conditions.py`; the walk is in `resolve_schema` below.
 
 #: What every tenant is asked for before it configures anything.
 PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
@@ -211,7 +254,21 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # answered as a field.
     FieldDefinition("cemetery", "Cemetery"),
     FieldDefinition("burial_date", "Burial date"),
-    FieldDefinition("burial_time", "Burial time"),
+    # ⚠️ RENAMED FROM `burial_time` ON 2026-10-06 BY RULING, AND THE RENAME IS THE
+    # POINT RATHER THAN A TIDY-UP. An order carries TWO time facts — a SERVICE time
+    # and an ETA — and `burial_time` was the template's wrong name for the first.
+    #
+    # The defect it caused is on record: `create_draft_order_from_extraction` wrote
+    # `service_time = extraction.burial_time`, and on 2026-10-05 I read that
+    # assignment as evidence the two were the same fact and ruled `service_time`
+    # "already captured". The prototype shows them as different — service at 10:00,
+    # cemetery at 11:30 — so the writer was CONFLATING, and a defect was read as the
+    # specification.
+    #
+    # ⚠️ RENAMED RATHER THAN ADDED ALONGSIDE so no third name exists. Two names for
+    # two facts; a `burial_time` left in place would be a third for someone to
+    # conflate again.
+    FieldDefinition("service_time", "Service time"),
     FieldDefinition("grave_location", "Grave section / lot / space"),
     # ⚠️ ADDED 2026-10-05, `required=True` BY RULING, AND THE NEXT READER WILL
     # CHECK THE COLUMN AND CONCLUDE THE OPPOSITE — so this note is here rather
@@ -257,6 +314,36 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # the UI, so reordering existing entries is a visible change this commit is
     # not making.
     FieldDefinition("service_location", "Service location"),
+
+    # ⚠️ THE SECOND VALUE-CONDITION SHAPE, AND THE ONE THAT KILLED
+    # resolve-then-compare. It depends on ANOTHER FIELD'S ANSWER in the same
+    # template, which the old `resolve_schema` never saw because it resolved
+    # applicability before `evaluate` compared anything.
+    #
+    # Its destination already existed: `sales_orders.service_location_other`,
+    # String(100) nullable. The column was there and nothing captured it.
+    FieldDefinition(
+        "service_location_other",
+        "Service location (other)",
+        applies_when=EqualsValue("service_location", SERVICE_LOCATION_OTHER),
+        required_when=Always(),
+    ),
+
+    # ⚠️ PROMPTED, NEVER REQUIRED — the first field of that kind, and the reason
+    # `required_when` is a slot rather than a boolean. It is asked for whenever the
+    # service is not at the graveside and may go unanswered without blocking
+    # approval, so it lands in `unanswered_optional`, which `is_complete` ignores.
+    #
+    # ⚠️ ITS DESTINATION ALSO ALREADY EXISTED, AND THE COLUMN ALREADY STATED THE
+    # CONDITION: `sales_orders.eta`, Time nullable, commented "Estimated cemetery
+    # arrival (procession ETA); null for graveside". The rule was written down in
+    # the model and never expressed anywhere that could act on it.
+    FieldDefinition(
+        "eta",
+        "Cemetery arrival (ETA)",
+        applies_when=NotEqualsValue("service_location", SERVICE_LOCATION_GRAVESIDE),
+        required_when=Never(),
+    ),
     # ⚠️ ADDED 2026-10-05. The decedent's dates, as TWO fields composed into one
     # `Dates` row — see the row layer in `rows.py`. Two fields rather than one
     # because they are two facts with two answers; the single row is a display
@@ -270,13 +357,22 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # broader condition: any personalization needs both dates, and with none,
     # neither is needed.
     #
-    # ⚠️ RECORDED, NOT IMPLEMENTED — a condition on another field's VALUE, which
-    # the engine cannot express. See the `_PIECE_4` inventory above.
-    # `required=False` until then: requiring them today would report them missing
-    # on every non-personalized order, a different false claim from the one being
-    # avoided.
-    FieldDefinition("date_of_birth", "Date of birth", required=False),
-    FieldDefinition("date_of_death", "Date of death", required=False),
+    # ⚠️ IMPLEMENTED 2026-10-06. This block read "RECORDED, NOT IMPLEMENTED — a
+    # condition on another field's VALUE, which the engine cannot express", and
+    # pointed at a `_PIECE_4` inventory that no longer exists under that name.
+    #
+    # ⚠️ ALWAYS SHOWN, CONDITIONALLY REQUIRED — which is why there are two slots.
+    # These were `required=False` with a comment saying the condition was recorded
+    # and not implemented, because requiring them unconditionally would have
+    # reported them missing on every non-personalized order.
+    FieldDefinition(
+        "date_of_birth", "Date of birth",
+        required_when=ANY_PERSONALIZATION_CHOSEN,
+    ),
+    FieldDefinition(
+        "date_of_death", "Date of death",
+        required_when=ANY_PERSONALIZATION_CHOSEN,
+    ),
     # ⚠️ A PRODUCTION INSTRUCTION, NOT A DISPLAY PREFERENCE. It is stamped on the
     # nameplate and travels with the order, so it belongs to the object rather
     # than to whoever happens to be looking at it.
@@ -285,7 +381,14 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # and `NAMEPLATE_DATE_FORMAT_DEFAULT` above. ⚠️ Condition recorded, not
     # implemented: applies when any personalization is chosen, the same
     # value-dependent shape as the dates.
-    FieldDefinition("nameplate_date_format", "Date format", required=False),
+    # ⚠️ THE OTHER WAY ROUND FROM THE DATES: conditionally SHOWN, then required.
+    # Asking for a nameplate date format on an order with no personalization would
+    # be asking about a nameplate nobody is making.
+    FieldDefinition(
+        "nameplate_date_format", "Date format",
+        applies_when=ANY_PERSONALIZATION_CHOSEN,
+        required_when=Always(),
+    ),
     # ⚠️ A PRODUCT REFERENCE, NOT FREE TEXT. The catalog sells 5 `equipment`
     # products (measured 2026-10-05), the scheduling board renders equipment
     # chips, and a driver's kit is built from it — so the answer resolves to a
@@ -295,7 +398,7 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # an equipment selection LANDS on the order waits on the graveside-services
     # model, which is deliberately unbuilt. Capture it now; the mapping follows
     # services. Without this note the field reads as finished.
-    FieldDefinition("cemetery_equipment", "Cemetery equipment", required=False),
+    FieldDefinition("cemetery_equipment", "Cemetery equipment", required_when=Never()),
 ) + _personalization_fields()
 
 
@@ -385,10 +488,20 @@ class ResolvedField:
     """A field that this tenant asks for on this vault."""
 
     definition: FieldDefinition
-    #: Permitted answers when the field is a conditional question and the vault
+    #: Permitted answers when the field is availability-gated and the vault
     #: configures it. Empty for plain fields and for NOT_CONFIGURED questions,
     #: where any answer the question defines is acceptable.
     permitted_answers: tuple[str, ...] = ()
+    #: ⚠️ THE LIVE VERDICT, STAMPED BY THE WALK. Added 2026-10-06 so callers deciding
+    #: display do not re-derive requiredness from the definition and lose the
+    #: conditional cases — `rows.py` used `definition.required`, which reads False for
+    #: a conditionally-required field, so the Dates row would never have shown NEEDED
+    #: once the dates became conditional.
+    #:
+    #: Stamped rather than passed as a new argument because `resolve_surface` has 18
+    #: call sites and an OPTIONAL argument with a fallback derivation is how the old
+    #: behaviour would have survived unnoticed.
+    required_verdict: Verdict = Verdict.TRUE
 
     @property
     def field_id(self) -> str:
@@ -396,7 +509,10 @@ class ResolvedField:
 
     @property
     def required(self) -> bool:
-        return self.definition.required
+        """⚠️ NOW THE LIVE VERDICT, NOT THE DEFINITION'S STATIC FLAG. INDETERMINATE
+        reads False: an unknown requirement is not a gap, so it must not render as
+        NEEDED or block approval."""
+        return self.required_verdict is Verdict.TRUE
 
 
 def resolve_schema(
@@ -405,48 +521,156 @@ def resolve_schema(
     personalization_config: dict | None,
     tenant_config: TenantCaptureConfig | None = None,
     platform_fields: tuple[FieldDefinition, ...] = PLATFORM_DEFAULT_FIELDS,
+    answers: dict[str, object] | None = None,
 ) -> tuple[ResolvedField, ...]:
-    """The fields that apply, in platform order.
+    """The fields that apply, in platform order, with each one's live requiredness.
 
-    A field is absent from the result — not present-and-unsatisfied — when the
-    tenant switched it off, or when it is a personalization question the named
-    vault does not offer. Absent means never asked and never missing.
+    ⚠️ RESOLVE-THEN-COMPARE IS GONE, AND THAT IS THE WHOLE OF PIECE 4. This used to
+    resolve applicability ONCE, UP FRONT, from configuration alone — so a condition
+    reading another field's ANSWER could not be expressed, because the answers were
+    not here yet. Five of the eight conditional fields are value-dependent.
 
-    ⚠️ `vault_product_id=None` is the before-the-vault-is-named case, not an
-    error. Applicability of the conditional questions is UNKNOWN until a vault
-    is named, and unknown is not shown: the capture list holds what is answered
-    and what is still needed, and nothing else (ruled 2026-09-22, `The capture
-    list shows only the questions that apply`). So the conditional questions are
-    omitted until there is a vault to resolve them against.
+    ⚠️ A DAG WALK, NOT TWO PASSES, because conditions CHAIN: availability decides
+    whether the three personalization questions apply, their answers decide whether
+    the dates are required. Two passes would cover exactly that depth and fail on the
+    next one, which is the single-instance generalisation this arc kept catching.
+    Edges come from each node's own `depends_on`, so the graph is derived from the
+    template rather than from anyone's memory of which field reads which.
+
+    ⚠️ A CYCLE RAISES. See `CyclicConditions` — tie-breaking silently would leave the
+    losing field INDETERMINATE forever with nothing naming the cause.
+
+    THE ORDER, and the first step is load-bearing:
+
+      1. tenant switched it off  -> DOES_NOT_APPLY, and NO condition is evaluated
+      2. applies_when            -> APPLIES / DOES_NOT_APPLY / INDETERMINATE
+      3. required_when           -> stamped on the ResolvedField
+
+    ⚠️ STEP 1 BEFORE STEP 2 IS A RULING, not an optimisation. A disabled field must
+    be NOT_APPLICABLE and never INDETERMINATE, or the indeterminate set accumulates
+    fields nobody is waiting on an answer for.
+
+    ⚠️ `answers=None` MEANS NO ANSWERS, NOT "SKIP CONDITIONS". Every value condition
+    then reads INDETERMINATE, which is correct: nothing is known. `vault_product_id`
+    is still passed in by the caller rather than resolved here — the engine stays pure
+    and `resolve_and_evaluate` remains the one impure seam.
     """
     config = tenant_config or TenantCaptureConfig()
-    resolved: list[ResolvedField] = []
+    given = answers or {}
 
-    for definition in platform_fields:
-        if definition.switchable and definition.field_id in config.disabled_field_ids:
-            continue
+    switched_off = {
+        d.field_id for d in platform_fields
+        if d.switchable and d.field_id in config.disabled_field_ids
+    }
 
-        if not definition.is_conditional:
-            resolved.append(ResolvedField(definition))
-            continue
-
-        if vault_product_id is None:
-            # Applicability unknown — not shown, not counted. See docstring.
-            continue
-
-        availability = read_availability(
-            personalization_config, vault_product_id, definition.question_id
+    by_id = {d.field_id: d for d in platform_fields}
+    edges = {
+        d.field_id: tuple(
+            dict.fromkeys(d.applies_when.depends_on + d.required_when.depends_on)
         )
-        if availability.state is AvailabilityState.NOT_OFFERED:
-            continue
-        # OFFERED and NOT_CONFIGURED both apply. NOT_CONFIGURED carries no
-        # permitted set, which is how "ask, but nothing constrains the answer
-        # yet" is expressed.
-        resolved.append(
-            ResolvedField(definition, tuple(availability.permitted_answers))
-        )
+        for d in platform_fields
+    }
+    order = topological_order(tuple(by_id), edges)
 
-    return tuple(resolved)
+    decided: dict[str, Applicability] = {}
+    verdicts: dict[str, Verdict] = {}
+    for field_id in order:
+        definition = by_id[field_id]
+        if field_id in switched_off:
+            decided[field_id] = Applicability.DOES_NOT_APPLY
+            verdicts[field_id] = Verdict.FALSE
+            continue
+        ctx = ConditionContext(
+            answers=given,
+            decided=decided,
+            vault_product_id=vault_product_id,
+            personalization_config=personalization_config,
+        )
+        applies = definition.applies_when.evaluate(ctx)
+        decided[field_id] = {
+            Verdict.TRUE: Applicability.APPLIES,
+            Verdict.FALSE: Applicability.DOES_NOT_APPLY,
+            Verdict.INDETERMINATE: Applicability.INDETERMINATE,
+        }[applies]
+        verdicts[field_id] = definition.required_when.evaluate(ctx)
+
+    out: list[ResolvedField] = []
+    for definition in platform_fields:                      # platform order, restored
+        if decided[definition.field_id] is not Applicability.APPLIES:
+            continue
+        out.append(
+            ResolvedField(
+                definition,
+                _permitted_answers(definition, vault_product_id, personalization_config),
+                verdicts[definition.field_id],
+            )
+        )
+    return tuple(out)
+
+
+def applicability_map(
+    *,
+    vault_product_id: str | None,
+    personalization_config: dict | None,
+    tenant_config: TenantCaptureConfig | None = None,
+    platform_fields: tuple[FieldDefinition, ...] = PLATFORM_DEFAULT_FIELDS,
+    answers: dict[str, object] | None = None,
+) -> dict[str, Applicability]:
+    """Every field's applicability, including the ones `resolve_schema` drops.
+
+    ⚠️ EXISTS BECAUSE `resolve_schema` RETURNS ONLY WHAT APPLIES, so a caller cannot
+    tell DOES_NOT_APPLY from INDETERMINATE by its absence — which is precisely the
+    distinction the fifth `CaptureState` set is for. `evaluate` needs both.
+    """
+    config = tenant_config or TenantCaptureConfig()
+    given = answers or {}
+    by_id = {d.field_id: d for d in platform_fields}
+    edges = {
+        d.field_id: tuple(
+            dict.fromkeys(d.applies_when.depends_on + d.required_when.depends_on)
+        )
+        for d in platform_fields
+    }
+    decided: dict[str, Applicability] = {}
+    for field_id in topological_order(tuple(by_id), edges):
+        definition = by_id[field_id]
+        if definition.switchable and field_id in config.disabled_field_ids:
+            decided[field_id] = Applicability.DOES_NOT_APPLY
+            continue
+        applies = definition.applies_when.evaluate(
+            ConditionContext(
+                answers=given,
+                decided=decided,
+                vault_product_id=vault_product_id,
+                personalization_config=personalization_config,
+            )
+        )
+        decided[field_id] = {
+            Verdict.TRUE: Applicability.APPLIES,
+            Verdict.FALSE: Applicability.DOES_NOT_APPLY,
+            Verdict.INDETERMINATE: Applicability.INDETERMINATE,
+        }[applies]
+    return decided
+
+
+def _permitted_answers(
+    definition: FieldDefinition,
+    vault_product_id: str | None,
+    personalization_config: dict | None,
+) -> tuple[str, ...]:
+    """The vault's permitted answers for an availability-gated question.
+
+    Empty for everything else, and empty for NOT_CONFIGURED — which is how "ask, but
+    nothing constrains the answer yet" stays distinguishable from a constrained set.
+    """
+    if not isinstance(definition.applies_when, AvailabilityOffered):
+        return ()
+    if vault_product_id is None:
+        return ()
+    availability = read_availability(
+        personalization_config, vault_product_id, definition.applies_when.question_id
+    )
+    return tuple(availability.permitted_answers)
 
 
 def without_field(
@@ -458,5 +682,5 @@ def without_field(
     dataclass it copies.
     """
     return tuple(
-        replace(f, required=False) if f.field_id == field_id else f for f in fields
+        replace(f, required_when=Never()) if f.field_id == field_id else f for f in fields
     )

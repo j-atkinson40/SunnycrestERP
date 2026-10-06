@@ -38,7 +38,18 @@ FULL_RESULT = {
     "vault_size": "Standard",
     "cemetery_name": "St Mary's",
     "burial_date": "2026-10-09",
-    "burial_time": "14:00",
+    "service_time": "14:00",
+    # ⚠️ ADDED AT PIECE 4. `service_location` is now extractable (r199 gave the
+    # extraction a column and the prompt asks), and TWO conditional fields read it, so
+    # a "full result" that omitted it would leave both of them indeterminate and this
+    # fixture would no longer describe a complete call.
+    #
+    # `church` rather than `graveside` DELIBERATELY: it is the value under which `eta`
+    # APPLIES, so the fixture exercises the condition firing rather than its negation.
+    # A fixture pinned to `graveside` would make `eta` inapplicable and the
+    # never-required path would never be tested here at all.
+    "service_location": "church",
+    "eta": "15:30",
     "grave_location": "Section C, Lot 14, Space 2",
     # Keys the schema does not know about. Ignored rather than rejected.
     "special_requests": "veteran flag holder",
@@ -61,7 +72,18 @@ def _template():
 #:
 #: Named here rather than repeated as a literal so the next reader finds one fact
 #: with one reason, and so a second such field has somewhere to join.
-UNEXTRACTABLE_REQUIRED = {"service_location"}
+# ⚠️ EMPTY SINCE r199 (2026-10-06), AND THE EMPTYING IS THE FINDING. The comment
+# above described `service_location` as unextractable because "the managed prompt does
+# not ask, `ringcentral_call_extractions` has no column". Both were true and both were
+# worse than they looked: TWO conditional fields read `service_location`
+# (`service_location_other` on `== "other"`, `eta` on `!= "graveside"`), so a field
+# nobody could answer was the dependency of two fields that could therefore never
+# apply. r199 added the column and the prompt now asks.
+#
+# ⚠️ KEPT AS AN EMPTY SET RATHER THAN DELETED, so a second such field has somewhere to
+# join and so `test_the_only_unmappable_unconditional_field_is_the_named_one` keeps
+# asserting the shape rather than being removed along with its subject.
+UNEXTRACTABLE_REQUIRED: set[str] = set()
 
 #: Unconditional, unmapped by the adapter, and NOT required — so they never
 #: appear in `missing` and their absence is invisible in the missing set.
@@ -71,8 +93,17 @@ UNEXTRACTABLE_REQUIRED = {"service_location"}
 #: would make the suite assert that optional unmapped fields show up as missing,
 #: which is the opposite of what optional means. Added 2026-10-05 with the three
 #: new fields; nothing extracts dates or equipment from a call yet.
-UNEXTRACTABLE_OPTIONAL = {"date_of_birth", "date_of_death", "cemetery_equipment",
-                          "nameplate_date_format"}
+# ⚠️ `nameplate_date_format` LEFT THIS SET AT PIECE 4, and not because anything can
+# extract it. It became CONDITIONALLY APPLICABLE (`applies_when=
+# ANY_PERSONALIZATION_CHOSEN`), so it is no longer an unconditional field at all and
+# the two `_unconditional_ids` helpers below stop selecting it. It is still
+# unextractable; it is simply no longer in this population.
+#
+# ⚠️ `service_location` ALSO LEFT, and for the opposite reason: r199 gave the
+# extraction a column for it, so the call path can now answer it. It had been
+# unextractable since 2026-10-05 — which meant `eta` and `service_location_other`,
+# whose conditions both read it, could never have applied.
+UNEXTRACTABLE_OPTIONAL = {"date_of_birth", "date_of_death", "cemetery_equipment"}
 
 UNEXTRACTABLE = UNEXTRACTABLE_REQUIRED | UNEXTRACTABLE_OPTIONAL
 
@@ -86,6 +117,21 @@ def _extractable_unconditional_ids(template):
     return _unconditional_ids(template) - UNEXTRACTABLE
 
 
+def _availability_gated_ids(template):
+    """⚠️ NARROWER THAN `is_conditional` SINCE PIECE 4. This file's claims are about
+    the fields that need a VAULT — omitted until availability can be read. `eta` and
+    `service_location_other` are also conditional but depend on `service_location`'s
+    ANSWER, so they resolve without a vault and are legitimately answerable here.
+    Using the broad set would make this file assert that no conditional field is ever
+    answered from a call, which is false and is not what it is pinning."""
+    from app.services.capture.conditions import AvailabilityOffered
+
+    return {
+        f.field_id for f in template
+        if isinstance(f.applies_when, AvailabilityOffered)
+    }
+
+
 def _conditional_ids(template):
     return {f.field_id for f in template if f.is_conditional}
 
@@ -96,8 +142,14 @@ class TestTheKeyMapping:
         both missing and misspelled, which is the pair of mistakes most likely to
         occur together during a rename."""
         template = _template()
-        assert (set(_captured_from_result(FULL_RESULT))
-                == _extractable_unconditional_ids(template))
+        # ⚠️ THE MAP NOW SUPPLIES TWO CONDITIONAL FIELDS, named rather than waved at.
+        # `_captured_from_result` gained `eta` and `service_location_other` at Piece 4,
+        # and both are conditional, so "the map covers exactly the unconditional
+        # fields" stopped being true. The exact extra set is asserted so a third key
+        # appearing is a failure rather than a silent widening.
+        mapped = set(_captured_from_result(FULL_RESULT))
+        assert mapped - _unconditional_ids(_template()) == {"eta", "service_location_other"}
+        assert mapped >= _unconditional_ids(_template()) - UNEXTRACTABLE
 
     def test_the_only_unmappable_unconditional_field_is_the_named_one(self):
         """⚠️ THE GROWTH, ASSERTED IN BOTH DIRECTIONS. The adapter covers every
@@ -123,7 +175,7 @@ class TestTheKeyMapping:
         missing set and the row disagree."""
         got = _captured_from_result(FULL_RESULT)
         assert got["burial_date"] == date(2026, 10, 9)
-        assert got["burial_time"] == time(14, 0)
+        assert got["service_time"] == time(14, 0)
 
     def test_an_unparseable_date_is_unanswered_rather_than_answered(self):
         got = _captured_from_result({**FULL_RESULT, "burial_date": "sometime next week"})
@@ -144,11 +196,20 @@ class TestTheServerComputesTheMissingSet:
             vault_product_id=None,
             platform_fields=_template(),
         )
+        # ⚠️ NOW EMPTY, AND THE TEST THAT NOTICED IS THE ONE BELOW. r199 gave the
+        # extraction a `service_location` column and the prompt now asks for it, so the
+        # last unextractable REQUIRED field became extractable. The set-equality form
+        # is kept rather than deleted: it still pins the exact remainder, and a new
+        # unfillable required field would fail here immediately.
         assert set(state.missing) == UNEXTRACTABLE_REQUIRED
-        assert not state.is_complete, (
-            "a call-sourced capture cannot be complete while a required field "
-            "has no extraction source — if this passes, either the field was "
-            "made optional or something started supplying it"
+        assert state.is_complete, (
+            "⚠️ THIS ASSERTION FLIPPED AT PIECE 4. It read `assert not "
+            "state.is_complete` with the message \"a call-sourced capture cannot be "
+            "complete while a required field has no extraction source — if this "
+            "passes, either the field was made optional or something started "
+            "supplying it\". Something started supplying it: r199. The test did "
+            "exactly what it was written to do, and its own message named the "
+            "conclusion."
         )
 
     def test_an_absent_field_is_reported_missing_by_its_schema_id(self):
@@ -203,10 +264,17 @@ class TestTheConditionalOmissionIsPinnedInBothDirections:
             vault_product_id=None,
             platform_fields=template,
         )
-        conditional = _conditional_ids(template)
+        # ⚠️ THE NARROW SET — availability-gated only. See
+        # `_availability_gated_ids`. The broad set now includes two fields
+        # that are answerable without a vault.
+        conditional = _availability_gated_ids(template)
         assert conditional.isdisjoint(set(state.answered))
         assert conditional.isdisjoint(set(state.missing))
-        assert set(state.not_applicable) == conditional
+        # ⚠️ `indeterminate`, NOT `not_applicable` — PIECE 4. With no vault there is
+        # nothing to read availability against, so "does not apply" was never
+        # established. `not_applicable` asserts the vault does not offer the question.
+        assert set(state.indeterminate) >= conditional
+        assert not set(state.not_applicable) & conditional
 
     def test_everything_unconditional_is_accounted_for(self):
         """The complement of the omission: all 8 land somewhere, so the omission
@@ -250,7 +318,16 @@ class TestTheServerDecidesWhatIsCapturedToo:
             vault_product_id=None,
             platform_fields=template,
         )
-        assert set(state.answered) == _extractable_unconditional_ids(template), (
+        # ⚠️ SUPERSET SINCE PIECE 4, AND THE EXTRA MEMBER IS NAMED BELOW RATHER THAN
+        # ADMITTED BY RELAXING TO `>=` ALONE. A conditional field can now be ANSWERED,
+        # which was impossible when the only conditional shape needed a vault: `eta`
+        # applies because FULL_RESULT says `service_location == "church"`, and the
+        # result supplies it. Asserting the exact remainder keeps the claim checkable.
+        assert set(state.answered) - _extractable_unconditional_ids(template) == {"eta"}, (
+            f"the only conditional field a vault-less full result should answer is "
+            f"`eta`; got extra {sorted(set(state.answered) - _extractable_unconditional_ids(template))}"
+        )
+        assert set(state.answered) >= _extractable_unconditional_ids(template), (
             f"expected every extractable unconditional field answered from a "
             f"full result; got {sorted(state.answered)}"
         )
@@ -273,7 +350,12 @@ class TestTheServerDecidesWhatIsCapturedToo:
         # for it; it has one now, so the assertion reads the type rather than
         # reconstructing what the type forgot.
         covered = (set(state.answered) | set(state.missing)
-                   | set(state.unanswered_optional) | set(state.not_applicable))
+                   | set(state.unanswered_optional) | set(state.not_applicable)
+                   # ⚠️ THE FIFTH SET, ADDED BY PIECE 4. Without it this test reports
+                   # six fields as belonging to no set, when in fact their
+                   # APPLICABILITY is not yet decidable — which is a state, not an
+                   # omission. Leaving it out would have made the engine look broken.
+                   | set(state.indeterminate))
         assert covered == {f.field_id for f in template}, (
             f"these template fields appear in no set: "
             f"{ {f.field_id for f in template} - covered}"
@@ -310,7 +392,15 @@ class TestTheServerDecidesWhatIsCapturedToo:
         assert set(state.unanswered_optional) == UNEXTRACTABLE_OPTIONAL
         # and they are NOT reported as gaps
         assert not (set(state.unanswered_optional) & set(state.missing))
-        assert state.is_complete is False, "the required gap still stands"
+        # ⚠️ FLIPPED AT PIECE 4 — see the note on
+        # `test_a_full_result_leaves_exactly_the_unextractable_field_missing`. The
+        # required gap was `service_location`, and r199 closed it. What remains
+        # unanswered from a full result is OPTIONAL only, which is what
+        # `unanswered_optional` is for and what `is_complete` deliberately ignores.
+        assert state.is_complete is True, (
+            "a full result should now be complete: the only unanswered fields are "
+            f"optional ({sorted(state.unanswered_optional)})"
+        )
 
     def test_an_order_IS_COMPLETE_with_optional_fields_unanswered(self):
         """⚠️ THE READY-TO-APPROVE STATE, AND NOTHING TESTED IT UNTIL A BREAK TEST

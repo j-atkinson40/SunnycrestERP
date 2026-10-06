@@ -38,7 +38,10 @@ interface CallLogExtraction {
   deceased_name: CallExtractionField | null;
   vault_type: CallExtractionField | null;
   burial_date: CallExtractionField | null;
-  burial_time: CallExtractionField | null;
+  service_time: CallExtractionField | null;
+  eta: CallExtractionField | null;
+  service_location: CallExtractionField | null;
+  service_location_other: CallExtractionField | null;
   cemetery_name: CallExtractionField | null;
   grave_location: CallExtractionField | null;
   special_requests: CallExtractionField | null;

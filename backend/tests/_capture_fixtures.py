@@ -89,7 +89,7 @@ _ANSWER_BY_FIELD: dict[str, object] = {
     "deceased_name": "John Michael Smith",
     "cemetery": "St. Mary's",
     "burial_date": "2026-10-01",
-    "burial_time": "10:00",
+    "service_time": "10:00",
     "grave_location": "Section 4, Lot 12",
     # One of the column's four enum values ('church', 'funeral_home',
     # 'graveside', 'other'). Added with the field, 2026-10-05.

@@ -47,7 +47,10 @@ _EXTRACTED_FIELDS = (
     "vault_size",
     "cemetery_name",
     "burial_date",
-    "burial_time",
+    "service_time",
+    "eta",
+    "service_location",
+    "service_location_other",
     "grave_location",
     "special_requests",
 )

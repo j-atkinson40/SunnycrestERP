@@ -51,7 +51,23 @@ def db():
 
 
 def _conditional_ids():
-    return {f.field_id for f in template_for(SALES_ORDER) if f.is_conditional}
+    """⚠️ NARROWED 2026-10-06 TO THE AVAILABILITY-GATED FIELDS, AND THE NARROWING IS
+    THE POINT. This read `if f.is_conditional`, which was the same set while the only
+    conditional shape WAS the availability lookup. Piece 4 added three conditionals
+    that depend on ANSWERS rather than on the vault — `eta`,
+    `service_location_other`, `nameplate_date_format` — and those correctly do NOT
+    appear when a vault resolves, because what they wait on is a different field.
+
+    Left broad, this file would have asserted that resolving a vault makes every
+    conditional field appear, which is false and is not what these tests are about.
+    """
+    from app.services.capture.conditions import AvailabilityOffered
+
+    return {
+        f.field_id
+        for f in template_for(SALES_ORDER)
+        if isinstance(f.applies_when, AvailabilityOffered)
+    }
 
 
 class TestTheLoopIsClosed:
@@ -86,7 +102,15 @@ class TestTheLoopIsClosed:
         forbids: applicability is unknown until there is a product to read it
         against."""
         _, state = resolve_and_evaluate(db, {})
-        assert set(state.not_applicable) >= _conditional_ids()
+        # ⚠️ `indeterminate`, NOT `not_applicable` — CHANGED BY PIECE 4, AND THIS IS
+        # THE CORRECTNESS GAIN RATHER THAN A RELAXATION. Before 2026-10-06 these
+        # landed in `not_applicable`, which asserts "this vault does not offer the
+        # question". No vault has been named, so nothing of the kind was established.
+        # The two states were the same silence; now they are not.
+        assert set(state.indeterminate) >= _conditional_ids()
+        assert not set(state.not_applicable) & _conditional_ids(), (
+            "a question nobody can resolve yet must NOT read as not-offered"
+        )
         assert not _conditional_ids() & set(state.missing)
 
 
@@ -148,7 +172,14 @@ class TestTheAmbiguousCaseIsAQuestionNotAFailure:
         questions stay out — and the ONLY thing that tells a user why is the
         question the payload carries."""
         r, state = resolve_and_evaluate(db, {"vault_type": AMBIGUOUS})
-        assert set(state.not_applicable) >= _conditional_ids()
+        # ⚠️ AMBIGUITY IS INDETERMINATE, NOT NOT-OFFERED, and this is the sharpest
+        # case for the fifth set. The resolver returns a candidate set plus a
+        # discriminator and NEVER a best match, so `variant_template_id` is None here
+        # — identical to "no vault named". Before Piece 4 both produced
+        # `not_applicable`, so "which of these two vaults?" was indistinguishable
+        # from "this vault does not offer personalization".
+        assert set(state.indeterminate) >= _conditional_ids()
+        assert not set(state.not_applicable) & _conditional_ids()
         assert _resolution_payload(r)["discriminator"] == "form"
 
     def test_an_absent_phrase_is_not_attempted_rather_than_unmatched(self, db):

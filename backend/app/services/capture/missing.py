@@ -39,12 +39,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.services.capture.conditions import Applicability, Verdict
 from app.services.capture.schema import (
     PLATFORM_DEFAULT_FIELDS,
     FieldDefinition,
     ResolvedField,
     TenantCaptureConfig,
     resolve_schema,
+    applicability_map,
 )
 from app.services.personalization.questions import ANSWER_NONE
 
@@ -63,10 +65,14 @@ class UnpermittedAnswer(ValueError):
 class CaptureState:
     """The answer to "where is this order up to?".
 
-    ⚠️ THE FOUR SETS EXHAUST THE RESOLVED SCHEMA AND ARE DISJOINT. Every field the
-    schema resolved appears in exactly one, and `not_applicable` covers the
-    platform fields the schema dropped. A field in none of them is a defect in
-    `evaluate`, not a state.
+    ⚠️ FIVE SETS AS OF 2026-10-06 — THIS SAID FOUR, AND THE CLAIM WAS PART OF THE
+    CHANGE. The original read: *"THE FOUR SETS EXHAUST THE RESOLVED SCHEMA AND ARE
+    DISJOINT. Every field the schema resolved appears in exactly one, and
+    `not_applicable` covers the platform fields the schema dropped."* That was true
+    until conditions could be INDETERMINATE.
+
+    The five still EXHAUST and are still DISJOINT. Every field in the template appears
+    in exactly one. A field in none of them is a defect in `evaluate`, not a state.
     """
 
     answered: tuple[str, ...]
@@ -82,6 +88,24 @@ class CaptureState:
     #: separately so a caller can tell "nothing to ask" from "not asked yet";
     #: the capture list renders neither.
     not_applicable: tuple[str, ...]
+    #: ⚠️ APPLICABILITY NOT YET DECIDABLE — added 2026-10-06 with Piece 4. Canon's
+    #: name for it: *depends on an answer not yet given.*
+    #:
+    #: A field lands here when its `applies_when` reads INDETERMINATE: something it
+    #: depends on is applicable and unanswered. It is NOT `not_applicable` — we have
+    #: not established that it does not apply — and it cannot be `answered` or
+    #: `missing`, because we do not yet know whether it is even asked.
+    #:
+    #: ⚠️ BY RULING, these are NOT RENDERED AND NOT COUNTED on the capture surface
+    #: until the condition resolves. No design shows the state, and a row that
+    #: appears once its question becomes real invents nothing. The set exists so the
+    #: engine can tell "this vault does not offer it" from "we cannot know yet",
+    #: which before today were the same silence.
+    #:
+    #: ⚠️ A field whose REQUIRED_WHEN is indeterminate does NOT land here — it is
+    #: applicable and unanswered, so it goes to `unanswered_optional`. Only
+    #: applicability lands here. See `evaluate`.
+    indeterminate: tuple[str, ...] = ()
 
     @property
     def is_complete(self) -> bool:
@@ -90,6 +114,19 @@ class CaptureState:
         here would make every order incomplete until someone answered three
         fields the design does not require."""
         return not self.missing
+
+    @property
+    def all_field_ids(self) -> tuple[str, ...]:
+        """⚠️ EXISTS SO THE EXHAUSTIVENESS CLAIM IS TESTABLE RATHER THAN ASSERTED IN
+        PROSE. The docstring above says the five sets exhaust and are disjoint; a test
+        compares this against the template and against the sum of the five lengths."""
+        return (
+            self.answered
+            + self.missing
+            + self.unanswered_optional
+            + self.not_applicable
+            + self.indeterminate
+        )
 
 
 def is_answered(value: object) -> bool:
@@ -126,6 +163,7 @@ def evaluate(
         personalization_config=personalization_config,
         tenant_config=tenant_config,
         platform_fields=platform_fields,
+        answers=extracted,
     )
     applicable_ids = {f.field_id for f in applicable}
 
@@ -138,6 +176,12 @@ def evaluate(
         if not is_answered(value):
             # ⚠️ BOTH BRANCHES APPEND. The optional arm used to `continue`
             # silently, which is how optional fields came to belong to no set.
+            #
+            # ⚠️ `resolved.required` IS NOW THE LIVE VERDICT, and INDETERMINATE reads
+            # False — so a field whose requirement is not yet decidable goes to
+            # `unanswered_optional` and CANNOT BLOCK APPROVAL. That is deliberate: the
+            # dependency it is waiting on is itself unanswered and therefore already
+            # in `missing`, so reporting this one too would report one gap twice.
             if resolved.required:
                 missing.append(resolved.field_id)
             else:
@@ -146,14 +190,34 @@ def evaluate(
         _reject_unpermitted(resolved, value)
         answered.append(resolved.field_id)
 
+    # ⚠️ THE ABSENT FIELDS ARE SPLIT, NOT LUMPED. This used to be "everything the
+    # schema did not return is not_applicable", which was right while applicability
+    # was two-valued. A field whose condition cannot be evaluated yet is also absent
+    # from `applicable`, and calling it not_applicable would assert we had established
+    # it does not apply.
+    applicability = applicability_map(
+        vault_product_id=vault_product_id,
+        personalization_config=personalization_config,
+        tenant_config=tenant_config,
+        platform_fields=platform_fields,
+        answers=extracted,
+    )
     not_applicable = tuple(
-        f.field_id for f in platform_fields if f.field_id not in applicable_ids
+        f.field_id for f in platform_fields
+        if f.field_id not in applicable_ids
+        and applicability.get(f.field_id) is not Applicability.INDETERMINATE
+    )
+    indeterminate = tuple(
+        f.field_id for f in platform_fields
+        if f.field_id not in applicable_ids
+        and applicability.get(f.field_id) is Applicability.INDETERMINATE
     )
     return CaptureState(
         answered=tuple(answered),
         missing=tuple(missing),
         unanswered_optional=tuple(unanswered_optional),
         not_applicable=not_applicable,
+        indeterminate=indeterminate,
     )
 
 

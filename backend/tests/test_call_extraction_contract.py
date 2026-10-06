@@ -143,7 +143,7 @@ class TestTheFieldShape:
     @pytest.mark.parametrize(
         "name,raw,expected",
         [("burial_date", date(2026, 10, 9), "2026-10-09"),
-         ("burial_time", time(14, 30), "14:30:00")],
+         ("service_time", time(14, 30), "14:30:00")],
     )
     def test_dates_and_times_reach_the_client_in_iso_form(self, name, raw, expected):
         """⚠️ THIS ASSERTION DOES NOT DISCRIMINATE, AND A BREAK TEST IS HOW I KNOW.

@@ -257,8 +257,17 @@ function SalesOrderDetailView({ id }: { id: string }) {
             )}
             {order.service_time && (
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Burial Time</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Service Time</p>
                 <p className="font-semibold">{order.service_time}</p>
+              </div>
+            )}
+            {/* ⚠️ ADDED 2026-10-06. The column predates Piece 4 and nothing
+                captured it; the label above used to read "Burial Time" over
+                service_time, which is the conflation these two rows replace. */}
+            {order.eta && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Cemetery Arrival (ETA)</p>
+                <p className="font-semibold">{order.eta}</p>
               </div>
             )}
             {order.cemetery_name && (

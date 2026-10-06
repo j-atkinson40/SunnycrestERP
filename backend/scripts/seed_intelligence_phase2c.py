@@ -527,7 +527,12 @@ A complete vault order requires:
 - Size (standard adult, oversize, infant)
 - Cemetery name
 - Burial date
-- Burial time
+- Service time (when the SERVICE begins, e.g. at the church or funeral home)
+- Cemetery arrival ETA (the procession's arrival at the cemetery — a DIFFERENT time
+  from the service time, and usually later. If the service is at the graveside there
+  is no separate ETA.)
+- Service location (one of: church, funeral_home, graveside, other)
+- Service location name, only when the location is "other"
 - Grave section/lot/space (if known)
 - Any personalization or special requests
 
@@ -539,7 +544,10 @@ Respond ONLY with valid JSON in this format:
   "vault_size": string | null,
   "cemetery_name": string | null,
   "burial_date": string | null,
-  "burial_time": string | null,
+  "service_time": string | null,
+  "eta": string | null,
+  "service_location": "church"|"funeral_home"|"graveside"|"other"|null,
+  "service_location_other": string | null,
   "grave_location": string | null,
   "special_requests": string | null,
   "confidence": {
@@ -549,7 +557,10 @@ Respond ONLY with valid JSON in this format:
     "vault_size": "high"|"medium"|"low"|null,
     "cemetery_name": "high"|"medium"|"low"|null,
     "burial_date": "high"|"medium"|"low"|null,
-    "burial_time": "high"|"medium"|"low"|null,
+    "service_time": "high"|"medium"|"low"|null,
+    "eta": "high"|"medium"|"low"|null,
+    "service_location": "high"|"medium"|"low"|null,
+    "service_location_other": "high"|"medium"|"low"|null,
     "grave_location": "high"|"medium"|"low"|null
   },
   "missing_fields": [

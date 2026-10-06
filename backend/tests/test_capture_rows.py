@@ -38,6 +38,11 @@ from app.services.capture.rows import (
     resolve_surface,
     row_field_ids,
 )
+from app.services.capture.conditions import (
+    Always,
+    AvailabilityOffered,
+    Never,
+)
 from app.services.capture.schema import FieldDefinition, ResolvedField, resolve_schema
 from app.services.capture.surfaces import (
     CAPTURE_SALES_ORDER,
@@ -81,7 +86,9 @@ class TestRowsAreNotFields:
     def test_neither_surface_has_one_row_per_field(self):
         """The assertion the scope error would have failed."""
         n_fields = len(template_for(SALES_ORDER))
-        assert n_fields == 15
+        # ⚠️ 17 SINCE PIECE 4 (2026-10-06): `eta` and `service_location_other` were
+        # added and `burial_time` was RENAMED to `service_time`, so +2 not +3.
+        assert n_fields == 17
         assert len(CAPTURE_SALES_ORDER.rows) == 9 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
@@ -95,7 +102,10 @@ class TestRowsAreNotFields:
         """Prototype: "Forest Lawn · Thu 11:30 AM"."""
         out = resolve_surface(
             CAPTURE_SALES_ORDER, _resolved(),
-            {"cemetery": "Forest Lawn", "burial_time": "Thu 11:30 AM"},
+            # ⚠️ `eta`, not the service time. The 11:30 is the CEMETERY ARRIVAL; the
+            # field that used to render here was named `burial_time` and actually held
+            # what the director said about the service. Piece 4 split the two.
+            {"cemetery": "Forest Lawn", "eta": "Thu 11:30 AM"},
         )
         row = next(r for r in out.rows if r.row_id == "cemetery")
         assert row.value == "Forest Lawn · Thu 11:30 AM"
@@ -200,8 +210,10 @@ class TestTheFourStates:
         A conditional field with an EMPTY permitted set is NOT_CONFIGURED — the
         one meaning it can have, since NOT_OFFERED never becomes a ResolvedField.
         """
+        # ⚠️ `applies_when=AvailabilityOffered(...)` since Piece 4 — `question_id`
+        # was the one conditional shape the engine had, and is now one node among six.
         defn = FieldDefinition("legacy_print", "Legacy Series™ Print",
-                               question_id="legacy_print")
+                               applies_when=AvailabilityOffered("legacy_print"))
         unconfigured = ResolvedField(defn, permitted_answers=())
         fields = _resolved() + (unconfigured,)
         out = resolve_surface(CAPTURE_SALES_ORDER, fields, {}, done_signal=True)
@@ -214,8 +226,10 @@ class TestTheFourStates:
     def test_an_offered_conditional_is_not_the_fourth_state(self):
         """⚠️ THE CONTROL. A resolver that returned NOT_CONFIGURED for every
         conditional field would satisfy the test above."""
+        # ⚠️ `applies_when=AvailabilityOffered(...)` since Piece 4 — `question_id`
+        # was the one conditional shape the engine had, and is now one node among six.
         defn = FieldDefinition("legacy_print", "Legacy Series™ Print",
-                               question_id="legacy_print")
+                               applies_when=AvailabilityOffered("legacy_print"))
         offered = ResolvedField(defn, permitted_answers=("legacy_series",))
         fields = _resolved() + (offered,)
         out = resolve_surface(CAPTURE_SALES_ORDER, fields, {}, done_signal=True)
@@ -228,8 +242,8 @@ class TestAmendmentOneOrderedSources:
         row = Row(id="r", label="R", order=1, sources=(
             FieldSource("a"), FieldSource("b")))
         s = Surface(id="s", rows=(row,))
-        rf = (ResolvedField(FieldDefinition("a", "A", required=False)),
-              ResolvedField(FieldDefinition("b", "B", required=False)))
+        rf = (ResolvedField(FieldDefinition("a", "A", required_when=Never())),
+              ResolvedField(FieldDefinition("b", "B", required_when=Never())))
         out = resolve_surface(s, rf, {"a": "first", "b": "second"})
         assert out.rows[0].value == "first"
 
@@ -237,7 +251,7 @@ class TestAmendmentOneOrderedSources:
         row = Row(id="r", label="R", order=1, sources=(
             FieldSource("a"), RecordSource("customer", "contact_name")))
         s = Surface(id="s", rows=(row,))
-        rf = (ResolvedField(FieldDefinition("a", "A", required=False)),)
+        rf = (ResolvedField(FieldDefinition("a", "A", required_when=Never())),)
         out = resolve_surface(s, rf, {}, records={"customer": {"contact_name": "Tom"}})
         assert out.rows[0].value == "Tom"
 
@@ -254,7 +268,7 @@ class TestAmendmentOneOrderedSources:
         row = Row(id="r", label="R", order=1, sources=(
             FieldSource("a"), RecordSource("customer", "contact_name")))
         s = Surface(id="s", rows=(row,))
-        rf = (ResolvedField(FieldDefinition("a", "A", required=False)),)
+        rf = (ResolvedField(FieldDefinition("a", "A", required_when=Never())),)
         out = resolve_surface(s, rf, {"a": value},
                               records={"customer": {"contact_name": "Tom"}})
         assert out.rows[0].value == expected
@@ -263,7 +277,7 @@ class TestAmendmentOneOrderedSources:
         row = Row(id="r", label="R", order=1,
                   sources=(FieldSource("a"), LiteralSource("fallback")))
         s = Surface(id="s", rows=(row,))
-        rf = (ResolvedField(FieldDefinition("a", "A", required=False)),)
+        rf = (ResolvedField(FieldDefinition("a", "A", required_when=Never())),)
         out = resolve_surface(s, rf, {})
         assert out.rows[0].value == "fallback"
 
@@ -400,7 +414,7 @@ class TestInapplicableRowsAreAbsent:
         row = Row(id="gone", label="Gone", order=1, sources=(FieldSource("nope"),))
         keep = Row(id="keep", label="Keep", order=2, sources=(FieldSource("a"),))
         s = Surface(id="s", rows=(row, keep))
-        rf = (ResolvedField(FieldDefinition("a", "A", required=False)),)
+        rf = (ResolvedField(FieldDefinition("a", "A", required_when=Never())),)
         out = resolve_surface(s, rf, {})
         assert {r.row_id for r in out.rows} == {"keep"}
 

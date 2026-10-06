@@ -25,7 +25,22 @@ class RingCentralCallExtraction(Base):
     vault_size: Mapped[str | None] = mapped_column(String(100), nullable=True)
     cemetery_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     burial_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    burial_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    # ⚠️ RENAMED FROM `burial_time` BY r199 (2026-10-06). An order carries TWO time
+    # facts and this column held the first of them under the second's name — see
+    # `capture/schema.py`'s `service_time` entry for the defect it produced.
+    service_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: ⚠️ ADDED BY r199. The procession ETA — cemetery arrival. Its destination,
+    #: `sales_orders.eta`, predates it and already carried the rule in a comment
+    #: ("null for graveside"); nothing captured it until Piece 4.
+    eta: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: ⚠️ ADDED BY r199, AND WITHOUT THEM TWO CAPTURE FIELDS WERE DEAD. The template
+    #: has asked for `service_location` since 2026-10-05 and this model had no column
+    #: for it, so the call path could never answer it — which means `eta` and
+    #: `service_location_other`, whose conditions both READ it, would have resolved
+    #: INDETERMINATE forever. A conditional field whose dependency is unanswerable is
+    #: a field that never applies.
+    service_location: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    service_location_other: Mapped[str | None] = mapped_column(String(100), nullable=True)
     grave_location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     special_requests: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -48,15 +48,21 @@ export interface CallExtraction {
    * by the scheduling Focus — and it enters the SALES-ORDER CAPTURE TEMPLATE
    * rather than this type. Nothing extracts it from a call yet, so it reports as
    * still-needed, which is correct. `service_date` / `service_time` are already
-   * captured as `burial_date` / `burial_time` (the draft-order writer maps one
-   * onto the other). `special_instructions` is `special_requests` here. */
+   * captured as `burial_date` / `service_time`. ⚠️ THIS SAID `burial_time` AND
+   * DESCRIBED THE DRAFT WRITER AS "mapping one onto the other" — which was the
+   * conflation, not a mapping. An order carries TWO time facts: `service_time` (the
+   * service) and `eta` (cemetery arrival). r199 renamed the column and the writer now
+   * takes each from its own field. `special_instructions` is `special_requests`. */
   funeral_home_name: CallExtractionField | null;
   deceased_name: CallExtractionField | null;
   vault_type: CallExtractionField | null;
   vault_size: CallExtractionField | null;
   cemetery_name: CallExtractionField | null;
   burial_date: CallExtractionField | null;
-  burial_time: CallExtractionField | null;
+  service_time: CallExtractionField | null;
+  eta: CallExtractionField | null;
+  service_location: CallExtractionField | null;
+  service_location_other: CallExtractionField | null;
   grave_location: CallExtractionField | null;
   special_requests: CallExtractionField | null;
   missing_fields: string[];

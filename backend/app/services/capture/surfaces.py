@@ -26,10 +26,20 @@ file did. Anything taken from here is from the 1,072,184-byte copy.
 the decedent's name and dates leave the grid for the subject, and the word for
 unanswered-required changes from "needed" to "missing".
 
-⚠️ FOUR GAPS ARE DECLARED AT THE ROWS THAT WANT THEM, rather than filled by
-inventing fields. Each is marked `GAP:` below. A row that renders less than the
-design is a visible, reported shortfall; a field invented to fill it would be an
-unreported claim.
+⚠️ TWO GAPS ARE DECLARED AT THE ROWS THAT WANT THEM, rather than filled by inventing
+fields. Each is marked `GAP` below. A row that renders less than the design is a
+visible, reported shortfall; a field invented to fill it would be an unreported claim.
+
+⚠️ THIS SAID "FOUR" AND WAS ALREADY WRONG BEFORE PIECE 4 TOUCHED IT. Measured
+2026-10-06: HEAD carried THREE row-level `GAP:` markers under a docstring claiming
+four. Piece 4 then closed one (the capture Service row — `service_time` now exists)
+and narrowed another (the summary Service row keeps a DATE gap, not a date-and-time
+one), leaving two.
+
+A count written beside the thing it counts drifts the moment either changes, and this
+one drifted without any edit to the gaps at all. See CLAUDE.md §11 — a file's account
+of itself is untested prose, and this is the second count in this module to go wrong
+that way.
 """
 from __future__ import annotations
 
@@ -86,27 +96,44 @@ CAPTURE_SALES_ORDER = Surface(
 
         # Prototype: "St. Mary's · Thu 10:00 AM".
         #
-        # ⚠️ GAP: THE SERVICE TIME HAS NO TEMPLATE FIELD, and this corrects an
-        # earlier finding of mine. On 2026-10-05 I ruled `service_time` "already
-        # captured as burial_time" because `create_draft_order_from_extraction`
-        # writes `service_time = extraction.burial_time`. The prototype shows them
-        # as DIFFERENT FACTS — service at 10:00 AM, burial at 11:30 AM, with the
-        # `eta` column's "procession ETA" comment describing the gap between them.
-        # So that writer is CONFLATING two times rather than evidencing their
-        # equivalence, and my verdict took the defect for the specification.
+        # ⚠️ ORDERED SOURCES, FIRST-ANSWERED-WINS — and this row is the mechanism's
+        # first production use. `service_location_other` comes FIRST because it is the
+        # more specific answer: when the director said "other", the place's name is in
+        # that field and the vocabulary value is just the word "other".
         #
-        # This row therefore renders the location only, which is less than the
-        # design. Declared rather than papered over; a service-time field is a
-        # product question nobody has ruled.
+        # ⚠️ NO NEW ROW, BY RULING. `service_location_other` continues this row rather
+        # than opening one of its own — the prototype shows the service as a single
+        # line, and a row per field is the assumption this layer exists to break.
+        #
+        # ⚠️ THE SERVICE-TIME GAP IS CLOSED. This comment used to record that
+        # `service_time` had no template field and that my 2026-10-05 ruling calling it
+        # "already captured as burial_time" had read a defect as the specification. The
+        # field now exists — `burial_time` was renamed to it — so the row composes a
+        # location and a time as the prototype shows ("St. Mary's · Thu 10:00 AM").
         Row(id="service", label="Service", order=5,
-            sources=(FieldSource("service_location"),),
+            sources=(ComposedSource((
+                FieldSource("service_location_other"),
+                FieldSource("service_time"),
+            ), join=_DOT),
+                ComposedSource((
+                    FieldSource("service_location"),
+                    FieldSource("service_time"),
+                ), join=_DOT)),
             edit_target="service_location"),
 
         # Prototype: "Forest Lawn · Thu 11:30 AM" — labelled `Cemetery` here and
         # `Burial` on the summary. Same facts, different label per surface.
+        # ⚠️ `eta` REPLACES `burial_time` HERE, BY RULING, and the slot is the
+        # argument: the prototype shows "Forest Lawn · Thu 11:30 AM", the cemetery
+        # ARRIVAL, which is the procession ETA. The field that used to render here was
+        # named `burial_time` and actually held what the director said about the
+        # SERVICE, which is why it was renamed to `service_time` and moved to the
+        # Service row.
+        #
+        # Two time facts, two rows, and no third name for anyone to conflate.
         Row(id="cemetery", label="Cemetery", order=6,
             sources=(ComposedSource(
-                (FieldSource("cemetery"), FieldSource("burial_time")), join=_DOT),),
+                (FieldSource("cemetery"), FieldSource("eta")), join=_DOT),),
             edit_target="cemetery"),
 
         # ⚠️ NO SIZE ROW, AND NO LONGER A GAP. This comment used to record
@@ -158,20 +185,24 @@ SUMMARY_SALES_ORDER = Surface(
         Row(id="vault", label="Vault", order=2,
             sources=(FieldSource("vault"),)),
 
-        # ⚠️ GAP: the prototype's secondary is "Thu, Sep 17 · 10:00 AM" — a
-        # service DATE and TIME, neither of which is a template field. See the
-        # capture surface's `service` row for why that is a correction rather
-        # than an omission.
+        # ⚠️ GAP, NARROWED. This read "a service DATE and TIME, NEITHER of which is a
+        # template field". The prototype's secondary is "Thu, Sep 17 · 10:00 AM" — a
+        # service DATE and TIME. The TIME now exists as `service_time`; the service
+        # DATE still has no template field, so the secondary renders the time alone.
+        # Narrowed, not closed — a declared shortfall rather than an invented field.
         Row(id="service", label="Service", order=3,
-            sources=(FieldSource("service_location"),),
+            sources=(FieldSource("service_location_other"), FieldSource("service_location")),
+            secondary=(FieldSource("service_time"),),
             edit_target="service_location"),
 
         # ⚠️ RELABELLED. `Cemetery` on capture, `Burial` here. Prototype secondary:
         # "Thu, Sep 17 · 11:30 AM" — burial date AND time, both template fields.
         Row(id="burial", label="Burial", order=4,
             sources=(FieldSource("cemetery"),),
+            # ⚠️ `eta`, not `burial_time` — same ruling as the capture Cemetery row.
+            # The prototype's secondary here is "Thu, Sep 17 · 11:30 AM", the arrival.
             secondary=(ComposedSource(
-                (FieldSource("burial_date"), FieldSource("burial_time")), join=_DOT),),
+                (FieldSource("burial_date"), FieldSource("eta")), join=_DOT),),
             edit_target="cemetery"),
 
         Row(id="personalization", label="Personalization", order=5,

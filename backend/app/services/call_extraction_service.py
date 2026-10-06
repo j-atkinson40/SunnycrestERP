@@ -123,7 +123,14 @@ def _captured_from_result(result: dict) -> dict[str, object]:
         "deceased_name": result.get("deceased_name"),
         "cemetery": result.get("cemetery_name"),
         "burial_date": _parse_date(result.get("burial_date")),
-        "burial_time": _parse_time(result.get("burial_time")),
+        # ⚠️ TWO TIME FACTS, TWO KEYS. `burial_time` was one key doing both jobs.
+        "service_time": _parse_time(result.get("service_time")),
+        "eta": _parse_time(result.get("eta")),
+        # ⚠️ AND WITHOUT THESE TWO, `eta` AND `service_location_other` ARE DEAD. Both
+        # conditions read `service_location`, so if it is never answered they resolve
+        # INDETERMINATE forever and neither field is ever asked.
+        "service_location": result.get("service_location"),
+        "service_location_other": result.get("service_location_other"),
         "grave_location": result.get("grave_location"),
     }
 
@@ -307,7 +314,10 @@ def extract_order_from_transcript(
         vault_size=result.get("vault_size"),
         cemetery_name=result.get("cemetery_name"),
         burial_date=_parse_date(result.get("burial_date")),
-        burial_time=_parse_time(result.get("burial_time")),
+        service_time=_parse_time(result.get("service_time")),
+        eta=_parse_time(result.get("eta")),
+        service_location=result.get("service_location"),
+        service_location_other=result.get("service_location_other"),
         grave_location=result.get("grave_location"),
         special_requests=result.get("special_requests"),
         confidence_json=result.get("confidence", {}),
@@ -422,8 +432,17 @@ def create_draft_order_from_extraction(
         deceased_name=extraction.deceased_name,
         cemetery_id=_resolve_cemetery_id(db, tenant_id, extraction.cemetery_name),
         scheduled_date=extraction.burial_date,
-        # Time column takes the time object — not an isoformat string.
-        service_time=extraction.burial_time,
+        # ⚠️ THE CONFLATION IS GONE. This read `service_time=extraction.burial_time`,
+        # one source feeding one of two facts, and on 2026-10-05 I cited that very line
+        # as evidence `service_time` was "already captured" — reading a defect as the
+        # specification. Each fact now comes from its own field, and nothing comes from
+        # a field named `burial_time`, which no longer exists.
+        #
+        # Time columns take time objects — not isoformat strings.
+        service_time=extraction.service_time,
+        eta=extraction.eta,
+        service_location=extraction.service_location,
+        service_location_other=extraction.service_location_other,
         notes=f"[Created from phone call]\n{extraction.call_summary or ''}".strip(),
     )
     db.add(order)
