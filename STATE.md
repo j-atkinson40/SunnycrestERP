@@ -2,6 +2,31 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ POSSIBLE PRODUCT RACE — `wipe_tenant` vs THE SCHEDULED SWEEP (2026-10-06)
+
+- **2026-10-06 — NOT INVESTIGATED. Recorded because a test assertion may be describing
+  the product rather than the test.** The workflow scheduler's per-tenant `scheduled`
+  dispatch writes an `expense_categorization` AgentJob for every company whose cron
+  matches (`wf_sys_expense_categorization`, cron `*/15 * * * *`). It does not ask whether
+  a company is mid-wipe.
+- **2026-10-06 — The consequence, if it reaches production:** a `wipe_tenant` run could
+  be **re-populated mid-run** (rows created behind the deleter) or **blocked** (a new
+  `agent_jobs` row making the final `companies` delete raise on
+  `agent_jobs_tenant_id_fkey`). Both were observed in the test harness; neither has been
+  observed in production, and no production wipe has been run.
+- **2026-10-06 — How it surfaced:** two tests in `tests/test_wipe_tenant.py` fail with
+  `assert 8 == 0` — eight rows appearing for an already-wiped tenant between the wipe and
+  its re-run. Quarantined the same day with the signature, cause and unskip condition
+  recorded at the skip. ⚠️ They PASS in CI, where nothing races them, so the quarantine
+  costs two passing CI checks.
+- **2026-10-06 — Why it is not today's work:** wipes are rare, no real tenant has been
+  offboarded, and the fix lives in shared fixture machinery / the scheduler's tenant
+  selection — out of bounds for the Piece 4 arc.
+- **2026-10-06 — REOPEN WITH the fixture-isolation work (the queued
+  `purge_companies_by_slug` rework), OR BEFORE ANY REAL TENANT IS OFFBOARDED,
+  whichever comes first.** The second trigger is the load-bearing one: offboarding is
+  exactly when a wipe runs against a live tenant with the scheduler active.
+
 ## ⏸️ PARKED — WIDENING CI BEYOND `ci_gate.txt` (2026-10-06)
 
 - **2026-10-06 — PARKED by James.** Widening CI beyond `tests/ci_gate.txt`. Origin:
