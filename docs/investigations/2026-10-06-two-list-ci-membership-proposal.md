@@ -5,6 +5,25 @@ Widening CI itself stays **parked** (STATE, 2026-10-06).
 
 ---
 
+## ⚠️ CORRECTED 2026-10-06 — EVERY "284" BELOW IS WRONG; THE REAL FIGURE IS 297
+
+This document was written with **284** excluded files, from **461** total. Both came
+from `ls tests/test_*.py` — a glob meaning TOP LEVEL ONLY, which misses the **13** test
+files under `tests/tasks/`, **none** of which is in the gate.
+
+    derived with rglob:   474 test files
+                          177 in ci_gate.txt
+                          297 outside          <- the ceiling that was built
+
+The original figures are left in the body rather than edited out, because the error is
+the document's most useful content: it is CLAUDE.md §11's constructed-enumeration
+failure committed inside a proposal about enumerating test files, and it was caught only
+by `find -mindepth 2` while building the thing. The shipped
+`tests/test_ci_membership.py` uses `rglob` and carries a dedicated control asserting a
+NESTED file is discovered, specifically so this cannot recur silently.
+
+---
+
 ## Verdict
 
 **Build it, with one amendment: the exclusion list must be a RATCHET, not a register.**

@@ -6,14 +6,27 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
 
 - **2026-10-06 — PARKED by James.** Widening CI beyond `tests/ci_gate.txt`. Origin:
   James's dispatch of 2026-10-06, following the CI re-baseline in `32f8adde`.
-- **2026-10-06 — The measurement being parked.** CI runs ONE pytest invocation,
+- **2026-10-06 — The measurement being parked. [CORRECTED 2026-10-06 — the figures
+  below were wrong and the original is kept.]** CI runs ONE pytest invocation,
   `pytest $(grep -vE '^\s*#|^\s*$' tests/ci_gate.txt | tr '\n' ' ')` at
-  `.github/workflows/ci.yml:160` — **177 of 461 backend test files (38%)**. The other
-  284 are not run by CI at all, so they are UNMEASURED, not green.
+  `.github/workflows/ci.yml:160`.
+  - ⚠️ **Originally recorded as "177 of 461 backend test files (38%)… The other 284
+    are not run by CI at all."** The 461 came from `ls tests/test_*.py`, a glob that
+    silently means TOP LEVEL ONLY and misses the **13** files under `tests/tasks/`.
+  - **Derived with `rglob`: 474 test files, 177 in the gate, 297 outside (37.3%
+    in).** None of the 13 nested files is in the gate. Those 297 are UNMEASURED by
+    CI, not green.
+  - ⚠️ The wrong figure was mine and James ruled a ceiling of 284 on it; the ceiling
+    built is **297**. Third enumeration error in one session — 262 inherited from
+    CLAUDE.md, `call_extractions` constructed, now a top-level-only glob.
 - **2026-10-06 — 41 known failures sit OUTSIDE the manifest.** CLAUDE.md §11's
   entry *"a manifest maintained by adding what passes converges on covering only what
   passes"* records the measurement: of the failures in a full-tree run, **zero** were
   inside the gate. That is a property of how membership is decided, not luck.
+- **2026-10-06 — `tests/ci_excluded.txt` + `tests/test_ci_membership.py` landed**
+  (approved separately): every backend test file must appear in exactly one of the two
+  lists, so a new file can no longer default to outside CI. The exclusion list's length
+  is ratcheted at exactly 297. This widens NOTHING and surfaces none of the 41.
 - **2026-10-06 — TRIGGER TO REOPEN, either of:** before a second licensee onboards,
   OR when work begins in an area the unmeasured files cover.
 - **2026-10-06 — Until then, every gate report states its denominator.** "Gate green"
