@@ -4,6 +4,44 @@
 
 ---
 
+## RULED by James, 2026-10-06 — build against these
+
+- **Declarative nodes.** Approved. The edges have to be data for the walk and the
+  cycle check to exist at all.
+- **DAG walk in topological order, raising on a cycle.** Approved. Two passes would
+  fit today's depth only.
+- **Two slots, `applies_when` and `required_when`.** Approved.
+- **Three-valued conditions as drawn.** Approved. All three questions
+  NOT_APPLICABLE, or all answered `"none"`, makes any-personalization-chosen FALSE.
+  Unanswered makes it INDETERMINATE.
+- **Fifth `CaptureState` set for indeterminate applicability.** Approved, with the
+  "four exhaust" docstring corrected **in the same diff**.
+- **The caller passes a `Resolution`; the engine stays pure.** Approved.
+  `resolve_and_evaluate` remains the one impure seam.
+- **A row whose applicability is INDETERMINATE is not rendered and not counted** on
+  the capture surface until the condition resolves. No design shows that state, and a
+  row that appears once its question becomes real invents nothing. The visual is
+  James's to raise prototype-side.
+- **`eta` becomes a `FieldDefinition` in this build**: `applies_when` =
+  `service_location != "graveside"`, `required_when` = never.
+- **The inventory is EIGHT conditional fields in four groups** (below). Fix
+  `schema.py:177`'s "five of the seven" to match.
+
+### The corrected inventory — eight conditional fields, four groups
+
+| Depends on | Fields |
+|---|---|
+| Vault availability (external lookup) | the three personalization questions |
+| Any personalization chosen | `date_of_birth`, `date_of_death`, `nameplate_date_format` |
+| `service_location == "other"` | `service_location_other` |
+| `service_location != "graveside"` | `eta` |
+
+⚠️ §0 below records how the count went wrong and is kept rather than deleted: the
+count travelled separately from the list, in both the dispatch and `schema.py`, which
+is why both were wrong at once.
+
+---
+
 ## 0. The inventory does not reconcile with its own count
 
 Read from `app/services/capture/schema.py:163-184` rather than inherited.
@@ -292,19 +330,81 @@ either needs a change to `evaluate`'s order or to the partition, the design is w
 
 ---
 
-## Open, for ruling — not assumed
+## Still open — NOT ruled, and the build waits on these
 
-1. **The count.** 7 or 8 (§0). I propose against the enumeration; the comment's
-   figures need correcting either way, and the correction belongs in `schema.py`
-   with the original preserved.
-2. **Whether INDETERMINATE is shown.** I propose keeping the 2026-09-22 display
-   ruling and gaining only the internal distinction (b.2).
-3. **`eta` does not exist as a field yet.** It is in the inventory and in the
-   prototype comments; adding it is part of Piece 4 or is separate.
-4. **The fifth set.** It amends a docstring that asserts four exhaust (d).
-5. **Where the resolver is called.** Deriving `vault_product_id` inside the engine
-   puts a DB-reading resolver inside what is currently a pure function over config
-   and answers. Alternative: the caller resolves and passes a `Resolution`, keeping
-   `evaluate` pure. ⚠️ **I lean to the second** — purity here is what makes the
-   engine testable without a database, and `resolve_and_evaluate` already exists as
-   the impure seam for exactly this reason.
+⚠️ **First, a reconciliation.** The dispatch says *"I have ruled on the Resolution one
+only"*, but its ruling block in fact closes **all five** items this proposal
+originally listed — the count, whether INDETERMINATE is shown, `eta`'s existence, the
+fifth set's docstring, and the Resolution seam. So the original five are closed. The
+four below are **newly surfaced** by grounding the design in the code, and are the
+ones the build actually waits on.
+
+### 1. `service_location`'s value vocabulary is a COMMENT, not a constant
+
+Both new conditions compare against string literals. The vocabulary exists only as
+`app/models/sales_order.py:123`:
+
+    service_location: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # 'church', 'funeral_home', 'graveside', 'other'
+
+No `SERVICE_LOCATIONS` constant anywhere in `app/`, and no CHECK on the column.
+
+**My lean: declare it, beside `NAMEPLATE_DATE_FORMATS` in `schema.py`, and have the
+condition nodes reference the constant rather than literals.** A typo in either
+literal — `"gravesite"`, `"Other"` — makes the condition silently never fire, and a
+condition that never fires is indistinguishable from one whose answer is always no.
+That is §11's green-without-contact at the data layer, and `nameplate_date_format`
+already set the precedent for fixing it this way.
+
+### 2. Both new fields ALREADY have destinations — so wiring them is a choice, not a gap
+
+Measured, and this changes the framing I used in the proposal body:
+
+    sales_orders.service_location_other  String(100), nullable     EXISTS
+    sales_orders.eta                     Time, nullable            EXISTS
+    # eta's own comment: "Estimated cemetery arrival (procession ETA); null for graveside"
+
+⚠️ **`eta`'s column comment already states the exact condition being added.** The rule
+was written down in the model and never expressed in the engine.
+
+**My lean: wire both in this build.** `cemetery_equipment` is captured with no
+destination *for a documented reason* (the graveside-services model is deliberately
+unbuilt). These two have destinations sitting there, so capturing them and not
+writing them would be a worse state than `cemetery_equipment` — a gap with no reason,
+which reads as finished.
+
+### 3. Tenant switch × conditionality — which wins, and is it observable?
+
+`switchable=True` by default, so a tenant can disable `eta`. Step 5a of the walk puts
+the tenant switch **before** any condition is evaluated.
+
+**My lean: keep that order and state it.** A tenant-disabled field must go straight to
+`NOT_APPLICABLE` and never reach `indeterminate` — otherwise a field the tenant turned
+off would sit in the new fifth set waiting on an answer nobody will give, and the
+fifth set would accumulate fields that are not pending at all.
+
+### 4. Surface treatment — or the orphan report goes noisy for the right reason
+
+`rows.py::orphan_field_ids` reports over the UNION of surfaces. Adding two capture
+fields with no row makes them orphans, taking the report from 1 (`grave_location`,
+correctly, pending a driver surface) to 3.
+
+**My lean: neither gets a row of its own.** `service_location_other` is a continuation
+of the `Service` row, and `eta` is the procession gap between service and burial that
+the prototype's `eta` column comment describes — so both become additional `sources`
+on existing rows. The orphan count stays at 1 and the report stays meaningful.
+
+### Closed by measurement, not open
+
+**A shared `is_answered` already exists** and is already correct for this design —
+`missing.py:95`, *"THE ONE PLACE THAT DECIDES WHAT ANSWERED MEANS"*, with `"none"` →
+ANSWERED and blank → unanswered. The condition nodes reuse it, so conditions and the
+partition cannot disagree about what an answer is. I had expected this to be an open
+item and it is not.
+
+### Flagged, out of scope
+
+**`service_time` vs `eta` vs `burial_time` is now a three-fact picture.** The
+draft-order writer conflates `service_time` with `burial_time` (corrected 2026-10-05 —
+a defect read as the specification). Wiring `eta` does not fix that and must not
+quietly extend it to three. Note it where `eta` is wired; do not fix it in Piece 4.
