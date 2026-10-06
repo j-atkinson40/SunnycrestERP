@@ -972,3 +972,10 @@ from app.api.routes import plaid as plaid_routes  # noqa: E402
 v1_router.include_router(
     plaid_routes.router, prefix="/plaid", tags=["Plaid"]
 )
+
+# Opas Product List + Product panes — platform-catalog reads (2026-10-06)
+from app.api.routes import catalog_pane as catalog_pane_routes  # noqa: E402
+
+v1_router.include_router(
+    catalog_pane_routes.router, prefix="/catalog-pane", tags=["Opas Catalog Pane"]
+)
