@@ -67,6 +67,105 @@ export function OpasHost() {
     if (opas.isOpen) inputRef.current?.focus()
   }, [opas.isOpen])
 
+  /**
+   * ⚠️ CMD+K — THE ONE PIECE OF EXISTING COMMAND-BAR BEHAVIOUR JAMES AUTHORIZED CHANGING,
+   * and only for users who can see the sphere.
+   *
+   * CAPTURE PHASE, and that is the mechanism rather than a detail. `CommandBarProvider`
+   * listens for Cmd+K on `document` in the BUBBLE phase; for the same target, capture
+   * listeners run first. So this sees the key, stops it, and the bar's handler never runs —
+   * no flicker, and no edit to CommandBarProvider.
+   *
+   * ⚠️ MOUNTED ONLY WHEN `isAdmin && canRender`. For everyone else this effect does nothing
+   * and Cmd+K is bit-for-bit unchanged — which is why the existing command-bar tests pass
+   * unmodified.
+   *
+   * ⚠️ FOCUS STILL WINS: `canRender` is false while a Focus is open, so the listener is not
+   * even attached and Cmd+K does nothing, exactly as the bar's own `if (focusIsOpen) return`
+   * already guaranteed.
+   */
+  useEffect(() => {
+    if (!isAdmin || !opas.canRender) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key.toLowerCase() !== "k") return
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.altKey || e.shiftKey) return
+      e.preventDefault()
+      // ⚠️ stopImmediatePropagation, not stopPropagation: the bar's listener is on the SAME
+      // target, so only the immediate form keeps it from running.
+      e.stopImmediatePropagation()
+      // The prototype: isOpen ? tuck() : open()
+      if (opas.isOpen) opas.tuck()
+      else opas.open()
+    }
+    document.addEventListener("keydown", onKeyDown, true)
+    return () => document.removeEventListener("keydown", onKeyDown, true)
+  }, [isAdmin, opas])
+
+  /**
+   * Drag, built the way the prototype's `wire(w)` does, with the differences named.
+   *
+   * SAME AS THE PROTOTYPE: left button only (`e.button !== 0`); interactive descendants
+   * excluded; `setPointerCapture(e.pointerId)` rather than document listeners, so a fast
+   * drag cannot escape the element; and a **4px dead zone** (`Math.hypot(...) < 4`) so a
+   * click is not a drag.
+   *
+   * ⚠️ DIFFERENT FROM THE PROTOTYPE, DELIBERATELY: it binds `pointerdown` on the WHOLE PANE
+   * (`el.addEventListener('pointerdown', ...)` where `el` is the `.win`). The dispatch's
+   * requirement list says "drag by the pane header", so the handle is the header only.
+   * Reported rather than silently reconciled — the prototype is draggable anywhere, which
+   * James will have felt when he walked it.
+   *
+   * ⚠️ BOUNDS: the pane cannot be dragged fully off screen. 80px of width and the full
+   * header depth are kept on screen in every direction, so there is always something left
+   * to grab. The prototype's anchoring code clamps with `Math.max(16, ...)`; I did not find
+   * a clamp on its drag path, so this is stated as our requirement rather than as measured.
+   */
+  const dragStart = useCallback(
+    (
+      e: React.PointerEvent<HTMLDivElement>,
+      id: string,
+      placed: { x: number; y: number; anchored: boolean } | undefined,
+      index: number,
+    ) => {
+      if (e.button !== 0) return
+      if ((e.target as HTMLElement).closest("button,textarea,input,a") !== null) return
+      const handle = e.currentTarget
+      const pane = handle.parentElement
+      if (pane === null) return
+      handle.setPointerCapture(e.pointerId)
+
+      const rect = pane.getBoundingClientRect()
+      const start = { px: e.clientX, py: e.clientY, x: placed?.x ?? rect.left, y: placed?.y ?? rect.top }
+      let moved = false
+
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - start.px
+        const dy = ev.clientY - start.py
+        // ⚠️ THE DEAD ZONE. Without it, raising a pane by clicking its header would nudge it.
+        if (!moved && Math.hypot(dx, dy) < 4) return
+        moved = true
+        const KEEP = 80
+        const maxX = window.innerWidth - KEEP
+        const maxY = window.innerHeight - rect.height > 0 ? window.innerHeight - KEEP : 0
+        const x = Math.min(Math.max(start.x + dx, KEEP - rect.width), maxX)
+        const y = Math.min(Math.max(start.y + dy, 0), maxY)
+        opas.movePane(id, x, y)
+      }
+      const onUp = (ev: PointerEvent) => {
+        handle.releasePointerCapture?.(ev.pointerId)
+        handle.removeEventListener("pointermove", onMove)
+        handle.removeEventListener("pointerup", onUp)
+        handle.removeEventListener("pointercancel", onUp)
+      }
+      handle.addEventListener("pointermove", onMove)
+      handle.addEventListener("pointerup", onUp)
+      handle.addEventListener("pointercancel", onUp)
+      void index
+    },
+    [opas],
+  )
+
   const submit = useCallback(async () => {
     const phrase = text.trim()
     if (phrase === "" || busy) return
@@ -140,27 +239,50 @@ export function OpasHost() {
       {/* PANES — above the veil. `tucked` hides without unmounting, so the session
           survives: opacity 0 / pointer-events none, exactly the prototype's `.win.tucked`. */}
       <div data-testid="opas-desk" style={{ position: "fixed", inset: 0, zIndex: 35, pointerEvents: "none" }}>
-        {opas.panes.map((pane, i) => (
+        {opas.panes.map((pane, i) => {
+          const placed = opas.placements[pane.id]
+          const isFront = opas.frontPaneId === pane.id
+          return (
           <div
             key={pane.id}
             data-testid={`opas-pane-${pane.id}`}
             data-tucked={opas.isOpen ? "false" : "true"}
+            data-focused={isFront ? "true" : "false"}
+            onPointerDown={() => opas.raisePane(pane.id)}
             style={{
               ...GLASS,
               position: "absolute",
-              right: 24 + i * 18,
-              top: 72 + i * 22,
+              // ⚠️ A DRAGGED PANE USES left/top; AN ANCHORED ONE CASCADES FROM right/top.
+              // Mixing them is what keeps "new panes still cascade" true after another pane
+              // has been moved: `anchored` decides which pair applies, per pane.
+              ...(placed !== undefined && !placed.anchored
+                ? { left: placed.x, top: placed.y }
+                : { right: 24 + i * 18, top: 72 + i * 22 }),
+              zIndex: opas.zOf(pane.id),
+              // `.win.focused` from the prototype: a stronger shadow on the front pane, and
+              // the others dimmed to .8 rather than hidden.
+              boxShadow: isFront
+                ? "inset 0 1px 0 rgba(255,255,255,.24),inset 0 0 0 1px rgba(255,255,255,.10)," +
+                  "inset 0 -1px 0 rgba(0,0,0,.45),0 44px 100px rgba(0,0,0,.65),0 14px 32px rgba(0,0,0,.45)"
+                : GLASS.boxShadow,
+              opacity: opas.isOpen ? (isFront ? 1 : 0.8) : 0,
               width: "min(390px, calc(100vw - 32px))",
               maxHeight: "calc(100vh - 160px)",
               overflowY: "auto",
               borderRadius: 22,
               pointerEvents: opas.isOpen ? "auto" : "none",
-              opacity: opas.isOpen ? 1 : 0,
               transform: opas.isOpen ? "none" : "translateY(12px) scale(.96)",
               transition: "opacity .4s cubic-bezier(0.2,0,0.1,1), transform .45s cubic-bezier(0.2,0,0.1,1)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 10px 6px 20px" }}>
+            <div
+              data-testid={`opas-pane-handle-${pane.id}`}
+              onPointerDown={(e) => dragStart(e, pane.id, placed, i)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "14px 10px 6px 20px",
+                cursor: "grab", touchAction: "none", userSelect: "none",
+              }}
+            >
               <span style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "#5e5e5e" }}>
                 {pane.label}
               </span>
@@ -192,7 +314,8 @@ export function OpasHost() {
               )}
             </div>
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* COMMAND LINE — glass pill at the sphere's corner. */}

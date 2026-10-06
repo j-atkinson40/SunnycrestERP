@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react"
 
 import { listVariants, type CatalogVariant } from "@/services/opas-catalog-service"
+import { labelIsRedundant } from "./option-label"
 
 /** Readable labels for `product_templates.form`. Unknown kinds fall through verbatim
  *  rather than being hidden — an unlabelled group is a visible gap, a dropped one is not. */
@@ -133,8 +134,12 @@ export function ProductListPane({
                     </span>
                   )}
                   <span>{r.name}</span>
-                  {r.option_label !== undefined && r.option_label !== r.name && (
-                    <span style={{ color: "#9a9a9a", fontSize: 12 }}>{r.option_label}</span>
+                  {/* ⚠️ The label shows only when it ADDS something. `!== r.name` was too
+                      weak: it let "Bronze" through on "Wilbert Bronze Burial Vault", which
+                      restates the name without equalling it. See `option-label.ts`. */}
+                  {r.option_label !== undefined && !labelIsRedundant(r.option_label, r.name) && (
+                    <span data-testid={`opas-list-label-${r.variant_template_id}`}
+                          style={{ color: "#9a9a9a", fontSize: 12 }}>{r.option_label}</span>
                   )}
                 </button>
               </li>

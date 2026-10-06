@@ -95,17 +95,26 @@ def list_variants(db: Session) -> list[dict[str, Any]]:
                v.sku           AS sku,
                t.form          AS kind,
                t.family_slug   AS family_slug,
-               t.display_name  AS product_name
+               t.display_name  AS product_name,
+               -- ⚠️ THE GROUP ORDER IS DERIVED FROM THE PRICE LIST, NOT INVENTED, and this
+               -- window is the whole mechanism. `product_families.sort_order` is populated
+               -- 1..24 and already encodes the price list's sequence; what it does NOT give
+               -- is an order for FORMS, because a family SPANS them (`triune` holds both a
+               -- burial_vault and an urn_vault; `graveliner` holds a grave_liner and an urn
+               -- vault). So a form's rank is where it FIRST APPEARS walking families in
+               -- price-list order. That yields burial_vault, urn_vault, grave_liner, infant,
+               -- equipment, urn — and it moves when the price list moves, which an explicit
+               -- list in this file would not.
+               MIN(f.sort_order) OVER (PARTITION BY t.form) AS form_rank,
+               f.sort_order AS family_rank,
+               -- `tier` is how the catalog says good/better/best inside a family; it breaks
+               -- ties before the numeric order does.
+               (COALESCE(v.tier, '') , COALESCE(v.sort_order, 2147483647)) AS variant_rank
           FROM product_variant_templates v
           JOIN product_templates t ON t.id = v.product_template_id
           LEFT JOIN product_families f ON f.slug = t.family_slug
          WHERE v.is_active IS TRUE
-         ORDER BY t.form,
-                  COALESCE(f.sort_order, 2147483647),
-                  t.family_slug,
-                  COALESCE(v.tier, ''),
-                  COALESCE(v.sort_order, 2147483647),
-                  v.display_name
+         ORDER BY form_rank, family_rank, variant_rank, v.display_name
         """
     )).mappings().all()
 

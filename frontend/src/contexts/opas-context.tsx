@@ -22,6 +22,7 @@
  */
 import {
   createContext,
+  useRef,
   useCallback,
   useContext,
   useEffect,
@@ -49,6 +50,20 @@ export interface OpasPane {
   readonly unmatchedPhrase?: string
 }
 
+/** Where a pane sits, and whether it has been moved.
+ *
+ * ⚠️ `anchored` IS THE PROTOTYPE'S OWN FLAG, and it carries the cascade rule. A pane starts
+ * anchored and auto-positioned; the prototype drops the flag on the FIRST MOVE
+ * (`w.anchored=false; el.classList.remove('anchored')`). So a dragged pane keeps its place
+ * and a new one still cascades from the default. Without the flag, either every pane
+ * re-anchors on re-render or none of them ever cascades.
+ */
+export interface PanePlacement {
+  readonly x: number
+  readonly y: number
+  readonly anchored: boolean
+}
+
 interface OpasValue {
   readonly isOpen: boolean
   readonly panes: readonly OpasPane[]
@@ -69,6 +84,14 @@ interface OpasValue {
   readonly tuck: () => void
   /** Escape's three-branch behaviour; returns which branch ran. */
   readonly onEscape: (activeTagName?: string) => "cancelled-pick" | "refocused-input" | "tucked"
+  /** Placement per pane id. Absent means still anchored at its cascade slot. */
+  readonly placements: Readonly<Record<string, PanePlacement>>
+  readonly movePane: (id: string, x: number, y: number) => void
+  /** The pane at the front. `raise` is the prototype's name for bringing one forward. */
+  readonly frontPaneId: string | null
+  readonly raisePane: (id: string) => void
+  /** Monotonic, like the prototype's `++z`. */
+  readonly zOf: (id: string) => number
 }
 
 const OpasContext = createContext<OpasValue | null>(null)
@@ -96,6 +119,12 @@ export function OpasProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [panes, setPanes] = useState<readonly OpasPane[]>([])
   const [pendingPick, setPendingPick] = useState<readonly string[] | null>(null)
+  const [placements, setPlacements] = useState<Record<string, PanePlacement>>({})
+  const [frontPaneId, setFrontPaneId] = useState<string | null>(null)
+  // ⚠️ A MONOTONIC COUNTER, exactly the prototype's `++z`. Ranking by array index instead
+  // would re-shuffle every pane whenever one closed; a counter only ever moves one pane.
+  const [zs, setZs] = useState<Record<string, number>>({})
+  const zNext = useRef(1)
 
   // ⚠️ RULE 1 — a Focus open hides Opas, exactly as it hides the command bar. Closing
   // rather than merely hiding, so a tucked session cannot be resurrected by leaving a
@@ -166,15 +195,55 @@ export function OpasProvider({ children }: { children: ReactNode }) {
     [pendingPick, tuck],
   )
 
-  const openPane = useCallback((pane: Omit<OpasPane, "id">) => {
-    paneSeq += 1
-    const id = `opas-pane-${paneSeq}`
-    setPanes((prev) => [...prev, { ...pane, id }])
+  const raisePane = useCallback((id: string) => {
+    zNext.current += 1
+    const z = zNext.current
+    setZs((prev) => ({ ...prev, [id]: z }))
+    setFrontPaneId(id)
   }, [])
 
-  const closePane = useCallback((id: string) => {
-    setPanes((prev) => prev.filter((p) => p.id !== id))
+  const movePane = useCallback((id: string, x: number, y: number) => {
+    // ⚠️ `anchored: false` on the first move — see PanePlacement.
+    setPlacements((prev) => ({ ...prev, [id]: { x, y, anchored: false } }))
   }, [])
+
+  const openPane = useCallback(
+    (pane: Omit<OpasPane, "id">) => {
+      paneSeq += 1
+      const id = `opas-pane-${paneSeq}`
+      setPanes((prev) => [...prev, { ...pane, id }])
+      // A new pane arrives at the front, as the prototype's `raise` on creation does.
+      raisePane(id)
+    },
+    [raisePane],
+  )
+
+  const closePane = useCallback(
+    (id: string) => {
+      setPanes((prev) => {
+        const next = prev.filter((p) => p.id !== id)
+        // ⚠️ THE PROTOTYPE RE-RAISES WHEN THE FRONT PANE CLOSES: "if(front===id){const n=
+        // wins.slice().sort((a,b)=>b.el.style.zIndex-a.el.style.zIndex)[0]; … if(n)raise(n)}".
+        // Without it, closing the front pane leaves NOTHING focused and the next click has
+        // to do the job — which reads as the overlay having lost track.
+        if (next.length > 0) {
+          setFrontPaneId((front) => {
+            if (front !== id) return front
+            const highest = next.reduce((a, b) => ((zs[b.id] ?? 0) > (zs[a.id] ?? 0) ? b : a))
+            return highest.id
+          })
+        } else {
+          setFrontPaneId(null)
+        }
+        return next
+      })
+      setPlacements((prev) => {
+        const { [id]: _gone, ...rest } = prev
+        return rest
+      })
+    },
+    [zs],
+  )
 
   const value = useMemo<OpasValue>(
     () => ({
@@ -190,8 +259,13 @@ export function OpasProvider({ children }: { children: ReactNode }) {
       setPendingPick,
       tuck,
       onEscape,
+      placements,
+      movePane,
+      frontPaneId,
+      raisePane,
+      zOf: (id: string) => zs[id] ?? 0,
     }),
-    [isOpen, focusIsOpen, panes, open, close, openPane, closePane, pendingPick, tuck, onEscape],
+    [isOpen, focusIsOpen, panes, open, close, openPane, closePane, pendingPick, tuck, onEscape, placements, movePane, frontPaneId, raisePane, zs],
   )
 
   return <OpasContext.Provider value={value}>{children}</OpasContext.Provider>

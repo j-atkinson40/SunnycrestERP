@@ -459,3 +459,87 @@ class TestResolveReturnsASetNotAChoice:
 
         r = TestClient(app).post("/api/v1/catalog-pane/resolve", json={"phrase": "x"})
         assert r.status_code in (401, 403), f"anonymous POST returned {r.status_code}"
+
+
+class TestTheOrderFollowsThePriceList:
+    """⚠️ THE GROUP ORDER IS DERIVED, NOT LISTED, and that is what this pins.
+
+    `product_families.sort_order` is populated 1..24 and already encodes the price list's
+    sequence (source: `docs/catalog/2026-02-01-sunnycrest-funeral-price-list.pdf`, mapped in
+    `docs/catalog/2026-10-03-price-list-to-catalog-map.md`). What it does NOT give is an
+    order for FORMS, because a family SPANS them — `triune` holds a burial_vault and an urn
+    vault; `graveliner` holds a grave_liner and an urn vault. So a form's rank is where it
+    FIRST APPEARS walking families in price-list order.
+
+    An explicit list keyed by (family_slug, form) in the service would also produce this
+    order today and would NOT move when the price list moves. Deriving it means the next
+    price list reorders the pane by changing data, not code.
+    """
+
+    EXPECTED_GROUPS = [
+        "burial_vault", "urn_vault", "grave_liner", "infant", "equipment", "urn",
+    ]
+
+    def test_the_group_order_is_the_price_list_order_not_alphabetical(self, rows):
+        seen: list[str] = []
+        for r in rows:
+            if r["kind"] not in seen:
+                seen.append(r["kind"])
+        assert seen == self.EXPECTED_GROUPS
+        # ⚠️ THE DISCRIMINATING ASSERTION. Alphabetical by form is what it used to be, and
+        # it is a plausible-looking order that happens to be wrong.
+        assert seen != sorted(seen), "the order is alphabetical again"
+
+    def test_the_first_row_is_the_price_list_first_row(self, rows):
+        """`wilbert-bronze` is family sort_order 1."""
+        assert rows[0]["name"] == "Wilbert Bronze Burial Vault"
+
+    def test_within_burial_vaults_the_families_follow_their_sort_order(self, db, rows):
+        from sqlalchemy import text
+
+        want = [
+            r[0] for r in db.execute(text(
+                # ⚠️ `f.sort_order` MUST BE IN THE SELECT LIST: Postgres rejects an
+                # ORDER BY expression that is not selected when DISTINCT is present. Written
+                # without it first, and the error aborted the module-scoped transaction,
+                # which then failed the NEXT test too — a cascade, not a second defect.
+                "SELECT DISTINCT f.slug, f.sort_order FROM product_families f "
+                "JOIN product_templates t ON t.family_slug = f.slug "
+                "JOIN product_variant_templates v ON v.product_template_id = t.id "
+                "WHERE t.form = 'burial_vault' AND v.is_active IS TRUE "
+                "ORDER BY f.sort_order"
+            ))
+        ]
+        got: list[str] = []
+        for r in rows:
+            if r["kind"] != "burial_vault":
+                continue
+            slug = r.get("family_slug")
+            if slug is not None and slug not in got:
+                got.append(slug)
+        assert got == want
+
+    def test_a_family_with_no_sort_order_would_sort_LAST_and_still_appear(self, db):
+        """⚠️ NEVER DROPPED. An unranked family must fall to the end and stay visible; a
+        join or an ORDER BY that swallowed it would hide catalog rows, which is worse than
+        showing them in the wrong place.
+
+        Asserted structurally because all 24 families are currently ranked — there is no
+        unranked family to observe, so observing one would require inventing it.
+        """
+        from sqlalchemy import text
+
+        unranked = db.execute(text(
+            "SELECT count(*) FROM product_families WHERE sort_order IS NULL"
+        )).scalar_one()
+        assert unranked == 0, (
+            f"{unranked} families are unranked — this test's premise no longer holds and it "
+            f"should be replaced by one that observes where they land"
+        )
+        # The query uses LEFT JOIN on families and COALESCE on the variant rank, so a NULL
+        # family rank sorts last rather than removing the row.
+        from app.services import catalog_pane_service as svc
+        import inspect
+
+        src = inspect.getsource(svc.list_variants)
+        assert "LEFT JOIN product_families" in src, "an inner join would drop unranked rows"

@@ -243,3 +243,167 @@ describe("⚠️ through the REAL provider tree", () => {
     expect(screen.getByTestId("opas-sphere").getAttribute("data-session")).toBe("true")
   })
 })
+
+describe("⚠️ drag, bring-to-front, and bounds", () => {
+  async function mountWithPane() {
+    const { OpasProvider } = await import("@/contexts/opas-context")
+    const { OpasHost } = await import("./OpasHost")
+    listVariants.mockResolvedValue([
+      { variant_template_id: "a", name: "Vault A", kind: "burial_vault" },
+    ])
+    render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+    fireEvent.click(screen.getByTestId("opas-sphere"))
+    const input = screen.getByTestId("opas-input")
+    fireEvent.change(input, { target: { value: "the catalog" } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" })
+    })
+    await waitFor(() => expect(screen.getByTestId("opas-product-list")).toBeTruthy())
+    const pane = screen.getByTestId("opas-desk").firstElementChild as HTMLElement
+    const handle = pane.querySelector("[data-testid^='opas-pane-handle-']") as HTMLElement
+    return { pane, handle, input }
+  }
+
+  /** jsdom has no layout, so the element reports 0×0 and setPointerCapture is absent. */
+  function drag(handle: HTMLElement, from: [number, number], to: [number, number]) {
+    handle.setPointerCapture = () => {}
+    handle.releasePointerCapture = () => {}
+    fireEvent.pointerDown(handle, { button: 0, clientX: from[0], clientY: from[1], pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientX: to[0], clientY: to[1], pointerId: 1 })
+    fireEvent.pointerUp(handle, { pointerId: 1 })
+  }
+
+  it("a dragged pane moves to left/top and keeps the position through a tuck and back", async () => {
+    const { pane, handle } = await mountWithPane()
+    await act(async () => drag(handle, [500, 300], [300, 200]))
+    const left = pane.style.left
+    expect(left, "the pane did not switch to left/top addressing").not.toBe("")
+
+    // Esc tucks…
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Escape" })
+    })
+    expect(pane.getAttribute("data-tucked")).toBe("true")
+    // …and reopening returns it where it was, not to the cascade slot.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("opas-sphere"))
+    })
+    expect(pane.style.left, "the position did not survive the tuck").toBe(left)
+    expect(pane.style.right, "an anchored pane would still be using right/*").toBe("")
+  })
+
+  it("⚠️ the 4px dead zone — a 2px nudge is a click, not a drag", async () => {
+    const { pane, handle } = await mountWithPane()
+    await act(async () => drag(handle, [500, 300], [501, 301]))
+    expect(pane.style.left, "a sub-threshold move became a drag").toBe("")
+  })
+
+  it("a pane cannot be dragged fully off screen", async () => {
+    const { pane, handle } = await mountWithPane()
+    // far past the top-left corner
+    await act(async () => drag(handle, [500, 300], [-5000, -5000]))
+    const x = parseFloat(pane.style.left)
+    const y = parseFloat(pane.style.top)
+    expect(y, "clamped below 0").toBeGreaterThanOrEqual(0)
+    // KEEP - width, and width is 0 in jsdom, so the floor is KEEP itself
+    expect(x, "x was not clamped").toBeGreaterThanOrEqual(-1000)
+    expect(Number.isFinite(x)).toBe(true)
+  })
+
+  it("clicking a pane brings it to front and marks it focused", async () => {
+    const { pane, input } = await mountWithPane()
+    // open a second pane
+    fireEvent.change(input, { target: { value: "the catalog" } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" })
+    })
+    const panes = Array.from(screen.getByTestId("opas-desk").children) as HTMLElement[]
+    expect(panes).toHaveLength(2)
+    // the newest arrives at the front
+    expect(panes[1].getAttribute("data-focused")).toBe("true")
+    expect(panes[0].getAttribute("data-focused")).toBe("false")
+    // clicking the first raises it
+    await act(async () => {
+      fireEvent.pointerDown(pane)
+    })
+    expect(panes[0].getAttribute("data-focused")).toBe("true")
+    expect(panes[1].getAttribute("data-focused")).toBe("false")
+    expect(Number(panes[0].style.zIndex)).toBeGreaterThan(Number(panes[1].style.zIndex))
+  })
+
+  it("a new pane still cascades even after another has been dragged", async () => {
+    const { handle, input } = await mountWithPane()
+    await act(async () => drag(handle, [500, 300], [300, 200]))
+    fireEvent.change(input, { target: { value: "the catalog" } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" })
+    })
+    const panes = Array.from(screen.getByTestId("opas-desk").children) as HTMLElement[]
+    expect(panes[0].style.left, "the dragged pane lost its place").not.toBe("")
+    expect(panes[1].style.right, "the new pane did not cascade").not.toBe("")
+  })
+})
+
+describe("⚠️ Cmd+K — Opas takes it, for sphere-users only", () => {
+  async function mountHost2() {
+    const { OpasProvider } = await import("@/contexts/opas-context")
+    const { OpasHost } = await import("./OpasHost")
+    return render(
+      <OpasProvider>
+        <OpasHost />
+      </OpasProvider>,
+    )
+  }
+
+  it("an admin's Cmd+K opens Opas", async () => {
+    await mountHost2()
+    expect(screen.queryByTestId("opas-command-line")).toBeNull()
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "k", metaKey: true })
+    })
+    expect(screen.getByTestId("opas-command-line")).toBeTruthy()
+  })
+
+  it("and a second Cmd+K tucks it — the prototype's isOpen ? tuck() : open()", async () => {
+    await mountHost2()
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "k", metaKey: true })
+    })
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "k", metaKey: true })
+    })
+    expect(screen.queryByTestId("opas-command-line")).toBeNull()
+  })
+
+  it("Ctrl+K works too, for non-Mac", async () => {
+    await mountHost2()
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "K", ctrlKey: true })
+    })
+    expect(screen.getByTestId("opas-command-line")).toBeTruthy()
+  })
+
+  it("⚠️ a NON-ADMIN's Cmd+K is untouched — the listener is never attached", async () => {
+    isAdmin = false
+    await mountHost2()
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "k", metaKey: true })
+    })
+    // nothing of Opas exists at all for a non-admin
+    expect(screen.queryByTestId("opas-command-line")).toBeNull()
+    expect(screen.queryByTestId("opas-sphere")).toBeNull()
+  })
+
+  it("⚠️ modified combinations are left alone — Cmd+Shift+K is not ours", async () => {
+    await mountHost2()
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "k", metaKey: true, shiftKey: true })
+    })
+    expect(screen.queryByTestId("opas-command-line")).toBeNull()
+  })
+})
+
