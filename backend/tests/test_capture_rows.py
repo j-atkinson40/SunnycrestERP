@@ -81,7 +81,7 @@ class TestRowsAreNotFields:
     def test_neither_surface_has_one_row_per_field(self):
         """The assertion the scope error would have failed."""
         n_fields = len(template_for(SALES_ORDER))
-        assert n_fields == 14
+        assert n_fields == 15
         assert len(CAPTURE_SALES_ORDER.rows) == 9 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
@@ -269,28 +269,37 @@ class TestAmendmentOneOrderedSources:
 
 
 class TestAmendmentTwoOrphansOverTheUnion:
-    def test_the_orphan_set_is_exactly_the_one_known_field(self):
-        """⚠️ THE SET SHRANK, AND THAT IS THE PROPERTY WORKING.
+    def test_the_orphan_set_names_three_different_causes(self):
+        """⚠️ TWO FIELDS, AND BETWEEN THEM THIS SET HAS NOW SHOWN THREE DISTINCT
+        CAUSES — which is the entire argument for making orphanhood computable
+        instead of silent.
 
-        It held TWO fields with TWO different causes, which was the argument for
-        making orphanhood computable rather than silent:
+            grave_location          SURFACE EXISTS IN THE PRODUCT, NOT DECLARED.
+                                    Captured at order time, shown to the delivery
+                                    crew. Correct to report until a `driver`
+                                    surface is declared.
 
-            grave_location  captured at order time, shown on the driver's
-                            surface, which is NOT DECLARED. Still correct to
-                            report, and still reported.
-            vault_size      ruled REDUNDANT and kept only because no resolver
-                            could recover a size from the vault phrase.
+            nameplate_date_format   A RULED REQUIREMENT THE DESIGN HAS NO CONTROL
+                                    FOR. Added 2026-10-05 by ruling; measured the
+                                    same day, NO screen in the approved prototype
+                                    offers a date-format choice — screen 6's
+                                    legacy editor RENDERS the written form and
+                                    gives no picker. So the field is right and the
+                                    design has not caught up.
 
-        The second cause was resolved on 2026-10-05: `product_name_resolver`
-        reads a size out of the phrase, so the field was removed and left the set
-        by being FIXED rather than by being suppressed.
+            vault_size              REDUNDANT — and it LEFT this set on
+                                    2026-10-05 by being removed once the resolver
+                                    could read a size out of the vault phrase.
+                                    Fixed, not suppressed.
 
-        ⚠️ That is the whole point of the report. A design that could not name
-        this class would have carried a redundant required field indefinitely,
-        because nothing would ever have pointed at it.
+        ⚠️ Three causes, three different remedies: declare a surface, design a
+        control, delete a field. A report that could not tell them apart would
+        have invited the same action for all three.
         """
         t = frozenset(f.field_id for f in template_for(SALES_ORDER))
-        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == {"grave_location"}
+        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == {
+            "grave_location", "nameplate_date_format"
+        }
 
     def test_per_surface_absence_is_not_orphanhood(self):
         """⚠️ THE DISCRIMINATING TEST. `burial_date` has no row on the CAPTURE

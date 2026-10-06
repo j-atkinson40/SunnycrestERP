@@ -100,6 +100,8 @@ _ANSWER_BY_FIELD: dict[str, object] = {
     "date_of_death": "2026-09-14",
     # A product reference. "Full setup" is the prototype's own value.
     "cemetery_equipment": "Full setup",
+    # The measured default — see NAMEPLATE_DATE_FORMAT_DEFAULT.
+    "nameplate_date_format": "written",
 }
 
 

@@ -71,7 +71,8 @@ UNEXTRACTABLE_REQUIRED = {"service_location"}
 #: would make the suite assert that optional unmapped fields show up as missing,
 #: which is the opposite of what optional means. Added 2026-10-05 with the three
 #: new fields; nothing extracts dates or equipment from a call yet.
-UNEXTRACTABLE_OPTIONAL = {"date_of_birth", "date_of_death", "cemetery_equipment"}
+UNEXTRACTABLE_OPTIONAL = {"date_of_birth", "date_of_death", "cemetery_equipment",
+                          "nameplate_date_format"}
 
 UNEXTRACTABLE = UNEXTRACTABLE_REQUIRED | UNEXTRACTABLE_OPTIONAL
 

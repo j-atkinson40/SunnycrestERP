@@ -133,6 +133,56 @@ def _personalization_fields() -> tuple[FieldDefinition, ...]:
     )
 
 
+#: The three forms a nameplate's dates may be stamped in.
+#:
+#: ⚠️ THREE NAMED VALUES, NOT A FORMAT STRING. Directors ask for the years alone
+#: or for all-numeric — that is three options people ask for, and a format engine
+#: would invite arbitrary combinations nobody requested and nobody can stamp on a
+#: nameplate. A fourth value is a row here when someone asks for one.
+NAMEPLATE_DATE_FORMATS: tuple[str, ...] = ("written", "numeric", "years")
+
+#: ⚠️ A MEASURED DEFAULT, AND THE DISTINCTION FROM THE DEFAULTS THIS ARC REMOVED
+#: IS THE WHOLE REASON FOR THIS COMMENT.
+#:
+#: `written` ("March 14, 1948 — September 14, 2026") is WHAT THE APPROVED DESIGN
+#: RENDERS: `docs/prototypes/2026-09-call-to-print.html`
+#: (md5 56e1e24c3a4a873e1ef6d45fc58ba18e), screen 2's subject sub-line, reads
+#: `March 14, 1948 — September 14, 2026`. The default states what the product
+#: already does.
+#:
+#: Contrast the defaults this arc REMOVED. `products.is_manufactured` defaulted
+#: to `false` — the UNCOMMON answer — on a populated table where nobody had
+#: measured it for any row (r196). `product_templates.personalization_capability`
+#: wrote `[]` as a literal for 21 products (r192). Both asserted a fact nobody
+#: chose. This one records a choice somebody made, in a file a reader can open.
+#:
+#: THE TEST: a default is measured when you can name where the value came from.
+#: If you cannot, the column is nullable and the rows stay NULL (CLAUDE.md §5).
+NAMEPLATE_DATE_FORMAT_DEFAULT = "written"
+
+#: ⚠️ CONDITIONS THE ENGINE CANNOT YET EXPRESS. Recorded so Piece 4 has an
+#: inventory rather than a memory, and so nobody implements one of them ad hoc.
+#:
+#: Every entry is VALUE-DEPENDENT: the condition reads another field's ANSWER,
+#: which `resolve_schema` never sees — it resolves applicability ONCE, UP FRONT,
+#: before `evaluate` compares anything against the answers. That ordering is what
+#: Piece 4 has to break honestly rather than work around.
+#:
+#:   date_of_birth          required when ANY personalization is chosen
+#:   date_of_death          required when ANY personalization is chosen
+#:   nameplate_date_format  applies  when ANY personalization is chosen
+#:   service_location_other applies  when service_location == "other"
+#:   eta                    applies  when service_location != "graveside"
+#:
+#: ⚠️ FIVE OF THE SEVEN HANG OFF ONE CHOICE — personalization — so VALUE-DEPENDENCE
+#: IS THE LOAD-BEARING SHAPE and the availability lookup the three personalization
+#: questions use is the EXCEPTION. A mechanism generalised from that lookup alone
+#: would have served one case and missed five, which is the single-instance
+#: generalisation this arc has spent three days catching.
+#:
+#: Deliberately prose rather than a data structure: a declaration format invented
+#: before the mechanism would fix the shape of the thing it is meant to describe.
+
 #: What every tenant is asked for before it configures anything.
 PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     FieldDefinition(VAULT_FIELD_ID, "Vault", switchable=False),
@@ -213,15 +263,29 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # decision, and conflating them in the schema would make "born but death
     # date unknown" unexpressible.
     #
-    # ⚠️ THEY BECOME REQUIRED WHEN A LEGACY PRINT IS CHOSEN — the Legacy
-    # nameplate prints name and dates — which is a condition on ANOTHER FIELD'S
-    # VALUE, the second conditional shape the engine cannot express yet (see
-    # `FieldDefinition.question_id` above). Captured unconditionally until Piece 4
-    # lands. ⚠️ `required=False` for now: making them required today would report
-    # them missing on every non-personalized order, which is a different false
-    # claim from the one we are avoiding.
+    # ⚠️ CONDITION CORRECTED 2026-10-05: BOTH become required when **ANY**
+    # personalization is chosen — not when a Legacy print specifically is. This
+    # comment said "when a Legacy print is chosen" for one commit, which was my
+    # inference from the Legacy nameplate printing name and dates. James ruled the
+    # broader condition: any personalization needs both dates, and with none,
+    # neither is needed.
+    #
+    # ⚠️ RECORDED, NOT IMPLEMENTED — a condition on another field's VALUE, which
+    # the engine cannot express. See the `_PIECE_4` inventory above.
+    # `required=False` until then: requiring them today would report them missing
+    # on every non-personalized order, a different false claim from the one being
+    # avoided.
     FieldDefinition("date_of_birth", "Date of birth", required=False),
     FieldDefinition("date_of_death", "Date of death", required=False),
+    # ⚠️ A PRODUCTION INSTRUCTION, NOT A DISPLAY PREFERENCE. It is stamped on the
+    # nameplate and travels with the order, so it belongs to the object rather
+    # than to whoever happens to be looking at it.
+    #
+    # Three named values and a measured default — see `NAMEPLATE_DATE_FORMATS`
+    # and `NAMEPLATE_DATE_FORMAT_DEFAULT` above. ⚠️ Condition recorded, not
+    # implemented: applies when any personalization is chosen, the same
+    # value-dependent shape as the dates.
+    FieldDefinition("nameplate_date_format", "Date format", required=False),
     # ⚠️ A PRODUCT REFERENCE, NOT FREE TEXT. The catalog sells 5 `equipment`
     # products (measured 2026-10-05), the scheduling board renders equipment
     # chips, and a driver's kit is built from it — so the answer resolves to a
