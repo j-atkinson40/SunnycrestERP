@@ -55,5 +55,38 @@ export default defineConfig({
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     exclude: ["node_modules", "tests/e2e", "dist"],
     css: false,
+
+    // ⚠️ THIS IS WHAT KEPT FRONTEND CI RED, AND CLAUDE.md SAID IT DIDN'T MATTER.
+    //
+    // Vitest forwards every console call from the worker to the main process over
+    // rpc (`onUserConsoleLog`). When a worker closes with one of those still in
+    // flight it raises:
+    //
+    //   EnvironmentTeardownError: [vitest-worker]: Closing rpc while
+    //   "onUserConsoleLog" was pending
+    //
+    // CLAUDE.md §"Build discipline" characterises that as environmental, notes
+    // "0 test failures", and says not to let it block a commit. Both halves are
+    // true and the conclusion does not follow for CI: **vitest exits 1 on an
+    // unhandled error regardless of how many tests passed.** Measured on run
+    // 37457088736 — `338 passed (338)`, `4435 passed | 3 skipped | 1 todo`,
+    // `Errors 1 error`, `Process completed with exit code 1`. The job was red
+    // with nothing failing, and the documented advice was to proceed.
+    //
+    // Disabling interception means the rpc is never made — logs go straight to
+    // the worker's own stdout/stderr — so the pending call cannot exist. That is
+    // a removal, not a suppression: `dangerouslyIgnoreUnhandledErrors` would have
+    // made the job green while silencing every OTHER unhandled error too, which
+    // is a loud failure traded for a quiet one.
+    //
+    // ⚠️ THE COST, STATED: vitest can no longer attribute console output to the
+    // test that emitted it — no `stderr | file > test name` header. Output still
+    // appears, unlabelled. Accepted because the alternative is a channel that
+    // cannot report a new failure.
+    //
+    // ⚠️ AND THIS IS NOT VERIFIED BY A LOCAL RUN. The race is intermittent and
+    // did not fire locally in either direction, so a green local suite is not
+    // evidence. The first green CI run is a BASELINE, not a confirmation.
+    disableConsoleIntercept: true,
   },
 })

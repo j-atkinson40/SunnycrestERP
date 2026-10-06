@@ -120,9 +120,24 @@ def _bill_line(db, user, category: str | None):
     from app.models.vendor_bill import VendorBill
     from app.models.vendor_bill_line import VendorBillLine
 
+    # ⚠️ ESTABLISHED, NOT SKIPPED ON — 2026-10-06. This read `pytest.skip("no
+    # vendor on the canonical tenant")`, and it took that branch: 3 tests in this
+    # file had not run for an unknown period, reporting as skips nobody read.
+    #
+    # A skip whose condition is SATISFIABLE is not a disposition. The test needs a
+    # vendor; it can make one. Skipping instead made the fragment's AP branch
+    # untested on every database whose seed happens not to create a Vendor for the
+    # canonical tenant — which is the shape §11 names as "a test can pass because
+    # data is MISSING", one notch more honest for skipping rather than passing and
+    # equally uninformative.
     vendor = db.query(Vendor).filter(Vendor.company_id == user.company_id).first()
     if vendor is None:
-        pytest.skip("no vendor on the canonical tenant")
+        vendor = Vendor(
+            id=str(uuid.uuid4()), company_id=user.company_id,
+            name=f"T-vendor-{uuid.uuid4().hex[:6]}",
+        )
+        db.add(vendor)
+        db.flush()
     now = datetime.now(timezone.utc)
     b = VendorBill(
         id=str(uuid.uuid4()), company_id=user.company_id, vendor_id=vendor.id,

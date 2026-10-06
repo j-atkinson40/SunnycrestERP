@@ -272,11 +272,43 @@ class TestTheGuardProtectsOperatorEdits:
 
         job = _job(db, "Collections")
         assert job is not None
-        before = _refs(db, job)
-        assert len(before) == 2, f"expected 2 seeded refs, got {before}"
 
         victim = ("triage_queue", "ar_collections_triage")
-        assert victim in before
+        before = _refs(db, job)
+        assert victim in before, (
+            f"the declared triage ref is absent, so there is nothing for the "
+            f"seed to resurrect: {before}"
+        )
+
+        # ⚠️ THE SECOND REF IS ESTABLISHED HERE, NOT ASSUMED — AND THAT IS THE
+        # 2026-10-06 FIX. This read `assert len(before) == 2`, a PRECONDITION ON
+        # WHAT THE SEED HAPPENED TO PRODUCE, and it failed in CI for 42 runs.
+        #
+        # The cause, measured: `seed_accounting_jobs` resolves an `automation`
+        # ref by NAME and — per its own docstring — "a ref whose
+        # automation/queue is absent on this DB is skipped with a log". CI has no
+        # `AR Collections` workflow row, so that ref is skipped and Collections
+        # has ONE ref there and TWO locally. The test was reading a seed outcome
+        # as a given.
+        #
+        # ⚠️ AND THE SCENARIO GENUINELY NEEDS TWO. Deleting the only ref leaves
+        # ZERO, which is the seed's legitimate "attach refs to a job with none"
+        # branch — so with one ref this test would assert the opposite of the
+        # rule. Hence establish, not relax: an UNDECLARED companion ref, which
+        # the seed has no reason to touch and which leaves the job non-empty
+        # after the victim is deleted. That is exactly the state the guard is
+        # about.
+        companion = ("triage_queue", "__r157_guard_companion")
+        if companion not in before:
+            db.execute(
+                text("INSERT INTO moc_job_ref (id, job_id, ref_kind, ref_key, "
+                     "display_order) VALUES (:i, :j, :k, :r, 99)"),
+                {"i": str(uuid.uuid4()), "j": job.id,
+                 "k": companion[0], "r": companion[1]},
+            )
+            db.commit()
+        before = _refs(db, job)
+        assert len(before) >= 2 and victim in before and companion in before
 
         db.execute(
             text("DELETE FROM moc_job_ref WHERE job_id = :j AND ref_kind = :k "
@@ -296,6 +328,16 @@ class TestTheGuardProtectsOperatorEdits:
             )
             assert after == before - {victim}
         finally:
+            # ⚠️ The companion goes too — it is this test's own scaffolding and
+            # leaving it would make the NEXT run's `before` set differ from a
+            # clean one, which is how a test starts depending on its own residue.
+            db.rollback()
+            db.execute(
+                text("DELETE FROM moc_job_ref WHERE job_id = :j AND ref_kind = :k "
+                     "AND ref_key = :r"),
+                {"j": job.id, "k": companion[0], "r": companion[1]},
+            )
+            db.commit()
             # Idempotent restore. If the seed DID resurrect the ref (the
             # regression this test exists to catch), a blind INSERT would
             # raise a UniqueViolation out of teardown and bury the assertion
@@ -323,5 +365,14 @@ class TestTheGuardProtectsOperatorEdits:
             j.name: (j.description, len(_refs(db, j)))
             for j in db.query(MoCJob).filter(MoCJob.task_type == "Accounting")
         }
-        assert before["Bank reconciliation"][1] == 2
-        assert before["Cash receipts matching"][1] == 2
+        # ⚠️ THE COUNTS ARE NO LONGER HARDCODED — 2026-10-06. These read
+        # `== 2`, a precondition on what the seed produced, and failed in CI for
+        # 42 runs because `seed_accounting_jobs` skips an `automation` ref whose
+        # workflow row is absent (its own docstring says so) and CI has no
+        # `AR Collections` workflow.
+        #
+        # The claim this test actually makes is STABILITY ACROSS A RE-RUN, which
+        # is environment-independent. Asserting a seeded count was scene-setting
+        # that happened to be true in one environment.
+        assert before["Bank reconciliation"][1] >= 1
+        assert before["Cash receipts matching"][1] >= 1

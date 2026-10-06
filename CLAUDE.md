@@ -1519,7 +1519,28 @@ This separation matters for: seed scripts (each script targets one vertical's te
 
 ### Staging deploy + auto-seed (Phase R-1.6)
 
-Staging auto-deploys from `main` via `.github/workflows/deploy.yml` → `railway up`. The Railway start script `backend/railway-start.sh` runs after every deploy:
+⚠️ **CORRECTED 2026-10-06. The original sentence is preserved here because it
+caused a false inference:** *"Staging auto-deploys from `main` via
+`.github/workflows/deploy.yml` → `railway up`."*
+
+**That workflow DOES NOT EXIST.** It was deliberately deleted in `7d7eded3` —
+*"delete the broken/redundant Deploy workflow"* — and this sentence was not
+updated with it. Only three workflows exist: `ci.yml`, `playwright-staging.yml`,
+`seed-idempotency.yml`.
+
+**Deploys run through Railway's native GitHub integration**, which this document
+states correctly elsewhere (the stale-view-after-deploy note). **No GitHub
+workflow gates a deploy** — nothing in `.github/workflows/` carries a `needs:` on
+a deploy job, because there is no deploy job.
+
+⚠️ **THE CONSEQUENCE IS THE OPPOSITE OF REASSURING, WHICH IS WHY THIS CORRECTION
+IS LOAD-BEARING.** A red CI run blocks nothing. Measured 2026-10-06: CI had been
+red for 42 runs and 89 commits, and every one of those commits deployed to
+production anyway, migrations included. A reader who believes the deleted gate
+exists concludes a red channel is holding things back. It is not holding anything
+back, which is worse.
+
+The Railway start script `backend/railway-start.sh` runs after every deploy:
 
 1. `alembic upgrade head` — apply pending migrations.
 2. `python -m scripts.seed_staging --idempotent` — ensure testco tenant + demo data.
@@ -2632,6 +2653,53 @@ than against the code**: click the link, resolve the id, enumerate the routes an
 the target is among them. When an expected value names something outside the system — a
 route, a URL, a file path, an external id — the check is only worth what its correspondence
 to that thing is worth, and that correspondence cannot be established from inside the repo.
+
+#### A channel is dark when it cannot report a NEW failure
+
+A permanently red check cannot. The result is identical before and after a real
+regression, so the channel has stopped being an instrument while continuing to
+produce output.
+
+⚠️ **AND THE DANGEROUS CASE IS NOT THE IGNORED CHANNEL — IT IS THE ONE SOMEBODY
+LEARNED TO READ.** Subtracting known failures to extract a verdict is a
+compensating control, and *a compensating control that works is how the defect
+survives*: it removes the pressure to fix the channel while leaving the channel
+unable to report. Every reading confirms the delta is exactly the expected change
+and that nothing else moved, and nobody asks why there is a baseline to subtract
+from.
+
+**THE RULE: no "known failure" exemptions. A suite that is green except for two is
+a channel that cannot report a third.** Each failing test takes exactly one of
+three dispositions:
+
+    fixed        it passes
+    quarantined  explicitly skipped, with the reason AND the condition for
+                 unskipping recorded at the skip. The run goes GREEN and the
+                 skip is visible.
+    deleted      it tested something that no longer exists
+
+**"Known and ignored" is not a disposition.** It is the state 89 commits went
+through.
+
+⚠️ **THE DETECTABLE SIGNATURE: if reading a result requires knowing which failures
+to disregard, the channel is already dark.** So "when did this last pass" — the
+question §11 already says has no natural trigger — is owed on any channel whose
+output needs interpreting before it can be read.
+
+Measured 2026-10-06. CI last passed 2026-09-23, **42 runs and 89 commits**
+earlier. Two backend tests had been failing for weeks; both parties read "green
+except those two" as green; one had built a delta-arithmetic practice that
+depended on the baseline staying put, and a third failure would have looked
+identical. Eleven commits went out in a single session, each reporting VERIFIED
+from a local run, into a channel that could not have disagreed.
+
+⚠️ **AND IT GENERALISES A RULING MADE THE SAME WEEK ABOUT A DIFFERENT WORKFLOW** —
+the Playwright trigger was removed on exactly this reasoning, by the person who
+was then reading the red CI channel hourly. Noticing the shape in one place does
+not transfer it to the place you are standing. Which is the argument for the fixed
+question over the remembered principle, and for *removal before recognition*: a
+channel that cannot be read past its baseline should fail loudly rather than
+invite arithmetic.
 
 #### Editing a document to match a belief is the moment to verify the belief
 
