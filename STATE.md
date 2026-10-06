@@ -2,6 +2,74 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## ⚠️ TWO FRONTEND TESTS WHERE AN INTERACTION NEVER REGISTERS UNDER LOAD (2026-10-06)
+
+- **2026-10-06 — THE READING THAT RETIRED THE OBVIOUS FIX, and it applies to both.** A
+  `waitFor` timeout **reports just past its own limit by construction**. So
+  `1045 ms against a 1000 ms default` and `5006 ms against a 5000 ms timeout` both mean
+  **the thing never happened** — not that it happened late. No timeout figure can ever
+  evidence slowness, and **no larger timeout belongs on either test**. An earlier diagnosis
+  in `BindingPicker.test.tsx` read `1062 ms` as slowness and raised the timeout to 5000;
+  that experiment then failed at 5006.
+- **2026-10-06 — `BindingPicker.test.tsx` "locks iteration_mode to per_row for
+  repeater_atom": QUARANTINED** (one test, not the file; explicit `it.skip`, reason and
+  unskip condition at the skip). Its own comment had recorded the falsification criterion —
+  *"If it fails again unchanged, the hypothesis was wrong and the live suspect becomes the
+  click never processing at all"* — and it failed again with the 5000 in place. The `5_000`
+  is left in deliberately; removing it would discard the evidence.
+  - **REPRODUCTION RECIPE:** the exact CI command, `npm test` (full suite, 338 files,
+    vitest defaults — `vite.config.ts` sets no `pool`, `isolate`, `maxWorkers` or
+    `sequence`). **1 failure in 5 runs** on an M-series Mac. A single-file run never fails:
+    **0 of 50**. ⚠️ The file's claim that it "cannot be reproduced locally" is now false and
+    is corrected in place.
+  - **LIVE SUSPECT:** the click on `binding-picker-saved-view` is never processed — the
+    trigger stays `aria-expanded="false"`. Unskip when it is shown to reach
+    `aria-expanded="true"` under full-suite load.
+  - **TRIGGER:** first item after James walks the Opas prototype.
+- **2026-10-06 — `DocumentsTab.arc4b1b.test.tsx:538` "Alt+ArrowUp on focused block in
+  middle moves it up": OPEN, NOT QUARANTINED.** One CI failure (run `37487861224`),
+  **0 of 55 locally** (50 single-file + 5 full-suite). Two mechanisms were falsified by
+  reading before any command ran: a hover→focus race (the path is a synchronous
+  `focusedBlockIdRef.current = id`, line 1198) and a stale-listener race (RTL's `waitFor`
+  runs inside `asyncAct`, which flushes passive effects).
+  - ⚠️ **THE MEASUREMENT THAT ARGUES AGAINST BOTH SLOWNESS AND STALENESS:** in the failing
+    CI run, `Alt+ArrowDown on focused block emits reorder` passed in **38 ms** in the
+    **immediately preceding** test — the identical interaction (hover, Alt+Arrow,
+    `waitFor` the reorder). A slow runner or a stale listener would have hit that too.
+    The two `mockRejectedValueOnce` tests ran two and three slots earlier; mocks are reset
+    (`mockReset()` in `beforeEach`, `vi.clearAllMocks()` in `afterEach`, no global reset
+    configured) but in-flight rejections are not cancellable, and CI logged two
+    `documents reorder blocks failed` lines moments before.
+  - **CLOSE CONDITION: that test passing in 10 consecutive frontend CI runs.** Not the
+    whole suite being green, and not one green run.
+  - **A second CI failure on this test quarantines it** the same way as BindingPicker.
+  - ⚠️ **A common cause with BindingPicker is UNEXAMINED.** Both are "an interaction
+    intermittently never registers under full-suite worker load"; nothing has been done to
+    establish whether that is one defect or two.
+
+## ⚠️ OPEN ITEMS FROM THE OPAS SLICE — NOT DEFECTS IN IT (2026-10-06)
+
+- **2026-10-06 — Native keydown listener re-registered on every render.**
+  `DocumentsTab.tsx:1028` computes `const topLevel = draft.blocks.filter(...)` with **no
+  `useMemo`**, so the `blocks` dependency of the effect at 1443 has a fresh identity every
+  render, and `document.addEventListener("keydown", ...)` is torn down and re-added each
+  time. Not the flake above — inside an act flush there is no observable gap — but it is
+  what makes a stale-listener window reachable the moment anything dispatches outside act.
+  **Deliberately not fixed in the Opas slice.**
+- **2026-10-06 — pytest has NO mechanism preventing a run against a non-local database.**
+  `tests/conftest.py` carries no check on `DATABASE_URL`; CLAUDE.md §7 is a rule only. The
+  note I half-remembered ("refuses a non-local DATABASE_URL") is in `ci.yml`, about
+  `seed_dev.sh`, not about pytest. A **file-scoped** guard was added to
+  `tests/test_catalog_pane_reads.py` because that file INSERTS (inside a rolled-back
+  savepoint) — break-tested by pointing `DATABASE_URL` at `shuttle.proxy.rlwy.net` and
+  confirming the refusal. ⚠️ **The harness-wide guard is still absent**; it belongs with the
+  fixture-isolation work, because a conftest change binds all 477 test files at once.
+- **2026-10-06 — Cmd+K: a decision for James after the walk, not a defect.** The Opas
+  overlay prototype binds `Cmd/Ctrl+K` to toggle itself (`isOpen ? tuck() : open()`). This
+  app binds Cmd+K to the existing command bar, so the slice left it alone and the sphere
+  click is the entrance. Whether Opas eventually takes Cmd+K is best decided after using
+  both.
+
 ## ⚠️ POSSIBLE PRODUCT RACE — `wipe_tenant` vs THE SCHEDULED SWEEP (2026-10-06)
 
 - **2026-10-06 — NOT INVESTIGATED. Recorded because a test assertion may be describing
