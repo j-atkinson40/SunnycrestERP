@@ -60,10 +60,44 @@ def throwaway():
     s.close()
     yield ids
     # teardown — remove the throwaway entirely (wipe leaves preserved rows behind)
+    #
+    # ⚠️ THE agent_* STATEMENTS ARE NOT ROWS THIS FIXTURE CREATED, AND THAT IS THE
+    # POINT. Added 2026-10-06 after this teardown raised
+    # `ForeignKeyViolation: ... "agent_jobs_tenant_id_fkey"` and leaked the company,
+    # which then tripped the session-scoped COMPANY LITTER guard in an unrelated file.
+    #
+    # WHO WRITES THEM: the workflow scheduler's per-tenant `scheduled` dispatch, which
+    # creates an `expense_categorization` AgentJob for EVERY company whose cron matches
+    # (`wf_sys_expense_categorization`, `*/15 * * * *`). Six in-gate tests invoke that
+    # sweep. So any company that merely EXISTS during one acquires agent_jobs it never
+    # asked for.
+    #
+    # ⚠️ IT IS A RACE, NOT AN ORDERING BUG, and the timestamps are the evidence: this
+    # company was created at 10:11:22 and its blocking job appeared at 10:11:30 — eight
+    # seconds later, inside its own test. Three more arrived at 10:13:27+, after it had
+    # already leaked. Nothing about the test order changed; the sweep simply landed
+    # inside the create→teardown window.
+    #
+    # ⚠️ SO EVERY FUNCTION-SCOPED COMPANY FIXTURE IN THIS REPO HAS THIS EXPOSURE. Fixing
+    # it generally is the queued `purge_companies_by_slug` rework and is deliberately
+    # NOT attempted here — `tests/_cleanup.py:99-102` already carries the correct
+    # statements, and they are mirrored rather than imported so this fixture stays
+    # self-contained and the queued rework stays free to change that helper's shape.
+    #
+    # ORDER IS LOAD-BEARING: the two non-cascading referrers and the schedule pointer
+    # go first, then agent_jobs, then the company. `agent_run_steps` and
+    # `agent_anomalies` cascade from agent_jobs and need no statement.
     with engine.begin() as c:
         for stmt in (
             "DELETE FROM customers WHERE company_id=:c",
             "DELETE FROM financial_accounts WHERE tenant_id=:c",
+            "DELETE FROM agent_activity_log WHERE job_id IN "
+            "(SELECT id FROM agent_jobs WHERE tenant_id=:c)",
+            "DELETE FROM period_locks WHERE agent_job_id IN "
+            "(SELECT id FROM agent_jobs WHERE tenant_id=:c)",
+            "UPDATE agent_schedules SET last_job_id = NULL WHERE last_job_id IN "
+            "(SELECT id FROM agent_jobs WHERE tenant_id=:c)",
+            "DELETE FROM agent_jobs WHERE tenant_id=:c",
             "DELETE FROM users WHERE company_id=:c",
             "DELETE FROM roles WHERE company_id=:c",
             "DELETE FROM companies WHERE id=:c",
