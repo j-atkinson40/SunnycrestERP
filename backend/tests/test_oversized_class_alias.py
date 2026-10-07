@@ -27,6 +27,7 @@ from app.services.capture.typed_extraction import EXTRACTOR
 from app.services.product_name_resolver import (
     Discriminator,
     build_index,
+    named_form,
     normalize,
     resolve,
 )
@@ -280,35 +281,197 @@ def test_the_stored_normalised_column_agrees_with_normalize(db):
     assert not bad, f"stored normalisation disagrees with normalize(): {bad}"
 
 
-# ── characterization: a pre-existing defect r206 did not cause ──────────
+# ── the defect r206 found, now fixed (ruled 2026-10-07) ─────────────────
 
-@pytest.mark.parametrize("phrase,wrong_sku,right_sku", [
-    ("Veteran urn vault", "BV-VTRI", "UV-VET"),
-    ("SST urn vault", "BV-SSTRI", "UV-SSTRI"),
-    ("Cameo Rose urn vault", "BV-CRTRI", "UV-CRTRI"),
+@pytest.mark.parametrize("phrase,sku", [
+    ("Veteran urn vault", "UV-VET"),
+    ("SST urn vault", "UV-SSTRI"),
+    ("Cameo Rose urn vault", "UV-CRTRI"),
 ])
-def test_WRONGNESS_a_form_suffix_is_stripped_and_the_alias_ignores_form(
-    idx, phrase, wrong_sku, right_sku
-):
-    """⚠️ WRONGNESS. PINNED, NOT ENDORSED, AND NOT CAUSED BY r206.
+def test_a_form_naming_query_reaches_that_form(idx, phrase, sku):
+    """⚠️ THIS TEST USED TO ASSERT THE OPPOSITE, AND THE OLD WORDING IS THE POINT.
 
-    `_strip_suffix` removes " urn vault" from the QUERY so a family phrase can reach
-    its variants. The r189 aliases carry no form, so after the strip "veteran urn
-    vault" resolves through the alias `veteran` — which names only the BURIAL
-    variant — and comes back RESOLVED, uniquely, with no discriminator. A director
-    who says "Veteran urn vault" is sold BV-VTRI while UV-VET exists.
+    Until 2026-10-07 it was `test_WRONGNESS_a_form_suffix_is_stripped_and_the_alias_
+    ignores_form`, pinning that "Veteran urn vault" resolved — uniquely, with no
+    discriminator — to BV-VTRI, the BURIAL vault, while UV-VET existed. Two things
+    composed: `_strip_suffix` removed " urn vault" from the query so a family phrase
+    could reach its variants, and the r189 alias `veteran` named only the burial
+    variant. The strip deleted the single most important discriminator and the alias
+    had nothing else to offer.
 
-    That is the exact failure the module's own docstring says it exists to prevent
-    ("a best-match resolver sells the Regal, silently, every time"), arriving by a
-    different mechanism: not a best match, but a discriminator deleted by the strip.
-
-    ⚠️ ASSERTED AS IT IS so that fixing it is a visible edit to this file. Reported
-    for a ruling rather than fixed here — the fix is a mechanism (filter the
-    stripped-form candidates by the form the suffix named, and return NO MATCH when
-    none survive), and the dispatch said to report before inventing one.
+    James ruled the fix on 2026-10-07. It took BOTH halves, and the code half alone
+    would have looked like a fix while being a downgrade: `named_form` in the resolver
+    makes the wrong answer impossible, but turns it into NO MATCH, because nothing
+    reaches UV-VET from the word "veteran". r207 adds the three counterpart rows.
     """
     r = resolve(idx, phrase)
-    assert r.resolved, "this characterization is stale — it no longer resolves"
-    assert r.candidates[0].sku == wrong_sku, r.candidates[0].sku
-    # The right answer exists and is reachable by its own full name.
-    assert {c.sku for c in resolve(idx, right_sku).candidates} == {right_sku}
+    assert r.resolved, f"{phrase!r} -> {sorted(c.sku for c in r.candidates)}"
+    assert r.candidates[0].sku == sku
+
+
+@pytest.mark.parametrize("phrase,sku", [
+    ("Veteran burial vault", "BV-VTRI"),
+    ("SST burial vault", "BV-SSTRI"),
+    ("Cameo Rose burial vault", "BV-CRTRI"),
+    ("Bronze Triune burial vault", "BV-BTRI"),
+])
+def test_the_burial_side_of_the_same_phrase_still_reaches_the_burial_vault(idx, phrase, sku):
+    """⚠️ THE OTHER DIRECTION, BECAUSE A FILTER THAT ONLY EVER NARROWS TOWARD URNS
+    WOULD PASS EVERY TEST ABOVE. These were already correct before the fix, which is
+    exactly why they are the control on it."""
+    r = resolve(idx, phrase)
+    assert r.resolved and r.candidates[0].sku == sku, sorted(
+        c.sku for c in r.candidates
+    )
+
+
+@pytest.mark.parametrize("phrase", [
+    "oversized urn vault",
+    "Continental urn vault",
+    "Basic Gray burial vault",
+    "Grave Liner urn vault",
+])
+def test_a_form_with_no_member_is_NO_MATCH_never_the_other_form(idx, phrase):
+    """⚠️ THE RULED GUARANTEE: "if none survive, NO MATCH, never the other form."
+
+    There is no oversized urn vault and no Continental urn vault. Before the fix both
+    returned burial vaults — three candidates and two respectively — so a director who
+    said "urn vault" was offered burial vaults and the resolver called it an answer.
+    """
+    assert resolve(idx, phrase).candidates == (), sorted(
+        c.sku for c in resolve(idx, phrase).candidates
+    )
+
+
+@pytest.mark.parametrize("phrase,skus", [
+    ("Veteran", {"BV-VTRI", "UV-VET"}),
+    ("SST", {"BV-SSTRI", "UV-SSTRI"}),
+    ("Cameo Rose", {"BV-CRTRI", "UV-CRTRI"}),
+])
+def test_the_bare_alias_now_ASKS_instead_of_answering_silently(idx, phrase, skus):
+    """⚠️ A DELIBERATE LOSS OF A UNIQUE ANSWER. Before r207 "Veteran" resolved to
+    BV-VTRI alone — not because anything had decided the caller meant a burial vault,
+    but because the alias only knew one. That is the module's own worked example
+    ("Bronze Triune — burial or urn vault?") and it was going the wrong way."""
+    r = resolve(idx, phrase)
+    assert {c.sku for c in r.candidates} == skus, sorted(c.sku for c in r.candidates)
+    assert r.variant_template_id is None
+    assert r.discriminator is Discriminator.FORM
+
+
+def test_a_bare_word_that_is_also_a_form_name_is_not_a_form_claim(idx):
+    """"graveliner" alone is a FAMILY phrase spanning two forms, so it keeps
+    returning all five — including UV-GL, the urn vault — and the discriminator asks.
+
+    ⚠️ THE CAUSE IS THE LENGTH CHECK, NOT THE LEADING SPACE, AND THIS DOCSTRING SAID
+    THE OPPOSITE UNTIL A BREAK TEST DISPROVED IT. Dropping the space from
+    `(" graveliner", ...)` left this test GREEN — `len(n) > len(suf)` is false either
+    way when the phrase IS the suffix. The two guards are separated into
+    `test_named_form_*` below, each with its own firing break.
+    """
+    r = resolve(idx, "graveliner")
+    skus = {c.sku for c in r.candidates}
+    assert skus == {"GL-34", "GL-38", "GL-SS", "GL-STD", "UV-GL"}, sorted(skus)
+
+
+@pytest.mark.parametrize("phrase", [
+    # the phrase IS the suffix, with no preceding word
+    "graveliner", "urn vault", "burial vault", "grave liner",
+    # the suffix is the tail of a longer word, with no word boundary
+    "pseudograveliner", "xgrave liner", "myurn vault",
+])
+def test_named_form_is_None_without_a_word_boundary_before_the_suffix(phrase):
+    """⚠️ ONE GUARD, NOT TWO, AND TWO BREAK TESTS ARE WHY THIS IS ONE FUNCTION.
+
+    These were split across two tests on the theory that `len(n) > len(suf)` covered
+    the bare word and the leading space covered the longer word. Breaking the LENGTH
+    CHECK left all 106 tests green: with the space in place, `endswith(suf)` and
+    `len(n) == len(suf)` would require the phrase to BE " graveliner", and `normalize`
+    never returns a leading space. The leading space is the single operative guard for
+    both input classes, and it is break-tested — dropping the spaces turns the last
+    three rows here red.
+
+    The length check stays as insurance on that comment and is labelled DEFENSIVE in
+    the source. ⚠️ Do not read this test as covering it; nothing does.
+    """
+    assert named_form(phrase) is None, named_form(phrase)
+
+
+@pytest.mark.parametrize("phrase,form", [
+    ("oversized graveliner", "grave_liner"),
+    ("oversized grave liner", "grave_liner"),
+    ("veteran urn vault", "urn_vault"),
+    ("veteran burial vault", "burial_vault"),
+    ("x burial liner", "grave_liner"),
+])
+def test_named_form_reads_a_real_form_claim(phrase, form):
+    """⚠️ THE POSITIVE CONTROL ON BOTH GUARDS. Without this, a `named_form` that
+    returned None for everything would satisfy the two tests above."""
+    assert named_form(phrase) == form, named_form(phrase)
+
+
+def test_vault_alone_names_no_form(idx):
+    """⚠️ " vault" IS DELIBERATELY NOT IN `_FORM_SUFFIXES`. A vault may be burial or
+    urn, so the word names nothing and must not filter. If it were added, "oversized
+    vault" would quietly become a burial-vault query."""
+    r = resolve(idx, "oversized vault")
+    assert {c.sku for c in r.candidates} == CLASS_SKUS, sorted(
+        c.sku for c in r.candidates
+    )
+
+
+def test_the_alias_form_exposure_list_is_exactly_what_was_ruled(db):
+    """⚠️ A RATCHET OVER THE ENUMERATION, so a new alias cannot reintroduce the shape.
+
+    An alias is EXPOSED when it reaches a variant whose counterpart — same
+    `family_slug`, same `option_label`, a different `form` — it does not reach. That
+    relation is the one that matters; grouping by family alone reports 24 false
+    positives, because `triune` holds ten variants and `graveliner` five.
+
+    Measured 2026-10-07 over all confirmed rows: four exposed, three fixed by r207.
+    `Basic Gray` is the fourth and is NOT a defect — its r189 note records that
+    Wilbert lists one product as "Basic Gray/Salute Urn Vault" and the owner confirmed
+    ONE product on 2026-10-02, so the phrase names the urn vault specifically. Adding
+    BV-SAL would make a settled name ambiguous on the strength of a shape match.
+    """
+    from collections import defaultdict
+
+    variants = db.execute(text("""
+        SELECT v.id, v.sku, v.option_label, t.family_slug, t.form
+        FROM product_variant_templates v
+        JOIN product_templates t ON t.id = v.product_template_id
+        WHERE v.is_active IS TRUE
+    """)).all()
+    assert len(variants) > 40, f"only {len(variants)} variants — this ratchet is blind"
+    by_key = defaultdict(list)
+    for v in variants:
+        by_key[(v.family_slug, (v.option_label or "").casefold())].append(v)
+    vid = {v.id: v for v in variants}
+
+    rows = db.execute(text(
+        "SELECT alias_text, alias_text_normalized, variant_template_id "
+        "FROM platform_product_aliases WHERE is_confirmed IS TRUE"
+    )).all()
+    assert len(rows) >= 56, f"only {len(rows)} alias rows; r206+r207 have not both run"
+    reached = defaultdict(set)
+    texts = {}
+    for atext, anorm, v_id in rows:
+        reached[anorm].add(v_id)
+        texts[anorm] = atext
+
+    exposed = {}
+    for anorm, vids in reached.items():
+        missing = {
+            sib.sku
+            for v_id in vids
+            for sib in by_key[(vid[v_id].family_slug,
+                               (vid[v_id].option_label or "").casefold())]
+            if sib.form != vid[v_id].form and sib.id not in vids
+        }
+        if missing:
+            exposed[texts[anorm]] = sorted(missing)
+
+    assert exposed == {"Basic Gray": ["BV-SAL"]}, (
+        f"the alias form-exposure list changed. Expected only the ruled exception "
+        f"(Basic Gray, deliberate). Got: {exposed}"
+    )

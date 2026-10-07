@@ -173,7 +173,69 @@ def _leftovers(line: str, spans: list[tuple[int, int]]) -> tuple[str, ...]:
     ⚠️ NOISE WORDS ARE REMOVED FROM FRAGMENTS, NOT FROM THE LINE. Removing them from
     the line first would merge two unrelated fragments into one — "for Hopkins ... and
     the Smith" would read as one unplaced phrase.
+
+    ⚠️ DELEGATES TO `_leftover_pairs` RATHER THAN RECOMPUTING. It held a second copy
+    of the same span-complement walk until 2026-10-07; two copies of a rule about
+    which text is unclaimed is one copy too many, and the drift would have been
+    invisible because both would have looked right in isolation.
     """
+    return tuple(kept for kept, _ in _leftover_pairs(line, spans))
+
+
+def _leftover_pairs(line: str, spans: list[tuple[int, int]]) -> tuple[tuple[str, str], ...]:
+    """`(noise-stripped fragment, the fragment exactly as typed)` for each leftover.
+
+    ⚠️ NOISE-WORD REMOVAL IS A HINT, NOT A FILTER, AND THAT IS THE RULE THIS
+    FUNCTION EXISTS TO MAKE POSSIBLE. `_NOISE_WORDS` holds words a director says
+    AROUND a value — and three of them are also words INSIDE catalog names
+    (`cemetery`, `burial`, `vault`; measured 2026-10-07). Stripping `burial` and
+    `vault` is what lets "Continental Burial Vault" reach the family phrase, so the
+    list is right; stripping `cemetery` deleted the first word of the only two
+    variants named "Cemetery Tent - ...", and "cemetery tent single" came back
+    unrecognized.
+
+    So a caller resolves BOTH readings and lets the catalog decide: the stripped one
+    first, then, only if that reached nothing, the line as the director typed it.
+    Returning the pair rather than switching behaviour keeps the stripped form
+    primary, which is what every other field depends on.
+
+    ⚠️ AND THE RAW FORM IS THE ONLY ONE WHOSE SPAN CAN BE FOUND IN THE LINE. The
+    stripped fragment is a REJOIN of non-adjacent words, so `line.find(kept)` returns
+    -1 whenever a noise word sat in the middle — "Loved and Cherished 24" rejoins to
+    "Loved Cherished 24", which appears nowhere in the line. Any caller marking a
+    span marks the raw one.
+    """
+    pairs: list[tuple[str, str]] = []
+    for frag in out_fragments(line, spans):
+        words = [w for w in re.split(r"[^A-Za-z0-9'&\-]+", frag) if w]
+        kept = [w for w in words if w.casefold() not in _NOISE_WORDS]
+        if kept:
+            pairs.append((" ".join(kept), frag.strip()))
+    return tuple(pairs)
+
+
+def _narrower(alt, base) -> bool:
+    """Is `alt` a strictly better answer than `base`?
+
+    ⚠️ "BETTER" IS FEWER CANDIDATES, NOT MERELY SOME. The first version of this read
+    "take the raw reading only when the stripped one matched NOTHING", and it left the
+    reported defect half-fixed: "Veteran burial vault" strips to "Veteran", which after
+    r207 reaches TWO candidates, so the raw reading was never consulted and the pane
+    asked "burial or urn?" about a line that had already said burial. The stripped
+    reading reaching something is not evidence it reached the right something.
+
+    ⚠️ ZERO IS NEVER BETTER. A raw fragment is usually a whole clause ("we need an
+    oversized vault") that matches nothing; it must not displace a good stripped hit.
+    """
+    if not alt.candidates:
+        return False
+    if not base.candidates:
+        return True
+    return len(alt.candidates) < len(base.candidates)
+
+
+def out_fragments(line: str, spans: list[tuple[int, int]]) -> tuple[str, ...]:
+    """The raw unclaimed slices of the line, before any noise-word removal."""
     taken = sorted(spans)
     out: list[str] = []
     cur = 0
@@ -183,14 +245,7 @@ def _leftovers(line: str, spans: list[tuple[int, int]]) -> tuple[str, ...]:
         cur = max(cur, b)
     if cur < len(line):
         out.append(line[cur:])
-
-    frags: list[str] = []
-    for frag in out:
-        words = [w for w in re.split(r"[^A-Za-z0-9'&\-]+", frag) if w]
-        kept = [w for w in words if w.casefold() not in _NOISE_WORDS]
-        if kept:
-            frags.append(" ".join(kept))
-    return tuple(frags)
+    return tuple(out)
 
 
 def _year_pair(line: str) -> tuple[tuple[str, str], tuple[int, int]] | None:
@@ -452,14 +507,24 @@ class DeterministicExtractor:
         # ("an oversized", "34 inch Continental") with no marker in front of it. Running
         # it early would let it claim spans that belong to a cemetery or a party.
         if once("vault"):
-            remaining = _leftovers(line, spans)
-            for frag in remaining:
-                vr = resolve_vault(build_index(db), frag)
+            index = build_index(db)
+            for kept, raw in _leftover_pairs(line, spans):
+                # ⚠️ TWO READINGS, STRIPPED FIRST, AND THE CATALOG DECIDES. The
+                # noise list contains words that are also inside catalog names, so a
+                # stripped fragment that reaches nothing is not evidence the director
+                # named no vault — see `_leftover_pairs`. The raw reading is tried
+                # only on a miss, so nothing that resolves today changes.
+                vr = resolve_vault(index, kept)
+                frag = kept
+                if raw.casefold() != kept.casefold():
+                    alt = resolve_vault(index, raw)
+                    if _narrower(alt, vr):
+                        vr, frag = alt, raw
                 if vr.variant_template_id:
                     values["vault"] = vr.candidates[0].display_name
-                    i = low.find(frag.casefold())
+                    i = low.find(raw.casefold())
                     if i >= 0:
-                        spans.append((i, i + len(frag)))
+                        spans.append((i, i + len(raw)))
                     break
                 if len(vr.candidates) > 1:
                     picks.append(Pick(
@@ -468,9 +533,9 @@ class DeterministicExtractor:
                               for c in vr.candidates),
                         vr.discriminators[0].value if vr.discriminators else None,
                     ))
-                    i = low.find(frag.casefold())
+                    i = low.find(raw.casefold())
                     if i >= 0:
-                        spans.append((i, i + len(frag)))
+                        spans.append((i, i + len(raw)))
                     break
 
         # ── service date / time / eta ───────────────────────────────────

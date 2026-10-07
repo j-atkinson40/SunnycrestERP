@@ -294,6 +294,7 @@ tests/test_statement_field_honesty.py
 tests/test_statement_send_attaches_document.py
 tests/test_statement_adapter_flagged_count.py
 tests/test_seed_posting_ratchet.py
+tests/test_noise_is_a_hint_not_a_filter.py
 tests/test_oversized_class_alias.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py

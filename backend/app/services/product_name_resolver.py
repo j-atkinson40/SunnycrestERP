@@ -106,6 +106,50 @@ _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:inches|inch|ins|in|\")")
 #: An option label that denotes a size rather than a finish or a configuration.
 _SIZE_LABEL_RE = re.compile(r'^\d+(?:\.\d+)?"$')
 
+#: A trailing phrase that NAMES A FORM, and the `product_templates.form` it names.
+#:
+#: ⚠️ THIS EXISTS BECAUSE THE STRIP ABOVE DELETED THE MOST IMPORTANT DISCRIMINATOR
+#: AND NOTHING NOTICED. `_strip_suffix` removes " urn vault" so a family phrase can
+#: reach its variants; the alias rows carry no form, so "Veteran urn vault" resolved
+#: through the alias `veteran` — which names only the BURIAL variant — and came back
+#: RESOLVED, uniquely, with no discriminator, while UV-VET existed. Measured
+#: 2026-10-07 on three aliases (Veteran, SST, Cameo Rose). Ruled by James the same
+#: day: when the query names a form, candidates are filtered to that form, and if
+#: none survive the answer is NO MATCH — never the other form.
+#:
+#: ⚠️ " VAULT" IS DELIBERATELY ABSENT, AND THAT IS THE WHOLE DESIGN OF THIS TABLE. A
+#: "vault" may be a burial vault or an urn vault, so the word names no form and must
+#: not filter. Putting it here would turn every "<family> vault" into a burial-vault
+#: query by accident — the same class of silent narrowing this table removes.
+#:
+#: ⚠️ THE LEADING SPACE IS THE ONLY OPERATIVE GUARD, AND IT PROTECTS TWO THINGS:
+#:
+#:     the BARE WORD        "graveliner" alone is a FAMILY name spanning two forms
+#:                          (GL-* are grave liners, UV-GL is an urn vault) and must
+#:                          keep returning both so the discriminator can ask. It does
+#:                          not end with " graveliner", so it is not a form claim.
+#:     a LONGER WORD        "pseudograveliner" ends with "graveliner" but not with
+#:                          " graveliner".
+#:
+#: ⚠️ `len(n) > len(suf)` IN `named_form` IS DEFENSIVE, NOT LOAD-BEARING, AND A BREAK
+#: TEST IS WHAT ESTABLISHED THAT. Dropping it left all 106 tests GREEN: with the
+#: leading space in place, `n.endswith(suf)` and `len(n) == len(suf)` requires `n` to
+#: BE " graveliner", and `normalize` never returns a leading space. The check earns
+#: its place only if someone removes the spaces — which is to say it is insurance on
+#: this very comment. Kept, and labelled, rather than deleted or called a guarantee.
+#:
+#: ⚠️ THIS COMMENT HAS NOW BEEN WRONG TWICE. It first said "one leading space is the
+#: difference" (true, but for a reason it did not give); the correction said the
+#: length check protected the bare word, which a second break test disproved. Both
+#: readings were arguments from the code rather than measurements of it.
+_FORM_SUFFIXES: tuple[tuple[str, str], ...] = (
+    (" burial vault", "burial_vault"),
+    (" urn vault", "urn_vault"),
+    (" burial liner", "grave_liner"),
+    (" grave liner", "grave_liner"),
+    (" graveliner", "grave_liner"),
+)
+
 
 def normalize(s: str | None) -> str:
     """Fold a phrase to its comparable form.
@@ -126,6 +170,14 @@ def normalize(s: str | None) -> str:
     s = s.replace("”", '"').replace("“", '"')
     s = s.replace("’", "'").replace("‘", "'")
     s = s.lower()
+    # ⚠️ "and" IS A SPELLING OF "&", ONE-DIRECTIONALLY. Every ampersand-bearing name
+    # in the catalog uses the symbol ("Loved & Cherished", "Cream & Gold"), and a
+    # director types the word — so "loved and cherished 24" folded to a form nothing
+    # matched while "loved & cherished 24" resolved. Mapped word -> symbol rather
+    # than the reverse because the symbol is what the catalog stores; mapping the
+    # other way would rewrite every indexed name and leave the typed form unmatched.
+    # ⚠️ WORD-BOUNDED. Without \b this eats the "and" inside "Highlands".
+    s = re.sub(r"\band\b", "&", s)
     s = _SIZE_RE.sub(r'\1"', s)
     s = re.sub(r"[^a-z0-9\"&' ]+", " ", s)
     return re.sub(r"\s+", " ", s).strip()
@@ -136,6 +188,18 @@ def _strip_suffix(n: str) -> str:
         if n.endswith(suf) and len(n) > len(suf):
             return n[: -len(suf)].strip()
     return n
+
+
+def named_form(n: str) -> str | None:
+    """The form a NORMALISED phrase explicitly names, or None.
+
+    ⚠️ TAKES A NORMALISED PHRASE. Passing raw text here silently misses every
+    phrase spelled with a trademark mark, a smart quote or "34 inch".
+    """
+    for suf, form in _FORM_SUFFIXES:
+        if n.endswith(suf) and len(n) > len(suf):
+            return form
+    return None
 
 
 class Discriminator(str, Enum):
@@ -305,6 +369,16 @@ def resolve(index: NameIndex, phrase: str | None) -> Resolution:
     candidates = index.by_form.get(n, ()) if n else ()
     if not candidates and n:
         candidates = index.by_form.get(_strip_suffix(n), ())
+
+    # ⚠️ THE FORM THE QUERY NAMED WINS OVER ANYTHING THE LOOKUP FOUND, AND AN EMPTY
+    # RESULT IS THE CORRECT ANSWER. Applied to the EXACT hit as well as the stripped
+    # one: a full display name that ends in a form phrase already agrees with it, so
+    # the filter is a no-op there, and restricting it to the stripped path would make
+    # the guarantee depend on which branch happened to match.
+    form = named_form(n) if n else None
+    if form is not None:
+        candidates = tuple(c for c in candidates if c.form == form)
+
     return Resolution(
         phrase=phrase or "", normalized=n,
         candidates=tuple(candidates), discriminators=_classify(tuple(candidates)),
