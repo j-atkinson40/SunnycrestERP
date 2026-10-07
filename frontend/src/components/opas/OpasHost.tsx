@@ -110,11 +110,11 @@ export function OpasHost() {
    * drag cannot escape the element; and a **4px dead zone** (`Math.hypot(...) < 4`) so a
    * click is not a drag.
    *
-   * ⚠️ DIFFERENT FROM THE PROTOTYPE, DELIBERATELY: it binds `pointerdown` on the WHOLE PANE
-   * (`el.addEventListener('pointerdown', ...)` where `el` is the `.win`). The dispatch's
-   * requirement list says "drag by the pane header", so the handle is the header only.
-   * Reported rather than silently reconciled — the prototype is draggable anywhere, which
-   * James will have felt when he walked it.
+   * ⚠️ BINDS ON THE WHOLE PANE, matching the prototype's `el.addEventListener('pointerdown',
+   * …)` where `el` is the `.win`. Round 2 bound it to the header only, because the dispatch
+   * then required that; the requirement was withdrawn in round 3 in favour of the prototype.
+   * `raise()` still runs on every pointerdown BEFORE the drag check, so clicking a button
+   * inside a pane still brings it to front — which is the prototype's order too.
    *
    * ⚠️ BOUNDS: the pane cannot be dragged fully off screen. 80px of width and the full
    * header depth are kept on screen in every direction, so there is always something left
@@ -129,13 +129,21 @@ export function OpasHost() {
       index: number,
     ) => {
       if (e.button !== 0) return
+      // ⚠️ THE EXCLUSION IS WHAT MAKES WHOLE-PANE DRAGGING SAFE. Without it, clicking a
+      // catalog row would start a drag instead of opening the product — the row is a
+      // <button>, and `closest` catches a click on anything inside it too.
       if ((e.target as HTMLElement).closest("button,textarea,input,a") !== null) return
       const handle = e.currentTarget
-      const pane = handle.parentElement
-      if (pane === null) return
-      handle.setPointerCapture(e.pointerId)
+      // ⚠️ OPTIONAL CALL, WHERE THE PROTOTYPE CALLS IT OUTRIGHT. A raw
+      // `handle.setPointerCapture(...)` threw `TypeError: not a function` the moment a
+      // pointerdown arrived from anywhere that had not stubbed it — and an UNCAUGHT
+      // EXCEPTION INSIDE A POINTERDOWN HANDLER is exactly the "interaction never registers"
+      // shape being investigated elsewhere: the handler dies partway and everything after it
+      // silently does not happen. The prototype runs in one browser and can assume the API;
+      // this runs wherever the app does.
+      handle.setPointerCapture?.(e.pointerId)
 
-      const rect = pane.getBoundingClientRect()
+      const rect = handle.getBoundingClientRect()
       const start = { px: e.clientX, py: e.clientY, x: placed?.x ?? rect.left, y: placed?.y ?? rect.top }
       let moved = false
 
@@ -248,7 +256,11 @@ export function OpasHost() {
             data-testid={`opas-pane-${pane.id}`}
             data-tucked={opas.isOpen ? "false" : "true"}
             data-focused={isFront ? "true" : "false"}
-            onPointerDown={() => opas.raisePane(pane.id)}
+            onPointerDown={(e) => {
+              // The prototype's order: raise FIRST, unconditionally, then try to drag.
+              opas.raisePane(pane.id)
+              dragStart(e, pane.id, placed, i)
+            }}
             style={{
               ...GLASS,
               position: "absolute",
@@ -259,6 +271,8 @@ export function OpasHost() {
                 ? { left: placed.x, top: placed.y }
                 : { right: 24 + i * 18, top: 72 + i * 22 }),
               zIndex: opas.zOf(pane.id),
+              cursor: "grab",
+              touchAction: "none",
               // `.win.focused` from the prototype: a stronger shadow on the front pane, and
               // the others dimmed to .8 rather than hidden.
               boxShadow: isFront
@@ -275,12 +289,14 @@ export function OpasHost() {
               transition: "opacity .4s cubic-bezier(0.2,0,0.1,1), transform .45s cubic-bezier(0.2,0,0.1,1)",
             }}
           >
+            {/* ⚠️ NO LONGER THE DRAG HANDLE — the whole pane is, per the prototype. The
+                header keeps `cursor: grab` as the affordance, because it is the one place
+                with no interactive child, so it is where a drag is guaranteed to start. */}
             <div
               data-testid={`opas-pane-handle-${pane.id}`}
-              onPointerDown={(e) => dragStart(e, pane.id, placed, i)}
               style={{
                 display: "flex", alignItems: "center", gap: 10, padding: "14px 10px 6px 20px",
-                cursor: "grab", touchAction: "none", userSelect: "none",
+                userSelect: "none",
               }}
             >
               <span style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "#5e5e5e" }}>

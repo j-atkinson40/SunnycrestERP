@@ -268,18 +268,27 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
     return { pane, handle, input }
   }
 
-  /** jsdom has no layout, so the element reports 0×0 and setPointerCapture is absent. */
-  function drag(handle: HTMLElement, from: [number, number], to: [number, number]) {
-    handle.setPointerCapture = () => {}
-    handle.releasePointerCapture = () => {}
-    fireEvent.pointerDown(handle, { button: 0, clientX: from[0], clientY: from[1], pointerId: 1 })
-    fireEvent.pointerMove(handle, { clientX: to[0], clientY: to[1], pointerId: 1 })
-    fireEvent.pointerUp(handle, { pointerId: 1 })
+  /**
+   * jsdom has no layout, so the element reports 0×0 and setPointerCapture is absent.
+   *
+   * ⚠️ CAPTURE IS STUBBED ON THE PANE, NOT ON `target`. Since round 3 the whole pane is the
+   * drag surface, so `e.currentTarget` inside the handler is the pane whatever descendant
+   * was pressed — and the pointermove listeners are attached there too.
+   */
+  function drag(
+    pane: HTMLElement, from: [number, number], to: [number, number], target?: HTMLElement,
+  ) {
+    pane.setPointerCapture = () => {}
+    pane.releasePointerCapture = () => {}
+    const on = target ?? pane
+    fireEvent.pointerDown(on, { button: 0, clientX: from[0], clientY: from[1], pointerId: 1 })
+    fireEvent.pointerMove(pane, { clientX: to[0], clientY: to[1], pointerId: 1 })
+    fireEvent.pointerUp(pane, { pointerId: 1 })
   }
 
   it("a dragged pane moves to left/top and keeps the position through a tuck and back", async () => {
-    const { pane, handle } = await mountWithPane()
-    await act(async () => drag(handle, [500, 300], [300, 200]))
+    const { pane } = await mountWithPane()
+    await act(async () => drag(pane, [500, 300], [300, 200]))
     const left = pane.style.left
     expect(left, "the pane did not switch to left/top addressing").not.toBe("")
 
@@ -297,15 +306,15 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
   })
 
   it("⚠️ the 4px dead zone — a 2px nudge is a click, not a drag", async () => {
-    const { pane, handle } = await mountWithPane()
-    await act(async () => drag(handle, [500, 300], [501, 301]))
+    const { pane } = await mountWithPane()
+    await act(async () => drag(pane, [500, 300], [501, 301]))
     expect(pane.style.left, "a sub-threshold move became a drag").toBe("")
   })
 
   it("a pane cannot be dragged fully off screen", async () => {
-    const { pane, handle } = await mountWithPane()
+    const { pane } = await mountWithPane()
     // far past the top-left corner
-    await act(async () => drag(handle, [500, 300], [-5000, -5000]))
+    await act(async () => drag(pane, [500, 300], [-5000, -5000]))
     const x = parseFloat(pane.style.left)
     const y = parseFloat(pane.style.top)
     expect(y, "clamped below 0").toBeGreaterThanOrEqual(0)
@@ -336,8 +345,8 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
   })
 
   it("a new pane still cascades even after another has been dragged", async () => {
-    const { handle, input } = await mountWithPane()
-    await act(async () => drag(handle, [500, 300], [300, 200]))
+    const { pane, input } = await mountWithPane()
+    await act(async () => drag(pane, [500, 300], [300, 200]))
     fireEvent.change(input, { target: { value: "the catalog" } })
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" })
@@ -345,6 +354,43 @@ describe("⚠️ drag, bring-to-front, and bounds", () => {
     const panes = Array.from(screen.getByTestId("opas-desk").children) as HTMLElement[]
     expect(panes[0].style.left, "the dragged pane lost its place").not.toBe("")
     expect(panes[1].style.right, "the new pane did not cascade").not.toBe("")
+  })
+
+  it("⚠️ A CLICK ON A CATALOG ROW OPENS THE PRODUCT AND NEVER STARTS A DRAG", () => {
+    // The guarantee whole-pane dragging has to earn. The row is a <button>, so the
+    // exclusion catches it — and `closest` catches a click on anything inside it too.
+    // Without this the catalog would be unusable: every row click would drag the pane.
+    return (async () => {
+      const { pane } = await mountWithPane()
+      getVariant.mockResolvedValue({
+        variant_template_id: "a", name: "Vault A", kind: "burial_vault",
+      })
+      const rowBtn = screen.getByTestId("opas-list-row-a")
+      await act(async () => drag(pane, [500, 300], [300, 200], rowBtn))
+      expect(pane.style.left, "a row click started a drag").toBe("")
+      fireEvent.click(rowBtn)
+      await waitFor(() => expect(screen.getByTestId("opas-product-pane")).toBeTruthy())
+    })()
+  })
+
+  it("dragging still works when started on the header", async () => {
+    const { pane } = await mountWithPane()
+    const header = pane.querySelector("[data-testid^='opas-pane-handle-']") as HTMLElement
+    await act(async () => drag(pane, [500, 300], [320, 210], header))
+    expect(pane.style.left, "a header drag stopped working").not.toBe("")
+  })
+
+  it("and from the pane's own background", async () => {
+    const { pane } = await mountWithPane()
+    await act(async () => drag(pane, [500, 300], [320, 210], pane))
+    expect(pane.style.left).not.toBe("")
+  })
+
+  it("⚠️ the close button is excluded too — pressing × must not drag", async () => {
+    const { pane } = await mountWithPane()
+    const close = pane.querySelector("[data-testid^='opas-pane-close-']") as HTMLElement
+    await act(async () => drag(pane, [500, 300], [300, 200], close))
+    expect(pane.style.left).toBe("")
   })
 })
 

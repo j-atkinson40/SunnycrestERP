@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from "react"
 
 import { listVariants, type CatalogVariant } from "@/services/opas-catalog-service"
-import { labelIsRedundant } from "./option-label"
+import { resolveRowLabels } from "./option-label"
 
 /** Readable labels for `product_templates.form`. Unknown kinds fall through verbatim
  *  rather than being hidden — an unlabelled group is a visible gap, a dropped one is not. */
@@ -53,6 +53,11 @@ export function ProductListPane({
     }
     return rows
   }, [rows, candidateIds])
+
+  // ⚠️ RESOLVED OVER THE WHOLE SHOWN SET, NOT PER GROUP, because a collision is defined
+  // within a group and the function keys on kind itself. Computing it per group would work
+  // too; doing it once keeps a single source for the labels the rows read.
+  const labels = useMemo(() => resolveRowLabels(shown ?? []), [shown])
 
   const groups = useMemo(() => {
     if (shown === null) return null
@@ -134,12 +139,15 @@ export function ProductListPane({
                     </span>
                   )}
                   <span>{r.name}</span>
-                  {/* ⚠️ The label shows only when it ADDS something. `!== r.name` was too
-                      weak: it let "Bronze" through on "Wilbert Bronze Burial Vault", which
-                      restates the name without equalling it. See `option-label.ts`. */}
-                  {r.option_label !== undefined && !labelIsRedundant(r.option_label, r.name) && (
+                  {/* ⚠️ The label shows only when it ADDS something, and where two rows
+                      would otherwise look identical it becomes the LINE NAME. Both rules
+                      live in `resolveRowLabels`; `!== r.name` was too weak to start with —
+                      it let "Bronze" through on "Wilbert Bronze Burial Vault". */}
+                  {labels[r.variant_template_id] !== undefined && (
                     <span data-testid={`opas-list-label-${r.variant_template_id}`}
-                          style={{ color: "#9a9a9a", fontSize: 12 }}>{r.option_label}</span>
+                          style={{ color: "#9a9a9a", fontSize: 12 }}>
+                      {labels[r.variant_template_id]}
+                    </span>
                   )}
                 </button>
               </li>

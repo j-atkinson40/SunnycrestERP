@@ -57,3 +57,85 @@ export function labelIsRedundant(optionLabel: string | undefined, name: string):
   const inName = new Set(labelWords(name))
   return words.every((w) => inName.has(w))
 }
+
+
+/** The minimum a row needs for label resolution. */
+export interface LabelableRow {
+  readonly variant_template_id: string
+  readonly name: string
+  readonly kind: string
+  readonly option_label?: string
+  /** The family/line name — `product_templates.display_name`. The disambiguator. */
+  readonly product_name?: string
+}
+
+/**
+ * The label each row should show, once collisions are accounted for.
+ *
+ * ⚠️ TWO RULES, IN ORDER, AND THE SECOND OVERRIDES THE FIRST:
+ *
+ *   1. hide a label whose every word is already in the name (`labelIsRedundant`)
+ *   2. where two or more rows in the SAME GROUP would then render IDENTICALLY, show the
+ *      LINE NAME on each instead
+ *
+ * ⚠️ RULE 2 IS GENERAL, NOT AN URN SPECIAL CASE. Measured 2026-10-07 across the 52: three
+ * colliding sets, all in `urn`, six rows — `Cream & Gold`, `Pebble Dust` and `White & Silver`
+ * each existing in both `Regal Line` (P300…) and `Tribute Line` (P310…). Keyed on the
+ * RENDERED pair rather than on the kind, so a collision appearing in burial vaults tomorrow
+ * is handled without an edit.
+ *
+ * ⚠️ IT IS KEYED ON WHAT RULE 1 LEAVES, NOT ON THE RAW LABEL — and the first version of
+ * this comment justified that with a false claim. It said "checking raw labels would have
+ * found no collision at all" for the measured urns. WRONG: both urns carry `option_label`
+ * equal to their own name, so their RAW labels are identical too and raw-keying finds that
+ * collision perfectly well. A break test keying on the raw label came back GREEN, which is
+ * how the claim was caught.
+ *
+ * The distinction bites only where two rows share a name and carry DIFFERENT raw labels that
+ * BOTH hide — `X` with labels `X` and `x`, say. Raw-keying sees two different labels and no
+ * collision; keying on rule 1's result sees two blanks and one. That case now has a test
+ * (`different raw labels that both hide ARE a collision`), so the break fires.
+ *
+ * Returns a map of variant id -> label to render, omitting ids that should show none.
+ */
+export function resolveRowLabels(
+  rows: readonly LabelableRow[],
+): Readonly<Record<string, string>> {
+  // pass 1 — what rule 1 leaves
+  const afterRule1 = new Map<string, string | undefined>()
+  for (const r of rows) {
+    afterRule1.set(
+      r.variant_template_id,
+      r.option_label !== undefined && !labelIsRedundant(r.option_label, r.name)
+        ? r.option_label
+        : undefined,
+    )
+  }
+
+  // pass 2 — which rendered pairs are shared by more than one row in the same group
+  const seen = new Map<string, LabelableRow[]>()
+  for (const r of rows) {
+    const key = `${r.kind}\u0000${r.name}\u0000${afterRule1.get(r.variant_template_id) ?? ""}`
+    const bucket = seen.get(key)
+    if (bucket === undefined) seen.set(key, [r])
+    else bucket.push(r)
+  }
+
+  const out: Record<string, string> = {}
+  for (const r of rows) {
+    const label = afterRule1.get(r.variant_template_id)
+    if (label !== undefined) out[r.variant_template_id] = label
+  }
+  for (const bucket of seen.values()) {
+    if (bucket.length < 2) continue
+    for (const r of bucket) {
+      // ⚠️ NO FALLBACK TO THE id OR THE SKU. If the line name is missing there is nothing
+      // honest to show, and an id would be noise rather than disambiguation — the rows stay
+      // identical and that remains visibly true.
+      if (r.product_name !== undefined && r.product_name !== "") {
+        out[r.variant_template_id] = r.product_name
+      }
+    }
+  }
+  return out
+}
