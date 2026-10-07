@@ -8,9 +8,16 @@ the pieces can each be right while the path is broken.
 
 ⚠️ THE PHRASINGS ARE JAMES'S, NOT INVENTED. "an oversized", "34 inch Continental",
 "tent only", "device and grass", a named Legacy print, years-only dates, a cemetery name
-shared by two towns, an equipment-only drop. Two of them currently fail to resolve and
-that is asserted as a KNOWN GAP rather than skipped — see
-`test_the_phrasings_the_extractor_cannot_place_yet`.
+shared by two towns, an equipment-only drop.
+
+⚠️ CORRECTED 2026-10-07. This paragraph used to end "Two of them currently fail to
+resolve and that is asserted as a KNOWN GAP rather than skipped — see
+`test_the_phrasings_the_extractor_cannot_place_yet`." Both halves are now wrong and in
+different ways. The function has been renamed (r206 closed the gap it pinned, so
+`test_an_oversized_now_ASKS_instead_of_coming_back_unplaced` is where that phrase is
+asserted). And "two of them" was a CONSTRUCTED COUNT from the start: exactly one test
+in this file ever asserted a gap, over exactly one phrase. A reader counting gaps from
+this sentence would have looked for a second one that was never here.
 
 ⚠️ NO MODEL IS CALLED. If one ever is, these tests get slow and start costing money,
 which is itself the signal.
@@ -433,19 +440,33 @@ def test_a_line_that_is_half_understood_reports_the_other_half(db, tenant):
     assert any("swirls" in u for u in ex.unrecognized), ex.unrecognized
 
 
-def test_the_phrasings_the_extractor_cannot_place_yet(db, tenant):
-    """⚠️ KNOWN GAPS, ASSERTED RATHER THAN SKIPPED, so closing one is a visible edit.
+def test_an_oversized_now_ASKS_instead_of_coming_back_unplaced(db, tenant):
+    """⚠️ A CLOSED GAP, AND THE EDIT IS VISIBLE BECAUSE THE OLD ASSERTION WAS HERE.
 
-    "an oversized" is a real thing James says and resolves to nothing: the catalog has
-    `Large 34"`, `Large 36"`, `Large 40"` and no variant or alias containing
-    "oversized". It is NOT coerced to a guess — it comes back unrecognized, which is
-    the ruling.
+    This test previously asserted that "an oversized" came back UNRECOGNIZED, and said
+    so on the grounds that "the catalog has `Large 34"`, `Large 36"`, `Large 40"` and no
+    variant or alias containing 'oversized'". ⚠️ THE SECOND HALF WAS TRUE AND THE FIRST
+    HALF WAS INVENTED — no variant named `Large` anything has ever existed. The real
+    size-bearing variants are `Continental 34"`, `Graveliner 34"` and `Graveliner 38"`.
+    A docstring's account of the data is untested prose (CLAUDE.md §11), and this one
+    was wrong while the assertion it justified was right.
+
+    r206 rules "oversized" a CLASS ALIAS over those three. So the phrase no longer comes
+    back unplaced and is still NOT coerced to one vault — it becomes a numbered pick
+    whose first question is FORM, which is the ruling. Full coverage lives in
+    `test_oversized_class_alias.py`; this is the slice-1 seam assertion.
     """
     ex = EXTRACTOR.extract_line(db, tenant_id=tenant, line="an oversized", answers={})
 
     assert "vault" not in ex.values, "'an oversized' was coerced to a vault"
-    assert not ex.picks
-    assert any("oversized" in u for u in ex.unrecognized), ex.unrecognized
+    picks = [p for p in ex.picks if p.field_id == "vault"]
+    assert len(picks) == 1, ex.picks
+    assert picks[0].phrase == "oversized", picks[0].phrase
+    assert {label.split(" — ")[0] for _, label in picks[0].options} == {
+        "BV-CON34", "GL-34", "GL-38"
+    }, picks[0].options
+    assert picks[0].discriminator == "form", picks[0].discriminator
+    assert not ex.unrecognized, ex.unrecognized
 
 
 def test_a_restatement_is_SURFACED_not_silently_ignored(db, tenant):
