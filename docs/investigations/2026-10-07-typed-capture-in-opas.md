@@ -381,3 +381,35 @@ capture-schema prototype. No urn engraving.
 4. **Session persistence**, once the shape is known.
 5. **The review summary**, read-only, no Approve button.
 6. **Piece 5 and Approve, last**, as its own dispatch with its own migration.
+
+---
+
+## ⚠️ ADDENDUM — production has ZERO enrollments, so r201 wrote nothing
+
+Measured read-only on production immediately after the `bc259952` deploy:
+
+    alembic head                     r202_legacy_series_column
+    legacy_series column             present
+    wilbert_program_enrollments      0 rows
+    carrying an availability key     0
+
+**r201 ran and had nothing to write to.** The migration is correct, idempotent and
+reversible; the table is simply empty on production. Dev has 3 rows, all belonging
+to `staging-test-001` — the testco **dev** tenant.
+
+⚠️ **THE "3 ENROLLMENTS" FIGURE WAS DEV'S AND I REPORTED IT WITHOUT ITS
+POPULATION.** `catalog_pane_service.py:206-207` states *"Of 3
+`wilbert_program_enrollments` rows, all 3 carry a `personalization_config`"* and
+names no environment. `availability.py:7` had the production figure right the whole
+time — *"Measured on production 2026-09-22: `wilbert_program_enrollments` holds ZERO
+rows"* — and the two were never reconciled. My dry-run report said "enrollments with
+a config: 3" from a dev run without saying it was dev, and the push was authorised as
+adding rules to "your 3 Wilbert enrollment records". There are none.
+
+**The consequence for this slice, which is the reason this is an addendum rather
+than a footnote:** on production every vault reads NOT_CONFIGURED, so the capture
+pane will ask the personalization question with an empty permitted set for every
+vault, on every order. Not wrong — "NOT_CONFIGURED means ask" is the ruling — but it
+means the availability work is invisible on production until a licensee is enrolled.
+Enrolling Sunnycrest is a prerequisite for the pane demonstrating anything about
+personalization, and it is not a migration.
