@@ -61,13 +61,16 @@ def resolve_and_evaluate(db: Session, result: dict, *, tenant_id: str | None = N
     exactly what the resolver returns a set to prevent. The caller persists the
     set and its discriminator so the capture can ask the question.
     """
-    from app.services.personalization.enrollment import read_personalization_config
+    from app.services.personalization.enrollment import resolve_availability_config
 
     resolution = _resolve_vault_phrase(db, result)
     state = capture.evaluate(
         _captured_from_result(result),
         vault_product_id=resolution.variant_template_id,
-        personalization_config=read_personalization_config(db, tenant_id),
+        # ⚠️ THE RESOLVED THREE-SCOPE CONFIG (section C), not the raw enrollment row.
+        # A tenant with no enrollment now falls through to the platform default
+        # instead of reading NOT_CONFIGURED on every vault.
+        personalization_config=resolve_availability_config(db, tenant_id),
         # ⚠️ R4 — the resolved vault's FORM, taken from the candidate the resolver
         # already built. None when the phrase resolved to nothing or to an ambiguous
         # set, which the engine reads as "not yet knowable" rather than "not a vault".

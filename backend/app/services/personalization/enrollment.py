@@ -19,6 +19,8 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.services.personalization.availability import AVAILABILITY_KEY
+
 
 def read_personalization_config(db: Session, company_id: str | None) -> dict | None:
     """This licensee's `personalization_config`, or None when there is not one.
@@ -51,3 +53,75 @@ def read_personalization_config(db: Session, company_id: str | None) -> dict | N
         {"c": company_id},
     ).scalar()
     return config if isinstance(config, dict) else None
+
+
+#: The platform-default table (r204). Catalog data, same for every licensee.
+_PLATFORM_TABLE = "platform_personalization_availability"
+
+
+def read_platform_availability(db: Session) -> dict:
+    """The platform default, shaped like a config's `availability` key.
+
+    ⚠️ SHAPED THE SAME SO THE MERGE IS A DICT UPDATE AND NOT A TRANSLATION. Returning a
+    different shape here would mean a converter between the two scopes, and a converter
+    is where NOT_OFFERED quietly becomes NOT_CONFIGURED.
+    """
+    out: dict[str, dict[str, list]] = {}
+    for vid, qid, permitted in db.execute(text(
+        f"SELECT variant_template_id, question_id, permitted_answers FROM {_PLATFORM_TABLE}"
+    )):
+        if isinstance(permitted, str):
+            import json
+
+            permitted = json.loads(permitted)
+        out.setdefault(vid, {})[qid] = list(permitted or [])
+    return out
+
+
+def resolve_availability_config(db: Session, company_id: str | None) -> dict | None:
+    """Platform default + this licensee's overrides, resolved at READ time.
+
+    ⚠️ THIS IS THE THREE-SCOPE RESOLVER, AND IT IS WHY A NEW LICENSEE WORKS OUT OF THE
+    BOX. Before it, availability lived only on the enrollment row: `enroll_in_program`
+    leaves `personalization_config` NULL, so a newly enrolled Sunnycrest read
+    NOT_CONFIGURED on every vault and the whole availability arc was invisible until
+    someone ran a script. The platform now carries the Wilbert line and a licensee
+    narrows it.
+
+    ⚠️ THE OVERRIDE IS PER VARIANT AND PER QUESTION, NOT WHOLE-CONFIG. A licensee who
+    says something about one vault has said nothing about the other 39; replacing the
+    map would turn one statement into silence.
+
+    ⚠️ AN EMPTY LIST SURVIVES THE MERGE, which is the property that makes the override
+    real. `[]` is NOT_OFFERED — the licensee saying "none on this vault" — and a merge
+    that treated it as "nothing to say" would fall through to the platform default and
+    silently overrule them. Falsy-checking the value here would do exactly that, so the
+    merge tests KEY PRESENCE, never truthiness.
+
+    Returns None only when neither scope has anything, so `read_availability` still
+    reports NOT_CONFIGURED rather than being handed an empty shell.
+    """
+    platform = read_platform_availability(db)
+    tenant = (read_personalization_config(db, company_id) or {})
+    tenant_availability = tenant.get(AVAILABILITY_KEY) or {}
+
+    merged: dict[str, dict[str, list]] = {
+        vid: dict(questions) for vid, questions in platform.items()
+    }
+    for vid, questions in tenant_availability.items():
+        if not isinstance(questions, dict):
+            continue
+        # ⚠️ `setdefault` then `update`: a tenant entry for a variant the platform has
+        # never heard of is kept, not dropped. A licensee may stock something the
+        # platform default does not cover.
+        merged.setdefault(vid, {}).update(
+            {qid: list(ans or []) for qid, ans in questions.items()}
+        )
+
+    if not merged:
+        return None
+    # ⚠️ The other keys of the enrollment config travel through unchanged — `options`
+    # predates r185 and something may still read it.
+    out = dict(tenant)
+    out[AVAILABILITY_KEY] = merged
+    return out

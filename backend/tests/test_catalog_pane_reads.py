@@ -181,26 +181,46 @@ class TestAliases:
 
 
 class TestPersonalizationIsAbsentAndThatIsMeasured:
-    def test_no_variant_offers_personalization_today(self, db, rows):
-        """⚠️ THIS PINS AN ABSENCE THAT IS REAL AND WILL CHANGE. Of 3
-        `wilbert_program_enrollments` rows, all 3 carry a `personalization_config` and NONE
-        has an `availability` key, so `read_availability` returns NOT_CONFIGURED for every
-        question on every variant — and NOT_CONFIGURED is not data.
+    def test_the_platform_default_makes_personalization_OFFERED(self, db, rows):
+        """⚠️ SWAPPED 2026-10-07, EXACTLY AS THE TEST IT REPLACES INSTRUCTED.
 
-        When a licensee records availability this test FAILS, and that failure is the
-        feature arriving. Replace it then with the positive assertion; do not relax it
-        now."""
+        It was `test_no_variant_offers_personalization_today`, pinning a real absence:
+        availability lived only on enrollment rows, none carried an `availability` key,
+        so every variant read NOT_CONFIGURED. Its own failure message said *"this is the
+        feature arriving, not a regression. Swap this for the positive assertion."* r204
+        made it fail, and this is that swap.
+
+        ⚠️ ITS DOCSTRING ALSO CARRIED THE "3 ENROLLMENT ROWS" FIGURE WITH NO ENVIRONMENT
+        NAMED, which is the measurement that travelled into a push authorisation as if it
+        were production's. Production has ZERO enrollments. The claim is gone with the
+        test.
+
+        The positive assertion is NOT merely "some variant offers something" — that would
+        pass if the platform default were one arbitrary row. It checks the two ends of the
+        mapping: a vault that offers everything, and one that offers nothing.
+        """
         from app.models.company import Company
 
         company_id = db.query(Company.id).limit(1).scalar()
-        offered = [
-            r["name"] for r in rows
-            if (variant_detail(db, r["variant_template_id"], company_id=company_id) or {})
-            .get("personalization")
-        ]
-        assert offered == [], (
-            f"personalization availability now exists for {offered} — this is the "
-            f"feature arriving, not a regression. Swap this for the positive assertion."
+        by_name = {
+            r["name"]: (
+                variant_detail(db, r["variant_template_id"], company_id=company_id) or {}
+            ).get("personalization")
+            for r in rows
+        }
+
+        offered = [n for n, p in by_name.items() if p]
+        assert len(offered) >= 20, (
+            f"only {len(offered)} variants offer personalization; r204 maps 40 and 21 of "
+            f"them are non-empty. Did the platform default fail to load?"
+        )
+
+        # ⚠️ BOTH ENDS. A platform default that returned everything for everything would
+        # satisfy the assertion above.
+        assert by_name.get("Bronze Triune Burial Vault"), "the all-answers vault offers nothing"
+        assert not by_name.get("Monticello Burial Vault"), (
+            "Monticello offers personalization; the platform default records `[]` for it, "
+            "which is NOT_OFFERED and must not surface as an offer"
         )
 
     def test_not_configured_is_not_reported_as_offered(self, db, rows):

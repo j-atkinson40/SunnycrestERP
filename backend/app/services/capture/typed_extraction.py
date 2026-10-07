@@ -535,7 +535,7 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
     callers (E6: existing call-overlay behaviour must not change).
     """
     from app.services import capture
-    from app.services.personalization.enrollment import read_personalization_config
+    from app.services.personalization.enrollment import resolve_availability_config
     from app.services.product_name_resolver import build_index, resolve as resolve_vault
 
     phrase = str(answers.get("vault") or "").strip()
@@ -551,7 +551,7 @@ def evaluate_typed(db: Session, *, tenant_id: str | None, answers: dict[str, obj
     state = capture.evaluate(
         answers,
         vault_product_id=resolution.variant_template_id,
-        personalization_config=read_personalization_config(db, tenant_id),
+        personalization_config=resolve_availability_config(db, tenant_id),
         vault_form=vault_form,
         platform_fields=capture.template_for(capture.SALES_ORDER),
     )

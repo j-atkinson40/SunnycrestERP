@@ -228,39 +228,49 @@ def db_write():
         s.close()
 
 
-def test_a_CEMETERY_name_cannot_repeat_within_a_tenant_so_that_collision_is_UNREACHABLE(
-    db,
-):
-    """⚠️ E3's PREMISE DOES NOT HOLD FOR CEMETERIES, AND THE SCHEMA IS WHY.
+def test_the_cemetery_uniqueness_key_INCLUDES_THE_TOWN_since_r205(db):
+    """⚠️ THIS TEST ASSERTED THE OPPOSITE THIS MORNING AND WAS RIGHT TO.
 
-    The ruling asked for "a cemetery name shared by two towns". `cemeteries` carries
-    `uq_cemetery_company_name UNIQUE (company_id, name)` — measured from
-    `pg_constraint` — so a tenant CANNOT have two cemeteries with the same name. I
-    found this by trying to construct the fixture and getting a UniqueViolation.
+    It was `test_a_CEMETERY_name_cannot_repeat_within_a_tenant_so_that_collision_is_
+    UNREACHABLE`, pinning `uq_cemetery_company_name UNIQUE (company_id, name)` — which I
+    found by trying to build a two-town fixture and getting a UniqueViolation, and which
+    contradicted a stated business fact. r205 moved the key to
+    `(company_id, name, city)`.
 
-    The city discriminator still earns its place, for a DIFFERENT and reachable case:
-    the director names a town the one matching cemetery is not in, which is a conflict
-    rather than a collision (see `test_a_town_no_candidate_is_in_is_a_CONFLICT...`).
-
-    ⚠️ `company_entities` has NO such constraint, so the same-name collision IS
-    reachable for funeral homes, and that is where it is tested.
+    ⚠️ AND THE OLD ASSERTION WOULD STILL PASS AGAINST r205, WHICH IS WHY IT IS REPLACED
+    RATHER THAN DELETED. It checked `"company_id, name" in definition` — a SUBSTRING that
+    `(company_id, name, city)` also contains. It would have gone on reporting green while
+    describing a constraint that no longer exists. The assertion below names the full
+    column list and the NULLS clause.
     """
-    rows = db.execute(text(
-        "SELECT c.conname, pg_get_constraintdef(c.oid) FROM pg_constraint c "
-        "JOIN pg_class t ON t.oid = c.conrelid "
-        "WHERE t.relname = 'cemeteries' AND c.contype = 'u'"
-    )).all()
-    defs = {r[0]: r[1] for r in rows}
-    assert any("company_id, name" in d for d in defs.values()), defs
+    defs = {
+        r[0]: r[1]
+        for r in db.execute(text(
+            "SELECT c.conname, pg_get_constraintdef(c.oid) FROM pg_constraint c "
+            "JOIN pg_class t ON t.oid = c.conrelid "
+            "WHERE t.relname = 'cemeteries' AND c.contype = 'u'"
+        ))
+    }
+    assert "uq_cemetery_company_name" not in defs, (
+        "the name-only constraint is back; two towns are impossible again"
+    )
+    definition = defs.get("uq_cemetery_company_name_city")
+    assert definition, sorted(defs)
+    assert "(company_id, name, city)" in definition, definition
 
+    # ⚠️ THE NULLS CLAUSE IS THE HALF A WEAKER MIGRATION WOULD HAVE MISSED. In a plain
+    # UNIQUE, NULLs are DISTINCT, so unlimited rows with the same name and NO town would
+    # be permitted — turning "two St Mary's in two towns" into "any number of St Mary's
+    # with no town", which is the duplicate the old constraint existed to stop.
+    assert "NULLS NOT DISTINCT" in definition, definition
+
+    # ⚠️ company_entities still has NO unique constraint, which is why the funeral-home
+    # collision below is reachable without a migration.
     ce = db.execute(text(
         "SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid "
         "WHERE t.relname = 'company_entities' AND c.contype = 'u'"
     )).scalar()
-    assert ce == 0, (
-        "company_entities grew a unique constraint; the funeral-home collision test "
-        "below is now unreachable too and this file needs rethinking"
-    )
+    assert ce == 0, "company_entities grew a unique constraint"
 
 
 @pytest.fixture
@@ -308,6 +318,91 @@ def test_the_town_narrows_the_collision_to_one(db_write, tenant, two_same_named_
 
     assert r.party_id is not None, [c.label for c in r.candidates]
     assert r.candidates[0].city == "Syracuse"
+
+
+@pytest.fixture
+def two_same_named_cemeteries(db_write, tenant):
+    """Two cemeteries with the SAME name in different towns, in a savepoint.
+
+    ⚠️ THIS FIXTURE WAS IMPOSSIBLE UNTIL r205. `uq_cemetery_company_name UNIQUE
+    (company_id, name)` forbade it, which is how the constraint was found — by trying to
+    build exactly this and getting a UniqueViolation. r205 moved the key to
+    `(company_id, name, city)` because several cemeteries Sunnycrest serves share a name
+    in different towns.
+    """
+    from app.models.cemetery import Cemetery
+
+    sp = db_write.begin_nested()
+    name = f"Collision Cemetery {uuid.uuid4().hex[:6]}"
+    for city in ("Auburn", "Skaneateles"):
+        db_write.add(Cemetery(
+            id=str(uuid.uuid4()), company_id=tenant, name=name, city=city,
+        ))
+    db_write.flush()
+    try:
+        yield name
+    finally:
+        sp.rollback()
+
+
+def test_two_cemeteries_sharing_a_name_ask_with_the_TOWN_as_discriminator(
+    db_write, tenant, two_same_named_cemeteries
+):
+    """⚠️ THE TEST E3 COULD NOT HAVE, now that r205 permits the rows to exist."""
+    r = resolve_cemetery(db_write, tenant, two_same_named_cemeteries)
+
+    assert len(r.candidates) == 2, [c.label for c in r.candidates]
+    assert r.party_id is None, "the resolver picked one of two towns"
+    assert r.discriminators == (PartyDiscriminator.CITY,)
+    labels = {c.label for c in r.candidates}
+    assert len(labels) == 2, labels
+    assert any("Auburn" in lab for lab in labels), labels
+    assert any("Skaneateles" in lab for lab in labels), labels
+
+
+def test_the_town_picks_the_right_one_of_the_two_cemeteries(
+    db_write, tenant, two_same_named_cemeteries
+):
+    """⚠️ THE DISCRIMINATING HALF, and it checks WHICH one — not merely that one was
+    returned. A resolver that always returned the first would pass a count assertion."""
+    r = resolve_cemetery(
+        db_write, tenant, two_same_named_cemeteries, city_hint="Skaneateles"
+    )
+
+    assert r.party_id is not None, [c.label for c in r.candidates]
+    assert r.candidates[0].city == "Skaneateles"
+
+    other = resolve_cemetery(
+        db_write, tenant, two_same_named_cemeteries, city_hint="Auburn"
+    )
+    assert other.party_id is not None
+    assert other.candidates[0].city == "Auburn"
+    assert other.party_id != r.party_id, "both towns resolved to the same row"
+
+
+def test_r205_permits_the_same_name_in_two_towns_and_still_blocks_a_true_duplicate(
+    db_write, tenant
+):
+    """⚠️ BOTH HALVES OF r205. Weaker for named towns, and NOT weaker for the case the
+    old constraint existed to stop: a second row with the same name and the same town."""
+    from app.models.cemetery import Cemetery
+    from sqlalchemy.exc import IntegrityError
+
+    sp = db_write.begin_nested()
+    name = f"Dup Check {uuid.uuid4().hex[:6]}"
+    try:
+        db_write.add(Cemetery(id=str(uuid.uuid4()), company_id=tenant, name=name, city="Auburn"))
+        db_write.flush()
+        db_write.add(Cemetery(id=str(uuid.uuid4()), company_id=tenant, name=name, city="Syracuse"))
+        db_write.flush()   # different town: permitted
+
+        inner = db_write.begin_nested()
+        db_write.add(Cemetery(id=str(uuid.uuid4()), company_id=tenant, name=name, city="Auburn"))
+        with pytest.raises(IntegrityError):
+            db_write.flush()
+        inner.rollback()
+    finally:
+        sp.rollback()
 
 
 def test_a_funeral_home_resolves_from_the_opening_line(db, tenant):

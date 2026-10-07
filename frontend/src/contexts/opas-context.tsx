@@ -39,7 +39,7 @@ export interface OpasPane {
   /** Stable within a session; the pane's identity for close/focus. */
   readonly id: string
   /** What the pane renders. The slice has two. */
-  readonly kind: "product-list" | "product"
+  readonly kind: "product-list" | "product" | "capture"
   /** Uppercase eyebrow in the pane header, from the prototype's `.whead .kind`. */
   readonly label: string
   /** For `kind: "product"`. */
@@ -48,6 +48,12 @@ export interface OpasPane {
   readonly candidateIds?: readonly string[]
   /** The phrase that did not match, shown on an unfiltered list. */
   readonly unmatchedPhrase?: string
+  /** For `kind: "capture"` — fed through extraction on start (prototype `:568`). */
+  readonly openingLine?: string
+  /** For `kind: "capture"` — ⚠️ SET AFTER THE SERVER REPLIES, so a tucked and reopened
+   *  pane RE-READS the session instead of starting a second one. This is what makes
+   *  "survives tuck" true rather than asserted: the pane holds no order state itself. */
+  readonly captureSessionId?: string
 }
 
 /** Where a pane sits, and whether it has been moved.
@@ -80,6 +86,11 @@ interface OpasValue {
   /** A numbered pick awaiting an answer. Escape cancels THIS before it tucks. */
   readonly pendingPick: readonly string[] | null
   readonly setPendingPick: (ids: readonly string[] | null) => void
+  /** ⚠️ RECORDS THE SERVER'S SESSION ID ON THE PANE, which is what makes a tucked capture
+   *  survive. The pane itself holds no order state: on re-mount it re-reads this session
+   *  from the server. Without it, tucking and reopening would start a SECOND session and
+   *  orphan the half-typed order. */
+  readonly setCaptureSession: (paneId: string, sessionId: string) => void
   /** Escape / veil-pointerdown. Named for what the prototype calls it. */
   readonly tuck: () => void
   /** Escape's three-branch behaviour; returns which branch ran. */
@@ -111,6 +122,38 @@ export function useOpasOptional(): OpasValue | null {
 
 let paneSeq = 0
 
+/** ⚠️ THE ONE PIECE OF OPAS STATE THAT OUTLIVES THE TAB, AND ONLY THIS ONE.
+ *
+ * Panes are React state and a RELOAD loses them — true of every pane kind, not just
+ * capture, and not changed here. For the catalog panes that is fine: reopening "the
+ * catalog" costs a keystroke. A half-typed ORDER is different: the session is a row on
+ * the server, and losing the id means losing the way back to it.
+ *
+ * ⚠️ `sessionStorage`, NOT `localStorage`. The order belongs to this tab's sitting; a
+ * week-old id in localStorage would reopen a stale pane on a machine nobody expected it
+ * on. sessionStorage dies with the tab, which is the right lifetime.
+ */
+export const CAPTURE_SESSION_KEY = "opas.capture.session"
+
+export function readStoredCaptureSession(): string | null {
+  try {
+    return window.sessionStorage.getItem(CAPTURE_SESSION_KEY)
+  } catch {
+    // ⚠️ Storage can throw (private mode, disabled). Losing the id is a degradation,
+    // not a failure — the order is still on the server.
+    return null
+  }
+}
+
+export function writeStoredCaptureSession(id: string | null): void {
+  try {
+    if (id === null) window.sessionStorage.removeItem(CAPTURE_SESSION_KEY)
+    else window.sessionStorage.setItem(CAPTURE_SESSION_KEY, id)
+  } catch {
+    /* see above */
+  }
+}
+
 export function OpasProvider({ children }: { children: ReactNode }) {
   const commandBar = useCommandBar()
   const focus = useFocus()
@@ -119,6 +162,25 @@ export function OpasProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [panes, setPanes] = useState<readonly OpasPane[]>([])
   const [pendingPick, setPendingPick] = useState<readonly string[] | null>(null)
+
+
+  /** ⚠️ IDEMPOTENT BY `paneId`, and it must be: the pane calls this once per start, but a
+   *  re-render that called it again with the same id must not create a new pane object
+   *  and retrigger the effect. Returning the SAME array when nothing changed keeps the
+   *  identity stable. */
+  const setCaptureSession = useCallback((paneId: string, sessionId: string) => {
+    setPanes((prev) => {
+      const i = prev.findIndex((p) => p.id === paneId)
+      if (i < 0 || prev[i].captureSessionId === sessionId) return prev
+      const next = prev.slice()
+      next[i] = { ...next[i], captureSessionId: sessionId }
+      return next
+    })
+    // ⚠️ PERSISTED HERE RATHER THAN IN THE PANE, because this is the one place that knows
+    // the id is now attached to a pane. The pane could write it too, but then two things
+    // would own the same fact.
+    writeStoredCaptureSession(sessionId)
+  }, [])
   const [placements, setPlacements] = useState<Record<string, PanePlacement>>({})
   const [frontPaneId, setFrontPaneId] = useState<string | null>(null)
   // ⚠️ A MONOTONIC COUNTER, exactly the prototype's `++z`. Ranking by array index instead
@@ -257,6 +319,7 @@ export function OpasProvider({ children }: { children: ReactNode }) {
       hasSession: panes.length > 0,
       pendingPick,
       setPendingPick,
+      setCaptureSession,
       tuck,
       onEscape,
       placements,

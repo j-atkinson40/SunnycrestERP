@@ -23,8 +23,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { useAuth } from "@/contexts/auth-context"
-import { useOpas } from "@/contexts/opas-context"
-import { isCatalogRequest, routeResolution } from "./opas-routing"
+import { readStoredCaptureSession, useOpas } from "@/contexts/opas-context"
+import { CapturePane } from "./CapturePane"
+import { CAPTURE_START, isCatalogRequest, routeResolution } from "./opas-routing"
 import { resolvePhrase } from "@/services/opas-catalog-service"
 import { ProductListPane } from "./ProductListPane"
 import { ProductPane } from "./ProductPane"
@@ -46,6 +47,30 @@ export function OpasHost() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
+
+  /** ⚠️ RESTORE A CAPTURE SESSION AFTER A RELOAD, and ONLY a capture session.
+   *
+   * Panes are React state, so a reload loses every pane — true of the catalog panes too,
+   * and not changed here. Reopening "the catalog" costs a keystroke; losing the id of a
+   * half-typed ORDER loses the way back to a row that still exists on the server.
+   *
+   * ⚠️ IT DOES NOT OPEN THE OVERLAY. The pane is re-created tucked, so a reload does not
+   * throw an overlay in front of someone who was doing something else — it is there when
+   * they next summon Opas, which is what "comes back where you left it" means.
+   *
+   * ⚠️ A STALE ID CLEARS ITSELF. `CapturePane` re-reads the session; if the server no
+   * longer has it the pane reports an error, and the id is dropped so the next reload is
+   * clean rather than carrying a ghost forever.
+   */
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    const id = readStoredCaptureSession()
+    if (!id) return
+    opas.openPane({ kind: "capture", label: "Order", captureSessionId: id })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [said, setSaid] = useState<string | null>(null)
 
   // ⚠️ Escape at the document level, with the prototype's three branches. `onEscape` owns
@@ -180,6 +205,16 @@ export function OpasHost() {
     setBusy(true)
     setSaid(null)
     try {
+      // ⚠️ THE CAPTURE ENTRANCE IS CHECKED BEFORE THE CATALOG AND BEFORE THE RESOLVER.
+      // "start an order for Hopkins" contains no catalog phrase, but sending it to the
+      // vault resolver would resolve "order" against product names and open the wrong
+      // thing. The whole line is passed through so the funeral home is captured on the
+      // opening keystroke (prototype `:568`).
+      if (CAPTURE_START.test(phrase.toLowerCase())) {
+        opas.openPane({ kind: "capture", label: "Order", openingLine: phrase })
+        setText("")
+        return
+      }
       // ⚠️ RULE-BASED FIRST. "the catalog" is a fixed phrase and never reaches the resolver.
       if (isCatalogRequest(phrase)) {
         opas.openPane({ kind: "product-list", label: "Catalog" })
@@ -324,6 +359,12 @@ export function OpasHost() {
                     opas.setPendingPick(null)
                     opas.openPane({ kind: "product", label: "Product", variantTemplateId: id })
                   }}
+                />
+              ) : pane.kind === "capture" ? (
+                <CapturePane
+                  openingLine={pane.openingLine}
+                  sessionId={pane.captureSessionId}
+                  onSessionStarted={(id) => opas.setCaptureSession(pane.id, id)}
                 />
               ) : (
                 <ProductPane variantTemplateId={pane.variantTemplateId!} />

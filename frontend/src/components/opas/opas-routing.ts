@@ -6,6 +6,24 @@
  * model call to recognise a fixed phrase would spend a round trip to learn nothing.
  */
 
+/**
+ * ⚠️ THE CAPTURE ENTRANCE, VERBATIM FROM THE PROTOTYPE (`:296`):
+ *
+ *   /\b(new|create|start|make|enter|put in|take)\b.*\border\b|^order for\b/
+ *
+ * Not re-worded. The prototype is the authority on what a director types, and a phrase
+ * that starts a capture there and not here would be a difference nobody chose. The
+ * SERVER carries the same regex (`session_service.START_SIGNAL`); this one exists so the
+ * overlay can route without a round trip, exactly as `detectNLIntent.ts` mirrors
+ * `intent.py`.
+ *
+ * ⚠️ THE WHOLE LINE IS PASSED THROUGH, NOT STRIPPED. The prototype starts the capture and
+ * immediately feeds the same text (`:568`), which is what lets "start an order for
+ * Hopkins" capture the funeral home on the opening keystroke.
+ */
+export const CAPTURE_START =
+  /\b(new|create|start|make|enter|put in|take)\b.*\border\b|^order for\b/
+
 /** Phrases that open the Product List. Lower-cased, trimmed, punctuation-stripped. */
 const CATALOG_PHRASES: readonly string[] = [
   "catalog",
@@ -40,6 +58,7 @@ export function isCatalogRequest(text: string): boolean {
 }
 
 export type OpasRoute =
+  | { kind: "capture"; openingLine: string }
   | { kind: "product-list" }
   | { kind: "product"; variantTemplateId: string }
   | { kind: "numbered-pick"; candidateIds: string[]; discriminators: string[] }

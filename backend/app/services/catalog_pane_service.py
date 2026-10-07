@@ -223,9 +223,9 @@ def _offered_questions(
     # this tenant's config" would have been two answers. The supplier also fixes a
     # defect this copy had: `LIMIT 1` with no ORDER BY, so a licensee with two
     # enrollments got whichever row the planner happened to return.
-    from app.services.personalization.enrollment import read_personalization_config
+    from app.services.personalization.enrollment import resolve_availability_config
 
-    config = read_personalization_config(db, company_id)
+    config = resolve_availability_config(db, company_id)
     if config is None:
         return []
 
