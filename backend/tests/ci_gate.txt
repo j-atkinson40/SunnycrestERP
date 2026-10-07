@@ -200,6 +200,7 @@ tests/test_ar_consolidation_validation_c4.py
 tests/test_ar_drift_report_c2.py
 tests/test_ar_import_posts_c1.py
 tests/test_ar_membership_seam_c3.py
+tests/test_availability_reaches_capture.py
 tests/test_books_review_e2e_b6.py
 tests/test_catalog_pane_reads.py
 tests/test_ci_membership.py

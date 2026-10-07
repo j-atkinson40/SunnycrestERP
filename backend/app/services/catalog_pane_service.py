@@ -218,11 +218,15 @@ def _offered_questions(
     )
     from app.services.personalization.questions import QUESTIONS
 
-    config = db.execute(text(
-        "SELECT personalization_config FROM wilbert_program_enrollments "
-        "WHERE company_id = :c AND personalization_config IS NOT NULL LIMIT 1"
-    ), {"c": company_id}).scalar()
-    if not isinstance(config, dict):
+    # ⚠️ WAS AN INLINE QUERY UNTIL 2026-10-07. The same read was needed to wire
+    # availability into the capture path, and two copies of "which enrollment row is
+    # this tenant's config" would have been two answers. The supplier also fixes a
+    # defect this copy had: `LIMIT 1` with no ORDER BY, so a licensee with two
+    # enrollments got whichever row the planner happened to return.
+    from app.services.personalization.enrollment import read_personalization_config
+
+    config = read_personalization_config(db, company_id)
+    if config is None:
         return []
 
     out: list[dict[str, Any]] = []

@@ -174,6 +174,45 @@ class NotEqualsValue:
 
 
 @dataclass(frozen=True)
+class AnswerIn:
+    """`legacy_print_name` applies when `personalization` is one of the print answers.
+
+    ⚠️ A SET, NOT A CHAIN OF `EqualsValue`. R1 (2026-10-07) collapsed three
+    personalization questions into one with seven answers, and three of the new
+    detail fields each hang off a SUBSET of those answers rather than off a single
+    value: the print name applies to the one legacy answer, the vinyl symbol to the
+    two answers that carry vinyl, the date format to the four that carry text. An
+    `Or(EqualsValue(...), EqualsValue(...))` would express the same thing and would
+    need an `Or` — which nothing else wants, and which would then be the one
+    combinator anyone reaches for.
+
+    ⚠️ SAME THREE-VALUED DISCIPLINE AS `EqualsValue`, and it is not inherited by
+    writing `in`: an unusable dependency reads FALSE, an unanswered one reads
+    INDETERMINATE. The second is the one that matters here — before the director has
+    said what personalization they want, "does the print name apply" is not FALSE,
+    it is not yet knowable, and FALSE would drop the field into `not_applicable`
+    where a surface renders nothing and never revisits it.
+    """
+
+    field_id: str
+    values: frozenset
+
+    @property
+    def depends_on(self) -> tuple[str, ...]:
+        return (self.field_id,)
+
+    def evaluate(self, ctx: ConditionContext) -> Verdict:
+        if _unusable(ctx, self.field_id):
+            return Verdict.FALSE
+        if not _answered(ctx, self.field_id):
+            return Verdict.INDETERMINATE
+        return (
+            Verdict.TRUE if ctx.answers.get(self.field_id) in self.values
+            else Verdict.FALSE
+        )
+
+
+@dataclass(frozen=True)
 class AnyAnswered:
     """"Any personalization is chosen" — the predicate five of the eight hang off.
 

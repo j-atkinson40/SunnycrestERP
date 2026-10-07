@@ -26,17 +26,17 @@ from app.services.capture.schema import (
 )
 from app.services.personalization.questions import (
     ANSWER_COVER_EMBLEM_ONLY,
-    ANSWER_LEGACY_SERIES,
+    ANSWER_LEGACY_PRINT,
     ANSWER_NAMEPLATE_ONLY,
     ANSWER_NONE,
-    QUESTION_LEGACY_PRINT,
-    QUESTION_LIFES_REFLECTIONS,
-    QUESTION_NAMEPLATE_COVER_EMBLEM,
+    QUESTION_PERSONALIZATION,
     QUESTIONS,
 )
 from tests._capture_fixtures import (
+    VAULT_CONTINENTAL_SHAPED,
+    VAULT_PARTIAL_CONFIG,
     FIXTURE_PERSONALIZATION_CONFIG,
-    VAULT_ALL_THREE,
+    VAULT_EVERY_ANSWER,
     VAULT_OFFERS_NONE,
     VAULT_ONE_ANSWER,
     VAULT_SALUTE_SHAPED,
@@ -61,12 +61,13 @@ def _evaluate(vault, extracted=None, **kw):
 
 
 def test_none_is_an_answer_and_clears_the_requirement():
+    """⚠️ REWRITTEN FOR R1 (2026-10-07) — ONE ANSWER, NOT THREE. It used to set all
+    three question ids to `none`; there is one question now. What it proves is
+    unchanged: `none` is an ANSWER, so it lands in `answered` and leaves no gap."""
     answers = complete_non_personalization_answers()
-    answers[QUESTION_LEGACY_PRINT] = ANSWER_NONE
-    answers[QUESTION_NAMEPLATE_COVER_EMBLEM] = ANSWER_NONE
-    answers[QUESTION_LIFES_REFLECTIONS] = ANSWER_NONE
+    answers[QUESTION_PERSONALIZATION] = ANSWER_NONE
 
-    state = _evaluate(VAULT_ALL_THREE, answers)
+    state = _evaluate(VAULT_EVERY_ANSWER, answers)
 
     assert state.missing == ()
     assert state.is_complete
@@ -75,16 +76,22 @@ def test_none_is_an_answer_and_clears_the_requirement():
 
 
 def test_an_ABSENT_field_is_missing_while_a_none_ANSWER_is_not():
-    """The distinction the whole ruling rests on, asserted directly."""
-    answers = complete_non_personalization_answers()
-    answers[QUESTION_LEGACY_PRINT] = ANSWER_NONE
-    # nameplate + vinyl simply never came up
+    """The distinction the whole ruling rests on, asserted directly.
 
-    state = _evaluate(VAULT_ALL_THREE, answers)
+    ⚠️ REWRITTEN FOR R1 AND IT NEEDED TWO EVALUATIONS RATHER THAN ONE. With three
+    questions a single order could hold both states at once — one answered `none`,
+    two absent — so one `evaluate` call showed the contrast. With one question the
+    contrast is between two orders, and asserting it needs both: answer it and it is
+    `answered`, omit it and it is `missing`. Same proof, and the absent case is now
+    the one that could regress silently, so it is asserted second and explicitly.
+    """
+    answered = complete_non_personalization_answers()
+    answered[QUESTION_PERSONALIZATION] = ANSWER_NONE
+    assert QUESTION_PERSONALIZATION in _evaluate(VAULT_EVERY_ANSWER, answered).answered
 
-    assert QUESTION_LEGACY_PRINT in state.answered
-    assert QUESTION_NAMEPLATE_COVER_EMBLEM in state.missing
-    assert QUESTION_LIFES_REFLECTIONS in state.missing
+    absent = complete_non_personalization_answers()
+    assert QUESTION_PERSONALIZATION not in absent          # the premise, stated
+    assert QUESTION_PERSONALIZATION in _evaluate(VAULT_EVERY_ANSWER, absent).missing
 
 
 @pytest.mark.parametrize(
@@ -139,61 +146,96 @@ def test_NOT_CONFIGURED_means_ask_not_skip():
 
 
 def test_a_PARTIALLY_configured_vault_asks_only_the_unconfigured_questions():
-    """Salute-shaped: one question configured, two absent. All three apply —
-    the configured one because it is offered, the other two because silence is
-    not a refusal."""
-    state = _evaluate(VAULT_SALUTE_SHAPED)
+    """A vault present in `availability` with the question key absent still asks it.
 
-    assert state.not_applicable == ()
-    assert set(state.missing) == QUESTION_IDS
+    ⚠️ REWRITTEN TWICE OVER, AND BOTH REASONS MATTER.
+
+    It was red BEFORE this change for a reason unrelated to R1: it asserted
+    `not_applicable == ()` while Piece 4 had added `service_location_other`, which
+    is legitimately not-applicable whenever the location is not `other`. The
+    assertion was over the WHOLE not-applicable set when the subject is
+    personalization, so any new conditional field anywhere in the template broke it.
+    It now asserts about the personalization field only.
+
+    ⚠️ AND R1 REMOVED ITS SUBJECT, SO THE FIXTURE IS NEW. "One question configured,
+    two absent" cannot happen with one question. The state it was really testing —
+    `read_availability`'s question-absent-for-a-present-product branch — survives,
+    and `VAULT_PARTIAL_CONFIG` constructs it deliberately.
+    """
+    state = _evaluate(VAULT_PARTIAL_CONFIG)
+
+    assert QUESTION_PERSONALIZATION not in state.not_applicable
+    assert QUESTION_PERSONALIZATION in state.missing
 
 
 # ── permitted answers ───────────────────────────────────────────────────
 
 
 def test_the_salute_shaped_vault_permits_cover_emblem_only():
-    """The answer the re-key nearly modelled away."""
+    """The answer the re-key nearly modelled away. ⚠️ Rewritten for R1: one answer
+    rather than three, and `nameplate_date_format` is no longer demanded — an emblem
+    carries no lettering, which is the narrowing this change proposes."""
     answers = complete_non_personalization_answers()
-    answers[QUESTION_NAMEPLATE_COVER_EMBLEM] = ANSWER_COVER_EMBLEM_ONLY
-    answers[QUESTION_LEGACY_PRINT] = ANSWER_NONE
-    answers[QUESTION_LIFES_REFLECTIONS] = ANSWER_NONE
+    answers[QUESTION_PERSONALIZATION] = ANSWER_COVER_EMBLEM_ONLY
 
     state = _evaluate(VAULT_SALUTE_SHAPED, answers)
 
-    assert QUESTION_NAMEPLATE_COVER_EMBLEM in state.answered
-    assert state.is_complete
+    assert QUESTION_PERSONALIZATION in state.answered
+    assert state.is_complete, f"missing={state.missing}"
+
+
+def test_cover_emblem_only_is_NOT_permitted_on_the_continental_shaped_vault():
+    """⚠️ NEW 2026-10-07 — THE POSITIVE CONTROL ON R2's ONE EXCLUSION.
+
+    R2 permits `cover_emblem_only` on every vault that offers cover emblems, and
+    James flagged Continental as the exception: it offers a nameplate and no emblem,
+    as in the ordering portal (`lib/products.ts:145-161`, one `nameplate` field).
+
+    Without this test, availability built as "emblem-only everywhere" would satisfy
+    the test above and nothing would disagree. This is the assertion that makes the
+    exclusion a rule rather than a remark.
+    """
+    answers = complete_non_personalization_answers()
+    answers[QUESTION_PERSONALIZATION] = ANSWER_COVER_EMBLEM_ONLY
+
+    with pytest.raises(UnpermittedAnswer):
+        _evaluate(VAULT_CONTINENTAL_SHAPED, answers)
+
+    # ...and the answer it DOES permit is accepted, so the test above is not
+    # passing because the vault refuses everything.
+    answers[QUESTION_PERSONALIZATION] = ANSWER_NAMEPLATE_ONLY
+    assert QUESTION_PERSONALIZATION in _evaluate(
+        VAULT_CONTINENTAL_SHAPED, answers
+    ).answered
 
 
 def test_an_answer_the_vault_does_not_permit_RAISES_rather_than_reading_as_missing():
     answers = complete_non_personalization_answers()
-    answers[QUESTION_NAMEPLATE_COVER_EMBLEM] = ANSWER_NAMEPLATE_ONLY
+    # Salute offers nameplate and emblem; it does not offer a Legacy print.
+    answers[QUESTION_PERSONALIZATION] = ANSWER_LEGACY_PRINT
 
     with pytest.raises(UnpermittedAnswer) as exc:
         _evaluate(VAULT_SALUTE_SHAPED, answers)
 
-    assert QUESTION_NAMEPLATE_COVER_EMBLEM in str(exc.value)
+    assert QUESTION_PERSONALIZATION in str(exc.value)
 
 
 def test_none_is_permitted_even_where_the_permitted_set_excludes_everything_else():
     answers = complete_non_personalization_answers()
-    answers[QUESTION_LEGACY_PRINT] = ANSWER_NONE
-    answers[QUESTION_NAMEPLATE_COVER_EMBLEM] = ANSWER_NONE
-    answers[QUESTION_LIFES_REFLECTIONS] = ANSWER_NONE
+    answers[QUESTION_PERSONALIZATION] = ANSWER_NONE
 
     state = _evaluate(VAULT_ONE_ANSWER, answers)
-    assert QUESTION_LEGACY_PRINT in state.answered
+    assert QUESTION_PERSONALIZATION in state.answered
 
 
 def test_an_UNCONFIGURED_question_does_not_reject_any_answer():
     """NOT_CONFIGURED carries no permitted set, and guarding against an empty
     set would turn "not set up yet" into "that answer is wrong"."""
     answers = complete_non_personalization_answers()
-    answers[QUESTION_LEGACY_PRINT] = ANSWER_LEGACY_SERIES
-    answers[QUESTION_NAMEPLATE_COVER_EMBLEM] = ANSWER_NONE
-    answers[QUESTION_LIFES_REFLECTIONS] = ANSWER_NONE
+    answers[QUESTION_PERSONALIZATION] = ANSWER_LEGACY_PRINT
 
     state = _evaluate(VAULT_UNCONFIGURED, answers)
-    assert QUESTION_LEGACY_PRINT in state.answered
+    assert QUESTION_PERSONALIZATION in state.answered
 
 
 # ── tenant configuration ────────────────────────────────────────────────
@@ -232,20 +274,22 @@ def test_the_vault_field_cannot_be_switched_off():
 
 
 def test_switching_off_a_personalization_question_removes_it_even_when_offered():
+    """⚠️ Rewritten for R1. Switching the one question off now removes ALL
+    personalization from the order rather than one of three kinds — which is a real
+    change in what a tenant switch means, and is the behaviour R1 implies: there is
+    one question, so there is one switch."""
     answers = complete_non_personalization_answers()
-    answers[QUESTION_NAMEPLATE_COVER_EMBLEM] = ANSWER_NONE
-    answers[QUESTION_LIFES_REFLECTIONS] = ANSWER_NONE
 
     state = _evaluate(
-        VAULT_ALL_THREE,
+        VAULT_EVERY_ANSWER,
         answers,
         tenant_config=TenantCaptureConfig(
-            disabled_field_ids=frozenset({QUESTION_LEGACY_PRINT})
+            disabled_field_ids=frozenset({QUESTION_PERSONALIZATION})
         ),
     )
 
-    assert QUESTION_LEGACY_PRINT in state.not_applicable
-    assert state.is_complete
+    assert QUESTION_PERSONALIZATION in state.not_applicable
+    assert state.is_complete, f"missing={state.missing}"
 
 
 # ── before a vault is named ─────────────────────────────────────────────
@@ -269,7 +313,7 @@ def test_the_vault_itself_is_reported_missing_when_not_named():
 # ── shape guards ────────────────────────────────────────────────────────
 
 
-def test_the_four_sets_partition_every_platform_field():
+def test_the_five_sets_partition_every_platform_field():
     """⚠️ A REAL PARTITION AGAIN, AND THE HISTORY IS THE POINT.
 
     This asserted a THREE-set partition and was correct only because every
@@ -289,13 +333,24 @@ def test_the_four_sets_partition_every_platform_field():
     from app.services.capture import SALES_ORDER, template_for
 
     template = template_for(SALES_ORDER)
-    state = _evaluate(VAULT_ALL_THREE, complete_non_personalization_answers())
+    state = _evaluate(VAULT_EVERY_ANSWER, complete_non_personalization_answers())
 
     sets = {
         "answered": set(state.answered),
         "missing": set(state.missing),
         "unanswered_optional": set(state.unanswered_optional),
         "not_applicable": set(state.not_applicable),
+        # ⚠️ ADDED 2026-10-07, AND ITS ABSENCE IS WHY THIS TEST WAS RED FOR A DAY.
+        # Piece 4 added `indeterminate` as the FIFTH set on 2026-10-06 and updated
+        # `CaptureState` to say so; this test kept unioning four and reported
+        # `nameplate_date_format` as belonging to no set. It read exactly like a
+        # partition bug in `evaluate` and was a stale test — the test's own name
+        # still says "four".
+        #
+        # ⚠️ IT WENT UNNOTICED BECAUSE `test_capture_schema.py` IS NOT IN
+        # `tests/ci_gate.txt`. The gate cannot report a file it does not select
+        # (CLAUDE.md §11, *a gate reports its denominator*).
+        "indeterminate": set(state.indeterminate),
     }
     union = set().union(*sets.values())
     assert union == {f.field_id for f in template}, (

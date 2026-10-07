@@ -43,6 +43,7 @@ from app.services.capture.conditions import (
 )
 from app.services.capture.missing import evaluate
 from app.services.capture.rows import resolve_surface, row_field_ids
+from app.services.personalization.questions import ANSWER_LEGACY_PRINT
 from app.services.capture.schema import (
     ANY_PERSONALIZATION_CHOSEN,
     PERSONALIZATION_FIELD_IDS,
@@ -169,7 +170,11 @@ class TestTwoSlotsNotOne:
     def test_nameplate_date_format_is_the_mirror_image(self):
         """Conditionally SHOWN, then required — the opposite arrangement."""
         assert "nameplate_date_format" not in _ids(_resolve(_CHURCH))
-        answers = dict(_CHURCH, legacy_print="legacy_series")
+        # ⚠️ ONE QUESTION SINCE R1, and the answer must be a DATE-TEXT-BEARING one:
+        # `nameplate_date_format` was narrowed from "any personalization" to the
+        # answers that put lettering on the vault. `cover_emblem_only` would now
+        # correctly NOT show the format, which is the proposal R5 asked for.
+        answers = dict(_CHURCH, personalization=ANSWER_LEGACY_PRINT)
         resolved = _resolve(answers)
         assert "nameplate_date_format" in _ids(resolved)
         nd = next(f for f in resolved if f.field_id == "nameplate_date_format")
@@ -226,7 +231,7 @@ class TestAnyPersonalizationChosen:
     def test_a_real_choice_makes_the_dates_missing(self):
         """⚠️ THE DISCRIMINATING PAIR. Without this, a predicate that always returned
         FALSE would satisfy the test above."""
-        answers = dict(_CHURCH, legacy_print="legacy_series")
+        answers = dict(_CHURCH, personalization=ANSWER_LEGACY_PRINT)
         state = evaluate(answers, vault_product_id=None)
         assert "date_of_birth" in state.missing
         assert "date_of_death" in state.missing
@@ -279,10 +284,16 @@ class TestTheWalkIsADAG:
         questions apply -> their answers -> `nameplate_date_format` applies. Asserted
         through `resolve_schema`, not through the sorter, so the chain is exercised
         rather than the algorithm."""
-        cfg = {"personalization_availability": {"V1": {q: ["x"] for q in PERSONALIZATION_FIELD_IDS}}}
-        answers = dict(_CHURCH, legacy_print="x")
+        # ⚠️ THE KEY WAS WRONG AND THE TEST PASSED ANYWAY — fixed 2026-10-07. It read
+        # `{"personalization_availability": ...}`; the key `read_availability` looks
+        # for is `availability`. So availability resolved NOT_CONFIGURED, the field
+        # applied under "ask, not skip", and the assertion labelled "availability must
+        # resolve first" never once exercised availability. Green for a reason
+        # unrelated to what it claimed (CLAUDE.md §11, mechanism B shape 6).
+        cfg = {"availability": {"V1": {q: [ANSWER_LEGACY_PRINT] for q in PERSONALIZATION_FIELD_IDS}}}
+        answers = dict(_CHURCH, personalization=ANSWER_LEGACY_PRINT)
         resolved = _ids(_resolve(answers, vault_product_id="V1", personalization_config=cfg))
-        assert "legacy_print" in resolved, "availability must resolve first"
+        assert "personalization" in resolved, "availability must resolve first"
         assert "nameplate_date_format" in resolved, (
             "the dependent of an answer to a conditionally-applicable field"
         )

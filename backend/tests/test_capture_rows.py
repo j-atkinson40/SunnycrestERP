@@ -7,7 +7,7 @@ entrance (`ringcentral_call_log` holds 0 rows in production, measured
 
 WHAT IT PINS, and the first is why the layer exists at all:
 
-1. **Rows are not fields.** 15 template fields, 9 capture rows, 6 summary rows.
+1. **Rows are not fields.** 19 template fields, 9 capture rows, 6 summary rows.
    A label-and-order-per-field design would render 15 of each.
 2. **The two surfaces differ**, measured: `Cemetery` is relabelled `Burial`,
    `Contact` demotes from a row to a secondary line, the subject slot exists only
@@ -86,16 +86,31 @@ class TestRowsAreNotFields:
     def test_neither_surface_has_one_row_per_field(self):
         """The assertion the scope error would have failed."""
         n_fields = len(template_for(SALES_ORDER))
+        # ⚠️ 19 SINCE R1-R5 (2026-10-07), AND THE ARITHMETIC IS NOT +2. Four fields
+        # were ADDED — `cemetery_city`, `service_date`, `legacy_print_name`,
+        # `lifes_reflections_symbol` — and the three personalization questions
+        # COLLAPSED INTO ONE, so 17 + 4 - 2 = 19.
+        #
         # ⚠️ 17 SINCE PIECE 4 (2026-10-06): `eta` and `service_location_other` were
         # added and `burial_time` was RENAMED to `service_time`, so +2 not +3.
-        assert n_fields == 17
+        assert n_fields == 19
         assert len(CAPTURE_SALES_ORDER.rows) == 9 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
-    def test_collapse_three_personalization_fields_into_one_row(self):
+    def test_collapse_the_answer_and_its_details_into_one_row(self):
+        """⚠️ RENAMED AND REPOINTED 2026-10-07 (R1). It was
+        `test_collapse_three_personalization_fields_into_one_row` and named the three
+        questions that no longer exist.
+
+        ⚠️ IT STILL TESTS A COLLAPSE, BUT A DIFFERENT ONE, AND THAT IS WORTH SAYING
+        PLAINLY. Before, the row collapsed three KINDS of personalization into one
+        line. Now it collapses the kind and its DETAIL — "Legacy print · American
+        Flag" — which is what the prototype actually renders. The row count did not
+        change; what feeds it did.
+        """
         row = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "personalization")
         assert set(row_field_ids(row)) == {
-            "legacy_print", "nameplate_cover_emblem", "lifes_reflections"
+            "personalization", "legacy_print_name", "lifes_reflections_symbol"
         }
 
     def test_composition_renders_with_the_designs_separator(self):
@@ -212,8 +227,8 @@ class TestTheFourStates:
         """
         # ⚠️ `applies_when=AvailabilityOffered(...)` since Piece 4 — `question_id`
         # was the one conditional shape the engine had, and is now one node among six.
-        defn = FieldDefinition("legacy_print", "Legacy Series™ Print",
-                               applies_when=AvailabilityOffered("legacy_print"))
+        defn = FieldDefinition("personalization", "Personalization",
+                               applies_when=AvailabilityOffered("personalization"))
         unconfigured = ResolvedField(defn, permitted_answers=())
         fields = _resolved() + (unconfigured,)
         out = resolve_surface(CAPTURE_SALES_ORDER, fields, {}, done_signal=True)
@@ -228,9 +243,9 @@ class TestTheFourStates:
         conditional field would satisfy the test above."""
         # ⚠️ `applies_when=AvailabilityOffered(...)` since Piece 4 — `question_id`
         # was the one conditional shape the engine had, and is now one node among six.
-        defn = FieldDefinition("legacy_print", "Legacy Series™ Print",
-                               applies_when=AvailabilityOffered("legacy_print"))
-        offered = ResolvedField(defn, permitted_answers=("legacy_series",))
+        defn = FieldDefinition("personalization", "Personalization",
+                               applies_when=AvailabilityOffered("personalization"))
+        offered = ResolvedField(defn, permitted_answers=("nameplate_only",))
         fields = _resolved() + (offered,)
         out = resolve_surface(CAPTURE_SALES_ORDER, fields, {}, done_signal=True)
         row = next(r for r in out.rows if r.row_id == "personalization")
@@ -386,12 +401,14 @@ class TestCountsBelongToTheCapture:
         values["customer"] = None
         # All nine rows need a vault named, or Personalization is omitted — see
         # test_counts_are_over_rows_not_fields.
+        # ⚠️ ONE QUESTION SINCE R1 (2026-10-07). This block configured the three old
+        # question ids; keeping it would have left the personalization field
+        # NOT_CONFIGURED, dropping the row and quietly making the nine-row assertion
+        # below fail for a reason unrelated to counting.
         fields = resolve_schema(
             vault_product_id="v1",
             personalization_config={"availability": {"v1": {
-                "legacy_print": ["legacy_series"],
-                "nameplate_cover_emblem": ["nameplate_only"],
-                "lifes_reflections": ["vinyl_standard"],
+                "personalization": ["nameplate_only"],
             }}},
             platform_fields=template_for(SALES_ORDER),
         )

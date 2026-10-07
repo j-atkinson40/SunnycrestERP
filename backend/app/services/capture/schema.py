@@ -41,6 +41,7 @@ from dataclasses import dataclass, field, replace
 
 from app.services.capture.conditions import (
     Always,
+    AnswerIn,
     AnyAnswered,
     Applicability,
     AvailabilityOffered,
@@ -57,7 +58,14 @@ from app.services.personalization.availability import (
     AvailabilityState,
     read_availability,
 )
-from app.services.personalization.questions import ANSWER_NONE, QUESTIONS
+from app.services.personalization.questions import (
+    ANSWER_NONE,
+    DATE_TEXT_BEARING_ANSWERS,
+    PRINT_BEARING_ANSWERS,
+    QUESTION_PERSONALIZATION,
+    QUESTIONS,
+    VINYL_BEARING_ANSWERS,
+)
 
 #: The one field that may not be switched off. See the module docstring.
 VAULT_FIELD_ID = "vault"
@@ -189,15 +197,27 @@ SERVICE_LOCATION_OTHER = "other"
 SERVICE_LOCATION_GRAVESIDE = "graveside"
 
 #: ⚠️ DERIVED FROM `QUESTIONS`, NOT TYPED OUT — the same argument
-#: `_personalization_fields` makes. Five of the eight conditional fields read this
-#: tuple, so a hand-written copy would be a second list able to drift from the first.
+#: `_personalization_fields` makes. A hand-written copy would be a second list able
+#: to drift from the first.
+#:
+#: ⚠️ THIS IS NOW A ONE-TUPLE AND THE SENTENCE ABOVE USED TO SAY "five of the eight
+#: conditional fields read this tuple". R1 (2026-10-07) collapsed capture's three
+#: personalization questions into one, so the tuple has one member — and because it
+#: is derived rather than typed out, nothing here needed editing for that to be true.
+#: The stale part was only the count, which is why counts do not belong beside the
+#: thing they count (CLAUDE.md §11).
 PERSONALIZATION_FIELD_IDS: tuple[str, ...] = tuple(q.question_id for q in QUESTIONS)
 
-#: "Any personalization is chosen", as one object the three dependents share.
+#: "Any personalization is chosen", as one object its dependents share.
 #:
 #: ⚠️ `ignoring={ANSWER_NONE}` IS THE WHOLE PREDICATE. `"none"` is an ANSWER — the
-#: family declined — so answering "none" to all three must make this FALSE and must
-#: NOT demand the dates. A truthiness test would read "none" as a choice.
+#: family declined — so answering "none" must make this FALSE and must NOT demand
+#: the dates. A truthiness test would read "none" as a choice.
+#:
+#: ⚠️ IT NOW READS ONE FIELD RATHER THAN THREE, which SIMPLIFIES the predicate but
+#: does not make it redundant. `AnyAnswered` over one field still distinguishes the
+#: three states that matter — answered-with-a-choice, answered-"none", and
+#: unanswered — and the third is why this is not `EqualsValue`-style equality.
 ANY_PERSONALIZATION_CHOSEN = AnyAnswered(
     PERSONALIZATION_FIELD_IDS, ignoring=frozenset({ANSWER_NONE})
 )
@@ -253,7 +273,31 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # may still hear a size separately, and it is fed to the resolver rather than
     # answered as a field.
     FieldDefinition("cemetery", "Cemetery"),
+    # ⚠️ ADDED 2026-10-07 (R4). PROMPTED, NOT REQUIRED, and the reason is the one
+    # James gave: cemeteries share names across towns, so the town is what makes
+    # "St. Mary's" an answer rather than a question. It is not REQUIRED because a
+    # director who names an unambiguous cemetery has not left a gap — the town
+    # disambiguates where it is needed and is noise where it is not.
+    #
+    # ⚠️ IT DOES NOT HANG OFF `cemetery`. An `applies_when=AnyAnswered(("cemetery",))`
+    # would read INDETERMINATE until the cemetery is answered, which would hide the
+    # row on a fresh order — and the town is exactly the thing a director says in the
+    # same breath as the name. Unconditional and optional.
+    FieldDefinition("cemetery_city", "Cemetery town", required_when=Never()),
     FieldDefinition("burial_date", "Burial date"),
+    # ⚠️ ADDED 2026-10-07 (R4), REQUIRED, AND THIS CLOSES A GAP THE ROW LAYER HAD
+    # ALREADY DECLARED. `surfaces.py` carried a `GAP` marker on the summary Service
+    # row reading that the prototype's secondary is "Thu, Sep 17 · 10:00 AM" — a
+    # service DATE and TIME — and that the date had no template field. The time
+    # arrived with Piece 4; this is the date.
+    #
+    # ⚠️ DISTINCT FROM `burial_date`, WHICH ALREADY EXISTED AND IS NOT THE SAME FACT.
+    # Same shape of error the `burial_time` -> `service_time` rename fixed: a service
+    # happens at a church at 10:00 and the burial happens at the cemetery later. One
+    # date field serving both would be the third name nobody should have to
+    # disambiguate again. The ordering portal asks for both too — `serviceDate`
+    # required, and the cemetery arrival separately.
+    FieldDefinition("service_date", "Service date"),
     # ⚠️ RENAMED FROM `burial_time` ON 2026-10-06 BY RULING, AND THE RENAME IS THE
     # POINT RATHER THAN A TIDY-UP. An order carries TWO time facts — a SERVICE time
     # and an ETA — and `burial_time` was the template's wrong name for the first.
@@ -378,16 +422,59 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # than to whoever happens to be looking at it.
     #
     # Three named values and a measured default — see `NAMEPLATE_DATE_FORMATS`
-    # and `NAMEPLATE_DATE_FORMAT_DEFAULT` above. ⚠️ Condition recorded, not
-    # implemented: applies when any personalization is chosen, the same
-    # value-dependent shape as the dates.
+    # and `NAMEPLATE_DATE_FORMAT_DEFAULT` above.
     # ⚠️ THE OTHER WAY ROUND FROM THE DATES: conditionally SHOWN, then required.
     # Asking for a nameplate date format on an order with no personalization would
     # be asking about a nameplate nobody is making.
+    #
+    # ⚠️ NARROWED 2026-10-07 FROM `ANY_PERSONALIZATION_CHOSEN`, AND THIS IS A
+    # PROPOSAL AWAITING JAMES, NOT A RULING. R5 asked which personalization types the
+    # format applies to and said propose, do not assume. The proposal is: the answers
+    # that put NAME-AND-DATE TEXT on the vault. A cover emblem carries no text and a
+    # vinyl symbol is a symbol, so asking how to format dates for either is asking
+    # about lettering nobody is cutting.
+    #
+    # ⚠️ NOTE IT NO LONGER AGREES WITH THE DATES ABOVE, DELIBERATELY. `date_of_birth`
+    # and `date_of_death` stay on ANY personalization per R5's "keep"; this is
+    # narrower. So an order with `cover_emblem_only` is required to carry the dates
+    # and is never asked how to format them. That is defensible — the dates are also
+    # order facts, the format is only a lettering instruction — but it is an
+    # asymmetry James should see rather than discover.
+    #
+    # REVERTING IS ONE LINE: put `ANY_PERSONALIZATION_CHOSEN` back here.
     FieldDefinition(
         "nameplate_date_format", "Date format",
-        applies_when=ANY_PERSONALIZATION_CHOSEN,
+        applies_when=AnswerIn(QUESTION_PERSONALIZATION, DATE_TEXT_BEARING_ANSWERS),
         required_when=Always(),
+    ),
+    # ⚠️ ADDED 2026-10-07 (R3). WHICH print, asked because a director names it from
+    # Wilbert's poster of official prints. PROMPTED, NEVER REQUIRED, by ruling — an
+    # order can record "legacy print" without yet recording which one.
+    #
+    # ⚠️ THE RESOLUTION IS NOT DONE HERE AND MUST NOT BE. R3: resolve the spoken name
+    # against the print list with the resolver pattern — candidates + discriminator,
+    # never pick. That is `legacy_print_resolver`, which returns a candidate set and
+    # the reason they differ, exactly as `product_name_resolver` does for vaults.
+    # This field holds what the director said; the resolver turns it into candidates;
+    # nothing in the capture engine chooses between them.
+    FieldDefinition(
+        "legacy_print_name", "Which print",
+        applies_when=AnswerIn(QUESTION_PERSONALIZATION, PRINT_BEARING_ANSWERS),
+        required_when=Never(),
+    ),
+    # ⚠️ ADDED 2026-10-07, AND NOT FROM A RULING — FLAGGED IN THE REPORT FOR JAMES.
+    # R1 collapsed the eight Life's Reflections symbols from ANSWERS into a single
+    # `lifes_reflections` answer. The symbol is information the family gave, so
+    # without a field for it the collapse would lose it silently. This is the exact
+    # parallel of `legacy_print_name`: the answer names the kind, the detail field
+    # names the thing.
+    #
+    # Permitted values are `VINYL_ANSWERS` (8, derived from `VINYL_SYMBOLS`), one of
+    # which carries free text (`other`). Prompted, never required, like the print.
+    FieldDefinition(
+        "lifes_reflections_symbol", "Which symbol",
+        applies_when=AnswerIn(QUESTION_PERSONALIZATION, VINYL_BEARING_ANSWERS),
+        required_when=Never(),
     ),
     # ⚠️ A PRODUCT REFERENCE, NOT FREE TEXT. The catalog sells 5 `equipment`
     # products (measured 2026-10-05), the scheduling board renders equipment

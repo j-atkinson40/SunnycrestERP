@@ -27,10 +27,26 @@ logger = logging.getLogger(__name__)
 # `intelligence_service.execute()`. Constant removed for hygiene.
 
 
-def resolve_and_evaluate(db: Session, result: dict):
+def resolve_and_evaluate(db: Session, result: dict, *, tenant_id: str | None = None):
     """Resolve the vault phrase and evaluate the capture against it.
 
     Returns `(resolution, capture_state)`.
+
+    ⚠️ `tenant_id` WIRES AVAILABILITY, AND WITHOUT IT THE PERSONALIZATION QUESTION
+    COULD NEVER BE ASKED. Until 2026-10-07 this called `capture.evaluate` with no
+    `personalization_config` at all, so the parameter defaulted to None, every
+    `read_availability` returned NOT_CONFIGURED, and the personalization field landed
+    in `indeterminate` on every call regardless of what the licensee had configured.
+    That is the same shape as the `vault_product_id=None` defect this function was
+    extracted to fix, one layer along: the vault resolved, and then the thing the
+    vault was resolved FOR still could not be read.
+
+    ⚠️ IT IS KEYWORD-ONLY AND OPTIONAL SO THE DEFECT CANNOT COME BACK SILENTLY. A
+    caller that omits it gets NOT_CONFIGURED — the honest answer for "we do not know
+    whose catalog this is" — rather than an exception, because this function is also
+    the seam tests use without a tenant. The production caller passes it, and
+    `test_availability_reaches_evaluate_through_the_seam` fails if that stops being
+    true.
 
     ⚠️ THIS EXISTS AS A SEAM BECAUSE A BREAK TEST CAME BACK BLIND. The resolve
     and the evaluate used to sit inline in `extract_call_data`, which is gated on
@@ -45,10 +61,13 @@ def resolve_and_evaluate(db: Session, result: dict):
     exactly what the resolver returns a set to prevent. The caller persists the
     set and its discriminator so the capture can ask the question.
     """
+    from app.services.personalization.enrollment import read_personalization_config
+
     resolution = _resolve_vault_phrase(db, result)
     state = capture.evaluate(
         _captured_from_result(result),
         vault_product_id=resolution.variant_template_id,
+        personalization_config=read_personalization_config(db, tenant_id),
         platform_fields=capture.template_for(capture.SALES_ORDER),
     )
     return resolution, state
@@ -132,6 +151,25 @@ def _captured_from_result(result: dict) -> dict[str, object]:
         "service_location": result.get("service_location"),
         "service_location_other": result.get("service_location_other"),
         "grave_location": result.get("grave_location"),
+        # ⚠️ ADDED 2026-10-07 WITH R4. `service_date` is REQUIRED on the template, so
+        # without this line it is missing on every call forever — the exact silent
+        # failure the docstring above warns about, and the reason the key-mapping
+        # test asserts coverage of the unconditional fields rather than spot-checking.
+        "service_date": _parse_date(result.get("service_date")),
+        "cemetery_city": result.get("cemetery_city"),
+        # ⚠️ THE PERSONALIZATION ANSWER AND ITS TWO DETAIL FIELDS (R1/R3). These are
+        # CONDITIONAL fields, so an absent key reads INDETERMINATE rather than missing
+        # and nothing breaks without them — which is precisely why they are easy to
+        # forget and are listed explicitly here.
+        #
+        # ⚠️ THE EXTRACTOR DOES NOT YET PRODUCE THESE KEYS. The managed prompt
+        # `calls.extract_order_from_transcript` has not been reseeded for R1, so all
+        # three read None today and the question stays INDETERMINATE on a real call.
+        # Mapping them now means the prompt change is a seed, not a code change —
+        # and `None` here is honest: we are not claiming the model answered.
+        "personalization": result.get("personalization"),
+        "legacy_print_name": result.get("legacy_print_name"),
+        "lifes_reflections_symbol": result.get("lifes_reflections_symbol"),
     }
 
 
@@ -282,7 +320,11 @@ def extract_order_from_transcript(
     # because the ruling that removed `vault_size` made size an INPUT to
     # resolving rather than a field beside it — "Continental" + "34 inch"
     # resolves to BV-CON34 where "Continental" alone is ambiguous.
-    vault_resolution, capture_state = resolve_and_evaluate(db, result)
+    # ⚠️ `tenant_id` ADDED 2026-10-07. Without it the call resolves a vault and then
+    # reads NOT_CONFIGURED for every personalization question on it, which is the
+    # defect build item 3 closes. The argument is what makes the wiring real; the
+    # parameter existing is not.
+    vault_resolution, capture_state = resolve_and_evaluate(db, result, tenant_id=tenant_id)
 
     # Counted, not silent. A permanent omission that nobody measures is the
     # loud-failure-made-quiet regression CLAUDE.md names; this gives the cost a

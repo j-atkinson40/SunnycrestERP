@@ -51,6 +51,13 @@ FULL_RESULT = {
     "service_location": "church",
     "eta": "15:30",
     "grave_location": "Section C, Lot 14, Space 2",
+    # ⚠️ ADDED 2026-10-07 WITH R4. `service_date` is REQUIRED, so a "full result"
+    # without it is not full — it leaves a required gap and every completeness
+    # assertion below drifts. ⚠️ A DIFFERENT DAY FROM `burial_date` deliberately: the
+    # service is one day and the burial can be another, and a fixture that reused the
+    # one date would pass whether or not the engine kept them apart.
+    "service_date": "2026-10-08",
+    "cemetery_city": "Auburn",
     # Keys the schema does not know about. Ignored rather than rejected.
     "special_requests": "veteran flag holder",
     "confidence": {"deceased_name": 0.97},
@@ -147,8 +154,15 @@ class TestTheKeyMapping:
         # and both are conditional, so "the map covers exactly the unconditional
         # fields" stopped being true. The exact extra set is asserted so a third key
         # appearing is a failure rather than a silent widening.
+        # ⚠️ FIVE CONDITIONAL KEYS SINCE R1-R3 (2026-10-07), up from two. The map
+        # gained `personalization` and its two detail fields, all three conditional.
+        # Asserted exactly, so a sixth appearing is a failure rather than a silent
+        # widening — which is what this assertion is for.
         mapped = set(_captured_from_result(FULL_RESULT))
-        assert mapped - _unconditional_ids(_template()) == {"eta", "service_location_other"}
+        assert mapped - _unconditional_ids(_template()) == {
+            "eta", "service_location_other",
+            "personalization", "legacy_print_name", "lifes_reflections_symbol",
+        }
         assert mapped >= _unconditional_ids(_template()) - UNEXTRACTABLE
 
     def test_the_only_unmappable_unconditional_field_is_the_named_one(self):

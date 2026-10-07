@@ -41,6 +41,37 @@ class RingCentralCallExtraction(Base):
     #: a field that never applies.
     service_location: Mapped[str | None] = mapped_column(String(20), nullable=True)
     service_location_other: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # ── order capture part 1, r200 (2026-10-07) ──────────────────────────────
+    #
+    # ⚠️ DECLARED HERE AS WELL AS IN THE MIGRATION, AND THE PRECEDENT FOR FORGETTING
+    # IS IN CANON. `products.variant_template_id` was added by r186 and declared on no
+    # model, so the link the whole catalog design resolves through was unreachable from
+    # the ORM — and CLAUDE.md §5 records that `assert_no_schema_drift` cannot see it,
+    # because a DB column the model omits is "DB-extra" and ignored by design. A
+    # column that exists only in Postgres is a column no Python can read.
+    #
+    # The comment three lines up is the same failure already recorded on this very
+    # model: `service_location` was asked for by the template from 2026-10-05 with no
+    # column here, so the call path could never answer it.
+    #
+    #: R4. ⚠️ NOT `burial_date`. The service and the burial are two facts and may fall
+    #: on different days; `service_time`/`eta` above split the time version of exactly
+    #: this conflation in r199.
+    service_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: R4. Prompted, never required — cemeteries share names across towns.
+    cemetery_city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: R1. THE ONE personalization answer. Vocabulary lives in
+    #: `personalization/questions.py`; no CHECK here, same call as `service_location`.
+    personalization: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: R3. The print name AS SPOKEN. The resolver turns it into candidates and never
+    #: picks, so this column holds the phrase and never the resolution.
+    legacy_print_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: Which vinyl symbol. ⚠️ Not from a ruling — R1 collapsed the eight symbols out of
+    #: the answer set, so without this the family's choice has nowhere to land.
+    lifes_reflections_symbol: Mapped[str | None] = mapped_column(
+        String(60), nullable=True
+    )
     grave_location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     special_requests: Mapped[str | None] = mapped_column(Text, nullable=True)
 

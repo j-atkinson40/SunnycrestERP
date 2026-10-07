@@ -110,13 +110,20 @@ CAPTURE_SALES_ORDER = Surface(
         # "already captured as burial_time" had read a defect as the specification. The
         # field now exists — `burial_time` was renamed to it — so the row composes a
         # location and a time as the prototype shows ("St. Mary's · Thu 10:00 AM").
+        # ⚠️ `service_date` JOINED THIS ROW 2026-10-07 (R4). The prototype's line is
+        # "St. Mary's · Thu 10:00 AM" — a place, a DAY and a time — and the day had
+        # no template field until R4. It composes into the existing row rather than
+        # opening one of its own, for the same reason the location did: the prototype
+        # shows the service as a single line.
         Row(id="service", label="Service", order=5,
             sources=(ComposedSource((
                 FieldSource("service_location_other"),
+                FieldSource("service_date"),
                 FieldSource("service_time"),
             ), join=_DOT),
                 ComposedSource((
                     FieldSource("service_location"),
+                    FieldSource("service_date"),
                     FieldSource("service_time"),
                 ), join=_DOT)),
             edit_target="service_location"),
@@ -131,9 +138,16 @@ CAPTURE_SALES_ORDER = Surface(
         # Service row.
         #
         # Two time facts, two rows, and no third name for anyone to conflate.
+        # ⚠️ `cemetery_city` JOINED THIS ROW 2026-10-07 (R4). It composes with the
+        # name rather than standing alone because the town is not a fact anyone wants
+        # on its own — it exists to make the NAME unambiguous, and "St. Mary's ·
+        # Auburn · 11:30 AM" is how a director reads it back.
         Row(id="cemetery", label="Cemetery", order=6,
-            sources=(ComposedSource(
-                (FieldSource("cemetery"), FieldSource("eta")), join=_DOT),),
+            sources=(ComposedSource((
+                FieldSource("cemetery"),
+                FieldSource("cemetery_city"),
+                FieldSource("eta"),
+            ), join=_DOT),),
             edit_target="cemetery"),
 
         # ⚠️ NO SIZE ROW, AND NO LONGER A GAP. This comment used to record
@@ -145,15 +159,26 @@ CAPTURE_SALES_ORDER = Surface(
         Row(id="vault", label="Vault / Product", order=7,
             sources=(FieldSource("vault"),)),
 
-        # ⚠️ COLLAPSE: three template fields, one row. Prototype:
-        # "Legacy print · American Flag".
+        # ⚠️ REPOINTED 2026-10-07 FOR R1, AND THE OLD SOURCES WERE DEAD THE MOMENT
+        # THE QUESTIONS COLLAPSED. This row read `legacy_print`,
+        # `nameplate_cover_emblem` and `lifes_reflections` — three template fields
+        # that no longer exist, so every source would have resolved to nothing and
+        # the row would have rendered blank on every order. The orphan check caught
+        # it, which is what that check is for.
+        #
+        # ⚠️ AND THE COLLAPSE MADE THE ROW MATCH THE PROTOTYPE MORE CLOSELY, NOT
+        # LESS. The prototype renders "Legacy print · American Flag" — a KIND and a
+        # DETAIL, which is exactly the shape R1 produces: the answer names the kind,
+        # `legacy_print_name` or `lifes_reflections_symbol` names the thing. Under
+        # three questions this row was joining three kinds and the detail had
+        # nowhere to come from.
         Row(id="personalization", label="Personalization", order=8,
             sources=(ComposedSource((
-                FieldSource("legacy_print"),
-                FieldSource("nameplate_cover_emblem"),
-                FieldSource("lifes_reflections"),
+                FieldSource("personalization"),
+                FieldSource("legacy_print_name"),
+                FieldSource("lifes_reflections_symbol"),
             ), join=_DOT),),
-            edit_target="legacy_print"),
+            edit_target="personalization"),
 
         Row(id="cemetery_equipment", label="Cemetery Equipment", order=9,
             sources=(FieldSource("cemetery_equipment"),)),
@@ -185,14 +210,21 @@ SUMMARY_SALES_ORDER = Surface(
         Row(id="vault", label="Vault", order=2,
             sources=(FieldSource("vault"),)),
 
-        # ⚠️ GAP, NARROWED. This read "a service DATE and TIME, NEITHER of which is a
-        # template field". The prototype's secondary is "Thu, Sep 17 · 10:00 AM" — a
-        # service DATE and TIME. The TIME now exists as `service_time`; the service
-        # DATE still has no template field, so the secondary renders the time alone.
-        # Narrowed, not closed — a declared shortfall rather than an invented field.
+        # ⚠️ GAP CLOSED 2026-10-07 (R4). This marker has now been through all three
+        # states and the sequence is the record worth keeping:
+        #
+        #   original   "a service DATE and TIME, NEITHER of which is a template field"
+        #   narrowed   the TIME arrived as `service_time` with Piece 4 (2026-10-06)
+        #   closed     the DATE arrived as `service_date` with R4 (2026-10-07)
+        #
+        # The prototype's secondary is "Thu, Sep 17 · 10:00 AM", and both halves now
+        # have fields, so the secondary composes them. Nothing was invented to close
+        # it — the field was ruled in, and the marker tracked the shortfall until it
+        # was. That is what a declared gap is for.
         Row(id="service", label="Service", order=3,
             sources=(FieldSource("service_location_other"), FieldSource("service_location")),
-            secondary=(FieldSource("service_time"),),
+            secondary=(ComposedSource(
+                (FieldSource("service_date"), FieldSource("service_time")), join=_DOT),),
             edit_target="service_location"),
 
         # ⚠️ RELABELLED. `Cemetery` on capture, `Burial` here. Prototype secondary:
@@ -205,13 +237,18 @@ SUMMARY_SALES_ORDER = Surface(
                 (FieldSource("burial_date"), FieldSource("eta")), join=_DOT),),
             edit_target="cemetery"),
 
+        # ⚠️ REPOINTED 2026-10-07 FOR R1, same dead-source problem as the capture
+        # row. ⚠️ AND THE PRIMARY/SECONDARY SPLIT NOW MEANS SOMETHING IT DID NOT:
+        # the primary is the KIND of personalization and the secondary is WHICH print
+        # or symbol. Before, the primary was one of three kinds and the secondary was
+        # the other two — a split with no reading behind it.
         Row(id="personalization", label="Personalization", order=5,
-            sources=(FieldSource("legacy_print"),),
+            sources=(FieldSource("personalization"),),
             secondary=(ComposedSource((
-                FieldSource("nameplate_cover_emblem"),
-                FieldSource("lifes_reflections"),
+                FieldSource("legacy_print_name"),
+                FieldSource("lifes_reflections_symbol"),
             ), join=_DOT),),
-            edit_target="legacy_print"),
+            edit_target="personalization"),
 
         # ⚠️ GAP: the prototype's secondary is "Lowering device, tent, chairs" —
         # the contents of the equipment package. `cemetery_equipment` resolves to

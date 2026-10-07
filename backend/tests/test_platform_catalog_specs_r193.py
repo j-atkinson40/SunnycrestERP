@@ -283,9 +283,22 @@ class TestEmptyIsNotUnknown:
     def test_the_three_question_ids_are_the_canonical_ones(self, db):
         """Stored ids are checked against the declaration site, not against a
         list retyped here."""
-        from app.services.personalization.questions import QUESTIONS
+        # ⚠️ `ALL_QUESTIONS`, NOT `QUESTIONS`, SINCE R1 (2026-10-07) — AND THE REASON
+        # IS A FINDING, NOT A TEST DETAIL. r193 wrote the THREE original question ids
+        # into `product_templates.personalization_capability` as stored data on 15
+        # rows. R1 made capture ask ONE question, so those stored ids are no longer
+        # capture questions; they are still valid registered questions, which is what
+        # this assertion is actually about.
+        #
+        # ⚠️ RECONCILING THAT COLUMN IS SEPARATE WORK AND IS DELIBERATELY NOT DONE
+        # HERE. It holds per-product physical capability ("this product can take a
+        # nameplate"), which is a different fact from availability ("this licensee
+        # offers it on this vault") — and rewriting stored rows was ruled out of scope
+        # for this dispatch. Narrowing this to `QUESTIONS` would have been the quiet
+        # way to make the mismatch disappear.
+        from app.services.personalization.questions import ALL_QUESTIONS
 
-        canonical = {q.question_id for q in QUESTIONS}
+        canonical = {q.question_id for q in ALL_QUESTIONS}
         stored = set()
         for (cap,) in db.execute(
             text(

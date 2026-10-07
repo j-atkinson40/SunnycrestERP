@@ -29,13 +29,17 @@ from app.services.personalization_config import (
 from .questions import (
     ANSWER_COVER_EMBLEM_ONLY,
     ANSWER_LEGACY_CUSTOM_SERIES,
+    ANSWER_LEGACY_PRINT,
     ANSWER_LEGACY_SERIES,
+    ANSWER_LIFES_REFLECTIONS,
     ANSWER_NAMEPLATE_AND_COVER_EMBLEM,
+    ANSWER_NAMEPLATE_AND_LIFES_REFLECTIONS,
     ANSWER_NAMEPLATE_ONLY,
     ANSWER_NONE,
     QUESTION_LEGACY_PRINT,
     QUESTION_LIFES_REFLECTIONS,
     QUESTION_NAMEPLATE_COVER_EMBLEM,
+    QUESTION_PERSONALIZATION,
     VINYL_ANSWERS,
     question,
 )
@@ -75,7 +79,37 @@ def tasks_for_answer(
     if answer == ANSWER_NONE:
         return ()
 
-    if question_id == QUESTION_LEGACY_PRINT:
+    # ⚠️ THE CAPTURE QUESTION (R1, 2026-10-07) — SEVEN ANSWERS, AND THE TWO MIXED
+    # ONES PRODUCE TWO TASKS EACH. This is the branch the capture path now takes;
+    # the three below it serve stored v2 records and nothing else.
+    #
+    # ⚠️ `detail` IS EMPTY HERE AND THAT IS NOT A LOSS OF THE OLD BEHAVIOUR — it is
+    # a relocation. The old mapping put `{"series": ...}` and `{"symbol": ...}` in
+    # the detail because the ANSWER carried them. Under R1 the answer carries only
+    # the kind, and which print / which symbol are their own capture fields, so the
+    # caller composes the detail from those. A detail dict invented here would
+    # claim a specificity the answer no longer has.
+    if question_id == QUESTION_PERSONALIZATION:
+        if answer == ANSWER_LEGACY_PRINT:
+            return (Task(OPTION_TYPE_LEGACY_PRINT, {}),)
+        if answer == ANSWER_NAMEPLATE_ONLY:
+            return (Task(OPTION_TYPE_PHYSICAL_NAMEPLATE, {}),)
+        if answer == ANSWER_COVER_EMBLEM_ONLY:
+            return (Task(OPTION_TYPE_PHYSICAL_EMBLEM, {}),)
+        if answer == ANSWER_NAMEPLATE_AND_COVER_EMBLEM:
+            return (
+                Task(OPTION_TYPE_PHYSICAL_NAMEPLATE, {}),
+                Task(OPTION_TYPE_PHYSICAL_EMBLEM, {}),
+            )
+        if answer == ANSWER_LIFES_REFLECTIONS:
+            return (Task(OPTION_TYPE_VINYL, {}),)
+        if answer == ANSWER_NAMEPLATE_AND_LIFES_REFLECTIONS:
+            return (
+                Task(OPTION_TYPE_PHYSICAL_NAMEPLATE, {}),
+                Task(OPTION_TYPE_VINYL, {}),
+            )
+
+    elif question_id == QUESTION_LEGACY_PRINT:
         if answer in (ANSWER_LEGACY_SERIES, ANSWER_LEGACY_CUSTOM_SERIES):
             return (Task(OPTION_TYPE_LEGACY_PRINT, {"series": answer}),)
 

@@ -26,6 +26,7 @@ from app.services.personalization import availability as av
 from app.services.personalization import records as rec
 from app.services.personalization import tasks as tk
 from app.services.personalization.questions import (
+    ALL_QUESTIONS,
     ANSWER_NONE,
     QUESTION_LIFES_REFLECTIONS,
     QUESTION_NAMEPLATE_COVER_EMBLEM,
@@ -92,7 +93,13 @@ def test_every_answer_maps_to_tasks_within_the_canonical_four():
                 f"{q.question_id}/{answer} produced {t.task_type!r}, which is "
                 f"outside the canonical four {CANONICAL_OPTION_TYPES}"
             )
-    assert seen == sum(len(q.all_answers()) for q in QUESTIONS)
+    # ⚠️ THE DENOMINATOR IS `ALL_QUESTIONS`, NOT `QUESTIONS`, SINCE R1 (2026-10-07).
+    # Capture asks one question; `records.py` still keys stored v2 records by the
+    # three original ids, and `tasks_for_answer` must stay total over BOTH sets or
+    # the transform breaks on real rows. `iter_question_answers` walks both, so this
+    # must too — comparing against `QUESTIONS` would have silently narrowed the
+    # totality proof to the 7 capture answers and stopped covering the 16 stored ones.
+    assert seen == sum(len(q.all_answers()) for q in ALL_QUESTIONS)
     assert seen > 0, "the enumeration produced nothing — the instrument is dead"
 
 
