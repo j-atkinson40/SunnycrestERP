@@ -206,16 +206,38 @@ def test_call_extraction_fuzzy_match_company_accepts_company_id_filter():
     from app.services.call_extraction_service import _fuzzy_match_company
 
     fake_db = MagicMock()
-    # Simulate "no match" for both queries — the function takes both
-    # branches (exact match, then contains). If either branch references
-    # CompanyEntity.tenant_id, SQLAlchemy class-level access raises
-    # AttributeError long before the mock sees the query.
+    # Simulate "no match" — a MagicMock iterates as empty, so the resolver sees no rows.
     fake_db.query.return_value.filter.return_value.first.return_value = None
 
     result = _fuzzy_match_company(fake_db, "T-1", "Hopkins Funeral Home")
     assert result is None
-    # Both branches were entered (exact, then contains)
-    assert fake_db.query.call_count >= 1
+
+    # ⚠️ CHANGED 2026-10-07 (E3), AND THIS IS THE ONE CALL-PIPELINE TEST THAT DID NOT
+    # PASS UNMODIFIED. It asserted `fake_db.query.call_count >= 1` — that the function
+    # uses the SQLAlchemy ORM query API. The repoint to `party_resolver` uses
+    # `db.execute(text(...))`, so that assertion failed while the BEHAVIOUR it was
+    # written to protect was intact.
+    #
+    # The bug it guards is `AttributeError: CompanyEntity has no attribute 'tenant_id'`
+    # — a column that does not exist being referenced. Asserting which ORM method was
+    # called never tested that; it tested the shape of the implementation. The
+    # behavioural assertion is that the lookup happens at all and is scoped to the
+    # tenant, which is what the two lines below check.
+    #
+    # ⚠️ AND THE OLD ASSERTION WOULD HAVE PASSED AGAINST THE REPOINT IF I HAD NOT
+    # CHECKED: my first edit attempt silently did not apply (`str.replace` returns the
+    # original on no match), this test passed, and I nearly reported "the call pipeline's
+    # tests pass unmodified" about unchanged code. The failing test is what proved the
+    # change had landed.
+    assert fake_db.execute.call_count >= 1, (
+        "the resolver did not query at all — it is not scoped to a tenant"
+    )
+    sql = str(fake_db.execute.call_args[0][0]).lower()
+    assert "company_id" in sql, sql
+    assert "tenant_id" not in sql, (
+        "the lookup references tenant_id; company_entities has no such column — "
+        "this is the original bug"
+    )
 
 
 def test_urn_intake_match_funeral_home_accepts_company_id_filter():

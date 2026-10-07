@@ -32,6 +32,7 @@ from app.models.contact import Contact
 from app.models.crm_opportunity import CrmOpportunity
 from app.models.crm_settings import CrmSettings
 from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
+from app.models.capture_session import CaptureSession
 from app.models.cemetery import Cemetery
 from app.models.cemetery_directory import CemeteryDirectory
 from app.models.cemetery_directory_selection import CemeteryDirectorySelection
@@ -499,6 +500,7 @@ from app.models.triage import TriageSession, TriageSnooze
 from app.models.briefing import Briefing, BRIEFING_TYPES
 
 __all__ = [
+    "CaptureSession",
     "DailyNote",
     "NoteFragmentDeferral",
     "NoteFragmentRender",

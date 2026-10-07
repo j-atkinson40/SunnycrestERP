@@ -979,3 +979,12 @@ from app.api.routes import catalog_pane as catalog_pane_routes  # noqa: E402
 v1_router.include_router(
     catalog_pane_routes.router, prefix="/catalog-pane", tags=["Opas Catalog Pane"]
 )
+
+# ⚠️ THE FIRST ENDPOINTS THAT RETURN `CaptureState`. Registered the same way the catalog
+# pane is — at the bottom, with its own prefix — so the typed pane and the catalog panes
+# sit side by side rather than one being folded into an unrelated router.
+from app.api.routes import capture as capture_routes  # noqa: E402
+
+v1_router.include_router(
+    capture_routes.router, prefix="/capture", tags=["Opas Typed Capture"]
+)

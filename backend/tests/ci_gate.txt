@@ -203,6 +203,7 @@ tests/test_ar_membership_seam_c3.py
 tests/test_availability_reaches_capture.py
 tests/test_books_review_e2e_b6.py
 tests/test_call_extraction_missing_set.py
+tests/test_capture_endpoints.py
 tests/test_capture_rows.py
 tests/test_capture_schema.py
 tests/test_catalog_pane_reads.py
@@ -293,6 +294,7 @@ tests/test_statement_field_honesty.py
 tests/test_statement_send_attaches_document.py
 tests/test_statement_adapter_flagged_count.py
 tests/test_seed_posting_ratchet.py
+tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py
 tests/test_void_payment_reverses_ar2.py
 tests/test_wipe_tenant.py

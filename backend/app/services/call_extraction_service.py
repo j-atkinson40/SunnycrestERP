@@ -223,36 +223,35 @@ def _parse_time(val: str | None) -> time | None:
 
 
 def _fuzzy_match_company(db: Session, tenant_id: str, name: str) -> str | None:
-    """Attempt to match an extracted funeral home name to an existing company entity."""
+    """Resolve a funeral-home name to a company_entity id, or None.
+
+    ⚠️ REPOINTED 2026-10-07 (E3) FROM `.first()` TO `party_resolver`. It was exact-match
+    then `LIKE '%name%'`, each taking the first row. `company_entities` has NO unique
+    constraint on name (measured from `pg_constraint`), so two funeral homes CAN share a
+    name and this silently picked one of them.
+
+    ⚠️ AMBIGUITY NOW RESOLVES TO None, AND THAT MATTERS MORE HERE THAN FOR THE CEMETERY.
+    `create_draft_order_from_extraction` RAISES when no customer matches
+    ("No customer account matches this call's funeral home"), so an ambiguous name turns
+    a silent wrong link into a loud refusal. That is the correct direction — a draft
+    order billed to the wrong funeral home is the expensive failure — but it IS a
+    behaviour change on the call path and is reported as one.
+
+    ⚠️ IT DOES NOT ASK, BECAUSE THIS PATH HAS NOBODY TO ASK. The candidate set and its
+    discriminator exist; a call-time draft-order writer has no interaction to surface
+    them in. The typed pane does, which is why it calls `resolve_funeral_home` directly.
+
+    ⚠️ NOT THE ONLY `_fuzzy_match_company` IN THE CODEBASE.
+    `command_bar_extract_service.py:364` defines a different function with the same
+    name, its own signature and its own return type. It is NOT repointed here; that is
+    separate work with its own callers.
+    """
     if not name:
         return None
 
-    # Exact match first
-    exact = (
-        db.query(CompanyEntity)
-        .filter(
-            CompanyEntity.company_id == tenant_id,
-            func.lower(CompanyEntity.name) == name.lower(),
-        )
-        .first()
-    )
-    if exact:
-        return exact.id
+    from app.services.party_resolver import resolve_funeral_home
 
-    # Contains match — name is substring or company name is substring
-    like_pattern = f"%{name.lower()}%"
-    contains = (
-        db.query(CompanyEntity)
-        .filter(
-            CompanyEntity.company_id == tenant_id,
-            func.lower(CompanyEntity.name).like(like_pattern),
-        )
-        .first()
-    )
-    if contains:
-        return contains.id
-
-    return None
+    return resolve_funeral_home(db, tenant_id, name).party_id
 
 
 def extract_order_from_transcript(
@@ -544,8 +543,36 @@ def _resolve_customer_id(db: Session, tenant_id: str, master_company_id: str | N
     return customer.id if customer else None
 
 
-def _resolve_cemetery_id(db: Session, tenant_id: str, cemetery_name: str | None) -> str | None:
-    """Fuzzy-match cemetery name to existing cemetery record."""
+def _resolve_cemetery_id(
+    db: Session, tenant_id: str, cemetery_name: str | None, *, city: str | None = None
+) -> str | None:
+    """Resolve a cemetery name to an id, or None.
+
+    ⚠️ REPOINTED 2026-10-07 (E3) FROM `.first()` TO `party_resolver`. It was
+    `LIKE '%name%'` then `.first()`. An ambiguous name used to link the order to an
+    arbitrary cemetery; it now links to none, leaving `cemetery_id` NULL — the honest
+    value, because a wrong link is worse than an absent one when nothing reports it.
+
+    ⚠️ IN PRACTICE THE AMBIGUOUS CASE IS RARE HERE AND THE SCHEMA IS WHY:
+    `cemeteries` carries `uq_cemetery_company_name UNIQUE (company_id, name)`, so one
+    tenant cannot hold two cemeteries with the same name. Ambiguity arises only from a
+    PARTIAL phrase matching several distinct names.
+
+    `city` participates when supplied — `cemetery_city` is the discriminator ruled in
+    for exactly this. The call path does not pass it yet (the extraction prompt has not
+    been reseeded for R4), so it is keyword-only and defaults to None.
+    """
+    if not cemetery_name:
+        return None
+
+    from app.services.party_resolver import resolve_cemetery
+
+    return resolve_cemetery(db, tenant_id, cemetery_name, city_hint=city).party_id
+
+
+def _resolve_cemetery_id_legacy(db: Session, tenant_id: str, cemetery_name: str | None) -> str | None:
+    """⚠️ KEPT ONLY AS THE RECORD OF WHAT THE BEHAVIOUR WAS. Not called. Delete once the
+    repoint above has run on production for a release."""
     if not cemetery_name:
         return None
     from app.models.cemetery import Cemetery
