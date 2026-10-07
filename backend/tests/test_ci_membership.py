@@ -43,7 +43,7 @@ EXCLUDED = TESTS / "ci_excluded.txt"
 #: len(set(tests/**/test_*.py) - set(ci_gate.txt)) with this file in the gate.
 #: LOWER THIS when a file moves into the gate. NEVER RAISE IT — raising it is how a
 #: ratchet stops ratcheting, and the growth would then be invisible in the number.
-_EXCLUDED_CEILING = 297
+_EXCLUDED_CEILING = 291
 
 #: A top-level file and a NESTED one. The nested entry is the control on the
 #: enumeration bug described in the module docstring: a top-level-only glob finds the

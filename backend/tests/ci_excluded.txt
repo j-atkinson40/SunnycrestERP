@@ -82,10 +82,7 @@ tests/test_calendar_step4_outbound_integration.py
 tests/test_calendar_step51_consent_extensions.py
 tests/test_calendar_step5_cross_surface.py
 tests/test_call_extraction_contract.py
-tests/test_call_extraction_missing_set.py
 tests/test_canvas_runtime_bridge_t2.py
-tests/test_capture_rows.py
-tests/test_capture_schema.py
 tests/test_cash_receipts_migration_parity.py
 tests/test_cash_receipts_phase8b_unit.py
 tests/test_cash_receipts_triage_latency.py
@@ -204,7 +201,6 @@ tests/test_peek_api.py
 tests/test_peek_latency.py
 tests/test_pending_attention_dispatch.py
 tests/test_pending_attention_substrate.py
-tests/test_personalization_question_layer.py
 tests/test_personalization_studio_phase1b_api.py
 tests/test_personalization_studio_phase1c_ai_extraction.py
 tests/test_personalization_studio_phase1d_workshop.py
@@ -240,7 +236,6 @@ tests/test_quote_preview_latency.py
 tests/test_quote_unification_u1.py
 tests/test_quote_unification_u4.py
 tests/test_r38_scope_backfill_fix.py
-tests/test_r74_personalization_vocabulary_canonicalization.py
 tests/test_r94_migration.py
 tests/test_railway_start_structure.py
 tests/test_recent_activity_widget.py
@@ -284,7 +279,6 @@ tests/test_triage_related_endpoint.py
 tests/test_uncleared_check_monitor_runs.py
 tests/test_unowned_litter_tripwire.py
 tests/test_urn_catalog_status_widget.py
-tests/test_vault_resolution_wiring.py
 tests/test_vault_schedule_widget.py
 tests/test_vault_v1a_hub.py
 tests/test_vault_v1b_widgets.py

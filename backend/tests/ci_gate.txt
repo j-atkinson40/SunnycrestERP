@@ -202,12 +202,16 @@ tests/test_ar_import_posts_c1.py
 tests/test_ar_membership_seam_c3.py
 tests/test_availability_reaches_capture.py
 tests/test_books_review_e2e_b6.py
+tests/test_call_extraction_missing_set.py
+tests/test_capture_rows.py
+tests/test_capture_schema.py
 tests/test_catalog_pane_reads.py
 tests/test_ci_membership.py
 tests/test_clean_run_does_not_park.py
 tests/test_clear_parked_workflow_runs.py
 tests/test_epd_ar_account_ar0.py
 tests/test_journal_entry_characterization.py
+tests/test_legacy_print_resolver.py
 tests/test_map_accounting_beat_map2.py
 tests/test_map_accounting_content_r157.py
 tests/test_map_cadence_cards_map4.py
@@ -241,6 +245,7 @@ tests/test_moc_witness_marker_t21b.py
 tests/test_moc_workflow_mirrors.py
 tests/test_nsf_returned_payment_n1.py
 tests/test_payment_posting_ar2.py
+tests/test_personalization_question_layer.py
 tests/test_piece4_conditionals.py
 tests/test_plaid_counterparty_b1.py
 tests/test_plaid_sync_loud_failure.py
@@ -262,6 +267,7 @@ tests/test_r165_wire_monthly_statement_run.py
 tests/test_r166_wire_compliance_sync.py
 tests/test_r167_source_service_dispositions.py
 tests/test_cron_dow_dialect.py
+tests/test_r74_personalization_vocabulary_canonicalization.py
 tests/test_reconciliation_account_form.py
 tests/test_reconciliation_claim_a3.py
 tests/test_reconciliation_coded_l3.py
@@ -285,6 +291,7 @@ tests/test_statement_field_honesty.py
 tests/test_statement_send_attaches_document.py
 tests/test_statement_adapter_flagged_count.py
 tests/test_seed_posting_ratchet.py
+tests/test_vault_resolution_wiring.py
 tests/test_void_payment_reverses_ar2.py
 tests/test_wipe_tenant.py
 tests/test_workflow_definition_ownership_ratchet.py
