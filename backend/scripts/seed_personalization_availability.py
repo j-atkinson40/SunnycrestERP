@@ -123,6 +123,15 @@ AVAILABILITY_BY_SKU: dict[str, list[str]] = {
     "GL-34": NOT_OFFERED,
     "GL-38": NOT_OFFERED,
     "GL-SS": NOT_OFFERED,
+    # ── infant, none — R1 (2026-10-07), measured from the spec sheet ──
+    # ⚠️ RULED NOT_OFFERED RATHER THAN LEFT PENDING. The Personalization column in
+    # `docs/catalog/2026-10-02-sunnycrest-product-specs.csv` is EMPTY for all three
+    # Loved & Cherished rows — the same marker it uses for Monticello, Monarch and
+    # Grave Liner — and r193 already translated that to `[]` on
+    # `product_templates.personalization_capability`.
+    "LC-19": NOT_OFFERED,
+    "LC-24": NOT_OFFERED,
+    "LC-31": NOT_OFFERED,
     # ── cemetery equipment, none ──
     "CE-LD": NOT_OFFERED,
     "CE-TS": NOT_OFFERED,
@@ -133,7 +142,12 @@ AVAILABILITY_BY_SKU: dict[str, list[str]] = {
 }
 
 #: ⚠️ DELIBERATELY ABSENT FROM THE MAP ABOVE, SO THEY STAY NOT_CONFIGURED. By
-#: ruling: urns (P-series, 12) and infant vaults (LC-, 3) are pending James.
+#: ruling: the urns (P-series, 12) are pending James.
+#:
+#: ⚠️ THE INFANT VAULTS LEFT THIS TUPLE ON 2026-10-07 and are now NOT_OFFERED in the
+#: map above — James ruled on them from the spec sheet reading. The paragraph below
+#: used to argue for leaving them absent; it is kept because the reasoning is the
+#: reason the ruling could be made at all.
 #:
 #: ⚠️ AND THE SPEC SHEET DOES HAVE A READING FOR THE INFANT ONES, WHICH IS WHY
 #: LEAVING THEM ABSENT IS A CHOICE RATHER THAN AN OVERSIGHT.
@@ -141,11 +155,11 @@ AVAILABILITY_BY_SKU: dict[str, list[str]] = {
 #: column EMPTY for all three Loved & Cherished rows — the same marker it uses for
 #: Monticello, Monarch and the graveliners, which everyone agrees offer none. r193
 #: already translated that to `[]` on `product_templates.personalization_capability`.
-#: Writing `[]` here would merely agree with the sheet; the ruling says wait.
+#: ⚠️ THAT PARAGRAPH ENDED "the ruling says wait" AND THE RULING NOW SAYS OTHERWISE.
+#: James ruled NOT_OFFERED on 2026-10-07 from exactly this reading.
 PENDING_JAMES: tuple[str, ...] = (
     "P300", "P300P", "P300WS", "P310", "P310P", "P310WS",
     "P363", "P440", "P440A", "P440B", "P445", "P600",
-    "LC-19", "LC-24", "LC-31",
 )
 
 

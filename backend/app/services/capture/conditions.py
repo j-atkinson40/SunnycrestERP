@@ -78,6 +78,14 @@ class ConditionContext:
     #: which is None when the resolver found an ambiguous candidate set.
     vault_product_id: str | None
     personalization_config: dict | None
+    #: ⚠️ THE RESOLVED VAULT'S `product_templates.form`, ADDED 2026-10-07 (R4). None
+    #: when no vault is named or the resolver returned an ambiguous set — which is a
+    #: THIRD state and not the same as a form that happens not to be a vault.
+    #:
+    #: It is passed in rather than looked up for the reason the docstring above
+    #: gives: `Candidate.form` already carries it, so the impure seam that resolved
+    #: the phrase hands it over and the engine stays a pure function.
+    vault_form: str | None = None
 
 
 @runtime_checkable
@@ -278,6 +286,17 @@ class AvailabilityOffered:
     """
 
     question_id: str
+    #: ⚠️ THE FORMS THIS QUESTION IS MEANINGFUL ON — R4, 2026-10-07. Empty means no
+    #: form restriction, which is what every caller before R4 relied on.
+    #:
+    #: THE BUG THIS CLOSES, measured on dev during the availability dry run: an urn
+    #: (`P300`) and an infant vault (`LC-19`) were both asked the vault
+    #: personalization question and both reported it `missing` — so an order for a
+    #: lowering device could never be completed. Availability alone could not fix it:
+    #: NOT_CONFIGURED correctly means "ask", and nobody had configured an urn, so the
+    #: engine asked. The form is the fact that makes the question meaningless, and it
+    #: was not in the context at all.
+    forms: frozenset = frozenset()
 
     @property
     def depends_on(self) -> tuple[str, ...]:
@@ -290,6 +309,18 @@ class AvailabilityOffered:
             AvailabilityState,
             read_availability,
         )
+
+        # ⚠️ FORM FIRST, AND ONLY WHEN THE FORM IS KNOWN. A known form outside the
+        # permitted set is a settled FALSE — an urn does not take a vault carapace
+        # print, and no licensee configuration can change that, so this is not
+        # availability's business.
+        #
+        # ⚠️ AN UNKNOWN FORM IS *NOT* FALSE. Reading None as "not a vault form" would
+        # mark the question not-applicable on every order before a vault is named,
+        # and `not_applicable` is a claim that we ESTABLISHED it does not apply.
+        # Unknown stays INDETERMINATE, which is what the clause below already does.
+        if self.forms and ctx.vault_form is not None and ctx.vault_form not in self.forms:
+            return Verdict.FALSE
 
         if ctx.vault_product_id is None:
             return Verdict.INDETERMINATE

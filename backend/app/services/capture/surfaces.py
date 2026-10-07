@@ -175,6 +175,11 @@ CAPTURE_SALES_ORDER = Surface(
         Row(id="personalization", label="Personalization", order=8,
             sources=(ComposedSource((
                 FieldSource("personalization"),
+                # ⚠️ `legacy_series` JOINED 2026-10-07 (R2). It composes rather than
+                # opening a row because "Legacy print · custom" is one fact read
+                # aloud, and because a row per field is the assumption this layer
+                # exists to break.
+                FieldSource("legacy_series"),
                 FieldSource("legacy_print_name"),
                 FieldSource("lifes_reflections_symbol"),
             ), join=_DOT),),
@@ -245,6 +250,7 @@ SUMMARY_SALES_ORDER = Surface(
         Row(id="personalization", label="Personalization", order=5,
             sources=(FieldSource("personalization"),),
             secondary=(ComposedSource((
+                FieldSource("legacy_series"),
                 FieldSource("legacy_print_name"),
                 FieldSource("lifes_reflections_symbol"),
             ), join=_DOT),),

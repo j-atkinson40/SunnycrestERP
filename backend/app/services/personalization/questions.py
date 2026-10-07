@@ -128,6 +128,40 @@ VINYL_BEARING_ANSWERS: frozenset = frozenset(
 #: Answers that put a Legacy Series print on the vault, so a print name is wanted.
 PRINT_BEARING_ANSWERS: frozenset = frozenset({ANSWER_LEGACY_PRINT})
 
+# ── legacy series: standard or custom (R2, 2026-10-07) ──────────────────
+#: ⚠️ RESTORED, AND IT IS A FIELD NOW RATHER THAN TWO ANSWERS. R1 collapsed
+#: `legacy_series` / `legacy_custom_series` out of the answer set; R2 puts the
+#: distinction back the way the ordering portal had it — as a follow-up question
+#: asked once a Legacy print is chosen.
+#:
+#: ⚠️ THE PORTAL IS THE AUTHORITY FOR THE BEHAVIOUR, NOT JUST THE VOCABULARY. Its
+#: print picker is gated on `isLegacySeriesStandard` (`components/OrderFlow.tsx:279`),
+#: so STANDARD asks which print and CUSTOM asks nothing further — the artwork follows
+#: separately. That is exactly what `legacy_print_name`'s condition now encodes.
+LEGACY_SERIES_STANDARD = "standard"
+LEGACY_SERIES_CUSTOM = "custom"
+
+#: ⚠️ THE FIELD ID `legacy_series` IS THE SAME STRING AS THE OLD ANSWER VALUE
+#: `ANSWER_LEGACY_SERIES`, AND THE COLLISION IS WORTH KNOWING ABOUT. They live in
+#: different namespaces — one is a capture field id, the other a stored-record answer
+#: value — and nothing resolves one through the other. But a reader grepping
+#: `legacy_series` finds both, so neither is safe to rename by sed.
+LEGACY_SERIES_FIELD_ID = "legacy_series"
+
+#: The two values, in the order the portal lists them.
+LEGACY_SERIES_VALUES: tuple[str, ...] = (LEGACY_SERIES_STANDARD, LEGACY_SERIES_CUSTOM)
+
+#: ⚠️ THE FORMS THE PERSONALIZATION QUESTION IS MEANINGFUL ON — R4, 2026-10-07.
+#: `product_templates.form` values. An urn, a grave liner, cemetery equipment and an
+#: infant vault have no carapace to personalize, and asking about one blocked an
+#: equipment-only order from ever completing.
+#:
+#: ⚠️ URN ENGRAVING IS A DIFFERENT QUESTION AND IS NOT THIS ONE. Urns are engraved;
+#: that is a separate capability with its own two-gate proof workflow
+#: (`urn_engraving_service.py`) and it is deliberately NOT folded in here. Noted in
+#: STATE as a future question.
+PERSONALIZABLE_FORMS: frozenset = frozenset({"burial_vault", "urn_vault"})
+
 #: ⚠️ PROPOSED, NOT RULED — R5 says "state which personalization types the date
 #: format applies to; propose, do not assume". This is that proposal: the answers
 #: that put NAME-AND-DATE TEXT on the vault. A legacy print carries the name and

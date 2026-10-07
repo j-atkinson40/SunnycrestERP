@@ -64,6 +64,10 @@ class RingCentralCallExtraction(Base):
     #: R1. THE ONE personalization answer. Vocabulary lives in
     #: `personalization/questions.py`; no CHECK here, same call as `service_location`.
     personalization: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: R2 (r202). `standard` | `custom`. ⚠️ `legacy_print_name` below hangs off THIS
+    #: field, not off the personalization answer — the portal asks which print only
+    #: for standard.
+    legacy_series: Mapped[str | None] = mapped_column(String(20), nullable=True)
     #: R3. The print name AS SPOKEN. The resolver turns it into candidates and never
     #: picks, so this column holds the phrase and never the resolution.
     legacy_print_name: Mapped[str | None] = mapped_column(String(120), nullable=True)

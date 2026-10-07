@@ -154,14 +154,15 @@ class TestTheKeyMapping:
         # and both are conditional, so "the map covers exactly the unconditional
         # fields" stopped being true. The exact extra set is asserted so a third key
         # appearing is a failure rather than a silent widening.
-        # ⚠️ FIVE CONDITIONAL KEYS SINCE R1-R3 (2026-10-07), up from two. The map
-        # gained `personalization` and its two detail fields, all three conditional.
-        # Asserted exactly, so a sixth appearing is a failure rather than a silent
-        # widening — which is what this assertion is for.
+        # ⚠️ SIX CONDITIONAL KEYS AFTER THE 2026-10-07 CLOSE-OUT, up from two before
+        # that day. The map gained `personalization` and its detail fields (R1/R3),
+        # then `legacy_series` (R2). Asserted exactly, so a seventh appearing is a
+        # failure rather than a silent widening — which is what this assertion is for.
         mapped = set(_captured_from_result(FULL_RESULT))
         assert mapped - _unconditional_ids(_template()) == {
             "eta", "service_location_other",
-            "personalization", "legacy_print_name", "lifes_reflections_symbol",
+            "personalization", "legacy_series",
+            "legacy_print_name", "lifes_reflections_symbol",
         }
         assert mapped >= _unconditional_ids(_template()) - UNEXTRACTABLE
 

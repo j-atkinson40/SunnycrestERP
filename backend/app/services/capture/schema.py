@@ -60,7 +60,9 @@ from app.services.personalization.availability import (
 )
 from app.services.personalization.questions import (
     ANSWER_NONE,
-    DATE_TEXT_BEARING_ANSWERS,
+    LEGACY_SERIES_FIELD_ID,
+    LEGACY_SERIES_STANDARD,
+    PERSONALIZABLE_FORMS,
     PRINT_BEARING_ANSWERS,
     QUESTION_PERSONALIZATION,
     QUESTIONS,
@@ -146,7 +148,12 @@ def _personalization_fields() -> tuple[FieldDefinition, ...]:
         FieldDefinition(
             field_id=q.question_id,
             label=q.display_label,
-            applies_when=AvailabilityOffered(q.question_id),
+            # ⚠️ `forms` ADDED 2026-10-07 (R4). Without it an urn, a grave liner,
+            # cemetery equipment and an infant vault were all asked this question
+            # and all reported it `missing`, so an equipment-only order could never
+            # be completed. Availability could not have fixed that: NOT_CONFIGURED
+            # correctly means "ask".
+            applies_when=AvailabilityOffered(q.question_id, forms=PERSONALIZABLE_FORMS),
             required_when=Always(),
             switchable=True,
         )
@@ -427,24 +434,21 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # Asking for a nameplate date format on an order with no personalization would
     # be asking about a nameplate nobody is making.
     #
-    # ⚠️ NARROWED 2026-10-07 FROM `ANY_PERSONALIZATION_CHOSEN`, AND THIS IS A
-    # PROPOSAL AWAITING JAMES, NOT A RULING. R5 asked which personalization types the
-    # format applies to and said propose, do not assume. The proposal is: the answers
-    # that put NAME-AND-DATE TEXT on the vault. A cover emblem carries no text and a
-    # vinyl symbol is a symbol, so asking how to format dates for either is asking
-    # about lettering nobody is cutting.
+    # ⚠️ NARROWED 2026-10-07 AND REVERTED THE SAME DAY (R3). I had narrowed this to
+    # the answers that put name-and-date TEXT on the vault, reasoning that a cover
+    # emblem carries no lettering and a vinyl symbol is a symbol. Both halves of that
+    # were wrong about the product: James states Life's Reflections IS VINYL LETTERING
+    # ON THE CARAPACE, so it carries dates, and the ordering portal asks name and both
+    # dates for ANY personalization — its "Customization Details" block is gated on
+    # `hasAnyPersonalization` (`components/OrderFlow.tsx:327`), emblem-only included.
     #
-    # ⚠️ NOTE IT NO LONGER AGREES WITH THE DATES ABOVE, DELIBERATELY. `date_of_birth`
-    # and `date_of_death` stay on ANY personalization per R5's "keep"; this is
-    # narrower. So an order with `cover_emblem_only` is required to carry the dates
-    # and is never asked how to format them. That is defensible — the dates are also
-    # order facts, the format is only a lettering instruction — but it is an
-    # asymmetry James should see rather than discover.
-    #
-    # REVERTING IS ONE LINE: put `ANY_PERSONALIZATION_CHOSEN` back here.
+    # So the predicate is the same one the dates use, and the asymmetry I introduced
+    # is gone. `DATE_TEXT_BEARING_ANSWERS` is left defined and unused in
+    # `questions.py` rather than deleted, because the reasoning behind it is worth
+    # finding if anyone proposes the narrowing again.
     FieldDefinition(
         "nameplate_date_format", "Date format",
-        applies_when=AnswerIn(QUESTION_PERSONALIZATION, DATE_TEXT_BEARING_ANSWERS),
+        applies_when=ANY_PERSONALIZATION_CHOSEN,
         required_when=Always(),
     ),
     # ⚠️ ADDED 2026-10-07 (R3). WHICH print, asked because a director names it from
@@ -457,9 +461,25 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # the reason they differ, exactly as `product_name_resolver` does for vaults.
     # This field holds what the director said; the resolver turns it into candidates;
     # nothing in the capture engine chooses between them.
+    # ⚠️ ADDED 2026-10-07 (R2), RESTORING A DISTINCTION R1 HAD COLLAPSED. Standard
+    # or custom. Prompted, never required.
+    FieldDefinition(
+        LEGACY_SERIES_FIELD_ID, "Legacy series",
+        applies_when=AnswerIn(QUESTION_PERSONALIZATION, PRINT_BEARING_ANSWERS),
+        required_when=Never(),
+    ),
+    # ⚠️ NOW HANGS OFF `legacy_series`, NOT OFF THE PERSONALIZATION ANSWER — R2. The
+    # portal asks which print only for STANDARD; custom carries artwork that follows
+    # separately, so asking it to name a catalogue print is asking for something that
+    # by definition is not in the catalogue.
+    #
+    # ⚠️ THIS MAKES THE DAG THREE DEEP — personalization -> legacy_series ->
+    # legacy_print_name — which is the first chain of that length in the template and
+    # exactly what the topological walk exists for. A two-pass resolver would have
+    # left this field undecided.
     FieldDefinition(
         "legacy_print_name", "Which print",
-        applies_when=AnswerIn(QUESTION_PERSONALIZATION, PRINT_BEARING_ANSWERS),
+        applies_when=EqualsValue(LEGACY_SERIES_FIELD_ID, LEGACY_SERIES_STANDARD),
         required_when=Never(),
     ),
     # ⚠️ ADDED 2026-10-07, AND NOT FROM A RULING — FLAGGED IN THE REPORT FOR JAMES.
@@ -606,6 +626,9 @@ def resolve_schema(
     *,
     vault_product_id: str | None,
     personalization_config: dict | None,
+    #: ⚠️ `product_templates.form` of the resolved vault — R4. Optional so every
+    #: pre-R4 caller keeps working and gets the pre-R4 behaviour (no form gate).
+    vault_form: str | None = None,
     tenant_config: TenantCaptureConfig | None = None,
     platform_fields: tuple[FieldDefinition, ...] = PLATFORM_DEFAULT_FIELDS,
     answers: dict[str, object] | None = None,
@@ -672,6 +695,7 @@ def resolve_schema(
             decided=decided,
             vault_product_id=vault_product_id,
             personalization_config=personalization_config,
+            vault_form=vault_form,
         )
         applies = definition.applies_when.evaluate(ctx)
         decided[field_id] = {
@@ -699,6 +723,7 @@ def applicability_map(
     *,
     vault_product_id: str | None,
     personalization_config: dict | None,
+    vault_form: str | None = None,
     tenant_config: TenantCaptureConfig | None = None,
     platform_fields: tuple[FieldDefinition, ...] = PLATFORM_DEFAULT_FIELDS,
     answers: dict[str, object] | None = None,
@@ -730,6 +755,7 @@ def applicability_map(
                 decided=decided,
                 vault_product_id=vault_product_id,
                 personalization_config=personalization_config,
+                vault_form=vault_form,
             )
         )
         decided[field_id] = {

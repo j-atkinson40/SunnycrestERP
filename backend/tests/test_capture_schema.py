@@ -172,11 +172,18 @@ def test_a_PARTIALLY_configured_vault_asks_only_the_unconfigured_questions():
 
 
 def test_the_salute_shaped_vault_permits_cover_emblem_only():
-    """The answer the re-key nearly modelled away. ⚠️ Rewritten for R1: one answer
-    rather than three, and `nameplate_date_format` is no longer demanded — an emblem
-    carries no lettering, which is the narrowing this change proposes."""
+    """The answer the re-key nearly modelled away.
+
+    ⚠️ THIS DOCSTRING CLAIMED THE OPPOSITE FOR ONE DAY. It read "`nameplate_date_format`
+    is no longer demanded — an emblem carries no lettering, which is the narrowing this
+    change proposes". R3 reverted that narrowing: James states Life's Reflections is
+    vinyl LETTERING on the carapace, and the ordering portal asks name and both dates
+    for any personalization including emblem-only. So the format IS demanded, and this
+    test answers it rather than asserting its absence.
+    """
     answers = complete_non_personalization_answers()
     answers[QUESTION_PERSONALIZATION] = ANSWER_COVER_EMBLEM_ONLY
+    answers["nameplate_date_format"] = "written"
 
     state = _evaluate(VAULT_SALUTE_SHAPED, answers)
 
@@ -236,6 +243,66 @@ def test_an_UNCONFIGURED_question_does_not_reject_any_answer():
 
     state = _evaluate(VAULT_UNCONFIGURED, answers)
     assert QUESTION_PERSONALIZATION in state.answered
+
+
+# ── the legacy series chain (R2) ─────────────────────────────────────────
+
+
+def test_STANDARD_asks_which_print_and_CUSTOM_does_not():
+    """⚠️ R2's WHOLE POINT, AND IT WAS UNGUARDED UNTIL BREAK 7 EXPOSED THAT.
+
+    I break-tested R2 by pointing `legacy_print_name` back at the personalization
+    answer and watched Legacy CUSTOM start asking for a print name — then found no
+    test went red, because nothing asserted the chain. The break was detectable only
+    by my running it by hand, which is exactly the state CLAUDE.md calls
+    documentation rather than coverage.
+
+    The ordering portal gates its print picker on `isLegacySeriesStandard`
+    (`components/OrderFlow.tsx:279`): standard asks which print, custom carries
+    artwork that follows separately and names no catalogue print.
+    """
+    from app.services.personalization.questions import (
+        LEGACY_SERIES_CUSTOM,
+        LEGACY_SERIES_FIELD_ID,
+        LEGACY_SERIES_STANDARD,
+    )
+
+    base = complete_non_personalization_answers()
+    base[QUESTION_PERSONALIZATION] = ANSWER_LEGACY_PRINT
+    base["nameplate_date_format"] = "written"
+
+    standard = dict(base, **{LEGACY_SERIES_FIELD_ID: LEGACY_SERIES_STANDARD})
+    st = _evaluate(VAULT_EVERY_ANSWER, standard)
+    assert "legacy_print_name" in st.unanswered_optional, (
+        f"standard must ASK which print; it landed in "
+        f"{[n for n in ('missing','not_applicable','indeterminate') if 'legacy_print_name' in getattr(st, n)]}"
+    )
+
+    custom = dict(base, **{LEGACY_SERIES_FIELD_ID: LEGACY_SERIES_CUSTOM})
+    sc = _evaluate(VAULT_EVERY_ANSWER, custom)
+    assert "legacy_print_name" in sc.not_applicable, (
+        "custom must NOT ask which print — the artwork follows separately and is by "
+        "definition not in the catalogue"
+    )
+
+    # ⚠️ BOTH ORDERS MUST STILL BE COMPLETABLE. The print name is prompted, never
+    # required, so neither branch may put it in `missing`.
+    assert st.is_complete, f"standard incomplete: {st.missing}"
+    assert sc.is_complete, f"custom incomplete: {sc.missing}"
+
+
+def test_the_series_question_is_not_asked_when_no_print_was_chosen():
+    """⚠️ THE CONTROL. A `legacy_series` that always applied would satisfy the test
+    above — both branches would still behave — while asking every emblem-only order
+    whether its print is standard."""
+    answers = complete_non_personalization_answers()
+    answers[QUESTION_PERSONALIZATION] = ANSWER_COVER_EMBLEM_ONLY
+    answers["nameplate_date_format"] = "written"
+
+    state = _evaluate(VAULT_EVERY_ANSWER, answers)
+
+    assert "legacy_series" in state.not_applicable
+    assert "legacy_print_name" in state.not_applicable
 
 
 # ── tenant configuration ────────────────────────────────────────────────

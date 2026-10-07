@@ -68,9 +68,30 @@ def resolve_and_evaluate(db: Session, result: dict, *, tenant_id: str | None = N
         _captured_from_result(result),
         vault_product_id=resolution.variant_template_id,
         personalization_config=read_personalization_config(db, tenant_id),
+        # ⚠️ R4 — the resolved vault's FORM, taken from the candidate the resolver
+        # already built. None when the phrase resolved to nothing or to an ambiguous
+        # set, which the engine reads as "not yet knowable" rather than "not a vault".
+        #
+        # ⚠️ `_resolved_form` READS THE CANDIDATE ONLY WHEN THERE IS EXACTLY ONE. An
+        # ambiguous set can span forms — "Bronze Triune" matches BV-BTRI and UV-BTRI —
+        # so taking candidates[0].form would pick a form the resolver refused to pick
+        # a product for.
+        vault_form=_resolved_form(resolution),
         platform_fields=capture.template_for(capture.SALES_ORDER),
     )
     return resolution, state
+
+
+def _resolved_form(resolution) -> str | None:
+    """The form of the one resolved candidate, or None.
+
+    ⚠️ NONE FOR AMBIGUOUS, DELIBERATELY. `Resolution.variant_template_id` is already
+    None for an ambiguous set; this keeps the form consistent with it so the engine
+    cannot see a form without a product or a product without a form.
+    """
+    if resolution.variant_template_id is None:
+        return None
+    return resolution.candidates[0].form if resolution.candidates else None
 
 
 def _resolve_vault_phrase(db: Session, result: dict):
@@ -168,6 +189,10 @@ def _captured_from_result(result: dict) -> dict[str, object]:
         # Mapping them now means the prompt change is a seed, not a code change —
         # and `None` here is honest: we are not claiming the model answered.
         "personalization": result.get("personalization"),
+        # ⚠️ ADDED 2026-10-07 (R2). `legacy_print_name` now hangs off THIS field, so
+        # without it the print name is INDETERMINATE forever and the chain
+        # personalization -> legacy_series -> legacy_print_name stops at the middle.
+        "legacy_series": result.get("legacy_series"),
         "legacy_print_name": result.get("legacy_print_name"),
         "lifes_reflections_symbol": result.get("lifes_reflections_symbol"),
     }

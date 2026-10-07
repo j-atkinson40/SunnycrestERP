@@ -149,6 +149,10 @@ def evaluate(
     *,
     vault_product_id: str | None,
     personalization_config: dict | None = None,
+    #: ⚠️ R4 — forwarded to both resolvers below. Omitting it in one and not the
+    #: other would make `resolve_schema` and `applicability_map` disagree about a
+    #: field, and `evaluate` would then place it in no set at all.
+    vault_form: str | None = None,
     tenant_config: TenantCaptureConfig | None = None,
     platform_fields: tuple[FieldDefinition, ...] = PLATFORM_DEFAULT_FIELDS,
 ) -> CaptureState:
@@ -161,6 +165,7 @@ def evaluate(
     applicable = resolve_schema(
         vault_product_id=vault_product_id,
         personalization_config=personalization_config,
+        vault_form=vault_form,
         tenant_config=tenant_config,
         platform_fields=platform_fields,
         answers=extracted,
@@ -198,6 +203,7 @@ def evaluate(
     applicability = applicability_map(
         vault_product_id=vault_product_id,
         personalization_config=personalization_config,
+        vault_form=vault_form,
         tenant_config=tenant_config,
         platform_fields=platform_fields,
         answers=extracted,

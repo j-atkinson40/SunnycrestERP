@@ -210,6 +210,7 @@ tests/test_ci_membership.py
 tests/test_clean_run_does_not_park.py
 tests/test_clear_parked_workflow_runs.py
 tests/test_epd_ar_account_ar0.py
+tests/test_form_suppression.py
 tests/test_journal_entry_characterization.py
 tests/test_legacy_print_resolver.py
 tests/test_map_accounting_beat_map2.py
@@ -267,6 +268,7 @@ tests/test_r165_wire_monthly_statement_run.py
 tests/test_r166_wire_compliance_sync.py
 tests/test_r167_source_service_dispositions.py
 tests/test_cron_dow_dialect.py
+tests/test_r201_availability_data.py
 tests/test_r74_personalization_vocabulary_canonicalization.py
 tests/test_reconciliation_account_form.py
 tests/test_reconciliation_claim_a3.py

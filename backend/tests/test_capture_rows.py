@@ -7,7 +7,7 @@ entrance (`ringcentral_call_log` holds 0 rows in production, measured
 
 WHAT IT PINS, and the first is why the layer exists at all:
 
-1. **Rows are not fields.** 19 template fields, 9 capture rows, 6 summary rows.
+1. **Rows are not fields.** 20 template fields, 9 capture rows, 6 summary rows.
    A label-and-order-per-field design would render 15 of each.
 2. **The two surfaces differ**, measured: `Cemetery` is relabelled `Burial`,
    `Contact` demotes from a row to a secondary line, the subject slot exists only
@@ -86,14 +86,18 @@ class TestRowsAreNotFields:
     def test_neither_surface_has_one_row_per_field(self):
         """The assertion the scope error would have failed."""
         n_fields = len(template_for(SALES_ORDER))
-        # ⚠️ 19 SINCE R1-R5 (2026-10-07), AND THE ARITHMETIC IS NOT +2. Four fields
-        # were ADDED — `cemetery_city`, `service_date`, `legacy_print_name`,
+        # ⚠️ 20 AFTER THE 2026-10-07 CLOSE-OUT. R2 restored the standard-vs-custom
+        # distinction as a FIELD (`legacy_series`) rather than as two answers, so
+        # 19 + 1 = 20.
+        #
+        # ⚠️ 19 EARLIER THE SAME DAY (R1-R5), AND THE ARITHMETIC WAS NOT +2. Four
+        # fields were ADDED — `cemetery_city`, `service_date`, `legacy_print_name`,
         # `lifes_reflections_symbol` — and the three personalization questions
         # COLLAPSED INTO ONE, so 17 + 4 - 2 = 19.
         #
         # ⚠️ 17 SINCE PIECE 4 (2026-10-06): `eta` and `service_location_other` were
         # added and `burial_time` was RENAMED to `service_time`, so +2 not +3.
-        assert n_fields == 19
+        assert n_fields == 20
         assert len(CAPTURE_SALES_ORDER.rows) == 9 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
@@ -110,7 +114,8 @@ class TestRowsAreNotFields:
         """
         row = next(r for r in CAPTURE_SALES_ORDER.rows if r.id == "personalization")
         assert set(row_field_ids(row)) == {
-            "personalization", "legacy_print_name", "lifes_reflections_symbol"
+            "personalization", "legacy_series",
+            "legacy_print_name", "lifes_reflections_symbol",
         }
 
     def test_composition_renders_with_the_designs_separator(self):
