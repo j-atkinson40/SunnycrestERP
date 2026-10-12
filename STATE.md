@@ -146,6 +146,39 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
   to a real permitted set, and `St. Mary's Cemetery` exists. It REFUSES to skip when
   `testco` is absent. `test_whole_text_session.py` moved onto it and gained the five
   defects as session-seam tests plus the exact sentence from James's walk.
+- **2026-10-12** — RULED (James): **`928ecf78` pushed** — `0d479f04..928ecf78`.
+  Production serves it; alembic head `r208_capture_session_text`. Capture surface on
+  that tree: 10 rows incl. `burial`, orphan set EMPTY, nothing unsourced.
+- **2026-10-12** — ⚠️ **MY LATENCY GATE TURNED CI RED ON THE COMMIT THAT ADDED IT, and
+  the code had not regressed.** Run `38284266493`, Backend CI failure: 2 of 41
+  re-extractions over the 150 ms budget — **158.1 ms** on the 174-char text and 155.5
+  on the 170-char, where local dev measured **24.2 ms** on the same commit. The CI
+  runner is ~6.5x slower than the laptop (`ci.yml` says ~2.5x about its own seed step),
+  so an ABSOLUTE millisecond assertion measures the machine as much as the code. CI was
+  down ~25 minutes. Everything else in that run passed — 3118 passed, 4 skipped; the
+  seeded fixture, the `burial` row and the five session-seam defect tests were all
+  green on the runner.
+- **2026-10-12** — FIXED in `d0fdca21`: the gate now asserts the SHAPE, not the clock.
+  `RUNAWAY_FACTOR` (longest-text cost over the same run's MEDIAN — the machine cancels;
+  1.6x measured on dev and implied on CI) plus a loose `CEILING_MS = 500` catastrophe
+  detector at ~3.2x CI's worst observed figure. ⚠️ **THE TWO COVER COMPLEMENTARY
+  SHAPES AND NEITHER COVERS BOTH** — a superlinear regression trips the ratio and a
+  uniform 4x slowdown does NOT (the ratio is blind to it by construction, which is the
+  same property that makes it machine-independent), while the ceiling catches the
+  second and not reliably the first. The ruled 150 ms is RECORDED with its dev
+  measurement and date, not asserted, because CI cannot measure a claim about the
+  director's machine.
+- **2026-10-12** — ⚠️ CLAUDE.md §11 IS STALE, flagged for James (not editable here).
+  *"Before concluding a gate would have caught something, check its environment can
+  contain it"* says the environment with the seeds has no suite and the environments
+  with a suite have no seeds. That gap was **closed 2026-09-23 in `6c28748e`** —
+  `ci.yml` now runs `scripts/seed_dev.sh` between migrations and pytest and says so in
+  its own comment. It matters: it is why the new `seeded` fixture works in CI at all.
+- **2026-10-12** — ⚠️ METHOD NOTE: `railway run` executes LOCALLY with production env
+  vars injected. A verification that imports application code under it reads the LOCAL
+  tree, not the deployed build, and cannot distinguish them. Abandoned one such check
+  rather than report it; the deploy was verified instead by the chain
+  `/api/health` commit == `git rev-parse HEAD` == `origin/main`, tree clean.
 - **2026-10-12** — Walk steps for James:
   `docs/investigations/2026-10-12-typed-capture-round-2-walk.md`. ⚠️ Its first
   instruction is to RESTART the dev backend — the process on :8000 was started before
