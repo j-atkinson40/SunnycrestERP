@@ -100,7 +100,36 @@ class ComposedSource:
     join: str = " · "
 
 
-Source = FieldSource | RecordSource | LiteralSource | ComposedSource
+@dataclass(frozen=True)
+class FirstOf:
+    """The first child that yields anything. A FALLBACK, not a composition.
+
+    ⚠️ ADDED 2026-10-12 TO FIX A DEFECT THAT WAS NOT IN THE SCREENSHOT, found while
+    verifying the one that was. The capture Service row expressed its fallback as TWO
+    `ComposedSource`s over `row.sources`, relying on `_first`'s "ordered, first
+    yielding wins":
+
+        Composed(service_location_other, service_date, service_time)
+        Composed(service_location,       service_date, service_time)
+
+    Each alternative also carried the date and the time, so the FIRST one started
+    yielding the moment a DATE existed — even with `service_location_other` empty —
+    and the location silently disappeared from the row. Measured: "service at the
+    church" showed `Church`; adding "service on March 2 2027" changed it to
+    `2027-03-02`. A field the director had given, gone from the row, with nothing
+    reported.
+
+    `FirstOf` makes the intent expressible INSIDE a composition — "whichever location
+    we have, then the date, then the time" — instead of emerging from the interaction
+    of two overlapping alternatives. ⚠️ Exactly one row had this shape; the summary
+    surface's Service row uses two bare `FieldSource`s, which is a true fallback and
+    is correct as written. Measured over both surfaces rather than assumed.
+    """
+
+    sources: tuple["Source", ...]
+
+
+Source = FieldSource | RecordSource | LiteralSource | ComposedSource | FirstOf
 
 
 # ---------------------------------------------------------------------------
@@ -135,12 +164,36 @@ class RowState(str, Enum):
     know whether the question applies to this licensee, so Opas asks rather than
     assuming. Collapsing them is a default standing in for a measurement: the row
     looks answerable when what is actually missing is the licensee's setup.
+
+    ⚠️ A FIFTH, `PARTIAL`, ADDED 2026-10-12 AND NOT FROM EITHER PROTOTYPE — because
+    neither prototype had the case. It is a DEFECT FIX, and the defect was visible on
+    James's screen: he typed "start an order for Hopkins Funeral Home ... service at
+    the church" and the Service row showed **"Church" in the not-mentioned style** —
+    italic, no check — because the row composes several fields and one of them
+    (`service_date`) was still required and unanswered. The branch below read
+    "something required is missing" and returned NOT_MENTIONED without looking at
+    whether anything had rendered.
+
+    `PARTIAL` means: THIS ROW HAS CAPTURED SOMETHING AND IS NOT FINISHED. It exists so
+    the state and the appearance agree, which is the ruling — row style follows row
+    state — and so the server stays the only thing deciding. A pane that inferred
+    "has a value but the state says not-mentioned, so style it differently" would be
+    a second source of truth for completeness.
+
+    ⚠️ IT DOES NOT DEFER TO `NEEDED` AFTER THE DONE SIGNAL, AND THAT WAS A REAL
+    CHOICE. Letting NEEDED win once the director says "that's everything" would make
+    the row amber and emphatic — but it would also re-introduce the original defect,
+    because NEEDED's prototype value text is "Still needed" and the captured value
+    would vanish from the row again. What is blocking is already carried by the
+    `missing` set and rendered in the header; what the ROW must not do is deny the
+    director typed something. So PARTIAL holds regardless of the signal.
     """
 
     NOT_MENTIONED = "not_mentioned"
     DONE = "done"
     NEEDED = "needed"
     NOT_CONFIGURED = "not_configured"
+    PARTIAL = "partial"
 
 
 @dataclass(frozen=True)
@@ -245,7 +298,7 @@ class ResolvedSurface:
 def _source_field_ids(src: Source) -> tuple[str, ...]:
     if isinstance(src, FieldSource):
         return (src.field_id,)
-    if isinstance(src, ComposedSource):
+    if isinstance(src, (ComposedSource, FirstOf)):
         out: list[str] = []
         for s in src.sources:
             out.extend(_source_field_ids(s))
@@ -294,6 +347,12 @@ def _render(
     if isinstance(src, RecordSource):
         v = (records.get(src.record) or {}).get(src.path)
         return str(v) if is_answered(v) else None
+    if isinstance(src, FirstOf):
+        for child in src.sources:
+            got = _render(child, values, records, defs)
+            if got is not None:
+                return got
+        return None
     parts = [p for p in (_render(s, values, records, defs) for s in src.sources) if p]
     return src.join.join(parts) if parts else None
 
@@ -370,6 +429,12 @@ def resolve_surface(
 
         if not_configured:
             state = RowState.NOT_CONFIGURED
+        elif unanswered_required and value is not None:
+            # ⚠️ ORDER MATTERS AND THIS CLAUSE MUST PRECEDE THE NEXT. A row can be
+            # BOTH incomplete and partly captured; the old code tested only the first
+            # half and returned NOT_MENTIONED over a rendered value. See the class
+            # docstring for what that looked like on James's screen.
+            state = RowState.PARTIAL
         elif unanswered_required:
             state = RowState.NEEDED if done_signal else RowState.NOT_MENTIONED
         elif value is None:

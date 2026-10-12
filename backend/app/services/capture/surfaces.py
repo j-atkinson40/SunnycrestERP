@@ -44,6 +44,7 @@ that way.
 from __future__ import annotations
 
 from app.services.capture.rows import (
+    FirstOf,
     ComposedSource,
     FieldSource,
     FooterSlot,
@@ -115,17 +116,20 @@ CAPTURE_SALES_ORDER = Surface(
         # no template field until R4. It composes into the existing row rather than
         # opening one of its own, for the same reason the location did: the prototype
         # shows the service as a single line.
+        # ⚠️ ONE SOURCE WITH A `FirstOf` FOR THE LOCATION, NOT TWO OVERLAPPING
+        # ALTERNATIVES. This row used to be two `ComposedSource`s — one per location
+        # field — each also carrying the date and the time, so the FIRST started
+        # yielding the moment a date existed and the LOCATION vanished from the row.
+        # See `FirstOf` in rows.py for the measurement.
         Row(id="service", label="Service", order=5,
             sources=(ComposedSource((
-                FieldSource("service_location_other"),
+                FirstOf((
+                    FieldSource("service_location_other"),
+                    FieldSource("service_location"),
+                )),
                 FieldSource("service_date"),
                 FieldSource("service_time"),
-            ), join=_DOT),
-                ComposedSource((
-                    FieldSource("service_location"),
-                    FieldSource("service_date"),
-                    FieldSource("service_time"),
-                ), join=_DOT)),
+            ), join=_DOT),),
             edit_target="service_location"),
 
         # Prototype: "Forest Lawn · Thu 11:30 AM" — labelled `Cemetery` here and

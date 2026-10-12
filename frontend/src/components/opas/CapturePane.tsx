@@ -44,6 +44,13 @@ const ROW_CLASS: Record<string, string> = {
   not_mentioned: "border-border-subtle bg-transparent",
   // `.cap.unconfig` — amber at LOWER intensity than `needed`, and the mark is dashed.
   not_configured: "border-[rgba(224,168,74,0.35)] bg-[rgba(224,168,74,0.04)]",
+  // ⚠️ `partial` IS NOT IN EITHER PROTOTYPE, because neither had the case. The server
+  // added the state 2026-10-12 for a row that has captured something and is not
+  // finished — the defect James saw, where "Church" rendered in the not-mentioned
+  // style. Styled between `not_mentioned` and `done`: the green hue of progress at
+  // the lower intensity `unconfig` uses for "incomplete", so a part-filled row reads
+  // as started without claiming to be answered.
+  partial: "border-[rgba(74,160,110,0.30)] bg-[rgba(74,160,110,0.03)]",
 }
 
 const MARK_CLASS: Record<string, string> = {
@@ -51,6 +58,10 @@ const MARK_CLASS: Record<string, string> = {
   needed: "border-[rgb(224,168,74)] text-[rgb(224,168,74)]",
   not_mentioned: "border-border-base text-content-subtle",
   not_configured: "border-[rgb(224,168,74)] border-dashed text-[rgb(224,168,74)]",
+  // ⚠️ NO CHECK, AND THAT IS THE POINT. A partial row is started, not answered; the
+  // mark carries the progress hue but stays an empty circle, so `done` remains the
+  // only state that shows a tick.
+  partial: "border-[rgb(74,160,110)] text-[rgb(74,160,110)]",
 }
 
 /** The value text per state.

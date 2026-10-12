@@ -107,7 +107,16 @@ def add_line(
     row = _load(db, session_id, company_id=company_id, user_id=user_id)
     values = dict(row.values or {})
 
-    if DONE_SIGNAL.match(line.strip()):
+    if is_done_signal(line):
+        # ⚠️ RECORDED BEFORE ACTING, AND IT WAS NOT BEFORE. This branch used to return
+        # immediately, so the done phrase was never stored and the attempt left NO
+        # TRACE on the row — `_signal_done` sets the status back to `capturing` on a
+        # refusal and nothing else. That is why `read_state` had nothing to pass as
+        # `done_signal` and why `RowState.NEEDED` could not occur in production.
+        # The phrase is part of what the director typed, so it belongs in the text.
+        row.typed_lines = list(row.typed_lines or []) + [
+            {"line": line, "at": datetime.now(timezone.utc).isoformat()}
+        ]
         return _signal_done(db, row)
 
     ex = EXTRACTOR.extract_line(
@@ -160,6 +169,19 @@ def choose(
     return row
 
 
+def is_done_signal(line: str) -> bool:
+    """Did the director say they were finished?
+
+    ⚠️ ONE PREDICATE, USED BY BOTH THE WRITER AND THE READER. `add_line` decides
+    whether to advance; `read_state` decides whether the rows should show their gaps
+    as NEEDED. Those were briefly two expressions — `DONE_SIGNAL.match(line.strip())`
+    and `DONE_SIGNAL.search(line.lower())` — which is the same question asked two ways
+    and free to drift. `match` anchored at the start is the prototype's behaviour
+    (`:539`), so that is the one kept.
+    """
+    return bool(DONE_SIGNAL.match(line.strip()))
+
+
 def _signal_done(db: Session, row: CaptureSession) -> CaptureSession:
     """Move to review if nothing is missing; otherwise stay and let the gaps show.
 
@@ -200,7 +222,23 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
         platform_fields=capture.template_for(capture.SALES_ORDER),
     )
     surface = SUMMARY_SALES_ORDER if row.status == STATUS_REVIEW else CAPTURE_SALES_ORDER
-    rendered = resolve_surface(surface, resolved, answers)
+
+    # ⚠️ `done_signal` WAS NEVER PASSED, SO `RowState.NEEDED` WAS DEAD STATE — found
+    # 2026-10-12 while verifying defect 3c, by writing a test that asserted NEEDED
+    # fires and watching it fail. The state exists, has a prototype citation, is
+    # covered by unit tests that pass `done_signal=True` directly, and COULD NOT
+    # OCCUR through the live path: this call omitted the argument and it defaults to
+    # False. Complete machinery behind an unprovisioned entrance (CLAUDE.md §11).
+    #
+    # ⚠️ AND THERE WAS NOTHING PERSISTED TO PASS. `_signal_done` sets the status back
+    # to `capturing` on a refusal and records nothing else, so the attempt left no
+    # trace on the row. Rather than add a column for it, the signal is DERIVED FROM
+    # THE TEXT — which is where the director actually put it, and which survives the
+    # move to whole-text re-extraction, where the text is the only source there is.
+    said_done = any(
+        is_done_signal(ln.get("line") or "") for ln in (row.typed_lines or [])
+    )
+    rendered = resolve_surface(surface, resolved, answers, done_signal=said_done)
 
     return {
         "session_id": row.id,
