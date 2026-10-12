@@ -549,44 +549,15 @@ class DeterministicExtractor:
         # as an answer unless the cemetery resolves — a town with no cemetery attached
         # is not a fact about the order.
         if once("cemetery"):
-            # ⚠️ THE NAME GROUP MUST STOP AT RESERVED WORDS, and the first version did
-            # not: `{0,2}` greedily took "cemetery in" into the name, so
-            # "to St Mary's cemetery in Auburn" asked the resolver for
-            # "St Mary's cemetery in" — a stray preposition no candidate carries — and
-            # matched NOTHING while the bare name matched one. A greedy group that
-            # eats its own delimiters fails silently; the lookahead makes it stop.
-            _STOP = r"(?!\b(?:cemetery|cemeteries|in|on|at|for|with|and)\b)"
-            m = re.search(
-                r"\b(?:to|at|going to|burial at|buried at)\s+"
-                rf"({_STOP}[A-Za-z'][A-Za-z'\-]*(?:\s+{_STOP}[A-Za-z'][A-Za-z'\-]*){{0,2}})"
-                # ⚠️ `\s+(?:cemetery)?` WAS `\s*(?:cemetery)?`, AND THAT IS THE THIRD
-                # SILENT FAILURE OF THIS ONE REGEX. `\s*` consumed the space BEFORE
-                # the optional word, so when the director omitted "Cemetery" there was
-                # no whitespace left for `\s+in\s+` to match and THE CITY GROUP NEVER
-                # FIRED. "to St Mary's in Auburn" matched only "to St Mary's ", left
-                # "Auburn" unclaimed, passed city_hint=None, and resolved silently to
-                # the Skaneateles row — exactly the conflict the pick below exists to
-                # raise. With "Cemetery" present the word ate a space of its own and
-                # the city matched, so the bug was invisible to the phrasing anyone
-                # tested. Measured 2026-10-12: name="St Mary's" city=None span=(0,13).
-                #
-                # ⚠️ THE OTHER TWO ARE IN THE COMMENTS AROUND THIS ONE — a greedy
-                # `{0,2}` that ate its own delimiter, and `{{2,30}}` in a plain
-                # r-string. Three failures, all silent, all in one expression. That is
-                # the argument for the record-lookup path below rather than a fourth
-                # repair of this pattern.
-                r"(?:\s+(?:cemetery|cemeteries))?"
-                # ⚠️ `{2,30}` NOT `{{2,30}}`. Only the NAME fragment above is an f-string; this
-            # one is a plain r-string, so doubled braces stayed literal and the city
-            # group matched the text "{2,30}" — i.e. never. The city was silently
-            # never captured, so the conflict check below could not fire and
-            # "St Mary's in Auburn" resolved to the Skaneateles row.
-            r"(?:\s+in\s+([A-Za-z][A-Za-z'\- ]{2,30}))?", line, re.I)
-            if m:
-                phrase, city = m.group(1).strip(), (m.group(2) or "").strip() or None
-                cr = resolve_cemetery(db, tenant_id, phrase, city_hint=city)
+            # ⚠️ ONE CALL TO A STEP PARSER, NOT ONE REGEX. See
+            # `parse_cemetery_clause` for the three silent failures that bought this.
+            clause = parse_cemetery_clause(line)
+            if clause:
+                cr = resolve_cemetery(
+                    db, tenant_id, clause.name, city_hint=clause.town
+                )
                 if cr.party_id:
-                    if _mark(spans, m):
+                    if _claim(spans, clause.start, clause.end):
                         values["cemetery"] = cr.candidates[0].name
                         if cr.candidates[0].city:
                             values["cemetery_city"] = cr.candidates[0].city
@@ -597,12 +568,13 @@ class DeterministicExtractor:
                     # realise they meant somewhere else. Leaving it as unrecognized
                     # text would be honest but useless — they said a cemetery and the
                     # pane would show them nothing to act on.
-                    picks.append(Pick(
-                        "cemetery", phrase,
-                        tuple((c.name, c.label) for c in cr.candidates),
-                        cr.discriminators[0].value if cr.discriminators else None,
-                    ))
-                    _mark(spans, m)
+                    if _claim(spans, clause.start, clause.end):
+                        picks.append(Pick(
+                            "cemetery", clause.name,
+                            tuple((c.name, c.label) for c in cr.candidates),
+                            cr.discriminators[0].value
+                            if cr.discriminators else None,
+                        ))
 
         # ── funeral home ────────────────────────────────────────────────
         if once("funeral_home"):
@@ -1079,6 +1051,101 @@ class MentionPolicy(str, Enum):
 
     FIRST_WINS = "first_wins"
     LAST_WINS = "last_wins"
+
+
+# ── the cemetery clause, parsed in NAMED STEPS ───────────────────────────
+#
+# ⚠️ THIS REPLACES ONE EXPRESSION THAT FAILED SILENTLY THREE TIMES, and the three are
+# worth naming because they are three different ways for a single regex to break:
+#
+#   1. a greedy `{0,2}` name group ATE ITS OWN DELIMITER — "to St Mary's cemetery in
+#      Auburn" asked the resolver for "St Mary's cemetery in" and matched nothing.
+#   2. `{{2,30}}` in a plain r-string left the braces LITERAL, so the town group
+#      matched the text "{2,30}" — i.e. never. The town was never captured at all.
+#   3. `\s*(?:cemetery)?` CONSUMED THE SPACE THE TOWN GROUP NEEDED, so with
+#      "Cemetery" omitted `\s+in\s+` could not match and the town was silently lost.
+#
+# Every one was invisible: the clause still matched, still produced a name, and the
+# part that broke was OPTIONAL — so its absence looked like the director not having
+# said a town. Ruled 2026-10-12: replace it with named, separately tested parts so a
+# whitespace change in one cannot disable another.
+#
+# ⚠️ AND COMPOSING THE PARTS BACK INTO ONE PATTERN WOULD NOT HAVE HELPED. Failure 3
+# was precisely an interaction BETWEEN two adjacent fragments; string-concatenating
+# named fragments reproduces it exactly. So the clause is parsed in STEPS: each part
+# is anchored at an explicit position, reports where it ended, and the next part
+# starts from there. A part that consumes too much shortens its own span — visible —
+# rather than starving the part after it.
+
+#: Step 1: the words that introduce a cemetery.
+_CEM_MARKER = re.compile(r"\b(?:to|at|going to|burial at|buried at)\s+", re.I)
+
+#: Step 2: the name. ⚠️ THE LOOKAHEAD IS WHAT STOPS IT EATING ITS OWN DELIMITERS;
+#: failure 1 was this group without it.
+_CEM_STOP = r"(?!\b(?:cemetery|cemeteries|in|on|at|for|with|and)\b)"
+_CEM_NAME = re.compile(
+    rf"{_CEM_STOP}[A-Za-z'][A-Za-z'\-]*(?:\s+{_CEM_STOP}[A-Za-z'][A-Za-z'\-]*){{0,2}}",
+    re.I,
+)
+
+#: Step 3: the optional word "cemetery". ⚠️ IT OWNS ITS OWN LEADING SPACE, which is
+#: failure 3 made structural: a step that does not match consumes NOTHING, so the
+#: separator the next step needs is still there.
+_CEM_SUFFIX = re.compile(r"\s+(?:cemetery|cemeteries)\b", re.I)
+
+#: Step 4: the optional town. ⚠️ `{2,30}` in a PLAIN r-string — failure 2 was this
+#: quantifier written as `{{2,30}}` inside an f-string, where the braces stayed
+#: literal. Kept out of any f-string for that reason.
+#: ⚠️ THE PERIOD IS IN THE SET BECAUSE A TEST FOUND IT MISSING. Towns are abbreviated
+#: the way the cemeteries are — "St. Albans", "Mt. Vernon" — and the original charset
+#: allowed apostrophes and hyphens but not periods, so those towns were silently
+#: unreadable while the clause still matched and still produced a name. The same
+#: failure mode as the three above, in a part nobody had tested alone.
+_CEM_TOWN = re.compile(r"\s+in\s+([A-Za-z][A-Za-z'\-. ]{2,30})", re.I)
+
+
+@dataclass(frozen=True)
+class CemeteryClause:
+    """What one cemetery clause said, and exactly which characters each part used."""
+
+    name: str
+    town: str | None
+    start: int
+    end: int
+    name_span: tuple[int, int]
+    suffix_span: tuple[int, int] | None
+    town_span: tuple[int, int] | None
+
+
+def parse_cemetery_clause(line: str) -> CemeteryClause | None:
+    """Marker, name, optional "cemetery", optional "in <town>" — in that order.
+
+    ⚠️ EACH STEP STARTS WHERE THE LAST ONE ENDED. That is the whole design: there is
+    no shared backtracking and no fragment adjacency, so a change to one part can
+    shorten or lengthen its own span and nothing else.
+    """
+    mk = _CEM_MARKER.search(line)
+    if not mk:
+        return None
+    nm = _CEM_NAME.match(line, mk.end())
+    if not nm:
+        return None
+    pos = nm.end()
+    sfx = _CEM_SUFFIX.match(line, pos)
+    if sfx:
+        pos = sfx.end()
+    twn = _CEM_TOWN.match(line, pos)
+    if twn:
+        pos = twn.end()
+    return CemeteryClause(
+        name=nm.group(0).strip(),
+        town=(twn.group(1).strip() if twn else None) or None,
+        start=mk.start(),
+        end=pos,
+        name_span=nm.span(),
+        suffix_span=sfx.span() if sfx else None,
+        town_span=twn.span(1) if twn else None,
+    )
 
 
 #: A clock time as a director writes one: "10am", "10:30", "2:30 pm", "11:30".

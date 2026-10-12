@@ -303,6 +303,13 @@ tests/test_no_span_feeds_two_fields.py
 tests/test_noise_is_a_hint_not_a_filter.py
 tests/test_oversized_class_alias.py
 tests/test_whole_text_extraction.py
+# The cemetery clause, parsed as named steps rather than one regex. In the gate
+# because that regex failed SILENTLY three times — each failure left the clause
+# still matching and still producing a name, with one part quietly disabled — and
+# a fourth (a town with a period) was found by these tests on the day they landed.
+# Each part is tested alone and break-tested alone; see the table in the module
+# docstring for which break turns which assertion red.
+tests/test_cemetery_clause_parts.py
 tests/test_typed_capture_slice1.py
 tests/test_vault_resolution_wiring.py
 tests/test_void_payment_reverses_ar2.py
