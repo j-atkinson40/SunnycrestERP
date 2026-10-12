@@ -2749,3 +2749,47 @@ table against that list, not against the other tables in the file.
 ⚠️ Kin to CLAUDE.md §11's *a guard reasoned from one caller is a guard reasoned from a
 sample*. There the sample was call sites; here it is sibling tables. Both produce reasoning
 that is right about what it examined and wrong about the population.
+
+## 2026-10-12 — Vinyl without a symbol does not block completion; the symbol stays prompted
+
+**Decided by James, 2026-10-12.** An order whose personalization answer is a Life's
+Reflections® vinyl may be completed with no symbol recorded. The pane keeps showing the
+symbol as something to ask about.
+
+⚠️ **AUTHORIZATION, BECAUSE THIS FILE IS CANON I MAY NOT NORMALLY WRITE.** CLAUDE.md's
+documentation-write rule excludes DECISIONS.md from the Code tab and requires explicit
+authorization per canon edit. James instructed this append in terms — *"Record in
+DECISIONS"* — and it is a single append; no prior entry is modified. Same shape as the
+Studio 1a-i.B follow-up #2 exception already recorded in CLAUDE.md §4.
+
+**The reason.** Families often choose the symbol after the arrangement conference. A
+director takes the order on the phone, with the vault, the cemetery and the dates settled
+and the symbol still open. Blocking completion on it would make the common case fail, and
+the pressure would then be to invent a placeholder — which is worse, because a placeholder
+is indistinguishable from a choice.
+
+**The mechanism, so the decision is checkable against the code.**
+`lifes_reflections_symbol` is declared `required_when=Never()` — prompted, never required.
+`evaluate` therefore places it in `unanswered_optional`, not `missing`, and the done signal
+reads `missing` alone. Measured on local dev: `"vinyl"` alone puts the field in
+`unanswered_optional`; `"vinyl cross"` moves it to `answered`.
+
+⚠️ **AND THE POINT OF RECORDING IT IS THAT NOBODY HAD DECIDED IT.** The behaviour was a
+CONSEQUENCE of `required_when=Never()`, chosen for the print field and inherited by the
+symbol field when that field was added on 2026-10-07 — an addition the report of the day
+explicitly flagged as *"not from a ruling"*. So the system was already doing the right
+thing for no recorded reason, which is the condition CLAUDE.md §11 names as the **inherited
+expired premise**: *what is in force here that nothing in this session decided?* A default
+that happens to be correct is still a default, and the next person to touch the
+`required_when` slot would have had nothing to read. This entry converts it into a decision.
+
+**What reversing it would take.** `required_when=Always()` on the field, or a condition
+making it required once a vinyl answer is chosen. That would move it from
+`unanswered_optional` into `missing`, and the done signal would refuse to advance — the
+same refusal `service_location` currently produces. Anyone making that change should expect
+directors to be unable to finish orders they can finish today.
+
+⚠️ **NOT DECIDED HERE:** whether the symbol should become required at a LATER stage — at
+approval, or at the point the vault goes to production. Prompted-never-required is the
+answer for the capture stage, which is the only stage that exists. The summary and approve
+step is unbuilt, and it is the natural place to ask the question again.
