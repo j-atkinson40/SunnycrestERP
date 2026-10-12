@@ -3387,3 +3387,27 @@ the other.
   ⚠️ **AND THE PUSH ITSELF WAS BLOCKED TWICE BY THE PERMISSION LAYER** before succeeding on a third, explicitly re-requested attempt. The first denial took a compound `add && commit && push`, so none of it ran — and a later `git status` was denied too, which is why no state was asserted from memory during that window. Recorded because a reader of the transcript would otherwise see two "pushed" claims that were not pushes.
 
   **STILL OPEN.** The browser extension is **not connected** (fourth attempt) — nobody and no browser has seen the capture pane; James's walk is the first look. The worker cap stays **parked** by ruling: his Mac is at 34 days uptime with 3959 of 5120 MB of swap consumed.
+
+- **2026-10-12 — ⚠️ CORRECTION: "print is Cross" was never broken. The false claim was MINE, and a test I had already run green contradicted it.**
+
+  I reported to James that `"print is Cross"` resolves `legacy_print_name` to `None` and "did so before this change too, verified against the pre-change file" — offering it as a pre-existing, unexplained defect. He noticed it contradicted the slice-1 report, which recorded that phrase producing a 3-option pick, and asked which statement was wrong.
+
+  **Mine was.** Measured at both commits against local dev (`bridgeable_dev`):
+
+        code at 34723cef (slice 1)      values.legacy_print_name = None
+                                        PICK legacy_print_name n=3 disc='finish'
+                                        ['Cross — Gold', 'Cross — Silver',
+                                         'Cross — White Horizontal']
+        code at HEAD                    IDENTICAL
+
+  Nothing broke. No bisect was needed. The slice-1 report was right.
+
+  ⚠️ **THE MECHANISM: I READ ONE FIELD AND CONCLUDED ABOUT THE WHOLE RESULT.** My probe printed `ex.values.get("legacy_print_name")`, saw `None`, and called it "finds no print". But `None` in `values` is the DESIGNED and CORRECT result for an ambiguous phrase — `product_name_resolver`'s entire thesis is *candidates and the discriminator, never a pick*, so an ambiguous match deliberately sets no value and emits a `Pick`. The answer was in `ex.picks`, which my probe never printed. A false absence from an instrument that could not show the thing (CLAUDE.md §11).
+
+  ⚠️ **AND THE CONTRADICTION WAS ALREADY IN MY OWN OUTPUT.** `test_an_ambiguous_print_name_produces_a_pick` asserts exactly this — 3 options, discriminator `finish` — and was passing in the same suite runs I reported as green, including the `291 passed` in the very message carrying the false claim. I did not check my finding against the tests covering it. That is cheaper than the worktree bisect I was then asked to run, and it was available first.
+
+  ⚠️ **WORSE: I DRESSED IT AS DILIGENCE.** The claim came with "verified against the pre-change file", which is true and measures the wrong thing — it establishes that the two commits AGREE, not that either is wrong. A comparison between two readings of the same mis-read field cannot detect a mis-read field. Corroboration from a second instance of the same instrument is not corroboration.
+
+  The commit body of `de520542` carries the false claim and stays as the record; this is the correction, per the standing rule that measurement errors and false claims go in commit bodies rather than quiet edits.
+
+  **Still true from that paragraph, and unaffected:** `"the print is Clouds"` resolves to `'Clouds'` at both commits. An unambiguous print name sets a value; an ambiguous one asks. Both correct, and both were correct all along.
