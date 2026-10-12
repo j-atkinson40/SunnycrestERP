@@ -50,6 +50,8 @@ from app.services.personalization.questions import (
     LEGACY_SERIES_CUSTOM,
     LEGACY_SERIES_STANDARD,
     QUESTION_PERSONALIZATION,
+    VINYL_ANSWERS,
+    VINYL_BEARING_ANSWERS,
 )
 
 
@@ -134,6 +136,49 @@ _PERSONALIZATION: tuple[tuple[str, str], ...] = (
     (r"legacy\s+(?:series\s+)?print|legacy\s+print", ANSWER_LEGACY_PRINT),
     (r"life'?s\s+reflections|vinyl", ANSWER_LIFES_REFLECTIONS),
     (r"no\s+personalization|nothing\s+on\s+it|plain", ANSWER_NONE),
+)
+
+#: Life's Reflections® symbols, by the words a director says. ⚠️ THE OFFICE SAYS
+#: "VINYL" (James, 2026-10-12), and the answer vocabulary already accepted it — what
+#: was missing is the SYMBOL. `lifes_reflections_symbol` was a template field with NO
+#: EXTRACTOR AT ALL (grep count: 0), so "vinyl cross" set the answer and dropped
+#: "cross" into `unrecognized`. Measured before building, not assumed.
+#:
+#: ⚠️ THE TABLE ORDER IS COSMETIC, AND A BREAK TEST IS WHY THIS COMMENT SAYS SO.
+#: It first read "ORDERED LONGEST-INTENT FIRST, and the reason is 'patriotic /
+#: american flag'". Swapping those two rows left ALL 29 TESTS GREEN — because the
+#: selection rule below is "the match that reaches FURTHEST wins" (max end offset),
+#: which makes order irrelevant for any two patterns that do not match the identical
+#: span. "patriotic" and "american flag" never compete: only one of them matches a
+#: given phrase.
+#:
+#: So the longest-match RULE is load-bearing and the ORDERING is not. Order only
+#: decides an exact tie — same start AND same end — which no two rows here produce.
+#: Reading the order as the guarantee is the mistake; it is listed longest-first
+#: because that reads well, not because anything depends on it.
+#:
+#: ⚠️ IDS LOOKED UP FROM `VINYL_ANSWERS`, NOT RETYPED, so a phrase cannot store an id
+#: the schema has no label for. `test_enum_display.py`'s totality ratchet reads this
+#: table, so a new phrase with a bad id fails there by name.
+_VINYL_SYMBOLS: tuple[tuple[str, str], ...] = tuple(
+    (pat, ident) for pat, ident in (
+        (r"star\s+of\s+david", "star_of_david"),
+        (r"praying\s+hands", "praying_hands"),
+        (r"american\s+flag", "patriotic_american_flag"),
+        (r"patriotic", "patriotic_american_flag"),
+        (r"masonic|mason", "masonic"),
+        (r"floral|flowers?", "floral"),
+        (r"\bcross\b", "cross"),
+        (r"\bdove\b", "dove"),
+        (r"\bflag\b", "patriotic_american_flag"),
+    )
+    if ident in VINYL_ANSWERS
+)
+assert len({i for _, i in _VINYL_SYMBOLS}) == 7, (
+    "⚠️ SEVEN OF THE EIGHT SYMBOLS HAVE PHRASES. `other` is deliberately absent: it "
+    "means 'a symbol not on the list, specified in notes', so there is no word for a "
+    "director to say that should resolve TO it — a line mentioning some other symbol "
+    "must come back unrecognized and be asked about, not silently filed as `other`."
 )
 
 _LEGACY_SERIES: tuple[tuple[str, str], ...] = (
@@ -597,6 +642,37 @@ class DeterministicExtractor:
                     a = frag_start + (-neg_start)
                     if _claim(spans, a, a + len(words)):
                         values["service_location"] = val
+                    break
+
+        # ── Life's Reflections symbol ───────────────────────────────────
+        # ⚠️ GATED ON THE ANSWER, NOT ON THE WORD. These are ordinary words — Cross,
+        # Dove, Floral, Praying Hands are also Legacy print names — so the pass only
+        # runs when the personalization answer is vinyl-bearing, which is exactly the
+        # schema's own `AnswerIn(QUESTION_PERSONALIZATION, VINYL_BEARING_ANSWERS)`
+        # condition. A bare "cross" with no vinyl in the line sets nothing.
+        #
+        # ⚠️ AND IT RUNS HERE, AFTER THE CEMETERY AND THE FUNERAL HOME, FOR THE SAME
+        # REASON `service_location` DOES. "vinyl, to Holy Cross Cemetery" would
+        # otherwise have the symbol pass claim "Cross" out of the cemetery's own name
+        # — the identical defect James found in the Service row, one field over.
+        # ⚠️ Raw unclaimed slices, not `_leftovers`: "of" is a noise word, so a
+        # noise-stripped fragment can never contain "star of david".
+        chosen = values.get(QUESTION_PERSONALIZATION, answers.get(QUESTION_PERSONALIZATION))
+        if chosen in VINYL_BEARING_ANSWERS and once("lifes_reflections_symbol"):
+            for frag_start, frag in _unclaimed_slices(line, spans):
+                hit = None
+                for pat, ident in _VINYL_SYMBOLS:
+                    m = re.search(pat, frag, re.I)
+                    if m is None:
+                        continue
+                    cand = (m.end(), -m.start(), m, ident)
+                    if hit is None or cand[:2] > hit[:2]:
+                        hit = cand
+                if hit:
+                    _, _, m, ident = hit
+                    a = frag_start + m.start()
+                    if _claim(spans, a, frag_start + m.end()):
+                        values["lifes_reflections_symbol"] = ident
                     break
 
         # ── vault ───────────────────────────────────────────────────────
