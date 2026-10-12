@@ -235,6 +235,53 @@ def resolve_cemetery(
     return _resolve(rows, phrase, city_hint)
 
 
+def funeral_home_rows(db: Session, tenant_id: str) -> list[tuple[str, str, str | None]]:
+    """`(id, name, city)` for this tenant's company entities. See `cemetery_rows`.
+
+    ⚠️ SAME `company_entities` QUERY AND SAME ABSENT FLAG FILTER as
+    `resolve_funeral_home` — see its docstring for why `is_funeral_home` is not
+    required. A scan with a different WHERE clause would answer a different question.
+    """
+    return [
+        (r[0], r[1], r[2])
+        for r in db.execute(text(
+            "SELECT id, name, city FROM company_entities WHERE company_id = :t"
+        ), {"t": tenant_id})
+    ]
+
+
+def cemetery_rows(db: Session, tenant_id: str) -> list[tuple[str, str, str | None]]:
+    """`(id, name, city)` for this tenant's cemeteries.
+
+    ⚠️ EXPOSED SO A SCAN CAN FETCH ONCE AND MATCH IN MEMORY. Ruled 2026-10-12: a span
+    matching an existing cemetery record resolves wherever it appears, with or without
+    a marker — "matching a known name isn't guessing". A scan has to try many
+    candidate n-grams per line, and calling `resolve_cemetery` for each would be one
+    query per n-gram.
+    """
+    return [
+        (r[0], r[1], r[2])
+        for r in db.execute(text(
+            "SELECT id, name, city FROM cemeteries WHERE company_id = :t"
+        ), {"t": tenant_id})
+    ]
+
+
+def resolve_from_rows(
+    rows: list[tuple[str, str, str | None]],
+    phrase: str | None,
+    city_hint: str | None = None,
+) -> PartyResolution:
+    """`_resolve` over rows already fetched — the same matching, no second query.
+
+    ⚠️ THE SAME FUNCTION THE MARKER PATH USES. A scan with its own matching would be a
+    second implementation of "does this text name a cemetery", free to disagree with
+    the first — and the city-conflict rule lives inside `_resolve`, so a separate
+    matcher would silently lose it.
+    """
+    return _resolve(rows, phrase, city_hint)
+
+
 def party_counts(db: Session, tenant_id: str) -> tuple[int, int]:
     """(company_entities, cemeteries) for this tenant.
 

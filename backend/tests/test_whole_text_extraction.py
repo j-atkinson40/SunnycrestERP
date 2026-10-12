@@ -198,50 +198,154 @@ def test_re_reading_the_same_text_gives_the_same_answer(db, tenant):
 
 # ── the sample order, and what it still loses ───────────────────────────
 
-def test_the_sample_order_captures_these_nine_fields(db, tenant):
+def test_the_sample_order_captures_everything_and_asks_about_the_town(db, tenant):
+    """⚠️ THIS ASSERTED NINE FIELDS AND TWO LOSSES UNTIL THE RULINGS OF 2026-10-12.
+
+    It used to end with a `WRONGNESS` test pinning that `Mary Smith` and the cemetery
+    were NOT captured, because both were marker-gated and relaxing either was a design
+    decision. James ruled all three: a town that disagrees with the only matching
+    record ASKS; a span matching an existing cemetery record resolves wherever it is
+    typed; and one leftover person-like span is the decedent. So the sentence now
+    places everything, and the only thing left is the question it should be asking.
+    """
     ex = extract_text(db, tenant_id=tenant, text=SAMPLE)
     assert set(ex.values) == {
-        "funeral_home", "date_of_birth", "date_of_death", "vault",
+        "funeral_home", "deceased_name", "date_of_birth", "date_of_death", "vault",
         "service_location", "service_date", "service_time", "eta",
         "cemetery_equipment",
     }, sorted(ex.values)
+    assert ex.values["deceased_name"] == "Mary Smith"
     assert ex.values["cemetery_equipment"] == "tent_only"   # the correction won
     assert ex.values["service_time"] == "10:00"
     assert ex.values["eta"] == "11:30"
 
+    # ⚠️ THE TOWN CONFLICT IS THE POINT, NOT A LEFTOVER. The director said Auburn and
+    # the only St Mary's on record is in Skaneateles, so the pane asks rather than
+    # resolving silently or dropping "Auburn" into unplaced text.
+    assert [p.field_id for p in ex.picks] == ["cemetery"], ex.picks
+    assert ex.picks[0].discriminator == "city", ex.picks[0]
+    assert "cemetery" not in ex.values, ex.values
+    assert not ex.unrecognized, ex.unrecognized
 
-def test_WRONGNESS_the_sample_order_still_loses_two_fields(db, tenant):
-    """⚠️ WRONGNESS. PINNED, NOT ENDORSED, AND AWAITING A RULING.
 
-    `Mary Smith` and the cemetery are not captured, and both are DELIBERATE
-    marker-gating rather than bugs:
+@pytest.mark.parametrize("typed,expected", [
+    ("St. Mary's Cemetery", "St. Mary's Cemetery"),
+    ("Oakwood", "Oakwood Cemetery"),
+    ("Oakwood Cemetery", "Oakwood Cemetery"),
+    ("Lakeview Memorial Gardens", "Lakeview Memorial Gardens"),
+    ("St Mary's in Skaneateles", "St. Mary's Cemetery"),
+    ("to St Mary's", "St. Mary's Cemetery"),
+])
+def test_a_cemetery_on_record_resolves_with_or_without_a_marker(
+    db, tenant, typed, expected
+):
+    """Ruling 2: matching a known name is a lookup, not a guess."""
+    assert _vals(db, tenant, typed).get("cemetery") == expected
 
-      * `deceased_name` fires only behind a marker — "decedent is Mary Smith" works.
-        A bare capitalised pair could be the funeral home, the decedent, a cemetery or
-        a street, and the extractor refuses to guess.
-      * the cemetery clause needs its marker too — "to St Mary's in Auburn" resolves.
-        ⚠️ Even the EXACT name "St. Mary's Cemetery" does not resolve without one.
 
-    Relaxing either is a design decision with real downside, so it is reported rather
-    than taken. Asserted as-is so that changing it is a visible edit to this file.
+@pytest.mark.parametrize("typed", ["St Mary's in Auburn", "Oakwood in Syracuse",
+                                   "to St Mary's in Auburn"])
+def test_a_town_that_disagrees_with_the_record_ASKS(db, tenant, typed):
+    """Ruling 1, both paths — with the marker and without it."""
+    ex = extract_text(db, tenant_id=tenant, text=typed)
+    assert "cemetery" not in ex.values, ex.values
+    assert [p.field_id for p in ex.picks] == ["cemetery"], ex.picks
+    assert ex.picks[0].discriminator == "city"
+    assert not ex.unrecognized, ex.unrecognized
+
+
+@pytest.mark.parametrize("typed,expected", [
+    ("Mary Smith", "Mary Smith"),
+    ("for Mary Smith", "Mary Smith"),
+    ("decedent is Mary Smith", "Mary Smith"),
+    ("the deceased Mary Smith", "Mary Smith"),
+    ("order for Hopkins, Mary Smith", "Mary Smith"),
+])
+def test_one_leftover_person_like_span_is_the_decedent(db, tenant, typed, expected):
+    assert _vals(db, tenant, typed).get("deceased_name") == expected
+
+
+def test_two_leftover_names_do_NOT_guess(db, tenant):
+    """Ruling 3: two or more and it takes none, both shown unplaced."""
+    ex = extract_text(db, tenant_id=tenant, text="Mary Smith and John Albright")
+    assert "deceased_name" not in ex.values, ex.values
+    assert ex.unrecognized, "both names vanished instead of being shown"
+
+
+@pytest.mark.parametrize("typed,protected_by", [
+    # ⚠️ TWO DIFFERENT MECHANISMS, AND THIS COLUMN EXISTS BECAUSE I GOT IT WRONG.
+    # The first version of this test claimed every row was "excluded by LOOKUP". A
+    # break test that removed the funeral-home lookup left ALL 50 TESTS GREEN — and
+    # the reason is that `Hopkins Funeral Home` was never reaching the decedent pass
+    # at all: the location vocabulary was eating "Funeral Home" and leaving a single
+    # word, which is not a candidate. The test was green for a mechanism it did not
+    # name (CLAUDE.md §11 shape 9). Naming the mechanism per row is what makes the
+    # break test meaningful.
+    ("Hopkins", "one word is not a candidate"),
+    ("Memorial Chapel", "lookup: funeral home"),
+    ("Green Valley Memorial", "lookup: funeral home"),
+    ("Smith & Sons Funeral Home", "lookup: funeral home"),
+    ("Hopkins Funeral Home", "lookup: funeral home"),
+    ("St. Mary's Cemetery", "lookup: cemetery"),
+    ("Lakeview Memorial Gardens", "lookup: cemetery and funeral home"),
+    ("Bronze Triune", "lookup: catalog"),
+    ('Continental 34"', "lookup: catalog"),
+    # ⚠️ THE ROWS THAT MAKE THE FUNERAL-HOME EXCLUSION TESTABLE, and the reason they
+    # exist is that a break test refused to fire TWICE. Every exact record name is
+    # claimed earlier by the marker-less lookup, so removing the exclusion inside the
+    # decedent pass changed nothing — the guard looked dead. It is not: these are
+    # PARTIAL names, which the exact-match lookup does not claim and which
+    # `resolve_funeral_home` matches on significant tokens. Measured with the
+    # exclusion removed: every one of them became the decedent.
+    ("Hopkins Funeral", "lookup: funeral home, PARTIAL name"),
+    ("Johnson Funeral", "lookup: funeral home, PARTIAL name"),
+    ("Riverside Funeral", "lookup: funeral home, PARTIAL name"),
+    ("Whitney Funeral", "lookup: funeral home, PARTIAL name"),
+    ("Green Valley", "lookup: funeral home, PARTIAL name"),
+])
+def test_a_record_name_never_becomes_the_decedent(db, tenant, typed, protected_by):
+    """⚠️ "Hopkins" NEVER BECOMES A DECEDENT, asserted by ruling."""
+    assert "deceased_name" not in _vals(db, tenant, typed), protected_by
+
+
+def test_a_funeral_home_whose_name_lacks_the_words_funeral_home(db, tenant):
+    """⚠️ THE ROW THAT ACTUALLY EXERCISES THE FUNERAL-HOME LOOKUP, and the reason the
+    break test now fires.
+
+    `Green Valley Memorial` is a real funeral home on this tenant whose name contains
+    neither "funeral" nor "home", so the location vocabulary cannot touch it and the
+    only thing standing between it and the decedent field is the lookup. Paired with
+    a genuine decedent in the same line, so the test also shows the two do not fight.
     """
-    ex = extract_text(db, tenant_id=tenant, text=SAMPLE)
-    assert "deceased_name" not in ex.values
-    assert "cemetery" not in ex.values
-    assert any("Mary Smith" in u for u in ex.unrecognized), ex.unrecognized
-    # ⚠️ "in" is a noise word, so the fragment arrives as "St Mary's Auburn".
-    assert any("Mary" in u and "Auburn" in u for u in ex.unrecognized), ex.unrecognized
-
-
-def test_the_markers_DO_work_so_the_gap_is_the_marker_and_not_the_resolver(db, tenant):
-    """⚠️ THE CONTROL ON THE WRONGNESS ABOVE. Without this, "the cemetery is not
-    captured" could equally mean the cemetery resolver is broken."""
-    ex = extract_text(
-        db, tenant_id=tenant,
-        text="decedent is Mary Smith, to St Mary's in Auburn",
-    )
+    ex = extract_text(db, tenant_id=tenant, text="Green Valley Memorial, Mary Smith")
+    assert ex.values.get("funeral_home") == "Green Valley Memorial", ex.values
     assert ex.values.get("deceased_name") == "Mary Smith", ex.values
-    assert ex.values.get("cemetery") == "St. Mary's Cemetery", ex.values
+    assert not ex.unrecognized, ex.unrecognized
+
+
+@pytest.mark.parametrize("typed,fh,loc", [
+    ("Hopkins Funeral Home", "Hopkins Funeral Home", None),
+    ("Hopkins Funeral Home, service at the church", "Hopkins Funeral Home", "church"),
+    ("the service is at the funeral home", None, "funeral_home"),
+    ("order for Hopkins", "Hopkins Funeral Home", None),
+])
+def test_a_party_name_is_still_not_read_as_the_service_location(
+    db, tenant, typed, fh, loc
+):
+    """⚠️ DEFECT 3a, REACHED BY THE PHRASING THE ORIGINAL FIX DID NOT COVER.
+
+    3a was fixed by ORDER — the funeral-home pass claims the party's name before the
+    location vocabulary sees it. But that pass is marker-gated, so "Hopkins Funeral
+    Home" with no "for" got no claim and the vocabulary read "funeral home" out of the
+    name again. Measured 2026-10-12: `service_location='funeral_home'` with "Hopkins"
+    left unplaced. A marker-less record lookup for funeral homes closes it.
+
+    ⚠️ The third row is the control: the location vocabulary must still work when no
+    party is named, or the fix would be suppression rather than a fix.
+    """
+    vals = _vals(db, tenant, typed)
+    assert vals.get("funeral_home") == fh, vals
+    assert vals.get("service_location") == loc, vals
 
 
 # ── performance ─────────────────────────────────────────────────────────

@@ -156,6 +156,19 @@ class FieldDefinition:
     #: `test_date_display.py` so the two mechanisms cannot be stacked on one field and
     #: leave the second silently ignored.
     display: str | None = None
+    #: Why no typed extractor can ever fill this field. None means one exists.
+    #:
+    #: ⚠️ A RATCHET, RULED 2026-10-12 AFTER THE THIRD SUCH GAP. `lifes_reflections_symbol`
+    #: had no extractor, `RowState.NEEDED` could not occur, and `eta` had no parser —
+    #: three fields and states that existed, were applicable, and could never be
+    #: reached. Each was found by accident. `test_every_field_is_typeable_or_declared`
+    #: makes a fourth impossible: a field with neither an extractor nor a reason fails
+    #: the test by name.
+    #:
+    #: ⚠️ THE REASON MUST BE TRUE, NOT A PLACEHOLDER. "Not built yet" is not a reason a
+    #: field is untypeable; it is a reason the test should be failing. The one
+    #: declaration today rests on a measurement.
+    not_typeable: str | None = None
 
     def label_for(self, value: object) -> str:
         """The display label for a stored value.
@@ -517,6 +530,15 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
         "Service location (other)",
         applies_when=EqualsValue("service_location", SERVICE_LOCATION_OTHER),
         required_when=Always(),
+        not_typeable=(
+            "unreachable from typed text, measured 2026-10-12: this field applies only "
+            "when service_location == 'other', and the extractor's location vocabulary "
+            "can produce only church, funeral_home and graveside — 'other' is not among "
+            "them. So the precondition can never be set by typing and the field can "
+            "never become applicable. It would become typeable the moment the "
+            "vocabulary gains an 'anywhere else' branch, and this declaration must come "
+            "off in the same commit."
+        ),
     ),
 
     # ⚠️ PROMPTED, NEVER REQUIRED — the first field of that kind, and the reason

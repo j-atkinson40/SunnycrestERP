@@ -399,7 +399,14 @@ class DeterministicExtractor:
     ) -> LineExtraction:
         from app.services.legacy_print_resolver import resolve as resolve_print
         from app.services.nl_creation.structured_parsers import parse_date, parse_time
-        from app.services.party_resolver import resolve_cemetery, resolve_funeral_home
+        from app.services.party_resolver import (
+            cemetery_rows,
+            funeral_home_rows,
+            normalize as _party_norm,
+            resolve_cemetery,
+            resolve_from_rows,
+            resolve_funeral_home,
+        )
         from app.services.product_name_resolver import build_index, resolve as resolve_vault
 
         spans: list[tuple[int, int]] = []
@@ -552,7 +559,23 @@ class DeterministicExtractor:
             m = re.search(
                 r"\b(?:to|at|going to|burial at|buried at)\s+"
                 rf"({_STOP}[A-Za-z'][A-Za-z'\-]*(?:\s+{_STOP}[A-Za-z'][A-Za-z'\-]*){{0,2}})"
-                r"\s*(?:cemetery|cemeteries)?"
+                # ⚠️ `\s+(?:cemetery)?` WAS `\s*(?:cemetery)?`, AND THAT IS THE THIRD
+                # SILENT FAILURE OF THIS ONE REGEX. `\s*` consumed the space BEFORE
+                # the optional word, so when the director omitted "Cemetery" there was
+                # no whitespace left for `\s+in\s+` to match and THE CITY GROUP NEVER
+                # FIRED. "to St Mary's in Auburn" matched only "to St Mary's ", left
+                # "Auburn" unclaimed, passed city_hint=None, and resolved silently to
+                # the Skaneateles row — exactly the conflict the pick below exists to
+                # raise. With "Cemetery" present the word ate a space of its own and
+                # the city matched, so the bug was invisible to the phrasing anyone
+                # tested. Measured 2026-10-12: name="St Mary's" city=None span=(0,13).
+                #
+                # ⚠️ THE OTHER TWO ARE IN THE COMMENTS AROUND THIS ONE — a greedy
+                # `{0,2}` that ate its own delimiter, and `{{2,30}}` in a plain
+                # r-string. Three failures, all silent, all in one expression. That is
+                # the argument for the record-lookup path below rather than a fourth
+                # repair of this pattern.
+                r"(?:\s+(?:cemetery|cemeteries))?"
                 # ⚠️ `{2,30}` NOT `{{2,30}}`. Only the NAME fragment above is an f-string; this
             # one is a plain r-string, so doubled braces stayed literal and the city
             # group matched the text "{2,30}" — i.e. never. The city was silently
@@ -598,6 +621,156 @@ class DeterministicExtractor:
                         fr.discriminators[0].value if fr.discriminators else None,
                     ))
                     _mark(spans, m)
+
+        # ── cemetery by RECORD LOOKUP, no marker needed ─────────────────
+        # ⚠️ RULED 2026-10-12: "a cemetery that exists in your records should be
+        # recognised wherever it's typed. Matching a known name isn't guessing." The
+        # marker path above stays and still runs first; this catches the rest —
+        # "St. Mary's Cemetery" on its own, and "St Mary's in Auburn" without a "to".
+        #
+        # ⚠️ IT SCANS UNCLAIMED SLICES ONLY, so the funeral home, the vault and the
+        # dates keep whatever they have already taken. A cemetery called "Hopkins"
+        # cannot steal the funeral home's span, because the funeral home pass runs
+        # BEFORE this one and claims first.
+        #
+        # ⚠️ LONGEST N-GRAM FIRST. "St Mary's Cemetery" must beat "St Mary's" when
+        # both are in the records, and a shorter match claiming first would leave
+        # "Cemetery" orphaned — the same orphaned-fragment defect the `graveside`
+        # probe caught in the location vocabulary.
+        if once("cemetery"):
+            rows = cemetery_rows(db, tenant_id)
+            # ⚠️ AN EXACT NAME MATCH, NOT A TOKEN OVERLAP, AND A PROBE IS WHY.
+            # `resolve_from_rows` matches on SIGNIFICANT TOKENS, so the single word
+            # "Mary" resolved to "St. Mary's Cemetery" — and the scan claimed it.
+            # "Mary Smith" therefore came back with "Mary" taken as a cemetery and
+            # "Smith" orphaned as unplaced text, and the decedent could never be
+            # found. Measured, not reasoned about: every line containing a first name
+            # that happens to appear in a cemetery's name was broken.
+            #
+            # Ruling 2 says "a span matching an existing cemetery record" — the NAME,
+            # which is what "matching a known name isn't guessing" means. So the
+            # candidate must EQUAL a record's name, with a trailing "cemetery"
+            # optionally dropped because that is how directors say it ("Oakwood").
+            # `resolve_from_rows` still does the resolving and still owns the
+            # city-conflict rule; it just no longer decides what counts as a mention.
+            exact = set()
+            for _cid, _name, _city in rows:
+                n = _party_norm(_name)
+                exact.add(n)
+                for suf in (" cemetery", " cemeteries"):
+                    if n.endswith(suf):
+                        exact.add(n[: -len(suf)].strip())
+            if rows:
+                for frag_start, frag in _unclaimed_slices(line, spans):
+                    hit = None
+                    words = list(re.finditer(r"[A-Za-z'][A-Za-z'\-\.]*", frag))
+                    # ⚠️ NO N-GRAM MAY CONTAIN A PREPOSITION, AND MY FIRST VERSION
+                    # DID — the identical defect the marker path above already
+                    # documents. `resolve_from_rows` matches on significant tokens, so
+                    # "St Mary's in" matched "St. Mary's Cemetery" just as well as
+                    # "St Mary's" did; the longest-first scan took it, the span ended
+                    # at "in", and `\s+in\s+<Town>` had nothing left to match. The
+                    # town was never read and "Auburn" fell into `unrecognized` —
+                    # which is precisely the conflict ruling 1 exists to raise.
+                    # Measured before and after, not reasoned about.
+                    stop = {"in", "on", "at", "to", "for", "with", "and", "the"}
+                    ok = [
+                        w for w in words if w.group(0).casefold() not in stop
+                    ]
+                    for size in (4, 3, 2, 1):
+                        for i in range(len(ok) - size + 1):
+                            run = ok[i:i + size]
+                            # contiguous in the ORIGINAL word list, so a dropped
+                            # preposition breaks the run rather than closing over it
+                            idx = [words.index(w) for w in run]
+                            if idx != list(range(idx[0], idx[0] + size)):
+                                continue
+                            a, b = run[0].start(), run[-1].end()
+                            if _party_norm(frag[a:b]) in exact:
+                                hit = (a, b, None)
+                                break
+                        if hit:
+                            break
+                    if not hit:
+                        continue
+                    a, b, _ = hit
+                    # ⚠️ THE TOWN IS READ FROM WHAT FOLLOWS THE NAME, so the conflict
+                    # rule applies here exactly as it does on the marker path.
+                    tail = re.match(r"\s+in\s+([A-Za-z][A-Za-z'\- ]{2,30})", frag[b:])
+                    city = tail.group(1).strip() if tail else None
+                    end = b + (tail.end() if tail else 0)
+                    cr = resolve_from_rows(rows, frag[a:b], city)
+                    if cr.party_id:
+                        if _claim(spans, frag_start + a, frag_start + end):
+                            values["cemetery"] = cr.candidates[0].name
+                            if cr.candidates[0].city:
+                                values["cemetery_city"] = cr.candidates[0].city
+                    elif len(cr.candidates) > 1 or cr.city_conflict:
+                        if _claim(spans, frag_start + a, frag_start + end):
+                            picks.append(Pick(
+                                "cemetery", frag[a:b],
+                                tuple((c.name, c.label) for c in cr.candidates),
+                                cr.discriminators[0].value
+                                if cr.discriminators else None,
+                            ))
+                    break
+
+        # ── funeral home by RECORD LOOKUP, no marker needed ────────────
+        # ⚠️ THIS IS DEFECT 3a AGAIN, REACHED BY THE PHRASING THE FIX DID NOT COVER,
+        # AND IT WAS FOUND BY A BREAK TEST THAT DID NOT FIRE.
+        #
+        # 3a was fixed by ORDER: the funeral-home pass claims the party's name before
+        # the location vocabulary can read "funeral home" out of it. But that pass is
+        # marker-gated — it needs "for"/"from"/"with" — so a director who types just
+        # "Hopkins Funeral Home" gets no claim, and the vocabulary eats the words
+        # again. Measured 2026-10-12: `"Hopkins Funeral Home"` alone produced
+        # `service_location='funeral_home'` and left "Hopkins" unplaced. The Service
+        # row would say "Funeral home" for the second time.
+        #
+        # ⚠️ ADDED SCOPE, FLAGGED: ruling 2 names CEMETERIES. The same reasoning and
+        # the same defect apply to funeral homes, and leaving it would mean the bug
+        # James reported is still reachable by the most obvious phrasing there is.
+        #
+        # Exact name match against the records, same as the cemetery scan, for the
+        # same reason: `resolve_from_rows` matches on significant tokens, so a token
+        # overlap is not a mention.
+        if once("funeral_home"):
+            fh_rows = funeral_home_rows(db, tenant_id)
+            fh_exact = {_party_norm(n): n for _i, n, _c in fh_rows}
+            if fh_exact:
+                for frag_start, frag in _unclaimed_slices(line, spans):
+                    words = list(re.finditer(r"[A-Za-z&'][A-Za-z&'\-\.]*", frag))
+                    stop = {"in", "on", "at", "to", "for", "with", "the"}
+                    ok = [w for w in words if w.group(0).casefold() not in stop]
+                    hit = None
+                    for size in (5, 4, 3, 2):
+                        for i in range(len(ok) - size + 1):
+                            run = ok[i:i + size]
+                            idx = [words.index(w) for w in run]
+                            if idx != list(range(idx[0], idx[0] + size)):
+                                continue
+                            a, b = run[0].start(), run[-1].end()
+                            if _party_norm(frag[a:b]) in fh_exact:
+                                hit = (a, b)
+                                break
+                        if hit:
+                            break
+                    if not hit:
+                        continue
+                    a, b = hit
+                    fr = resolve_funeral_home(db, tenant_id, frag[a:b])
+                    if fr.party_id:
+                        if _claim(spans, frag_start + a, frag_start + b):
+                            values["funeral_home"] = fr.candidates[0].name
+                    elif len(fr.candidates) > 1:
+                        if _claim(spans, frag_start + a, frag_start + b):
+                            picks.append(Pick(
+                                "funeral_home", frag[a:b],
+                                tuple((c.name, c.label) for c in fr.candidates),
+                                fr.discriminators[0].value
+                                if fr.discriminators else None,
+                            ))
+                    break
 
         # ── service location ────────────────────────────────────────────
         # ⚠️ MOVED HERE 2026-10-12, AFTER THE FUNERAL HOME, AND THE ORDER IS THE FIX.
@@ -716,6 +889,44 @@ class DeterministicExtractor:
                         _claim(spans, i, i + len(raw))
                     break
 
+        # ── deceased name, by elimination ───────────────────────────────
+        # ⚠️ RULED 2026-10-12: "if exactly one person-like name is left over after
+        # everything else is placed, it becomes the decedent. If there are two, it
+        # doesn't guess." So this runs LAST of the claiming passes, over what nothing
+        # else took, and it refuses when the answer is not unique.
+        #
+        # ⚠️ TWO-TO-THREE CAPITALISED WORDS, WHICH IS WHY "Hopkins" CAN NEVER BE A
+        # DECEDENT. A single word is not a candidate at all — structural, not a
+        # special case. "Hopkins Funeral Home" IS three words and is excluded by the
+        # record check below instead.
+        #
+        # ⚠️ AND THE EXCLUSIONS ARE LOOKUPS, NOT A WORD LIST. A span that names a
+        # funeral home, a cemetery, or anything in the catalog (including aliases) is
+        # not a person. A hand-written list of "words that are not names" would be
+        # wrong for every tenant whose records we have not seen.
+        if once("deceased_name"):
+            person = re.compile(r"\b[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){1,2}\b")
+            cem = cemetery_rows(db, tenant_id)
+            idx = build_index(db)
+            found: list[tuple[int, int, str]] = []
+            for frag_start, frag in _unclaimed_slices(line, spans):
+                for m in person.finditer(frag):
+                    phrase = m.group(0)
+                    if resolve_from_rows(cem, phrase).candidates:
+                        continue
+                    if resolve_vault(idx, phrase).candidates:
+                        continue
+                    if resolve_funeral_home(db, tenant_id, phrase).candidates:
+                        continue
+                    found.append((frag_start + m.start(), frag_start + m.end(), phrase))
+            # ⚠️ EXACTLY ONE, OR NOTHING. Two leftover names mean the engine cannot
+            # tell which is the decedent, and both stay visible as unplaced text —
+            # which is the honest outcome and the one the ruling asks for.
+            if len(found) == 1:
+                a, b, phrase = found[0]
+                if _claim(spans, a, b):
+                    values["deceased_name"] = phrase
+
         # ── service date / time / eta ───────────────────────────────────
         # ⚠️ LAST, AND OVER LEFTOVERS ONLY. `parse_date` is greedy about bare numbers,
         # so running it over the whole line would swallow "34 inch" and the year pair.
@@ -802,6 +1013,41 @@ class DeterministicExtractor:
 #: names the seam rather than the implementation — swapping in a model-backed
 #: extractor later is one line here and no change anywhere else.
 EXTRACTOR: LineExtractor = DeterministicExtractor()
+
+
+#: Every template field this extractor can write.
+#:
+#: ⚠️ DECLARED HERE AND CHECKED AGAINST THE SOURCE, so the declaration cannot lie.
+#: `test_the_declared_writable_set_matches_what_the_code_writes` scans this module for
+#: `values[...] = ` assignments and fails if the two disagree in either direction — a
+#: field listed here that nothing writes, or a field written that is not listed.
+#:
+#: ⚠️ IT EXISTS BECAUSE THREE FIELDS AND STATES WERE FOUND, BY ACCIDENT, TO BE
+#: UNREACHABLE: `lifes_reflections_symbol` had no extractor, `RowState.NEEDED` could
+#: not occur, and `eta` had no parser. Each was discovered while looking for something
+#: else. Together with `FieldDefinition.not_typeable` this partitions the template so
+#: a fourth is a failing test rather than a discovery.
+WRITABLE_FIELDS: frozenset[str] = frozenset({
+    "burial_date",
+    "cemetery",
+    "cemetery_city",
+    "cemetery_equipment",
+    "date_of_birth",
+    "date_of_death",
+    "deceased_name",
+    "eta",
+    "funeral_home",
+    "grave_location",
+    "legacy_print_name",
+    "legacy_series",
+    "lifes_reflections_symbol",
+    "nameplate_date_format",
+    QUESTION_PERSONALIZATION,
+    "service_date",
+    "service_location",
+    "service_time",
+    "vault",
+})
 
 
 class MentionPolicy(str, Enum):
