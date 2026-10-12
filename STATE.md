@@ -2,6 +2,76 @@
 
 Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end of every build session. Canon lives elsewhere — see read order in CLAUDE.md.
 
+## 2026-10-12 — Typed capture round 2: the bar is the only input, the text is the source
+
+- **2026-10-12** — Migration head advances `r207_form_counterpart_aliases` →
+  **`r208_capture_session_text`**. Two nullable columns on `capture_sessions`:
+  `full_text` and `resolutions`. **DEV ONLY — NOT ON PRODUCTION.** Merging to
+  `main` applies it (`railway-start.sh:45` runs `alembic upgrade head` per deploy).
+- **2026-10-12** — Typed capture moved from APPENDING LINES to RE-READING THE WHOLE
+  TEXT on every pause. New endpoint `PUT /api/v1/capture/sessions/{id}/text`.
+  `set_text` replaces `values`/`unrecognized`/`pending_picks` rather than
+  accumulating, so deleting a word un-captures what it said. `add_line` is untouched
+  and not deprecated — two input sources, two mention policies (FIRST_WINS for
+  lines, LAST_WINS for whole text), stated per source.
+- **2026-10-12** — `capture_sessions.resolutions` makes a settled pick outlive
+  re-extraction. Without it the still-ambiguous text on screen re-raised every
+  settled question on the next keystroke.
+- **2026-10-12** — The Opas command bar is now the ONLY input. `CapturePane`'s text
+  box is gone. Entry-vs-info is a property of the PANE TYPE (`pane-mode.ts`,
+  `Record<OpasPaneKind, PaneMode>` so a new kind must be classified to compile);
+  entry panes anchor to the bar's corner, info panes cascade from the top right.
+  Live extraction debounced at 350 ms, sequence numbers issued and stale responses
+  dropped CLIENT-side, picks by click or ⌘1..9 with numbers visible, bare digits go
+  into the text, Enter a hard no-op in entry mode, reload restores text + resolutions.
+- **2026-10-12** — **FIVE DEFECTS FOUND BY RUNNING THE PANE OVER HTTP ON DEV, NONE
+  BY ANY TEST**, all invisible for the same reason: the session tests build a BARE
+  tenant with no products, so no vault resolves and the whole availability layer is
+  unreachable. (1) `UnpermittedAnswer` raised into **HTTP 500** on the hot path —
+  `evaluate_typed` now reports conflicts; (2) the withheld answer was still RENDERED,
+  so one response called a value unavailable and done at once; (3) three rows could
+  read "Not configured for this licensee" above captured values, because the row
+  layer tested `is_conditional` while reading `permitted_answers` — now
+  `FieldDefinition.availability_governed`; (4) an apostrophe made "St Marys" miss
+  "St. Mary's Cemetery", and the unmatched name then OVERWROTE the real decedent;
+  (5) "nameplate and vinyl, cross" reported `cross` as not understood AND captured
+  no symbol, because segment isolation hid the gate's context.
+- **2026-10-12** — `party_resolver.normalize` now DELETES apostrophes instead of
+  turning them into separators. Its docstring had claimed this outcome while the code
+  did the opposite. **Shared with the call pipeline**; E6 satisfied —
+  `test_call_extraction_missing_set.py` and `test_piece4_conditionals.py` pass
+  UNMODIFIED, 59 green, neither file in the diff.
+- **2026-10-12** — ACTIVE GAP, named not fixed: `resolve_and_evaluate` on the CALL
+  path raises `UnpermittedAnswer` on exactly the input that used to 500 the pane, and
+  nothing catches it. `evaluate_typed` is typed-only so the fix cannot reach it.
+  Closing it changes call-overlay behaviour — James's ruling.
+- **2026-10-12** — ACTIVE GAP, ratcheted: `burial_date`, `grave_location` and
+  `nameplate_date_format` are sourced by NO capture row. Captured, displayed nowhere;
+  two of the three block completion, so the pane can report an order incomplete while
+  showing no row for what is missing. Whether they get rows is a display decision.
+- **2026-10-12** — DEFERRED: span attribution for unrecognized text. The pane shows
+  WHAT could not be placed, not WHICH characters produced it. Asked for in the
+  dispatch; not built.
+- **2026-10-12** — Gates. Backend **3114 passed / 4 skipped / 0 failed over 207 of
+  485 test files** (the gate SELECTS; the denominator is stated). Frontend tsc 0
+  errors, vitest **348 files / 4613 tests / 0 failed on three consecutive runs**;
+  suite-size floor raised 345/4560 → 348/4613 from a clean run. New BLOCKING latency
+  gate `test_typed_capture_latency.py`: 150 ms per re-extraction, measured warm p50
+  **15.2 ms**, longest text 24.2 ms; the FIRST call in a fresh process costs
+  **225.6 ms and is over budget** — process warm-up, not text length, excluded from
+  the gate with the number recorded in its docstring.
+- **2026-10-12** — One unresolved frontend failure recorded with its rate rather than
+  filed: `DocumentsTab.test.tsx::Save fires documentBlocksService.update immediately`
+  failed ONCE in a full run (`expected 1 times, got 0`), passes 21/21 isolated, 0
+  failures in 3 subsequent full runs, 0 failures in a full run at the pre-frontend
+  commit. 1 in 4 runs of this tree. Not enough to call pre-existing, not enough to
+  call resolved. CLAUDE.md names a load-dependent flake class in this file, but that
+  class presents as `EnvironmentTeardownError` and this presented as an assertion.
+- **2026-10-12** — Walk steps for James:
+  `docs/investigations/2026-10-12-typed-capture-round-2-walk.md`. ⚠️ Its first
+  instruction is to RESTART the dev backend — the process on :8000 was started before
+  this work and does not have the route; measured, not assumed.
+
 ## ⚠️ TWO FRONTEND TESTS WHERE AN INTERACTION NEVER REGISTERS UNDER LOAD (2026-10-06)
 
 - **2026-10-06 — THE READING THAT RETIRED THE OBVIOUS FIX, and it applies to both.** A
