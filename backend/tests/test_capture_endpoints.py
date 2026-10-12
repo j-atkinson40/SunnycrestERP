@@ -175,7 +175,7 @@ def test_lines_accumulate_and_values_carry_forward(db, two_users):
 
     state = session_service.read_state(db, row.id, company_id=cid, user_id=uid)
     assert state["typed_lines"] == ["tent only", "nameplate only", "years only"]
-    assert state["values"]["cemetery_equipment"] == "Tent Only"
+    assert state["values"]["cemetery_equipment"] == "tent_only"
     assert state["values"]["personalization"] == "nameplate_only"
     assert state["values"]["nameplate_date_format"] == "years"
 
@@ -340,5 +340,5 @@ def test_the_session_survives_being_reread_from_the_database(db, two_users):
     db.expunge_all()
 
     state = session_service.read_state(db, sid, company_id=cid, user_id=uid)
-    assert state["values"]["cemetery_equipment"] == "Tent Only"
+    assert state["values"]["cemetery_equipment"] == "tent_only"
     assert state["typed_lines"] == ["tent only"]

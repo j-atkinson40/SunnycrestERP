@@ -138,7 +138,7 @@ def test_a_whole_typed_order_fills_the_capture(db, tenant):
     assert answers["cemetery"] == "Oakwood Cemetery"
     assert answers["cemetery_city"] == "Auburn"
     assert answers[QUESTION_PERSONALIZATION] == "nameplate_only"
-    assert answers["cemetery_equipment"] == "Tent Only"
+    assert answers["cemetery_equipment"] == "tent_only"
     assert answers["grave_location"] == "Section C, Lot 14, Space 2"
     assert not picks, [p.field_id for p in picks]
     assert QUESTION_PERSONALIZATION in state.answered
@@ -146,10 +146,10 @@ def test_a_whole_typed_order_fills_the_capture(db, tenant):
 
 @pytest.mark.parametrize("line,field,expected", [
     ("34 inch Continental", "vault", 'Continental 34"'),
-    ("tent only", "cemetery_equipment", "Tent Only"),
-    ("device and grass", "cemetery_equipment", "Lowering Device & Grass"),
-    ("lowering device only", "cemetery_equipment", "Lowering Device Only"),
-    ("full setup", "cemetery_equipment", "Full Equipment"),
+    ("tent only", "cemetery_equipment", "tent_only"),
+    ("device and grass", "cemetery_equipment", "lowering_device_and_grass"),
+    ("lowering device only", "cemetery_equipment", "lowering_device_only"),
+    ("full setup", "cemetery_equipment", "full_equipment"),
     ("print is Going Home", "legacy_print_name", "Going Home"),
     ("nameplate and emblem", QUESTION_PERSONALIZATION, "nameplate_and_cover_emblem"),
     ("custom artwork", "legacy_series", "custom"),
@@ -436,7 +436,7 @@ def test_a_line_that_is_half_understood_reports_the_other_half(db, tenant):
     ex = EXTRACTOR.extract_line(
         db, tenant_id=tenant, line="tent only and something about swirls", answers={}
     )
-    assert ex.values["cemetery_equipment"] == "Tent Only"
+    assert ex.values["cemetery_equipment"] == "tent_only"
     assert any("swirls" in u for u in ex.unrecognized), ex.unrecognized
 
 
@@ -484,7 +484,7 @@ def test_a_restatement_is_SURFACED_not_silently_ignored(db, tenant):
     """
     answers, picks, unrec = _type(db, tenant, ["full setup", "tent only"])
 
-    assert answers["cemetery_equipment"] == "Full Equipment"
+    assert answers["cemetery_equipment"] == "full_equipment"
     assert not [p for p in picks if p.field_id == "vault"], (
         "a correction to the equipment was offered as a vault pick"
     )

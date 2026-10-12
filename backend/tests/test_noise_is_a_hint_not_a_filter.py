@@ -208,8 +208,8 @@ def test_what_already_resolved_still_resolves(db, tenant, line, expected):
 
 
 @pytest.mark.parametrize("line,field,expected", [
-    ("tent only", "cemetery_equipment", "Tent Only"),
-    ("device and grass", "cemetery_equipment", "Lowering Device & Grass"),
+    ("tent only", "cemetery_equipment", "tent_only"),
+    ("device and grass", "cemetery_equipment", "lowering_device_and_grass"),
 ])
 def test_equipment_phrases_are_untouched(db, tenant, line, field, expected):
     """⚠️ "device and grass" IS THE ONE TO WATCH. The `and` fold and the raw-retry both

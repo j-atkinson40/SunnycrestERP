@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.services.capture.schema import (
     NAMEPLATE_DATE_FORMATS,
+    EQUIPMENT_PACKAGES,
     SERVICE_LOCATIONS,
 )
 from app.services.personalization.questions import (
@@ -97,16 +98,28 @@ class LineExtractor(Protocol):
 #: Equipment packages, by the words a director actually says. ⚠️ ORDERED LONGEST-INTENT
 #: FIRST: "lowering device and grass" must be tried before "lowering device", or
 #: "device and grass" resolves to the device alone and the grass becomes unrecognized.
+#: ⚠️ STORES IDS, NOT LABELS, SINCE 2026-10-12. This was the ONE enum field whose
+#: extractor wrote a display label ("Tent Only") while every other wrote an id — so
+#: nothing could tell, per field, whether a stored value was an id or a name, which
+#: is why `rows.py` ever did `str(v)` and why `service_location` reached James's
+#: screen as `funeral_home`. Ruled: fix it at the source.
+#:
+#: ⚠️ THE IDS ARE LOOKED UP BY LABEL FROM `EQUIPMENT_PACKAGES`, NOT RETYPED. The
+#: label strings below are the exact ones this table used to store, so a mistyped
+#: label raises a KeyError at import rather than silently writing a value no
+#: `label_for` can resolve.
+_EQ_ID: dict[str, str] = {label: ident for ident, label in EQUIPMENT_PACKAGES}
+
 _EQUIPMENT: tuple[tuple[str, str], ...] = (
-    (r"full\s+(?:equipment|setup|set\s*up)", "Full Equipment"),
-    (r"(?:lowering\s+)?device\s+(?:and|&|\+)\s+grass(?:\s+mats)?", "Lowering Device & Grass"),
-    (r"grass\s+(?:and|&|\+)\s+(?:lowering\s+)?device", "Lowering Device & Grass"),
-    (r"tent\s+only", "Tent Only"),
-    (r"just\s+(?:a\s+|the\s+)?tent", "Tent Only"),
-    (r"(?:lowering\s+)?device\s+only", "Lowering Device Only"),
-    (r"just\s+(?:the\s+)?(?:lowering\s+)?device", "Lowering Device Only"),
-    (r"vault\s+placer", "Vault Placer"),
-    (r"extra\s+chairs", "Extra Chairs (over 8)"),
+    (r"full\s+(?:equipment|setup|set\s*up)", _EQ_ID["Full Equipment"]),
+    (r"(?:lowering\s+)?device\s+(?:and|&|\+)\s+grass(?:\s+mats)?", _EQ_ID["Lowering Device & Grass"]),
+    (r"grass\s+(?:and|&|\+)\s+(?:lowering\s+)?device", _EQ_ID["Lowering Device & Grass"]),
+    (r"tent\s+only", _EQ_ID["Tent Only"]),
+    (r"just\s+(?:a\s+|the\s+)?tent", _EQ_ID["Tent Only"]),
+    (r"(?:lowering\s+)?device\s+only", _EQ_ID["Lowering Device Only"]),
+    (r"just\s+(?:the\s+)?(?:lowering\s+)?device", _EQ_ID["Lowering Device Only"]),
+    (r"vault\s+placer", _EQ_ID["Vault Placer"]),
+    (r"extra\s+chairs", _EQ_ID["Extra Chairs (over 8)"]),
     (r"no\s+equipment|don'?t\s+need\s+equipment", ANSWER_NONE),
 )
 

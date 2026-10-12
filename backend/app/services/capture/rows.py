@@ -262,30 +262,51 @@ def row_field_ids(row: Row) -> tuple[str, ...]:
 
 
 def _render(
-    src: Source, values: dict[str, object], records: dict[str, dict]
+    src: Source,
+    values: dict[str, object],
+    records: dict[str, dict],
+    defs: dict[str, object] | None = None,
 ) -> str | None:
     """A source's rendered value, or None when it yields nothing.
 
     ⚠️ `is_answered` DECIDES, not truthiness. See the module docstring.
+
+    ⚠️ A FIELD WITH OPTIONS IS RENDERED THROUGH `label_for`, NEVER `str`. This line
+    used to be `str(v)` for every field, and it put the raw id `funeral_home` on
+    James's screen in the Service row on production. An enum field stores an id; the
+    display label is declared beside the field's options in `schema.py` and nowhere
+    else — not here, and not in the frontend.
+
+    ⚠️ `defs=None` RENDERS RAW, AND THAT IS A REAL RISK, SO IT IS NAMED. A caller
+    that forgets to pass the definitions gets slugs back and nothing complains. Every
+    caller inside this module passes them; `test_enum_display.py` asserts the shipped
+    path renders labels, which is what makes the default safe rather than merely
+    convenient.
     """
     if isinstance(src, LiteralSource):
         return src.text
     if isinstance(src, FieldSource):
         v = values.get(src.field_id)
-        return str(v) if is_answered(v) else None
+        if not is_answered(v):
+            return None
+        d = (defs or {}).get(src.field_id)
+        return d.label_for(v) if d is not None else str(v)
     if isinstance(src, RecordSource):
         v = (records.get(src.record) or {}).get(src.path)
         return str(v) if is_answered(v) else None
-    parts = [p for p in (_render(s, values, records) for s in src.sources) if p]
+    parts = [p for p in (_render(s, values, records, defs) for s in src.sources) if p]
     return src.join.join(parts) if parts else None
 
 
 def _first(
-    sources: tuple[Source, ...], values: dict[str, object], records: dict[str, dict]
+    sources: tuple[Source, ...],
+    values: dict[str, object],
+    records: dict[str, dict],
+    defs: dict[str, object] | None = None,
 ) -> str | None:
     """⚠️ AMENDMENT 1: ordered, first yielding a value wins."""
     for src in sources:
-        got = _render(src, values, records)
+        got = _render(src, values, records, defs)
         if got is not None:
             return got
     return None
@@ -314,6 +335,12 @@ def resolve_surface(
     """
     records = records or {}
     by_id = {f.field_id: f for f in resolved_fields}
+    #: ⚠️ THE LABEL LOOKUP, BUILT ONCE. Keyed by field id -> FieldDefinition, so
+    #: `_render` can ask a field how to display its own stored value. Built from
+    #: `resolved_fields` rather than from the platform tuple, because a tenant may
+    #: have switched a field off and a row must not render through a definition the
+    #: resolver excluded.
+    _defs = {f.field_id: f.definition for f in resolved_fields}
     applicable = set(by_id)
 
     out: list[ResolvedRow] = []
@@ -325,8 +352,10 @@ def resolve_surface(
         if ids and not any(i in applicable for i in ids):
             continue
 
-        value = _first(row.sources, values, records)
-        secondary = _first(row.secondary, values, records) if row.secondary else None
+        value = _first(row.sources, values, records, _defs)
+        secondary = (
+            _first(row.secondary, values, records, _defs) if row.secondary else None
+        )
 
         unanswered_required = [
             i for i in ids
@@ -365,9 +394,9 @@ def resolve_surface(
 
     subj_p = subj_s = None
     if surface.subject is not None:
-        subj_p = _first(surface.subject.primary, values, records)
+        subj_p = _first(surface.subject.primary, values, records, _defs)
         subj_s = (
-            _first(surface.subject.secondary, values, records)
+            _first(surface.subject.secondary, values, records, _defs)
             if surface.subject.secondary
             else None
         )

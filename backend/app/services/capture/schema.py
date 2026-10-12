@@ -60,12 +60,14 @@ from app.services.personalization.availability import (
 )
 from app.services.personalization.questions import (
     ANSWER_NONE,
+    LEGACY_SERIES_CUSTOM,
     LEGACY_SERIES_FIELD_ID,
     LEGACY_SERIES_STANDARD,
     PERSONALIZABLE_FORMS,
     PRINT_BEARING_ANSWERS,
     QUESTION_PERSONALIZATION,
     QUESTIONS,
+    VINYL_ANSWERS,
     VINYL_BEARING_ANSWERS,
 )
 
@@ -124,6 +126,36 @@ class FieldDefinition:
     #: is NOT_APPLICABLE and never INDETERMINATE. Otherwise the indeterminate set
     #: would accumulate fields nobody is waiting on an answer for.
     switchable: bool = True
+    #: `(stored_id, display_label)` for a field with a FIXED VOCABULARY. Empty for
+    #: every other field.
+    #:
+    #: ⚠️ THIS IS THE ONE MAP, AND IT LIVES HERE BECAUSE OF WHAT WENT WRONG WITHOUT
+    #: IT. James walked production and the Service row read `funeral_home` — the
+    #: stored id, rendered raw. `rows.py` did `str(v)` because nothing told it which
+    #: fields hold ids and which hold display text. Ruled 2026-10-12: enum fields
+    #: store IDS and labels come from one map declared beside the field's options in
+    #: the schema, never from the frontend.
+    #:
+    #: ⚠️ AND THE SPLIT IS DELIBERATE: resolved-entity fields (`vault`, `cemetery`,
+    #: `funeral_home`) and free-text fields (`deceased_name`, `grave_location`) store
+    #: their DISPLAY VALUE and have no options. A field with options stores an id; a
+    #: field without stores what it shows. `test_enum_display.py` asserts the
+    #: partition, so a new enum field cannot quietly join the second group.
+    options: tuple[tuple[str, str], ...] = ()
+
+    def label_for(self, value: object) -> str:
+        """The display label for a stored value.
+
+        ⚠️ AN UNKNOWN VALUE COMES BACK AS ITSELF, NOT AS AN ERROR. A stored row may
+        predate a vocabulary change, and showing the raw id is a visible oddity the
+        operator can report; raising would take the whole pane down over one row.
+        """
+        if not self.options:
+            return str(value)
+        for ident, label in self.options:
+            if ident == value:
+                return label
+        return str(value)
 
     @property
     def is_conditional(self) -> bool:
@@ -137,6 +169,49 @@ class FieldDefinition:
         here; its live verdict is stamped on `ResolvedField.required_verdict` by
         `resolve_schema`, which is what display callers should read."""
         return isinstance(self.required_when, Always)
+
+
+#: Display labels for the one personalization question's answers.
+#:
+#: ⚠️ PROVENANCE IS MARKED PER ENTRY, BECAUSE FOUR WERE MEASURED AND TWO WERE NOT.
+#: `questions.py` carries a `display_label` for the QUESTION and bare ids for the
+#: ANSWERS — there has never been an answer-label map anywhere, so these are new
+#: strings and where they came from matters.
+#:
+#: MEASURED, from the ordering portal, which is Sunnycrest's own surface and
+#: therefore the authority on what Sunnycrest calls these
+#: (`docs/investigations/2026-09-22-ordering-portal-personalization.md`):
+#:     legacy_print                    "Legacy Series™ Print"        (line 21)
+#:     lifes_reflections               "Life's Reflections® Vinyl"   (line 23)
+#:     nameplate_only                  "Nameplate Only"              (line 106)
+#:     nameplate_and_cover_emblem      "Nameplate & Cover Emblem"    (line 106)
+#:
+#: ⚠️ CONSTRUCTED — THE PORTAL HAS NO SUCH OPTION AND I WROTE THESE:
+#:     cover_emblem_only               the portal's select offers only "Nameplate
+#:                                     Only" and "Nameplate & Cover Emblem";
+#:                                     that doc records "only two; no emblem-only".
+#:                                     The id exists because a migration derived it
+#:                                     (`{physical_emblem: {}} -> cover_emblem_only`).
+#:     nameplate_and_lifes_reflections the portal holds these as TWO separate
+#:                                     fields and never as one option.
+#: Both read plausibly and neither is Sunnycrest's wording. If James has a phrase
+#: for them, these two are the rows to change.
+PERSONALIZATION_ANSWER_LABELS: dict[str, str] = {
+    "legacy_print": "Legacy Series™ Print",
+    "nameplate_only": "Nameplate Only",
+    "nameplate_and_cover_emblem": "Nameplate & Cover Emblem",
+    "cover_emblem_only": "Cover Emblem Only",
+    "lifes_reflections": "Life's Reflections® Vinyl",
+    "nameplate_and_lifes_reflections": "Nameplate & Life's Reflections® Vinyl",
+    ANSWER_NONE: "None",
+}
+
+#: ⚠️ MEASURED, both of them — the portal's own `legacy_print` select options
+#: (`2026-09-22-ordering-portal-personalization.md` line 105).
+LEGACY_SERIES_OPTIONS: tuple[tuple[str, str], ...] = (
+    (LEGACY_SERIES_STANDARD, "Legacy Series™ (standard)"),
+    (LEGACY_SERIES_CUSTOM, "Legacy Custom Series™ (custom artwork)"),
+)
 
 
 def _personalization_fields() -> tuple[FieldDefinition, ...]:
@@ -156,6 +231,13 @@ def _personalization_fields() -> tuple[FieldDefinition, ...]:
             applies_when=AvailabilityOffered(q.question_id, forms=PERSONALIZABLE_FORMS),
             required_when=Always(),
             switchable=True,
+            # ⚠️ DERIVED FROM THE QUESTION'S OWN ANSWER LIST, NOT FROM THE LABEL MAP.
+            # Iterating the map would let a label whose answer was deleted survive as
+            # a phantom option; iterating `all_answers()` means the options ARE the
+            # answers and a missing label fails the totality test instead.
+            options=tuple(
+                (a, PERSONALIZATION_ANSWER_LABELS[a]) for a in q.all_answers()
+            ),
         )
         for q in QUESTIONS
     )
@@ -168,6 +250,15 @@ def _personalization_fields() -> tuple[FieldDefinition, ...]:
 #: would invite arbitrary combinations nobody requested and nobody can stamp on a
 #: nameplate. A fourth value is a row here when someone asks for one.
 NAMEPLATE_DATE_FORMATS: tuple[str, ...] = ("written", "numeric", "years")
+
+#: ⚠️ LABELS DERIVED FROM THE TUPLE ABOVE, NOT RETYPED. A dict keyed by the same
+#: constants means a value can never have a label without being a legal value; the
+#: assertion below is what makes that true rather than intended.
+NAMEPLATE_DATE_FORMAT_OPTIONS: tuple[tuple[str, str], ...] = tuple(
+    (v, {"written": "Written out", "numeric": "All numeric",
+         "years": "Years only"}[v])
+    for v in NAMEPLATE_DATE_FORMATS
+)
 
 #: ⚠️ A MEASURED DEFAULT, AND THE DISTINCTION FROM THE DEFAULTS THIS ARC REMOVED
 #: IS THE WHOLE REASON FOR THIS COMMENT.
@@ -200,6 +291,39 @@ NAMEPLATE_DATE_FORMAT_DEFAULT = "written"
 #: against is a member of this tuple, so the typo fails loudly instead. A database
 #: CHECK is a separate decision and is not taken here.
 SERVICE_LOCATIONS: tuple[str, ...] = ("church", "funeral_home", "graveside", "other")
+
+#: ⚠️ `funeral_home` IS THE ONE THAT WENT TO PRODUCTION AS A RAW SLUG. Derived from
+#: the tuple above so a label cannot exist for a value the engine rejects.
+SERVICE_LOCATION_OPTIONS: tuple[tuple[str, str], ...] = tuple(
+    (v, {"church": "Church", "funeral_home": "Funeral home",
+         "graveside": "Graveside", "other": "Other"}[v])
+    for v in SERVICE_LOCATIONS
+)
+
+#: Cemetery equipment packages. ⚠️ NEW IDS, AND THE REASON IS AN INCONSISTENCY THIS
+#: COMMIT REMOVES: `cemetery_equipment` was the ONE enum field whose extractor stored
+#: a LABEL ("Tent Only") while every other stored an id. So the display layer could
+#: not tell, per field, whether it held an id or a name — which is why `str(v)` was
+#: ever written. Ruled 2026-10-12: fix it at the source.
+#:
+#: ⚠️ THE LABELS ARE THE EXACT STRINGS THE OLD EXTRACTOR STORED, so nothing a
+#: director reads changes; only what the database holds does.
+EQUIPMENT_PACKAGES: tuple[tuple[str, str], ...] = (
+    ("full_equipment", "Full Equipment"),
+    ("lowering_device_and_grass", "Lowering Device & Grass"),
+    ("tent_only", "Tent Only"),
+    ("lowering_device_only", "Lowering Device Only"),
+    ("vault_placer", "Vault Placer"),
+    ("extra_chairs", "Extra Chairs (over 8)"),
+    # ⚠️ THE SENTINEL IS AN OPTION, AND A RATCHET FOUND THIS MISSING. "no equipment"
+    # stores `ANSWER_NONE`, and `is_answered` treats "none" as an ANSWER rather than
+    # as silence — so without a label here a director who declined equipment would
+    # have read the raw id `none` on the row. `personalization` already carried it,
+    # via `all_answers()`; this list did not, and
+    # `test_every_value_the_extractor_can_produce_has_a_label` named it on its first
+    # run rather than after someone saw it.
+    (ANSWER_NONE, "None"),
+)
 SERVICE_LOCATION_OTHER = "other"
 SERVICE_LOCATION_GRAVESIDE = "graveside"
 
@@ -364,7 +488,8 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # `resolve_schema` returns fields in platform order and that order reaches
     # the UI, so reordering existing entries is a visible change this commit is
     # not making.
-    FieldDefinition("service_location", "Service location"),
+    FieldDefinition("service_location", "Service location",
+                    options=SERVICE_LOCATION_OPTIONS),
 
     # ⚠️ THE SECOND VALUE-CONDITION SHAPE, AND THE ONE THAT KILLED
     # resolve-then-compare. It depends on ANOTHER FIELD'S ANSWER in the same
@@ -450,6 +575,7 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
         "nameplate_date_format", "Date format",
         applies_when=ANY_PERSONALIZATION_CHOSEN,
         required_when=Always(),
+        options=NAMEPLATE_DATE_FORMAT_OPTIONS,
     ),
     # ⚠️ ADDED 2026-10-07 (R3). WHICH print, asked because a director names it from
     # Wilbert's poster of official prints. PROMPTED, NEVER REQUIRED, by ruling — an
@@ -467,6 +593,7 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
         LEGACY_SERIES_FIELD_ID, "Legacy series",
         applies_when=AnswerIn(QUESTION_PERSONALIZATION, PRINT_BEARING_ANSWERS),
         required_when=Never(),
+        options=LEGACY_SERIES_OPTIONS,
     ),
     # ⚠️ NOW HANGS OFF `legacy_series`, NOT OFF THE PERSONALIZATION ANSWER — R2. The
     # portal asks which print only for STANDARD; custom carries artwork that follows
@@ -495,6 +622,9 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
         "lifes_reflections_symbol", "Which symbol",
         applies_when=AnswerIn(QUESTION_PERSONALIZATION, VINYL_BEARING_ANSWERS),
         required_when=Never(),
+        # ⚠️ ALREADY AN ID->LABEL DICT, AND MEASURED. `VINYL_ANSWERS` carries the
+        # portal's eight symbol names, so nothing is retyped and nothing invented.
+        options=tuple(VINYL_ANSWERS.items()),
     ),
     # ⚠️ A PRODUCT REFERENCE, NOT FREE TEXT. The catalog sells 5 `equipment`
     # products (measured 2026-10-05), the scheduling board renders equipment
@@ -505,7 +635,8 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # an equipment selection LANDS on the order waits on the graveside-services
     # model, which is deliberately unbuilt. Capture it now; the mapping follows
     # services. Without this note the field reads as finished.
-    FieldDefinition("cemetery_equipment", "Cemetery equipment", required_when=Never()),
+    FieldDefinition("cemetery_equipment", "Cemetery equipment", required_when=Never(),
+                    options=EQUIPMENT_PACKAGES),
 ) + _personalization_fields()
 
 
