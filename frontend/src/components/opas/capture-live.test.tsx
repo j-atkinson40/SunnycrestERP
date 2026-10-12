@@ -71,6 +71,7 @@ function state(over: Record<string, unknown> = {}) {
     typed_lines: [],
     full_text: null,
     resolutions: {},
+    conflicts: [],
     values: {},
     answered: [],
     missing: [],
@@ -402,6 +403,22 @@ describe("⌘1..9 settles a pick", () => {
     vi.mocked(choosePick).mockResolvedValue(state() as never)
     await openOrder()
 
+    // ⚠️ WAIT FOR THE PICK TO BE ON SCREEN BEFORE PRESSING, AND THIS WAS A REAL FLAKE
+    // RATHER THAN CAUTION. The ⌘ listener is attached by an effect whose dependency
+    // is the pick list, which reaches the host through the pane's status callback —
+    // pane render, parent setState, parent render, effect. `openOrder` only waits for
+    // the ROWS, so under full-suite load the keypress arrived before the listener
+    // existed and this failed `expected false to be true`. It passed in isolation
+    // and in the Opas-only run, and failed once in 4613; a timing assumption that
+    // holds on a quiet machine is the shape that fails in CI.
+    //
+    // ⚠️ THE PICK NUMBER IS THE RIGHT THING TO WAIT FOR, not an arbitrary delay: it
+    // renders from the same `pending_picks` the listener's effect depends on, so its
+    // presence is evidence about the listener rather than about the clock.
+    await waitFor(() =>
+      expect(screen.getByTestId("capture-pick-number-vault-2")).toBeInTheDocument(),
+    )
+
     expect(pressMetaDigit("2")).toBe(true)
   })
 
@@ -457,6 +474,50 @@ describe("⌘1..9 settles a pick", () => {
     await user.click(screen.getByTestId("capture-pick-option-vault-3"))
 
     await waitFor(() => expect(choosePick).toHaveBeenCalledWith("sess-1", "vault", 3))
+  })
+})
+
+describe("a combination the vault forbids is shown, not swallowed", () => {
+  const CONFLICT = {
+    field_id: "personalization",
+    value: "nameplate_and_lifes_reflections",
+    permitted: ["nameplate_only"],
+    message:
+      "personalization='nameplate_and_lifes_reflections' is not permitted on this " +
+      "vault; permitted: ['nameplate_only'] (plus 'none')",
+  }
+
+  it("renders the conflict with what IS available", async () => {
+    // ⚠️ THIS IS THE DEFECT THAT RETURNED HTTP 500 FROM THE LIVE PANE. The server
+    // now reports it instead of raising; a client that ignored the list would make
+    // the fix invisible — the pane would simply show nothing where the director's
+    // words went.
+    vi.mocked(startCapture).mockResolvedValue(
+      state({ conflicts: [CONFLICT] }) as never,
+    )
+    await openOrder()
+
+    expect(screen.getByTestId("capture-conflicts")).toBeInTheDocument()
+    expect(screen.getByTestId("capture-conflict-personalization")).toHaveTextContent(
+      "nameplate_only",
+    )
+  })
+
+  it("does NOT file it under 'not understood'", async () => {
+    // ⚠️ THE DISTINCTION, ASSERTED. Both phrases were read correctly; the pairing is
+    // what the vault does not offer. Showing it as unreadable text would send the
+    // director back to retype words the extractor got right.
+    vi.mocked(startCapture).mockResolvedValue(
+      state({ conflicts: [CONFLICT] }) as never,
+    )
+    await openOrder()
+
+    expect(screen.queryByTestId("capture-unrecognized")).not.toBeInTheDocument()
+  })
+
+  it("renders nothing when there is no conflict — the positive control", async () => {
+    await openOrder()
+    expect(screen.queryByTestId("capture-conflicts")).not.toBeInTheDocument()
   })
 })
 

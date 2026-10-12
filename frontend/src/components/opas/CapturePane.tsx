@@ -535,6 +535,42 @@ export function CapturePane({
             </div>
           ))}
 
+          {/* ⚠️ A CONFLICT IS NOT "NOT UNDERSTOOD", AND IT GETS ITS OWN BLOCK ABOVE
+              THAT ONE. The extractor read both phrases correctly; the combination is
+              what the vault does not offer. Showing it among the unreadable text
+              would tell the director their words were wrong, when what is wrong is
+              the pairing — and it is ranked higher because it is the one of the two
+              that names a decision only they can make.
+
+              ⚠️ IT NAMES WHAT IS AVAILABLE. "Not available on this vault" with no
+              alternatives is a dead end; the permitted list is what turns the
+              message into a next step. */}
+          {state.conflicts.length > 0 && (
+            <div
+              className="rounded-base border border-[rgba(224,168,74,0.55)] bg-[rgba(224,168,74,0.08)] p-2"
+              data-testid="capture-conflicts"
+            >
+              <div className="text-micro uppercase tracking-wide text-[rgb(224,168,74)]">
+                Not available on this vault
+              </div>
+              <ul className="mt-1 flex flex-col gap-1">
+                {state.conflicts.map((c) => (
+                  <li
+                    key={c.field_id}
+                    className="text-body-sm text-content-base"
+                    data-testid={`capture-conflict-${c.field_id}`}
+                  >
+                    {/* ⚠️ THE SERVER'S OWN MESSAGE, NOT A SENTENCE BUILT HERE. The
+                        permitted set and the refused value are both in it, and a
+                        second wording in the client could disagree with the engine
+                        about which combinations are refused. */}
+                    {c.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* ⚠️ UNRECOGNIZED TEXT IS VISIBLE AND ATTRIBUTED. E1's never-dropped rule is
               only worth anything if the director can see what was not understood. */}
           {state.unrecognized.length > 0 && (

@@ -70,6 +70,7 @@ function state(over: Record<string, unknown> = {}) {
     // mention text — and would hide the branch entirely.
     full_text: null,
     resolutions: {},
+    conflicts: [],
     values: {},
     answered: [],
     missing: [],

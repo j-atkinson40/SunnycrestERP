@@ -64,6 +64,20 @@ export interface CaptureState {
   readonly is_complete: boolean
   /** ⚠️ Text the extractor could not place. Shown, never dropped. */
   readonly unrecognized: readonly string[]
+  /** ⚠️ A COMBINATION THE VAULT DOES NOT ALLOW — AND NOT THE SAME THING AS
+   *  `unrecognized`. The extractor understood both phrases; they contradict each
+   *  other ("Continental 34" offers only `nameplate_only`; "nameplate and vinyl"
+   *  asks for something else). Filing these under "not understood" would send the
+   *  director back to retype words that were read correctly.
+   *
+   *  ⚠️ `permitted` IS WHAT MAKES THE MESSAGE ACTIONABLE. "That is not available"
+   *  with no alternatives is a dead end. */
+  readonly conflicts: readonly {
+    readonly field_id: string
+    readonly value: unknown
+    readonly permitted: readonly string[]
+    readonly message: string
+  }[]
   readonly pending_picks: readonly CapturePick[]
   readonly vault_resolution: {
     readonly resolved: boolean
