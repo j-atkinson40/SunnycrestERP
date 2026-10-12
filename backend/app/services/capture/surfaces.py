@@ -186,11 +186,57 @@ CAPTURE_SALES_ORDER = Surface(
                 FieldSource("legacy_series"),
                 FieldSource("legacy_print_name"),
                 FieldSource("lifes_reflections_symbol"),
+                # ⚠️ `nameplate_date_format` JOINED 2026-10-12 BY RULING. It was
+                # captured ("years only" -> `years`) and sourced by NO row on
+                # EITHER surface — a required answer with nowhere to appear, and
+                # the longest-standing member of the orphan set.
+                #
+                # ⚠️ IT COMPOSES HERE RATHER THAN OPENING A ROW because it is a
+                # property OF the nameplate, not a fact beside it: "Nameplate only
+                # · Years" is how the choice reads back. Its own row would imply a
+                # date format exists independently of a nameplate.
+                #
+                # ⚠️ ADDING IT CANNOT MAKE THIS ROW READ "not configured". That
+                # classification now requires `availability_governed`, and this
+                # field is conditional on an ANSWER (a nameplate was chosen), not
+                # on licensee enrollment — measured, and pinned by
+                # `test_a_FOLLOW_UP_question_with_a_vocabulary_is_not_unconfigured`.
+                FieldSource("nameplate_date_format"),
             ), join=_DOT),),
             edit_target="personalization"),
 
         Row(id="cemetery_equipment", label="Cemetery Equipment", order=9,
             sources=(FieldSource("cemetery_equipment"),)),
+
+        # ⚠️ ADDED 2026-10-12 BY RULING: "captured values must be visible". Both
+        # fields were CAPTURED BY THE EXTRACTOR AND SOURCED BY NO CAPTURE ROW, so a
+        # director could say them, the engine stored them, and the pane showed
+        # nothing — while both are REQUIRED, so the same pane reported the order
+        # incomplete without showing a row for what was missing. Found by
+        # enumerating the source map rather than reading it.
+        #
+        # ⚠️ ONE ROW, NOT TWO, AND THE JOIN IS WHY. "Thu Mar 2, 2027 · Section C
+        # Lot 12" is one fact an office reads aloud — when and where the burial is.
+        # A row per field is the assumption this layer exists to break.
+        #
+        # ⚠️ `burial_date` IS DISTINCT FROM THE `dates` ROW, which carries the
+        # DECEDENT's birth and death. Three date facts in one order, and conflating
+        # the burial with the death is the same confusion the
+        # `burial_time`/`service_time` rename above was about. `burial_date`
+        # declares `display="date"`, so `rows.py::write_for_a_human` renders it
+        # office-style; the stored value is unchanged.
+        #
+        # ⚠️ `burial_date` WAS NEVER AN ORPHAN and that is not a contradiction: it
+        # already had a row on the SUMMARY surface, and orphanhood is computed over
+        # the UNION. Absent from capture and present on summary is a real gap and
+        # not orphanhood — which is the distinction `orphan_field_ids` exists to
+        # keep, and the reason the gap needed finding a different way.
+        Row(id="burial", label="Burial", order=10,
+            sources=(ComposedSource((
+                FieldSource("burial_date"),
+                FieldSource("grave_location"),
+            ), join=_DOT),),
+            edit_target="burial_date"),
     ),
 )
 

@@ -12,13 +12,20 @@ against a vault whose availability permits only `nameplate_only`. `capture.evalu
 raised `UnpermittedAnswer`, nothing in `app/` caught it, and the pane died
 mid-sentence.
 
-⚠️ WHY EVERY TEST MISSED IT, because the reason generalises. The session tests build
-a BARE tenant — a company, a role, a user, no products. With no vault resolving,
-availability never narrows, `permitted_answers` is empty, and `_reject_unpermitted`
-returns early BY DESIGN ("not configured contradicts nothing"). So the guard could
-not fire in the only environment the tests ran in. A test can pass because data is
-MISSING (CLAUDE.md §11), and this is that shape at its most expensive: the guard was
-correct, the tests were correct, and the combination of the two was blind.
+⚠️ WHY EVERY TEST MISSED IT — AND THE FIRST ANSWER I GAVE WAS WRONG. This paragraph
+read: *"The session tests build a BARE tenant … With no vault resolving, availability
+never narrows."* Measured afterwards, on a tenant of one `companies` row: the catalog,
+the 56 aliases and the availability config are all PLATFORM-level, `Continental 34`
+resolves, availability narrows to `['nameplate_only']`, and THIS CONFLICT ARISES.
+A bare tenant would have caught this defect.
+
+What actually hid it is that no session test ever typed a phrase resolving a vault to
+ONE variant. The inputs were `tent only`, `nameplate only`, `years only`, `full
+setup`, and `Continental` — ambiguous, so a pick rather than a resolution. Every
+phrase stopped short of the same layer, and a missing INPUT is not auditable the way
+a missing fixture is: it looks like a test suite with a lot of tests in it.
+
+See `docs/investigations/2026-10-12-the-bare-tenant-gap.md`.
 
 ⚠️ AND THE RAISE WAS DOCUMENTED AS EXPECTED. `test_vinyl_is_what_the_office_says.py`
 carried a comment saying `evaluate_typed` raises `UnpermittedAnswer` on the

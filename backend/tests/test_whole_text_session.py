@@ -17,6 +17,25 @@ being called fails here.
     add_line is UNTOUCHED (E6). Its policy, its accumulation, and the call
                           pipeline's behaviour are unchanged.
 
+⚠️ MOVED ONTO THE SEEDED TENANT 2026-10-12, BY RULING — AND THE RULING'S STATED
+REASON TURNED OUT TO BE WRONG, WHICH IS WORTH MORE THAN THE MOVE. The premise was
+that a bare tenant made the availability layer unreachable. Measured afterwards: the
+catalog, the 56 aliases and the availability config are all PLATFORM-level, so a bare
+tenant inherits them, "Continental 34" resolves on one, and the conflict behind the
+HTTP 500 arises there. Only the CEMETERIES are tenant-scoped.
+
+What actually hid five defects from this file was that **none of its inputs ever
+named a single vault**: `tent only`, `nameplate only`, `years only`, `full setup`,
+and `Continental`, which is ambiguous and yields a pick rather than a resolution.
+Every phrase stopped short of the same layer, and nothing in the file said so.
+
+So the question to ask of a file like this one is not "what tenant does it run
+against" but **"which layers do these inputs reach?"** The five tests at the bottom
+exist to reach them; `seeded` is load-bearing for exactly one of the five (the
+cemetery), and is kept for reasons stated in `tests/_seeded_tenant.py`.
+`docs/investigations/2026-10-12-the-bare-tenant-gap.md` has the per-defect evidence,
+run on both tenants.
+
 ⚠️ THE `add_line` ASSERTIONS ARE NOT DECORATION. E6 requires the call pipeline's
 behaviour not to change, and the only mechanism by which this work could have
 changed it is the shared `EXTRACTOR`. `test_call_extraction_missing_set.py` and
@@ -56,30 +75,16 @@ def db():
 
 
 @pytest.fixture
-def user(db):
-    """One tenant, one user, in a savepoint that rolls back."""
-    from app.models.company import Company
-    from app.models.role import Role
-    from app.models.user import User
+def user(seeded):
+    """⚠️ THE SEEDED TENANT, NOT A BARE ONE — see this module's docstring.
 
-    sp = db.begin_nested()
-    cid = str(uuid.uuid4())
-    db.add(Company(id=cid, name="Whole Text Co", slug=f"wtc-{cid[:8]}"))
-    db.flush()
-    rid = str(uuid.uuid4())
-    db.add(Role(id=rid, company_id=cid, name="Admin", slug="admin"))
-    db.flush()
-    uid = str(uuid.uuid4())
-    db.add(User(
-        id=uid, company_id=cid, email=f"{uid[:8]}@wtc.example.com",
-        hashed_password="x", first_name="Whole", last_name="Text",
-        role_id=rid, is_active=True,
-    ))
-    db.flush()
-    try:
-        yield cid, uid
-    finally:
-        sp.rollback()
+    Kept named `user` and yielding the same `(company_id, user_id)` pair so every
+    test below is unchanged apart from the world it runs in. That is deliberate: the
+    point of the move is that these assertions were always right and the ENVIRONMENT
+    was what hid five defects, so changing the assertions at the same time would
+    make it impossible to tell which of the two did the work.
+    """
+    return seeded.company_id, seeded.user_id
 
 
 def _session(db, cid, uid):
@@ -439,3 +444,164 @@ def test_set_text_refuses_another_users_session(db, user):
             )
     finally:
         sp.rollback()
+
+# ── the five live defects, each through the SESSION seam ────────────────
+#
+# ⚠️ THROUGH `session_service`, NOT THROUGH `evaluate_typed`. Sibling files already
+# pin these at the function level; these exist because the PANE calls the session,
+# and a defect fixed in the engine and not carried through the session's response
+# would be invisible to the engine's own tests. Each one is break-tested in
+# `docs/investigations/2026-10-12-the-bare-tenant-gap.md` with the edit that
+# reintroduces the defect and the assertion it turns red.
+#
+# ⚠️ THIS COMMENT CLAIMED "NONE OF THESE FIVE COULD FAIL ON A BARE TENANT" AND THAT
+# IS FALSE — I wrote it in the same session that measured the opposite. Run on a bare
+# tenant, defects 1, 2, 3 and 5 each turn their test red exactly as they do here;
+# only defect 4 needs a seeded cemetery, and on a bare tenant test 4 is red BEFORE
+# anything is broken, so it is saturated there and reports the same result either
+# way. Per-defect evidence on both tenants:
+# `docs/investigations/2026-10-12-the-bare-tenant-gap.md`.
+
+def test_1_AN_UNAVAILABLE_COMBINATION_DOES_NOT_500(db, user):
+    """Defect 1. `UnpermittedAnswer` reached the route and the pane died."""
+    from app.services.capture import session_service
+
+    cid, uid = user
+    row = _session(db, cid, uid)
+    session_service.set_text(
+        db, row.id, company_id=cid, user_id=uid,
+        text="Continental 34, nameplate and vinyl",
+    )
+    state = session_service.read_state(db, row.id, company_id=cid, user_id=uid)
+
+    assert state["conflicts"], (
+        "no conflict reported for a combination this vault does not permit — either "
+        "the engine raised (the original defect) or availability stopped narrowing"
+    )
+    c = state["conflicts"][0]
+    assert c["field_id"] == "personalization"
+    assert "nameplate_only" in c["permitted"], c
+
+
+def test_2_THE_RESPONSE_DOES_NOT_CONTRADICT_ITSELF(db, user):
+    """Defect 2. The withheld answer was still rendered, so one response called a
+    value unavailable and showed it as done."""
+    from app.services.capture import session_service
+
+    cid, uid = user
+    row = _session(db, cid, uid)
+    session_service.set_text(
+        db, row.id, company_id=cid, user_id=uid,
+        text="Continental 34, nameplate and vinyl",
+    )
+    state = session_service.read_state(db, row.id, company_id=cid, user_id=uid)
+
+    assert state["conflicts"], "precondition: there must be a conflict to contradict"
+    pers = next(r for r in state["surface"]["rows"] if r["row_id"] == "personalization")
+    assert pers["state"] != "done", (
+        f"the Personalization row reads {pers['state']!r} showing {pers['value']!r} "
+        f"in the same response that reports that value unavailable"
+    )
+    assert "personalization" not in state["answered"]
+
+
+def test_3_A_ROW_WITH_A_VALUE_DOES_NOT_CLAIM_THE_LICENSEE_CONFIGURED_NOTHING(db, user):
+    """Defect 3. The Cemetery row read "Not configured for this licensee" above a
+    time, and after the first fix the Personalization row did the same above a
+    captured symbol."""
+    from app.services.capture import session_service
+
+    cid, uid = user
+    row = _session(db, cid, uid)
+    session_service.set_text(
+        db, row.id, company_id=cid, user_id=uid,
+        text="Bronze Triune Burial Vault, nameplate and vinyl, cross, years only, "
+             "eta 11:30",
+    )
+    state = session_service.read_state(db, row.id, company_id=cid, user_id=uid)
+
+    offenders = [
+        (r["row_id"], r["value"])
+        for r in state["surface"]["rows"]
+        if r["state"] == "not_configured" and r["value"] is not None
+    ]
+    assert offenders == [], (
+        f"these rows report the licensee's setup as missing while displaying a "
+        f"captured value: {offenders}"
+    )
+    # ⚠️ AND THE TWO SPECIFIC ROWS ARE NAMED, because "no offenders" is also true of
+    # a response where nothing was captured at all.
+    cem = next(r for r in state["surface"]["rows"] if r["row_id"] == "cemetery")
+    assert cem["value"] is not None, "the ETA did not render; nothing was measured"
+    pers = next(r for r in state["surface"]["rows"] if r["row_id"] == "personalization")
+    assert pers["value"] is not None, "the symbol did not render; nothing was measured"
+
+
+def test_4_A_CEMETERY_NAME_DOES_NOT_BECOME_THE_DECEASED(db, user):
+    """Defect 4. The apostrophe made the lookup miss, and the unmatched name was then
+    taken as the decedent and OVERWROTE the real one."""
+    from app.services.capture import session_service
+
+    cid, uid = user
+    row = _session(db, cid, uid)
+    session_service.set_text(
+        db, row.id, company_id=cid, user_id=uid,
+        text="Mary Smith, to St Marys in Skaneateles",
+    )
+    state = session_service.read_state(db, row.id, company_id=cid, user_id=uid)
+
+    assert state["values"].get("deceased_name") == "Mary Smith", state["values"]
+    assert state["values"].get("cemetery") == "St. Mary's Cemetery", state["values"]
+
+
+def test_5_A_SYMBOL_IN_ITS_OWN_SEGMENT_IS_CAPTURED_AND_NOT_CALLED_UNREADABLE(db, user):
+    """Defect 5. "cross" was captured as nothing AND listed as not understood."""
+    from app.services.capture import session_service
+
+    cid, uid = user
+    row = _session(db, cid, uid)
+    session_service.set_text(
+        db, row.id, company_id=cid, user_id=uid,
+        text="Bronze Triune Burial Vault, nameplate and vinyl, cross",
+    )
+    state = session_service.read_state(db, row.id, company_id=cid, user_id=uid)
+
+    assert state["values"].get("lifes_reflections_symbol") == "cross", state["values"]
+    assert not any("cross" in u.lower() for u in state["unrecognized"]), (
+        f"the symbol was captured AND reported unplaced: {state['unrecognized']}"
+    )
+
+
+def test_the_whole_sentence_James_walks(db, user):
+    """The sentence from the walk doc, end to end through the session.
+
+    ⚠️ ONE TEST OVER THE WHOLE SENTENCE, because the five above are each a single
+    defect and a director types all of it at once. Three things this asserts that no
+    single-defect test does: that the correction wins over the earlier equipment
+    answer, that the ambiguous cemetery raises EXACTLY ONE question, and that nothing
+    is left unplaced.
+    """
+    from app.services.capture import session_service
+
+    cid, uid = user
+    row = _session(db, cid, uid)
+    session_service.set_text(
+        db, row.id, company_id=cid, user_id=uid,
+        text=(
+            "order for Hopkins, Mary Smith, 1948 to 2026, 34 inch Continental, "
+            "St Mary's in Auburn, service at the church Thursday 10am, eta 11:30, "
+            "full setup actually tent only"
+        ),
+    )
+    state = session_service.read_state(db, row.id, company_id=cid, user_id=uid)
+
+    assert state["values"].get("deceased_name") == "Mary Smith", state["values"]
+    assert state["values"].get("funeral_home") == "Hopkins Funeral Home", state["values"]
+    # ⚠️ THE CORRECTION WINS. This is LAST_WINS at the session seam on the phrasing
+    # James actually types — "full setup actually tent only", no comma.
+    assert state["values"].get("cemetery_equipment") == "tent_only", state["values"]
+    # exactly one question, and it is the cemetery
+    assert [p["field_id"] for p in state["pending_picks"]] == ["cemetery"], (
+        state["pending_picks"]
+    )
+    assert state["unrecognized"] == [], state["unrecognized"]

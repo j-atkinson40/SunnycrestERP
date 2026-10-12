@@ -55,6 +55,11 @@ from app.services.capture.surfaces import (
 CAPTURE_ROW_IDS = {
     "funeral_home", "contact", "deceased_name", "dates", "service",
     "cemetery", "vault", "personalization", "cemetery_equipment",
+    # ⚠️ `burial` ADDED 2026-10-12 BY RULING. `burial_date` and `grave_location`
+    # were captured by the extractor and sourced by no CAPTURE row, so the pane
+    # showed nothing for either while both are required — it could report an order
+    # incomplete without showing a row for what was missing.
+    "burial",
 }
 SUMMARY_ROW_IDS = {
     "funeral_home", "vault", "service", "burial", "personalization",
@@ -97,8 +102,12 @@ class TestRowsAreNotFields:
         #
         # ⚠️ 17 SINCE PIECE 4 (2026-10-06): `eta` and `service_location_other` were
         # added and `burial_time` was RENAMED to `service_time`, so +2 not +3.
+        # ⚠️ 10 CAPTURE ROWS SINCE 2026-10-12, not 9. The `burial` row was added by
+        # ruling for two fields that were captured and displayed nowhere. The
+        # assertion this test exists for is unchanged and is the `!=`: rows are not
+        # fields, 10 != 20.
         assert n_fields == 20
-        assert len(CAPTURE_SALES_ORDER.rows) == 9 != n_fields
+        assert len(CAPTURE_SALES_ORDER.rows) == 10 != n_fields
         assert len(SUMMARY_SALES_ORDER.rows) == 6 != n_fields
 
     def test_collapse_the_answer_and_its_details_into_one_row(self):
@@ -116,6 +125,11 @@ class TestRowsAreNotFields:
         assert set(row_field_ids(row)) == {
             "personalization", "legacy_series",
             "legacy_print_name", "lifes_reflections_symbol",
+            # ⚠️ `nameplate_date_format` JOINED 2026-10-12 BY RULING, and it belongs
+            # to exactly the collapse this test is about: it is a property OF the
+            # nameplate, not a fact beside it. Before, it was sourced by no row on
+            # either surface — a required answer with nowhere to appear.
+            "nameplate_date_format",
         }
 
     def test_composition_renders_with_the_designs_separator(self):
@@ -343,29 +357,24 @@ class TestTheFourStates:
             f"about a question availability does not govern"
         )
 
-    def test_three_template_fields_are_on_NO_capture_row(self):
-        """⚠️ A RATCHET OVER A GAP, NAMED RATHER THAN SILENT, AND IT IS NOT A CLAIM
-        THAT THE GAP IS RIGHT.
+    def test_EVERY_template_field_has_a_capture_row(self):
+        """⚠️ THIS WAS A RATCHET OVER A GAP AND IS NOW A RATCHET OVER ITS ABSENCE.
 
-        Three of the twenty template fields are sourced by no row on the capture
-        surface, so a director can say them, the engine can capture them, and the
-        pane shows nothing:
+        Written 2026-10-12 asserting that exactly three fields — `burial_date`,
+        `grave_location`, `nameplate_date_format` — were sourced by no capture row.
+        A director could say them, the engine captured them, and the pane showed
+        nothing; `burial_date` and `grave_location` are REQUIRED, so the pane could
+        report an order incomplete while showing no row for what was missing.
 
-            burial_date            captured, invisible
-            grave_location         captured, invisible
-            nameplate_date_format  captured, invisible
+        Ruled the same day: captured values must be visible. The `burial` row was
+        added and `nameplate_date_format` joined the Personalization composition, so
+        the set is EMPTY and this test now guards that — a field added without a row
+        fails here rather than becoming invisible.
 
-        Found 2026-10-12 while fixing a different defect, by enumerating the source
-        map instead of reading it. All three are REQUIRED or prompted, so a director
-        who answers them sees no acknowledgement — and `burial_date` and
-        `grave_location` are among the nine fields that block completion, which
-        means the pane can report an order incomplete while showing no row for the
-        thing that is missing.
-
-        ⚠️ WHETHER THEY GET ROWS IS A DISPLAY DECISION AND NOT MINE. This test exists
-        so the set cannot grow unnoticed; adding a row for any of them should make it
-        go red, and the right response is to remove that field from this list in the
-        same diff.
+        ⚠️ AN EMPTY-SET ASSERTION NEEDS A POSITIVE CONTROL, which is the `sourced`
+        check below: an enumeration bug that returned every field id would satisfy
+        "nothing is unsourced" trivially. Measured 2026-10-12: 20 template fields,
+        all 20 sourced on the capture surface.
         """
         from app.services.capture import SALES_ORDER as _SO
         from app.services.capture import template_for as _tf
@@ -383,14 +392,17 @@ class TestTheFourStates:
         sourced = {
             i for r in CAPTURE_SALES_ORDER.rows for s in r.sources for i in ids(s)
         }
-        unsourced = sorted(
-            f.field_id for f in _tf(_SO) if f.field_id not in sourced
+        template = [f.field_id for f in _tf(_SO)]
+        # ⚠️ THE CONTROL, READ FIRST. If the walker returned nothing, or returned
+        # everything, the assertion below would pass for a reason unrelated to rows.
+        assert len(template) == 20, len(template)
+        assert 15 < len(sourced & set(template)) <= len(template), sorted(sourced)
+
+        unsourced = sorted(f for f in template if f not in sourced)
+        assert unsourced == [], (
+            f"these template fields are captured and have no capture row, so the "
+            f"pane shows nothing for them: {unsourced}"
         )
-        assert unsourced == [
-            "burial_date",
-            "grave_location",
-            "nameplate_date_format",
-        ], unsourced
 
     def test_EXACTLY_ONE_template_field_is_availability_governed_today(self):
         """⚠️ A RATCHET ON THE DISCRIMINATOR ITSELF. If a second field becomes
@@ -488,21 +500,61 @@ class TestAmendmentTwoOrphansOverTheUnion:
         ⚠️ Three causes, three different remedies: declare a surface, design a
         control, delete a field. A report that could not tell them apart would
         have invited the same action for all three.
+
+        ⚠️ THE SET IS EMPTY SINCE 2026-10-12, AND THE TEACHING ABOVE IS KEPT
+        BECAUSE IT IS ABOUT THE MECHANISM RATHER THAN ABOUT ITS CURRENT MEMBERS.
+        How each of the three left:
+
+            vault_size              DELETED (2026-10-05) once the resolver could
+                                    read a size out of the vault phrase.
+
+            grave_location          GOT A ROW (2026-10-12) — the new `burial` row,
+                                    by ruling. The earlier entry predicted a
+                                    `driver` surface would be declared and that is
+                                    NOT what happened: it was ruled visible during
+                                    capture instead. Recorded because the prediction
+                                    was wrong in an instructive direction — a
+                                    reported orphan is a finding, and the remedy it
+                                    gets is not necessarily the one it looks like it
+                                    needs.
+
+            nameplate_date_format   GOT A CONTROL (2026-10-12) — composed into the
+                                    Personalization row. The earlier entry said "the
+                                    field is right and the design has not caught
+                                    up", which was true for seven days.
+
+        ⚠️ AN EMPTY ORPHAN SET IS NOT A PERMANENT STATE AND MUST NOT BE READ AS ONE.
+        It is the current measurement; the next field added without a surface will
+        repopulate it, which is the whole point of the set being computable.
         """
         t = frozenset(f.field_id for f in template_for(SALES_ORDER))
-        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == {
-            "grave_location", "nameplate_date_format"
-        }
+        assert orphan_field_ids(t, surfaces_for(SALES_ORDER)) == frozenset()
 
     def test_per_surface_absence_is_not_orphanhood(self):
-        """⚠️ THE DISCRIMINATING TEST. `burial_date` has no row on the CAPTURE
-        surface and does have one on the summary. Over a single surface it would
-        read as an orphan; over the union it does not."""
+        """⚠️ THE DISCRIMINATING TEST, AND ITS EXAMPLE HAD TO CHANGE.
+
+        It used `burial_date`: absent from the capture surface, present on the
+        summary, so an orphan over one surface and not over the union. On
+        2026-10-12 `burial_date` GAINED A CAPTURE ROW by ruling, so it is now on
+        both and can no longer discriminate — the test would have gone silently
+        vacuous, asserting a property of a field that no longer has it.
+
+        Repointed to `cemetery_city`, measured as capture-only: it composes into
+        the Cemetery row to disambiguate the name ("St. Mary's · Auburn") and has
+        deliberately no place on the summary, where the resolved cemetery is
+        already unambiguous. The direction is reversed from the old example —
+        present on capture, absent from summary — which tests the same property
+        from the other side and is if anything the better case, since the union
+        walk must cover both surfaces rather than just the second one.
+        """
         t = frozenset(f.field_id for f in template_for(SALES_ORDER))
-        one = orphan_field_ids(t, (CAPTURE_SALES_ORDER,))
+        one = orphan_field_ids(t, (SUMMARY_SALES_ORDER,))
         both = orphan_field_ids(t, surfaces_for(SALES_ORDER))
-        assert "burial_date" in one
-        assert "burial_date" not in both
+        assert "cemetery_city" in one, (
+            "cemetery_city is no longer summary-absent, so this test has stopped "
+            "discriminating — repoint it at a field that is on one surface only"
+        )
+        assert "cemetery_city" not in both
 
     def test_deceased_name_is_not_an_orphan(self):
         """⚠️ TRUE BUT NOT DISCRIMINATING, AND A BREAK TEST SAID SO.
@@ -553,14 +605,22 @@ class TestCountsBelongToTheCapture:
             CAPTURE_SALES_ORDER, _resolved(), {"funeral_home": "Wilbert"})
         done, unanswered = counts(out)
         assert done == 1
-        assert done + unanswered == len(out.rows) == 8
+        # ⚠️ 9 SINCE 2026-10-12, was 8 — the `burial` row joined the surface and,
+        # with nothing said about the burial, it renders unanswered. The claim is
+        # still that the counts are over ROWS: 1 done + 8 unanswered = 9 rendered.
+        assert done + unanswered == len(out.rows) == 9
         assert not any(r.row_id == "personalization" for r in out.rows)
 
     def test_the_summary_is_rendered_with_the_captures_counts(self):
         """⚠️ MEASURED, NOT A BUG. The prototype's summary shows "9 captured /
-        0 missing" while rendering SIX rows — nine is the capture row count. So a
-        summary takes the capture's counts, and this test pins that rather than
-        correcting it."""
+        0 missing" while rendering SIX rows — nine was the capture row count at the
+        time it was measured. So a summary takes the capture's counts, and this test
+        pins that rather than correcting it.
+
+        ⚠️ THE CAPTURE IS TEN ROWS SINCE 2026-10-12, so the figure here is 10 and
+        the prototype's 9 is a measurement of an earlier surface rather than a
+        target. What is pinned is the RELATIONSHIP — capture count over summary
+        rows — which is why the last assertion is an inequality and not a literal."""
         values = {f.field_id: "x" for f in template_for(SALES_ORDER)}
         values["customer"] = None
         # All nine rows need a vault named, or Personalization is omitted — see
@@ -580,8 +640,12 @@ class TestCountsBelongToTheCapture:
                               records={"customer": {"contact_name": "Tom"}})
         summ = resolve_surface(SUMMARY_SALES_ORDER, fields, values,
                                records={"customer": {"contact_name": "Tom"}})
-        assert len(cap.rows) == 9, [r.row_id for r in cap.rows]
-        assert counts(cap)[0] == 9
+        # ⚠️ 10 SINCE 2026-10-12 — the `burial` row joined the capture surface. The
+        # prototype's "9 captured" was measured against a nine-row capture; the
+        # claim this test pins is NOT the number but that a summary reports the
+        # CAPTURE's count over its own six rows, which the final assertion checks.
+        assert len(cap.rows) == 10, [r.row_id for r in cap.rows]
+        assert counts(cap)[0] == 10
         assert len(summ.rows) == 6
         assert counts(cap)[0] != len(summ.rows), (
             "the summary shows the CAPTURE's count over its own six rows — "

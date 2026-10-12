@@ -320,3 +320,21 @@ def _company_litter_tripwire():
             "rows are deliberate.",
             pytrace=False,
         )
+
+# ⚠️ THE SEEDED-TENANT FIXTURE IS REGISTERED AS A PLUGIN RATHER THAN IMPORTED PER
+# FILE. `tests/_seeded_tenant.py` defines `seeded`, which hands back the canonical
+# `testco` tenant with its real catalog, availability and aliases. Registering it
+# here means a test file asks for `seeded` and gets it, with no import line to
+# forget — and forgetting one would mean silently falling back to whatever local
+# fixture happened to share the name, which is how a test ends up running against a
+# bare tenant again.
+#
+# ⚠️ ITS SCOPE IS NARROWER THAN THE REASON IT WAS ORDERED — see
+# `tests/_seeded_tenant.py`. Measured: the catalog, the aliases and the availability
+# config are PLATFORM-level, so a bare tenant inherits them and four of the five
+# 2026-10-12 live defects were reachable without this fixture. It is load-bearing for
+# ONE of them (the cemetery name that overwrote the decedent) and is kept for the
+# environment assertions it carries.
+# `docs/investigations/2026-10-12-the-bare-tenant-gap.md` has the per-defect evidence
+# run on both tenants.
+pytest_plugins = ("tests._seeded_tenant",)

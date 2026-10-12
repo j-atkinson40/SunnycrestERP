@@ -396,10 +396,38 @@ class TestIndeterminateIsNotRendered:
         assert "eta" not in orphans
         assert "service_location_other" not in orphans
         assert "service_time" not in orphans
-        # ⚠️ The count was 2 before Piece 4 and is 2 after — `grave_location` (awaiting
-        # a driver surface) and `nameplate_date_format` (a production instruction,
-        # never displayed). Asserted so a future field cannot silently join them.
-        assert orphans == frozenset({"grave_location", "nameplate_date_format"})
+        # ⚠️ ZERO SINCE 2026-10-12, AND THIS ASSERTION PREVIOUSLY RECORDED A BELIEF
+        # THE RULING OVERRODE. It read:
+        #
+        #   "The count was 2 before Piece 4 and is 2 after — `grave_location`
+        #    (awaiting a driver surface) and `nameplate_date_format` (a production
+        #    instruction, never displayed)."
+        #
+        # Both predictions were wrong, in different directions, and both are worth
+        # keeping rather than quietly replacing:
+        #
+        #   grave_location          was expected to get a DRIVER surface. It was
+        #                           ruled visible during CAPTURE instead, on the new
+        #                           `burial` row.
+        #   nameplate_date_format   was described as never displayed. James ruled
+        #                           2026-10-12 that captured values must be visible,
+        #                           so it now composes into the Personalization row.
+        #
+        # ⚠️ THE SECOND IS A DIRECT REVERSAL, NOT A GAP BEING FILLED. "A production
+        # instruction, never displayed" was a design intent recorded here on
+        # 2026-10-06; the ruling is newer and is James's, so it wins — but it is a
+        # reversal and is flagged as one rather than overwritten, because the next
+        # reader would otherwise find no trace that anyone had decided the opposite.
+        assert orphans == frozenset()
+
+    # ⚠️ THIS FILE IS E6-PROTECTED AND THIS IS THE ONE ASSERTION IN IT THAT CHANGED.
+    # E6 says the CALL PIPELINE's behaviour must not change. Measured 2026-10-12:
+    # `TestTheDraftWriterTakesEachFactFromItsOwnField` — the only class here that
+    # touches `call_extraction_service` — passes 3/3 unchanged, and
+    # `test_call_extraction_missing_set.py` passes 23/23 with no edit at all. The
+    # assertion above is about the ORPHAN SET over surface definitions, which is a
+    # display concern; this file's own docstring describes it as pinning the
+    # conditional-field engine on a COLD PATH with zero production rows.
 
 
 # ---------------------------------------------------------------------------

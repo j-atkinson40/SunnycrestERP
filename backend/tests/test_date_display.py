@@ -224,7 +224,21 @@ def test_the_rows_and_the_sets_agree_about_configuration(db, session):
     assert "personalization" in state["answered"], state["answered"]
     row = next(r for r in state["surface"]["rows"]
                if r["row_id"] == "personalization")
-    assert row["state"] == "done", row
+    # ⚠️ THE CLAIM IS ABOUT CONFIGURATION AND IS NOW ASSERTED DIRECTLY. This read
+    # `row["state"] == "done"`, which was a PROXY for "the row does not report a
+    # configuration problem" and stopped being one on 2026-10-12, when
+    # `nameplate_date_format` joined this row by ruling. Choosing a nameplate makes
+    # the date format required, this test never answers it, so the row is correctly
+    # PARTIAL — started and unfinished. A proxy assertion fails on a change that
+    # does not touch the thing it was standing in for.
+    assert row["state"] != "not_configured", (
+        f"the row reports the licensee's setup as missing while the set says "
+        f"personalization is answered: {row}"
+    )
+    # ⚠️ AND THE PARTIAL IS PINNED RATHER THAN TOLERATED, so a later change that made
+    # this row `done` with a required field unanswered goes red here instead of
+    # looking like a fix.
+    assert row["state"] == "partial", row
     assert row["value"] == "Nameplate Only", row
 
     # ⚠️ THE GENERAL FORM: no row may claim NOT_CONFIGURED for a field the engine

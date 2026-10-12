@@ -205,8 +205,12 @@ def test_read_state_returns_all_five_sets_and_the_surface_rows(db, two_users):
     # it has no sources left — so it does not render. The ninth row APPEARS when a
     # vault resolves, which is exactly the "personalization follow-ups appearing"
     # behaviour the slice is for. Asserting a flat 9 would have hidden that.
+    # ⚠️ NINE SINCE 2026-10-12, WAS EIGHT — the `burial` row joined the capture
+    # surface by ruling (`burial_date` and `grave_location` were captured and shown
+    # nowhere). The claim this block makes is unchanged and is the `personalization`
+    # absence below, not the integer.
     ids = [r["row_id"] for r in state["surface"]["rows"]]
-    assert len(ids) == 8, ids
+    assert len(ids) == 9, ids
     assert "personalization" not in ids, ids
 
     from app.services.capture import session_service as ss
@@ -214,7 +218,10 @@ def test_read_state_returns_all_five_sets_and_the_surface_rows(db, two_users):
     after = ss.read_state(db, row.id, company_id=cid, user_id=uid)
     after_ids = [r["row_id"] for r in after["surface"]["rows"]]
     assert "personalization" in after_ids, after_ids
-    assert len(after_ids) == 9, after_ids
+    # ⚠️ TEN SINCE 2026-10-12 (the `burial` row), was nine. The claim is the
+    # APPEARANCE of the personalization row once a vault resolves, asserted above;
+    # the total is incidental to it and is pinned only so a change is deliberate.
+    assert len(after_ids) == 10, after_ids
 
 
 def test_the_done_signal_does_NOT_advance_while_something_is_missing(db, two_users):

@@ -25,9 +25,19 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
   dropped CLIENT-side, picks by click or ⌘1..9 with numbers visible, bare digits go
   into the text, Enter a hard no-op in entry mode, reload restores text + resolutions.
 - **2026-10-12** — **FIVE DEFECTS FOUND BY RUNNING THE PANE OVER HTTP ON DEV, NONE
-  BY ANY TEST**, all invisible for the same reason: the session tests build a BARE
+  BY ANY TEST.** ⚠️ **[CORRECTED 2026-10-12, later the same day. Original wording
+  preserved:** *"all invisible for the same reason: the session tests build a BARE
   tenant with no products, so no vault resolves and the whole availability layer is
-  unreachable. (1) `UnpermittedAnswer` raised into **HTTP 500** on the hot path —
+  unreachable."* **That diagnosis was mine, was never measured, and is wrong.** The
+  catalog, the 56 aliases and the availability config are PLATFORM-level, so a bare
+  tenant inherits them: `Continental 34` resolves on one, availability narrows to
+  `['nameplate_only']`, and the conflict behind the 500 arises. Only the CEMETERIES
+  are tenant-scoped. **Four of the five were reachable on a bare tenant all along.**
+  What hid them was that no session test input ever named a SINGLE vault — the inputs
+  were `tent only`, `nameplate only`, `years only`, `full setup`, and `Continental`,
+  which is ambiguous and yields a pick. Every phrase stopped short of the same layer.
+  See `docs/investigations/2026-10-12-the-bare-tenant-gap.md` for the per-defect
+  evidence run on both tenants.**]** (1) `UnpermittedAnswer` raised into **HTTP 500** on the hot path —
   `evaluate_typed` now reports conflicts; (2) the withheld answer was still RENDERED,
   so one response called a value unavailable and done at once; (3) three rows could
   read "Not configured for this licensee" above captured values, because the row
@@ -67,6 +77,75 @@ Single source of truth for what is true RIGHT NOW. Updated by Sonnet at the end 
   commit. 1 in 4 runs of this tree. Not enough to call pre-existing, not enough to
   call resolved. CLAUDE.md names a load-dependent flake class in this file, but that
   class presents as `EnvironmentTeardownError` and this presented as an assertion.
+- **2026-10-12** — RULED (James): **r208 approved and pushed.** `7cd4dbd8..0d479f04`
+  on `main`. ⚠️ The push had NOT landed when the ruling arrived — 16 commits were
+  still local, measured by `git log origin/main..HEAD` — so the executor pushed.
+- **2026-10-12** — RULED (James): **the call-pipeline `UnpermittedAnswer` is NOT to
+  be changed now (E6).** The RC pipeline has never run in production and is
+  unreachable until RC provisioning. **Trigger: first task of the RC provisioning
+  arc.** REPRODUCING INPUT, verified by running it rather than inferred:
+
+      from app.services.call_extraction_service import resolve_and_evaluate
+      resolve_and_evaluate(
+          db,
+          {"vault_type": "Continental 34",
+           "personalization": "nameplate_and_lifes_reflections"},
+          tenant_id=<testco>,
+      )
+      # -> app.services.capture.missing.UnpermittedAnswer:
+      #    personalization='nameplate_and_lifes_reflections' is not permitted on
+      #    this vault; permitted: ['nameplate_only'] (plus 'none')
+
+  Nothing in `app/` catches it. The typed path fixed the same shape by having
+  `evaluate_typed` report conflicts; `evaluate_typed` is reached only from
+  `capture/session_service.py`, so that fix cannot and does not touch this seam.
+- **2026-10-12** — RULED (James): **rows added for the three captured-but-invisible
+  fields.** New `burial` row on the capture surface (`burial_date` · `grave_location`,
+  office-style date — measured: `Tue Mar 2, 2027 · Section C, Lot 12`, stored value
+  `2027-03-02` unchanged); `nameplate_date_format` composed into the Personalization
+  row. **Orphan set is now EMPTY** and the ratchet is inverted: it was
+  `test_three_template_fields_are_on_NO_capture_row`, it is now
+  `test_EVERY_template_field_has_a_capture_row`, so a field added without a row
+  fails rather than going invisible. Capture surface: 9 rows → **10**.
+- **2026-10-12** — ⚠️ THE ROW RULING REVERSED A RECORDED DESIGN INTENT, flagged
+  rather than overwritten. `test_piece4_conditionals.py` carried, from 2026-10-06,
+  *"`nameplate_date_format` (a production instruction, never displayed)"*. The ruling
+  is newer and is James's, so it wins — but someone had decided the opposite, and the
+  reversal is marked in place so the next reader finds the trace.
+- **2026-10-12** — ⚠️ E6 SCOPE NOTE: `test_piece4_conditionals.py` is no longer
+  unmodified. ONE assertion changed — its orphan-set literal. Measured: the only class
+  in that file touching `call_extraction_service`
+  (`TestTheDraftWriterTakesEachFactFromItsOwnField`) passes **3/3 unchanged**, and
+  `test_call_extraction_missing_set.py` passes **23/23 with no edit**. The orphan set
+  is a display concern over surface definitions, and that file's own docstring
+  describes it as pinning the conditional-field engine on a COLD PATH with zero
+  production rows. Reported rather than waved through.
+- **2026-10-12** — RULED (James): **span attribution for unrecognized text is
+  DEFERRED.** Logged. The pane shows WHAT the server could not place; it does not show
+  WHICH characters produced it. No trigger set.
+- **2026-10-12** — RULED (James): **DocumentsTab 1-in-4 — no action**, pending a
+  restart of James's Mac.
+- **2026-10-12** — ⚠️ **THE TEST-FIXTURE RULING'S STATED ROOT CAUSE WAS WRONG, AND IT
+  WAS MY CLAIM BEFORE IT WAS THE RULING'S.** The premise was that the bare test tenant
+  hid all five live defects because no vault resolved. Measured on a tenant of one
+  `companies` row: the catalog, the 56 aliases and the availability config are all
+  **PLATFORM-level**, so a bare tenant inherits them — `Continental 34` resolves,
+  availability narrows to `['nameplate_only']`, and the conflict behind the HTTP 500
+  arises. Only the CEMETERIES are tenant-scoped. **Four of the five were reachable on
+  a bare tenant all along**; the fixture is load-bearing for exactly one (the cemetery
+  name that overwrote the decedent, whose test is RED BEFORE ANYTHING IS BROKEN on a
+  bare tenant and therefore saturated there). What actually hid them: **no session
+  test input ever named a single vault** — the inputs were `tent only`, `nameplate
+  only`, `years only`, `full setup`, and `Continental`, which is ambiguous and yields
+  a pick. Every phrase stopped short of the same layer. Per-defect evidence on both
+  tenants: `docs/investigations/2026-10-12-the-bare-tenant-gap.md`.
+- **2026-10-12** — Built anyway, with its scope stated: `tests/_seeded_tenant.py`,
+  registered as a pytest plugin. `seeded` returns the canonical `testco` tenant and
+  PROVES four facts on every use — a vault resolves, the alias table is loaded
+  (checked with `oversized`, which appears in no product name), availability narrows
+  to a real permitted set, and `St. Mary's Cemetery` exists. It REFUSES to skip when
+  `testco` is absent. `test_whole_text_session.py` moved onto it and gained the five
+  defects as session-seam tests plus the exact sentence from James's walk.
 - **2026-10-12** — Walk steps for James:
   `docs/investigations/2026-10-12-typed-capture-round-2-walk.md`. ⚠️ Its first
   instruction is to RESTART the dev backend — the process on :8000 was started before

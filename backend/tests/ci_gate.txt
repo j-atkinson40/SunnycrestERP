@@ -327,10 +327,11 @@ tests/test_whole_text_session.py
 tests/test_typed_capture_latency.py
 # BLOCKING. A combination the vault forbids is REPORTED, not raised. In the gate
 # because the raise it replaces returned 500 from the live pane while 477 tests
-# were green: the session tests build a bare tenant, so no vault resolves, so
-# availability never narrows, so the guard could not fire. This file requires the
-# SEEDED testco tenant and fails loudly rather than skipping — a skip would
-# restore exactly that blindness.
+# were green. ⚠️ CORRECTED 2026-10-12: that was NOT because the test tenants were
+# bare. The catalog, aliases and availability are platform-level and a bare tenant
+# inherits them — measured. It was because no test INPUT ever named a single vault,
+# so the conditional layer was never entered. See
+# docs/investigations/2026-10-12-the-bare-tenant-gap.md.
 tests/test_an_unavailable_combination_is_reported.py
 # A gated pass gets context from the rest of the text. In the gate because
 # `extract_text` reads each segment in ISOLATION — which is what makes LAST_WINS
