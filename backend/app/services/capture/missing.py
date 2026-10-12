@@ -106,6 +106,28 @@ class CaptureState:
     #: applicable and unanswered, so it goes to `unanswered_optional`. Only
     #: applicability lands here. See `evaluate`.
     indeterminate: tuple[str, ...] = ()
+    #: The resolved schema `evaluate` worked from. NOT a sixth set — the five still
+    #: exhaust and are still disjoint.
+    #:
+    #: ⚠️ THE FOURTH TIME THIS TYPE DESCRIBED LESS THAN `evaluate` KNEW, AND THE
+    #: DOCSTRING ABOVE PREDICTED IT. `answered` was discarded until r197;
+    #: NOT_CONFIGURED was computed by `resolve_schema` and discarded; optional-
+    #: unanswered fell out entirely. Each time a consumer re-derived from the
+    #: resolved schema instead — and on 2026-10-12 one of them re-derived it WITH
+    #: DIFFERENT ARGUMENTS.
+    #:
+    #: `session_service.read_state` called `resolve_schema(...,
+    #: personalization_config=None)` while `evaluate_typed` passed
+    #: `resolve_availability_config(db, tenant_id)`. So ONE API RESPONSE
+    #: CONTRADICTED ITSELF: the `personalization` ROW read `not_configured` — "Not
+    #: configured for this licensee" on a screen — while the SET said `answered`.
+    #: Measured on a fresh tenant whose availability resolves correctly (40 platform
+    #: entries, all six answers on BV-BTRI), so the row was simply wrong.
+    #:
+    #: Handing the resolution back makes the mismatch UNEXPRESSIBLE rather than
+    #: discouraged: there is one resolution, and a caller cannot pass different
+    #: arguments to a resolution it did not perform.
+    resolved_fields: tuple[ResolvedField, ...] = ()
 
     @property
     def is_complete(self) -> bool:
@@ -224,6 +246,9 @@ def evaluate(
         unanswered_optional=tuple(unanswered_optional),
         not_applicable=not_applicable,
         indeterminate=indeterminate,
+        # ⚠️ HANDED BACK, NOT DISCARDED. See the field's comment: a consumer that
+        # re-derives this can re-derive it with different arguments, and one did.
+        resolved_fields=tuple(applicable),
     )
 
 

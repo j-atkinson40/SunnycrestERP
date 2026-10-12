@@ -294,6 +294,7 @@ tests/test_statement_field_honesty.py
 tests/test_statement_send_attaches_document.py
 tests/test_statement_adapter_flagged_count.py
 tests/test_seed_posting_ratchet.py
+tests/test_date_display.py
 tests/test_enum_display.py
 tests/test_vinyl_is_what_the_office_says.py
 tests/test_row_state_follows_the_row.py

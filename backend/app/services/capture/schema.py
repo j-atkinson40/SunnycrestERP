@@ -142,6 +142,20 @@ class FieldDefinition:
     #: field without stores what it shows. `test_enum_display.py` asserts the
     #: partition, so a new enum field cannot quietly join the second group.
     options: tuple[tuple[str, str], ...] = ()
+    #: How a stored value is written for a human: `"date"`, `"time"`, or None for
+    #: "as stored".
+    #:
+    #: ⚠️ THE SAME RULE AS LABELS, FOR THE SAME REASON. James: dates and times on rows
+    #: display the way the office writes them, never ISO. The Service row was showing
+    #: `2027-03-02` — a stored form leaking to a screen, exactly like `funeral_home`
+    #: did. Declared beside the field, rendered by `rows.py`, never formatted in the
+    #: frontend.
+    #:
+    #: ⚠️ A FIELD HAS `options` OR `display`, NEVER BOTH. An enum's stored value is an
+    #: id with a label; a date's is a value with a format. Asserted in
+    #: `test_date_display.py` so the two mechanisms cannot be stacked on one field and
+    #: leave the second silently ignored.
+    display: str | None = None
 
     def label_for(self, value: object) -> str:
         """The display label for a stored value.
@@ -415,7 +429,7 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # row on a fresh order — and the town is exactly the thing a director says in the
     # same breath as the name. Unconditional and optional.
     FieldDefinition("cemetery_city", "Cemetery town", required_when=Never()),
-    FieldDefinition("burial_date", "Burial date"),
+    FieldDefinition("burial_date", "Burial date", display="date"),
     # ⚠️ ADDED 2026-10-07 (R4), REQUIRED, AND THIS CLOSES A GAP THE ROW LAYER HAD
     # ALREADY DECLARED. `surfaces.py` carried a `GAP` marker on the summary Service
     # row reading that the prototype's secondary is "Thu, Sep 17 · 10:00 AM" — a
@@ -428,7 +442,7 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # date field serving both would be the third name nobody should have to
     # disambiguate again. The ordering portal asks for both too — `serviceDate`
     # required, and the cemetery arrival separately.
-    FieldDefinition("service_date", "Service date"),
+    FieldDefinition("service_date", "Service date", display="date"),
     # ⚠️ RENAMED FROM `burial_time` ON 2026-10-06 BY RULING, AND THE RENAME IS THE
     # POINT RATHER THAN A TIDY-UP. An order carries TWO time facts — a SERVICE time
     # and an ETA — and `burial_time` was the template's wrong name for the first.
@@ -443,7 +457,7 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # ⚠️ RENAMED RATHER THAN ADDED ALONGSIDE so no third name exists. Two names for
     # two facts; a `burial_time` left in place would be a third for someone to
     # conflate again.
-    FieldDefinition("service_time", "Service time"),
+    FieldDefinition("service_time", "Service time", display="time"),
     FieldDefinition("grave_location", "Grave section / lot / space"),
     # ⚠️ ADDED 2026-10-05, `required=True` BY RULING, AND THE NEXT READER WILL
     # CHECK THE COLUMN AND CONCLUDE THE OPPOSITE — so this note is here rather
@@ -519,6 +533,7 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
         "Cemetery arrival (ETA)",
         applies_when=NotEqualsValue("service_location", SERVICE_LOCATION_GRAVESIDE),
         required_when=Never(),
+        display="time",
     ),
     # ⚠️ ADDED 2026-10-05. The decedent's dates, as TWO fields composed into one
     # `Dates` row — see the row layer in `rows.py`. Two fields rather than one
@@ -541,13 +556,19 @@ PLATFORM_DEFAULT_FIELDS: tuple[FieldDefinition, ...] = (
     # These were `required=False` with a comment saying the condition was recorded
     # and not implemented, because requiring them unconditionally would have
     # reported them missing on every non-personalized order.
+    # ⚠️ `display="date"` AND THESE TWO OFTEN HOLD A BARE YEAR. "1948 to 2026" stores
+    # `'1948'` and `'2026'` — the year-pair parser's whole point is that a director who
+    # gave years gave YEARS, and the formatter must render those unchanged rather than
+    # inventing a month and a day to hang a weekday on. Measured, and asserted.
     FieldDefinition(
         "date_of_birth", "Date of birth",
         required_when=ANY_PERSONALIZATION_CHOSEN,
+        display="date",
     ),
     FieldDefinition(
         "date_of_death", "Date of death",
         required_when=ANY_PERSONALIZATION_CHOSEN,
+        display="date",
     ),
     # ⚠️ A PRODUCTION INSTRUCTION, NOT A DISPLAY PREFERENCE. It is stamped on the
     # nameplate and travels with the order, so it belongs to the object rather

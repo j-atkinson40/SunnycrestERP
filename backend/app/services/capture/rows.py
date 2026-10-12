@@ -47,6 +47,7 @@ entire claim, not a net under a working path.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -314,6 +315,72 @@ def row_field_ids(row: Row) -> tuple[str, ...]:
     return tuple(out)
 
 
+_ISO_DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+_BARE_YEAR = re.compile(r"^\d{4}$")
+_HHMM = re.compile(r"^(\d{1,2}):(\d{2})$")
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def write_for_a_human(value: str, kind: str | None) -> str:
+    """A stored date or time, written the way the office writes it.
+
+    ⚠️ THE SAME RULE AS LABELS-NOT-SLUGS, AND THE SAME DEFECT. The Service row showed
+    `2027-03-02`: a stored form on a screen, exactly like `funeral_home` was. Ruled
+    2026-10-12 — dates and times display as "Tue Mar 2, 2027" and "10:00 AM", never
+    ISO. Stored values are unchanged; this is a rendering.
+
+    ⚠️ A BARE YEAR STAYS A BARE YEAR. "1948 to 2026" stores `'1948'`, and the
+    year-pair parser's whole point is that a director who gave years gave YEARS.
+    Formatting it as a date would require inventing a month and a day in order to
+    print a weekday — a fabricated value in a field whose honesty is the reason it
+    exists. `'1948'` renders as `1948`.
+
+    ⚠️ ANYTHING UNRECOGNISED PASSES THROUGH UNCHANGED, for the same reason
+    `label_for` does: a stored row may predate a parser change, and a visible oddity
+    an operator can report beats raising and taking the pane down over one row.
+
+    ⚠️ NO `strftime`. `%-d` for a day without a leading zero is platform-specific and
+    `%a`/`%b` are locale-dependent; both would make the rendered row depend on where
+    the server runs. The names are listed above and the arithmetic is Zeller's
+    congruence, so the output is the same everywhere.
+    """
+    if kind == "date":
+        m = _ISO_DATE.match(value)
+        if m:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if not (1 <= mo <= 12 and 1 <= d <= 31):
+                return value
+            return f"{_WEEKDAYS[_weekday(y, mo, d)]} {_MONTHS[mo - 1]} {d}, {y}"
+        if _BARE_YEAR.match(value):
+            return value
+        return value
+    if kind == "time":
+        m = _HHMM.match(value)
+        if m:
+            h, mi = int(m.group(1)), int(m.group(2))
+            if not (0 <= h <= 23 and 0 <= mi <= 59):
+                return value
+            suffix = "AM" if h < 12 else "PM"
+            h12 = h % 12 or 12
+            return f"{h12}:{mi:02d} {suffix}"
+        return value
+    return value
+
+
+def _weekday(y: int, m: int, d: int) -> int:
+    """0 = Monday. Zeller's congruence, so no locale and no platform format codes."""
+    if m < 3:
+        m += 12
+        y -= 1
+    k, j = y % 100, y // 100
+    h = (d + (13 * (m + 1)) // 5 + k + k // 4 + j // 4 + 5 * j) % 7
+    # Zeller: 0 = Saturday. Shift to 0 = Monday.
+    return (h + 5) % 7
+
+
 def _render(
     src: Source,
     values: dict[str, object],
@@ -343,7 +410,11 @@ def _render(
         if not is_answered(v):
             return None
         d = (defs or {}).get(src.field_id)
-        return d.label_for(v) if d is not None else str(v)
+        if d is None:
+            return str(v)
+        if d.display:
+            return write_for_a_human(str(v), d.display)
+        return d.label_for(v)
     if isinstance(src, RecordSource):
         v = (records.get(src.record) or {}).get(src.path)
         return str(v) if is_answered(v) else None

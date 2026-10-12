@@ -216,11 +216,13 @@ def read_state(db: Session, session_id: str, *, company_id: str, user_id: str) -
         SUMMARY_SALES_ORDER,
     )
 
-    resolved = capture.resolve_schema(
-        vault_product_id=resolution.variant_template_id,
-        personalization_config=None,
-        platform_fields=capture.template_for(capture.SALES_ORDER),
-    )
+    # ⚠️ THE RESOLUTION `evaluate` ALREADY DID — NOT A SECOND ONE. This used to call
+    # `resolve_schema(..., personalization_config=None)` while `evaluate_typed` passed
+    # the real availability, so ONE RESPONSE CONTRADICTED ITSELF: the
+    # `personalization` ROW read "Not configured for this licensee" while the SET said
+    # `answered`. Measured on a fresh tenant whose availability resolves correctly.
+    # Reading it off the state makes passing different arguments impossible.
+    resolved = state.resolved_fields
     surface = SUMMARY_SALES_ORDER if row.status == STATUS_REVIEW else CAPTURE_SALES_ORDER
 
     # ⚠️ `done_signal` WAS NEVER PASSED, SO `RowState.NEEDED` WAS DEAD STATE — found

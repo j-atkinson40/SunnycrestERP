@@ -124,7 +124,11 @@ def test_a_complete_row_is_done(db, session):
         "service at the church", "service on March 2 2027", "service at 10am",
     ])
     assert row["state"] == RowState.DONE.value, row
-    assert row["value"] == "Church · 2027-03-02 · 10:00", row
+    # ⚠️ UPDATED 2026-10-12 WITH THE RENDERING, NOT AROUND IT. This asserted
+    # "Church · 2027-03-02 · 10:00" until James read that date off a report and
+    # ruled that rows show dates the way the office writes them, never ISO. The
+    # STORED values are unchanged — `2027-03-02` and `10:00`; only this line moved.
+    assert row["value"] == "Church · Tue Mar 2, 2027 · 10:00 AM", row
 
 
 def test_PARTIAL_holds_after_the_done_signal_rather_than_becoming_NEEDED(db, session):
@@ -174,7 +178,7 @@ def test_the_location_is_not_lost_when_the_date_arrives(db, session):
                              line="service on March 2 2027")
     state = session_service.read_state(db, sid, company_id=cid, user_id=uid)
     row = next(r for r in state["surface"]["rows"] if r["row_id"] == "service")
-    assert row["value"] == "Church · 2027-03-02", row
+    assert row["value"] == "Church · Tue Mar 2, 2027", row
 
 
 def test_firstof_renders_the_first_child_that_yields():
